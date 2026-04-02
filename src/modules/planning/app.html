@@ -1,0 +1,791 @@
+<!doctype html>
+    <html lang="de">
+
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <meta name="theme-color" content="#0f172a">
+      <title>Planung</title>
+      <link rel="manifest" href="../../../manifest.webmanifest">
+      <link rel="icon" href="../../../icon-192.png" sizes="32x32" type="image/png">
+      <link rel="apple-touch-icon" href="../../../icon-192.png">
+      <link rel="stylesheet" href="./app.css">
+    </head>
+
+    <body>
+      <div id="app" class="app-window">
+        <aside id="sidebarPanel" class="sidebar-panel">
+          <div class="sidebar-controls">
+            <button id="view-grades-entry-btn" class="nav-btn active" type="button">Eingabe</button>
+            <button id="view-week-btn" class="nav-btn" type="button" hidden>Wochenansicht</button>
+          </div>
+
+          <div class="sidebar-section">
+            <ul id="sidebar-course-list" class="sidebar-list"></ul>
+          </div>
+
+          <div class="sidebar-footer-actions">
+            <button id="view-settings-btn" class="ghost settings-nav-btn" type="button" aria-label="Einstellungen"
+              title="Einstellungen">⚙️</button>
+          </div>
+
+        </aside>
+
+        <div id="grades-collapsed-title-shell" aria-hidden="true">
+          <div id="grades-collapsed-title"></div>
+        </div>
+
+        <main class="main-pane">
+          <header id="headerGlass" class="header-glass">
+            <button id="week-prev" class="round-btn week-nav-btn" type="button" aria-label="Vorherige Woche"
+              title="Woche zurück">
+              <svg class="week-nav-icon" viewBox="0 0 54 54" aria-hidden="true">
+                <path d="M33.5 15.2L20.5 27L33.5 38.8"></path>
+              </svg>
+            </button>
+
+            <div class="week-center">
+              <button id="kw-label" class="kw-label" type="button" aria-label="Minikalender öffnen"
+                title="Minikalender öffnen">KW 00</button>
+              <button id="week-picker-btn" class="calendar-btn" type="button" aria-label="Aktuelle Woche"
+                title="Aktuelle Woche">
+                <svg class="current-week-icon" viewBox="0 0 38 28" aria-hidden="true">
+                  <rect x="2" y="1" width="26" height="26" rx="3" fill="#ffffff" stroke="#e9eef5" stroke-width="2">
+                  </rect>
+                  <path d="M2 1H28V6.72H2Z" fill="#d63c2f"></path>
+                  <line x1="2" y1="6.72" x2="28" y2="6.72" stroke="#e9eef5" stroke-width="2"></line>
+                  <circle cx="15" cy="16.86" r="2" fill="#5f5f5f"></circle>
+                  <path d="M36 16.86H20" stroke="#5f5f5f" stroke-width="4" stroke-linecap="round"></path>
+                  <path d="M20 16.86L22.65 14.27M20 16.86L22.65 19.45" stroke="#5f5f5f" stroke-width="4"
+                    stroke-linecap="round" stroke-linejoin="round"></path>
+                </svg>
+              </button>
+              <input id="week-date" type="date" aria-label="Wochenstart">
+              <select id="school-year-select" hidden aria-hidden="true"></select>
+            </div>
+
+            <button id="week-next" class="round-btn week-nav-btn" type="button" aria-label="Nächste Woche"
+              title="Woche vor">
+              <svg class="week-nav-icon" viewBox="0 0 54 54" aria-hidden="true">
+                <path d="M20.5 15.2L33.5 27L20.5 38.8"></path>
+              </svg>
+            </button>
+          </header>
+
+          <section id="stackGlass" class="stack-glass">
+            <section id="view-week" class="view-panel active">
+              <div class="week-grid">
+                <div class="table-panel">
+                  <table id="week-table"></table>
+                </div>
+              </div>
+            </section>
+
+            <section id="view-course" class="view-panel" hidden>
+              <div class="course-head">
+                <h2 id="course-title"></h2>
+              </div>
+              <div class="table-panel">
+                <table id="course-table"></table>
+              </div>
+            </section>
+
+            <section id="view-grades" class="view-panel" hidden>
+              <div class="grades-head">
+                <div class="grades-head-main">
+                  <h2 id="grades-title"></h2>
+                  <p id="grades-subtitle" class="muted"></p>
+                </div>
+                <div class="grades-head-actions">
+                  <button id="grade-vault-toggle-btn" type="button" class="ghost">Notenmodul entsperren</button>
+                  <button id="grade-vault-save-btn" type="button" class="ghost" hidden>Noten speichern</button>
+                </div>
+              </div>
+              <div id="grades-vault-banner" class="grades-vault-banner" hidden></div>
+              <div id="grades-overview-panel" class="grades-subview-panel">
+                <div id="grades-empty-state" class="grades-empty-state" hidden>
+                  <h3>Noch keine Teilnehmenden eingetragen</h3>
+                  <p></p>
+                  <div class="button-row">
+                    <button id="grades-empty-open-dialog" type="button" class="sidebar-add-btn"
+                      aria-label="Teilnehmende verwalten" title="Teilnehmende verwalten">
+                      <span class="sidebar-add-plus" aria-hidden="true"></span>
+                    </button>
+                    <button id="grades-empty-unlock" type="button" class="ghost grades-vault-unlock-button" hidden
+                      aria-label="Entsperren" title="Entsperren">🔓</button>
+                  </div>
+                </div>
+                <div id="grades-book-panel" class="table-panel grades-book-panel" hidden>
+                  <div id="grades-privacy-overlay" class="grades-privacy-overlay" aria-live="polite" hidden></div>
+                  <div id="grades-table-scroll" class="grades-table-scroll">
+                    <div id="grades-table" class="grades-table"></div>
+                  </div>
+                </div>
+              </div>
+              <div id="grades-entry-panel" class="grades-subview-panel" hidden>
+                <div id="grades-entry-content" class="table-panel grades-entry-content"></div>
+              </div>
+            </section>
+
+            <section id="view-settings" class="view-panel" hidden>
+              <div class="settings-tabs-shell">
+                <div class="settings-tab-bar" role="tablist" aria-label="Einstellungen">
+                  <button class="settings-tab active" type="button" role="tab" data-tab="dayoff"
+                    aria-controls="settings-tab-dayoff" aria-selected="true">Ferien & Unterrichtsfreie Tage</button>
+                  <button class="settings-tab" type="button" role="tab" data-tab="display"
+                    aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
+                  <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
+                    aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
+                  <button class="settings-tab" type="button" role="tab" data-tab="database"
+                    aria-controls="settings-tab-database" aria-selected="false">Datenbank</button>
+                </div>
+                <div class="settings-tab-content">
+                  <div id="settings-courses-hidden" hidden>
+                    <h3 class="settings-panel-title">Kurse</h3>
+                    <div class="button-row">
+                      <button type="button" id="course-settings-add">Kurs hinzufügen</button>
+                    </div>
+                    <ul id="course-list" class="list"></ul>
+                  </div>
+
+                  <div id="settings-slots-hidden" hidden>
+                    <h3 class="settings-panel-title">Stundenplan</h3>
+                    <form id="slot-form" class="form-grid">
+                      <input type="hidden" id="slot-id">
+                      <label>
+                        Kurs
+                        <select id="slot-course" required></select>
+                      </label>
+                      <label>
+                        Wochentag
+                        <select id="slot-day" required>
+                          <option value="1">Montag</option>
+                          <option value="2">Dienstag</option>
+                          <option value="3">Mittwoch</option>
+                          <option value="4">Donnerstag</option>
+                          <option value="5">Freitag</option>
+                        </select>
+                      </label>
+                      <label>
+                        Startstunde
+                        <input id="slot-hour" type="number" min="1" max="12" value="1" required>
+                      </label>
+                      <label>
+                        Dauer
+                        <input id="slot-duration" type="number" min="1" max="4" value="1" required>
+                      </label>
+                      <label>
+                        Von (optional)
+                        <input id="slot-start" type="date">
+                      </label>
+                      <label>
+                        Bis (optional)
+                        <input id="slot-end" type="date">
+                      </label>
+                      <label>
+                        Woche
+                        <select id="slot-parity">
+                          <option value="0">Jede Woche</option>
+                          <option value="-1">Keine</option>
+                          <option value="1">Ungerade KW</option>
+                          <option value="2">Gerade KW</option>
+                        </select>
+                      </label>
+                      <div id="slot-edit-tools" hidden>
+                        <label>
+                          Änderungsumfang
+                          <select id="slot-edit-scope">
+                            <option value="all">Gesamte Serie</option>
+                            <option value="from">Ab Datum</option>
+                          </select>
+                        </label>
+                        <label>
+                          Änderungen ab
+                          <input id="slot-edit-from-date" type="date">
+                        </label>
+                      </div>
+                      <div class="button-row">
+                        <button type="submit">Slot speichern</button>
+                        <button type="button" id="slot-reset" class="ghost">Zurücksetzen</button>
+                        <button type="button" id="slot-delete" class="ghost danger-action" hidden>Löschen</button>
+                      </div>
+                    </form>
+                    <ul id="slot-list" class="list"></ul>
+                  </div>
+
+                  <div id="settings-tab-dayoff" class="settings-panel active" role="tabpanel">
+                    <div id="dayoff-required-hint" class="required-hint" hidden>
+                      <p class="required-hint-title">Pflicht-Ferien sind noch unvollständig.</p>
+                      <p id="dayoff-required-missing" class="required-hint-missing"></p>
+                    </div>
+                    <p class="settings-link-hint"><em>Überprüfe die Daten anhand der <a
+                          href="https://www.schure.de/theme/sr3131.htm" target="_blank"
+                          rel="noopener noreferrer">Niedersächsischen Ferienordnung</a>.</em></p>
+                    <div class="settings-grid">
+                      <div class="settings-column">
+                        <h3 class="settings-panel-title">Ferien</h3>
+                        <ul id="free-range-list" class="list"></ul>
+                      </div>
+
+                      <div class="settings-column">
+                        <h3 class="settings-panel-title">Unterrichtsfreie Tage</h3>
+                        <datalist id="special-day-options">
+                          <option value="Tag der Arbeit"></option>
+                          <option value="Tag der Deutschen Einheit"></option>
+                          <option value="Karfreitag"></option>
+                          <option value="Ostermontag"></option>
+                          <option value="Christi Himmelfahrt"></option>
+                          <option value="Tag nach Himmelfahrt"></option>
+                          <option value="Pfingstdienstag"></option>
+                          <option value="Pfingstmontag"></option>
+                          <option value="Reformationstag"></option>
+                        </datalist>
+                        <ul id="special-day-list" class="list"></ul>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div id="settings-tab-display" class="settings-panel" role="tabpanel" hidden>
+                    <form class="settings-form-table" autocomplete="off">
+                      <div id="settings-display-hours-row" class="settings-form-row">
+                        <label class="settings-form-label" for="hours-per-day">Maximale Unterrichtsstunden pro
+                          Tag</label>
+                        <input id="hours-per-day" class="settings-number-input" type="number" min="1" max="12"
+                          value="8">
+                      </div>
+                      <div id="settings-grades-privacy-graph-threshold-row" class="settings-form-row">
+                        <label class="settings-form-label" for="grades-privacy-graph-threshold">Mindestanzahl an
+                          Leistungen für Entwicklungsgraph</label>
+                        <input id="grades-privacy-graph-threshold" class="settings-number-input" type="number" min="0"
+                          max="50" value="5">
+                      </div>
+                      <div id="settings-grade-display-system-row" class="settings-form-row" hidden>
+                        <label class="settings-form-label" for="grade-display-system">Notensystem</label>
+                        <select id="grade-display-system">
+                          <option value="points15">00-15</option>
+                          <option value="grade16">1-6</option>
+                        </select>
+                      </div>
+                      <div class="settings-form-row">
+                        <span class="settings-form-label">Randleiste</span>
+                        <label class="checkbox-line settings-inline-checkbox">
+                          <input id="show-hidden-sidebar-courses" type="checkbox">
+                          Ausgeblendete Kurse in Randleiste anzeigen
+                        </label>
+                      </div>
+                    </form>
+                  </div>
+
+                  <div id="settings-tab-lesson-times" class="settings-panel" role="tabpanel" hidden>
+                    <div class="lesson-times-panel">
+                      <p class="muted">Die Zuordnung von Stunden zu Uhrzeiten dient dem automatischen Öffnen des
+                        passenden Kurses im Notenmodul.</p>
+                      <div id="lesson-times-list" class="lesson-times-list"></div>
+                    </div>
+                  </div>
+
+                  <div id="settings-tab-database" class="settings-panel" role="tabpanel" hidden>
+                    <div class="settings-extra-section">
+                      <h3 class="settings-panel-title">Datenbankdatei</h3>
+                      <p id="sync-file-name" class="muted"></p>
+                      <p id="sync-file-status" class="muted"></p>
+                    </div>
+                    <div id="db-auto-actions" class="button-row" style="margin-top: 0.6rem;">
+                      <button id="db-select-existing-btn" type="button">Bestehende Datenbank auswählen</button>
+                      <button id="db-create-new-btn" type="button">Neue Datenbank anlegen</button>
+                    </div>
+                    <div id="db-manual-actions" class="button-row" style="margin-top: 0.6rem;" hidden>
+                      <button id="db-manual-load-btn" type="button">Datenbank laden</button>
+                      <button id="db-manual-save-btn" type="button">Datenbank speichern/neu anlegen</button>
+                      <input id="db-manual-file" type="file" accept="application/json,.json" hidden>
+                    </div>
+                    <p id="db-manual-hint" class="muted" hidden>Auf iPadOS wird die Planungsdatenbank nicht automatisch
+                      gespeichert. Sie muss manuell gesichert werden. Nach dem Neustart der App muss sie außerdem in
+                      diesem Fenster wieder geladen werden. Bei der ersten Nutzung muss sie ebenfalls manuell angelegt
+                      werden.</p>
+                    <div id="grade-vault-settings-section" class="settings-extra-section" hidden>
+                      <h3 class="settings-panel-title">Verschlüsselung</h3>
+                      <p id="grade-vault-settings-status" class="muted"></p>
+                      <p id="grade-vault-settings-hint" class="muted"></p>
+                      <div class="button-row" style="margin-top: 0.45rem;">
+                        <button id="grade-vault-settings-action-btn" type="button">Passwort ändern</button>
+                      </div>
+                    </div>
+                    <div id="db-backup-section" class="settings-extra-section">
+                      <h3 class="settings-panel-title">Backups</h3>
+                      <p id="backup-dir-name" class="muted"></p>
+                      <div class="button-row" style="margin-top: 0.45rem; margin-bottom: 1rem;">
+                        <button id="backup-dir-change-btn" type="button">Backup-Ordner auswählen</button>
+                      </div>
+                      <div class="settings-form-table">
+                        <div class="settings-form-row">
+                          <span class="settings-form-label">Automatisches Backup</span>
+                          <label class="checkbox-line settings-inline-checkbox">
+                            <input id="db-backup-auto-enabled" type="checkbox">
+                            aktiviert
+                          </label>
+                        </div>
+                        <div class="settings-form-row">
+                          <label class="settings-form-label" for="db-backup-interval-days">Intervall (Tage)</label>
+                          <input id="db-backup-interval-days" class="settings-number-input" type="number" min="1"
+                            max="30" value="7">
+                        </div>
+                      </div>
+                      <div class="button-row" style="margin-top: 0.5rem;">
+                        <button id="db-backup-now-btn" type="button">Backup erstellen</button>
+                        <button id="db-backup-import-btn" type="button">Backup importieren</button>
+                        <input id="db-backup-import-file" type="file" accept="application/json,.json" hidden>
+                      </div>
+                      <p id="backup-status" class="muted"></p>
+                    </div>
+                  </div>
+                </div>
+                <div class="settings-actions-row">
+                  <button id="settings-reset-all" type="button" class="ghost">Standardwerte</button>
+                  <button id="settings-save-all" type="button">Bestätigen</button>
+                  <button id="settings-cancel-all" type="button" class="ghost">Abbrechen</button>
+                </div>
+              </div>
+            </section>
+          </section>
+        </main>
+      </div>
+      <div id="app-context-menu" class="app-context-menu" hidden></div>
+
+      <dialog id="course-dialog" class="app-dialog" aria-label="Kursdialog">
+        <form id="course-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="course-dialog-title" class="settings-panel-title">Kurs</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="course-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
+                title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="course-dialog-id">
+          <section class="course-dialog-panel active" data-panel="general">
+            <label>
+              Kursname
+              <input id="course-dialog-name" required maxlength="80" placeholder="z. B. Ma 8a" autocomplete="off">
+            </label>
+            <label class="checkbox-line">
+              <input id="course-dialog-no-lesson" type="checkbox">
+              Termin ohne Unterricht
+            </label>
+            <div class="field-label">
+              <span id="course-dialog-color-label">Farbe</span>
+              <div id="course-dialog-color-panel" class="course-color-panel">
+                <div id="course-dialog-color-palette" class="course-color-palette" role="group"
+                  aria-labelledby="course-dialog-color-label"></div>
+              </div>
+            </div>
+          </section>
+          <div class="button-row dialog-actions">
+            <button type="button" id="course-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="course-color-dialog" class="app-dialog" aria-label="Farbe bearbeiten">
+        <form id="course-color-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="course-color-dialog-title" class="settings-panel-title">Farbe bearbeiten</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="course-color-dialog-id">
+          <div class="course-color-panel">
+            <div id="course-color-dialog-palette" class="course-color-palette" role="group" aria-label="Farbpalette">
+            </div>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="course-students-dialog" class="app-dialog" aria-label="Teilnehmende verwalten">
+        <form id="course-students-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="course-students-dialog-title" class="settings-panel-title">Teilnehmende verwalten</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="course-students-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="course-students-dialog-id">
+          <section class="course-dialog-panel active" data-panel="students">
+            <p><strong>1. Lade die Namensliste herunter (oder erstelle sie selbst mit <a href="#"
+                  id="course-dialog-students-template">der Vorlage</a>)</strong></p>
+            <p class="muted">IServ-Randleiste → Alle Module → Gruppenlisten → Lerngruppe eingeben & „Nur Schüler zeigen”
+              aktivieren → Exportieren</p>
+            <p><strong>2. Importiere die Namensliste</strong></p>
+            <input id="course-dialog-students-file" type="file" accept=".csv,text/csv" hidden>
+            <div id="course-dialog-students-dropzone" class="course-dialog-dropzone" tabindex="0">
+              Namensliste auswählen<br>oder hier ablegen
+            </div>
+            <p><strong>3. Verwalte die Teilnehmenden</strong></p>
+            <p id="course-dialog-import-preview-text" class="muted" hidden></p>
+            <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
+            <div class="button-row course-dialog-students-manual-row">
+              <button type="button" id="course-dialog-students-add" class="sidebar-add-btn"
+                aria-label="Teilnehmende hinzufügen" title="Teilnehmende hinzufügen">
+                <span class="sidebar-add-plus" aria-hidden="true"></span>
+              </button>
+            </div>
+          </section>
+        </form>
+      </dialog>
+
+      <dialog id="course-structure-dialog" class="app-dialog" aria-label="Notenstruktur bearbeiten">
+        <form id="course-structure-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="course-structure-dialog-title" class="settings-panel-title">Notenstruktur</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="course-structure-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="course-structure-dialog-id">
+          <section class="course-dialog-panel active" data-panel="structure">
+            <div class="course-dialog-structure-row">
+              <div id="course-dialog-structure-list" class="course-dialog-structure-list"></div>
+              <button type="button" id="course-dialog-category-add" class="sidebar-add-btn"
+                aria-label="Kategorie hinzufügen" title="Kategorie hinzufügen">
+                <span class="sidebar-add-plus" aria-hidden="true"></span>
+              </button>
+            </div>
+          </section>
+        </form>
+      </dialog>
+
+      <dialog id="entfall-dialog" class="app-dialog" aria-label="Entfalldialog">
+        <form id="entfall-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 class="settings-panel-title">Entfall eintragen</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="entfall-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
+                title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <label>
+            Entfallgrund (optional)
+            <input id="entfall-dialog-reason" maxlength="160" placeholder="z. B. Exkursion">
+          </label>
+        </form>
+      </dialog>
+
+      <dialog id="topic-dialog" class="app-dialog" aria-label="Stundendialog">
+        <form id="topic-dialog-form" class="form-grid" method="dialog">
+          <div class="topic-dialog-header">
+            <h3 class="settings-panel-title">Stunde bearbeiten</h3>
+            <div class="topic-dialog-actions-top">
+              <button type="button" id="topic-dialog-cancel" class="ghost topic-dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="topic-dialog-icon-button" aria-label="Speichern"
+                title="Speichern">💾</button>
+            </div>
+          </div>
+          <input id="topic-dialog-lesson" type="hidden">
+          <p id="topic-dialog-context" class="topic-dialog-context"></p>
+          <label>
+            Thema
+            <input id="topic-dialog-input" maxlength="240" placeholder="Thema" aria-label="Thema" autocomplete="off">
+          </label>
+          <label>
+            Ausführliche Planung / Notizen
+            <textarea id="topic-dialog-notes" class="topic-dialog-notes" rows="10"
+              placeholder="Ablauf, Material, Lernziele, Hinweise ..."></textarea>
+          </label>
+        </form>
+      </dialog>
+
+      <dialog id="slot-dialog" class="app-dialog" aria-label="Unterrichtsstundendialog">
+        <form id="slot-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="slot-dialog-title" class="settings-panel-title">Unterrichtsstunde</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="slot-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
+                title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="slot-dialog-id">
+          <label class="slot-dialog-row">
+            <span>Kurs</span>
+            <select id="slot-dialog-course" required></select>
+          </label>
+          <label class="slot-dialog-row">
+            <span>Wochentag</span>
+            <select id="slot-dialog-day" required>
+              <option value="1">Mo</option>
+              <option value="2">Di</option>
+              <option value="3">Mi</option>
+              <option value="4">Do</option>
+              <option value="5">Fr</option>
+            </select>
+          </label>
+          <label class="slot-dialog-row">
+            <span>Startstunde</span>
+            <input id="slot-dialog-hour" type="number" min="1" max="12" value="1" required>
+          </label>
+          <label class="slot-dialog-row">
+            <span>Endstunde</span>
+            <input id="slot-dialog-end-hour" type="number" min="1" max="12" value="2" required>
+          </label>
+          <label class="slot-dialog-row">
+            <span>Wiederholung</span>
+            <select id="slot-dialog-parity">
+              <option value="0">Jede Woche</option>
+              <option value="-1">Keine</option>
+              <option value="1">Nur ungerade Wochen</option>
+              <option value="2">Nur gerade Wochen</option>
+            </select>
+          </label>
+          <label class="slot-dialog-row">
+            <span>Startdatum</span>
+            <input id="slot-dialog-start" type="date" required>
+          </label>
+          <label class="slot-dialog-row">
+            <span>Enddatum</span>
+            <input id="slot-dialog-end" type="date" required>
+          </label>
+          <div id="slot-dialog-edit-info" class="slot-edit-info" hidden></div>
+          <div id="slot-dialog-edit-tools" hidden>
+            <input id="slot-dialog-edit-scope" type="hidden" value="all">
+            <input id="slot-dialog-edit-from-date" type="hidden">
+          </div>
+          <div class="button-row dialog-actions">
+            <button type="button" id="slot-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="free-range-dialog" class="app-dialog" aria-label="Ferienzeitraumdialog">
+        <form id="free-range-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="free-range-dialog-title" class="settings-panel-title">Ferienzeitraum</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="free-range-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="free-range-dialog-id">
+          <label>
+            Bezeichnung
+            <input id="free-range-dialog-label" required placeholder="z. B. Herbstferien" maxlength="80"
+              autocomplete="off">
+          </label>
+          <label>
+            Von
+            <input id="free-range-dialog-start" type="date" required>
+          </label>
+          <label>
+            Bis
+            <input id="free-range-dialog-end" type="date" required>
+          </label>
+        </form>
+      </dialog>
+
+      <dialog id="special-day-dialog" class="app-dialog" aria-label="Unterrichtsfreier-Tag-Dialog">
+        <form id="special-day-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="special-day-dialog-title" class="settings-panel-title">Unterrichtsfreier Tag</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="special-day-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="special-day-dialog-id">
+          <label>
+            Name
+            <input id="special-day-dialog-name" list="special-day-options" required maxlength="80"
+              placeholder="z. B. Tag der Arbeit" autocomplete="off">
+          </label>
+          <label>
+            Datum
+            <input id="special-day-dialog-date" type="date" required>
+          </label>
+          <div class="button-row dialog-actions">
+            <button type="button" id="special-day-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="message-dialog" class="app-dialog" aria-label="Meldungsdialog">
+        <form id="message-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="message-dialog-title" class="settings-panel-title">Hinweis</h3>
+            <div id="message-dialog-actions-top" class="dialog-actions-top" hidden>
+              <button type="button" id="message-dialog-cancel-top" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" id="message-dialog-ok-top" class="dialog-icon-button" aria-label="Speichern"
+                title="Speichern">💾</button>
+            </div>
+          </div>
+          <p id="message-dialog-text" class="message-dialog-text"></p>
+          <label id="message-dialog-input-row" class="message-dialog-input-row" hidden>
+            <span id="message-dialog-input-label">Eingabe</span>
+            <input id="message-dialog-input" type="text" maxlength="4000" autocomplete="off">
+          </label>
+          <div id="message-dialog-actions-bottom" class="button-row dialog-actions">
+            <button type="button" id="message-dialog-cancel" class="ghost" hidden>Abbrechen</button>
+            <span class="dialog-grow"></span>
+            <button type="submit" id="message-dialog-ok">OK</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="grade-assessment-dialog" class="app-dialog grade-assessment-edit-dialog"
+        aria-label="Leistung bearbeiten">
+        <form id="grade-assessment-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 class="settings-panel-title">Leistung bearbeiten</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="grade-assessment-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="grade-assessment-dialog-id">
+          <label>
+            Leistungsname
+            <input id="grade-assessment-dialog-title" type="text" maxlength="120" required autocomplete="off">
+          </label>
+          <label>
+            Gewichtung
+            <input id="grade-assessment-dialog-weight" type="number" min="1" step="1" required inputmode="numeric">
+          </label>
+          <label>
+            Kategorie
+            <select id="grade-assessment-dialog-category"></select>
+          </label>
+          <label>
+            Unterkategorie
+            <select id="grade-assessment-dialog-subcategory"></select>
+          </label>
+          <label>
+            Halbjahr
+            <select id="grade-assessment-dialog-half-year">
+              <option value="h1">HJ1</option>
+              <option value="h2">HJ2</option>
+            </select>
+          </label>
+          <div class="button-row dialog-actions grade-assessment-dialog-actions">
+            <button type="button" id="grade-assessment-dialog-delete" class="ghost danger-action"
+              aria-label="Leistung löschen" title="Leistung löschen">🗑️</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="grade-override-dialog" class="app-dialog" aria-label="Pädagogische Notensetzung">
+        <form id="grade-override-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 class="settings-panel-title">Pädagogische Notensetzung</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="grade-override-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
+            </div>
+          </div>
+          <input type="hidden" id="grade-override-dialog-student-id">
+          <input type="hidden" id="grade-override-dialog-course-id">
+          <input type="hidden" id="grade-override-dialog-scope">
+          <input type="hidden" id="grade-override-dialog-period">
+          <input type="hidden" id="grade-override-dialog-category-id">
+          <input type="hidden" id="grade-override-dialog-subcategory-id">
+          <p id="grade-override-dialog-context" class="message-dialog-text"></p>
+          <label>
+            Errechnete Note
+            <output id="grade-override-dialog-computed" class="grade-override-computed">—</output>
+          </label>
+          <label>
+            Pädagogische Notensetzung
+            <input id="grade-override-dialog-input" type="text" inputmode="decimal" maxlength="4"
+              placeholder="z. B. 11,5" autocomplete="off">
+          </label>
+          <div class="button-row dialog-actions">
+            <button type="button" id="grade-override-dialog-clear" class="ghost danger-action">Überschreibung
+              entfernen</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="grade-vault-dialog" class="app-dialog grade-vault-dialog" aria-labelledby="grade-vault-dialog-title">
+        <form id="grade-vault-dialog-form" class="form-grid" method="post" action="" autocomplete="on"
+          spellcheck="false">
+          <div class="dialog-header">
+            <h3 id="grade-vault-dialog-title" class="settings-panel-title">Notenmodul schützen</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="grade-vault-dialog-cancel" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+            </div>
+          </div>
+          <p id="grade-vault-dialog-text" class="message-dialog-text"></p>
+          <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
+            Benutzername
+            <input id="grade-vault-dialog-username" name="username" type="text" autocomplete="username" tabindex="-1">
+          </label>
+          <div class="grade-vault-dialog-fields">
+            <label id="grade-vault-dialog-current-row" hidden>
+              <span id="grade-vault-dialog-current-label">Aktuelles Passwort</span>
+              <input id="grade-vault-dialog-current-password" name="current-password" type="password" minlength="10"
+                autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+            </label>
+            <label id="grade-vault-dialog-password-row">
+              Passwort
+              <input id="grade-vault-dialog-password" name="new-password" type="password" minlength="10"
+                autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+            </label>
+            <label id="grade-vault-dialog-confirm-row" hidden>
+              Passwort wiederholen
+              <input id="grade-vault-dialog-confirm-password" name="confirm-password" type="password" minlength="10"
+                autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+            </label>
+          </div>
+          <p id="grade-vault-dialog-hint" class="grade-vault-dialog-hint"></p>
+          <p id="grade-vault-dialog-error" class="grade-vault-dialog-error" aria-live="polite"></p>
+          <div class="grade-vault-dialog-submit-row">
+            <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
+              title="Bestätigen">🔓</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="week-calendar-dialog" class="app-dialog week-calendar-dialog" aria-label="Wochenkalender">
+        <div class="week-calendar-shell">
+          <div class="week-calendar-header">
+            <button id="week-calendar-prev" type="button" class="ghost small" aria-label="Vorheriger Monat"
+              title="Monat zurück">‹</button>
+            <select id="week-calendar-month"></select>
+            <button id="week-calendar-next" type="button" class="ghost small" aria-label="Nächster Monat"
+              title="Monat vor">›</button>
+          </div>
+          <table class="week-calendar-table">
+            <thead>
+              <tr>
+                <th>KW</th>
+                <th>Mo</th>
+                <th>Di</th>
+                <th>Mi</th>
+                <th>Do</th>
+                <th>Fr</th>
+              </tr>
+            </thead>
+            <tbody id="week-calendar-grid"></tbody>
+          </table>
+        </div>
+      </dialog>
+      <div id="grade-picker" class="grade-picker" hidden></div>
+
+      <script type="module" src="./app.js"></script>
+      <script src="./bridge.js"></script>
+
+</body>
+
+    </html>

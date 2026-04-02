@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+    <html lang="de">
+
+    <head>
+      <meta charset="UTF-8" />
+      <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <title>Sitzplangenerator</title>
+      <meta name="theme-color" content="#0f172a" />
+      <meta name="mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-capable" content="yes" />
+      <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+      <meta name="apple-mobile-web-app-title" content="Sitzplangenerator" />
+      <link rel="manifest" href="../../../manifest.webmanifest" />
+      <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png" />
+      <link rel="icon" type="image/png" sizes="192x192" href="../../../icon-192.png" />
+      <link rel="icon" type="image/png" sizes="512x512" href="../../../icon-512.png" />
+      <link rel="shortcut icon" href="../../../icon-192.png" />
+      <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png" />
+      <link rel="stylesheet" href="./app.css" />
+    </head>
+
+    <body>
+      <template id="app-shell">
+        <div class="app" id="app" hidden>
+          <aside class="side">
+            <div class="sidebar-header">
+              <h1 class="sidebar-title">Sitzplangenerator<span id="app-version" class="sidebar-version"></span></h1>
+            </div>
+            <div class="steps">
+              <ol class="steps-list">
+                <li>
+                  <strong>Lade die Namensliste herunter<br>(oder erstelle sie selbst mit <a href="#"
+                      id="template-link">der
+                      Vorlage</a>)</strong>
+                  <span class="hint">
+                    IServ-Randleiste → Alle Module → Gruppenlisten → Lerngruppe eingeben & „Nur Schüler zeigen”
+                    aktivieren →
+                    Exportieren
+                  </span>
+                </li>
+                <li>
+                  <strong>Importiere die Namensliste</strong>
+                  <div id="csv-drop-zone" class="mt-sm file-upload">
+                    <input id="csv" type="file" accept=".csv,text/csv" />
+                    <label for="csv" class="file-trigger">Namensliste auswählen<br>oder hier ablegen</label>
+                    <span id="csv-status" class="file-status">Noch keine Datei importiert</span>
+                  </div>
+                </li>
+                <li>
+                  <strong>Aktiviere verfügbare Sitzplätze<br>(einzeln anklicken oder nach Muster)</strong>
+                  <div class="step-actions dashed">
+                    <button type="button" id="pattern-pi" title="U-förmig">∏</button>
+                    <button type="button" id="pattern-e" title="EƎ-förmig">E Ǝ</button>
+                    <button type="button" id="pattern-bars-3" title="3 Reihen">☰</button>
+                    <button type="button" id="pattern-bars-4" title="4 Reihen">≣</button>
+                    <button type="button" id="pattern-bars-3-gang" title="3 Reihen mit Gang">☰ ☰</button>
+                    <button type="button" id="pattern-bars-4-gang" title="4 Reihen mit Gang">≣ ≣</button>
+                  </div>
+                </li>
+                <li>
+                  <strong>Entscheide, ob es 2er-Tische gibt</strong>
+                  <div class="step-actions twoer-row">
+                    <div class="toggle-pill" role="group" aria-label="2er-Tische">
+                      <label class="toggle-option" title="Zulässig">
+                        <input type="radio" name="twoer-toggle" value="zulässig" aria-label="Zulässig" checked />
+                        <span>✓</span>
+                      </label>
+                      <label class="toggle-option" title="Symbole ausgeblendet">
+                        <input type="radio" name="twoer-toggle" value="both" aria-label="Symbole ausgeblendet" />
+                        <span>🔗⛓️‍💥</span>
+                      </label>
+                      <label class="toggle-option" title="Unzulässig">
+                        <input type="radio" name="twoer-toggle" value="nicht-zulässig" aria-label="Unzulässig" />
+                        <span>❌</span>
+                      </label>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <strong>Platziere Lehrkraft</strong>
+                  <div class="step-actions dashed" style="justify-content:center">
+                    <div id="teacher-card" class="teacher teacher-card" draggable="true" title="Auf Sitzplatz ziehen"
+                      aria-label="Lehrkraft">
+                      <div class="icon teacher-emoji" aria-hidden="true">
+                        👑
+                      </div>
+                      <div class="label">Lehrkraft</div>
+                    </div>
+                  </div>
+                </li>
+                <li>
+                  <strong>Gib Kriterien für den Vorschlag an (optional)</strong>
+                  <div class="step-actions dashed">
+                    <button type="button" id="seat-preferences" class="filled flex-1">Kriterien eingeben</button>
+                  </div>
+                </li>
+                <li>
+                  <strong>Starte Aktion</strong>
+                </li>
+              </ol>
+            </div>
+
+            <div class="row mt-md">
+              <button id="suggest" class="warn flex-1"
+                title="Vorschlag unter Beachtung der Präferenzen generieren">Vorschlag</button>
+              <button id="random" class="warn flex-1" title="Zufällige Sitzverteilung erstellen">Zufall</button>
+            </div>
+
+            <div class="row">
+              <button id="reset-learners" class="filled flex-1"
+                title="Alle Lernenden von Sitzpläzten lösen">Belegung<br>zurücksetzen</button>
+              <button id="reset-raster" class="filled flex-1"
+                title="Alle Sitzplätze deaktivieren">Platzraster<br>zurücksetzen</button>
+              <button id="toggle-perspective" class="filled flex-1"
+                title="Sitzplan horizontal spiegeln">Perspektive<br>umdrehen</button>
+              <button id="adjust-grid" class="filled flex-1"
+                title="Anzahl der Zeilen und Spalten anpassen">Raster<br>anpassen</button>
+            </div>
+
+            <div class="row sitzplan-row">
+              <button id="import-plan" class="primary flex-1"
+                title="Gespeicherten Sitzplan laden">Sitzplan<br>laden</button>
+              <button id="export-plan" class="primary flex-1"
+                title="Aktuellen Sitzplan als Datei speichern">Sitzplan<br>speichern</button>
+              <button id="print-plan" class="primary flex-1" title="Sitzplan drucken">Sitzplan<br>drucken</button>
+              <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
+            </div>
+
+            <div id="scroll-hint" class="scroll-hint" role="presentation">
+              <span class="arrow" aria-hidden="true">⬇</span>
+              <span class="text">Namen importiert</span>
+            </div>
+
+            <section id="roster-panel" class="roster-panel" aria-label="Freie Lernende">
+              <div class="list" id="unseated"></div>
+            </section>
+          </aside>
+
+          <main class="main">
+            <div id="sidebar-score" class="sidebar-score" aria-live="polite"
+              title="Gesamtübersicht der Kriterienerfüllung">
+              <span class="sidebar-score-value">Gesamtscore: –</span>
+            </div>
+            <h1 id="print-plan-title" class="print-plan-title" aria-hidden="true"></h1>
+            <div class="grid-wrap">
+              <div id="grid" class="grid" aria-label="Sitzraster"></div>
+              <div class="suggest-progress" id="suggest-progress" aria-live="polite">
+                <div class="progress-inner">
+                  <div class="progress-bar">
+                    <div class="progress-bar-fill" id="suggest-progress-fill"></div>
+                  </div>
+                  <div class="progress-text" id="suggest-progress-label">Bereit</div>
+                </div>
+              </div>
+            </div>
+          </main>
+
+          <dialog id="grid-dialog" aria-labelledby="grid-dialog-title">
+            <form id="grid-dialog-form" class="dialog-form">
+              <h2 id="grid-dialog-title">Raster anpassen</h2>
+              <label for="grid-dialog-rows">
+                Zeilen:
+                <input id="grid-dialog-rows" type="number" min="1" max="20" step="1" required />
+              </label>
+              <label for="grid-dialog-cols">
+                Spalten:
+                <input id="grid-dialog-cols" type="number" min="1" max="20" step="1" required />
+              </label>
+              <div class="dialog-actions">
+                <button type="button" id="grid-dialog-cancel" class="ghost">Abbrechen</button>
+                <button type="button" id="grid-dialog-minimum" class="ghost">Minimum</button>
+                <button type="submit" class="primary">Übernehmen</button>
+              </div>
+            </form>
+          </dialog>
+          <dialog id="preferences-dialog" aria-labelledby="preferences-dialog-title">
+            <form id="preferences-form" class="dialog-form preferences-form">
+              <div class="preferences-table-wrap">
+                <table class="preferences-table">
+                  <thead>
+                    <tr>
+                      <th class="group-header name-header" aria-label="Schülername">Schüler</th>
+                      <th class="group-header gender-header" aria-label="Geschlecht für Wechsel"
+                        title="Kriterium genau dann aktiv, wenn mindestens ein Geschlechthaken gesetzt ist">m/w
+                        abwechselnd
+                      </th>
+                      <th class="group-header distance-header" aria-label="weit vorne">weit vorne</th>
+                      <th class="group-header alone-header" aria-label="alleine">alleine</th>
+                      <th colspan="3" class="group-header">Gute Sitznachbarn</th>
+                      <th colspan="3" class="group-header">Schlechte Sitznachbarn</th>
+                    </tr>
+                  </thead>
+                  <tbody id="preferences-tbody"></tbody>
+                </table>
+              </div>
+              <div class="dialog-actions">
+                <span id="preferences-guess-hint" class="dialog-inline-hint" aria-live="polite"></span>
+                <button type="button" id="preferences-guess-gender" class="ghost">Geschlecht vermuten</button>
+                <button type="button" id="preferences-reset-gender" class="ghost">Geschlecht zurücksetzen</button>
+                <button type="button" id="preferences-cancel" class="ghost">Abbrechen</button>
+                <button type="submit" class="primary">Speichern</button>
+              </div>
+            </form>
+          </dialog>
+          <dialog id="criteria-dialog" aria-labelledby="criteria-dialog-title">
+            <form class="dialog-form criteria-dialog-form">
+              <section id="criteria-panel" class="criteria-panel" aria-live="polite">
+                <div class="criteria-header">
+                  <div id="criteria-student" class="criteria-student">Kein Platz ausgewählt</div>
+                </div>
+                <div id="criteria-list" class="criteria-list">
+                  <div class="criteria-empty">Klicke auf den Score am Sitzplatz.</div>
+                </div>
+              </section>
+              <div class="dialog-actions">
+                <button type="button" id="criteria-dialog-close" class="ghost">Schließen</button>
+              </div>
+            </form>
+          </dialog>
+          <dialog id="summary-dialog" aria-labelledby="summary-dialog-title">
+            <form class="dialog-form">
+              <h2 id="summary-dialog-title">Gesamtübersicht der Kriterienerfüllung</h2>
+              <div class="summary-table-wrap">
+                <table class="summary-table">
+                  <thead>
+                    <tr id="summary-table-head"></tr>
+                  </thead>
+                  <tbody id="summary-table-body"></tbody>
+                </table>
+                <div id="summary-empty" class="criteria-empty" hidden>Keine belegten Plätze vorhanden.</div>
+              </div>
+              <div class="dialog-actions">
+                <button type="button" id="toggle-seat-scores" class="ghost">Scores ausblenden</button>
+                <button type="button" id="summary-dialog-close" class="ghost">Schließen</button>
+              </div>
+            </form>
+          </dialog>
+        </div>
+
+        <div id="message-stack" class="message-stack" aria-live="polite" aria-atomic="true"></div>
+
+        <template id="student-tpl">
+          <div class="student" draggable="true" title="Auf Sitzplatz ziehen">
+            <div class="name"></div>
+            <div class="tag"></div>
+          </div>
+        </template>
+      </template>
+
+      <script src="./app.js"></script>
+    </body>
+
+    </html>
