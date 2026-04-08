@@ -163,8 +163,13 @@
     }
 
     :root[data-theme='light'] .preferences-table td.buddy-col .select-wrap,
-    :root[data-theme='light'] .preferences-table td.foe-col .select-wrap {
+    :root[data-theme='light'] .preferences-table td.foe-col .select-wrap,
+    :root[data-theme='light'] .preferences-table td.performance-flair-col .select-wrap {
       background: rgba(148, 163, 184, 0.2);
+    }
+
+    :root[data-theme='light'] .preferences-table td.performance-flair-col .select-wrap {
+      background: rgba(251, 146, 60, 0.16);
     }
 
     :root[data-theme='light'] .dialog-form input[type="number"]::-webkit-inner-spin-button,
@@ -173,7 +178,8 @@
     }
 
     :root[data-theme='light'] .preferences-table td.buddy-col select option,
-    :root[data-theme='light'] .preferences-table td.foe-col select option {
+    :root[data-theme='light'] .preferences-table td.foe-col select option,
+    :root[data-theme='light'] .preferences-table td.performance-flair-col select option {
       background: #f8fafc;
       color: #0f172a;
     }
@@ -4471,6 +4477,17 @@
       white-space: nowrap;
     }
 
+    .preferences-table .performance-flair-header {
+      min-width: 92px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .preferences-table .performance-flair-header:focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: -2px;
+    }
+
     .preferences-table tbody tr:nth-child(odd) {
       background: rgba(255, 255, 255, 0.01);
     }
@@ -4526,6 +4543,24 @@
     .preferences-table td.buddy-col .select-wrap {
       background: rgba(16, 79, 60, 0.35);
       border-radius: 8px;
+    }
+
+    .preferences-table td.performance-flair-col .select-wrap {
+      background: rgba(120, 53, 15, 0.35);
+      border-radius: 8px;
+    }
+
+    .preferences-table td.performance-flair-col select {
+      min-width: 92px;
+      border-color: rgba(251, 146, 60, 0.45);
+      font-weight: 700;
+      text-align: center;
+      text-align-last: center;
+    }
+
+    .preferences-table td.performance-flair-col select option {
+      background: rgba(15, 23, 42, 0.95);
+      color: var(--text);
     }
 
     .preferences-table td.buddy-col select {
@@ -5304,6 +5339,7 @@
                   Gute Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
                 </th>
                 <th class="group-header name-header"></th>
+                <th class="group-header performance-flair-header">homogen</th>
                 <th colspan="3" class="group-header">
                   Schlechte Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
                 </th>

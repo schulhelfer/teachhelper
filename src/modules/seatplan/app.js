@@ -560,6 +560,7 @@
 
           const state = {
             students: [],
+            performanceFlairCount: 4,
             seats: {},
             gridRows: 10,
             gridCols: 10,
@@ -636,6 +637,9 @@
                   id,
                   first: typeof student.first === 'string' ? student.first : '',
                   last: typeof student.last === 'string' ? student.last : '',
+                  performanceFlair: typeof student.performanceFlair === 'string'
+                    ? student.performanceFlair.trim().toUpperCase()
+                    : '',
                   buddies: Array.isArray(student.buddies)
                     ? student.buddies.map(v => String(v)).filter(Boolean)
                     : [],
@@ -656,6 +660,9 @@
               detail: {
                 source: STUDENTS_SYNC_SOURCE,
                 students: cloneStudentsForSync(state.students),
+                performanceFlairCount: Number.isFinite(Number(state.performanceFlairCount))
+                  ? (Number(state.performanceFlairCount) >= 2 ? Number(state.performanceFlairCount) : 4)
+                  : 4,
                 csvName: state.csvName || '',
                 headers: Array.isArray(state.headers) ? state.headers.slice() : [],
                 delim: typeof state.delim === 'string' ? state.delim : ',',
@@ -670,6 +677,9 @@
             if (Number.isFinite(importedAt) && importedAt <= lastStudentsSyncTimestamp) return;
             lastStudentsSyncTimestamp = Number.isFinite(importedAt) ? importedAt : Date.now();
             state.students = cloneStudentsForSync(detail.students);
+            state.performanceFlairCount = Number.isFinite(Number(detail.performanceFlairCount))
+              ? (Number(detail.performanceFlairCount) >= 2 ? Number(detail.performanceFlairCount) : 4)
+              : state.performanceFlairCount;
             state.seats = {};
             state.conditions.teacherDistances = {};
             state.conditions.genderAlternation = state.students.some(student => genderCode(student));
@@ -1966,6 +1976,7 @@
             const dataStartIdx = firstNonEmptyIdx + 1;
             const dataRows = rows.slice(dataStartIdx);
             state.headers = headers;
+            state.performanceFlairCount = 4;
             state.students = readStudents(dataRows);
             state.seats = {};
             state.conditions.teacherDistances = {};
@@ -4478,7 +4489,15 @@
               const first = (r[colF] || '').trim();
               if (last || first) {
                 const id = String(students.length + 1).padStart(2, '0');
-                students.push({ id, first, last, buddies: [], foes: [], prefersAlone: false });
+                students.push({
+                  id,
+                  first,
+                  last,
+                  performanceFlair: '',
+                  buddies: [],
+                  foes: [],
+                  prefersAlone: false
+                });
               }
             }
             return students;

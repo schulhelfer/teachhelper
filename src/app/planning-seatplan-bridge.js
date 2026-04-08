@@ -31,6 +31,14 @@ export function createPlanningSeatplanBridge({
   updateScrollHint,
   documentBus = document,
 } = {}) {
+  const clampPerformanceFlairCount = (value, fallback = 0) => {
+    const parsed = Number.parseInt(value, 10);
+    const fallbackParsed = Number.parseInt(fallback, 10);
+    const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2 ? fallbackParsed : 4;
+    if (!Number.isFinite(parsed)) return normalizedFallback;
+    if (parsed < 2) return normalizedFallback;
+    return parsed;
+  };
   let planningController = null;
   let seatplanController = null;
   let lastStudentsSyncTimestamp = 0;
@@ -45,6 +53,7 @@ export function createPlanningSeatplanBridge({
   const buildStudentsSyncDetail = (source, importedAt = Date.now()) => ({
     source,
     students: cloneStudentsForSync(state.students),
+    performanceFlairCount: clampPerformanceFlairCount(state.performanceFlairCount),
     csvName: state.csvName || '',
     headers: Array.isArray(state.headers) ? state.headers.slice() : [],
     delim: typeof state.delim === 'string' ? state.delim : ',',
@@ -61,6 +70,7 @@ export function createPlanningSeatplanBridge({
     if (Number.isFinite(importedAt) && importedAt <= lastStudentsSyncTimestamp) return;
     lastStudentsSyncTimestamp = Number.isFinite(importedAt) ? importedAt : Date.now();
     state.students = cloneStudentsForSync(detail.students);
+    state.performanceFlairCount = clampPerformanceFlairCount(detail.performanceFlairCount, state.performanceFlairCount);
     state.seats = {};
     state.seatTopics = {};
     state.headers = Array.isArray(detail.headers) ? detail.headers.slice() : [];

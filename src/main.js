@@ -123,6 +123,7 @@ import { applyTheme } from './shell/theme.js';
         scrollHintDismissed: true,
         csvName: '',
         lastDirectoryHandle: null,
+        performanceFlairCount: 4,
       };
       let randomPickerSpinInProgress = false;
       let randomPickerCurrentIndex = 0;
@@ -141,6 +142,7 @@ import { applyTheme } from './shell/theme.js';
               id,
               first: typeof student.first === 'string' ? student.first : '',
               last: typeof student.last === 'string' ? student.last : '',
+              performanceFlair: normalizePerformanceFlair(student.performanceFlair),
               buddies: Array.isArray(student.buddies)
                 ? student.buddies.map(v => String(v)).filter(Boolean)
                 : [],
@@ -585,6 +587,46 @@ import { applyTheme } from './shell/theme.js';
         const name = displayName(student);
         return name || `ID ${student.id || ''}`.trim();
       }
+      function getPerformanceFlairLabel(index) {
+        let remaining = Math.max(0, Math.floor(Number(index) || 0));
+        let label = '';
+        do {
+          label = String.fromCharCode(65 + (remaining % 26)) + label;
+          remaining = Math.floor(remaining / 26) - 1;
+        } while (remaining >= 0);
+        return label;
+      }
+      function clampPerformanceFlairCount(value, fallback = 4) {
+        const parsed = Number.parseInt(value, 10);
+        const fallbackParsed = Number.parseInt(fallback, 10);
+        const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2 ? fallbackParsed : 4;
+        if (!Number.isFinite(parsed)) return normalizedFallback;
+        if (parsed < 2) return normalizedFallback;
+        return parsed;
+      }
+      function normalizePerformanceFlair(value) {
+        const normalized = String(value || '').trim().toUpperCase();
+        return /^[A-Z]+$/.test(normalized) ? normalized : '';
+      }
+      function getAllowedPerformanceFlairs(count = state.performanceFlairCount) {
+        const total = clampPerformanceFlairCount(count, 4);
+        return Array.from({ length: total }, (_, index) => getPerformanceFlairLabel(index));
+      }
+      function sanitizePerformanceFlairForCount(value, count = state.performanceFlairCount) {
+        const normalized = normalizePerformanceFlair(value);
+        return getAllowedPerformanceFlairs(count).includes(normalized) ? normalized : '';
+      }
+      function sanitizePerformanceFlairCountInStudents(count = state.performanceFlairCount, students = state.students) {
+        if (!Array.isArray(students)) return;
+        students.forEach((student) => {
+          if (!student || typeof student !== 'object') return;
+          student.performanceFlair = sanitizePerformanceFlairForCount(student.performanceFlair, count);
+        });
+      }
+      function formatPerformanceFlairRangeLabel(count = state.performanceFlairCount) {
+        const normalizedCount = clampPerformanceFlairCount(count, 4);
+        return `A-${getPerformanceFlairLabel(normalizedCount - 1)}`;
+      }
       function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
         const parsed = Number.parseInt(value, 10);
         if (!Number.isFinite(parsed)) return fallback;
@@ -596,6 +638,7 @@ import { applyTheme } from './shell/theme.js';
       function sanitizeRandomPickerStudent(student) {
         if (!student || typeof student !== 'object') return student;
         student.randomWeight = normalizeRandomPickerWeight(student.randomWeight);
+        student.performanceFlair = sanitizePerformanceFlairForCount(student.performanceFlair);
         return student;
       }
       function getRandomPickerCandidates({ includeZeroWeight = false } = {}) {
@@ -866,16 +909,70 @@ import { applyTheme } from './shell/theme.js';
               Gute Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
             </th>
             <th class="group-header name-header"></th>
+            <th
+              class="group-header performance-flair-header"
+              data-performance-flair-header="1"
+              role="button"
+              tabindex="0"
+              title="Anzahl der Leistungsstufen anpassen"
+              aria-label="Anzahl der Leistungsstufen anpassen"
+            >
+              homogen
+            </th>
             <th colspan="3" class="group-header">
               Schlechte Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
             </th>
           </tr>
         `;
       }
-      function buildSeatPreferencesTable() {
+      function createSeatPreferencesDraft(students = state.students) {
+        const draft = new Map();
+        (Array.isArray(students) ? students : []).forEach((student) => {
+          if (!student || typeof student !== 'object') return;
+          const sid = String(student.id || '').trim();
+          if (!sid) return;
+          draft.set(sid, {
+            buddies: Array.from({ length: PREFERENCE_SLOT_COUNT }, (_, index) => student.buddies?.[index] || ''),
+            foes: Array.from({ length: PREFERENCE_SLOT_COUNT }, (_, index) => student.foes?.[index] || ''),
+            performanceFlair: sanitizePerformanceFlairForCount(student.performanceFlair),
+          });
+        });
+        return draft;
+      }
+      function readSeatPreferencesDraftFromForm() {
+        if (!els.preferencesTableBody || !els.preferencesTableBody.children.length) return null;
+        const draft = createSeatPreferencesDraft();
+        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id]');
+        selects.forEach((select) => {
+          const sid = String(select.dataset.studentId || '').trim();
+          if (!sid) return;
+          if (!draft.has(sid)) {
+            draft.set(sid, {
+              buddies: Array(PREFERENCE_SLOT_COUNT).fill(''),
+              foes: Array(PREFERENCE_SLOT_COUNT).fill(''),
+              performanceFlair: '',
+            });
+          }
+          const entry = draft.get(sid);
+          if (select.dataset.preference === 'performance-flair') {
+            entry.performanceFlair = sanitizePerformanceFlairForCount(select.value);
+            return;
+          }
+          const slot = Number(select.dataset.prefSlot);
+          if (Number.isNaN(slot)) return;
+          if (select.dataset.prefType === 'foe') {
+            entry.foes[slot] = select.value || '';
+          } else if (select.dataset.prefType === 'buddy') {
+            entry.buddies[slot] = select.value || '';
+          }
+        });
+        return draft;
+      }
+      function buildSeatPreferencesTable(draft = null) {
         if (!els.preferencesTableBody) return;
         renderSeatPreferencesHeader();
         els.preferencesTableBody.innerHTML = '';
+        const safeDraft = draft instanceof Map ? draft : createSeatPreferencesDraft();
         const ordered = state.students.slice().sort((a, b) => {
           const nameA = formatStudentLabel(a).toLowerCase();
           const nameB = formatStudentLabel(b).toLowerCase();
@@ -884,9 +981,9 @@ import { applyTheme } from './shell/theme.js';
           return 0;
         });
         ordered.forEach(student => {
-          els.preferencesTableBody.appendChild(createPreferenceRow(student, ordered));
+          els.preferencesTableBody.appendChild(createPreferenceRow(student, ordered, safeDraft));
         });
-        const binds = els.preferencesTableBody.querySelectorAll('select');
+        const binds = els.preferencesTableBody.querySelectorAll('select[data-pref-type]');
         binds.forEach(sel => {
           sel.addEventListener('change', () => {
             refreshPreferenceOptionsForStudent(sel.dataset.studentId);
@@ -956,22 +1053,47 @@ import { applyTheme } from './shell/theme.js';
           els.preferencesTableBody.appendChild(row);
         });
       }
-      function createPreferenceRow(student, optionsList) {
+      function createPreferenceRow(student, optionsList, draftMap = null) {
+        const draft = draftMap instanceof Map ? draftMap.get(student.id) : null;
         const row = document.createElement('tr');
         for (let i = 0; i < PREFERENCE_SLOT_COUNT; i++) {
-          row.appendChild(createPreferenceCell(student, 'buddy', i, optionsList));
+          row.appendChild(createPreferenceCell(student, 'buddy', i, optionsList, draft));
         }
         const nameCell = document.createElement('th');
         nameCell.scope = 'row';
         nameCell.className = 'name-cell';
         nameCell.textContent = formatStudentLabel(student);
         row.appendChild(nameCell);
+        row.appendChild(createPerformanceFlairCell(student, draft));
         for (let i = 0; i < PREFERENCE_SLOT_COUNT; i++) {
-          row.appendChild(createPreferenceCell(student, 'foe', i, optionsList));
+          row.appendChild(createPreferenceCell(student, 'foe', i, optionsList, draft));
         }
         return row;
       }
-      function createPreferenceCell(student, type, slotIndex, optionsList) {
+      function createPerformanceFlairCell(student, draft = null) {
+        const cell = document.createElement('td');
+        cell.className = 'performance-flair-col';
+        const select = document.createElement('select');
+        select.dataset.studentId = student.id;
+        select.dataset.preference = 'performance-flair';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '-';
+        select.appendChild(placeholder);
+        getAllowedPerformanceFlairs().forEach((flair) => {
+          const option = document.createElement('option');
+          option.value = flair;
+          option.textContent = flair;
+          select.appendChild(option);
+        });
+        select.value = sanitizePerformanceFlairForCount(draft?.performanceFlair ?? student.performanceFlair);
+        const wrap = document.createElement('div');
+        wrap.className = 'select-wrap';
+        wrap.appendChild(select);
+        cell.appendChild(wrap);
+        return cell;
+      }
+      function createPreferenceCell(student, type, slotIndex, optionsList, draft = null) {
         const cell = document.createElement('td');
         cell.className = type === 'buddy' ? 'buddy-col' : 'foe-col';
         const select = document.createElement('select');
@@ -980,7 +1102,7 @@ import { applyTheme } from './shell/theme.js';
         select.dataset.prefSlot = String(slotIndex);
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = 'Keine Auswahl';
+        placeholder.textContent = '-';
         select.appendChild(placeholder);
         optionsList.forEach(optionStudent => {
           if (!optionStudent || optionStudent.id === student.id) return;
@@ -989,7 +1111,9 @@ import { applyTheme } from './shell/theme.js';
           option.textContent = formatStudentLabel(optionStudent);
           select.appendChild(option);
         });
-        const source = type === 'buddy' ? (student.buddies || []) : (student.foes || []);
+        const source = type === 'buddy'
+          ? (draft?.buddies || student.buddies || [])
+          : (draft?.foes || student.foes || []);
         select.value = source[slotIndex] || '';
         const wrap = document.createElement('div');
         wrap.className = 'select-wrap';
@@ -999,7 +1123,7 @@ import { applyTheme } from './shell/theme.js';
       }
       function refreshPreferenceOptionsForStudent(studentId) {
         if (!studentId || !els.preferencesTableBody) return;
-        const selects = els.preferencesTableBody.querySelectorAll(`select[data-student-id="${studentId}"]`);
+        const selects = els.preferencesTableBody.querySelectorAll(`select[data-student-id="${studentId}"][data-pref-type]`);
         const chosen = new Set();
         selects.forEach(sel => {
           const val = sel.value || '';
@@ -1016,7 +1140,7 @@ import { applyTheme } from './shell/theme.js';
       function refreshAllPreferenceOptions() {
         if (!els.preferencesTableBody) return;
         const seen = new Set();
-        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id]');
+        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]');
         selects.forEach(sel => {
           const sid = sel.dataset.studentId;
           if (!sid || seen.has(sid)) return;
@@ -1026,7 +1150,8 @@ import { applyTheme } from './shell/theme.js';
       }
       function savePreferencesFromForm() {
         if (!els.preferencesTableBody) return;
-        const selects = els.preferencesTableBody.querySelectorAll('select');
+        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]');
+        const performanceSelects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-preference="performance-flair"]');
         const buddyMap = new Map();
         const foeMap = new Map();
         selects.forEach(select => {
@@ -1040,11 +1165,18 @@ import { applyTheme } from './shell/theme.js';
           }
           map.get(sid)[slot] = select.value || '';
         });
+        const flairMap = new Map();
+        performanceSelects.forEach((select) => {
+          const sid = String(select.dataset.studentId || '').trim();
+          if (!sid) return;
+          flairMap.set(sid, sanitizePerformanceFlairForCount(select.value));
+        });
         state.students.forEach(student => {
           const buddySlots = buddyMap.get(student.id) || [];
           const foeSlots = foeMap.get(student.id) || [];
           applyPreferenceSlots(student, buddySlots, 'buddy');
           applyPreferenceSlots(student, foeSlots, 'foe');
+          student.performanceFlair = flairMap.get(student.id) || '';
         });
       }
       function saveRandomPickerConditionsFromForm() {
@@ -1172,6 +1304,7 @@ import { applyTheme } from './shell/theme.js';
           workOrderDurationMinutes: storedDuration,
           workOrderStartISO: hasWorkOrderTiming() ? state.workOrderStartISO : null,
           students: state.students,
+          performanceFlairCount: clampPerformanceFlairCount(state.performanceFlairCount),
           headers: state.headers,
           delim: state.delim,
           csvName: state.csvName || '',
@@ -1462,6 +1595,7 @@ import { applyTheme } from './shell/theme.js';
         state.gridCols = planCols !== null
           ? clampGridDimension(Math.max(planCols, requiredCols))
           : clampGridDimension(Math.max(currentCols, requiredCols));
+        state.performanceFlairCount = clampPerformanceFlairCount(data.performanceFlairCount, 4);
         state.students = incomingStudents.map(student => sanitizeRandomPickerStudent(student));
         state.headers = Array.isArray(data.headers) ? data.headers : [];
         state.delim = typeof data.delim === 'string' ? data.delim : ',';
@@ -2992,7 +3126,15 @@ import { applyTheme } from './shell/theme.js';
           const first = (r[colF] || '').trim();
           if (last || first) {
             const id = String(students.length + 1).padStart(2, '0');
-            students.push({ id, first, last, buddies: [], foes: [], randomWeight: RANDOM_PICKER_DEFAULT_WEIGHT });
+            students.push({
+              id,
+              first,
+              last,
+              performanceFlair: '',
+              buddies: [],
+              foes: [],
+              randomWeight: RANDOM_PICKER_DEFAULT_WEIGHT
+            });
           }
         }
         return students;
@@ -3066,6 +3208,7 @@ import { applyTheme } from './shell/theme.js';
         const dataStartIdx = firstNonEmptyIdx + 1;
         const dataRows = rows.slice(dataStartIdx);
         state.headers = headers;
+        state.performanceFlairCount = 4;
         state.students = readStudents(dataRows);
         state.seats = {};
         state.seatTopics = {};
@@ -3342,6 +3485,44 @@ import { applyTheme } from './shell/theme.js';
           });
         }
         target.checked = true;
+      });
+      const handlePerformanceFlairHeaderAction = () => {
+        const response = window.prompt(
+          'Wie viele Leistungsstufen sollen verfügbar sein? Bitte eine Zahl ab 2 eingeben.',
+          String(clampPerformanceFlairCount(state.performanceFlairCount))
+        );
+        if (response === null) return;
+        const trimmed = String(response).trim();
+        if (!/^[0-9]+$/.test(trimmed) || Number.parseInt(trimmed, 10) < 2) {
+          showMessage('Bitte eine Zahl ab 2 eingeben.', 'warn');
+          return;
+        }
+        const nextCount = clampPerformanceFlairCount(trimmed);
+        const draft = readSeatPreferencesDraftFromForm();
+        state.performanceFlairCount = nextCount;
+        sanitizePerformanceFlairCountInStudents(nextCount);
+        if (draft instanceof Map) {
+          draft.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            entry.performanceFlair = sanitizePerformanceFlairForCount(entry.performanceFlair, nextCount);
+          });
+          buildSeatPreferencesTable(draft);
+        }
+      };
+      els.preferencesTableHead?.addEventListener('click', (event) => {
+        const header = event.target instanceof Element
+          ? event.target.closest('[data-performance-flair-header="1"]')
+          : null;
+        if (!header || isRandomPickerTabActive()) return;
+        handlePerformanceFlairHeaderAction();
+      });
+      els.preferencesTableHead?.addEventListener('keydown', (event) => {
+        const target = event.target;
+        if (!(target instanceof Element) || !target.closest('[data-performance-flair-header="1"]')) return;
+        if (isRandomPickerTabActive()) return;
+        if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') return;
+        event.preventDefault();
+        handlePerformanceFlairHeaderAction();
       });
       els.preferencesCancel?.addEventListener('click', () => {
         if (els.preferencesDialog) {
@@ -4135,6 +4316,8 @@ import { applyTheme } from './shell/theme.js';
         let score = 0;
         const buddySetById = new Map();
         const foeSetById = new Map();
+        const performanceConstraintActive = clampPerformanceFlairCount(state.performanceFlairCount) >= 2
+          && state.students.some((student) => sanitizePerformanceFlairForCount(student?.performanceFlair));
         studentById.forEach((student, studentId) => {
           buddySetById.set(studentId, new Set(student?.buddies || []));
           foeSetById.set(studentId, new Set(student?.foes || []));
@@ -4146,6 +4329,17 @@ import { applyTheme } from './shell/theme.js';
           const size = occupants.length;
           seatSizes.push(size);
           if (size <= 1) return;
+
+          if (performanceConstraintActive) {
+            const flairSet = new Set(
+              occupants
+                .map(studentId => sanitizePerformanceFlairForCount(studentById.get(studentId)?.performanceFlair))
+                .filter(Boolean)
+            );
+            if (flairSet.size > 1) {
+              score += 100000;
+            }
+          }
 
           occupants.forEach((studentId) => {
             const student = studentById.get(studentId);
@@ -4180,6 +4374,132 @@ import { applyTheme } from './shell/theme.js';
 
         return score;
       }
+      function formatGroupSuggestionSeatLabel(seatId, activeIds = []) {
+        const index = Array.isArray(activeIds) ? activeIds.indexOf(seatId) : -1;
+        return index >= 0 ? `Gruppe ${index + 1}` : `Gruppe ${seatId}`;
+      }
+      function buildPerformanceFlairGroupCountOptions(flairs, remainingCounts, maxSize, minSize, freeSeatCount) {
+        const relevantFlairs = (Array.isArray(flairs) ? flairs : []).filter((flair) => (remainingCounts.get(flair) || 0) > 0);
+        const options = [];
+        const backtrack = (index, usedSeats, current) => {
+          if (usedSeats > freeSeatCount) return;
+          if (index >= relevantFlairs.length) {
+            options.push(new Map(current));
+            return;
+          }
+          const flair = relevantFlairs[index];
+          const count = remainingCounts.get(flair) || 0;
+          const minGroups = Math.ceil(count / Math.max(1, maxSize));
+          const maxGroups = Math.floor(count / Math.max(1, minSize));
+          if (maxGroups < minGroups) return;
+          for (let groupCount = minGroups; groupCount <= maxGroups; groupCount += 1) {
+            current.set(flair, groupCount);
+            backtrack(index + 1, usedSeats + groupCount, current);
+          }
+          current.delete(flair);
+        };
+        backtrack(0, 0, new Map());
+        return options.filter((option) => {
+          let used = 0;
+          option.forEach((value) => { used += value; });
+          return used <= freeSeatCount;
+        });
+      }
+      function analyzePerformanceFlairConstraints({
+        activeIds,
+        freeSeats,
+        lockedSeatSet,
+        lockedAssignments,
+        maxSize,
+        minSize,
+        studentById,
+      }) {
+        const allowedFlairs = getAllowedPerformanceFlairs();
+        const assignedFlairs = state.students
+          .map(student => sanitizePerformanceFlairForCount(student?.performanceFlair))
+          .filter(Boolean);
+        if (!allowedFlairs.length || !assignedFlairs.length) {
+          return { active: false };
+        }
+        const invalidStudent = state.students.find((student) => !sanitizePerformanceFlairForCount(student?.performanceFlair));
+        if (invalidStudent) {
+          showMessage(
+            `Leistung ist aktiv. Weise zuerst allen Lernenden eine Stufe aus ${formatPerformanceFlairRangeLabel()} zu.`,
+            'warn'
+          );
+          return null;
+        }
+        const lockedCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
+        for (const seatId of activeIds) {
+          if (!lockedSeatSet.has(seatId)) continue;
+          const occupants = ensureSeatList(lockedAssignments[seatId]);
+          if (!occupants.length) continue;
+          if (occupants.length < minSize || occupants.length > maxSize) {
+            showMessage(
+              `${formatGroupSuggestionSeatLabel(seatId, activeIds)} ist gesperrt und verletzt mit ${occupants.length} Lernenden die Gruppengröße ${minSize}-${maxSize}.`,
+              'warn'
+            );
+            return null;
+          }
+          const flairSet = new Set(
+            occupants
+              .map((studentId) => sanitizePerformanceFlairForCount(studentById.get(studentId)?.performanceFlair))
+              .filter(Boolean)
+          );
+          if (flairSet.size !== 1) {
+            showMessage(
+              `${formatGroupSuggestionSeatLabel(seatId, activeIds)} mischt Leistungsstufen. Entsperre oder bereinige die Gruppe zuerst.`,
+              'warn'
+            );
+            return null;
+          }
+          const flair = [...flairSet][0];
+          lockedCounts.set(flair, (lockedCounts.get(flair) || 0) + occupants.length);
+        }
+        const remainingCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
+        state.students.forEach((student) => {
+          const flair = sanitizePerformanceFlairForCount(student?.performanceFlair);
+          remainingCounts.set(flair, (remainingCounts.get(flair) || 0) + 1);
+        });
+        lockedCounts.forEach((count, flair) => {
+          remainingCounts.set(flair, Math.max(0, (remainingCounts.get(flair) || 0) - count));
+        });
+        const groupCountOptions = buildPerformanceFlairGroupCountOptions(
+          allowedFlairs,
+          remainingCounts,
+          maxSize,
+          minSize,
+          freeSeats.length
+        );
+        if (!groupCountOptions.length) {
+          showMessage(
+            `Die Leistungsstufen lassen sich mit der aktuellen Gruppenanzahl und Gruppengröße ${minSize}-${maxSize} nicht homogen verteilen.`,
+            'warn'
+          );
+          return null;
+        }
+        return {
+          active: true,
+          flairs: allowedFlairs,
+          groupCountOptions,
+        };
+      }
+      function buildPerformanceFlairSeatAllocation(freeSeats, flairs, groupCounts) {
+        const shuffledSeats = Array.isArray(freeSeats) ? freeSeats.slice() : [];
+        for (let i = shuffledSeats.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffledSeats[i], shuffledSeats[j]] = [shuffledSeats[j], shuffledSeats[i]];
+        }
+        const flairList = Array.isArray(flairs) ? flairs : [];
+        const allocation = new Map(flairList.map((flair) => [flair, []]));
+        let seatIndex = 0;
+        flairList.forEach((flair) => {
+          const groupCount = groupCounts?.get(flair) || 0;
+          allocation.set(flair, shuffledSeats.slice(seatIndex, seatIndex + groupCount));
+          seatIndex += groupCount;
+        });
+        return allocation;
+      }
 
       function buildPreferenceGroupSuggestionCandidate({
         activeIds,
@@ -4189,19 +4509,9 @@ import { applyTheme } from './shell/theme.js';
         initiallyAssignedIds,
         maxSize,
         studentById,
+        performanceFlairPlan = null,
       }) {
         const assigned = new Set(initiallyAssignedIds || []);
-        const order = state.students
-          .filter(s => !assigned.has(s.id))
-          .sort((a, b) => {
-            const score = (stu) => ((stu.buddies?.length || 0) * -1) + ((stu.foes?.length || 0) * -2);
-            return score(a) - score(b);
-          });
-        for (let i = order.length - 1; i > 0; i -= 1) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [order[i], order[j]] = [order[j], order[i]];
-        }
-
         const nextSeats = {};
         activeIds.forEach((seatId) => {
           nextSeats[seatId] = lockedSeatSet.has(seatId) ? ensureSeatList(lockedAssignments[seatId]) : [];
@@ -4220,23 +4530,55 @@ import { applyTheme } from './shell/theme.js';
           });
           return score;
         };
-
-        order.forEach((student) => {
-          let bestSeat = null;
-          let bestScore = Infinity;
-          freeSeats.forEach((seatId) => {
-            if ((nextSeats[seatId]?.length || 0) >= maxSize) return;
-            const value = seatScore(seatId, student.id);
-            if (value < bestScore - 1e-6 || (Math.abs(value - bestScore) < 1e-6 && Math.random() < 0.5)) {
-              bestScore = value;
-              bestSeat = seatId;
+        const orderStudents = (students) => {
+          const ordered = students.slice().sort((a, b) => {
+            const score = (stu) => ((stu.buddies?.length || 0) * -1) + ((stu.foes?.length || 0) * -2);
+            return score(a) - score(b);
+          });
+          for (let i = ordered.length - 1; i > 0; i -= 1) {
+            const j = Math.floor(Math.random() * (i + 1));
+            [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+          }
+          return ordered;
+        };
+        const placeStudents = (students, seatIds) => {
+          orderStudents(students).forEach((student) => {
+            let bestSeat = null;
+            let bestScore = Infinity;
+            seatIds.forEach((seatId) => {
+              if ((nextSeats[seatId]?.length || 0) >= maxSize) return;
+              const value = seatScore(seatId, student.id);
+              if (value < bestScore - 1e-6 || (Math.abs(value - bestScore) < 1e-6 && Math.random() < 0.5)) {
+                bestScore = value;
+                bestSeat = seatId;
+              }
+            });
+            if (!bestSeat) {
+              bestSeat = seatIds.find(id => (nextSeats[id]?.length || 0) < maxSize) || null;
+            }
+            if (bestSeat) {
+              nextSeats[bestSeat].push(student.id);
             }
           });
-          if (!bestSeat) {
-            bestSeat = freeSeats.find(id => (nextSeats[id]?.length || 0) < maxSize) || freeSeats[0];
-          }
-          nextSeats[bestSeat].push(student.id);
-        });
+        };
+
+        if (performanceFlairPlan?.active) {
+          (performanceFlairPlan.flairs || []).forEach((flair) => {
+            placeStudents(
+              state.students.filter((student) => (
+                !assigned.has(student.id)
+                && sanitizePerformanceFlairForCount(student.performanceFlair) === flair
+              )),
+              performanceFlairPlan.seatAllocation.get(flair) || []
+            );
+          });
+          return nextSeats;
+        }
+
+        placeStudents(
+          state.students.filter(student => !assigned.has(student.id)),
+          freeSeats
+        );
 
         return nextSeats;
       }
@@ -4308,11 +4650,23 @@ import { applyTheme } from './shell/theme.js';
         if (capacity < remainingCount) {
           showMessage('Raster wurde erweitert, aber es fehlt Platz für alle Lernenden bei dieser Gruppengröße.', 'warn');
         }
-        groupSuggestInProgress = true;
         const previousSeats = cloneGroupSeatMap(state.seats);
         const lockedSeatSet = new Set(state.lockedSeats);
         const studentById = new Map(state.students.map(s => [s.id, s]));
         const initiallyAssignedIds = new Set(assigned);
+        const performanceFlairConstraints = analyzePerformanceFlairConstraints({
+          activeIds,
+          freeSeats,
+          lockedSeatSet,
+          lockedAssignments,
+          maxSize,
+          minSize,
+          studentById,
+        });
+        if (performanceFlairConstraints === null) {
+          return;
+        }
+        groupSuggestInProgress = true;
         [els.groupSuggest, els.groupSuggestCollapsed].filter(Boolean).forEach((button) => {
           button.disabled = true;
           button.setAttribute('aria-busy', 'true');
@@ -4325,6 +4679,11 @@ import { applyTheme } from './shell/theme.js';
           const totalAttempts = GROUP_SUGGEST_ROULETTE_CONFIG.candidateAttempts;
 
           for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+            const selectedGroupCounts = performanceFlairConstraints?.active
+              ? performanceFlairConstraints.groupCountOptions[
+                Math.floor(Math.random() * performanceFlairConstraints.groupCountOptions.length)
+              ]
+              : null;
             const candidateSeats = buildPreferenceGroupSuggestionCandidate({
               activeIds,
               freeSeats,
@@ -4333,6 +4692,17 @@ import { applyTheme } from './shell/theme.js';
               initiallyAssignedIds,
               maxSize,
               studentById,
+              performanceFlairPlan: performanceFlairConstraints?.active
+                ? {
+                  active: true,
+                  flairs: performanceFlairConstraints.flairs,
+                  seatAllocation: buildPerformanceFlairSeatAllocation(
+                    freeSeats,
+                    performanceFlairConstraints.flairs,
+                    selectedGroupCounts
+                  ),
+                }
+                : null,
             });
             const signature = buildGroupSuggestionSignature(candidateSeats, activeIds);
             if (seenSignatures.has(signature)) {
@@ -4350,6 +4720,9 @@ import { applyTheme } from './shell/theme.js';
           }
 
           if (!candidates.length) {
+            const fallbackGroupCounts = performanceFlairConstraints?.active
+              ? performanceFlairConstraints.groupCountOptions[0]
+              : null;
             const fallbackSeats = buildPreferenceGroupSuggestionCandidate({
               activeIds,
               freeSeats,
@@ -4358,6 +4731,17 @@ import { applyTheme } from './shell/theme.js';
               initiallyAssignedIds,
               maxSize,
               studentById,
+              performanceFlairPlan: performanceFlairConstraints?.active
+                ? {
+                  active: true,
+                  flairs: performanceFlairConstraints.flairs,
+                  seatAllocation: buildPerformanceFlairSeatAllocation(
+                    freeSeats,
+                    performanceFlairConstraints.flairs,
+                    fallbackGroupCounts
+                  ),
+                }
+                : null,
             });
             candidates.push({
               seats: fallbackSeats,
