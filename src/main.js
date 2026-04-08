@@ -616,6 +616,17 @@ import { applyTheme } from './shell/theme.js';
         const normalized = normalizePerformanceFlair(value);
         return getAllowedPerformanceFlairs(count).includes(normalized) ? normalized : '';
       }
+      function getPerformanceFlairRank(value, count = state.performanceFlairCount) {
+        const flair = sanitizePerformanceFlairForCount(value, count);
+        if (!flair) return -1;
+        return getAllowedPerformanceFlairs(count).indexOf(flair);
+      }
+      function getPerformanceFlairDistance(first, second, count = state.performanceFlairCount) {
+        const firstRank = getPerformanceFlairRank(first, count);
+        const secondRank = getPerformanceFlairRank(second, count);
+        if (firstRank < 0 || secondRank < 0) return null;
+        return Math.abs(firstRank - secondRank);
+      }
       function sanitizePerformanceFlairCountInStudents(count = state.performanceFlairCount, students = state.students) {
         if (!Array.isArray(students)) return;
         students.forEach((student) => {
@@ -990,6 +1001,7 @@ import { applyTheme } from './shell/theme.js';
           });
         });
         refreshAllPreferenceOptions();
+        renderSeatPreferencesPerformanceSummary(safeDraft);
       }
       function buildRandomPickerConditionsTable() {
         if (!els.preferencesDialogTitle || !els.preferencesTableHead || !els.preferencesTableBody) return;
@@ -1002,6 +1014,10 @@ import { applyTheme } from './shell/theme.js';
           </tr>
         `;
         els.preferencesTableBody.innerHTML = '';
+        if (els.preferencesPerformanceSummary) {
+          els.preferencesPerformanceSummary.hidden = true;
+          els.preferencesPerformanceSummary.textContent = '';
+        }
         const ordered = state.students.slice().sort((a, b) => {
           const nameA = formatStudentLabel(a).toLowerCase();
           const nameB = formatStudentLabel(b).toLowerCase();
@@ -1147,6 +1163,55 @@ import { applyTheme } from './shell/theme.js';
           seen.add(sid);
           refreshPreferenceOptionsForStudent(sid);
         });
+      }
+      function buildPerformanceFlairSummaryStats(draft = null, count = state.performanceFlairCount) {
+        const flairs = getAllowedPerformanceFlairs(count);
+        const counts = new Map(flairs.map((flair) => [flair, 0]));
+        let unassigned = 0;
+        state.students.forEach((student) => {
+          if (!student || typeof student !== 'object') return;
+          const sid = String(student.id || '').trim();
+          const draftEntry = draft instanceof Map && sid ? draft.get(sid) : null;
+          const flair = sanitizePerformanceFlairForCount(draftEntry?.performanceFlair ?? student.performanceFlair, count);
+          if (!flair) {
+            unassigned += 1;
+            return;
+          }
+          counts.set(flair, (counts.get(flair) || 0) + 1);
+        });
+        return { flairs, counts, unassigned };
+      }
+      function renderSeatPreferencesPerformanceSummary(draft = null) {
+        if (!els.preferencesPerformanceSummary) return;
+        if (isRandomPickerTabActive() || !state.students.length) {
+          els.preferencesPerformanceSummary.hidden = true;
+          els.preferencesPerformanceSummary.textContent = '';
+          return;
+        }
+        const { flairs, counts, unassigned } = buildPerformanceFlairSummaryStats(draft);
+        els.preferencesPerformanceSummary.hidden = false;
+        els.preferencesPerformanceSummary.innerHTML = '';
+
+        const label = document.createElement('span');
+        label.className = 'preferences-performance-summary-label';
+        label.textContent = 'Homogene Leistungsklassen:';
+        els.preferencesPerformanceSummary.appendChild(label);
+
+        const values = document.createElement('div');
+        values.className = 'preferences-performance-summary-values';
+        flairs.forEach((flair) => {
+          const pill = document.createElement('span');
+          pill.className = 'preferences-performance-summary-pill';
+          pill.textContent = `${flair}: ${counts.get(flair) || 0}`;
+          values.appendChild(pill);
+        });
+        if (unassigned > 0) {
+          const pill = document.createElement('span');
+          pill.className = 'preferences-performance-summary-pill is-unassigned';
+          pill.textContent = `Ohne Zuordnung: ${unassigned}`;
+          values.appendChild(pill);
+        }
+        els.preferencesPerformanceSummary.appendChild(values);
       }
       function savePreferencesFromForm() {
         if (!els.preferencesTableBody) return;
@@ -2697,12 +2762,22 @@ import { applyTheme } from './shell/theme.js';
             const student = state.students.find(x => x.id === sid);
             const label = student ? displayName(student).trim() : sid;
             if (!label) return;
+            const flair = sanitizePerformanceFlairForCount(student?.performanceFlair);
             const chip = document.createElement('div');
             chip.className = 'seat-chip';
-            chip.textContent = label;
             chip.dataset.sid = sid;
             chip.dataset.fromSeat = id;
             chip.setAttribute('draggable', 'true');
+            const nameText = document.createElement('span');
+            nameText.className = 'seat-chip-name';
+            nameText.textContent = label;
+            chip.appendChild(nameText);
+            if (flair) {
+              const flairTag = document.createElement('span');
+              flairTag.className = 'seat-chip-flair';
+              flairTag.textContent = flair;
+              chip.appendChild(flairTag);
+            }
             content.appendChild(chip);
             addDragHandlers(chip);
             enableTouchDragSource(chip, () => {
@@ -3473,6 +3548,10 @@ import { applyTheme } from './shell/theme.js';
       });
       els.preferencesTableBody?.addEventListener('change', e => {
         const target = e.target;
+        if (target instanceof HTMLSelectElement && target.dataset.preference === 'performance-flair') {
+          renderSeatPreferencesPerformanceSummary(readSeatPreferencesDraftFromForm());
+          return;
+        }
         if (!(target instanceof HTMLInputElement)) return;
         if (target.dataset.preference !== 'random-weight') return;
         if (target.checked && target.value === String(RANDOM_PICKER_CERTAIN_WEIGHT)) {
@@ -4330,17 +4409,6 @@ import { applyTheme } from './shell/theme.js';
           seatSizes.push(size);
           if (size <= 1) return;
 
-          if (performanceConstraintActive) {
-            const flairSet = new Set(
-              occupants
-                .map(studentId => sanitizePerformanceFlairForCount(studentById.get(studentId)?.performanceFlair))
-                .filter(Boolean)
-            );
-            if (flairSet.size > 1) {
-              score += 100000;
-            }
-          }
-
           occupants.forEach((studentId) => {
             const student = studentById.get(studentId);
             if (student?.prefersAlone) {
@@ -4356,6 +4424,15 @@ import { applyTheme } from './shell/theme.js';
               const bId = occupants[j];
               const bBuddies = buddySetById.get(bId) || new Set();
               const bFoes = foeSetById.get(bId) || new Set();
+              if (performanceConstraintActive) {
+                const distance = getPerformanceFlairDistance(
+                  studentById.get(aId)?.performanceFlair,
+                  studentById.get(bId)?.performanceFlair
+                );
+                if (distance && distance > 0) {
+                  score += distance * 12000;
+                }
+              }
               if (aFoes.has(bId)) score += 3;
               if (bFoes.has(aId)) score += 3;
               if (aBuddies.has(bId)) score -= 1.7;
@@ -4422,13 +4499,9 @@ import { applyTheme } from './shell/theme.js';
           return { active: false };
         }
         const invalidStudent = state.students.find((student) => !sanitizePerformanceFlairForCount(student?.performanceFlair));
-        if (invalidStudent) {
-          showMessage(
-            `Leistung ist aktiv. Weise zuerst allen Lernenden eine Stufe aus ${formatPerformanceFlairRangeLabel()} zu.`,
-            'warn'
-          );
-          return null;
-        }
+        const missingFlairWarningMessage = invalidStudent
+          ? `Nicht alle Lernenden haben eine Leistungsstufe aus ${formatPerformanceFlairRangeLabel()}. Es wird eine bestmögliche Verteilung erstellt.`
+          : null;
         const lockedCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
         for (const seatId of activeIds) {
           if (!lockedSeatSet.has(seatId)) continue;
@@ -4472,14 +4545,19 @@ import { applyTheme } from './shell/theme.js';
           freeSeats.length
         );
         if (!groupCountOptions.length) {
-          showMessage(
-            `Die Leistungsstufen lassen sich mit der aktuellen Gruppenanzahl und Gruppengröße ${minSize}-${maxSize} nicht homogen verteilen.`,
-            'warn'
-          );
-          return null;
+          return {
+            active: true,
+            bestEffort: true,
+            warningMessage: missingFlairWarningMessage
+              || `Die Leistungsstufen lassen sich mit der aktuellen Gruppenanzahl und Gruppengröße ${minSize}-${maxSize} nicht vollständig homogen verteilen. Es wird eine bestmögliche Verteilung erstellt.`,
+            flairs: allowedFlairs,
+            groupCountOptions: [],
+          };
         }
         return {
           active: true,
+          bestEffort: Boolean(missingFlairWarningMessage),
+          warningMessage: missingFlairWarningMessage,
           flairs: allowedFlairs,
           groupCountOptions,
         };
@@ -4510,6 +4588,7 @@ import { applyTheme } from './shell/theme.js';
         maxSize,
         studentById,
         performanceFlairPlan = null,
+        performanceFlairBestEffort = false,
       }) {
         const assigned = new Set(initiallyAssignedIds || []);
         const nextSeats = {};
@@ -4523,10 +4602,17 @@ import { applyTheme } from './shell/theme.js';
           const stu = studentById.get(studentId);
           const buddies = new Set(stu?.buddies || []);
           const foes = new Set(stu?.foes || []);
+          const studentFlair = sanitizePerformanceFlairForCount(stu?.performanceFlair);
           let score = occup.length * 0.4;
           occup.forEach((otherId) => {
             if (foes.has(otherId)) score += 3;
             if (buddies.has(otherId)) score -= 2;
+            if (performanceFlairBestEffort) {
+              const distance = getPerformanceFlairDistance(studentFlair, studentById.get(otherId)?.performanceFlair);
+              if (distance && distance > 0) {
+                score += distance * 2.4;
+              }
+            }
           });
           return score;
         };
@@ -4677,9 +4763,14 @@ import { applyTheme } from './shell/theme.js';
           const candidates = [];
           const seenSignatures = new Set();
           const totalAttempts = GROUP_SUGGEST_ROULETTE_CONFIG.candidateAttempts;
+          const usePerformanceFlairPlan = Boolean(
+            performanceFlairConstraints?.active
+            && !performanceFlairConstraints.bestEffort
+            && performanceFlairConstraints.groupCountOptions?.length
+          );
 
           for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
-            const selectedGroupCounts = performanceFlairConstraints?.active
+            const selectedGroupCounts = usePerformanceFlairPlan
               ? performanceFlairConstraints.groupCountOptions[
                 Math.floor(Math.random() * performanceFlairConstraints.groupCountOptions.length)
               ]
@@ -4692,7 +4783,7 @@ import { applyTheme } from './shell/theme.js';
               initiallyAssignedIds,
               maxSize,
               studentById,
-              performanceFlairPlan: performanceFlairConstraints?.active
+              performanceFlairPlan: usePerformanceFlairPlan
                 ? {
                   active: true,
                   flairs: performanceFlairConstraints.flairs,
@@ -4703,6 +4794,9 @@ import { applyTheme } from './shell/theme.js';
                   ),
                 }
                 : null,
+              performanceFlairBestEffort: Boolean(
+                performanceFlairConstraints?.active && performanceFlairConstraints.bestEffort
+              ),
             });
             const signature = buildGroupSuggestionSignature(candidateSeats, activeIds);
             if (seenSignatures.has(signature)) {
@@ -4720,7 +4814,7 @@ import { applyTheme } from './shell/theme.js';
           }
 
           if (!candidates.length) {
-            const fallbackGroupCounts = performanceFlairConstraints?.active
+            const fallbackGroupCounts = usePerformanceFlairPlan
               ? performanceFlairConstraints.groupCountOptions[0]
               : null;
             const fallbackSeats = buildPreferenceGroupSuggestionCandidate({
@@ -4731,7 +4825,7 @@ import { applyTheme } from './shell/theme.js';
               initiallyAssignedIds,
               maxSize,
               studentById,
-              performanceFlairPlan: performanceFlairConstraints?.active
+              performanceFlairPlan: usePerformanceFlairPlan
                 ? {
                   active: true,
                   flairs: performanceFlairConstraints.flairs,
@@ -4742,6 +4836,9 @@ import { applyTheme } from './shell/theme.js';
                   ),
                 }
                 : null,
+              performanceFlairBestEffort: Boolean(
+                performanceFlairConstraints?.active && performanceFlairConstraints.bestEffort
+              ),
             });
             candidates.push({
               seats: fallbackSeats,
@@ -4763,6 +4860,9 @@ import { applyTheme } from './shell/theme.js';
           state.seats = cloneGroupSeatMap(finalCandidate.seats);
           renderSeats();
           refreshUnseated();
+          if (performanceFlairConstraints?.bestEffort && performanceFlairConstraints.warningMessage) {
+            showMessage(performanceFlairConstraints.warningMessage, 'warn');
+          }
           finishGroupSuggestProgress('Vorschlag steht');
         } catch (error) {
           reportAppError(error, 'Gruppenvorschlag konnte nicht erstellt werden.', {

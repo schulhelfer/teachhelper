@@ -1178,6 +1178,10 @@
       border-radius: calc(10px * var(--group-fit-scale));
     }
 
+    .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-grid .seat .seat-chip .seat-chip-flair {
+      display: none;
+    }
+
     .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-grid .seat-placeholder {
       display: none;
     }
@@ -4107,6 +4111,7 @@
     #groups-grid .seat .seat-chip {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       width: 100%;
       min-width: 0;
       max-width: none;
@@ -4121,12 +4126,33 @@
       gap: calc(6px * var(--group-fit-scale));
       box-shadow: 0 8px 16px rgba(0, 0, 0, 0.28);
       color: #e5e7eb;
-      justify-content: center;
       line-height: 1.2;
       text-align: center;
       box-sizing: border-box;
       word-break: break-word;
       transition: transform .12s ease;
+    }
+
+    #groups-grid .seat .seat-chip .seat-chip-name {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    #groups-grid .seat .seat-chip .seat-chip-flair {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: calc(26px * var(--group-fit-scale));
+      min-height: calc(24px * var(--group-fit-scale));
+      padding: 0 calc(8px * var(--group-fit-scale));
+      border-radius: 999px;
+      background: rgba(251, 146, 60, 0.18);
+      border: 1px solid rgba(251, 146, 60, 0.38);
+      color: #fed7aa;
+      font-size: max(11px, calc(12px * var(--group-fit-scale)));
+      font-weight: 800;
+      line-height: 1;
+      flex: 0 0 auto;
     }
 
     #groups-grid .seat .seat-chip.drag-over-target {
@@ -4327,7 +4353,9 @@
 
     .dialog-actions {
       display: flex;
+      align-items: center;
       justify-content: flex-end;
+      flex-wrap: wrap;
       gap: 10px;
       margin-top: 8px;
     }
@@ -4375,6 +4403,12 @@
       border-color: rgba(14, 165, 233, 0.42);
       box-shadow: 0 6px 12px rgba(15, 23, 42, 0.14);
       color: #0f172a;
+    }
+
+    :root[data-theme='light'] .seat .seat-chip .seat-chip-flair {
+      background: rgba(234, 88, 12, 0.12);
+      border-color: rgba(234, 88, 12, 0.26);
+      color: #9a3412;
     }
 
     :root[data-theme='light'] .teacher-card {
@@ -4431,6 +4465,44 @@
       border-radius: 12px;
       padding: 8px;
       background: rgba(15, 23, 42, 0.45);
+    }
+
+    .preferences-performance-summary {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px 12px;
+      margin-right: auto;
+      min-height: 38px;
+      font-size: 14px;
+      color: rgba(255, 237, 213, 0.96);
+    }
+
+    .preferences-performance-summary[hidden] {
+      display: none;
+    }
+
+    .preferences-performance-summary-label {
+      font-weight: 700;
+      color: rgba(254, 215, 170, 0.96);
+    }
+
+    .preferences-performance-summary-values {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 10px;
+    }
+
+    .preferences-performance-summary-pill {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      font-weight: 700;
+      letter-spacing: 0.01em;
+    }
+
+    .preferences-performance-summary-pill.is-unassigned {
+      color: rgba(254, 226, 226, 0.96);
     }
 
     .preferences-table {
@@ -5349,6 +5421,14 @@
           </table>
         </div>
         <div class="dialog-actions">
+          <div
+            id="preferences-performance-summary"
+            class="preferences-performance-summary"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+            hidden
+          ></div>
           <button type="button" id="preferences-reset" class="ghost" hidden>Zurücksetzen</button>
           <button type="button" id="preferences-cancel" class="ghost">Abbrechen</button>
           <button type="submit" class="primary">Speichern</button>

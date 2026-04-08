@@ -49,6 +49,7 @@ export function createAppDom(doc = document) {
     preferencesForm: doc.getElementById('preferences-form'),
     preferencesTableHead: doc.getElementById('preferences-thead'),
     preferencesTableBody: doc.getElementById('preferences-tbody'),
+    preferencesPerformanceSummary: doc.getElementById('preferences-performance-summary'),
     preferencesReset: doc.getElementById('preferences-reset'),
     preferencesCancel: doc.getElementById('preferences-cancel'),
     updateDialog: doc.getElementById('update-dialog'),
