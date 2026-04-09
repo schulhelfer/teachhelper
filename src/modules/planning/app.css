@@ -38,7 +38,7 @@
 
         html,
         body {
-          background: transparent;
+          background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-mid) 52%, var(--bg-end) 100%);
         }
 
         body {
@@ -2420,9 +2420,10 @@
         }
 
         .course-notes-preview {
-          display: inline-block;
+          display: block;
           width: 100%;
           max-width: 100%;
+          min-height: 100%;
           border: 1px solid transparent;
           background: transparent;
           box-shadow: none;
@@ -2435,6 +2436,10 @@
           text-overflow: ellipsis;
           cursor: pointer;
           transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+        }
+
+        #course-table td:nth-child(5) .course-notes-preview {
+          min-height: 2.1rem;
         }
 
         .course-notes-preview:hover {

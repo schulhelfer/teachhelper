@@ -48,6 +48,7 @@
         const GRADE_COURSE_SCHEMA = "teachhelper-grade-course-v1";
         const GRADE_VAULT_KDF_ITERATIONS = 250000;
         const GRADE_VAULT_PASSWORD_MIN_LENGTH = 10;
+        const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
         const SYNC_HANDLE_DB_NAME = "teachhelper-sync-handles-v1";
         const SYNC_HANDLE_STORE_NAME = "handles";
         const SYNC_HANDLE_FILE_KEY = "sync-file";
@@ -76,6 +77,41 @@
             return crypto.randomUUID();
           }
           return `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+        }
+
+        function getGradeVaultAutofillMetadata() {
+          const fallbackOrigin = "teachhelper.local";
+          const fallbackPath = "/";
+          let origin = fallbackOrigin;
+          let basePath = fallbackPath;
+          if (typeof location !== "undefined") {
+            const rawOrigin = String(location.origin || "").trim();
+            if (rawOrigin) {
+              origin = rawOrigin;
+            }
+            try {
+              const resolvedPath = String(new URL("./", location.href).pathname || "").trim();
+              if (resolvedPath) {
+                basePath = resolvedPath;
+              }
+            } catch (_error) {
+              const pathname = String(location.pathname || "").trim();
+              if (pathname) {
+                basePath = pathname;
+              }
+            }
+          }
+          basePath = basePath.replace(/\/+/g, "/");
+          if (!basePath.startsWith("/")) {
+            basePath = `/${basePath}`;
+          }
+          if (!basePath.endsWith("/")) {
+            basePath = `${basePath}/`;
+          }
+          return {
+            identity: `gradevault@${origin.replace(/^https?:\/\//, "")}${basePath}`,
+            sectionToken: GRADE_VAULT_AUTOFILL_SECTION
+          };
         }
 
         function isRecord(value) {
@@ -5473,29 +5509,39 @@
               this.refs.gradeVaultDialogForm.setAttribute("method", "post");
               this.refs.gradeVaultDialogForm.setAttribute("action", "");
             }
+            const autofillMetadata = getGradeVaultAutofillMetadata();
             if (this.refs.gradeVaultDialogUsername) {
-              const identitySource = (
-                typeof location !== "undefined" && String(location.origin || "").trim()
-                  ? String(location.origin || "").trim()
-                  : "teachhelper.local"
+              this.refs.gradeVaultDialogUsername.value = autofillMetadata.identity;
+              this.refs.gradeVaultDialogUsername.setAttribute(
+                "autocomplete",
+                `${autofillMetadata.sectionToken} username`
               );
-              this.refs.gradeVaultDialogUsername.value = `noten@${identitySource.replace(/^https?:\/\//, "")}`;
+              this.refs.gradeVaultDialogUsername.setAttribute("name", "username");
               this.refs.gradeVaultDialogUsername.disabled = false;
               this.refs.gradeVaultDialogUsername.readOnly = false;
             }
             if (this.refs.gradeVaultDialogCurrentPassword) {
               this.refs.gradeVaultDialogCurrentPassword.value = "";
-              this.refs.gradeVaultDialogCurrentPassword.setAttribute("autocomplete", "current-password");
+              this.refs.gradeVaultDialogCurrentPassword.setAttribute(
+                "autocomplete",
+                `${autofillMetadata.sectionToken} current-password`
+              );
               this.refs.gradeVaultDialogCurrentPassword.setAttribute("name", "current-password");
             }
             if (this.refs.gradeVaultDialogPassword) {
               this.refs.gradeVaultDialogPassword.value = "";
-              this.refs.gradeVaultDialogPassword.setAttribute("autocomplete", "new-password");
+              this.refs.gradeVaultDialogPassword.setAttribute(
+                "autocomplete",
+                `${autofillMetadata.sectionToken} new-password`
+              );
               this.refs.gradeVaultDialogPassword.setAttribute("name", "new-password");
             }
             if (this.refs.gradeVaultDialogConfirmPassword) {
               this.refs.gradeVaultDialogConfirmPassword.value = "";
-              this.refs.gradeVaultDialogConfirmPassword.setAttribute("autocomplete", "new-password");
+              this.refs.gradeVaultDialogConfirmPassword.setAttribute(
+                "autocomplete",
+                `${autofillMetadata.sectionToken} new-password`
+              );
               this.refs.gradeVaultDialogConfirmPassword.setAttribute("name", "confirm-password");
             }
             if (this.refs.gradeVaultDialogCurrentRow) {
@@ -10811,7 +10857,9 @@
                 this.selectedLessonId = lessonId;
                 this.renderWeekTable();
                 this.renderLessonSection();
-                this.startInlineWeekBlockTopicEdit(lessonId);
+                this.startInlineWeekBlockTopicEdit(lessonId, {
+                  selectAll: event.detail > 0
+                });
                 return;
               }
 
@@ -12355,7 +12403,8 @@
             input.style.maxHeight = "100%";
           }
 
-          startInlineWeekBlockTopicEdit(lessonId) {
+          startInlineWeekBlockTopicEdit(lessonId, options = {}) {
+            const selectAll = Boolean(options && options.selectAll);
             const lesson = this.store.getLessonById(lessonId);
             if (!lesson) {
               return false;
@@ -12394,7 +12443,11 @@
               }
               this.syncInlineWeekBlockTopicInputSize(inlineTopicInput);
               inlineTopicInput.focus();
-              this._selectAllInlineWeekBlockTopic(inlineTopicInput);
+              if (selectAll) {
+                this._selectAllInlineWeekBlockTopic(inlineTopicInput);
+              } else {
+                this._moveCaretToInlineWeekBlockTopicEnd(inlineTopicInput);
+              }
             });
             return true;
           }

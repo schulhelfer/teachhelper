@@ -729,23 +729,27 @@
           <p id="grade-vault-dialog-text" class="message-dialog-text"></p>
           <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
             Benutzername
-            <input id="grade-vault-dialog-username" name="username" type="text" autocomplete="username" tabindex="-1">
+            <input id="grade-vault-dialog-username" name="username" type="text"
+              autocomplete="section-teachhelper-vault username" tabindex="-1">
           </label>
           <div class="grade-vault-dialog-fields">
             <label id="grade-vault-dialog-current-row" hidden>
               <span id="grade-vault-dialog-current-label">Aktuelles Passwort</span>
               <input id="grade-vault-dialog-current-password" name="current-password" type="password" minlength="10"
-                autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+                autocomplete="section-teachhelper-vault current-password" autocapitalize="off" autocorrect="off"
+                spellcheck="false">
             </label>
             <label id="grade-vault-dialog-password-row">
               Passwort
               <input id="grade-vault-dialog-password" name="new-password" type="password" minlength="10"
-                autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+                autocomplete="section-teachhelper-vault new-password" autocapitalize="off" autocorrect="off"
+                spellcheck="false">
             </label>
             <label id="grade-vault-dialog-confirm-row" hidden>
               Passwort wiederholen
               <input id="grade-vault-dialog-confirm-password" name="confirm-password" type="password" minlength="10"
-                autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+                autocomplete="section-teachhelper-vault new-password" autocapitalize="off" autocorrect="off"
+                spellcheck="false">
             </label>
           </div>
           <p id="grade-vault-dialog-hint" class="grade-vault-dialog-hint"></p>
