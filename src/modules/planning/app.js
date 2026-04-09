@@ -10103,6 +10103,12 @@
                 if (this.locked) {
                   return;
                 }
+                const manualDatabaseSetupPending = this.shouldPromptForManualDatabaseOnStartup()
+                  && this.currentView === "settings"
+                  && this.activeSettingsTab === "database";
+                if (manualDatabaseSetupPending) {
+                  return;
+                }
                 this.switchView(requestedView);
               });
             }
@@ -16913,8 +16919,11 @@
                     td.rowSpan = block.rowSpan;
                     skipByDay[dayIndex] = block.rowSpan - 1;
                   }
-                  const chip = document.createElement("button");
-                  chip.type = "button";
+                  const isInlineEditing = Number(this.inlineTopicLessonId || 0) === Number(block.firstLessonId || 0);
+                  const chip = document.createElement(isInlineEditing ? "div" : "button");
+                  if (chip instanceof HTMLButtonElement) {
+                    chip.type = "button";
+                  }
                   chip.className = "lesson-block";
                   chip.dataset.lessonId = String(block.firstLessonId);
                   if (block.selectable) {
@@ -16948,7 +16957,7 @@
                   if (!block.selectable) {
                     chip.classList.add("not-selectable");
                   }
-                  if (block.allCanceled) {
+                  if (block.allCanceled && chip instanceof HTMLButtonElement) {
                     chip.disabled = true;
                   }
                   const courseName = String(block.courseName || "").trim();
@@ -16968,7 +16977,6 @@
                   const topicText = courseName
                     ? lines.join(" ")
                     : lines.slice(1).join(" ");
-                  const isInlineEditing = Number(this.inlineTopicLessonId || 0) === Number(block.firstLessonId || 0);
                   const shouldShowTopicLine = Boolean(topicText) && !(
                     courseName
                     && block.isNoLesson
@@ -16995,7 +17003,11 @@
                       this.inlineTopicDraft = this._limitInlineWeekBlockTopicLength(input);
                       this.syncInlineWeekBlockTopicInputSize(input);
                     });
+                    input.addEventListener("keyup", (event) => {
+                      event.stopPropagation();
+                    });
                     input.addEventListener("keydown", (event) => {
+                      event.stopPropagation();
                       if (event.key === "Escape") {
                         event.preventDefault();
                         this.finishInlineWeekBlockTopicEdit(false);
