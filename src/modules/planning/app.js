@@ -5678,6 +5678,9 @@
                 this.closeDialog(this.refs.gradeVaultDialog);
                 this.pendingGradeVaultDialogMode = "";
                 this.renderAll();
+                requestAnimationFrame(() => {
+                  this.focusFirstGradesEntryInput();
+                });
                 return;
               }
 
@@ -9751,6 +9754,9 @@
               this.renderCourseTimeline();
             } else if (viewName === "grades") {
               this.renderGradesView();
+              requestAnimationFrame(() => {
+                this.focusFirstGradesEntryInput();
+              });
             }
             this.queuePlanningReadySignal();
           }
@@ -13810,6 +13816,22 @@
             }
           }
 
+          focusFirstGradesEntryInput() {
+            if (this.currentView !== "grades" || this.normalizeGradesSubView(this.gradesSubView) !== "entry") {
+              return;
+            }
+            const input = this.refs.gradesEntryContent?.querySelector("input[data-grade-input='1']:not(:disabled)");
+            if (!(input instanceof HTMLInputElement)) {
+              return;
+            }
+            try {
+              input.focus({ preventScroll: true });
+            } catch (_error) {
+              input.focus();
+            }
+            input.select();
+          }
+
           focusGradeAssessmentInput(assessmentId, rowIndex = 0) {
             const root = this.getGradeInputRoot();
             if (!root) {
@@ -15754,6 +15776,11 @@
             this.renderViewState();
             this.renderSidebarCourseList();
             this.renderGradesView();
+            if (normalized === "entry") {
+              requestAnimationFrame(() => {
+                this.focusFirstGradesEntryInput();
+              });
+            }
             return true;
           }
 
