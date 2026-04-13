@@ -4401,6 +4401,7 @@
               gradeOverrideDialogContext: document.querySelector("#grade-override-dialog-context"),
               gradeOverrideDialogComputed: document.querySelector("#grade-override-dialog-computed"),
               gradeOverrideDialogInput: document.querySelector("#grade-override-dialog-input"),
+              gradeOverrideDialogPicker: document.querySelector("#grade-override-dialog-picker"),
               gradeOverrideDialogCancel: document.querySelector("#grade-override-dialog-cancel"),
               gradeOverrideDialogClear: document.querySelector("#grade-override-dialog-clear"),
               gradeVaultDialog: document.querySelector("#grade-vault-dialog"),
@@ -4640,6 +4641,7 @@
             this.gradePickerState = {
               open: false,
               mode: "table",
+              container: null,
               studentId: null,
               assessmentId: null,
               input: null,
@@ -11540,9 +11542,9 @@
                 ? event.target.closest("input[data-grade-input='1']:not(:disabled)")
                 : null;
               const insideGradePicker = Boolean(
-                this.refs.gradePicker
+                this.gradePickerState.container
                 && event.target instanceof Node
-                && this.refs.gradePicker.contains(event.target)
+                && this.gradePickerState.container.contains(event.target)
               );
               if (
                 this.activeGradeAssessmentId
@@ -15600,12 +15602,19 @@
               return;
             }
             const mode = options.mode === "override" ? "override" : "table";
+            const container = mode === "override"
+              ? this.refs.gradeOverrideDialogPicker
+              : this.refs.gradePicker;
+            if (!container) {
+              return;
+            }
             const parsed = mode === "override"
               ? parsePedagogicalGradeValue(input.value, 15)
               : parseGradeValue(input.value, 15);
             const currentValue = parsed.valid ? parsed.value : null;
             this.gradePickerState.open = true;
             this.gradePickerState.mode = mode;
+            this.gradePickerState.container = container;
             this.gradePickerState.input = input;
             this.gradePickerState.studentId = Number(input.dataset.studentId || 0);
             this.gradePickerState.assessmentId = Number(input.dataset.assessmentId || 0);
@@ -15615,20 +15624,32 @@
               ? -1
               : this.gradePickerState.values.findIndex((value) => value === currentValue);
             this.renderGradePicker();
-            this.positionGradePicker();
+            if (mode === "table") {
+              this.positionGradePicker();
+            }
           }
 
           renderGradePicker() {
             if (!this.refs.gradePicker) {
               return;
             }
-            if (!this.gradePickerState.open) {
+            if (this.refs.gradePicker) {
               this.refs.gradePicker.hidden = true;
               this.refs.gradePicker.innerHTML = "";
+            }
+            if (this.refs.gradeOverrideDialogPicker) {
+              this.refs.gradeOverrideDialogPicker.hidden = true;
+              this.refs.gradeOverrideDialogPicker.innerHTML = "";
+            }
+            if (!this.gradePickerState.open) {
               return;
             }
-            this.refs.gradePicker.hidden = false;
-            this.refs.gradePicker.innerHTML = "";
+            const container = this.gradePickerState.container;
+            if (!container) {
+              return;
+            }
+            container.hidden = false;
+            container.innerHTML = "";
             this.gradePickerState.values.forEach((value, index) => {
               const button = document.createElement("button");
               button.type = "button";
@@ -15642,12 +15663,18 @@
                 event.stopPropagation();
                 this.applyGradePickerValue(value);
               });
-              this.refs.gradePicker.append(button);
+              container.append(button);
             });
           }
 
           positionGradePicker() {
-            if (!this.refs.gradePicker || !this.gradePickerState.open || !this.gradePickerState.input) {
+            if (
+              !this.refs.gradePicker
+              || !this.gradePickerState.open
+              || this.gradePickerState.mode !== "table"
+              || this.gradePickerState.container !== this.refs.gradePicker
+              || !this.gradePickerState.input
+            ) {
               return;
             }
             const inputRect = this.gradePickerState.input.getBoundingClientRect();
@@ -15681,7 +15708,7 @@
             }
             if (event && event.target) {
               const target = event.target;
-              if (this.refs.gradePicker.contains(target)) {
+              if (this.gradePickerState.container && this.gradePickerState.container.contains(target)) {
                 return;
               }
               if (this.gradePickerState.input && target === this.gradePickerState.input) {
@@ -15690,6 +15717,7 @@
             }
             this.gradePickerState.open = false;
             this.gradePickerState.mode = "table";
+            this.gradePickerState.container = null;
             this.gradePickerState.input = null;
             this.gradePickerState.studentId = null;
             this.gradePickerState.assessmentId = null;
