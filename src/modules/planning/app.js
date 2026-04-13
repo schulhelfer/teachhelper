@@ -13988,7 +13988,7 @@
             data-student-id="${studentKey}"
             data-course-id="${courseKey}"
             data-scope="${normalizedScope}"${periodAttr}${categoryAttr}${subcategoryAttr}${disabledAttr}
-            aria-label="${scopeLabel} pädagogisch setzen"
+            aria-label="${scopeLabel} manuell setzen"
             ${tooltipAttr}
           ><span class="grade-total-value">${this.formatDisplayedGrade(displayValue)}</span></button>
         `;

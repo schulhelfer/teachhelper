@@ -4187,8 +4187,7 @@
         }
 
         #grade-override-dialog-input {
-          width: 14ch;
-          min-width: 14ch;
+          width: 100%;
           max-width: 100%;
         }
 
