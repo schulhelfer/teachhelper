@@ -4639,6 +4639,7 @@
             };
             this.gradePickerState = {
               open: false,
+              mode: "table",
               studentId: null,
               assessmentId: null,
               input: null,
@@ -6846,13 +6847,18 @@
             const todayIso = toIsoDate(now);
             const nowMinutes = now.getHours() * 60 + now.getMinutes();
             const lessons = this.store
-              .listLessonsForWeek(year.id, todayIso, todayIso)
+              .listLessonsForWeek(year.id, year.startDate, todayIso)
               .filter((lesson) => !lesson.canceled && !lesson.noLesson && !lesson.isEntfall);
             let activeCourseId = null;
             let lastPastCourseId = null;
+            let lastPastDateIso = "";
             let lastPastEndMinutes = -1;
 
             lessons.forEach((lesson) => {
+              const lessonDate = String(lesson.lessonDate || "").trim();
+              if (!lessonDate || lessonDate > todayIso) {
+                return;
+              }
               const timeRow = lessonTimesByHour.get(Number(lesson.hour) || 0);
               if (!timeRow) {
                 return;
@@ -6862,11 +6868,19 @@
               if (startMinutes === null || endMinutes === null) {
                 return;
               }
-              if (nowMinutes >= startMinutes && nowMinutes < endMinutes) {
+              if (lessonDate === todayIso && nowMinutes >= startMinutes && nowMinutes < endMinutes) {
                 activeCourseId = Number(lesson.courseId) || null;
                 return;
               }
-              if (endMinutes <= nowMinutes && endMinutes >= lastPastEndMinutes) {
+              const isPastLesson = lessonDate < todayIso || (lessonDate === todayIso && endMinutes <= nowMinutes);
+              if (!isPastLesson) {
+                return;
+              }
+              if (
+                lessonDate > lastPastDateIso
+                || (lessonDate === lastPastDateIso && endMinutes >= lastPastEndMinutes)
+              ) {
+                lastPastDateIso = lessonDate;
                 lastPastEndMinutes = endMinutes;
                 lastPastCourseId = Number(lesson.courseId) || null;
               }
@@ -10518,6 +10532,23 @@
             this.refs.gradeOverrideDialogForm?.addEventListener("submit", async (event) => {
               event.preventDefault();
               await this.submitGradeOverrideDialog();
+            });
+
+            this.refs.gradeOverrideDialogInput?.addEventListener("focus", () => {
+              this.openGradePickerForInput(this.refs.gradeOverrideDialogInput, { mode: "override" });
+            });
+
+            this.refs.gradeOverrideDialogInput?.addEventListener("keydown", (event) => {
+              this.handleGradeOverrideDialogInputKeyDown(event);
+            });
+
+            this.refs.gradeOverrideDialogInput?.addEventListener("blur", () => {
+              window.setTimeout(() => {
+                if (this.gradePickerState.input === this.refs.gradeOverrideDialogInput && this.gradePickerState.open) {
+                  return;
+                }
+                this.hideGradePicker();
+              }, 0);
             });
 
             this.refs.gradeOverrideDialogClear?.addEventListener("click", async () => {
@@ -15158,6 +15189,9 @@
           }
 
           closeGradeOverrideDialog() {
+            if (this.gradePickerState.input === this.refs.gradeOverrideDialogInput) {
+              this.hideGradePicker();
+            }
             this.pendingGradeOverrideContext = null;
             if (this.refs.gradeOverrideDialogStudentId) this.refs.gradeOverrideDialogStudentId.value = "";
             if (this.refs.gradeOverrideDialogCourseId) this.refs.gradeOverrideDialogCourseId.value = "";
@@ -15434,6 +15468,37 @@
             }, 0);
           }
 
+          handleGradeOverrideDialogInputKeyDown(event) {
+            const input = event.target.closest("#grade-override-dialog-input");
+            if (!input || input.disabled) {
+              return;
+            }
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const delta = event.key === "ArrowDown" ? 1 : -1;
+              if (!this.gradePickerState.open || this.gradePickerState.input !== input) {
+                this.openGradePickerForInput(input, { mode: "override" });
+              } else {
+                const maxIndex = this.gradePickerState.values.length - 1;
+                this.gradePickerState.activeIndex = this.gradePickerState.activeIndex < 0
+                  ? (event.key === "ArrowUp" ? maxIndex : 0)
+                  : clamp(this.gradePickerState.activeIndex + delta, 0, maxIndex);
+                this.renderGradePicker();
+              }
+              return;
+            }
+            if (event.key === "Enter" && this.gradePickerState.open && this.gradePickerState.input === input && this.gradePickerState.activeIndex >= 0) {
+              event.preventDefault();
+              const value = this.gradePickerState.values[this.gradePickerState.activeIndex];
+              this.applyGradePickerValue(value);
+              return;
+            }
+            if (event.key === "Escape" && this.gradePickerState.open && this.gradePickerState.input === input) {
+              event.preventDefault();
+              this.hideGradePicker();
+            }
+          }
+
           commitGradeCellInput(input) {
             if (!input) {
               return false;
@@ -15530,13 +15595,17 @@
             }
           }
 
-          openGradePickerForInput(input) {
+          openGradePickerForInput(input, options = {}) {
             if (!this.refs.gradePicker || !input || input.disabled) {
               return;
             }
-            const parsed = parseGradeValue(input.value, 15);
+            const mode = options.mode === "override" ? "override" : "table";
+            const parsed = mode === "override"
+              ? parsePedagogicalGradeValue(input.value, 15)
+              : parseGradeValue(input.value, 15);
             const currentValue = parsed.valid ? parsed.value : null;
             this.gradePickerState.open = true;
+            this.gradePickerState.mode = mode;
             this.gradePickerState.input = input;
             this.gradePickerState.studentId = Number(input.dataset.studentId || 0);
             this.gradePickerState.assessmentId = Number(input.dataset.assessmentId || 0);
@@ -15545,9 +15614,6 @@
             this.gradePickerState.activeIndex = currentValue === null
               ? -1
               : this.gradePickerState.values.findIndex((value) => value === currentValue);
-            if (this.gradePickerState.activeIndex < 0) {
-              this.gradePickerState.activeIndex = currentValue === null ? -1 : 0;
-            }
             this.renderGradePicker();
             this.positionGradePicker();
           }
@@ -15623,6 +15689,7 @@
               }
             }
             this.gradePickerState.open = false;
+            this.gradePickerState.mode = "table";
             this.gradePickerState.input = null;
             this.gradePickerState.studentId = null;
             this.gradePickerState.assessmentId = null;
@@ -15635,6 +15702,14 @@
           applyGradePickerValue(value) {
             const input = this.gradePickerState.input;
             if (!input) {
+              return;
+            }
+            if (this.gradePickerState.mode === "override") {
+              input.value = formatPedagogicalGradeInput(value);
+              input.classList.remove("invalid");
+              this.hideGradePicker();
+              input.focus();
+              input.select();
               return;
             }
             input.value = formatGradeInteger(value, this.gradePickerState.maxPoints);
