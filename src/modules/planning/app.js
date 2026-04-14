@@ -13938,12 +13938,13 @@
           }
 
           normalizeGradeOverrideEditorContext(context = {}) {
-            const studentId = Number(context.studentId) || 0;
-            const courseId = Number(context.courseId) || 0;
-            const scope = normalizeGradeOverrideScope(context.scope);
-            const period = normalizeGradePeriod(context.period || "year");
-            const categoryId = Number(context.categoryId) || null;
-            const subcategoryId = Number(context.subcategoryId) || null;
+            const source = isRecord(context) ? context : {};
+            const studentId = Number(source.studentId) || 0;
+            const courseId = Number(source.courseId) || 0;
+            const scope = normalizeGradeOverrideScope(source.scope);
+            const period = normalizeGradePeriod(source.period || "year");
+            const categoryId = Number(source.categoryId) || null;
+            const subcategoryId = Number(source.subcategoryId) || null;
             if (!studentId || !courseId || !scope) {
               return null;
             }
@@ -13954,7 +13955,7 @@
               period,
               categoryId,
               subcategoryId,
-              draftValue: String(context.draftValue ?? "")
+              draftValue: String(source.draftValue ?? "")
             };
           }
 
