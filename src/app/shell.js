@@ -72,13 +72,13 @@ export function createShellController({
     const isPicker = state.activeTab === TAB_RANDOM_PICKER;
     if (els.seatPreferencesLabel) {
       els.seatPreferencesLabel.textContent = isPicker
-        ? 'Gib Auswahlbedingungen an (optional)'
-        : 'Gib Gruppenpräferenzen an (optional)';
+        ? 'Gib Bedingungen an (optional)'
+        : 'Gib Bedingungen an (optional)';
     }
     if (els.groupSeatPreferences) {
       els.groupSeatPreferences.textContent = isPicker
-        ? 'Auswahlbedingungen eingeben'
-        : 'Gruppenpräferenzen eingeben';
+        ? 'Bedingungen eingeben'
+        : 'Bedingungen eingeben';
     }
   }
 

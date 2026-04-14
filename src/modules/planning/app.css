@@ -4164,6 +4164,81 @@
           color: #f59e0b;
         }
 
+        .grades-master-table td.is-grade-override-editing {
+          min-width: 12rem;
+          width: auto;
+          padding: 0.34rem 0.3rem 0.42rem;
+          vertical-align: top;
+        }
+
+        .grade-override-inline-editor {
+          display: grid;
+          gap: 0.42rem;
+          width: min(100%, 11.75rem);
+          margin-inline: auto;
+        }
+
+        .grade-override-inline-computed {
+          font-size: 0.78rem;
+          font-weight: 700;
+          line-height: 1.2;
+          color: rgba(226, 232, 240, 0.8);
+          text-align: center;
+        }
+
+        .grade-override-inline-computed-value {
+          color: rgba(248, 250, 252, 0.96);
+        }
+
+        .grade-override-inline-editor.is-overridden .grade-override-inline-computed-value {
+          color: #f59e0b;
+        }
+
+        .grade-override-inline-input {
+          width: 6ch;
+          min-width: 0;
+        }
+
+        .grade-override-inline-picker {
+          width: 100%;
+          min-width: 0;
+          margin-top: 0;
+          padding: 7px;
+          border-radius: 14px;
+          background: rgba(10, 15, 23, 0.92);
+          border-color: rgba(148, 163, 184, 0.2);
+        }
+
+        .grade-override-inline-picker button {
+          min-width: 0;
+        }
+
+        .grade-override-inline-reset {
+          width: 100%;
+          min-height: 2rem;
+          padding: 0.42rem 0.7rem;
+          border-radius: 10px;
+          border: 1px solid rgba(248, 113, 113, 0.46);
+          background: rgba(127, 29, 29, 0.34);
+          color: #fecaca;
+          font-weight: 700;
+          line-height: 1.15;
+        }
+
+        .grade-override-inline-reset:hover,
+        .grade-override-inline-reset:focus-visible,
+        .grade-override-inline-reset:active {
+          background: rgba(153, 27, 27, 0.5);
+          border-color: rgba(252, 165, 165, 0.56);
+          color: #fee2e2;
+        }
+
+        .grade-override-inline-reset:disabled {
+          background: rgba(51, 65, 85, 0.24);
+          border-color: rgba(148, 163, 184, 0.22);
+          color: rgba(148, 163, 184, 0.72);
+        }
+
         .grades-master-table td.is-privacy-blurred {
           position: relative;
         }
@@ -4178,18 +4253,6 @@
         .grades-master-table td.is-privacy-blurred .grade-total-button.is-overridden,
         .grades-master-table td.is-privacy-blurred .grade-total-button.is-overridden .grade-total-value {
           color: #f8fafc;
-        }
-
-        .grade-override-computed {
-          display: inline-block;
-          font-weight: 800;
-          letter-spacing: 0.03em;
-        }
-
-        #grade-override-dialog-input {
-          width: 14ch;
-          min-width: 14ch;
-          max-width: 100%;
         }
 
         .grade-picker {

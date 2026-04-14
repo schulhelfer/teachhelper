@@ -906,7 +906,7 @@
               }
               if (els.randomPickerActionNote) {
                 els.randomPickerActionNote.textContent = allCandidates.length
-                  ? 'Lege im Dialog Auswahlbedingungen pro Name „unmöglich“, „normal“, „doppelt“ oder „dreifach“ fest.'
+                  ? 'Lege im Dialog Bedingungen pro Name „unmöglich“, „normal“, „doppelt“ oder „dreifach“ fest.'
                   : 'Tippe auf den Button, damit der Generator losläuft.';
               }
               if (els.randomPickerStart) {

@@ -18,24 +18,6 @@
         const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
         const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
         const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
-        const GRADE_DISPLAY_16_LABELS = [
-          "6",
-          "5-",
-          "5",
-          "5+",
-          "4-",
-          "4",
-          "4+",
-          "3-",
-          "3",
-          "3+",
-          "2-",
-          "2",
-          "2+",
-          "1-",
-          "1",
-          "1+"
-        ];
         const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
         const SYNC_META_KEY = "teachhelper-sync-meta-v1";
         const APP_DB_SCHEMA = "teachhelper-db-v1";
@@ -1511,9 +1493,8 @@
         }
 
         function normalizeGradeDisplaySystem(value) {
-          return String(value || "").trim().toLowerCase() === "grade16"
-            ? "grade16"
-            : GRADE_DISPLAY_SYSTEM_DEFAULT;
+          void value;
+          return GRADE_DISPLAY_SYSTEM_DEFAULT;
         }
 
         function normalizeLessonTimeValue(value) {
@@ -1688,6 +1669,31 @@
           return numeric.toFixed(1).replace(".", ",");
         }
 
+        function sanitizePedagogicalGradeInput(raw, maxLength = 4) {
+          const text = String(raw ?? "").replace(/[^\d.,]/g, "");
+          let result = "";
+          let separatorUsed = false;
+          let decimalDigits = 0;
+          for (const char of text) {
+            if (/\d/.test(char)) {
+              if (!separatorUsed) {
+                result += char;
+                continue;
+              }
+              if (decimalDigits < 1) {
+                result += char;
+                decimalDigits += 1;
+              }
+              continue;
+            }
+            if (!separatorUsed && result) {
+              result += ",";
+              separatorUsed = true;
+            }
+          }
+          return result.slice(0, Math.max(1, Number(maxLength) || 4));
+        }
+
         function parseGradeValue(raw, maxValue = Number.POSITIVE_INFINITY) {
           const text = String(raw ?? "").trim();
           if (!text) {
@@ -1720,14 +1726,12 @@
         }
 
         function formatGradeDisplayForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT) {
+          void displaySystem;
           if (value === null || value === undefined || value === "") {
             return "—";
           }
           const numeric = clamp(Number(value) || 0, 0, 15);
           const rounded = clamp(Math.round(numeric), 0, 15);
-          if (normalizeGradeDisplaySystem(displaySystem) === "grade16") {
-            return GRADE_DISPLAY_16_LABELS[rounded] || "—";
-          }
           return formatGradeInteger(rounded);
         }
 
@@ -1891,7 +1895,6 @@
               lessonTimes: buildDefaultLessonTimes(HOURS_PER_DAY_DEFAULT),
               showHiddenSidebarCourses: SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
               gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
-              gradeDisplaySystem: GRADE_DISPLAY_SYSTEM_DEFAULT,
               backupEnabled: BACKUP_ENABLED_DEFAULT,
               backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
               lastAutoBackupAt: null
@@ -2117,16 +2120,14 @@
           }
 
           getGradeDisplaySystem() {
-            return normalizeGradeDisplaySystem(
-              this.getSetting("gradeDisplaySystem", GRADE_DISPLAY_SYSTEM_DEFAULT)
-            );
+            return GRADE_DISPLAY_SYSTEM_DEFAULT;
           }
 
           setGradeDisplaySystem(value) {
-            const normalized = normalizeGradeDisplaySystem(value);
-            this.state.settings.gradeDisplaySystem = normalized;
+            void value;
+            delete this.state.settings.gradeDisplaySystem;
             this._save();
-            return normalized;
+            return GRADE_DISPLAY_SYSTEM_DEFAULT;
           }
 
           getBackupEnabled() {
@@ -4058,7 +4059,7 @@
 
           const normalizedHoursPerDay = clamp(Number(normalized.settings.hoursPerDay) || HOURS_PER_DAY_DEFAULT, 1, 12);
           normalized.settings.hoursPerDay = normalizedHoursPerDay;
-          normalized.settings.gradeDisplaySystem = normalizeGradeDisplaySystem(normalized.settings.gradeDisplaySystem);
+          delete normalized.settings.gradeDisplaySystem;
           normalized.settings.lessonTimes = normalizeLessonTimes(normalized.settings.lessonTimes, normalizedHoursPerDay);
 
           normalized.schoolYears = normalized.schoolYears.filter(
@@ -4354,7 +4355,6 @@
               settingsActionsRow: document.querySelector(".settings-actions-row"),
               settingsDisplayHoursRow: document.querySelector("#settings-display-hours-row"),
               settingsGradesPrivacyGraphThresholdRow: document.querySelector("#settings-grades-privacy-graph-threshold-row"),
-              settingsGradeDisplaySystemRow: document.querySelector("#settings-grade-display-system-row"),
 
               courseTitle: document.querySelector("#course-title"),
               courseTable: document.querySelector("#course-table"),
@@ -4390,20 +4390,6 @@
               gradeAssessmentDialogHalfYear: document.querySelector("#grade-assessment-dialog-half-year"),
               gradeAssessmentDialogCancel: document.querySelector("#grade-assessment-dialog-cancel"),
               gradeAssessmentDialogDelete: document.querySelector("#grade-assessment-dialog-delete"),
-              gradeOverrideDialog: document.querySelector("#grade-override-dialog"),
-              gradeOverrideDialogForm: document.querySelector("#grade-override-dialog-form"),
-              gradeOverrideDialogStudentId: document.querySelector("#grade-override-dialog-student-id"),
-              gradeOverrideDialogCourseId: document.querySelector("#grade-override-dialog-course-id"),
-              gradeOverrideDialogScope: document.querySelector("#grade-override-dialog-scope"),
-              gradeOverrideDialogPeriod: document.querySelector("#grade-override-dialog-period"),
-              gradeOverrideDialogCategoryId: document.querySelector("#grade-override-dialog-category-id"),
-              gradeOverrideDialogSubcategoryId: document.querySelector("#grade-override-dialog-subcategory-id"),
-              gradeOverrideDialogContext: document.querySelector("#grade-override-dialog-context"),
-              gradeOverrideDialogComputed: document.querySelector("#grade-override-dialog-computed"),
-              gradeOverrideDialogInput: document.querySelector("#grade-override-dialog-input"),
-              gradeOverrideDialogPicker: document.querySelector("#grade-override-dialog-picker"),
-              gradeOverrideDialogCancel: document.querySelector("#grade-override-dialog-cancel"),
-              gradeOverrideDialogClear: document.querySelector("#grade-override-dialog-clear"),
               gradeVaultDialog: document.querySelector("#grade-vault-dialog"),
               gradeVaultDialogForm: document.querySelector("#grade-vault-dialog-form"),
               gradeVaultDialogUsername: document.querySelector("#grade-vault-dialog-username"),
@@ -4511,7 +4497,6 @@
               hoursPerDay: document.querySelector("#hours-per-day"),
               lessonTimesList: document.querySelector("#lesson-times-list"),
               gradesPrivacyGraphThreshold: document.querySelector("#grades-privacy-graph-threshold"),
-              gradeDisplaySystem: document.querySelector("#grade-display-system"),
               showHiddenSidebarCourses: document.querySelector("#show-hidden-sidebar-courses"),
               appVersion: document.querySelector("#app-version"),
               backupAutoEnabled: document.querySelector("#backup-auto-enabled"),
@@ -4609,13 +4594,13 @@
             this.pendingEntfallLessonId = null;
             this.pendingTopicLessonId = null;
             this.pendingGradeAssessmentId = null;
-            this.pendingGradeOverrideContext = null;
             this.pendingGradeVaultDialogMode = "";
             this.inlineTopicLessonId = null;
             this.inlineTopicDraft = "";
             this.courseDialogDraft = null;
             this.activeGradeAssessmentId = null;
             this.activeGradeStudentId = null;
+            this.activeGradeOverrideContext = null;
             this.selectedGradesEntryAssessmentId = null;
             this.gradesEntryDraft = null;
             this.gradesEntrySaveNotice = "";
@@ -4726,7 +4711,6 @@
               hoursPerDay,
               lessonTimes: this.store.getLessonTimes(hoursPerDay),
               gradesPrivacyGraphThreshold: this.store.getGradesPrivacyGraphThreshold(),
-              gradeDisplaySystem: this.store.getGradeDisplaySystem(),
               showHiddenSidebarCourses: Boolean(
                 this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
               ),
@@ -6927,9 +6911,6 @@
             if (Number(draft.gradesPrivacyGraphThreshold) !== Number(this.store.getGradesPrivacyGraphThreshold())) {
               return true;
             }
-            if (normalizeGradeDisplaySystem(draft.gradeDisplaySystem) !== this.store.getGradeDisplaySystem()) {
-              return true;
-            }
             if (
               Boolean(draft.showHiddenSidebarCourses)
               !== Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT))
@@ -6975,7 +6956,6 @@
             this.store.setHoursPerDay(draft.hoursPerDay);
             this.store.setLessonTimes(lessonTimesValidation.normalized, draft.hoursPerDay);
             this.store.setGradesPrivacyGraphThreshold(draft.gradesPrivacyGraphThreshold);
-            this.store.setGradeDisplaySystem(draft.gradeDisplaySystem);
             this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
             this.store.setBackupEnabled(draft.backupEnabled);
             this.store.setBackupIntervalDays(draft.backupIntervalDays);
@@ -7033,7 +7013,6 @@
                 HOURS_PER_DAY_DEFAULT
               );
               this.settingsDraft.gradesPrivacyGraphThreshold = GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT;
-              this.settingsDraft.gradeDisplaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
               this.settingsDraft.showHiddenSidebarCourses = SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
               this.renderDisplaySection();
               this.renderLessonTimesSection();
@@ -7091,7 +7070,6 @@
             } else if (tab === "display") {
               resetEnabled = Number(this.settingsDraft.hoursPerDay) !== HOURS_PER_DAY_DEFAULT
                 || Number(this.settingsDraft.gradesPrivacyGraphThreshold) !== GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT
-                || normalizeGradeDisplaySystem(this.settingsDraft.gradeDisplaySystem) !== GRADE_DISPLAY_SYSTEM_DEFAULT
                 || Boolean(this.settingsDraft.showHiddenSidebarCourses) !== SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
               saveEnabled = this.settingsDirty;
               cancelEnabled = this.settingsDirty;
@@ -9889,6 +9867,7 @@
               if (!this.commitVisibleGradeInputs()) {
                 return;
               }
+              this.activeGradeOverrideContext = null;
               this.togglePrivacyFocusedGradeStudent(studentButton.dataset.gradeStudentName);
               this.renderGradesView();
               return;
@@ -9909,7 +9888,38 @@
               if (!this.commitVisibleGradeInputs()) {
                 return;
               }
+              this.activeGradeOverrideContext = null;
               this.openGradeAssessmentDialog(editButton.dataset.gradeEditAssessment);
+              return;
+            }
+            const overridePickerButton = event.target.closest("button[data-grade-override-picker-value]");
+            if (overridePickerButton) {
+              event.stopPropagation();
+              const value = Number(overridePickerButton.dataset.gradeOverridePickerValue);
+              if (!Number.isFinite(value)) {
+                return;
+              }
+              const context = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+              if (!context) {
+                return;
+              }
+              this.store.setGradeOverride(
+                context.studentId,
+                context.courseId,
+                context.scope,
+                value,
+                context.categoryId,
+                context.subcategoryId,
+                context.period
+              );
+              this.activeGradeOverrideContext = null;
+              this.renderGradesViewPreservingOverviewScroll();
+              return;
+            }
+            const overrideResetButton = event.target.closest("button[data-grade-override-reset='1']");
+            if (overrideResetButton) {
+              event.stopPropagation();
+              await this.clearGradeOverrideFromDialog();
               return;
             }
             const overrideButton = event.target.closest("button[data-grade-open-override='1']");
@@ -9934,6 +9944,7 @@
               if (!this.commitVisibleGradeInputs()) {
                 return;
               }
+              this.activeGradeOverrideContext = null;
               this.clearActiveGradeAssessment();
               this.queueGradeTableMotion(
                 this.isGradePeriodExpanded(this.selectedCourseId, periodToggle.dataset.gradeTogglePeriod || "year")
@@ -9954,6 +9965,7 @@
               if (!this.commitVisibleGradeInputs()) {
                 return;
               }
+              this.activeGradeOverrideContext = null;
               this.clearActiveGradeAssessment();
               this.queueGradeTableMotion(
                 this.isGradeCategoryExpanded(
@@ -9979,6 +9991,7 @@
               if (!this.commitVisibleGradeInputs()) {
                 return;
               }
+              this.activeGradeOverrideContext = null;
               this.clearActiveGradeAssessment();
               const [periodRaw, categoryIdRaw, subcategoryIdRaw] = String(subcategoryToggle.dataset.gradeToggleSubcategory || "").split(":");
               this.queueGradeTableMotion(
@@ -10527,47 +10540,6 @@
               }
             });
 
-            this.refs.gradeOverrideDialogCancel?.addEventListener("click", () => {
-              this.closeGradeOverrideDialog();
-            });
-
-            this.refs.gradeOverrideDialogForm?.addEventListener("submit", async (event) => {
-              event.preventDefault();
-              await this.submitGradeOverrideDialog();
-            });
-
-            this.refs.gradeOverrideDialogInput?.addEventListener("focus", () => {
-              this.openGradePickerForInput(this.refs.gradeOverrideDialogInput, { mode: "override" });
-            });
-
-            this.refs.gradeOverrideDialogInput?.addEventListener("keydown", (event) => {
-              this.handleGradeOverrideDialogInputKeyDown(event);
-            });
-
-            this.refs.gradeOverrideDialogInput?.addEventListener("blur", () => {
-              window.setTimeout(() => {
-                if (this.gradePickerState.input === this.refs.gradeOverrideDialogInput && this.gradePickerState.open) {
-                  return;
-                }
-                this.hideGradePicker();
-              }, 0);
-            });
-
-            this.refs.gradeOverrideDialogClear?.addEventListener("click", async () => {
-              await this.clearGradeOverrideFromDialog();
-            });
-
-            this.refs.gradeOverrideDialog?.addEventListener("cancel", (event) => {
-              event.preventDefault();
-              this.closeGradeOverrideDialog();
-            });
-
-            this.refs.gradeOverrideDialog?.addEventListener("click", (event) => {
-              if (event.target === this.refs.gradeOverrideDialog) {
-                this.closeGradeOverrideDialog();
-              }
-            });
-
             this.refs.slotDialogCancel.addEventListener("click", () => {
               this.closeSlotDialog();
             });
@@ -11001,14 +10973,6 @@
                 );
                 this.settingsDraft.gradesPrivacyGraphThreshold = threshold;
                 this.refs.gradesPrivacyGraphThreshold.value = String(threshold);
-                this.renderDisplaySection();
-                this.refreshSettingsDirtyState();
-              });
-            }
-
-            if (this.refs.gradeDisplaySystem) {
-              this.refs.gradeDisplaySystem.addEventListener("change", () => {
-                this.settingsDraft.gradeDisplaySystem = normalizeGradeDisplaySystem(this.refs.gradeDisplaySystem.value);
                 this.renderDisplaySection();
                 this.refreshSettingsDirtyState();
               });
@@ -11552,6 +11516,20 @@
                 && !insideGradePicker
               ) {
                 this.deactivateGradeAssessment();
+              }
+              const insideOverrideEditor = Boolean(
+                event.target instanceof Element
+                && event.target.closest("[data-grade-override-editor='1']")
+              );
+              const overrideTrigger = Boolean(
+                event.target instanceof Element
+                && event.target.closest("button[data-grade-open-override='1']")
+              );
+              if (this.activeGradeOverrideContext && !insideOverrideEditor && !overrideTrigger) {
+                const committed = this.submitGradeOverrideDialog({ close: false });
+                if (committed) {
+                  this.closeGradeOverrideDialog();
+                }
               }
             });
 
@@ -12847,6 +12825,7 @@
             this.refs.gradesEmptyState.hidden = false;
             if (!course) {
               this.clearActiveGradeAssessment();
+              this.activeGradeOverrideContext = null;
               this.clearPrivacyFocusedGradeStudent();
               this.hideGradePrivacyOverlay();
               if (!this.isGradeVaultConfigured()) {
@@ -12865,9 +12844,16 @@
               return;
             }
             this.ensureGradePeriodDefaultCollapsed(course.id);
+            if (
+              this.activeGradeOverrideContext
+              && Number(this.activeGradeOverrideContext.courseId || 0) !== Number(course.id)
+            ) {
+              this.activeGradeOverrideContext = null;
+            }
             const isVaultUnlocked = this.isGradeVaultUnlocked();
             if (!isVaultUnlocked) {
               this.clearActiveGradeAssessment();
+              this.activeGradeOverrideContext = null;
               this.clearPrivacyFocusedGradeStudent();
               this.hideGradePrivacyOverlay();
               this.setGradesOverviewEmptyState("Noten-Datenbank verschlüsselt", "", {
@@ -12877,6 +12863,7 @@
             }
             if (students.length === 0) {
               this.clearActiveGradeAssessment();
+              this.activeGradeOverrideContext = null;
               this.clearPrivacyFocusedGradeStudent();
               this.hideGradePrivacyOverlay();
               this.setGradesOverviewEmptyState("Noch keine Teilnehmenden eingetragen", "", {
@@ -12986,6 +12973,7 @@
             if (!this.refs.gradesEntryPanel || !this.refs.gradesEntryContent) {
               return;
             }
+            this.activeGradeOverrideContext = null;
             this.hideGradePrivacyOverlay();
             this.refs.gradesEntryPanel.hidden = false;
             this.refs.gradesOverviewPanel?.classList.remove("is-offset-empty-state");
@@ -13685,10 +13673,7 @@
             const innerHeight = Math.max(1, height - padding.top - padding.bottom);
             const maxValue = 15;
             const minValue = 0;
-            const displaySystem = this.getCurrentGradeDisplaySystem();
-            const guideValues = displaySystem === "grade16"
-              ? [14, 11, 8, 5, 2, 0]
-              : [15, 13, 10, 7, 4, 1];
+            const guideValues = [15, 13, 10, 7, 4, 1];
             const palette = [
               "#60a5fa",
               "#22d3ee",
@@ -13719,9 +13704,7 @@
               label.setAttribute("x", String(padding.left - 6));
               label.setAttribute("y", String(y));
               label.setAttribute("class", "grades-privacy-chart-label");
-              label.textContent = displaySystem === "grade16"
-                ? this.formatDisplayedGrade(guideValue)
-                : String(guideValue);
+              label.textContent = this.formatDisplayedGrade(guideValue);
               svg.append(label);
             });
 
@@ -13906,6 +13889,7 @@
               return;
             }
             this.hideGradePicker();
+            this.activeGradeOverrideContext = null;
             this.activeGradeAssessmentId = id;
             this.activeGradeStudentId = nextStudentId;
             this.renderGradesView();
@@ -13945,6 +13929,129 @@
                 });
               });
             });
+          }
+
+          normalizeGradeOverrideEditorContext(context = {}) {
+            const studentId = Number(context.studentId) || 0;
+            const courseId = Number(context.courseId) || 0;
+            const scope = normalizeGradeOverrideScope(context.scope);
+            const period = normalizeGradePeriod(context.period || "year");
+            const categoryId = Number(context.categoryId) || null;
+            const subcategoryId = Number(context.subcategoryId) || null;
+            if (!studentId || !courseId || !scope) {
+              return null;
+            }
+            return {
+              studentId,
+              courseId,
+              scope,
+              period,
+              categoryId,
+              subcategoryId,
+              draftValue: String(context.draftValue ?? "")
+            };
+          }
+
+          isGradeOverrideEditorActive(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
+            const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+            const requestedContext = this.normalizeGradeOverrideEditorContext({
+              studentId,
+              courseId,
+              scope,
+              categoryId,
+              subcategoryId,
+              period
+            });
+            if (!activeContext || !requestedContext) {
+              return false;
+            }
+            return (
+              activeContext.studentId === requestedContext.studentId
+              && activeContext.courseId === requestedContext.courseId
+              && activeContext.scope === requestedContext.scope
+              && activeContext.period === requestedContext.period
+              && activeContext.categoryId === requestedContext.categoryId
+              && activeContext.subcategoryId === requestedContext.subcategoryId
+            );
+          }
+
+          captureGradesOverviewScroll() {
+            return {
+              bookLeft: Number(this.refs.gradesBookPanel?.scrollLeft || 0),
+              bookTop: Number(this.refs.gradesBookPanel?.scrollTop || 0),
+              tableLeft: Number(this.refs.gradesTableScroll?.scrollLeft || 0),
+              tableTop: Number(this.refs.gradesTableScroll?.scrollTop || 0)
+            };
+          }
+
+          restoreGradesOverviewScroll(snapshot = null) {
+            if (!snapshot) {
+              return;
+            }
+            if (this.refs.gradesBookPanel) {
+              this.refs.gradesBookPanel.scrollLeft = snapshot.bookLeft;
+              this.refs.gradesBookPanel.scrollTop = snapshot.bookTop;
+            }
+            if (this.refs.gradesTableScroll) {
+              this.refs.gradesTableScroll.scrollLeft = snapshot.tableLeft;
+              this.refs.gradesTableScroll.scrollTop = snapshot.tableTop;
+            }
+          }
+
+          renderGradesViewPreservingOverviewScroll(afterRender = null) {
+            const preserveScroll = this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const snapshot = preserveScroll ? this.captureGradesOverviewScroll() : null;
+            this.renderGradesView();
+            this.restoreGradesOverviewScroll(snapshot);
+            if (snapshot || typeof afterRender === "function") {
+              requestAnimationFrame(() => {
+                this.restoreGradesOverviewScroll(snapshot);
+                if (typeof afterRender === "function") {
+                  afterRender();
+                }
+              });
+            }
+          }
+
+          getActiveGradeOverrideInput() {
+            return this.refs.gradesTable?.querySelector("input[data-grade-override-input='1']:not(:disabled)") || null;
+          }
+
+          buildGradeOverridePickerMarkup(selectedValue = null) {
+            return `
+        <div class="grade-picker grade-picker-inline grade-override-inline-picker" data-grade-override-picker="1">
+          ${Array.from({ length: 16 }, (_, index) => 15 - index).map((value) => `
+            <button
+              type="button"
+              data-grade-override-picker-value="${value}"
+              class="${[value === 0 ? "grade-picker-zero" : "", selectedValue === value ? "active" : ""].filter(Boolean).join(" ")}"
+              aria-label="Note ${formatGradeInteger(value)} setzen"
+            >${formatGradeInteger(value)}</button>
+          `).join("")}
+        </div>
+      `;
+          }
+
+          getGradeOverrideComputedValue(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
+            const normalizedScope = normalizeGradeOverrideScope(scope);
+            const normalizedPeriod = normalizeGradePeriod(period);
+            if (normalizedScope === "course") {
+              return this.store.calculateComputedGradeForStudentInCoursePeriod(studentId, courseId, normalizedPeriod);
+            }
+            if (normalizedScope === "category") {
+              return this.store.calculateComputedGradeForStudentInCategoryPeriod(studentId, courseId, categoryId, normalizedPeriod);
+            }
+            if (normalizedScope === "subcategory") {
+              return this.store.calculateComputedGradeForStudentInSubcategoryPeriod(
+                studentId,
+                courseId,
+                categoryId,
+                subcategoryId,
+                normalizedPeriod
+              );
+            }
+            return null;
           }
 
           getGradeOverrideCellState(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
@@ -14009,6 +14116,45 @@
               : normalizedScope === "category"
                 ? `${periodLabel} Kategorienote`
                 : `${periodLabel} Unterkategorienote`;
+            if (this.isGradeOverrideEditorActive(studentKey, courseKey, normalizedScope, categoryKey, subcategoryKey, period)) {
+              const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+              const computedValue = this.getGradeOverrideComputedValue(
+                studentKey,
+                courseKey,
+                normalizedScope,
+                categoryKey,
+                subcategoryKey,
+                period
+              );
+              const draftValue = activeContext ? activeContext.draftValue : "";
+              const parsedDraft = parsePedagogicalGradeValue(draftValue, 15);
+              const pickerValue = parsedDraft.valid ? parsedDraft.value : null;
+              const invalidClass = draftValue && !parsedDraft.valid ? " invalid" : "";
+              const resetDisabledAttr = computedValue === null ? " disabled" : "";
+              return `
+          <div class="grade-override-inline-editor${state.overridden ? " is-overridden" : ""}" data-grade-override-editor="1">
+            <div class="grade-override-inline-computed">Errechnete Note: <span class="grade-override-inline-computed-value">${formatGradeTooltipDecimal(computedValue)}</span></div>
+            <input
+              type="text"
+              class="grade-cell-input grade-override-inline-input${invalidClass}"
+              inputmode="decimal"
+              maxlength="4"
+              data-grade-input="1"
+              data-grade-override-input="1"
+              data-student-id="${studentKey}"
+              data-course-id="${courseKey}"
+              data-scope="${normalizedScope}"
+              data-period="${period}"${categoryAttr}${subcategoryAttr}
+              value="${escapeHtml(draftValue)}"
+              placeholder="z. B. 12"
+              aria-label="${scopeLabel} manuell setzen"
+              autocomplete="off"
+            >
+            ${this.buildGradeOverridePickerMarkup(pickerValue)}
+            <button type="button" class="danger-action grade-override-inline-reset" data-grade-override-reset="1"${resetDisabledAttr}>Auf errechnete Note</button>
+          </div>
+        `;
+            }
             const displayValue = state.value === null ? value : state.value;
             const tooltipAttr = (displayValue === null || displayValue === undefined || displayValue === "")
               ? ""
@@ -14885,6 +15031,10 @@
                 if (column.type === "total") {
                   td.className = "grade-total-col";
                   applyBodyBoundaryClasses();
+                  td.classList.toggle(
+                    "is-grade-override-editing",
+                    this.isGradeOverrideEditorActive(student.id, course.id, "course", null, null, "year")
+                  );
                   td.innerHTML = this.buildGradeOverrideButtonMarkup(
                     student.id,
                     course.id,
@@ -14899,6 +15049,10 @@
                 if (column.type === "period-total") {
                   td.className = "grade-total-col grade-period-total-col";
                   applyBodyBoundaryClasses();
+                  td.classList.toggle(
+                    "is-grade-override-editing",
+                    this.isGradeOverrideEditorActive(student.id, course.id, "course", null, null, column.period)
+                  );
                   td.innerHTML = this.buildGradeOverrideButtonMarkup(
                     student.id,
                     course.id,
@@ -14913,6 +15067,10 @@
                 if (column.type === "category-collapsed") {
                   td.className = "grade-category-collapsed-col";
                   applyBodyBoundaryClasses();
+                  td.classList.toggle(
+                    "is-grade-override-editing",
+                    this.isGradeOverrideEditorActive(student.id, course.id, "category", column.categoryId, null, column.period)
+                  );
                   td.innerHTML = this.buildGradeOverrideButtonMarkup(
                     student.id,
                     course.id,
@@ -14927,6 +15085,17 @@
                 if (column.type === "subcategory-collapsed") {
                   td.className = "grade-subcategory-collapsed-col";
                   applyBodyBoundaryClasses();
+                  td.classList.toggle(
+                    "is-grade-override-editing",
+                    this.isGradeOverrideEditorActive(
+                      student.id,
+                      course.id,
+                      "subcategory",
+                      column.categoryId,
+                      column.subcategoryId,
+                      column.period
+                    )
+                  );
                   td.innerHTML = this.buildGradeOverrideButtonMarkup(
                     student.id,
                     course.id,
@@ -14941,6 +15110,10 @@
                 if (column.type === "category-partial") {
                   td.className = "grade-category-partial-col";
                   applyBodyBoundaryClasses();
+                  td.classList.toggle(
+                    "is-grade-override-editing",
+                    this.isGradeOverrideEditorActive(student.id, course.id, "category", column.categoryId, null, column.period)
+                  );
                   td.innerHTML = this.buildGradeOverrideButtonMarkup(
                     student.id,
                     course.id,
@@ -14955,6 +15128,17 @@
                 if (column.type === "subcategory-partial") {
                   td.className = "grade-subcategory-partial-col";
                   applyBodyBoundaryClasses();
+                  td.classList.toggle(
+                    "is-grade-override-editing",
+                    this.isGradeOverrideEditorActive(
+                      student.id,
+                      course.id,
+                      "subcategory",
+                      column.categoryId,
+                      column.subcategoryId,
+                      column.period
+                    )
+                  );
                   td.innerHTML = this.buildGradeOverrideButtonMarkup(
                     student.id,
                     course.id,
@@ -15135,111 +15319,110 @@
           }
 
           openGradeOverrideDialog({ studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year" } = {}) {
-            const studentKey = Number(studentId) || 0;
-            const courseKey = Number(courseId) || 0;
-            const normalizedScope = normalizeGradeOverrideScope(scope);
-            const normalizedPeriod = normalizeGradePeriod(period);
-            if (!studentKey || !courseKey || !normalizedScope || !this.refs.gradeOverrideDialog) {
+            const context = this.normalizeGradeOverrideEditorContext({
+              studentId,
+              courseId,
+              scope,
+              categoryId,
+              subcategoryId,
+              period
+            });
+            if (!context) {
               return;
             }
             if (!this.isGradeVaultUnlocked()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
-            const student = this.store.listGradeStudents(courseKey).find((item) => Number(item.id) === studentKey) || null;
-            const studentName = student
-              ? [String(student.lastName || "").trim(), String(student.firstName || "").trim()].filter(Boolean).join(", ")
-              : "Schüler/in";
-            const structure = this.store.getGradeStructure(courseKey);
-            const categories = Array.isArray(structure.categories) ? structure.categories : [];
-            const category = categories.find((item) => Number(item.id) === Number(categoryId)) || null;
-            const subcategory = (category?.subcategories || []).find((item) => Number(item.id) === Number(subcategoryId)) || null;
-            const computed = normalizedScope === "course"
-              ? this.store.calculateComputedGradeForStudentInCoursePeriod(studentKey, courseKey, normalizedPeriod)
-              : normalizedScope === "category"
-                ? this.store.calculateComputedGradeForStudentInCategoryPeriod(studentKey, courseKey, categoryId, normalizedPeriod)
-                : this.store.calculateComputedGradeForStudentInSubcategoryPeriod(studentKey, courseKey, categoryId, subcategoryId, normalizedPeriod);
-            const override = this.store.getGradeOverride(studentKey, courseKey, normalizedScope, categoryId, subcategoryId, normalizedPeriod);
-            this.pendingGradeOverrideContext = {
-              studentId: studentKey,
-              courseId: courseKey,
-              scope: normalizedScope,
-              period: normalizedPeriod,
-              categoryId: Number(categoryId) || null,
-              subcategoryId: Number(subcategoryId) || null
-            };
-            this.refs.gradeOverrideDialogStudentId.value = String(studentKey);
-            this.refs.gradeOverrideDialogCourseId.value = String(courseKey);
-            this.refs.gradeOverrideDialogScope.value = normalizedScope;
-            if (this.refs.gradeOverrideDialogPeriod) this.refs.gradeOverrideDialogPeriod.value = normalizedPeriod;
-            this.refs.gradeOverrideDialogCategoryId.value = category ? String(category.id) : "";
-            this.refs.gradeOverrideDialogSubcategoryId.value = subcategory ? String(subcategory.id) : "";
-            this.refs.gradeOverrideDialogContext.textContent = this.getGradeOverrideDialogContextLabel(
-              normalizedScope,
-              studentName,
-              String(category?.name || ""),
-              String(subcategory?.name || ""),
-              normalizedPeriod
+            const override = this.store.getGradeOverride(
+              context.studentId,
+              context.courseId,
+              context.scope,
+              context.categoryId,
+              context.subcategoryId,
+              context.period
             );
-            this.refs.gradeOverrideDialogComputed.value = formatGradeTooltipDecimal(computed);
-            this.refs.gradeOverrideDialogComputed.textContent = formatGradeTooltipDecimal(computed);
-            this.refs.gradeOverrideDialogInput.value = formatPedagogicalGradeInput(override ? override.value : null);
-            this.refs.gradeOverrideDialogClear.hidden = !override;
-            this.openDialog(this.refs.gradeOverrideDialog);
-            this.refs.gradeOverrideDialogInput.focus();
-            this.refs.gradeOverrideDialogInput.select();
+            this.activeGradeOverrideContext = {
+              ...context,
+              draftValue: formatPedagogicalGradeInput(override ? override.value : null)
+            };
+            this.clearActiveGradeAssessment();
+            this.renderGradesViewPreservingOverviewScroll(() => {
+              const input = this.getActiveGradeOverrideInput();
+              if (input) {
+                input.focus();
+                input.select();
+              }
+            });
           }
 
           closeGradeOverrideDialog() {
-            if (this.gradePickerState.input === this.refs.gradeOverrideDialogInput) {
-              this.hideGradePicker();
-            }
-            this.pendingGradeOverrideContext = null;
-            if (this.refs.gradeOverrideDialogStudentId) this.refs.gradeOverrideDialogStudentId.value = "";
-            if (this.refs.gradeOverrideDialogCourseId) this.refs.gradeOverrideDialogCourseId.value = "";
-            if (this.refs.gradeOverrideDialogScope) this.refs.gradeOverrideDialogScope.value = "";
-            if (this.refs.gradeOverrideDialogPeriod) this.refs.gradeOverrideDialogPeriod.value = "year";
-            if (this.refs.gradeOverrideDialogCategoryId) this.refs.gradeOverrideDialogCategoryId.value = "";
-            if (this.refs.gradeOverrideDialogSubcategoryId) this.refs.gradeOverrideDialogSubcategoryId.value = "";
-            if (this.refs.gradeOverrideDialogContext) this.refs.gradeOverrideDialogContext.textContent = "";
-            if (this.refs.gradeOverrideDialogComputed) {
-              this.refs.gradeOverrideDialogComputed.value = "";
-              this.refs.gradeOverrideDialogComputed.textContent = "—";
-            }
-            if (this.refs.gradeOverrideDialogInput) this.refs.gradeOverrideDialogInput.value = "";
-            if (this.refs.gradeOverrideDialogClear) this.refs.gradeOverrideDialogClear.hidden = true;
-            this.closeDialog(this.refs.gradeOverrideDialog);
-          }
-
-          async submitGradeOverrideDialog() {
-            const studentId = Number(this.refs.gradeOverrideDialogStudentId?.value || 0);
-            const courseId = Number(this.refs.gradeOverrideDialogCourseId?.value || 0);
-            const scope = this.refs.gradeOverrideDialogScope?.value || "";
-            const period = this.refs.gradeOverrideDialogPeriod?.value || "year";
-            const categoryId = Number(this.refs.gradeOverrideDialogCategoryId?.value || 0) || null;
-            const subcategoryId = Number(this.refs.gradeOverrideDialogSubcategoryId?.value || 0) || null;
-            const parsed = parsePedagogicalGradeValue(this.refs.gradeOverrideDialogInput?.value || "", 15);
-            if (!parsed.valid) {
-              await this.showInfoMessage("Bitte eine Note zwischen 0 und 15 mit optional einer Dezimalstelle eingeben.");
-              this.refs.gradeOverrideDialogInput?.focus();
-              this.refs.gradeOverrideDialogInput?.select();
+            if (!this.activeGradeOverrideContext) {
               return;
             }
-            this.store.setGradeOverride(studentId, courseId, scope, parsed.value, categoryId, subcategoryId, period);
-            this.closeGradeOverrideDialog();
-            this.refreshGradeTotals();
+            this.activeGradeOverrideContext = null;
+            this.renderGradesViewPreservingOverviewScroll();
           }
 
-          async clearGradeOverrideFromDialog() {
-            const studentId = Number(this.refs.gradeOverrideDialogStudentId?.value || 0);
-            const courseId = Number(this.refs.gradeOverrideDialogCourseId?.value || 0);
-            const scope = this.refs.gradeOverrideDialogScope?.value || "";
-            const period = this.refs.gradeOverrideDialogPeriod?.value || "year";
-            const categoryId = Number(this.refs.gradeOverrideDialogCategoryId?.value || 0) || null;
-            const subcategoryId = Number(this.refs.gradeOverrideDialogSubcategoryId?.value || 0) || null;
-            this.store.setGradeOverride(studentId, courseId, scope, null, categoryId, subcategoryId, period);
-            this.closeGradeOverrideDialog();
+          submitGradeOverrideDialog(options = {}) {
+            const context = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+            if (!context) {
+              return true;
+            }
+            const input = options.input instanceof HTMLInputElement ? options.input : this.getActiveGradeOverrideInput();
+            const parsed = parsePedagogicalGradeValue(input ? input.value : context.draftValue, 15);
+            if (!parsed.valid) {
+              if (input) {
+                input.classList.add("invalid");
+                input.focus();
+                input.select();
+              }
+              return false;
+            }
+            const formattedValue = formatPedagogicalGradeInput(parsed.value);
+            if (input) {
+              input.classList.remove("invalid");
+              input.value = formattedValue;
+            }
+            this.activeGradeOverrideContext = {
+              ...context,
+              draftValue: formattedValue
+            };
+            this.store.setGradeOverride(
+              context.studentId,
+              context.courseId,
+              context.scope,
+              parsed.value,
+              context.categoryId,
+              context.subcategoryId,
+              context.period
+            );
+            if (options.close) {
+              this.activeGradeOverrideContext = null;
+              this.renderGradesViewPreservingOverviewScroll();
+              return true;
+            }
             this.refreshGradeTotals();
+            return true;
+          }
+
+          clearGradeOverrideFromDialog() {
+            const context = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+            if (!context) {
+              return false;
+            }
+            this.store.setGradeOverride(
+              context.studentId,
+              context.courseId,
+              context.scope,
+              null,
+              context.categoryId,
+              context.subcategoryId,
+              context.period
+            );
+            this.activeGradeOverrideContext = null;
+            this.renderGradesViewPreservingOverviewScroll();
+            return true;
           }
 
           async deleteGradeAssessmentFromDialog() {
@@ -15387,6 +15570,34 @@
             if (!gradeInput || gradeInput.disabled) {
               return;
             }
+            if (gradeInput.dataset.gradeOverrideInput === "1") {
+              const rawValue = String(gradeInput.value || "");
+              const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 4);
+              const sanitizedValue = sanitizePedagogicalGradeInput(rawValue, maxLength);
+              const removedCharacters = rawValue !== sanitizedValue;
+              gradeInput.value = sanitizedValue;
+              const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext) || {
+                studentId: gradeInput.dataset.studentId,
+                courseId: gradeInput.dataset.courseId,
+                scope: gradeInput.dataset.scope,
+                period: gradeInput.dataset.period,
+                categoryId: gradeInput.dataset.categoryId,
+                subcategoryId: gradeInput.dataset.subcategoryId
+              };
+              this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+                ...activeContext,
+                draftValue: sanitizedValue
+              });
+              const parsed = parsePedagogicalGradeValue(sanitizedValue, 15);
+              if (removedCharacters || (sanitizedValue && !parsed.valid)) {
+                this.showGradeInputInvalidFeedback(gradeInput, {
+                  persist: Boolean(sanitizedValue) && !parsed.valid
+                });
+                return;
+              }
+              this.clearGradeInputInvalidFeedback(gradeInput);
+              return;
+            }
             const rawValue = String(gradeInput.value || "");
             const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 2);
             const sanitizedValue = rawValue.replace(/[^\d]/g, "").slice(0, maxLength);
@@ -15408,17 +15619,39 @@
               this.hideGradePicker(event);
               return;
             }
+            if (gradeInput.dataset.gradeOverrideInput === "1") {
+              this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+                studentId: gradeInput.dataset.studentId,
+                courseId: gradeInput.dataset.courseId,
+                scope: gradeInput.dataset.scope,
+                period: gradeInput.dataset.period,
+                categoryId: gradeInput.dataset.categoryId,
+                subcategoryId: gradeInput.dataset.subcategoryId,
+                draftValue: gradeInput.value
+              });
+              return;
+            }
             this.activeGradeStudentId = Number(gradeInput.dataset.studentId || 0) || null;
             this.updateActiveGradeStudentHighlight();
             this.openGradePickerForInput(gradeInput);
           }
 
           handleGradesTableKeyDown(event) {
+            const overrideEditor = event.target.closest("[data-grade-override-editor='1']");
+            if (overrideEditor && event.key === "Escape") {
+              event.preventDefault();
+              this.closeGradeOverrideDialog();
+              return;
+            }
             const input = event.target.closest("input[data-grade-input='1']");
             if (event.key === "Escape" && this.tryExitGradePrivacyMode(event)) {
               return;
             }
             if (!input || input.disabled) {
+              return;
+            }
+            if (input.dataset.gradeOverrideInput === "1") {
+              this.handleGradeOverrideDialogInputKeyDown(event);
               return;
             }
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -15462,6 +15695,30 @@
             if (!input || input.disabled) {
               return;
             }
+            if (input.dataset.gradeOverrideInput === "1") {
+              window.setTimeout(() => {
+                if (!document.body.contains(input)) {
+                  return;
+                }
+                const editor = input.closest("[data-grade-override-editor='1']");
+                const activeElement = document.activeElement;
+                if (editor && activeElement instanceof Element && editor.contains(activeElement)) {
+                  return;
+                }
+                if (!this.isGradeOverrideEditorActive(
+                  input.dataset.studentId,
+                  input.dataset.courseId,
+                  input.dataset.scope,
+                  input.dataset.categoryId,
+                  input.dataset.subcategoryId,
+                  input.dataset.period
+                )) {
+                  return;
+                }
+                this.submitGradeOverrideDialog({ input, close: true });
+              }, 0);
+              return;
+            }
             window.setTimeout(() => {
               if (this.gradePickerState.input === input && this.gradePickerState.open) {
                 return;
@@ -15471,39 +15728,34 @@
           }
 
           handleGradeOverrideDialogInputKeyDown(event) {
-            const input = event.target.closest("#grade-override-dialog-input");
+            const input = event.target.closest("input[data-grade-override-input='1']");
             if (!input || input.disabled) {
               return;
             }
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if (event.key === "Enter") {
               event.preventDefault();
-              const delta = event.key === "ArrowDown" ? 1 : -1;
-              if (!this.gradePickerState.open || this.gradePickerState.input !== input) {
-                this.openGradePickerForInput(input, { mode: "override" });
-              } else {
-                const maxIndex = this.gradePickerState.values.length - 1;
-                this.gradePickerState.activeIndex = this.gradePickerState.activeIndex < 0
-                  ? (event.key === "ArrowUp" ? maxIndex : 0)
-                  : clamp(this.gradePickerState.activeIndex + delta, 0, maxIndex);
-                this.renderGradePicker();
+              this.submitGradeOverrideDialog({ input, close: true });
+              return;
+            }
+            if (event.key === "Tab") {
+              const valid = this.submitGradeOverrideDialog({ input, close: false });
+              if (!valid) {
+                event.preventDefault();
               }
               return;
             }
-            if (event.key === "Enter" && this.gradePickerState.open && this.gradePickerState.input === input && this.gradePickerState.activeIndex >= 0) {
+            if (event.key === "Escape") {
               event.preventDefault();
-              const value = this.gradePickerState.values[this.gradePickerState.activeIndex];
-              this.applyGradePickerValue(value);
-              return;
-            }
-            if (event.key === "Escape" && this.gradePickerState.open && this.gradePickerState.input === input) {
-              event.preventDefault();
-              this.hideGradePicker();
+              this.closeGradeOverrideDialog();
             }
           }
 
           commitGradeCellInput(input) {
             if (!input) {
               return false;
+            }
+            if (input.dataset.gradeOverrideInput === "1") {
+              return this.submitGradeOverrideDialog({ input, close: false });
             }
             const studentId = Number(input.dataset.studentId || 0);
             const isDraftInput = input.dataset.gradeDraftInput === "1";
@@ -15858,6 +16110,9 @@
             const normalized = this.normalizeGradesSubView(subview);
             if (!this.commitVisibleGradeInputs()) {
               return false;
+            }
+            if (normalized !== "overview") {
+              this.activeGradeOverrideContext = null;
             }
             if (normalized !== "entry") {
               this.queueGradesEntrySaveNotice("");
@@ -16281,10 +16536,6 @@
               (this.settingsDraft && this.settingsDraft.showHiddenSidebarCourses)
               || false
             );
-            const draftGradeDisplaySystem = normalizeGradeDisplaySystem(
-              (this.settingsDraft && this.settingsDraft.gradeDisplaySystem)
-              || this.store.getGradeDisplaySystem()
-            );
             if (this.refs.hoursPerDay) {
               this.refs.hoursPerDay.value = String(draftHours);
             }
@@ -16300,14 +16551,6 @@
               const showGradesThreshold = !this.isPlanningTopTabActive();
               this.refs.settingsGradesPrivacyGraphThresholdRow.hidden = !showGradesThreshold;
               this.refs.settingsGradesPrivacyGraphThresholdRow.style.display = showGradesThreshold ? "" : "none";
-            }
-            if (this.refs.gradeDisplaySystem) {
-              this.refs.gradeDisplaySystem.value = draftGradeDisplaySystem;
-            }
-            if (this.refs.settingsGradeDisplaySystemRow) {
-              const showGradeDisplaySystem = this.isGradesTopTabActive();
-              this.refs.settingsGradeDisplaySystemRow.hidden = !showGradeDisplaySystem;
-              this.refs.settingsGradeDisplaySystemRow.style.display = showGradeDisplaySystem ? "" : "none";
             }
             if (this.refs.showHiddenSidebarCourses) {
               this.refs.showHiddenSidebarCourses.checked = draftShowHidden;

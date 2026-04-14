@@ -5,6 +5,7 @@ import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createShellController } from './app/shell.js';
 import { reportError } from './shared/error-reporting.js';
 import { createMessageApi } from './shared/messages.js';
+import { createSharedRosterStore } from './shared/roster-store.js';
 import { STUDENTS_SYNC_SOURCE_GROUPS } from './shared/student-sync-bus.js';
 import { createSharedTimerStore } from './shared/timer-store.js';
 import {
@@ -128,6 +129,7 @@ import { applyTheme } from './shell/theme.js';
       let randomPickerSpinInProgress = false;
       let randomPickerCurrentIndex = 0;
       let randomPickerLockedWidthPx = 0;
+      let lastRosterImportedAt = 0;
 
       const cloneStudentsForSync = (students) => {
         if (!Array.isArray(students)) return [];
@@ -161,6 +163,18 @@ import { applyTheme } from './shell/theme.js';
         startISO: state.workOrderStartISO,
         alarmState: state.workOrderAlarmed,
       });
+      const SharedRosterStore = createSharedRosterStore({
+        documentBus: document,
+        initialDetail: {
+          source: STUDENTS_SYNC_SOURCE_GROUPS,
+          students: cloneStudentsForSync(state.students),
+          performanceFlairCount: state.performanceFlairCount,
+          csvName: state.csvName,
+          headers: state.headers,
+          delim: state.delim,
+          importedAt: Date.now(),
+        },
+      });
       const MIC_UI_STATE = Object.freeze({
         READY: 'ready',
         STARTING: 'starting',
@@ -191,20 +205,49 @@ import { applyTheme } from './shell/theme.js';
       });
       bridgeController = createPlanningSeatplanBridge({
         els,
-        state,
-        SharedTimerStore,
         getChromeCollapsed: isChromeCollapsed,
-        cloneStudentsForSync,
-        sanitizeExportFileName,
-        updateCsvStatusDisplay,
-        syncStateFromTimerStore,
-        syncGroupSizeInputs,
-        refreshUnseated,
-        renderRandomPicker,
-        renderSeats,
-        renderWorkOrder,
-        updateScrollHint,
+        rosterStore: SharedRosterStore,
         documentBus: document,
+      });
+      SharedRosterStore.subscribe((detail) => {
+        if (!detail || typeof detail !== 'object') return;
+        const importedAt = Number(detail.importedAt);
+        if (Number.isFinite(importedAt) && importedAt <= lastRosterImportedAt) return;
+        lastRosterImportedAt = Number.isFinite(importedAt) ? importedAt : Date.now();
+        state.students = cloneStudentsForSync(detail.students);
+        state.performanceFlairCount = clampPerformanceFlairCount(
+          detail.performanceFlairCount,
+          state.performanceFlairCount
+        );
+        state.headers = Array.isArray(detail.headers) ? detail.headers.slice() : [];
+        if (typeof detail.delim === 'string' && detail.delim) {
+          state.delim = detail.delim;
+        }
+        if (typeof detail.csvName === 'string') {
+          const label = sanitizeExportFileName(detail.csvName);
+          state.csvName = label || '';
+          updateCsvStatusDisplay();
+        }
+        state.seats = {};
+        state.seatTopics = {};
+        SharedTimerStore.setWorkOrder({
+          workOrderText: '',
+          durationMinutes: null,
+          startISO: null,
+        });
+        SharedTimerStore.stop();
+        syncStateFromTimerStore();
+        state.lockedSeats.clear();
+        syncGroupSizeInputs();
+        els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
+        refreshUnseated();
+        renderRandomPicker();
+        renderSeats();
+        renderWorkOrder();
+        requestGroupGridLayoutRefresh({ resetViewport: true });
+        state.scrollHintDismissed = false;
+        state._lastImport = true;
+        updateScrollHint();
       });
       shellController = createShellController({
         els,
@@ -238,6 +281,7 @@ import { applyTheme } from './shell/theme.js';
       });
       const PREFERENCE_SLOT_COUNT = 3;
       const MAX_GRID_SIZE = 20;
+      const MAX_PERFORMANCE_FLAIR_COUNT = 10;
       const TOUCH_DRAG_DELAY_MS = 90;
       const TOUCH_DRAG_CANCEL_DISTANCE = 10;
       const touchPoints = typeof navigator !== 'undefined' ? (navigator.maxTouchPoints || 0) : 0;
@@ -599,10 +643,12 @@ import { applyTheme } from './shell/theme.js';
       function clampPerformanceFlairCount(value, fallback = 4) {
         const parsed = Number.parseInt(value, 10);
         const fallbackParsed = Number.parseInt(fallback, 10);
-        const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2 ? fallbackParsed : 4;
+        const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2
+          ? Math.min(MAX_PERFORMANCE_FLAIR_COUNT, fallbackParsed)
+          : 4;
         if (!Number.isFinite(parsed)) return normalizedFallback;
         if (parsed < 2) return normalizedFallback;
-        return parsed;
+        return Math.min(MAX_PERFORMANCE_FLAIR_COUNT, parsed);
       }
       function normalizePerformanceFlair(value) {
         const normalized = String(value || '').trim().toUpperCase();
@@ -814,7 +860,7 @@ import { applyTheme } from './shell/theme.js';
           }
           if (els.randomPickerActionNote) {
             els.randomPickerActionNote.textContent = allCandidates.length
-              ? 'Lege im Dialog Auswahlbedingungen pro Name „unmöglich“, „normal“, „doppelt“, „dreifach“ oder „sicher“ fest.'
+              ? 'Lege im Dialog Bedingungen pro Name „unmöglich“, „normal“, „doppelt“, „dreifach“ oder „sicher“ fest.'
               : 'Tippe auf den Button, damit der Generator losläuft.';
           }
           setRandomPickerStartButtons({ disabled: !allCandidates.length, text: 'Start' });
@@ -913,23 +959,14 @@ import { applyTheme } from './shell/theme.js';
       function renderSeatPreferencesHeader() {
         if (!els.preferencesDialogTitle || !els.preferencesTableHead) return;
         setPreferencesResetVisibility(false);
-        els.preferencesDialogTitle.textContent = 'Auswahlbedingungen';
+        els.preferencesDialogTitle.textContent = 'Bedingungen';
         els.preferencesTableHead.innerHTML = `
           <tr>
             <th colspan="3" class="group-header">
               Gute Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
             </th>
             <th class="group-header name-header"></th>
-            <th
-              class="group-header performance-flair-header"
-              data-performance-flair-header="1"
-              role="button"
-              tabindex="0"
-              title="Anzahl der Leistungsstufen anpassen"
-              aria-label="Anzahl der Leistungsstufen anpassen"
-            >
-              homogen
-            </th>
+            <th class="group-header performance-flair-header">Leistungsklasse</th>
             <th colspan="3" class="group-header">
               Schlechte Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
             </th>
@@ -1006,7 +1043,7 @@ import { applyTheme } from './shell/theme.js';
       function buildRandomPickerConditionsTable() {
         if (!els.preferencesDialogTitle || !els.preferencesTableHead || !els.preferencesTableBody) return;
         setPreferencesResetVisibility(true);
-        els.preferencesDialogTitle.textContent = 'Auswahlbedingungen';
+        els.preferencesDialogTitle.textContent = 'Bedingungen';
         els.preferencesTableHead.innerHTML = `
           <tr>
             <th class="group-header name-header">Name</th>
@@ -1192,10 +1229,10 @@ import { applyTheme } from './shell/theme.js';
         els.preferencesPerformanceSummary.hidden = false;
         els.preferencesPerformanceSummary.innerHTML = '';
 
-        const label = document.createElement('span');
-        label.className = 'preferences-performance-summary-label';
-        label.textContent = 'Homogene Leistungsklassen:';
-        els.preferencesPerformanceSummary.appendChild(label);
+        const valuesLabel = document.createElement('span');
+        valuesLabel.className = 'preferences-performance-summary-sublabel';
+        valuesLabel.textContent = 'Lernendenanzahl pro Leistungsklasse:';
+        els.preferencesPerformanceSummary.appendChild(valuesLabel);
 
         const values = document.createElement('div');
         values.className = 'preferences-performance-summary-values';
@@ -1212,6 +1249,41 @@ import { applyTheme } from './shell/theme.js';
           values.appendChild(pill);
         }
         els.preferencesPerformanceSummary.appendChild(values);
+
+        const countControl = document.createElement('label');
+        countControl.className = 'preferences-performance-summary-control';
+        countControl.htmlFor = 'performance-flair-count-input';
+
+        const countLabel = document.createElement('span');
+        countLabel.className = 'preferences-performance-summary-control-label';
+        countLabel.textContent = 'Anzahl an Leistungsklassen:';
+        countControl.appendChild(countLabel);
+
+        const countInput = document.createElement('input');
+        countInput.type = 'text';
+        countInput.id = 'performance-flair-count-input';
+        countInput.inputMode = 'numeric';
+        countInput.maxLength = 3;
+        countInput.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
+        countInput.dataset.performanceFlairCountInput = '1';
+        countInput.setAttribute('aria-label', 'Anzahl an Leistungsklassen');
+        countControl.appendChild(countInput);
+
+        els.preferencesPerformanceSummary.appendChild(countControl);
+      }
+      function applyPerformanceFlairCount(nextValue, draft = null) {
+        const nextCount = clampPerformanceFlairCount(nextValue);
+        state.performanceFlairCount = nextCount;
+        sanitizePerformanceFlairCountInStudents(nextCount);
+        if (draft instanceof Map) {
+          draft.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            entry.performanceFlair = sanitizePerformanceFlairForCount(entry.performanceFlair, nextCount);
+          });
+          buildSeatPreferencesTable(draft);
+          return;
+        }
+        buildSeatPreferencesTable();
       }
       function savePreferencesFromForm() {
         if (!els.preferencesTableBody) return;
@@ -3565,43 +3637,20 @@ import { applyTheme } from './shell/theme.js';
         }
         target.checked = true;
       });
-      const handlePerformanceFlairHeaderAction = () => {
-        const response = window.prompt(
-          'Wie viele Leistungsstufen sollen verfügbar sein? Bitte eine Zahl ab 2 eingeben.',
-          String(clampPerformanceFlairCount(state.performanceFlairCount))
-        );
-        if (response === null) return;
-        const trimmed = String(response).trim();
-        if (!/^[0-9]+$/.test(trimmed) || Number.parseInt(trimmed, 10) < 2) {
-          showMessage('Bitte eine Zahl ab 2 eingeben.', 'warn');
+      els.preferencesPerformanceSummary?.addEventListener('change', (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLInputElement) || target.dataset.performanceFlairCountInput !== '1') return;
+        if (isRandomPickerTabActive()) return;
+        const trimmed = String(target.value || '').trim();
+        const parsed = Number.parseInt(trimmed, 10);
+        if (!/^[0-9]+$/.test(trimmed) || parsed < 2 || parsed > MAX_PERFORMANCE_FLAIR_COUNT) {
+          showMessage(`Bitte eine Zahl zwischen 2 und ${MAX_PERFORMANCE_FLAIR_COUNT} eingeben.`, 'warn');
+          target.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
+          target.focus();
+          target.select();
           return;
         }
-        const nextCount = clampPerformanceFlairCount(trimmed);
-        const draft = readSeatPreferencesDraftFromForm();
-        state.performanceFlairCount = nextCount;
-        sanitizePerformanceFlairCountInStudents(nextCount);
-        if (draft instanceof Map) {
-          draft.forEach((entry) => {
-            if (!entry || typeof entry !== 'object') return;
-            entry.performanceFlair = sanitizePerformanceFlairForCount(entry.performanceFlair, nextCount);
-          });
-          buildSeatPreferencesTable(draft);
-        }
-      };
-      els.preferencesTableHead?.addEventListener('click', (event) => {
-        const header = event.target instanceof Element
-          ? event.target.closest('[data-performance-flair-header="1"]')
-          : null;
-        if (!header || isRandomPickerTabActive()) return;
-        handlePerformanceFlairHeaderAction();
-      });
-      els.preferencesTableHead?.addEventListener('keydown', (event) => {
-        const target = event.target;
-        if (!(target instanceof Element) || !target.closest('[data-performance-flair-header="1"]')) return;
-        if (isRandomPickerTabActive()) return;
-        if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') return;
-        event.preventDefault();
-        handlePerformanceFlairHeaderAction();
+        applyPerformanceFlairCount(parsed, readSeatPreferencesDraftFromForm());
       });
       els.preferencesCancel?.addEventListener('click', () => {
         if (els.preferencesDialog) {

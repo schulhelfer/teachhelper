@@ -1,7 +1,7 @@
 import {
   STUDENTS_UPDATED_EVENT,
-  STUDENTS_SYNC_SOURCE_GROUPS,
   STUDENTS_SYNC_SOURCE_SEATPLAN,
+  normalizeStudentsSyncDetail,
 } from '../shared/student-sync-bus.js';
 import {
   PLANNING_VIEW_REQUEST_EVENT,
@@ -16,32 +16,12 @@ import { mountSeatplan } from '../modules/seatplan/index.js';
 
 export function createPlanningSeatplanBridge({
   els,
-  state,
-  SharedTimerStore,
   getChromeCollapsed,
-  cloneStudentsForSync,
-  sanitizeExportFileName,
-  updateCsvStatusDisplay,
-  syncStateFromTimerStore,
-  syncGroupSizeInputs,
-  refreshUnseated,
-  renderRandomPicker,
-  renderSeats,
-  renderWorkOrder,
-  updateScrollHint,
+  rosterStore,
   documentBus = document,
 } = {}) {
-  const clampPerformanceFlairCount = (value, fallback = 0) => {
-    const parsed = Number.parseInt(value, 10);
-    const fallbackParsed = Number.parseInt(fallback, 10);
-    const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2 ? fallbackParsed : 4;
-    if (!Number.isFinite(parsed)) return normalizedFallback;
-    if (parsed < 2) return normalizedFallback;
-    return parsed;
-  };
   let planningController = null;
   let seatplanController = null;
-  let lastStudentsSyncTimestamp = 0;
   const tabInitState = {
     [TAB_MERGER]: false,
     [TAB_PLANNING]: false,
@@ -50,55 +30,14 @@ export function createPlanningSeatplanBridge({
 
   const seatplanBus = documentBus;
 
-  const buildStudentsSyncDetail = (source, importedAt = Date.now()) => ({
+  const buildStudentsSyncDetail = (source, importedAt = Date.now()) => normalizeStudentsSyncDetail({
+    ...rosterStore?.getState?.(),
     source,
-    students: cloneStudentsForSync(state.students),
-    performanceFlairCount: clampPerformanceFlairCount(state.performanceFlairCount),
-    csvName: state.csvName || '',
-    headers: Array.isArray(state.headers) ? state.headers.slice() : [],
-    delim: typeof state.delim === 'string' ? state.delim : ',',
     importedAt,
   });
 
   const dispatchStudentsUpdateToSeatplan = (detail) => {
     seatplanController?.send(detail);
-  };
-
-  const applySyncedStudentsToGroups = (detail) => {
-    if (!detail || typeof detail !== 'object') return;
-    const importedAt = Number(detail.importedAt);
-    if (Number.isFinite(importedAt) && importedAt <= lastStudentsSyncTimestamp) return;
-    lastStudentsSyncTimestamp = Number.isFinite(importedAt) ? importedAt : Date.now();
-    state.students = cloneStudentsForSync(detail.students);
-    state.performanceFlairCount = clampPerformanceFlairCount(detail.performanceFlairCount, state.performanceFlairCount);
-    state.seats = {};
-    state.seatTopics = {};
-    state.headers = Array.isArray(detail.headers) ? detail.headers.slice() : [];
-    if (typeof detail.delim === 'string' && detail.delim) {
-      state.delim = detail.delim;
-    }
-    if (typeof detail.csvName === 'string') {
-      const label = sanitizeExportFileName(detail.csvName);
-      state.csvName = label || '';
-      updateCsvStatusDisplay();
-    }
-    SharedTimerStore.setWorkOrder({
-      workOrderText: '',
-      durationMinutes: null,
-      startISO: null,
-    });
-    SharedTimerStore.stop();
-    syncStateFromTimerStore();
-    state.lockedSeats.clear();
-    syncGroupSizeInputs();
-    els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
-    refreshUnseated();
-    renderRandomPicker();
-    renderSeats();
-    renderWorkOrder();
-    state.scrollHintDismissed = false;
-    state._lastImport = true;
-    updateScrollHint();
   };
 
   const initPlanningTab = (root = els.planningHost) => {
@@ -128,8 +67,9 @@ export function createPlanningSeatplanBridge({
     if (!sideHost || !mainHost || !dialogHost || mainHost.dataset.initialized === '1') return;
     seatplanController = mountSeatplan({ sideHost, mainHost, dialogHost, bus });
     seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed() });
-    if (Array.isArray(state.students) && state.students.length > 0) {
-      dispatchStudentsUpdateToSeatplan(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GROUPS, Date.now()));
+    const rosterState = rosterStore?.getState?.();
+    if (Array.isArray(rosterState?.students) && rosterState.students.length > 0) {
+      dispatchStudentsUpdateToSeatplan(buildStudentsSyncDetail(rosterState.source, Date.now()));
     }
   };
 
@@ -236,16 +176,8 @@ export function createPlanningSeatplanBridge({
 
   function emitStudentsUpdated(source) {
     const detail = buildStudentsSyncDetail(source);
-    lastStudentsSyncTimestamp = Math.max(lastStudentsSyncTimestamp, Number(detail.importedAt) || Date.now());
-    documentBus.dispatchEvent(new CustomEvent(STUDENTS_UPDATED_EVENT, { detail }));
+    rosterStore?.dispatch?.(detail);
   }
-
-  seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
-    const detail = event.detail;
-    if (!detail || typeof detail !== 'object') return;
-    if (detail.source !== STUDENTS_SYNC_SOURCE_SEATPLAN) return;
-    applySyncedStudentsToGroups(detail);
-  });
 
   seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
     const detail = event.detail;

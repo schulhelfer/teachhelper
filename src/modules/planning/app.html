@@ -259,13 +259,6 @@
                         <input id="grades-privacy-graph-threshold" class="settings-number-input" type="number" min="0"
                           max="50" value="5">
                       </div>
-                      <div id="settings-grade-display-system-row" class="settings-form-row" hidden>
-                        <label class="settings-form-label" for="grade-display-system">Notensystem</label>
-                        <select id="grade-display-system">
-                          <option value="points15">00-15</option>
-                          <option value="grade16">1-6</option>
-                        </select>
-                      </div>
                       <div class="settings-form-row">
                         <span class="settings-form-label">Randleiste</span>
                         <label class="checkbox-line settings-inline-checkbox">
@@ -679,40 +672,6 @@
           <div class="button-row dialog-actions grade-assessment-dialog-actions">
             <button type="button" id="grade-assessment-dialog-delete" class="ghost danger-action"
               aria-label="Leistung löschen" title="Leistung löschen">🗑️</button>
-          </div>
-        </form>
-      </dialog>
-
-      <dialog id="grade-override-dialog" class="app-dialog" aria-label="Manuelle Notensetzung">
-        <form id="grade-override-dialog-form" class="form-grid" method="dialog">
-          <div class="dialog-header">
-            <h3 class="settings-panel-title">Manuelle Notensetzung</h3>
-            <div class="dialog-actions-top">
-              <button type="button" id="grade-override-dialog-cancel" class="ghost dialog-icon-button"
-                aria-label="Abbrechen" title="Abbrechen">❌</button>
-              <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
-            </div>
-          </div>
-          <input type="hidden" id="grade-override-dialog-student-id">
-          <input type="hidden" id="grade-override-dialog-course-id">
-          <input type="hidden" id="grade-override-dialog-scope">
-          <input type="hidden" id="grade-override-dialog-period">
-          <input type="hidden" id="grade-override-dialog-category-id">
-          <input type="hidden" id="grade-override-dialog-subcategory-id">
-          <p id="grade-override-dialog-context" class="message-dialog-text"></p>
-          <label>
-            Errechnete Note
-            <output id="grade-override-dialog-computed" class="grade-override-computed">—</output>
-          </label>
-          <label>
-            Manuelle Notensetzung
-            <input id="grade-override-dialog-input" type="text" inputmode="decimal" maxlength="4"
-              placeholder="z. B. 12" autocomplete="off">
-            <div id="grade-override-dialog-picker" class="grade-picker grade-picker-inline" hidden></div>
-          </label>
-          <div class="button-row dialog-actions">
-            <button type="button" id="grade-override-dialog-clear" class="ghost danger-action">Überschreibung
-              entfernen</button>
           </div>
         </form>
       </dialog>

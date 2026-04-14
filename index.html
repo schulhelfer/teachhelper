@@ -4487,6 +4487,10 @@
       color: rgba(254, 215, 170, 0.96);
     }
 
+    .preferences-performance-summary-sublabel {
+      color: rgba(255, 237, 213, 0.82);
+    }
+
     .preferences-performance-summary-values {
       display: flex;
       flex-wrap: wrap;
@@ -4503,6 +4507,50 @@
 
     .preferences-performance-summary-pill.is-unassigned {
       color: rgba(254, 226, 226, 0.96);
+    }
+
+    .preferences-performance-summary-control {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: nowrap;
+      margin-left: 24px;
+      margin-bottom: 0;
+      color: rgba(255, 237, 213, 0.96);
+      font-weight: 600;
+    }
+
+    .preferences-performance-summary-control-label {
+      white-space: nowrap;
+    }
+
+    .preferences-performance-summary-control input {
+      width: 2.8rem;
+      min-width: 2.8rem;
+      max-width: 2.8rem;
+      flex: 0 0 2.8rem;
+      height: 1.7rem;
+      padding: 0 0.2rem;
+      border-radius: 8px;
+      text-align: center;
+    }
+
+    label.preferences-performance-summary-control {
+      display: inline-flex;
+      align-items: center;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 8px;
+      margin-bottom: 0;
+    }
+
+    .dialog-form label.preferences-performance-summary-control {
+      display: inline-flex;
+      align-items: center;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      gap: 8px;
+      margin-bottom: 0;
     }
 
     .preferences-table {
@@ -4551,13 +4599,6 @@
 
     .preferences-table .performance-flair-header {
       min-width: 92px;
-      cursor: pointer;
-      user-select: none;
-    }
-
-    .preferences-table .performance-flair-header:focus-visible {
-      outline: 2px solid var(--focus);
-      outline-offset: -2px;
     }
 
     .preferences-table tbody tr:nth-child(odd) {
@@ -5415,7 +5456,7 @@
                   Gute Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
                 </th>
                 <th class="group-header name-header"></th>
-                <th class="group-header performance-flair-header">homogen</th>
+                <th class="group-header performance-flair-header">Leistungsklasse</th>
                 <th colspan="3" class="group-header">
                   Schlechte Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
                 </th>
