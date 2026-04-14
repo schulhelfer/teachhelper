@@ -17335,8 +17335,8 @@
                   chip.dataset.lessonId = String(block.firstLessonId);
                   if (block.selectable) {
                     chip.title = block.hasNotes
-                      ? "Linksklick: Theme bearbeiten / Rechtsklick: Weitere Aktionen"
-                      : "Linksklick: Theme bearbeiten / Rechtsklick: Weitere Aktionen";
+                      ? "Linksklick: Thema bearbeiten / Rechtsklick: Weitere Aktionen"
+                      : "Linksklick: Thema bearbeiten / Rechtsklick: Weitere Aktionen";
                   } else {
                     chip.title = "Nicht bearbeitbar";
                   }

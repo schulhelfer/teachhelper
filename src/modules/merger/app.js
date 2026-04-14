@@ -44,23 +44,27 @@
           let specialThreeModeAvailable = false;
           let optionsEnabled = false;
           let specialModeProbeToken = 0;
-          let pdfLibLoadPromise = null;
-          let resultOpenUrl = null;
-          const PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
-          const MACOS_PERMISSION_HINT_MESSAGE = [
-            "macOS blockiert manchmal den Zugriff auf Dateien.",
-            "",
-            "So behebst du das:",
-            "",
-            "1. Öffne die Systemeinstellungen",
-            "2. Gehe zu „Datenschutz & Sicherheit“",
-            "3. Öffne „Dateien & Ordner“",
-            "4. Wähle deinen Browser (z. B. Safari, Chrome oder Firefox)",
-            "5. Aktiviere Zugriff auf „Downloads“ (und ggf. „Dokumente“)",
-            "6. Starte den Browser neu"
-          ].join("\n");
+	          let pdfLibLoadPromise = null;
+	          let resultOpenUrl = null;
+	          const PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
+	          const MACOS_PERMISSION_HINT_MESSAGE = [
+	            "macOS blockiert manchmal den Zugriff auf Dateien.",
+	            "",
+	            "So behebst du das:",
+	            "",
+	            "1. Öffne die Systemeinstellungen",
+	            "2. Gehe zu „Datenschutz & Sicherheit“",
+	            "3. Öffne „Dateien & Ordner“",
+	            "4. Wähle deinen Browser (z. B. Safari, Chrome oder Firefox)",
+	            "5. Aktiviere Zugriff auf „Downloads“ (und ggf. „Dokumente“)",
+	            "6. Starte den Browser neu"
+	          ].join("\n");
 
-          function syncDialogUiState() {
+	          document.addEventListener("contextmenu", (event) => {
+	            event.preventDefault();
+	          }, true);
+
+	          function syncDialogUiState() {
             const resultOpen = ui.resultDialog.open || ui.resultDialog.hasAttribute("open") || !ui.resultDialog.classList.contains("hidden");
             const busyOpen = ui.busyDialog.open || ui.busyDialog.hasAttribute("open") || !ui.busyDialog.classList.contains("hidden");
             document.body.classList.toggle("dialog-active", resultOpen || busyOpen);
