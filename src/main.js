@@ -27,6 +27,9 @@ import { applyTheme } from './shell/theme.js';
       if (els.preferencesDialog && !els.preferencesDialog.hasAttribute('tabindex')) {
         els.preferencesDialog.setAttribute('tabindex', '-1');
       }
+      appEl.addEventListener('contextmenu', (event) => {
+        event.preventDefault();
+      }, true);
       const monitorLightNodes = Object.values(monitorLights).filter(Boolean);
       const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
       const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
@@ -35,6 +38,17 @@ import { applyTheme } from './shell/theme.js';
         if (els.headerVersion) {
           const safeVersion = String(version || '').trim();
           els.headerVersion.textContent = safeVersion ? `(v${safeVersion})` : '';
+          if (safeVersion) {
+            els.headerVersion.setAttribute('role', 'button');
+            els.headerVersion.setAttribute('tabindex', '0');
+            els.headerVersion.setAttribute('title', 'Auf Updates prüfen');
+            els.headerVersion.setAttribute('aria-label', `Version v${safeVersion}. Auf Updates prüfen`);
+          } else {
+            els.headerVersion.removeAttribute('role');
+            els.headerVersion.removeAttribute('tabindex');
+            els.headerVersion.removeAttribute('title');
+            els.headerVersion.removeAttribute('aria-label');
+          }
         }
       };
       setDisplayedAppVersion(APP_VERSION);
@@ -356,6 +370,11 @@ import { applyTheme } from './shell/theme.js';
             input.placeholder = input.dataset.defaultPlaceholder || 'Thema';
           }
         });
+      }
+      function syncSeatTopicState(seat, topicValue) {
+        if (!seat) return;
+        const hasTopic = Boolean(String(topicValue || '').trim());
+        seat.classList.toggle('seat-topic-empty', !hasTopic);
       }
       function isLastNameOutOfView() {
         if (!els.unseated) return false;
@@ -2757,7 +2776,13 @@ import { applyTheme } from './shell/theme.js';
           initSeatTopicInput(topicInput);
           if (topicInput) {
             topicInput.value = typeof state.seatTopics[id] === 'string' ? state.seatTopics[id] : '';
-            topicInput.addEventListener('input', () => { state.seatTopics[id] = topicInput.value; });
+            syncSeatTopicState(seat, topicInput.value);
+            topicInput.addEventListener('input', () => {
+              state.seatTopics[id] = topicInput.value;
+              syncSeatTopicState(seat, topicInput.value);
+            });
+          } else {
+            syncSeatTopicState(seat, state.seatTopics[id]);
           }
           const header = seat.querySelector('.seat-header');
           if (header) {
@@ -2817,6 +2842,7 @@ import { applyTheme } from './shell/theme.js';
           const occupants = getSeatList(id);
           const nameEl = seat.querySelector('.name');
           const lockBadge = seat.querySelector('.lock-badge');
+          syncSeatTopicState(seat, state.seatTopics[id]);
           nameEl.innerHTML = '';
           lockBadge.style.display = state.lockedSeats.has(id) ? 'inline' : 'none';
           seat.classList.toggle('locked', state.lockedSeats.has(id));
@@ -5101,10 +5127,54 @@ import { applyTheme } from './shell/theme.js';
       els.app?.classList.add('app-js-ready');
       window.addEventListener('resize', positionWorkOrderHintOverlay);
       window.addEventListener('scroll', positionWorkOrderHintOverlay, true);
-      registerServiceWorkerUpdates({
+      const serviceWorkerUpdates = registerServiceWorkerUpdates({
         updateDialog: els.updateDialog,
         updateDialogLater: els.updateDialogLater,
         updateDialogReload: els.updateDialogReload,
         serviceWorkerUrl: './sw.js',
       });
+      if (els.headerVersion && serviceWorkerUpdates?.checkForUpdates) {
+        const runManualUpdateCheck = async () => {
+          if (els.headerVersion.dataset.updateCheckPending === '1') {
+            return;
+          }
+          els.headerVersion.dataset.updateCheckPending = '1';
+          els.headerVersion.classList.add('is-checking-update');
+          try {
+            const result = await serviceWorkerUpdates.checkForUpdates();
+            switch (result?.status) {
+              case 'update-available':
+                showMessage('Update verfügbar. Aktualisieren-Dialog geöffnet.', 'info');
+                break;
+              case 'up-to-date':
+                showMessage('TeachHelper ist aktuell.', 'info');
+                break;
+              case 'disabled':
+                showMessage('Update-Check ist auf localhost deaktiviert.', 'warn');
+                break;
+              case 'unsupported':
+                showMessage('Update-Check wird von diesem Browser nicht unterstützt.', 'warn');
+                break;
+              default:
+                showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
+                break;
+            }
+          } catch {
+            showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
+          } finally {
+            delete els.headerVersion.dataset.updateCheckPending;
+            els.headerVersion.classList.remove('is-checking-update');
+          }
+        };
+        els.headerVersion.addEventListener('click', () => {
+          void runManualUpdateCheck();
+        });
+        els.headerVersion.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') {
+            return;
+          }
+          event.preventDefault();
+          void runManualUpdateCheck();
+        });
+      }
     })();
