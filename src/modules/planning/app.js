@@ -9893,36 +9893,6 @@
               this.openGradeAssessmentDialog(editButton.dataset.gradeEditAssessment);
               return;
             }
-            const overridePickerButton = event.target.closest("button[data-grade-override-picker-value]");
-            if (overridePickerButton) {
-              event.stopPropagation();
-              const value = Number(overridePickerButton.dataset.gradeOverridePickerValue);
-              if (!Number.isFinite(value)) {
-                return;
-              }
-              const context = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
-              if (!context) {
-                return;
-              }
-              this.store.setGradeOverride(
-                context.studentId,
-                context.courseId,
-                context.scope,
-                value,
-                context.categoryId,
-                context.subcategoryId,
-                context.period
-              );
-              this.activeGradeOverrideContext = null;
-              this.renderGradesViewPreservingOverviewScroll();
-              return;
-            }
-            const overrideResetButton = event.target.closest("button[data-grade-override-reset='1']");
-            if (overrideResetButton) {
-              event.stopPropagation();
-              await this.clearGradeOverrideFromDialog();
-              return;
-            }
             const overrideButton = event.target.closest("button[data-grade-open-override='1']");
             if (overrideButton) {
               event.stopPropagation();
@@ -11531,7 +11501,7 @@
                 event.target instanceof Element
                 && event.target.closest("button[data-grade-open-override='1']")
               );
-              if (this.activeGradeOverrideContext && !insideOverrideEditor && !overrideTrigger) {
+              if (this.activeGradeOverrideContext && !insideOverrideEditor && !overrideTrigger && !insideGradePicker) {
                 const committed = this.submitGradeOverrideDialog({ close: false });
                 if (committed) {
                   this.closeGradeOverrideDialog();
@@ -14025,19 +13995,23 @@
             return this.refs.gradesTable?.querySelector("input[data-grade-override-input='1']:not(:disabled)") || null;
           }
 
-          buildGradeOverridePickerMarkup(selectedValue = null) {
-            return `
-        <div class="grade-picker grade-picker-inline grade-override-inline-picker" data-grade-override-picker="1">
-          ${Array.from({ length: 16 }, (_, index) => 15 - index).map((value) => `
-            <button
-              type="button"
-              data-grade-override-picker-value="${value}"
-              class="${[value === 0 ? "grade-picker-zero" : "", selectedValue === value ? "active" : ""].filter(Boolean).join(" ")}"
-              aria-label="Note ${formatGradeInteger(value)} setzen"
-            >${formatGradeInteger(value)}</button>
-          `).join("")}
-        </div>
-      `;
+          syncGradePickerSelectionFromInput(input = null) {
+            if (!this.gradePickerState.open) {
+              return;
+            }
+            const activeInput = input instanceof HTMLInputElement ? input : this.gradePickerState.input;
+            if (!(activeInput instanceof HTMLInputElement) || activeInput !== this.gradePickerState.input) {
+              return;
+            }
+            const parsed = this.gradePickerState.mode === "override"
+              ? parsePedagogicalGradeValue(activeInput.value, 15)
+              : parseGradeValue(activeInput.value, 15);
+            const currentValue = parsed.valid ? parsed.value : null;
+            this.gradePickerState.activeIndex = currentValue === null
+              ? -1
+              : this.gradePickerState.values.findIndex((value) => value === currentValue);
+            this.renderGradePicker();
+            this.positionGradePicker();
           }
 
           getGradeOverrideComputedValue(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
@@ -14125,25 +14099,13 @@
                 : `${periodLabel} Unterkategorienote`;
             if (this.isGradeOverrideEditorActive(studentKey, courseKey, normalizedScope, categoryKey, subcategoryKey, period)) {
               const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
-              const computedValue = this.getGradeOverrideComputedValue(
-                studentKey,
-                courseKey,
-                normalizedScope,
-                categoryKey,
-                subcategoryKey,
-                period
-              );
               const draftValue = activeContext ? activeContext.draftValue : "";
-              const parsedDraft = parsePedagogicalGradeValue(draftValue, 15);
-              const pickerValue = parsedDraft.valid ? parsedDraft.value : null;
-              const invalidClass = draftValue && !parsedDraft.valid ? " invalid" : "";
-              const resetDisabledAttr = computedValue === null ? " disabled" : "";
+              const invalidClass = draftValue && !parsePedagogicalGradeValue(draftValue, 15).valid ? " invalid" : "";
               return `
-          <div class="grade-override-inline-editor${state.overridden ? " is-overridden" : ""}" data-grade-override-editor="1">
-            <div class="grade-override-inline-computed">Errechnete Note: <span class="grade-override-inline-computed-value">${formatGradeTooltipDecimal(computedValue)}</span></div>
+          <div class="grade-override-cell-editor${state.overridden ? " is-overridden" : ""}" data-grade-override-editor="1">
             <input
               type="text"
-              class="grade-cell-input grade-override-inline-input${invalidClass}"
+              class="grade-cell-input grade-override-cell-input${invalidClass}"
               inputmode="decimal"
               maxlength="4"
               data-grade-input="1"
@@ -14157,8 +14119,6 @@
               aria-label="${scopeLabel} manuell setzen"
               autocomplete="off"
             >
-            ${this.buildGradeOverridePickerMarkup(pickerValue)}
-            <button type="button" class="danger-action grade-override-inline-reset" data-grade-override-reset="1"${resetDisabledAttr}>Auf errechnete Note</button>
           </div>
         `;
             }
@@ -15359,6 +15319,7 @@
               if (input) {
                 input.focus();
                 input.select();
+                this.openGradePickerForInput(input, { mode: "override" });
               }
             });
           }
@@ -15367,6 +15328,7 @@
             if (!this.activeGradeOverrideContext) {
               return;
             }
+            this.hideGradePicker();
             this.activeGradeOverrideContext = null;
             this.renderGradesViewPreservingOverviewScroll();
           }
@@ -15405,10 +15367,12 @@
               context.period
             );
             if (options.close) {
+              this.hideGradePicker();
               this.activeGradeOverrideContext = null;
               this.renderGradesViewPreservingOverviewScroll();
               return true;
             }
+            this.syncGradePickerSelectionFromInput(input);
             this.refreshGradeTotals();
             return true;
           }
@@ -15427,6 +15391,7 @@
               context.subcategoryId,
               context.period
             );
+            this.hideGradePicker();
             this.activeGradeOverrideContext = null;
             this.renderGradesViewPreservingOverviewScroll();
             return true;
@@ -15596,6 +15561,7 @@
                 draftValue: sanitizedValue
               });
               const parsed = parsePedagogicalGradeValue(sanitizedValue, 15);
+              this.syncGradePickerSelectionFromInput(gradeInput);
               if (removedCharacters || (sanitizedValue && !parsed.valid)) {
                 this.showGradeInputInvalidFeedback(gradeInput, {
                   persist: Boolean(sanitizedValue) && !parsed.valid
@@ -15636,6 +15602,7 @@
                 subcategoryId: gradeInput.dataset.subcategoryId,
                 draftValue: gradeInput.value
               });
+              this.openGradePickerForInput(gradeInput, { mode: "override" });
               return;
             }
             this.activeGradeStudentId = Number(gradeInput.dataset.studentId || 0) || null;
@@ -15709,7 +15676,17 @@
                 }
                 const editor = input.closest("[data-grade-override-editor='1']");
                 const activeElement = document.activeElement;
+                const insideOverridePicker = Boolean(
+                  this.gradePickerState.open
+                  && this.gradePickerState.mode === "override"
+                  && this.gradePickerState.container
+                  && activeElement instanceof Element
+                  && this.gradePickerState.container.contains(activeElement)
+                );
                 if (editor && activeElement instanceof Element && editor.contains(activeElement)) {
+                  return;
+                }
+                if (insideOverridePicker) {
                   return;
                 }
                 if (!this.isGradeOverrideEditorActive(
@@ -15739,12 +15716,32 @@
             if (!input || input.disabled) {
               return;
             }
+            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              event.preventDefault();
+              const delta = event.key === "ArrowDown" ? 1 : -1;
+              if (!this.gradePickerState.open || this.gradePickerState.mode !== "override") {
+                this.openGradePickerForInput(input, { mode: "override" });
+              } else {
+                const maxIndex = this.gradePickerState.values.length - 1;
+                this.gradePickerState.activeIndex = this.gradePickerState.activeIndex < 0
+                  ? (event.key === "ArrowUp" ? maxIndex : 0)
+                  : clamp(this.gradePickerState.activeIndex + delta, 0, maxIndex);
+                this.renderGradePicker();
+              }
+              return;
+            }
             if (event.key === "Enter") {
               event.preventDefault();
+              if (this.gradePickerState.open && this.gradePickerState.mode === "override" && this.gradePickerState.activeIndex >= 0) {
+                input.value = formatPedagogicalGradeInput(this.gradePickerState.values[this.gradePickerState.activeIndex]);
+              }
               this.submitGradeOverrideDialog({ input, close: true });
               return;
             }
             if (event.key === "Tab") {
+              if (this.gradePickerState.open && this.gradePickerState.mode === "override" && this.gradePickerState.activeIndex >= 0) {
+                input.value = formatPedagogicalGradeInput(this.gradePickerState.values[this.gradePickerState.activeIndex]);
+              }
               const valid = this.submitGradeOverrideDialog({ input, close: false });
               if (!valid) {
                 event.preventDefault();
@@ -15861,9 +15858,7 @@
               return;
             }
             const mode = options.mode === "override" ? "override" : "table";
-            const container = mode === "override"
-              ? this.refs.gradeOverrideDialogPicker
-              : this.refs.gradePicker;
+            const container = this.refs.gradePicker;
             if (!container) {
               return;
             }
@@ -15883,23 +15878,16 @@
               ? -1
               : this.gradePickerState.values.findIndex((value) => value === currentValue);
             this.renderGradePicker();
-            if (mode === "table") {
-              this.positionGradePicker();
-            }
+            this.positionGradePicker();
           }
 
           renderGradePicker() {
             if (!this.refs.gradePicker) {
               return;
             }
-            if (this.refs.gradePicker) {
-              this.refs.gradePicker.hidden = true;
-              this.refs.gradePicker.innerHTML = "";
-            }
-            if (this.refs.gradeOverrideDialogPicker) {
-              this.refs.gradeOverrideDialogPicker.hidden = true;
-              this.refs.gradeOverrideDialogPicker.innerHTML = "";
-            }
+            this.refs.gradePicker.hidden = true;
+            this.refs.gradePicker.innerHTML = "";
+            this.refs.gradePicker.classList.remove("grade-picker-override");
             if (!this.gradePickerState.open) {
               return;
             }
@@ -15909,6 +15897,47 @@
             }
             container.hidden = false;
             container.innerHTML = "";
+            container.classList.toggle("grade-picker-override", this.gradePickerState.mode === "override");
+            if (this.gradePickerState.mode === "override") {
+              const context = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+              if (context) {
+                const state = this.getGradeOverrideCellState(
+                  context.studentId,
+                  context.courseId,
+                  context.scope,
+                  context.categoryId,
+                  context.subcategoryId,
+                  context.period
+                );
+                const meta = document.createElement("div");
+                meta.className = "grade-picker-override-meta";
+                const label = document.createElement("span");
+                label.className = "grade-picker-override-label";
+                const value = document.createElement("span");
+                value.className = `grade-picker-override-value${state.overridden ? " is-overridden" : ""}`;
+                value.textContent = formatGradeTooltipDecimal(state.computedValue);
+                label.append("Errechnet: ", value);
+                meta.append(label);
+                const resetButton = document.createElement("button");
+                resetButton.type = "button";
+                resetButton.className = "danger-action grade-picker-override-reset";
+                resetButton.textContent = "↺";
+                resetButton.setAttribute("aria-label", "Auf errechnete Note");
+                resetButton.title = "Auf errechnete Note";
+                resetButton.disabled = state.computedValue === null;
+                resetButton.addEventListener("mousedown", (event) => {
+                  event.preventDefault();
+                });
+                resetButton.addEventListener("click", async (event) => {
+                  event.stopPropagation();
+                  await this.clearGradeOverrideFromDialog();
+                });
+                meta.append(resetButton);
+                container.append(meta);
+              }
+            }
+            const grid = document.createElement("div");
+            grid.className = "grade-picker-grid";
             this.gradePickerState.values.forEach((value, index) => {
               const button = document.createElement("button");
               button.type = "button";
@@ -15922,27 +15951,28 @@
                 event.stopPropagation();
                 this.applyGradePickerValue(value);
               });
-              container.append(button);
+              grid.append(button);
             });
+            container.append(grid);
           }
 
           positionGradePicker() {
             if (
               !this.refs.gradePicker
               || !this.gradePickerState.open
-              || this.gradePickerState.mode !== "table"
-              || this.gradePickerState.container !== this.refs.gradePicker
+              || !this.gradePickerState.container
               || !this.gradePickerState.input
             ) {
               return;
             }
+            const container = this.gradePickerState.container;
             const inputRect = this.gradePickerState.input.getBoundingClientRect();
             const margin = 8;
             const anchorX = Math.round(inputRect.right + 6);
             const anchorY = Math.round(inputRect.top);
-            this.refs.gradePicker.style.left = `${anchorX}px`;
-            this.refs.gradePicker.style.top = `${anchorY}px`;
-            const pickerRect = this.refs.gradePicker.getBoundingClientRect();
+            container.style.left = `${anchorX}px`;
+            container.style.top = `${anchorY}px`;
+            const pickerRect = container.getBoundingClientRect();
             const desiredLeft = clamp(
               anchorX,
               margin,
@@ -15957,8 +15987,8 @@
             const coordinateOffsetY = pickerRect.top - anchorY;
             const left = desiredLeft - coordinateOffsetX;
             const top = desiredTop - coordinateOffsetY;
-            this.refs.gradePicker.style.left = `${left}px`;
-            this.refs.gradePicker.style.top = `${top}px`;
+            container.style.left = `${left}px`;
+            container.style.top = `${top}px`;
           }
 
           hideGradePicker(event = null) {
@@ -15994,9 +16024,7 @@
             if (this.gradePickerState.mode === "override") {
               input.value = formatPedagogicalGradeInput(value);
               input.classList.remove("invalid");
-              this.hideGradePicker();
-              input.focus();
-              input.select();
+              this.submitGradeOverrideDialog({ input, close: true });
               return;
             }
             input.value = formatGradeInteger(value, this.gradePickerState.maxPoints);
