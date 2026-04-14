@@ -4379,6 +4379,7 @@
       left: calc(100% + 6px);
       bottom: 0;
       display: inline-block;
+      overflow: visible;
       font-size: 10px;
       font-weight: 500;
       line-height: 1;
@@ -4401,6 +4402,54 @@
       opacity: 0.72;
     }
 
+    .app-header-version.has-update-hint::after {
+      content: attr(data-update-hint);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 10px);
+      transform: translateX(-50%);
+      padding: 6px 9px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.96);
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      box-shadow: 0 10px 26px rgba(2, 6, 23, 0.28);
+      color: #e2e8f0;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.01em;
+      white-space: nowrap;
+      pointer-events: none;
+      z-index: 20;
+      animation: version-hint-pop 180ms ease-out;
+    }
+
+    .app-header-version.has-update-hint::before {
+      content: '';
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 4px);
+      width: 10px;
+      height: 10px;
+      transform: translateX(-50%) rotate(45deg);
+      background: rgba(15, 23, 42, 0.96);
+      border-right: 1px solid rgba(148, 163, 184, 0.3);
+      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+      pointer-events: none;
+      z-index: 19;
+    }
+
+    @keyframes version-hint-pop {
+      from {
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0);
+      }
+    }
+
     :root[data-theme='light'] .app-header-version {
       color: #475569;
     }
@@ -4408,6 +4457,19 @@
     :root[data-theme='light'] .app-header-version[role='button']:hover,
     :root[data-theme='light'] .app-header-version[role='button']:focus-visible {
       color: #0f172a;
+    }
+
+    :root[data-theme='light'] .app-header-version.has-update-hint::after {
+      background: rgba(255, 255, 255, 0.98);
+      border-color: rgba(15, 23, 42, 0.14);
+      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
+      color: #0f172a;
+    }
+
+    :root[data-theme='light'] .app-header-version.has-update-hint::before {
+      background: rgba(255, 255, 255, 0.98);
+      border-right-color: rgba(15, 23, 42, 0.14);
+      border-bottom-color: rgba(15, 23, 42, 0.14);
     }
 
     :root[data-theme='light'] .grid-wrap {

@@ -33,6 +33,75 @@ import { applyTheme } from './shell/theme.js';
       const monitorLightNodes = Object.values(monitorLights).filter(Boolean);
       const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
       const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
+      const UPDATE_APPLIED_HINT_SESSION_KEY = 'teachhelper:update-applied-hint';
+      let versionUpdateHintTimer = 0;
+      let versionUpdateAvailable = false;
+      let versionUpdateAppliedVisible = false;
+
+      const renderVersionUpdateHint = () => {
+        if (!els.headerVersion) {
+          return;
+        }
+        const hintText = versionUpdateAppliedVisible
+          ? 'Aktualisiert'
+          : (versionUpdateAvailable ? 'Update verfügbar' : '');
+        els.headerVersion.classList.toggle('has-update-hint', Boolean(hintText));
+        if (hintText) {
+          els.headerVersion.dataset.updateHint = hintText;
+        } else {
+          delete els.headerVersion.dataset.updateHint;
+        }
+      };
+
+      const clearVersionUpdateHintTimer = () => {
+        if (versionUpdateHintTimer) {
+          window.clearTimeout(versionUpdateHintTimer);
+          versionUpdateHintTimer = 0;
+        }
+      };
+
+      const dismissVersionUpdateHint = () => {
+        versionUpdateAppliedVisible = false;
+        clearVersionUpdateHintTimer();
+        renderVersionUpdateHint();
+      };
+
+      const showVersionUpdateHint = () => {
+        if (!els.headerVersion) {
+          return;
+        }
+        versionUpdateAppliedVisible = true;
+        clearVersionUpdateHintTimer();
+        renderVersionUpdateHint();
+        versionUpdateHintTimer = window.setTimeout(() => {
+          dismissVersionUpdateHint();
+        }, 8000);
+      };
+
+      const setVersionUpdateAvailability = (isAvailable) => {
+        versionUpdateAvailable = Boolean(isAvailable);
+        renderVersionUpdateHint();
+      };
+
+      const markVersionUpdateHintPending = () => {
+        try {
+          window.sessionStorage?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
+        } catch {
+          // Ignore storage errors. The update still proceeds without the hint.
+        }
+      };
+
+      const consumePendingVersionUpdateHint = () => {
+        try {
+          if (window.sessionStorage?.getItem(UPDATE_APPLIED_HINT_SESSION_KEY) !== '1') {
+            return;
+          }
+          window.sessionStorage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
+          showVersionUpdateHint();
+        } catch {
+          // Ignore storage errors.
+        }
+      };
 
       const setDisplayedAppVersion = (version) => {
         if (els.headerVersion) {
@@ -52,6 +121,7 @@ import { applyTheme } from './shell/theme.js';
         }
       };
       setDisplayedAppVersion(APP_VERSION);
+      consumePendingVersionUpdateHint();
       applyTheme({ root: document.documentElement, themeColorMeta });
       const isIOSDevice = (() => {
         if (typeof navigator === 'undefined') {
@@ -1437,7 +1507,10 @@ import { applyTheme } from './shell/theme.js';
           showMessage('Keine aktiven Gruppenfelder vorhanden.', 'warn');
           return null;
         }
-        const activeIds = Array.from(state.activeSeats);
+        const orderedActiveIds = Array.isArray(state.activeSeatOrder)
+          ? state.activeSeatOrder.filter(id => state.activeSeats.has(id))
+          : [];
+        const activeIds = orderedActiveIds.length ? orderedActiveIds : Array.from(state.activeSeats);
         const seatSnapshot = {};
         activeIds.forEach(id => {
           seatSnapshot[id] = getSeatList(id);
@@ -1718,17 +1791,35 @@ import { applyTheme } from './shell/theme.js';
         const incomingCsvName = typeof data.csvName === 'string' ? data.csvName : '';
         const seatAssignments = new Map();
         const seatIds = new Set();
+        const activeSeatOrder = [];
+        const activeSeatSet = new Set();
         const registerSeat = (rawId) => {
           const normalized = sanitizeSeatIdWithinLimit(rawId);
           if (!normalized) return null;
           seatIds.add(normalized);
           return normalized;
         };
-        incomingActive.forEach(registerSeat);
+        const registerActiveSeat = (rawId) => {
+          const normalized = registerSeat(rawId);
+          if (!normalized || activeSeatSet.has(normalized)) return normalized;
+          activeSeatSet.add(normalized);
+          activeSeatOrder.push(normalized);
+          return normalized;
+        };
+        incomingActive.forEach(registerActiveSeat);
         Object.entries(incomingSeats).forEach(([id, val]) => {
           const normalized = registerSeat(id);
-          if (normalized) seatAssignments.set(normalized, ensureSeatList(val));
+          if (normalized) {
+            seatAssignments.set(normalized, ensureSeatList(val));
+            if (!incomingActive.length) {
+              registerActiveSeat(normalized);
+            }
+          }
         });
+        if (!incomingActive.length) {
+          Object.keys(incomingTopics).forEach(registerActiveSeat);
+          (Array.isArray(data.lockedSeats) ? data.lockedSeats : []).forEach(registerActiveSeat);
+        }
         if (!seatIds.size) throw new Error('Plan enthält keine Gruppenfelder.');
         const maxFromIds = (idx) => {
           let max = 1;
@@ -1761,13 +1852,16 @@ import { applyTheme } from './shell/theme.js';
         state.csvName = normalizedCsvName || state.csvName || '';
         state.minGroupSize = clampMinGroupSize(data.minGroupSize ?? state.minGroupSize);
         state.maxGroupSize = clampMaxGroupSize(data.maxGroupSize ?? state.maxGroupSize);
-        const fullSet = Array.from(buildFullActiveSet(state.gridRows, state.gridCols));
-        state.activeSeatOrder = fullSet;
-        state.activeSeats = new Set(fullSet);
+        const fallbackActiveOrder = Array.from(buildFullActiveSet(state.gridRows, state.gridCols));
+        const nextActiveOrder = activeSeatOrder.length
+          ? activeSeatOrder
+          : (incomingActive.length ? Array.from(seatIds) : fallbackActiveOrder);
+        state.activeSeatOrder = nextActiveOrder;
+        state.activeSeats = new Set(nextActiveOrder);
         const locked = Array.isArray(data.lockedSeats) ? data.lockedSeats : [];
         const sanitizedLocks = locked
           .map(id => sanitizeSeatIdWithinLimit(id))
-          .filter(id => id);
+          .filter(id => id && state.activeSeats.has(id));
         state.lockedSeats = new Set(sanitizedLocks);
         state.seats = {};
         state.activeSeats.forEach(id => {
@@ -5131,6 +5225,8 @@ import { applyTheme } from './shell/theme.js';
         updateDialog: els.updateDialog,
         updateDialogLater: els.updateDialogLater,
         updateDialogReload: els.updateDialogReload,
+        beforeReloadForUpdate: markVersionUpdateHintPending,
+        onUpdateAvailabilityChange: setVersionUpdateAvailability,
         serviceWorkerUrl: './sw.js',
       });
       if (els.headerVersion && serviceWorkerUpdates?.checkForUpdates) {

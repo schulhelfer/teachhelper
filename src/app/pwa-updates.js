@@ -2,6 +2,8 @@ export function registerServiceWorkerUpdates({
   updateDialog,
   updateDialogLater,
   updateDialogReload,
+  beforeReloadForUpdate,
+  onUpdateAvailabilityChange,
   serviceWorkerUrl = './sw.js',
 } = {}) {
   const unsupportedResult = { status: 'unsupported' };
@@ -22,6 +24,15 @@ export function registerServiceWorkerUpdates({
   let reloadRequestedForUpdate = false;
   let activeRegistration = null;
   let initPromise = null;
+
+  const notifyUpdateAvailability = (registration = activeRegistration) => {
+    if (typeof onUpdateAvailabilityChange !== 'function') return;
+    try {
+      onUpdateAvailabilityChange(Boolean(registration?.waiting));
+    } catch {
+      // Ignore consumer callback failures.
+    }
+  };
 
   const openUpdateDialog = () => {
     if (!updateDialog || updateDialogShown) return;
@@ -44,6 +55,7 @@ export function registerServiceWorkerUpdates({
 
   const maybePromptForUpdate = (registration) => {
     activeRegistration = registration || activeRegistration;
+    notifyUpdateAvailability(activeRegistration);
     if (!hadControllerOnLoad) return;
     if (!activeRegistration?.waiting) return;
     openUpdateDialog();
@@ -60,11 +72,13 @@ export function registerServiceWorkerUpdates({
 
   const checkForUpdates = async () => {
     if (!activeRegistration) {
+      notifyUpdateAvailability(null);
       return { status: 'unavailable' };
     }
     try {
       await activeRegistration.update();
     } catch {
+      notifyUpdateAvailability(activeRegistration);
       return { status: 'error' };
     }
     maybePromptForUpdate(activeRegistration);
@@ -94,6 +108,14 @@ export function registerServiceWorkerUpdates({
       });
       updateDialogReload?.addEventListener('click', () => {
         reloadRequestedForUpdate = true;
+        if (typeof beforeReloadForUpdate === 'function') {
+          try {
+            beforeReloadForUpdate();
+          } catch {
+            // Ignore storage/hint preparation errors and continue the update flow.
+          }
+        }
+        notifyUpdateAvailability(null);
         closeUpdateDialog();
         const waitingWorker = activeRegistration?.waiting;
         if (waitingWorker) {
@@ -109,6 +131,7 @@ export function registerServiceWorkerUpdates({
           type: 'module',
         });
         activeRegistration = registration;
+        notifyUpdateAvailability(registration);
         maybePromptForUpdate(registration);
         if (registration.installing) {
           watchInstallingWorker(registration, registration.installing);
@@ -129,6 +152,7 @@ export function registerServiceWorkerUpdates({
         });
       } catch {
         activeRegistration = null;
+        notifyUpdateAvailability(null);
       }
     })();
     return initPromise;

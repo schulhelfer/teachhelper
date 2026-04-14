@@ -4305,6 +4305,7 @@
             this.selectedLessonId = null;
             this.selectedCourseId = null;
             this.currentView = "grades";
+            this.shellTabContext = "grades";
             this.gradesSubView = "entry";
             this._planningReadySignalToken = 0;
             this.activeSettingsTab = "dayoff";
@@ -10135,6 +10136,7 @@
               window.addEventListener("classroom:planning-view-request", (event) => {
                 const detail = event instanceof CustomEvent ? event.detail : null;
                 const requestedView = detail && detail.view === "grades" ? "grades" : "week";
+                this.shellTabContext = requestedView === "grades" ? "grades" : "planning";
                 if (this.locked) {
                   return;
                 }
@@ -10852,7 +10854,11 @@
                 const courseId = Number(courseLink.dataset.courseId || 0);
                 if (courseId) {
                   this.selectedCourseId = courseId;
-                  this.switchView("course");
+                  if (this.isGradesTopTabActive()) {
+                    this.switchGradesSubView("overview");
+                  } else {
+                    this.switchView("course");
+                  }
                 }
                 return;
               }
@@ -12704,7 +12710,7 @@
               return;
             }
             const canEditGrades = !course.noLesson;
-            const isGradesView = this.currentView === "grades";
+            const isGradesView = this.isGradesTopTabActive();
             const items = [
               {
                 label: "Kursname bearbeiten",
@@ -16263,15 +16269,14 @@
             if (this.currentView === "settings") {
               return this.settingsSourceView !== "grades";
             }
-            const app = document.getElementById("app");
-            return Boolean(app && app.classList.contains("app-tab-planning"));
+            return this.shellTabContext !== "grades";
           }
 
           isGradesTopTabActive() {
             if (this.currentView === "settings") {
               return this.settingsSourceView === "grades";
             }
-            return this.currentView === "grades";
+            return this.shellTabContext === "grades";
           }
 
           renderSchoolYearSelect() {
