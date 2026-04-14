@@ -957,6 +957,29 @@
           });
         }
 
+        function parseShortDateLabel(value) {
+          const match = String(value || "").trim().match(/^(\d{2})\.(\d{2})\.(\d{2})$/);
+          if (!match) {
+            return null;
+          }
+          const day = Number(match[1]);
+          const month = Number(match[2]);
+          const year = 2000 + Number(match[3]);
+          if (!day || !month) {
+            return null;
+          }
+          const date = new Date(year, month - 1, day);
+          if (
+            Number.isNaN(date.getTime())
+            || date.getFullYear() !== year
+            || date.getMonth() !== month - 1
+            || date.getDate() !== day
+          ) {
+            return null;
+          }
+          return date;
+        }
+
         function dayOfWeekIso(iso) {
           const value = parseIsoDate(iso);
           const weekday = value.getDay();
@@ -4381,6 +4404,7 @@
               gradesTable: document.querySelector("#grades-table"),
               gradesEntryContent: document.querySelector("#grades-entry-content"),
               gradePicker: document.querySelector("#grade-picker"),
+              gradesTitleDatePicker: document.querySelector("#grades-title-date-picker"),
               gradeAssessmentDialog: document.querySelector("#grade-assessment-dialog"),
               gradeAssessmentDialogForm: document.querySelector("#grade-assessment-dialog-form"),
               gradeAssessmentDialogId: document.querySelector("#grade-assessment-dialog-id"),
@@ -4588,6 +4612,14 @@
             ) {
               document.body.append(this.refs.gradePicker);
             }
+            if (
+              this.refs.gradesTitleDatePicker
+              && typeof document !== "undefined"
+              && document.body
+              && this.refs.gradesTitleDatePicker.parentElement !== document.body
+            ) {
+              document.body.append(this.refs.gradesTitleDatePicker);
+            }
             this.localClipboardText = "";
             this.contextMenuItems = [];
             this.pendingMessageDialogResolver = null;
@@ -4634,6 +4666,11 @@
               maxPoints: 15,
               values: Array.from({ length: 16 }, (_, index) => 15 - index),
               activeIndex: -1
+            };
+            this.gradesTitleDatePickerState = {
+              open: false,
+              input: null,
+              monthIso: null
             };
             this.gradeCollapsedPeriodKeys = new Set();
             this.gradePeriodDefaultInitializedKeys = new Set();
@@ -9797,17 +9834,33 @@
               this.handleGradesSurfaceChange(event);
             });
             root.addEventListener("input", (event) => {
+              this.handleGradesSurfaceInput(event);
               this.handleGradesTableInput(event);
             });
             root.addEventListener("focusin", (event) => {
+              this.handleGradesEntryTitleFocusIn(event);
               this.handleGradesTableFocusIn(event);
             });
             root.addEventListener("keydown", (event) => {
+              this.handleGradesEntryTitleKeyDown(event);
               this.handleGradesTableKeyDown(event);
             });
             root.addEventListener("blur", (event) => {
               this.handleGradesTableBlur(event);
             }, true);
+          }
+
+          handleGradesSurfaceInput(event) {
+            const titleInput = event.target.closest("input[data-grades-entry-title]");
+            if (!titleInput || this.gradesTitleDatePickerState.input !== titleInput || !this.gradesTitleDatePickerState.open) {
+              return;
+            }
+            const parsed = parseShortDateLabel(titleInput.value);
+            if (parsed) {
+              this.gradesTitleDatePickerState.monthIso = this.getGradesTitleDatePickerMonthIsoForDate(parsed);
+            }
+            this.renderGradesTitleDatePicker();
+            this.positionGradesTitleDatePicker();
           }
 
           async handleGradesSurfaceClick(event) {
@@ -10018,14 +10071,7 @@
             const titleInput = event.target.closest("input[data-grades-entry-title]");
             if (titleInput) {
               const nextTitle = String(titleInput.value || "").trim();
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, { title: nextTitle });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  title: nextTitle
-                };
-              }
+              this.persistGradesEntryTitleValue(nextTitle, { draft });
               this.renderGradesView();
               return;
             }
@@ -10814,6 +10860,30 @@
               });
             }
 
+            if (this.refs.gradesTitleDatePicker) {
+              this.refs.gradesTitleDatePicker.addEventListener("click", (event) => {
+                const navButton = event.target.closest("button[data-grades-title-date-nav]");
+                if (navButton) {
+                  const delta = Number(navButton.dataset.gradesTitleDateNav || 0);
+                  if (!delta) {
+                    return;
+                  }
+                  this.gradesTitleDatePickerState.monthIso = this.shiftGradesTitleDatePickerMonth(
+                    this.gradesTitleDatePickerState.monthIso,
+                    delta
+                  );
+                  this.renderGradesTitleDatePicker();
+                  this.positionGradesTitleDatePicker();
+                  return;
+                }
+                const dayButton = event.target.closest("button[data-grades-title-date]");
+                if (!dayButton) {
+                  return;
+                }
+                this.applyGradesTitleDatePickerSelection(dayButton.dataset.gradesTitleDate || "");
+              });
+            }
+
             this.refs.weekTable.addEventListener("click", (event) => {
               if (this.locked) {
                 return;
@@ -11478,6 +11548,7 @@
                 this.hideContextMenu();
                 this.hideGradePicker(event);
               }
+              this.hideGradesTitleDatePicker(event);
               const activeGradeInputTarget = event.target instanceof Element
                 ? event.target.closest("input[data-grade-input='1']:not(:disabled)")
                 : null;
@@ -11548,6 +11619,7 @@
             window.addEventListener("resize", () => {
               this.hideContextMenu();
               this.positionGradePicker();
+              this.positionGradesTitleDatePicker();
               this.positionGradePrivacyOverlay();
               if (this.refs.weekCalendarDialog && this.refs.weekCalendarDialog.open) {
                 this.positionWeekCalendarDialog();
@@ -11560,6 +11632,7 @@
             window.addEventListener("scroll", () => {
               this.hideContextMenu();
               this.positionGradePicker();
+              this.hideGradesTitleDatePicker();
               this.positionGradePrivacyOverlay();
               if (this.refs.weekCalendarDialog && this.refs.weekCalendarDialog.open) {
                 this.closeWeekCalendarDialog();
@@ -12950,6 +13023,7 @@
               return;
             }
             this.activeGradeOverrideContext = null;
+            this.hideGradesTitleDatePicker();
             this.hideGradePrivacyOverlay();
             this.refs.gradesEntryPanel.hidden = false;
             this.refs.gradesOverviewPanel?.classList.remove("is-offset-empty-state");
@@ -13200,6 +13274,7 @@
               }
               this.renderGradesEntryView(course, students, groupedAssessments);
             } else {
+              this.hideGradesTitleDatePicker();
               if (course && isVaultUnlocked && !courseLoaded) {
                 this.clearActiveGradeAssessment();
                 this.clearPrivacyFocusedGradeStudent();
@@ -14012,6 +14087,252 @@
               : this.gradePickerState.values.findIndex((value) => value === currentValue);
             this.renderGradePicker();
             this.positionGradePicker();
+          }
+
+          getGradesTitleDatePickerDefaultDate() {
+            const todayIso = toIsoDate(new Date());
+            const schoolDayIso = isSchoolWeekdayIso(todayIso)
+              ? todayIso
+              : normalizeIsoToSchoolWeekday(todayIso, "forward");
+            return parseIsoDate(schoolDayIso) || new Date();
+          }
+
+          getGradesTitleDatePickerMonthIsoForDate(value) {
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) {
+              return null;
+            }
+            return toIsoDate(new Date(date.getFullYear(), date.getMonth(), 1));
+          }
+
+          shiftGradesTitleDatePickerMonth(monthIso, delta = 0) {
+            const monthStart = parseIsoDate(monthIso) || this.getGradesTitleDatePickerDefaultDate();
+            monthStart.setDate(1);
+            monthStart.setMonth(monthStart.getMonth() + delta);
+            return toIsoDate(monthStart);
+          }
+
+          getGradesTitleDatePickerSelectedDate(input = null) {
+            const sourceInput = input instanceof HTMLInputElement ? input : this.gradesTitleDatePickerState.input;
+            const parsed = parseShortDateLabel(sourceInput?.value || "");
+            return parsed || this.getGradesTitleDatePickerDefaultDate();
+          }
+
+          openGradesTitleDatePicker(input) {
+            if (!(input instanceof HTMLInputElement) || !this.refs.gradesTitleDatePicker) {
+              return;
+            }
+            const selectedDate = this.getGradesTitleDatePickerSelectedDate(input);
+            this.gradesTitleDatePickerState.open = true;
+            this.gradesTitleDatePickerState.input = input;
+            this.gradesTitleDatePickerState.monthIso = this.getGradesTitleDatePickerMonthIsoForDate(selectedDate);
+            this.renderGradesTitleDatePicker();
+            this.positionGradesTitleDatePicker();
+          }
+
+          renderGradesTitleDatePicker() {
+            const picker = this.refs.gradesTitleDatePicker;
+            if (!picker) {
+              return;
+            }
+            picker.hidden = true;
+            picker.innerHTML = "";
+            if (!this.gradesTitleDatePickerState.open || !(this.gradesTitleDatePickerState.input instanceof HTMLInputElement)) {
+              return;
+            }
+            const monthIso = this.gradesTitleDatePickerState.monthIso
+              || this.getGradesTitleDatePickerMonthIsoForDate(this.getGradesTitleDatePickerSelectedDate());
+            const monthStart = parseIsoDate(monthIso);
+            if (!monthStart) {
+              return;
+            }
+            const selectedDate = this.getGradesTitleDatePickerSelectedDate();
+            const selectedIso = toIsoDate(selectedDate);
+            const todayIso = toIsoDate(new Date());
+            const monthLabel = monthStart.toLocaleDateString("de-DE", {
+              month: "long",
+              year: "numeric"
+            });
+            const header = document.createElement("div");
+            header.className = "grades-title-date-picker-header";
+            header.innerHTML = `
+              <button type="button" class="ghost grades-title-date-picker-nav" data-grades-title-date-nav="-1" aria-label="Vorheriger Monat" title="Monat zurück">‹</button>
+              <div class="grades-title-date-picker-title">${escapeHtml(monthLabel)}</div>
+              <button type="button" class="ghost grades-title-date-picker-nav" data-grades-title-date-nav="1" aria-label="Nächster Monat" title="Monat vor">›</button>
+            `;
+            [...header.querySelectorAll("button[data-grades-title-date-nav]")].forEach((button) => {
+              button.addEventListener("mousedown", (event) => {
+                event.preventDefault();
+              });
+            });
+            picker.append(header);
+            const table = document.createElement("table");
+            table.className = "grades-title-date-picker-table";
+            table.innerHTML = `
+              <thead>
+                <tr>
+                  <th>Mo</th>
+                  <th>Di</th>
+                  <th>Mi</th>
+                  <th>Do</th>
+                  <th>Fr</th>
+                </tr>
+              </thead>
+            `;
+            const tbody = document.createElement("tbody");
+            const monthEndIso = toIsoDate(new Date(monthStart.getFullYear(), monthStart.getMonth() + 1, 0));
+            let rowStartIso = weekStartFor(monthIso);
+            const lastWeekStartIso = weekStartFor(monthEndIso);
+            while (rowStartIso <= lastWeekStartIso) {
+              const tr = document.createElement("tr");
+              for (let offset = 0; offset < 5; offset += 1) {
+                const iso = addDays(rowStartIso, offset);
+                const date = parseIsoDate(iso);
+                const isOutsideMonth = date.getMonth() !== monthStart.getMonth();
+                const button = document.createElement("button");
+                button.type = "button";
+                button.className = "grades-title-date-picker-day";
+                button.dataset.gradesTitleDate = iso;
+                button.textContent = String(date.getDate());
+                button.title = date.toLocaleDateString("de-DE", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "2-digit",
+                  year: "numeric"
+                });
+                button.classList.toggle("is-outside-month", isOutsideMonth);
+                button.classList.toggle("is-selected", iso === selectedIso);
+                button.classList.toggle("is-today", iso === todayIso);
+                button.addEventListener("mousedown", (event) => {
+                  event.preventDefault();
+                });
+                const td = document.createElement("td");
+                td.append(button);
+                tr.append(td);
+              }
+              tbody.append(tr);
+              rowStartIso = addDays(rowStartIso, 7);
+            }
+            table.append(tbody);
+            picker.append(table);
+            picker.hidden = false;
+          }
+
+          positionGradesTitleDatePicker() {
+            const picker = this.refs.gradesTitleDatePicker;
+            const input = this.gradesTitleDatePickerState.input;
+            if (!picker || !this.gradesTitleDatePickerState.open || !(input instanceof HTMLInputElement)) {
+              return;
+            }
+            const inputRect = input.getBoundingClientRect();
+            const pickerRect = picker.getBoundingClientRect();
+            const gap = 8;
+            let left = inputRect.right + gap;
+            if (left + pickerRect.width > window.innerWidth - 8) {
+              left = inputRect.left - pickerRect.width - gap;
+            }
+            if (left < 8) {
+              left = Math.max(8, Math.min(window.innerWidth - pickerRect.width - 8, inputRect.left));
+            }
+            let top = inputRect.top;
+            if (top + pickerRect.height > window.innerHeight - 8) {
+              top = Math.max(8, window.innerHeight - pickerRect.height - 8);
+            }
+            picker.style.left = `${Math.round(left)}px`;
+            picker.style.top = `${Math.round(top)}px`;
+          }
+
+          hideGradesTitleDatePicker(event = null) {
+            const picker = this.refs.gradesTitleDatePicker;
+            if (!picker || !this.gradesTitleDatePickerState.open) {
+              return;
+            }
+            if (event?.target instanceof Node) {
+              if (picker.contains(event.target)) {
+                return;
+              }
+              if (this.gradesTitleDatePickerState.input && event.target === this.gradesTitleDatePickerState.input) {
+                return;
+              }
+              if (
+                this.gradesTitleDatePickerState.input
+                && event.target instanceof Element
+                && event.target.closest("label.grades-entry-field")?.contains(this.gradesTitleDatePickerState.input)
+              ) {
+                return;
+              }
+            }
+            this.gradesTitleDatePickerState.open = false;
+            this.gradesTitleDatePickerState.input = null;
+            this.gradesTitleDatePickerState.monthIso = null;
+            picker.hidden = true;
+            picker.innerHTML = "";
+          }
+
+          persistGradesEntryTitleValue(title, options = {}) {
+            const courseId = Number(this.selectedCourseId || 0);
+            if (!courseId) {
+              return;
+            }
+            const nextTitle = String(title || "").trim();
+            const draft = options.draft || this.getGradesEntryDraft(courseId);
+            const activeAssessment = this.getGradesEntryActiveAssessment(courseId);
+            if (activeAssessment) {
+              this.store.updateGradeAssessment(activeAssessment.id, { title: nextTitle });
+            } else {
+              this.gradesEntryDraft = {
+                ...draft,
+                title: nextTitle
+              };
+            }
+          }
+
+          applyGradesTitleDatePickerSelection(iso) {
+            const input = this.gradesTitleDatePickerState.input;
+            const date = parseIsoDate(iso);
+            if (!(input instanceof HTMLInputElement) || !date || !isSchoolWeekdayIso(iso)) {
+              return;
+            }
+            const title = formatShortDateLabel(date);
+            input.value = title;
+            this.persistGradesEntryTitleValue(title);
+            this.hideGradesTitleDatePicker();
+            requestAnimationFrame(() => {
+              if (!document.body.contains(input)) {
+                return;
+              }
+              try {
+                input.focus({ preventScroll: true });
+              } catch (_error) {
+                input.focus();
+              }
+              input.setSelectionRange(input.value.length, input.value.length);
+            });
+          }
+
+          handleGradesEntryTitleFocusIn(event) {
+            const titleInput = event.target.closest("input[data-grades-entry-title]");
+            if (titleInput) {
+              this.openGradesTitleDatePicker(titleInput);
+              return;
+            }
+            this.hideGradesTitleDatePicker(event);
+          }
+
+          handleGradesEntryTitleKeyDown(event) {
+            const titleInput = event.target.closest("input[data-grades-entry-title]");
+            if (!titleInput) {
+              return;
+            }
+            if (event.key === "Escape" && this.gradesTitleDatePickerState.open) {
+              event.preventDefault();
+              this.hideGradesTitleDatePicker();
+              return;
+            }
+            if (event.key === "ArrowDown" && !this.gradesTitleDatePickerState.open) {
+              event.preventDefault();
+              this.openGradesTitleDatePicker(titleInput);
+            }
           }
 
           getGradeOverrideComputedValue(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
@@ -16851,6 +17172,10 @@
               this.syncWeekCalendarMonthOptions();
               this.renderWeekCalendarGrid();
               this.positionWeekCalendarDialog();
+            }
+            if (this.gradesTitleDatePickerState.open) {
+              this.renderGradesTitleDatePicker();
+              this.positionGradesTitleDatePicker();
             }
             this.renderWeekTable();
             this.syncWeekLayoutScale();
