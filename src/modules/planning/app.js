@@ -1496,7 +1496,7 @@
 
         function buildGradeAssessmentWeightMarkup(weight, mode = "grade") {
           if (normalizeGradeAssessmentMode(mode) === "homework") {
-            return `<span class="grade-assessment-meta grade-assessment-mode-badge">HA</span>`;
+            return "";
           }
           if (!shouldShowGradeWeight(weight)) {
             return "";
@@ -11003,6 +11003,7 @@
 
             if (this.refs.gradesTitleDatePicker) {
               this.refs.gradesTitleDatePicker.addEventListener("click", (event) => {
+                event.stopPropagation();
                 const navButton = event.target.closest("button[data-grades-title-date-nav]");
                 if (navButton) {
                   const delta = Number(navButton.dataset.gradesTitleDateNav || 0);
@@ -13297,6 +13298,13 @@
             editor.innerHTML = `
         <div class="grades-entry-layout">
           <div class="table-panel grades-entry-config">
+            <div class="grades-entry-config-head">
+              <p class="grades-entry-config-kicker">Eingabeoptionen</p>
+              <div class="grades-entry-config-heading">
+                <h3 class="grades-entry-config-title">Noteneintrag</h3>
+                <p class="grades-entry-config-copy">Kurs, Modus und Zuordnung direkt neben der Eingabetabelle festlegen.</p>
+              </div>
+            </div>
             <div class="grades-entry-form">
               <label class="grades-entry-field">
                 <span>Kurs</span>
@@ -13828,7 +13836,9 @@
             if (!student) {
               return null;
             }
-            const assessments = this.store.listGradeAssessments(courseId);
+            const assessments = this.store.listGradeAssessments(courseId).filter((assessment) => (
+              normalizeGradeAssessmentMode(assessment.mode) === "grade"
+            ));
             const threshold = this.store.getGradesPrivacyGraphThreshold();
             const assessmentsBySubcategory = new Map();
             assessments.forEach((assessment, index) => {
