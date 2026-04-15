@@ -2731,8 +2731,9 @@
 
         .grades-entry-content {
           display: grid;
-          gap: 0.75rem;
+          gap: 1rem;
           align-content: start;
+          padding: clamp(0.8rem, 1.3vw, 1.2rem);
         }
 
         .grades-entry-content.is-empty-state {
@@ -2744,51 +2745,70 @@
 
         .grades-entry-editor {
           display: grid;
-          gap: 0.75rem;
+          gap: 1rem;
         }
 
         .grades-entry-layout {
           display: grid;
-          grid-template-columns: max-content minmax(220px, 280px);
-          gap: 2.2rem;
+          grid-template-columns: minmax(0, 1fr) clamp(19rem, 24vw, 24rem);
+          gap: 1rem;
           align-items: start;
-          justify-content: start;
+          justify-content: stretch;
         }
 
         .grades-entry-config {
           display: grid;
-          gap: 0.75rem;
+          gap: 0.9rem;
           order: 2;
+          min-width: 0;
+          align-self: start;
+          position: sticky;
+          top: 0;
+          padding: clamp(0.95rem, 1.3vw, 1.2rem);
+          border: 1px solid rgba(148, 163, 184, 0.16);
+          border-radius: 22px;
+          background:
+            radial-gradient(circle at top right, rgba(82, 150, 255, 0.18), transparent 42%),
+            linear-gradient(180deg, rgba(20, 28, 40, 0.94), rgba(15, 23, 42, 0.92));
+          box-shadow: 0 20px 42px rgba(2, 6, 23, 0.24);
+          backdrop-filter: saturate(145%) blur(12px);
+          -webkit-backdrop-filter: saturate(145%) blur(12px);
         }
 
         .grades-entry-form {
           display: grid;
-          grid-template-columns: 1fr;
-          gap: 0.65rem;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.85rem 0.75rem;
           align-items: start;
         }
 
         .grades-entry-field {
           display: grid;
-          gap: 0.28rem;
+          gap: 0.4rem;
           min-width: 0;
         }
 
         .grades-entry-field.is-wide {
-          grid-column: auto;
+          grid-column: 1 / -1;
         }
 
-        .grades-entry-field span {
-          font-size: 0.78rem;
+        .grades-entry-field>span {
+          font-size: 0.72rem;
           font-weight: 700;
-          color: rgba(226, 232, 240, 0.78);
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+          color: rgba(191, 219, 254, 0.82);
         }
 
         .grades-entry-field input,
         .grades-entry-field select {
           min-width: 0;
-          min-height: 40px;
+          min-height: 46px;
           width: 100%;
+          padding: 0.68rem 0.78rem;
+          border-radius: 12px;
+          background-color: rgba(15, 23, 42, 0.74);
+          border-color: rgba(148, 163, 184, 0.14);
         }
 
         .grades-entry-save {
@@ -2798,26 +2818,31 @@
 
         .grades-entry-actions {
           display: flex;
+          grid-column: 1 / -1;
           align-items: center;
-          justify-content: center;
-          gap: 0.5rem;
-          margin-top: 0.95rem;
+          justify-content: flex-end;
+          gap: 0.6rem;
+          margin-top: 0.2rem;
+          padding-top: 0.9rem;
+          border-top: 1px solid rgba(148, 163, 184, 0.12);
         }
 
         .grades-entry-actions .dialog-icon-button {
-          width: 46px;
-          min-width: 46px;
-          height: 46px;
-          min-height: 46px;
+          width: 50px;
+          min-width: 50px;
+          height: 50px;
+          min-height: 50px;
           font-size: 21px;
+          border-radius: 14px;
         }
 
         .grades-entry-save-hint {
+          grid-column: 1 / -1;
           min-height: 1rem;
-          margin: 0.1rem 0 0;
+          margin: -0.15rem 0 0;
           color: rgba(226, 232, 240, 0.66);
           font-size: 0.82rem;
-          text-align: center;
+          text-align: right;
           opacity: 0;
           transition: opacity 140ms ease;
           pointer-events: none;
@@ -2832,6 +2857,7 @@
           order: 1;
           width: fit-content;
           max-width: 100%;
+          min-width: 0;
           justify-self: start;
         }
 
@@ -2869,9 +2895,31 @@
           opacity: 0.72;
         }
 
-        @media (max-width: 980px) {
+        @media (max-width: 1240px) {
           .grades-entry-layout {
             grid-template-columns: 1fr;
+          }
+
+          .grades-entry-config {
+            order: 1;
+            position: static;
+          }
+
+          .grades-entry-table-wrap {
+            order: 2;
+            width: 100%;
+          }
+        }
+
+        @media (max-width: 720px) {
+          .grades-entry-form {
+            grid-template-columns: 1fr;
+          }
+
+          .grades-entry-field.is-wide,
+          .grades-entry-actions,
+          .grades-entry-save-hint {
+            grid-column: auto;
           }
         }
 
@@ -3502,7 +3550,9 @@
         .grades-master-table th.grade-category-partial-col,
         .grades-master-table td.grade-category-partial-col,
         .grades-master-table th.grade-subcategory-partial-col,
-        .grades-master-table td.grade-subcategory-partial-col {
+        .grades-master-table td.grade-subcategory-partial-col,
+        .grades-master-table th.grade-homework-col,
+        .grades-master-table td.grade-homework-col {
           width: 1%;
           min-width: 2.15rem;
           padding-inline: 0.14rem;
@@ -3519,6 +3569,13 @@
         .grades-master-table th.grade-subcategory-partial-col.is-merged-head {
           background: rgba(24, 31, 43, 0.92);
           padding: 0.18rem 0.18rem;
+        }
+
+        .grades-master-table th.grade-homework-col.is-merged-head {
+          background: rgba(19, 45, 34, 0.9);
+          color: rgba(220, 252, 231, 0.95);
+          padding: 0.18rem 0.28rem;
+          letter-spacing: 0.04em;
         }
 
         .grades-master-table th.grade-category-collapsed-col,
@@ -3685,6 +3742,22 @@
           color: rgba(226, 232, 240, 0.8);
         }
 
+        .grade-assessment-meta.grade-assessment-mode-badge {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 2rem;
+          min-height: 1.3rem;
+          padding: 0.08rem 0.42rem;
+          border-radius: 999px;
+          background: rgba(34, 197, 94, 0.18);
+          border: 1px solid rgba(74, 222, 128, 0.28);
+          color: rgba(220, 252, 231, 0.96);
+          font-size: 0.72rem;
+          font-weight: 800;
+          letter-spacing: 0.04em;
+        }
+
         .grade-assessment-weight-icon {
           font-size: 1.08rem;
           line-height: 1;
@@ -3693,6 +3766,77 @@
         .grade-assessment-edit-dialog label {
           display: grid;
           gap: 0.35rem;
+        }
+
+        .assessment-mode-field,
+        .grades-entry-mode-field {
+          display: grid;
+          gap: 0.35rem;
+          min-width: 0;
+          margin: 0;
+          padding: 0;
+          border: none;
+        }
+
+        .assessment-mode-field legend {
+          padding: 0;
+          font-weight: 600;
+        }
+
+        .assessment-mode-toggle {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.35rem;
+          padding: 0.28rem;
+          border-radius: 14px;
+          border: 1px solid rgba(148, 163, 184, 0.14);
+          background: rgba(15, 23, 42, 0.62);
+        }
+
+        .assessment-mode-option {
+          position: relative;
+          display: block;
+          margin: 0;
+          cursor: pointer;
+        }
+
+        .assessment-mode-option input {
+          position: absolute;
+          inset: 0;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .assessment-mode-option span {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 2.35rem;
+          padding: 0.45rem 0.7rem;
+          border-radius: 11px;
+          color: rgba(226, 232, 240, 0.78);
+          font-size: 0.9rem;
+          font-weight: 700;
+          text-align: center;
+          transition: background-color 0.16s ease, color 0.16s ease, border-color 0.16s ease, transform 0.16s ease;
+          border: 1px solid transparent;
+        }
+
+        .assessment-mode-option:hover span {
+          color: rgba(248, 250, 252, 0.94);
+          background: rgba(82, 150, 255, 0.1);
+        }
+
+        .assessment-mode-option input:checked+span {
+          color: #f8fbff;
+          background: linear-gradient(180deg, rgba(82, 150, 255, 0.32), rgba(59, 130, 246, 0.18));
+          border-color: rgba(96, 165, 250, 0.44);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.22);
+        }
+
+        .assessment-mode-option input:focus-visible+span {
+          outline: none;
+          box-shadow: 0 0 0 2px rgba(82, 150, 255, 0.25);
         }
 
         .grade-assessment-dialog-actions {
@@ -4031,6 +4175,106 @@
           border-color: rgba(255, 138, 138, 0.85);
           background: rgba(127, 29, 29, 0.18);
           box-shadow: 0 0 0 2px rgba(255, 138, 138, 0.18);
+        }
+
+        .grade-checkbox-input-wrap,
+        .grade-checkbox-display-button {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 1.65rem;
+          height: 1.65rem;
+          margin: 0 auto;
+          border-radius: 0.55rem;
+        }
+
+        .grade-checkbox-input-wrap {
+          cursor: pointer;
+        }
+
+        .grade-checkbox-input-wrap.is-disabled {
+          cursor: default;
+          opacity: 0.7;
+        }
+
+        .grade-checkbox-input {
+          position: absolute;
+          inset: 0;
+          margin: 0;
+          opacity: 0;
+          cursor: inherit;
+        }
+
+        .grade-checkbox-indicator {
+          position: relative;
+          width: 1.15rem;
+          height: 1.15rem;
+          border-radius: 0.35rem;
+          border: 1px solid rgba(148, 163, 184, 0.55);
+          background: rgba(15, 23, 42, 0.62);
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+          transition: background-color 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease, transform 0.14s ease;
+        }
+
+        .grade-checkbox-indicator::after {
+          content: "";
+          position: absolute;
+          left: 0.3rem;
+          top: 0.08rem;
+          width: 0.28rem;
+          height: 0.58rem;
+          border-right: 2px solid transparent;
+          border-bottom: 2px solid transparent;
+          transform: rotate(45deg);
+          transition: border-color 0.14s ease;
+        }
+
+        .grade-checkbox-input-wrap.is-checked .grade-checkbox-indicator,
+        .grade-checkbox-input:checked+.grade-checkbox-indicator,
+        .grade-checkbox-display-button.is-checked .grade-checkbox-indicator {
+          background: linear-gradient(180deg, rgba(239, 68, 68, 0.3), rgba(185, 28, 28, 0.22));
+          border-color: rgba(248, 113, 113, 0.7);
+          box-shadow: 0 0 0 1px rgba(248, 113, 113, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
+        .grade-checkbox-input-wrap.is-checked .grade-checkbox-indicator::after,
+        .grade-checkbox-input:checked+.grade-checkbox-indicator::after,
+        .grade-checkbox-display-button.is-checked .grade-checkbox-indicator::after {
+          border-color: #fee2e2;
+        }
+
+        .grade-checkbox-input-wrap:focus-within .grade-checkbox-indicator,
+        .grade-checkbox-display-button:hover .grade-checkbox-indicator,
+        .grade-checkbox-display-button:focus-visible .grade-checkbox-indicator {
+          border-color: rgba(125, 186, 255, 0.82);
+          box-shadow: 0 0 0 2px rgba(82, 150, 255, 0.2);
+          transform: translateY(-0.5px);
+        }
+
+        .grade-checkbox-display-button {
+          padding: 0;
+          border: none;
+          background: transparent;
+          box-shadow: none;
+          appearance: none;
+          -webkit-appearance: none;
+        }
+
+        .grade-checkbox-display-button:hover,
+        .grade-checkbox-display-button:focus-visible,
+        .grade-checkbox-display-button:active {
+          background: transparent;
+          border-color: transparent;
+          box-shadow: none;
+          filter: none;
+          transform: none;
+        }
+
+        .grade-homework-summary-value {
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          color: rgba(220, 252, 231, 0.94);
         }
 
         .grade-cell-input.is-invalid-shake {

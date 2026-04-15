@@ -650,6 +650,21 @@
             Leistungsname
             <input id="grade-assessment-dialog-title" type="text" maxlength="120" required autocomplete="off">
           </label>
+          <fieldset class="assessment-mode-field">
+            <legend>Modus</legend>
+            <div class="assessment-mode-toggle" role="radiogroup" aria-label="Leistungsmodus">
+              <label class="assessment-mode-option">
+                <input id="grade-assessment-dialog-mode-grade" type="radio" name="grade-assessment-dialog-mode"
+                  value="grade" checked>
+                <span>Bewertung</span>
+              </label>
+              <label class="assessment-mode-option">
+                <input id="grade-assessment-dialog-mode-homework" type="radio" name="grade-assessment-dialog-mode"
+                  value="homework">
+                <span>Hausaufgaben</span>
+              </label>
+            </div>
+          </fieldset>
           <label>
             Gewichtung
             <input id="grade-assessment-dialog-weight" type="number" min="1" step="1" required inputmode="numeric">
