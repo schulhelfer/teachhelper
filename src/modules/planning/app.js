@@ -10156,6 +10156,12 @@
           }
 
           handleGradesSurfaceChange(event) {
+            const gradeCheckbox = event.target.closest("input[data-grade-input='1'][data-grade-checkbox='1']");
+            if (gradeCheckbox && !gradeCheckbox.disabled) {
+              this.syncHomeworkCheckboxVisualState(gradeCheckbox);
+              this.commitGradeCellInput(gradeCheckbox);
+              return;
+            }
             const root = this.refs.gradesEntryContent;
             if (!root || !root.contains(event.target)) {
               return;
@@ -14030,14 +14036,35 @@
               return;
             }
             const isEntryView = this.normalizeGradesSubView(this.gradesSubView) === "entry";
+            const activeStudentId = Number(this.activeGradeStudentId || 0);
+            const activeAssessmentId = Number(this.activeGradeAssessmentId || 0);
             root.querySelectorAll("[data-grade-student-name]").forEach((node) => {
               const studentId = Number(node.getAttribute("data-grade-student-name") || 0);
-              const isActive = studentId > 0 && studentId === Number(this.activeGradeStudentId || 0) && (
+              const isActive = studentId > 0 && studentId === activeStudentId && (
                 isEntryView || Boolean(this.activeGradeAssessmentId)
               );
               const isPrivacyFocused = studentId > 0 && studentId === Number(this.privacyFocusedGradeStudentId || 0);
               node.classList.toggle("is-active", isActive);
               node.classList.toggle("is-privacy-focused", isPrivacyFocused);
+            });
+            root.querySelectorAll(".grade-cell-input[data-assessment-id]").forEach((node) => {
+              const studentId = Number(node.getAttribute("data-student-id") || 0);
+              const assessmentId = Number(node.getAttribute("data-assessment-id") || 0);
+              const isActiveCell = studentId > 0
+                && studentId === activeStudentId
+                && assessmentId > 0
+                && assessmentId === activeAssessmentId;
+              node.classList.toggle("is-active-grade-cell", isActiveCell);
+            });
+            root.querySelectorAll(".grade-checkbox-input[data-assessment-id]").forEach((node) => {
+              this.syncHomeworkCheckboxVisualState(node);
+              const studentId = Number(node.getAttribute("data-student-id") || 0);
+              const assessmentId = Number(node.getAttribute("data-assessment-id") || 0);
+              const isActiveCell = studentId > 0
+                && studentId === activeStudentId
+                && assessmentId > 0
+                && assessmentId === activeAssessmentId;
+              node.closest(".grade-checkbox-input-wrap")?.classList.toggle("is-active-grade-cell", isActiveCell);
             });
             this.positionGradePrivacyOverlay();
           }
@@ -14580,6 +14607,13 @@
             return input instanceof HTMLInputElement && input.dataset.gradeCheckbox === "1";
           }
 
+          syncHomeworkCheckboxVisualState(input) {
+            if (!this.isHomeworkGradeInput(input)) {
+              return;
+            }
+            input.closest(".grade-checkbox-input-wrap")?.classList.toggle("is-checked", Boolean(input.checked));
+          }
+
           focusGradeInputElement(input, options = {}) {
             if (!(input instanceof HTMLElement)) {
               return;
@@ -14621,7 +14655,7 @@
 
           buildHomeworkCheckboxMarkup(studentName, checked, attributes = "", options = {}) {
             const disabled = Boolean(options.disabled);
-            const wrapperClass = `grade-checkbox-input-wrap${disabled ? " is-disabled" : ""}`;
+            const wrapperClass = `grade-checkbox-input-wrap${checked ? " is-checked" : ""}${disabled ? " is-disabled" : ""}`;
             return `
           <label class="${wrapperClass}">
             <input
@@ -15589,7 +15623,6 @@
 
             if (cell.type === "assessment") {
               th.className = "grade-assessment-col";
-              th.classList.toggle("is-active-assessment-col", Number(this.activeGradeAssessmentId || 0) === Number(cell.assessment.id));
               applyBoundaryClasses();
               const assessmentButtonClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
                 ? "grade-assessment-button"
@@ -15811,7 +15844,6 @@
 
                 if (column.type === "assessment") {
                   td.className = "grade-assessment-col";
-                  td.classList.toggle("is-active-assessment-col", Number(this.activeGradeAssessmentId || 0) === Number(column.assessment.id));
                   applyBodyBoundaryClasses();
                   td.innerHTML = this.buildGradeAssessmentCellMarkup(
                     student,
@@ -16256,7 +16288,7 @@
               return;
             }
             if (this.isHomeworkGradeInput(gradeInput)) {
-              this.commitGradeCellInput(gradeInput);
+              this.syncHomeworkCheckboxVisualState(gradeInput);
               return;
             }
             if (gradeInput.dataset.gradeOverrideInput === "1") {
@@ -16512,6 +16544,7 @@
             const isDraftInput = input.dataset.gradeDraftInput === "1";
             const assessmentId = Number(input.dataset.assessmentId || 0);
             if (this.isHomeworkGradeInput(input)) {
+              this.syncHomeworkCheckboxVisualState(input);
               if (isDraftInput) {
                 const draft = this.getGradesEntryDraft(this.selectedCourseId);
                 const nextEntries = {
