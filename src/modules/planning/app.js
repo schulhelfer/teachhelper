@@ -10042,6 +10042,19 @@
               this.renderGradesView();
               return;
             }
+            const privacyToggleButton = event.target.closest("button[data-grade-privacy-toggle='1']");
+            if (privacyToggleButton) {
+              if (this.privacyFocusedGradeStudentId) {
+                this.tryExitGradePrivacyMode(event);
+                return;
+              }
+              if (!this.commitVisibleGradeInputs()) {
+                return;
+              }
+              this.activeGradeOverrideContext = null;
+              this.tryEnterGradePrivacyMode(event);
+              return;
+            }
             const activateButton = event.target.closest("button[data-grade-activate-assessment]");
             if (activateButton) {
               event.stopPropagation();
@@ -10049,6 +10062,16 @@
                 Number(activateButton.dataset.gradeActivateAssessment || 0),
                 Number(activateButton.dataset.rowIndex || 0),
                 Number(activateButton.dataset.studentId || 0)
+              );
+              return;
+            }
+            const activateCell = event.target.closest("td[data-grade-activate-assessment-cell='1']");
+            if (activateCell) {
+              event.stopPropagation();
+              this.activateGradeAssessment(
+                Number(activateCell.dataset.gradeActivateAssessment || 0),
+                Number(activateCell.dataset.rowIndex || 0),
+                Number(activateCell.dataset.studentId || 0)
               );
               return;
             }
@@ -13300,7 +13323,7 @@
               subcategoryId: editorSubcategoryId
             };
             const editor = document.createElement("section");
-            editor.className = "grades-group grades-entry-editor";
+            editor.className = "grades-entry-editor";
             editor.innerHTML = `
         <div class="grades-entry-layout">
           <div class="table-panel grades-entry-config">
@@ -13316,7 +13339,7 @@
                 <input type="text" name="grades-entry-title" data-grades-entry-title="1" value="${escapeHtml(editorState.title || "")}" placeholder="Leistungsname">
               </label>
               <fieldset class="grades-entry-field grades-entry-mode-field is-wide">
-                <span>Modus</span>
+                <legend>Modus</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Leistungsmodus">
                   <label class="assessment-mode-option">
                     <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="grade"${normalizeGradeAssessmentMode(editorState.mode) === "grade" ? " checked" : ""}>
@@ -13328,14 +13351,14 @@
                   </label>
                 </div>
               </fieldset>
-              <label class="grades-entry-field">
+              <label class="grades-entry-field is-wide">
                 <span>Halbjahr</span>
                 <select name="grades-entry-halfyear" data-grades-entry-halfyear="1">
                   <option value="h1"${editorState.halfYear === "h1" ? " selected" : ""}>HJ1</option>
                   <option value="h2"${editorState.halfYear === "h2" ? " selected" : ""}>HJ2</option>
                 </select>
               </label>
-              <label class="grades-entry-field">
+              <label class="grades-entry-field is-wide">
                 <span>Gewichtung</span>
                 <input
                   type="number"
@@ -13348,13 +13371,13 @@
                   ${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? "disabled" : ""}
                 >
               </label>
-              <label class="grades-entry-field">
+              <label class="grades-entry-field is-wide">
                 <span>Kategorie</span>
                 <select name="grades-entry-category" data-grades-entry-category="1">
                   ${categories.map((category) => `<option value="${category.id}"${Number(category.id) === Number(editorState.categoryId || 0) ? " selected" : ""}>${escapeHtml(`${category.name}${formatGradeWeightPercentSuffix(category.weight)}`)}</option>`).join("")}
                 </select>
               </label>
-              <label class="grades-entry-field">
+              <label class="grades-entry-field is-wide">
                 <span>Unterkategorie</span>
                 <select name="grades-entry-subcategory" data-grades-entry-subcategory="1">
                   ${subcategories.map((subcategory) => `<option value="${subcategory.id}"${Number(subcategory.id) === Number(editorState.subcategoryId || 0) ? " selected" : ""}>${escapeHtml(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`)}</option>`).join("")}
@@ -13555,6 +13578,40 @@
             this.privacyFocusedGradeStudentId = null;
             this.updateActiveGradeStudentHighlight();
             this.hideGradePrivacyOverlay();
+          }
+
+          getPreferredGradePrivacyStudentId() {
+            const activeStudentId = Number(this.activeGradeStudentId || 0);
+            const root = this.refs.gradesTable || this.getActiveGradeInputRoot();
+            const visibleStudentIds = root
+              ? [...root.querySelectorAll("[data-grade-student-name]")]
+                .map((node) => Number(node.getAttribute("data-grade-student-name") || 0))
+                .filter((studentId) => studentId > 0)
+              : [];
+            if (activeStudentId > 0 && visibleStudentIds.includes(activeStudentId)) {
+              return activeStudentId;
+            }
+            return visibleStudentIds[0] || null;
+          }
+
+          tryEnterGradePrivacyMode(event = null) {
+            if (
+              !this.isGradesTopTabActive()
+              || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+              || this.privacyFocusedGradeStudentId
+            ) {
+              return false;
+            }
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            const studentId = this.getPreferredGradePrivacyStudentId();
+            if (!studentId) {
+              return false;
+            }
+            this.privacyFocusedGradeStudentId = studentId;
+            this.updateActiveGradeStudentHighlight();
+            this.renderGradesView();
+            return true;
           }
 
           tryExitGradePrivacyMode(event = null) {
@@ -14044,8 +14101,10 @@
                 isEntryView || Boolean(this.activeGradeAssessmentId)
               );
               const isPrivacyFocused = studentId > 0 && studentId === Number(this.privacyFocusedGradeStudentId || 0);
+              const isPrivacyBlurred = this.shouldBlurGradeStudent(studentId);
               node.classList.toggle("is-active", isActive);
               node.classList.toggle("is-privacy-focused", isPrivacyFocused);
+              node.classList.toggle("is-privacy-blurred", isPrivacyBlurred);
             });
             root.querySelectorAll(".grade-cell-input[data-assessment-id]").forEach((node) => {
               const studentId = Number(node.getAttribute("data-student-id") || 0);
@@ -14657,36 +14716,41 @@
             const disabled = Boolean(options.disabled);
             const wrapperClass = `grade-checkbox-input-wrap${checked ? " is-checked" : ""}${disabled ? " is-disabled" : ""}`;
             return `
-          <label class="${wrapperClass}">
-            <input
-              type="checkbox"
-              class="grade-checkbox-input"
-              data-grade-input="1"
-              data-grade-checkbox="1"
-              aria-label="Hausaufgabe fehlt bei ${escapeHtml(studentName)}"
-              ${checked ? "checked" : ""}
-              ${disabled ? "disabled" : ""}
-              ${attributes}
-            >
-            <span class="grade-checkbox-indicator" aria-hidden="true"></span>
-          </label>
+          <span class="grade-checkbox-cell-shell">
+            <label class="${wrapperClass}">
+              <input
+                type="checkbox"
+                class="grade-checkbox-input"
+                data-grade-input="1"
+                data-grade-checkbox="1"
+                aria-label="Hausaufgabe fehlt bei ${escapeHtml(studentName)}"
+                ${checked ? "checked" : ""}
+                ${disabled ? "disabled" : ""}
+                ${attributes}
+              >
+              <span class="grade-checkbox-indicator" aria-hidden="true"></span>
+            </label>
+          </span>
         `;
           }
 
           buildHomeworkDisplayButtonMarkup(assessment, student, rowIndex, checked, options = {}) {
             const disabled = Boolean(options.disabled);
+            const stateClass = checked ? " is-checked" : " is-empty";
             return `
-          <button
-            type="button"
-            class="grade-checkbox-display-button${checked ? " is-checked" : ""}"
-            data-grade-activate-assessment="${assessment.id}"
-            data-row-index="${rowIndex}"
-            data-student-id="${student.id}"
-            ${disabled ? "disabled" : ""}
-            aria-label="Hausaufgabe fehlt für ${escapeHtml(this.getGradeStudentDisplayName(student))} in ${escapeHtml(assessment.title)} bearbeiten"
-          >
-            <span class="grade-checkbox-indicator" aria-hidden="true"></span>
-          </button>
+          <span class="grade-checkbox-cell-shell">
+            <button
+              type="button"
+              class="grade-checkbox-display-button${stateClass}"
+              data-grade-activate-assessment="${assessment.id}"
+              data-row-index="${rowIndex}"
+              data-student-id="${student.id}"
+              ${disabled ? "disabled" : ""}
+              aria-label="Hausaufgabe fehlt für ${escapeHtml(this.getGradeStudentDisplayName(student))} in ${escapeHtml(assessment.title)} bearbeiten"
+            >
+              <span class="grade-checkbox-indicator" aria-hidden="true"></span>
+            </button>
+          </span>
         `;
           }
 
@@ -15512,7 +15576,17 @@
 
             if (cell.type === "student") {
               th.className = "student-col";
-              th.textContent = "";
+              th.classList.add("grade-privacy-indicator-cell");
+              const isPrivacyActive = Boolean(this.privacyFocusedGradeStudentId);
+              th.innerHTML = `
+        <button
+          type="button"
+          class="grade-privacy-indicator-button${isPrivacyActive ? " is-active" : " is-inactive"}"
+          data-grade-privacy-toggle="1"
+          aria-label="${isPrivacyActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"}"
+          title="${isPrivacyActive ? "Datenschutzmodus aktiv" : "Datenschutzmodus inaktiv"}"
+        >👀</button>
+      `;
               return th;
             }
 
@@ -15698,8 +15772,9 @@
                   const activeClass = this.activeGradeAssessmentId && Number(this.activeGradeStudentId || 0) === Number(student.id)
                     ? " is-active"
                     : "";
+                  const privacyBlurredClass = isPrivacyBlurred ? " is-privacy-blurred" : "";
                   const privacyClass = isPrivacyFocused ? " is-privacy-focused" : "";
-                  td.innerHTML = `<button type="button" class="grades-student-name is-clickable${activeClass}${privacyClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
+                  td.innerHTML = `<button type="button" class="grades-student-name is-clickable${activeClass}${privacyBlurredClass}${privacyClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
                   tr.append(td);
                   return;
                 }
@@ -15845,6 +15920,17 @@
                 if (column.type === "assessment") {
                   td.className = "grade-assessment-col";
                   applyBodyBoundaryClasses();
+                  if (
+                    this.isHomeworkAssessment(column.assessment)
+                    && !isPrivacyBlurred
+                    && Number(this.activeGradeAssessmentId || 0) !== Number(column.assessment.id || 0)
+                  ) {
+                    td.classList.add("is-cell-activatable");
+                    td.dataset.gradeActivateAssessmentCell = "1";
+                    td.dataset.gradeActivateAssessment = String(column.assessment.id);
+                    td.dataset.rowIndex = String(rowIndex);
+                    td.dataset.studentId = String(student.id);
+                  }
                   td.innerHTML = this.buildGradeAssessmentCellMarkup(
                     student,
                     column.assessment,
