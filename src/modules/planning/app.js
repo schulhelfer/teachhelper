@@ -13298,13 +13298,6 @@
             editor.innerHTML = `
         <div class="grades-entry-layout">
           <div class="table-panel grades-entry-config">
-            <div class="grades-entry-config-head">
-              <p class="grades-entry-config-kicker">Eingabeoptionen</p>
-              <div class="grades-entry-config-heading">
-                <h3 class="grades-entry-config-title">Noteneintrag</h3>
-                <p class="grades-entry-config-copy">Kurs, Modus und Zuordnung direkt neben der Eingabetabelle festlegen.</p>
-              </div>
-            </div>
             <div class="grades-entry-form">
               <label class="grades-entry-field">
                 <span>Kurs</span>
@@ -15596,6 +15589,7 @@
 
             if (cell.type === "assessment") {
               th.className = "grade-assessment-col";
+              th.classList.toggle("is-active-assessment-col", Number(this.activeGradeAssessmentId || 0) === Number(cell.assessment.id));
               applyBoundaryClasses();
               const assessmentButtonClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
                 ? "grade-assessment-button"
@@ -15817,6 +15811,7 @@
 
                 if (column.type === "assessment") {
                   td.className = "grade-assessment-col";
+                  td.classList.toggle("is-active-assessment-col", Number(this.activeGradeAssessmentId || 0) === Number(column.assessment.id));
                   applyBodyBoundaryClasses();
                   td.innerHTML = this.buildGradeAssessmentCellMarkup(
                     student,
