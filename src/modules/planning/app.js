@@ -7033,8 +7033,10 @@
             if (!this.pendingGradesEntryCourseAutoSelect) {
               return;
             }
-            this.pendingGradesEntryCourseAutoSelect = false;
             if (this.locked) {
+              return;
+            }
+            if (this.currentView !== "grades") {
               return;
             }
             if (this.normalizeGradesSubView(this.gradesSubView) !== "entry") {
@@ -7044,6 +7046,20 @@
             if (!year) {
               return;
             }
+            if (!this.gradeVaultSession.planningPublicLoaded) {
+              void this.ensurePlanningPublicLoaded().then(() => {
+                if (this.currentView === "grades" && this.normalizeGradesSubView(this.gradesSubView) === "entry") {
+                  this.renderAll({ visibleOnly: true });
+                }
+              }).catch((error) => {
+                this.setSyncStatus(
+                  error instanceof Error && error.message ? error.message : "Planungsdaten konnten nicht geladen werden.",
+                  true
+                );
+              });
+              return;
+            }
+            this.pendingGradesEntryCourseAutoSelect = false;
             const preferredCourseId = Number(this.getPreferredGradesEntryCourseIdForNow(new Date()) || 0);
             if (!preferredCourseId) {
               return;
