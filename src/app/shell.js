@@ -461,7 +461,11 @@ export function createShellController({
 
   function setActiveTab(tab) {
     const nextTab = normalizeTab(tab);
-    const skipAnimatedTabSwitch = nextTab === TAB_GROUPS || state.activeTab === TAB_GROUPS;
+    const planningTabActive = state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES;
+    const planningTabNext = nextTab === TAB_PLANNING || nextTab === TAB_GRADES;
+    const skipAnimatedTabSwitch = nextTab === TAB_GROUPS
+      || state.activeTab === TAB_GROUPS
+      || (planningTabActive && planningTabNext);
     if (state.tabTransitionState !== 'idle') {
       state.pendingTabTransitionTarget = nextTab;
       return;

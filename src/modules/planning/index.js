@@ -64,6 +64,12 @@ export function mountPlanning({ host }) {
       }));
       return;
     }
+    if (data.type === PLANNING_VIEW_REQUEST_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
     if (data.type === PLANNING_READY_EVENT) {
       window.dispatchEvent(new CustomEvent(PLANNING_READY_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
@@ -74,6 +80,9 @@ export function mountPlanning({ host }) {
   const onViewRequest = (event) => {
     if (disposed) return;
     const detail = event instanceof CustomEvent ? event.detail : null;
+    if (detail && typeof detail === 'object' && detail.source === 'iframe') {
+      return;
+    }
     post(PLANNING_VIEW_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
   };
 

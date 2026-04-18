@@ -180,6 +180,16 @@ import { applyTheme } from './shell/theme.js';
       const setActiveTabImmediate = (tab) => shellController?.setActiveTabImmediate(tab);
       const syncChromeState = () => shellController?.syncChromeState();
 
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+        window.addEventListener('classroom:planning-view-request', (event) => {
+          const detail = event instanceof CustomEvent ? event.detail : null;
+          if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
+            return;
+          }
+          setActiveTab(detail.view === 'grades' ? TAB_GRADES : TAB_PLANNING);
+        });
+      }
+
       function stripJsonWarning(text) {
         if (typeof text !== 'string') return '';
         return text.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trimStart();

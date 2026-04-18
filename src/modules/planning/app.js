@@ -4795,6 +4795,8 @@
             this.pendingGradeTableMotion = null;
             this.pendingGradesEntryCourseAutoSelect = true;
             this.gradeVaultSession = createInitialGradeVaultSessionState();
+            this.pendingWeekGradeAssessmentLoadKey = "";
+            this.gradesOverviewAssessmentSpotlight = null;
             this.appVersion = "";
             this.weekCalendarMonthIso = null;
             this.weekCalendarHoverWeekStart = null;
@@ -5144,6 +5146,8 @@
               ...patch
             };
             this.gradeVaultSession = next;
+            this.pendingWeekGradeAssessmentLoadKey = "";
+            this.clearGradesOverviewAssessmentSpotlight();
             if (this.isManualPersistenceMode()) {
               this.markManualDirtyIfNeeded();
             }
@@ -6972,6 +6976,85 @@
             }
             target[field === "end" ? "end" : "start"] = normalizeLessonTimeValue(value);
             this.settingsDraft.lessonTimes = nextTimes;
+          }
+
+          getWeekHighlightSlot(weekStartIso, weekEndIso, now = new Date()) {
+            const year = this.activeSchoolYear;
+            if (!year || !weekStartIso || !weekEndIso) {
+              return null;
+            }
+            this.store.ensureLessonsForYear(year.id);
+            const hoursPerDay = this.store.getHoursPerDay();
+            const validation = validateLessonTimes(this.store.getLessonTimes(hoursPerDay), hoursPerDay);
+            if (!validation.valid || !validation.hasAnyValue) {
+              return null;
+            }
+            const lessonTimesByHour = new Map(validation.normalized.map((entry) => [Number(entry.lesson), entry]));
+            const todayIso = toIsoDate(now);
+            const nowMinutes = now.getHours() * 60 + now.getMinutes();
+            const lessons = this.store
+              .listLessonsForWeek(year.id, year.startDate, todayIso)
+              .filter((lesson) => !lesson.canceled && !lesson.noLesson && !lesson.isEntfall);
+            let activeSlot = null;
+            let lastSlot = null;
+
+            lessons.forEach((lesson) => {
+              const lessonDate = String(lesson.lessonDate || "").trim();
+              const hour = Number(lesson.hour) || 0;
+              if (!lessonDate || !hour) {
+                return;
+              }
+              const timeRow = lessonTimesByHour.get(hour);
+              if (!timeRow) {
+                return;
+              }
+              const startMinutes = parseLessonTimeMinutes(timeRow.start);
+              const endMinutes = parseLessonTimeMinutes(timeRow.end);
+              if (startMinutes === null || endMinutes === null) {
+                return;
+              }
+              if (lessonDate === todayIso && nowMinutes >= startMinutes && nowMinutes < endMinutes) {
+                activeSlot = {
+                  dayIso: lessonDate,
+                  hour,
+                  lessonId: Number(lesson.id) || null
+                };
+                return;
+              }
+              const isPastLesson = lessonDate < todayIso || (lessonDate === todayIso && endMinutes <= nowMinutes);
+              if (!isPastLesson) {
+                return;
+              }
+              if (
+                !lastSlot
+                || lessonDate > lastSlot.dayIso
+                || (lessonDate === lastSlot.dayIso && endMinutes >= lastSlot.endMinutes)
+              ) {
+                lastSlot = {
+                  dayIso: lessonDate,
+                  hour,
+                  lessonId: Number(lesson.id) || null,
+                  endMinutes
+                };
+              }
+            });
+
+            if (activeSlot) {
+              return activeSlot.dayIso >= weekStartIso && activeSlot.dayIso <= weekEndIso
+                ? activeSlot
+                : null;
+            }
+            if (!lastSlot) {
+              return null;
+            }
+            const highlightSlot = {
+              dayIso: lastSlot.dayIso,
+              hour: lastSlot.hour,
+              lessonId: lastSlot.lessonId
+            };
+            return highlightSlot.dayIso >= weekStartIso && highlightSlot.dayIso <= weekEndIso
+              ? highlightSlot
+              : null;
           }
 
           getPreferredGradesEntryCourseIdForNow(now = new Date()) {
@@ -9870,6 +9953,9 @@
             this.closeTopicDialog();
             this.resetInlineWeekBlockTopicEdit();
             if (viewName !== "grades") {
+              this.clearGradesOverviewAssessmentSpotlight();
+            }
+            if (viewName !== "grades") {
               this.clearPrivacyFocusedGradeStudent();
             }
             if (this.locked && viewName !== "settings") {
@@ -10438,6 +10524,7 @@
               if (button.dataset.noLesson === "1") {
                 return;
               }
+              this.clearGradesOverviewAssessmentSpotlight();
               this.selectedCourseId = Number(button.dataset.courseId);
               if (this.isGradesTopTabActive()) {
                 this.switchGradesSubView("overview");
@@ -11087,10 +11174,31 @@
                 return;
               }
               this.hideContextMenu();
+              const gradeEntryTrigger = event.target.closest(".lesson-block-grade-entry[data-grade-entry-lesson-id]");
+              if (gradeEntryTrigger) {
+                event.preventDefault();
+                event.stopPropagation();
+                const lessonId = Number(gradeEntryTrigger.dataset.gradeEntryLessonId || 0);
+                const triggerMode = String(gradeEntryTrigger.dataset.gradeEntryMode || "entry").trim();
+                if (!lessonId) {
+                  return;
+                }
+                const lesson = this.store.getLessonById(lessonId);
+                if (!lesson) {
+                  return;
+                }
+                if (triggerMode === "overview") {
+                  this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
+                } else {
+                  this.openGradesEntryFromLesson(lesson);
+                }
+                return;
+              }
               const courseLink = event.target.closest(".lesson-block .title.course-link[data-course-id]");
               if (courseLink) {
                 const courseId = Number(courseLink.dataset.courseId || 0);
                 if (courseId) {
+                  this.clearGradesOverviewAssessmentSpotlight();
                   this.selectedCourseId = courseId;
                   if (this.isGradesTopTabActive()) {
                     this.switchGradesSubView("overview");
@@ -11832,7 +11940,7 @@
                 this.positionWeekCalendarDialog();
               }
               if (this.currentView === "week") {
-                this.syncWeekLayoutScale();
+                this.scheduleWeekLayoutScale();
               }
             });
 
@@ -13142,7 +13250,16 @@
             });
             this.refs.gradesEmptyState.hidden = true;
             this.refs.gradesBookPanel.hidden = false;
-            this.renderGradesTable(course, students, groupedAssessments, { includeAddColumns: false });
+            const spotlight = this.resolveGradesOverviewAssessmentSpotlight(course, groupedAssessments);
+            this.renderGradesTable(course, students, groupedAssessments, {
+              includeAddColumns: false,
+              spotlightAssessmentId: Number(spotlight?.assessmentId || 0)
+            });
+            if (spotlight && !spotlight.scrolled) {
+              requestAnimationFrame(() => {
+                this.scrollGradesOverviewAssessmentSpotlightIntoView();
+              });
+            }
             this.renderGradePrivacyOverlay(course, students);
           }
 
@@ -15678,8 +15795,9 @@
             return { columns, headerRows };
           }
 
-          renderGradesTableHeaderCell(cell) {
+          renderGradesTableHeaderCell(cell, options = {}) {
             const th = document.createElement("th");
+            const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
             if (cell.rowSpan > 1) {
               th.rowSpan = cell.rowSpan;
             }
@@ -15814,6 +15932,10 @@
 
             if (cell.type === "assessment") {
               th.className = "grade-assessment-col";
+              th.dataset.gradeAssessmentId = String(cell.assessment.id);
+              if (spotlightAssessmentId > 0 && Number(cell.assessment.id || 0) === spotlightAssessmentId) {
+                th.classList.add("is-lesson-spotlight");
+              }
               applyBoundaryClasses();
               const assessmentButtonClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
                 ? "grade-assessment-button"
@@ -15847,6 +15969,7 @@
             const model = this.buildGradesTableModel(course, groupedAssessments, options);
             const table = document.createElement("table");
             table.className = "grades-master-table";
+            const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
             if (motion && (motion.kind === "expand" || motion.kind === "collapse")) {
               table.classList.add("is-toggle-animating");
               table.dataset.gradeMotionKind = motion.kind;
@@ -15859,7 +15982,7 @@
               }
               const tr = document.createElement("tr");
               row.forEach((cell) => {
-                tr.append(this.renderGradesTableHeaderCell(cell));
+                tr.append(this.renderGradesTableHeaderCell(cell, { spotlightAssessmentId }));
               });
               thead.append(tr);
             });
@@ -16036,6 +16159,10 @@
 
                 if (column.type === "assessment") {
                   td.className = "grade-assessment-col";
+                  td.dataset.gradeAssessmentId = String(column.assessment.id);
+                  if (spotlightAssessmentId > 0 && Number(column.assessment.id || 0) === spotlightAssessmentId) {
+                    td.classList.add("is-lesson-spotlight");
+                  }
                   applyBodyBoundaryClasses();
                   if (
                     this.isHomeworkAssessment(column.assessment)
@@ -16080,6 +16207,7 @@
             if (!this.refs.gradesTable) {
               return;
             }
+            const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
             if (
               this.activeGradeAssessmentId
               && !this.isGradeAssessmentVisible(course, groupedAssessments, this.activeGradeAssessmentId)
@@ -16112,13 +16240,15 @@
             const motion = this.pendingGradeTableMotion;
             this.pendingGradeTableMotion = null;
             this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
-            const bookPanel = this.refs.gradesBookPanel;
-            if (bookPanel) {
-              bookPanel.scrollLeft = 0;
-            }
-            const tableScroll = this.refs.gradesTableScroll;
-            if (tableScroll) {
-              tableScroll.scrollLeft = 0;
+            if (!spotlightAssessmentId) {
+              const bookPanel = this.refs.gradesBookPanel;
+              if (bookPanel) {
+                bookPanel.scrollLeft = 0;
+              }
+              const tableScroll = this.refs.gradesTableScroll;
+              if (tableScroll) {
+                tableScroll.scrollLeft = 0;
+              }
             }
           }
 
@@ -17176,6 +17306,9 @@
               return false;
             }
             if (normalized !== "overview") {
+              this.clearGradesOverviewAssessmentSpotlight();
+            }
+            if (normalized !== "overview") {
               this.activeGradeOverrideContext = null;
             }
             if (normalized !== "entry") {
@@ -17204,6 +17337,365 @@
               });
             }
             return true;
+          }
+
+          openGradesEntryFromLesson(lesson) {
+            const courseId = Number(lesson?.courseId || 0);
+            const lessonDate = String(lesson?.lessonDate || "").trim();
+            if (!courseId || !lessonDate) {
+              return false;
+            }
+            this.hideGradePicker();
+            this.queueGradesEntrySaveNotice("");
+            this.clearGradesOverviewAssessmentSpotlight();
+            this.clearPrivacyFocusedGradeStudent();
+            this.activeGradeOverrideContext = null;
+            this.selectedCourseId = courseId;
+            this.shellTabContext = "grades";
+            this.gradesSubView = "entry";
+            this.selectedGradesEntryAssessmentId = null;
+            this.activeGradeAssessmentId = null;
+            this.activeGradeStudentId = null;
+            this.pendingGradesEntryCourseAutoSelect = false;
+            this.gradesEntryDraft = {
+              ...this.getGradesEntryDraft(courseId),
+              title: formatShortDateLabel(lessonDate),
+              entries: {}
+            };
+            if (this.currentView !== "grades") {
+              this.switchView("grades");
+              this.notifyParentPlanningViewRequest("grades");
+              return true;
+            }
+            this.renderViewState();
+            this.renderSidebarCourseList();
+            this.renderGradesView();
+            requestAnimationFrame(() => {
+              this.focusFirstGradesEntryInput();
+            });
+            this.notifyParentPlanningViewRequest("grades");
+            return true;
+          }
+
+          openGradesOverviewForCourse(courseId, options = {}) {
+            const normalizedCourseId = Number(courseId || 0);
+            if (!normalizedCourseId) {
+              return false;
+            }
+            this.hideGradePicker();
+            this.queueGradesEntrySaveNotice("");
+            this.clearPrivacyFocusedGradeStudent();
+            this.activeGradeOverrideContext = null;
+            this.selectedCourseId = normalizedCourseId;
+            this.shellTabContext = "grades";
+            this.pendingGradesEntryCourseAutoSelect = false;
+            const lessonDate = String(options?.lessonDate || "").trim();
+            if (lessonDate) {
+              this.setGradesOverviewAssessmentSpotlight({
+                courseId: normalizedCourseId,
+                lessonDate,
+                scrolled: false
+              });
+            } else {
+              this.clearGradesOverviewAssessmentSpotlight();
+            }
+            const switched = this.switchGradesSubView("overview");
+            if (switched) {
+              this.notifyParentPlanningViewRequest("grades");
+            }
+            return switched;
+          }
+
+          notifyParentPlanningViewRequest(view = "week") {
+            if (typeof window === "undefined" || !window.parent || window.parent === window) {
+              return;
+            }
+            const requestedView = view === "grades" ? "grades" : "week";
+            try {
+              window.parent.postMessage({
+                type: "classroom:planning-view-request",
+                detail: {
+                  view: requestedView,
+                  source: "iframe"
+                }
+              }, window.location.origin);
+            } catch (_error) {
+              // Ignore shell sync failures. Local navigation already completed.
+            }
+          }
+
+          normalizeGradesOverviewAssessmentSpotlightTarget(target = null) {
+            if (!isRecord(target)) {
+              return null;
+            }
+            const courseId = Number(target.courseId || 0);
+            const assessmentId = Number(target.assessmentId || 0);
+            const lessonDate = String(target.lessonDate || "").trim();
+            if (!courseId || (!assessmentId && !lessonDate)) {
+              return null;
+            }
+            return {
+              courseId,
+              assessmentId: assessmentId > 0 ? assessmentId : 0,
+              lessonDate,
+              scrolled: Boolean(target.scrolled)
+            };
+          }
+
+          clearGradesOverviewAssessmentSpotlight() {
+            this.gradesOverviewAssessmentSpotlight = null;
+          }
+
+          setGradesOverviewAssessmentSpotlight(target = null) {
+            this.gradesOverviewAssessmentSpotlight = this.normalizeGradesOverviewAssessmentSpotlightTarget(target);
+          }
+
+          findGradeAssessmentByLessonDate(courseId, lessonDate, groupedAssessments = []) {
+            const courseKey = Number(courseId || 0);
+            const normalizedLessonDate = String(lessonDate || "").trim();
+            if (!courseKey || !normalizedLessonDate || !Array.isArray(groupedAssessments)) {
+              return null;
+            }
+            const expectedTitle = normalizeGradeTextPart(formatShortDateLabel(normalizedLessonDate));
+            if (!expectedTitle) {
+              return null;
+            }
+            const expectedHalfYear = this.getDefaultGradeAssessmentHalfYear(normalizedLessonDate);
+            let fallback = null;
+            for (const periodGroup of groupedAssessments) {
+              const categories = Array.isArray(periodGroup?.categories) ? periodGroup.categories : [];
+              for (const category of categories) {
+                const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
+                for (const subcategory of subcategories) {
+                  const assessments = Array.isArray(subcategory?.assessments) ? subcategory.assessments : [];
+                  for (const assessment of assessments) {
+                    if (Number(assessment?.courseId || 0) !== courseKey) {
+                      continue;
+                    }
+                    if (normalizeGradeTextPart(assessment?.title) !== expectedTitle) {
+                      continue;
+                    }
+                    if (normalizeGradeHalfYear(assessment?.halfYear) === expectedHalfYear) {
+                      return assessment;
+                    }
+                    if (!fallback) {
+                      fallback = assessment;
+                    }
+                  }
+                }
+              }
+            }
+            return fallback;
+          }
+
+          expandGradesOverviewAssessment(courseId, assessment) {
+            const courseKey = Number(courseId || 0);
+            const assessmentId = Number(assessment?.id || 0);
+            if (!courseKey || !assessmentId) {
+              return false;
+            }
+            const period = normalizeGradeHalfYear(assessment?.halfYear || "h1");
+            const categoryId = Number(assessment?.categoryId || 0);
+            const subcategoryId = Number(assessment?.subcategoryId || 0);
+            const nextPeriodKey = buildGradePeriodKey(courseKey, period);
+            const nextCategoryKey = buildGradeCategoryKey(courseKey, categoryId, period);
+            const nextSubcategoryKey = buildGradeSubcategoryKey(courseKey, categoryId, subcategoryId, period);
+            let changed = false;
+            if (this.gradeCollapsedPeriodKeys.delete(nextPeriodKey)) {
+              changed = true;
+            }
+            if (categoryId > 0 && this.gradeCollapsedCategoryKeys.delete(nextCategoryKey)) {
+              changed = true;
+            }
+            if (categoryId > 0 && subcategoryId > 0 && this.gradeCollapsedSubcategoryKeys.delete(nextSubcategoryKey)) {
+              changed = true;
+            }
+            return changed;
+          }
+
+          resolveGradesOverviewAssessmentSpotlight(course, groupedAssessments = []) {
+            const target = this.normalizeGradesOverviewAssessmentSpotlightTarget(this.gradesOverviewAssessmentSpotlight);
+            if (!target || Number(course?.id || 0) !== target.courseId) {
+              return null;
+            }
+            let assessment = target.assessmentId > 0
+              ? this.store.getGradeAssessment(target.assessmentId)
+              : null;
+            if (!assessment || Number(assessment.courseId || 0) !== target.courseId) {
+              assessment = this.findGradeAssessmentByLessonDate(target.courseId, target.lessonDate, groupedAssessments);
+              if (!assessment) {
+                return null;
+              }
+            }
+            const normalized = {
+              ...target,
+              assessmentId: Number(assessment.id || 0),
+              scrolled: Boolean(target.scrolled)
+            };
+            this.expandGradesOverviewAssessment(target.courseId, assessment);
+            this.gradesOverviewAssessmentSpotlight = normalized;
+            return normalized;
+          }
+
+          scrollGradesOverviewAssessmentSpotlightIntoView() {
+            const target = this.normalizeGradesOverviewAssessmentSpotlightTarget(this.gradesOverviewAssessmentSpotlight);
+            const assessmentId = Number(target?.assessmentId || 0);
+            const container = this.refs.gradesTableScroll || this.refs.gradesBookPanel;
+            if (!assessmentId || !container) {
+              return;
+            }
+            const node = this.refs.gradesTable?.querySelector(
+              `th.grade-assessment-col[data-grade-assessment-id="${assessmentId}"], td.grade-assessment-col[data-grade-assessment-id="${assessmentId}"]`
+            );
+            if (!(node instanceof HTMLElement)) {
+              return;
+            }
+            const containerRect = container.getBoundingClientRect();
+            const nodeRect = node.getBoundingClientRect();
+            const targetLeft = container.scrollLeft
+              + (nodeRect.left - containerRect.left)
+              - Math.max(12, (container.clientWidth - nodeRect.width) / 2);
+            container.scrollLeft = Math.max(0, targetLeft);
+            this.gradesOverviewAssessmentSpotlight = {
+              ...target,
+              scrolled: true
+            };
+          }
+
+          buildGradeAssessmentTitleSetFromVaultState(vaultState, courseId) {
+            const courseKey = Number(courseId || 0);
+            if (!courseKey || !vaultState || !Array.isArray(vaultState.gradeAssessments)) {
+              return null;
+            }
+            const titles = new Set();
+            vaultState.gradeAssessments.forEach((assessment) => {
+              if (Number(assessment?.courseId || 0) !== courseKey) {
+                return;
+              }
+              const title = normalizeGradeTextPart(assessment?.title);
+              if (title) {
+                titles.add(title);
+              }
+            });
+            return titles;
+          }
+
+          getGradeAssessmentTitleSetForCourse(courseId) {
+            const courseKey = Number(courseId || 0);
+            if (!courseKey) {
+              return null;
+            }
+            if (this.isGradeCourseLoaded(courseKey)) {
+              return this.buildGradeAssessmentTitleSetFromVaultState(
+                this.getCurrentGradeVaultSnapshot(),
+                courseKey
+              );
+            }
+            if (this.gradeVaultSession.gradeCourseCache[courseKey]) {
+              return this.buildGradeAssessmentTitleSetFromVaultState(
+                this.gradeVaultSession.gradeCourseCache[courseKey],
+                courseKey
+              );
+            }
+            return null;
+          }
+
+          ensureWeekGradeAssessmentsLoaded(courseIds = [], weekStartIso = this.weekStartIso) {
+            if (!this.isGradeVaultConfigured() || !this.isGradeVaultUnlocked()) {
+              return;
+            }
+            const missingCourseIds = Array.from(new Set(
+              (Array.isArray(courseIds) ? courseIds : [])
+                .map((courseId) => Number(courseId) || 0)
+                .filter((courseId) => courseId > 0 && !this.getGradeAssessmentTitleSetForCourse(courseId))
+            ));
+            if (missingCourseIds.length === 0) {
+              return;
+            }
+            const requestKey = `${String(weekStartIso || "")}:${missingCourseIds.join(",")}`;
+            if (this.pendingWeekGradeAssessmentLoadKey === requestKey) {
+              return;
+            }
+            this.pendingWeekGradeAssessmentLoadKey = requestKey;
+            void (async () => {
+              try {
+                for (const courseId of missingCourseIds) {
+                  await this.ensureGradeCourseLoaded(courseId);
+                }
+                if (
+                  this.pendingWeekGradeAssessmentLoadKey === requestKey
+                  && this.currentView === "week"
+                  && this.weekStartIso === weekStartIso
+                ) {
+                  this.renderWeekTable();
+                }
+              } catch (error) {
+                if (this.pendingWeekGradeAssessmentLoadKey === requestKey) {
+                  this.setSyncStatus(
+                    error instanceof Error && error.message ? error.message : "Notenkurse konnten nicht geladen werden.",
+                    true
+                  );
+                }
+              } finally {
+                if (this.pendingWeekGradeAssessmentLoadKey === requestKey) {
+                  this.pendingWeekGradeAssessmentLoadKey = "";
+                }
+              }
+            })();
+          }
+
+          buildWeekGradeAssessmentLookup(lessons = []) {
+            if (!this.isGradeVaultConfigured() || !this.isGradeVaultUnlocked()) {
+              return new Map();
+            }
+            const lookup = new Map();
+            const courseIds = new Set();
+            lessons.forEach((lesson) => {
+              const courseId = Number(lesson?.courseId || 0);
+              if (courseId > 0) {
+                courseIds.add(courseId);
+              }
+            });
+            const missingCourseIds = [];
+            courseIds.forEach((courseId) => {
+              const titles = this.getGradeAssessmentTitleSetForCourse(courseId);
+              if (!(titles instanceof Set)) {
+                missingCourseIds.push(courseId);
+                return;
+              }
+              lookup.set(courseId, titles);
+            });
+            if (missingCourseIds.length > 0) {
+              this.ensureWeekGradeAssessmentsLoaded(missingCourseIds, this.weekStartIso);
+            }
+            return lookup;
+          }
+
+          hasExistingGradeAssessmentForLesson(courseId, lessonDate, assessmentLookup = null) {
+            const normalizedCourseId = Number(courseId || 0);
+            const normalizedLessonDate = String(lessonDate || "").trim();
+            if (!normalizedCourseId || !normalizedLessonDate) {
+              return false;
+            }
+            if (!this.isGradeVaultConfigured() || !this.isGradeVaultUnlocked()) {
+              return false;
+            }
+            const expectedTitle = normalizeGradeTextPart(formatShortDateLabel(normalizedLessonDate));
+            if (!expectedTitle) {
+              return false;
+            }
+            if (assessmentLookup instanceof Map) {
+              const titles = assessmentLookup.get(normalizedCourseId);
+              if (titles instanceof Set) {
+                return titles.has(expectedTitle);
+              }
+            }
+            if (!this.isGradeCourseLoaded(normalizedCourseId)) {
+              return false;
+            }
+            return this.store.listGradeAssessments(normalizedCourseId).some((assessment) => (
+              normalizeGradeTextPart(assessment?.title) === expectedTitle
+            ));
           }
 
           renderViewState() {
@@ -17269,7 +17761,7 @@
             }
 
             if (isWeek) {
-              requestAnimationFrame(() => this.syncWeekLayoutScale());
+              this.scheduleWeekLayoutScale();
             } else if (this.refs.headerGlass && this.refs.weekTable) {
               this.refs.headerGlass.style.setProperty("--week-header-scale", "1");
               this.refs.weekTable.style.setProperty("--week-table-scale", "1");
@@ -17889,7 +18381,30 @@
               this.positionGradesTitleDatePicker();
             }
             this.renderWeekTable();
-            this.syncWeekLayoutScale();
+            this.scheduleWeekLayoutScale();
+          }
+
+          scheduleWeekLayoutScale() {
+            if (this.weekLayoutScaleFrame) {
+              cancelAnimationFrame(this.weekLayoutScaleFrame);
+              this.weekLayoutScaleFrame = 0;
+            }
+            if (this.weekLayoutScaleTimeout) {
+              window.clearTimeout(this.weekLayoutScaleTimeout);
+              this.weekLayoutScaleTimeout = 0;
+            }
+            const run = () => {
+              this.weekLayoutScaleFrame = 0;
+              this.weekLayoutScaleTimeout = 0;
+              this.syncWeekLayoutScale();
+            };
+            if (typeof requestAnimationFrame === "function") {
+              this.weekLayoutScaleFrame = requestAnimationFrame(() => {
+                this.weekLayoutScaleFrame = requestAnimationFrame(run);
+              });
+              return;
+            }
+            this.weekLayoutScaleTimeout = window.setTimeout(run, 0);
           }
 
           syncWeekLayoutScale() {
@@ -18097,28 +18612,38 @@
                 if (block.scrollHeight - block.clientHeight > 1.5) {
                   return false;
                 }
-                if (block.scrollWidth - block.clientWidth > 1.5) {
-                  return false;
-                }
               }
               return true;
             };
 
             const minScale = 0.25;
-            const step = 0.01;
+            const precision = 0.02;
             let scale = 1;
             table.style.setProperty("--week-block-font-scale", scale.toFixed(2));
             if (fitsAll()) {
               return;
             }
 
-            while (scale > minScale) {
-              scale = Math.max(minScale, Number((scale - step).toFixed(2)));
+            table.style.setProperty("--week-block-font-scale", minScale.toFixed(2));
+            if (!fitsAll()) {
+              return;
+            }
+
+            let low = minScale;
+            let high = 1;
+            let bestScale = minScale;
+            while ((high - low) > precision) {
+              const mid = (low + high) / 2;
+              scale = Number(mid.toFixed(2));
               table.style.setProperty("--week-block-font-scale", scale.toFixed(2));
               if (fitsAll()) {
-                return;
+                bestScale = scale;
+                low = mid;
+              } else {
+                high = mid;
               }
             }
+            table.style.setProperty("--week-block-font-scale", bestScale.toFixed(2));
           }
 
           renderWeekTable() {
@@ -18134,7 +18659,9 @@
             const hoursPerDay = this.store.getHoursPerDay();
             this.refs.weekTable.style.setProperty("--hours-per-day", String(Math.max(1, hoursPerDay)));
             const days = [0, 1, 2, 3, 4].map((offset) => addDays(this.weekStartIso, offset));
+            const highlightedSlot = this.getWeekHighlightSlot(days[0], days[4]);
             const lessons = this.store.listLessonsForWeek(year.id, days[0], days[4]);
+            const gradeAssessmentLookup = this.buildWeekGradeAssessmentLookup(lessons);
             const lessonsByDayHour = new Map();
             for (const lesson of lessons) {
               const key = `${lesson.lessonDate}|${lesson.hour}`;
@@ -18278,7 +18805,7 @@
                     break;
                   }
                   const nextLesson = nextRows[0];
-                  if (Number(nextLesson.courseId) !== Number(startLesson.courseId)) {
+                  if (Number(nextLesson.slotId) !== Number(startLesson.slotId)) {
                     break;
                   }
                   merged.push(nextLesson);
@@ -18358,6 +18885,13 @@
                 if (block) {
                   const td = document.createElement("td");
                   td.className = "day-cell week-block-cell";
+                  const highlightLessonIdInBlock = highlightedSlot && highlightedSlot.dayIso === dayIso
+                    ? Number(highlightedSlot.lessonId || 0)
+                    : null;
+                  const blockContainsHighlightedHour = Boolean(
+                    highlightLessonIdInBlock
+                    && block.lessons.some((entry) => Number(entry.id) === highlightLessonIdInBlock)
+                  );
                   if (block.rowSpan > 1) {
                     td.rowSpan = block.rowSpan;
                     skipByDay[dayIndex] = block.rowSpan - 1;
@@ -18368,6 +18902,9 @@
                     chip.type = "button";
                   }
                   chip.className = "lesson-block";
+                  if (blockContainsHighlightedHour) {
+                    chip.classList.add("highlighted-slot");
+                  }
                   chip.dataset.lessonId = String(block.firstLessonId);
                   if (block.selectable) {
                     chip.title = block.hasNotes
@@ -18402,6 +18939,58 @@
                   }
                   if (block.allCanceled && chip instanceof HTMLButtonElement) {
                     chip.disabled = true;
+                  }
+                  const showGradesEntryTrigger = this.isGradeVaultConfigured() && !block.isNoLesson && block.courseId > 0;
+                  if (showGradesEntryTrigger) {
+                    const hasExistingAssessment = this.hasExistingGradeAssessmentForLesson(
+                      block.courseId,
+                      block.topLesson?.lessonDate,
+                      gradeAssessmentLookup
+                    );
+                    const triggerMode = hasExistingAssessment ? "overview" : "entry";
+                    chip.classList.add("has-grade-entry-trigger");
+                    if (hasExistingAssessment) {
+                      chip.classList.add("has-existing-grade-assessment");
+                    }
+                    const gradeEntryTrigger = document.createElement("span");
+                    gradeEntryTrigger.className = "lesson-block-grade-entry";
+                    if (hasExistingAssessment) {
+                      gradeEntryTrigger.classList.add("has-existing-assessment");
+                    }
+                    gradeEntryTrigger.dataset.gradeEntryLessonId = String(block.firstLessonId);
+                    gradeEntryTrigger.dataset.gradeEntryMode = triggerMode;
+                    gradeEntryTrigger.setAttribute("role", "button");
+                    gradeEntryTrigger.setAttribute("tabindex", "0");
+                    gradeEntryTrigger.setAttribute(
+                      "aria-label",
+                      hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen"
+                    );
+                    gradeEntryTrigger.title = hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen";
+                    gradeEntryTrigger.textContent = "🎲";
+                    if (hasExistingAssessment) {
+                      const existingBadge = document.createElement("span");
+                      existingBadge.className = "lesson-block-grade-entry-status";
+                      existingBadge.setAttribute("aria-hidden", "true");
+                      existingBadge.textContent = "✓";
+                      gradeEntryTrigger.append(existingBadge);
+                    }
+                    gradeEntryTrigger.addEventListener("keydown", (keyEvent) => {
+                      if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
+                        return;
+                      }
+                      keyEvent.preventDefault();
+                      keyEvent.stopPropagation();
+                      const lesson = this.store.getLessonById(block.firstLessonId);
+                      if (!lesson) {
+                        return;
+                      }
+                      if (triggerMode === "overview") {
+                        this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
+                      } else {
+                        this.openGradesEntryFromLesson(lesson);
+                      }
+                    });
+                    chip.append(gradeEntryTrigger);
                   }
                   const courseName = String(block.courseName || "").trim();
                   const lines = String(block.displayText || "")
@@ -18494,6 +19083,9 @@
 
                 const td = document.createElement("td");
                 td.className = "day-cell empty";
+                if (highlightedSlot && highlightedSlot.dayIso === dayIso && Number(highlightedSlot.hour) === hour) {
+                  td.classList.add("highlighted-slot");
+                }
                 td.dataset.day = String(dayIndex + 1);
                 td.dataset.hour = String(hour);
                 td.title = "Doppelklick: Unterrichtsstunde anlegen";
@@ -18504,8 +19096,7 @@
             }
 
             this.refs.weekTable.append(thead, tbody);
-            this.syncWeekLayoutScale();
-            requestAnimationFrame(() => this.syncWeekLayoutScale());
+            this.scheduleWeekLayoutScale();
           }
 
           renderLessonSection() {
