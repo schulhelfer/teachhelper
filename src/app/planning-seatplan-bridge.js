@@ -20,6 +20,7 @@ export function createPlanningSeatplanBridge({
   rosterStore,
   documentBus = document,
 } = {}) {
+  let mergerController = null;
   let planningController = null;
   let seatplanController = null;
   const tabInitState = {
@@ -50,7 +51,8 @@ export function createPlanningSeatplanBridge({
   const initMergerTab = (root = els.mergerHost) => {
     const host = root;
     if (!host || host.dataset.initialized === '1') return;
-    mountMerger({ host });
+    mergerController = mountMerger({ host });
+    mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
   };
 
   const initSeatplanTabNative = (
@@ -145,6 +147,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function refreshModuleLayouts({ activeTab, isIOSDevice = false } = {}) {
+    mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     scheduleModuleLayoutRefresh(activeTab, isIOSDevice);

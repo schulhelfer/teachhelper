@@ -184,6 +184,10 @@
           margin: 0
         }
 
+        .sidebar-title {
+          font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif;
+        }
+
         .sidebar-header {
           display: flex;
           align-items: baseline;

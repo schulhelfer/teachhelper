@@ -1,134 +1,293 @@
 <!doctype html>
-    <html lang="de" data-theme="dark">
+<html lang="de" data-theme="dark">
 
-    <head>
-      <meta charset="utf-8">
-      <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-      <meta name="theme-color" content="#0b1220">
-      <meta name="color-scheme" content="dark">
-      <title>Merger</title>
-      <link rel="manifest" href="../../../manifest.webmanifest">
-      <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png">
-      <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png">
-      <link rel="stylesheet" href="./app.css">
-    </head>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="color-scheme" content="light dark">
+  <title>PDF-Tools</title>
+  <link rel="manifest" href="../../../manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png">
+  <link rel="stylesheet" href="./app.css?v=merger-r11">
+</head>
 
-    <body>
-      <main class="app">
-        <section class="card">
-          <div id="dropZone" class="drop" tabindex="0" role="button" aria-label="PDF auswählen">
-            <div class="drop-content">
-              <div id="dropHint">
-                <strong>PDF hierhin ziehen</strong>
-                <div>oder klicken zum Auswählen</div>
+<body>
+  <div class="merger-runtime-root">
+    <div class="app">
+      <aside class="side" aria-label="PDF-Werkzeuge">
+        <div class="sidebar-header">
+          <h1 class="sidebar-title">PDF-Tools</h1>
+        </div>
+        <div class="tool-tab-bar" role="tablist" aria-label="PDF-Werkzeuge">
+          <button id="tool-tab-layout" class="tool-tab active" type="button" role="tab" data-tool="layout"
+            aria-controls="tool-panel-layout" aria-selected="true">Zusammenführen: Seiten</button>
+          <button id="tool-tab-merge" class="tool-tab" type="button" role="tab" data-tool="merge"
+            aria-controls="tool-panel-merge" aria-selected="false">Zusammenführen: Dateien</button>
+          <button id="tool-tab-rotate" class="tool-tab" type="button" role="tab" data-tool="rotate"
+            aria-controls="tool-panel-rotate" aria-selected="false">Drehen</button>
+          <button id="tool-tab-split" class="tool-tab" type="button" role="tab" data-tool="split"
+            aria-controls="tool-panel-split" aria-selected="false">Aufteilen</button>
+        </div>
+        <section id="splitSidebarPanel" class="tool-sidebar-panel split-sidebar-panel" aria-labelledby="tool-tab-split" hidden>
+          <section class="split-toolbar-group split-toolbar-group-selection" aria-labelledby="splitSelectionHeading">
+            <div class="split-toolbar-group-head">
+              <h3 id="splitSelectionHeading" class="split-toolbar-title">Seitenauswahl</h3>
+            </div>
+            <div class="split-toolbar-group-body">
+              <div class="split-bulk-actions" role="group" aria-label="Seiten gesammelt umschalten">
+                <button id="splitActivateAllButton" class="btn-small split-bulk-button" type="button"
+                  title="Alle Seiten selektieren" aria-label="Alle Seiten selektieren">Alle Seiten selektieren</button>
+                <button id="splitDeactivateAllButton" class="btn-small split-bulk-button" type="button"
+                  title="Alle Seiten deselektieren" aria-label="Alle Seiten deselektieren">Alle Seiten deselektieren</button>
               </div>
-              <div id="inputFileList" class="file-list"></div>
+            </div>
+          </section>
+
+          <section class="split-toolbar-group split-toolbar-group-config" aria-labelledby="splitConfigHeading">
+            <div class="split-toolbar-group-head">
+              <h3 id="splitConfigHeading" class="split-toolbar-title">Ausgabe</h3>
+            </div>
+            <div class="split-toolbar-group-body split-toolbar-group-body-config">
+              <div class="split-output-block">
+                <div id="splitOutputModeGroup" class="choice-pills split-output-mode" role="group"
+                  aria-label="Ausgabeformat für aufgeteilte Seiten">
+                  <button id="splitOutputCombinedButton" class="choice-pill active" type="button"
+                    data-split-output-mode="combined" aria-pressed="true">In gemeinsamer Datei</button>
+                  <button id="splitOutputSingleButton" class="choice-pill" type="button"
+                    data-split-output-mode="single" aria-pressed="false">Einzeln</button>
+                </div>
+              </div>
+
+              <div class="split-group-block">
+                <h4 class="split-output-title">Seitengruppen</h4>
+                <div id="splitGroupRowsList" class="split-group-rows" aria-label="Seitengruppen verwalten"></div>
+              </div>
+            </div>
+          </section>
+        </section>
+      </aside>
+
+      <main class="main" aria-live="polite">
+        <section id="tool-panel-merge" class="tool-panel" data-tool-panel="merge" role="tabpanel"
+          aria-labelledby="tool-tab-merge" hidden>
+          <div class="panel-head">
+            <div>
+              <h2 class="card-title">Mehrere PDFs zu einer Datei verbinden</h2>
+            </div>
+          </div>
+          <div class="stack-layout">
+            <div id="mergeDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
+              aria-label="PDFs zum Zusammenführen auswählen">
+              <div class="drop-content">
+                <div id="mergeDropHint">
+                  <strong>PDFs hierhin ziehen</strong>
+                  <div>oder klicken zum Auswählen</div>
+                </div>
+                <section id="mergeFileListShell" class="merge-drop-files hidden">
+                  <div id="mergeAppendFileList" class="file-list reorder-list"></div>
+                  <div id="mergeTotalPages" class="hint merge-total-pages">(Gesamtseitenanzahl: 0)</div>
+                </section>
+              </div>
+            </div>
+            <div class="controls">
+              <button id="mergeStartButton" class="start" type="button">Zusammenführen</button>
             </div>
           </div>
         </section>
 
-        <div class="cards-layout">
-          <section class="card">
-            <div class="card-head">
-              <h2 class="card-title">Mehrere PDF-Seiten auf ein Blatt</h2>
-            </div>
-            <div id="selectedFileNameLine" class="card-subtitle current-file-name">Keine Datei ausgewählt</div>
-            <div class="grid">
-              <section id="optionsPanel" class="options-panel options-disabled" aria-disabled="true">
-                <h2 class="section-title">Seiten pro Blatt</h2>
-                <div class="pages" id="pagesButtons">
-                  <button type="button" data-pages="2" class="stack-2 active" aria-pressed="true">
-                    <div class="page-option">
-                      <div class="mini-sheet"><span>1</span><span>2</span></div>
-                    </div>
-                  </button>
-                  <button id="specialThreeModeButton" class="special-toggle" type="button" aria-pressed="false"
-                    aria-label="Spezialmodus 3 Seiten" title="Nur bei 3-seitiger PDF verfügbar">
-                    <div class="special-icon" aria-hidden="true">
-                      <div class="special-sheet"><span>1</span><span>1</span></div>
-                      <div class="special-sheet"><span>2</span><span>3</span></div>
-                    </div>
-                  </button>
-                  <button type="button" data-pages="4" class="stack-4" aria-pressed="false">
-                    <div class="page-option">
-                      <div class="mini-sheet"><span>1</span><span>2</span><span>3</span><span>4</span></div>
-                    </div>
-                  </button>
-                  <button type="button" data-pages="6" class="stack-6" aria-pressed="false">
-                    <div class="page-option">
-                      <div class="mini-sheet">
-                        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
-                      </div>
-                    </div>
-                  </button>
-                  <button type="button" data-pages="8" class="stack-8" aria-pressed="false">
-                    <div class="page-option">
-                      <div class="mini-sheet">
-                        <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span>
-                      </div>
-                    </div>
-                  </button>
-                </div>
-
-                <div class="setting-group">
-                  <label class="auto-orientation-choice"><input id="autoOrientationToggle" type="checkbox" checked>
-                    Ausrichtung (hoch vs. quer) automatisch optimieren</label>
-                </div>
-
-                <div class="setting-group">
-                  <label class="section-title" for="studentCount">Anzahl Lernende (optional)</label>
-                  <input id="studentCount" type="number" min="1" step="1" placeholder="">
-                </div>
-
-                <div class="setting-group">
-                  <div class="section-title">Offene Plätze von Restseiten</div>
-                  <div class="padding-choice" role="radiogroup" aria-label="Bei Restseiten">
-                    <label><input type="radio" name="paddingMode" value="blank" checked> leer lassen</label>
-                    <label><input type="radio" name="paddingMode" value="auto"> mit vorhandenen Seiten auffüllen</label>
-                    <label><input type="radio" name="paddingMode" value="lcm"> mit vorhandenen Seiten auffüllen (bis
-                      Kopien für Lernendenanzahl erreicht)</label>
-                  </div>
-                </div>
-              </section>
-            </div>
-
-            <div class="controls">
-              <button id="startButton" class="start" type="button">Start</button>
-            </div>
-          </section>
-
-          <section class="card">
-            <div class="card-head">
-              <h2 class="card-title">Mehrere PDFs in eine Datei</h2>
-            </div>
-            <div class="append-content">
-              <div class="section-title append-list-title">Dateiliste <span id="appendTotalPages"
-                  class="hint">(Gesamtseitenanzahl: 0)</span></div>
-              <div id="appendFileList" class="file-list"></div>
-            </div>
-            <div class="controls">
-              <button id="appendStartButton" class="start" type="button">Start</button>
-            </div>
-          </section>
+    <section id="tool-panel-layout" class="tool-panel" data-tool-panel="layout" role="tabpanel"
+      aria-labelledby="tool-tab-layout">
+      <div class="panel-head">
+        <div>
+          <h2 class="card-title">Mehrere PDF-Seiten auf ein Blatt</h2>
         </div>
-        <input id="sharedPdfInput" class="hidden" type="file" accept="application/pdf,.pdf" multiple>
+      </div>
+      <div class="stack-layout">
+        <div id="layoutDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
+          aria-label="PDF für das Layout auswählen">
+          <div class="drop-content">
+            <div id="layoutDropHint">
+              <strong>PDF hierhin ziehen</strong>
+              <div>oder klicken zum Auswählen</div>
+            </div>
+            <div id="layoutDropSummary" class="drop-summary hidden"></div>
+          </div>
+        </div>
+
+        <section id="optionsPanel" class="options-panel options-disabled" aria-disabled="true">
+          <h3 class="section-title">Seiten pro Blatt</h3>
+          <div class="pages" id="pagesButtons">
+            <button type="button" data-pages="2" class="stack-2 active" aria-pressed="true">
+              <div class="page-option">
+                <div class="mini-sheet"><span>1</span><span>2</span></div>
+              </div>
+            </button>
+            <button id="specialThreeModeButton" class="special-toggle" type="button" aria-pressed="false"
+              aria-label="Spezialmodus 3 Seiten" title="Nur bei 3-seitiger PDF verfügbar">
+              <div class="special-icon" aria-hidden="true">
+                <div class="special-sheet"><span>1</span><span>1</span></div>
+                <div class="special-sheet"><span>2</span><span>3</span></div>
+              </div>
+            </button>
+            <button type="button" data-pages="4" class="stack-4" aria-pressed="false">
+              <div class="page-option">
+                <div class="mini-sheet"><span>1</span><span>2</span><span>3</span><span>4</span></div>
+              </div>
+            </button>
+            <button type="button" data-pages="6" class="stack-6" aria-pressed="false">
+              <div class="page-option">
+                <div class="mini-sheet">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span>
+                </div>
+              </div>
+            </button>
+            <button type="button" data-pages="8" class="stack-8" aria-pressed="false">
+              <div class="page-option">
+                <div class="mini-sheet">
+                  <span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6</span><span>7</span><span>8</span>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <div class="form-grid layout-form-grid">
+            <label class="field checkbox-field">
+              <input id="autoOrientationToggle" type="checkbox" checked>
+              <span>Ausrichtung (hoch vs. quer) automatisch optimieren</span>
+            </label>
+
+            <label class="field student-count-field" for="studentCount">
+              <span>Anzahl Lernende (optional)</span>
+              <input id="studentCount" type="number" min="1" step="1" placeholder="">
+            </label>
+          </div>
+
+          <div class="setting-group">
+            <div class="section-title">Offene Plätze von Restseiten</div>
+            <div class="padding-choice" role="radiogroup" aria-label="Bei Restseiten">
+              <label><input type="radio" name="paddingMode" value="blank" checked> leer lassen</label>
+              <label><input type="radio" name="paddingMode" value="auto"> mit vorhandenen Seiten auffüllen</label>
+              <label><input type="radio" name="paddingMode" value="lcm"> mit vorhandenen Seiten auffüllen (bis Kopien für
+                Lernendenanzahl erreicht)</label>
+            </div>
+          </div>
+        </section>
+
+        <div class="controls">
+          <button id="layoutStartButton" class="start" type="button">Zusammenführen</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tool-panel-rotate" class="tool-panel" data-tool-panel="rotate" role="tabpanel"
+      aria-labelledby="tool-tab-rotate" hidden>
+      <div class="panel-head">
+        <div>
+          <h2 class="card-title">PDF drehen</h2>
+        </div>
+      </div>
+      <div class="stack-layout">
+        <div id="rotateDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
+          aria-label="PDF zum Drehen auswählen">
+          <div class="drop-content">
+            <div id="rotateDropHint">
+              <strong>PDF hierhin ziehen</strong>
+              <div>oder klicken zum Auswählen</div>
+            </div>
+            <div id="rotateDropSummary" class="drop-summary hidden"></div>
+          </div>
+        </div>
+
+        <section class="options-panel compact-options">
+          <div class="field">
+            <span>Ganzes Dokument</span>
+            <div id="rotateDocumentDegreesGroup" class="choice-pills rotate-choice-pills" role="group"
+              aria-label="Drehung für das ganze Dokument auswählen">
+              <button type="button" class="choice-pill rotate-icon-pill active" data-rotation="0" aria-pressed="true"
+                title="Alle Seiten nicht drehen">
+                <span class="sr-only">Nicht drehen</span>
+              </button>
+              <button type="button" class="choice-pill rotate-icon-pill" data-rotation="90" aria-pressed="false"
+                title="Alle Seiten um 90 Grad drehen">
+                <span class="sr-only">90 Grad</span>
+              </button>
+              <button type="button" class="choice-pill rotate-icon-pill" data-rotation="180" aria-pressed="false"
+                title="Alle Seiten um 180 Grad drehen">
+                <span class="sr-only">180 Grad</span>
+              </button>
+              <button type="button" class="choice-pill rotate-icon-pill" data-rotation="270" aria-pressed="false"
+                title="Alle Seiten um 270 Grad drehen">
+                <span class="sr-only">270 Grad</span>
+              </button>
+            </div>
+          </div>
+
+          <div class="field">
+            <span>Einzelne Seiten</span>
+            <div id="rotatePagesList" class="rotate-pages-grid" aria-live="polite"></div>
+          </div>
+        </section>
+
+        <div class="controls">
+          <button id="rotateStartButton" class="start" type="button">PDF drehen</button>
+        </div>
+      </div>
+    </section>
+
+    <section id="tool-panel-split" class="tool-panel" data-tool-panel="split" role="tabpanel"
+      aria-labelledby="tool-tab-split" hidden>
+      <div class="panel-head">
+        <div>
+          <h2 class="card-title">PDF aufteilen</h2>
+        </div>
+      </div>
+      <div class="stack-layout">
+        <div id="splitDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
+          aria-label="PDF zum Aufteilen auswählen">
+          <div class="drop-content">
+            <div id="splitDropHint">
+              <strong>PDF hierhin ziehen</strong>
+              <div>oder klicken zum Auswählen</div>
+            </div>
+            <div id="splitDropSummary" class="drop-summary hidden"></div>
+          </div>
+        </div>
+
+        <section id="splitWorkspace" class="workspace-panel split-workspace hidden" aria-live="polite">
+          <div id="splitPagesList" class="split-pages-grid" aria-live="polite"></div>
+        </section>
+
+        <div class="controls split-controls">
+          <button id="splitStartButton" class="start" type="button">PDF aufteilen</button>
+        </div>
+      </div>
+    </section>
+
       </main>
-      <dialog id="resultDialog" class="settings-dialog result-dialog hidden" aria-labelledby="resultTitle"
-        aria-describedby="resultMessage">
-        <p id="resultTitle" class="settings-title">Hinweis</p>
-        <p id="resultMessage" class="result-message"></p>
-        <div class="update-actions">
-          <button id="resultOpenButton" class="btn-small hidden" type="button">Öffnen</button>
-          <button id="resultCloseButton" class="btn-small primary" type="button">OK</button>
-        </div>
-      </dialog>
-      <dialog id="busyDialog" class="settings-dialog busy-dialog hidden" aria-labelledby="busyTitle"
-        aria-describedby="busyMessage">
-        <p id="busyTitle" class="settings-title">Bitte warten</p>
-        <p id="busyMessage" class="busy-message">PDF-Engine wird geladen ...</p>
-      </dialog>
 
-      <script src="./app.js"></script>
-    </body>
+      <input id="sharedPdfInput" class="hidden" type="file" accept="application/pdf,.pdf">
+    </div>
+  </div>
 
-    </html>
+  <dialog id="resultDialog" class="settings-dialog result-dialog hidden" aria-labelledby="resultTitle"
+    aria-describedby="resultMessage">
+    <p id="resultTitle" class="settings-title">Hinweis</p>
+    <p id="resultMessage" class="result-message"></p>
+    <div class="update-actions">
+      <button id="resultOpenButton" class="btn-small hidden" type="button">Öffnen</button>
+      <button id="resultCloseButton" class="btn-small primary" type="button">OK</button>
+    </div>
+  </dialog>
+
+  <dialog id="busyDialog" class="settings-dialog busy-dialog hidden" aria-labelledby="busyTitle"
+    aria-describedby="busyMessage">
+    <p id="busyTitle" class="settings-title">Bitte warten</p>
+    <p id="busyMessage" class="busy-message">PDF-Engine wird geladen ...</p>
+  </dialog>
+
+  <script type="module" src="./app.js?v=merger-r11"></script>
+</body>
+
+</html>

@@ -4468,6 +4468,7 @@
               viewGradesEntryBtn: document.querySelector("#view-grades-entry-btn"),
               viewSettingsBtn: document.querySelector("#view-settings-btn"),
               sidebarManualSaveBtn: document.querySelector("#sidebar-manual-save-btn"),
+              sidebarTitle: document.querySelector("#sidebar-title"),
               viewWeek: document.querySelector("#view-week"),
               viewCourse: document.querySelector("#view-course"),
               viewGrades: document.querySelector("#view-grades"),
@@ -6978,6 +6979,9 @@
             if (!year) {
               return null;
             }
+            // The grade entry auto-selection depends on generated lessons as well.
+            // When the grades tab is opened directly, those lessons may not exist yet.
+            this.store.ensureLessonsForYear(year.id);
             const hoursPerDay = this.store.getHoursPerDay();
             const validation = validateLessonTimes(this.store.getLessonTimes(hoursPerDay), hoursPerDay);
             if (!validation.valid || !validation.hasAnyValue) {
@@ -9996,6 +10000,13 @@
           }
 
           async handleGradesSurfaceClick(event) {
+            const courseToggleButton = event.target.closest("button[data-grades-entry-course-toggle]");
+            if (courseToggleButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              this.openGradesEntryCoursePicker(courseToggleButton);
+              return;
+            }
             const cancelEntryButton = event.target.closest("button[data-grades-entry-cancel]");
             if (cancelEntryButton) {
               event.stopPropagation();
@@ -11673,7 +11684,9 @@
               const topicInput = event.target.closest("input.course-topic-input");
               if (topicInput && !topicInput.disabled) {
                 topicInput.focus();
-                topicInput.select();
+                if (topicInput.selectionStart === topicInput.selectionEnd) {
+                  topicInput.select();
+                }
                 return;
               }
               const dateButton = event.target.closest("button.course-date-link[data-date]");
@@ -11800,10 +11813,9 @@
             });
 
             document.addEventListener("selectstart", (event) => {
-              const target = event.target;
+              const target = this._getEventTargetElement(event.target);
               const editable = Boolean(
                 target
-                && target.closest
                 && target.closest("input, textarea, select, [contenteditable='true']")
               );
               if (!editable) {
@@ -11883,6 +11895,16 @@
               event.preventDefault();
               event.returnValue = "";
             });
+          }
+
+          _getEventTargetElement(target) {
+            if (target instanceof Element) {
+              return target;
+            }
+            if (target instanceof Node) {
+              return target.parentElement;
+            }
+            return null;
           }
 
           setBackupStatus(text, isError = false) {
@@ -14384,6 +14406,46 @@
             return parsed || this.getGradesTitleDatePickerDefaultDate();
           }
 
+          getGradesTitleDatePickerCourseId() {
+            const year = this.activeSchoolYear;
+            const pickerInput = this.gradesTitleDatePickerState.input;
+            const editor = pickerInput instanceof Element
+              ? pickerInput.closest(".grades-entry-form")
+              : null;
+            const courseSelect = editor?.querySelector("select[data-grades-entry-course]");
+            const selectedCourseId = Number(courseSelect?.value || this.selectedCourseId || 0);
+            if (!year || !selectedCourseId) {
+              return null;
+            }
+            const course = this.store.listCourses(year.id).find((item) => Number(item.id) === selectedCourseId && !item.noLesson);
+            return course ? Number(course.id) : null;
+          }
+
+          getGradesTitleDatePickerLessonMarkers(courseId = null) {
+            const year = this.activeSchoolYear;
+            const resolvedCourseId = Number(courseId || 0);
+            if (!year || !resolvedCourseId) {
+              return {
+                lastLessonDateIso: null
+              };
+            }
+            this.store.ensureLessonsForYear(year.id);
+            const todayIso = toIsoDate(new Date());
+            const lessons = this.store.listLessonsForWeek(year.id, year.startDate, todayIso, resolvedCourseId)
+              .filter((lesson) => !lesson.canceled && !lesson.noLesson && !lesson.isEntfall);
+            let lastLessonDateIso = null;
+            for (const lesson of lessons) {
+              const lessonDate = String(lesson.lessonDate || "").trim();
+              if (!lessonDate || lessonDate > todayIso) {
+                continue;
+              }
+              if (!lastLessonDateIso || lessonDate > lastLessonDateIso) {
+                lastLessonDateIso = lessonDate;
+              }
+            }
+            return { lastLessonDateIso };
+          }
+
           openGradesTitleDatePicker(input) {
             if (!(input instanceof HTMLInputElement) || !this.refs.gradesTitleDatePicker) {
               return;
@@ -14415,6 +14477,8 @@
             const selectedDate = this.getGradesTitleDatePickerSelectedDate();
             const selectedIso = toIsoDate(selectedDate);
             const todayIso = toIsoDate(new Date());
+            const courseId = this.getGradesTitleDatePickerCourseId();
+            const { lastLessonDateIso } = this.getGradesTitleDatePickerLessonMarkers(courseId);
             const monthLabel = monthStart.toLocaleDateString("de-DE", {
               month: "long",
               year: "numeric"
@@ -14460,15 +14524,23 @@
                 button.className = "grades-title-date-picker-day";
                 button.dataset.gradesTitleDate = iso;
                 button.textContent = String(date.getDate());
-                button.title = date.toLocaleDateString("de-DE", {
+                const titleParts = [date.toLocaleDateString("de-DE", {
                   weekday: "long",
                   day: "2-digit",
                   month: "2-digit",
                   year: "numeric"
-                });
+                })];
                 button.classList.toggle("is-outside-month", isOutsideMonth);
                 button.classList.toggle("is-selected", iso === selectedIso);
                 button.classList.toggle("is-today", iso === todayIso);
+                button.classList.toggle("is-last-course-day", Boolean(lastLessonDateIso && iso === lastLessonDateIso));
+                if (iso === todayIso) {
+                  titleParts.push("Heute");
+                }
+                if (lastLessonDateIso && iso === lastLessonDateIso) {
+                  titleParts.push("Letzter Unterrichtstag dieses Kurses");
+                }
+                button.title = titleParts.join(" • ");
                 button.addEventListener("mousedown", (event) => {
                   event.preventDefault();
                 });
@@ -15002,9 +15074,17 @@
             const headRow = document.createElement("tr");
             const studentHead = document.createElement("th");
             studentHead.className = "student-col";
-            studentHead.textContent = String(course?.name || "");
             studentHead.style.background = courseColor;
             studentHead.style.color = readableTextColor(courseColor);
+            studentHead.innerHTML = `
+              <button
+                type="button"
+                class="grades-entry-course-head-btn"
+                data-grades-entry-course-toggle="1"
+                aria-label="Kurs auswählen"
+                title="Kurs auswählen"
+              >${escapeHtml(String(course?.name || ""))}</button>
+            `;
             headRow.append(studentHead);
             const gradeHead = document.createElement("th");
             gradeHead.className = "grade-assessment-col";
@@ -15053,6 +15133,27 @@
             });
             table.append(tbody);
             return table;
+          }
+
+          openGradesEntryCoursePicker(trigger = null) {
+            const root = trigger instanceof Element
+              ? trigger.closest(".grades-entry-layout")
+              : this.refs.gradesEntryContent;
+            const select = root?.querySelector("select[data-grades-entry-course]");
+            if (!(select instanceof HTMLSelectElement)) {
+              return;
+            }
+            this.hideGradesTitleDatePicker();
+            try {
+              select.focus({ preventScroll: true });
+            } catch (_error) {
+              select.focus();
+            }
+            if (typeof select.showPicker === "function") {
+              select.showPicker();
+              return;
+            }
+            select.click();
           }
 
           getGradesEntryStructureCategories(courseId = this.selectedCourseId) {
@@ -17114,6 +17215,9 @@
             const isGradesEntryActive = isGrades && this.normalizeGradesSubView(this.gradesSubView) === "entry";
             const showMainStack = isWeek || isCourse || isGrades;
             document.body.dataset.view = this.currentView;
+            if (this.refs.sidebarTitle) {
+              this.refs.sidebarTitle.textContent = isGradesContext ? "Noten" : "Planung";
+            }
 
             this.refs.viewWeek.hidden = !isWeek;
             this.refs.viewCourse.hidden = !isCourse;

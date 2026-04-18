@@ -13,6 +13,7 @@ export const PLANNING_MANUAL_SAVE_STATE_EVENT = 'classroom:planning-manual-save-
 export const PLANNING_MANUAL_SAVE_REQUEST_EVENT = 'classroom:planning-manual-save-request';
 export const PLANNING_VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
 export const PLANNING_READY_EVENT = 'classroom:planning-ready';
+export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
 export const PLANNING_SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
 
 export function normalizeTab(tab) {

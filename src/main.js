@@ -343,7 +343,7 @@ import { applyTheme } from './shell/theme.js';
             bridgeController?.ensureTabInitialized(tab);
           } catch (error) {
             const userMessage = tab === TAB_MERGER
-              ? 'Merger-Modul konnte nicht initialisiert werden.'
+              ? 'PDF-Tools konnten nicht initialisiert werden.'
               : (
                 tab === TAB_SEATPLAN
                   ? 'Sitzplan-Modul konnte nicht initialisiert werden.'

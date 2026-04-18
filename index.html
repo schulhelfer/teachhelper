@@ -698,6 +698,16 @@
       opacity: 0.85;
     }
 
+    .shell-sidebar-header {
+      display: none;
+    }
+
+    .app.app-tab-groups .shell-sidebar-header-groups,
+    .app.app-tab-random-picker .shell-sidebar-header-random-picker,
+    .app.app-tab-work-phase .shell-sidebar-header-work-phase {
+      display: flex;
+    }
+
     .merger-shell,
     .planning-shell,
     .monitor-shell,
@@ -740,6 +750,13 @@
     .planning-host {
       width: 100%;
       height: 100%;
+      min-width: 0;
+      min-height: 0;
+      margin: 0;
+      padding: 0;
+      border: none;
+      border-radius: 0;
+      box-shadow: none;
       background: transparent;
       display: block;
     }
@@ -775,7 +792,7 @@
     }
 
     .merger-host {
-      overflow: auto;
+      overflow: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
     }
@@ -1718,15 +1735,22 @@
       grid-row: 2 / span 2;
     }
 
-    .app.app-tab-work-phase>.side> :not(.side-monitor-settings):not(.side-timer-settings) {
+    .app.app-tab-work-phase>.side> :not(.shell-sidebar-header-work-phase):not(.side-monitor-settings):not(.side-timer-settings) {
       display: none;
     }
 
+    .app.app-tab-work-phase>.side .shell-sidebar-header-work-phase,
     .app.app-tab-work-phase>.side .side-monitor-settings,
     .app.app-tab-work-phase>.side .side-timer-settings {
       display: grid;
       gap: 10px;
       margin-top: 14px;
+    }
+
+    .app.app-tab-work-phase>.side .shell-sidebar-header-work-phase {
+      display: flex;
+      gap: 12px;
+      margin-top: 0;
     }
 
     .app.app-tab-work-phase>.side .side-timer-settings {
@@ -1929,28 +1953,6 @@
     .app.chrome-collapsed:not(.is-expanding).app-tab-seatplan #seatplan-main-host .grid-wrap {
       transform: translateX(10px) scale(0.992);
       filter: saturate(0.97);
-    }
-
-    .app.is-collapsing.app-tab-merger .merger-runtime-root,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-runtime-root {
-      transform: translateX(6px);
-      opacity: 1;
-    }
-
-    .app.is-collapsing.app-tab-merger .merger-runtime-root .app,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-runtime-root .app {
-      transform: translateY(-4px) scale(var(--merger-runtime-scale, 1)) !important;
-    }
-
-    .app.is-collapsing.app-tab-merger .merger-runtime-root .app>.card:first-of-type,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-runtime-root .app>.card:first-of-type {
-      transform: translateY(-6px);
-    }
-
-    .app.is-collapsing.app-tab-merger .merger-runtime-root .app>.cards-layout,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-runtime-root .app>.cards-layout {
-      transform: translateY(-2px) scale(0.994);
-      opacity: 0.98;
     }
 
     .app.is-collapsing.app-tab-random-picker #random-picker-host,
@@ -5180,8 +5182,10 @@
       height: 100%;
       min-height: 70vh;
       border: 0;
+      border-radius: 0;
       display: block;
       background: transparent;
+      box-shadow: none;
     }
 
     #planning-host > .planning-frame {
@@ -5233,7 +5237,7 @@
         <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"
           aria-selected="false">Planung</button>
         <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
-          aria-selected="false">PDF-Merger</button>
+          aria-selected="false">PDF-Tools</button>
         <button id="tab-seatplan" class="tab-button" type="button" data-tab-target="seatplan"
           aria-selected="false">Sitzplan</button>
         <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups"
@@ -5272,6 +5276,15 @@
 
     <aside class="side">
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
+      <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
+        <h1 class="sidebar-title">Gruppengenerator</h1>
+      </div>
+      <div class="sidebar-header shell-sidebar-header shell-sidebar-header-random-picker">
+        <h1 class="sidebar-title">Namenspicker</h1>
+      </div>
+      <div class="sidebar-header shell-sidebar-header shell-sidebar-header-work-phase">
+        <h1 class="sidebar-title">Arbeitsphasenorganizer</h1>
+      </div>
       <div class="steps">
         <ol class="steps-list">
           <li>
@@ -5482,8 +5495,8 @@
       </section>
       <div id="seatplan-main-host" hidden aria-label="Sitzplan Hauptansicht"></div>
     </main>
-    <section id="merger-shell" class="merger-shell" hidden aria-label="Merger">
-      <div id="merger-host" class="merger-host" aria-label="Merger"></div>
+    <section id="merger-shell" class="merger-shell" hidden aria-label="PDF-Tools">
+      <div id="merger-host" class="merger-host" aria-label="PDF-Tools"></div>
     </section>
     <section id="planning-shell" class="planning-shell" hidden aria-label="Planung">
       <div id="planning-host" class="planning-host" aria-live="polite"></div>

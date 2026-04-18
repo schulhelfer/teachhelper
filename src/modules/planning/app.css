@@ -694,13 +694,27 @@
           box-shadow: none;
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
-          padding: 12px;
+          padding: 14px 22px 22px 14px;
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 0;
           min-width: 0;
           min-height: 100%;
           overflow: visible;
+        }
+
+        .sidebar-header {
+          display: flex;
+          align-items: baseline;
+          justify-content: space-between;
+          gap: 12px;
+          margin-bottom: 10px;
+        }
+
+        .sidebar-title {
+          font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif;
+          font-size: 22px;
+          margin: 0;
         }
 
         html[data-shell-collapsed="true"] .sidebar-panel {
@@ -710,6 +724,7 @@
         .sidebar-controls {
           display: grid;
           gap: 0.42rem;
+          margin-top: 12px;
         }
 
         .sidebar-footer-actions {
@@ -770,6 +785,7 @@
         }
 
         .sidebar-section {
+          margin-top: 12px;
           padding-top: 4px;
           min-height: 0;
           display: flex;
@@ -3510,6 +3526,26 @@
           z-index: 4;
         }
 
+        .grades-entry-course-head-btn {
+          display: block;
+          width: 100%;
+          padding: 0;
+          border: 0;
+          background: transparent;
+          color: inherit;
+          font: inherit;
+          font-weight: inherit;
+          text-align: inherit;
+          cursor: pointer;
+          box-shadow: none;
+        }
+
+        .grades-entry-course-head-btn:hover,
+        .grades-entry-course-head-btn:focus-visible {
+          text-decoration: underline;
+          text-underline-offset: 0.15em;
+        }
+
         .grades-total-table th.grade-total-col,
         .grades-total-table td.grade-total-col,
         .grades-master-table th.grade-total-col,
@@ -5178,6 +5214,23 @@
 
         .grades-title-date-picker-day.is-today {
           border-color: rgba(250, 204, 21, 0.52);
+          box-shadow: inset 0 0 0 1px rgba(250, 204, 21, 0.2);
+        }
+
+        .grades-title-date-picker-day.is-last-course-day {
+          background: rgba(34, 197, 94, 0.18);
+          border-color: rgba(34, 197, 94, 0.58);
+          color: #f8fafc;
+        }
+
+        .grades-title-date-picker-day.is-today.is-last-course-day {
+          background:
+            linear-gradient(135deg, rgba(250, 204, 21, 0.24), rgba(250, 204, 21, 0.08)),
+            rgba(34, 197, 94, 0.18);
+          border-color: rgba(250, 204, 21, 0.72);
+          box-shadow:
+            inset 0 0 0 1px rgba(250, 204, 21, 0.24),
+            0 0 0 1px rgba(34, 197, 94, 0.24);
         }
 
         .grades-title-date-picker-day.is-selected {
