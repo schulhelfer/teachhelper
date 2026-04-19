@@ -151,6 +151,13 @@
       box-shadow: 0 8px 20px rgba(100, 116, 139, 0.25);
     }
 
+    :root[data-theme='light'] .tab-unlock-button {
+      border-color: rgba(100, 116, 139, 0.45);
+      background: linear-gradient(180deg, #94a3b8, #64748b);
+      color: #f8fafc;
+      box-shadow: 0 8px 20px rgba(100, 116, 139, 0.25);
+    }
+
     :root[data-theme='light'] input[type="number"],
     :root[data-theme='light'] select,
     :root[data-theme='light'] .group-size-input,
@@ -556,6 +563,27 @@
       transition: background var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-short) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-short) var(--chrome-transition-ease), color var(--chrome-transition-duration-short) var(--chrome-transition-ease);
     }
 
+    .tab-unlock-button {
+      position: relative;
+      flex: 0 0 auto;
+      width: 42px;
+      min-width: 42px;
+      min-height: 42px;
+      padding: 0;
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      border-radius: 14px;
+      background: linear-gradient(180deg, rgba(108, 118, 134, 0.96), rgba(74, 85, 104, 0.96));
+      color: #f8fafc;
+      font-size: 20px;
+      line-height: 1;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.45);
+      transition: background var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-short) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-short) var(--chrome-transition-ease), color var(--chrome-transition-duration-short) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease);
+    }
+
     @media (max-width:1180px) {
       .app-header {
         grid-template-columns: 1fr;
@@ -578,6 +606,11 @@
     }
 
     .tab-button:hover {
+      border-color: rgba(226, 232, 240, 0.55);
+      filter: brightness(1.06);
+    }
+
+    .tab-unlock-button:hover {
       border-color: rgba(226, 232, 240, 0.55);
       filter: brightness(1.06);
     }
@@ -5101,6 +5134,14 @@
         min-height: 38px;
       }
 
+      .tab-unlock-button {
+        width: 38px;
+        min-width: 38px;
+        min-height: 38px;
+        border-radius: 12px;
+        font-size: 18px;
+      }
+
       #random-picker-host {
         border-radius: 24px;
       }
@@ -5135,6 +5176,14 @@
         padding: 6px 7px;
         border-radius: 10px;
       }
+
+      .tab-unlock-button {
+        width: 34px;
+        min-width: 34px;
+        min-height: 34px;
+        border-radius: 10px;
+        font-size: 17px;
+      }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -5144,6 +5193,7 @@
       .tab-nav,
       .app-header-title,
       .app-header-actions,
+      .tab-unlock-button,
       .header-icon-button,
       .side,
       .side>*,
@@ -5232,6 +5282,8 @@
       <div class="app-header-title"><span class="app-header-title-label">TeachHelper<span id="app-header-version"
             class="app-header-version"></span></span></div>
       <nav class="tab-nav" aria-label="App-Bereiche">
+        <button id="tab-grades-unlock" class="tab-unlock-button" type="button" aria-label="Notenmodul entsperren"
+          title="Notenmodul entsperren" hidden>🔓</button>
         <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
           aria-selected="true">Noten</button>
         <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"

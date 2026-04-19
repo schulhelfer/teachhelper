@@ -1,4 +1,6 @@
 import {
+  PLANNING_GRADE_VAULT_REQUEST_EVENT,
+  PLANNING_GRADE_VAULT_STATE_EVENT,
   PLANNING_MANUAL_SAVE_REQUEST_EVENT,
   PLANNING_MANUAL_SAVE_STATE_EVENT,
   PLANNING_READY_EVENT,
@@ -74,6 +76,12 @@ export function mountPlanning({ host }) {
       window.dispatchEvent(new CustomEvent(PLANNING_READY_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
+      return;
+    }
+    if (data.type === PLANNING_GRADE_VAULT_STATE_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_STATE_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
     }
   };
 
@@ -89,6 +97,12 @@ export function mountPlanning({ host }) {
   const onSaveRequest = () => {
     if (disposed) return;
     post(PLANNING_MANUAL_SAVE_REQUEST_EVENT, null);
+  };
+
+  const onGradeVaultRequest = (event) => {
+    if (disposed) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    post(PLANNING_GRADE_VAULT_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
   };
 
   const onFrameLoad = () => {
@@ -111,6 +125,7 @@ export function mountPlanning({ host }) {
     window.removeEventListener('message', onWindowMessage);
     window.removeEventListener(PLANNING_VIEW_REQUEST_EVENT, onViewRequest);
     window.removeEventListener(PLANNING_MANUAL_SAVE_REQUEST_EVENT, onSaveRequest);
+    window.removeEventListener(PLANNING_GRADE_VAULT_REQUEST_EVENT, onGradeVaultRequest);
     if (frame.isConnected) {
       frame.remove();
     }
@@ -126,6 +141,7 @@ export function mountPlanning({ host }) {
   window.addEventListener('message', onWindowMessage);
   window.addEventListener(PLANNING_VIEW_REQUEST_EVENT, onViewRequest);
   window.addEventListener(PLANNING_MANUAL_SAVE_REQUEST_EVENT, onSaveRequest);
+  window.addEventListener(PLANNING_GRADE_VAULT_REQUEST_EVENT, onGradeVaultRequest);
 
   host.appendChild(frame);
   host.dataset.initialized = '1';

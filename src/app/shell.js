@@ -1,4 +1,6 @@
 import {
+  PLANNING_GRADE_VAULT_REQUEST_EVENT,
+  PLANNING_GRADE_VAULT_STATE_EVENT,
   normalizeTab,
   PLANNING_MANUAL_SAVE_REQUEST_EVENT,
   PLANNING_MANUAL_SAVE_STATE_EVENT,
@@ -147,6 +149,7 @@ export function createShellController({
     if (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES) {
       dispatchPlanningViewRequest(state.activeTab === TAB_GRADES ? 'grades' : 'week');
     }
+    renderPlanningGradeVaultUnlockButton();
     renderPlanningManualSaveButton();
   }
 
@@ -397,6 +400,28 @@ export function createShellController({
     els.sidebarManualSaveBtn.setAttribute('aria-label', ariaLabel);
   }
 
+  function renderPlanningGradeVaultUnlockButton() {
+    if (!els.tabGradesUnlock) return;
+    const planningGradeVaultState = state.planningGradeVaultState || {};
+    const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'setup';
+    const configured = Boolean(planningGradeVaultState.configured);
+    const unlocked = Boolean(planningGradeVaultState.unlocked);
+    const setupRequired = Boolean(planningGradeVaultState.setupRequired);
+    const shouldShow = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
+      && Boolean(planningGradeVaultState.ready)
+      && Boolean(planningGradeVaultState.dbConnected)
+      && configured
+      && !unlocked
+      && !setupRequired
+      && mode === 'unlock';
+    els.tabGradesUnlock.hidden = !shouldShow;
+    els.tabGradesUnlock.style.display = shouldShow ? 'inline-flex' : 'none';
+    els.tabGradesUnlock.disabled = !shouldShow
+      || state.tabTransitionState !== 'idle'
+      || state.chromeTransitionState !== 'idle';
+    els.tabGradesUnlock.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+  }
+
   function setChromeCollapsed(collapsed) {
     const nextCollapsed = Boolean(collapsed);
     if (state.chromeTransitionState !== 'idle') {
@@ -545,8 +570,38 @@ export function createShellController({
     renderPlanningManualSaveButton();
   }
 
-  function markPlanningReady() {
-    if (!state.planningInitialPaintPending) return;
+  function setPlanningGradeVaultState(detail = null) {
+    const nextDetail = detail && typeof detail === 'object' ? detail : {};
+    const mode = typeof nextDetail.mode === 'string' ? nextDetail.mode : '';
+    state.planningGradeVaultState = {
+      ...state.planningGradeVaultState,
+      mode: mode === 'unlock' || mode === 'ready' || mode === 'setup' ? mode : 'setup',
+      dbConnected: Boolean(nextDetail.dbConnected),
+      configured: Boolean(nextDetail.configured),
+      unlocked: Boolean(nextDetail.unlocked),
+      setupRequired: Boolean(nextDetail.setupRequired),
+    };
+    renderPlanningGradeVaultUnlockButton();
+  }
+
+  function markPlanningReady(detail = null) {
+    const nextDetail = detail && typeof detail === 'object' ? detail : {};
+    const mode = typeof nextDetail.gradeVaultMode === 'string' ? nextDetail.gradeVaultMode : '';
+    state.planningGradeVaultState = {
+      ...state.planningGradeVaultState,
+      ready: true,
+      mode: mode === 'unlock' || mode === 'ready' || mode === 'setup'
+        ? mode
+        : 'setup',
+      dbConnected: Boolean(nextDetail.gradeVaultDbConnected ?? state.planningGradeVaultState?.dbConnected),
+      configured: Boolean(nextDetail.gradeVaultUnlockConfigured ?? state.planningGradeVaultState?.configured),
+      unlocked: Boolean(nextDetail.gradeVaultUnlocked ?? state.planningGradeVaultState?.unlocked),
+      setupRequired: Boolean(nextDetail.gradeVaultSetupRequired ?? state.planningGradeVaultState?.setupRequired),
+    };
+    if (!state.planningInitialPaintPending) {
+      renderPlanningGradeVaultUnlockButton();
+      return;
+    }
     state.planningInitialPaintPending = false;
     renderTabs();
   }
@@ -556,6 +611,7 @@ export function createShellController({
     setChromeRegionVisibility(state.chromeCollapsed);
     setChromeHeaderVisibility(state.chromeCollapsed);
     setChromeOverlayVisibility(state.chromeCollapsed, state.chromeCollapsed);
+    renderPlanningGradeVaultUnlockButton();
     renderPlanningManualSaveButton();
   }
 
@@ -563,9 +619,34 @@ export function createShellController({
     const detail = event instanceof CustomEvent ? event.detail : null;
     setPlanningManualSaveState(detail);
   });
-  window.addEventListener(PLANNING_READY_EVENT, () => {
-    markPlanningReady();
+  window.addEventListener(PLANNING_GRADE_VAULT_STATE_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    setPlanningGradeVaultState(detail);
   });
+  window.addEventListener(PLANNING_READY_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    markPlanningReady(detail);
+  });
+  if (els.tabGradesUnlock) {
+    els.tabGradesUnlock.addEventListener('click', () => {
+      const planningGradeVaultState = state.planningGradeVaultState || {};
+      const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'setup';
+      const shouldAllowRequest = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
+        && Boolean(planningGradeVaultState.ready)
+        && Boolean(planningGradeVaultState.dbConnected)
+        && mode === 'unlock'
+        && state.tabTransitionState === 'idle'
+        && state.chromeTransitionState === 'idle';
+      if (!shouldAllowRequest) {
+        return;
+      }
+      window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_REQUEST_EVENT, {
+        detail: {
+          action: 'unlock',
+        },
+      }));
+    });
+  }
   if (els.sidebarManualSaveBtn) {
     els.sidebarManualSaveBtn.addEventListener('click', () => {
       if ((state.activeTab !== TAB_PLANNING && state.activeTab !== TAB_GRADES) || !state.planningManualSaveState.isManualMode) {
@@ -580,6 +661,7 @@ export function createShellController({
     isChromeCollapsed: () => state.chromeCollapsed,
     getChromeTransitionState: () => state.chromeTransitionState,
     renderTabs,
+    renderPlanningGradeVaultUnlockButton,
     renderPlanningManualSaveButton,
     setChromeCollapsed,
     setActiveTab,
@@ -590,6 +672,7 @@ export function createShellController({
     setChromeHeaderVisibility,
     setChromeOverlayVisibility,
     setPlanningManualSaveState,
+    setPlanningGradeVaultState,
     markPlanningReady,
     syncChromeState,
   };

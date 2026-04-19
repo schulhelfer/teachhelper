@@ -1,6 +1,8 @@
     (() => {
       const MANUAL_SAVE_STATE_EVENT = 'classroom:planning-manual-save-state';
       const MANUAL_SAVE_REQUEST_EVENT = 'classroom:planning-manual-save-request';
+      const GRADE_VAULT_STATE_EVENT = 'classroom:planning-grade-vault-state';
+      const GRADE_VAULT_REQUEST_EVENT = 'classroom:planning-grade-vault-request';
       const READY_EVENT = 'classroom:planning-ready';
       const SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
       const VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
@@ -9,6 +11,7 @@
         SHELL_LAYOUT_EVENT,
         VIEW_REQUEST_EVENT,
         MANUAL_SAVE_REQUEST_EVENT,
+        GRADE_VAULT_REQUEST_EVENT,
       ]);
 
       window.addEventListener('message', (event) => {
@@ -26,9 +29,16 @@
           window.dispatchEvent(new CustomEvent(VIEW_REQUEST_EVENT, {
             detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
           }));
+          return;
         }
         if (data.type === MANUAL_SAVE_REQUEST_EVENT) {
           window.dispatchEvent(new CustomEvent(MANUAL_SAVE_REQUEST_EVENT));
+          return;
+        }
+        if (data.type === GRADE_VAULT_REQUEST_EVENT) {
+          window.dispatchEvent(new CustomEvent(GRADE_VAULT_REQUEST_EVENT, {
+            detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+          }));
         }
       });
 
@@ -42,5 +52,11 @@
         if (!window.parent || window.parent === window) return;
         const detail = event instanceof CustomEvent ? event.detail : null;
         window.parent.postMessage({ type: READY_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
+      });
+
+      window.addEventListener(GRADE_VAULT_STATE_EVENT, (event) => {
+        if (!window.parent || window.parent === window) return;
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        window.parent.postMessage({ type: GRADE_VAULT_STATE_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
       });
     })();

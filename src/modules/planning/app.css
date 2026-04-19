@@ -1825,6 +1825,7 @@
 
         .lesson-block.has-grade-entry-trigger {
           padding-top: calc(0.24rem * var(--week-table-scale, 1));
+          padding-left: calc(2.15rem * var(--week-table-scale, 1));
           padding-right: calc(2.15rem * var(--week-table-scale, 1));
         }
 
@@ -1908,6 +1909,13 @@
         .lesson-block.canceled,
         .lesson-block.entfall {
           font-style: italic;
+        }
+
+        .lesson-block.canceled .lesson-block-grade-entry,
+        .lesson-block.canceled .lesson-block-grade-entry-status,
+        .lesson-block.entfall .lesson-block-grade-entry,
+        .lesson-block.entfall .lesson-block-grade-entry-status {
+          font-style: normal;
         }
 
         .lesson-block .title {

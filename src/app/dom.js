@@ -6,6 +6,7 @@ export function createAppDom(doc = document) {
     tabMerger: doc.getElementById('tab-merger'),
     tabPlanning: doc.getElementById('tab-planning'),
     tabGrades: doc.getElementById('tab-grades'),
+    tabGradesUnlock: doc.getElementById('tab-grades-unlock'),
     tabSeatplan: doc.getElementById('tab-seatplan'),
     tabGroups: doc.getElementById('tab-groups'),
     tabRandomPicker: doc.getElementById('tab-random-picker'),

@@ -4906,6 +4906,11 @@
             return Boolean(this.gradeVaultSession.configured && this.gradeVaultSession.unlocked);
           }
 
+          hasGradeVaultUnlockConfig() {
+            const config = normalizeGradeVaultConfig(this.gradeVaultSession.gradeVaultConfig);
+            return Boolean(config?.configured && config.kdf && config.validation);
+          }
+
           hasProtectedGradeDataPending() {
             return Boolean(
               gradeVaultHasSensitiveData(this.getCurrentGradeVaultSnapshot())
@@ -5148,9 +5153,26 @@
             this.gradeVaultSession = next;
             this.pendingWeekGradeAssessmentLoadKey = "";
             this.clearGradesOverviewAssessmentSpotlight();
+            this.dispatchGradeVaultState();
             if (this.isManualPersistenceMode()) {
               this.markManualDirtyIfNeeded();
             }
+          }
+
+          dispatchGradeVaultState() {
+            if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+              return;
+            }
+            const mode = this.getShellGradeVaultStatusMode();
+            window.dispatchEvent(new CustomEvent("classroom:planning-grade-vault-state", {
+              detail: {
+                mode,
+                dbConnected: this.hasShellDatabaseConnection(),
+                configured: this.hasGradeVaultUnlockConfig(),
+                unlocked: this.isGradeVaultUnlocked(),
+                setupRequired: !this.isGradeVaultConfigured()
+              }
+            }));
           }
 
           applyPersistedPublicState(publicState, options = {}) {
@@ -5564,6 +5586,20 @@
               return "unlock";
             }
             return "ready";
+          }
+
+          getShellGradeVaultStatusMode() {
+            if (!this.hasShellDatabaseConnection()) {
+              return "setup";
+            }
+            return this.getGradeVaultStatusMode();
+          }
+
+          hasShellDatabaseConnection() {
+            if (this.isManualPersistenceMode()) {
+              return Boolean(String(this.manualPersistenceState?.lastAction || "").trim());
+            }
+            return Boolean(this.syncState.fileHandle);
           }
 
           getGradeVaultBannerContent() {
@@ -6723,6 +6759,8 @@
                 this.renderAll();
               } else {
                 this.renderDatabaseSection();
+                this.dispatchGradeVaultState();
+                this.queuePlanningReadySignal();
               }
               return;
             }
@@ -6739,6 +6777,8 @@
               this.setSyncStatus("Noch keine Datenbankdatei verbunden.");
               this.openSyncSetupSettingsOnStartup();
               this.renderDatabaseSection();
+              this.dispatchGradeVaultState();
+              this.queuePlanningReadySignal();
               return;
             }
             this.syncState.storedFileHandle = storedSyncHandle;
@@ -10441,6 +10481,17 @@
                 }
                 this.switchView(requestedView);
               });
+              window.addEventListener("classroom:planning-grade-vault-request", (event) => {
+                const detail = event instanceof CustomEvent ? event.detail : null;
+                const action = String(detail?.action || "").trim().toLowerCase();
+                if (action !== "unlock") {
+                  return;
+                }
+                if (!this.hasGradeVaultUnlockConfig() || this.isGradeVaultUnlocked()) {
+                  return;
+                }
+                this.openGradeVaultDialog("unlock");
+              });
             }
 
             this.refs.viewWeekBtn.addEventListener("click", () => {
@@ -12333,6 +12384,7 @@
               }
             }
             this.updateSettingsActionButtons();
+            this.dispatchGradeVaultState();
           }
 
           renderBackupSection() {
@@ -17235,8 +17287,18 @@
           }
 
           queuePlanningReadySignal() {
+            const gradeVaultMode = this.getShellGradeVaultStatusMode();
+            const gradeVaultDbConnected = this.hasShellDatabaseConnection();
+            const gradeVaultUnlockConfigured = this.hasGradeVaultUnlockConfig();
+            const gradeVaultUnlocked = this.isGradeVaultUnlocked();
+            const gradeVaultSetupRequired = !this.isGradeVaultConfigured();
             const detail = {
-              view: String(this.currentView || "")
+              view: String(this.currentView || ""),
+              gradeVaultMode,
+              gradeVaultDbConnected,
+              gradeVaultUnlockConfigured,
+              gradeVaultUnlocked,
+              gradeVaultSetupRequired
             };
             const token = (Number(this._planningReadySignalToken) || 0) + 1;
             this._planningReadySignalToken = token;
@@ -17244,6 +17306,7 @@
               if (this._planningReadySignalToken !== token) {
                 return;
               }
+              this.dispatchGradeVaultState();
               window.dispatchEvent(new CustomEvent("classroom:planning-ready", {
                 detail
               }));
