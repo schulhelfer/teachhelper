@@ -1800,7 +1800,8 @@ import { applyTheme } from './shell/theme.js';
         window.addEventListener('afterprint', resetPrintScale);
       }
 
-      function applyPlanData(data) {
+      function applyPlanData(data, options = {}) {
+        const restoreSeatAssignments = options.restoreSeatAssignments !== false;
         if (!data || typeof data !== 'object') throw new Error('Ungültiges Plan-Format.');
         const incomingStudents = Array.isArray(data.students) ? data.students : [];
         const incomingSeats = data.seats && typeof data.seats === 'object' ? data.seats : {};
@@ -1880,10 +1881,12 @@ import { applyTheme } from './shell/theme.js';
         const sanitizedLocks = locked
           .map(id => sanitizeSeatIdWithinLimit(id))
           .filter(id => id && state.activeSeats.has(id));
-        state.lockedSeats = new Set(sanitizedLocks);
+        state.lockedSeats = restoreSeatAssignments ? new Set(sanitizedLocks) : new Set();
         state.seats = {};
         state.activeSeats.forEach(id => {
-          state.seats[id] = seatAssignments.has(id) ? ensureSeatList(seatAssignments.get(id)) : [];
+          state.seats[id] = restoreSeatAssignments && seatAssignments.has(id)
+            ? ensureSeatList(seatAssignments.get(id))
+            : [];
         });
         const topics = {};
         state.activeSeats.forEach(id => {
@@ -1909,13 +1912,17 @@ import { applyTheme } from './shell/theme.js';
           startISO: nextStart,
           alarmState: false,
         });
-        state._lastImport = false;
-        state.scrollHintDismissed = true;
+        state._lastImport = !restoreSeatAssignments;
+        state.scrollHintDismissed = restoreSeatAssignments;
         enforceGridBounds();
         buildGrid();
+        if (!restoreSeatAssignments) {
+          els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
+        }
         renderRandomPicker();
         refreshUnseated();
         renderWorkOrder();
+        updateScrollHint();
       }
 
       async function importPlanFromFile(file, handle) {
@@ -1932,7 +1939,7 @@ import { applyTheme } from './shell/theme.js';
         if (handle) {
           state.lastDirectoryHandle = handle;
         }
-        applyPlanData(data);
+        applyPlanData(data, { restoreSeatAssignments: false });
         const importedLabel = typeof data?.csvName === 'string' ? data.csvName.trim() : '';
         if (!importedLabel) {
           state.csvName = planLabelFromFile || state.csvName;
@@ -2857,6 +2864,29 @@ import { applyTheme } from './shell/theme.js';
         });
       }
 
+      function deleteGroupSeat(seatId, seatEl = null) {
+        const id = typeof seatId === 'string' ? seatId : String(seatId || '');
+        if (!id || !state.activeSeats.has(id)) return false;
+        const finalizeRemoval = () => {
+          state.activeSeats.delete(id);
+          state.activeSeatOrder = (state.activeSeatOrder || []).filter(x => x !== id);
+          state.lockedSeats.delete(id);
+          delete state.seats[id];
+          delete state.seatTopics[id];
+          state._lastImport = false;
+          state.scrollHintDismissed = true;
+          buildGrid();
+          refreshUnseated();
+        };
+        if (seatEl instanceof HTMLElement) {
+          seatEl.classList.add('removing');
+          window.setTimeout(finalizeRemoval, 220);
+          return true;
+        }
+        finalizeRemoval();
+        return true;
+      }
+
       function buildGrid() {
         enforceGridBounds();
         const rows = state.gridRows;
@@ -2880,9 +2910,11 @@ import { applyTheme } from './shell/theme.js';
           seat.className = 'seat';
           seat.dataset.seat = id;
           const label = `${++groupCounter}`;
-          seat.innerHTML = `<div class="seat-header">${label}</div><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div><span class="lock-badge" aria-hidden="true">🔒</span>`;
+          seat.innerHTML = `<div class="seat-header">${label}</div><button type="button" class="seat-delete-button" data-seat-delete="${id}" aria-label="Gruppe löschen" title="Gruppe löschen">🗑</button><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div>`;
           seat.classList.add('active');
-          if (state.lockedSeats.has(id)) { seat.classList.add('locked'); seat.querySelector('.lock-badge').style.display = 'inline'; }
+          if (state.lockedSeats.has(id)) {
+            seat.classList.add('locked');
+          }
           addDropHandlers(seat);
           const topicInput = seat.querySelector('.seat-topic');
           initSeatTopicInput(topicInput);
@@ -2896,23 +2928,16 @@ import { applyTheme } from './shell/theme.js';
           } else {
             syncSeatTopicState(seat, state.seatTopics[id]);
           }
-          const header = seat.querySelector('.seat-header');
-          if (header) {
-            header.addEventListener('click', (e) => {
+          const deleteButton = seat.querySelector('.seat-delete-button');
+          if (deleteButton) {
+            deleteButton.addEventListener('click', (e) => {
+              e.preventDefault();
               e.stopPropagation();
-              const occupants = getSeatList(id);
-              if (occupants.length) {
-                showMessage('Gruppe ist nicht leer.', 'warn');
-                return;
-              }
-              seat.classList.add('removing');
-              setTimeout(() => {
-                state.activeSeats.delete(id);
-                state.activeSeatOrder = (state.activeSeatOrder || []).filter(x => x !== id);
-                delete state.seats[id];
-                delete state.seatTopics[id];
-                buildGrid();
-              }, 220);
+              deleteGroupSeat(id, seat);
+            });
+            deleteButton.addEventListener('dblclick', (e) => {
+              e.preventDefault();
+              e.stopPropagation();
             });
           }
           seat.addEventListener('dblclick', () => {
@@ -2930,7 +2955,7 @@ import { applyTheme } from './shell/theme.js';
         placeholder.setAttribute('role', 'button');
         placeholder.innerHTML = `
         <div class="seat-placeholder-main">+</div>
-        <div class="seat-placeholder-hint">[Leere Gruppen entfernen durch Anklicken der Gruppennummer]</div>
+        <div class="seat-placeholder-hint">[Gruppen über den Papierkorb oben rechts löschen]</div>
       `;
         addPlaceholderDropHandlers(placeholder);
         const handlePlaceholderAdd = () => {
@@ -2953,10 +2978,8 @@ import { applyTheme } from './shell/theme.js';
           const id = seat.dataset.seat;
           const occupants = getSeatList(id);
           const nameEl = seat.querySelector('.name');
-          const lockBadge = seat.querySelector('.lock-badge');
           syncSeatTopicState(seat, state.seatTopics[id]);
           nameEl.innerHTML = '';
-          lockBadge.style.display = state.lockedSeats.has(id) ? 'inline' : 'none';
           seat.classList.toggle('locked', state.lockedSeats.has(id));
           if (!occupants.length) {
             seat.removeAttribute('draggable');

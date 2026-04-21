@@ -17501,6 +17501,7 @@
               courseId,
               assessmentId: assessmentId > 0 ? assessmentId : 0,
               lessonDate,
+              expanded: Boolean(target.expanded),
               scrolled: Boolean(target.scrolled)
             };
           }
@@ -17593,9 +17594,13 @@
             const normalized = {
               ...target,
               assessmentId: Number(assessment.id || 0),
+              expanded: Boolean(target.expanded),
               scrolled: Boolean(target.scrolled)
             };
-            this.expandGradesOverviewAssessment(target.courseId, assessment);
+            if (!normalized.expanded) {
+              this.expandGradesOverviewAssessment(target.courseId, assessment);
+              normalized.expanded = true;
+            }
             this.gradesOverviewAssessmentSpotlight = normalized;
             return normalized;
           }

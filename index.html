@@ -250,7 +250,8 @@
     .app:-webkit-full-screen {
       background: var(--bg);
       color: var(--text);
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
 
     .message-stack {
@@ -762,7 +763,8 @@
     .merger-shell,
     .planning-shell {
       padding: 0;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
     }
 
     .merger-shell {
@@ -1200,10 +1202,18 @@
       font-size: max(13px, calc(18px * var(--group-fit-scale)));
     }
 
+    .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-grid .seat .seat-delete-button {
+      top: calc(8px * var(--group-fit-scale));
+      right: calc(8px * var(--group-fit-scale));
+      width: calc(42px * var(--group-fit-scale));
+      height: calc(42px * var(--group-fit-scale));
+      font-size: max(13px, calc(18px * var(--group-fit-scale)));
+    }
+
     .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-grid .seat .seat-topic {
       top: calc(10px * var(--group-fit-scale));
       left: calc(50% + (20px * var(--group-fit-scale)));
-      width: calc(100% - (84px * var(--group-fit-scale)));
+      width: calc(100% - (138px * var(--group-fit-scale)));
       padding: calc(6px * var(--group-fit-scale)) calc(9px * var(--group-fit-scale));
       font-size: max(11px, calc(16px * var(--group-fit-scale)));
     }
@@ -1225,8 +1235,8 @@
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-grid .seat .seat-chip {
-      height: calc(32px * var(--group-fit-scale));
       min-height: calc(32px * var(--group-fit-scale));
+      height: auto;
       padding: calc(6px * var(--group-fit-scale)) calc(10px * var(--group-fit-scale));
       font-size: max(13px, calc(14px * var(--group-fit-scale)));
       border-radius: calc(10px * var(--group-fit-scale));
@@ -3264,7 +3274,7 @@
         page-break-inside: avoid;
       }
 
-      #groups-grid .seat .lock-badge {
+      #groups-grid .seat .seat-delete-button {
         display: none !important;
       }
 
@@ -3278,10 +3288,20 @@
         box-shadow: none;
       }
 
+      #groups-grid .seat .seat-delete-button {
+        top: 6px;
+        right: 6px;
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+        border-width: 1px;
+        box-shadow: none;
+      }
+
       #groups-grid .seat .seat-topic {
         top: 8px;
         left: calc(50% + 12px);
-        width: calc(100% - 54px);
+        width: calc(100% - 96px);
         padding: 3px 6px;
         border-width: 1px;
         font-size: 12px;
@@ -4057,15 +4077,6 @@
       outline-offset: 2px
     }
 
-    #groups-grid .seat .lock-badge {
-      position: absolute;
-      top: calc(6px * var(--group-fit-scale));
-      right: calc(8px * var(--group-fit-scale));
-      font-size: max(11px, calc(14px * var(--group-fit-scale)));
-      opacity: .9;
-      display: none
-    }
-
     #groups-grid .seat .seat-header {
       position: absolute;
       top: calc(10px * var(--group-fit-scale));
@@ -4087,12 +4098,49 @@
       box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
     }
 
+    #groups-grid .seat .seat-delete-button {
+      position: absolute;
+      top: calc(10px * var(--group-fit-scale));
+      right: calc(10px * var(--group-fit-scale));
+      width: calc(52px * var(--group-fit-scale));
+      height: calc(52px * var(--group-fit-scale));
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+      font: inherit;
+      box-sizing: border-box;
+      border-radius: 50%;
+      border: max(2px, calc(2px * var(--group-fit-scale))) solid rgba(239, 68, 68, 0.7);
+      background: rgba(127, 29, 29, 0.9);
+      color: #fee2e2;
+      font-size: max(14px, calc(21px * var(--group-fit-scale)));
+      line-height: 1;
+      box-shadow: 0 6px 14px rgba(0, 0, 0, 0.25);
+      cursor: pointer;
+      z-index: 1;
+    }
+
+    #groups-grid .seat .seat-delete-button:hover,
+    #groups-grid .seat .seat-delete-button:focus-visible,
+    #groups-grid .seat .seat-delete-button:active {
+      background: rgba(153, 27, 27, 0.96);
+      border-color: rgba(254, 202, 202, 0.82);
+      color: #fff7f7;
+      transform: none;
+      filter: none;
+      box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.2), 0 8px 16px rgba(0, 0, 0, 0.28);
+    }
+
     #groups-grid .seat .seat-topic {
       position: absolute;
       top: calc(16px * var(--group-fit-scale));
       left: calc(50% + (26px * var(--group-fit-scale)));
       transform: translateX(-50%);
-      width: calc(100% - (100px * var(--group-fit-scale)));
+      width: calc(100% - (164px * var(--group-fit-scale)));
       max-width: 640px;
       padding: calc(8px * var(--group-fit-scale)) calc(10px * var(--group-fit-scale));
       border-radius: calc(10px * var(--group-fit-scale));
@@ -4140,7 +4188,8 @@
       width: 100%;
       height: 100%;
       min-height: 0;
-      overflow: hidden;
+      overflow-x: hidden;
+      overflow-y: auto;
       align-content: flex-start;
       justify-content: center;
       justify-items: stretch;
@@ -4150,12 +4199,14 @@
     #groups-grid .seat .seat-chip {
       display: inline-flex;
       align-items: center;
+      align-content: center;
+      flex-wrap: wrap;
       justify-content: center;
       width: 100%;
       min-width: 0;
       max-width: none;
-      height: calc(46px * var(--group-fit-scale));
       min-height: calc(46px * var(--group-fit-scale));
+      height: auto;
       padding: calc(10px * var(--group-fit-scale)) calc(15px * var(--group-fit-scale));
       border-radius: calc(12px * var(--group-fit-scale));
       background: rgba(96, 165, 250, 0.16);
@@ -4517,6 +4568,22 @@
       border-color: rgba(15, 23, 42, 0.14);
       box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
       color: #0f172a;
+    }
+
+    :root[data-theme='light'] .seat .seat-delete-button {
+      background: rgba(254, 226, 226, 0.96);
+      border-color: rgba(220, 38, 38, 0.36);
+      color: #b91c1c;
+      box-shadow: 0 6px 12px rgba(15, 23, 42, 0.12);
+    }
+
+    :root[data-theme='light'] .seat .seat-delete-button:hover,
+    :root[data-theme='light'] .seat .seat-delete-button:focus-visible,
+    :root[data-theme='light'] .seat .seat-delete-button:active {
+      background: rgba(254, 242, 242, 1);
+      border-color: rgba(220, 38, 38, 0.52);
+      color: #991b1b;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12), 0 8px 16px rgba(15, 23, 42, 0.14);
     }
 
     :root[data-theme='light'] .seat .seat-chip {
