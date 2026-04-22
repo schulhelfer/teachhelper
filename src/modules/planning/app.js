@@ -11234,15 +11234,7 @@
                 if (!lessonId) {
                   return;
                 }
-                const lesson = this.store.getLessonById(lessonId);
-                if (!lesson) {
-                  return;
-                }
-                if (triggerMode === "overview") {
-                  this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
-                } else {
-                  this.openGradesEntryFromLesson(lesson);
-                }
+                this.activateGradeEntryTrigger(lessonId, triggerMode);
                 return;
               }
               const courseLink = event.target.closest(".lesson-block .title.course-link[data-course-id]");
@@ -11832,6 +11824,15 @@
 
             this.refs.courseTable.addEventListener("click", (event) => {
               this.hideContextMenu();
+              const gradeEntryButton = event.target.closest("button.course-grade-entry-trigger[data-grade-entry-lesson-id]");
+              if (gradeEntryButton) {
+                const lessonId = Number(gradeEntryButton.dataset.gradeEntryLessonId || 0);
+                const triggerMode = String(gradeEntryButton.dataset.gradeEntryMode || "entry").trim();
+                if (lessonId) {
+                  this.activateGradeEntryTrigger(lessonId, triggerMode);
+                }
+                return;
+              }
               const notesButton = event.target.closest("button.course-notes-preview[data-lesson-id]");
               if (notesButton) {
                 const lessonId = Number(notesButton.dataset.lessonId || 0);
@@ -14486,10 +14487,8 @@
 
           captureGradesOverviewScroll() {
             return {
-              bookLeft: Number(this.refs.gradesBookPanel?.scrollLeft || 0),
               bookTop: Number(this.refs.gradesBookPanel?.scrollTop || 0),
-              tableLeft: Number(this.refs.gradesTableScroll?.scrollLeft || 0),
-              tableTop: Number(this.refs.gradesTableScroll?.scrollTop || 0)
+              tableLeft: Number(this.refs.gradesTableScroll?.scrollLeft || 0)
             };
           }
 
@@ -14498,12 +14497,10 @@
               return;
             }
             if (this.refs.gradesBookPanel) {
-              this.refs.gradesBookPanel.scrollLeft = snapshot.bookLeft;
-              this.refs.gradesBookPanel.scrollTop = snapshot.bookTop;
+              this.refs.gradesBookPanel.scrollTop = Number(snapshot.bookTop || 0);
             }
             if (this.refs.gradesTableScroll) {
-              this.refs.gradesTableScroll.scrollLeft = snapshot.tableLeft;
-              this.refs.gradesTableScroll.scrollTop = snapshot.tableTop;
+              this.refs.gradesTableScroll.scrollLeft = Number(snapshot.tableLeft || 0);
             }
           }
 
@@ -16019,6 +16016,8 @@
 
           buildGradesMasterTable(course, students, groupedAssessments, motion = null, options = {}) {
             const model = this.buildGradesTableModel(course, groupedAssessments, options);
+            const shell = document.createElement("div");
+            shell.className = "grades-master-table-shell";
             const table = document.createElement("table");
             table.className = "grades-master-table";
             const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
@@ -16252,7 +16251,8 @@
               tbody.append(tr);
             });
             table.append(tbody);
-            return table;
+            shell.append(table);
+            return shell;
           }
 
           renderGradesTable(course, students, groupedAssessments, options = {}) {
@@ -16293,10 +16293,6 @@
             this.pendingGradeTableMotion = null;
             this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
             if (!spotlightAssessmentId) {
-              const bookPanel = this.refs.gradesBookPanel;
-              if (bookPanel) {
-                bookPanel.scrollLeft = 0;
-              }
               const tableScroll = this.refs.gradesTableScroll;
               if (tableScroll) {
                 tableScroll.scrollLeft = 0;
@@ -17739,6 +17735,40 @@
             return lookup;
           }
 
+          getGradeEntryTriggerStateForLesson(lesson, assessmentLookup = null) {
+            const courseId = Number(lesson?.courseId || 0);
+            const lessonDate = String(lesson?.lessonDate || "").trim();
+            if (!this.isGradeVaultConfigured() || !courseId || !lessonDate) {
+              return null;
+            }
+            const hasExistingAssessment = this.hasExistingGradeAssessmentForLesson(
+              courseId,
+              lessonDate,
+              assessmentLookup
+            );
+            return {
+              hasExistingAssessment,
+              triggerMode: hasExistingAssessment ? "overview" : "entry",
+              ariaLabel: hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen",
+              title: hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen"
+            };
+          }
+
+          activateGradeEntryTrigger(lessonId, triggerMode = "entry") {
+            const normalizedLessonId = Number(lessonId || 0);
+            if (!normalizedLessonId) {
+              return false;
+            }
+            const lesson = this.store.getLessonById(normalizedLessonId);
+            if (!lesson) {
+              return false;
+            }
+            if (String(triggerMode || "entry").trim() === "overview") {
+              return this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
+            }
+            return this.openGradesEntryFromLesson(lesson);
+          }
+
           hasExistingGradeAssessmentForLesson(courseId, lessonDate, assessmentLookup = null) {
             const normalizedCourseId = Number(courseId || 0);
             const normalizedLessonDate = String(lessonDate || "").trim();
@@ -19008,55 +19038,35 @@
                   if (block.allCanceled && chip instanceof HTMLButtonElement) {
                     chip.disabled = true;
                   }
-                  const showGradesEntryTrigger = this.isGradeVaultConfigured() && !block.isNoLesson && block.courseId > 0;
-                  if (showGradesEntryTrigger) {
-                    const hasExistingAssessment = this.hasExistingGradeAssessmentForLesson(
-                      block.courseId,
-                      block.topLesson?.lessonDate,
-                      gradeAssessmentLookup
-                    );
-                    const triggerMode = hasExistingAssessment ? "overview" : "entry";
+                  const gradeEntryState = !block.isNoLesson
+                    ? this.getGradeEntryTriggerStateForLesson(block.topLesson, gradeAssessmentLookup)
+                    : null;
+                  if (gradeEntryState) {
                     chip.classList.add("has-grade-entry-trigger");
-                    if (hasExistingAssessment) {
+                    if (gradeEntryState.hasExistingAssessment) {
                       chip.classList.add("has-existing-grade-assessment");
                     }
                     const gradeEntryTrigger = document.createElement("span");
                     gradeEntryTrigger.className = "lesson-block-grade-entry";
-                    if (hasExistingAssessment) {
+                    if (gradeEntryState.hasExistingAssessment) {
                       gradeEntryTrigger.classList.add("has-existing-assessment");
+                    } else {
+                      gradeEntryTrigger.classList.add("is-missing-assessment");
                     }
                     gradeEntryTrigger.dataset.gradeEntryLessonId = String(block.firstLessonId);
-                    gradeEntryTrigger.dataset.gradeEntryMode = triggerMode;
+                    gradeEntryTrigger.dataset.gradeEntryMode = gradeEntryState.triggerMode;
                     gradeEntryTrigger.setAttribute("role", "button");
                     gradeEntryTrigger.setAttribute("tabindex", "0");
-                    gradeEntryTrigger.setAttribute(
-                      "aria-label",
-                      hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen"
-                    );
-                    gradeEntryTrigger.title = hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen";
-                    gradeEntryTrigger.textContent = "🎲";
-                    if (hasExistingAssessment) {
-                      const existingBadge = document.createElement("span");
-                      existingBadge.className = "lesson-block-grade-entry-status";
-                      existingBadge.setAttribute("aria-hidden", "true");
-                      existingBadge.textContent = "✓";
-                      gradeEntryTrigger.append(existingBadge);
-                    }
+                    gradeEntryTrigger.setAttribute("aria-label", gradeEntryState.ariaLabel);
+                    gradeEntryTrigger.title = gradeEntryState.title;
+                    gradeEntryTrigger.textContent = gradeEntryState.hasExistingAssessment ? "✓" : "?";
                     gradeEntryTrigger.addEventListener("keydown", (keyEvent) => {
                       if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
                         return;
                       }
                       keyEvent.preventDefault();
                       keyEvent.stopPropagation();
-                      const lesson = this.store.getLessonById(block.firstLessonId);
-                      if (!lesson) {
-                        return;
-                      }
-                      if (triggerMode === "overview") {
-                        this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
-                      } else {
-                        this.openGradesEntryFromLesson(lesson);
-                      }
+                      this.activateGradeEntryTrigger(block.firstLessonId, gradeEntryState.triggerMode);
                     });
                     chip.append(gradeEntryTrigger);
                   }
@@ -19233,6 +19243,7 @@
             this.store.ensureLessonsForYear(year.id);
             const lessons = this.store.listLessonsForWeek(year.id, year.startDate, year.endDate, course.id);
             const blocks = this._buildCourseTableBlocks(lessons);
+            const gradeAssessmentLookup = this.buildWeekGradeAssessmentLookup(lessons);
 
             const thead = document.createElement("thead");
             thead.innerHTML = `
@@ -19240,6 +19251,7 @@
         <th>Datum</th>
         <th>Tag</th>
         <th>Dauer</th>
+        <th>Noten</th>
         <th>Thema</th>
         <th>Ausführliche Planung</th>
       </tr>
@@ -19309,10 +19321,13 @@
               const durCell = document.createElement("td");
               durCell.textContent = String(block.length);
               durCell.style.textAlign = "center";
+              const gradeCell = document.createElement("td");
+              gradeCell.className = "course-grade-entry-cell";
               const topicCell = document.createElement("td");
               const notesCell = document.createElement("td");
 
               const firstLessonId = topLesson.id;
+              const gradeEntryState = this.getGradeEntryTriggerStateForLesson(topLesson, gradeAssessmentLookup);
               tr.dataset.lessonId = String(firstLessonId);
               const contentWrap = document.createElement("div");
               contentWrap.className = "course-topic-wrap";
@@ -19345,6 +19360,22 @@
                 }
                 contentWrap.append(input);
               }
+              if (gradeEntryState) {
+                const gradeButton = document.createElement("button");
+                gradeButton.type = "button";
+                gradeButton.className = "course-grade-entry-trigger";
+                if (gradeEntryState.hasExistingAssessment) {
+                  gradeButton.classList.add("has-existing-assessment");
+                } else {
+                  gradeButton.classList.add("is-missing-assessment");
+                }
+                gradeButton.dataset.gradeEntryLessonId = String(firstLessonId);
+                gradeButton.dataset.gradeEntryMode = gradeEntryState.triggerMode;
+                gradeButton.setAttribute("aria-label", gradeEntryState.ariaLabel);
+                gradeButton.title = gradeEntryState.title;
+                gradeButton.textContent = gradeEntryState.hasExistingAssessment ? "✓" : "?";
+                gradeCell.append(gradeButton);
+              }
               topicCell.append(contentWrap);
               if (allCanceled) {
                 const emptyText = document.createElement("span");
@@ -19364,7 +19395,7 @@
                 notesCell.append(notesButton);
               }
 
-              tr.append(dateCell, dayCell, durCell, topicCell, notesCell);
+              tr.append(dateCell, dayCell, durCell, gradeCell, topicCell, notesCell);
               tbody.append(tr);
             }
 

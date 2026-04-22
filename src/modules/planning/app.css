@@ -1517,7 +1517,7 @@
           flex: 1 1 auto;
           min-height: 0;
           max-width: 100%;
-          overflow-x: hidden;
+          overflow-x: visible;
           overflow-y: auto;
         }
 
@@ -1613,8 +1613,8 @@
           color: #8b96a8;
         }
 
-        #course-table tr.course-row-canceled td:nth-child(4),
-        #course-table tr.course-row-entfall td:nth-child(4) {
+        #course-table tr.course-row-canceled td:nth-child(5),
+        #course-table tr.course-row-entfall td:nth-child(5) {
           font-style: italic;
         }
 
@@ -1624,7 +1624,8 @@
 
         #course-table td:nth-child(1),
         #course-table td:nth-child(2),
-        #course-table td:nth-child(3) {
+        #course-table td:nth-child(3),
+        #course-table td:nth-child(4) {
           text-align: center;
           white-space: nowrap;
           overflow: hidden;
@@ -1636,7 +1637,9 @@
         #course-table th:nth-child(2),
         #course-table td:nth-child(2),
         #course-table th:nth-child(3),
-        #course-table td:nth-child(3) {
+        #course-table td:nth-child(3),
+        #course-table th:nth-child(4),
+        #course-table td:nth-child(4) {
           padding-left: 0.42rem;
           padding-right: 0.42rem;
         }
@@ -1658,20 +1661,27 @@
 
         #course-table th:nth-child(4),
         #course-table td:nth-child(4) {
-          width: auto;
+          width: 4.25rem;
+          min-width: 4.25rem;
+          max-width: 4.25rem;
         }
 
         #course-table th:nth-child(5),
         #course-table td:nth-child(5) {
+          width: auto;
+        }
+
+        #course-table th:nth-child(6),
+        #course-table td:nth-child(6) {
           width: max-content;
           white-space: nowrap;
         }
 
-        #course-table td:nth-child(4) {
+        #course-table td:nth-child(5) {
           vertical-align: middle;
         }
 
-        #course-table td:nth-child(5) {
+        #course-table td:nth-child(6) {
           vertical-align: middle;
         }
 
@@ -2005,6 +2015,11 @@
 
         .lesson-block .lesson-block-grade-entry.has-existing-assessment {
           overflow: visible;
+          color: rgba(236, 253, 245, 0.98);
+        }
+
+        .lesson-block .lesson-block-grade-entry.is-missing-assessment {
+          color: rgba(248, 250, 252, 0.96);
         }
 
         .lesson-block .lesson-block-grade-entry-status {
@@ -2589,6 +2604,67 @@
           min-width: 0;
         }
 
+        .course-grade-entry-cell {
+          text-align: center;
+        }
+
+        .course-grade-entry-trigger {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          width: 2rem;
+          min-width: 2rem;
+          height: 2rem;
+          min-height: 2rem;
+          padding: 0;
+          border-radius: 10px;
+          border: 1px solid rgba(148, 163, 184, 0.26);
+          background: rgba(24, 31, 43, 0.52);
+          color: rgba(226, 232, 240, 0.96);
+          box-shadow: none;
+          font-size: 1rem;
+          font-weight: 800;
+          line-height: 1;
+          text-align: center;
+          transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.12s ease;
+        }
+
+        .course-grade-entry-trigger.is-missing-assessment {
+          color: #f8fafc;
+          background: rgba(59, 130, 246, 0.18);
+          border-color: rgba(96, 165, 250, 0.38);
+        }
+
+        .course-grade-entry-trigger.has-existing-assessment {
+          color: #166534;
+          background: rgba(236, 253, 245, 0.94);
+          border-color: rgba(134, 239, 172, 0.55);
+        }
+
+        .course-grade-entry-trigger:hover,
+        .course-grade-entry-trigger:focus-visible {
+          transform: translateY(-1px);
+          border-color: rgba(96, 165, 250, 0.72);
+          outline: none;
+        }
+
+        .course-grade-entry-trigger.is-missing-assessment:hover,
+        .course-grade-entry-trigger.is-missing-assessment:focus-visible {
+          background: rgba(59, 130, 246, 0.28);
+          color: #ffffff;
+        }
+
+        .course-grade-entry-trigger.has-existing-assessment:hover,
+        .course-grade-entry-trigger.has-existing-assessment:focus-visible {
+          background: rgba(220, 252, 231, 0.98);
+          color: #14532d;
+        }
+
+        #course-table tr.course-row-canceled .course-grade-entry-trigger,
+        #course-table tr.course-row-entfall .course-grade-entry-trigger {
+          opacity: 0.7;
+        }
+
         .course-notes-preview {
           display: block;
           width: 100%;
@@ -2608,7 +2684,7 @@
           transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease;
         }
 
-        #course-table td:nth-child(5) .course-notes-preview {
+        #course-table td:nth-child(6) .course-notes-preview {
           min-height: 2.1rem;
         }
 
@@ -3310,7 +3386,7 @@
         .grades-book-panel {
           position: relative;
           min-height: 0;
-          overflow-x: hidden;
+          overflow-x: visible;
           overflow-y: auto;
           scrollbar-width: thin;
           -ms-overflow-style: auto;
@@ -3345,7 +3421,7 @@
           top: 0.55rem;
           left: 50%;
           transform: translateX(-50%);
-          z-index: 4;
+          z-index: 10;
           width: auto;
           pointer-events: none;
         }
@@ -3569,8 +3645,7 @@
 
         .grades-total-table,
         .grade-block-table,
-        .grades-category-layout,
-        .grades-master-table {
+        .grades-category-layout {
           width: max-content;
           min-width: max-content;
           border-collapse: separate;
@@ -3578,6 +3653,27 @@
           border-radius: 12px;
           overflow: hidden;
           border: 1px solid rgba(255, 255, 255, 0.12);
+          background: transparent;
+        }
+
+        .grades-master-table-shell {
+          width: max-content;
+          min-width: max-content;
+          max-width: none;
+          border-radius: 12px;
+          overflow: hidden;
+          border: 1px solid rgba(255, 255, 255, 0.12);
+          background: transparent;
+        }
+
+        .grades-master-table {
+          width: max-content;
+          min-width: max-content;
+          border-collapse: separate;
+          border-spacing: 0;
+          border: none;
+          border-radius: 0;
+          overflow: visible;
           background: transparent;
         }
 

@@ -2910,7 +2910,7 @@ import { applyTheme } from './shell/theme.js';
           seat.className = 'seat';
           seat.dataset.seat = id;
           const label = `${++groupCounter}`;
-          seat.innerHTML = `<div class="seat-header">${label}</div><button type="button" class="seat-delete-button" data-seat-delete="${id}" aria-label="Gruppe löschen" title="Gruppe löschen">🗑</button><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div>`;
+          seat.innerHTML = `<div class="seat-header">${label}</div><button type="button" class="seat-delete-button" data-seat-delete="${id}" aria-label="Gruppe löschen" title="Gruppe löschen">🗑️</button><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div>`;
           seat.classList.add('active');
           if (state.lockedSeats.has(id)) {
             seat.classList.add('locked');
