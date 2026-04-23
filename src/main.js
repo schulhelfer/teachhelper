@@ -277,6 +277,19 @@ import { applyTheme } from './shell/theme.js';
           importedAt: Date.now(),
         },
       });
+      const syncSharedRosterState = (source = STUDENTS_SYNC_SOURCE_GROUPS, importedAt = Date.now()) => {
+        const detail = {
+          ...SharedRosterStore.getState(),
+          source,
+          students: cloneStudentsForSync(state.students),
+          performanceFlairCount: state.performanceFlairCount,
+          csvName: state.csvName || '',
+          headers: Array.isArray(state.headers) ? state.headers.slice() : [],
+          delim: state.delim,
+          importedAt,
+        };
+        return SharedRosterStore.dispatch(detail);
+      };
       const MIC_UI_STATE = Object.freeze({
         READY: 'ready',
         STARTING: 'starting',
@@ -326,8 +339,8 @@ import { applyTheme } from './shell/theme.js';
           state.delim = detail.delim;
         }
         if (typeof detail.csvName === 'string') {
-          const label = sanitizeExportFileName(detail.csvName);
-          state.csvName = label || '';
+          const rawLabel = detail.csvName.trim();
+          state.csvName = rawLabel ? sanitizeExportFileName(rawLabel) : '';
           updateCsvStatusDisplay();
         }
         state.seats = {};
@@ -406,8 +419,6 @@ import { applyTheme } from './shell/theme.js';
         positionScrollHintBox();
       }
       function dismissScrollHint() {
-        if (state.scrollHintDismissed) return;
-        state.scrollHintDismissed = true;
         toggleScrollHint(false);
       }
       function setScrollHintText() {
@@ -464,35 +475,12 @@ import { applyTheme } from './shell/theme.js';
         const hasTopic = Boolean(String(topicValue || '').trim());
         seat.classList.toggle('seat-topic-empty', !hasTopic);
       }
-      function isLastNameOutOfView() {
-        if (!els.unseated) return false;
-        const scroller = els.unseated;
-        const overflowHidden = (scroller.scrollHeight - scroller.clientHeight) > 2;
-        if (overflowHidden) {
-          return true;
-        }
-        const last = scroller.lastElementChild;
-        if (!last) return false;
-        const lastRect = last.getBoundingClientRect();
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-        return lastRect.bottom > viewportHeight - 8;
-      }
       function updateScrollHint() {
-        if (!els.scrollHint) return;
-        if (state.scrollHintDismissed) {
-          toggleScrollHint(false);
-          return;
-        }
-        const sideAtTop = !els.sidePanel || els.sidePanel.scrollTop <= SCROLL_HINT_HIDE_OFFSET;
-        const rosterAtTop = !els.rosterPanel || els.rosterPanel.scrollTop <= SCROLL_HINT_HIDE_OFFSET;
-        const listAtTop = !els.unseated || els.unseated.scrollTop <= SCROLL_HINT_HIDE_OFFSET;
-        const shouldShow = state._lastImport === true
-          && sideAtTop
-          && rosterAtTop
-          && listAtTop
-          && isLastNameOutOfView();
+        if (!els.scrollHint || !els.sidePanel) return;
         setScrollHintText();
-        toggleScrollHint(shouldShow);
+        const requiresScroll = (els.sidePanel.scrollHeight - els.sidePanel.clientHeight) > 16;
+        const isAtTop = els.sidePanel.scrollTop <= 4;
+        toggleScrollHint(requiresScroll && isAtTop && state.students.length > 0);
       }
       function handleSideScroll() {
         if (!els.sidePanel) return;
@@ -1560,15 +1548,19 @@ import { applyTheme } from './shell/theme.js';
         };
       }
 
+      function getDefaultPlanModeLabel() {
+        return getActiveTab() === TAB_RANDOM_PICKER ? 'Picker' : 'Gruppen';
+      }
+
       function sanitizeExportFileName(name) {
         const raw = typeof name === 'string' ? name : '';
         const trimmed = raw.trim();
-        const safe = trimmed.replace(/[\\/:*?"<>|]/g, '-');
-        return safe || 'Gruppen';
+        if (!trimmed) return '';
+        return trimmed.replace(/[\\/:*?"<>|]/g, '-');
       }
 
       function getDefaultPlanBaseName() {
-        const modeLabel = getActiveTab() === TAB_RANDOM_PICKER ? 'Picker' : 'Gruppen';
+        const modeLabel = getDefaultPlanModeLabel();
         return state.csvName ? `${state.csvName} (${modeLabel})` : modeLabel;
       }
 
@@ -1577,7 +1569,7 @@ import { applyTheme } from './shell/theme.js';
       }
 
       function ensureJsonFilename(name) {
-        const normalized = (typeof name === 'string' ? name : '').trim() || 'Gruppen';
+        const normalized = (typeof name === 'string' ? name : '').trim() || getDefaultPlanModeLabel();
         return normalized.toLowerCase().endsWith('.json') ? normalized : `${normalized}.json`;
       }
 
@@ -1590,7 +1582,7 @@ import { applyTheme } from './shell/theme.js';
             suggestedName: finalName,
             startIn: state.lastDirectoryHandle || 'downloads',
             types: [{
-              description: 'Gruppen JSON',
+              description: `${getDefaultPlanModeLabel()} JSON`,
               accept: { 'application/json': ['.json'] }
             }],
           });
@@ -1654,7 +1646,7 @@ import { applyTheme } from './shell/theme.js';
 
       function triggerPlanDownload(blob, filename) {
         triggerBlobDownload(blob, filename, {
-          defaultName: 'Gruppen',
+          defaultName: getDefaultPlanModeLabel(),
           forceJsonExtension: true,
           iosDelay: 4000,
           defaultDelay: 1200,
@@ -1678,11 +1670,14 @@ import { applyTheme } from './shell/theme.js';
         const defaultName = getSuggestedPlanFileName();
         let nameInput = defaultName;
         if (!isIOSDevice) {
-          const desiredName = prompt('Bitte gib einen Dateinamen ein:', defaultName);
+          const promptLabel = getActiveTab() === TAB_RANDOM_PICKER
+            ? 'Bitte gib einen Dateinamen für den Pickerstand ein:'
+            : 'Bitte gib einen Dateinamen ein:';
+          const desiredName = prompt(promptLabel, defaultName);
           if (desiredName === null) return;
           nameInput = desiredName || '';
         }
-        const safeName = sanitizeExportFileName(nameInput);
+        const safeName = sanitizeExportFileName(nameInput) || defaultName;
         const prettyJson = JSON.stringify(snapshot, null, 2);
         const blob = new Blob([prettyJson], { type: 'application/json' });
         const saveStatus = await savePlanWithPicker(blob, safeName);
@@ -3401,10 +3396,23 @@ import { applyTheme } from './shell/theme.js';
       }
 
       function detectDelimiter(s) {
-        const firstLine = s.split(/\r?\n/)[0] || '';
-        const commas = (firstLine.match(/,/g) || []).length;
-        const semis = (firstLine.match(/;/g) || []).length;
-        return semis > commas ? ';' : ',';
+        const candidates = [';', ',', '\t'];
+        const lines = String(s || '')
+          .split(/\r?\n/)
+          .map(line => String(line || ''))
+          .filter(line => line.trim() && !/^sep\s*=/.test(line.trim().toLowerCase()))
+          .slice(0, 8);
+        let best = ';';
+        let bestScore = -1;
+        candidates.forEach((candidate) => {
+          const pattern = candidate === '\t' ? /\t/g : new RegExp(`\\${candidate}`, 'g');
+          const score = lines.reduce((sum, line) => sum + ((line.match(pattern) || []).length), 0);
+          if (score > bestScore) {
+            best = candidate;
+            bestScore = score;
+          }
+        });
+        return best;
       }
       function parseCSV(text) {
         const delim = detectDelimiter(text); state.delim = delim;
@@ -3425,13 +3433,70 @@ import { applyTheme } from './shell/theme.js';
         return rows;
       }
 
-      function readStudents(rows) {
-        const colL = 1;
-        const colF = 2;
+      function normalizeCsvCell(value) {
+        return String(value ?? '')
+          .replace(/\uFEFF/g, '')
+          .trim();
+      }
+
+      function normalizeCsvHeader(value) {
+        return normalizeCsvCell(value).toLocaleLowerCase('de');
+      }
+
+      function splitCombinedStudentName(value) {
+        const combined = normalizeCsvCell(value);
+        if (!combined) return { first: '', last: '' };
+        if (combined.includes(',')) {
+          const [last, first] = combined.split(',');
+          return {
+            first: normalizeCsvCell(first),
+            last: normalizeCsvCell(last),
+          };
+        }
+        const parts = combined.split(/\s+/).filter(Boolean);
+        return {
+          first: normalizeCsvCell(parts.shift() || ''),
+          last: normalizeCsvCell(parts.join(' ')),
+        };
+      }
+
+      function resolveStudentColumnIndexes(headers, rows) {
+        const normalizedHeaders = Array.isArray(headers) ? headers.map(normalizeCsvHeader) : [];
+        const findIndex = aliases => normalizedHeaders.findIndex(cell => aliases.includes(cell));
+        const lastIndex = findIndex(['nachname', 'name', 'surname', 'last', 'lastname', 'familienname']);
+        const firstIndex = findIndex(['vorname', 'firstname', 'first', 'givenname', 'rufname']);
+        const combinedIndex = findIndex(['schüler', 'schueler', 'schülername', 'schuelername', 'student', 'lernende', 'lernender']);
+        if (lastIndex >= 0 || firstIndex >= 0 || combinedIndex >= 0) {
+          return { lastIndex, firstIndex, combinedIndex };
+        }
+        const sampleRow = Array.isArray(rows)
+          ? rows.find(row => Array.isArray(row) && row.some(cell => normalizeCsvCell(cell)))
+          : null;
+        const fallbackOffset = normalizedHeaders[0] === '' && normalizedHeaders.length >= 3 ? 1 : 0;
+        if (sampleRow && sampleRow.length >= fallbackOffset + 2) {
+          return { lastIndex: fallbackOffset, firstIndex: fallbackOffset + 1, combinedIndex: -1 };
+        }
+        if (sampleRow && sampleRow.length >= 3) {
+          return { lastIndex: 1, firstIndex: 2, combinedIndex: -1 };
+        }
+        return { lastIndex: 0, firstIndex: 1, combinedIndex: -1 };
+      }
+
+      function readStudents(rows, headers = []) {
+        const { lastIndex, firstIndex, combinedIndex } = resolveStudentColumnIndexes(headers, rows);
         const students = [];
         for (const r of rows) {
-          const last = (r[colL] || '').trim();
-          const first = (r[colF] || '').trim();
+          let first = '';
+          let last = '';
+          if (lastIndex >= 0 || firstIndex >= 0) {
+            last = normalizeCsvCell(r?.[lastIndex] || '');
+            first = normalizeCsvCell(r?.[firstIndex] || '');
+          }
+          if ((!last && !first) && combinedIndex >= 0) {
+            const parsed = splitCombinedStudentName(r?.[combinedIndex] || '');
+            first = parsed.first;
+            last = parsed.last;
+          }
           if (last || first) {
             const id = String(students.length + 1).padStart(2, '0');
             students.push({
@@ -3517,7 +3582,7 @@ import { applyTheme } from './shell/theme.js';
         const dataRows = rows.slice(dataStartIdx);
         state.headers = headers;
         state.performanceFlairCount = 4;
-        state.students = readStudents(dataRows);
+        state.students = readStudents(dataRows, headers);
         state.seats = {};
         state.seatTopics = {};
         SharedTimerStore.setWorkOrder({
@@ -3539,7 +3604,7 @@ import { applyTheme } from './shell/theme.js';
         state.scrollHintDismissed = false;
         state._lastImport = true;
         updateScrollHint();
-        bridgeController?.emitStudentsUpdated(STUDENTS_SYNC_SOURCE_GROUPS);
+        syncSharedRosterState(STUDENTS_SYNC_SOURCE_GROUPS);
       }
 
       async function pickPlanFileWithPicker() {
@@ -5115,7 +5180,9 @@ import { applyTheme } from './shell/theme.js';
         });
       });
       els.randomPickerImport?.addEventListener('click', () => {
-        void handlePlanImportAction();
+        if (!els.file) return;
+        els.file.value = '';
+        els.file.click();
       });
       els.randomPickerExport?.addEventListener('click', () => {
         void downloadSeatPlan();

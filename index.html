@@ -246,6 +246,44 @@
       display: block !important;
     }
 
+    .app.app-tab-groups>.side,
+    .app.app-tab-random-picker>.side {
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      scrollbar-width: auto !important;
+      -ms-overflow-style: auto !important;
+      scrollbar-gutter: stable;
+    }
+
+    .app.app-tab-groups>.side::-webkit-scrollbar,
+    .app.app-tab-random-picker>.side::-webkit-scrollbar {
+      width: 12px !important;
+      height: 0 !important;
+      display: block !important;
+    }
+
+    .app.app-tab-groups>.side::-webkit-scrollbar-thumb,
+    .app.app-tab-random-picker>.side::-webkit-scrollbar-thumb {
+      background: rgba(148, 163, 184, 0.55);
+      border-radius: 999px;
+      border: 2px solid transparent;
+      background-clip: padding-box;
+    }
+
+    .app.app-tab-groups>.side::-webkit-scrollbar-track,
+    .app.app-tab-random-picker>.side::-webkit-scrollbar-track {
+      background: rgba(15, 23, 42, 0.14);
+      border-radius: 999px;
+    }
+
+    .app.app-tab-groups #roster-panel,
+    .app.app-tab-groups #unseated,
+    .app.app-tab-random-picker #roster-panel,
+    .app.app-tab-random-picker #unseated {
+      overflow: visible !important;
+      max-height: none !important;
+    }
+
     .app:fullscreen,
     .app:-webkit-full-screen {
       background: var(--bg);
@@ -4974,7 +5012,6 @@
       bottom: 16px;
       left: 50%;
       transform: translateX(-50%);
-      width: min(340px, calc(100vw - 40px));
       padding: 12px 22px;
       color: var(--text);
       font-size: 18px;
@@ -5491,9 +5528,9 @@
 
       <div class="row sitzplan-row random-picker-sidebar-plan-actions">
         <button id="random-picker-import" class="primary flex-1" type="button"
-          title="Gespeicherte Gruppen laden">Picker<br>laden</button>
+          title="Namensliste importieren">Liste<br>wählen</button>
         <button id="random-picker-export" class="primary flex-1" type="button"
-          title="Aktuelle Gruppen als Datei speichern">Picker<br>speichern</button>
+          title="Aktuellen Picker als Datei speichern">Picker<br>speichern</button>
       </div>
 
       <div class="row mt-md random-picker-sidebar-start-row">

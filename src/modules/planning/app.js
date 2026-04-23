@@ -2773,6 +2773,9 @@
             const existing = this.getGradeEntry(studentKey, assessmentKey);
             if (mode === "homework") {
               const checked = normalizeGradeEntryChecked(value);
+              if (existing && Boolean(existing.checked) === checked) {
+                return true;
+              }
               if (!checked) {
                 if (existing) {
                   this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries.filter((entry) => !(
@@ -2807,6 +2810,9 @@
                 ));
                 this._saveGradeVault();
               }
+              return true;
+            }
+            if (existing && Number(existing.value) === parsed.value && existing.checked === null) {
               return true;
             }
             if (existing) {
@@ -14300,14 +14306,11 @@
             if (!root) {
               return;
             }
-            const isEntryView = this.normalizeGradesSubView(this.gradesSubView) === "entry";
             const activeStudentId = Number(this.activeGradeStudentId || 0);
             const activeAssessmentId = Number(this.activeGradeAssessmentId || 0);
             root.querySelectorAll("[data-grade-student-name]").forEach((node) => {
               const studentId = Number(node.getAttribute("data-grade-student-name") || 0);
-              const isActive = studentId > 0 && studentId === activeStudentId && (
-                isEntryView || Boolean(this.activeGradeAssessmentId)
-              );
+              const isActive = studentId > 0 && studentId === activeStudentId;
               const isPrivacyFocused = studentId > 0 && studentId === Number(this.privacyFocusedGradeStudentId || 0);
               const isPrivacyBlurred = this.shouldBlurGradeStudent(studentId);
               node.classList.toggle("is-active", isActive);
@@ -14522,6 +14525,51 @@
 
           getActiveGradeOverrideInput() {
             return this.refs.gradesTable?.querySelector("input[data-grade-override-input='1']:not(:disabled)") || null;
+          }
+
+          getNavigableGradeOverrideTargets(context = this.activeGradeOverrideContext) {
+            const normalizedContext = this.normalizeGradeOverrideEditorContext(context);
+            if (!normalizedContext || !this.refs.gradesTable) {
+              return [];
+            }
+            return [...this.refs.gradesTable.querySelectorAll("button[data-grade-open-override='1'], input[data-grade-override-input='1']:not(:disabled)")]
+              .filter((node) => {
+                if (!(node instanceof HTMLElement)) {
+                  return false;
+                }
+                return (
+                  Number(node.dataset.courseId || 0) === normalizedContext.courseId
+                  && Number(node.dataset.studentId || 0) > 0
+                  && normalizeGradeOverrideScope(node.dataset.scope || "") === normalizedContext.scope
+                  && normalizeGradePeriod(node.dataset.period || "year") === normalizedContext.period
+                  && (Number(node.dataset.categoryId || 0) || null) === normalizedContext.categoryId
+                  && (Number(node.dataset.subcategoryId || 0) || null) === normalizedContext.subcategoryId
+                );
+              });
+          }
+
+          openNextGradeOverrideContext(context = this.activeGradeOverrideContext) {
+            const normalizedContext = this.normalizeGradeOverrideEditorContext(context);
+            if (!normalizedContext) {
+              return false;
+            }
+            const targets = this.getNavigableGradeOverrideTargets(normalizedContext);
+            const currentIndex = targets.findIndex((node) => (
+              Number(node.dataset.studentId || 0) === normalizedContext.studentId
+            ));
+            const next = currentIndex >= 0 ? targets[currentIndex + 1] : null;
+            if (!(next instanceof HTMLElement)) {
+              return false;
+            }
+            this.openGradeOverrideDialog({
+              studentId: Number(next.dataset.studentId || 0),
+              courseId: Number(next.dataset.courseId || 0),
+              scope: next.dataset.scope || "",
+              period: next.dataset.period || "year",
+              categoryId: Number(next.dataset.categoryId || 0) || null,
+              subcategoryId: Number(next.dataset.subcategoryId || 0) || null
+            });
+            return true;
           }
 
           syncGradePickerSelectionFromInput(input = null) {
@@ -15046,7 +15094,6 @@
               data-scope="${normalizedScope}"
               data-period="${period}"${categoryAttr}${subcategoryAttr}
               value="${escapeHtml(draftValue)}"
-              placeholder="z. B. 12"
               aria-label="${scopeLabel} manuell setzen"
               autocomplete="off"
             >
@@ -16998,65 +17045,138 @@
             return true;
           }
 
-          focusVerticalGradeInput(input, direction = 1) {
+          getNavigableGradeInputs(input) {
             const root = this.getGradeInputRoot(input);
-            if (!root || !input) {
-              return;
+            if (!root || !(input instanceof HTMLInputElement)) {
+              return [];
             }
-            const isDraftInput = input.dataset.gradeDraftInput === "1";
+            if (input.dataset.gradeDraftInput === "1") {
+              return [...root.querySelectorAll("input[data-grade-input='1'][data-grade-draft-input='1']:not(:disabled)")];
+            }
             const assessmentId = Number(input.dataset.assessmentId || 0);
+            if (!assessmentId) {
+              return [];
+            }
+            return [...root.querySelectorAll(
+              `input[data-grade-input='1']:not(:disabled)[data-assessment-id="${assessmentId}"]`
+            )];
+          }
+
+          getNavigableGradeInputIndex(candidateInputs, input) {
+            if (!(input instanceof HTMLInputElement) || !Array.isArray(candidateInputs)) {
+              return -1;
+            }
+            const directIndex = candidateInputs.indexOf(input);
+            if (directIndex >= 0) {
+              return directIndex;
+            }
             const rowIndex = Number(input.dataset.rowIndex || -1);
-            if (rowIndex < 0) {
-              return;
-            }
-            const orderedInputs = isDraftInput
-              ? [...root.querySelectorAll("input[data-grade-input='1'][data-grade-draft-input='1']:not(:disabled)")]
-              : (!assessmentId ? [] : [...root.querySelectorAll(
-                `input[data-grade-input='1']:not(:disabled)[data-assessment-id="${assessmentId}"]`
-              )]);
-            orderedInputs.sort((a, b) => Number(a.dataset.rowIndex || -1) - Number(b.dataset.rowIndex || -1));
-            const currentIndex = orderedInputs.indexOf(input);
-            if (currentIndex < 0) {
-              return;
-            }
-            const next = orderedInputs[currentIndex + direction];
-            if (next) {
-              this.focusGradeInputElement(next);
-              if (!this.isHomeworkGradeInput(next)) {
-                this.openGradePickerForInput(next);
+            const studentId = Number(input.dataset.studentId || 0);
+            const assessmentId = Number(input.dataset.assessmentId || 0);
+            const isDraftInput = input.dataset.gradeDraftInput === "1";
+            return candidateInputs.findIndex((node) => {
+              if (!(node instanceof HTMLInputElement)) {
+                return false;
               }
+              if (Number(node.dataset.rowIndex || -1) !== rowIndex) {
+                return false;
+              }
+              if (studentId > 0 && Number(node.dataset.studentId || 0) !== studentId) {
+                return false;
+              }
+              if (isDraftInput) {
+                return node.dataset.gradeDraftInput === "1";
+              }
+              return Number(node.dataset.assessmentId || 0) === assessmentId;
+            });
+          }
+
+          focusVerticalGradeInput(input, direction = 1) {
+            if (!(input instanceof HTMLInputElement)) {
+              return;
+            }
+            const candidateInputs = this.getNavigableGradeInputs(input);
+            const currentIndex = this.getNavigableGradeInputIndex(candidateInputs, input);
+            if (currentIndex < 0) {
+              this.clearActiveGradeStudentFocus(input);
+              return;
+            }
+            const step = direction < 0 ? -1 : 1;
+            let nextIndex = currentIndex + step;
+            if (nextIndex >= candidateInputs.length && step > 0) {
+              nextIndex = 0;
+            }
+            const next = nextIndex >= 0 && nextIndex < candidateInputs.length
+              ? candidateInputs[nextIndex]
+              : null;
+            if (next) {
+              this.focusGradeInputAfterNavigation(next);
             } else {
               this.clearActiveGradeStudentFocus(input);
             }
           }
 
           focusNextStudentGradeInput(input) {
-            const root = this.getGradeInputRoot(input);
-            if (!root || !input) {
+            if (!(input instanceof HTMLInputElement)) {
               return;
             }
-            const isDraftInput = input.dataset.gradeDraftInput === "1";
-            const assessmentId = Number(input.dataset.assessmentId || 0);
-            const rowIndex = Number(input.dataset.rowIndex || -1);
-            if (rowIndex < 0) {
-              this.clearActiveGradeStudentFocus(input);
-              return;
-            }
-            const next = isDraftInput
-              ? root.querySelector(
-                `input[data-grade-input='1'][data-grade-draft-input='1']:not(:disabled)[data-row-index="${rowIndex + 1}"]`
-              )
-              : (!assessmentId ? null : root.querySelector(
-                `input[data-grade-input='1']:not(:disabled)[data-assessment-id="${assessmentId}"][data-row-index="${rowIndex + 1}"]`
-              ));
+            const candidateInputs = this.getNavigableGradeInputs(input);
+            const currentIndex = this.getNavigableGradeInputIndex(candidateInputs, input);
+            const next = currentIndex >= 0 ? candidateInputs[currentIndex + 1] : null;
             if (next) {
-              this.hideGradePicker();
-              this.focusGradeInputElement(next);
-              if (!this.isHomeworkGradeInput(next)) {
-                this.openGradePickerForInput(next);
-              }
+              this.focusGradeInputAfterNavigation(next);
             } else {
               this.clearActiveGradeStudentFocus(input);
+            }
+          }
+
+          focusGradeInputAfterNavigation(input) {
+            if (!(input instanceof HTMLInputElement) || input.disabled) {
+              return;
+            }
+            this.hideGradePicker();
+            const nextStudentId = Number(input.dataset.studentId || 0) || null;
+            this.activeGradeStudentId = nextStudentId;
+            this.updateActiveGradeStudentHighlight();
+            this.focusGradeInputElement(input, { preventScroll: true });
+            window.setTimeout(() => {
+              if (!document.body.contains(input) || input.disabled) {
+                return;
+              }
+              if (document.activeElement !== input) {
+                this.focusGradeInputElement(input, { preventScroll: true });
+              }
+              if (!this.isHomeworkGradeInput(input)) {
+                this.openGradePickerForInput(input);
+                this.syncGradePickerSelectionFromInput(input);
+              }
+            }, 0);
+          }
+
+          advanceGradePickerToNextStudent() {
+            const input = this.gradePickerState.input;
+            if (!input) {
+              return;
+            }
+            this.hideGradePicker();
+            this.focusNextStudentGradeInput(input);
+          }
+
+          advanceGradePickerToNextOverrideTarget() {
+            const input = this.gradePickerState.input;
+            const context = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+            if (!(input instanceof HTMLInputElement) || !context) {
+              return;
+            }
+            if (this.gradePickerState.open && this.gradePickerState.mode === "override" && this.gradePickerState.activeIndex >= 0) {
+              input.value = formatPedagogicalGradeInput(this.gradePickerState.values[this.gradePickerState.activeIndex]);
+            }
+            const valid = this.submitGradeOverrideDialog({ input, close: false });
+            if (!valid) {
+              return;
+            }
+            if (!this.openNextGradeOverrideContext(context)) {
+              this.hideGradePicker();
             }
           }
 
@@ -17160,6 +17280,31 @@
               });
               grid.append(button);
             });
+            if (this.gradePickerState.mode === "table" || this.gradePickerState.mode === "override") {
+              const skipButton = document.createElement("button");
+              skipButton.type = "button";
+              skipButton.className = "grade-picker-skip";
+              skipButton.textContent = "🡻";
+              if (this.gradePickerState.mode === "override") {
+                skipButton.setAttribute("aria-label", "Nächste errechnete Note");
+                skipButton.title = "Nächste errechnete Note";
+              } else {
+                skipButton.setAttribute("aria-label", "Schüler auslassen und weiter");
+                skipButton.title = "Schüler auslassen und weiter";
+              }
+              skipButton.addEventListener("mousedown", (event) => {
+                event.preventDefault();
+              });
+              skipButton.addEventListener("click", (event) => {
+                event.stopPropagation();
+                if (this.gradePickerState.mode === "override") {
+                  this.advanceGradePickerToNextOverrideTarget();
+                } else {
+                  this.advanceGradePickerToNextStudent();
+                }
+              });
+              grid.append(skipButton);
+            }
             container.append(grid);
           }
 
@@ -17237,7 +17382,7 @@
             input.value = formatGradeInteger(value, this.gradePickerState.maxPoints);
             this.commitGradeCellInput(input);
             this.hideGradePicker();
-            this.focusNextStudentGradeInput(input);
+            this.focusVerticalGradeInput(input, 1);
           }
 
           renderAll({ visibleOnly = false } = {}) {
@@ -17352,7 +17497,7 @@
           getGradeInputRoot(input = null) {
             if (input instanceof Element) {
               const root = input.closest("#grades-table, #grades-entry-content");
-              if (root) {
+              if (root && root.isConnected) {
                 return root;
               }
             }
@@ -17738,8 +17883,17 @@
           getGradeEntryTriggerStateForLesson(lesson, assessmentLookup = null) {
             const courseId = Number(lesson?.courseId || 0);
             const lessonDate = String(lesson?.lessonDate || "").trim();
-            if (!this.isGradeVaultConfigured() || !courseId || !lessonDate) {
+            if (!this.hasGradeVaultUnlockConfig() || !courseId || !lessonDate) {
               return null;
+            }
+            if (!this.isGradeVaultUnlocked()) {
+              return {
+                hasExistingAssessment: false,
+                assessmentResolved: false,
+                triggerMode: "unlock",
+                ariaLabel: "Notenmodul entsperren",
+                title: "Notenmodul entsperren"
+              };
             }
             const hasExistingAssessment = this.hasExistingGradeAssessmentForLesson(
               courseId,
@@ -17748,6 +17902,7 @@
             );
             return {
               hasExistingAssessment,
+              assessmentResolved: true,
               triggerMode: hasExistingAssessment ? "overview" : "entry",
               ariaLabel: hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen",
               title: hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen"
@@ -17758,6 +17913,10 @@
             const normalizedLessonId = Number(lessonId || 0);
             if (!normalizedLessonId) {
               return false;
+            }
+            if (String(triggerMode || "entry").trim() === "unlock") {
+              this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+              return true;
             }
             const lesson = this.store.getLessonById(normalizedLessonId);
             if (!lesson) {
@@ -19043,12 +19202,14 @@
                     : null;
                   if (gradeEntryState) {
                     chip.classList.add("has-grade-entry-trigger");
-                    if (gradeEntryState.hasExistingAssessment) {
+                    if (gradeEntryState.assessmentResolved && gradeEntryState.hasExistingAssessment) {
                       chip.classList.add("has-existing-grade-assessment");
                     }
                     const gradeEntryTrigger = document.createElement("span");
                     gradeEntryTrigger.className = "lesson-block-grade-entry";
-                    if (gradeEntryState.hasExistingAssessment) {
+                    if (!gradeEntryState.assessmentResolved) {
+                      gradeEntryTrigger.classList.add("is-unresolved");
+                    } else if (gradeEntryState.hasExistingAssessment) {
                       gradeEntryTrigger.classList.add("has-existing-assessment");
                     } else {
                       gradeEntryTrigger.classList.add("is-missing-assessment");
@@ -19059,7 +19220,9 @@
                     gradeEntryTrigger.setAttribute("tabindex", "0");
                     gradeEntryTrigger.setAttribute("aria-label", gradeEntryState.ariaLabel);
                     gradeEntryTrigger.title = gradeEntryState.title;
-                    gradeEntryTrigger.textContent = gradeEntryState.hasExistingAssessment ? "✓" : "?";
+                    gradeEntryTrigger.textContent = gradeEntryState.assessmentResolved
+                      ? (gradeEntryState.hasExistingAssessment ? "✓" : "?")
+                      : "";
                     gradeEntryTrigger.addEventListener("keydown", (keyEvent) => {
                       if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
                         return;

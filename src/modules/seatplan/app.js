@@ -1977,7 +1977,7 @@
             const dataRows = rows.slice(dataStartIdx);
             state.headers = headers;
             state.performanceFlairCount = 4;
-            state.students = readStudents(dataRows);
+            state.students = readStudents(dataRows, headers);
             state.seats = {};
             state.conditions.teacherDistances = {};
             state.conditions.genderAlternation = state.students.some(student => genderCode(student));
@@ -4456,10 +4456,23 @@
           }
 
           function detectDelimiter(s) {
-            const firstLine = s.split(/\r?\n/)[0] || '';
-            const commas = (firstLine.match(/,/g) || []).length;
-            const semis = (firstLine.match(/;/g) || []).length;
-            return semis > commas ? ';' : ',';
+            const candidates = [';', ',', '\t'];
+            const lines = String(s || '')
+              .split(/\r?\n/)
+              .map(line => String(line || ''))
+              .filter(line => line.trim() && !/^sep\s*=/.test(line.trim().toLowerCase()))
+              .slice(0, 8);
+            let best = ';';
+            let bestScore = -1;
+            candidates.forEach((candidate) => {
+              const pattern = candidate === '\t' ? /\t/g : new RegExp(`\\${candidate}`, 'g');
+              const score = lines.reduce((sum, line) => sum + ((line.match(pattern) || []).length), 0);
+              if (score > bestScore) {
+                best = candidate;
+                bestScore = score;
+              }
+            });
+            return best;
           }
           function parseCSV(text) {
             const delim = detectDelimiter(text); state.delim = delim;
@@ -4480,13 +4493,70 @@
             return rows;
           }
 
-          function readStudents(rows) {
-            const colL = 1;
-            const colF = 2;
+          function normalizeCsvCell(value) {
+            return String(value ?? '')
+              .replace(/\uFEFF/g, '')
+              .trim();
+          }
+
+          function normalizeCsvHeader(value) {
+            return normalizeCsvCell(value).toLocaleLowerCase('de');
+          }
+
+          function splitCombinedStudentName(value) {
+            const combined = normalizeCsvCell(value);
+            if (!combined) return { first: '', last: '' };
+            if (combined.includes(',')) {
+              const [last, first] = combined.split(',');
+              return {
+                first: normalizeCsvCell(first),
+                last: normalizeCsvCell(last),
+              };
+            }
+            const parts = combined.split(/\s+/).filter(Boolean);
+            return {
+              first: normalizeCsvCell(parts.shift() || ''),
+              last: normalizeCsvCell(parts.join(' ')),
+            };
+          }
+
+          function resolveStudentColumnIndexes(headers, rows) {
+            const normalizedHeaders = Array.isArray(headers) ? headers.map(normalizeCsvHeader) : [];
+            const findIndex = aliases => normalizedHeaders.findIndex(cell => aliases.includes(cell));
+            const lastIndex = findIndex(['nachname', 'name', 'surname', 'last', 'lastname', 'familienname']);
+            const firstIndex = findIndex(['vorname', 'firstname', 'first', 'givenname', 'rufname']);
+            const combinedIndex = findIndex(['schüler', 'schueler', 'schülername', 'schuelername', 'student', 'lernende', 'lernender']);
+            if (lastIndex >= 0 || firstIndex >= 0 || combinedIndex >= 0) {
+              return { lastIndex, firstIndex, combinedIndex };
+            }
+            const sampleRow = Array.isArray(rows)
+              ? rows.find(row => Array.isArray(row) && row.some(cell => normalizeCsvCell(cell)))
+              : null;
+            const fallbackOffset = normalizedHeaders[0] === '' && normalizedHeaders.length >= 3 ? 1 : 0;
+            if (sampleRow && sampleRow.length >= fallbackOffset + 2) {
+              return { lastIndex: fallbackOffset, firstIndex: fallbackOffset + 1, combinedIndex: -1 };
+            }
+            if (sampleRow && sampleRow.length >= 3) {
+              return { lastIndex: 1, firstIndex: 2, combinedIndex: -1 };
+            }
+            return { lastIndex: 0, firstIndex: 1, combinedIndex: -1 };
+          }
+
+          function readStudents(rows, headers = []) {
+            const { lastIndex, firstIndex, combinedIndex } = resolveStudentColumnIndexes(headers, rows);
             const students = [];
             for (const r of rows) {
-              const last = (r[colL] || '').trim();
-              const first = (r[colF] || '').trim();
+              let first = '';
+              let last = '';
+              if (lastIndex >= 0 || firstIndex >= 0) {
+                last = normalizeCsvCell(r?.[lastIndex] || '');
+                first = normalizeCsvCell(r?.[firstIndex] || '');
+              }
+              if ((!last && !first) && combinedIndex >= 0) {
+                const parsed = splitCombinedStudentName(r?.[combinedIndex] || '');
+                first = parsed.first;
+                last = parsed.last;
+              }
               if (last || first) {
                 const id = String(students.length + 1).padStart(2, '0');
                 students.push({
