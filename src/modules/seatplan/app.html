@@ -125,7 +125,6 @@
               <button id="print-plan" class="primary flex-1" title="Sitzplan drucken">Sitzplan<br>drucken</button>
               <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
             </div>
-
             <div id="scroll-hint" class="scroll-hint" role="presentation">
               <span class="arrow" aria-hidden="true">⬇</span>
               <span class="text">Namen importiert</span>
@@ -235,6 +234,28 @@
               </div>
             </form>
           </dialog>
+          <dialog id="course-save-dialog" aria-labelledby="course-save-dialog-title">
+            <form class="dialog-form">
+              <h2 id="course-save-dialog-title">Sitzplan speichern</h2>
+              <p class="dialog-copy">Speichern in separater Sitzplan-Datei oder im Notenmodul?</p>
+              <div class="dialog-actions">
+                <button type="button" id="course-save-dialog-cancel" class="ghost">Abbrechen</button>
+                <button type="button" id="course-save-dialog-file" class="ghost">Separate Sitzplan-Datei</button>
+                <button type="button" id="course-save-dialog-grades" class="primary">Im Notenmodul</button>
+              </div>
+            </form>
+          </dialog>
+          <dialog id="course-grade-complete-dialog" aria-labelledby="course-grade-complete-dialog-title">
+            <form class="dialog-form">
+              <h2 id="course-grade-complete-dialog-title">Noten speichern?</h2>
+              <p class="dialog-copy">Du bist alle Lernenden mit Sitzplatz durchgegangen.</p>
+              <div class="dialog-actions">
+                <button type="button" id="course-grade-complete-cancel" class="ghost" aria-label="Nicht speichern" title="Nicht speichern">❌</button>
+                <button type="button" id="course-grade-complete-save" class="primary" aria-label="Noten von allen speichern" title="Noten von allen speichern">💾</button>
+              </div>
+            </form>
+          </dialog>
+          <div id="course-grade-picker" class="course-grade-picker" hidden></div>
         </div>
 
         <div id="message-stack" class="message-stack" aria-live="polite" aria-atomic="true"></div>

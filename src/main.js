@@ -9,6 +9,7 @@ import { createSharedRosterStore } from './shared/roster-store.js';
 import { STUDENTS_SYNC_SOURCE_GROUPS } from './shared/student-sync-bus.js';
 import { createSharedTimerStore } from './shared/timer-store.js';
 import {
+  PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
   TAB_GRADES,
   TAB_GROUPS,
   TAB_MERGER,
@@ -195,6 +196,15 @@ import { applyTheme } from './shell/theme.js';
             return;
           }
           setActiveTab(detail.view === 'grades' ? TAB_GRADES : TAB_PLANNING);
+        });
+        window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, (event) => {
+          const detail = event instanceof CustomEvent ? event.detail : null;
+          if (!detail || typeof detail !== 'object') {
+            return;
+          }
+          bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
+          bridgeController?.sendCourseSeatplanContext(detail);
+          setActiveTab(TAB_SEATPLAN);
         });
       }
 

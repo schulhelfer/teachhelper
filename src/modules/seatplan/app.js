@@ -29,6 +29,14 @@
             gridDialogCancel: document.getElementById('grid-dialog-cancel'),
             gridDialogMinimum: document.getElementById('grid-dialog-minimum'),
             exportPlan: document.getElementById('export-plan'),
+            courseSaveDialog: document.getElementById('course-save-dialog'),
+            courseSaveDialogFile: document.getElementById('course-save-dialog-file'),
+            courseSaveDialogGrades: document.getElementById('course-save-dialog-grades'),
+            courseSaveDialogCancel: document.getElementById('course-save-dialog-cancel'),
+            courseGradeCompleteDialog: document.getElementById('course-grade-complete-dialog'),
+            courseGradeCompleteSave: document.getElementById('course-grade-complete-save'),
+            courseGradeCompleteCancel: document.getElementById('course-grade-complete-cancel'),
+            courseGradePicker: document.getElementById('course-grade-picker'),
             importPlan: document.getElementById('import-plan'),
             importPlanFile: document.getElementById('import-plan-file'),
             unseated: document.getElementById('unseated'),
@@ -82,6 +90,12 @@
           }
           if (els.summaryDialog && !els.summaryDialog.hasAttribute('tabindex')) {
             els.summaryDialog.setAttribute('tabindex', '-1');
+          }
+          if (els.courseSaveDialog && !els.courseSaveDialog.hasAttribute('tabindex')) {
+            els.courseSaveDialog.setAttribute('tabindex', '-1');
+          }
+          if (els.courseGradeCompleteDialog && !els.courseGradeCompleteDialog.hasAttribute('tabindex')) {
+            els.courseGradeCompleteDialog.setAttribute('tabindex', '-1');
           }
           if (els.sidebarScore) {
             els.sidebarScore.setAttribute('role', 'button');
@@ -590,14 +604,36 @@
             optimalScoreStale: true,
             optimalScorePending: false,
             optimalScoreVersion: 0,
+            courseContext: null,
+            pendingCourseSaveRequestId: '',
+            pendingCourseGradeConfigRequestId: '',
+            pendingCourseGradeSaveRequestId: '',
+            pendingCourseGradeStudentId: '',
+            courseGradeConfig: null,
+            courseGradeDraft: null,
+            courseGradeEntries: {},
+            courseGradePickerStudentId: '',
+            courseGradeCompletionPromptShown: false,
+            courseGradeVisitedStudentIds: new Set(),
           };
           const STUDENTS_UPDATED_EVENT = 'classroom:students-updated';
           const SEATPLAN_SHELL_LAYOUT_EVENT = 'classroom:seatplan-shell-layout';
+          const SEATPLAN_COURSE_CONTEXT_EVENT = 'classroom:seatplan-course-context';
+          const SEATPLAN_COURSE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-save-request';
+          const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-course-grade-config-request';
+          const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
+          const PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:planning-course-seatplan-save-result';
+          const PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:planning-course-grade-config-result';
+          const PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:planning-course-grade-save-result';
           const STUDENTS_SYNC_SOURCE = 'seatplan';
           const TRUSTED_PARENT_ORIGIN = window.location.origin;
           const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
             SEATPLAN_SHELL_LAYOUT_EVENT,
             STUDENTS_UPDATED_EVENT,
+            SEATPLAN_COURSE_CONTEXT_EVENT,
+            PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+            PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
+            PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
           ]);
           let lastStudentsSyncTimestamp = 0;
           const PREFERENCE_SLOT_COUNT = 3;
@@ -651,6 +687,821 @@
               .filter(Boolean);
           }
 
+          function isCourseSeatplanMode() {
+            return Boolean(state.courseContext && Number(state.courseContext.courseId) > 0);
+          }
+
+          function getCourseSeatplanStudents() {
+            return cloneStudentsForSync(state.courseContext?.students || []);
+          }
+
+          function updateCsvStatusDisplay() {
+            if (!els.csvStatus) return;
+            if (isCourseSeatplanMode()) {
+              const count = Array.isArray(state.students) ? state.students.length : 0;
+              const courseName = String(state.courseContext?.courseName || 'Kurs').trim() || 'Kurs';
+              els.csvStatus.textContent = `${courseName}: ${count} Kursteilnehmer aus dem Notenmodul`;
+              return;
+            }
+            els.csvStatus.textContent = state.csvName || 'Noch keine Datei importiert';
+          }
+
+          function updateCourseSeatplanUi() {
+            const active = isCourseSeatplanMode();
+            appEl.dataset.courseSeatplan = active ? '1' : '0';
+            if (els.exportPlan) {
+              els.exportPlan.disabled = Boolean(state.pendingCourseSaveRequestId) || Boolean(state.pendingCourseGradeSaveRequestId);
+              els.exportPlan.title = active
+                ? 'Aktuellen Sitzplan als Datei oder im Notenmodul speichern'
+                : 'Aktuellen Sitzplan als Datei speichern';
+            }
+            appEl.dataset.courseGradeMode = state.courseGradeDraft ? '1' : '0';
+            if (els.courseGradeCompleteSave) {
+              els.courseGradeCompleteSave.disabled = !Boolean(state.courseGradeDraft) || Boolean(state.pendingCourseGradeSaveRequestId);
+            }
+            if (els.courseGradeCompleteCancel) {
+              els.courseGradeCompleteCancel.disabled = Boolean(state.pendingCourseGradeSaveRequestId);
+            }
+            if (els.file) {
+              els.file.disabled = active;
+            }
+            els.csvDropZone?.classList.toggle('course-seatplan-locked', active);
+            updateCsvStatusDisplay();
+          }
+
+          function reconcileCourseSeatAssignments() {
+            const validStudentIds = new Set((state.students || []).map(student => String(student.id || '')).filter(Boolean));
+            Object.keys(state.seats || {}).forEach(seatId => {
+              const value = state.seats[seatId];
+              if (value && value !== 'TEACHER' && !validStudentIds.has(String(value))) {
+                state.seats[seatId] = null;
+              }
+            });
+            const teacherEntries = Object.entries(state.seats || {}).filter(([, value]) => value === 'TEACHER');
+            teacherEntries.slice(1).forEach(([seatId]) => {
+              state.seats[seatId] = null;
+            });
+          }
+
+          function resetCourseSeatplanForStudents(students) {
+            state.students = cloneStudentsForSync(students);
+            state.seats = {};
+            state.activeSeats = new Set();
+            state.gridRows = 10;
+            state.gridCols = 10;
+            state.mergedPairs = new Set();
+            state.conditions.teacherDistances = {};
+            state.conditions.genderAlternation = state.students.some(student => genderCode(student));
+            state.mergeToggleValue = 'zulässig';
+            state.mergeMode = 'allow';
+            state.mergeSymbolsHidden = false;
+            state.seatScoresHidden = false;
+            buildGrid();
+            applySeatScoreVisibility();
+            syncSeatScoreToggleButton();
+            refreshUnseated();
+            setMergeModeFromToggle(state.mergeToggleValue);
+          }
+
+          function applyCoursePlanData(plan, students) {
+            const courseStudents = cloneStudentsForSync(students);
+            if (plan && typeof plan === 'object') {
+              applyPlanData({
+                ...plan,
+                students: courseStudents,
+                csvName: String(state.courseContext?.courseName || plan.csvName || ''),
+              });
+              reconcileCourseSeatAssignments();
+              refreshUnseated();
+              renderSeats();
+              return;
+            }
+            resetCourseSeatplanForStudents(courseStudents);
+          }
+
+          function applyCourseSeatplanContext(detail) {
+            if (!detail || typeof detail !== 'object') return;
+            const courseId = Number(detail.courseId || 0);
+            if (!courseId) return;
+            const gradeConfig = detail.gradeConfig && typeof detail.gradeConfig === 'object'
+              ? detail.gradeConfig
+              : null;
+            state.courseContext = {
+              courseId,
+              lessonId: Number(detail.lessonId || 0),
+              lessonDate: String(detail.lessonDate || ''),
+              courseName: String(detail.courseName || 'Kurs'),
+              students: cloneStudentsForSync(detail.students),
+              gradeAssessment: detail.gradeAssessment && typeof detail.gradeAssessment === 'object' ? { ...detail.gradeAssessment } : null,
+              loadedAt: String(detail.requestedAt || new Date().toISOString()),
+            };
+            state.csvName = state.courseContext.courseName;
+            state.pendingCourseGradeConfigRequestId = '';
+            state.pendingCourseGradeSaveRequestId = '';
+            resetCourseGradeMode();
+            applyCoursePlanData(detail.plan && typeof detail.plan === 'object' ? detail.plan : null, state.courseContext.students);
+            if (gradeConfig) {
+              state.courseGradeConfig = { ...gradeConfig };
+              startCourseGradeMode(buildCourseGradeDefaults(state.courseGradeConfig), {
+                entries: state.courseGradeConfig.entries,
+                openFirst: true,
+              });
+            }
+            updateCourseSeatplanUi();
+            markPlanSavedAction();
+          }
+
+          function createCoursePlanSnapshot() {
+            const snapshot = createPlanSnapshot();
+            if (!snapshot) return null;
+            const plan = { ...snapshot };
+            delete plan.students;
+            return plan;
+          }
+
+          function requestCourseSeatplanSave() {
+            if (!isCourseSeatplanMode()) {
+              return;
+            }
+            const plan = createCoursePlanSnapshot();
+            if (!plan) return;
+            const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+            state.pendingCourseSaveRequestId = requestId;
+            updateCourseSeatplanUi();
+            window.parent?.postMessage({
+              type: SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
+              detail: {
+                requestId,
+                courseId: Number(state.courseContext.courseId),
+                plan,
+              }
+            }, TRUSTED_PARENT_ORIGIN);
+          }
+
+          function closeCourseSaveDialog(returnValue = '') {
+            if (!els.courseSaveDialog) return;
+            if (typeof els.courseSaveDialog.close === 'function' && els.courseSaveDialog.open) {
+              els.courseSaveDialog.close(returnValue);
+            }
+            els.courseSaveDialog.removeAttribute('open');
+          }
+
+          function chooseCourseSeatplanSaveTarget() {
+            if (!isCourseSeatplanMode()) {
+              return Promise.resolve('file');
+            }
+            if (!els.courseSaveDialog) {
+              const saveInModule = confirm('Speichern in separater Sitzplan-Datei oder im Notenmodul?\n\nOK: im Notenmodul\nAbbrechen: separate Sitzplan-Datei');
+              return Promise.resolve(saveInModule ? 'grades' : 'file');
+            }
+            return new Promise(resolve => {
+              let settled = false;
+              const finish = (target) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                closeCourseSaveDialog(target || '');
+                resolve(target || '');
+              };
+              const onCancel = (event) => {
+                event.preventDefault();
+                finish('');
+              };
+              const onFile = () => finish('file');
+              const onGrades = () => finish('grades');
+              const onClose = () => finish(els.courseSaveDialog?.returnValue || '');
+              const cleanup = () => {
+                els.courseSaveDialog?.removeEventListener('cancel', onCancel);
+                els.courseSaveDialog?.removeEventListener('close', onClose);
+                els.courseSaveDialogFile?.removeEventListener('click', onFile);
+                els.courseSaveDialogGrades?.removeEventListener('click', onGrades);
+                els.courseSaveDialogCancel?.removeEventListener('click', onCancel);
+              };
+              els.courseSaveDialog.addEventListener('cancel', onCancel);
+              els.courseSaveDialog.addEventListener('close', onClose);
+              els.courseSaveDialogFile?.addEventListener('click', onFile);
+              els.courseSaveDialogGrades?.addEventListener('click', onGrades);
+              els.courseSaveDialogCancel?.addEventListener('click', onCancel);
+              if (typeof els.courseSaveDialog.showModal === 'function') {
+                if (!els.courseSaveDialog.open) els.courseSaveDialog.showModal();
+              } else {
+                els.courseSaveDialog.setAttribute('open', 'open');
+              }
+              const focusDialog = () => {
+                els.courseSaveDialogGrades?.focus({ preventScroll: true });
+              };
+              if (typeof queueMicrotask === 'function') { queueMicrotask(focusDialog); }
+              else { setTimeout(focusDialog, 0); }
+            });
+          }
+
+          async function handleSeatplanSaveClick() {
+            if (!isCourseSeatplanMode()) {
+              await downloadSeatPlan();
+              return;
+            }
+            const target = await chooseCourseSeatplanSaveTarget();
+            if (target === 'grades') {
+              requestCourseSeatplanSave();
+              return;
+            }
+            if (target === 'file') {
+              await downloadSeatPlan();
+            }
+          }
+
+          function handleCourseSeatplanSaveResult(detail) {
+            if (!detail || typeof detail !== 'object') return;
+            const requestId = String(detail.requestId || '');
+            if (requestId && state.pendingCourseSaveRequestId && requestId !== state.pendingCourseSaveRequestId) {
+              return;
+            }
+            state.pendingCourseSaveRequestId = '';
+            updateCourseSeatplanUi();
+            if (detail.ok) {
+              showMessage(detail.message || 'Sitzplan im Notenmodul gespeichert.', 'success');
+              markPlanSavedAction();
+              return;
+            }
+            showMessage(detail.message || 'Sitzplan konnte nicht im Notenmodul gespeichert werden.', 'error');
+          }
+
+          function createRequestId() {
+            return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          }
+
+          function isCourseGradeMode() {
+            return Boolean(state.courseGradeDraft);
+          }
+
+          function formatGradeInteger(value) {
+            const numeric = Math.max(0, Math.min(15, Math.round(Number(value) || 0)));
+            return String(numeric).padStart(2, '0');
+          }
+
+          function parseCourseGradeValue(raw) {
+            const text = String(raw ?? '').trim();
+            if (!text) return { valid: true, value: null };
+            if (!/^\d+$/.test(text)) return { valid: false, value: null };
+            const value = Number(text);
+            if (!Number.isInteger(value) || value < 0 || value > 15) {
+              return { valid: false, value: null };
+            }
+            return { valid: true, value };
+          }
+
+          function normalizeCourseGradeEntries(entries) {
+            const sourceEntries = Array.isArray(entries)
+              ? entries
+              : Object.entries(entries && typeof entries === 'object' ? entries : {})
+                .map(([studentId, value]) => ({ studentId, value }));
+            return sourceEntries.reduce((result, entry) => {
+              const studentId = String(entry?.studentId || '').trim();
+              const rawValue = entry?.value && typeof entry.value === 'object'
+                ? entry.value.value
+                : entry?.value;
+              const parsed = parseCourseGradeValue(rawValue);
+              if (studentId && parsed.valid && parsed.value !== null) {
+                result[studentId] = parsed.value;
+              }
+              return result;
+            }, {});
+          }
+
+          function resetCourseGradeMode() {
+            state.courseGradeConfig = null;
+            state.courseGradeDraft = null;
+            state.courseGradeEntries = {};
+            state.courseGradePickerStudentId = '';
+            state.pendingCourseGradeStudentId = '';
+            state.courseGradeCompletionPromptShown = false;
+            state.courseGradeVisitedStudentIds = new Set();
+            hideCourseGradePicker();
+            closeCourseGradeCompleteDialog();
+          }
+
+          function requestCourseGradeConfig(studentId = '') {
+            if (!isCourseSeatplanMode()) return;
+            state.pendingCourseGradeStudentId = String(studentId || '');
+            if (state.pendingCourseGradeConfigRequestId) return;
+            const requestId = createRequestId();
+            state.pendingCourseGradeConfigRequestId = requestId;
+            updateCourseSeatplanUi();
+            window.parent?.postMessage({
+              type: SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
+              detail: {
+                requestId,
+                courseId: Number(state.courseContext.courseId),
+                lessonId: Number(state.courseContext.lessonId || 0),
+                lessonDate: String(state.courseContext.lessonDate || ''),
+              }
+            }, TRUSTED_PARENT_ORIGIN);
+          }
+
+          function openPendingCourseGradePicker() {
+            const studentId = String(state.pendingCourseGradeStudentId || '');
+            if (!studentId) return;
+            const input = getCourseGradeInputOrder().find(node => String(node.dataset.studentId || '') === studentId);
+            if (input) {
+              input.focus({ preventScroll: false });
+              openCourseGradePicker(input);
+            }
+            state.pendingCourseGradeStudentId = '';
+          }
+
+          function openFirstCourseGradePicker() {
+            const input = getCourseGradeInputOrder()[0] || null;
+            if (!input) return;
+            input.focus({ preventScroll: false });
+            openCourseGradePicker(input);
+          }
+
+          function buildCourseGradeDefaults(config) {
+            if (!config || typeof config !== 'object') return null;
+            return {
+              assessmentId: Number(config.assessmentId || 0) || null,
+              title: String(config.title || '').trim(),
+              halfYear: String(config.halfYear || 'h1') === 'h2' ? 'h2' : 'h1',
+              weight: Math.max(1, Math.round(Number(config.weight || 1) || 1)),
+              categoryId: Number(config.categoryId || 0),
+              subcategoryId: Number(config.subcategoryId || 0),
+            };
+          }
+
+          function startCourseGradeMode(values, options = {}) {
+            if (!values || typeof values !== 'object') {
+              showMessage('Noteneingabe konnte nicht vorbereitet werden.', 'error');
+              return false;
+            }
+            const categories = Array.isArray(state.courseGradeConfig?.categories)
+              ? state.courseGradeConfig.categories
+              : [];
+            const category = categories.find(item => Number(item.id) === Number(values.categoryId)) || null;
+            const subcategory = (category?.subcategories || []).find(item => Number(item.id) === Number(values.subcategoryId)) || null;
+            if (!values.title || !category || !subcategory) {
+              showMessage('Bitte Titel, Kategorie und Unterkategorie auswählen.', 'warn');
+              return false;
+            }
+            state.courseGradeDraft = values;
+            state.courseGradeEntries = normalizeCourseGradeEntries(
+              options.entries !== undefined ? options.entries : state.courseGradeConfig?.entries
+            );
+            state.courseGradePickerStudentId = '';
+            state.courseGradeCompletionPromptShown = false;
+            state.courseGradeVisitedStudentIds = new Set();
+            updateCourseSeatplanUi();
+            renderSeats();
+            refreshUnseated();
+            if (options.openFirst) {
+              requestAnimationFrame(() => openFirstCourseGradePicker());
+            } else if (options.openPending !== false) {
+              requestAnimationFrame(() => openPendingCourseGradePicker());
+            }
+            return true;
+          }
+
+          function handleCourseGradeConfigResult(detail) {
+            if (!detail || typeof detail !== 'object') return;
+            const requestId = String(detail.requestId || '');
+            if (requestId && state.pendingCourseGradeConfigRequestId && requestId !== state.pendingCourseGradeConfigRequestId) {
+              return;
+            }
+            state.pendingCourseGradeConfigRequestId = '';
+            updateCourseSeatplanUi();
+            if (!detail.ok) {
+              state.pendingCourseGradeStudentId = '';
+              showMessage(detail.message || 'Noteneingabe konnte nicht vorbereitet werden.', 'error');
+              return;
+            }
+            state.courseGradeConfig = detail.config && typeof detail.config === 'object' ? detail.config : null;
+            if (!startCourseGradeMode(buildCourseGradeDefaults(state.courseGradeConfig))) {
+              state.pendingCourseGradeStudentId = '';
+            }
+          }
+
+          function setCourseGradeEntry(studentId, value, options = {}) {
+            const sid = String(studentId || '');
+            if (!sid) return false;
+            const parsed = parseCourseGradeValue(value);
+            if (!parsed.valid) return false;
+            if (parsed.value === null) {
+              delete state.courseGradeEntries[sid];
+            } else {
+              state.courseGradeEntries[sid] = parsed.value;
+            }
+            checkCourseGradeCompletionPrompt({ allowOpen: Boolean(options.prompt) });
+            return true;
+          }
+
+          function updateCourseGradeInputsForStudent(studentId) {
+            const sid = String(studentId || '');
+            document.querySelectorAll("input[data-course-grade-input='1']").forEach(input => {
+              if (String(input.dataset.studentId || '') !== sid) return;
+              const value = state.courseGradeEntries[sid];
+              input.value = value === undefined ? '' : formatGradeInteger(value);
+              input.classList.remove('invalid');
+            });
+          }
+
+          function markCourseGradeStudentVisited(studentId) {
+            const sid = String(studentId || '').trim();
+            if (!sid) return false;
+            if (!(state.courseGradeVisitedStudentIds instanceof Set)) {
+              state.courseGradeVisitedStudentIds = new Set();
+            }
+            state.courseGradeVisitedStudentIds.add(sid);
+            return true;
+          }
+
+          function formatCourseGradeInputDisplay(input, options = {}) {
+            if (!(input instanceof HTMLInputElement)) return false;
+            const parsed = parseCourseGradeValue(input.value);
+            input.classList.toggle('invalid', !parsed.valid);
+            if (parsed.valid && parsed.value !== null) {
+              input.value = formatGradeInteger(parsed.value);
+            }
+            if (parsed.valid && options.checkCompletion) {
+              checkCourseGradeCompletionPrompt({ allowOpen: true });
+            }
+            return parsed.valid;
+          }
+
+          function getCourseGradeInputOrder() {
+            return [...document.querySelectorAll("input[data-course-grade-input='1']")]
+              .filter(input => input instanceof HTMLInputElement && !input.disabled);
+          }
+
+          function focusNextCourseGradeInput(currentInput) {
+            const inputs = getCourseGradeInputOrder();
+            if (!inputs.length) return;
+            const index = inputs.indexOf(currentInput);
+            const next = inputs[index >= 0 && index < inputs.length - 1 ? index + 1 : 0];
+            const wrapped = index >= inputs.length - 1;
+            if (wrapped) {
+              if (checkCourseGradeCompletionPrompt({ allowOpen: true })) {
+                return;
+              }
+            }
+            if (next) {
+              next.focus({ preventScroll: false });
+              openCourseGradePicker(next);
+            }
+          }
+
+          function hideCourseGradePicker(event = null) {
+            if (!els.courseGradePicker) return;
+            if (event?.target && els.courseGradePicker.contains(event.target)) {
+              return;
+            }
+            els.courseGradePicker.hidden = true;
+            els.courseGradePicker.textContent = '';
+            state.courseGradePickerStudentId = '';
+          }
+
+          function closeCourseGradeCompleteDialog() {
+            if (!els.courseGradeCompleteDialog) return;
+            if (typeof els.courseGradeCompleteDialog.close === 'function' && els.courseGradeCompleteDialog.open) {
+              els.courseGradeCompleteDialog.close('');
+            }
+            els.courseGradeCompleteDialog.removeAttribute('open');
+          }
+
+          function getSeatedCourseGradeStudentIds() {
+            return Array.from(new Set(
+              Object.values(state.seats || {})
+                .map(value => String(value || '').trim())
+                .filter(value => value && value !== 'TEACHER')
+            ));
+          }
+
+          function isCourseGradePromptReadyForSeatedStudents() {
+            const seatedIds = getSeatedCourseGradeStudentIds();
+            if (!seatedIds.length) return false;
+            return seatedIds.every(studentId => {
+              const value = state.courseGradeEntries[studentId];
+              const hasGrade = Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 15;
+              return hasGrade || state.courseGradeVisitedStudentIds?.has(studentId);
+            });
+          }
+
+          function openCourseGradeCompleteDialog() {
+            if (!isCourseGradeMode() || state.pendingCourseGradeSaveRequestId) return;
+            if (!isCourseGradePromptReadyForSeatedStudents()) return;
+            hideCourseGradePicker();
+            updateCourseSeatplanUi();
+            if (!els.courseGradeCompleteDialog) {
+              if (confirm('Du bist alle Lernenden mit Sitzplatz durchgegangen. Jetzt speichern?')) {
+                requestCourseGradeSave();
+              }
+              return;
+            }
+            if (els.courseGradeCompleteDialog.open) return;
+            if (typeof els.courseGradeCompleteDialog.showModal === 'function') {
+              els.courseGradeCompleteDialog.showModal();
+            } else {
+              els.courseGradeCompleteDialog.setAttribute('open', 'open');
+            }
+            const focusSave = () => {
+              els.courseGradeCompleteSave?.focus({ preventScroll: true });
+            };
+            if (typeof queueMicrotask === 'function') { queueMicrotask(focusSave); }
+            else { setTimeout(focusSave, 0); }
+          }
+
+          function checkCourseGradeCompletionPrompt(options = {}) {
+            if (!isCourseGradeMode()) return false;
+            if (!isCourseGradePromptReadyForSeatedStudents()) {
+              state.courseGradeCompletionPromptShown = false;
+              return false;
+            }
+            if (!options.allowOpen) {
+              return false;
+            }
+            if (state.courseGradeCompletionPromptShown || state.pendingCourseGradeSaveRequestId) {
+              return false;
+            }
+            state.courseGradeCompletionPromptShown = true;
+            requestAnimationFrame(() => openCourseGradeCompleteDialog());
+            return true;
+          }
+
+          function positionCourseGradePicker(input) {
+            if (!els.courseGradePicker || !(input instanceof HTMLElement)) return;
+            const seat = input.closest('.seat');
+            const anchorRect = (seat instanceof HTMLElement ? seat : input).getBoundingClientRect();
+            const inputRect = input.getBoundingClientRect();
+            const margin = 8;
+            const gap = 10;
+            els.courseGradePicker.style.left = `${Math.round(anchorRect.right + gap)}px`;
+            els.courseGradePicker.style.top = `${Math.round(inputRect.top)}px`;
+            const pickerRect = els.courseGradePicker.getBoundingClientRect();
+            const clamp = (value, min, max) => Math.max(min, Math.min(value, max));
+            const viewportMaxLeft = Math.max(margin, window.innerWidth - pickerRect.width - margin);
+            const viewportMaxTop = Math.max(margin, window.innerHeight - pickerRect.height - margin);
+            const centeredTop = anchorRect.top + ((anchorRect.height - pickerRect.height) / 2);
+            const centeredLeft = anchorRect.left + ((anchorRect.width - pickerRect.width) / 2);
+            const candidates = [
+              {
+                left: anchorRect.right + gap,
+                top: clamp(centeredTop, margin, viewportMaxTop),
+                fits: anchorRect.right + gap + pickerRect.width <= window.innerWidth - margin
+              },
+              {
+                left: anchorRect.left - pickerRect.width - gap,
+                top: clamp(centeredTop, margin, viewportMaxTop),
+                fits: anchorRect.left - pickerRect.width - gap >= margin
+              },
+              {
+                left: clamp(centeredLeft, margin, viewportMaxLeft),
+                top: anchorRect.bottom + gap,
+                fits: anchorRect.bottom + gap + pickerRect.height <= window.innerHeight - margin
+              },
+              {
+                left: clamp(centeredLeft, margin, viewportMaxLeft),
+                top: anchorRect.top - pickerRect.height - gap,
+                fits: anchorRect.top - pickerRect.height - gap >= margin
+              }
+            ];
+            const preferred = candidates.find(candidate => candidate.fits) || candidates
+              .map(candidate => ({
+                ...candidate,
+                left: clamp(candidate.left, margin, viewportMaxLeft),
+                top: clamp(candidate.top, margin, viewportMaxTop)
+              }))
+              .sort((a, b) => {
+                const overlapArea = (candidate) => {
+                  const overlapX = Math.max(0, Math.min(candidate.left + pickerRect.width, anchorRect.right) - Math.max(candidate.left, anchorRect.left));
+                  const overlapY = Math.max(0, Math.min(candidate.top + pickerRect.height, anchorRect.bottom) - Math.max(candidate.top, anchorRect.top));
+                  return overlapX * overlapY;
+                };
+                return overlapArea(a) - overlapArea(b);
+              })[0];
+            const left = clamp(preferred.left, margin, viewportMaxLeft);
+            const top = clamp(preferred.top, margin, viewportMaxTop);
+            els.courseGradePicker.style.left = `${Math.round(left)}px`;
+            els.courseGradePicker.style.top = `${Math.round(top)}px`;
+          }
+
+          function openCourseGradePicker(input) {
+            if (!isCourseGradeMode() || !els.courseGradePicker || !(input instanceof HTMLInputElement)) return;
+            const studentId = String(input.dataset.studentId || '');
+            if (!studentId) return;
+            markCourseGradeStudentVisited(studentId);
+            state.courseGradePickerStudentId = studentId;
+            els.courseGradePicker.hidden = false;
+            els.courseGradePicker.textContent = '';
+            const grid = document.createElement('div');
+            grid.className = 'grade-picker-grid';
+            const appendGradeButton = (value) => {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.textContent = formatGradeInteger(value);
+              button.classList.toggle('grade-picker-zero', value === 0);
+              button.classList.toggle('active', Number(state.courseGradeEntries[studentId]) === value);
+              button.addEventListener('mousedown', event => event.preventDefault());
+              button.addEventListener('click', event => {
+                event.stopPropagation();
+                setCourseGradeEntry(studentId, value, { prompt: true });
+                updateCourseGradeInputsForStudent(studentId);
+                hideCourseGradePicker();
+                focusNextCourseGradeInput(input);
+              });
+              grid.appendChild(button);
+            };
+            Array.from({ length: 15 }, (_, index) => 15 - index).forEach(appendGradeButton);
+            const saveButton = document.createElement('button');
+            saveButton.type = 'button';
+            saveButton.className = 'grade-picker-save';
+            saveButton.textContent = '💾';
+            saveButton.disabled = Boolean(state.pendingCourseGradeSaveRequestId);
+            saveButton.setAttribute('aria-label', 'Noten von allen speichern');
+            saveButton.title = 'Noten von allen speichern';
+            saveButton.addEventListener('mousedown', event => event.preventDefault());
+            saveButton.addEventListener('click', event => {
+              event.stopPropagation();
+              formatCourseGradeInputDisplay(input);
+              requestCourseGradeSave();
+              saveButton.disabled = Boolean(state.pendingCourseGradeSaveRequestId);
+            });
+            grid.appendChild(saveButton);
+            appendGradeButton(0);
+            const skipButton = document.createElement('button');
+            skipButton.type = 'button';
+            skipButton.className = 'grade-picker-skip';
+            skipButton.textContent = '🡻';
+            skipButton.setAttribute('aria-label', 'Schüler auslassen und weiter');
+            skipButton.title = 'Schüler auslassen und weiter';
+            skipButton.addEventListener('mousedown', event => event.preventDefault());
+            skipButton.addEventListener('click', event => {
+              event.stopPropagation();
+              hideCourseGradePicker();
+              focusNextCourseGradeInput(input);
+            });
+            grid.appendChild(skipButton);
+            els.courseGradePicker.appendChild(grid);
+            positionCourseGradePicker(input);
+          }
+
+          function createCourseGradeInput(studentId, label) {
+            const sid = String(studentId || '');
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.inputMode = 'numeric';
+            input.maxLength = 2;
+            input.className = 'course-grade-input';
+            input.dataset.courseGradeInput = '1';
+            input.dataset.studentId = sid;
+            input.value = state.courseGradeEntries[sid] === undefined ? '' : formatGradeInteger(state.courseGradeEntries[sid]);
+            input.setAttribute('aria-label', `Bewertung für ${label || sid}`);
+            input.addEventListener('mousedown', event => event.stopPropagation());
+            input.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
+            input.addEventListener('dragstart', event => event.preventDefault());
+            input.addEventListener('focus', () => openCourseGradePicker(input));
+            input.addEventListener('click', event => {
+              event.stopPropagation();
+              openCourseGradePicker(input);
+            });
+            input.addEventListener('input', () => {
+              const sanitized = String(input.value || '').replace(/[^\d]/g, '').slice(0, 2);
+              input.value = sanitized;
+              const parsed = parseCourseGradeValue(sanitized);
+              input.classList.toggle('invalid', !parsed.valid);
+              if (parsed.valid) {
+                setCourseGradeEntry(sid, sanitized);
+              }
+            });
+            input.addEventListener('change', () => formatCourseGradeInputDisplay(input, { checkCompletion: true }));
+            input.addEventListener('blur', () => formatCourseGradeInputDisplay(input, { checkCompletion: true }));
+            input.addEventListener('keydown', event => {
+              if (event.key === 'Tab' && !event.shiftKey) {
+                const inputs = getCourseGradeInputOrder();
+                const index = inputs.indexOf(input);
+                if (inputs.length && index === inputs.length - 1) {
+                  event.preventDefault();
+                  focusNextCourseGradeInput(input);
+                }
+                return;
+              }
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                openCourseGradePicker(input);
+                return;
+              }
+              if (event.key === 'Escape') {
+                hideCourseGradePicker();
+                input.blur();
+                return;
+              }
+              if (event.key === 'Delete' || event.key === 'Backspace') {
+                if (!input.value) {
+                  setCourseGradeEntry(sid, '');
+                }
+              }
+            });
+            return input;
+          }
+
+          function createCourseGradeHitArea(control, activate) {
+            const area = document.createElement('span');
+            area.className = 'course-grade-hit-area';
+            area.addEventListener('mousedown', event => event.stopPropagation());
+            area.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
+            area.addEventListener('dragstart', event => event.preventDefault());
+            area.addEventListener('click', event => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (typeof activate === 'function') {
+                activate();
+              }
+            });
+            area.appendChild(control);
+            return area;
+          }
+
+          function createCourseGradeTrigger(studentId, label) {
+            const sid = String(studentId || '');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'course-grade-input course-grade-trigger';
+            button.dataset.courseGradeTrigger = '1';
+            button.dataset.studentId = sid;
+            button.textContent = state.courseGradeEntries[sid] === undefined ? '–' : formatGradeInteger(state.courseGradeEntries[sid]);
+            button.setAttribute('aria-label', `Bewertung für ${label || sid} eingeben`);
+            button.title = 'Note eingeben';
+            button.addEventListener('mousedown', event => event.stopPropagation());
+            button.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
+            button.addEventListener('dragstart', event => event.preventDefault());
+            button.addEventListener('click', event => {
+              event.preventDefault();
+              event.stopPropagation();
+              requestCourseGradeConfig(sid);
+            });
+            return button;
+          }
+
+          function createCourseGradeControl(studentId, label) {
+            if (!isCourseSeatplanMode()) return null;
+            if (isCourseGradeMode()) {
+              const input = createCourseGradeInput(studentId, label);
+              return createCourseGradeHitArea(input, () => {
+                input.focus({ preventScroll: false });
+                openCourseGradePicker(input);
+              });
+            }
+            const trigger = createCourseGradeTrigger(studentId, label);
+            return createCourseGradeHitArea(trigger, () => requestCourseGradeConfig(studentId));
+          }
+
+          function requestCourseGradeSave() {
+            if (!isCourseSeatplanMode() || !isCourseGradeMode() || state.pendingCourseGradeSaveRequestId) return false;
+            const invalidInput = getCourseGradeInputOrder().find(input => {
+              const parsed = parseCourseGradeValue(input.value);
+              input.classList.toggle('invalid', !parsed.valid);
+              return !parsed.valid;
+            });
+            if (invalidInput) {
+              invalidInput.focus({ preventScroll: false });
+              showMessage('Bitte nur Werte von 0 bis 15 eingeben.', 'warn');
+              return false;
+            }
+            const entries = Object.entries(state.courseGradeEntries)
+              .map(([studentId, value]) => ({ studentId: Number(studentId || 0), value }))
+              .filter(entry => entry.studentId > 0 && Number.isInteger(Number(entry.value)) && Number(entry.value) >= 0 && Number(entry.value) <= 15);
+            const requestId = createRequestId();
+            state.pendingCourseGradeSaveRequestId = requestId;
+            updateCourseSeatplanUi();
+            window.parent?.postMessage({
+              type: SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
+              detail: {
+                requestId,
+                courseId: Number(state.courseContext.courseId),
+                assessment: { ...state.courseGradeDraft },
+                entries,
+                studentIdsInScope: getSeatedCourseGradeStudentIds().map(studentId => Number(studentId || 0)).filter(studentId => studentId > 0),
+              }
+            }, TRUSTED_PARENT_ORIGIN);
+            return true;
+          }
+
+          function handleCourseGradeSaveResult(detail) {
+            if (!detail || typeof detail !== 'object') return;
+            const requestId = String(detail.requestId || '');
+            if (requestId && state.pendingCourseGradeSaveRequestId && requestId !== state.pendingCourseGradeSaveRequestId) {
+              return;
+            }
+            state.pendingCourseGradeSaveRequestId = '';
+            updateCourseSeatplanUi();
+            if (detail.ok) {
+              resetCourseGradeMode();
+              updateCourseSeatplanUi();
+              renderSeats();
+              refreshUnseated();
+              showMessage(detail.message || 'Noten im Notenmodul gespeichert.', 'success');
+              return;
+            }
+            showMessage(detail.message || 'Noten konnten nicht gespeichert werden.', 'error');
+          }
+
           function publishStudentsUpdatedFromSeatplan() {
             if (!window.parent || window.parent === window) return;
             const importedAt = Date.now();
@@ -673,6 +1524,7 @@
 
           function applySyncedStudents(detail) {
             if (!detail || typeof detail !== 'object') return;
+            if (isCourseSeatplanMode()) return;
             const importedAt = Number(detail.importedAt);
             if (Number.isFinite(importedAt) && importedAt <= lastStudentsSyncTimestamp) return;
             lastStudentsSyncTimestamp = Number.isFinite(importedAt) ? importedAt : Date.now();
@@ -709,6 +1561,26 @@
             if (data.type === SEATPLAN_SHELL_LAYOUT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
+              return;
+            }
+            if (data.type === SEATPLAN_COURSE_CONTEXT_EVENT) {
+              const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+              applyCourseSeatplanContext(detail);
+              return;
+            }
+            if (data.type === PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT) {
+              const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+              handleCourseSeatplanSaveResult(detail);
+              return;
+            }
+            if (data.type === PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT) {
+              const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+              handleCourseGradeConfigResult(detail);
+              return;
+            }
+            if (data.type === PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT) {
+              const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+              handleCourseGradeSaveResult(detail);
               return;
             }
             if (data.type !== STUDENTS_UPDATED_EVENT) return;
@@ -803,6 +1675,23 @@
 
           function seatId(r, c) { return `${r}-${c}` }
           function displayName(s) { return `${s.first || ''} ${s.last || ''}`.trim(); }
+          function createSeatNameLines(student, fallbackLabel = '') {
+            const wrapper = document.createElement('span');
+            wrapper.className = 'seat-name-lines';
+            const first = String(student?.first || '').trim();
+            const last = String(student?.last || '').trim();
+            const fallback = String(fallbackLabel || '').trim();
+            const parts = first || last
+              ? [first, last].filter(Boolean)
+              : (fallback ? [fallback] : []);
+            parts.forEach(part => {
+              const line = document.createElement('span');
+              line.className = 'seat-name-line';
+              line.textContent = part;
+              wrapper.appendChild(line);
+            });
+            return wrapper;
+          }
           function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
             const parsed = Number.parseInt(value, 10);
             if (!Number.isFinite(parsed)) return fallback;
@@ -1910,6 +2799,11 @@
             if (handle) {
               state.lastDirectoryHandle = handle;
             }
+            if (isCourseSeatplanMode()) {
+              applyCoursePlanData(data, getCourseSeatplanStudents());
+              updateCourseSeatplanUi();
+              return;
+            }
             applyPlanData(data);
           }
 
@@ -1944,6 +2838,11 @@
 
           async function importCsvFromFile(file) {
             if (!file) return;
+            if (isCourseSeatplanMode()) {
+              updateCourseSeatplanUi();
+              showMessage('Die Namensliste kommt in diesem Kurs-Sitzplan aus dem Notenmodul.', 'info');
+              return;
+            }
             if (els.csvStatus) {
               els.csvStatus.textContent = file.name;
             }
@@ -1997,7 +2896,8 @@
             }
             const node = tpl.content.firstElementChild.cloneNode(true);
             node.dataset.sid = s.id;
-            node.querySelector('.name').textContent = displayName(s);
+            const label = displayName(s);
+            node.querySelector('.name').textContent = label;
             node.querySelector('.tag')?.remove();
             addDragHandlers(node);
             enableTouchDragSource(node, () => {
@@ -2745,7 +3645,89 @@
             const compact = shouldUseCompactGrid();
             els.grid.classList.toggle('grid-compact', compact);
             updateGridAutoScale();
+            scheduleFitSeatTileText();
             renderSeatLinks();
+          }
+
+          function seatNameBlockFits(nameBlock, width, height) {
+            if (!nameBlock) {
+              return false;
+            }
+            const linesFit = [...nameBlock.querySelectorAll('.seat-name-line')].every(line => (
+              line.scrollWidth <= Math.max(1, line.clientWidth) + 1
+            ));
+            return linesFit
+              && nameBlock.scrollWidth <= width + 1
+              && nameBlock.scrollHeight <= height + 1;
+          }
+
+          function fitSeatTileText() {
+            if (!els.grid || typeof getComputedStyle !== 'function') return;
+            const contents = [...els.grid.querySelectorAll('.seat .seat-content:not(.teacher)')];
+            const fitted = [];
+            contents.forEach(content => {
+              const seat = content.closest('.seat');
+              const name = content.closest('.name');
+              if (!seat || !name) return;
+              if (seat.clientWidth <= 1 || seat.clientHeight <= 1) return;
+              const nameBlock = content.querySelector('.seat-name-lines');
+              if (!nameBlock) return;
+              content.style.fontSize = '';
+              content.style.lineHeight = '';
+              nameBlock.style.fontSize = '';
+              nameBlock.style.lineHeight = '';
+              const nameStyle = getComputedStyle(name);
+              const baseSize = parsePx(nameStyle.fontSize, 16);
+              const availableWidth = Math.max(1, name.clientWidth - 4);
+              const availableHeight = Math.max(1, name.clientHeight - 4);
+              const maxSize = Math.max(8, Math.min(72, Math.max(
+                baseSize,
+                Math.min(availableHeight * 0.5, availableWidth * 0.62)
+              )));
+              let low = 4;
+              let high = maxSize;
+              for (let pass = 0; pass < 11; pass += 1) {
+                const mid = (low + high) / 2;
+                content.style.fontSize = `${mid}px`;
+                content.style.lineHeight = mid <= 10 ? '1' : '1.02';
+                nameBlock.style.fontSize = `${mid}px`;
+                nameBlock.style.lineHeight = mid <= 10 ? '1' : '1.02';
+                if (seatNameBlockFits(nameBlock, availableWidth, availableHeight)) {
+                  low = mid;
+                } else {
+                  high = mid;
+                }
+              }
+              fitted.push({
+                content,
+                nameBlock,
+                size: Math.max(4, low - 0.25)
+              });
+            });
+            if (!fitted.length) {
+              return;
+            }
+            const sharedSize = Math.min(...fitted.map(item => item.size));
+            const lineHeight = sharedSize <= 10 ? '1' : '1.02';
+            fitted.forEach(({ content, nameBlock }) => {
+              content.style.fontSize = `${sharedSize}px`;
+              content.style.lineHeight = lineHeight;
+              nameBlock.style.fontSize = `${sharedSize}px`;
+              nameBlock.style.lineHeight = lineHeight;
+            });
+          }
+
+          function scheduleFitSeatTileText() {
+            if (typeof requestAnimationFrame !== 'function') {
+              fitSeatTileText();
+              return;
+            }
+            if (scheduleFitSeatTileText._pending) return;
+            scheduleFitSeatTileText._pending = true;
+            requestAnimationFrame(() => {
+              scheduleFitSeatTileText._pending = false;
+              fitSeatTileText();
+            });
           }
 
           function handleGridLinkClick(e) {
@@ -3853,6 +4835,9 @@
                 scoreLink.textContent = formatScoreValue(diag.score);
                 scoreLink.title = 'Individueller Score (Kriterien anzeigen)';
                 scoreLink.setAttribute('aria-label', `Kriterien für ${diag.name} anzeigen`);
+                if (isCourseGradeMode()) {
+                  scoreLink.tabIndex = -1;
+                }
                 scoreLink.addEventListener('click', (e) => {
                   e.preventDefault();
                   e.stopPropagation();
@@ -4140,7 +5125,18 @@
                   state.seats[id] = null;
                   return;
                 }
-                content.textContent = label;
+                if (isCourseSeatplanMode()) {
+                  const labelNode = document.createElement('span');
+                  labelNode.className = 'seat-grade-name';
+                  labelNode.appendChild(createSeatNameLines(s, label));
+                  content.appendChild(labelNode);
+                  const gradeControl = createCourseGradeControl(sid, label);
+                  if (gradeControl) content.appendChild(gradeControl);
+                  content.classList.add('course-grade-seat-content');
+                } else {
+                  content.appendChild(createSeatNameLines(s, label));
+                }
+                content.dataset.label = label;
                 content.setAttribute('draggable', 'true');
               }
               nameEl.appendChild(content);
@@ -4154,11 +5150,12 @@
                   type: 'assignment',
                   studentId: sid,
                   fromSeat,
-                  label: sid === 'TEACHER' ? 'Lehrkraft' : (content.textContent || 'Lernende/r')
+                  label: sid === 'TEACHER' ? 'Lehrkraft' : (content.dataset.label || content.textContent || 'Lernende/r')
                 };
               });
             });
             updateGridAutoScale();
+            scheduleFitSeatTileText();
             renderSeatLinks();
           }
 
@@ -5839,7 +6836,35 @@
           });
 
 
-          els.exportPlan.addEventListener('click', () => downloadSeatPlan());
+          els.exportPlan.addEventListener('click', () => handleSeatplanSaveClick());
+          els.courseGradeCompleteSave?.addEventListener('click', () => {
+            if (requestCourseGradeSave()) {
+              updateCourseSeatplanUi();
+            }
+          });
+          els.courseGradeCompleteCancel?.addEventListener('click', () => {
+            if (state.pendingCourseGradeSaveRequestId) return;
+            closeCourseGradeCompleteDialog();
+          });
+          els.courseGradeCompleteDialog?.addEventListener('cancel', event => {
+            event.preventDefault();
+            if (state.pendingCourseGradeSaveRequestId) return;
+            closeCourseGradeCompleteDialog();
+          });
+          document.addEventListener('pointerdown', e => {
+            const target = e.target;
+            if (
+              target instanceof Element
+              && (
+                target.closest('#course-grade-picker')
+                || target.closest("input[data-course-grade-input='1']")
+                || target.closest('.course-grade-hit-area')
+              )
+            ) {
+              return;
+            }
+            hideCourseGradePicker(e);
+          });
           els.importPlan.addEventListener('click', async () => {
             const picked = await pickPlanFileWithPicker();
             if (picked && picked.file) {

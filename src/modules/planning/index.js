@@ -1,6 +1,13 @@
 import {
+  PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT,
+  PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
+  PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT,
+  PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
   PLANNING_GRADE_VAULT_REQUEST_EVENT,
   PLANNING_GRADE_VAULT_STATE_EVENT,
+  PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
+  PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
+  PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
   PLANNING_MANUAL_SAVE_REQUEST_EVENT,
   PLANNING_MANUAL_SAVE_STATE_EVENT,
   PLANNING_READY_EVENT,
@@ -82,6 +89,30 @@ export function mountPlanning({ host }) {
       window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_STATE_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
+      return;
+    }
+    if (data.type === PLANNING_COURSE_SEATPLAN_OPEN_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
     }
   };
 
@@ -105,6 +136,24 @@ export function mountPlanning({ host }) {
     post(PLANNING_GRADE_VAULT_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
   };
 
+  const onCourseSeatplanSaveRequest = (event) => {
+    if (disposed) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    post(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
+  };
+
+  const onCourseGradeConfigRequest = (event) => {
+    if (disposed) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    post(PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
+  };
+
+  const onCourseGradeSaveRequest = (event) => {
+    if (disposed) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    post(PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
+  };
+
   const onFrameLoad = () => {
     if (disposed) return;
     ready = true;
@@ -126,6 +175,9 @@ export function mountPlanning({ host }) {
     window.removeEventListener(PLANNING_VIEW_REQUEST_EVENT, onViewRequest);
     window.removeEventListener(PLANNING_MANUAL_SAVE_REQUEST_EVENT, onSaveRequest);
     window.removeEventListener(PLANNING_GRADE_VAULT_REQUEST_EVENT, onGradeVaultRequest);
+    window.removeEventListener(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, onCourseSeatplanSaveRequest);
+    window.removeEventListener(PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT, onCourseGradeConfigRequest);
+    window.removeEventListener(PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT, onCourseGradeSaveRequest);
     if (frame.isConnected) {
       frame.remove();
     }
@@ -142,6 +194,9 @@ export function mountPlanning({ host }) {
   window.addEventListener(PLANNING_VIEW_REQUEST_EVENT, onViewRequest);
   window.addEventListener(PLANNING_MANUAL_SAVE_REQUEST_EVENT, onSaveRequest);
   window.addEventListener(PLANNING_GRADE_VAULT_REQUEST_EVENT, onGradeVaultRequest);
+  window.addEventListener(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, onCourseSeatplanSaveRequest);
+  window.addEventListener(PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT, onCourseGradeConfigRequest);
+  window.addEventListener(PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT, onCourseGradeSaveRequest);
 
   host.appendChild(frame);
   host.dataset.initialized = '1';

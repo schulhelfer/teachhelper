@@ -156,7 +156,8 @@
             gradeStudents: [],
             gradeEntries: [],
             gradeOverrides: [],
-            gradeImports: []
+            gradeImports: [],
+            gradeSeatPlans: []
           };
         }
 
@@ -175,6 +176,7 @@
             || (Array.isArray(state.gradeEntries) && state.gradeEntries.length > 0)
             || (Array.isArray(state.gradeOverrides) && state.gradeOverrides.length > 0)
             || (Array.isArray(state.gradeImports) && state.gradeImports.length > 0)
+            || (Array.isArray(state.gradeSeatPlans) && state.gradeSeatPlans.length > 0)
           );
         }
 
@@ -2482,6 +2484,7 @@
               && !removedStudentIds.has(Number(entry.studentId))
             ));
             this.gradeVaultState.gradeImports = this.gradeVaultState.gradeImports.filter((row) => Number(row.courseId) !== id);
+            this.gradeVaultState.gradeSeatPlans = this.gradeVaultState.gradeSeatPlans.filter((row) => Number(row.courseId) !== id);
             this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries.filter((entry) => (
               !removedStudentIds.has(Number(entry.studentId))
               && !removedAssessmentIds.has(Number(entry.assessmentId))
@@ -2657,6 +2660,40 @@
             this._save();
             this._saveGradeVault();
             return this.listGradeStudents(id);
+          }
+
+          getGradeSeatPlan(courseId) {
+            const id = Number(courseId);
+            if (!id) {
+              return null;
+            }
+            const row = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id);
+            if (!row || !row.plan || typeof row.plan !== "object") {
+              return null;
+            }
+            return cloneJsonValue(row.plan, null);
+          }
+
+          saveGradeSeatPlan(courseId, plan) {
+            const id = Number(courseId);
+            if (!id || !plan || typeof plan !== "object") {
+              return null;
+            }
+            const normalizedPlan = cloneJsonValue(plan, {});
+            delete normalizedPlan.students;
+            const row = {
+              courseId: id,
+              plan: normalizedPlan,
+              updatedAt: new Date().toISOString()
+            };
+            const existing = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id);
+            if (existing) {
+              Object.assign(existing, row);
+            } else {
+              this.gradeVaultState.gradeSeatPlans.push(row);
+            }
+            this._saveGradeVault();
+            return cloneJsonValue(row, null);
           }
 
           listGradeAssessments(courseId) {
@@ -4319,6 +4356,16 @@
                 header: Array.isArray(item.header) ? item.header.map((cell) => String(cell || "")) : [],
                 importedAt: String(item.importedAt || "")
               };
+            }) : [],
+            gradeSeatPlans: Array.isArray(source.gradeSeatPlans) ? source.gradeSeatPlans.map((raw) => {
+              const item = asObject(raw);
+              const plan = cloneJsonValue(isRecord(item.plan) ? item.plan : {}, {});
+              delete plan.students;
+              return {
+                courseId: Number(item.courseId),
+                plan,
+                updatedAt: String(item.updatedAt || "")
+              };
             }) : []
           };
 
@@ -4340,6 +4387,8 @@
             ));
           normalized.gradeImports = normalized.gradeImports
             .filter((item) => item.courseId > 0);
+          normalized.gradeSeatPlans = normalized.gradeSeatPlans
+            .filter((item) => item.courseId > 0 && item.plan && typeof item.plan === "object");
           normalized.counters.gradeStudent = Math.max(
             Number(normalized.counters.gradeStudent) || 1,
             maxBy(normalized.gradeStudents) + 1
@@ -4750,6 +4799,7 @@
             this.pendingTopicLessonId = null;
             this.pendingGradeAssessmentId = null;
             this.pendingGradeVaultDialogMode = "";
+            this.pendingGradeVaultContinuation = null;
             this.inlineTopicLessonId = null;
             this.inlineTopicDraft = "";
             this.courseDialogDraft = null;
@@ -5078,7 +5128,17 @@
                   delimiter: String(row.delimiter || ""),
                   header: Array.isArray(row.header) ? row.header.map((cell) => String(cell || "")) : [],
                   importedAt: String(row.importedAt || "")
-                }))
+                })),
+              gradeSeatPlans: state.gradeSeatPlans
+                .filter((row) => Number(row.courseId) === courseKey)
+                .map((row) => {
+                  const plan = cloneJsonValue(isRecord(row.plan) ? row.plan : {}, {});
+                  delete plan.students;
+                  return {
+                    plan,
+                    updatedAt: String(row.updatedAt || "")
+                  };
+                })
             };
           }
 
@@ -5118,6 +5178,12 @@
               : [];
             runtimeState.gradeImports = Array.isArray(source.gradeImports)
               ? source.gradeImports.map((row) => ({
+                ...cloneJsonValue(row, {}),
+                courseId: courseKey
+              }))
+              : [];
+            runtimeState.gradeSeatPlans = Array.isArray(source.gradeSeatPlans)
+              ? source.gradeSeatPlans.map((row) => ({
                 ...cloneJsonValue(row, {}),
                 courseId: courseKey
               }))
@@ -5809,6 +5875,7 @@
           closeGradeVaultDialog() {
             this.gradeVaultSession.lastPromptMode = this.pendingGradeVaultDialogMode || this.gradeVaultSession.lastPromptMode || "";
             this.pendingGradeVaultDialogMode = "";
+            this.pendingGradeVaultContinuation = null;
             this.closeDialog(this.refs.gradeVaultDialog);
           }
 
@@ -5818,6 +5885,56 @@
             }
             this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
             return false;
+          }
+
+          queueGradeVaultContinuation(action = null) {
+            if (!action || typeof action !== "object") {
+              this.pendingGradeVaultContinuation = null;
+              return;
+            }
+            const type = String(action.type || "").trim();
+            const lessonId = Number(action.lessonId || 0);
+            if (!lessonId || (type !== "grade-entry" && type !== "seatplan")) {
+              this.pendingGradeVaultContinuation = null;
+              return;
+            }
+            this.pendingGradeVaultContinuation = {
+              type,
+              lessonId,
+              triggerMode: String(action.triggerMode || "auto").trim() || "auto"
+            };
+          }
+
+          runPendingGradeVaultContinuation() {
+            const action = this.pendingGradeVaultContinuation;
+            this.pendingGradeVaultContinuation = null;
+            if (!action || !this.isGradeVaultUnlocked()) {
+              return false;
+            }
+            if (action.type === "seatplan") {
+              void this.activateGradeSeatplanTrigger(action.lessonId);
+              return true;
+            }
+            if (action.type === "grade-entry") {
+              void this.activateGradeEntryTrigger(action.lessonId, action.triggerMode || "auto");
+              return true;
+            }
+            return false;
+          }
+
+          resumeAfterGradeVaultUnlock(options = {}) {
+            if (this.pendingGradeVaultContinuation) {
+              requestAnimationFrame(() => {
+                this.runPendingGradeVaultContinuation();
+              });
+              return;
+            }
+            if (options?.focusDefault === false) {
+              return;
+            }
+            requestAnimationFrame(() => {
+              this.focusFirstGradesEntryInput();
+            });
           }
 
           async submitGradeVaultDialog() {
@@ -5866,9 +5983,7 @@
                 this.closeDialog(this.refs.gradeVaultDialog);
                 this.pendingGradeVaultDialogMode = "";
                 this.renderAll();
-                requestAnimationFrame(() => {
-                  this.focusFirstGradesEntryInput();
-                });
+                this.resumeAfterGradeVaultUnlock();
                 return;
               }
 
@@ -5932,6 +6047,7 @@
               if (!saved) {
                 this.renderAll();
               }
+              this.resumeAfterGradeVaultUnlock({ focusDefault: false });
             } catch (error) {
               setError(error instanceof Error && error.message ? error.message : "Der Grade-Vault konnte nicht verarbeitet werden.");
             }
@@ -10498,6 +10614,18 @@
                 }
                 this.openGradeVaultDialog("unlock");
               });
+              window.addEventListener("classroom:planning-course-seatplan-save-request", (event) => {
+                const detail = event instanceof CustomEvent ? event.detail : null;
+                void this.handleCourseSeatplanSaveRequest(detail);
+              });
+              window.addEventListener("classroom:planning-course-grade-config-request", (event) => {
+                const detail = event instanceof CustomEvent ? event.detail : null;
+                void this.handleCourseSeatplanGradeConfigRequest(detail);
+              });
+              window.addEventListener("classroom:planning-course-grade-save-request", (event) => {
+                const detail = event instanceof CustomEvent ? event.detail : null;
+                void this.handleCourseSeatplanGradeSaveRequest(detail);
+              });
             }
 
             this.refs.viewWeekBtn.addEventListener("click", () => {
@@ -11231,6 +11359,17 @@
                 return;
               }
               this.hideContextMenu();
+              const seatplanTrigger = event.target.closest(".lesson-block-seatplan-trigger[data-seatplan-lesson-id]");
+              if (seatplanTrigger) {
+                event.preventDefault();
+                event.stopPropagation();
+                const lessonId = Number(seatplanTrigger.dataset.seatplanLessonId || 0);
+                if (!lessonId) {
+                  return;
+                }
+                void this.activateGradeSeatplanTrigger(lessonId);
+                return;
+              }
               const gradeEntryTrigger = event.target.closest(".lesson-block-grade-entry[data-grade-entry-lesson-id]");
               if (gradeEntryTrigger) {
                 event.preventDefault();
@@ -11240,7 +11379,7 @@
                 if (!lessonId) {
                   return;
                 }
-                this.activateGradeEntryTrigger(lessonId, triggerMode);
+                void this.activateGradeEntryTrigger(lessonId, triggerMode);
                 return;
               }
               const courseLink = event.target.closest(".lesson-block .title.course-link[data-course-id]");
@@ -11835,7 +11974,7 @@
                 const lessonId = Number(gradeEntryButton.dataset.gradeEntryLessonId || 0);
                 const triggerMode = String(gradeEntryButton.dataset.gradeEntryMode || "entry").trim();
                 if (lessonId) {
-                  this.activateGradeEntryTrigger(lessonId, triggerMode);
+                  void this.activateGradeEntryTrigger(lessonId, triggerMode);
                 }
                 return;
               }
@@ -17628,6 +17767,500 @@
             }
           }
 
+          buildCourseSeatplanStudents(courseId) {
+            return this.store.listGradeStudents(courseId)
+              .map((student) => ({
+                id: String(Number(student.id) || ""),
+                first: String(student.firstName || ""),
+                last: String(student.lastName || ""),
+                performanceFlair: "",
+                buddies: [],
+                foes: []
+              }))
+              .filter((student) => student.id);
+          }
+
+          getCourseForSeatplan(courseId) {
+            const courseKey = Number(courseId || 0);
+            if (!courseKey) {
+              return null;
+            }
+            const year = this.activeSchoolYear;
+            const activeYearCourse = year
+              ? this.store.listCourses(year.id).find((course) => Number(course.id) === courseKey)
+              : null;
+            if (activeYearCourse) {
+              return activeYearCourse;
+            }
+            return (this.store.state?.courses || []).find((course) => Number(course.id) === courseKey) || null;
+          }
+
+          buildCourseSeatplanGradeEntries(assessmentId, students = []) {
+            const assessmentKey = Number(assessmentId || 0);
+            if (!assessmentKey) {
+              return [];
+            }
+            const studentIds = Array.from(new Set(
+              (Array.isArray(students) ? students : [])
+                .map((student) => Number(student?.id || 0))
+                .filter((studentId) => studentId > 0)
+            ));
+            return studentIds.reduce((result, studentId) => {
+              const entry = this.store.getGradeEntry(studentId, assessmentKey);
+              const parsed = parseGradeValue(entry?.value, 15);
+              if (parsed.valid && parsed.value !== null) {
+                result.push({ studentId, value: parsed.value });
+              }
+              return result;
+            }, []);
+          }
+
+          findCourseSeatplanGradeAssessmentByLessonDate(courseId, lessonDate = "") {
+            const courseKey = Number(courseId || 0);
+            const normalizedLessonDate = String(lessonDate || "").trim();
+            if (!courseKey || !normalizedLessonDate || !this.isGradeCourseLoaded(courseKey)) {
+              return null;
+            }
+            const expectedTitle = normalizeGradeTextPart(formatShortDateLabel(normalizedLessonDate));
+            if (!expectedTitle) {
+              return null;
+            }
+            const expectedHalfYear = this.getDefaultGradeAssessmentHalfYear(normalizedLessonDate);
+            let fallback = null;
+            const assessments = this.store.listGradeAssessments(courseKey);
+            for (const assessment of assessments) {
+              if (normalizeGradeAssessmentMode(assessment?.mode) !== "grade") {
+                continue;
+              }
+              if (normalizeGradeTextPart(assessment?.title) !== expectedTitle) {
+                continue;
+              }
+              if (normalizeGradeHalfYear(assessment?.halfYear) === expectedHalfYear) {
+                return assessment;
+              }
+              if (!fallback) {
+                fallback = assessment;
+              }
+            }
+            return fallback;
+          }
+
+          buildCourseSeatplanGradeAssessmentPayload(assessment, students = []) {
+            const assessmentId = Number(assessment?.id || 0);
+            if (!assessmentId || normalizeGradeAssessmentMode(assessment?.mode) !== "grade") {
+              return null;
+            }
+            return {
+              assessmentId,
+              title: String(assessment.title || ""),
+              halfYear: normalizeGradeHalfYear(assessment.halfYear),
+              weight: normalizeGradeInteger(assessment.weight, 1),
+              categoryId: Number(assessment.categoryId || 0) || null,
+              subcategoryId: Number(assessment.subcategoryId || 0) || null,
+              entries: this.buildCourseSeatplanGradeEntries(assessmentId, students)
+            };
+          }
+
+          dispatchCourseSeatplanOpen(courseId, lesson = null) {
+            const courseKey = Number(courseId || 0);
+            if (!courseKey || typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+              return false;
+            }
+            const course = this.getCourseForSeatplan(courseKey);
+            const plan = this.store.getGradeSeatPlan(courseKey);
+            const lessonId = Number(lesson?.id || 0);
+            const lessonDate = String(lesson?.lessonDate || "").trim();
+            const students = this.buildCourseSeatplanStudents(courseKey);
+            const gradeConfig = this.buildCourseSeatplanGradeConfig(courseKey, lessonDate, students);
+            const gradeAssessment = gradeConfig?.assessmentId
+              ? this.buildCourseSeatplanGradeAssessmentPayload({
+                id: gradeConfig.assessmentId,
+                title: gradeConfig.title,
+                halfYear: gradeConfig.halfYear,
+                weight: gradeConfig.weight,
+                categoryId: gradeConfig.categoryId,
+                subcategoryId: gradeConfig.subcategoryId,
+                mode: "grade"
+              }, students)
+              : null;
+            window.dispatchEvent(new CustomEvent("classroom:planning-course-seatplan-open", {
+              detail: {
+                source: "iframe",
+                courseId: courseKey,
+                lessonId: lessonId || 0,
+                lessonDate,
+                courseName: String(course?.name || "Kurs"),
+                students,
+                plan,
+                gradeConfig,
+                gradeAssessment,
+                requestedAt: new Date().toISOString()
+              }
+            }));
+            return true;
+          }
+
+          async activateGradeSeatplanTrigger(lessonId) {
+            const normalizedLessonId = Number(lessonId || 0);
+            if (!normalizedLessonId) {
+              return false;
+            }
+            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+              this.queueGradeVaultContinuation({
+                type: "seatplan",
+                lessonId: normalizedLessonId
+              });
+              this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+              return true;
+            }
+            const lesson = this.store.getLessonById(normalizedLessonId);
+            const courseId = Number(lesson?.courseId || 0);
+            if (!lesson || !courseId) {
+              return false;
+            }
+            try {
+              await this.ensureGradeCourseLoaded(courseId);
+              return this.dispatchCourseSeatplanOpen(courseId, lesson);
+            } catch (error) {
+              this.setSyncStatus(
+                error instanceof Error && error.message ? error.message : "Kurs-Sitzplan konnte nicht geladen werden.",
+                true
+              );
+              return false;
+            }
+          }
+
+          dispatchCourseSeatplanSaveResult(detail) {
+            if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+              return;
+            }
+            window.dispatchEvent(new CustomEvent("classroom:planning-course-seatplan-save-result", {
+              detail: detail && typeof detail === "object" ? detail : null
+            }));
+          }
+
+          dispatchCourseSeatplanGradeConfigResult(detail) {
+            if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+              return;
+            }
+            window.dispatchEvent(new CustomEvent("classroom:planning-course-grade-config-result", {
+              detail: detail && typeof detail === "object" ? detail : null
+            }));
+          }
+
+          dispatchCourseSeatplanGradeSaveResult(detail) {
+            if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+              return;
+            }
+            window.dispatchEvent(new CustomEvent("classroom:planning-course-grade-save-result", {
+              detail: detail && typeof detail === "object" ? detail : null
+            }));
+          }
+
+          buildCourseSeatplanGradeConfig(courseId, lessonDate = "", students = null) {
+            const courseKey = Number(courseId || 0);
+            if (!courseKey) {
+              return null;
+            }
+            const course = this.getCourseForSeatplan(courseKey);
+            const categories = this.getGradesEntryStructureCategories(courseKey);
+            if (!categories.length) {
+              return null;
+            }
+            const normalizedLessonDate = String(lessonDate || "").trim();
+            const defaultDraft = this.getGradesEntryDraft(courseKey);
+            const assessment = this.findCourseSeatplanGradeAssessmentByLessonDate(courseKey, normalizedLessonDate);
+            const assessmentPayload = assessment
+              ? this.buildCourseSeatplanGradeAssessmentPayload(
+                assessment,
+                Array.isArray(students) ? students : this.buildCourseSeatplanStudents(courseKey)
+              )
+              : null;
+            const assessmentCategoryId = Number(assessmentPayload?.categoryId || 0) || null;
+            const assessmentCategory = categories.find((item) => Number(item.id) === Number(assessmentCategoryId || 0)) || null;
+            const assessmentSubcategoryId = Number(assessmentPayload?.subcategoryId || 0) || null;
+            const hasAssessmentSelection = Boolean(
+              assessmentCategory
+              && (assessmentCategory.subcategories || []).some((item) => Number(item.id) === Number(assessmentSubcategoryId || 0))
+            );
+            return {
+              courseId: courseKey,
+              courseName: String(course?.name || "Kurs"),
+              assessmentId: assessmentPayload?.assessmentId || null,
+              title: assessmentPayload?.title || (normalizedLessonDate ? formatShortDateLabel(normalizedLessonDate) : formatShortDateLabel(new Date())),
+              halfYear: normalizeGradeHalfYear(assessmentPayload?.halfYear || defaultDraft?.halfYear || this.getDefaultGradeAssessmentHalfYear()),
+              weight: normalizeGradeInteger(assessmentPayload?.weight || defaultDraft?.weight, 1),
+              categoryId: Number((hasAssessmentSelection ? assessmentCategoryId : defaultDraft?.categoryId) || 0) || null,
+              subcategoryId: Number((hasAssessmentSelection ? assessmentSubcategoryId : defaultDraft?.subcategoryId) || 0) || null,
+              entries: Array.isArray(assessmentPayload?.entries) ? assessmentPayload.entries : [],
+              categories: categories.map((category) => ({
+                id: Number(category.id) || 0,
+                name: String(category.name || ""),
+                weight: normalizeGradeNumber(category.weight, 1),
+                subcategories: (Array.isArray(category.subcategories) ? category.subcategories : []).map((subcategory) => ({
+                  id: Number(subcategory.id) || 0,
+                  name: String(subcategory.name || ""),
+                  weight: normalizeGradeNumber(subcategory.weight, 1)
+                }))
+              }))
+            };
+          }
+
+          async handleCourseSeatplanGradeConfigRequest(detail = null) {
+            const requestId = String(detail?.requestId || "");
+            const courseId = Number(detail?.courseId || 0);
+            const lessonDate = String(detail?.lessonDate || "").trim();
+            if (!requestId || !courseId) {
+              this.dispatchCourseSeatplanGradeConfigResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Noteneingabe konnte nicht vorbereitet werden."
+              });
+              return false;
+            }
+            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+              this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+              this.dispatchCourseSeatplanGradeConfigResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Notenmodul ist gesperrt."
+              });
+              return false;
+            }
+            try {
+              await this.ensureGradeCourseLoaded(courseId);
+              const config = this.buildCourseSeatplanGradeConfig(courseId, lessonDate);
+              if (!config || !Array.isArray(config.categories) || config.categories.length === 0) {
+                this.dispatchCourseSeatplanGradeConfigResult({
+                  requestId,
+                  courseId,
+                  ok: false,
+                  message: "Notenstruktur unvollständig. Bitte zuerst im Kurs mindestens eine Kategorie mit Unterkategorie anlegen."
+                });
+                return false;
+              }
+              this.dispatchCourseSeatplanGradeConfigResult({
+                requestId,
+                courseId,
+                ok: true,
+                config
+              });
+              return true;
+            } catch (error) {
+              this.dispatchCourseSeatplanGradeConfigResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: error instanceof Error && error.message ? error.message : "Noteneingabe konnte nicht vorbereitet werden."
+              });
+              return false;
+            }
+          }
+
+          async handleCourseSeatplanGradeSaveRequest(detail = null) {
+            const requestId = String(detail?.requestId || "");
+            const courseId = Number(detail?.courseId || 0);
+            const assessment = detail?.assessment && typeof detail.assessment === "object" ? detail.assessment : null;
+            const entries = Array.isArray(detail?.entries) ? detail.entries : [];
+            const studentIdsInScope = Array.isArray(detail?.studentIdsInScope)
+              ? Array.from(new Set(
+                detail.studentIdsInScope
+                  .map((studentId) => Number(studentId || 0))
+                  .filter((studentId) => studentId > 0)
+              ))
+              : [];
+            if (!requestId || !courseId || !assessment) {
+              this.dispatchCourseSeatplanGradeSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Noten konnten nicht gespeichert werden."
+              });
+              return false;
+            }
+            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+              this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+              this.dispatchCourseSeatplanGradeSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Notenmodul ist gesperrt."
+              });
+              return false;
+            }
+            try {
+              await this.ensureGradeCourseLoaded(courseId);
+              const categories = this.getGradesEntryStructureCategories(courseId);
+              const categoryId = Number(assessment.categoryId || 0);
+              const subcategoryId = Number(assessment.subcategoryId || 0);
+              const category = categories.find((item) => Number(item.id) === categoryId) || null;
+              const subcategory = (category?.subcategories || []).find((item) => Number(item.id) === subcategoryId) || null;
+              if (!category || !subcategory) {
+                this.dispatchCourseSeatplanGradeSaveResult({
+                  requestId,
+                  courseId,
+                  ok: false,
+                  message: "Kategorie oder Unterkategorie ist nicht mehr verfügbar."
+                });
+                return false;
+              }
+              const normalizedEntries = [];
+              let invalidEntry = false;
+              entries.forEach((entry) => {
+                const studentId = Number(entry?.studentId || 0);
+                const parsed = parseGradeValue(entry?.value, 15);
+                if (!studentId || !parsed.valid) {
+                  invalidEntry = true;
+                  return;
+                }
+                if (parsed.value !== null) {
+                  normalizedEntries.push({ studentId, value: parsed.value });
+                }
+              });
+              if (invalidEntry) {
+                this.dispatchCourseSeatplanGradeSaveResult({
+                  requestId,
+                  courseId,
+                  ok: false,
+                  message: "Bitte nur Werte von 0 bis 15 eingeben."
+                });
+                return false;
+              }
+              const existingAssessmentId = Number(assessment.assessmentId || assessment.id || 0);
+              let assessmentId = existingAssessmentId;
+              if (assessmentId) {
+                const existingAssessment = this.store.getGradeAssessment(assessmentId);
+                if (
+                  !existingAssessment
+                  || Number(existingAssessment.courseId || 0) !== courseId
+                  || normalizeGradeAssessmentMode(existingAssessment.mode) !== "grade"
+                ) {
+                  this.dispatchCourseSeatplanGradeSaveResult({
+                    requestId,
+                    courseId,
+                    ok: false,
+                    message: "Die vorhandene Leistung konnte nicht gefunden werden."
+                  });
+                  return false;
+                }
+                this.store.updateGradeAssessment(assessmentId, {
+                  title: assessment.title || "",
+                  halfYear: assessment.halfYear || "h1",
+                  weight: normalizeGradeInteger(assessment.weight, 1),
+                  mode: "grade",
+                  categoryId,
+                  subcategoryId,
+                  maxPoints: 15
+                });
+              } else {
+                assessmentId = this.store.createGradeAssessment(courseId, {
+                  title: assessment.title || "",
+                  halfYear: assessment.halfYear || "h1",
+                  weight: normalizeGradeInteger(assessment.weight, 1),
+                  mode: "grade",
+                  categoryId,
+                  subcategoryId,
+                  maxPoints: 15
+                });
+              }
+              let savedCount = 0;
+              const entriesByStudentId = new Map();
+              normalizedEntries.forEach((entry) => {
+                entriesByStudentId.set(Number(entry.studentId), entry.value);
+              });
+              if (existingAssessmentId) {
+                const scope = studentIdsInScope.length
+                  ? studentIdsInScope
+                  : Array.from(entriesByStudentId.keys());
+                scope.forEach((studentId) => {
+                  const hasValue = entriesByStudentId.has(studentId);
+                  if (this.store.setGradeEntry(studentId, assessmentId, hasValue ? entriesByStudentId.get(studentId) : "")) {
+                    if (hasValue) {
+                      savedCount += 1;
+                    }
+                  }
+                });
+              } else {
+                normalizedEntries.forEach((entry) => {
+                  if (this.store.setGradeEntry(entry.studentId, assessmentId, entry.value)) {
+                    savedCount += 1;
+                  }
+                });
+              }
+              this.gradeVaultSession.gradeCourseCache[courseId] = this.getCurrentGradeVaultSnapshot();
+              this.gradeVaultSession.dirtyGradeCourseIds[courseId] = true;
+              this.dispatchCourseSeatplanGradeSaveResult({
+                requestId,
+                courseId,
+                ok: true,
+                assessmentId,
+                savedCount,
+                message: "Noten im Notenmodul gespeichert."
+              });
+              return true;
+            } catch (error) {
+              this.dispatchCourseSeatplanGradeSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: error instanceof Error && error.message ? error.message : "Noten konnten nicht gespeichert werden."
+              });
+              return false;
+            }
+          }
+
+          async handleCourseSeatplanSaveRequest(detail = null) {
+            const requestId = String(detail?.requestId || "");
+            const courseId = Number(detail?.courseId || 0);
+            const plan = detail?.plan && typeof detail.plan === "object" ? detail.plan : null;
+            if (!requestId || !courseId || !plan) {
+              this.dispatchCourseSeatplanSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Kurs-Sitzplan konnte nicht gespeichert werden."
+              });
+              return false;
+            }
+            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+              this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+              this.dispatchCourseSeatplanSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Notenmodul ist gesperrt."
+              });
+              return false;
+            }
+            try {
+              await this.ensureGradeCourseLoaded(courseId);
+              const saved = this.store.saveGradeSeatPlan(courseId, plan);
+              this.gradeVaultSession.gradeCourseCache[courseId] = this.getCurrentGradeVaultSnapshot();
+              this.gradeVaultSession.dirtyGradeCourseIds[courseId] = true;
+              this.dispatchCourseSeatplanSaveResult({
+                requestId,
+                courseId,
+                ok: true,
+                updatedAt: saved?.updatedAt || new Date().toISOString(),
+                message: "Sitzplan im Notenmodul gespeichert."
+              });
+              return true;
+            } catch (error) {
+              const message = error instanceof Error && error.message
+                ? error.message
+                : "Sitzplan konnte nicht im Notenmodul gespeichert werden.";
+              this.dispatchCourseSeatplanSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message
+              });
+              return false;
+            }
+          }
+
           normalizeGradesOverviewAssessmentSpotlightTarget(target = null) {
             if (!isRecord(target)) {
               return null;
@@ -17909,12 +18542,18 @@
             };
           }
 
-          activateGradeEntryTrigger(lessonId, triggerMode = "entry") {
+          async activateGradeEntryTrigger(lessonId, triggerMode = "entry") {
             const normalizedLessonId = Number(lessonId || 0);
             if (!normalizedLessonId) {
               return false;
             }
-            if (String(triggerMode || "entry").trim() === "unlock") {
+            const normalizedTriggerMode = String(triggerMode || "entry").trim() || "entry";
+            if (normalizedTriggerMode === "unlock" || !this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+              this.queueGradeVaultContinuation({
+                type: "grade-entry",
+                lessonId: normalizedLessonId,
+                triggerMode: normalizedTriggerMode === "unlock" ? "auto" : normalizedTriggerMode
+              });
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return true;
             }
@@ -17922,7 +18561,23 @@
             if (!lesson) {
               return false;
             }
-            if (String(triggerMode || "entry").trim() === "overview") {
+            const courseId = Number(lesson.courseId || 0);
+            if (!courseId) {
+              return false;
+            }
+            try {
+              await this.ensureGradeCourseLoaded(courseId);
+            } catch (error) {
+              this.setSyncStatus(
+                error instanceof Error && error.message ? error.message : "Notenkurs konnte nicht geladen werden.",
+                true
+              );
+              return false;
+            }
+            const resolvedTriggerMode = normalizedTriggerMode === "auto"
+              ? (this.getGradeEntryTriggerStateForLesson(lesson)?.triggerMode || "entry")
+              : normalizedTriggerMode;
+            if (resolvedTriggerMode === "overview") {
               return this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
             }
             return this.openGradesEntryFromLesson(lesson);
@@ -19197,6 +19852,36 @@
                   if (block.allCanceled && chip instanceof HTMLButtonElement) {
                     chip.disabled = true;
                   }
+                  const seatplanTriggerVisible = Boolean(
+                    block.selectable
+                    && !block.isNoLesson
+                    && Number(block.courseId || 0) > 0
+                    && this.hasGradeVaultUnlockConfig()
+                  );
+                  if (seatplanTriggerVisible) {
+                    chip.classList.add("has-seatplan-trigger");
+                    const seatplanTrigger = document.createElement("span");
+                    seatplanTrigger.className = "lesson-block-seatplan-trigger";
+                    seatplanTrigger.dataset.seatplanLessonId = String(block.firstLessonId);
+                    seatplanTrigger.setAttribute("role", "button");
+                    seatplanTrigger.setAttribute("tabindex", "0");
+                    seatplanTrigger.setAttribute("aria-label", this.isGradeVaultUnlocked()
+                      ? "Kurs-Sitzplan öffnen (mit Noteneingabe)"
+                      : "Notenmodul entsperren");
+                    seatplanTrigger.title = this.isGradeVaultUnlocked()
+                      ? "Kurs-Sitzplan öffnen (mit Noteneingabe)"
+                      : "Notenmodul entsperren";
+                    seatplanTrigger.textContent = "🪑";
+                    seatplanTrigger.addEventListener("keydown", (keyEvent) => {
+                      if (keyEvent.key !== "Enter" && keyEvent.key !== " ") {
+                        return;
+                      }
+                      keyEvent.preventDefault();
+                      keyEvent.stopPropagation();
+                      void this.activateGradeSeatplanTrigger(block.firstLessonId);
+                    });
+                    chip.append(seatplanTrigger);
+                  }
                   const gradeEntryState = !block.isNoLesson
                     ? this.getGradeEntryTriggerStateForLesson(block.topLesson, gradeAssessmentLookup)
                     : null;
@@ -19229,7 +19914,7 @@
                       }
                       keyEvent.preventDefault();
                       keyEvent.stopPropagation();
-                      this.activateGradeEntryTrigger(block.firstLessonId, gradeEntryState.triggerMode);
+                      void this.activateGradeEntryTrigger(block.firstLessonId, gradeEntryState.triggerMode);
                     });
                     chip.append(gradeEntryTrigger);
                   }

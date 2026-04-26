@@ -15,6 +15,17 @@ export const PLANNING_VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
 export const PLANNING_READY_EVENT = 'classroom:planning-ready';
 export const PLANNING_GRADE_VAULT_STATE_EVENT = 'classroom:planning-grade-vault-state';
 export const PLANNING_GRADE_VAULT_REQUEST_EVENT = 'classroom:planning-grade-vault-request';
+export const PLANNING_COURSE_SEATPLAN_OPEN_EVENT = 'classroom:planning-course-seatplan-open';
+export const PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT = 'classroom:planning-course-seatplan-save-request';
+export const PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:planning-course-seatplan-save-result';
+export const PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:planning-course-grade-config-request';
+export const PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:planning-course-grade-config-result';
+export const PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:planning-course-grade-save-request';
+export const PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:planning-course-grade-save-result';
+export const SEATPLAN_COURSE_CONTEXT_EVENT = 'classroom:seatplan-course-context';
+export const SEATPLAN_COURSE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-save-request';
+export const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-course-grade-config-request';
+export const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
 export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
 export const PLANNING_SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
 

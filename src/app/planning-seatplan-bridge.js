@@ -4,7 +4,16 @@ import {
   normalizeStudentsSyncDetail,
 } from '../shared/student-sync-bus.js';
 import {
+  PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT,
+  PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
+  PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT,
+  PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
+  PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
+  PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
+  SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
+  SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
+  SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
   TAB_GRADES,
   TAB_MERGER,
   TAB_PLANNING,
@@ -182,6 +191,12 @@ export function createPlanningSeatplanBridge({
     rosterStore?.dispatch?.(detail);
   }
 
+  function sendCourseSeatplanContext(detail) {
+    if (!detail || typeof detail !== 'object') return;
+    ensureTabInitialized(TAB_SEATPLAN);
+    seatplanController?.sendCourseContext?.(detail);
+  }
+
   seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
@@ -189,10 +204,53 @@ export function createPlanningSeatplanBridge({
     dispatchStudentsUpdateToSeatplan(detail);
   });
 
+  seatplanBus.addEventListener(SEATPLAN_COURSE_SAVE_REQUEST_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    ensureTabInitialized(TAB_PLANNING);
+    planningController?.post?.(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    ensureTabInitialized(TAB_PLANNING);
+    planningController?.post?.(PLANNING_COURSE_GRADE_CONFIG_REQUEST_EVENT, detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    ensureTabInitialized(TAB_PLANNING);
+    planningController?.post?.(PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT, detail);
+  });
+
+  const saveResultTarget = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+    ? window
+    : documentBus;
+  saveResultTarget.addEventListener(PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendCourseSaveResult?.(detail);
+  });
+
+  saveResultTarget.addEventListener(PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendCourseGradeConfigResult?.(detail);
+  });
+
+  saveResultTarget.addEventListener(PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendCourseGradeSaveResult?.(detail);
+  });
+
   return {
     ensureTabInitialized,
     dispatchPlanningViewRequest,
     emitStudentsUpdated,
     refreshModuleLayouts,
+    sendCourseSeatplanContext,
   };
 }
