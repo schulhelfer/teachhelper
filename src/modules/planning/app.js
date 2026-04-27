@@ -167,6 +167,25 @@
             .join(", ");
         }
 
+        function normalizeGradeStudentNameOrder(value) {
+          return value === "first" ? "first" : "last";
+        }
+
+        function formatGradeStudentName(student, order = "last") {
+          if (!student) {
+            return "";
+          }
+          if (typeof student.placeholderLabel === "string") {
+            return student.placeholderLabel;
+          }
+          const lastName = String(student.lastName || "").trim();
+          const firstName = String(student.firstName || "").trim();
+          if (normalizeGradeStudentNameOrder(order) === "first") {
+            return [firstName, lastName].filter(Boolean).join(" ");
+          }
+          return [lastName, firstName].filter(Boolean).join(", ");
+        }
+
         function gradeVaultHasSensitiveData(vaultState) {
           const state = isRecord(vaultState) ? vaultState : createInitialGradeVaultState();
           return Boolean(
@@ -1433,6 +1452,25 @@
           const byFirst = aFirst.localeCompare(bFirst, "de", { sensitivity: "base" });
           if (byFirst !== 0) {
             return byFirst;
+          }
+          return Number(a && a.id || 0) - Number(b && b.id || 0);
+        }
+
+        function compareGradeStudentsByNameOrder(a, b, order = "last") {
+          if (normalizeGradeStudentNameOrder(order) !== "first") {
+            return compareGradeStudents(a, b);
+          }
+          const aFirst = normalizeGradeTextPart(a && a.firstName);
+          const bFirst = normalizeGradeTextPart(b && b.firstName);
+          const byFirst = aFirst.localeCompare(bFirst, "de", { sensitivity: "base" });
+          if (byFirst !== 0) {
+            return byFirst;
+          }
+          const aLast = normalizeGradeTextPart(a && a.lastName);
+          const bLast = normalizeGradeTextPart(b && b.lastName);
+          const byLast = aLast.localeCompare(bLast, "de", { sensitivity: "base" });
+          if (byLast !== 0) {
+            return byLast;
           }
           return Number(a && a.id || 0) - Number(b && b.id || 0);
         }
@@ -4807,6 +4845,8 @@
             this.activeGradeStudentId = null;
             this.activeGradeOverrideContext = null;
             this.selectedGradesEntryAssessmentId = null;
+            this.gradesOverviewNameOrder = "last";
+            this.gradesEntryNameOrder = "last";
             this.gradesEntryDraft = null;
             this.gradesEntrySaveNotice = "";
             this.gradesEntrySaveNoticeTimer = 0;
@@ -10297,6 +10337,20 @@
               }
               return;
             }
+            const nameOrderToggleButton = event.target.closest("button[data-grade-name-order-toggle='1']");
+            if (nameOrderToggleButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!this.commitVisibleGradeInputs()) {
+                return;
+              }
+              this.activeGradeOverrideContext = null;
+              this.gradesOverviewNameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder) === "first"
+                ? "last"
+                : "first";
+              this.renderGradesView();
+              return;
+            }
             const addButton = event.target.closest("button[data-grade-add-assessment]");
             if (addButton) {
               event.stopPropagation();
@@ -10484,6 +10538,17 @@
               this.selectedCourseId = Number(courseSelect.value || 0) || null;
               this.selectedGradesEntryAssessmentId = null;
               this.gradesEntryDraft = null;
+              this.renderGradesView();
+              return;
+            }
+
+            const nameOrderInput = event.target.closest("input[data-grades-entry-name-order='1']");
+            if (nameOrderInput) {
+              if (!this.commitVisibleGradeInputs()) {
+                this.renderGradesView();
+                return;
+              }
+              this.gradesEntryNameOrder = normalizeGradeStudentNameOrder(nameOrderInput.value);
               this.renderGradesView();
               return;
             }
@@ -13704,6 +13769,19 @@
                   </label>
                 </div>
               </fieldset>
+              <fieldset class="grades-entry-field grades-entry-name-order-field is-wide">
+                <legend>Namen</legend>
+                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Namensdarstellung">
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="last"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "last" ? " checked" : ""}>
+                    <span>Nachname, Vorname</span>
+                  </label>
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="first"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "first" ? " checked" : ""}>
+                    <span>Vorname Name</span>
+                  </label>
+                </div>
+              </fieldset>
               <label class="grades-entry-field is-wide">
                 <span>Halbjahr</span>
                 <select name="grades-entry-halfyear" data-grades-entry-halfyear="1">
@@ -14223,15 +14301,17 @@
           }
 
           getGradeStudentDisplayName(student) {
-            if (!student) {
-              return "";
-            }
-            if (typeof student.placeholderLabel === "string") {
-              return student.placeholderLabel;
-            }
-            return [String(student.lastName || "").trim(), String(student.firstName || "").trim()]
-              .filter(Boolean)
-              .join(", ");
+            return formatGradeStudentName(student, this.gradesEntryNameOrder);
+          }
+
+          getGradeStudentOverviewDisplayName(student) {
+            return formatGradeStudentName(student, this.gradesOverviewNameOrder);
+          }
+
+          getSortedGradeStudentsForNameOrder(students, order = this.gradesEntryNameOrder) {
+            return (Array.isArray(students) ? students : [])
+              .slice()
+              .sort((a, b) => compareGradeStudentsByNameOrder(a, b, order));
           }
 
           buildGradePrivacyTrendState(course, students = null) {
@@ -15384,15 +15464,12 @@
             table.append(thead);
 
             const tbody = document.createElement("tbody");
-            students.forEach((student) => {
+            this.getSortedGradeStudentsForNameOrder(students).forEach((student) => {
               const tr = document.createElement("tr");
               const studentCell = document.createElement("td");
               studentCell.className = "student-col";
-              studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(
-                [String(student.lastName || "").trim(), String(student.firstName || "").trim()].filter(Boolean).join(", ")
-              )}">${escapeHtml(
-                [String(student.lastName || "").trim(), String(student.firstName || "").trim()].filter(Boolean).join(", ")
-              )}</div>`;
+              const studentName = this.getGradeStudentDisplayName(student);
+              studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(studentName)}">${escapeHtml(studentName)}</div>`;
               tr.append(studentCell);
               const totalCell = document.createElement("td");
               totalCell.className = "grade-total-col";
@@ -15411,9 +15488,11 @@
             const draftEntries = draft && typeof draft.entries === "object" ? draft.entries : {};
             const entryMode = normalizeGradeAssessmentMode(assessment?.mode || draft?.mode);
             const courseColor = normalizeCourseColor(course?.color, Boolean(course?.noLesson));
-            const visibleMaxNameLength = Array.isArray(students)
-              ? students.reduce((maxLength, student) => Math.max(maxLength, this.getGradeStudentDisplayName(student).length), 0)
-              : 0;
+            const displayStudents = this.getSortedGradeStudentsForNameOrder(students);
+            const visibleMaxNameLength = displayStudents.reduce(
+              (maxLength, student) => Math.max(maxLength, this.getGradeStudentDisplayName(student).length),
+              0
+            );
             const table = document.createElement("table");
             table.className = "grade-block-table grades-entry-table";
             if (visibleMaxNameLength > 0) {
@@ -15446,7 +15525,7 @@
             table.append(thead);
 
             const tbody = document.createElement("tbody");
-            students.forEach((student, rowIndex) => {
+            displayStudents.forEach((student, rowIndex) => {
               const tr = document.createElement("tr");
               const studentName = this.getGradeStudentDisplayName(student);
               const isPlaceholderRow = Boolean(student?.isPlaceholder);
@@ -15710,9 +15789,9 @@
     `;
             table.append(thead);
             const tbody = document.createElement("tbody");
-            students.forEach((student) => {
+            this.getSortedGradeStudentsForNameOrder(students).forEach((student) => {
               const tr = document.createElement("tr");
-              const studentName = [String(student.lastName || "").trim(), String(student.firstName || "").trim()].filter(Boolean).join(", ");
+              const studentName = this.getGradeStudentDisplayName(student);
               const studentCell = document.createElement("td");
               studentCell.className = "student-col";
               studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(studentName)}">${escapeHtml(studentName)}</div>`;
@@ -16048,14 +16127,25 @@
               th.className = "student-col";
               th.classList.add("grade-privacy-indicator-cell");
               const isPrivacyActive = Boolean(this.privacyFocusedGradeStudentId);
+              const nameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder);
+              const nextNameOrderLabel = nameOrder === "first" ? "Nachname, Vorname" : "Vorname Nachname";
               th.innerHTML = `
-        <button
-          type="button"
-          class="grade-privacy-indicator-button${isPrivacyActive ? " is-active" : " is-inactive"}"
-          data-grade-privacy-toggle="1"
-          aria-label="${isPrivacyActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"}"
-          title="${isPrivacyActive ? "Datenschutzmodus aktiv" : "Datenschutzmodus inaktiv"}"
-        >👀</button>
+        <div class="grade-student-head-actions">
+          <button
+            type="button"
+            class="grade-privacy-indicator-button${isPrivacyActive ? " is-active" : " is-inactive"}"
+            data-grade-privacy-toggle="1"
+            aria-label="${isPrivacyActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"}"
+            title="${isPrivacyActive ? "Datenschutzmodus aktiv" : "Datenschutzmodus inaktiv"}"
+          >👀</button>
+          <button
+            type="button"
+            class="grade-name-order-toggle-button"
+            data-grade-name-order-toggle="1"
+            aria-label="Namenssortierung auf ${nextNameOrderLabel} umstellen"
+            title="Namenssortierung: ${nextNameOrderLabel}"
+          >↕️</button>
+        </div>
       `;
               return th;
             }
@@ -16226,11 +16316,10 @@
             table.append(thead);
 
             const tbody = document.createElement("tbody");
-            students.forEach((student, rowIndex) => {
+            const displayStudents = this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder);
+            displayStudents.forEach((student, rowIndex) => {
               const tr = document.createElement("tr");
-              const studentName = [String(student.lastName || "").trim(), String(student.firstName || "").trim()]
-                .filter(Boolean)
-                .join(", ");
+              const studentName = this.getGradeStudentOverviewDisplayName(student);
               const isPrivacyBlurred = this.shouldBlurGradeStudent(student.id);
               const isPrivacyFocused = Number(student.id) === Number(this.privacyFocusedGradeStudentId || 0);
               model.columns.forEach((column, columnIndex) => {

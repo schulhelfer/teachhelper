@@ -3078,7 +3078,8 @@
           grid-column: 1 / -1;
         }
 
-        .grades-entry-mode-field {
+        .grades-entry-mode-field,
+        .grades-entry-name-order-field {
           padding-top: 0.05rem;
         }
 
@@ -3164,7 +3165,8 @@
           background-repeat: no-repeat;
         }
 
-        .grades-entry-mode-field .assessment-mode-toggle {
+        .grades-entry-mode-field .assessment-mode-toggle,
+        .grades-entry-name-order-field .assessment-mode-toggle {
           padding: 0.25rem;
           border-radius: 14px;
           border-color: rgba(148, 163, 184, 0.16);
@@ -3172,7 +3174,8 @@
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
-        .grades-entry-mode-field .assessment-mode-option span {
+        .grades-entry-mode-field .assessment-mode-option span,
+        .grades-entry-name-order-field .assessment-mode-option span {
           min-height: 2.8rem;
           padding: 0.5rem 0.8rem;
           border-radius: 10px;
@@ -3181,12 +3184,14 @@
           background: transparent;
         }
 
-        .grades-entry-mode-field .assessment-mode-option:hover span {
+        .grades-entry-mode-field .assessment-mode-option:hover span,
+        .grades-entry-name-order-field .assessment-mode-option:hover span {
           color: rgba(248, 250, 252, 0.94);
           background: rgba(148, 163, 184, 0.08);
         }
 
-        .grades-entry-mode-field .assessment-mode-option input:checked+span {
+        .grades-entry-mode-field .assessment-mode-option input:checked+span,
+        .grades-entry-name-order-field .assessment-mode-option input:checked+span {
           color: #f8fbff;
           background: rgba(59, 130, 246, 0.24);
           border-color: rgba(96, 165, 250, 0.34);
@@ -3310,22 +3315,26 @@
             linear-gradient(180deg, rgba(14, 165, 233, 0.18), rgba(14, 165, 233, 0.08));
         }
 
-        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-toggle {
+        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-toggle,
+        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-toggle {
           border-color: rgba(14, 165, 233, 0.14);
           background: rgba(226, 242, 255, 0.48);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
         }
 
-        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option span {
+        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option span,
+        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-option span {
           color: #475569;
         }
 
-        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option:hover span {
+        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option:hover span,
+        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-option:hover span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.08);
         }
 
-        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option input:checked+span {
+        :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option input:checked+span,
+        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-option input:checked+span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.18);
           border-color: rgba(14, 165, 233, 0.28);
@@ -3890,13 +3899,24 @@
           vertical-align: middle;
         }
 
-        .grade-privacy-indicator-button {
+        .grade-student-head-actions {
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          min-width: 3.25rem;
+          height: 100%;
+          min-height: 7.1rem;
+        }
+
+        .grade-privacy-indicator-button,
+        .grade-name-order-toggle-button {
           display: inline-flex;
           align-items: center;
           justify-content: center;
           width: 100%;
           min-width: 3.25rem;
-          min-height: 3.25rem;
           padding: 0;
           border: none;
           background: transparent;
@@ -3913,6 +3933,20 @@
           transition: color 0.16s ease, opacity 0.16s ease;
         }
 
+        .grade-privacy-indicator-button {
+          font-size: 1.58rem;
+          flex: 1 1 auto;
+          min-height: 3.25rem;
+        }
+
+        .grade-name-order-toggle-button {
+          flex: 0 0 auto;
+          min-height: 2.7rem;
+          font-size: 1.82rem;
+          font-weight: 800;
+          color: rgba(125, 211, 252, 0.78);
+        }
+
         .grade-privacy-indicator-button.is-inactive {
           color: rgba(148, 163, 184, 0.42);
           opacity: 0.92;
@@ -3924,7 +3958,10 @@
 
         .grade-privacy-indicator-button:hover,
         .grade-privacy-indicator-button:focus-visible,
-        .grade-privacy-indicator-button:active {
+        .grade-privacy-indicator-button:active,
+        .grade-name-order-toggle-button:hover,
+        .grade-name-order-toggle-button:focus-visible,
+        .grade-name-order-toggle-button:active {
           background: transparent;
           border-color: transparent;
           box-shadow: none;
@@ -3943,6 +3980,13 @@
         .grade-privacy-indicator-button.is-active:focus-visible,
         .grade-privacy-indicator-button.is-active:active {
           color: #ffffff;
+        }
+
+        .grade-name-order-toggle-button:hover,
+        .grade-name-order-toggle-button:focus-visible,
+        .grade-name-order-toggle-button:active {
+          color: rgba(224, 242, 254, 0.96);
+          opacity: 1;
         }
 
         .grades-total-table td.grade-total-col,
@@ -4415,7 +4459,8 @@
         }
 
         .assessment-mode-field,
-        .grades-entry-mode-field {
+        .grades-entry-mode-field,
+        .grades-entry-name-order-field {
           display: grid;
           gap: 0.35rem;
           min-width: 0;
@@ -5161,10 +5206,20 @@
           color: rgba(15, 23, 42, 0.96);
         }
 
+        :root[data-theme='light'] .grade-name-order-toggle-button {
+          color: rgba(2, 132, 199, 0.72);
+        }
+
         :root[data-theme='light'] .grade-privacy-indicator-button.is-inactive:hover,
         :root[data-theme='light'] .grade-privacy-indicator-button.is-inactive:focus-visible,
         :root[data-theme='light'] .grade-privacy-indicator-button.is-inactive:active {
           color: rgba(2, 132, 199, 0.78);
+        }
+
+        :root[data-theme='light'] .grade-name-order-toggle-button:hover,
+        :root[data-theme='light'] .grade-name-order-toggle-button:focus-visible,
+        :root[data-theme='light'] .grade-name-order-toggle-button:active {
+          color: rgba(3, 105, 161, 0.96);
         }
 
         :root[data-theme='light'] .grade-checkbox-display-button {
