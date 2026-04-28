@@ -1,6 +1,6 @@
 import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 
-const DUPLICATE_CHECK_VERSION = 'duplicate-check-r2';
+const DUPLICATE_CHECK_VERSION = 'duplicate-check-r3';
 const DUPLICATE_CHECK_URL = new URL(`./app.html?v=${DUPLICATE_CHECK_VERSION}`, import.meta.url);
 
 export function mountDuplicateCheck({ host }) {
@@ -11,7 +11,7 @@ export function mountDuplicateCheck({ host }) {
 
   const frame = document.createElement('iframe');
   frame.className = 'duplicate-check-frame';
-  frame.loading = 'lazy';
+  frame.loading = 'eager';
   frame.referrerPolicy = 'no-referrer';
   frame.src = DUPLICATE_CHECK_URL.href;
 

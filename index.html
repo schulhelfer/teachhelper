@@ -5844,7 +5844,7 @@
         await Promise.all(cacheKeys.map((cacheKey) => caches.delete(cacheKey)));
       }
     }
-    const entryVersion = isLocalDevelopmentHost ? String(Date.now()) : '1';
+    const entryVersion = isLocalDevelopmentHost ? String(Date.now()) : '3.1';
     await import(`./src/main.js?v=${encodeURIComponent(entryVersion)}`);
   </script>
 </body>

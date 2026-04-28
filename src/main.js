@@ -189,6 +189,24 @@ import { applyTheme } from './shell/theme.js';
       const setActiveTab = (tab) => shellController?.setActiveTab(tab);
       const setActiveTabImmediate = (tab) => shellController?.setActiveTabImmediate(tab);
       const syncChromeState = () => shellController?.syncChromeState();
+      let tabNavigationBound = false;
+
+      function bindTabNavigation() {
+        if (tabNavigationBound) return;
+        tabNavigationBound = true;
+        [
+          [els.tabMerger, TAB_MERGER],
+          [els.tabPlanning, TAB_PLANNING],
+          [els.tabGrades, TAB_GRADES],
+          [els.tabSeatplan, TAB_SEATPLAN],
+          [els.tabGroups, TAB_GROUPS],
+          [els.tabRandomPicker, TAB_RANDOM_PICKER],
+          [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
+          [els.tabWorkPhase, TAB_WORK_PHASE],
+        ].forEach(([button, tabKey]) => {
+          button?.addEventListener('click', () => setActiveTab(tabKey));
+        });
+      }
 
       if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.addEventListener('classroom:planning-view-request', (event) => {
@@ -407,6 +425,7 @@ import { applyTheme } from './shell/theme.js';
         onPositionWorkOrderHintOverlay: () => positionWorkOrderHintOverlay(),
         onRefreshLayouts: () => refreshChromeDependentLayouts(),
       });
+      bindTabNavigation();
       const PREFERENCE_SLOT_COUNT = 3;
       const MAX_GRID_SIZE = 20;
       const MAX_PERFORMANCE_FLAIR_COUNT = 10;
@@ -5294,19 +5313,7 @@ import { applyTheme } from './shell/theme.js';
         monitorAmpelObserver.observe(els.monitorAmpel);
         els.monitorAmpel.parentElement && monitorAmpelObserver.observe(els.monitorAmpel.parentElement);
       }
-      const tabBindings = [
-        [els.tabMerger, TAB_MERGER],
-        [els.tabPlanning, TAB_PLANNING],
-        [els.tabGrades, TAB_GRADES],
-        [els.tabSeatplan, TAB_SEATPLAN],
-        [els.tabGroups, TAB_GROUPS],
-        [els.tabRandomPicker, TAB_RANDOM_PICKER],
-        [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
-        [els.tabWorkPhase, TAB_WORK_PHASE],
-      ];
-      tabBindings.forEach(([button, tabKey]) => {
-        button?.addEventListener('click', () => setActiveTab(tabKey));
-      });
+      bindTabNavigation();
       bindBackgroundDrop(els.groupsGrid);
       bindBackgroundDrop(els.groupsGridWrap, { ignoreInsideGrid: true });
 
