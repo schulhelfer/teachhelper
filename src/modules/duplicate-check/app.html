@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="color-scheme" content="light dark">
+  <title>DuplikatCheck</title>
+  <link rel="manifest" href="../../../manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png">
+  <link rel="stylesheet" href="./app.css?v=duplicate-check-r2">
+</head>
+
+<body>
+  <div class="duplicate-check-runtime-root">
+    <div class="app">
+      <aside class="side" aria-label="DuplikatCheck">
+        <div class="sidebar-header">
+          <h1 class="sidebar-title">DuplikatCheck</h1>
+        </div>
+        <section class="tool-sidebar-panel">
+          <section class="rule-panel" aria-labelledby="duplicateRulesTitle">
+            <h2 id="duplicateRulesTitle" class="sidebar-section-title">Als Duplikate gelten Dateien mit...</h2>
+            <div class="rule-toggle-list" role="group" aria-label="Kriterien für Duplikate">
+              <button class="rule-toggle active" type="button" data-duplicate-rule="name" aria-pressed="true">
+                <span class="rule-checkbox" aria-hidden="true"></span>
+                <span>gleichem Namen</span>
+              </button>
+              <button class="rule-toggle active" type="button" data-duplicate-rule="size" aria-pressed="true">
+                <span class="rule-checkbox" aria-hidden="true"></span>
+                <span>gleicher Größe</span>
+              </button>
+              <button class="rule-toggle active" type="button" data-duplicate-rule="visual" aria-pressed="true">
+                <span class="rule-checkbox" aria-hidden="true"></span>
+                <span>ähnlichem Bildinhalt</span>
+              </button>
+            </div>
+          </section>
+        </section>
+      </aside>
+
+      <main class="main" aria-live="polite">
+        <section class="tool-panel" aria-labelledby="uploadTitle">
+          <div class="panel-head">
+            <div>
+              <h2 id="uploadTitle" class="card-title">Duplikate in Abgaben</h2>
+              <p class="panel-subtitle">IServ-Aufgabenmodul → „Abgaben für die Aufgabe anzeigen” → Haken für alle Abgaben ganz oben links setzen → Herunterladen</p>
+            </div>
+          </div>
+
+          <div class="stack-layout">
+            <div id="zipDropZone" class="drop awaiting-file" tabindex="0" role="button" aria-label="ZIP-Datei auswählen">
+              <input id="zipInput" type="file" accept=".zip,application/zip,application/x-zip-compressed" hidden>
+              <div class="drop-content">
+                <div id="dropHint">
+                  <strong>.zip hier ablegen</strong>
+                  <div>oder klicken zum Auswählen</div>
+                </div>
+                <div id="fileSummary" class="drop-summary hidden"></div>
+              </div>
+            </div>
+
+            <section id="resultPanel" class="result-panel empty" aria-live="polite" hidden></section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script type="module" src="./app.js?v=duplicate-check-r2"></script>
+</body>
+
+</html>

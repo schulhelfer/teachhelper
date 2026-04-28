@@ -24,10 +24,11 @@ def is_local_asset_ref(ref):
 def check_local_asset_ref(base_path, ref):
   if not is_local_asset_ref(ref):
     return
+  ref_path = ref.split('?', 1)[0].split('#', 1)[0]
   if ref.startswith('/'):
-    target = ROOT / ref.lstrip('/')
+    target = ROOT / ref_path.lstrip('/')
   else:
-    target = (base_path.parent / ref).resolve()
+    target = (base_path.parent / ref_path).resolve()
   try:
     target.relative_to(ROOT)
   except ValueError:
@@ -76,6 +77,7 @@ expected = [
   ROOT / 'src' / 'main.js',
   ROOT / 'src' / 'modules' / 'planning' / 'app.html',
   ROOT / 'src' / 'modules' / 'merger' / 'app.html',
+  ROOT / 'src' / 'modules' / 'duplicate-check' / 'app.html',
   ROOT / 'src' / 'modules' / 'seatplan' / 'app.html',
 ]
 

@@ -14,11 +14,13 @@ import {
   SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
   SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
+  TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_MERGER,
   TAB_PLANNING,
   TAB_SEATPLAN,
 } from '../shell/tabs.js';
+import { mountDuplicateCheck } from '../modules/duplicate-check/index.js';
 import { mountMerger } from '../modules/merger/index.js';
 import { mountPlanning } from '../modules/planning/index.js';
 import { mountSeatplan } from '../modules/seatplan/index.js';
@@ -30,10 +32,12 @@ export function createPlanningSeatplanBridge({
   documentBus = document,
 } = {}) {
   let mergerController = null;
+  let duplicateCheckController = null;
   let planningController = null;
   let seatplanController = null;
   const tabInitState = {
     [TAB_MERGER]: false,
+    [TAB_DUPLICATE_CHECK]: false,
     [TAB_PLANNING]: false,
     [TAB_SEATPLAN]: false,
   };
@@ -62,6 +66,13 @@ export function createPlanningSeatplanBridge({
     if (!host || host.dataset.initialized === '1') return;
     mergerController = mountMerger({ host });
     mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+  };
+
+  const initDuplicateCheckTab = (root = els.duplicateCheckHost) => {
+    const host = root;
+    if (!host || host.dataset.initialized === '1') return;
+    duplicateCheckController = mountDuplicateCheck({ host });
+    duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
   };
 
   const initSeatplanTabNative = (
@@ -157,6 +168,7 @@ export function createPlanningSeatplanBridge({
 
   function refreshModuleLayouts({ activeTab, isIOSDevice = false } = {}) {
     mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
@@ -167,6 +179,12 @@ export function createPlanningSeatplanBridge({
       if (tabInitState[TAB_MERGER]) return;
       initMergerTab(els.mergerHost);
       tabInitState[TAB_MERGER] = true;
+      return;
+    }
+    if (tab === TAB_DUPLICATE_CHECK) {
+      if (tabInitState[TAB_DUPLICATE_CHECK]) return;
+      initDuplicateCheckTab(els.duplicateCheckHost);
+      tabInitState[TAB_DUPLICATE_CHECK] = true;
       return;
     }
     if (tab === TAB_PLANNING || tab === TAB_GRADES) {

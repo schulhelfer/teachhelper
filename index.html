@@ -674,6 +674,7 @@
 
     .app>.main,
     .app>.merger-shell,
+    .app>.duplicate-check-shell,
     .app>.planning-shell,
     .app>.monitor-shell,
     .app>.work-order-shell,
@@ -685,6 +686,7 @@
     .app.is-tab-switching>.side,
     .app.is-tab-switching>.main,
     .app.is-tab-switching>.merger-shell,
+    .app.is-tab-switching>.duplicate-check-shell,
     .app.is-tab-switching>.planning-shell,
     .app.is-tab-switching>.monitor-shell,
     .app.is-tab-switching>.work-order-shell,
@@ -781,6 +783,7 @@
     }
 
     .merger-shell,
+    .duplicate-check-shell,
     .planning-shell,
     .monitor-shell,
     .work-order-shell,
@@ -799,6 +802,7 @@
     }
 
     .merger-shell,
+    .duplicate-check-shell,
     .planning-shell {
       padding: 0;
       overflow-x: hidden;
@@ -806,6 +810,13 @@
     }
 
     .merger-shell {
+      background: transparent;
+      backdrop-filter: none;
+      border: none;
+      border-radius: 0;
+    }
+
+    .duplicate-check-shell {
       background: transparent;
       backdrop-filter: none;
       border: none;
@@ -820,6 +831,7 @@
     }
 
     .merger-host,
+    .duplicate-check-host,
     .planning-host {
       width: 100%;
       height: 100%;
@@ -839,6 +851,7 @@
     #seatplan-main-host,
     #seatplan-side-host,
     .merger-host,
+    .duplicate-check-host,
     #groups-main-host .groups-grid-wrap,
     #seatplan-main-host .grid-wrap,
     .random-picker-shell,
@@ -864,7 +877,8 @@
       animation: none !important;
     }
 
-    .merger-host {
+    .merger-host,
+    .duplicate-check-host {
       overflow: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
@@ -872,6 +886,7 @@
 
     .app.app-tab-merger>.side,
     .app.app-tab-merger>.main,
+    .app.app-tab-merger>.duplicate-check-shell,
     .app.app-tab-merger>.monitor-shell,
     .app.app-tab-merger>.work-order-shell,
     .app.app-tab-merger>.timer-shell {
@@ -884,9 +899,25 @@
       grid-row: 2;
     }
 
+    .app.app-tab-duplicate-check>.side,
+    .app.app-tab-duplicate-check>.main,
+    .app.app-tab-duplicate-check>.merger-shell,
+    .app.app-tab-duplicate-check>.monitor-shell,
+    .app.app-tab-duplicate-check>.work-order-shell,
+    .app.app-tab-duplicate-check>.timer-shell {
+      display: none;
+    }
+
+    .app.app-tab-duplicate-check>.duplicate-check-shell {
+      display: block;
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
     .app.app-tab-planning>.side,
     .app.app-tab-planning>.main,
     .app.app-tab-planning>.merger-shell,
+    .app.app-tab-planning>.duplicate-check-shell,
     .app.app-tab-planning>.monitor-shell,
     .app.app-tab-planning>.work-order-shell,
     .app.app-tab-planning>.timer-shell {
@@ -902,6 +933,7 @@
     .app.app-tab-grades>.side,
     .app.app-tab-grades>.main,
     .app.app-tab-grades>.merger-shell,
+    .app.app-tab-grades>.duplicate-check-shell,
     .app.app-tab-grades>.monitor-shell,
     .app.app-tab-grades>.work-order-shell,
     .app.app-tab-grades>.timer-shell {
@@ -936,6 +968,7 @@
     }
 
     .app.app-tab-seatplan>.merger-shell,
+    .app.app-tab-seatplan>.duplicate-check-shell,
     .app.app-tab-seatplan>.monitor-shell,
     .app.app-tab-seatplan>.work-order-shell,
     .app.app-tab-seatplan>.timer-shell {
@@ -1819,6 +1852,12 @@
       display: none;
     }
 
+    .app.app-tab-work-phase>.merger-shell,
+    .app.app-tab-work-phase>.duplicate-check-shell,
+    .app.app-tab-work-phase>.planning-shell {
+      display: none;
+    }
+
     .app.app-tab-work-phase>.side {
       display: flex;
       grid-column: 1;
@@ -2023,7 +2062,9 @@
     .app.is-collapsing.app-tab-seatplan #seatplan-main-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-seatplan #seatplan-main-host,
     .app.is-collapsing.app-tab-merger .merger-host,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-host {
+    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-host,
+    .app.is-collapsing.app-tab-duplicate-check .duplicate-check-host,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-duplicate-check .duplicate-check-host {
       padding-left: var(--chrome-overlay-clearance);
     }
 
@@ -2179,6 +2220,7 @@
 
     .app.chrome-collapsed:not(.is-expanding)>.main,
     .app.chrome-collapsed:not(.is-expanding)>.merger-shell,
+    .app.chrome-collapsed:not(.is-expanding)>.duplicate-check-shell,
     .app.chrome-collapsed:not(.is-expanding)>.planning-shell,
     .app.chrome-collapsed:not(.is-expanding)>.monitor-shell,
     .app.chrome-collapsed:not(.is-expanding)>.work-order-shell,
@@ -5083,6 +5125,11 @@
         grid-row: auto;
       }
 
+      .app.app-tab-duplicate-check>.duplicate-check-shell {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
       .app.app-tab-planning>.planning-shell {
         grid-column: 1;
         grid-row: auto;
@@ -5322,6 +5369,7 @@
       .side>*,
       .main,
       .merger-shell,
+      .duplicate-check-shell,
       .planning-shell,
       .monitor-shell,
       .work-order-shell,
@@ -5330,7 +5378,9 @@
       #groups-main-host,
       #seatplan-main-host,
       .merger-host,
+      .duplicate-check-host,
       .merger-runtime-root,
+      .duplicate-check-runtime-root,
       .random-picker-shell,
       .random-picker-stage,
       .random-picker-machine,
@@ -5350,6 +5400,7 @@
 
     #planning-host > .planning-frame,
     #merger-host > .merger-frame,
+    #duplicate-check-host > .duplicate-check-frame,
     #seatplan-main-host > .seatplan-frame {
       width: 100%;
       height: 100%;
@@ -5419,6 +5470,8 @@
           aria-selected="false">Gruppen</button>
         <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
           aria-selected="false">Picker</button>
+        <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
+          aria-selected="false">DuplikatCheck</button>
         <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
           aria-selected="false">Arbeitsphase</button>
       </nav>
@@ -5672,6 +5725,9 @@
     </main>
     <section id="merger-shell" class="merger-shell" hidden aria-label="PDF-Tools">
       <div id="merger-host" class="merger-host" aria-label="PDF-Tools"></div>
+    </section>
+    <section id="duplicate-check-shell" class="duplicate-check-shell" hidden aria-label="DuplikatCheck">
+      <div id="duplicate-check-host" class="duplicate-check-host" aria-label="DuplikatCheck"></div>
     </section>
     <section id="planning-shell" class="planning-shell" hidden aria-label="Planung">
       <div id="planning-host" class="planning-host" aria-live="polite"></div>

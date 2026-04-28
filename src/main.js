@@ -10,6 +10,7 @@ import { STUDENTS_SYNC_SOURCE_GROUPS } from './shared/student-sync-bus.js';
 import { createSharedTimerStore } from './shared/timer-store.js';
 import {
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
+  TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
   TAB_MERGER,
@@ -386,7 +387,9 @@ import { applyTheme } from './shell/theme.js';
             const userMessage = tab === TAB_MERGER
               ? 'PDF-Tools konnten nicht initialisiert werden.'
               : (
-                tab === TAB_SEATPLAN
+                tab === TAB_DUPLICATE_CHECK
+                  ? 'DuplikatCheck konnte nicht initialisiert werden.'
+                  : tab === TAB_SEATPLAN
                   ? 'Sitzplan-Modul konnte nicht initialisiert werden.'
                   : 'Planungs-Modul konnte nicht initialisiert werden.'
               );
@@ -5298,6 +5301,7 @@ import { applyTheme } from './shell/theme.js';
         [els.tabSeatplan, TAB_SEATPLAN],
         [els.tabGroups, TAB_GROUPS],
         [els.tabRandomPicker, TAB_RANDOM_PICKER],
+        [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
         [els.tabWorkPhase, TAB_WORK_PHASE],
       ];
       tabBindings.forEach(([button, tabKey]) => {
