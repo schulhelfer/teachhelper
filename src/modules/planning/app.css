@@ -3416,9 +3416,10 @@
           justify-items: center;
           align-self: center;
           padding: 0.7rem 0.85rem;
-          border: 1px dashed rgba(82, 150, 255, 0.4);
+          border: 1px solid transparent;
           border-radius: 16px;
           background: rgba(20, 26, 34, 0.55);
+          box-shadow: inset 0 0 0 1px rgba(82, 150, 255, 0.4);
           text-align: center;
         }
 
@@ -5853,25 +5854,67 @@
         }
 
         .topic-dialog-notes {
+          width: min(488px, calc(100vw - 56px));
+          min-width: min(488px, calc(100vw - 56px));
+          max-width: calc(100vw - 56px);
           min-height: 10rem;
-          resize: vertical;
+          resize: both;
+        }
+
+        #topic-dialog.app-dialog {
+          width: fit-content;
+          min-width: min(520px, calc(100vw - 24px));
+          max-width: calc(100vw - 24px);
         }
 
         #topic-dialog-form {
+          width: max-content;
+          min-width: min(520px, calc(100vw - 24px));
+          max-width: calc(100vw - 24px);
           gap: 0.6rem;
         }
 
         .dialog-header,
         .topic-dialog-header {
+          gap: 0.75rem;
+        }
+
+        .dialog-header {
           display: flex;
           align-items: flex-start;
           justify-content: space-between;
-          gap: 0.75rem;
+        }
+
+        .topic-dialog-header {
+          display: grid;
+          grid-template-columns: 92px minmax(0, 1fr) 92px;
+          align-items: center;
         }
 
         .dialog-header .settings-panel-title,
         .topic-dialog-header .settings-panel-title {
           margin: 0;
+        }
+
+        .topic-dialog-header-spacer {
+          min-width: 0;
+        }
+
+        .topic-dialog-course-pill {
+          justify-self: center;
+          max-width: 100%;
+          min-width: 0;
+          margin: 0;
+          padding: 0.36rem 0.72rem;
+          border-radius: 999px;
+          overflow: hidden;
+          text-align: center;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+          font-size: 0.92rem;
+          font-weight: 700;
+          line-height: 1.2;
+          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.22);
         }
 
         .dialog-actions-top,
@@ -5880,6 +5923,10 @@
           align-items: center;
           gap: 0.4rem;
           flex: 0 0 auto;
+        }
+
+        .topic-dialog-actions-top {
+          justify-self: end;
         }
 
         .dialog-icon-button,

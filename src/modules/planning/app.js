@@ -2113,6 +2113,7 @@
               }
               const isNoLesson = Boolean(course.noLesson);
               course.noLesson = isNoLesson;
+              course.noGrades = Boolean(course.noGrades);
               course.hiddenInSidebar = Boolean(course.hiddenInSidebar);
               if (isNoLesson) {
                 course.previousColor = normalizeHexColor(
@@ -2404,6 +2405,7 @@
               color: normalizeCourseColor(resolvedColor, courseNoLesson),
               previousColor: courseNoLesson ? null : normalizeCourseColor(resolvedColor, false),
               noLesson: courseNoLesson,
+              noGrades: false,
               hiddenInSidebar: Boolean(hiddenInSidebar),
               sortOrder: this.listCourses(yearId).length + 1
             };
@@ -2430,6 +2432,7 @@
             const courseNoLesson = Boolean(noLesson);
             course.name = cleanName;
             course.noLesson = courseNoLesson;
+            course.noGrades = Boolean(course.noGrades);
             if (hiddenInSidebar === undefined) {
               course.hiddenInSidebar = Boolean(course.hiddenInSidebar);
             } else {
@@ -2462,6 +2465,18 @@
               return false;
             }
             course.hiddenInSidebar = Boolean(hiddenInSidebar);
+            this._save();
+            return true;
+          }
+
+          setCourseNoGrades(schoolYearId, courseId, noGrades = true) {
+            const yearId = Number(schoolYearId);
+            const id = Number(courseId);
+            const course = this.state.courses.find((item) => item.id === id && item.schoolYearId === yearId);
+            if (!course) {
+              return false;
+            }
+            course.noGrades = Boolean(noGrades);
             this._save();
             return true;
           }
@@ -3728,7 +3743,8 @@
                   color: course
                     ? normalizeCourseColor(course.color, Boolean(course.noLesson))
                     : "#94A3B8",
-                  noLesson: course ? Boolean(course.noLesson) : false
+                  noLesson: course ? Boolean(course.noLesson) : false,
+                  noGrades: course ? Boolean(course.noGrades) : false
                 };
               })
               .sort((a, b) => {
@@ -3751,7 +3767,8 @@
               color: course
                 ? normalizeCourseColor(course.color, Boolean(course.noLesson))
                 : "#94A3B8",
-              noLesson: course ? Boolean(course.noLesson) : false
+              noLesson: course ? Boolean(course.noLesson) : false,
+              noGrades: course ? Boolean(course.noGrades) : false
             };
           }
 
@@ -4217,6 +4234,7 @@
                 color: normalizeCourseColor(item.color, noLesson),
                 previousColor: item.previousColor == null ? null : normalizeCourseColor(item.previousColor, false),
                 noLesson,
+                noGrades: Boolean(item.noGrades),
                 hiddenInSidebar: Boolean(item.hiddenInSidebar),
                 sortOrder: Number(item.sortOrder || 0)
               };
@@ -4640,6 +4658,7 @@
               gradeVaultDialogError: document.querySelector("#grade-vault-dialog-error"),
               gradeVaultDialogCancel: document.querySelector("#grade-vault-dialog-cancel"),
 
+              sidebarPanel: document.querySelector("#sidebarPanel"),
               weekTable: document.querySelector("#week-table"),
               contextMenu: document.querySelector("#app-context-menu"),
               messageDialog: document.querySelector("#message-dialog"),
@@ -4700,6 +4719,7 @@
               topicDialog: document.querySelector("#topic-dialog"),
               topicDialogForm: document.querySelector("#topic-dialog-form"),
               topicDialogLesson: document.querySelector("#topic-dialog-lesson"),
+              topicDialogCoursePill: document.querySelector("#topic-dialog-course-pill"),
               topicDialogContext: document.querySelector("#topic-dialog-context"),
               topicDialogInput: document.querySelector("#topic-dialog-input"),
               topicDialogNotes: document.querySelector("#topic-dialog-notes"),
@@ -7196,7 +7216,7 @@
             const nowMinutes = now.getHours() * 60 + now.getMinutes();
             const lessons = this.store
               .listLessonsForWeek(year.id, year.startDate, todayIso)
-              .filter((lesson) => !lesson.canceled && !lesson.noLesson && !lesson.isEntfall);
+              .filter((lesson) => !lesson.canceled && this.lessonAllowsGrades(lesson) && !lesson.isEntfall);
             let activeSlot = null;
             let lastSlot = null;
 
@@ -7277,7 +7297,7 @@
             const nowMinutes = now.getHours() * 60 + now.getMinutes();
             const lessons = this.store
               .listLessonsForWeek(year.id, year.startDate, todayIso)
-              .filter((lesson) => !lesson.canceled && !lesson.noLesson && !lesson.isEntfall);
+              .filter((lesson) => !lesson.canceled && this.lessonAllowsGrades(lesson) && !lesson.isEntfall);
             let activeCourseId = null;
             let lastPastCourseId = null;
             let lastPastDateIso = "";
@@ -7353,7 +7373,7 @@
             if (!preferredCourseId) {
               return;
             }
-            const selectableCourses = this.store.listCourses(year.id).filter((course) => !course.noLesson);
+            const selectableCourses = this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course));
             if (selectableCourses.some((course) => Number(course.id) === preferredCourseId)) {
               this.selectedCourseId = preferredCourseId;
             }
@@ -8303,6 +8323,7 @@
               id: course ? Number(course.id) : 0,
               name: course ? String(course.name || "") : "",
               noLesson: course ? Boolean(course.noLesson) : false,
+              noGrades: course ? Boolean(course.noGrades) : false,
               hiddenInSidebar: course ? Boolean(course.hiddenInSidebar) : false,
               color: (course && !course.noLesson)
                 ? normalizeCourseColor(course.color, false)
@@ -8754,6 +8775,32 @@
             }
             if (nextNoLesson && this.selectedCourseId === id) {
               this.selectedCourseId = null;
+            }
+            this.renderAll();
+          }
+
+          async toggleCourseNoGradesMode(courseId) {
+            const year = this.activeSchoolYear;
+            const id = Number(courseId || 0);
+            if (!year || !id) {
+              return;
+            }
+            const course = this.store.listCourses(year.id).find((item) => item.id === id);
+            if (!course) {
+              return;
+            }
+            if (!this.gradeVaultSession.planningPublicLoaded) {
+              await this.ensurePlanningPublicLoaded();
+            }
+            const nextNoGrades = !course.noGrades;
+            const ok = this.store.setCourseNoGrades(year.id, id, nextNoGrades);
+            if (!ok) {
+              await this.showInfoMessage("Die Noten-Einstellung konnte nicht gespeichert werden.");
+              return;
+            }
+            if (nextNoGrades && this.isGradesTopTabActive() && Number(this.selectedCourseId || 0) === id) {
+              this.selectedCourseId = null;
+              this.clearActiveGradeAssessment();
             }
             this.renderAll();
           }
@@ -9421,14 +9468,20 @@
               ? (firstHour === lastHour ? `${firstHour}. Stunde` : `${firstHour}.-${lastHour}. Stunde`)
               : "Unterrichtsstunde";
             const dayLabel = DAYS_SHORT[Number(lesson.dayOfWeek) - 1] || "";
+            const courseName = String(lesson.courseName || "").trim();
+            const courseColor = normalizeCourseColor(lesson.color, Boolean(lesson.noLesson));
             const contextParts = [
-              String(lesson.courseName || "").trim(),
               [dayLabel, formatDate(lesson.lessonDate)].filter(Boolean).join(", "),
               hourLabel
             ].filter(Boolean);
             this.pendingTopicLessonId = lesson.id;
             if (this.refs.topicDialogLesson) {
               this.refs.topicDialogLesson.value = String(lesson.id);
+            }
+            if (this.refs.topicDialogCoursePill) {
+              this.refs.topicDialogCoursePill.textContent = courseName || "Kurs";
+              this.refs.topicDialogCoursePill.style.backgroundColor = courseColor;
+              this.refs.topicDialogCoursePill.style.color = readableTextColor(courseColor);
             }
             if (this.refs.topicDialogContext) {
               this.refs.topicDialogContext.textContent = contextParts.join(" · ");
@@ -9449,6 +9502,11 @@
             this.pendingTopicLessonId = null;
             if (this.refs.topicDialogLesson) {
               this.refs.topicDialogLesson.value = "";
+            }
+            if (this.refs.topicDialogCoursePill) {
+              this.refs.topicDialogCoursePill.textContent = "";
+              this.refs.topicDialogCoursePill.style.backgroundColor = "";
+              this.refs.topicDialogCoursePill.style.color = "";
             }
             if (this.refs.topicDialogContext) {
               this.refs.topicDialogContext.textContent = "";
@@ -10755,6 +10813,15 @@
               });
             }
 
+            this.refs.sidebarPanel?.addEventListener("contextmenu", (event) => {
+              if (event.defaultPrevented) {
+                return;
+              }
+              if (!this.openSidebarEmptyContextMenu(event)) {
+                this.hideContextMenu();
+              }
+            });
+
             this.refs.sidebarCourseList.addEventListener("click", (event) => {
               const addButton = event.target.closest("button[data-add-course='1']");
               if (addButton) {
@@ -10790,13 +10857,21 @@
                 return;
               }
               const row = event.target.closest("li[data-course-id]");
-              if (!row || this.locked) {
+              if (!row) {
+                if (!this.openSidebarEmptyContextMenu(event)) {
+                  this.hideContextMenu();
+                }
+                return;
+              }
+              if (this.locked) {
                 this.hideContextMenu();
                 return;
               }
               const courseId = Number(row.dataset.courseId || 0);
               if (!courseId) {
-                this.hideContextMenu();
+                if (!this.openSidebarEmptyContextMenu(event)) {
+                  this.hideContextMenu();
+                }
                 return;
               }
               if (row.dataset.noLesson !== "1") {
@@ -10998,11 +11073,6 @@
             this.refs.topicDialog.addEventListener("cancel", (event) => {
               event.preventDefault();
               this.closeTopicDialog();
-            });
-            this.refs.topicDialog.addEventListener("click", (event) => {
-              if (event.target === this.refs.topicDialog) {
-                this.closeTopicDialog();
-              }
             });
 
             [this.refs.gradesTable, this.refs.gradesEntryContent].forEach((root) => {
@@ -11247,7 +11317,9 @@
               this.store.setActiveSchoolYear(Number(this.refs.schoolYearSelect.value));
               this.weekStartIso = this._clampWeekStart(this.weekStartIso);
               this.selectedLessonId = null;
-              const courses = this.store.listCourses(this.activeSchoolYear.id).filter((course) => !course.noLesson);
+              const courses = this.store
+                .listCourses(this.activeSchoolYear.id)
+                .filter((course) => this.isGradesTopTabActive() ? this.courseAllowsGrades(course) : !course.noLesson);
               if (!courses.some((course) => course.id === this.selectedCourseId)) {
                 this.selectedCourseId = courses.length > 0 ? courses[0].id : null;
               }
@@ -12176,6 +12248,8 @@
                 event.target && event.target.closest && event.target.closest("tr[data-lesson-id]")
               ) || Boolean(
                 event.target && event.target.closest && event.target.closest("#sidebar-course-list li[data-course-id]")
+              ) || Boolean(
+                this.isSidebarEmptyContextTarget(event.target)
               );
               if (!isMenuAnchor) {
                 this.hideContextMenu();
@@ -13330,6 +13404,68 @@
             });
           }
 
+          isSidebarEmptyContextTarget(target) {
+            const element = this._getEventTargetElement(target);
+            if (!element || !this.refs.sidebarPanel || !this.refs.sidebarPanel.contains(element)) {
+              return false;
+            }
+            if (
+              element.closest(
+                "button, input, textarea, select, a, label, [contenteditable='true'], .sidebar-header, .sidebar-controls, .sidebar-footer-actions"
+              )
+            ) {
+              return false;
+            }
+            const courseRow = element.closest("#sidebar-course-list li[data-course-id]");
+            if (courseRow && Number(courseRow.dataset.courseId || 0)) {
+              return false;
+            }
+            if (element.closest("#sidebar-course-list li[data-add-item='1']")) {
+              return false;
+            }
+            return Boolean(element.closest("#sidebarPanel, .sidebar-section, #sidebar-course-list"));
+          }
+
+          openSidebarEmptyContextMenu(event) {
+            if (!event || event.button !== 2 || this.locked || !this.isSidebarEmptyContextTarget(event.target)) {
+              return false;
+            }
+            event.preventDefault();
+            this.openSidebarSettingsContextMenu(event.clientX, event.clientY);
+            return true;
+          }
+
+          openSidebarSettingsContextMenu(clientX, clientY) {
+            const showHidden = Boolean(
+              this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
+            );
+            this.showContextMenu(
+              [
+                {
+                  label: `${showHidden ? "✓ " : ""}Ausgeblendete Kurse in Randleiste anzeigen`,
+                  handler: async () => {
+                    await this.setShowHiddenSidebarCourses(!showHidden);
+                  }
+                }
+              ],
+              clientX,
+              clientY
+            );
+          }
+
+          async setShowHiddenSidebarCourses(showHidden) {
+            if (!this.gradeVaultSession.planningPublicLoaded) {
+              await this.ensurePlanningPublicLoaded();
+            }
+            const nextValue = Boolean(showHidden);
+            this.store.setSetting("showHiddenSidebarCourses", nextValue);
+            if (this.settingsDraft) {
+              this.settingsDraft.showHiddenSidebarCourses = nextValue;
+            }
+            this.refreshSettingsDirtyState();
+            this.renderAll();
+          }
+
           openCourseContextMenu(courseId, clientX, clientY) {
             const year = this.activeSchoolYear;
             const id = Number(courseId || 0);
@@ -13340,7 +13476,7 @@
             if (!course) {
               return;
             }
-            const canEditGrades = !course.noLesson;
+            const canEditGrades = this.courseAllowsGrades(course);
             const isGradesView = this.isGradesTopTabActive();
             const items = [
               {
@@ -13360,6 +13496,12 @@
                 label: course.noLesson ? "Als Termin mit Unterricht" : "Als Termin ohne Unterricht",
                 handler: async () => {
                   await this.toggleCourseLessonMode(id);
+                }
+              },
+              {
+                label: course.noGrades ? "Als Kurs mit Noten" : "Als Kurs ohne Noten",
+                handler: async () => {
+                  await this.toggleCourseNoGradesMode(id);
                 }
               },
               {
@@ -13629,7 +13771,7 @@
             this.refs.gradesEntryContent.innerHTML = "";
             const year = this.activeSchoolYear;
             const availableCourses = year
-              ? this.store.listCourses(year.id).filter((item) => !item.noLesson)
+              ? this.store.listCourses(year.id).filter((item) => this.courseAllowsGrades(item))
               : [];
             const entryCourse = availableCourses.find((item) => item.id === this.selectedCourseId) || availableCourses[0] || null;
             if (entryCourse && Number(this.selectedCourseId || 0) !== Number(entryCourse.id)) {
@@ -13849,7 +13991,7 @@
             }
             const year = this.activeSchoolYear;
             const allCourses = year ? this.store.listCourses(year.id) : [];
-            const course = allCourses.find((item) => item.id === this.selectedCourseId && !item.noLesson) || null;
+            const course = allCourses.find((item) => item.id === this.selectedCourseId && this.courseAllowsGrades(item)) || null;
             const isVaultUnlocked = this.isGradeVaultUnlocked();
             const courseLoaded = course ? this.isGradeCourseLoaded(course.id) : false;
             if (course && isVaultUnlocked && !courseLoaded && Number(this.gradeVaultSession.loadingGradeCourseId || 0) !== Number(course.id)) {
@@ -14478,7 +14620,7 @@
             const year = this.activeSchoolYear;
             const courseId = Number(course?.id || this.selectedCourseId || 0);
             const activeCourse = course
-              || (year ? this.store.listCourses(year.id).find((item) => item.id === courseId && !item.noLesson) || null : null);
+              || (year ? this.store.listCourses(year.id).find((item) => item.id === courseId && this.courseAllowsGrades(item)) || null : null);
             if (!activeCourse) {
               return;
             }
@@ -14850,7 +14992,7 @@
             if (!year || !selectedCourseId) {
               return null;
             }
-            const course = this.store.listCourses(year.id).find((item) => Number(item.id) === selectedCourseId && !item.noLesson);
+            const course = this.store.listCourses(year.id).find((item) => Number(item.id) === selectedCourseId && this.courseAllowsGrades(item));
             return course ? Number(course.id) : null;
           }
 
@@ -14865,7 +15007,7 @@
             this.store.ensureLessonsForYear(year.id);
             const todayIso = toIsoDate(new Date());
             const lessons = this.store.listLessonsForWeek(year.id, year.startDate, todayIso, resolvedCourseId)
-              .filter((lesson) => !lesson.canceled && !lesson.noLesson && !lesson.isEntfall);
+              .filter((lesson) => !lesson.canceled && this.lessonAllowsGrades(lesson) && !lesson.isEntfall);
             let lastLessonDateIso = null;
             for (const lesson of lessons) {
               const lessonDate = String(lesson.lessonDate || "").trim();
@@ -17774,7 +17916,7 @@
           openGradesEntryFromLesson(lesson) {
             const courseId = Number(lesson?.courseId || 0);
             const lessonDate = String(lesson?.lessonDate || "").trim();
-            if (!courseId || !lessonDate) {
+            if (!courseId || !lessonDate || !this.lessonAllowsGrades(lesson)) {
               return false;
             }
             this.hideGradePicker();
@@ -17812,6 +17954,13 @@
           openGradesOverviewForCourse(courseId, options = {}) {
             const normalizedCourseId = Number(courseId || 0);
             if (!normalizedCourseId) {
+              return false;
+            }
+            const year = this.activeSchoolYear;
+            const course = year
+              ? this.store.listCourses(year.id).find((item) => Number(item.id) === normalizedCourseId)
+              : null;
+            if (!this.courseAllowsGrades(course)) {
               return false;
             }
             this.hideGradePicker();
@@ -17956,6 +18105,9 @@
               return false;
             }
             const course = this.getCourseForSeatplan(courseKey);
+            if (!this.courseAllowsGrades(course)) {
+              return false;
+            }
             const plan = this.store.getGradeSeatPlan(courseKey);
             const lessonId = Number(lesson?.id || 0);
             const lessonDate = String(lesson?.lessonDate || "").trim();
@@ -17994,6 +18146,11 @@
             if (!normalizedLessonId) {
               return false;
             }
+            const lesson = this.store.getLessonById(normalizedLessonId);
+            const courseId = Number(lesson?.courseId || 0);
+            if (!lesson || !courseId || !this.lessonAllowsGrades(lesson)) {
+              return false;
+            }
             if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
               this.queueGradeVaultContinuation({
                 type: "seatplan",
@@ -18001,11 +18158,6 @@
               });
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return true;
-            }
-            const lesson = this.store.getLessonById(normalizedLessonId);
-            const courseId = Number(lesson?.courseId || 0);
-            if (!lesson || !courseId) {
-              return false;
             }
             try {
               await this.ensureGradeCourseLoaded(courseId);
@@ -18052,6 +18204,9 @@
               return null;
             }
             const course = this.getCourseForSeatplan(courseKey);
+            if (!this.courseAllowsGrades(course)) {
+              return null;
+            }
             const categories = this.getGradesEntryStructureCategories(courseKey);
             if (!categories.length) {
               return null;
@@ -18105,6 +18260,15 @@
                 courseId,
                 ok: false,
                 message: "Noteneingabe konnte nicht vorbereitet werden."
+              });
+              return false;
+            }
+            if (!this.courseAllowsGrades(this.getCourseForSeatplan(courseId))) {
+              this.dispatchCourseSeatplanGradeConfigResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Dieser Kurs ist ohne Noten markiert."
               });
               return false;
             }
@@ -18166,6 +18330,15 @@
                 courseId,
                 ok: false,
                 message: "Noten konnten nicht gespeichert werden."
+              });
+              return false;
+            }
+            if (!this.courseAllowsGrades(this.getCourseForSeatplan(courseId))) {
+              this.dispatchCourseSeatplanGradeSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Dieser Kurs ist ohne Noten markiert."
               });
               return false;
             }
@@ -18310,6 +18483,15 @@
                 courseId,
                 ok: false,
                 message: "Kurs-Sitzplan konnte nicht gespeichert werden."
+              });
+              return false;
+            }
+            if (!this.courseAllowsGrades(this.getCourseForSeatplan(courseId))) {
+              this.dispatchCourseSeatplanSaveResult({
+                requestId,
+                courseId,
+                ok: false,
+                message: "Dieser Kurs ist ohne Noten markiert."
               });
               return false;
             }
@@ -18582,6 +18764,9 @@
             const lookup = new Map();
             const courseIds = new Set();
             lessons.forEach((lesson) => {
+              if (!this.lessonAllowsGrades(lesson)) {
+                return;
+              }
               const courseId = Number(lesson?.courseId || 0);
               if (courseId > 0) {
                 courseIds.add(courseId);
@@ -18605,7 +18790,7 @@
           getGradeEntryTriggerStateForLesson(lesson, assessmentLookup = null) {
             const courseId = Number(lesson?.courseId || 0);
             const lessonDate = String(lesson?.lessonDate || "").trim();
-            if (!this.hasGradeVaultUnlockConfig() || !courseId || !lessonDate) {
+            if (!this.lessonAllowsGrades(lesson) || !this.hasGradeVaultUnlockConfig() || !courseId || !lessonDate) {
               return null;
             }
             if (!this.isGradeVaultUnlocked()) {
@@ -18636,6 +18821,10 @@
             if (!normalizedLessonId) {
               return false;
             }
+            const lesson = this.store.getLessonById(normalizedLessonId);
+            if (!lesson || !this.lessonAllowsGrades(lesson)) {
+              return false;
+            }
             const normalizedTriggerMode = String(triggerMode || "entry").trim() || "entry";
             if (normalizedTriggerMode === "unlock" || !this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
               this.queueGradeVaultContinuation({
@@ -18645,10 +18834,6 @@
               });
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return true;
-            }
-            const lesson = this.store.getLessonById(normalizedLessonId);
-            if (!lesson) {
-              return false;
             }
             const courseId = Number(lesson.courseId || 0);
             if (!courseId) {
@@ -18833,6 +19018,14 @@
             return this.shellTabContext === "grades";
           }
 
+          courseAllowsGrades(course) {
+            return Boolean(course) && !course.noLesson && !course.noGrades;
+          }
+
+          lessonAllowsGrades(lesson) {
+            return Boolean(lesson) && !lesson.noLesson && !lesson.noGrades;
+          }
+
           renderSchoolYearSelect() {
             const years = this.store.listSchoolYears();
             const active = this.activeSchoolYear;
@@ -18863,7 +19056,7 @@
               this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
             );
             const sidebarCourses = isGradesView
-              ? allCourses.filter((course) => !course.noLesson)
+              ? allCourses.filter((course) => this.courseAllowsGrades(course))
               : allCourses;
             const courses = showHidden
               ? sidebarCourses
@@ -18873,7 +19066,9 @@
               ? courses.filter((course) => course.hiddenInSidebar)
               : [];
             const orderedCourses = visibleCourses.concat(hiddenCourses);
-            const selectableCourses = courses.filter((course) => !course.noLesson);
+            const selectableCourses = isGradesView
+              ? courses.filter((course) => this.courseAllowsGrades(course))
+              : courses.filter((course) => !course.noLesson);
 
             if (!selectableCourses.some((course) => course.id === this.selectedCourseId)) {
               this.selectedCourseId = selectableCourses.length > 0 ? selectableCourses[0].id : null;
@@ -19706,6 +19901,7 @@
               const anyCanceled = blockLessons.some((entry) => entry.canceled);
               const partialCanceled = anyCanceled && !allCanceled;
               const isNoLesson = Boolean(topLesson.noLesson);
+              const isNoGrades = Boolean(topLesson.noGrades);
               const isEntfall = blockLessons.some((entry) => entry.isEntfall);
               const isWritten = blockLessons.some((entry) => entry.isWrittenExam);
               const topics = new Set(
@@ -19760,6 +19956,7 @@
                 allCanceled,
                 partialCanceled,
                 isNoLesson,
+                isNoGrades,
                 isEntfall,
                 isWritten,
                 hasNotes,
@@ -19944,6 +20141,7 @@
                   const seatplanTriggerVisible = Boolean(
                     block.selectable
                     && !block.isNoLesson
+                    && !block.isNoGrades
                     && Number(block.courseId || 0) > 0
                     && this.hasGradeVaultUnlockConfig()
                   );
@@ -19971,7 +20169,7 @@
                     });
                     chip.append(seatplanTrigger);
                   }
-                  const gradeEntryState = !block.isNoLesson
+                  const gradeEntryState = !block.isNoLesson && !block.isNoGrades
                     ? this.getGradeEntryTriggerStateForLesson(block.topLesson, gradeAssessmentLookup)
                     : null;
                   if (gradeEntryState) {
