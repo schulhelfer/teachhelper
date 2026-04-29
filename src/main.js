@@ -22,7 +22,7 @@ import {
 import { applyTheme } from './shell/theme.js';
 
     (function () {
-      const { appEl, els, monitorModeButtons, monitorLights, themeColorMeta } = createAppDom(document);
+      const { appEl, els, monitorLights, themeColorMeta } = createAppDom(document);
       if (!appEl) {
         return;
       }
@@ -2098,30 +2098,33 @@ import { applyTheme } from './shell/theme.js';
         el.className = `control-status is-${normalized}`;
       }
       function renderWorkOrderTimerButtonsState() {
-        const toggleButton = els.timerWorkOrderToggle;
-        if (!toggleButton) return;
         timerUiState = state.workOrderAlarmed
           ? TIMER_UI_STATE.ALARM
           : (hasWorkOrderTiming() ? TIMER_UI_STATE.RUNNING : TIMER_UI_STATE.READY);
         const active = timerUiState !== TIMER_UI_STATE.READY;
-        toggleButton.disabled = false;
-        toggleButton.textContent = '⏰';
-        toggleButton.classList.toggle('is-running', active);
-        toggleButton.classList.toggle('is-off', active);
-        toggleButton.setAttribute('aria-label', active ? 'Arbeitszeit beenden' : 'Arbeitszeit starten');
-        toggleButton.setAttribute('title', active ? 'Arbeitszeit beenden' : 'Arbeitszeit starten');
+        appEl.classList.toggle('work-order-timer-inactive', !active);
+        const startButtons = [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean);
+        const stopButtons = [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean);
+        startButtons.forEach((button) => {
+          button.disabled = active;
+          button.textContent = '⏰';
+          button.classList.toggle('is-running', false);
+          button.classList.toggle('is-off', false);
+          button.setAttribute('aria-label', 'Arbeitszeit starten');
+          button.setAttribute('title', 'Arbeitszeit starten');
+        });
+        stopButtons.forEach((button) => {
+          button.disabled = !active;
+          button.textContent = '⏰';
+          button.classList.toggle('is-running', active);
+          button.classList.toggle('is-off', true);
+          button.setAttribute('aria-label', 'Arbeitszeit stoppen');
+          button.setAttribute('title', 'Arbeitszeit stoppen');
+        });
         const timerStatusText = timerUiState === TIMER_UI_STATE.ALARM
           ? 'Status: alarm'
           : (timerUiState === TIMER_UI_STATE.RUNNING ? 'Status: läuft' : 'Status: bereit');
         renderControlStatus(els.timerControlStatus, timerUiState, timerStatusText);
-        if (els.workPhaseTimerCollapsed) {
-          const running = active;
-          els.workPhaseTimerCollapsed.textContent = '⏰';
-          els.workPhaseTimerCollapsed.classList.toggle('is-off', running);
-          els.workPhaseTimerCollapsed.disabled = false;
-          els.workPhaseTimerCollapsed.setAttribute('aria-label', running ? 'Arbeitszeit beenden' : 'Arbeitszeit starten');
-          els.workPhaseTimerCollapsed.setAttribute('title', running ? 'Arbeitszeit beenden' : 'Arbeitszeit starten');
-        }
       }
       function resetWorkOrderTimerDisplay() {
         if (els.workOrderCountdown) {
@@ -2487,11 +2490,12 @@ import { applyTheme } from './shell/theme.js';
         const container = els.workOrderDisplay;
         if (!container) return;
         const text = typeof state.workOrder === 'string' ? state.workOrder : '';
+        const hasContent = text.trim().length > 0;
+        appEl.classList.toggle('work-order-empty', !hasContent);
         if (els.workOrderTextarea && document.activeElement !== els.workOrderTextarea && els.workOrderTextarea.value !== text) {
           els.workOrderTextarea.value = text;
         }
         if (els.workOrderBody) {
-          const hasContent = text.trim().length > 0;
           els.workOrderBody.textContent = hasContent ? text : '';
         }
         container.hidden = false;
@@ -3966,21 +3970,15 @@ import { applyTheme } from './shell/theme.js';
         updateWorkOrderAlert(false);
         renderWorkOrder();
       }
-      els.timerWorkOrderToggle?.addEventListener('click', () => {
-        const active = hasWorkOrderTiming() || state.workOrderAlarmed;
-        if (active) {
-          stopWorkOrderSession();
-          return;
-        }
-        startWorkOrderTimer();
-      });
-      els.workPhaseTimerCollapsed?.addEventListener('click', () => {
-        const active = hasWorkOrderTiming() || state.workOrderAlarmed;
-        if (active) {
-          stopWorkOrderSession();
-        } else {
+      [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean).forEach((button) => {
+        button.addEventListener('click', () => {
           startWorkOrderTimer();
-        }
+        });
+      });
+      [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean).forEach((button) => {
+        button.addEventListener('click', () => {
+          stopWorkOrderSession();
+        });
       });
       const toggleTimerWarningTone = (toneKey) => {
         if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
@@ -4069,10 +4067,6 @@ import { applyTheme } from './shell/theme.js';
       renderTimerWarningToneState();
       renderTimerSecondsToggleState();
       const MonitorModule = (() => {
-        const MODES = Object.freeze({
-          stillarbeit: { label: 'Stillarbeit', yellow: 45, red: 60 },
-          partnerarbeit: { label: 'Partnerarbeit', yellow: 60, red: 70 },
-        });
         const WARNING_TONES = Object.freeze({
           yellow: {
             intervalMs: 1200,
@@ -4094,10 +4088,11 @@ import { applyTheme } from './shell/theme.js';
         const DB_FLOOR = 30;
         const DB_CEILING = 100;
         const DB_OFFSET = 90;
+        const DEFAULT_THRESHOLDS = Object.freeze({ yellow: 60, red: 70 });
+        const MIN_THRESHOLD_GAP = 1;
         const MONITOR_ASSIGNMENT_PLACEHOLDER = 'Arbeitsauftrag';
 
-        let activeMode = 'stillarbeit';
-        let thresholds = { yellow: MODES[activeMode].yellow, red: MODES[activeMode].red };
+        let thresholds = { ...DEFAULT_THRESHOLDS };
         let audioContext;
         let analyser;
         let source;
@@ -4296,31 +4291,29 @@ import { applyTheme } from './shell/theme.js';
         };
 
         const renderMicControlState = () => {
-          const toggleButton = els.monitorMicToggleButton;
-          if (!toggleButton) return;
           const effectiveState = getEffectiveMicUiState();
           const activeMic = effectiveState === MIC_UI_STATE.ACTIVE;
           const busyMic = effectiveState === MIC_UI_STATE.STARTING;
-          toggleButton.textContent = '🚦';
-          toggleButton.classList.toggle('is-running', activeMic);
-          toggleButton.classList.toggle('is-off', activeMic);
-          toggleButton.setAttribute('aria-label', activeMic ? 'Lautstärkeüberwachung beenden' : 'Lautstärkeüberwachung starten');
-          toggleButton.setAttribute('title', activeMic ? 'Lautstärkeüberwachung beenden' : 'Lautstärkeüberwachung starten');
-          if (effectiveState === MIC_UI_STATE.UNSUPPORTED) {
-            toggleButton.disabled = true;
-          } else if (effectiveState === MIC_UI_STATE.STARTING) {
-            toggleButton.disabled = true;
-          } else {
-            toggleButton.disabled = false;
-          }
+          const unsupportedMic = effectiveState === MIC_UI_STATE.UNSUPPORTED;
+          const startButtons = [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean);
+          const stopButtons = [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean);
+          startButtons.forEach((button) => {
+            button.textContent = '🚦';
+            button.classList.toggle('is-running', false);
+            button.classList.toggle('is-off', false);
+            button.disabled = unsupportedMic || busyMic || activeMic;
+            button.setAttribute('aria-label', 'Lautstärkeüberwachung starten');
+            button.setAttribute('title', 'Lautstärkeüberwachung starten');
+          });
+          stopButtons.forEach((button) => {
+            button.textContent = '🚦';
+            button.classList.toggle('is-running', activeMic);
+            button.classList.toggle('is-off', true);
+            button.disabled = unsupportedMic || busyMic || !activeMic;
+            button.setAttribute('aria-label', 'Lautstärkeüberwachung stoppen');
+            button.setAttribute('title', 'Lautstärkeüberwachung stoppen');
+          });
           renderControlStatus(els.monitorControlStatus, effectiveState, getMicStatusText(effectiveState));
-          if (els.workPhaseMonitorCollapsed) {
-            els.workPhaseMonitorCollapsed.textContent = '🚦';
-            els.workPhaseMonitorCollapsed.classList.toggle('is-off', activeMic);
-            els.workPhaseMonitorCollapsed.disabled = effectiveState === MIC_UI_STATE.UNSUPPORTED || busyMic;
-            els.workPhaseMonitorCollapsed.setAttribute('aria-label', activeMic ? 'Lautstärkeüberwachung beenden' : 'Lautstärkeüberwachung starten');
-            els.workPhaseMonitorCollapsed.setAttribute('title', activeMic ? 'Lautstärkeüberwachung beenden' : 'Lautstärkeüberwachung starten');
-          }
         };
 
         const syncWarningToneLoop = () => {
@@ -4347,20 +4340,42 @@ import { applyTheme } from './shell/theme.js';
           void loop();
         };
 
-        const renderModeState = () => {
-          monitorModeButtons.forEach((button) => {
-            const selected = button.dataset.monitorMode === activeMode;
-            button.classList.toggle('active', selected);
-            button.setAttribute('aria-pressed', selected ? 'true' : 'false');
-          });
+        const clampThresholdValue = (value, min, max, fallback) => {
+          const parsed = Math.round(Number(value));
+          if (!Number.isFinite(parsed)) return fallback;
+          return Math.min(Math.max(parsed, min), max);
         };
 
-        const applyMode = (modeKey) => {
-          const mode = MODES[modeKey];
-          if (!mode) return;
-          activeMode = modeKey;
-          thresholds = { yellow: mode.yellow, red: mode.red };
-          renderModeState();
+        const renderThresholdControls = () => {
+          if (els.monitorYellowThresholdInput) {
+            els.monitorYellowThresholdInput.value = String(thresholds.yellow);
+          }
+          if (els.monitorRedThresholdInput) {
+            els.monitorRedThresholdInput.value = String(thresholds.red);
+          }
+          if (els.monitorYellowThresholdValue) {
+            els.monitorYellowThresholdValue.textContent = `${thresholds.yellow} dB`;
+          }
+          if (els.monitorRedThresholdValue) {
+            els.monitorRedThresholdValue.textContent = `${thresholds.red} dB`;
+          }
+        };
+
+        const setMonitorThreshold = (thresholdKey, value) => {
+          if (thresholdKey === 'yellow') {
+            const yellow = clampThresholdValue(value, DB_FLOOR, DB_CEILING - MIN_THRESHOLD_GAP, DEFAULT_THRESHOLDS.yellow);
+            thresholds = {
+              yellow,
+              red: Math.max(thresholds.red, yellow + MIN_THRESHOLD_GAP),
+            };
+          } else if (thresholdKey === 'red') {
+            const red = clampThresholdValue(value, DB_FLOOR + MIN_THRESHOLD_GAP, DB_CEILING, DEFAULT_THRESHOLDS.red);
+            thresholds = {
+              yellow: Math.min(thresholds.yellow, red - MIN_THRESHOLD_GAP),
+              red,
+            };
+          }
+          renderThresholdControls();
         };
 
         const monitorLevel = () => {
@@ -4488,7 +4503,7 @@ import { applyTheme } from './shell/theme.js';
         };
 
         const init = () => {
-          renderModeState();
+          renderThresholdControls();
           renderWarningToneState();
           renderMicControlState();
           renderTimer();
@@ -4500,8 +4515,10 @@ import { applyTheme } from './shell/theme.js';
             window.clearInterval(monitorTickId);
           }
           monitorTickId = window.setInterval(renderTimer, 250);
-          monitorModeButtons.forEach((button) => {
-            button.addEventListener('click', () => applyMode(button.dataset.monitorMode));
+          els.monitorThresholdInputs?.forEach((input) => {
+            input.addEventListener('input', () => {
+              setMonitorThreshold(input.dataset.monitorThreshold, input.value);
+            });
           });
           els.monitorWarningToneButtons?.forEach((button) => {
             button.addEventListener('click', () => {
@@ -4515,21 +4532,15 @@ import { applyTheme } from './shell/theme.js';
               syncWarningToneLoop();
             });
           });
-          els.monitorMicToggleButton?.addEventListener('click', () => {
-            const isActive = getEffectiveMicUiState() === MIC_UI_STATE.ACTIVE;
-            if (isActive) {
-              void stopMeasurement();
-              return;
-            }
-            void startMeasurement();
-          });
-          els.workPhaseMonitorCollapsed?.addEventListener('click', () => {
-            const isActive = els.workPhaseMonitorCollapsed?.classList.contains('is-off');
-            if (isActive) {
-              void stopMeasurement();
-            } else {
+          [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean).forEach((button) => {
+            button.addEventListener('click', () => {
               void startMeasurement();
-            }
+            });
+          });
+          [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean).forEach((button) => {
+            button.addEventListener('click', () => {
+              void stopMeasurement();
+            });
           });
         };
 

@@ -2180,6 +2180,10 @@
       line-height: 1;
     }
 
+    .work-phase-collapsed-action.work-phase-collapsed-stop {
+      left: calc(env(safe-area-inset-left, 0px) + var(--app-shell-padding) + var(--app-header-padding-x) + var(--chrome-toggle-size) + 10px);
+    }
+
     .work-phase-collapsed-action.work-phase-collapsed-monitor {
       top: calc(var(--chrome-floating-top) + var(--chrome-toggle-size) + 10px);
     }
@@ -2246,12 +2250,25 @@
       grid-template-rows: minmax(0, 0.95fr) minmax(0, 1.05fr);
     }
 
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty {
+      grid-template-rows: minmax(0, 1fr);
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive {
+      grid-template-columns: 1fr;
+      grid-template-rows: minmax(0, 1fr);
+    }
+
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-order-shell {
       grid-column: 1 / span 3 !important;
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-order-shell {
       grid-row: 1 !important;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .work-order-shell {
+      display: none;
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .monitor-shell {
@@ -2271,6 +2288,15 @@
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .timer-shell {
       grid-row: 2 !important;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-timer-inactive .timer-shell {
+      display: none;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .monitor-shell,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .timer-shell {
+      grid-row: 1 !important;
     }
 
     .app.is-collapsing.app-tab-work-phase .monitor-shell,
@@ -2367,6 +2393,46 @@
       align-self: center;
       border-width: 4px;
       box-shadow: inset 0 0 24px rgba(0, 0, 0, 0.45);
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-shell {
+      grid-column: 1 / -1 !important;
+      grid-row: 1 !important;
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      right: auto;
+      bottom: auto;
+      transform: translate(-50%, -50%);
+      width: fit-content;
+      min-width: 0;
+      max-width: calc(100vw - 64px);
+      height: fit-content;
+      max-height: none;
+      padding: clamp(28px, 4vh, 52px);
+      overflow: visible;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-panel,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-status-layout {
+      width: fit-content;
+      height: fit-content;
+      max-height: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-ampel {
+      --monitor-light-size: clamp(150px, min(18vw, 18vh), 218px);
+      min-width: calc(var(--monitor-light-size) + clamp(72px, 6.2vw, 116px));
+      max-width: min(100%, calc(var(--monitor-light-size) + clamp(92px, 7.6vw, 142px)));
+      min-height: calc((var(--monitor-light-size) * 3) + (clamp(16px, 2vh, 24px) * 2) + (clamp(24px, 2.8vh, 36px) * 2));
+      height: fit-content;
+      max-height: calc(100dvh - 112px);
+      padding: clamp(24px, 3vh, 38px) clamp(28px, 3.6vw, 52px);
+      gap: clamp(16px, 2vh, 24px);
+      overflow: visible;
     }
 
     .app.is-collapsing.app-tab-work-phase .work-order-region,
@@ -2772,7 +2838,8 @@
       color: #fed7aa;
     }
 
-    .monitor-mic-button[disabled] {
+    .monitor-mic-button[disabled],
+    .timer-work-order-actions>button[disabled] {
       opacity: 0.72;
       cursor: not-allowed;
       filter: saturate(0.75);
@@ -2830,53 +2897,49 @@
       padding: 0;
     }
 
-    .monitor-controls .mode-row {
+    .monitor-controls .monitor-thresholds {
       display: grid;
       grid-template-columns: minmax(0, 1fr);
-      gap: 8px;
+      gap: 12px;
       align-items: stretch;
     }
 
-    .monitor-controls .mode-buttons {
+    .monitor-threshold-field {
       display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 8px;
-      justify-content: center;
-    }
-
-    .monitor-controls .mode-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      gap: 1px;
-      border: 1px solid rgba(148, 163, 184, 0.35);
-      border-radius: 12px;
-      background: linear-gradient(180deg, #6b7280, #4b5563);
-      color: #f8fafc;
-      min-height: 42px;
-      font-size: 15px;
-      font-weight: 700;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.45);
-      letter-spacing: 0.2px;
-      padding: 8px 10px;
+      gap: 7px;
       min-width: 0;
     }
 
-    .monitor-mode-emoji {
-      display: inline-block;
-      line-height: 1;
-      font-size: 28px;
+    .monitor-threshold-field span {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.2px;
+      color: var(--text);
     }
 
-    .monitor-mode-emoji.is-mirrored {
-      transform: scaleX(-1);
+    .monitor-threshold-field output {
+      min-width: 48px;
+      text-align: right;
+      color: #bfdbfe;
     }
 
-    .monitor-controls .mode-button.active {
-      border-color: rgba(226, 232, 240, 0.85);
-      filter: brightness(1.05);
-      box-shadow: 0 0 0 2px rgba(226, 232, 240, 0.2), 0 10px 24px rgba(15, 23, 42, 0.5);
+    .monitor-threshold-field input[type="range"] {
+      width: 100%;
+      min-width: 0;
+      accent-color: #60a5fa;
+      cursor: pointer;
+    }
+
+    #monitor-yellow-threshold {
+      accent-color: #facc15;
+    }
+
+    #monitor-red-threshold {
+      accent-color: #ef4444;
     }
 
     .tone-toggle-button {
@@ -3663,8 +3726,10 @@
       box-shadow: 0 8px 20px rgba(15, 23, 42, 0.45);
     }
 
-    #monitor-mic-toggle,
-    #timer-work-order-toggle {
+    #monitor-mic-start,
+    #monitor-mic-stop,
+    #timer-work-order-start,
+    #timer-work-order-stop {
       background: linear-gradient(180deg, #6b7280, #4b5563);
       color: #f8fafc;
       border-color: rgba(148, 163, 184, 0.35);
@@ -5198,6 +5263,46 @@
         grid-row: 3 !important;
       }
 
+      .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty {
+        grid-template-rows: minmax(0, 1fr);
+      }
+
+      .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-shell {
+        grid-column: 1 !important;
+        grid-row: 1 !important;
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        right: auto;
+        bottom: auto;
+        transform: translate(-50%, -50%);
+        width: fit-content;
+        min-width: 0;
+        max-width: calc(100vw - 24px);
+        height: fit-content;
+        max-height: none;
+        padding: clamp(20px, 4.8vw, 34px);
+        overflow: visible;
+      }
+
+      .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-panel,
+      .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-status-layout {
+        width: fit-content;
+        height: fit-content;
+        max-height: none;
+      }
+
+      .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive .monitor-ampel {
+        --monitor-light-size: clamp(112px, min(30vw, 17vh), 170px);
+        min-width: calc(var(--monitor-light-size) + 76px);
+        max-width: min(100%, calc(var(--monitor-light-size) + 94px));
+        min-height: calc((var(--monitor-light-size) * 3) + (clamp(14px, 2vh, 22px) * 2) + (clamp(20px, 2.6vh, 32px) * 2));
+        height: fit-content;
+        max-height: calc(100dvh - 72px);
+        padding: clamp(20px, 2.6vh, 32px) clamp(22px, 5vw, 36px);
+        gap: clamp(14px, 2vh, 22px);
+      }
+
       .side {
         width: 100%
       }
@@ -5495,12 +5600,18 @@
     <button id="random-picker-start-collapsed"
       class="ghost header-icon-button collapsed-spark-action random-picker-collapsed-start" type="button"
       data-random-picker-start="1" data-collapsed-icon="1" aria-label="Picker starten" title="Picker starten">✨</button>
-    <button id="work-phase-monitor-collapsed"
-      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-monitor"
+    <button id="work-phase-monitor-start-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-monitor work-phase-collapsed-start"
       type="button" aria-label="Lautstärkeüberwachung starten" title="Lautstärkeüberwachung starten">🚦</button>
-    <button id="work-phase-timer-collapsed"
-      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-timer"
+    <button id="work-phase-monitor-stop-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-monitor work-phase-collapsed-stop is-off"
+      type="button" aria-label="Lautstärkeüberwachung stoppen" title="Lautstärkeüberwachung stoppen">🚦</button>
+    <button id="work-phase-timer-start-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-timer work-phase-collapsed-start"
       type="button" aria-label="Arbeitszeit starten" title="Arbeitszeit starten">⏰</button>
+    <button id="work-phase-timer-stop-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-timer work-phase-collapsed-stop is-off"
+      type="button" aria-label="Arbeitszeit stoppen" title="Arbeitszeit stoppen">⏰</button>
 
     <aside class="side">
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
@@ -5611,16 +5722,17 @@
       <section class="side-monitor-settings" aria-label="Lautstärkeampel-Einstellungen">
         <h3 class="side-section-title">Lautstärkeampel</h3>
         <section class="monitor-controls" aria-label="Monitor-Steuerung (Sidebar)">
-          <div class="mode-row">
-            <div class="mode-buttons" role="group" aria-label="Modus auswählen">
-              <button class="mode-button active" type="button" data-monitor-mode="stillarbeit" aria-pressed="true"
-                aria-label="Stillarbeit" title="Stillarbeit"><span class="monitor-mode-emoji"
-                  aria-hidden="true">🤫</span></button>
-              <button class="mode-button" type="button" data-monitor-mode="partnerarbeit" aria-pressed="false"
-                aria-label="Gruppenarbeit" title="Gruppenarbeit"><span class="monitor-mode-emoji"
-                  aria-hidden="true">🗣️</span><span class="monitor-mode-emoji is-mirrored"
-                  aria-hidden="true">🗣️</span></button>
-            </div>
+          <div class="monitor-thresholds" aria-label="Schwellenwerte einstellen">
+            <label class="monitor-threshold-field" for="monitor-yellow-threshold">
+              <span>Gelb ab <output id="monitor-yellow-threshold-value" for="monitor-yellow-threshold">60 dB</output></span>
+              <input id="monitor-yellow-threshold" type="range" min="30" max="99" step="1" value="60"
+                data-monitor-threshold="yellow" aria-label="Schwellenwert für Gelb">
+            </label>
+            <label class="monitor-threshold-field" for="monitor-red-threshold">
+              <span>Rot ab <output id="monitor-red-threshold-value" for="monitor-red-threshold">70 dB</output></span>
+              <input id="monitor-red-threshold" type="range" min="31" max="100" step="1" value="70"
+                data-monitor-threshold="red" aria-label="Schwellenwert für Rot">
+            </label>
           </div>
           <div class="tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-monitor-warning-tone-toggle="yellow"
@@ -5635,8 +5747,10 @@
             </button>
           </div>
           <div class="monitor-mic-actions">
-            <button id="monitor-mic-toggle" class="primary monitor-mic-button" type="button"
+            <button id="monitor-mic-start" class="primary monitor-mic-button" type="button"
               aria-label="Lautstärkeüberwachung starten" title="Lautstärkeüberwachung starten">🚦</button>
+            <button id="monitor-mic-stop" class="primary monitor-mic-button is-off" type="button"
+              aria-label="Lautstärkeüberwachung stoppen" title="Lautstärkeüberwachung stoppen">🚦</button>
           </div>
         </section>
       </section>
@@ -5683,8 +5797,10 @@
             </button>
           </div>
           <div class="timer-work-order-actions">
-            <button id="timer-work-order-toggle" class="filled" type="button" aria-label="Arbeitszeit starten"
+            <button id="timer-work-order-start" class="filled" type="button" aria-label="Arbeitszeit starten"
               title="Arbeitszeit starten">⏰</button>
+            <button id="timer-work-order-stop" class="filled is-off" type="button" aria-label="Arbeitszeit stoppen"
+              title="Arbeitszeit stoppen">⏰</button>
           </div>
         </div>
       </section>
