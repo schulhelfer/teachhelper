@@ -2237,21 +2237,36 @@
     .app.is-collapsing.app-tab-work-phase,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase {
       --work-phase-collapsed-gap: clamp(10px, 1.2vw, 16px);
-      --monitor-collapsed-shell-width: clamp(304px, 26vw, 364px);
-      grid-template-columns: 0 fit-content(var(--monitor-collapsed-shell-width)) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr);
       gap: var(--work-phase-collapsed-gap);
     }
 
     .app.is-collapsing.app-tab-work-phase {
-      grid-template-rows: auto minmax(0, 0.95fr) minmax(0, 1.05fr);
+      grid-template-rows: auto minmax(0, 1.05fr) minmax(0, 0.9fr) minmax(0, 1.05fr);
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-empty {
+      grid-template-rows: auto minmax(0, 0.9fr) minmax(0, 1.1fr);
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-timer-inactive:not(.work-order-empty) {
+      grid-template-rows: auto minmax(0, 1.1fr) minmax(0, 0.9fr);
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-empty.work-order-timer-inactive {
+      grid-template-rows: auto minmax(0, 1fr);
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase {
-      grid-template-rows: minmax(0, 0.95fr) minmax(0, 1.05fr);
+      grid-template-rows: minmax(0, 1.05fr) minmax(0, 0.9fr) minmax(0, 1.05fr);
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty {
-      grid-template-rows: minmax(0, 1fr);
+      grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-timer-inactive:not(.work-order-empty) {
+      grid-template-rows: minmax(0, 1.1fr) minmax(0, 0.9fr);
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty.work-order-timer-inactive {
@@ -2259,44 +2274,86 @@
       grid-template-rows: minmax(0, 1fr);
     }
 
+    .app.is-collapsing.app-tab-work-phase .work-order-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-order-shell {
-      grid-column: 1 / span 3 !important;
+      grid-column: 1 !important;
     }
 
+    .app.is-collapsing.app-tab-work-phase .work-order-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-order-shell {
       grid-row: 1 !important;
     }
 
+    .app.is-collapsing.app-tab-work-phase .work-order-shell {
+      grid-row: 2 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-empty .work-order-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .work-order-shell {
       display: none;
     }
 
+    .app.is-collapsing.app-tab-work-phase .monitor-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .monitor-shell {
-      grid-column: 2 !important;
-      justify-self: center;
-      width: min(100%, var(--monitor-collapsed-shell-width));
-      min-width: min(100%, 304px);
+      grid-column: 1 !important;
+      justify-self: stretch;
+      width: 100%;
+      min-width: 0;
     }
 
+    .app.is-collapsing.app-tab-work-phase .monitor-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .monitor-shell {
       grid-row: 2 !important;
     }
 
-    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .timer-shell {
-      grid-column: 3 !important;
+    .app.is-collapsing.app-tab-work-phase .monitor-shell {
+      grid-row: 3 !important;
     }
 
+    .app.is-collapsing.app-tab-work-phase .timer-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .timer-shell {
-      grid-row: 2 !important;
+      grid-column: 1 !important;
     }
 
+    .app.is-collapsing.app-tab-work-phase .timer-shell,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .timer-shell {
+      grid-row: 3 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase .timer-shell {
+      grid-row: 4 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-timer-inactive .timer-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-timer-inactive .timer-shell {
       display: none;
     }
 
-    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .monitor-shell,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .timer-shell {
+    .app.is-collapsing.app-tab-work-phase.work-order-empty .monitor-shell,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .monitor-shell {
       grid-row: 1 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-empty .monitor-shell {
+      grid-row: 2 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-empty .timer-shell,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-empty .timer-shell {
+      grid-row: 2 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-empty .timer-shell {
+      grid-row: 3 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-timer-inactive:not(.work-order-empty) .monitor-shell,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase.work-order-timer-inactive:not(.work-order-empty) .monitor-shell {
+      grid-row: 2 !important;
+    }
+
+    .app.is-collapsing.app-tab-work-phase.work-order-timer-inactive:not(.work-order-empty) .monitor-shell {
+      grid-row: 3 !important;
     }
 
     .app.is-collapsing.app-tab-work-phase .monitor-shell,
@@ -2333,7 +2390,7 @@
 
     .app.is-collapsing.app-tab-work-phase .timer-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .timer-shell {
-      transform: translateX(10px) scale(0.992);
+      transform: none;
     }
 
     .app.is-collapsing.app-tab-work-phase .monitor-panel,
