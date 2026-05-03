@@ -1544,12 +1544,215 @@
           return `<span class="grade-assessment-meta"><span class="grade-assessment-weight-icon" aria-hidden="true">⚖️</span> ${escapeHtml(formatGradeWeightValue(weight))}</span>`;
         }
 
+        function isWeightedGradeAssessmentMode(mode) {
+          const normalized = normalizeGradeAssessmentMode(mode);
+          return normalized === "grade" || normalized === "test";
+        }
+
         function normalizeGradeHalfYear(value) {
           return String(value || "").trim().toLowerCase() === "h2" ? "h2" : "h1";
         }
 
+        const GRADE_TEST_SCALE_DEFAULT = "sek2";
+        const GRADE_TEST_SCALE_THRESHOLDS = {
+          sek1: [
+            [0.96, 15], [0.92, 14], [0.88, 13], [0.83, 12],
+            [0.78, 11], [0.73, 10], [0.68, 9], [0.63, 8],
+            [0.58, 7], [0.54, 6], [0.5, 5], [0.44, 4],
+            [0.38, 3], [0.32, 2], [0.2, 1], [0, 0]
+          ],
+          sek2: [
+            [0.95, 15], [0.9, 14], [0.85, 13], [0.8, 12],
+            [0.75, 11], [0.7, 10], [0.65, 9], [0.6, 8],
+            [0.55, 7], [0.5, 6], [0.45, 5], [0.4, 4],
+            [0.33, 3], [0.27, 2], [0.2, 1], [0, 0]
+          ]
+        };
+
         function normalizeGradeAssessmentMode(value) {
-          return String(value || "").trim().toLowerCase() === "homework" ? "homework" : "grade";
+          const normalized = String(value || "").trim().toLowerCase();
+          if (normalized === "homework" || normalized === "test") {
+            return normalized;
+          }
+          return "grade";
+        }
+
+        function normalizeGradeTestScale(value) {
+          return String(value || "").trim().toLowerCase() === "sek1" ? "sek1" : GRADE_TEST_SCALE_DEFAULT;
+        }
+
+        function parseGradeBeValue(raw) {
+          const text = String(raw ?? "").trim().replace(".", ",");
+          if (!text) {
+            return { valid: true, value: null };
+          }
+          if (!/^\d+(?:,\d)?$/.test(text)) {
+            return { valid: false, value: null };
+          }
+          const value = Number(text.replace(",", "."));
+          if (!Number.isFinite(value) || value < 0 || Math.abs(value * 2 - Math.round(value * 2)) > 0.0000001) {
+            return { valid: false, value: null };
+          }
+          return { valid: true, value: Math.round(value * 2) / 2 };
+        }
+
+        function sanitizeGradeBeInput(raw, maxLength = 5) {
+          const text = String(raw ?? "").replace(/[^\d.,]/g, "");
+          let result = "";
+          let separatorUsed = false;
+          for (const char of text) {
+            if (/\d/.test(char)) {
+              result += char;
+              continue;
+            }
+            if (!separatorUsed && result) {
+              result += ",";
+              separatorUsed = true;
+            }
+          }
+          return result.slice(0, Math.max(1, Number(maxLength) || 5));
+        }
+
+        function formatGradeBeValue(value) {
+          if (value === null || value === undefined || value === "") {
+            return "";
+          }
+          const numeric = Math.max(0, Math.round((Number(value) || 0) * 2) / 2);
+          if (Math.abs(numeric - Math.round(numeric)) < 0.0000001) {
+            return String(Math.round(numeric));
+          }
+          return numeric.toFixed(1).replace(".", ",");
+        }
+
+        function normalizeGradeTestScores(scores = {}) {
+          const source = scores && typeof scores === "object" ? scores : {};
+          return Object.entries(source).reduce((result, [taskId, rawValue]) => {
+            const key = String(taskId || "").trim();
+            const parsed = parseGradeBeValue(rawValue);
+            if (key && parsed.valid && parsed.value !== null) {
+              result[key] = parsed.value;
+            }
+            return result;
+          }, {});
+        }
+
+        function hasGradeTestScores(scores = {}) {
+          return Object.keys(normalizeGradeTestScores(scores)).length > 0;
+        }
+
+        function normalizeGradeTestTasks(tasks = [], options = {}) {
+          const source = Array.isArray(tasks) ? tasks : [];
+          const usedIds = new Set();
+          const normalized = source.reduce((result, raw, index) => {
+            const item = raw && typeof raw === "object" ? raw : {};
+            const idBase = String(item.id || index + 1).trim() || String(index + 1);
+            let id = idBase;
+            let suffix = 2;
+            while (usedIds.has(id)) {
+              id = `${idBase}-${suffix}`;
+              suffix += 1;
+            }
+            usedIds.add(id);
+            const parsedMaxBe = parseGradeBeValue(item.maxBe);
+            result.push({
+              id,
+              title: normalizeGradeTextPart(item.title) || `Aufgabe ${result.length + 1}`,
+              maxBe: parsedMaxBe.valid && parsedMaxBe.value !== null ? parsedMaxBe.value : null,
+              sortOrder: Number(item.sortOrder || index + 1)
+            });
+            return result;
+          }, []).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+          if (!normalized.length && options.ensureDefault !== false) {
+            normalized.push({
+              id: "1",
+              title: "Aufgabe 1",
+              maxBe: null,
+              sortOrder: 1
+            });
+          }
+          return normalized.map((task, index) => ({
+            ...task,
+            sortOrder: index + 1
+          }));
+        }
+
+        function getNextGradeTestTaskId(tasks = []) {
+          const numericMax = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+            .reduce((max, task) => {
+              const numeric = /^\d+$/.test(String(task.id || "")) ? Number(task.id) : 0;
+              return Math.max(max, numeric);
+            }, 0);
+          return String(numericMax + 1 || 1);
+        }
+
+        function calculateGradeTestRatio(tasks = [], scores = {}) {
+          const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+            .filter((task) => Number(task.maxBe || 0) > 0);
+          const normalizedScores = normalizeGradeTestScores(scores);
+          const hasAnyScore = normalizedTasks.some((task) => Object.prototype.hasOwnProperty.call(normalizedScores, task.id));
+          if (!normalizedTasks.length || !hasAnyScore) {
+            return null;
+          }
+          const maxSum = normalizedTasks.reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+          if (maxSum <= 0) {
+            return null;
+          }
+          const earnedSum = normalizedTasks.reduce((sum, task) => {
+            const rawScore = Object.prototype.hasOwnProperty.call(normalizedScores, task.id)
+              ? Number(normalizedScores[task.id] || 0)
+              : 0;
+            return sum + clamp(rawScore, 0, Number(task.maxBe || 0));
+          }, 0);
+          const ratio = clamp(earnedSum / maxSum, 0, 1);
+          return {
+            earnedSum,
+            maxSum,
+            ratio,
+            percent: Math.round(ratio * 100)
+          };
+        }
+
+        function formatGradeTestRatioDisplay(ratioState = null) {
+          if (!ratioState || Number(ratioState.maxSum || 0) <= 0) {
+            return "—";
+          }
+          const earned = formatGradeBeValue(ratioState.earnedSum);
+          const max = formatGradeBeValue(ratioState.maxSum);
+          return earned && max
+            ? `${earned} / ${max} = ${Math.round(Number(ratioState.percent || 0))}%`
+            : "—";
+        }
+
+        function buildGradeTestScaleTooltipMarkup(scale = GRADE_TEST_SCALE_DEFAULT) {
+          const thresholds = GRADE_TEST_SCALE_THRESHOLDS[normalizeGradeTestScale(scale)] || GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT];
+          return `
+            <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
+              <table>
+                <thead>
+                  <tr><th>Grenze</th><th>Note</th></tr>
+                </thead>
+                <tbody>
+                  ${thresholds.map(([threshold, grade]) => `
+                    <tr>
+                      <td>${Math.round(Number(threshold || 0) * 100)}%</td>
+                      <td>${grade}</td>
+                    </tr>
+                  `).join("")}
+                </tbody>
+              </table>
+            </div>
+          `;
+        }
+
+        function calculateGradeTestValue(tasks = [], scores = {}, scale = GRADE_TEST_SCALE_DEFAULT) {
+          const ratioState = calculateGradeTestRatio(tasks, scores);
+          if (!ratioState) {
+            return null;
+          }
+          const ratio = ratioState.ratio;
+          const thresholds = GRADE_TEST_SCALE_THRESHOLDS[normalizeGradeTestScale(scale)] || GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT];
+          const match = thresholds.find(([threshold]) => ratio + 0.0000001 >= threshold);
+          return match ? match[1] : 0;
         }
 
         function normalizeGradeEntryChecked(value) {
@@ -1565,19 +1768,22 @@
             const parsedValue = parseGradeValue(value.value, 15);
             return {
               value: parsedValue.valid ? parsedValue.value : null,
-              checked: normalizeGradeEntryChecked(value.checked) ? true : null
+              checked: normalizeGradeEntryChecked(value.checked) ? true : null,
+              testScores: normalizeGradeTestScores(value.testScores)
             };
           }
           if (typeof value === "boolean") {
             return {
               value: null,
-              checked: value ? true : null
+              checked: value ? true : null,
+              testScores: {}
             };
           }
           const parsedValue = parseGradeValue(value, 15);
           return {
             value: parsedValue.valid ? parsedValue.value : null,
-            checked: null
+            checked: null,
+            testScores: {}
           };
         }
 
@@ -2782,6 +2988,8 @@
               maxPoints: normalizeGradeNumber(payload.maxPoints, 15),
               weight: normalizeGradeInteger(payload.weight, 1),
               mode: normalizeGradeAssessmentMode(payload.mode),
+              testScale: normalizeGradeTestScale(payload.testScale),
+              testTasks: normalizeGradeTestTasks(payload.testTasks),
               halfYear: normalizeGradeHalfYear(payload.halfYear),
               sortOrder: Number(payload.sortOrder || nextSortOrder)
             };
@@ -2806,6 +3014,16 @@
             if (patch.mode !== undefined) {
               assessment.mode = normalizeGradeAssessmentMode(patch.mode);
             }
+            if (patch.testScale !== undefined) {
+              assessment.testScale = normalizeGradeTestScale(patch.testScale);
+            } else if (!assessment.testScale) {
+              assessment.testScale = GRADE_TEST_SCALE_DEFAULT;
+            }
+            if (patch.testTasks !== undefined) {
+              assessment.testTasks = normalizeGradeTestTasks(patch.testTasks);
+            } else {
+              assessment.testTasks = normalizeGradeTestTasks(assessment.testTasks);
+            }
             if (patch.halfYear !== undefined) {
               assessment.halfYear = normalizeGradeHalfYear(patch.halfYear);
             }
@@ -2825,11 +3043,18 @@
                   if (Number(entry.assessmentId) !== Number(assessment.id)) {
                     return entry;
                   }
-                  return nextMode === "homework"
-                    ? { ...entry, value: null }
-                    : { ...entry, checked: null };
+                  if (nextMode === "homework") {
+                    return { ...entry, value: null, testScores: null };
+                  }
+                  if (nextMode === "test") {
+                    return { ...entry, value: null, checked: null, testScores: {} };
+                  }
+                  return { ...entry, checked: null, testScores: null };
                 })
-                .filter((entry) => entry.value !== null || entry.checked === true);
+                .filter((entry) => entry.value !== null || entry.checked === true || hasGradeTestScores(entry.testScores));
+            }
+            if (normalizeGradeAssessmentMode(assessment.mode) === "test") {
+              this.recalculateGradeTestEntries(assessment.id);
             }
             this._saveGradeVault();
             return true;
@@ -2861,6 +3086,9 @@
             const assessment = this.getGradeAssessment(assessmentKey);
             const mode = normalizeGradeAssessmentMode(assessment?.mode);
             const existing = this.getGradeEntry(studentKey, assessmentKey);
+            if (mode === "test") {
+              return this.setGradeTestEntry(studentKey, assessmentKey, value && typeof value === "object" ? value.testScores || value : {});
+            }
             if (mode === "homework") {
               const checked = normalizeGradeEntryChecked(value);
               if (existing && Boolean(existing.checked) === checked) {
@@ -2883,7 +3111,8 @@
                   studentId: studentKey,
                   assessmentId: assessmentKey,
                   value: null,
-                  checked: true
+                  checked: true,
+                  testScores: null
                 });
               }
               this._saveGradeVault();
@@ -2908,16 +3137,91 @@
             if (existing) {
               existing.value = parsed.value;
               existing.checked = null;
+              existing.testScores = null;
             } else {
               this.gradeVaultState.gradeEntries.push({
                 studentId: studentKey,
                 assessmentId: assessmentKey,
                 value: parsed.value,
-                checked: null
+                checked: null,
+                testScores: null
               });
             }
             this._saveGradeVault();
             return true;
+          }
+
+          setGradeTestEntry(studentId, assessmentId, scores = {}) {
+            const studentKey = Number(studentId);
+            const assessmentKey = Number(assessmentId);
+            const assessment = this.getGradeAssessment(assessmentKey);
+            if (!studentKey || !assessment || normalizeGradeAssessmentMode(assessment.mode) !== "test") {
+              return false;
+            }
+            const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
+            const taskMaxById = new Map(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => [task.id, Number(task.maxBe || 0)]));
+            const normalizedScores = Object.entries(normalizeGradeTestScores(scores)).reduce((result, [taskId, value]) => {
+              if (taskIds.has(taskId)) {
+                const maxBe = taskMaxById.get(taskId) || 0;
+                result[taskId] = maxBe > 0 ? Math.min(Number(value) || 0, maxBe) : value;
+              }
+              return result;
+            }, {});
+            const existing = this.getGradeEntry(studentKey, assessmentKey);
+            if (!hasGradeTestScores(normalizedScores)) {
+              if (existing) {
+                this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries.filter((entry) => !(
+                  Number(entry.studentId) === studentKey && Number(entry.assessmentId) === assessmentKey
+                ));
+                this._saveGradeVault();
+              }
+              return true;
+            }
+            const value = calculateGradeTestValue(assessment.testTasks, normalizedScores, assessment.testScale);
+            if (existing) {
+              existing.value = value;
+              existing.checked = null;
+              existing.testScores = normalizedScores;
+            } else {
+              this.gradeVaultState.gradeEntries.push({
+                studentId: studentKey,
+                assessmentId: assessmentKey,
+                value,
+                checked: null,
+                testScores: normalizedScores
+              });
+            }
+            this._saveGradeVault();
+            return true;
+          }
+
+          recalculateGradeTestEntries(assessmentId) {
+            const assessment = this.getGradeAssessment(assessmentId);
+            if (!assessment || normalizeGradeAssessmentMode(assessment.mode) !== "test") {
+              return;
+            }
+            const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
+            const taskMaxById = new Map(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => [task.id, Number(task.maxBe || 0)]));
+            this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries
+              .map((entry) => {
+                if (Number(entry.assessmentId) !== Number(assessment.id)) {
+                  return entry;
+                }
+                const testScores = Object.entries(normalizeGradeTestScores(entry.testScores)).reduce((result, [taskId, value]) => {
+                  if (taskIds.has(taskId)) {
+                    const maxBe = taskMaxById.get(taskId) || 0;
+                    result[taskId] = maxBe > 0 ? Math.min(Number(value) || 0, maxBe) : value;
+                  }
+                  return result;
+                }, {});
+                return {
+                  ...entry,
+                  checked: null,
+                  testScores,
+                  value: calculateGradeTestValue(assessment.testTasks, testScores, assessment.testScale)
+                };
+              })
+              .filter((entry) => Number(entry.assessmentId) !== Number(assessment.id) || hasGradeTestScores(entry.testScores));
           }
 
           getGradeOverride(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
@@ -3031,7 +3335,7 @@
             const assessments = this.listGradeAssessments(courseId).filter((assessment) => (
               Number(assessment.categoryId) === categoryKey
               && Number(assessment.subcategoryId) === subcategoryKey
-              && normalizeGradeAssessmentMode(assessment.mode) === "grade"
+              && isWeightedGradeAssessmentMode(assessment.mode)
               && normalizeGradeHalfYear(assessment.halfYear) === normalizedPeriod
             ));
             let weightedSum = 0;
@@ -4362,6 +4666,8 @@
                 maxPoints: normalizeGradeNumber(item.maxPoints, 15),
                 weight: normalizeGradeInteger(item.weight, 1),
                 mode: normalizeGradeAssessmentMode(item.mode),
+                testScale: normalizeGradeTestScale(item.testScale),
+                testTasks: normalizeGradeTestTasks(item.testTasks),
                 halfYear: normalizeGradeHalfYear(item.halfYear),
                 sortOrder: Number(item.sortOrder || 0)
               };
@@ -4387,7 +4693,8 @@
                 studentId: Number(item.studentId),
                 assessmentId: Number(item.assessmentId),
                 value: parsed.valid ? parsed.value : null,
-                checked: normalizeGradeEntryChecked(item.checked) ? true : null
+                checked: normalizeGradeEntryChecked(item.checked) ? true : null,
+                testScores: normalizeGradeTestScores(item.testScores)
               };
             }) : [],
             gradeOverrides: Array.isArray(source.gradeOverrides) ? source.gradeOverrides.map((raw) => {
@@ -4433,7 +4740,7 @@
           normalized.gradeAssessments = normalized.gradeAssessments
             .filter((item) => item.id > 0 && item.courseId > 0 && item.title);
           normalized.gradeEntries = normalized.gradeEntries
-            .filter((item) => item.studentId > 0 && item.assessmentId > 0 && (item.value !== null || item.checked === true));
+            .filter((item) => item.studentId > 0 && item.assessmentId > 0 && (item.value !== null || item.checked === true || hasGradeTestScores(item.testScores)));
           normalized.gradeOverrides = normalized.gradeOverrides
             .filter((item) => (
               item.studentId > 0
@@ -4636,10 +4943,15 @@
               gradeAssessmentDialogTitle: document.querySelector("#grade-assessment-dialog-title"),
               gradeAssessmentDialogModeGrade: document.querySelector("#grade-assessment-dialog-mode-grade"),
               gradeAssessmentDialogModeHomework: document.querySelector("#grade-assessment-dialog-mode-homework"),
+              gradeAssessmentDialogModeTest: document.querySelector("#grade-assessment-dialog-mode-test"),
+              gradeAssessmentDialogTestScaleRow: document.querySelector("#grade-assessment-dialog-test-scale-row"),
+              gradeAssessmentDialogTestScaleSek1: document.querySelector("#grade-assessment-dialog-test-scale-sek1"),
+              gradeAssessmentDialogTestScaleSek2: document.querySelector("#grade-assessment-dialog-test-scale-sek2"),
               gradeAssessmentDialogWeight: document.querySelector("#grade-assessment-dialog-weight"),
               gradeAssessmentDialogCategory: document.querySelector("#grade-assessment-dialog-category"),
               gradeAssessmentDialogSubcategory: document.querySelector("#grade-assessment-dialog-subcategory"),
-              gradeAssessmentDialogHalfYear: document.querySelector("#grade-assessment-dialog-half-year"),
+              gradeAssessmentDialogHalfYearH1: document.querySelector("#grade-assessment-dialog-half-year-h1"),
+              gradeAssessmentDialogHalfYearH2: document.querySelector("#grade-assessment-dialog-half-year-h2"),
               gradeAssessmentDialogCancel: document.querySelector("#grade-assessment-dialog-cancel"),
               gradeAssessmentDialogDelete: document.querySelector("#grade-assessment-dialog-delete"),
               gradeVaultDialog: document.querySelector("#grade-vault-dialog"),
@@ -5160,6 +5472,8 @@
                   maxPoints: normalizeGradeNumber(row.maxPoints, 15),
                   weight: normalizeGradeInteger(row.weight, 1),
                   mode: normalizeGradeAssessmentMode(row.mode),
+                  testScale: normalizeGradeTestScale(row.testScale),
+                  testTasks: normalizeGradeTestTasks(row.testTasks),
                   halfYear: normalizeGradeHalfYear(row.halfYear),
                   sortOrder: Number(row.sortOrder || 0)
                 })),
@@ -10333,6 +10647,22 @@
           }
 
           handleGradesSurfaceInput(event) {
+            const testTaskMaxInput = event.target.closest("input[data-grade-test-task-field='maxBe']");
+            if (testTaskMaxInput) {
+              const rawValue = String(testTaskMaxInput.value || "");
+              const maxLength = Math.max(1, Number(testTaskMaxInput.getAttribute("maxlength")) || 5);
+              const sanitizedValue = sanitizeGradeBeInput(rawValue, maxLength);
+              const removedCharacters = rawValue !== sanitizedValue;
+              testTaskMaxInput.value = sanitizedValue;
+              const parsed = parseGradeBeValue(sanitizedValue);
+              if (removedCharacters || (sanitizedValue && !parsed.valid)) {
+                this.showGradeInputInvalidFeedback(testTaskMaxInput, {
+                  persist: Boolean(sanitizedValue) && !parsed.valid
+                });
+              } else {
+                this.clearGradeInputInvalidFeedback(testTaskMaxInput);
+              }
+            }
             const titleInput = event.target.closest("input[data-grades-entry-title]");
             if (!titleInput || this.gradesTitleDatePickerState.input !== titleInput || !this.gradesTitleDatePickerState.open) {
               return;
@@ -10393,6 +10723,26 @@
                   this.focusGradeAssessmentInput(assessment.id, 0);
                 });
               }
+              return;
+            }
+            const addTestTaskButton = event.target.closest("button[data-grade-test-add-task='1']");
+            if (addTestTaskButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!this.commitVisibleGradeInputs()) {
+                return;
+              }
+              this.addGradeTestTask();
+              return;
+            }
+            const removeTestTaskButton = event.target.closest("button[data-grade-test-remove-task='1']");
+            if (removeTestTaskButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!this.commitVisibleGradeInputs()) {
+                return;
+              }
+              this.removeGradeTestTask(removeTestTaskButton.dataset.taskId || "");
               return;
             }
             const nameOrderToggleButton = event.target.closest("button[data-grade-name-order-toggle='1']");
@@ -10619,9 +10969,32 @@
               return;
             }
 
-            const halfYearSelect = event.target.closest("select[data-grades-entry-halfyear]");
-            if (halfYearSelect) {
-              const halfYear = normalizeGradeHalfYear(halfYearSelect.value || "h1");
+            const testScaleInput = event.target.closest("input[data-grades-entry-test-scale='1']");
+            if (testScaleInput) {
+              const testScale = normalizeGradeTestScale(testScaleInput.value);
+              if (activeAssessment) {
+                this.store.updateGradeAssessment(activeAssessment.id, { testScale });
+              } else {
+                this.gradesEntryDraft = {
+                  ...draft,
+                  testScale
+                };
+              }
+              this.renderGradesView();
+              return;
+            }
+
+            const testTaskInput = event.target.closest("input[data-grade-test-task-field]");
+            if (testTaskInput) {
+              if (this.updateGradeTestTaskFromInput(testTaskInput)) {
+                this.renderGradesView();
+              }
+              return;
+            }
+
+            const halfYearInput = event.target.closest("input[data-grades-entry-halfyear='1']");
+            if (halfYearInput) {
+              const halfYear = normalizeGradeHalfYear(halfYearInput.value || "h1");
               if (activeAssessment) {
                 this.store.updateGradeAssessment(activeAssessment.id, { halfYear });
               } else {
@@ -10638,12 +11011,19 @@
             if (modeInput) {
               const mode = normalizeGradeAssessmentMode(modeInput.value || "grade");
               if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, { mode, weight: 1 });
+                this.store.updateGradeAssessment(activeAssessment.id, {
+                  mode,
+                  weight: mode === "homework" ? 1 : activeAssessment.weight,
+                  testScale: activeAssessment.testScale || GRADE_TEST_SCALE_DEFAULT,
+                  testTasks: activeAssessment.testTasks
+                });
               } else {
                 this.gradesEntryDraft = {
                   ...draft,
                   mode,
-                  weight: 1
+                  weight: mode === "homework" ? 1 : draft.weight,
+                  testScale: draft.testScale || GRADE_TEST_SCALE_DEFAULT,
+                  testTasks: normalizeGradeTestTasks(draft.testTasks)
                 };
               }
               this.renderGradesView();
@@ -11141,7 +11521,7 @@
               }
             });
 
-            [this.refs.gradeAssessmentDialogModeGrade, this.refs.gradeAssessmentDialogModeHomework].forEach((input) => {
+            [this.refs.gradeAssessmentDialogModeGrade, this.refs.gradeAssessmentDialogModeHomework, this.refs.gradeAssessmentDialogModeTest].forEach((input) => {
               input?.addEventListener("change", () => {
                 this.syncGradeAssessmentDialogModeUi();
               });
@@ -13749,6 +14129,8 @@
               halfYear: normalizeGradeHalfYear(draftValues?.halfYear || this.getDefaultGradeAssessmentHalfYear()),
               weight: normalizeGradeInteger(draftValues?.weight, 1),
               mode: normalizeGradeAssessmentMode(draftValues?.mode),
+              testScale: normalizeGradeTestScale(draftValues?.testScale),
+              testTasks: normalizeGradeTestTasks(draftValues?.testTasks),
               categoryId,
               subcategoryId,
               entries: {}
@@ -13865,6 +14247,8 @@
                 halfYear: normalizeGradeHalfYear(selectedAssessment.halfYear),
                 weight: normalizeGradeInteger(selectedAssessment.weight, 1),
                 mode: normalizeGradeAssessmentMode(selectedAssessment.mode),
+                testScale: normalizeGradeTestScale(selectedAssessment.testScale),
+                testTasks: normalizeGradeTestTasks(selectedAssessment.testTasks),
                 categoryId: Number(selectedAssessment.categoryId) || null,
                 subcategoryId: Number(selectedAssessment.subcategoryId) || null
               }
@@ -13909,6 +14293,25 @@
                     <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="homework"${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? " checked" : ""}>
                     <span>Hausaufgaben</span>
                   </label>
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="test"${normalizeGradeAssessmentMode(editorState.mode) === "test" ? " checked" : ""}>
+                    <span>Test</span>
+                  </label>
+                </div>
+              </fieldset>
+              <fieldset class="grades-entry-field grades-entry-test-scale-field is-wide${normalizeGradeAssessmentMode(editorState.mode) === "test" ? "" : " is-hidden"}">
+                <legend>Prozentgrenzen</legend>
+                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
+                  <label class="assessment-mode-option grade-test-scale-option">
+                    <input type="radio" name="grades-entry-test-scale" data-grades-entry-test-scale="1" value="sek1"${normalizeGradeTestScale(editorState.testScale) === "sek1" ? " checked" : ""}${normalizeGradeAssessmentMode(editorState.mode) === "test" ? "" : " disabled"}>
+                    <span>Sek I</span>
+                    ${buildGradeTestScaleTooltipMarkup("sek1")}
+                  </label>
+                  <label class="assessment-mode-option grade-test-scale-option">
+                    <input type="radio" name="grades-entry-test-scale" data-grades-entry-test-scale="1" value="sek2"${normalizeGradeTestScale(editorState.testScale) === "sek2" ? " checked" : ""}${normalizeGradeAssessmentMode(editorState.mode) === "test" ? "" : " disabled"}>
+                    <span>Sek II</span>
+                    ${buildGradeTestScaleTooltipMarkup("sek2")}
+                  </label>
                 </div>
               </fieldset>
               <fieldset class="grades-entry-field grades-entry-name-order-field is-wide">
@@ -13924,13 +14327,19 @@
                   </label>
                 </div>
               </fieldset>
-              <label class="grades-entry-field is-wide">
-                <span>Halbjahr</span>
-                <select name="grades-entry-halfyear" data-grades-entry-halfyear="1">
-                  <option value="h1"${editorState.halfYear === "h1" ? " selected" : ""}>HJ1</option>
-                  <option value="h2"${editorState.halfYear === "h2" ? " selected" : ""}>HJ2</option>
-                </select>
-              </label>
+              <fieldset class="grades-entry-field grades-entry-halfyear-field is-wide">
+                <legend>Halbjahr</legend>
+                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Halbjahr">
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-halfyear" data-grades-entry-halfyear="1" value="h1"${editorState.halfYear === "h1" ? " checked" : ""}>
+                    <span>HJ1</span>
+                  </label>
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-halfyear" data-grades-entry-halfyear="1" value="h2"${editorState.halfYear === "h2" ? " checked" : ""}>
+                    <span>HJ2</span>
+                  </label>
+                </div>
+              </fieldset>
               <label class="grades-entry-field is-wide">
                 <span>Gewichtung</span>
                 <input
@@ -14123,6 +14532,16 @@
             const root = this.getGradeInputRoot();
             if (!root) {
               return true;
+            }
+            const testTaskInputs = [...root.querySelectorAll("input[data-grade-test-task-field]")];
+            for (const input of testTaskInputs) {
+              if (!this.updateGradeTestTaskFromInput(input)) {
+                if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
+                  input.focus();
+                  input.select();
+                  return false;
+                }
+              }
             }
             const inputs = [...root.querySelectorAll("input[data-grade-input='1']:not(:disabled)")];
             let invalidInput = null;
@@ -14468,7 +14887,7 @@
               return null;
             }
             const assessments = this.store.listGradeAssessments(courseId).filter((assessment) => (
-              normalizeGradeAssessmentMode(assessment.mode) === "grade"
+              isWeightedGradeAssessmentMode(assessment.mode)
             ));
             const threshold = this.store.getGradesPrivacyGraphThreshold();
             const assessmentsBySubcategory = new Map();
@@ -15325,8 +15744,16 @@
             return this.getGradeAssessmentMode(value) === "homework";
           }
 
+          isTestAssessment(value) {
+            return this.getGradeAssessmentMode(value) === "test";
+          }
+
           isHomeworkGradeInput(input) {
             return input instanceof HTMLInputElement && input.dataset.gradeCheckbox === "1";
+          }
+
+          isTestGradeInput(input) {
+            return input instanceof HTMLInputElement && input.dataset.gradeTestScore === "1";
           }
 
           syncHomeworkCheckboxVisualState(input) {
@@ -15355,17 +15782,59 @@
           }
 
           getSelectedGradeAssessmentDialogMode() {
-            return this.refs.gradeAssessmentDialogModeHomework?.checked ? "homework" : "grade";
+            if (this.refs.gradeAssessmentDialogModeHomework?.checked) {
+              return "homework";
+            }
+            return this.refs.gradeAssessmentDialogModeTest?.checked ? "test" : "grade";
+          }
+
+          getSelectedGradeAssessmentDialogTestScale() {
+            return this.refs.gradeAssessmentDialogTestScaleSek1?.checked ? "sek1" : GRADE_TEST_SCALE_DEFAULT;
+          }
+
+          setSelectedGradeAssessmentDialogTestScale(testScale = GRADE_TEST_SCALE_DEFAULT) {
+            const normalizedScale = normalizeGradeTestScale(testScale);
+            if (this.refs.gradeAssessmentDialogTestScaleSek1) {
+              this.refs.gradeAssessmentDialogTestScaleSek1.checked = normalizedScale === "sek1";
+            }
+            if (this.refs.gradeAssessmentDialogTestScaleSek2) {
+              this.refs.gradeAssessmentDialogTestScaleSek2.checked = normalizedScale !== "sek1";
+            }
+          }
+
+          getSelectedGradeAssessmentDialogHalfYear() {
+            return this.refs.gradeAssessmentDialogHalfYearH2?.checked ? "h2" : "h1";
+          }
+
+          setSelectedGradeAssessmentDialogHalfYear(halfYear = "h1") {
+            const normalizedHalfYear = normalizeGradeHalfYear(halfYear);
+            if (this.refs.gradeAssessmentDialogHalfYearH1) {
+              this.refs.gradeAssessmentDialogHalfYearH1.checked = normalizedHalfYear !== "h2";
+            }
+            if (this.refs.gradeAssessmentDialogHalfYearH2) {
+              this.refs.gradeAssessmentDialogHalfYearH2.checked = normalizedHalfYear === "h2";
+            }
           }
 
           syncGradeAssessmentDialogModeUi(mode = this.getSelectedGradeAssessmentDialogMode()) {
             const normalizedMode = normalizeGradeAssessmentMode(mode);
             if (this.refs.gradeAssessmentDialogModeGrade) {
-              this.refs.gradeAssessmentDialogModeGrade.checked = normalizedMode !== "homework";
+              this.refs.gradeAssessmentDialogModeGrade.checked = normalizedMode === "grade";
             }
             if (this.refs.gradeAssessmentDialogModeHomework) {
               this.refs.gradeAssessmentDialogModeHomework.checked = normalizedMode === "homework";
             }
+            if (this.refs.gradeAssessmentDialogModeTest) {
+              this.refs.gradeAssessmentDialogModeTest.checked = normalizedMode === "test";
+            }
+            if (this.refs.gradeAssessmentDialogTestScaleRow) {
+              this.refs.gradeAssessmentDialogTestScaleRow.hidden = normalizedMode !== "test";
+            }
+            [this.refs.gradeAssessmentDialogTestScaleSek1, this.refs.gradeAssessmentDialogTestScaleSek2].forEach((input) => {
+              if (input) {
+                input.disabled = normalizedMode !== "test";
+              }
+            });
             if (this.refs.gradeAssessmentDialogWeight) {
               const disabled = normalizedMode === "homework";
               this.refs.gradeAssessmentDialogWeight.disabled = disabled;
@@ -15543,6 +16012,22 @@
             const entry = this.store.getGradeEntry(student.id, assessment.id);
             const disabled = Boolean(options.disabled);
             const isHomework = this.isHomeworkAssessment(assessment);
+            const isTest = this.isTestAssessment(assessment);
+            if (isTest) {
+              const displayValue = this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+              const emptyClass = displayValue === "—" ? " is-empty" : "";
+              return `
+          <button
+            type="button"
+            class="grade-cell-display-button${emptyClass}"
+            data-grade-edit-assessment="${assessment.id}"
+            data-row-index="${rowIndex}"
+            data-student-id="${student.id}"
+            ${disabled ? "disabled" : ""}
+            aria-label="Test ${escapeHtml(assessment.title)} bearbeiten"
+          >${displayValue}</button>
+        `;
+            }
             if (Number(this.activeGradeAssessmentId || 0) === Number(assessment.id)) {
               if (isHomework) {
                 return this.buildHomeworkCheckboxMarkup(
@@ -15629,6 +16114,9 @@
             const draft = assessment ? null : this.getGradesEntryDraft(course.id);
             const draftEntries = draft && typeof draft.entries === "object" ? draft.entries : {};
             const entryMode = normalizeGradeAssessmentMode(assessment?.mode || draft?.mode);
+            if (entryMode === "test") {
+              return this.buildGradesTestEntryTable(course, students, assessment, draft);
+            }
             const courseColor = normalizeCourseColor(course?.color, Boolean(course?.noLesson));
             const displayStudents = this.getSortedGradeStudentsForNameOrder(students);
             const visibleMaxNameLength = displayStudents.reduce(
@@ -15702,6 +16190,242 @@
                   : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input" inputmode="numeric" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInteger(draftEntry.value)}" aria-label="Bewertung für ${escapeHtml(studentName)}">`;
               }
               tr.append(gradeCell);
+              tbody.append(tr);
+            });
+            table.append(tbody);
+            return table;
+          }
+
+          getActiveGradeTestContext() {
+            const activeAssessment = this.selectedGradesEntryAssessmentId
+              ? this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId)
+              : null;
+            if (activeAssessment && normalizeGradeAssessmentMode(activeAssessment.mode) === "test") {
+              return { assessment: activeAssessment, draft: null };
+            }
+            const draft = this.getGradesEntryDraft(this.selectedCourseId);
+            return normalizeGradeAssessmentMode(draft.mode) === "test"
+              ? { assessment: null, draft }
+              : { assessment: null, draft: null };
+          }
+
+          updateGradeTestContextTasks(tasks) {
+            const { assessment, draft } = this.getActiveGradeTestContext();
+            const normalizedTasks = normalizeGradeTestTasks(tasks);
+            const taskMaxById = new Map(normalizedTasks.map((task) => [task.id, Number(task.maxBe || 0)]));
+            if (assessment) {
+              this.store.updateGradeAssessment(assessment.id, { testTasks: normalizedTasks });
+              return true;
+            }
+            if (draft) {
+              const validTaskIds = new Set(normalizedTasks.map((task) => task.id));
+              const nextEntries = Object.entries(draft.entries || {}).reduce((result, [studentId, value]) => {
+                const normalizedEntry = normalizeGradeDraftEntry(value);
+                const testScores = Object.entries(normalizedEntry.testScores || {}).reduce((scores, [taskId, score]) => {
+                  if (validTaskIds.has(taskId)) {
+                    const maxBe = taskMaxById.get(taskId) || 0;
+                    scores[taskId] = maxBe > 0 ? Math.min(Number(score) || 0, maxBe) : score;
+                  }
+                  return scores;
+                }, {});
+                if (hasGradeTestScores(testScores)) {
+                  result[studentId] = { ...normalizedEntry, value: null, checked: null, testScores };
+                }
+                return result;
+              }, {});
+              this.gradesEntryDraft = {
+                ...draft,
+                testTasks: normalizedTasks,
+                entries: nextEntries
+              };
+              return true;
+            }
+            return false;
+          }
+
+          addGradeTestTask() {
+            const { assessment, draft } = this.getActiveGradeTestContext();
+            const sourceTasks = assessment ? assessment.testTasks : draft?.testTasks;
+            const tasks = normalizeGradeTestTasks(sourceTasks);
+            const id = getNextGradeTestTaskId(tasks);
+            tasks.push({
+              id,
+              title: `Aufgabe ${tasks.length + 1}`,
+              maxBe: null,
+              sortOrder: tasks.length + 1
+            });
+            if (this.updateGradeTestContextTasks(tasks)) {
+              this.renderGradesView();
+              requestAnimationFrame(() => {
+                const input = [...(this.refs.gradesEntryContent?.querySelectorAll("input[data-grade-test-task-field='maxBe']") || [])]
+                  .find((node) => node.dataset.taskId === id);
+                input?.focus();
+                input?.select();
+              });
+            }
+          }
+
+          removeGradeTestTask(taskId) {
+            const normalizedTaskId = String(taskId || "").trim();
+            if (!normalizedTaskId) {
+              return;
+            }
+            const { assessment, draft } = this.getActiveGradeTestContext();
+            const sourceTasks = assessment ? assessment.testTasks : draft?.testTasks;
+            const tasks = normalizeGradeTestTasks(sourceTasks).filter((task) => task.id !== normalizedTaskId);
+            this.updateGradeTestContextTasks(tasks.length ? tasks : normalizeGradeTestTasks([], { ensureDefault: true }));
+            this.renderGradesView();
+          }
+
+          updateGradeTestTaskFromInput(input) {
+            if (!(input instanceof HTMLInputElement)) {
+              return false;
+            }
+            const taskId = String(input.dataset.taskId || "").trim();
+            const field = String(input.dataset.gradeTestTaskField || "").trim();
+            if (!taskId || field !== "maxBe") {
+              return false;
+            }
+            const { assessment, draft } = this.getActiveGradeTestContext();
+            const sourceTasks = assessment ? assessment.testTasks : draft?.testTasks;
+            const tasks = normalizeGradeTestTasks(sourceTasks);
+            const task = tasks.find((item) => item.id === taskId);
+            if (!task) {
+              return false;
+            }
+            const parsed = parseGradeBeValue(input.value);
+            if (!parsed.valid) {
+              input.classList.add("invalid");
+              return false;
+            }
+            task.maxBe = parsed.value === null ? null : parsed.value;
+            return this.updateGradeTestContextTasks(tasks);
+          }
+
+          buildGradesTestEntryTable(course, students, assessment = null, draft = null) {
+            const activeDraft = assessment ? null : (draft || this.getGradesEntryDraft(course.id));
+            const tasks = normalizeGradeTestTasks(assessment?.testTasks || activeDraft?.testTasks);
+            const entries = activeDraft && typeof activeDraft.entries === "object" ? activeDraft.entries : {};
+            const scale = normalizeGradeTestScale(assessment?.testScale || activeDraft?.testScale);
+            const courseColor = normalizeCourseColor(course?.color, Boolean(course?.noLesson));
+            const displayStudents = this.getSortedGradeStudentsForNameOrder(students);
+            const visibleMaxNameLength = displayStudents.reduce(
+              (maxLength, student) => Math.max(maxLength, this.getGradeStudentDisplayName(student).length),
+              0
+            );
+            const table = document.createElement("table");
+            table.className = "grade-block-table grades-entry-table grades-test-entry-table";
+            if (visibleMaxNameLength > 0) {
+              table.style.setProperty(
+                "--grades-entry-student-col-min-width",
+                `max(16rem, ${visibleMaxNameLength + 2}ch)`
+              );
+            }
+            const thead = document.createElement("thead");
+            const headRow = document.createElement("tr");
+            const studentHead = document.createElement("th");
+            studentHead.className = "student-col";
+            studentHead.style.background = courseColor;
+            studentHead.style.color = readableTextColor(courseColor);
+            studentHead.innerHTML = `
+              <button
+                type="button"
+                class="grades-entry-course-head-btn"
+                data-grades-entry-course-toggle="1"
+                aria-label="Kurs auswählen"
+                title="Kurs auswählen"
+              >${escapeHtml(String(course?.name || ""))}</button>
+            `;
+            headRow.append(studentHead);
+            const resultHead = document.createElement("th");
+            resultHead.className = "grade-test-result-col";
+            resultHead.textContent = "Note";
+            headRow.append(resultHead);
+            const ratioHead = document.createElement("th");
+            ratioHead.className = "grade-test-ratio-col";
+            ratioHead.textContent = "BE2 / BE1";
+            headRow.append(ratioHead);
+            tasks.forEach((task, index) => {
+              const taskLabel = `Aufgabe ${index + 1}`;
+              const taskHead = document.createElement("th");
+              taskHead.className = "grade-test-task-col";
+              taskHead.innerHTML = `
+                <div class="grade-test-task-head">
+                  <div class="grade-test-task-title" aria-label="${escapeHtml(taskLabel)}">${index + 1}</div>
+                  <label class="grade-test-task-max">
+                    <span>BE</span>
+                    <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" aria-label="Erreichbare BE fuer ${escapeHtml(taskLabel)}">
+                  </label>
+                  <button type="button" class="ghost grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
+                </div>
+              `;
+              headRow.append(taskHead);
+            });
+            const addHead = document.createElement("th");
+            addHead.className = "grade-test-add-col";
+            addHead.innerHTML = `<button type="button" class="sidebar-add-btn" data-grade-test-add-task="1" aria-label="Aufgabe hinzufügen" title="Aufgabe hinzufügen"><span class="sidebar-add-plus" aria-hidden="true"></span></button>`;
+            headRow.append(addHead);
+            thead.append(headRow);
+            table.append(thead);
+
+            const tbody = document.createElement("tbody");
+            displayStudents.forEach((student, rowIndex) => {
+              const tr = document.createElement("tr");
+              const studentName = this.getGradeStudentDisplayName(student);
+              const isPlaceholderRow = Boolean(student?.isPlaceholder);
+              const isActive = student.id > 0 && student.id === Number(this.activeGradeStudentId || 0);
+              const studentCell = document.createElement("td");
+              studentCell.className = "student-col";
+              studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : escapeHtml(studentName)}</div>`;
+              tr.append(studentCell);
+              const entry = assessment
+                ? this.store.getGradeEntry(student.id, assessment.id)
+                : (Object.prototype.hasOwnProperty.call(entries, student.id) ? normalizeGradeDraftEntry(entries[student.id]) : null);
+              const scores = normalizeGradeTestScores(entry?.testScores);
+              const resultCell = document.createElement("td");
+              resultCell.className = "grade-test-result-col";
+              const resultValue = assessment
+                ? (entry && entry.value !== null ? entry.value : null)
+                : calculateGradeTestValue(tasks, scores, scale);
+              resultCell.innerHTML = `<div class="grade-total-value" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""}>${this.formatDisplayedGrade(resultValue)}</div>`;
+              tr.append(resultCell);
+              const ratioCell = document.createElement("td");
+              ratioCell.className = "grade-test-ratio-col";
+              ratioCell.innerHTML = `<div class="grade-test-ratio-value" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""}>${escapeHtml(formatGradeTestRatioDisplay(calculateGradeTestRatio(tasks, scores)))}</div>`;
+              tr.append(ratioCell);
+              tasks.forEach((task, columnIndex) => {
+                const taskLabel = `Aufgabe ${columnIndex + 1}`;
+                const td = document.createElement("td");
+                td.className = "grade-test-task-col";
+                if (isPlaceholderRow) {
+                  td.innerHTML = `<span class="grade-cell-placeholder" aria-hidden="true"></span>`;
+                } else {
+                  const value = Object.prototype.hasOwnProperty.call(scores, task.id) ? scores[task.id] : null;
+                  td.innerHTML = `
+                    <input
+                      type="text"
+                      name="grade-test-${escapeHtml(String(assessment?.id || "draft"))}-${escapeHtml(task.id)}-${student.id}"
+                      class="grade-cell-input grade-test-score-input"
+                      inputmode="decimal"
+                      maxlength="5"
+                      data-grade-input="1"
+                      data-grade-test-score="1"
+                      data-student-id="${student.id}"
+                      ${assessment ? `data-assessment-id="${assessment.id}"` : `data-grade-draft-input="1"`}
+                      data-task-id="${escapeHtml(task.id)}"
+                      data-row-index="${rowIndex}"
+                      data-col-index="${columnIndex}"
+                      value="${escapeHtml(formatGradeBeValue(value))}"
+                      aria-label="BE 2 fuer ${escapeHtml(studentName)} in ${escapeHtml(taskLabel)}"
+                    >
+                  `;
+                }
+                tr.append(td);
+              });
+              const addCell = document.createElement("td");
+              addCell.className = "grade-test-add-col";
+              addCell.textContent = "";
+              tr.append(addCell);
               tbody.append(tr);
             });
             table.append(tbody);
@@ -15789,7 +16513,7 @@
             ).reduce((result, [studentId, value]) => {
               const studentKey = Number(studentId || 0);
               const normalizedEntry = normalizeGradeDraftEntry(value);
-              if (studentKey > 0 && (normalizedEntry.value !== null || normalizedEntry.checked === true)) {
+              if (studentKey > 0 && (normalizedEntry.value !== null || normalizedEntry.checked === true || hasGradeTestScores(normalizedEntry.testScores))) {
                 result[studentKey] = normalizedEntry;
               }
               return result;
@@ -15815,6 +16539,8 @@
               halfYear,
               weight: normalizeGradeInteger(previous.weight, 1),
               mode,
+              testScale: normalizeGradeTestScale(previous.testScale),
+              testTasks: normalizeGradeTestTasks(previous.testTasks),
               categoryId,
               subcategoryId,
               entries
@@ -15841,6 +16567,14 @@
                   return;
                 }
                 this.store.setGradeEntry(studentKey, assessmentKey, true);
+                persistedCount += 1;
+                return;
+              }
+              if (normalizeGradeAssessmentMode(draft.mode) === "test") {
+                if (!hasGradeTestScores(normalizedEntry.testScores)) {
+                  return;
+                }
+                this.store.setGradeTestEntry(studentKey, assessmentKey, normalizedEntry.testScores);
                 persistedCount += 1;
                 return;
               }
@@ -15889,6 +16623,8 @@
               halfYear: values?.halfYear || "h1",
               weight: normalizeGradeAssessmentMode(values?.mode) === "homework" ? 1 : normalizeGradeInteger(values?.weight, 1),
               mode: normalizeGradeAssessmentMode(values?.mode),
+              testScale: normalizeGradeTestScale(values?.testScale),
+              testTasks: normalizeGradeTestTasks(values?.testTasks),
               categoryId,
               subcategoryId,
               maxPoints: 15
@@ -15904,16 +16640,19 @@
               return draft;
             }
             const titleInput = root.querySelector("input[data-grades-entry-title]");
-            const halfYearSelect = root.querySelector("select[data-grades-entry-halfyear]");
+            const halfYearInput = root.querySelector("input[data-grades-entry-halfyear='1']:checked");
             const weightInput = root.querySelector("input[data-grades-entry-weight]");
             const modeInput = root.querySelector("input[data-grades-entry-mode='1']:checked");
+            const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
             const categorySelect = root.querySelector("select[data-grades-entry-category]");
             const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
             return {
               title: String(titleInput?.value || draft.title || "").trim(),
-              halfYear: normalizeGradeHalfYear(halfYearSelect?.value || draft.halfYear || "h1"),
+              halfYear: normalizeGradeHalfYear(halfYearInput?.value || draft.halfYear || "h1"),
               weight: normalizeGradeInteger(weightInput?.value, draft.weight || 1),
               mode: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade"),
+              testScale: normalizeGradeTestScale(testScaleInput?.value || draft.testScale),
+              testTasks: normalizeGradeTestTasks(draft.testTasks),
               categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
               subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
             };
@@ -16787,9 +17526,8 @@
             this.refs.gradeAssessmentDialogTitle.value = String(assessment.title || "");
             this.refs.gradeAssessmentDialogWeight.value = String(assessment.weight || 1);
             this.syncGradeAssessmentDialogModeUi(assessment.mode);
-            if (this.refs.gradeAssessmentDialogHalfYear) {
-              this.refs.gradeAssessmentDialogHalfYear.value = normalizeGradeHalfYear(assessment.halfYear);
-            }
+            this.setSelectedGradeAssessmentDialogTestScale(assessment.testScale);
+            this.setSelectedGradeAssessmentDialogHalfYear(assessment.halfYear);
             this.populateGradeAssessmentCategoryOptions(
               assessment.courseId,
               assessment.categoryId,
@@ -16806,9 +17544,10 @@
             if (this.refs.gradeAssessmentDialogTitle) this.refs.gradeAssessmentDialogTitle.value = "";
             if (this.refs.gradeAssessmentDialogWeight) this.refs.gradeAssessmentDialogWeight.value = "";
             this.syncGradeAssessmentDialogModeUi("grade");
+            this.setSelectedGradeAssessmentDialogTestScale(GRADE_TEST_SCALE_DEFAULT);
+            this.setSelectedGradeAssessmentDialogHalfYear(this.getDefaultGradeAssessmentHalfYear());
             if (this.refs.gradeAssessmentDialogCategory) this.refs.gradeAssessmentDialogCategory.innerHTML = "";
             if (this.refs.gradeAssessmentDialogSubcategory) this.refs.gradeAssessmentDialogSubcategory.innerHTML = "";
-            if (this.refs.gradeAssessmentDialogHalfYear) this.refs.gradeAssessmentDialogHalfYear.value = this.getDefaultGradeAssessmentHalfYear();
             this.closeDialog(this.refs.gradeAssessmentDialog);
             requestAnimationFrame(() => {
               const active = document.activeElement;
@@ -16971,7 +17710,8 @@
               title,
               weight: this.getSelectedGradeAssessmentDialogMode() === "homework" ? 1 : this.refs.gradeAssessmentDialogWeight?.value,
               mode: this.getSelectedGradeAssessmentDialogMode(),
-              halfYear: this.refs.gradeAssessmentDialogHalfYear?.value || "h1",
+              testScale: this.getSelectedGradeAssessmentDialogTestScale(),
+              halfYear: this.getSelectedGradeAssessmentDialogHalfYear(),
               categoryId: this.refs.gradeAssessmentDialogCategory?.value,
               subcategoryId: this.refs.gradeAssessmentDialogSubcategory?.value
             });
@@ -17089,6 +17829,22 @@
               this.syncHomeworkCheckboxVisualState(gradeInput);
               return;
             }
+            if (this.isTestGradeInput(gradeInput)) {
+              const rawValue = String(gradeInput.value || "");
+              const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 5);
+              const sanitizedValue = sanitizeGradeBeInput(rawValue, maxLength);
+              const removedCharacters = rawValue !== sanitizedValue;
+              gradeInput.value = sanitizedValue;
+              const parsed = parseGradeBeValue(sanitizedValue);
+              if (removedCharacters || (sanitizedValue && !parsed.valid)) {
+                this.showGradeInputInvalidFeedback(gradeInput, {
+                  persist: Boolean(sanitizedValue) && !parsed.valid
+                });
+                return;
+              }
+              this.clearGradeInputInvalidFeedback(gradeInput);
+              return;
+            }
             if (gradeInput.dataset.gradeOverrideInput === "1") {
               const rawValue = String(gradeInput.value || "");
               const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 4);
@@ -17154,7 +17910,7 @@
             }
             this.activeGradeStudentId = Number(gradeInput.dataset.studentId || 0) || null;
             this.updateActiveGradeStudentHighlight();
-            if (this.isHomeworkGradeInput(gradeInput)) {
+            if (this.isHomeworkGradeInput(gradeInput) || this.isTestGradeInput(gradeInput)) {
               this.hideGradePicker();
             } else {
               this.openGradePickerForInput(gradeInput);
@@ -17194,6 +17950,19 @@
                 return;
               }
               if (event.key === "Tab") {
+                event.preventDefault();
+                if (this.commitGradeCellInput(input)) {
+                  this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
+                }
+                return;
+              }
+              if (event.key === "Escape") {
+                this.deactivateGradeAssessment();
+              }
+              return;
+            }
+            if (this.isTestGradeInput(input)) {
+              if (event.key === "Enter" || event.key === "Tab") {
                 event.preventDefault();
                 if (this.commitGradeCellInput(input)) {
                   this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
@@ -17331,6 +18100,71 @@
             }
           }
 
+          getGradeTestInputContext(input) {
+            const studentId = Number(input?.dataset?.studentId || 0);
+            const assessmentId = Number(input?.dataset?.assessmentId || 0);
+            if (assessmentId) {
+              const assessment = this.store.getGradeAssessment(assessmentId);
+              const entry = this.store.getGradeEntry(studentId, assessmentId);
+              return {
+                tasks: normalizeGradeTestTasks(assessment?.testTasks),
+                scale: normalizeGradeTestScale(assessment?.testScale),
+                scores: normalizeGradeTestScores(entry?.testScores)
+              };
+            }
+            const draft = this.getGradesEntryDraft(this.selectedCourseId);
+            const entry = draft && typeof draft.entries === "object" && Object.prototype.hasOwnProperty.call(draft.entries, studentId)
+              ? normalizeGradeDraftEntry(draft.entries[studentId])
+              : null;
+            return {
+              tasks: normalizeGradeTestTasks(draft?.testTasks),
+              scale: normalizeGradeTestScale(draft?.testScale),
+              scores: normalizeGradeTestScores(entry?.testScores)
+            };
+          }
+
+          refreshVisibleGradeTestResult(studentId, assessmentId = null) {
+            const studentKey = Number(studentId || 0);
+            if (!studentKey) {
+              return;
+            }
+            const selector = assessmentId
+              ? `[data-grade-test-result-student="${studentKey}"][data-assessment-id="${Number(assessmentId)}"]`
+              : `[data-grade-test-result-student="${studentKey}"][data-grade-test-draft-result="1"]`;
+            const ratioSelector = assessmentId
+              ? `[data-grade-test-ratio-student="${studentKey}"][data-assessment-id="${Number(assessmentId)}"]`
+              : `[data-grade-test-ratio-student="${studentKey}"][data-grade-test-draft-ratio="1"]`;
+            const node = this.refs.gradesEntryContent?.querySelector(selector);
+            const ratioNode = this.refs.gradesEntryContent?.querySelector(ratioSelector);
+            if (assessmentId) {
+              const entry = this.store.getGradeEntry(studentKey, assessmentId);
+              const assessment = this.store.getGradeAssessment(assessmentId);
+              if (node) {
+                node.textContent = this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+              }
+              if (ratioNode) {
+                ratioNode.textContent = formatGradeTestRatioDisplay(
+                  calculateGradeTestRatio(assessment?.testTasks || [], entry?.testScores || {})
+                );
+              }
+              return;
+            }
+            const draft = this.getGradesEntryDraft(this.selectedCourseId);
+            const entry = draft && typeof draft.entries === "object" && Object.prototype.hasOwnProperty.call(draft.entries, studentKey)
+              ? normalizeGradeDraftEntry(draft.entries[studentKey])
+              : null;
+            if (node) {
+              node.textContent = this.formatDisplayedGrade(
+                calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, draft.testScale)
+              );
+            }
+            if (ratioNode) {
+              ratioNode.textContent = formatGradeTestRatioDisplay(
+                calculateGradeTestRatio(draft.testTasks, entry?.testScores || {})
+              );
+            }
+          }
+
           commitGradeCellInput(input) {
             if (!input) {
               return false;
@@ -17371,6 +18205,54 @@
                 return true;
               }
               this.store.setGradeEntry(studentId, assessmentId, input.checked);
+              this.refreshGradeTotals();
+              this.renderGradePrivacyOverlay();
+              return true;
+            }
+            if (this.isTestGradeInput(input)) {
+              const taskId = String(input.dataset.taskId || "").trim();
+              const parsed = parseGradeBeValue(input.value);
+              if (!parsed.valid || !taskId) {
+                input.classList.add("invalid");
+                return false;
+              }
+              const context = this.getGradeTestInputContext(input);
+              const task = context.tasks.find((item) => item.id === taskId) || null;
+              if (parsed.value !== null && task && Number(task.maxBe || 0) > 0 && parsed.value > Number(task.maxBe || 0)) {
+                input.classList.add("invalid");
+                return false;
+              }
+              input.classList.remove("invalid");
+              input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
+              const nextScores = { ...context.scores };
+              if (parsed.value === null) {
+                delete nextScores[taskId];
+              } else {
+                nextScores[taskId] = parsed.value;
+              }
+              if (isDraftInput) {
+                const draft = this.getGradesEntryDraft(this.selectedCourseId);
+                const nextEntries = {
+                  ...(draft && typeof draft.entries === "object" ? draft.entries : {})
+                };
+                if (hasGradeTestScores(nextScores)) {
+                  nextEntries[studentId] = {
+                    value: null,
+                    checked: null,
+                    testScores: nextScores
+                  };
+                } else {
+                  delete nextEntries[studentId];
+                }
+                this.gradesEntryDraft = {
+                  ...draft,
+                  entries: nextEntries
+                };
+                this.refreshVisibleGradeTestResult(studentId, null);
+                return true;
+              }
+              this.store.setGradeTestEntry(studentId, assessmentId, nextScores);
+              this.refreshVisibleGradeTestResult(studentId, assessmentId);
               this.refreshGradeTotals();
               this.renderGradePrivacyOverlay();
               return true;
@@ -17516,7 +18398,7 @@
               if (document.activeElement !== input) {
                 this.focusGradeInputElement(input, { preventScroll: true });
               }
-              if (!this.isHomeworkGradeInput(input)) {
+              if (!this.isHomeworkGradeInput(input) && !this.isTestGradeInput(input)) {
                 this.openGradePickerForInput(input);
                 this.syncGradePickerSelectionFromInput(input);
               }
@@ -17551,7 +18433,7 @@
           }
 
           openGradePickerForInput(input, options = {}) {
-            if (!this.refs.gradePicker || !input || input.disabled || this.isHomeworkGradeInput(input)) {
+            if (!this.refs.gradePicker || !input || input.disabled || this.isHomeworkGradeInput(input) || this.isTestGradeInput(input)) {
               return;
             }
             const mode = options.mode === "override" ? "override" : "table";

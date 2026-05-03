@@ -669,6 +669,76 @@
                   value="homework">
                 <span>Hausaufgaben</span>
               </label>
+              <label class="assessment-mode-option">
+                <input id="grade-assessment-dialog-mode-test" type="radio" name="grade-assessment-dialog-mode"
+                  value="test">
+                <span>Test</span>
+              </label>
+            </div>
+          </fieldset>
+          <fieldset id="grade-assessment-dialog-test-scale-row" class="assessment-mode-field" hidden>
+            <legend>Prozentgrenzen</legend>
+            <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
+              <label class="assessment-mode-option grade-test-scale-option">
+                <input id="grade-assessment-dialog-test-scale-sek1" type="radio"
+                  name="grade-assessment-dialog-test-scale" value="sek1">
+                <span>Sek I</span>
+                <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
+                  <table>
+                    <thead>
+                      <tr><th>Grenze</th><th>Note</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>96%</td><td>15</td></tr>
+                      <tr><td>92%</td><td>14</td></tr>
+                      <tr><td>88%</td><td>13</td></tr>
+                      <tr><td>83%</td><td>12</td></tr>
+                      <tr><td>78%</td><td>11</td></tr>
+                      <tr><td>73%</td><td>10</td></tr>
+                      <tr><td>68%</td><td>9</td></tr>
+                      <tr><td>63%</td><td>8</td></tr>
+                      <tr><td>58%</td><td>7</td></tr>
+                      <tr><td>54%</td><td>6</td></tr>
+                      <tr><td>50%</td><td>5</td></tr>
+                      <tr><td>44%</td><td>4</td></tr>
+                      <tr><td>38%</td><td>3</td></tr>
+                      <tr><td>32%</td><td>2</td></tr>
+                      <tr><td>20%</td><td>1</td></tr>
+                      <tr><td>0%</td><td>0</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </label>
+              <label class="assessment-mode-option grade-test-scale-option">
+                <input id="grade-assessment-dialog-test-scale-sek2" type="radio"
+                  name="grade-assessment-dialog-test-scale" value="sek2" checked>
+                <span>Sek II</span>
+                <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
+                  <table>
+                    <thead>
+                      <tr><th>Grenze</th><th>Note</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>95%</td><td>15</td></tr>
+                      <tr><td>90%</td><td>14</td></tr>
+                      <tr><td>85%</td><td>13</td></tr>
+                      <tr><td>80%</td><td>12</td></tr>
+                      <tr><td>75%</td><td>11</td></tr>
+                      <tr><td>70%</td><td>10</td></tr>
+                      <tr><td>65%</td><td>9</td></tr>
+                      <tr><td>60%</td><td>8</td></tr>
+                      <tr><td>55%</td><td>7</td></tr>
+                      <tr><td>50%</td><td>6</td></tr>
+                      <tr><td>45%</td><td>5</td></tr>
+                      <tr><td>40%</td><td>4</td></tr>
+                      <tr><td>33%</td><td>3</td></tr>
+                      <tr><td>27%</td><td>2</td></tr>
+                      <tr><td>20%</td><td>1</td></tr>
+                      <tr><td>0%</td><td>0</td></tr>
+                    </tbody>
+                  </table>
+                </div>
+              </label>
             </div>
           </fieldset>
           <label>
@@ -683,13 +753,21 @@
             Unterkategorie
             <select id="grade-assessment-dialog-subcategory"></select>
           </label>
-          <label>
-            Halbjahr
-            <select id="grade-assessment-dialog-half-year">
-              <option value="h1">HJ1</option>
-              <option value="h2">HJ2</option>
-            </select>
-          </label>
+          <fieldset class="assessment-mode-field">
+            <legend>Halbjahr</legend>
+            <div class="assessment-mode-toggle" role="radiogroup" aria-label="Halbjahr">
+              <label class="assessment-mode-option">
+                <input id="grade-assessment-dialog-half-year-h1" type="radio"
+                  name="grade-assessment-dialog-half-year" value="h1" checked>
+                <span>HJ1</span>
+              </label>
+              <label class="assessment-mode-option">
+                <input id="grade-assessment-dialog-half-year-h2" type="radio"
+                  name="grade-assessment-dialog-half-year" value="h2">
+                <span>HJ2</span>
+              </label>
+            </div>
+          </fieldset>
         </form>
       </dialog>
 
