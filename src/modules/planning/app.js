@@ -1554,6 +1554,9 @@
         }
 
         const GRADE_TEST_SCALE_DEFAULT = "sek2";
+        const GRADE_TEST_SCALE_CUSTOM = "custom";
+        const GRADE_TEST_SCALE_IDS = ["sek1", "sek2", GRADE_TEST_SCALE_CUSTOM];
+        const GRADE_TEST_SCALE_GRADES = Array.from({ length: 16 }, (_item, index) => 15 - index);
         const GRADE_TEST_SCALE_THRESHOLDS = {
           sek1: [
             [0.96, 15], [0.92, 14], [0.88, 13], [0.83, 12],
@@ -1568,6 +1571,23 @@
             [0.33, 3], [0.27, 2], [0.2, 1], [0, 0]
           ]
         };
+        GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_CUSTOM] = GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT];
+
+        function getGradeTestScaleDefaultLabel(scale = GRADE_TEST_SCALE_DEFAULT) {
+          const normalized = normalizeGradeTestScale(scale);
+          if (normalized === "sek1") {
+            return "Sek I";
+          }
+          if (normalized === GRADE_TEST_SCALE_CUSTOM) {
+            return "";
+          }
+          return "Sek II";
+        }
+
+        function cloneGradeTestThresholds(thresholds = GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT]) {
+          return (Array.isArray(thresholds) ? thresholds : GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT])
+            .map(([threshold, grade]) => [Number(threshold) || 0, clamp(Math.round(Number(grade) || 0), 0, 15)]);
+        }
 
         function normalizeGradeAssessmentMode(value) {
           const normalized = String(value || "").trim().toLowerCase();
@@ -1578,7 +1598,149 @@
         }
 
         function normalizeGradeTestScale(value) {
-          return String(value || "").trim().toLowerCase() === "sek1" ? "sek1" : GRADE_TEST_SCALE_DEFAULT;
+          const normalized = String(value || "").trim().toLowerCase();
+          if (normalized === "sek1" || normalized === GRADE_TEST_SCALE_CUSTOM) {
+            return normalized;
+          }
+          return GRADE_TEST_SCALE_DEFAULT;
+        }
+
+        function normalizeGradeTestThresholds(thresholds = null, fallback = null) {
+          const fallbackThresholds = cloneGradeTestThresholds(
+            fallback || GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT]
+          );
+          const fallbackByGrade = new Map(fallbackThresholds.map(([threshold, grade]) => [Number(grade), Number(threshold)]));
+          const source = Array.isArray(thresholds) ? thresholds : [];
+          const sourceByGrade = new Map();
+          source.forEach((entry, index) => {
+            let threshold;
+            let grade;
+            if (Array.isArray(entry)) {
+              threshold = entry[0];
+              grade = entry[1];
+            } else if (entry && typeof entry === "object") {
+              threshold = entry.threshold;
+              grade = entry.grade;
+            }
+            const normalizedGrade = clamp(Math.round(Number(grade ?? (15 - index)) || 0), 0, 15);
+            const numericThreshold = Number(threshold);
+            if (Number.isFinite(numericThreshold)) {
+              sourceByGrade.set(normalizedGrade, clamp(numericThreshold, 0, 1));
+            }
+          });
+          return GRADE_TEST_SCALE_GRADES.map((grade) => {
+            const threshold = grade === 0
+              ? 0
+              : (
+                sourceByGrade.has(grade)
+                  ? sourceByGrade.get(grade)
+                  : (fallbackByGrade.has(grade) ? fallbackByGrade.get(grade) : 0)
+              );
+            return [Number(threshold) || 0, grade];
+          });
+        }
+
+        function buildDefaultGradeTestScaleSettings() {
+          return {
+            sek1: {
+              id: "sek1",
+              label: "Sek I",
+              thresholds: cloneGradeTestThresholds(GRADE_TEST_SCALE_THRESHOLDS.sek1)
+            },
+            sek2: {
+              id: "sek2",
+              label: "Sek II",
+              thresholds: cloneGradeTestThresholds(GRADE_TEST_SCALE_THRESHOLDS.sek2)
+            },
+            custom: {
+              id: GRADE_TEST_SCALE_CUSTOM,
+              label: "",
+              thresholds: cloneGradeTestThresholds(GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT])
+            }
+          };
+        }
+
+        function normalizeGradeTestScaleTemplate(rawTemplate = null, scale = GRADE_TEST_SCALE_DEFAULT, fallback = null) {
+          const normalizedScale = normalizeGradeTestScale(scale);
+          const source = rawTemplate && typeof rawTemplate === "object" ? rawTemplate : {};
+          const fallbackTemplate = fallback && typeof fallback === "object"
+            ? fallback
+            : buildDefaultGradeTestScaleSettings()[normalizedScale];
+          const fixedLabel = normalizedScale === "sek1"
+            ? "Sek I"
+            : (normalizedScale === "sek2" ? "Sek II" : "");
+          const rawLabel = normalizedScale === GRADE_TEST_SCALE_CUSTOM
+            ? normalizeGradeTextPart(source.label).slice(0, 40)
+            : fixedLabel;
+          return {
+            id: normalizedScale,
+            label: rawLabel,
+            thresholds: normalizeGradeTestThresholds(source.thresholds, fallbackTemplate.thresholds)
+          };
+        }
+
+        function normalizeGradeTestScaleSettings(rawSettings = null) {
+          const defaults = buildDefaultGradeTestScaleSettings();
+          const source = rawSettings && typeof rawSettings === "object" ? rawSettings : {};
+          return {
+            sek1: normalizeGradeTestScaleTemplate(source.sek1, "sek1", defaults.sek1),
+            sek2: normalizeGradeTestScaleTemplate(source.sek2, "sek2", defaults.sek2),
+            custom: normalizeGradeTestScaleTemplate(source.custom, GRADE_TEST_SCALE_CUSTOM, defaults.custom)
+          };
+        }
+
+        function getGradeTestScaleTemplate(settings = null, scale = GRADE_TEST_SCALE_DEFAULT) {
+          const normalizedSettings = normalizeGradeTestScaleSettings(settings);
+          const normalizedScale = normalizeGradeTestScale(scale);
+          return normalizedSettings[normalizedScale] || normalizedSettings[GRADE_TEST_SCALE_DEFAULT];
+        }
+
+        function listVisibleGradeTestScaleTemplates(settings = null) {
+          const normalized = normalizeGradeTestScaleSettings(settings);
+          const templates = [normalized.sek1, normalized.sek2];
+          if (String(normalized.custom.label || "").trim()) {
+            templates.push(normalized.custom);
+          }
+          return templates;
+        }
+
+        function buildGradeTestScaleSnapshot(settings = null, scale = GRADE_TEST_SCALE_DEFAULT) {
+          const template = getGradeTestScaleTemplate(settings, scale);
+          const fallbackLabel = getGradeTestScaleDefaultLabel(template.id);
+          return {
+            id: normalizeGradeTestScale(template.id),
+            label: String(template.label || fallbackLabel || "").trim(),
+            thresholds: cloneGradeTestThresholds(template.thresholds)
+          };
+        }
+
+        function normalizeGradeTestScaleSnapshot(snapshot = null, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+          const normalizedScale = normalizeGradeTestScale(snapshot?.id || scale);
+          const fallback = buildGradeTestScaleSnapshot(settings, normalizedScale);
+          const source = snapshot && typeof snapshot === "object" ? snapshot : {};
+          const label = String(source.label || fallback.label || getGradeTestScaleDefaultLabel(normalizedScale) || "").trim();
+          return {
+            id: normalizedScale,
+            label,
+            thresholds: normalizeGradeTestThresholds(source.thresholds, fallback.thresholds)
+          };
+        }
+
+        function getGradeTestThresholdsForAssessment(assessment = null, settings = null) {
+          if (assessment && typeof assessment === "object" && assessment.testScaleSnapshot) {
+            return normalizeGradeTestScaleSnapshot(
+              assessment.testScaleSnapshot,
+              assessment.testScale,
+              settings
+            ).thresholds;
+          }
+          return buildGradeTestScaleSnapshot(settings, assessment?.testScale || GRADE_TEST_SCALE_DEFAULT).thresholds;
+        }
+
+        function gradeTestScaleSettingsEqual(a = null, b = null) {
+          const left = normalizeGradeTestScaleSettings(a);
+          const right = normalizeGradeTestScaleSettings(b);
+          return JSON.stringify(left) === JSON.stringify(right);
         }
 
         function parseGradeBeValue(raw) {
@@ -1723,8 +1885,11 @@
             : "—";
         }
 
-        function buildGradeTestScaleTooltipMarkup(scale = GRADE_TEST_SCALE_DEFAULT) {
-          const thresholds = GRADE_TEST_SCALE_THRESHOLDS[normalizeGradeTestScale(scale)] || GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT];
+        function buildGradeTestScaleTooltipMarkup(scaleOrTemplate = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+          const template = scaleOrTemplate && typeof scaleOrTemplate === "object"
+            ? normalizeGradeTestScaleSnapshot(scaleOrTemplate, scaleOrTemplate.id, settings)
+            : buildGradeTestScaleSnapshot(settings, scaleOrTemplate);
+          const thresholds = template.thresholds;
           return `
             <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
               <table>
@@ -1735,7 +1900,7 @@
                   ${thresholds.map(([threshold, grade]) => `
                     <tr>
                       <td>${Math.round(Number(threshold || 0) * 100)}%</td>
-                      <td>${grade}</td>
+                      <td>${formatGradeInteger(grade)}</td>
                     </tr>
                   `).join("")}
                 </tbody>
@@ -1744,13 +1909,15 @@
           `;
         }
 
-        function calculateGradeTestValue(tasks = [], scores = {}, scale = GRADE_TEST_SCALE_DEFAULT) {
+        function calculateGradeTestValue(tasks = [], scores = {}, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
           const ratioState = calculateGradeTestRatio(tasks, scores);
           if (!ratioState) {
             return null;
           }
           const ratio = ratioState.ratio;
-          const thresholds = GRADE_TEST_SCALE_THRESHOLDS[normalizeGradeTestScale(scale)] || GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT];
+          const thresholds = scale && typeof scale === "object"
+            ? normalizeGradeTestScaleSnapshot(scale, scale.id, settings).thresholds
+            : buildGradeTestScaleSnapshot(settings, scale).thresholds;
           const match = thresholds.find(([threshold]) => ratio + 0.0000001 >= threshold);
           return match ? match[1] : 0;
         }
@@ -2200,6 +2367,7 @@
               lessonTimes: buildDefaultLessonTimes(HOURS_PER_DAY_DEFAULT),
               showHiddenSidebarCourses: SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
               gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
+              gradeTestScaleSettings: buildDefaultGradeTestScaleSettings(),
               backupEnabled: BACKUP_ENABLED_DEFAULT,
               backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
               lastAutoBackupAt: null
@@ -2423,6 +2591,17 @@
             this.state.settings.gradesPrivacyGraphThreshold = threshold;
             this._save();
             return threshold;
+          }
+
+          getGradeTestScaleSettings() {
+            this.state.settings.gradeTestScaleSettings = normalizeGradeTestScaleSettings(this.state.settings.gradeTestScaleSettings);
+            return cloneJsonValue(this.state.settings.gradeTestScaleSettings, buildDefaultGradeTestScaleSettings());
+          }
+
+          setGradeTestScaleSettings(settings = null) {
+            this.state.settings.gradeTestScaleSettings = normalizeGradeTestScaleSettings(settings);
+            this._save();
+            return this.getGradeTestScaleSettings();
           }
 
           getGradeDisplaySystem() {
@@ -2974,11 +3153,25 @@
             return this.gradeVaultState.gradeAssessments.find((assessment) => Number(assessment.id) === Number(assessmentId)) || null;
           }
 
+          getGradeTestScaleTemplate(scale = GRADE_TEST_SCALE_DEFAULT) {
+            return getGradeTestScaleTemplate(this.getGradeTestScaleSettings(), scale);
+          }
+
+          listVisibleGradeTestScaleTemplates() {
+            return listVisibleGradeTestScaleTemplates(this.getGradeTestScaleSettings());
+          }
+
+          buildGradeTestScaleSnapshot(scale = GRADE_TEST_SCALE_DEFAULT) {
+            return buildGradeTestScaleSnapshot(this.getGradeTestScaleSettings(), scale);
+          }
+
           createGradeAssessment(courseId, payload = {}) {
             const id = Number(courseId);
             const nextSortOrder = this.listGradeAssessments(id).length + 1;
             const nextAssessmentId = Math.max(1, Number(this.gradeVaultState.counters.gradeAssessment) || 1);
             this.gradeVaultState.counters.gradeAssessment = nextAssessmentId + 1;
+            const mode = normalizeGradeAssessmentMode(payload.mode);
+            const testScale = normalizeGradeTestScale(payload.testScale);
             const assessment = {
               id: nextAssessmentId,
               courseId: id,
@@ -2987,8 +3180,11 @@
               title: normalizeGradeTextPart(payload.title) || formatShortDateLabel(new Date()),
               maxPoints: normalizeGradeNumber(payload.maxPoints, 15),
               weight: normalizeGradeInteger(payload.weight, 1),
-              mode: normalizeGradeAssessmentMode(payload.mode),
-              testScale: normalizeGradeTestScale(payload.testScale),
+              mode,
+              testScale,
+              testScaleSnapshot: mode === "test"
+                ? this.buildGradeTestScaleSnapshot(testScale)
+                : null,
               testTasks: normalizeGradeTestTasks(payload.testTasks),
               halfYear: normalizeGradeHalfYear(payload.halfYear),
               sortOrder: Number(payload.sortOrder || nextSortOrder)
@@ -3016,8 +3212,15 @@
             }
             if (patch.testScale !== undefined) {
               assessment.testScale = normalizeGradeTestScale(patch.testScale);
+              assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
             } else if (!assessment.testScale) {
               assessment.testScale = GRADE_TEST_SCALE_DEFAULT;
+            }
+            if (normalizeGradeAssessmentMode(assessment.mode) === "test" && !assessment.testScaleSnapshot) {
+              assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
+            }
+            if (normalizeGradeAssessmentMode(assessment.mode) !== "test") {
+              assessment.testScaleSnapshot = null;
             }
             if (patch.testTasks !== undefined) {
               assessment.testTasks = normalizeGradeTestTasks(patch.testTasks);
@@ -3158,6 +3361,9 @@
             if (!studentKey || !assessment || normalizeGradeAssessmentMode(assessment.mode) !== "test") {
               return false;
             }
+            if (!assessment.testScaleSnapshot) {
+              assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
+            }
             const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
             const taskMaxById = new Map(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => [task.id, Number(task.maxBe || 0)]));
             const normalizedScores = Object.entries(normalizeGradeTestScores(scores)).reduce((result, [taskId, value]) => {
@@ -3177,7 +3383,7 @@
               }
               return true;
             }
-            const value = calculateGradeTestValue(assessment.testTasks, normalizedScores, assessment.testScale);
+            const value = calculateGradeTestValue(assessment.testTasks, normalizedScores, assessment.testScaleSnapshot || assessment.testScale);
             if (existing) {
               existing.value = value;
               existing.checked = null;
@@ -3200,6 +3406,9 @@
             if (!assessment || normalizeGradeAssessmentMode(assessment.mode) !== "test") {
               return;
             }
+            if (!assessment.testScaleSnapshot) {
+              assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
+            }
             const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
             const taskMaxById = new Map(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => [task.id, Number(task.maxBe || 0)]));
             this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries
@@ -3218,7 +3427,7 @@
                   ...entry,
                   checked: null,
                   testScores,
-                  value: calculateGradeTestValue(assessment.testTasks, testScores, assessment.testScale)
+                  value: calculateGradeTestValue(assessment.testTasks, testScores, assessment.testScaleSnapshot || assessment.testScale)
                 };
               })
               .filter((entry) => Number(entry.assessmentId) !== Number(assessment.id) || hasGradeTestScores(entry.testScores));
@@ -4598,6 +4807,7 @@
           normalized.settings.hoursPerDay = normalizedHoursPerDay;
           delete normalized.settings.gradeDisplaySystem;
           normalized.settings.lessonTimes = normalizeLessonTimes(normalized.settings.lessonTimes, normalizedHoursPerDay);
+          normalized.settings.gradeTestScaleSettings = normalizeGradeTestScaleSettings(normalized.settings.gradeTestScaleSettings);
 
           normalized.schoolYears = normalized.schoolYears.filter(
             (item) => item.id > 0 && item.name && item.startDate && item.endDate
@@ -4639,10 +4849,15 @@
           return normalized;
         };
 
-        PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null) {
+        PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null, options = {}) {
           const source = isRecord(rawVaultState) ? rawVaultState : {};
           const asObject = (value) => (value && typeof value === "object" ? value : {});
           const maxBy = (rows) => rows.reduce((max, row) => Math.max(max, Number(row.id) || 0), 0);
+          const gradeTestScaleSettings = normalizeGradeTestScaleSettings(
+            options && Object.prototype.hasOwnProperty.call(options, "gradeTestScaleSettings")
+              ? options.gradeTestScaleSettings
+              : this.getGradeTestScaleSettings()
+          );
           const normalized = {
             counters: {
               gradeStudent: Math.max(1, Number(source?.counters?.gradeStudent) || 1),
@@ -4657,6 +4872,8 @@
             }) : [],
             gradeAssessments: Array.isArray(source.gradeAssessments) ? source.gradeAssessments.map((raw) => {
               const item = asObject(raw);
+              const mode = normalizeGradeAssessmentMode(item.mode);
+              const testScale = normalizeGradeTestScale(item.testScale);
               return {
                 id: Number(item.id),
                 courseId: Number(item.courseId),
@@ -4665,8 +4882,11 @@
                 title: normalizeGradeTextPart(item.title),
                 maxPoints: normalizeGradeNumber(item.maxPoints, 15),
                 weight: normalizeGradeInteger(item.weight, 1),
-                mode: normalizeGradeAssessmentMode(item.mode),
-                testScale: normalizeGradeTestScale(item.testScale),
+                mode,
+                testScale,
+                testScaleSnapshot: mode === "test"
+                  ? normalizeGradeTestScaleSnapshot(item.testScaleSnapshot, testScale, gradeTestScaleSettings)
+                  : null,
                 testTasks: normalizeGradeTestTasks(item.testTasks),
                 halfYear: normalizeGradeHalfYear(item.halfYear),
                 sortOrder: Number(item.sortOrder || 0)
@@ -4770,7 +4990,9 @@
             return Math.max(max, ...nested.map((item) => Number(item.id) || 0), 0);
           }, 0);
           const normalizedPublic = this.normalizePublicState(publicState);
-          const normalizedVault = this.normalizeGradeVaultState(gradeVaultState);
+          const normalizedVault = this.normalizeGradeVaultState(gradeVaultState, {
+            gradeTestScaleSettings: normalizedPublic.settings.gradeTestScaleSettings
+          });
           const rebuildLessons = options?.rebuildLessons === true;
           const startupShellOnly = options?.startupShellOnly === true;
           const skipSaveNotification = options?.skipSaveNotification === true;
@@ -4902,6 +5124,7 @@
               settingsPanels: {
                 dayoff: document.querySelector("#settings-tab-dayoff"),
                 display: document.querySelector("#settings-tab-display"),
+                gradeTestScales: document.querySelector("#settings-tab-grade-test-scales"),
                 lessonTimes: document.querySelector("#settings-tab-lesson-times"),
                 database: document.querySelector("#settings-tab-database")
               },
@@ -4911,6 +5134,7 @@
               settingsActionsRow: document.querySelector(".settings-actions-row"),
               settingsDisplayHoursRow: document.querySelector("#settings-display-hours-row"),
               settingsGradesPrivacyGraphThresholdRow: document.querySelector("#settings-grades-privacy-graph-threshold-row"),
+              gradeTestScaleSettingsContent: document.querySelector("#grade-test-scale-settings-content"),
 
               courseTitle: document.querySelector("#course-title"),
               courseTable: document.querySelector("#course-table"),
@@ -4934,6 +5158,7 @@
               gradesPrivacyOverlay: document.querySelector("#grades-privacy-overlay"),
               gradesTableScroll: document.querySelector("#grades-table-scroll"),
               gradesTable: document.querySelector("#grades-table"),
+              gradesPrintArea: document.querySelector("#grades-print-area"),
               gradesEntryContent: document.querySelector("#grades-entry-content"),
               gradePicker: document.querySelector("#grade-picker"),
               gradesTitleDatePicker: document.querySelector("#grades-title-date-picker"),
@@ -4945,6 +5170,7 @@
               gradeAssessmentDialogModeHomework: document.querySelector("#grade-assessment-dialog-mode-homework"),
               gradeAssessmentDialogModeTest: document.querySelector("#grade-assessment-dialog-mode-test"),
               gradeAssessmentDialogTestScaleRow: document.querySelector("#grade-assessment-dialog-test-scale-row"),
+              gradeAssessmentDialogTestScaleOptions: document.querySelector("#grade-assessment-dialog-test-scale-options"),
               gradeAssessmentDialogTestScaleSek1: document.querySelector("#grade-assessment-dialog-test-scale-sek1"),
               gradeAssessmentDialogTestScaleSek2: document.querySelector("#grade-assessment-dialog-test-scale-sek2"),
               gradeAssessmentDialogWeight: document.querySelector("#grade-assessment-dialog-weight"),
@@ -5211,6 +5437,10 @@
               values: Array.from({ length: 16 }, (_, index) => 15 - index),
               activeIndex: -1
             };
+            this.gradeTestScaleTooltipState = {
+              portal: null,
+              anchor: null
+            };
             this.gradesTitleDatePickerState = {
               open: false,
               input: null,
@@ -5295,6 +5525,7 @@
               hoursPerDay,
               lessonTimes: this.store.getLessonTimes(hoursPerDay),
               gradesPrivacyGraphThreshold: this.store.getGradesPrivacyGraphThreshold(),
+              gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
               showHiddenSidebarCourses: Boolean(
                 this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
               ),
@@ -5473,6 +5704,9 @@
                   weight: normalizeGradeInteger(row.weight, 1),
                   mode: normalizeGradeAssessmentMode(row.mode),
                   testScale: normalizeGradeTestScale(row.testScale),
+                  testScaleSnapshot: row.testScaleSnapshot
+                    ? normalizeGradeTestScaleSnapshot(row.testScaleSnapshot, row.testScale, this.store.getGradeTestScaleSettings())
+                    : null,
                   testTasks: normalizeGradeTestTasks(row.testTasks),
                   halfYear: normalizeGradeHalfYear(row.halfYear),
                   sortOrder: Number(row.sortOrder || 0)
@@ -7704,6 +7938,9 @@
             if (Number(draft.gradesPrivacyGraphThreshold) !== Number(this.store.getGradesPrivacyGraphThreshold())) {
               return true;
             }
+            if (!gradeTestScaleSettingsEqual(draft.gradeTestScaleSettings, this.store.getGradeTestScaleSettings())) {
+              return true;
+            }
             if (
               Boolean(draft.showHiddenSidebarCourses)
               !== Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT))
@@ -7734,6 +7971,9 @@
 
           async applySettingsDraftToStore() {
             const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
+            if (this.currentView === "settings" && this.activeSettingsTab === "gradeTestScales") {
+              draft.gradeTestScaleSettings = this.readGradeTestScaleSettingsFromDom();
+            }
             if (!this.gradeVaultSession.planningPublicLoaded) {
               await this.ensurePlanningPublicLoaded();
             }
@@ -7746,9 +7986,19 @@
               this.renderLessonTimesSection();
               return false;
             }
+            const gradeScaleValidation = this.validateGradeTestScaleSettingsDraft(draft.gradeTestScaleSettings);
+            if (!gradeScaleValidation.valid) {
+              await this.showInfoMessage(gradeScaleValidation.message || "Die Prozentgrenzen sind ungültig.");
+              this.activeSettingsTab = "gradeTestScales";
+              this.settingsSourceView = "grades";
+              this.renderSettingsTabs();
+              this.renderGradeTestScaleSettingsSection();
+              return false;
+            }
             this.store.setHoursPerDay(draft.hoursPerDay);
             this.store.setLessonTimes(lessonTimesValidation.normalized, draft.hoursPerDay);
             this.store.setGradesPrivacyGraphThreshold(draft.gradesPrivacyGraphThreshold);
+            this.store.setGradeTestScaleSettings(draft.gradeTestScaleSettings);
             this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
             this.store.setBackupEnabled(draft.backupEnabled);
             this.store.setBackupIntervalDays(draft.backupIntervalDays);
@@ -7766,6 +8016,7 @@
             this.settingsDraft = this.buildSettingsDraftFromStore();
             this.settingsDirty = false;
             this.renderDisplaySection();
+            this.renderGradeTestScaleSettingsSection();
             this.renderLessonTimesSection();
             this.renderBackupSection();
             this.renderDatabaseSection();
@@ -7812,6 +8063,13 @@
               this.refreshSettingsDirtyState();
               return;
             }
+            if (tab === "gradeTestScales") {
+              this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+              this.settingsDraft.gradeTestScaleSettings = buildDefaultGradeTestScaleSettings();
+              this.renderGradeTestScaleSettingsSection();
+              this.refreshSettingsDirtyState();
+              return;
+            }
             if (tab === "lessonTimes") {
               this.settingsDraft.lessonTimes = buildDefaultLessonTimes(
                 clamp(Number(this.settingsDraft?.hoursPerDay) || this.store.getHoursPerDay(), 1, 12)
@@ -7830,7 +8088,7 @@
 
           async applySettingsSaveForActiveTab() {
             const tab = this.activeSettingsTab;
-            if (tab === "display" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
+            if (tab === "display" || tab === "gradeTestScales" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
               if (!this.settingsDirty) {
                 return;
               }
@@ -7840,7 +8098,7 @@
 
           applySettingsCancelForActiveTab() {
             const tab = this.activeSettingsTab;
-            if (tab === "display" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
+            if (tab === "display" || tab === "gradeTestScales" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
               this.cancelSettingsDraftChanges();
               return;
             }
@@ -7864,6 +8122,10 @@
               resetEnabled = Number(this.settingsDraft.hoursPerDay) !== HOURS_PER_DAY_DEFAULT
                 || Number(this.settingsDraft.gradesPrivacyGraphThreshold) !== GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT
                 || Boolean(this.settingsDraft.showHiddenSidebarCourses) !== SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
+              saveEnabled = this.settingsDirty;
+              cancelEnabled = this.settingsDirty;
+            } else if (tab === "gradeTestScales") {
+              resetEnabled = !gradeTestScaleSettingsEqual(this.settingsDraft.gradeTestScaleSettings, buildDefaultGradeTestScaleSettings());
               saveEnabled = this.settingsDirty;
               cancelEnabled = this.settingsDirty;
             } else if (tab === "lessonTimes") {
@@ -10608,6 +10870,8 @@
             const activeTab = this.activeSettingsTab;
             if (activeTab === "display") {
               this.renderDisplaySection();
+            } else if (activeTab === "gradeTestScales") {
+              this.renderGradeTestScaleSettingsSection();
             } else if (activeTab === "lessonTimes") {
               this.renderLessonTimesSection();
             } else if (activeTab === "dayoff") {
@@ -10757,6 +11021,16 @@
                 ? "last"
                 : "first";
               this.renderGradesView();
+              return;
+            }
+            const printOverviewButton = event.target.closest("button[data-grade-print-overview='1']");
+            if (printOverviewButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              if (!this.commitVisibleGradeInputs()) {
+                return;
+              }
+              this.printGradesOverview();
               return;
             }
             const addButton = event.target.closest("button[data-grade-add-assessment]");
@@ -11086,6 +11360,135 @@
             }
           }
 
+          ensureGradeTestScaleTooltipPortal() {
+            if (this.gradeTestScaleTooltipState.portal?.isConnected) {
+              return this.gradeTestScaleTooltipState.portal;
+            }
+            const portal = document.createElement("div");
+            portal.className = "grade-test-scale-tooltip grade-test-scale-tooltip-portal";
+            portal.setAttribute("role", "tooltip");
+            portal.setAttribute("aria-hidden", "true");
+            document.body.append(portal);
+            this.gradeTestScaleTooltipState.portal = portal;
+            return portal;
+          }
+
+          showGradeTestScaleTooltip(option) {
+            if (!(option instanceof HTMLElement)) {
+              return;
+            }
+            const source = option.querySelector(".grade-test-scale-tooltip:not(.grade-test-scale-tooltip-portal)");
+            if (!source) {
+              return;
+            }
+            const portal = this.ensureGradeTestScaleTooltipPortal();
+            portal.innerHTML = source.innerHTML;
+            portal.setAttribute("aria-hidden", "false");
+            portal.classList.add("is-visible");
+            this.gradeTestScaleTooltipState.anchor = option;
+            this.positionGradeTestScaleTooltip();
+          }
+
+          hideGradeTestScaleTooltip() {
+            const portal = this.gradeTestScaleTooltipState.portal;
+            this.gradeTestScaleTooltipState.anchor = null;
+            if (!portal) {
+              return;
+            }
+            portal.classList.remove("is-visible");
+            portal.setAttribute("aria-hidden", "true");
+          }
+
+          positionGradeTestScaleTooltip() {
+            const portal = this.gradeTestScaleTooltipState.portal;
+            const anchor = this.gradeTestScaleTooltipState.anchor;
+            if (!portal || !anchor || !anchor.isConnected) {
+              this.hideGradeTestScaleTooltip();
+              return;
+            }
+            const margin = 8;
+            const anchorRect = anchor.getBoundingClientRect();
+            portal.style.left = "0px";
+            portal.style.top = "0px";
+            const tooltipRect = portal.getBoundingClientRect();
+            const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+            const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+            const spaceLeft = anchorRect.left;
+            const spaceRight = viewportWidth - anchorRect.right;
+            const spaceTop = anchorRect.top;
+            let left;
+            let top;
+            if (spaceLeft >= tooltipRect.width + margin) {
+              left = anchorRect.left - tooltipRect.width - margin;
+              top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
+            } else if (spaceRight >= tooltipRect.width + margin) {
+              left = anchorRect.right + margin;
+              top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
+            } else if (spaceTop >= tooltipRect.height + margin) {
+              left = anchorRect.right - tooltipRect.width;
+              top = anchorRect.top - tooltipRect.height - margin;
+            } else {
+              left = anchorRect.right - tooltipRect.width;
+              top = anchorRect.bottom + margin;
+            }
+            left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
+            top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
+            portal.style.left = `${Math.round(left)}px`;
+            portal.style.top = `${Math.round(top)}px`;
+          }
+
+          bindGradeTestScaleTooltipEvents() {
+            const getOption = (eventTarget) => (
+              eventTarget instanceof HTMLElement
+                ? eventTarget.closest(".grade-test-scale-option")
+                : null
+            );
+            document.addEventListener("pointerover", (event) => {
+              const option = getOption(event.target);
+              if (option) {
+                this.showGradeTestScaleTooltip(option);
+              }
+            });
+            document.addEventListener("pointerout", (event) => {
+              const option = getOption(event.target);
+              if (!option) {
+                return;
+              }
+              const related = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+              if (related && option.contains(related)) {
+                return;
+              }
+              this.hideGradeTestScaleTooltip();
+            });
+            document.addEventListener("focusin", (event) => {
+              const option = getOption(event.target);
+              if (option) {
+                this.showGradeTestScaleTooltip(option);
+              }
+            });
+            document.addEventListener("focusout", (event) => {
+              const option = getOption(event.target);
+              if (!option) {
+                return;
+              }
+              const related = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+              if (related && option.contains(related)) {
+                return;
+              }
+              this.hideGradeTestScaleTooltip();
+            });
+            window.addEventListener("scroll", () => {
+              if (this.gradeTestScaleTooltipState.anchor) {
+                this.positionGradeTestScaleTooltip();
+              }
+            }, true);
+            window.addEventListener("resize", () => {
+              if (this.gradeTestScaleTooltipState.anchor) {
+                this.positionGradeTestScaleTooltip();
+              }
+            });
+          }
+
           bindEvents() {
             if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
               window.addEventListener("contextmenu", (event) => {
@@ -11130,6 +11533,7 @@
                 void this.handleCourseSeatplanGradeSaveRequest(detail);
               });
             }
+            this.bindGradeTestScaleTooltipEvents();
 
             this.refs.viewWeekBtn.addEventListener("click", () => {
               this.switchView("week");
@@ -12040,6 +12444,12 @@
                 this.settingsDraft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses.checked);
                 this.renderDisplaySection();
                 this.refreshSettingsDirtyState();
+              });
+            }
+
+            if (this.refs.gradeTestScaleSettingsContent) {
+              this.refs.gradeTestScaleSettingsContent.addEventListener("input", (event) => {
+                this.handleGradeTestScaleSettingsInput(event);
               });
             }
 
@@ -14248,6 +14658,7 @@
                 weight: normalizeGradeInteger(selectedAssessment.weight, 1),
                 mode: normalizeGradeAssessmentMode(selectedAssessment.mode),
                 testScale: normalizeGradeTestScale(selectedAssessment.testScale),
+                testScaleSnapshot: selectedAssessment.testScaleSnapshot || null,
                 testTasks: normalizeGradeTestTasks(selectedAssessment.testTasks),
                 categoryId: Number(selectedAssessment.categoryId) || null,
                 subcategoryId: Number(selectedAssessment.subcategoryId) || null
@@ -14266,6 +14677,13 @@
               categoryId: editorCategoryId,
               subcategoryId: editorSubcategoryId
             };
+            const testScaleOptionsMarkup = this.buildGradeTestScaleOptionsMarkup({
+              inputName: "grades-entry-test-scale",
+              dataAttribute: "data-grades-entry-test-scale=\"1\"",
+              selectedScale: editorState.testScale,
+              selectedSnapshot: editorState.testScaleSnapshot || null,
+              disabled: normalizeGradeAssessmentMode(editorState.mode) !== "test"
+            });
             const editor = document.createElement("section");
             editor.className = "grades-entry-editor";
             editor.innerHTML = `
@@ -14302,16 +14720,7 @@
               <fieldset class="grades-entry-field grades-entry-test-scale-field is-wide${normalizeGradeAssessmentMode(editorState.mode) === "test" ? "" : " is-hidden"}">
                 <legend>Prozentgrenzen</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
-                  <label class="assessment-mode-option grade-test-scale-option">
-                    <input type="radio" name="grades-entry-test-scale" data-grades-entry-test-scale="1" value="sek1"${normalizeGradeTestScale(editorState.testScale) === "sek1" ? " checked" : ""}${normalizeGradeAssessmentMode(editorState.mode) === "test" ? "" : " disabled"}>
-                    <span>Sek I</span>
-                    ${buildGradeTestScaleTooltipMarkup("sek1")}
-                  </label>
-                  <label class="assessment-mode-option grade-test-scale-option">
-                    <input type="radio" name="grades-entry-test-scale" data-grades-entry-test-scale="1" value="sek2"${normalizeGradeTestScale(editorState.testScale) === "sek2" ? " checked" : ""}${normalizeGradeAssessmentMode(editorState.mode) === "test" ? "" : " disabled"}>
-                    <span>Sek II</span>
-                    ${buildGradeTestScaleTooltipMarkup("sek2")}
-                  </label>
+                  ${testScaleOptionsMarkup}
                 </div>
               </fieldset>
               <fieldset class="grades-entry-field grades-entry-name-order-field is-wide">
@@ -15789,17 +16198,64 @@
           }
 
           getSelectedGradeAssessmentDialogTestScale() {
-            return this.refs.gradeAssessmentDialogTestScaleSek1?.checked ? "sek1" : GRADE_TEST_SCALE_DEFAULT;
+            const checked = this.refs.gradeAssessmentDialogTestScaleOptions?.querySelector("input[name='grade-assessment-dialog-test-scale']:checked");
+            return normalizeGradeTestScale(checked?.value || GRADE_TEST_SCALE_DEFAULT);
           }
 
-          setSelectedGradeAssessmentDialogTestScale(testScale = GRADE_TEST_SCALE_DEFAULT) {
+          getGradeTestScaleTemplatesForEditor(selectedScale = GRADE_TEST_SCALE_DEFAULT, selectedSnapshot = null) {
+            const templates = this.store.listVisibleGradeTestScaleTemplates();
+            const normalizedScale = normalizeGradeTestScale(selectedScale);
+            if (!templates.some((template) => normalizeGradeTestScale(template.id) === normalizedScale)) {
+              templates.push(
+                selectedSnapshot
+                  ? normalizeGradeTestScaleSnapshot(selectedSnapshot, normalizedScale, this.store.getGradeTestScaleSettings())
+                  : this.store.buildGradeTestScaleSnapshot(normalizedScale)
+              );
+            }
+            return templates;
+          }
+
+          buildGradeTestScaleOptionsMarkup({
+            inputName,
+            dataAttribute,
+            selectedScale = GRADE_TEST_SCALE_DEFAULT,
+            selectedSnapshot = null,
+            disabled = false
+          } = {}) {
+            const normalizedSelected = normalizeGradeTestScale(selectedScale);
+            return this.getGradeTestScaleTemplatesForEditor(normalizedSelected, selectedSnapshot)
+              .map((template) => {
+                const scale = normalizeGradeTestScale(template.id);
+                const label = String(template.label || getGradeTestScaleDefaultLabel(scale) || "Eigener Modus").trim();
+                return `
+                  <label class="assessment-mode-option grade-test-scale-option">
+                    <input type="radio" name="${escapeHtml(inputName)}" ${dataAttribute} value="${escapeHtml(scale)}"${scale === normalizedSelected ? " checked" : ""}${disabled ? " disabled" : ""}>
+                    <span>${escapeHtml(label)}</span>
+                    ${buildGradeTestScaleTooltipMarkup(template)}
+                  </label>
+                `;
+              }).join("");
+          }
+
+          renderGradeAssessmentDialogTestScaleOptions(selectedScale = GRADE_TEST_SCALE_DEFAULT, selectedSnapshot = null) {
+            if (!this.refs.gradeAssessmentDialogTestScaleOptions) {
+              return;
+            }
+            const mode = this.getSelectedGradeAssessmentDialogMode();
+            this.refs.gradeAssessmentDialogTestScaleOptions.innerHTML = this.buildGradeTestScaleOptionsMarkup({
+              inputName: "grade-assessment-dialog-test-scale",
+              dataAttribute: "",
+              selectedScale,
+              selectedSnapshot,
+              disabled: normalizeGradeAssessmentMode(mode) !== "test"
+            });
+            this.refs.gradeAssessmentDialogTestScaleSek1 = this.refs.gradeAssessmentDialogTestScaleOptions.querySelector("input[value='sek1']");
+            this.refs.gradeAssessmentDialogTestScaleSek2 = this.refs.gradeAssessmentDialogTestScaleOptions.querySelector("input[value='sek2']");
+          }
+
+          setSelectedGradeAssessmentDialogTestScale(testScale = GRADE_TEST_SCALE_DEFAULT, testScaleSnapshot = null) {
             const normalizedScale = normalizeGradeTestScale(testScale);
-            if (this.refs.gradeAssessmentDialogTestScaleSek1) {
-              this.refs.gradeAssessmentDialogTestScaleSek1.checked = normalizedScale === "sek1";
-            }
-            if (this.refs.gradeAssessmentDialogTestScaleSek2) {
-              this.refs.gradeAssessmentDialogTestScaleSek2.checked = normalizedScale !== "sek1";
-            }
+            this.renderGradeAssessmentDialogTestScaleOptions(normalizedScale, testScaleSnapshot);
           }
 
           getSelectedGradeAssessmentDialogHalfYear() {
@@ -15830,11 +16286,14 @@
             if (this.refs.gradeAssessmentDialogTestScaleRow) {
               this.refs.gradeAssessmentDialogTestScaleRow.hidden = normalizedMode !== "test";
             }
-            [this.refs.gradeAssessmentDialogTestScaleSek1, this.refs.gradeAssessmentDialogTestScaleSek2].forEach((input) => {
-              if (input) {
+            if (this.refs.gradeAssessmentDialogTestScaleOptions && !this.refs.gradeAssessmentDialogTestScaleOptions.children.length) {
+              this.renderGradeAssessmentDialogTestScaleOptions(GRADE_TEST_SCALE_DEFAULT);
+            }
+            this.refs.gradeAssessmentDialogTestScaleOptions
+              ?.querySelectorAll("input[name='grade-assessment-dialog-test-scale']")
+              .forEach((input) => {
                 input.disabled = normalizedMode !== "test";
-              }
-            });
+              });
             if (this.refs.gradeAssessmentDialogWeight) {
               const disabled = normalizedMode === "homework";
               this.refs.gradeAssessmentDialogWeight.disabled = disabled;
@@ -16307,6 +16766,9 @@
             const tasks = normalizeGradeTestTasks(assessment?.testTasks || activeDraft?.testTasks);
             const entries = activeDraft && typeof activeDraft.entries === "object" ? activeDraft.entries : {};
             const scale = normalizeGradeTestScale(assessment?.testScale || activeDraft?.testScale);
+            const scaleSnapshot = assessment
+              ? normalizeGradeTestScaleSnapshot(assessment.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
+              : this.store.buildGradeTestScaleSnapshot(scale);
             const courseColor = normalizeCourseColor(course?.color, Boolean(course?.noLesson));
             const displayStudents = this.getSortedGradeStudentsForNameOrder(students);
             const visibleMaxNameLength = displayStudents.reduce(
@@ -16353,8 +16815,8 @@
                 <div class="grade-test-task-head">
                   <div class="grade-test-task-title" aria-label="${escapeHtml(taskLabel)}">${index + 1}</div>
                   <label class="grade-test-task-max">
-                    <span>BE</span>
-                    <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" aria-label="Erreichbare BE fuer ${escapeHtml(taskLabel)}">
+                    <span>BE1</span>
+                    <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" aria-label="Erreichbare BE1 fuer ${escapeHtml(taskLabel)}">
                   </label>
                   <button type="button" class="ghost grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
                 </div>
@@ -16386,7 +16848,7 @@
               resultCell.className = "grade-test-result-col";
               const resultValue = assessment
                 ? (entry && entry.value !== null ? entry.value : null)
-                : calculateGradeTestValue(tasks, scores, scale);
+                : calculateGradeTestValue(tasks, scores, scaleSnapshot);
               resultCell.innerHTML = `<div class="grade-total-value" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""}>${this.formatDisplayedGrade(resultValue)}</div>`;
               tr.append(resultCell);
               const ratioCell = document.createElement("td");
@@ -17012,13 +17474,22 @@
               const nextNameOrderLabel = nameOrder === "first" ? "Nachname, Vorname" : "Vorname Nachname";
               th.innerHTML = `
         <div class="grade-student-head-actions">
-          <button
-            type="button"
-            class="grade-privacy-indicator-button${isPrivacyActive ? " is-active" : " is-inactive"}"
-            data-grade-privacy-toggle="1"
-            aria-label="${isPrivacyActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"}"
-            title="${isPrivacyActive ? "Datenschutzmodus aktiv" : "Datenschutzmodus inaktiv"}"
-          >👀</button>
+          <div class="grade-student-head-primary-actions">
+            <button
+              type="button"
+              class="grade-privacy-indicator-button${isPrivacyActive ? " is-active" : " is-inactive"}"
+              data-grade-privacy-toggle="1"
+              aria-label="${isPrivacyActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"}"
+              title="${isPrivacyActive ? "Datenschutzmodus aktiv" : "Datenschutzmodus inaktiv"}"
+            >👀</button>
+            <button
+              type="button"
+              class="grade-print-button"
+              data-grade-print-overview="1"
+              aria-label="Kursnoten drucken"
+              title="Spalten einklappen, um ihren Druck zu unterbinden"
+            >🖨️</button>
+          </div>
           <button
             type="button"
             class="grade-name-order-toggle-button"
@@ -17456,6 +17927,192 @@
             }
           }
 
+          buildGradesPrintLookup(groupedAssessments) {
+            const lookup = {
+              categories: new Map(),
+              subcategories: new Map()
+            };
+            (Array.isArray(groupedAssessments) ? groupedAssessments : []).forEach((periodGroup) => {
+              const period = normalizeGradePeriod(periodGroup?.period || "year");
+              (Array.isArray(periodGroup?.categories) ? periodGroup.categories : []).forEach((category) => {
+                lookup.categories.set(`${period}:${Number(category.id) || 0}`, category);
+                (Array.isArray(category.subcategories) ? category.subcategories : []).forEach((subcategory) => {
+                  lookup.subcategories.set(`${period}:${Number(category.id) || 0}:${Number(subcategory.id) || 0}`, subcategory);
+                });
+              });
+            });
+            return lookup;
+          }
+
+          getGradesPrintColumns(course, groupedAssessments) {
+            const model = this.buildGradesTableModel(course, groupedAssessments, { includeAddColumns: false });
+            const excludedTypes = new Set(["category-collapsed", "subcategory-collapsed", "add"]);
+            return model.columns.filter((column) => !excludedTypes.has(column.type));
+          }
+
+          getGradesPrintColumnLabel(column, lookup) {
+            const periodLabel = getGradePeriodLabel(column.period || "year");
+            if (column.type === "student") {
+              return "Name";
+            }
+            if (column.type === "total") {
+              return "Jahr";
+            }
+            if (column.type === "period-total") {
+              return periodLabel;
+            }
+            if (column.type === "category-partial") {
+              const category = lookup.categories.get(`${normalizeGradePeriod(column.period || "year")}:${Number(column.categoryId) || 0}`);
+              return `${periodLabel} · ${category?.name || "Kategorie"}`;
+            }
+            if (column.type === "subcategory-partial") {
+              const subcategory = lookup.subcategories.get(
+                `${normalizeGradePeriod(column.period || "year")}:${Number(column.categoryId) || 0}:${Number(column.subcategoryId) || 0}`
+              );
+              return `${periodLabel} · ${subcategory?.name || "Unterkategorie"}`;
+            }
+            if (column.type === "subcategory-homework") {
+              const subcategory = lookup.subcategories.get(
+                `${normalizeGradePeriod(column.period || "year")}:${Number(column.categoryId) || 0}:${Number(column.subcategoryId) || 0}`
+              );
+              return `${periodLabel} · ${subcategory?.name || "Unterkategorie"} · HA`;
+            }
+            if (column.type === "assessment") {
+              return `${periodLabel} · ${formatGradeAssessmentDisplayTitle(column.assessment?.title || "Leistung") || "Leistung"}`;
+            }
+            return "";
+          }
+
+          getGradesPrintCellValue(course, student, column) {
+            if (column.type === "student") {
+              return this.getGradeStudentOverviewDisplayName(student);
+            }
+            if (column.type === "total") {
+              return this.formatDisplayedGrade(
+                this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year")
+              );
+            }
+            if (column.type === "period-total") {
+              return this.formatDisplayedGrade(
+                this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period)
+              );
+            }
+            if (column.type === "category-partial") {
+              return this.formatDisplayedGrade(
+                this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period)
+              );
+            }
+            if (column.type === "subcategory-partial") {
+              return this.formatDisplayedGrade(
+                this.store.calculateGradeForStudentInSubcategoryPeriod(
+                  student.id,
+                  course.id,
+                  column.categoryId,
+                  column.subcategoryId,
+                  column.period
+                )
+              );
+            }
+            if (column.type === "subcategory-homework") {
+              return this.formatDisplayedHomeworkSummary(
+                this.store.calculateHomeworkSummaryForStudentInSubcategoryPeriod(
+                  student.id,
+                  course.id,
+                  column.categoryId,
+                  column.subcategoryId,
+                  column.period
+                )
+              );
+            }
+            if (column.type === "assessment") {
+              const entry = this.store.getGradeEntry(student.id, column.assessment?.id);
+              if (this.isHomeworkAssessment(column.assessment)) {
+                return entry?.checked === true ? "fehlt" : "—";
+              }
+              return this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+            }
+            return "";
+          }
+
+          buildGradesPrintTable(course, students, groupedAssessments) {
+            const lookup = this.buildGradesPrintLookup(groupedAssessments);
+            const columns = this.getGradesPrintColumns(course, groupedAssessments);
+            const table = document.createElement("table");
+            table.className = "grades-print-table";
+            const thead = document.createElement("thead");
+            const headRow = document.createElement("tr");
+            columns.forEach((column) => {
+              const th = document.createElement("th");
+              th.textContent = this.getGradesPrintColumnLabel(column, lookup);
+              if (column.type === "student") {
+                th.className = "student-col";
+              }
+              headRow.append(th);
+            });
+            thead.append(headRow);
+            table.append(thead);
+
+            const tbody = document.createElement("tbody");
+            this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder).forEach((student) => {
+              const tr = document.createElement("tr");
+              columns.forEach((column) => {
+                const td = document.createElement("td");
+                td.textContent = this.getGradesPrintCellValue(course, student, column);
+                if (column.type === "student") {
+                  td.className = "student-col";
+                }
+                tr.append(td);
+              });
+              tbody.append(tr);
+            });
+            table.append(tbody);
+            return table;
+          }
+
+          printGradesOverview() {
+            if (typeof window === "undefined" || typeof window.print !== "function" || !this.refs.gradesPrintArea) {
+              return;
+            }
+            if (this.currentView !== "grades" || this.normalizeGradesSubView(this.gradesSubView) !== "overview") {
+              return;
+            }
+            const year = this.activeSchoolYear;
+            const course = year
+              ? this.store.listCourses(year.id).find((item) => item.id === this.selectedCourseId && this.courseAllowsGrades(item))
+              : null;
+            if (!course || !this.isGradeVaultUnlocked() || !this.isGradeCourseLoaded(course.id)) {
+              this.setSyncStatus("Kursnoten können erst in einer geladenen, entsperrten Kursansicht gedruckt werden.", true);
+              return;
+            }
+            const students = this.store.listGradeStudents(course.id);
+            const groupedAssessments = this.store.getGroupedGradeAssessments(course.id);
+            const hasCategories = groupedAssessments.some((periodGroup) => (
+              Array.isArray(periodGroup?.categories) && periodGroup.categories.length > 0
+            ));
+            if (!students.length || !hasCategories) {
+              this.setSyncStatus("Für den Ausdruck fehlen Teilnehmende oder Notenspalten.", true);
+              return;
+            }
+
+            const printArea = this.refs.gradesPrintArea;
+            printArea.textContent = "";
+            const title = document.createElement("h1");
+            title.textContent = course.name || "Kurs";
+            printArea.append(title);
+            printArea.append(this.buildGradesPrintTable(course, students, groupedAssessments));
+            printArea.hidden = false;
+
+            const cleanup = () => {
+              printArea.hidden = true;
+              printArea.textContent = "";
+              window.removeEventListener("afterprint", cleanup);
+            };
+            window.addEventListener("afterprint", cleanup);
+            requestAnimationFrame(() => {
+              window.print();
+            });
+          }
+
           refreshGradeTotals() {
             const root = this.getGradeInputRoot();
             if (!root || !this.selectedCourseId) {
@@ -17526,7 +18183,7 @@
             this.refs.gradeAssessmentDialogTitle.value = String(assessment.title || "");
             this.refs.gradeAssessmentDialogWeight.value = String(assessment.weight || 1);
             this.syncGradeAssessmentDialogModeUi(assessment.mode);
-            this.setSelectedGradeAssessmentDialogTestScale(assessment.testScale);
+            this.setSelectedGradeAssessmentDialogTestScale(assessment.testScale, assessment.testScaleSnapshot);
             this.setSelectedGradeAssessmentDialogHalfYear(assessment.halfYear);
             this.populateGradeAssessmentCategoryOptions(
               assessment.courseId,
@@ -17544,7 +18201,7 @@
             if (this.refs.gradeAssessmentDialogTitle) this.refs.gradeAssessmentDialogTitle.value = "";
             if (this.refs.gradeAssessmentDialogWeight) this.refs.gradeAssessmentDialogWeight.value = "";
             this.syncGradeAssessmentDialogModeUi("grade");
-            this.setSelectedGradeAssessmentDialogTestScale(GRADE_TEST_SCALE_DEFAULT);
+            this.setSelectedGradeAssessmentDialogTestScale(GRADE_TEST_SCALE_DEFAULT, null);
             this.setSelectedGradeAssessmentDialogHalfYear(this.getDefaultGradeAssessmentHalfYear());
             if (this.refs.gradeAssessmentDialogCategory) this.refs.gradeAssessmentDialogCategory.innerHTML = "";
             if (this.refs.gradeAssessmentDialogSubcategory) this.refs.gradeAssessmentDialogSubcategory.innerHTML = "";
@@ -17706,15 +18363,20 @@
               await this.showInfoMessage("Bitte Kategorie und Unterkategorie auswählen.");
               return;
             }
-            this.store.updateGradeAssessment(assessmentId, {
+            const selectedMode = this.getSelectedGradeAssessmentDialogMode();
+            const selectedTestScale = this.getSelectedGradeAssessmentDialogTestScale();
+            const patch = {
               title,
-              weight: this.getSelectedGradeAssessmentDialogMode() === "homework" ? 1 : this.refs.gradeAssessmentDialogWeight?.value,
-              mode: this.getSelectedGradeAssessmentDialogMode(),
-              testScale: this.getSelectedGradeAssessmentDialogTestScale(),
+              weight: selectedMode === "homework" ? 1 : this.refs.gradeAssessmentDialogWeight?.value,
+              mode: selectedMode,
               halfYear: this.getSelectedGradeAssessmentDialogHalfYear(),
               categoryId: this.refs.gradeAssessmentDialogCategory?.value,
               subcategoryId: this.refs.gradeAssessmentDialogSubcategory?.value
-            });
+            };
+            if (selectedMode === "test" && normalizeGradeTestScale(assessment.testScale) !== selectedTestScale) {
+              patch.testScale = selectedTestScale;
+            }
+            this.store.updateGradeAssessment(assessmentId, patch);
             this.closeGradeAssessmentDialog();
             this.renderGradesView();
           }
@@ -18154,8 +18816,9 @@
               ? normalizeGradeDraftEntry(draft.entries[studentKey])
               : null;
             if (node) {
+              const scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft.testScale);
               node.textContent = this.formatDisplayedGrade(
-                calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, draft.testScale)
+                calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot)
               );
             }
             if (ratioNode) {
@@ -18651,6 +19314,9 @@
             }
             if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "display")) {
               this.renderDisplaySection();
+            }
+            if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "gradeTestScales")) {
+              this.renderGradeTestScaleSettingsSection();
             }
             if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "lessonTimes")) {
               this.renderLessonTimesSection();
@@ -19841,8 +20507,8 @@
             const fallbackTab = showPlanningOnlySettings ? "dayoff" : "display";
             const allowManualDatabaseWhileHolidayLocked = !this.syncState.supported;
             const activeTabAllowedInContext = this.refs.settingsPanels[this.activeSettingsTab] && (
-              showPlanningOnlySettings
-              || (this.activeSettingsTab !== "dayoff" && this.activeSettingsTab !== "lessonTimes")
+              (showPlanningOnlySettings && this.activeSettingsTab !== "gradeTestScales")
+              || (!showPlanningOnlySettings && this.activeSettingsTab !== "dayoff" && this.activeSettingsTab !== "lessonTimes")
             );
             let tabName = activeTabAllowedInContext ? this.activeSettingsTab : fallbackTab;
             if (this.locked) {
@@ -19860,11 +20526,12 @@
               const isActive = button.dataset.tab === tabName;
               const isPlanningOnlyHidden = !showPlanningOnlySettings
                 && (button.dataset.tab === "dayoff" || button.dataset.tab === "lessonTimes");
+              const isGradesOnlyHidden = showPlanningOnlySettings && button.dataset.tab === "gradeTestScales";
               const isLockedHidden = this.locked
                 && this.lockReason === "holidaysRequired"
                 && !(allowManualDatabaseWhileHolidayLocked && button.dataset.tab === "database")
                 && button.dataset.tab !== "dayoff";
-              const isHidden = isPlanningOnlyHidden || isLockedHidden;
+              const isHidden = isPlanningOnlyHidden || isGradesOnlyHidden || isLockedHidden;
               const isLockedDisabled = isHidden || (
                 this.locked
                 && (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired")
@@ -19879,7 +20546,8 @@
 
             Object.entries(this.refs.settingsPanels).forEach(([name, panel]) => {
               const isPlanningOnlyHidden = !showPlanningOnlySettings && (name === "dayoff" || name === "lessonTimes");
-              const isActive = name === tabName && !isPlanningOnlyHidden;
+              const isGradesOnlyHidden = showPlanningOnlySettings && name === "gradeTestScales";
+              const isActive = name === tabName && !isPlanningOnlyHidden && !isGradesOnlyHidden;
               panel.hidden = !isActive;
               panel.classList.toggle("active", isActive);
             });
@@ -20152,6 +20820,149 @@
               li.append(main, actions);
               this.refs.slotList.append(li);
             }
+          }
+
+          getGradeTestScaleSettingsDraft() {
+            const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
+            draft.gradeTestScaleSettings = normalizeGradeTestScaleSettings(draft.gradeTestScaleSettings);
+            return draft.gradeTestScaleSettings;
+          }
+
+          getGradeTestScaleDraftThresholdPercent(settings, scale, grade) {
+            const template = getGradeTestScaleTemplate(settings, scale);
+            if (normalizeGradeTestScale(scale) === GRADE_TEST_SCALE_CUSTOM && !String(template.label || "").trim()) {
+              return "";
+            }
+            const row = template.thresholds.find((entry) => Number(entry[1]) === Number(grade));
+            return Math.round(Number(row ? row[0] : 0) * 100);
+          }
+
+          renderGradeTestScaleSettingsSection() {
+            const root = this.refs.gradeTestScaleSettingsContent;
+            if (!root) {
+              return;
+            }
+            if (!this.isGradesTopTabActive()) {
+              root.innerHTML = "";
+              this.updateSettingsActionButtons();
+              return;
+            }
+            const settings = this.getGradeTestScaleSettingsDraft();
+            const renderThresholdRows = (scale) => GRADE_TEST_SCALE_GRADES.map((grade) => {
+              const percent = this.getGradeTestScaleDraftThresholdPercent(settings, scale, grade);
+              const isZeroGrade = grade === 0;
+              return `
+                <label class="grade-test-scale-threshold-row">
+                  <span>${formatGradeInteger(grade)}</span>
+                  <input type="number" min="0" max="100" step="1" inputmode="numeric" data-grade-test-scale-threshold="${escapeHtml(scale)}" data-grade-test-scale-grade="${grade}" value="${percent}" ${isZeroGrade ? "readonly" : ""} aria-label="Prozentgrenze für Note ${formatGradeInteger(grade)}">
+                </label>
+              `;
+            }).join("");
+            const renderScaleCard = (scale) => {
+              const template = getGradeTestScaleTemplate(settings, scale);
+              const isCustom = normalizeGradeTestScale(scale) === GRADE_TEST_SCALE_CUSTOM;
+              const title = isCustom ? "Eigener Modus" : String(template.label || getGradeTestScaleDefaultLabel(scale));
+              return `
+                <section class="grade-test-scale-settings-card" data-grade-test-scale-card="${escapeHtml(scale)}">
+                  <div class="grade-test-scale-settings-card-head">
+                    <h3 class="settings-panel-title">${escapeHtml(title)}</h3>
+                    ${isCustom ? `
+                      <label class="grade-test-scale-name-field">
+                        <span>Name</span>
+                        <input type="text" maxlength="40" data-grade-test-scale-custom-name="1" value="${escapeHtml(template.label || "")}">
+                      </label>
+                    ` : ""}
+                  </div>
+                  <div class="grade-test-scale-threshold-grid">
+                    <div class="grade-test-scale-threshold-header">Note</div>
+                    <div class="grade-test-scale-threshold-header">Ab Prozent</div>
+                    ${renderThresholdRows(scale)}
+                  </div>
+                </section>
+              `;
+            };
+            root.innerHTML = `
+              <div class="grade-test-scale-settings-intro">
+                <p class="muted">Änderungen gelten für neue Tests. Bestehende Tests behalten ihre gespeicherten Grenzen.</p>
+              </div>
+              <div class="grade-test-scale-settings-grid">
+                ${renderScaleCard("sek1")}
+                ${renderScaleCard("sek2")}
+                ${renderScaleCard(GRADE_TEST_SCALE_CUSTOM)}
+              </div>
+            `;
+            this.updateSettingsActionButtons();
+          }
+
+          readGradeTestScaleSettingsFromDom() {
+            const root = this.refs.gradeTestScaleSettingsContent;
+            const current = normalizeGradeTestScaleSettings(this.settingsDraft?.gradeTestScaleSettings || this.store.getGradeTestScaleSettings());
+            if (!root) {
+              return current;
+            }
+            const next = cloneJsonValue(current, buildDefaultGradeTestScaleSettings());
+            const customNameInput = root.querySelector("input[data-grade-test-scale-custom-name='1']");
+            if (customNameInput) {
+              next.custom.label = normalizeGradeTextPart(customNameInput.value).slice(0, 40);
+            }
+            GRADE_TEST_SCALE_IDS.forEach((scale) => {
+              next[scale].thresholds = GRADE_TEST_SCALE_GRADES.map((grade) => {
+                const input = root.querySelector(`input[data-grade-test-scale-threshold="${scale}"][data-grade-test-scale-grade="${grade}"]`);
+                const raw = input ? String(input.value || "").trim() : "";
+                const numeric = raw === "" ? Number.NaN : Number(raw);
+                return [Number.isFinite(numeric) ? numeric / 100 : Number.NaN, grade];
+              });
+            });
+            return next;
+          }
+
+          validateGradeTestScaleSettingsDraft(settings = null) {
+            const source = settings && typeof settings === "object" ? settings : this.readGradeTestScaleSettingsFromDom();
+            for (const scale of GRADE_TEST_SCALE_IDS) {
+              const template = source[scale] && typeof source[scale] === "object" ? source[scale] : {};
+              if (scale === GRADE_TEST_SCALE_CUSTOM && !String(template.label || "").trim()) {
+                continue;
+              }
+              const rows = Array.isArray(template.thresholds) ? template.thresholds : [];
+              let previousPercent = 101;
+              for (const grade of GRADE_TEST_SCALE_GRADES) {
+                const row = rows.find((entry) => Array.isArray(entry) && Number(entry[1]) === grade);
+                const rawPercent = row ? Number(row[0]) * 100 : Number.NaN;
+                const percent = Math.round(rawPercent);
+                if (!Number.isFinite(rawPercent) || Math.abs(rawPercent - percent) > 0.000001 || percent < 0 || percent > 100) {
+                  const label = scale === "sek1" ? "Sek I" : (scale === "sek2" ? "Sek II" : "den eigenen Modus");
+                  return { valid: false, message: `Bitte für ${label} nur ganze Prozentwerte von 0 bis 100 eintragen.` };
+                }
+                if (grade === 0 && percent !== 0) {
+                  return { valid: false, message: "Die Prozentgrenze für Note 00 muss 0% sein." };
+                }
+                if (percent > previousPercent) {
+                  return { valid: false, message: "Die Prozentgrenzen müssen von Note 15 bis 00 absteigend sortiert sein." };
+                }
+                previousPercent = percent;
+              }
+            }
+            return { valid: true };
+          }
+
+          handleGradeTestScaleSettingsInput(event) {
+            const target = event.target instanceof HTMLElement ? event.target : null;
+            if (!target || !this.refs.gradeTestScaleSettingsContent?.contains(target)) {
+              return;
+            }
+            if (
+              !target.matches("input[data-grade-test-scale-custom-name='1']")
+              && !target.matches("input[data-grade-test-scale-threshold]")
+            ) {
+              return;
+            }
+            if (target.matches("input[data-grade-test-scale-threshold][data-grade-test-scale-grade='0']")) {
+              target.value = "0";
+            }
+            this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+            this.settingsDraft.gradeTestScaleSettings = this.readGradeTestScaleSettingsFromDom();
+            this.settingsDirty = true;
+            this.updateSettingsActionButtons();
           }
 
           renderDisplaySection() {

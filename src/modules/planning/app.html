@@ -137,6 +137,8 @@
                     aria-controls="settings-tab-dayoff" aria-selected="true">Ferien & Unterrichtsfreie Tage</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="display"
                     aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
+                  <button class="settings-tab" type="button" role="tab" data-tab="gradeTestScales"
+                    aria-controls="settings-tab-grade-test-scales" aria-selected="false">Prozentgrenzen</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
                     aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="database"
@@ -270,6 +272,10 @@
                         </label>
                       </div>
                     </form>
+                  </div>
+
+                  <div id="settings-tab-grade-test-scales" class="settings-panel" role="tabpanel" hidden>
+                    <div id="grade-test-scale-settings-content" class="grade-test-scale-settings"></div>
                   </div>
 
                   <div id="settings-tab-lesson-times" class="settings-panel" role="tabpanel" hidden>
@@ -678,7 +684,7 @@
           </fieldset>
           <fieldset id="grade-assessment-dialog-test-scale-row" class="assessment-mode-field" hidden>
             <legend>Prozentgrenzen</legend>
-            <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
+            <div id="grade-assessment-dialog-test-scale-options" class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
               <label class="assessment-mode-option grade-test-scale-option">
                 <input id="grade-assessment-dialog-test-scale-sek1" type="radio"
                   name="grade-assessment-dialog-test-scale" value="sek1">
@@ -695,16 +701,16 @@
                       <tr><td>83%</td><td>12</td></tr>
                       <tr><td>78%</td><td>11</td></tr>
                       <tr><td>73%</td><td>10</td></tr>
-                      <tr><td>68%</td><td>9</td></tr>
-                      <tr><td>63%</td><td>8</td></tr>
-                      <tr><td>58%</td><td>7</td></tr>
-                      <tr><td>54%</td><td>6</td></tr>
-                      <tr><td>50%</td><td>5</td></tr>
-                      <tr><td>44%</td><td>4</td></tr>
-                      <tr><td>38%</td><td>3</td></tr>
-                      <tr><td>32%</td><td>2</td></tr>
-                      <tr><td>20%</td><td>1</td></tr>
-                      <tr><td>0%</td><td>0</td></tr>
+                      <tr><td>68%</td><td>09</td></tr>
+                      <tr><td>63%</td><td>08</td></tr>
+                      <tr><td>58%</td><td>07</td></tr>
+                      <tr><td>54%</td><td>06</td></tr>
+                      <tr><td>50%</td><td>05</td></tr>
+                      <tr><td>44%</td><td>04</td></tr>
+                      <tr><td>38%</td><td>03</td></tr>
+                      <tr><td>32%</td><td>02</td></tr>
+                      <tr><td>20%</td><td>01</td></tr>
+                      <tr><td>0%</td><td>00</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -725,16 +731,16 @@
                       <tr><td>80%</td><td>12</td></tr>
                       <tr><td>75%</td><td>11</td></tr>
                       <tr><td>70%</td><td>10</td></tr>
-                      <tr><td>65%</td><td>9</td></tr>
-                      <tr><td>60%</td><td>8</td></tr>
-                      <tr><td>55%</td><td>7</td></tr>
-                      <tr><td>50%</td><td>6</td></tr>
-                      <tr><td>45%</td><td>5</td></tr>
-                      <tr><td>40%</td><td>4</td></tr>
-                      <tr><td>33%</td><td>3</td></tr>
-                      <tr><td>27%</td><td>2</td></tr>
-                      <tr><td>20%</td><td>1</td></tr>
-                      <tr><td>0%</td><td>0</td></tr>
+                      <tr><td>65%</td><td>09</td></tr>
+                      <tr><td>60%</td><td>08</td></tr>
+                      <tr><td>55%</td><td>07</td></tr>
+                      <tr><td>50%</td><td>06</td></tr>
+                      <tr><td>45%</td><td>05</td></tr>
+                      <tr><td>40%</td><td>04</td></tr>
+                      <tr><td>33%</td><td>03</td></tr>
+                      <tr><td>27%</td><td>02</td></tr>
+                      <tr><td>20%</td><td>01</td></tr>
+                      <tr><td>0%</td><td>00</td></tr>
                     </tbody>
                   </table>
                 </div>
@@ -842,6 +848,7 @@
       </dialog>
       <div id="grade-picker" class="grade-picker" hidden></div>
       <div id="grades-title-date-picker" class="grades-title-date-picker" hidden></div>
+      <div id="grades-print-area" class="grades-print-area" aria-hidden="true"></div>
 
       <script type="module" src="./app.js"></script>
       <script src="./bridge.js"></script>
