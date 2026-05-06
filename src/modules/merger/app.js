@@ -701,13 +701,20 @@ export function createMergerApp({
             return Array.from({ length: total }, (_, i) => i % pageCount);
           }
 
-          function buildTwoUpPairs(pageCount, enableThreePageSpecialMode) {
+          function buildTwoUpPairs(pageCount, enableThreePageSpecialMode, studentCount) {
             if (pageCount <= 0) return [];
             if (enableThreePageSpecialMode && pageCount === 3) {
               return [[0, 0], [1, 2], [1, 2]];
             }
 
             const pairs = [];
+            if (studentCount === 1) {
+              for (let i = 0; i < pageCount; i += 2) {
+                pairs.push([i, i + 1 < pageCount ? i + 1 : null]);
+              }
+              return pairs;
+            }
+
             if (pageCount % 2 === 0) {
               for (let i = 0; i < pageCount; i += 2) pairs.push([i, i + 1]);
             } else {
@@ -1543,7 +1550,7 @@ export function createMergerApp({
                 const xObjectEntries = [];
                 let xObjectIndex = 1;
                 const placements = outputPage.placements.map((slot) => {
-                  if (!slot) return null;
+                  if (!slot || !slot.pageInfo) return null;
                   const formNums = this._formObjectsForPage(slot.pageInfo);
                   const names = formNums.map((formNum) => {
                     const name = "F" + xObjectIndex;
@@ -1603,11 +1610,11 @@ export function createMergerApp({
               if (enableThreePageSpecialMode || pagesPerSheet === 2) {
                 const pairs = enableThreePageSpecialMode
                   ? buildSpecialThreeModePairs(paddingMode, studentCount)
-                  : buildTwoUpPairs(pageCount, false);
+                  : buildTwoUpPairs(pageCount, false, studentCount);
 
                 for (const [leftIndex, rightIndex] of pairs) {
                   const leftPage = pageInfos[leftIndex];
-                  const rightPage = pageInfos[rightIndex];
+                  const rightPage = rightIndex == null ? null : pageInfos[rightIndex];
 
                   let outWidth, outHeight, halfWidth;
                   if (isA4) {
@@ -1615,8 +1622,8 @@ export function createMergerApp({
                     outHeight = A4_HEIGHT;
                     outWidth = A4_WIDTH * 2;
                   } else {
-                    halfWidth = Math.max(leftPage.width, rightPage.width);
-                    outHeight = Math.max(leftPage.height, rightPage.height);
+                    halfWidth = Math.max(leftPage.width, rightPage?.width || leftPage.width);
+                    outHeight = Math.max(leftPage.height, rightPage?.height || leftPage.height);
                     outWidth = halfWidth * 2;
                     if (outWidth < outHeight) {
                       outWidth = outHeight;
@@ -1852,11 +1859,11 @@ export function createMergerApp({
             if (enableThreePageSpecialMode || pagesPerSheet === 2) {
               const pairs = enableThreePageSpecialMode
                 ? buildSpecialThreeModePairs(paddingMode, studentCount)
-                : buildTwoUpPairs(pageCount, false);
+                : buildTwoUpPairs(pageCount, false, studentCount);
 
               for (const [leftIndex, rightIndex] of pairs) {
                 const left = sourceSizes[leftIndex];
-                const right = sourceSizes[rightIndex];
+                const right = rightIndex == null ? null : sourceSizes[rightIndex];
 
                 let outWidth;
                 let outHeight;
@@ -1866,8 +1873,8 @@ export function createMergerApp({
                   outHeight = A4_HEIGHT;
                   outWidth = A4_WIDTH * 2;
                 } else {
-                  halfWidth = Math.max(left.width, right.width);
-                  outHeight = Math.max(left.height, right.height);
+                  halfWidth = Math.max(left.width, right?.width || left.width);
+                  outHeight = Math.max(left.height, right?.height || left.height);
                   outWidth = halfWidth * 2;
                   if (outWidth < outHeight) {
                     outWidth = outHeight;
