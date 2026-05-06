@@ -1328,7 +1328,7 @@
             const skipButton = document.createElement('button');
             skipButton.type = 'button';
             skipButton.className = 'grade-picker-skip';
-            skipButton.textContent = '🡻';
+            skipButton.textContent = '⬇';
             skipButton.setAttribute('aria-label', 'Schüler auslassen und weiter');
             skipButton.title = 'Schüler auslassen und weiter';
             skipButton.addEventListener('mousedown', event => event.preventDefault());

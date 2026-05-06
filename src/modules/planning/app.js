@@ -19079,7 +19079,7 @@
               const skipButton = document.createElement("button");
               skipButton.type = "button";
               skipButton.className = "grade-picker-skip";
-              skipButton.textContent = "🡻";
+              skipButton.textContent = "⬇";
               if (this.gradePickerState.mode === "override") {
                 skipButton.setAttribute("aria-label", "Nächste errechnete Note");
                 skipButton.title = "Nächste errechnete Note";
