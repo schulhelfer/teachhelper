@@ -5162,24 +5162,6 @@
               gradesEntryContent: document.querySelector("#grades-entry-content"),
               gradePicker: document.querySelector("#grade-picker"),
               gradesTitleDatePicker: document.querySelector("#grades-title-date-picker"),
-              gradeAssessmentDialog: document.querySelector("#grade-assessment-dialog"),
-              gradeAssessmentDialogForm: document.querySelector("#grade-assessment-dialog-form"),
-              gradeAssessmentDialogId: document.querySelector("#grade-assessment-dialog-id"),
-              gradeAssessmentDialogTitle: document.querySelector("#grade-assessment-dialog-title"),
-              gradeAssessmentDialogModeGrade: document.querySelector("#grade-assessment-dialog-mode-grade"),
-              gradeAssessmentDialogModeHomework: document.querySelector("#grade-assessment-dialog-mode-homework"),
-              gradeAssessmentDialogModeTest: document.querySelector("#grade-assessment-dialog-mode-test"),
-              gradeAssessmentDialogTestScaleRow: document.querySelector("#grade-assessment-dialog-test-scale-row"),
-              gradeAssessmentDialogTestScaleOptions: document.querySelector("#grade-assessment-dialog-test-scale-options"),
-              gradeAssessmentDialogTestScaleSek1: document.querySelector("#grade-assessment-dialog-test-scale-sek1"),
-              gradeAssessmentDialogTestScaleSek2: document.querySelector("#grade-assessment-dialog-test-scale-sek2"),
-              gradeAssessmentDialogWeight: document.querySelector("#grade-assessment-dialog-weight"),
-              gradeAssessmentDialogCategory: document.querySelector("#grade-assessment-dialog-category"),
-              gradeAssessmentDialogSubcategory: document.querySelector("#grade-assessment-dialog-subcategory"),
-              gradeAssessmentDialogHalfYearH1: document.querySelector("#grade-assessment-dialog-half-year-h1"),
-              gradeAssessmentDialogHalfYearH2: document.querySelector("#grade-assessment-dialog-half-year-h2"),
-              gradeAssessmentDialogCancel: document.querySelector("#grade-assessment-dialog-cancel"),
-              gradeAssessmentDialogDelete: document.querySelector("#grade-assessment-dialog-delete"),
               gradeVaultDialog: document.querySelector("#grade-vault-dialog"),
               gradeVaultDialogForm: document.querySelector("#grade-vault-dialog-form"),
               gradeVaultDialogUsername: document.querySelector("#grade-vault-dialog-username"),
@@ -5393,7 +5375,6 @@
             this.pendingMessageDialogMode = null;
             this.pendingEntfallLessonId = null;
             this.pendingTopicLessonId = null;
-            this.pendingGradeAssessmentId = null;
             this.pendingGradeVaultDialogMode = "";
             this.pendingGradeVaultContinuation = null;
             this.inlineTopicLessonId = null;
@@ -10962,14 +10943,28 @@
             const saveEntryButton = event.target.closest("button[data-grades-entry-save]");
             if (saveEntryButton) {
               event.stopPropagation();
-              if (!this.selectedCourseId || !this.commitVisibleGradeInputs()) {
+              if (!this.selectedCourseId) {
                 return;
               }
               const isDraftSave = !this.selectedGradesEntryAssessmentId;
+              if (isDraftSave && !this.commitVisibleGradeInputs()) {
+                return;
+              }
+              if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs()) {
+                return;
+              }
               const draftValues = this.readGradesEntryEditorValues();
               const assessment = this.ensureGradesEntryDraftAssessment(this.selectedCourseId, draftValues);
               if (assessment) {
-                this.persistGradesEntryDraftEntries(assessment.id, this.selectedCourseId);
+                if (!isDraftSave) {
+                  const applied = await this.applyGradesEntryAssessmentEditorValues(assessment.id, draftValues);
+                  if (!applied || !this.commitVisibleGradeInputs()) {
+                    return;
+                  }
+                }
+                if (isDraftSave) {
+                  this.persistGradesEntryDraftEntries(assessment.id, this.selectedCourseId);
+                }
                 this.queueGradesEntrySaveNotice("Noten gespeichert");
                 if (isDraftSave) {
                   this.resetGradesEntryDraftAfterSave(draftValues);
@@ -10986,6 +10981,28 @@
                 requestAnimationFrame(() => {
                   this.focusGradeAssessmentInput(assessment.id, 0);
                 });
+              }
+              return;
+            }
+            const deleteEntryButton = event.target.closest("button[data-grades-entry-delete='1']");
+            if (deleteEntryButton) {
+              event.stopPropagation();
+              const assessmentId = Number(this.selectedGradesEntryAssessmentId || 0);
+              if (!assessmentId) {
+                return;
+              }
+              this.hideGradePicker();
+              const deleted = await this.deleteGradeAssessmentWithConfirm(assessmentId);
+              if (deleted) {
+                const courseId = Number(this.selectedCourseId || 0);
+                this.selectedGradesEntryAssessmentId = null;
+                this.gradesEntryDraft = null;
+                this.activeGradeAssessmentId = null;
+                this.activeGradeStudentId = null;
+                if (courseId && this.openGradesOverviewForCourse(courseId)) {
+                  return;
+                }
+                this.switchGradesSubView("overview");
               }
               return;
             }
@@ -11089,11 +11106,7 @@
             const editButton = event.target.closest("button[data-grade-edit-assessment]");
             if (editButton) {
               event.stopPropagation();
-              if (!this.commitVisibleGradeInputs()) {
-                return;
-              }
-              this.activeGradeOverrideContext = null;
-              this.openGradeAssessmentDialog(editButton.dataset.gradeEditAssessment);
+              this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment);
               return;
             }
             const overrideButton = event.target.closest("button[data-grade-open-override='1']");
@@ -11207,10 +11220,12 @@
             const structure = this.store.getGradeStructure(courseId);
             const categories = (Array.isArray(structure.categories) ? structure.categories : [])
               .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
-            const draft = this.getGradesEntryDraft(courseId);
             const activeAssessment = this.selectedGradesEntryAssessmentId
               ? this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId)
               : null;
+            const draft = activeAssessment
+              ? this.getGradesEntryAssessmentDraft(activeAssessment)
+              : this.getGradesEntryDraft(courseId);
             const courseSelect = event.target.closest("select[data-grades-entry-course]");
             if (courseSelect) {
               if (!this.commitVisibleGradeInputs()) {
@@ -11246,14 +11261,13 @@
             const testScaleInput = event.target.closest("input[data-grades-entry-test-scale='1']");
             if (testScaleInput) {
               const testScale = normalizeGradeTestScale(testScaleInput.value);
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, { testScale });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  testScale
-                };
-              }
+              this.gradesEntryDraft = {
+                ...draft,
+                testScale,
+                testScaleSnapshot: activeAssessment && normalizeGradeTestScale(activeAssessment.testScale) === testScale
+                  ? activeAssessment.testScaleSnapshot || null
+                  : draft.testScaleSnapshot || null
+              };
               this.renderGradesView();
               return;
             }
@@ -11269,14 +11283,10 @@
             const halfYearInput = event.target.closest("input[data-grades-entry-halfyear='1']");
             if (halfYearInput) {
               const halfYear = normalizeGradeHalfYear(halfYearInput.value || "h1");
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, { halfYear });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  halfYear
-                };
-              }
+              this.gradesEntryDraft = {
+                ...draft,
+                halfYear
+              };
               this.renderGradesView();
               return;
             }
@@ -11284,22 +11294,13 @@
             const modeInput = event.target.closest("input[data-grades-entry-mode='1']");
             if (modeInput) {
               const mode = normalizeGradeAssessmentMode(modeInput.value || "grade");
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, {
-                  mode,
-                  weight: mode === "homework" ? 1 : activeAssessment.weight,
-                  testScale: activeAssessment.testScale || GRADE_TEST_SCALE_DEFAULT,
-                  testTasks: activeAssessment.testTasks
-                });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  mode,
-                  weight: mode === "homework" ? 1 : draft.weight,
-                  testScale: draft.testScale || GRADE_TEST_SCALE_DEFAULT,
-                  testTasks: normalizeGradeTestTasks(draft.testTasks)
-                };
-              }
+              this.gradesEntryDraft = {
+                ...draft,
+                mode,
+                weight: mode === "homework" ? 1 : draft.weight,
+                testScale: draft.testScale || GRADE_TEST_SCALE_DEFAULT,
+                testTasks: normalizeGradeTestTasks(draft.testTasks)
+              };
               this.renderGradesView();
               return;
             }
@@ -11307,17 +11308,10 @@
             const weightInput = event.target.closest("input[data-grades-entry-weight]");
             if (weightInput) {
               const weight = normalizeGradeInteger(weightInput.value, 1);
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, {
-                  weight,
-                  mode: activeAssessment.mode
-                });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  weight
-                };
-              }
+              this.gradesEntryDraft = {
+                ...draft,
+                weight
+              };
               this.renderGradesView();
               return;
             }
@@ -11329,18 +11323,11 @@
               const nextSubcategoryId = category
                 ? this.getMostUsedGradeAssessmentSelection(courseId, category.id).subcategoryId
                 : null;
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, {
-                  categoryId,
-                  subcategoryId: nextSubcategoryId
-                });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  categoryId,
-                  subcategoryId: nextSubcategoryId
-                };
-              }
+              this.gradesEntryDraft = {
+                ...draft,
+                categoryId,
+                subcategoryId: nextSubcategoryId
+              };
               this.renderGradesView();
               return;
             }
@@ -11348,14 +11335,10 @@
             const subcategorySelect = event.target.closest("select[data-grades-entry-subcategory]");
             if (subcategorySelect) {
               const subcategoryId = Number(subcategorySelect.value || 0) || null;
-              if (activeAssessment) {
-                this.store.updateGradeAssessment(activeAssessment.id, { subcategoryId });
-              } else {
-                this.gradesEntryDraft = {
-                  ...draft,
-                  subcategoryId
-                };
-              }
+              this.gradesEntryDraft = {
+                ...draft,
+                subcategoryId
+              };
               this.renderGradesView();
             }
           }
@@ -11905,46 +11888,6 @@
                 }
               });
             }
-
-            this.refs.gradeAssessmentDialogCancel?.addEventListener("click", () => {
-              this.closeGradeAssessmentDialog();
-            });
-
-            this.refs.gradeAssessmentDialogForm?.addEventListener("submit", async (event) => {
-              event.preventDefault();
-              await this.submitGradeAssessmentDialog();
-            });
-
-            this.refs.gradeAssessmentDialogCategory?.addEventListener("change", () => {
-              const assessmentId = Number(this.pendingGradeAssessmentId || this.refs.gradeAssessmentDialogId?.value || 0);
-              const assessment = this.store.getGradeAssessment(assessmentId);
-              const courseId = Number(assessment?.courseId || 0);
-              const categoryId = Number(this.refs.gradeAssessmentDialogCategory?.value || 0);
-              if (courseId && categoryId) {
-                this.populateGradeAssessmentSubcategoryOptions(courseId, categoryId);
-              }
-            });
-
-            [this.refs.gradeAssessmentDialogModeGrade, this.refs.gradeAssessmentDialogModeHomework, this.refs.gradeAssessmentDialogModeTest].forEach((input) => {
-              input?.addEventListener("change", () => {
-                this.syncGradeAssessmentDialogModeUi();
-              });
-            });
-
-            this.refs.gradeAssessmentDialogDelete?.addEventListener("click", async () => {
-              await this.deleteGradeAssessmentFromDialog();
-            });
-
-            this.refs.gradeAssessmentDialog?.addEventListener("cancel", (event) => {
-              event.preventDefault();
-              this.closeGradeAssessmentDialog();
-            });
-
-            this.refs.gradeAssessmentDialog?.addEventListener("click", (event) => {
-              if (event.target === this.refs.gradeAssessmentDialog) {
-                this.closeGradeAssessmentDialog();
-              }
-            });
 
             this.refs.slotDialogCancel.addEventListener("click", () => {
               this.closeSlotDialog();
@@ -14550,6 +14493,107 @@
             this.activeGradeStudentId = null;
           }
 
+          createGradesEntryAssessmentDraft(assessment) {
+            if (!assessment) {
+              return null;
+            }
+            return {
+              assessmentId: Number(assessment.id || 0),
+              title: String(assessment.title || ""),
+              halfYear: normalizeGradeHalfYear(assessment.halfYear),
+              weight: normalizeGradeInteger(assessment.weight, 1),
+              mode: normalizeGradeAssessmentMode(assessment.mode),
+              testScale: normalizeGradeTestScale(assessment.testScale),
+              testScaleSnapshot: assessment.testScaleSnapshot || null,
+              testTasks: normalizeGradeTestTasks(assessment.testTasks),
+              categoryId: Number(assessment.categoryId) || null,
+              subcategoryId: Number(assessment.subcategoryId) || null,
+              entries: {}
+            };
+          }
+
+          getGradesEntryAssessmentDraft(assessment) {
+            const base = this.createGradesEntryAssessmentDraft(assessment);
+            if (!base || !base.assessmentId) {
+              return null;
+            }
+            const previous = (
+              this.gradesEntryDraft
+              && Number(this.gradesEntryDraft.assessmentId || 0) === Number(base.assessmentId)
+            )
+              ? this.gradesEntryDraft
+              : {};
+            this.gradesEntryDraft = {
+              ...base,
+              ...previous,
+              assessmentId: base.assessmentId,
+              title: Object.prototype.hasOwnProperty.call(previous, "title")
+                ? String(previous.title || "")
+                : base.title,
+              halfYear: normalizeGradeHalfYear(previous.halfYear || base.halfYear),
+              weight: normalizeGradeInteger(previous.weight, base.weight),
+              mode: normalizeGradeAssessmentMode(previous.mode || base.mode),
+              testScale: normalizeGradeTestScale(previous.testScale || base.testScale),
+              testScaleSnapshot: previous.testScaleSnapshot || base.testScaleSnapshot || null,
+              testTasks: normalizeGradeTestTasks(previous.testTasks || base.testTasks),
+              categoryId: Number(previous.categoryId || base.categoryId || 0) || null,
+              subcategoryId: Number(previous.subcategoryId || base.subcategoryId || 0) || null,
+              entries: {}
+            };
+            return this.gradesEntryDraft;
+          }
+
+          buildGradesEntryAssessmentPreview(assessment, editorState = null) {
+            if (!assessment) {
+              return null;
+            }
+            const state = editorState || this.getGradesEntryAssessmentDraft(assessment);
+            return {
+              ...assessment,
+              title: String(state?.title || assessment.title || ""),
+              halfYear: normalizeGradeHalfYear(state?.halfYear || assessment.halfYear),
+              weight: normalizeGradeInteger(state?.weight, assessment.weight || 1),
+              mode: normalizeGradeAssessmentMode(state?.mode || assessment.mode),
+              testScale: normalizeGradeTestScale(state?.testScale || assessment.testScale),
+              testScaleSnapshot: state?.testScaleSnapshot || assessment.testScaleSnapshot || null,
+              testTasks: normalizeGradeTestTasks(state?.testTasks || assessment.testTasks),
+              categoryId: Number(state?.categoryId || assessment.categoryId || 0) || null,
+              subcategoryId: Number(state?.subcategoryId || assessment.subcategoryId || 0) || null
+            };
+          }
+
+          async applyGradesEntryAssessmentEditorValues(assessmentId, values = null) {
+            const id = Number(assessmentId || 0);
+            const assessment = this.store.getGradeAssessment(id);
+            if (!assessment) {
+              return false;
+            }
+            const editorValues = values || this.readGradesEntryEditorValues();
+            const title = String(editorValues?.title || "").trim();
+            if (!title) {
+              await this.showInfoMessage("Der Leistungsname darf nicht leer sein.");
+              this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-title]")?.focus();
+              return false;
+            }
+            if (!editorValues?.categoryId || !editorValues?.subcategoryId) {
+              await this.showInfoMessage("Bitte Kategorie und Unterkategorie auswählen.");
+              return false;
+            }
+            const mode = normalizeGradeAssessmentMode(editorValues.mode);
+            this.store.updateGradeAssessment(id, {
+              title,
+              halfYear: normalizeGradeHalfYear(editorValues.halfYear),
+              weight: mode === "homework" ? 1 : normalizeGradeInteger(editorValues.weight, assessment.weight || 1),
+              mode,
+              testScale: normalizeGradeTestScale(editorValues.testScale),
+              testTasks: normalizeGradeTestTasks(editorValues.testTasks),
+              categoryId: editorValues.categoryId,
+              subcategoryId: editorValues.subcategoryId
+            });
+            this.gradesEntryDraft = null;
+            return true;
+          }
+
           renderGradesEntryView(course, students, groupedAssessments) {
             if (!this.refs.gradesEntryPanel || !this.refs.gradesEntryContent) {
               return;
@@ -14645,24 +14689,14 @@
             }
             categories = (Array.isArray(structure.categories) ? structure.categories : [])
               .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
-            const draft = this.getGradesEntryDraft(course.id);
             const selectedAssessment = this.getGradesEntryActiveAssessment(course.id);
+            const draft = selectedAssessment ? null : this.getGradesEntryDraft(course.id);
             if (!selectedAssessment) {
               this.selectedGradesEntryAssessmentId = null;
             }
 
             const rawEditorState = selectedAssessment
-              ? {
-                title: String(selectedAssessment.title || ""),
-                halfYear: normalizeGradeHalfYear(selectedAssessment.halfYear),
-                weight: normalizeGradeInteger(selectedAssessment.weight, 1),
-                mode: normalizeGradeAssessmentMode(selectedAssessment.mode),
-                testScale: normalizeGradeTestScale(selectedAssessment.testScale),
-                testScaleSnapshot: selectedAssessment.testScaleSnapshot || null,
-                testTasks: normalizeGradeTestTasks(selectedAssessment.testTasks),
-                categoryId: Number(selectedAssessment.categoryId) || null,
-                subcategoryId: Number(selectedAssessment.subcategoryId) || null
-              }
+              ? this.getGradesEntryAssessmentDraft(selectedAssessment)
               : draft;
             const editorCategoryId = categories.some((item) => Number(item.id) === Number(rawEditorState.categoryId || 0))
               ? Number(rawEditorState.categoryId || 0)
@@ -14775,8 +14809,15 @@
                 </select>
               </label>
               <div class="grades-entry-actions">
-                <button type="button" class="ghost dialog-icon-button" data-grades-entry-cancel="1" aria-label="Abbrechen" title="Abbrechen">❌</button>
-                <button type="button" class="dialog-icon-button" data-grades-entry-save="1" aria-label="Speichern" title="Speichern">💾</button>
+                <div class="grades-entry-actions-main">
+                  <button type="button" class="ghost dialog-icon-button" data-grades-entry-cancel="1" aria-label="Abbrechen" title="Abbrechen">❌</button>
+                  <button type="button" class="dialog-icon-button" data-grades-entry-save="1" aria-label="Speichern" title="Speichern">💾</button>
+                </div>
+                ${selectedAssessment ? `
+                  <div class="grades-entry-actions-danger">
+                    <button type="button" class="ghost danger-action dialog-icon-button" data-grades-entry-delete="1" aria-label="Leistung löschen" title="Leistung löschen">🗑️</button>
+                  </div>
+                ` : ""}
               </div>
               <p class="grades-entry-save-hint${this.gradesEntrySaveNotice ? " is-visible" : ""}" aria-live="polite">${escapeHtml(this.gradesEntrySaveNotice || "")}</p>
             </div>
@@ -14792,7 +14833,10 @@
             }
             const tableWrap = document.createElement("div");
             tableWrap.className = "table-panel grades-entry-table-wrap";
-            tableWrap.append(this.buildGradesEntryTable(course, students, selectedAssessment));
+            const tableAssessment = selectedAssessment
+              ? this.buildGradesEntryAssessmentPreview(selectedAssessment, editorState)
+              : null;
+            tableWrap.append(this.buildGradesEntryTable(course, students, tableAssessment));
             editor.querySelector(".grades-entry-layout")?.append(tableWrap);
             this.refs.gradesEntryContent.append(editor);
           }
@@ -14942,15 +14986,8 @@
             if (!root) {
               return true;
             }
-            const testTaskInputs = [...root.querySelectorAll("input[data-grade-test-task-field]")];
-            for (const input of testTaskInputs) {
-              if (!this.updateGradeTestTaskFromInput(input)) {
-                if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
-                  input.focus();
-                  input.select();
-                  return false;
-                }
-              }
+            if (!this.commitVisibleGradeTestTaskInputs(root)) {
+              return false;
             }
             const inputs = [...root.querySelectorAll("input[data-grade-input='1']:not(:disabled)")];
             let invalidInput = null;
@@ -14964,6 +15001,23 @@
               invalidInput.focus();
               invalidInput.select();
               return false;
+            }
+            return true;
+          }
+
+          commitVisibleGradeTestTaskInputs(root = this.getGradeInputRoot()) {
+            if (!root) {
+              return true;
+            }
+            const testTaskInputs = [...root.querySelectorAll("input[data-grade-test-task-field]")];
+            for (const input of testTaskInputs) {
+              if (!this.updateGradeTestTaskFromInput(input)) {
+                if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
+                  input.focus();
+                  input.select();
+                  return false;
+                }
+              }
             }
             return true;
           }
@@ -16016,16 +16070,16 @@
               return;
             }
             const nextTitle = String(title || "").trim();
-            const draft = options.draft || this.getGradesEntryDraft(courseId);
             const activeAssessment = this.getGradesEntryActiveAssessment(courseId);
-            if (activeAssessment) {
-              this.store.updateGradeAssessment(activeAssessment.id, { title: nextTitle });
-            } else {
-              this.gradesEntryDraft = {
-                ...draft,
-                title: nextTitle
-              };
-            }
+            const draft = options.draft || (
+              activeAssessment
+                ? this.getGradesEntryAssessmentDraft(activeAssessment)
+                : this.getGradesEntryDraft(courseId)
+            );
+            this.gradesEntryDraft = {
+              ...draft,
+              title: nextTitle
+            };
           }
 
           applyGradesTitleDatePickerSelection(iso) {
@@ -16190,18 +16244,6 @@
             }
           }
 
-          getSelectedGradeAssessmentDialogMode() {
-            if (this.refs.gradeAssessmentDialogModeHomework?.checked) {
-              return "homework";
-            }
-            return this.refs.gradeAssessmentDialogModeTest?.checked ? "test" : "grade";
-          }
-
-          getSelectedGradeAssessmentDialogTestScale() {
-            const checked = this.refs.gradeAssessmentDialogTestScaleOptions?.querySelector("input[name='grade-assessment-dialog-test-scale']:checked");
-            return normalizeGradeTestScale(checked?.value || GRADE_TEST_SCALE_DEFAULT);
-          }
-
           getGradeTestScaleTemplatesForEditor(selectedScale = GRADE_TEST_SCALE_DEFAULT, selectedSnapshot = null) {
             const templates = this.store.listVisibleGradeTestScaleTemplates();
             const normalizedScale = normalizeGradeTestScale(selectedScale);
@@ -16235,72 +16277,6 @@
                   </label>
                 `;
               }).join("");
-          }
-
-          renderGradeAssessmentDialogTestScaleOptions(selectedScale = GRADE_TEST_SCALE_DEFAULT, selectedSnapshot = null) {
-            if (!this.refs.gradeAssessmentDialogTestScaleOptions) {
-              return;
-            }
-            const mode = this.getSelectedGradeAssessmentDialogMode();
-            this.refs.gradeAssessmentDialogTestScaleOptions.innerHTML = this.buildGradeTestScaleOptionsMarkup({
-              inputName: "grade-assessment-dialog-test-scale",
-              dataAttribute: "",
-              selectedScale,
-              selectedSnapshot,
-              disabled: normalizeGradeAssessmentMode(mode) !== "test"
-            });
-            this.refs.gradeAssessmentDialogTestScaleSek1 = this.refs.gradeAssessmentDialogTestScaleOptions.querySelector("input[value='sek1']");
-            this.refs.gradeAssessmentDialogTestScaleSek2 = this.refs.gradeAssessmentDialogTestScaleOptions.querySelector("input[value='sek2']");
-          }
-
-          setSelectedGradeAssessmentDialogTestScale(testScale = GRADE_TEST_SCALE_DEFAULT, testScaleSnapshot = null) {
-            const normalizedScale = normalizeGradeTestScale(testScale);
-            this.renderGradeAssessmentDialogTestScaleOptions(normalizedScale, testScaleSnapshot);
-          }
-
-          getSelectedGradeAssessmentDialogHalfYear() {
-            return this.refs.gradeAssessmentDialogHalfYearH2?.checked ? "h2" : "h1";
-          }
-
-          setSelectedGradeAssessmentDialogHalfYear(halfYear = "h1") {
-            const normalizedHalfYear = normalizeGradeHalfYear(halfYear);
-            if (this.refs.gradeAssessmentDialogHalfYearH1) {
-              this.refs.gradeAssessmentDialogHalfYearH1.checked = normalizedHalfYear !== "h2";
-            }
-            if (this.refs.gradeAssessmentDialogHalfYearH2) {
-              this.refs.gradeAssessmentDialogHalfYearH2.checked = normalizedHalfYear === "h2";
-            }
-          }
-
-          syncGradeAssessmentDialogModeUi(mode = this.getSelectedGradeAssessmentDialogMode()) {
-            const normalizedMode = normalizeGradeAssessmentMode(mode);
-            if (this.refs.gradeAssessmentDialogModeGrade) {
-              this.refs.gradeAssessmentDialogModeGrade.checked = normalizedMode === "grade";
-            }
-            if (this.refs.gradeAssessmentDialogModeHomework) {
-              this.refs.gradeAssessmentDialogModeHomework.checked = normalizedMode === "homework";
-            }
-            if (this.refs.gradeAssessmentDialogModeTest) {
-              this.refs.gradeAssessmentDialogModeTest.checked = normalizedMode === "test";
-            }
-            if (this.refs.gradeAssessmentDialogTestScaleRow) {
-              this.refs.gradeAssessmentDialogTestScaleRow.hidden = normalizedMode !== "test";
-            }
-            if (this.refs.gradeAssessmentDialogTestScaleOptions && !this.refs.gradeAssessmentDialogTestScaleOptions.children.length) {
-              this.renderGradeAssessmentDialogTestScaleOptions(GRADE_TEST_SCALE_DEFAULT);
-            }
-            this.refs.gradeAssessmentDialogTestScaleOptions
-              ?.querySelectorAll("input[name='grade-assessment-dialog-test-scale']")
-              .forEach((input) => {
-                input.disabled = normalizedMode !== "test";
-              });
-            if (this.refs.gradeAssessmentDialogWeight) {
-              const disabled = normalizedMode === "homework";
-              this.refs.gradeAssessmentDialogWeight.disabled = disabled;
-              if (disabled) {
-                this.refs.gradeAssessmentDialogWeight.value = "1";
-              }
-            }
           }
 
           buildHomeworkCheckboxMarkup(studentName, checked, attributes = "", options = {}) {
@@ -16420,50 +16396,6 @@
               return `${studentName} · ${periodLabel} · ${subcategoryName}`;
             }
             return studentName;
-          }
-
-          populateGradeAssessmentCategoryOptions(courseId, selectedCategoryId = null, selectedSubcategoryId = null) {
-            const structure = this.store.getGradeStructure(courseId);
-            const categories = Array.isArray(structure.categories) ? structure.categories : [];
-            const categorySelect = this.refs.gradeAssessmentDialogCategory;
-            const subcategorySelect = this.refs.gradeAssessmentDialogSubcategory;
-            if (!categorySelect || !subcategorySelect) {
-              return;
-            }
-            categorySelect.innerHTML = "";
-            categories.forEach((category) => {
-              const option = document.createElement("option");
-              option.value = String(category.id);
-              option.textContent = `${category.name}${formatGradeWeightPercentSuffix(category.weight)}`;
-              categorySelect.append(option);
-            });
-            const resolvedCategoryId = categories.some((category) => Number(category.id) === Number(selectedCategoryId))
-              ? Number(selectedCategoryId)
-              : Number(categories[0]?.id || 0);
-            categorySelect.value = resolvedCategoryId > 0 ? String(resolvedCategoryId) : "";
-            this.populateGradeAssessmentSubcategoryOptions(courseId, resolvedCategoryId, selectedSubcategoryId);
-          }
-
-          populateGradeAssessmentSubcategoryOptions(courseId, categoryId, selectedSubcategoryId = null) {
-            const structure = this.store.getGradeStructure(courseId);
-            const categories = Array.isArray(structure.categories) ? structure.categories : [];
-            const category = categories.find((item) => Number(item.id) === Number(categoryId)) || null;
-            const subcategorySelect = this.refs.gradeAssessmentDialogSubcategory;
-            if (!subcategorySelect) {
-              return;
-            }
-            const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
-            subcategorySelect.innerHTML = "";
-            subcategories.forEach((subcategory) => {
-              const option = document.createElement("option");
-              option.value = String(subcategory.id);
-              option.textContent = `${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`;
-              subcategorySelect.append(option);
-            });
-            const resolvedSubcategoryId = subcategories.some((subcategory) => Number(subcategory.id) === Number(selectedSubcategoryId))
-              ? Number(selectedSubcategoryId)
-              : Number(subcategories[0]?.id || 0);
-            subcategorySelect.value = resolvedSubcategoryId > 0 ? String(resolvedSubcategoryId) : "";
           }
 
           buildGradeAssessmentCellMarkup(student, assessment, rowIndex, columnIndex, subcategoryId, options = {}) {
@@ -16659,8 +16591,11 @@
             const activeAssessment = this.selectedGradesEntryAssessmentId
               ? this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId)
               : null;
-            if (activeAssessment && normalizeGradeAssessmentMode(activeAssessment.mode) === "test") {
-              return { assessment: activeAssessment, draft: null };
+            if (activeAssessment) {
+              const draft = this.getGradesEntryAssessmentDraft(activeAssessment);
+              return normalizeGradeAssessmentMode(draft?.mode) === "test"
+                ? { assessment: activeAssessment, draft }
+                : { assessment: null, draft: null };
             }
             const draft = this.getGradesEntryDraft(this.selectedCourseId);
             return normalizeGradeAssessmentMode(draft.mode) === "test"
@@ -16672,8 +16607,11 @@
             const { assessment, draft } = this.getActiveGradeTestContext();
             const normalizedTasks = normalizeGradeTestTasks(tasks);
             const taskMaxById = new Map(normalizedTasks.map((task) => [task.id, Number(task.maxBe || 0)]));
-            if (assessment) {
-              this.store.updateGradeAssessment(assessment.id, { testTasks: normalizedTasks });
+            if (assessment && draft) {
+              this.gradesEntryDraft = {
+                ...draft,
+                testTasks: normalizedTasks
+              };
               return true;
             }
             if (draft) {
@@ -16704,7 +16642,7 @@
 
           addGradeTestTask() {
             const { assessment, draft } = this.getActiveGradeTestContext();
-            const sourceTasks = assessment ? assessment.testTasks : draft?.testTasks;
+            const sourceTasks = draft?.testTasks || assessment?.testTasks;
             const tasks = normalizeGradeTestTasks(sourceTasks);
             const id = getNextGradeTestTaskId(tasks);
             tasks.push({
@@ -16730,7 +16668,7 @@
               return;
             }
             const { assessment, draft } = this.getActiveGradeTestContext();
-            const sourceTasks = assessment ? assessment.testTasks : draft?.testTasks;
+            const sourceTasks = draft?.testTasks || assessment?.testTasks;
             const tasks = normalizeGradeTestTasks(sourceTasks).filter((task) => task.id !== normalizedTaskId);
             this.updateGradeTestContextTasks(tasks.length ? tasks : normalizeGradeTestTasks([], { ensureDefault: true }));
             this.renderGradesView();
@@ -16746,7 +16684,7 @@
               return false;
             }
             const { assessment, draft } = this.getActiveGradeTestContext();
-            const sourceTasks = assessment ? assessment.testTasks : draft?.testTasks;
+            const sourceTasks = draft?.testTasks || assessment?.testTasks;
             const tasks = normalizeGradeTestTasks(sourceTasks);
             const task = tasks.find((item) => item.id === taskId);
             if (!task) {
@@ -16847,7 +16785,7 @@
               const resultCell = document.createElement("td");
               resultCell.className = "grade-test-result-col";
               const resultValue = assessment
-                ? (entry && entry.value !== null ? entry.value : null)
+                ? calculateGradeTestValue(tasks, scores, scaleSnapshot)
                 : calculateGradeTestValue(tasks, scores, scaleSnapshot);
               resultCell.innerHTML = `<div class="grade-total-value" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""}>${this.formatDisplayedGrade(resultValue)}</div>`;
               tr.append(resultCell);
@@ -16967,7 +16905,9 @@
 
           getGradesEntryDraft(courseId = this.selectedCourseId) {
             const categories = this.getGradesEntryStructureCategories(courseId);
-            const previous = this.gradesEntryDraft || {};
+            const previous = this.gradesEntryDraft && !this.gradesEntryDraft.assessmentId
+              ? this.gradesEntryDraft
+              : {};
             const entries = Object.entries(
               previous && typeof previous.entries === "object" && previous.entries
                 ? previous.entries
@@ -17096,7 +17036,10 @@
           }
 
           readGradesEntryEditorValues() {
-            const draft = this.getGradesEntryDraft(this.selectedCourseId);
+            const activeAssessment = this.getGradesEntryActiveAssessment(this.selectedCourseId);
+            const draft = activeAssessment
+              ? this.getGradesEntryAssessmentDraft(activeAssessment)
+              : this.getGradesEntryDraft(this.selectedCourseId);
             const root = this.refs.gradesEntryContent;
             if (!root) {
               return draft;
@@ -17108,13 +17051,28 @@
             const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
             const categorySelect = root.querySelector("select[data-grades-entry-category]");
             const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
+            const taskInputById = new Map(
+              [...root.querySelectorAll("input[data-grade-test-task-field='maxBe']")]
+                .map((input) => {
+                  const taskId = String(input.dataset.taskId || "").trim();
+                  const parsed = parseGradeBeValue(input.value);
+                  return taskId && parsed.valid ? [taskId, parsed.value] : null;
+                })
+                .filter(Boolean)
+            );
+            const testTasks = normalizeGradeTestTasks(draft.testTasks).map((task) => (
+              taskInputById.has(task.id)
+                ? { ...task, maxBe: taskInputById.get(task.id) }
+                : task
+            ));
             return {
               title: String(titleInput?.value || draft.title || "").trim(),
               halfYear: normalizeGradeHalfYear(halfYearInput?.value || draft.halfYear || "h1"),
               weight: normalizeGradeInteger(weightInput?.value, draft.weight || 1),
               mode: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade"),
               testScale: normalizeGradeTestScale(testScaleInput?.value || draft.testScale),
-              testTasks: normalizeGradeTestTasks(draft.testTasks),
+              testScaleSnapshot: draft.testScaleSnapshot || null,
+              testTasks,
               categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
               subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
             };
@@ -17619,7 +17577,7 @@
                 : "grade-assessment-button is-weightless";
               th.innerHTML = `
         <div class="grade-assessment-head">
-          <button type="button" class="${assessmentButtonClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} bearbeiten" title="Leistung bearbeiten">
+          <button type="button" class="${assessmentButtonClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="In Eingabe bearbeiten">
             <span class="grade-assessment-title">${buildGradeAssessmentDisplayTitleMarkup(cell.assessment.title)}</span>
             ${buildGradeAssessmentWeightMarkup(cell.assessment.weight, cell.assessment.mode)}
           </button>
@@ -18172,56 +18130,6 @@
             });
           }
 
-          openGradeAssessmentDialog(assessmentId) {
-            const id = Number(assessmentId || 0);
-            const assessment = this.store.getGradeAssessment(id);
-            if (!assessment || !this.refs.gradeAssessmentDialog) {
-              return;
-            }
-            this.pendingGradeAssessmentId = id;
-            this.refs.gradeAssessmentDialogId.value = String(id);
-            this.refs.gradeAssessmentDialogTitle.value = String(assessment.title || "");
-            this.refs.gradeAssessmentDialogWeight.value = String(assessment.weight || 1);
-            this.syncGradeAssessmentDialogModeUi(assessment.mode);
-            this.setSelectedGradeAssessmentDialogTestScale(assessment.testScale, assessment.testScaleSnapshot);
-            this.setSelectedGradeAssessmentDialogHalfYear(assessment.halfYear);
-            this.populateGradeAssessmentCategoryOptions(
-              assessment.courseId,
-              assessment.categoryId,
-              assessment.subcategoryId
-            );
-            this.openDialog(this.refs.gradeAssessmentDialog);
-            this.refs.gradeAssessmentDialogTitle.focus();
-            this.refs.gradeAssessmentDialogTitle.select();
-          }
-
-          closeGradeAssessmentDialog() {
-            this.pendingGradeAssessmentId = null;
-            if (this.refs.gradeAssessmentDialogId) this.refs.gradeAssessmentDialogId.value = "";
-            if (this.refs.gradeAssessmentDialogTitle) this.refs.gradeAssessmentDialogTitle.value = "";
-            if (this.refs.gradeAssessmentDialogWeight) this.refs.gradeAssessmentDialogWeight.value = "";
-            this.syncGradeAssessmentDialogModeUi("grade");
-            this.setSelectedGradeAssessmentDialogTestScale(GRADE_TEST_SCALE_DEFAULT, null);
-            this.setSelectedGradeAssessmentDialogHalfYear(this.getDefaultGradeAssessmentHalfYear());
-            if (this.refs.gradeAssessmentDialogCategory) this.refs.gradeAssessmentDialogCategory.innerHTML = "";
-            if (this.refs.gradeAssessmentDialogSubcategory) this.refs.gradeAssessmentDialogSubcategory.innerHTML = "";
-            this.closeDialog(this.refs.gradeAssessmentDialog);
-            requestAnimationFrame(() => {
-              const active = document.activeElement;
-              if (!(active instanceof HTMLElement)) {
-                return;
-              }
-              if (
-                active.closest("#grade-assessment-dialog")
-                || active.matches("button[data-grade-edit-assessment]")
-                || active.closest("#grades-table")
-                || active.closest("#grades-entry-content")
-              ) {
-                active.blur();
-              }
-            });
-          }
-
           openGradeOverrideDialog({ studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year" } = {}) {
             const context = this.normalizeGradeOverrideEditorContext({
               studentId,
@@ -18332,53 +18240,6 @@
             this.activeGradeOverrideContext = null;
             this.renderGradesViewPreservingOverviewScroll();
             return true;
-          }
-
-          async deleteGradeAssessmentFromDialog() {
-            const assessmentId = Number(this.pendingGradeAssessmentId || this.refs.gradeAssessmentDialogId?.value || 0);
-            if (!assessmentId) {
-              this.closeGradeAssessmentDialog();
-              return;
-            }
-            const deleted = await this.deleteGradeAssessmentWithConfirm(assessmentId);
-            if (deleted) {
-              this.closeGradeAssessmentDialog();
-            }
-          }
-
-          async submitGradeAssessmentDialog() {
-            const assessmentId = Number(this.pendingGradeAssessmentId || this.refs.gradeAssessmentDialogId?.value || 0);
-            const assessment = this.store.getGradeAssessment(assessmentId);
-            if (!assessment) {
-              this.closeGradeAssessmentDialog();
-              return;
-            }
-            const title = String(this.refs.gradeAssessmentDialogTitle?.value || "").trim();
-            if (!title) {
-              await this.showInfoMessage("Der Leistungsname darf nicht leer sein.");
-              this.refs.gradeAssessmentDialogTitle?.focus();
-              return;
-            }
-            if (!this.refs.gradeAssessmentDialogCategory?.value || !this.refs.gradeAssessmentDialogSubcategory?.value) {
-              await this.showInfoMessage("Bitte Kategorie und Unterkategorie auswählen.");
-              return;
-            }
-            const selectedMode = this.getSelectedGradeAssessmentDialogMode();
-            const selectedTestScale = this.getSelectedGradeAssessmentDialogTestScale();
-            const patch = {
-              title,
-              weight: selectedMode === "homework" ? 1 : this.refs.gradeAssessmentDialogWeight?.value,
-              mode: selectedMode,
-              halfYear: this.getSelectedGradeAssessmentDialogHalfYear(),
-              categoryId: this.refs.gradeAssessmentDialogCategory?.value,
-              subcategoryId: this.refs.gradeAssessmentDialogSubcategory?.value
-            };
-            if (selectedMode === "test" && normalizeGradeTestScale(assessment.testScale) !== selectedTestScale) {
-              patch.testScale = selectedTestScale;
-            }
-            this.store.updateGradeAssessment(assessmentId, patch);
-            this.closeGradeAssessmentDialog();
-            this.renderGradesView();
           }
 
           async createGradeAssessmentForSelectedCourse(subcategoryId = null, halfYear = "") {
@@ -18767,10 +18628,16 @@
             const assessmentId = Number(input?.dataset?.assessmentId || 0);
             if (assessmentId) {
               const assessment = this.store.getGradeAssessment(assessmentId);
+              const draft = (
+                assessment
+                && Number(this.selectedGradesEntryAssessmentId || 0) === Number(assessmentId)
+              )
+                ? this.getGradesEntryAssessmentDraft(assessment)
+                : null;
               const entry = this.store.getGradeEntry(studentId, assessmentId);
               return {
-                tasks: normalizeGradeTestTasks(assessment?.testTasks),
-                scale: normalizeGradeTestScale(assessment?.testScale),
+                tasks: normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks),
+                scale: normalizeGradeTestScale(draft?.testScale || assessment?.testScale),
                 scores: normalizeGradeTestScores(entry?.testScores)
               };
             }
@@ -18801,12 +18668,25 @@
             if (assessmentId) {
               const entry = this.store.getGradeEntry(studentKey, assessmentId);
               const assessment = this.store.getGradeAssessment(assessmentId);
+              const draft = (
+                assessment
+                && Number(this.selectedGradesEntryAssessmentId || 0) === Number(assessmentId)
+              )
+                ? this.getGradesEntryAssessmentDraft(assessment)
+                : null;
+              const tasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks);
+              const scale = normalizeGradeTestScale(draft?.testScale || assessment?.testScale);
+              const scaleSnapshot = draft
+                ? this.store.buildGradeTestScaleSnapshot(scale)
+                : assessment?.testScaleSnapshot || assessment?.testScale;
               if (node) {
-                node.textContent = this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+                node.textContent = this.formatDisplayedGrade(
+                  calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot)
+                );
               }
               if (ratioNode) {
                 ratioNode.textContent = formatGradeTestRatioDisplay(
-                  calculateGradeTestRatio(assessment?.testTasks || [], entry?.testScores || {})
+                  calculateGradeTestRatio(tasks, entry?.testScores || {})
                 );
               }
               return;
@@ -19458,6 +19338,51 @@
                 this.focusFirstGradesEntryInput();
               });
             }
+            return true;
+          }
+
+          openGradesEntryForAssessment(assessmentId, options = {}) {
+            const id = Number(assessmentId || 0);
+            const assessment = this.store.getGradeAssessment(id);
+            if (!assessment) {
+              return false;
+            }
+            const courseId = Number(assessment.courseId || 0);
+            const year = this.activeSchoolYear;
+            const course = year
+              ? this.store.listCourses(year.id).find((item) => Number(item.id) === courseId)
+              : null;
+            if (!courseId || !this.courseAllowsGrades(course)) {
+              return false;
+            }
+            if (options.commit !== false && !this.commitVisibleGradeInputs()) {
+              return false;
+            }
+            this.hideGradePicker();
+            this.queueGradesEntrySaveNotice("");
+            this.clearGradesOverviewAssessmentSpotlight();
+            this.clearPrivacyFocusedGradeStudent();
+            this.activeGradeOverrideContext = null;
+            this.selectedCourseId = courseId;
+            this.shellTabContext = "grades";
+            this.gradesSubView = "entry";
+            this.selectedGradesEntryAssessmentId = id;
+            this.activeGradeAssessmentId = id;
+            this.activeGradeStudentId = null;
+            this.pendingGradesEntryCourseAutoSelect = false;
+            this.gradesEntryDraft = null;
+            if (this.currentView !== "grades") {
+              this.switchView("grades");
+              this.notifyParentPlanningViewRequest("grades");
+              return true;
+            }
+            this.renderViewState();
+            this.renderSidebarCourseList();
+            this.renderGradesView();
+            requestAnimationFrame(() => {
+              this.focusGradeAssessmentInput(id, 0);
+            });
+            this.notifyParentPlanningViewRequest("grades");
             return true;
           }
 

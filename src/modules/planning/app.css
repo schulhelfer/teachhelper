@@ -3327,13 +3327,20 @@
         }
 
         .grades-entry-actions {
-          display: flex;
+          display: grid;
           grid-column: 1 / -1;
+          justify-items: center;
+          gap: 0.7rem;
+          margin-top: 0.35rem;
+          padding-top: 1rem;
+        }
+
+        .grades-entry-actions-main,
+        .grades-entry-actions-danger {
+          display: flex;
           align-items: center;
           justify-content: center;
           gap: 1rem;
-          margin-top: 0.35rem;
-          padding-top: 1rem;
         }
 
         .grades-entry-actions .dialog-icon-button {
@@ -4788,12 +4795,6 @@
           line-height: 1;
         }
 
-        .grade-assessment-edit-dialog label {
-          display: grid;
-          gap: 0.35rem;
-        }
-
-        .assessment-mode-field,
         .grades-entry-mode-field,
         .grades-entry-name-order-field {
           display: grid;
@@ -4802,11 +4803,6 @@
           margin: 0;
           padding: 0;
           border: none;
-        }
-
-        .assessment-mode-field legend {
-          padding: 0;
-          font-weight: 600;
         }
 
         .assessment-mode-toggle {
