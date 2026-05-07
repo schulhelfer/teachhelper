@@ -3200,6 +3200,7 @@
             if (!assessment) {
               return false;
             }
+            const previousMode = normalizeGradeAssessmentMode(assessment.mode);
             if (patch.title !== undefined) {
               assessment.title = normalizeGradeTextPart(patch.title) || assessment.title;
             }
@@ -3239,7 +3240,7 @@
             if (patch.sortOrder !== undefined) {
               assessment.sortOrder = Number(patch.sortOrder || assessment.sortOrder || 0);
             }
-            if (patch.mode !== undefined) {
+            if (patch.mode !== undefined && normalizeGradeAssessmentMode(patch.mode) !== previousMode) {
               const nextMode = normalizeGradeAssessmentMode(patch.mode);
               this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries
                 .map((entry) => {
@@ -3365,11 +3366,9 @@
               assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
             }
             const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
-            const taskMaxById = new Map(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => [task.id, Number(task.maxBe || 0)]));
             const normalizedScores = Object.entries(normalizeGradeTestScores(scores)).reduce((result, [taskId, value]) => {
               if (taskIds.has(taskId)) {
-                const maxBe = taskMaxById.get(taskId) || 0;
-                result[taskId] = maxBe > 0 ? Math.min(Number(value) || 0, maxBe) : value;
+                result[taskId] = value;
               }
               return result;
             }, {});
@@ -3410,7 +3409,6 @@
               assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
             }
             const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
-            const taskMaxById = new Map(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => [task.id, Number(task.maxBe || 0)]));
             this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries
               .map((entry) => {
                 if (Number(entry.assessmentId) !== Number(assessment.id)) {
@@ -3418,8 +3416,7 @@
                 }
                 const testScores = Object.entries(normalizeGradeTestScores(entry.testScores)).reduce((result, [taskId, value]) => {
                   if (taskIds.has(taskId)) {
-                    const maxBe = taskMaxById.get(taskId) || 0;
-                    result[taskId] = maxBe > 0 ? Math.min(Number(value) || 0, maxBe) : value;
+                    result[taskId] = value;
                   }
                   return result;
                 }, {});
@@ -5433,6 +5430,7 @@
             this.gradeCollapsedSubcategoryKeys = new Set();
             this.pendingGradeTableMotion = null;
             this.pendingGradesEntryCourseAutoSelect = true;
+            this.pendingGradesOverviewAutoScrollCourseId = null;
             this.gradeVaultSession = createInitialGradeVaultSessionState();
             this.pendingWeekGradeAssessmentLoadKey = "";
             this.gradesOverviewAssessmentSpotlight = null;
@@ -10868,6 +10866,12 @@
               return;
             }
             root.dataset.gradeEventsBound = "1";
+            root.addEventListener("pointerdown", (event) => {
+              this.handleGradesSurfaceGradeInputPointerActivation(event);
+            }, true);
+            root.addEventListener("mousedown", (event) => {
+              this.handleGradesSurfaceGradeInputPointerActivation(event);
+            }, true);
             root.addEventListener("click", async (event) => {
               await this.handleGradesSurfaceClick(event);
             });
@@ -10885,10 +10889,95 @@
             root.addEventListener("keydown", (event) => {
               this.handleGradesEntryTitleKeyDown(event);
               this.handleGradesTableKeyDown(event);
-            });
+            }, true);
             root.addEventListener("blur", (event) => {
               this.handleGradesTableBlur(event);
             }, true);
+          }
+
+          handleGradesSurfaceGradeInputPointerActivation(event) {
+            if (event._gradeInputPointerActivationHandled) {
+              return;
+            }
+            const target = event.target instanceof Element ? event.target : null;
+            if (!target) {
+              return;
+            }
+            const targetGradeInput = target.closest("input[data-grade-input='1']:not(:disabled)");
+            const activeInput = document.activeElement instanceof Element
+              ? document.activeElement.closest("input[data-grade-input='1']:not(:disabled)")
+              : null;
+            if (
+              targetGradeInput
+              && activeInput
+              && targetGradeInput !== activeInput
+              && this.isTestGradeInput(targetGradeInput)
+              && this.isTestGradeInput(activeInput)
+              && event.currentTarget?.contains(activeInput)
+            ) {
+              event._gradeInputPointerActivationHandled = true;
+              const targetSnapshot = this.getGradeInputNavigationSnapshot(targetGradeInput);
+              if (!this.commitGradeCellInput(activeInput)) {
+                event.preventDefault();
+                event.stopPropagation();
+                this.focusGradeTextInputForEditing(activeInput, { preventScroll: true });
+                return;
+              }
+              if (!this.gradeInputBlurCommitSkip) {
+                this.gradeInputBlurCommitSkip = new WeakSet();
+              }
+              this.gradeInputBlurCommitSkip.add(activeInput);
+              const nextStudentId = Number(targetGradeInput.dataset.studentId || 0) || null;
+              this.activeGradeStudentId = nextStudentId;
+              this.updateActiveGradeStudentHighlight();
+              this.hideGradePicker();
+              window.setTimeout(() => {
+                window.requestAnimationFrame(() => {
+                  const resolvedTarget = document.body.contains(targetGradeInput)
+                    ? targetGradeInput
+                    : this.findGradeInputFromNavigationSnapshot(targetSnapshot);
+                  if (!(resolvedTarget instanceof HTMLInputElement) || resolvedTarget.disabled) {
+                    return;
+                  }
+                  this.focusGradeTextInputForEditing(resolvedTarget, { preventScroll: true });
+                });
+              }, 0);
+              return;
+            }
+            if (targetGradeInput) {
+              return;
+            }
+            if (!activeInput || !event.currentTarget?.contains(activeInput)) {
+              return;
+            }
+            const activateButton = target.closest("button[data-grade-activate-assessment]");
+            if (activateButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              this.activateGradeAssessment(
+                Number(activateButton.dataset.gradeActivateAssessment || 0),
+                Number(activateButton.dataset.rowIndex || 0),
+                Number(activateButton.dataset.studentId || 0)
+              );
+              return;
+            }
+            const activateCell = target.closest("td[data-grade-activate-assessment-cell='1']");
+            if (activateCell) {
+              event.preventDefault();
+              event.stopPropagation();
+              this.activateGradeAssessment(
+                Number(activateCell.dataset.gradeActivateAssessment || 0),
+                Number(activateCell.dataset.rowIndex || 0),
+                Number(activateCell.dataset.studentId || 0)
+              );
+              return;
+            }
+            const editButton = target.closest("button[data-grade-edit-assessment]");
+            if (editButton) {
+              event.preventDefault();
+              event.stopPropagation();
+              this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment);
+            }
           }
 
           handleGradesSurfaceInput(event) {
@@ -10900,9 +10989,17 @@
               const removedCharacters = rawValue !== sanitizedValue;
               testTaskMaxInput.value = sanitizedValue;
               const parsed = parseGradeBeValue(sanitizedValue);
-              if (removedCharacters || (sanitizedValue && !parsed.valid)) {
+              const missingMaxBe = !sanitizedValue || (parsed.valid && Number(parsed.value || 0) <= 0);
+              const invalidMaxBe = removedCharacters || missingMaxBe || (sanitizedValue && !parsed.valid);
+              this.setGradeTestTaskMaxInputValidity(testTaskMaxInput, !invalidMaxBe);
+              this.syncVisibleGradeTestTaskColumnLock(testTaskMaxInput, missingMaxBe || !parsed.valid);
+              this.syncVisibleGradeTestTaskScoreValidity(
+                testTaskMaxInput,
+                parsed.valid && Number(parsed.value || 0) > 0 ? parsed.value : null
+              );
+              if (invalidMaxBe) {
                 this.showGradeInputInvalidFeedback(testTaskMaxInput, {
-                  persist: Boolean(sanitizedValue) && !parsed.valid
+                  persist: true
                 });
               } else {
                 this.clearGradeInputInvalidFeedback(testTaskMaxInput);
@@ -10921,6 +11018,19 @@
           }
 
           async handleGradesSurfaceClick(event) {
+            const clickedGradeInput = event.target instanceof Element
+              ? event.target.closest("input[data-grade-input='1']:not(:disabled)")
+              : null;
+            if (this.isTestGradeInput(clickedGradeInput)) {
+              window.setTimeout(() => {
+                window.requestAnimationFrame(() => {
+                  if (!document.body.contains(clickedGradeInput) || clickedGradeInput.disabled) {
+                    return;
+                  }
+                  this.focusGradeTextInputForEditing(clickedGradeInput, { preventScroll: true });
+                });
+              }, 0);
+            }
             const courseToggleButton = event.target.closest("button[data-grades-entry-course-toggle]");
             if (courseToggleButton) {
               event.preventDefault();
@@ -12927,6 +13037,14 @@
               const activeGradeInputTarget = event.target instanceof Element
                 ? event.target.closest("input[data-grade-input='1']:not(:disabled)")
                 : null;
+              const activeGradeTestTaskInputTarget = event.target instanceof Element
+                ? event.target.closest("input[data-grade-test-task-field]:not(:disabled)")
+                : null;
+              const gradeActivationTarget = event.target instanceof Element
+                ? event.target.closest(
+                  "button[data-grade-activate-assessment], td[data-grade-activate-assessment-cell='1'], button[data-grade-edit-assessment]"
+                )
+                : null;
               const insideGradePicker = Boolean(
                 this.gradePickerState.container
                 && event.target instanceof Node
@@ -12942,6 +13060,8 @@
               if (
                 this.activeGradeAssessmentId
                 && !activeGradeInputTarget
+                && !activeGradeTestTaskInputTarget
+                && !gradeActivationTarget
                 && !insideGradePicker
                 && !insideGradesEntryEditor
               ) {
@@ -14989,7 +15109,11 @@
             if (!this.commitVisibleGradeTestTaskInputs(root)) {
               return false;
             }
-            const inputs = [...root.querySelectorAll("input[data-grade-input='1']:not(:disabled)")];
+            if (!this.commitVisibleGradeTestScoreInputs(root)) {
+              return false;
+            }
+            const inputs = [...root.querySelectorAll("input[data-grade-input='1']:not(:disabled)")]
+              .filter((input) => !this.isTestGradeInput(input));
             let invalidInput = null;
             inputs.forEach((input) => {
               const valid = this.commitGradeCellInput(input);
@@ -15005,13 +15129,111 @@
             return true;
           }
 
+          commitVisibleGradeTestScoreInputs(root = this.getGradeInputRoot()) {
+            if (!root) {
+              return true;
+            }
+            const inputs = [...root.querySelectorAll("input[data-grade-test-score='1']:not(:disabled)")];
+            if (!inputs.length) {
+              return true;
+            }
+            const groups = new Map();
+            let invalidInput = null;
+            for (const input of inputs) {
+              const studentId = Number(input.dataset.studentId || 0);
+              const assessmentId = Number(input.dataset.assessmentId || 0);
+              const taskId = String(input.dataset.taskId || "").trim();
+              const isDraftInput = input.dataset.gradeDraftInput === "1";
+              if (!studentId || !taskId) {
+                invalidInput = invalidInput || input;
+                continue;
+              }
+              const context = this.getGradeTestInputContext(input);
+              const task = context.tasks.find((item) => item.id === taskId) || null;
+              const parsed = parseGradeBeValue(input.value);
+              if (
+                !parsed.valid
+                || (
+                  parsed.value !== null
+                  && task
+                  && Number(task.maxBe || 0) > 0
+                  && parsed.value > Number(task.maxBe || 0)
+                )
+              ) {
+                input.classList.add("invalid");
+                input.setAttribute("aria-invalid", "true");
+                invalidInput = invalidInput || input;
+                continue;
+              }
+              input.classList.remove("invalid");
+              input.setAttribute("aria-invalid", "false");
+              input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
+              const groupKey = isDraftInput
+                ? `draft:${studentId}`
+                : `assessment:${assessmentId}:${studentId}`;
+              if (!groups.has(groupKey)) {
+                groups.set(groupKey, {
+                  isDraftInput,
+                  studentId,
+                  assessmentId,
+                  scores: { ...context.scores }
+                });
+              }
+              const group = groups.get(groupKey);
+              if (parsed.value === null) {
+                delete group.scores[taskId];
+              } else {
+                group.scores[taskId] = parsed.value;
+              }
+            }
+            if (invalidInput) {
+              invalidInput.focus();
+              invalidInput.select();
+              return false;
+            }
+            let draft = null;
+            let nextDraftEntries = null;
+            groups.forEach((group) => {
+              if (group.isDraftInput) {
+                draft = draft || this.getGradesEntryDraft(this.selectedCourseId);
+                nextDraftEntries = nextDraftEntries || {
+                  ...(draft && typeof draft.entries === "object" ? draft.entries : {})
+                };
+                if (hasGradeTestScores(group.scores)) {
+                  nextDraftEntries[group.studentId] = {
+                    value: null,
+                    checked: null,
+                    testScores: group.scores
+                  };
+                } else {
+                  delete nextDraftEntries[group.studentId];
+                }
+                this.refreshVisibleGradeTestResult(group.studentId, null);
+                return;
+              }
+              this.store.setGradeTestEntry(group.studentId, group.assessmentId, group.scores);
+              this.refreshVisibleGradeTestResult(group.studentId, group.assessmentId);
+            });
+            if (draft && nextDraftEntries) {
+              this.gradesEntryDraft = {
+                ...draft,
+                entries: nextDraftEntries
+              };
+            }
+            if ([...groups.values()].some((group) => !group.isDraftInput)) {
+              this.refreshGradeTotals();
+              this.renderGradePrivacyOverlay();
+            }
+            return true;
+          }
+
           commitVisibleGradeTestTaskInputs(root = this.getGradeInputRoot()) {
             if (!root) {
               return true;
             }
             const testTaskInputs = [...root.querySelectorAll("input[data-grade-test-task-field]")];
             for (const input of testTaskInputs) {
-              if (!this.updateGradeTestTaskFromInput(input)) {
+              if (!this.updateGradeTestTaskFromInput(input, { requireValue: true })) {
                 if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
                   input.focus();
                   input.select();
@@ -16244,6 +16466,24 @@
             }
           }
 
+          focusGradeTextInputForEditing(input, options = {}) {
+            if (!(input instanceof HTMLInputElement) || input.disabled) {
+              return;
+            }
+            this.focusGradeInputElement(input, options);
+            const selectAll = options.selectAll !== false;
+            try {
+              const textLength = String(input.value || "").length;
+              if (selectAll && textLength > 0) {
+                input.setSelectionRange(0, textLength);
+              } else {
+                input.setSelectionRange(textLength, textLength);
+              }
+            } catch (_error) {
+              // Some input implementations may not support selection ranges.
+            }
+          }
+
           getGradeTestScaleTemplatesForEditor(selectedScale = GRADE_TEST_SCALE_DEFAULT, selectedSnapshot = null) {
             const templates = this.store.listVisibleGradeTestScaleTemplates();
             const normalizedScale = normalizeGradeTestScale(selectedScale);
@@ -16606,7 +16846,6 @@
           updateGradeTestContextTasks(tasks) {
             const { assessment, draft } = this.getActiveGradeTestContext();
             const normalizedTasks = normalizeGradeTestTasks(tasks);
-            const taskMaxById = new Map(normalizedTasks.map((task) => [task.id, Number(task.maxBe || 0)]));
             if (assessment && draft) {
               this.gradesEntryDraft = {
                 ...draft,
@@ -16620,8 +16859,7 @@
                 const normalizedEntry = normalizeGradeDraftEntry(value);
                 const testScores = Object.entries(normalizedEntry.testScores || {}).reduce((scores, [taskId, score]) => {
                   if (validTaskIds.has(taskId)) {
-                    const maxBe = taskMaxById.get(taskId) || 0;
-                    scores[taskId] = maxBe > 0 ? Math.min(Number(score) || 0, maxBe) : score;
+                    scores[taskId] = score;
                   }
                   return scores;
                 }, {});
@@ -16674,10 +16912,61 @@
             this.renderGradesView();
           }
 
-          updateGradeTestTaskFromInput(input) {
+          setGradeTestTaskMaxInputValidity(input, valid = true) {
+            if (!(input instanceof HTMLInputElement)) {
+              return;
+            }
+            const isValid = Boolean(valid);
+            input.classList.toggle("invalid", !isValid);
+            input.setAttribute("aria-invalid", isValid ? "false" : "true");
+          }
+
+          syncVisibleGradeTestTaskColumnLock(input, locked = false) {
+            if (!(input instanceof HTMLInputElement)) {
+              return;
+            }
+            const taskId = String(input.dataset.taskId || "").trim();
+            if (!taskId) {
+              return;
+            }
+            const root = this.refs.gradesEntryContent;
+            root?.querySelectorAll("input[data-grade-test-score='1'][data-task-id]").forEach((node) => {
+              if (node instanceof HTMLInputElement) {
+                if (String(node.dataset.taskId || "").trim() !== taskId) {
+                  return;
+                }
+                node.disabled = Boolean(locked);
+                node.title = locked ? "BE1 zuerst eintragen" : "";
+              }
+            });
+          }
+
+          syncVisibleGradeTestTaskScoreValidity(input, maxBe = null) {
+            if (!(input instanceof HTMLInputElement)) {
+              return;
+            }
+            const taskId = String(input.dataset.taskId || "").trim();
+            if (!taskId) {
+              return;
+            }
+            const maxValue = Number(maxBe || 0);
+            const root = this.refs.gradesEntryContent;
+            root?.querySelectorAll("input[data-grade-test-score='1'][data-task-id]").forEach((node) => {
+              if (!(node instanceof HTMLInputElement) || String(node.dataset.taskId || "").trim() !== taskId) {
+                return;
+              }
+              const parsed = parseGradeBeValue(node.value);
+              const invalid = maxValue > 0 && parsed.valid && parsed.value !== null && Number(parsed.value || 0) > maxValue;
+              node.classList.toggle("invalid", invalid);
+              node.setAttribute("aria-invalid", invalid ? "true" : "false");
+            });
+          }
+
+          updateGradeTestTaskFromInput(input, options = {}) {
             if (!(input instanceof HTMLInputElement)) {
               return false;
             }
+            const requireValue = Boolean(options.requireValue);
             const taskId = String(input.dataset.taskId || "").trim();
             const field = String(input.dataset.gradeTestTaskField || "").trim();
             if (!taskId || field !== "maxBe") {
@@ -16691,11 +16980,25 @@
               return false;
             }
             const parsed = parseGradeBeValue(input.value);
+            const missingMaxBe = parsed.valid && Number(parsed.value || 0) <= 0;
             if (!parsed.valid) {
-              input.classList.add("invalid");
+              this.setGradeTestTaskMaxInputValidity(input, false);
+              this.syncVisibleGradeTestTaskColumnLock(input, true);
+              this.syncVisibleGradeTestTaskScoreValidity(input, null);
               return false;
             }
+            if (missingMaxBe) {
+              this.setGradeTestTaskMaxInputValidity(input, false);
+              this.syncVisibleGradeTestTaskColumnLock(input, true);
+              this.syncVisibleGradeTestTaskScoreValidity(input, null);
+              task.maxBe = null;
+              this.updateGradeTestContextTasks(tasks);
+              return !requireValue;
+            }
             task.maxBe = parsed.value === null ? null : parsed.value;
+            this.setGradeTestTaskMaxInputValidity(input, true);
+            this.syncVisibleGradeTestTaskColumnLock(input, false);
+            this.syncVisibleGradeTestTaskScoreValidity(input, parsed.value);
             return this.updateGradeTestContextTasks(tasks);
           }
 
@@ -16747,6 +17050,7 @@
             headRow.append(ratioHead);
             tasks.forEach((task, index) => {
               const taskLabel = `Aufgabe ${index + 1}`;
+              const hasTaskMaxBe = Number(task.maxBe || 0) > 0;
               const taskHead = document.createElement("th");
               taskHead.className = "grade-test-task-col";
               taskHead.innerHTML = `
@@ -16754,7 +17058,7 @@
                   <div class="grade-test-task-title" aria-label="${escapeHtml(taskLabel)}">${index + 1}</div>
                   <label class="grade-test-task-max">
                     <span>BE1</span>
-                    <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" aria-label="Erreichbare BE1 fuer ${escapeHtml(taskLabel)}">
+                    <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" class="${hasTaskMaxBe ? "" : "invalid"}" aria-label="Erreichbare BE1 fuer ${escapeHtml(taskLabel)}" aria-invalid="${hasTaskMaxBe ? "false" : "true"}">
                   </label>
                   <button type="button" class="ghost grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
                 </div>
@@ -16795,17 +17099,20 @@
               tr.append(ratioCell);
               tasks.forEach((task, columnIndex) => {
                 const taskLabel = `Aufgabe ${columnIndex + 1}`;
+                const hasTaskMaxBe = Number(task.maxBe || 0) > 0;
                 const td = document.createElement("td");
                 td.className = "grade-test-task-col";
                 if (isPlaceholderRow) {
                   td.innerHTML = `<span class="grade-cell-placeholder" aria-hidden="true"></span>`;
                 } else {
                   const value = Object.prototype.hasOwnProperty.call(scores, task.id) ? scores[task.id] : null;
+                  const taskMaxBe = Number(task.maxBe || 0);
+                  const isInvalidScore = value !== null && taskMaxBe > 0 && Number(value || 0) > taskMaxBe;
                   td.innerHTML = `
                     <input
                       type="text"
                       name="grade-test-${escapeHtml(String(assessment?.id || "draft"))}-${escapeHtml(task.id)}-${student.id}"
-                      class="grade-cell-input grade-test-score-input"
+                      class="grade-cell-input grade-test-score-input${isInvalidScore ? " invalid" : ""}"
                       inputmode="decimal"
                       maxlength="5"
                       data-grade-input="1"
@@ -16817,6 +17124,8 @@
                       data-col-index="${columnIndex}"
                       value="${escapeHtml(formatGradeBeValue(value))}"
                       aria-label="BE 2 fuer ${escapeHtml(studentName)} in ${escapeHtml(taskLabel)}"
+                      aria-invalid="${isInvalidScore ? "true" : "false"}"
+                      ${hasTaskMaxBe ? "" : `disabled title="BE1 zuerst eintragen"`}
                     >
                   `;
                 }
@@ -17840,6 +18149,83 @@
             return shell;
           }
 
+          getGradesOverviewAutoScrollAssessmentId(course, groupedAssessments, options = {}) {
+            if (!course) {
+              return null;
+            }
+            const model = this.buildGradesTableModel(course, groupedAssessments, options);
+            const categoryTargets = new Map();
+            model.columns.forEach((column, columnIndex) => {
+              if (column.type !== "assessment" || !column.assessment) {
+                return;
+              }
+              const categoryId = Number(column.categoryId || 0);
+              const period = normalizeGradePeriod(column.period || "");
+              const assessmentId = Number(column.assessment.id || 0);
+              if (!categoryId || !period || !assessmentId) {
+                return;
+              }
+              const key = `${period}:${categoryId}`;
+              const previous = categoryTargets.get(key) || {
+                count: 0,
+                lastColumnIndex: -1,
+                assessmentId: null
+              };
+              categoryTargets.set(key, {
+                count: previous.count + 1,
+                lastColumnIndex: columnIndex,
+                assessmentId
+              });
+            });
+            let bestTarget = null;
+            categoryTargets.forEach((target) => {
+              if (
+                !bestTarget
+                || target.count > bestTarget.count
+                || (target.count === bestTarget.count && target.lastColumnIndex > bestTarget.lastColumnIndex)
+              ) {
+                bestTarget = target;
+              }
+            });
+            return bestTarget?.assessmentId || null;
+          }
+
+          scrollGradesOverviewAssessmentColumnToRight(assessmentId) {
+            const targetId = Number(assessmentId || 0);
+            const container = this.refs.gradesTableScroll || this.refs.gradesBookPanel;
+            if (!targetId || !container) {
+              return false;
+            }
+            const node = this.refs.gradesTable?.querySelector(
+              `th.grade-assessment-col[data-grade-assessment-id="${targetId}"], td.grade-assessment-col[data-grade-assessment-id="${targetId}"]`
+            );
+            if (!(node instanceof HTMLElement)) {
+              return false;
+            }
+            const containerRect = container.getBoundingClientRect();
+            const nodeRect = node.getBoundingClientRect();
+            const gap = 12;
+            const maxScrollLeft = Math.max(0, container.scrollWidth - container.clientWidth);
+            const targetLeft = container.scrollLeft
+              + (nodeRect.right - containerRect.right)
+              + gap;
+            container.scrollLeft = clamp(targetLeft, 0, maxScrollLeft);
+            return true;
+          }
+
+          applyPendingGradesOverviewAutoScroll(course, groupedAssessments, options = {}) {
+            const courseId = Number(course?.id || 0);
+            if (!courseId || Number(this.pendingGradesOverviewAutoScrollCourseId || 0) !== courseId) {
+              return false;
+            }
+            this.pendingGradesOverviewAutoScrollCourseId = null;
+            const assessmentId = this.getGradesOverviewAutoScrollAssessmentId(course, groupedAssessments, options);
+            if (!assessmentId) {
+              return false;
+            }
+            return this.scrollGradesOverviewAssessmentColumnToRight(assessmentId);
+          }
+
           renderGradesTable(course, students, groupedAssessments, options = {}) {
             if (!this.refs.gradesTable) {
               return;
@@ -17879,7 +18265,7 @@
             this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
             if (!spotlightAssessmentId) {
               const tableScroll = this.refs.gradesTableScroll;
-              if (tableScroll) {
+              if (!this.applyPendingGradesOverviewAutoScroll(course, groupedAssessments, options) && tableScroll) {
                 tableScroll.scrollLeft = 0;
               }
             }
@@ -18365,6 +18751,24 @@
                 });
                 return;
               }
+              const taskId = String(gradeInput.dataset.taskId || "").trim();
+              const taskMaxInput = taskId
+                ? [...(this.refs.gradesEntryContent?.querySelectorAll("input[data-grade-test-task-field='maxBe'][data-task-id]") || [])]
+                  .find((node) => String(node.dataset.taskId || "").trim() === taskId)
+                : null;
+              const parsedMaxBe = parseGradeBeValue(taskMaxInput?.value);
+              if (
+                parsed.valid
+                && parsed.value !== null
+                && parsedMaxBe.valid
+                && Number(parsedMaxBe.value || 0) > 0
+                && parsed.value > Number(parsedMaxBe.value || 0)
+              ) {
+                this.showGradeInputInvalidFeedback(gradeInput, { persist: true });
+                gradeInput.setAttribute("aria-invalid", "true");
+                return;
+              }
+              gradeInput.setAttribute("aria-invalid", "false");
               this.clearGradeInputInvalidFeedback(gradeInput);
               return;
             }
@@ -18438,6 +18842,13 @@
             } else {
               this.openGradePickerForInput(gradeInput);
             }
+            if (!this.isHomeworkGradeInput(gradeInput)) {
+              window.setTimeout(() => {
+                if (document.activeElement === gradeInput && document.body.contains(gradeInput)) {
+                  this.focusGradeInputElement(gradeInput, { preventScroll: true });
+                }
+              }, 0);
+            }
           }
 
           handleGradesTableKeyDown(event) {
@@ -18461,21 +18872,26 @@
             if (this.isHomeworkGradeInput(input)) {
               if (event.key === "Enter") {
                 event.preventDefault();
+                event.stopPropagation();
+                const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
                 input.checked = !input.checked;
                 this.commitGradeCellInput(input);
-                this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
+                this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1, navigationSnapshot);
                 return;
               }
               if (event.key === " " || event.key === "Spacebar") {
                 event.preventDefault();
+                event.stopPropagation();
                 input.checked = !input.checked;
                 this.commitGradeCellInput(input);
                 return;
               }
               if (event.key === "Tab") {
                 event.preventDefault();
+                event.stopPropagation();
+                const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
                 if (this.commitGradeCellInput(input)) {
-                  this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
+                  this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1, navigationSnapshot);
                 }
                 return;
               }
@@ -18487,9 +18903,8 @@
             if (this.isTestGradeInput(input)) {
               if (event.key === "Enter" || event.key === "Tab") {
                 event.preventDefault();
-                if (this.commitGradeCellInput(input)) {
-                  this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
-                }
+                event.stopPropagation();
+                this.commitAndFocusNextTestGradeInput(input, event.shiftKey ? -1 : 1);
                 return;
               }
               if (event.key === "Escape") {
@@ -18497,8 +18912,12 @@
               }
               return;
             }
+            if (event.key === "Tab" && this.handleGradeTestMatrixFallbackTab(event)) {
+              return;
+            }
             if (event.key === "ArrowDown" || event.key === "ArrowUp") {
               event.preventDefault();
+              event.stopPropagation();
               const delta = event.key === "ArrowDown" ? 1 : -1;
               if (!this.gradePickerState.open) {
                 this.openGradePickerForInput(input);
@@ -18513,22 +18932,29 @@
             }
             if (event.key === "Enter") {
               event.preventDefault();
+              event.stopPropagation();
               if (this.gradePickerState.open && this.gradePickerState.activeIndex >= 0) {
                 const value = this.gradePickerState.values[this.gradePickerState.activeIndex];
                 this.applyGradePickerValue(value);
-              } else if (this.commitGradeCellInput(input)) {
-                this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
+              } else {
+                const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
+                if (this.commitGradeCellInput(input)) {
+                  this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1, navigationSnapshot);
+                }
               }
               return;
             }
             if (event.key === "Escape") {
+              event.stopPropagation();
               this.deactivateGradeAssessment();
               return;
             }
             if (event.key === "Tab") {
               event.preventDefault();
+              event.stopPropagation();
+              const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
               if (this.commitGradeCellInput(input)) {
-                this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1);
+                this.focusVerticalGradeInput(input, event.shiftKey ? -1 : 1, navigationSnapshot);
               }
             }
           }
@@ -18573,6 +18999,10 @@
               return;
             }
             window.setTimeout(() => {
+              if (this.gradeInputBlurCommitSkip?.has(input)) {
+                this.gradeInputBlurCommitSkip.delete(input);
+                return;
+              }
               if (this.gradePickerState.input === input && this.gradePickerState.open) {
                 return;
               }
@@ -18757,15 +19187,18 @@
               const parsed = parseGradeBeValue(input.value);
               if (!parsed.valid || !taskId) {
                 input.classList.add("invalid");
+                input.setAttribute("aria-invalid", "true");
                 return false;
               }
               const context = this.getGradeTestInputContext(input);
               const task = context.tasks.find((item) => item.id === taskId) || null;
               if (parsed.value !== null && task && Number(task.maxBe || 0) > 0 && parsed.value > Number(task.maxBe || 0)) {
                 input.classList.add("invalid");
+                input.setAttribute("aria-invalid", "true");
                 return false;
               }
               input.classList.remove("invalid");
+              input.setAttribute("aria-invalid", "false");
               input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
               const nextScores = { ...context.scores };
               if (parsed.value === null) {
@@ -18845,6 +19278,28 @@
             if (!root || !(input instanceof HTMLInputElement)) {
               return [];
             }
+            if (this.isTestGradeInput(input)) {
+              const tableRoot = input.closest(".grades-test-entry-table") || root;
+              const sortByColumnThenRow = (left, right) => {
+                const leftCol = Number(left.dataset.colIndex || 0);
+                const rightCol = Number(right.dataset.colIndex || 0);
+                if (leftCol !== rightCol) {
+                  return leftCol - rightCol;
+                }
+                return Number(left.dataset.rowIndex || 0) - Number(right.dataset.rowIndex || 0);
+              };
+              if (input.dataset.gradeDraftInput === "1") {
+                return [...tableRoot.querySelectorAll("input[data-grade-test-score='1'][data-grade-draft-input='1']:not(:disabled)")]
+                  .sort(sortByColumnThenRow);
+              }
+              const assessmentId = Number(input.dataset.assessmentId || 0);
+              if (!assessmentId) {
+                return [];
+              }
+              return [...tableRoot.querySelectorAll(
+                `input[data-grade-test-score='1']:not(:disabled)[data-assessment-id="${assessmentId}"]`
+              )].sort(sortByColumnThenRow);
+            }
             if (input.dataset.gradeDraftInput === "1") {
               return [...root.querySelectorAll("input[data-grade-input='1'][data-grade-draft-input='1']:not(:disabled)")];
             }
@@ -18886,24 +19341,171 @@
             });
           }
 
-          focusVerticalGradeInput(input, direction = 1) {
+          getGradeInputNavigationSnapshot(input) {
+            if (!(input instanceof HTMLInputElement)) {
+              return null;
+            }
+            return {
+              rowIndex: Number(input.dataset.rowIndex || -1),
+              colIndex: Number(input.dataset.colIndex || -1),
+              studentId: Number(input.dataset.studentId || 0),
+              assessmentId: Number(input.dataset.assessmentId || 0),
+              taskId: String(input.dataset.taskId || "").trim(),
+              isDraftInput: input.dataset.gradeDraftInput === "1",
+              isTestInput: this.isTestGradeInput(input)
+            };
+          }
+
+          findGradeInputIndexFromNavigationSnapshot(candidateInputs, snapshot = null) {
+            if (!snapshot || !Array.isArray(candidateInputs)) {
+              return -1;
+            }
+            return candidateInputs.findIndex((node) => {
+              if (!(node instanceof HTMLInputElement)) {
+                return false;
+              }
+              if (Number(node.dataset.rowIndex || -1) !== snapshot.rowIndex) {
+                return false;
+              }
+              if (snapshot.isTestInput) {
+                return String(node.dataset.taskId || "").trim() === snapshot.taskId
+                  && Boolean(node.dataset.gradeDraftInput === "1") === snapshot.isDraftInput
+                  && (
+                    snapshot.isDraftInput
+                    || Number(node.dataset.assessmentId || 0) === snapshot.assessmentId
+                  );
+              }
+              if (snapshot.studentId > 0 && Number(node.dataset.studentId || 0) !== snapshot.studentId) {
+                return false;
+              }
+              if (snapshot.isDraftInput) {
+                return node.dataset.gradeDraftInput === "1";
+              }
+              return Number(node.dataset.assessmentId || 0) === snapshot.assessmentId;
+            });
+          }
+
+          findGradeInputFromNavigationSnapshot(snapshot = null) {
+            if (!snapshot) {
+              return null;
+            }
+            const root = this.getGradeInputRoot() || this.refs.gradesEntryContent;
+            if (!root) {
+              return null;
+            }
+            const candidateInputs = [...root.querySelectorAll("input[data-grade-input='1']:not(:disabled)")];
+            const index = this.findGradeInputIndexFromNavigationSnapshot(candidateInputs, snapshot);
+            return index >= 0 && candidateInputs[index] instanceof HTMLInputElement
+              ? candidateInputs[index]
+              : null;
+          }
+
+          getNextGradeInputFromCandidates(candidateInputs, currentIndex, direction = 1) {
+            if (!Array.isArray(candidateInputs) || !candidateInputs.length) {
+              return null;
+            }
+            const step = direction < 0 ? -1 : 1;
+            let nextIndex = currentIndex < 0
+              ? (step > 0 ? 0 : candidateInputs.length - 1)
+              : currentIndex + step;
+            if (nextIndex >= candidateInputs.length && step > 0) {
+              nextIndex = 0;
+            } else if (nextIndex < 0 && step < 0) {
+              nextIndex = candidateInputs.length - 1;
+            }
+            return nextIndex >= 0 && nextIndex < candidateInputs.length
+              ? candidateInputs[nextIndex]
+              : null;
+          }
+
+          commitAndFocusNextTestGradeInput(input, direction = 1) {
+            if (!this.isTestGradeInput(input)) {
+              return false;
+            }
+            const candidateInputs = this.getNavigableGradeInputs(input);
+            const currentIndex = this.getNavigableGradeInputIndex(candidateInputs, input);
+            const next = this.getNextGradeInputFromCandidates(candidateInputs, currentIndex, direction);
+            const nextSnapshot = next instanceof HTMLInputElement
+              ? this.getGradeInputNavigationSnapshot(next)
+              : null;
+            if (!this.commitGradeCellInput(input)) {
+              return false;
+            }
+            if (!this.gradeInputBlurCommitSkip) {
+              this.gradeInputBlurCommitSkip = new WeakSet();
+            }
+            this.gradeInputBlurCommitSkip.add(input);
+            const resolvedNext = next instanceof HTMLInputElement && document.body.contains(next)
+              ? next
+              : this.findGradeInputFromNavigationSnapshot(nextSnapshot);
+            if (resolvedNext instanceof HTMLInputElement && !resolvedNext.disabled) {
+              this.focusGradeInputAfterNavigation(resolvedNext);
+            } else {
+              this.clearActiveGradeStudentFocus(input);
+            }
+            return true;
+          }
+
+          getActiveGradeTestScoreInputFromRoot(root = this.getGradeInputRoot()) {
+            if (!root) {
+              return null;
+            }
+            if (document.activeElement instanceof HTMLInputElement && this.isTestGradeInput(document.activeElement)) {
+              return document.activeElement;
+            }
+            const activeStudentId = Number(this.activeGradeStudentId || 0);
+            if (activeStudentId > 0) {
+              const activeInput = root.querySelector(
+                `input[data-grade-test-score='1']:not(:disabled)[data-student-id="${activeStudentId}"]`
+              );
+              if (activeInput instanceof HTMLInputElement) {
+                return activeInput;
+              }
+            }
+            return root.querySelector("input[data-grade-test-score='1']:not(:disabled)");
+          }
+
+          handleGradeTestMatrixFallbackTab(event) {
+            if (event.key !== "Tab") {
+              return false;
+            }
+            const root = event.currentTarget || this.getGradeInputRoot();
+            const target = event.target instanceof Element ? event.target : null;
+            const insideTestMatrix = Boolean(
+              target?.closest(".grades-test-entry-table")
+              || (
+                document.activeElement instanceof Element
+                && document.activeElement.closest(".grades-test-entry-table")
+              )
+            );
+            if (!insideTestMatrix && !this.getActiveGradeTestScoreInputFromRoot(root)) {
+              return false;
+            }
+            const input = this.getActiveGradeTestScoreInputFromRoot(root);
+            if (!input) {
+              return false;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            this.commitAndFocusNextTestGradeInput(input, event.shiftKey ? -1 : 1);
+            return true;
+          }
+
+          focusVerticalGradeInput(input, direction = 1, snapshot = null) {
             if (!(input instanceof HTMLInputElement)) {
               return;
             }
             const candidateInputs = this.getNavigableGradeInputs(input);
             const currentIndex = this.getNavigableGradeInputIndex(candidateInputs, input);
-            if (currentIndex < 0) {
+            const snapshotIndex = currentIndex < 0
+              ? this.findGradeInputIndexFromNavigationSnapshot(candidateInputs, snapshot)
+              : currentIndex;
+            if (!candidateInputs.length) {
               this.clearActiveGradeStudentFocus(input);
               return;
             }
             const step = direction < 0 ? -1 : 1;
-            let nextIndex = currentIndex + step;
-            if (nextIndex >= candidateInputs.length && step > 0) {
-              nextIndex = 0;
-            }
-            const next = nextIndex >= 0 && nextIndex < candidateInputs.length
-              ? candidateInputs[nextIndex]
-              : null;
+            const next = this.getNextGradeInputFromCandidates(candidateInputs, snapshotIndex, step);
             if (next) {
               this.focusGradeInputAfterNavigation(next);
             } else {
@@ -19175,9 +19777,10 @@
               return;
             }
             input.value = formatGradeInteger(value, this.gradePickerState.maxPoints);
+            const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
             this.commitGradeCellInput(input);
             this.hideGradePicker();
-            this.focusVerticalGradeInput(input, 1);
+            this.focusVerticalGradeInput(input, 1, navigationSnapshot);
           }
 
           renderAll({ visibleOnly = false } = {}) {
@@ -19370,6 +19973,7 @@
             this.activeGradeAssessmentId = id;
             this.activeGradeStudentId = null;
             this.pendingGradesEntryCourseAutoSelect = false;
+            this.pendingGradesOverviewAutoScrollCourseId = null;
             this.gradesEntryDraft = null;
             if (this.currentView !== "grades") {
               this.switchView("grades");
@@ -19404,6 +20008,7 @@
             this.activeGradeAssessmentId = null;
             this.activeGradeStudentId = null;
             this.pendingGradesEntryCourseAutoSelect = false;
+            this.pendingGradesOverviewAutoScrollCourseId = null;
             this.gradesEntryDraft = {
               ...this.getGradesEntryDraft(courseId),
               title: formatShortDateLabel(lessonDate),
@@ -19450,10 +20055,15 @@
                 lessonDate,
                 scrolled: false
               });
+              this.pendingGradesOverviewAutoScrollCourseId = null;
             } else {
               this.clearGradesOverviewAssessmentSpotlight();
+              this.pendingGradesOverviewAutoScrollCourseId = normalizedCourseId;
             }
             const switched = this.switchGradesSubView("overview");
+            if (!switched && Number(this.pendingGradesOverviewAutoScrollCourseId || 0) === normalizedCourseId) {
+              this.pendingGradesOverviewAutoScrollCourseId = null;
+            }
             if (switched) {
               this.notifyParentPlanningViewRequest("grades");
             }

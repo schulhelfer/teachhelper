@@ -5403,10 +5403,21 @@
           color: rgba(125, 186, 255, 1);
         }
 
-        .grade-cell-input.invalid {
+        .grade-cell-input.invalid,
+        .grade-test-task-max input.invalid,
+        .grade-test-task-max input[aria-invalid="true"] {
           border-color: rgba(255, 138, 138, 0.85);
           background: rgba(127, 29, 29, 0.18);
           box-shadow: 0 0 0 2px rgba(255, 138, 138, 0.18);
+        }
+
+        .grade-test-task-max input.invalid:focus,
+        .grade-test-task-max input.invalid:focus-visible,
+        .grade-test-task-max input[aria-invalid="true"]:focus,
+        .grade-test-task-max input[aria-invalid="true"]:focus-visible {
+          border-color: rgba(255, 138, 138, 0.95);
+          background: rgba(127, 29, 29, 0.24);
+          box-shadow: 0 0 0 2px rgba(255, 138, 138, 0.24);
         }
 
         .grade-cell-input.is-active-grade-cell,
@@ -5680,7 +5691,8 @@
           color: rgba(185, 28, 28, 1);
         }
 
-        .grade-cell-input.is-invalid-shake {
+        .grade-cell-input.is-invalid-shake,
+        .grade-test-task-max input.is-invalid-shake {
           animation: grade-input-shake 0.22s ease-in-out 1;
         }
 
