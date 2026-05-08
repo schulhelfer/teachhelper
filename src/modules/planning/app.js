@@ -1914,12 +1914,149 @@
           if (!ratioState) {
             return null;
           }
+          return calculateGradeTestValueFromRatio(ratioState, scale, settings);
+        }
+
+        function calculateGradeTestValueFromRatio(ratioState = null, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+          if (!ratioState || Number(ratioState.maxSum || 0) <= 0) {
+            return null;
+          }
           const ratio = ratioState.ratio;
           const thresholds = scale && typeof scale === "object"
             ? normalizeGradeTestScaleSnapshot(scale, scale.id, settings).thresholds
             : buildGradeTestScaleSnapshot(settings, scale).thresholds;
           const match = thresholds.find(([threshold]) => ratio + 0.0000001 >= threshold);
           return match ? match[1] : 0;
+        }
+
+        function formatGradeBeAverageValue(value) {
+          if (value === null || value === undefined || value === "") {
+            return "";
+          }
+          const numeric = Math.max(0, Math.round((Number(value) || 0) * 10) / 10);
+          if (Math.abs(numeric - Math.round(numeric)) < 0.0000001) {
+            return String(Math.round(numeric));
+          }
+          return numeric.toFixed(1).replace(".", ",");
+        }
+
+        function formatGradeTestAverageRatioDisplay(ratioState = null) {
+          if (!ratioState || Number(ratioState.maxSum || 0) <= 0) {
+            return "—";
+          }
+          const earned = formatGradeBeAverageValue(ratioState.earnedSum);
+          const max = formatGradeBeValue(ratioState.maxSum);
+          return earned && max
+            ? `${earned} / ${max} = ${Math.round(Number(ratioState.percent || 0))}%`
+            : "—";
+        }
+
+        function getGradeTestAverageTaskColorClasses(tasks = [], taskAverages = {}) {
+          const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+          const classes = normalizedTasks.reduce((result, task) => {
+            result[task.id] = "";
+            return result;
+          }, {});
+          const ranked = normalizedTasks
+            .map((task) => {
+              const average = taskAverages[task.id];
+              const maxBe = Number(task.maxBe || 0);
+              if (average === null || average === undefined || maxBe <= 0) {
+                return null;
+              }
+              return {
+                taskId: task.id,
+                ratio: clamp(Number(average || 0) / maxBe, 0, 1)
+              };
+            })
+            .filter(Boolean)
+            .sort((left, right) => left.ratio - right.ratio);
+          if (!ranked.length) {
+            return classes;
+          }
+          const minRatio = ranked[0].ratio;
+          const maxRatio = ranked[ranked.length - 1].ratio;
+          if (Math.abs(maxRatio - minRatio) < 0.0000001) {
+            ranked.forEach((item) => {
+              classes[item.taskId] = "is-mid";
+            });
+            return classes;
+          }
+          if (ranked.length === 1) {
+            classes[ranked[0].taskId] = "is-mid";
+            return classes;
+          }
+          if (ranked.length === 2) {
+            classes[ranked[0].taskId] = "is-low";
+            classes[ranked[1].taskId] = "is-high";
+            return classes;
+          }
+          const thirdSize = Math.max(1, Math.floor(ranked.length / 3));
+          ranked.forEach((item, index) => {
+            if (index < thirdSize) {
+              classes[item.taskId] = "is-low";
+            } else if (index >= ranked.length - thirdSize) {
+              classes[item.taskId] = "is-high";
+            } else {
+              classes[item.taskId] = "is-mid";
+            }
+          });
+          return classes;
+        }
+
+        function calculateGradeTestAverageState(tasks = [], scoreEntries = [], scale = GRADE_TEST_SCALE_DEFAULT, settings = null, deficitThreshold = 5) {
+          const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+          const normalizedScoresList = (Array.isArray(scoreEntries) ? scoreEntries : [])
+            .map((scores) => normalizeGradeTestScores(scores))
+            .filter((scores) => Object.keys(scores).length > 0);
+          const taskAverages = normalizedTasks.reduce((result, task) => {
+            const values = normalizedScoresList
+              .filter((scores) => Object.prototype.hasOwnProperty.call(scores, task.id))
+              .map((scores) => Number(scores[task.id] || 0));
+            result[task.id] = values.length
+              ? values.reduce((sum, value) => sum + value, 0) / values.length
+              : null;
+            return result;
+          }, {});
+          const ratioTasks = normalizedTasks.filter((task) => (
+            Number(task.maxBe || 0) > 0
+            && taskAverages[task.id] !== null
+            && taskAverages[task.id] !== undefined
+          ));
+          const maxSum = ratioTasks.reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+          if (maxSum <= 0) {
+            return {
+              taskAverages,
+              taskAverageClasses: getGradeTestAverageTaskColorClasses(normalizedTasks, taskAverages),
+              ratioState: null,
+              gradeValue: null,
+              deficitShare: null
+            };
+          }
+          const earnedSum = ratioTasks.reduce((sum, task) => {
+            const average = taskAverages[task.id];
+            if (average === null || average === undefined) {
+              return sum;
+            }
+            return sum + clamp(Number(average || 0), 0, Number(task.maxBe || 0));
+          }, 0);
+          const ratio = clamp(earnedSum / maxSum, 0, 1);
+          const ratioState = {
+            earnedSum,
+            maxSum,
+            ratio,
+            percent: Math.round(ratio * 100)
+          };
+          return {
+            taskAverages,
+            taskAverageClasses: getGradeTestAverageTaskColorClasses(normalizedTasks, taskAverages),
+            ratioState,
+            gradeValue: calculateGradeTestValueFromRatio(ratioState, scale, settings),
+            deficitShare: calculateGradeDeficitShare(
+              normalizedScoresList.map((scores) => calculateGradeTestValue(normalizedTasks, scores, scale, settings)),
+              deficitThreshold
+            )
+          };
         }
 
         function normalizeGradeEntryChecked(value) {
@@ -2205,6 +2342,58 @@
           const numeric = clamp(Number(value) || 0, 0, 15);
           const rounded = clamp(Math.round(numeric), 0, 15);
           return formatGradeInteger(rounded);
+        }
+
+        function normalizeGradeDeficitThreshold(value, fallback = 5) {
+          const parsed = parseGradeValue(value, 15);
+          if (parsed.valid && parsed.value !== null) {
+            return parsed.value;
+          }
+          const fallbackParsed = parseGradeValue(fallback, 15);
+          return fallbackParsed.valid && fallbackParsed.value !== null ? fallbackParsed.value : 5;
+        }
+
+        function isGradeValueBelowThreshold(value, threshold = 5) {
+          if (value === null || value === undefined || value === "") {
+            return false;
+          }
+          const numeric = Number(value);
+          const normalizedThreshold = normalizeGradeDeficitThreshold(threshold, 5);
+          return Number.isFinite(numeric) && numeric < normalizedThreshold;
+        }
+
+        function calculateGradeDeficitShare(values = [], threshold = 5) {
+          const normalizedValues = (Array.isArray(values) ? values : [])
+            .map((value) => {
+              if (value === null || value === undefined || value === "") {
+                return null;
+              }
+              const numeric = Number(value);
+              return Number.isFinite(numeric) ? numeric : null;
+            })
+            .filter((value) => value !== null && value !== undefined);
+          if (!normalizedValues.length) {
+            return null;
+          }
+          const deficitCount = normalizedValues.filter((value) => isGradeValueBelowThreshold(value, threshold)).length;
+          return Math.round((deficitCount / normalizedValues.length) * 100);
+        }
+
+        function formatGradeDeficitShare(value) {
+          return value === null || value === undefined ? "—" : `${Math.round(Number(value) || 0)}%`;
+        }
+
+        function calculateGradeEntryAverage(values = []) {
+          const normalizedValues = (Array.isArray(values) ? values : [])
+            .map((value) => {
+              const parsed = parseGradeValue(value, 15);
+              return parsed.valid ? parsed.value : null;
+            })
+            .filter((value) => value !== null && value !== undefined);
+          if (!normalizedValues.length) {
+            return null;
+          }
+          return normalizedValues.reduce((sum, value) => sum + Number(value || 0), 0) / normalizedValues.length;
         }
 
         function formatGradeTooltipDecimal(value) {
@@ -5382,7 +5571,9 @@
             this.activeGradeOverrideContext = null;
             this.selectedGradesEntryAssessmentId = null;
             this.gradesOverviewNameOrder = "last";
-            this.gradesEntryNameOrder = "last";
+            this.gradesEntryNameOrder = "first";
+            this.gradesEntryDistributionView = "points";
+            this.gradeDeficitThreshold = 5;
             this.gradesEntryDraft = null;
             this.gradesEntrySaveNotice = "";
             this.gradesEntrySaveNoticeTimer = 0;
@@ -11031,6 +11222,17 @@
                 });
               }, 0);
             }
+            const distributionViewOption = event.target.closest(".grades-entry-distribution-option");
+            if (distributionViewOption) {
+              event.preventDefault();
+              event.stopPropagation();
+              const input = distributionViewOption.querySelector("input[data-grades-entry-distribution-view='1']");
+              if (input) {
+                this.gradesEntryDistributionView = input.value === "levels" ? "levels" : "points";
+                this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+              }
+              return;
+            }
             const courseToggleButton = event.target.closest("button[data-grades-entry-course-toggle]");
             if (courseToggleButton) {
               event.preventDefault();
@@ -11057,10 +11259,10 @@
                 return;
               }
               const isDraftSave = !this.selectedGradesEntryAssessmentId;
-              if (isDraftSave && !this.commitVisibleGradeInputs()) {
+              if (isDraftSave && !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
                 return;
               }
-              if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs()) {
+              if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs(this.getGradeInputRoot(), { requireValue: true })) {
                 return;
               }
               const draftValues = this.readGradesEntryEditorValues();
@@ -11068,7 +11270,7 @@
               if (assessment) {
                 if (!isDraftSave) {
                   const applied = await this.applyGradesEntryAssessmentEditorValues(assessment.id, draftValues);
-                  if (!applied || !this.commitVisibleGradeInputs()) {
+                  if (!applied || !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
                     return;
                   }
                 }
@@ -11327,6 +11529,12 @@
             if (!courseId) {
               return;
             }
+            const distributionViewInput = event.target.closest("input[data-grades-entry-distribution-view='1']");
+            if (distributionViewInput) {
+              this.gradesEntryDistributionView = distributionViewInput.value === "levels" ? "levels" : "points";
+              this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+              return;
+            }
             const structure = this.store.getGradeStructure(courseId);
             const categories = (Array.isArray(structure.categories) ? structure.categories : [])
               .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
@@ -11422,6 +11630,13 @@
                 ...draft,
                 weight
               };
+              this.renderGradesView();
+              return;
+            }
+
+            const deficitThresholdInput = event.target.closest("input[data-grades-entry-deficit-threshold]");
+            if (deficitThresholdInput) {
+              this.gradeDeficitThreshold = normalizeGradeDeficitThreshold(deficitThresholdInput.value, this.gradeDeficitThreshold);
               this.renderGradesView();
               return;
             }
@@ -14682,6 +14897,183 @@
             };
           }
 
+          getGradesEntryDistributionGroups() {
+            return [
+              { label: "sehr gut", grades: [15, 14, 13] },
+              { label: "gut", grades: [12, 11, 10] },
+              { label: "befriedigend", grades: [9, 8, 7] },
+              { label: "ausreichend", grades: [6, 5, 4] },
+              { label: "mangelhaft", grades: [3, 2, 1] },
+              { label: "ungenügend", grades: [0] }
+            ];
+          }
+
+          buildGradesEntryDistributionState(values = []) {
+            const grades = Array.from({ length: 16 }, (_item, index) => 15 - index);
+            const counts = grades.reduce((result, grade) => {
+              result[grade] = 0;
+              return result;
+            }, {});
+            values.forEach((value) => {
+              if (value === null || value === undefined || value === "") {
+                return;
+              }
+              const grade = clamp(Math.round(Number(value) || 0), 0, 15);
+              counts[grade] += 1;
+            });
+            const groups = this.getGradesEntryDistributionGroups().map((group) => ({
+              ...group,
+              count: group.grades.reduce((sum, grade) => sum + (counts[grade] || 0), 0)
+            }));
+            const maxCount = Math.max(1, ...grades.map((grade) => counts[grade] || 0));
+            const groupMaxCount = Math.max(1, ...groups.map((group) => group.count || 0));
+            return { grades, counts, groups, maxCount, groupMaxCount };
+          }
+
+          getGradesEntryDistributionValues(course, students, assessment = null, draft = null) {
+            const mode = normalizeGradeAssessmentMode(assessment?.mode || draft?.mode);
+            if (mode !== "grade" && mode !== "test") {
+              return [];
+            }
+            const displayStudents = this.getSortedGradeStudentsForNameOrder(students)
+              .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+            const draftEntries = draft && typeof draft.entries === "object" ? draft.entries : {};
+            if (mode === "test") {
+              const tasks = normalizeGradeTestTasks(assessment?.testTasks || draft?.testTasks);
+              const scale = normalizeGradeTestScale(assessment?.testScale || draft?.testScale);
+              const scaleSnapshot = assessment
+                ? normalizeGradeTestScaleSnapshot(assessment.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
+                : this.store.buildGradeTestScaleSnapshot(scale);
+              return displayStudents
+                .map((student) => {
+                  const entry = assessment
+                    ? this.store.getGradeEntry(student.id, assessment.id)
+                    : (Object.prototype.hasOwnProperty.call(draftEntries, student.id)
+                      ? normalizeGradeDraftEntry(draftEntries[student.id])
+                      : null);
+                  const scores = normalizeGradeTestScores(entry?.testScores);
+                  return hasGradeTestScores(scores)
+                    ? calculateGradeTestValue(tasks, scores, scaleSnapshot)
+                    : null;
+                })
+                .filter((value) => value !== null && value !== undefined);
+            }
+            return displayStudents
+              .map((student) => {
+                const entry = assessment
+                  ? this.store.getGradeEntry(student.id, assessment.id)
+                  : (Object.prototype.hasOwnProperty.call(draftEntries, student.id)
+                    ? normalizeGradeDraftEntry(draftEntries[student.id])
+                    : null);
+                return entry?.value;
+              })
+              .filter((value) => value !== null && value !== undefined && value !== "");
+          }
+
+          buildGradesEntryDistributionPanel(course, students, assessment = null, draft = null) {
+            const mode = normalizeGradeAssessmentMode(assessment?.mode || draft?.mode);
+            if (mode !== "grade" && mode !== "test") {
+              return null;
+            }
+            const values = this.getGradesEntryDistributionValues(course, students, assessment, draft);
+            const state = this.buildGradesEntryDistributionState(values);
+            const distributionView = this.gradesEntryDistributionView === "levels" ? "levels" : "points";
+            const isLevelView = distributionView === "levels";
+            const deficitThreshold = normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, 5);
+            const deficitShare = calculateGradeDeficitShare(values, deficitThreshold);
+            const rows = isLevelView
+              ? state.groups.map((group) => ({
+                label: group.label,
+                count: group.count || 0,
+                height: Math.round(((group.count || 0) / state.groupMaxCount) * 100),
+                isDeficitRange: group.grades.some((grade) => isGradeValueBelowThreshold(grade, deficitThreshold))
+              }))
+              : state.grades.map((grade) => {
+                const count = state.counts[grade] || 0;
+                return {
+                  label: formatGradeInteger(grade),
+                  count,
+                  height: Math.round((count / state.maxCount) * 100),
+                  isDeficitRange: isGradeValueBelowThreshold(grade, deficitThreshold)
+                };
+              });
+            const showDeficitRange = deficitShare !== null && rows.some((row) => row.isDeficitRange);
+            const firstDeficitIndex = rows.findIndex((row) => row.isDeficitRange);
+            const lastDeficitIndex = rows.reduce((result, row, index) => (row.isDeficitRange ? index : result), -1);
+            const tableCaption = isLevelView ? "Notenstufen" : "Notenpunkte";
+            const panel = document.createElement("aside");
+            panel.className = "table-panel grades-entry-distribution";
+            panel.setAttribute("aria-label", "Notenverteilung");
+            panel.innerHTML = `
+              <div class="grades-entry-distribution-head">
+                <h3>Verteilung</h3>
+                <div class="grades-entry-distribution-toggle" role="radiogroup" aria-label="Verteilungsanzeige">
+                  <label class="grades-entry-distribution-option">
+                    <input type="radio" name="grades-entry-distribution-view" data-grades-entry-distribution-view="1" value="points"${isLevelView ? "" : " checked"}>
+                    <span>Notenpunkte</span>
+                  </label>
+                  <label class="grades-entry-distribution-option">
+                    <input type="radio" name="grades-entry-distribution-view" data-grades-entry-distribution-view="1" value="levels"${isLevelView ? " checked" : ""}>
+                    <span>Notenstufen</span>
+                  </label>
+                </div>
+              </div>
+              <div class="grades-entry-distribution-chart${isLevelView ? " is-level-view" : ""}${showDeficitRange ? " has-deficit-range" : ""}" style="--grade-distribution-column-count: ${rows.length}" aria-label="Säulendiagramm ${escapeHtml(tableCaption)}; Defizitanteil ${escapeHtml(formatGradeDeficitShare(deficitShare))}">
+                ${rows.map((row, index) => {
+                  const deficitClass = showDeficitRange && row.isDeficitRange
+                    ? ` is-deficit-range${index === firstDeficitIndex ? " is-deficit-start" : ""}${index === lastDeficitIndex ? " is-deficit-end" : ""}`
+                    : "";
+                  return `
+                    <div class="grades-entry-distribution-chart-item${deficitClass}" title="${escapeHtml(`${row.label}: ${row.count}`)}">
+                      <strong>${row.count}</strong>
+                      <div class="grades-entry-distribution-bar-wrap" aria-hidden="true">
+                        <div class="grades-entry-distribution-bar${row.count ? "" : " is-empty"}" style="--grade-distribution-bar-height: ${row.height}%"></div>
+                      </div>
+                      <span>${escapeHtml(row.label)}</span>
+                    </div>
+                  `;
+                }).join("")}
+                <div class="grades-entry-distribution-deficit-label${showDeficitRange ? "" : " is-empty"}">Defizit: ${escapeHtml(formatGradeDeficitShare(deficitShare))}</div>
+              </div>
+            `;
+            return panel;
+          }
+
+          refreshVisibleGradesEntryDistribution(assessmentId = null) {
+            const root = this.refs.gradesEntryContent;
+            const currentPanel = root?.querySelector(".grades-entry-distribution");
+            if (!root || !currentPanel) {
+              return;
+            }
+            const courseId = Number(this.selectedCourseId || 0);
+            const year = this.activeSchoolYear;
+            const course = year
+              ? this.store.listCourses(year.id).find((item) => Number(item.id) === courseId && this.courseAllowsGrades(item))
+              : null;
+            if (!course) {
+              return;
+            }
+            const students = this.store.listGradeStudents(course.id);
+            const assessment = assessmentId
+              ? this.store.getGradeAssessment(assessmentId)
+              : null;
+            const draft = assessment
+              ? this.getGradesEntryAssessmentDraft(assessment)
+              : this.getGradesEntryDraft(course.id);
+            const previewAssessment = assessment
+              ? this.buildGradesEntryAssessmentPreview(assessment, draft)
+              : null;
+            const nextPanel = this.buildGradesEntryDistributionPanel(course, students, previewAssessment, assessment ? null : draft);
+            const layout = currentPanel.closest(".grades-entry-layout");
+            if (!nextPanel) {
+              currentPanel.remove();
+              layout?.classList.remove("has-grade-distribution");
+              return;
+            }
+            currentPanel.replaceWith(nextPanel);
+            layout?.classList.add("has-grade-distribution");
+          }
+
           async applyGradesEntryAssessmentEditorValues(assessmentId, values = null) {
             const id = Number(assessmentId || 0);
             const assessment = this.store.getGradeAssessment(id);
@@ -14838,6 +15230,7 @@
               selectedSnapshot: editorState.testScaleSnapshot || null,
               disabled: normalizeGradeAssessmentMode(editorState.mode) !== "test"
             });
+            const deficitThreshold = normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, 5);
             const editor = document.createElement("section");
             editor.className = "grades-entry-editor";
             editor.innerHTML = `
@@ -14881,12 +15274,12 @@
                 <legend>Namen</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Namensdarstellung">
                   <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="last"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "last" ? " checked" : ""}>
-                    <span>Nachname, Vorname</span>
+                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="first"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "first" ? " checked" : ""}>
+                    <span>Vorname Nachname</span>
                   </label>
                   <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="first"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "first" ? " checked" : ""}>
-                    <span>Vorname Name</span>
+                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="last"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "last" ? " checked" : ""}>
+                    <span>Nachname, Vorname</span>
                   </label>
                 </div>
               </fieldset>
@@ -14903,7 +15296,7 @@
                   </label>
                 </div>
               </fieldset>
-              <label class="grades-entry-field is-wide">
+              <label class="grades-entry-field">
                 <span>Gewichtung</span>
                 <input
                   type="number"
@@ -14914,6 +15307,20 @@
                   inputmode="numeric"
                   value="${normalizeGradeInteger(editorState.weight, 1)}"
                   ${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? "disabled" : ""}
+                >
+              </label>
+              <label class="grades-entry-field">
+                <span>Defizitgrenze</span>
+                <input
+                  type="number"
+                  name="grades-entry-deficit-threshold"
+                  data-grades-entry-deficit-threshold="1"
+                  min="1"
+                  max="15"
+                  step="1"
+                  inputmode="numeric"
+                  value="${deficitThreshold}"
+                  title="Noten unter diesem Wert zählen als Defizit"
                 >
               </label>
               <label class="grades-entry-field is-wide">
@@ -14956,6 +15363,11 @@
             const tableAssessment = selectedAssessment
               ? this.buildGradesEntryAssessmentPreview(selectedAssessment, editorState)
               : null;
+            const distributionPanel = this.buildGradesEntryDistributionPanel(course, students, tableAssessment, selectedAssessment ? null : draft);
+            if (distributionPanel) {
+              editor.querySelector(".grades-entry-layout")?.classList.add("has-grade-distribution");
+              editor.querySelector(".grades-entry-layout")?.append(distributionPanel);
+            }
             tableWrap.append(this.buildGradesEntryTable(course, students, tableAssessment));
             editor.querySelector(".grades-entry-layout")?.append(tableWrap);
             this.refs.gradesEntryContent.append(editor);
@@ -15101,12 +15513,14 @@
             };
           }
 
-          commitVisibleGradeInputs() {
+          commitVisibleGradeInputs(options = {}) {
             const root = this.getGradeInputRoot();
             if (!root) {
               return true;
             }
-            if (!this.commitVisibleGradeTestTaskInputs(root)) {
+            if (!this.commitVisibleGradeTestTaskInputs(root, {
+              requireValue: Boolean(options.requireTestTaskValues)
+            })) {
               return false;
             }
             if (!this.commitVisibleGradeTestScoreInputs(root)) {
@@ -15208,7 +15622,6 @@
                 } else {
                   delete nextDraftEntries[group.studentId];
                 }
-                this.refreshVisibleGradeTestResult(group.studentId, null);
                 return;
               }
               this.store.setGradeTestEntry(group.studentId, group.assessmentId, group.scores);
@@ -15219,7 +15632,21 @@
                 ...draft,
                 entries: nextDraftEntries
               };
+              groups.forEach((group) => {
+                if (group.isDraftInput) {
+                  this.refreshVisibleGradeTestResult(group.studentId, null);
+                }
+              });
+              this.refreshVisibleGradeTestAverages(null);
             }
+            const changedAssessmentIds = new Set(
+              [...groups.values()]
+                .filter((group) => !group.isDraftInput && Number(group.assessmentId || 0) > 0)
+                .map((group) => Number(group.assessmentId))
+            );
+            changedAssessmentIds.forEach((id) => {
+              this.refreshVisibleGradeTestAverages(id);
+            });
             if ([...groups.values()].some((group) => !group.isDraftInput)) {
               this.refreshGradeTotals();
               this.renderGradePrivacyOverlay();
@@ -15227,13 +15654,14 @@
             return true;
           }
 
-          commitVisibleGradeTestTaskInputs(root = this.getGradeInputRoot()) {
+          commitVisibleGradeTestTaskInputs(root = this.getGradeInputRoot(), options = {}) {
             if (!root) {
               return true;
             }
+            const requireValue = Boolean(options.requireValue);
             const testTaskInputs = [...root.querySelectorAll("input[data-grade-test-task-field]")];
             for (const input of testTaskInputs) {
-              if (!this.updateGradeTestTaskFromInput(input, { requireValue: true })) {
+              if (!this.updateGradeTestTaskFromInput(input, { requireValue })) {
                 if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
                   input.focus();
                   input.select();
@@ -16645,12 +17073,14 @@
             const isHomework = this.isHomeworkAssessment(assessment);
             const isTest = this.isTestAssessment(assessment);
             if (isTest) {
-              const displayValue = this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+              const rawValue = entry && entry.value !== null ? entry.value : null;
+              const displayValue = this.formatDisplayedGrade(rawValue);
               const emptyClass = displayValue === "—" ? " is-empty" : "";
+              const lowClass = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold) ? " is-grade-low" : "";
               return `
           <button
             type="button"
-            class="grade-cell-display-button${emptyClass}"
+            class="grade-cell-display-button${emptyClass}${lowClass}"
             data-grade-edit-assessment="${assessment.id}"
             data-row-index="${rowIndex}"
             data-student-id="${student.id}"
@@ -16672,7 +17102,7 @@
           <input
             type="text"
             name="grade-${assessment.id}-${student.id}"
-            class="grade-cell-input"
+            class="grade-cell-input${isGradeValueBelowThreshold(entry?.value, this.gradeDeficitThreshold) ? " is-grade-low" : ""}"
             inputmode="numeric"
             maxlength="2"
             data-grade-input="1"
@@ -16690,12 +17120,14 @@
             if (isHomework) {
               return this.buildHomeworkDisplayButtonMarkup(assessment, student, rowIndex, entry?.checked === true, { disabled });
             }
-            const displayValue = this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+            const rawValue = entry && entry.value !== null ? entry.value : null;
+            const displayValue = this.formatDisplayedGrade(rawValue);
             const emptyClass = displayValue === "—" ? " is-empty" : "";
+            const lowClass = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold) ? " is-grade-low" : "";
             return `
           <button
             type="button"
-            class="grade-cell-display-button${emptyClass}"
+            class="grade-cell-display-button${emptyClass}${lowClass}"
             data-grade-activate-assessment="${assessment.id}"
             data-row-index="${rowIndex}"
             data-student-id="${student.id}"
@@ -16754,6 +17186,20 @@
               (maxLength, student) => Math.max(maxLength, this.getGradeStudentDisplayName(student).length),
               0
             );
+            const averageValue = entryMode === "grade"
+              ? calculateGradeEntryAverage(
+                displayStudents
+                  .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
+                  .map((student) => {
+                    const entry = assessment
+                      ? this.store.getGradeEntry(student.id, assessment.id)
+                      : (Object.prototype.hasOwnProperty.call(draftEntries, student.id)
+                        ? normalizeGradeDraftEntry(draftEntries[student.id])
+                        : null);
+                    return entry?.value;
+                  })
+              )
+              : null;
             const table = document.createElement("table");
             table.className = "grade-block-table grades-entry-table";
             if (visibleMaxNameLength > 0) {
@@ -16818,11 +17264,28 @@
                     `name="grade-draft-${student.id}" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}"`,
                     { disabled: false }
                   )
-                  : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input" inputmode="numeric" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInteger(draftEntry.value)}" aria-label="Bewertung für ${escapeHtml(studentName)}">`;
+                  : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isGradeValueBelowThreshold(draftEntry.value, this.gradeDeficitThreshold) ? " is-grade-low" : ""}" inputmode="numeric" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInteger(draftEntry.value)}" aria-label="Bewertung für ${escapeHtml(studentName)}">`;
               }
               tr.append(gradeCell);
               tbody.append(tr);
             });
+            if (entryMode === "grade") {
+              const averageRow = document.createElement("tr");
+              averageRow.className = "grade-entry-average-row";
+              const averageStudentCell = document.createElement("td");
+              averageStudentCell.className = "student-col";
+              averageStudentCell.innerHTML = `
+                <div class="grade-average-summary">
+                  <div class="grade-average-symbol grade-entry-average-label" aria-label="Durchschnitt">⌀</div>
+                </div>
+              `;
+              averageRow.append(averageStudentCell);
+              const averageGradeCell = document.createElement("td");
+              averageGradeCell.className = "grade-assessment-col";
+              averageGradeCell.innerHTML = `<div class="grade-total-value grade-entry-average-value${isGradeValueBelowThreshold(averageValue, this.gradeDeficitThreshold) ? " is-grade-low" : ""}" data-grade-entry-average="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-draft-average=\"1\""}>${averageValue === null || averageValue === undefined ? "—" : escapeHtml(formatPedagogicalGradeInput(averageValue))}</div>`;
+              averageRow.append(averageGradeCell);
+              tbody.append(averageRow);
+            }
             table.append(tbody);
             return table;
           }
@@ -17016,6 +17479,15 @@
               (maxLength, student) => Math.max(maxLength, this.getGradeStudentDisplayName(student).length),
               0
             );
+            const averageScores = displayStudents
+              .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
+              .map((student) => {
+                const entry = assessment
+                  ? this.store.getGradeEntry(student.id, assessment.id)
+                  : (Object.prototype.hasOwnProperty.call(entries, student.id) ? normalizeGradeDraftEntry(entries[student.id]) : null);
+                return normalizeGradeTestScores(entry?.testScores);
+              });
+            const averageState = calculateGradeTestAverageState(tasks, averageScores, scaleSnapshot, null, this.gradeDeficitThreshold);
             const table = document.createElement("table");
             table.className = "grade-block-table grades-entry-table grades-test-entry-table";
             if (visibleMaxNameLength > 0) {
@@ -17091,7 +17563,7 @@
               const resultValue = assessment
                 ? calculateGradeTestValue(tasks, scores, scaleSnapshot)
                 : calculateGradeTestValue(tasks, scores, scaleSnapshot);
-              resultCell.innerHTML = `<div class="grade-total-value" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""}>${this.formatDisplayedGrade(resultValue)}</div>`;
+              resultCell.innerHTML = `<div class="grade-total-value${isGradeValueBelowThreshold(resultValue, this.gradeDeficitThreshold) ? " is-grade-low" : ""}" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""}>${this.formatDisplayedGrade(resultValue)}</div>`;
               tr.append(resultCell);
               const ratioCell = document.createElement("td");
               ratioCell.className = "grade-test-ratio-col";
@@ -17137,6 +17609,37 @@
               tr.append(addCell);
               tbody.append(tr);
             });
+            const averageRow = document.createElement("tr");
+            averageRow.className = "grade-test-average-row";
+            const averageStudentCell = document.createElement("td");
+            averageStudentCell.className = "student-col";
+            averageStudentCell.innerHTML = `
+              <div class="grade-average-summary">
+                <div class="grade-average-symbol grade-test-average-label" aria-label="Durchschnitt">⌀</div>
+              </div>
+            `;
+            averageRow.append(averageStudentCell);
+            const averageResultCell = document.createElement("td");
+            averageResultCell.className = "grade-test-result-col";
+            averageResultCell.innerHTML = `<div class="grade-total-value${isGradeValueBelowThreshold(averageState.gradeValue, this.gradeDeficitThreshold) ? " is-grade-low" : ""}" data-grade-test-average-result="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-result=\"1\""}>${this.formatDisplayedGrade(averageState.gradeValue)}</div>`;
+            averageRow.append(averageResultCell);
+            const averageRatioCell = document.createElement("td");
+            averageRatioCell.className = "grade-test-ratio-col";
+            averageRatioCell.innerHTML = `<div class="grade-test-ratio-value" data-grade-test-average-ratio="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-ratio=\"1\""}>${escapeHtml(formatGradeTestAverageRatioDisplay(averageState.ratioState))}</div>`;
+            averageRow.append(averageRatioCell);
+            tasks.forEach((task) => {
+              const averageTaskCell = document.createElement("td");
+              averageTaskCell.className = "grade-test-task-col";
+              const averageValue = averageState.taskAverages[task.id];
+              const averageClass = String(averageState.taskAverageClasses?.[task.id] || "");
+              averageTaskCell.innerHTML = `<div class="grade-test-task-average-value${averageClass ? ` ${escapeHtml(averageClass)}` : ""}" data-grade-test-average-task="${escapeHtml(task.id)}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-task=\"1\""}>${averageValue === null || averageValue === undefined ? "—" : escapeHtml(formatGradeBeAverageValue(averageValue))}</div>`;
+              averageRow.append(averageTaskCell);
+            });
+            const averageAddCell = document.createElement("td");
+            averageAddCell.className = "grade-test-add-col";
+            averageAddCell.textContent = "";
+            averageRow.append(averageAddCell);
+            tbody.append(averageRow);
             table.append(tbody);
             return table;
           }
@@ -18729,6 +19232,14 @@
             input.classList.remove("invalid", "is-invalid-shake");
           }
 
+          syncGradeInputLowValueClass(input, value = input?.value) {
+            if (!(input instanceof HTMLInputElement)) {
+              return;
+            }
+            const parsed = parseGradeValue(value, 15);
+            input.classList.toggle("is-grade-low", parsed.valid && isGradeValueBelowThreshold(parsed.value, this.gradeDeficitThreshold));
+          }
+
           handleGradesTableInput(event) {
             const gradeInput = event.target.closest("input[data-grade-input='1']");
             if (!gradeInput || gradeInput.disabled) {
@@ -18807,6 +19318,7 @@
             const removedCharacters = rawValue !== sanitizedValue;
             gradeInput.value = sanitizedValue;
             const parsed = parseGradeValue(sanitizedValue, 15);
+            this.syncGradeInputLowValueClass(gradeInput, sanitizedValue);
             if (removedCharacters || (sanitizedValue && !parsed.valid)) {
               this.showGradeInputInvalidFeedback(gradeInput, {
                 persist: Boolean(sanitizedValue) && !parsed.valid
@@ -19110,9 +19622,9 @@
                 ? this.store.buildGradeTestScaleSnapshot(scale)
                 : assessment?.testScaleSnapshot || assessment?.testScale;
               if (node) {
-                node.textContent = this.formatDisplayedGrade(
-                  calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot)
-                );
+                const value = calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot);
+                node.textContent = this.formatDisplayedGrade(value);
+                node.classList.toggle("is-grade-low", isGradeValueBelowThreshold(value, this.gradeDeficitThreshold));
               }
               if (ratioNode) {
                 ratioNode.textContent = formatGradeTestRatioDisplay(
@@ -19127,15 +19639,128 @@
               : null;
             if (node) {
               const scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft.testScale);
-              node.textContent = this.formatDisplayedGrade(
-                calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot)
-              );
+              const value = calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot);
+              node.textContent = this.formatDisplayedGrade(value);
+              node.classList.toggle("is-grade-low", isGradeValueBelowThreshold(value, this.gradeDeficitThreshold));
             }
             if (ratioNode) {
               ratioNode.textContent = formatGradeTestRatioDisplay(
                 calculateGradeTestRatio(draft.testTasks, entry?.testScores || {})
               );
             }
+          }
+
+          refreshVisibleGradeTestAverages(assessmentId = null) {
+            const courseId = Number(this.selectedCourseId || 0);
+            if (!courseId || !this.refs.gradesEntryContent) {
+              return;
+            }
+            const students = this.store.listGradeStudents(courseId)
+              .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+            let tasks = [];
+            let scaleSnapshot = null;
+            let scoreEntries = [];
+            if (assessmentId) {
+              const assessment = this.store.getGradeAssessment(assessmentId);
+              if (!assessment) {
+                return;
+              }
+              const draft = Number(this.selectedGradesEntryAssessmentId || 0) === Number(assessmentId)
+                ? this.getGradesEntryAssessmentDraft(assessment)
+                : null;
+              tasks = normalizeGradeTestTasks(draft?.testTasks || assessment.testTasks);
+              const scale = normalizeGradeTestScale(draft?.testScale || assessment.testScale);
+              scaleSnapshot = draft
+                ? this.store.buildGradeTestScaleSnapshot(scale)
+                : assessment.testScaleSnapshot || assessment.testScale;
+              scoreEntries = students.map((student) => normalizeGradeTestScores(
+                this.store.getGradeEntry(student.id, assessment.id)?.testScores
+              ));
+            } else {
+              const draft = this.getGradesEntryDraft(courseId);
+              tasks = normalizeGradeTestTasks(draft?.testTasks);
+              scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft?.testScale);
+              const entries = draft && typeof draft.entries === "object" ? draft.entries : {};
+              scoreEntries = students.map((student) => {
+                const entry = Object.prototype.hasOwnProperty.call(entries, student.id)
+                  ? normalizeGradeDraftEntry(entries[student.id])
+                  : null;
+                return normalizeGradeTestScores(entry?.testScores);
+              });
+            }
+            const averageState = calculateGradeTestAverageState(tasks, scoreEntries, scaleSnapshot, null, this.gradeDeficitThreshold);
+            const resultSelector = assessmentId
+              ? `[data-grade-test-average-result="1"][data-assessment-id="${Number(assessmentId)}"]`
+              : `[data-grade-test-average-result="1"][data-grade-test-draft-average-result="1"]`;
+            const ratioSelector = assessmentId
+              ? `[data-grade-test-average-ratio="1"][data-assessment-id="${Number(assessmentId)}"]`
+              : `[data-grade-test-average-ratio="1"][data-grade-test-draft-average-ratio="1"]`;
+            const resultNode = this.refs.gradesEntryContent.querySelector(resultSelector);
+            const ratioNode = this.refs.gradesEntryContent.querySelector(ratioSelector);
+            if (resultNode) {
+              resultNode.textContent = this.formatDisplayedGrade(averageState.gradeValue);
+              resultNode.classList.toggle("is-grade-low", isGradeValueBelowThreshold(averageState.gradeValue, this.gradeDeficitThreshold));
+            }
+            if (ratioNode) {
+              ratioNode.textContent = formatGradeTestAverageRatioDisplay(averageState.ratioState);
+            }
+            tasks.forEach((task) => {
+              const taskNode = [...this.refs.gradesEntryContent.querySelectorAll("[data-grade-test-average-task]")]
+                .find((node) => (
+                  String(node.dataset.gradeTestAverageTask || "") === String(task.id)
+                  && (
+                    assessmentId
+                      ? Number(node.dataset.assessmentId || 0) === Number(assessmentId)
+                      : node.dataset.gradeTestDraftAverageTask === "1"
+                  )
+                ));
+              if (taskNode) {
+                const averageValue = averageState.taskAverages[task.id];
+                taskNode.textContent = averageValue === null || averageValue === undefined
+                  ? "—"
+                  : formatGradeBeAverageValue(averageValue);
+                taskNode.classList.remove("is-low", "is-mid", "is-high");
+                const averageClass = String(averageState.taskAverageClasses?.[task.id] || "");
+                if (averageClass) {
+                  taskNode.classList.add(averageClass);
+                }
+              }
+            });
+            this.refreshVisibleGradesEntryDistribution(assessmentId);
+          }
+
+          refreshVisibleGradeEntryAverage(assessmentId = null) {
+            const courseId = Number(this.selectedCourseId || 0);
+            if (!courseId || !this.refs.gradesEntryContent) {
+              return;
+            }
+            const students = this.store.listGradeStudents(courseId)
+              .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+            let values = [];
+            if (assessmentId) {
+              values = students.map((student) => this.store.getGradeEntry(student.id, assessmentId)?.value);
+            } else {
+              const draft = this.getGradesEntryDraft(courseId);
+              const entries = draft && typeof draft.entries === "object" ? draft.entries : {};
+              values = students.map((student) => {
+                const entry = Object.prototype.hasOwnProperty.call(entries, student.id)
+                  ? normalizeGradeDraftEntry(entries[student.id])
+                  : null;
+                return entry?.value;
+              });
+            }
+            const averageValue = calculateGradeEntryAverage(values);
+            const selector = assessmentId
+              ? `[data-grade-entry-average="1"][data-assessment-id="${Number(assessmentId)}"]`
+              : `[data-grade-entry-average="1"][data-grade-draft-average="1"]`;
+            const averageNode = this.refs.gradesEntryContent.querySelector(selector);
+            if (averageNode) {
+              averageNode.textContent = averageValue === null || averageValue === undefined
+                ? "—"
+                : formatPedagogicalGradeInput(averageValue);
+              averageNode.classList.toggle("is-grade-low", isGradeValueBelowThreshold(averageValue, this.gradeDeficitThreshold));
+            }
+            this.refreshVisibleGradesEntryDistribution(assessmentId);
           }
 
           commitGradeCellInput(input) {
@@ -19225,10 +19850,12 @@
                   entries: nextEntries
                 };
                 this.refreshVisibleGradeTestResult(studentId, null);
+                this.refreshVisibleGradeTestAverages(null);
                 return true;
               }
               this.store.setGradeTestEntry(studentId, assessmentId, nextScores);
               this.refreshVisibleGradeTestResult(studentId, assessmentId);
+              this.refreshVisibleGradeTestAverages(assessmentId);
               this.refreshGradeTotals();
               this.renderGradePrivacyOverlay();
               return true;
@@ -19240,6 +19867,7 @@
             }
             input.classList.remove("invalid");
             input.value = parsed.value === null ? "" : formatGradeInteger(parsed.value);
+            this.syncGradeInputLowValueClass(input, parsed.value);
             if (isDraftInput) {
               const draft = this.getGradesEntryDraft(this.selectedCourseId);
               const nextEntries = {
@@ -19265,9 +19893,11 @@
                 ...draft,
                 entries: nextEntries
               };
+              this.refreshVisibleGradeEntryAverage(null);
               return true;
             }
             this.store.setGradeEntry(studentId, assessmentId, parsed.value === null ? "" : parsed.value);
+            this.refreshVisibleGradeEntryAverage(assessmentId);
             this.refreshGradeTotals();
             this.renderGradePrivacyOverlay();
             return true;
