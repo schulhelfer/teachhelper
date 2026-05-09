@@ -612,6 +612,8 @@
             courseGradeConfig: null,
             courseGradeDraft: null,
             courseGradeEntries: {},
+            courseGradeOriginalEntries: {},
+            courseGradeDeletedStudentIds: new Set(),
             courseGradePickerStudentId: '',
             courseGradeCompletionPromptShown: false,
             courseGradeVisitedStudentIds: new Set(),
@@ -972,6 +974,8 @@
             state.courseGradeConfig = null;
             state.courseGradeDraft = null;
             state.courseGradeEntries = {};
+            state.courseGradeOriginalEntries = {};
+            state.courseGradeDeletedStudentIds = new Set();
             state.courseGradePickerStudentId = '';
             state.pendingCourseGradeStudentId = '';
             state.courseGradeCompletionPromptShown = false;
@@ -1043,9 +1047,12 @@
               return false;
             }
             state.courseGradeDraft = values;
-            state.courseGradeEntries = normalizeCourseGradeEntries(
+            const normalizedEntries = normalizeCourseGradeEntries(
               options.entries !== undefined ? options.entries : state.courseGradeConfig?.entries
             );
+            state.courseGradeEntries = normalizedEntries;
+            state.courseGradeOriginalEntries = { ...normalizedEntries };
+            state.courseGradeDeletedStudentIds = new Set();
             state.courseGradePickerStudentId = '';
             state.courseGradeCompletionPromptShown = false;
             state.courseGradeVisitedStudentIds = new Set();
@@ -1084,10 +1091,19 @@
             if (!sid) return false;
             const parsed = parseCourseGradeValue(value);
             if (!parsed.valid) return false;
+            if (!(state.courseGradeDeletedStudentIds instanceof Set)) {
+              state.courseGradeDeletedStudentIds = new Set();
+            }
             if (parsed.value === null) {
               delete state.courseGradeEntries[sid];
+              if (Object.prototype.hasOwnProperty.call(state.courseGradeOriginalEntries || {}, sid)) {
+                state.courseGradeDeletedStudentIds.add(sid);
+              } else {
+                state.courseGradeDeletedStudentIds.delete(sid);
+              }
             } else {
               state.courseGradeEntries[sid] = parsed.value;
+              state.courseGradeDeletedStudentIds.delete(sid);
             }
             checkCourseGradeCompletionPrompt({ allowOpen: Boolean(options.prompt) });
             return true;
@@ -1467,6 +1483,22 @@
             const entries = Object.entries(state.courseGradeEntries)
               .map(([studentId, value]) => ({ studentId: Number(studentId || 0), value }))
               .filter(entry => entry.studentId > 0 && Number.isInteger(Number(entry.value)) && Number(entry.value) >= 0 && Number(entry.value) <= 15);
+            const seatedStudentIds = getSeatedCourseGradeStudentIds().map(studentId => Number(studentId || 0)).filter(studentId => studentId > 0);
+            const seatedStudentIdSet = new Set(seatedStudentIds.map(String));
+            const deletedStudentIds = Array.from(state.courseGradeDeletedStudentIds instanceof Set ? state.courseGradeDeletedStudentIds : [])
+              .map(studentId => String(studentId || '').trim())
+              .filter(studentId => studentId && seatedStudentIdSet.has(studentId))
+              .map(studentId => Number(studentId || 0))
+              .filter(studentId => studentId > 0);
+            if (deletedStudentIds.length > 0) {
+              const confirmed = confirm(
+                `${deletedStudentIds.length} vorhandene ${deletedStudentIds.length === 1 ? 'Note' : 'Noten'} wirklich im Notenmodul löschen?`
+              );
+              if (!confirmed) {
+                showMessage('Speichern abgebrochen. Leere Felder wurden nicht gelöscht.', 'warn');
+                return false;
+              }
+            }
             const requestId = createRequestId();
             state.pendingCourseGradeSaveRequestId = requestId;
             updateCourseSeatplanUi();
@@ -1477,7 +1509,8 @@
                 courseId: Number(state.courseContext.courseId),
                 assessment: { ...state.courseGradeDraft },
                 entries,
-                studentIdsInScope: getSeatedCourseGradeStudentIds().map(studentId => Number(studentId || 0)).filter(studentId => studentId > 0),
+                studentIdsInScope: seatedStudentIds,
+                deletedStudentIds,
               }
             }, TRUSTED_PARENT_ORIGIN);
             return true;

@@ -3262,8 +3262,74 @@
           overflow: hidden;
         }
 
+        .grades-entry-distribution-chart[role='button'] {
+          cursor: zoom-in;
+        }
+
+        .grades-entry-distribution-chart[role='button']:focus-visible {
+          outline: none;
+          border-color: rgba(96, 165, 250, 0.62);
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.22);
+        }
+
+        .grades-entry-distribution-chart.is-overlay-chart {
+          height: clamp(22rem, 52vh, 34rem);
+          padding: clamp(0.9rem, 1.5vw, 1.2rem) clamp(0.75rem, 1.4vw, 1.05rem) 2.4rem;
+          gap: clamp(0.36rem, 0.75vw, 0.7rem);
+          cursor: zoom-out;
+        }
+
+        .grades-entry-distribution-chart.is-overlay-chart .grades-entry-distribution-bar {
+          width: min(100%, 1.45rem);
+        }
+
+        .grades-entry-distribution-chart.is-overlay-chart .grades-entry-distribution-chart-item strong {
+          font-size: clamp(0.82rem, 1.15vw, 1.05rem);
+        }
+
+        .grades-entry-distribution-chart.is-overlay-chart .grades-entry-distribution-chart-item span {
+          font-size: clamp(0.62rem, 0.8vw, 0.78rem);
+        }
+
+        .grades-entry-distribution-chart.is-overlay-chart.is-level-view .grades-entry-distribution-bar {
+          width: min(100%, 2.15rem);
+        }
+
+        .grades-entry-distribution-chart.is-overlay-chart.is-level-view .grades-entry-distribution-chart-item span {
+          max-width: 5.4rem;
+          font-size: clamp(0.74rem, 0.95vw, 0.9rem);
+        }
+
+        .grades-entry-distribution-overlay {
+          position: fixed;
+          inset: 0;
+          z-index: 1200;
+          display: grid;
+          place-items: center;
+          padding: clamp(1rem, 3vw, 2rem);
+          background: #020617;
+          animation: gradesDistributionOverlayFade 0.16s ease-out both;
+        }
+
+        .grades-entry-distribution-overlay-card {
+          display: grid;
+          gap: clamp(0.9rem, 1.4vw, 1.2rem);
+          width: min(92vw, 56rem);
+          max-height: min(86vh, 46rem);
+          min-width: 0;
+          padding: clamp(1rem, 1.8vw, 1.4rem);
+          border: 1px solid var(--module-surface-border);
+          border-radius: 24px;
+          background: #0f172a;
+          box-shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
+          overflow: auto;
+          transform-origin: center;
+          animation: gradesDistributionOverlayMorph 0.18s ease-out both;
+        }
+
         .grades-entry-distribution-chart-item {
           position: relative;
+          grid-row: 1;
           display: grid;
           grid-template-rows: auto minmax(0, 1fr) auto;
           gap: 0.32rem;
@@ -3272,48 +3338,17 @@
           justify-items: center;
         }
 
-        .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-range::after {
-          content: "";
+        .grades-entry-distribution-deficit-bracket {
           position: absolute;
-          left: -0.19rem;
-          right: -0.19rem;
-          bottom: -0.66rem;
-          height: 0.32rem;
-          border-bottom: 2px solid rgba(248, 113, 113, 0.86);
-          pointer-events: none;
-        }
-
-        .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-start::before,
-        .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-end::before {
-          content: "";
-          position: absolute;
-          bottom: -0.66rem;
-          width: 0.32rem;
+          right: var(--grade-deficit-right, 0.52rem);
+          bottom: 1.18rem;
+          left: var(--grade-deficit-left, 0.52rem);
           height: 0.42rem;
-          border-color: rgba(248, 113, 113, 0.86);
+          border-right: 2px solid rgba(248, 113, 113, 0.86);
+          border-bottom: 2px solid rgba(248, 113, 113, 0.86);
+          border-left: 2px solid rgba(248, 113, 113, 0.86);
           pointer-events: none;
-        }
-
-        .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-start::before {
-          left: -0.19rem;
-          border-left: 2px solid rgba(248, 113, 113, 0.86);
-          border-bottom-left-radius: 0.32rem;
-        }
-
-        .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-end::before {
-          right: -0.19rem;
-          border-right: 2px solid rgba(248, 113, 113, 0.86);
-          border-bottom-right-radius: 0.32rem;
-        }
-
-        .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-start.is-deficit-end::before {
-          left: -0.19rem;
-          right: -0.19rem;
-          width: auto;
-          border-left: 2px solid rgba(248, 113, 113, 0.86);
-          border-right: 2px solid rgba(248, 113, 113, 0.86);
-          border-bottom-left-radius: 0.32rem;
-          border-bottom-right-radius: 0.32rem;
+          z-index: 2;
         }
 
         .grades-entry-distribution-deficit-label {
@@ -3356,7 +3391,7 @@
           width: min(100%, 0.86rem);
           min-height: 0.14rem;
           height: max(0.14rem, var(--grade-distribution-bar-height, 0%));
-          border-radius: 999px 999px 3px 3px;
+          border-radius: 0;
           background: linear-gradient(180deg, rgba(56, 189, 248, 0.96), rgba(34, 197, 94, 0.82));
           box-shadow: 0 0 0 1px rgba(226, 232, 240, 0.08);
         }
@@ -3380,11 +3415,19 @@
           gap: 0.58rem;
         }
 
+        .grades-entry-distribution-chart.is-level-view .grades-entry-distribution-chart-item {
+          grid-template-rows: auto minmax(0, 1fr) 1.36rem;
+        }
+
         .grades-entry-distribution-chart.is-level-view .grades-entry-distribution-bar {
           width: min(100%, 1.55rem);
         }
 
         .grades-entry-distribution-chart.is-level-view .grades-entry-distribution-chart-item span {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100%;
           max-width: 3.2rem;
           font-size: 0.58rem;
           line-height: 1.05;
@@ -3392,6 +3435,28 @@
           writing-mode: horizontal-tb;
           transform: none;
           overflow-wrap: anywhere;
+        }
+
+        @keyframes gradesDistributionOverlayFade {
+          from {
+            opacity: 0;
+          }
+
+          to {
+            opacity: 1;
+          }
+        }
+
+        @keyframes gradesDistributionOverlayMorph {
+          from {
+            opacity: 0.72;
+            transform: scale(0.94);
+          }
+
+          to {
+            opacity: 1;
+            transform: scale(1);
+          }
         }
 
         .grades-entry-form {
@@ -3866,14 +3931,21 @@
           background: rgba(255, 255, 255, 0.42);
         }
 
+        :root[data-theme='light'] .grades-entry-distribution-overlay {
+          background: #e2e8f0;
+        }
+
+        :root[data-theme='light'] .grades-entry-distribution-overlay-card {
+          background: #ffffff;
+          box-shadow: 0 26px 80px rgba(15, 23, 42, 0.24);
+        }
+
         :root[data-theme='light'] .grades-entry-distribution-bar {
           background: linear-gradient(180deg, rgba(2, 132, 199, 0.92), rgba(22, 163, 74, 0.78));
           box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
         }
 
-        :root[data-theme='light'] .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-range::after,
-        :root[data-theme='light'] .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-start::before,
-        :root[data-theme='light'] .grades-entry-distribution-chart.has-deficit-range .grades-entry-distribution-chart-item.is-deficit-end::before {
+        :root[data-theme='light'] .grades-entry-distribution-deficit-bracket {
           border-color: rgba(220, 38, 38, 0.72);
         }
 
@@ -4015,6 +4087,23 @@
             padding-inline: 0.32rem;
           }
 
+          .grades-entry-distribution-overlay {
+            padding: 0.75rem;
+          }
+
+          .grades-entry-distribution-overlay-card {
+            width: min(94vw, 56rem);
+            max-height: 88vh;
+            padding: 0.85rem;
+            border-radius: 18px;
+          }
+
+          .grades-entry-distribution-chart.is-overlay-chart {
+            gap: 0.22rem;
+            height: min(58vh, 26rem);
+            padding-inline: 0.38rem;
+          }
+
           .grades-entry-distribution-bar {
             width: min(100%, 0.66rem);
           }
@@ -4027,6 +4116,13 @@
           .grades-entry-actions,
           .grades-entry-save-hint {
             grid-column: auto;
+          }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .grades-entry-distribution-overlay,
+          .grades-entry-distribution-overlay-card {
+            animation: none;
           }
         }
 
@@ -5034,7 +5130,11 @@
         }
 
         .grades-entry-table .grade-average-symbol {
-          display: block;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 100%;
+          height: 100%;
           padding: 0;
           text-align: center;
           color: var(--muted);
@@ -6132,7 +6232,8 @@
           letter-spacing: 0.03em;
         }
 
-        .grades-entry-table .is-grade-low {
+        .grades-entry-table .is-grade-low,
+        .grades-master-table .is-grade-low {
           color: #f87171;
           -webkit-text-fill-color: #f87171;
         }
@@ -6308,6 +6409,11 @@
           opacity: 0.42;
           pointer-events: none;
           user-select: none;
+        }
+
+        .grades-master-table td.is-privacy-blurred .is-grade-low {
+          color: inherit;
+          -webkit-text-fill-color: currentColor;
         }
 
         .grades-master-table td.is-privacy-blurred .grade-total-button.is-overridden,
