@@ -1966,7 +1966,7 @@ import { applyTheme } from './shell/theme.js';
         if (handle) {
           state.lastDirectoryHandle = handle;
         }
-        applyPlanData(data, { restoreSeatAssignments: false });
+        applyPlanData(data, { restoreSeatAssignments: true });
         const importedLabel = typeof data?.csvName === 'string' ? data.csvName.trim() : '';
         if (!importedLabel) {
           state.csvName = planLabelFromFile || state.csvName;
