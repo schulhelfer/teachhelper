@@ -5597,6 +5597,8 @@
             this.activeGradeStudentId = null;
             this.activeGradeOverrideContext = null;
             this.selectedGradesEntryAssessmentId = null;
+            this.selectedGradesOverviewColumnKey = "";
+            this.selectedGradesOverviewColumnCourseId = null;
             this.gradesOverviewNameOrder = "last";
             this.gradesEntryNameOrder = "first";
             this.gradesEntryDistributionView = "points";
@@ -11008,6 +11010,8 @@
             }
             if (viewName !== "grades") {
               this.clearPrivacyFocusedGradeStudent();
+              this.selectedGradesOverviewColumnKey = "";
+              this.selectedGradesOverviewColumnCourseId = null;
             }
             if (this.locked && viewName !== "settings") {
               this.currentView = "settings";
@@ -11486,6 +11490,26 @@
             if (editButton) {
               event.stopPropagation();
               this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment);
+              return;
+            }
+            const selectedColumnHeader = event.target.closest(".grades-master-table th[data-grade-column-key]");
+            if (
+              selectedColumnHeader
+              && !event.target.closest("button, input, select, textarea, a, [role='button'], [contenteditable='true']")
+            ) {
+              event.stopPropagation();
+              const columnKey = String(selectedColumnHeader.dataset.gradeColumnKey || "");
+              if (!columnKey || !this.commitVisibleGradeInputs()) {
+                return;
+              }
+              this.activeGradeOverrideContext = null;
+              this.clearActiveGradeAssessment();
+              const currentCourseId = Number(this.selectedCourseId || 0) || null;
+              const isSameSelection = this.selectedGradesOverviewColumnKey === columnKey
+                && Number(this.selectedGradesOverviewColumnCourseId || 0) === Number(currentCourseId || 0);
+              this.selectedGradesOverviewColumnKey = isSameSelection ? "" : columnKey;
+              this.selectedGradesOverviewColumnCourseId = isSameSelection ? null : currentCourseId;
+              this.renderGradesView();
               return;
             }
             const overrideButton = event.target.closest("button[data-grade-open-override='1']");
@@ -12077,12 +12101,13 @@
               if (button.dataset.noLesson === "1") {
                 return;
               }
-              this.clearGradesOverviewAssessmentSpotlight();
-              this.selectedCourseId = Number(button.dataset.courseId);
+              const courseId = Number(button.dataset.courseId);
               if (this.isGradesTopTabActive()) {
-                this.switchGradesSubView("overview");
+                this.openGradesOverviewForCourse(courseId);
                 return;
               }
+              this.clearGradesOverviewAssessmentSpotlight();
+              this.selectedCourseId = courseId;
               this.switchView("course");
             });
 
@@ -18490,6 +18515,44 @@
             return { columns, headerRows };
           }
 
+          getGradesOverviewColumnKey(column = {}) {
+            const type = String(column?.type || "");
+            const period = normalizeGradePeriod(column?.period || "year");
+            const categoryId = Number(column?.categoryId || column?.category?.id || 0);
+            const subcategoryId = Number(column?.subcategoryId || column?.subcategory?.id || 0);
+            if (type === "total") {
+              return "total:year";
+            }
+            if (type === "period-total") {
+              return `period-total:${period}`;
+            }
+            if ((type === "category-collapsed" || type === "category-partial") && categoryId > 0) {
+              return `category:${period}:${categoryId}`;
+            }
+            if ((type === "subcategory-collapsed" || type === "subcategory-partial") && categoryId > 0 && subcategoryId > 0) {
+              return `subcategory:${period}:${categoryId}:${subcategoryId}`;
+            }
+            if (type === "subcategory-homework" && categoryId > 0 && subcategoryId > 0) {
+              return `homework:${period}:${categoryId}:${subcategoryId}`;
+            }
+            if (type === "assessment") {
+              const assessmentId = Number(column?.assessment?.id || column?.assessmentId || 0);
+              return assessmentId > 0 ? `assessment:${assessmentId}` : "";
+            }
+            return "";
+          }
+
+          applyGradesOverviewColumnSelection(element, columnKey) {
+            if (!(element instanceof HTMLElement) || !columnKey) {
+              return;
+            }
+            element.dataset.gradeColumnKey = columnKey;
+            element.classList.toggle(
+              "is-selected-grade-column",
+              String(this.selectedGradesOverviewColumnKey || "") === String(columnKey)
+            );
+          }
+
           renderGradesTableHeaderCell(cell, options = {}) {
             const th = document.createElement("th");
             const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
@@ -18502,6 +18565,12 @@
             const applyBoundaryClasses = () => {
               this.applyGradeLeftBoundaryClass(th, cell.leftBoundary || "");
               this.applyGradeRightBoundaryClass(th, cell.rightBoundary || "");
+            };
+            const applyColumnSelection = () => {
+              if (Number(cell.colSpan || 1) > 1) {
+                return;
+              }
+              this.applyGradesOverviewColumnSelection(th, this.getGradesOverviewColumnKey(cell));
             };
 
             if (cell.type === "student") {
@@ -18558,6 +18627,7 @@
             if (cell.type === "total") {
               th.className = "grade-total-col";
               applyBoundaryClasses();
+              applyColumnSelection();
               th.textContent = "Jahr";
               return th;
             }
@@ -18565,6 +18635,7 @@
             if (cell.type === "period-total") {
               th.className = "grade-total-col grade-period-total-head";
               applyBoundaryClasses();
+              applyColumnSelection();
               th.textContent = "";
               return th;
             }
@@ -18576,6 +18647,7 @@
               applyBoundaryClasses();
               if (cell.type === "category-collapsed") {
                 const tooltip = escapeHtml(cell.category.name);
+                applyColumnSelection();
                 th.innerHTML = `
         <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${tooltip}">
           <span class="grades-master-group-label">
@@ -18598,6 +18670,7 @@
 
             if (cell.type === "category-partial") {
               th.className = "grade-category-partial-col is-merged-head";
+              applyColumnSelection();
               th.innerHTML = "&nbsp;";
               th.setAttribute("aria-label", "");
               return th;
@@ -18610,6 +18683,7 @@
               applyBoundaryClasses();
               if (cell.type === "subcategory-collapsed") {
                 const tooltip = escapeHtml(cell.subcategory.name);
+                applyColumnSelection();
                 th.innerHTML = `
         <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${tooltip}">
           <span class="grades-master-group-label">
@@ -18632,6 +18706,7 @@
 
             if (cell.type === "subcategory-partial") {
               th.className = "grade-subcategory-partial-col is-merged-head";
+              applyColumnSelection();
               th.innerHTML = "&nbsp;";
               th.setAttribute("aria-label", "");
               return th;
@@ -18640,6 +18715,7 @@
             if (cell.type === "subcategory-homework") {
               th.className = "grade-homework-col is-merged-head";
               applyBoundaryClasses();
+              applyColumnSelection();
               th.textContent = "HA";
               th.setAttribute("aria-label", "Hausaufgaben");
               return th;
@@ -18652,12 +18728,13 @@
                 th.classList.add("is-lesson-spotlight");
               }
               applyBoundaryClasses();
-              const assessmentButtonClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
-                ? "grade-assessment-button"
-                : "grade-assessment-button is-weightless";
+              applyColumnSelection();
+              const assessmentLabelClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
+                ? "grade-assessment-label"
+                : "grade-assessment-label is-weightless";
               th.innerHTML = `
         <div class="grade-assessment-head">
-          <button type="button" class="${assessmentButtonClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="In Eingabe bearbeiten">
+          <button type="button" class="${assessmentLabelClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="In Eingabe bearbeiten">
             <span class="grade-assessment-title">${buildGradeAssessmentDisplayTitleMarkup(cell.assessment.title)}</span>
             ${buildGradeAssessmentWeightMarkup(cell.assessment.weight, cell.assessment.mode)}
           </button>
@@ -18682,6 +18759,21 @@
 
           buildGradesMasterTable(course, students, groupedAssessments, motion = null, options = {}) {
             const model = this.buildGradesTableModel(course, groupedAssessments, options);
+            const visibleColumnKeys = new Set(
+              model.columns
+                .map((column) => this.getGradesOverviewColumnKey(column))
+                .filter(Boolean)
+            );
+            if (
+              this.selectedGradesOverviewColumnKey
+              && (
+                !visibleColumnKeys.has(this.selectedGradesOverviewColumnKey)
+                || Number(this.selectedGradesOverviewColumnCourseId || 0) !== Number(course?.id || 0)
+              )
+            ) {
+              this.selectedGradesOverviewColumnKey = "";
+              this.selectedGradesOverviewColumnCourseId = null;
+            }
             const shell = document.createElement("div");
             shell.className = "grades-master-table-shell";
             const table = document.createElement("table");
@@ -18720,6 +18812,7 @@
                   if (column.type !== "student" && isPrivacyBlurred) {
                     td.classList.add("is-privacy-blurred");
                   }
+                  this.applyGradesOverviewColumnSelection(td, this.getGradesOverviewColumnKey(column));
                 };
 
                 if (column.type === "student") {
@@ -20875,6 +20968,8 @@
             }
             if (normalized !== "overview") {
               this.clearGradesOverviewAssessmentSpotlight();
+              this.selectedGradesOverviewColumnKey = "";
+              this.selectedGradesOverviewColumnCourseId = null;
             }
             if (normalized !== "overview") {
               this.activeGradeOverrideContext = null;
@@ -20929,6 +21024,8 @@
             this.clearGradesOverviewAssessmentSpotlight();
             this.clearPrivacyFocusedGradeStudent();
             this.activeGradeOverrideContext = null;
+            this.selectedGradesOverviewColumnKey = "";
+            this.selectedGradesOverviewColumnCourseId = null;
             this.selectedCourseId = courseId;
             this.shellTabContext = "grades";
             this.gradesSubView = "entry";
@@ -20964,6 +21061,8 @@
             this.clearGradesOverviewAssessmentSpotlight();
             this.clearPrivacyFocusedGradeStudent();
             this.activeGradeOverrideContext = null;
+            this.selectedGradesOverviewColumnKey = "";
+            this.selectedGradesOverviewColumnCourseId = null;
             this.selectedCourseId = courseId;
             this.shellTabContext = "grades";
             this.gradesSubView = "entry";
@@ -21008,6 +21107,10 @@
             this.queueGradesEntrySaveNotice("");
             this.clearPrivacyFocusedGradeStudent();
             this.activeGradeOverrideContext = null;
+            if (Number(this.selectedCourseId || 0) !== normalizedCourseId) {
+              this.selectedGradesOverviewColumnKey = "";
+              this.selectedGradesOverviewColumnCourseId = null;
+            }
             this.selectedCourseId = normalizedCourseId;
             this.shellTabContext = "grades";
             this.pendingGradesEntryCourseAutoSelect = false;
