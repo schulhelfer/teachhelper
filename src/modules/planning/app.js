@@ -5332,6 +5332,10 @@
               headerGlass: document.querySelector("#headerGlass"),
 
               sidebarCourseList: document.querySelector("#sidebar-course-list"),
+              sidebarGradePrivacyActions: document.querySelector("#sidebar-grade-privacy-actions"),
+              sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
+              sidebarGradeNameOrderToggleBtn: document.querySelector("#sidebar-grade-name-order-toggle-btn"),
+              sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
 
               settingsTabs: [...document.querySelectorAll(".settings-tab")],
               settingsPanels: {
@@ -11411,26 +11415,12 @@
             }
             const nameOrderToggleButton = event.target.closest("button[data-grade-name-order-toggle='1']");
             if (nameOrderToggleButton) {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!this.commitVisibleGradeInputs()) {
-                return;
-              }
-              this.activeGradeOverrideContext = null;
-              this.gradesOverviewNameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder) === "first"
-                ? "last"
-                : "first";
-              this.renderGradesView();
+              this.handleGradeNameOrderToggleRequest(event);
               return;
             }
             const printOverviewButton = event.target.closest("button[data-grade-print-overview='1']");
             if (printOverviewButton) {
-              event.preventDefault();
-              event.stopPropagation();
-              if (!this.commitVisibleGradeInputs()) {
-                return;
-              }
-              this.printGradesOverview();
+              this.handleGradePrintOverviewRequest(event);
               return;
             }
             const addButton = event.target.closest("button[data-grade-add-assessment]");
@@ -11440,6 +11430,11 @@
                 Number(addButton.dataset.gradeAddAssessment || 0) || null,
                 addButton.dataset.gradeHalfYear || ""
               );
+              return;
+            }
+            const privacyNavButton = event.target.closest("button[data-grade-privacy-nav]");
+            if (privacyNavButton) {
+              this.handleGradePrivacyStudentNavigation(privacyNavButton.dataset.gradePrivacyNav || "", event);
               return;
             }
             const studentButton = event.target.closest("[data-grade-student-name]");
@@ -11455,15 +11450,7 @@
             }
             const privacyToggleButton = event.target.closest("button[data-grade-privacy-toggle='1']");
             if (privacyToggleButton) {
-              if (this.privacyFocusedGradeStudentId) {
-                this.tryExitGradePrivacyMode(event);
-                return;
-              }
-              if (!this.commitVisibleGradeInputs()) {
-                return;
-              }
-              this.activeGradeOverrideContext = null;
-              this.tryEnterGradePrivacyMode(event);
+              this.handleGradePrivacyToggleRequest(event);
               return;
             }
             const activateButton = event.target.closest("button[data-grade-activate-assessment]");
@@ -12065,6 +12052,21 @@
             if (this.refs.viewSettingsBtn) {
               this.refs.viewSettingsBtn.addEventListener("click", () => {
                 this.switchView("settings");
+              });
+            }
+            if (this.refs.sidebarGradePrivacyToggleBtn) {
+              this.refs.sidebarGradePrivacyToggleBtn.addEventListener("click", (event) => {
+                this.handleGradePrivacyToggleRequest(event);
+              });
+            }
+            if (this.refs.sidebarGradeNameOrderToggleBtn) {
+              this.refs.sidebarGradeNameOrderToggleBtn.addEventListener("click", (event) => {
+                this.handleGradeNameOrderToggleRequest(event);
+              });
+            }
+            if (this.refs.sidebarGradePrintBtn) {
+              this.refs.sidebarGradePrintBtn.addEventListener("click", (event) => {
+                this.handleGradePrintOverviewRequest(event);
               });
             }
             if (this.refs.contextMenu) {
@@ -13405,6 +13407,10 @@
             });
             this.refs.gradesBookPanel?.addEventListener("scroll", () => {
               this.positionGradePrivacyOverlay();
+              this.positionGradePrivacyNavigationOverlay();
+            });
+            this.refs.gradesTableScroll?.addEventListener("scroll", () => {
+              this.positionGradePrivacyNavigationOverlay();
             });
             this.refs.gradesPrivacyOverlay?.addEventListener("pointerdown", (event) => {
               this.handleGradePrivacyOverlayPointerDown(event);
@@ -13512,6 +13518,7 @@
               this.positionGradePicker();
               this.positionGradesTitleDatePicker();
               this.positionGradePrivacyOverlay();
+              this.positionGradePrivacyNavigationOverlay();
               if (this.refs.weekCalendarDialog && this.refs.weekCalendarDialog.open) {
                 this.positionWeekCalendarDialog();
               }
@@ -13525,6 +13532,7 @@
               this.positionGradePicker();
               this.hideGradesTitleDatePicker();
               this.positionGradePrivacyOverlay();
+              this.positionGradePrivacyNavigationOverlay();
               if (this.refs.weekCalendarDialog && this.refs.weekCalendarDialog.open) {
                 this.closeWeekCalendarDialog();
               }
@@ -14906,9 +14914,11 @@
             if (spotlight && !spotlight.scrolled) {
               requestAnimationFrame(() => {
                 this.scrollGradesOverviewAssessmentSpotlightIntoView();
+                this.positionGradePrivacyNavigationOverlay();
               });
             }
             this.renderGradePrivacyOverlay(course, students);
+            this.renderGradePrivacyNavigationOverlay();
           }
 
           renderGradesEntryEmptyState(title, text = "", options = {}) {
@@ -15649,6 +15659,9 @@
           renderGradesView() {
             if (!this.refs.viewGrades || !this.refs.gradesTitle || !this.refs.gradesSubtitle) {
               this.hideGradePrivacyOverlay();
+              this.updateSidebarGradePrivacyToggleState();
+              this.updateSidebarGradeNameOrderToggleState();
+              this.updateSidebarGradePrintButtonState();
               return;
             }
             const normalizedSubview = this.normalizeGradesSubView(this.gradesSubView);
@@ -15705,6 +15718,9 @@
                 this.renderGradesEntryEmptyState("Notenkurs wird geladen", "");
                 this.renderGradeVaultBanner();
                 this.updateGradeVaultActionButtons();
+                this.updateSidebarGradePrivacyToggleState();
+                this.updateSidebarGradeNameOrderToggleState();
+                this.updateSidebarGradePrintButtonState();
                 return;
               }
               this.renderGradesEntryView(course, students, groupedAssessments);
@@ -15719,12 +15735,18 @@
                 this.setGradesOverviewEmptyState("Notenkurs wird geladen", "");
                 this.renderGradeVaultBanner();
                 this.updateGradeVaultActionButtons();
+                this.updateSidebarGradePrivacyToggleState();
+                this.updateSidebarGradeNameOrderToggleState();
+                this.updateSidebarGradePrintButtonState();
                 return;
               }
               this.renderGradesOverview(course, students, groupedAssessments);
             }
             this.renderGradeVaultBanner();
             this.updateGradeVaultActionButtons();
+            this.updateSidebarGradePrivacyToggleState();
+            this.updateSidebarGradeNameOrderToggleState();
+            this.updateSidebarGradePrintButtonState();
           }
 
           isGradeCategoryExpanded(courseId, categoryId, period = "year") {
@@ -15958,6 +15980,8 @@
             this.privacyFocusedGradeStudentId = null;
             this.updateActiveGradeStudentHighlight();
             this.hideGradePrivacyOverlay();
+            this.removeGradePrivacyNavigationOverlay();
+            this.updateSidebarGradePrivacyToggleState();
           }
 
           getPreferredGradePrivacyStudentId() {
@@ -16005,6 +16029,164 @@
             return true;
           }
 
+          getGradePrivacyNavigationStudentId(direction) {
+            const currentStudentId = Number(this.privacyFocusedGradeStudentId || 0);
+            if (!currentStudentId || !this.refs.gradesTable) {
+              return null;
+            }
+            const studentIds = [...this.refs.gradesTable.querySelectorAll("button[data-grade-student-name]")]
+              .map((node) => Number(node.getAttribute("data-grade-student-name") || 0))
+              .filter((studentId) => studentId > 0);
+            const currentIndex = studentIds.indexOf(currentStudentId);
+            if (currentIndex < 0) {
+              return null;
+            }
+            const offset = direction === "previous" ? -1 : 1;
+            const nextIndex = currentIndex + offset;
+            return nextIndex >= 0 && nextIndex < studentIds.length ? studentIds[nextIndex] : null;
+          }
+
+          handleGradePrivacyStudentNavigation(direction, event = null) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            const normalizedDirection = direction === "previous" ? "previous" : "next";
+            const nextStudentId = this.getGradePrivacyNavigationStudentId(normalizedDirection);
+            if (!nextStudentId) {
+              return;
+            }
+            if (!this.commitVisibleGradeInputs()) {
+              return;
+            }
+            this.activeGradeOverrideContext = null;
+            this.privacyFocusedGradeStudentId = nextStudentId;
+            this.updateActiveGradeStudentHighlight();
+            this.renderGradesView();
+          }
+
+          removeGradePrivacyNavigationOverlay() {
+            const overlay = this.refs.gradesBookPanel?.querySelector(".grade-privacy-nav-overlay");
+            overlay?.remove();
+          }
+
+          getGradePrivacyFocusedStudentButton() {
+            const focusedStudentId = Number(this.privacyFocusedGradeStudentId || 0);
+            if (!focusedStudentId || !this.refs.gradesTable) {
+              return null;
+            }
+            return [...this.refs.gradesTable.querySelectorAll("button[data-grade-student-name]")]
+              .find((node) => Number(node.getAttribute("data-grade-student-name") || 0) === focusedStudentId) || null;
+          }
+
+          positionGradePrivacyNavigationOverlay() {
+            const overlay = this.refs.gradesBookPanel?.querySelector(".grade-privacy-nav-overlay");
+            const bookPanel = this.refs.gradesBookPanel;
+            const studentButton = this.getGradePrivacyFocusedStudentButton();
+            if (
+              !overlay
+              || !bookPanel
+              || !studentButton
+              || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+            ) {
+              return;
+            }
+            const panelRect = bookPanel.getBoundingClientRect();
+            const buttonRect = studentButton.getBoundingClientRect();
+            if (!panelRect.width || !panelRect.height || !buttonRect.width || !buttonRect.height) {
+              return;
+            }
+            const left = buttonRect.left - panelRect.left + bookPanel.scrollLeft + (buttonRect.width / 2);
+            const top = buttonRect.top - panelRect.top + bookPanel.scrollTop;
+            overlay.style.left = `${Math.round(left)}px`;
+            overlay.style.top = `${Math.round(top)}px`;
+            overlay.style.height = `${Math.round(buttonRect.height)}px`;
+          }
+
+          renderGradePrivacyNavigationOverlay() {
+            const bookPanel = this.refs.gradesBookPanel;
+            const studentButton = this.getGradePrivacyFocusedStudentButton();
+            const canShow = Boolean(
+              bookPanel
+              && studentButton
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview"
+              && this.privacyFocusedGradeStudentId
+            );
+            if (!canShow) {
+              this.removeGradePrivacyNavigationOverlay();
+              return;
+            }
+
+            let overlay = bookPanel.querySelector(".grade-privacy-nav-overlay");
+            if (!overlay) {
+              overlay = document.createElement("div");
+              overlay.className = "grade-privacy-nav-overlay";
+              overlay.addEventListener("click", (event) => {
+                const target = event.target instanceof Element ? event.target : null;
+                const button = target?.closest("button[data-grade-privacy-nav]");
+                if (!button) {
+                  return;
+                }
+                this.handleGradePrivacyStudentNavigation(button.dataset.gradePrivacyNav || "", event);
+              });
+              bookPanel.append(overlay);
+            }
+
+            const previousStudentId = this.getGradePrivacyNavigationStudentId("previous");
+            const nextStudentId = this.getGradePrivacyNavigationStudentId("next");
+            overlay.innerHTML = `
+        <button type="button" class="grade-privacy-nav-button is-previous" data-grade-privacy-nav="previous" aria-label="Vorherigen Schüler im Datenschutzmodus anzeigen" title="Vorheriger Schüler" ${previousStudentId ? "" : "disabled"}>▲</button>
+        <button type="button" class="grade-privacy-nav-button is-next" data-grade-privacy-nav="next" aria-label="Nächsten Schüler im Datenschutzmodus anzeigen" title="Nächster Schüler" ${nextStudentId ? "" : "disabled"}>▼</button>
+      `;
+            this.positionGradePrivacyNavigationOverlay();
+            requestAnimationFrame(() => {
+              this.positionGradePrivacyNavigationOverlay();
+            });
+          }
+
+          handleGradePrivacyToggleRequest(event = null) {
+            if (this.privacyFocusedGradeStudentId) {
+              this.tryExitGradePrivacyMode(event);
+              return;
+            }
+            if (!this.commitVisibleGradeInputs()) {
+              this.updateSidebarGradePrivacyToggleState();
+              return;
+            }
+            this.activeGradeOverrideContext = null;
+            this.tryEnterGradePrivacyMode(event);
+          }
+
+          handleGradeNameOrderToggleRequest(event = null) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            if (!this.isGradesTopTabActive() || this.normalizeGradesSubView(this.gradesSubView) !== "overview") {
+              this.updateSidebarGradeNameOrderToggleState();
+              return;
+            }
+            if (!this.commitVisibleGradeInputs()) {
+              this.updateSidebarGradeNameOrderToggleState();
+              return;
+            }
+            this.activeGradeOverrideContext = null;
+            this.gradesOverviewNameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder) === "first"
+              ? "last"
+              : "first";
+            this.renderGradesView();
+          }
+
+          handleGradePrintOverviewRequest(event = null) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            if (!this.isGradesTopTabActive() || this.normalizeGradesSubView(this.gradesSubView) !== "overview" || this.locked) {
+              this.updateSidebarGradePrintButtonState();
+              return;
+            }
+            if (!this.commitVisibleGradeInputs()) {
+              this.updateSidebarGradePrintButtonState();
+              return;
+            }
+            this.printGradesOverview();
+          }
+
           togglePrivacyFocusedGradeStudent(studentId) {
             const nextStudentId = Number(studentId || 0) || null;
             this.privacyFocusedGradeStudentId = (
@@ -16014,6 +16196,104 @@
               ? null
               : nextStudentId;
             this.updateActiveGradeStudentHighlight();
+            this.updateSidebarGradePrivacyToggleState();
+          }
+
+          updateSidebarGradePrivacyToggleState() {
+            const actions = this.refs.sidebarGradePrivacyActions;
+            const button = this.refs.sidebarGradePrivacyToggleBtn;
+            if (!actions || !button) {
+              return;
+            }
+            const isGradesContext = this.isGradesTopTabActive();
+            const isGradesOverview = isGradesContext
+              && this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const isActive = Boolean(this.privacyFocusedGradeStudentId);
+            const hasPreferredStudent = isGradesOverview && Boolean(this.getPreferredGradePrivacyStudentId());
+            const canToggle = isGradesOverview && !this.locked && (isActive || hasPreferredStudent);
+            actions.hidden = !isGradesContext;
+            button.disabled = !canToggle;
+            button.classList.toggle("is-active", isActive);
+            button.classList.toggle("is-inactive", !isActive);
+            button.setAttribute("aria-pressed", isActive ? "true" : "false");
+            button.setAttribute(
+              "aria-label",
+              isActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"
+            );
+            button.title = isActive
+              ? "Datenschutzmodus aktiv"
+              : (
+                canToggle
+                  ? "Datenschutzmodus inaktiv"
+                  : (this.locked
+                    ? "Datenschutzmodus gesperrt"
+                    : (
+                      isGradesOverview
+                        ? "Kein Schüler für den Datenschutzmodus verfügbar"
+                        : "Datenschutzmodus in der Kursübersicht verfügbar"
+                    ))
+              );
+          }
+
+          updateSidebarGradeNameOrderToggleState() {
+            const actions = this.refs.sidebarGradePrivacyActions;
+            const button = this.refs.sidebarGradeNameOrderToggleBtn;
+            if (!actions || !button) {
+              return;
+            }
+            const isGradesContext = this.isGradesTopTabActive();
+            const isGradesOverview = isGradesContext
+              && this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const nameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder);
+            const currentNameOrderLabel = nameOrder === "first" ? "Vorname Nachname" : "Nachname, Vorname";
+            const nextNameOrderLabel = nameOrder === "first" ? "Nachname, Vorname" : "Vorname Nachname";
+            const isLastNameOrder = nameOrder === "last";
+            actions.hidden = !isGradesContext;
+            button.disabled = !isGradesOverview || this.locked;
+            button.classList.toggle("is-active", isLastNameOrder);
+            button.classList.toggle("is-inactive", !isLastNameOrder);
+            button.setAttribute("aria-pressed", isLastNameOrder ? "true" : "false");
+            button.setAttribute(
+              "aria-label",
+              `Namenssortierung aktuell ${currentNameOrderLabel}; auf ${nextNameOrderLabel} umstellen`
+            );
+            button.title = this.locked
+              ? "Namenssortierung gesperrt"
+              : (
+                isGradesOverview
+                  ? `Namenssortierung auf ${nextNameOrderLabel} umstellen`
+                  : "Namenssortierung in der Kursübersicht verfügbar"
+              );
+          }
+
+          updateSidebarGradePrintButtonState() {
+            const actions = this.refs.sidebarGradePrivacyActions;
+            const button = this.refs.sidebarGradePrintBtn;
+            if (!actions || !button) {
+              return;
+            }
+            const isGradesContext = this.isGradesTopTabActive();
+            const isGradesOverview = isGradesContext
+              && this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const hasPrintableOverview = Boolean(
+              isGradesOverview
+              && this.refs.gradesOverviewPanel
+              && !this.refs.gradesOverviewPanel.hidden
+              && this.refs.gradesTable
+              && this.refs.gradesTable.querySelector("table")
+            );
+            actions.hidden = !isGradesContext;
+            button.disabled = this.locked || !hasPrintableOverview;
+            button.title = this.locked
+              ? "Drucken gesperrt"
+              : (
+                hasPrintableOverview
+                  ? "Spalten einklappen, um ihren Druck zu unterbinden"
+                  : "Drucken in der Kursübersicht verfügbar"
+              );
           }
 
           shouldBlurGradeStudent(studentId) {
@@ -16183,6 +16463,7 @@
             dragState.freeTop = clampedTop;
             this.gradePrivacyOverlayDrag = dragState;
             this.positionGradePrivacyOverlay();
+            this.positionGradePrivacyNavigationOverlay();
           }
 
           handleGradePrivacyOverlayPointerUp(event) {
@@ -16505,6 +16786,7 @@
               node.closest(".grade-checkbox-input-wrap")?.classList.toggle("is-active-grade-cell", isActiveCell);
             });
             this.positionGradePrivacyOverlay();
+            this.positionGradePrivacyNavigationOverlay();
           }
 
           clearActiveGradeStudentFocus(input = null) {
@@ -18575,37 +18857,6 @@
 
             if (cell.type === "student") {
               th.className = "student-col";
-              th.classList.add("grade-privacy-indicator-cell");
-              const isPrivacyActive = Boolean(this.privacyFocusedGradeStudentId);
-              const nameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder);
-              const nextNameOrderLabel = nameOrder === "first" ? "Nachname, Vorname" : "Vorname Nachname";
-              th.innerHTML = `
-        <div class="grade-student-head-actions">
-          <div class="grade-student-head-primary-actions">
-            <button
-              type="button"
-              class="grade-privacy-indicator-button${isPrivacyActive ? " is-active" : " is-inactive"}"
-              data-grade-privacy-toggle="1"
-              aria-label="${isPrivacyActive ? "Datenschutzmodus deaktivieren" : "Datenschutzmodus aktivieren"}"
-              title="${isPrivacyActive ? "Datenschutzmodus aktiv" : "Datenschutzmodus inaktiv"}"
-            >👀</button>
-            <button
-              type="button"
-              class="grade-print-button"
-              data-grade-print-overview="1"
-              aria-label="Kursnoten drucken"
-              title="Spalten einklappen, um ihren Druck zu unterbinden"
-            >🖨️</button>
-          </div>
-          <button
-            type="button"
-            class="grade-name-order-toggle-button"
-            data-grade-name-order-toggle="1"
-            aria-label="Namenssortierung auf ${nextNameOrderLabel} umstellen"
-            title="Namenssortierung: ${nextNameOrderLabel}"
-          >↕️</button>
-        </div>
-      `;
               return th;
             }
 
@@ -18823,7 +19074,8 @@
                     : "";
                   const privacyBlurredClass = isPrivacyBlurred ? " is-privacy-blurred" : "";
                   const privacyClass = isPrivacyFocused ? " is-privacy-focused" : "";
-                  td.innerHTML = `<button type="button" class="grades-student-name is-clickable${activeClass}${privacyBlurredClass}${privacyClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
+                  const nameButtonMarkup = `<button type="button" class="grades-student-name is-clickable${activeClass}${privacyBlurredClass}${privacyClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
+                  td.innerHTML = nameButtonMarkup;
                   tr.append(td);
                   return;
                 }
@@ -19121,6 +19373,7 @@
       `;
               }
               this.refs.gradesTable.append(empty);
+              this.removeGradePrivacyNavigationOverlay();
               return;
             }
 
@@ -22091,6 +22344,9 @@
               this.refs.viewSettingsBtn.hidden = false;
               this.refs.viewSettingsBtn.disabled = this.locked;
             }
+            this.updateSidebarGradePrivacyToggleState();
+            this.updateSidebarGradeNameOrderToggleState();
+            this.updateSidebarGradePrintButtonState();
             this.renderSidebarFooterActions();
             if (this.refs.mainPane) {
               const showHeader = !this.locked && isWeek;
