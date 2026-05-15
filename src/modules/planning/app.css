@@ -343,6 +343,11 @@
           max-width: calc(100vw - 24px);
         }
 
+        #grade-simulation-dialog.app-dialog {
+          width: min(760px, calc(100vw - 24px));
+          max-width: 760px;
+        }
+
         #course-dialog .dialog-actions,
         #course-color-dialog .dialog-actions,
         #course-students-dialog .dialog-actions,
@@ -843,7 +848,8 @@
 
         .sidebar-grade-privacy-toggle,
         .sidebar-grade-name-order-toggle,
-        .sidebar-grade-print-btn {
+        .sidebar-grade-print-btn,
+        .sidebar-grade-simulation-btn {
           width: 100%;
           min-width: 0;
           min-height: 42px;
@@ -863,6 +869,14 @@
         .sidebar-grade-print-btn {
           min-height: 40px;
           padding: 0.44rem;
+        }
+
+        .sidebar-grade-simulation-btn {
+          min-height: 40px;
+          padding: 0.46rem 0.5rem;
+          white-space: normal;
+          text-align: center;
+          font-size: 0.72rem;
         }
 
         .sidebar-grade-privacy-toggle {
@@ -912,7 +926,9 @@
         .sidebar-grade-name-order-toggle:not(:disabled):hover,
         .sidebar-grade-name-order-toggle:not(:disabled):focus-visible,
         .sidebar-grade-print-btn:not(:disabled):hover,
-        .sidebar-grade-print-btn:not(:disabled):focus-visible {
+        .sidebar-grade-print-btn:not(:disabled):focus-visible,
+        .sidebar-grade-simulation-btn:not(:disabled):hover,
+        .sidebar-grade-simulation-btn:not(:disabled):focus-visible {
           background: rgba(60, 72, 92, 0.98);
           border-color: rgba(130, 190, 255, 0.95);
           color: #ffffff;
@@ -939,7 +955,8 @@
 
         .sidebar-grade-privacy-toggle:disabled,
         .sidebar-grade-name-order-toggle:disabled,
-        .sidebar-grade-print-btn:disabled {
+        .sidebar-grade-print-btn:disabled,
+        .sidebar-grade-simulation-btn:disabled {
           cursor: not-allowed;
           opacity: 0.48;
         }
@@ -1135,6 +1152,15 @@
           justify-content: center;
           border-radius: 10px;
           padding: 0;
+        }
+
+        .sidebar-grade-simulation-btn {
+          width: 100%;
+          min-width: 0;
+          min-height: 38px;
+          border-radius: 10px;
+          padding: 0.42rem 0.5rem;
+          line-height: 1.12;
         }
 
         .sidebar-list.empty-pulse {
@@ -3817,8 +3843,7 @@
 
         .grades-entry-mode-field,
         .grades-entry-test-scale-field,
-        .grades-entry-halfyear-field,
-        .grades-entry-name-order-field {
+        .grades-entry-halfyear-field {
           padding-top: 0.05rem;
         }
 
@@ -3906,8 +3931,7 @@
 
         .grades-entry-mode-field .assessment-mode-toggle,
         .grades-entry-test-scale-field .assessment-mode-toggle,
-        .grades-entry-halfyear-field .assessment-mode-toggle,
-        .grades-entry-name-order-field .assessment-mode-toggle {
+        .grades-entry-halfyear-field .assessment-mode-toggle {
           padding: 0.25rem;
           border-radius: 14px;
           border-color: rgba(148, 163, 184, 0.16);
@@ -3917,10 +3941,6 @@
 
         .grades-entry-mode-field .assessment-mode-toggle {
           grid-template-columns: repeat(3, minmax(0, 1fr));
-        }
-
-        .grades-entry-name-order-field .assessment-mode-toggle {
-          grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .grades-entry-test-scale-field .assessment-mode-toggle {
@@ -3933,8 +3953,7 @@
 
         .grades-entry-mode-field .assessment-mode-option span,
         .grades-entry-test-scale-field .assessment-mode-option span,
-        .grades-entry-halfyear-field .assessment-mode-option span,
-        .grades-entry-name-order-field .assessment-mode-option span {
+        .grades-entry-halfyear-field .assessment-mode-option span {
           min-height: 2.8rem;
           padding: 0.5rem 0.8rem;
           border-radius: 10px;
@@ -3945,16 +3964,14 @@
 
         .grades-entry-mode-field .assessment-mode-option:hover span,
         .grades-entry-test-scale-field .assessment-mode-option:hover span,
-        .grades-entry-halfyear-field .assessment-mode-option:hover span,
-        .grades-entry-name-order-field .assessment-mode-option:hover span {
+        .grades-entry-halfyear-field .assessment-mode-option:hover span {
           color: rgba(248, 250, 252, 0.94);
           background: rgba(148, 163, 184, 0.08);
         }
 
         .grades-entry-mode-field .assessment-mode-option input:checked+span,
         .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
-        .grades-entry-halfyear-field .assessment-mode-option input:checked+span,
-        .grades-entry-name-order-field .assessment-mode-option input:checked+span {
+        .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #f8fbff;
           background: rgba(59, 130, 246, 0.24);
           border-color: rgba(96, 165, 250, 0.34);
@@ -4329,8 +4346,7 @@
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-toggle,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-toggle,
-        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-toggle,
-        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-toggle {
+        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-toggle {
           border-color: rgba(14, 165, 233, 0.14);
           background: rgba(226, 242, 255, 0.48);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
@@ -4338,23 +4354,20 @@
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option span,
-        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option span,
-        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-option span {
+        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option span {
           color: #475569;
         }
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option:hover span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option:hover span,
-        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option:hover span,
-        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-option:hover span {
+        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option:hover span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.08);
         }
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option input:checked+span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
-        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option input:checked+span,
-        :root[data-theme='light'] .grades-entry-name-order-field .assessment-mode-option input:checked+span {
+        :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.18);
           border-color: rgba(14, 165, 233, 0.28);
@@ -5576,8 +5589,7 @@
           line-height: 1;
         }
 
-        .grades-entry-mode-field,
-        .grades-entry-name-order-field {
+        .grades-entry-mode-field {
           display: grid;
           gap: 0.35rem;
           min-width: 0;
@@ -6485,8 +6497,104 @@
           letter-spacing: 0.03em;
         }
 
+        .grade-simulation-dialog form {
+          gap: 0.85rem;
+        }
+
+        .grade-simulation-controls {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          gap: 0.75rem;
+        }
+
+        .grade-simulation-controls label {
+          min-width: 0;
+        }
+
+        .grade-simulation-controls select {
+          width: 100%;
+        }
+
+        .grade-simulation-summary {
+          padding: 0.55rem 0.7rem;
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          border-radius: 0.7rem;
+          background: rgba(15, 23, 42, 0.28);
+          color: rgba(226, 232, 240, 0.88);
+          font-size: 0.86rem;
+          font-weight: 800;
+        }
+
+        .grade-simulation-table-wrap {
+          margin-top: 0.75rem;
+          max-height: min(52vh, 520px);
+          overflow: auto;
+          border: 1px solid rgba(148, 163, 184, 0.24);
+          border-radius: 0.8rem;
+        }
+
+        .grade-simulation-table {
+          width: 100%;
+          border-collapse: separate;
+          border-spacing: 0;
+          font-size: 0.9rem;
+        }
+
+        .grade-simulation-table th,
+        .grade-simulation-table td {
+          padding: 0.5rem 0.62rem;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+          text-align: center;
+          vertical-align: middle;
+        }
+
+        .grade-simulation-table th {
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          background: rgba(30, 41, 59, 0.98);
+          color: rgba(226, 232, 240, 0.82);
+          font-size: 0.75rem;
+          text-transform: uppercase;
+          letter-spacing: 0.04em;
+        }
+
+        .grade-simulation-table th:first-child,
+        .grade-simulation-table td:first-child {
+          text-align: left;
+        }
+
+        .grade-simulation-table tbody tr:last-child td {
+          border-bottom: 0;
+        }
+
+        .grade-simulation-delta {
+          display: inline-flex;
+          min-width: 3ch;
+          justify-content: center;
+          font-weight: 900;
+        }
+
+        .grade-simulation-delta.is-positive {
+          color: #86efac;
+        }
+
+        .grade-simulation-delta.is-negative {
+          color: #fca5a5;
+        }
+
+        .grade-simulation-override {
+          display: block;
+          margin-top: 0.18rem;
+          color: #fbbf24;
+          font-size: 0.68rem;
+          font-weight: 800;
+          line-height: 1.1;
+        }
+
         .grades-entry-table .is-grade-low,
-        .grades-master-table .is-grade-low {
+        .grades-master-table .is-grade-low,
+        .grade-simulation-table .is-grade-low {
           color: #f87171;
           -webkit-text-fill-color: #f87171;
         }

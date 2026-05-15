@@ -5333,9 +5333,14 @@
 
               sidebarCourseList: document.querySelector("#sidebar-course-list"),
               sidebarGradePrivacyActions: document.querySelector("#sidebar-grade-privacy-actions"),
+              sidebarGradePrivacySection: document.querySelector("#sidebar-grade-privacy-section"),
+              sidebarGradeSortSection: document.querySelector("#sidebar-grade-sort-section"),
+              sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
+              sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
               sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
               sidebarGradeNameOrderToggleBtn: document.querySelector("#sidebar-grade-name-order-toggle-btn"),
               sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
+              sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
 
               settingsTabs: [...document.querySelectorAll(".settings-tab")],
               settingsPanels: {
@@ -5411,6 +5416,14 @@
               messageDialogCancelTop: document.querySelector("#message-dialog-cancel-top"),
               messageDialogOkTop: document.querySelector("#message-dialog-ok-top"),
               messageDialogActionsBottom: document.querySelector("#message-dialog-actions-bottom"),
+              gradeSimulationDialog: document.querySelector("#grade-simulation-dialog"),
+              gradeSimulationDialogForm: document.querySelector("#grade-simulation-dialog-form"),
+              gradeSimulationDialogClose: document.querySelector("#grade-simulation-dialog-close"),
+              gradeSimulationValue: document.querySelector("#grade-simulation-value"),
+              gradeSimulationHalfYear: document.querySelector("#grade-simulation-halfyear"),
+              gradeSimulationCategory: document.querySelector("#grade-simulation-category"),
+              gradeSimulationSubcategory: document.querySelector("#grade-simulation-subcategory"),
+              gradeSimulationResult: document.querySelector("#grade-simulation-result"),
 
               courseDialog: document.querySelector("#course-dialog"),
               courseDialogForm: document.querySelector("#course-dialog-form"),
@@ -5612,6 +5625,13 @@
             this.gradesEntryDraft = null;
             this.gradesEntrySaveNotice = "";
             this.gradesEntrySaveNoticeTimer = 0;
+            this.gradeSimulationState = {
+              courseId: null,
+              value: 0,
+              halfYear: "h1",
+              categoryId: null,
+              subcategoryId: null
+            };
             this.privacyFocusedGradeStudentId = null;
             this.gradePrivacyOverlayDrag = {
               studentId: null,
@@ -11704,17 +11724,6 @@
               return;
             }
 
-            const nameOrderInput = event.target.closest("input[data-grades-entry-name-order='1']");
-            if (nameOrderInput) {
-              if (!this.commitVisibleGradeInputs()) {
-                this.renderGradesView();
-                return;
-              }
-              this.gradesEntryNameOrder = normalizeGradeStudentNameOrder(nameOrderInput.value);
-              this.renderGradesView();
-              return;
-            }
-
             const titleInput = event.target.closest("input[data-grades-entry-title]");
             if (titleInput) {
               const nextTitle = String(titleInput.value || "").trim();
@@ -12069,6 +12078,30 @@
                 this.handleGradePrintOverviewRequest(event);
               });
             }
+            if (this.refs.sidebarGradeSimulationBtn) {
+              this.refs.sidebarGradeSimulationBtn.addEventListener("click", (event) => {
+                this.handleGradeSimulationOpenRequest(event);
+              });
+            }
+            this.refs.gradeSimulationDialogClose?.addEventListener("click", () => {
+              this.closeGradeSimulationDialog();
+            });
+            this.refs.gradeSimulationDialogForm?.addEventListener("submit", (event) => {
+              event.preventDefault();
+              this.closeGradeSimulationDialog();
+            });
+            this.refs.gradeSimulationValue?.addEventListener("change", () => {
+              this.handleGradeSimulationControlChange();
+            });
+            this.refs.gradeSimulationHalfYear?.addEventListener("change", () => {
+              this.handleGradeSimulationControlChange();
+            });
+            this.refs.gradeSimulationCategory?.addEventListener("change", () => {
+              this.handleGradeSimulationCategoryChange();
+            });
+            this.refs.gradeSimulationSubcategory?.addEventListener("change", () => {
+              this.handleGradeSimulationControlChange();
+            });
             if (this.refs.contextMenu) {
               this.refs.contextMenu.addEventListener("contextmenu", (event) => {
                 event.preventDefault();
@@ -15549,19 +15582,6 @@
                   ${testScaleOptionsMarkup}
                 </div>
               </fieldset>
-              <fieldset class="grades-entry-field grades-entry-name-order-field is-wide">
-                <legend>Namen</legend>
-                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Namensdarstellung">
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="first"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "first" ? " checked" : ""}>
-                    <span>Vorname Nachname</span>
-                  </label>
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-name-order" data-grades-entry-name-order="1" value="last"${normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "last" ? " checked" : ""}>
-                    <span>Nachname, Vorname</span>
-                  </label>
-                </div>
-              </fieldset>
               <fieldset class="grades-entry-field grades-entry-halfyear-field is-wide">
                 <legend>Halbjahr</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Halbjahr">
@@ -15662,6 +15682,7 @@
               this.updateSidebarGradePrivacyToggleState();
               this.updateSidebarGradeNameOrderToggleState();
               this.updateSidebarGradePrintButtonState();
+              this.updateSidebarGradeSimulationButtonState();
               return;
             }
             const normalizedSubview = this.normalizeGradesSubView(this.gradesSubView);
@@ -15721,6 +15742,7 @@
                 this.updateSidebarGradePrivacyToggleState();
                 this.updateSidebarGradeNameOrderToggleState();
                 this.updateSidebarGradePrintButtonState();
+                this.updateSidebarGradeSimulationButtonState();
                 return;
               }
               this.renderGradesEntryView(course, students, groupedAssessments);
@@ -15738,6 +15760,7 @@
                 this.updateSidebarGradePrivacyToggleState();
                 this.updateSidebarGradeNameOrderToggleState();
                 this.updateSidebarGradePrintButtonState();
+                this.updateSidebarGradeSimulationButtonState();
                 return;
               }
               this.renderGradesOverview(course, students, groupedAssessments);
@@ -15747,6 +15770,7 @@
             this.updateSidebarGradePrivacyToggleState();
             this.updateSidebarGradeNameOrderToggleState();
             this.updateSidebarGradePrintButtonState();
+            this.updateSidebarGradeSimulationButtonState();
           }
 
           isGradeCategoryExpanded(courseId, categoryId, period = "year") {
@@ -16158,7 +16182,12 @@
           handleGradeNameOrderToggleRequest(event = null) {
             event?.preventDefault?.();
             event?.stopPropagation?.();
-            if (!this.isGradesTopTabActive() || this.normalizeGradesSubView(this.gradesSubView) !== "overview") {
+            if (!this.isGradesTopTabActive()) {
+              this.updateSidebarGradeNameOrderToggleState();
+              return;
+            }
+            const subView = this.normalizeGradesSubView(this.gradesSubView);
+            if (subView !== "overview" && subView !== "entry") {
               this.updateSidebarGradeNameOrderToggleState();
               return;
             }
@@ -16167,9 +16196,15 @@
               return;
             }
             this.activeGradeOverrideContext = null;
-            this.gradesOverviewNameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder) === "first"
-              ? "last"
-              : "first";
+            if (subView === "entry") {
+              this.gradesEntryNameOrder = normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "first"
+                ? "last"
+                : "first";
+            } else {
+              this.gradesOverviewNameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder) === "first"
+                ? "last"
+                : "first";
+            }
             this.renderGradesView();
           }
 
@@ -16187,6 +16222,524 @@
             this.printGradesOverview();
           }
 
+          getGradeSimulationCourseContext() {
+            const isGradesOverview = this.isGradesTopTabActive()
+              && this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const year = this.activeSchoolYear;
+            const course = year
+              ? this.store.listCourses(year.id).find((item) => Number(item.id) === Number(this.selectedCourseId) && this.courseAllowsGrades(item))
+              : null;
+            const courseId = Number(course?.id || 0);
+            const students = courseId ? this.store.listGradeStudents(courseId) : [];
+            const categories = courseId ? this.getGradesEntryStructureCategories(courseId) : [];
+            const hasCompleteStructure = categories.some((category) => (
+              Number(category?.id || 0) > 0
+              && Array.isArray(category?.subcategories)
+              && category.subcategories.some((subcategory) => Number(subcategory?.id || 0) > 0)
+            ));
+            return {
+              isGradesOverview,
+              course,
+              students,
+              categories,
+              hasCompleteStructure,
+              ready: Boolean(
+                isGradesOverview
+                && !this.locked
+                && course
+                && this.isGradeVaultUnlocked()
+                && this.isGradeCourseLoaded(courseId)
+                && students.length > 0
+                && hasCompleteStructure
+              )
+            };
+          }
+
+          shouldShowSidebarGradeActions() {
+            if (!this.isGradesTopTabActive() || this.currentView !== "grades") {
+              return false;
+            }
+            const subView = this.normalizeGradesSubView(this.gradesSubView);
+            return subView === "overview" || subView === "entry";
+          }
+
+          updateSidebarGradeSimulationButtonState() {
+            const actions = this.refs.sidebarGradePrivacyActions;
+            const section = this.refs.sidebarGradeSimulationSection;
+            const button = this.refs.sidebarGradeSimulationBtn;
+            if (!actions || !button) {
+              return;
+            }
+            const isGradesContext = this.isGradesTopTabActive();
+            const isGradesOverview = isGradesContext
+              && this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const context = this.getGradeSimulationCourseContext();
+            actions.hidden = !this.shouldShowSidebarGradeActions();
+            if (section) {
+              section.hidden = !isGradesOverview;
+            }
+            button.disabled = !context.ready;
+            button.title = this.locked
+              ? "Simulation gesperrt"
+              : (
+                context.ready
+                  ? "Warnungen (Simulation)"
+                  : "Simulation in der entsperrten Kursübersicht verfügbar"
+              );
+          }
+
+          handleGradeSimulationOpenRequest(event = null) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            if (!this.getGradeSimulationCourseContext().ready) {
+              this.updateSidebarGradeSimulationButtonState();
+              return;
+            }
+            if (!this.commitVisibleGradeInputs()) {
+              this.updateSidebarGradeSimulationButtonState();
+              return;
+            }
+            this.openGradeSimulationDialog();
+          }
+
+          closeGradeSimulationDialog() {
+            const dialog = this.refs.gradeSimulationDialog;
+            if (dialog && typeof dialog.close === "function" && dialog.open) {
+              dialog.close();
+            }
+          }
+
+          buildDefaultGradeSimulationState(courseId) {
+            const courseKey = Number(courseId || 0);
+            const selection = this.getLeastUsedGradeAssessmentSelection(courseKey);
+            return {
+              courseId: courseKey || null,
+              value: 0,
+              halfYear: this.getDefaultGradeAssessmentHalfYear(),
+              categoryId: selection.categoryId,
+              subcategoryId: selection.subcategoryId
+            };
+          }
+
+          openGradeSimulationDialog() {
+            const context = this.getGradeSimulationCourseContext();
+            if (!context.ready || !context.course) {
+              return;
+            }
+            this.gradeSimulationState = this.buildDefaultGradeSimulationState(context.course.id);
+            this.renderGradeSimulationDialogControls();
+            this.renderGradeSimulationResults();
+            const dialog = this.refs.gradeSimulationDialog;
+            if (!dialog) {
+              return;
+            }
+            if (typeof dialog.showModal === "function") {
+              dialog.showModal();
+            } else {
+              dialog.setAttribute("open", "");
+            }
+            requestAnimationFrame(() => {
+              this.refs.gradeSimulationValue?.focus({ preventScroll: true });
+            });
+          }
+
+          getGradeSimulationSelectedCategory(categories = []) {
+            const categoryId = Number(this.gradeSimulationState?.categoryId || 0);
+            return categories.find((category) => Number(category?.id || 0) === categoryId)
+              || categories.find((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0)
+              || null;
+          }
+
+          getGradeSimulationSelectedSubcategory(category = null) {
+            const subcategoryId = Number(this.gradeSimulationState?.subcategoryId || 0);
+            const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
+            return subcategories.find((subcategory) => Number(subcategory?.id || 0) === subcategoryId)
+              || subcategories.find((subcategory) => Number(subcategory?.id || 0) > 0)
+              || null;
+          }
+
+          renderGradeSimulationDialogControls() {
+            const context = this.getGradeSimulationCourseContext();
+            const categories = context.categories;
+            const category = this.getGradeSimulationSelectedCategory(categories);
+            const subcategory = this.getGradeSimulationSelectedSubcategory(category);
+            this.gradeSimulationState = {
+              ...this.gradeSimulationState,
+              courseId: Number(context.course?.id || this.gradeSimulationState?.courseId || 0) || null,
+              categoryId: Number(category?.id || 0) || null,
+              subcategoryId: Number(subcategory?.id || 0) || null,
+              halfYear: normalizeGradeHalfYear(this.gradeSimulationState?.halfYear),
+              value: clamp(Math.round(Number(this.gradeSimulationState?.value || 0)), 0, 15)
+            };
+            if (this.refs.gradeSimulationValue) {
+              this.refs.gradeSimulationValue.innerHTML = Array.from({ length: 16 }, (_item, index) => {
+                const value = index;
+                return `<option value="${value}">${formatGradeInteger(value)} Punkte</option>`;
+              }).join("");
+              this.refs.gradeSimulationValue.value = String(this.gradeSimulationState.value);
+            }
+            if (this.refs.gradeSimulationHalfYear) {
+              this.refs.gradeSimulationHalfYear.value = this.gradeSimulationState.halfYear;
+            }
+            if (this.refs.gradeSimulationCategory) {
+              this.refs.gradeSimulationCategory.innerHTML = categories.map((item) => (
+                `<option value="${Number(item.id) || 0}">${escapeHtml(item.name || "Kategorie")}</option>`
+              )).join("");
+              this.refs.gradeSimulationCategory.value = String(this.gradeSimulationState.categoryId || "");
+            }
+            if (this.refs.gradeSimulationSubcategory) {
+              const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
+              this.refs.gradeSimulationSubcategory.innerHTML = subcategories.map((item) => (
+                `<option value="${Number(item.id) || 0}">${escapeHtml(item.name || "Unterkategorie")}</option>`
+              )).join("");
+              this.refs.gradeSimulationSubcategory.value = String(this.gradeSimulationState.subcategoryId || "");
+            }
+          }
+
+          readGradeSimulationStateFromControls() {
+            const parsedValue = parseGradeValue(this.refs.gradeSimulationValue?.value, 15);
+            return {
+              ...this.gradeSimulationState,
+              value: parsedValue.valid && parsedValue.value !== null ? parsedValue.value : 0,
+              halfYear: normalizeGradeHalfYear(this.refs.gradeSimulationHalfYear?.value || this.gradeSimulationState?.halfYear),
+              categoryId: Number(this.refs.gradeSimulationCategory?.value || 0) || null,
+              subcategoryId: Number(this.refs.gradeSimulationSubcategory?.value || 0) || null
+            };
+          }
+
+          handleGradeSimulationControlChange() {
+            this.gradeSimulationState = this.readGradeSimulationStateFromControls();
+            this.renderGradeSimulationResults();
+          }
+
+          handleGradeSimulationCategoryChange() {
+            const context = this.getGradeSimulationCourseContext();
+            const state = this.readGradeSimulationStateFromControls();
+            const category = context.categories.find((item) => Number(item.id) === Number(state.categoryId || 0)) || null;
+            const selection = category
+              ? this.getLeastUsedGradeAssessmentSelection(state.courseId || context.course?.id, category.id)
+              : { subcategoryId: null };
+            this.gradeSimulationState = {
+              ...state,
+              subcategoryId: selection.subcategoryId
+            };
+            this.renderGradeSimulationDialogControls();
+            this.renderGradeSimulationResults();
+          }
+
+          getLeastUsedGradeAssessmentSelection(courseId = this.selectedCourseId, preferredCategoryId = null) {
+            const categories = this.getGradesEntryStructureCategories(courseId);
+            if (!categories.length) {
+              return {
+                categoryId: null,
+                subcategoryId: null
+              };
+            }
+            const assessmentCountsByCategory = new Map();
+            const assessmentCountsBySubcategory = new Map();
+            this.store.listGradeAssessments(courseId).forEach((assessment) => {
+              const categoryId = Number(assessment.categoryId) || 0;
+              const subcategoryId = Number(assessment.subcategoryId) || 0;
+              if (!categoryId || !subcategoryId) {
+                return;
+              }
+              assessmentCountsByCategory.set(categoryId, (assessmentCountsByCategory.get(categoryId) || 0) + 1);
+              const subcategoryKey = `${categoryId}:${subcategoryId}`;
+              assessmentCountsBySubcategory.set(subcategoryKey, (assessmentCountsBySubcategory.get(subcategoryKey) || 0) + 1);
+            });
+            const eligibleCategories = preferredCategoryId
+              ? categories.filter((category) => Number(category.id) === Number(preferredCategoryId))
+              : categories;
+            let bestCategory = eligibleCategories[0] || categories[0] || null;
+            if (!preferredCategoryId) {
+              eligibleCategories.forEach((category) => {
+                const currentCount = assessmentCountsByCategory.get(Number(category.id) || 0) || 0;
+                const bestCount = assessmentCountsByCategory.get(Number(bestCategory?.id) || 0) || 0;
+                if (currentCount < bestCount) {
+                  bestCategory = category;
+                }
+              });
+            }
+            const subcategories = Array.isArray(bestCategory?.subcategories) ? bestCategory.subcategories : [];
+            let bestSubcategory = subcategories[0] || null;
+            subcategories.forEach((subcategory) => {
+              const categoryId = Number(bestCategory?.id) || 0;
+              const currentCount = assessmentCountsBySubcategory.get(`${categoryId}:${Number(subcategory.id) || 0}`) || 0;
+              const bestCount = assessmentCountsBySubcategory.get(`${categoryId}:${Number(bestSubcategory?.id) || 0}`) || 0;
+              if (currentCount < bestCount) {
+                bestSubcategory = subcategory;
+              }
+            });
+            return {
+              categoryId: Number(bestCategory?.id || 0) || null,
+              subcategoryId: Number(bestSubcategory?.id || 0) || null
+            };
+          }
+
+          gradeSimulationMatches(simulation, courseId, categoryId, subcategoryId, period) {
+            return Boolean(
+              simulation
+              && Number(simulation.courseId || 0) === Number(courseId || 0)
+              && Number(simulation.categoryId || 0) === Number(categoryId || 0)
+              && Number(simulation.subcategoryId || 0) === Number(subcategoryId || 0)
+              && normalizeGradeHalfYear(simulation.halfYear) === normalizeGradeHalfYear(period)
+            );
+          }
+
+          calculateSimulatedComputedGradeForStudentInSubcategoryPeriod(studentId, courseId, categoryId, subcategoryId, period, simulation) {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            if (normalizedPeriod === "year") {
+              const h1 = this.calculateSimulatedComputedGradeForStudentInSubcategoryPeriod(studentId, courseId, categoryId, subcategoryId, "h1", simulation);
+              const h2 = this.calculateSimulatedComputedGradeForStudentInSubcategoryPeriod(studentId, courseId, categoryId, subcategoryId, "h2", simulation);
+              if (h1 !== null && h2 !== null) {
+                return clamp((h1 + h2) / 2, 0, 15);
+              }
+              if (h1 !== null) {
+                return clamp(h1, 0, 15);
+              }
+              if (h2 !== null) {
+                return clamp(h2, 0, 15);
+              }
+              return null;
+            }
+            const studentKey = Number(studentId);
+            let weightedSum = 0;
+            let weightSum = 0;
+            this.store.listGradeAssessments(courseId)
+              .filter((assessment) => (
+                Number(assessment.categoryId) === Number(categoryId)
+                && Number(assessment.subcategoryId) === Number(subcategoryId)
+                && isWeightedGradeAssessmentMode(assessment.mode)
+                && normalizeGradeHalfYear(assessment.halfYear) === normalizedPeriod
+              ))
+              .forEach((assessment) => {
+                const entry = this.store.getGradeEntry(studentKey, assessment.id);
+                if (!entry || entry.value === null || entry.value === undefined) {
+                  return;
+                }
+                const weight = normalizeGradeNumber(assessment.weight, 1);
+                weightedSum += Number(entry.value) * weight;
+                weightSum += weight;
+              });
+            if (this.gradeSimulationMatches(simulation, courseId, categoryId, subcategoryId, normalizedPeriod)) {
+              weightedSum += Number(simulation.value || 0);
+              weightSum += 1;
+            }
+            if (weightSum <= 0) {
+              return null;
+            }
+            return clamp(weightedSum / weightSum, 0, 15);
+          }
+
+          calculateSimulatedGradeForStudentInSubcategoryPeriod(studentId, courseId, categoryId, subcategoryId, period, simulation) {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            const override = this.store.getGradeOverride(studentId, courseId, "subcategory", categoryId, subcategoryId, normalizedPeriod);
+            if (override) {
+              return clamp(Number(override.value) || 0, 0, 15);
+            }
+            return this.calculateSimulatedComputedGradeForStudentInSubcategoryPeriod(
+              studentId,
+              courseId,
+              categoryId,
+              subcategoryId,
+              normalizedPeriod,
+              simulation
+            );
+          }
+
+          calculateSimulatedComputedGradeForStudentInCategoryPeriod(studentId, courseId, categoryId, period, simulation) {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            if (normalizedPeriod === "year") {
+              const h1 = this.calculateSimulatedGradeForStudentInCategoryPeriod(studentId, courseId, categoryId, "h1", simulation);
+              const h2 = this.calculateSimulatedGradeForStudentInCategoryPeriod(studentId, courseId, categoryId, "h2", simulation);
+              if (h1 !== null && h2 !== null) {
+                return clamp((h1 + h2) / 2, 0, 15);
+              }
+              if (h1 !== null) {
+                return clamp(h1, 0, 15);
+              }
+              if (h2 !== null) {
+                return clamp(h2, 0, 15);
+              }
+              return null;
+            }
+            const structure = this.store.getGradeStructure(courseId);
+            const category = (Array.isArray(structure.categories) ? structure.categories : [])
+              .find((item) => Number(item.id) === Number(categoryId));
+            if (!category) {
+              return null;
+            }
+            let weightedSum = 0;
+            let weightSum = 0;
+            (category.subcategories || []).forEach((subcategory) => {
+              const partial = this.calculateSimulatedGradeForStudentInSubcategoryPeriod(
+                studentId,
+                courseId,
+                category.id,
+                subcategory.id,
+                normalizedPeriod,
+                simulation
+              );
+              if (partial === null) {
+                return;
+              }
+              const weight = normalizeGradeNumber(subcategory.weight, 1);
+              weightedSum += partial * weight;
+              weightSum += weight;
+            });
+            if (weightSum <= 0) {
+              return null;
+            }
+            return clamp(weightedSum / weightSum, 0, 15);
+          }
+
+          calculateSimulatedGradeForStudentInCategoryPeriod(studentId, courseId, categoryId, period, simulation) {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            const override = this.store.getGradeOverride(studentId, courseId, "category", categoryId, null, normalizedPeriod);
+            if (override) {
+              return clamp(Number(override.value) || 0, 0, 15);
+            }
+            return this.calculateSimulatedComputedGradeForStudentInCategoryPeriod(studentId, courseId, categoryId, normalizedPeriod, simulation);
+          }
+
+          calculateSimulatedComputedGradeForStudentInCoursePeriod(studentId, courseId, period, simulation) {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            if (normalizedPeriod === "year") {
+              const h1 = this.calculateSimulatedGradeForStudentInCoursePeriod(studentId, courseId, "h1", simulation);
+              const h2 = this.calculateSimulatedGradeForStudentInCoursePeriod(studentId, courseId, "h2", simulation);
+              if (h1 !== null && h2 !== null) {
+                return clamp((h1 + h2) / 2, 0, 15);
+              }
+              if (h1 !== null) {
+                return clamp(h1, 0, 15);
+              }
+              if (h2 !== null) {
+                return clamp(h2, 0, 15);
+              }
+              return null;
+            }
+            const structure = this.store.getGradeStructure(courseId);
+            let weightedSum = 0;
+            let weightSum = 0;
+            (Array.isArray(structure.categories) ? structure.categories : []).forEach((category) => {
+              const partial = this.calculateSimulatedGradeForStudentInCategoryPeriod(studentId, courseId, category.id, normalizedPeriod, simulation);
+              if (partial === null) {
+                return;
+              }
+              const weight = normalizeGradeNumber(category.weight, 1);
+              weightedSum += partial * weight;
+              weightSum += weight;
+            });
+            if (weightSum <= 0) {
+              return null;
+            }
+            return clamp(weightedSum / weightSum, 0, 15);
+          }
+
+          calculateSimulatedGradeForStudentInCoursePeriod(studentId, courseId, period, simulation) {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            const override = this.store.getGradeOverride(studentId, courseId, "course", null, null, normalizedPeriod);
+            if (override) {
+              return clamp(Number(override.value) || 0, 0, 15);
+            }
+            const computed = this.calculateSimulatedComputedGradeForStudentInCoursePeriod(studentId, courseId, normalizedPeriod, simulation);
+            if (computed === null) {
+              return null;
+            }
+            return clamp(Math.round(computed * 10) / 10, 0, 15);
+          }
+
+          hasGradeSimulationBlockingOverride(studentId, courseId, simulation) {
+            const period = normalizeGradeHalfYear(simulation?.halfYear);
+            return Boolean(
+              this.store.getGradeOverride(studentId, courseId, "course", null, null, "year")
+              || this.store.getGradeOverride(studentId, courseId, "course", null, null, period)
+              || this.store.getGradeOverride(studentId, courseId, "category", simulation?.categoryId, null, period)
+              || this.store.getGradeOverride(studentId, courseId, "subcategory", simulation?.categoryId, simulation?.subcategoryId, period)
+            );
+          }
+
+          formatGradeSimulationDelta(delta) {
+            if (delta === null || delta === undefined || !Number.isFinite(Number(delta))) {
+              return "—";
+            }
+            const rounded = Math.round(Number(delta) * 10) / 10;
+            if (Math.abs(rounded) < 0.0000001) {
+              return "0";
+            }
+            const prefix = rounded > 0 ? "+" : "";
+            return `${prefix}${formatPedagogicalGradeInput(rounded)}`;
+          }
+
+          renderGradeSimulationResults() {
+            const root = this.refs.gradeSimulationResult;
+            if (!root) {
+              return;
+            }
+            const context = this.getGradeSimulationCourseContext();
+            if (!context.ready || !context.course) {
+              root.innerHTML = `<p class="muted">Simulation in der entsperrten Kursübersicht verfügbar.</p>`;
+              return;
+            }
+            const simulation = this.gradeSimulationState || this.buildDefaultGradeSimulationState(context.course.id);
+            const category = context.categories.find((item) => Number(item.id) === Number(simulation.categoryId || 0)) || null;
+            const subcategory = (Array.isArray(category?.subcategories) ? category.subcategories : [])
+              .find((item) => Number(item.id) === Number(simulation.subcategoryId || 0)) || null;
+            const rows = this.getSortedGradeStudentsForNameOrder(context.students, this.gradesOverviewNameOrder)
+              .map((student) => {
+                const currentValue = this.store.calculateGradeForStudentInCoursePeriod(student.id, context.course.id, "year");
+                const simulatedValue = this.calculateSimulatedGradeForStudentInCoursePeriod(student.id, context.course.id, "year", simulation);
+                const delta = currentValue === null || currentValue === undefined || simulatedValue === null || simulatedValue === undefined
+                  ? null
+                  : Math.round((Number(simulatedValue) - Number(currentValue)) * 10) / 10;
+                const blockingOverride = this.hasGradeSimulationBlockingOverride(student.id, context.course.id, simulation);
+                return {
+                  student,
+                  currentValue,
+                  simulatedValue,
+                  delta,
+                  blockingOverride
+                };
+              });
+            const periodLabel = getGradePeriodLabel(simulation.halfYear);
+            const summary = `Simulierter Einzelnoteneintrag: ${formatGradeInteger(simulation.value)} Punkte · ${periodLabel} · ${category?.name || "Kategorie"} / ${subcategory?.name || "Unterkategorie"} · Anzeige: Jahresnote`;
+            root.innerHTML = `
+        <div class="grade-simulation-summary">${escapeHtml(summary)}</div>
+        <div class="grade-simulation-table-wrap">
+          <table class="grade-simulation-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Jahresnote aktuell</th>
+                <th>Jahresnote Simulation</th>
+                <th>Veränderung</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((row) => {
+                const studentName = this.getGradeStudentOverviewDisplayName(row.student);
+                const deltaClass = row.delta > 0 ? " is-positive" : row.delta < 0 ? " is-negative" : "";
+                const simulatedLowClass = isGradeValueBelowThreshold(row.simulatedValue, this.gradeDeficitThreshold) ? " is-grade-low" : "";
+                const overrideBadge = row.blockingOverride
+                  ? `<span class="grade-simulation-override">manuell gesetzt</span>`
+                  : "";
+                return `
+                  <tr>
+                    <td>${escapeHtml(studentName)}</td>
+                    <td><span class="grade-total-value">${this.formatDisplayedGrade(row.currentValue)}</span></td>
+                    <td><span class="grade-total-value${simulatedLowClass}">${this.formatDisplayedGrade(row.simulatedValue)}</span></td>
+                    <td><span class="grade-simulation-delta${deltaClass}">${escapeHtml(this.formatGradeSimulationDelta(row.delta))}</span>${overrideBadge}</td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        </div>
+      `;
+          }
+
           togglePrivacyFocusedGradeStudent(studentId) {
             const nextStudentId = Number(studentId || 0) || null;
             this.privacyFocusedGradeStudentId = (
@@ -16201,6 +16754,7 @@
 
           updateSidebarGradePrivacyToggleState() {
             const actions = this.refs.sidebarGradePrivacyActions;
+            const section = this.refs.sidebarGradePrivacySection;
             const button = this.refs.sidebarGradePrivacyToggleBtn;
             if (!actions || !button) {
               return;
@@ -16212,7 +16766,10 @@
             const isActive = Boolean(this.privacyFocusedGradeStudentId);
             const hasPreferredStudent = isGradesOverview && Boolean(this.getPreferredGradePrivacyStudentId());
             const canToggle = isGradesOverview && !this.locked && (isActive || hasPreferredStudent);
-            actions.hidden = !isGradesContext;
+            actions.hidden = !this.shouldShowSidebarGradeActions();
+            if (section) {
+              section.hidden = !isGradesOverview;
+            }
             button.disabled = !canToggle;
             button.classList.toggle("is-active", isActive);
             button.classList.toggle("is-inactive", !isActive);
@@ -16238,20 +16795,27 @@
 
           updateSidebarGradeNameOrderToggleState() {
             const actions = this.refs.sidebarGradePrivacyActions;
+            const section = this.refs.sidebarGradeSortSection;
             const button = this.refs.sidebarGradeNameOrderToggleBtn;
             if (!actions || !button) {
               return;
             }
             const isGradesContext = this.isGradesTopTabActive();
-            const isGradesOverview = isGradesContext
-              && this.currentView === "grades"
-              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
-            const nameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder);
+            const subView = this.normalizeGradesSubView(this.gradesSubView);
+            const isGradesOverview = isGradesContext && this.currentView === "grades" && subView === "overview";
+            const isGradesEntry = isGradesContext && this.currentView === "grades" && subView === "entry";
+            const isAvailable = isGradesOverview || isGradesEntry;
+            const nameOrder = normalizeGradeStudentNameOrder(
+              isGradesEntry ? this.gradesEntryNameOrder : this.gradesOverviewNameOrder
+            );
             const currentNameOrderLabel = nameOrder === "first" ? "Vorname Nachname" : "Nachname, Vorname";
             const nextNameOrderLabel = nameOrder === "first" ? "Nachname, Vorname" : "Vorname Nachname";
             const isLastNameOrder = nameOrder === "last";
-            actions.hidden = !isGradesContext;
-            button.disabled = !isGradesOverview || this.locked;
+            actions.hidden = !this.shouldShowSidebarGradeActions();
+            if (section) {
+              section.hidden = !isAvailable;
+            }
+            button.disabled = !isAvailable || this.locked;
             button.classList.toggle("is-active", isLastNameOrder);
             button.classList.toggle("is-inactive", !isLastNameOrder);
             button.setAttribute("aria-pressed", isLastNameOrder ? "true" : "false");
@@ -16262,7 +16826,7 @@
             button.title = this.locked
               ? "Namenssortierung gesperrt"
               : (
-                isGradesOverview
+                isAvailable
                   ? `Namenssortierung auf ${nextNameOrderLabel} umstellen`
                   : "Namenssortierung in der Kursübersicht verfügbar"
               );
@@ -16270,6 +16834,7 @@
 
           updateSidebarGradePrintButtonState() {
             const actions = this.refs.sidebarGradePrivacyActions;
+            const section = this.refs.sidebarGradePrintSection;
             const button = this.refs.sidebarGradePrintBtn;
             if (!actions || !button) {
               return;
@@ -16285,7 +16850,10 @@
               && this.refs.gradesTable
               && this.refs.gradesTable.querySelector("table")
             );
-            actions.hidden = !isGradesContext;
+            actions.hidden = !this.shouldShowSidebarGradeActions();
+            if (section) {
+              section.hidden = !isGradesOverview;
+            }
             button.disabled = this.locked || !hasPrintableOverview;
             button.title = this.locked
               ? "Drucken gesperrt"
@@ -22347,6 +22915,7 @@
             this.updateSidebarGradePrivacyToggleState();
             this.updateSidebarGradeNameOrderToggleState();
             this.updateSidebarGradePrintButtonState();
+            this.updateSidebarGradeSimulationButtonState();
             this.renderSidebarFooterActions();
             if (this.refs.mainPane) {
               const showHeader = !this.locked && isWeek;

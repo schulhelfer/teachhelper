@@ -27,7 +27,7 @@
             <ul id="sidebar-course-list" class="sidebar-list"></ul>
             <div id="sidebar-grade-privacy-actions" class="sidebar-grade-privacy-actions" hidden>
               <div class="sidebar-grade-privacy-divider" aria-hidden="true"></div>
-              <div class="sidebar-grade-action-section">
+              <div id="sidebar-grade-privacy-section" class="sidebar-grade-action-section">
                 <div class="sidebar-grade-action-title">Datenschutzmodus</div>
                 <button id="sidebar-grade-privacy-toggle-btn" class="sidebar-grade-privacy-toggle is-inactive"
                   type="button" data-grade-privacy-toggle="1" aria-label="Datenschutzmodus aktivieren"
@@ -37,7 +37,7 @@
                   </span>
                 </button>
               </div>
-              <div class="sidebar-grade-action-section">
+              <div id="sidebar-grade-sort-section" class="sidebar-grade-action-section">
                 <div class="sidebar-grade-action-title">Sortierung</div>
                 <div class="sidebar-grade-sort-control">
                   <span class="sidebar-grade-sort-option sidebar-grade-sort-option-first" aria-hidden="true">Vorname<br>Nachname</span>
@@ -52,13 +52,17 @@
                   <span class="sidebar-grade-sort-option sidebar-grade-sort-option-last" aria-hidden="true">Nachname,<br>Vorname</span>
                 </div>
               </div>
-              <div class="sidebar-grade-action-section sidebar-grade-action-section-print">
+              <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print">
                 <div class="sidebar-grade-action-title">Drucken</div>
                 <button id="sidebar-grade-print-btn" class="sidebar-grade-print-btn" type="button"
                   data-grade-print-overview="1" aria-label="Kursnoten drucken"
                   title="Spalten einklappen, um ihren Druck zu unterbinden" disabled>
                   <span class="sidebar-grade-print-icon" aria-hidden="true">🖨️</span>
                 </button>
+              </div>
+              <div id="sidebar-grade-simulation-section" class="sidebar-grade-action-section sidebar-grade-action-section-simulation">
+                <button id="sidebar-grade-simulation-btn" class="sidebar-grade-simulation-btn" type="button"
+                  aria-label="Warnungen (Simulation)" title="Warnungen (Simulation)" disabled>Warnungen (Simulation)</button>
               </div>
             </div>
           </div>
@@ -677,6 +681,41 @@
             <span class="dialog-grow"></span>
             <button type="submit" id="message-dialog-ok">OK</button>
           </div>
+        </form>
+      </dialog>
+
+      <dialog id="grade-simulation-dialog" class="app-dialog grade-simulation-dialog"
+        aria-labelledby="grade-simulation-dialog-title">
+        <form id="grade-simulation-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="grade-simulation-dialog-title" class="settings-panel-title">Warnungen (Simulation)</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="grade-simulation-dialog-close" class="ghost dialog-icon-button"
+                aria-label="Schließen" title="Schließen">❌</button>
+            </div>
+          </div>
+          <div class="grade-simulation-controls">
+            <label>
+              Simulierte Note
+              <select id="grade-simulation-value" autocomplete="off"></select>
+            </label>
+            <label>
+              Halbjahr
+              <select id="grade-simulation-halfyear" autocomplete="off">
+                <option value="h1">HJ1</option>
+                <option value="h2">HJ2</option>
+              </select>
+            </label>
+            <label>
+              Kategorie
+              <select id="grade-simulation-category" autocomplete="off"></select>
+            </label>
+            <label>
+              Unterkategorie
+              <select id="grade-simulation-subcategory" autocomplete="off"></select>
+            </label>
+          </div>
+          <div id="grade-simulation-result" class="grade-simulation-result" aria-live="polite"></div>
         </form>
       </dialog>
 
