@@ -2361,13 +2361,19 @@
           return formatGradeDisplayForSystem(numeric, GRADE_DISPLAY_SYSTEM_DEFAULT);
         }
 
+        function getRoundedGradeDisplayValue(value) {
+          if (value === null || value === undefined || value === "") {
+            return null;
+          }
+          return clamp(Math.round(Number(value) || 0), 0, 15);
+        }
+
         function formatGradeDisplayForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT) {
           void displaySystem;
-          if (value === null || value === undefined || value === "") {
+          const rounded = getRoundedGradeDisplayValue(value);
+          if (rounded === null) {
             return "—";
           }
-          const numeric = clamp(Number(value) || 0, 0, 15);
-          const rounded = clamp(Math.round(numeric), 0, 15);
           return formatGradeInteger(rounded);
         }
 
@@ -16691,9 +16697,11 @@
               .map((student) => {
                 const currentValue = this.store.calculateGradeForStudentInCoursePeriod(student.id, context.course.id, "year");
                 const simulatedValue = this.calculateSimulatedGradeForStudentInCoursePeriod(student.id, context.course.id, "year", simulation);
-                const delta = currentValue === null || currentValue === undefined || simulatedValue === null || simulatedValue === undefined
+                const currentDisplayValue = getRoundedGradeDisplayValue(currentValue);
+                const simulatedDisplayValue = getRoundedGradeDisplayValue(simulatedValue);
+                const delta = currentDisplayValue === null || simulatedDisplayValue === null
                   ? null
-                  : Math.round((Number(simulatedValue) - Number(currentValue)) * 10) / 10;
+                  : simulatedDisplayValue - currentDisplayValue;
                 const blockingOverride = this.hasGradeSimulationBlockingOverride(student.id, context.course.id, simulation);
                 return {
                   student,
