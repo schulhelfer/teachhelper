@@ -5682,7 +5682,9 @@
             this.gradeCollapsedSubcategoryKeys = new Set();
             this.pendingGradeTableMotion = null;
             this.pendingGradesEntryCourseAutoSelect = true;
-            this.pendingGradesOverviewAutoScrollCourseId = null;
+            this.pendingGradesOverviewAutoScroll = null;
+            this.pendingGradesOverviewAutoScrollFrame = 0;
+            this.pendingGradesOverviewAutoScrollFrameType = "";
             this.gradeVaultSession = createInitialGradeVaultSessionState();
             this.pendingWeekGradeAssessmentLoadKey = "";
             this.gradesOverviewAssessmentSpotlight = null;
@@ -11037,6 +11039,7 @@
             this.resetInlineWeekBlockTopicEdit();
             if (viewName !== "grades") {
               this.clearGradesOverviewAssessmentSpotlight();
+              this.clearPendingGradesOverviewAutoScroll();
             }
             if (viewName !== "grades") {
               this.clearPrivacyFocusedGradeStudent();
@@ -12785,11 +12788,11 @@
               if (courseLink) {
                 const courseId = Number(courseLink.dataset.courseId || 0);
                 if (courseId) {
-                  this.clearGradesOverviewAssessmentSpotlight();
-                  this.selectedCourseId = courseId;
                   if (this.isGradesTopTabActive()) {
-                    this.switchGradesSubView("overview");
+                    this.openGradesOverviewForCourse(courseId);
                   } else {
+                    this.clearGradesOverviewAssessmentSpotlight();
+                    this.selectedCourseId = courseId;
                     this.switchView("course");
                   }
                 }
@@ -13449,6 +13452,9 @@
               this.positionGradePrivacyNavigationOverlay();
             });
             this.refs.gradesTableScroll?.addEventListener("scroll", () => {
+              if (this.pendingGradesOverviewAutoScroll) {
+                this.clearPendingGradesOverviewAutoScroll();
+              }
               this.positionGradePrivacyNavigationOverlay();
             });
             this.refs.gradesPrivacyOverlay?.addEventListener("pointerdown", (event) => {
@@ -19841,32 +19847,58 @@
             return shell;
           }
 
-          getGradesOverviewAutoScrollAssessmentId(course, groupedAssessments, options = {}) {
+          buildGradesFullyExpandedTableModel(course, groupedAssessments, options = {}) {
+            const collapsedPeriodKeys = this.gradeCollapsedPeriodKeys;
+            const collapsedCategoryKeys = this.gradeCollapsedCategoryKeys;
+            const collapsedSubcategoryKeys = this.gradeCollapsedSubcategoryKeys;
+            this.gradeCollapsedPeriodKeys = new Set();
+            this.gradeCollapsedCategoryKeys = new Set();
+            this.gradeCollapsedSubcategoryKeys = new Set();
+            try {
+              return this.buildGradesTableModel(course, groupedAssessments, options);
+            } finally {
+              this.gradeCollapsedPeriodKeys = collapsedPeriodKeys;
+              this.gradeCollapsedCategoryKeys = collapsedCategoryKeys;
+              this.gradeCollapsedSubcategoryKeys = collapsedSubcategoryKeys;
+            }
+          }
+
+          getGradesOverviewAutoScrollTarget(course, groupedAssessments, options = {}) {
             if (!course) {
               return null;
             }
-            const model = this.buildGradesTableModel(course, groupedAssessments, options);
+            const model = this.buildGradesFullyExpandedTableModel(course, groupedAssessments, {
+              ...options,
+              includeAddColumns: false
+            });
             const categoryTargets = new Map();
             model.columns.forEach((column, columnIndex) => {
               if (column.type !== "assessment" || !column.assessment) {
                 return;
               }
               const categoryId = Number(column.categoryId || 0);
+              const subcategoryId = Number(column.subcategoryId || 0);
               const period = normalizeGradePeriod(column.period || "");
               const assessmentId = Number(column.assessment.id || 0);
-              if (!categoryId || !period || !assessmentId) {
+              if (!categoryId || !subcategoryId || (period !== "h1" && period !== "h2") || !assessmentId) {
                 return;
               }
               const key = `${period}:${categoryId}`;
               const previous = categoryTargets.get(key) || {
                 count: 0,
                 lastColumnIndex: -1,
-                assessmentId: null
+                assessmentId: null,
+                period,
+                categoryId,
+                subcategoryId
               };
               categoryTargets.set(key, {
                 count: previous.count + 1,
                 lastColumnIndex: columnIndex,
-                assessmentId
+                assessmentId,
+                period,
+                categoryId,
+                subcategoryId
               });
             });
             let bestTarget = null;
@@ -19879,7 +19911,17 @@
                 bestTarget = target;
               }
             });
-            return bestTarget?.assessmentId || null;
+            return bestTarget
+              ? {
+                courseId: Number(course.id || 0),
+                assessmentId: Number(bestTarget.assessmentId || 0),
+                period: bestTarget.period,
+                categoryId: Number(bestTarget.categoryId || 0),
+                subcategoryId: Number(bestTarget.subcategoryId || 0),
+                count: Number(bestTarget.count || 0),
+                lastColumnIndex: Number(bestTarget.lastColumnIndex || 0)
+              }
+              : null;
           }
 
           scrollGradesOverviewAssessmentColumnToRight(assessmentId) {
@@ -19905,17 +19947,126 @@
             return true;
           }
 
-          applyPendingGradesOverviewAutoScroll(course, groupedAssessments, options = {}) {
+          requestGradesOverviewAutoScrollFrame(callback) {
+            if (typeof requestAnimationFrame === "function") {
+              this.pendingGradesOverviewAutoScrollFrameType = "raf";
+              this.pendingGradesOverviewAutoScrollFrame = requestAnimationFrame(callback);
+              return;
+            }
+            if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+              this.pendingGradesOverviewAutoScrollFrameType = "timeout";
+              this.pendingGradesOverviewAutoScrollFrame = window.setTimeout(callback, 0);
+              return;
+            }
+            this.pendingGradesOverviewAutoScrollFrame = 0;
+            this.pendingGradesOverviewAutoScrollFrameType = "";
+            callback();
+          }
+
+          cancelPendingGradesOverviewAutoScrollFrame() {
+            const frameId = Number(this.pendingGradesOverviewAutoScrollFrame || 0);
+            const frameType = String(this.pendingGradesOverviewAutoScrollFrameType || "");
+            this.pendingGradesOverviewAutoScrollFrame = 0;
+            this.pendingGradesOverviewAutoScrollFrameType = "";
+            if (!frameId) {
+              return;
+            }
+            if (frameType === "raf" && typeof cancelAnimationFrame === "function") {
+              cancelAnimationFrame(frameId);
+            } else if (frameType === "timeout" && typeof window !== "undefined" && typeof window.clearTimeout === "function") {
+              window.clearTimeout(frameId);
+            }
+          }
+
+          clearPendingGradesOverviewAutoScroll() {
+            this.pendingGradesOverviewAutoScroll = null;
+            this.cancelPendingGradesOverviewAutoScrollFrame();
+          }
+
+          resetGradesOverviewAutoScrollToLeft(courseId = null) {
+            const pending = this.pendingGradesOverviewAutoScroll;
+            const pendingCourseId = Number(pending?.courseId || 0);
+            const requestedCourseId = Number(courseId || 0);
+            if (!pendingCourseId || (requestedCourseId && pendingCourseId !== requestedCourseId)) {
+              return false;
+            }
+            const tableScroll = this.refs.gradesTableScroll;
+            this.clearPendingGradesOverviewAutoScroll();
+            if (!tableScroll) {
+              return false;
+            }
+            tableScroll.scrollLeft = 0;
+            return true;
+          }
+
+          expandGradesOverviewAutoScrollTarget(target = null) {
+            const courseKey = Number(target?.courseId || 0);
+            const categoryId = Number(target?.categoryId || 0);
+            const subcategoryId = Number(target?.subcategoryId || 0);
+            const period = normalizeGradeHalfYear(target?.period || "h1");
+            if (!courseKey || !categoryId || !subcategoryId) {
+              return false;
+            }
+            let changed = false;
+            if (this.gradeCollapsedPeriodKeys.delete(buildGradePeriodKey(courseKey, period))) {
+              changed = true;
+            }
+            if (this.gradeCollapsedCategoryKeys.delete(buildGradeCategoryKey(courseKey, categoryId, period))) {
+              changed = true;
+            }
+            if (this.gradeCollapsedSubcategoryKeys.delete(buildGradeSubcategoryKey(courseKey, categoryId, subcategoryId, period))) {
+              changed = true;
+            }
+            return changed;
+          }
+
+          preparePendingGradesOverviewAutoScroll(course, groupedAssessments, options = {}) {
             const courseId = Number(course?.id || 0);
-            if (!courseId || Number(this.pendingGradesOverviewAutoScrollCourseId || 0) !== courseId) {
-              return false;
+            const pendingCourseId = Number(this.pendingGradesOverviewAutoScroll?.courseId || 0);
+            if (!courseId || pendingCourseId !== courseId) {
+              return null;
             }
-            this.pendingGradesOverviewAutoScrollCourseId = null;
-            const assessmentId = this.getGradesOverviewAutoScrollAssessmentId(course, groupedAssessments, options);
-            if (!assessmentId) {
-              return false;
+            const target = this.getGradesOverviewAutoScrollTarget(course, groupedAssessments, options);
+            if (!target) {
+              this.resetGradesOverviewAutoScrollToLeft(courseId);
+              return null;
             }
-            return this.scrollGradesOverviewAssessmentColumnToRight(assessmentId);
+            this.expandGradesOverviewAutoScrollTarget(target);
+            this.pendingGradesOverviewAutoScroll = {
+              ...this.pendingGradesOverviewAutoScroll,
+              ...target,
+              attempts: 0
+            };
+            return target;
+          }
+
+          schedulePendingGradesOverviewAutoScroll() {
+            if (!this.pendingGradesOverviewAutoScroll || this.pendingGradesOverviewAutoScrollFrame) {
+              return;
+            }
+            const run = () => {
+              this.pendingGradesOverviewAutoScrollFrame = 0;
+              this.pendingGradesOverviewAutoScrollFrameType = "";
+              const pending = this.pendingGradesOverviewAutoScroll;
+              const assessmentId = Number(pending?.assessmentId || 0);
+              if (!assessmentId) {
+                return;
+              }
+              if (this.scrollGradesOverviewAssessmentColumnToRight(assessmentId)) {
+                this.clearPendingGradesOverviewAutoScroll();
+                this.positionGradePrivacyNavigationOverlay();
+                return;
+              }
+              const attempts = Number(pending.attempts || 0) + 1;
+              this.pendingGradesOverviewAutoScroll = {
+                ...pending,
+                attempts
+              };
+              if (attempts < 4) {
+                this.requestGradesOverviewAutoScrollFrame(run);
+              }
+            };
+            this.requestGradesOverviewAutoScrollFrame(run);
           }
 
           renderGradesTable(course, students, groupedAssessments, options = {}) {
@@ -19934,6 +20085,9 @@
             const hasCategories = Array.isArray(groupedAssessments)
               && groupedAssessments.some((periodGroup) => Array.isArray(periodGroup?.categories) && periodGroup.categories.length > 0);
             if (!hasCategories) {
+              if (!spotlightAssessmentId) {
+                this.resetGradesOverviewAutoScrollToLeft(Number(course?.id || 0));
+              }
               const empty = document.createElement("div");
               empty.className = "grades-group-empty";
               if (options.includeAddColumns === false) {
@@ -19955,12 +20109,12 @@
 
             const motion = this.pendingGradeTableMotion;
             this.pendingGradeTableMotion = null;
+            const pendingAutoScrollTarget = !spotlightAssessmentId
+              ? this.preparePendingGradesOverviewAutoScroll(course, groupedAssessments, options)
+              : null;
             this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
-            if (!spotlightAssessmentId) {
-              const tableScroll = this.refs.gradesTableScroll;
-              if (!this.applyPendingGradesOverviewAutoScroll(course, groupedAssessments, options) && tableScroll) {
-                tableScroll.scrollLeft = 0;
-              }
+            if (!spotlightAssessmentId && pendingAutoScrollTarget) {
+              this.schedulePendingGradesOverviewAutoScroll();
             }
           }
 
@@ -21797,6 +21951,7 @@
             }
             if (normalized !== "overview") {
               this.clearGradesOverviewAssessmentSpotlight();
+              this.clearPendingGradesOverviewAutoScroll();
               this.selectedGradesOverviewColumnKey = "";
               this.selectedGradesOverviewColumnCourseId = null;
             }
@@ -21862,7 +22017,7 @@
             this.activeGradeAssessmentId = id;
             this.activeGradeStudentId = null;
             this.pendingGradesEntryCourseAutoSelect = false;
-            this.pendingGradesOverviewAutoScrollCourseId = null;
+            this.clearPendingGradesOverviewAutoScroll();
             this.gradesEntryDraft = null;
             if (this.currentView !== "grades") {
               this.switchView("grades");
@@ -21899,7 +22054,7 @@
             this.activeGradeAssessmentId = null;
             this.activeGradeStudentId = null;
             this.pendingGradesEntryCourseAutoSelect = false;
-            this.pendingGradesOverviewAutoScrollCourseId = null;
+            this.clearPendingGradesOverviewAutoScroll();
             this.gradesEntryDraft = {
               ...this.getGradesEntryDraft(courseId),
               title: formatShortDateLabel(lessonDate),
@@ -21950,14 +22105,19 @@
                 lessonDate,
                 scrolled: false
               });
-              this.pendingGradesOverviewAutoScrollCourseId = null;
+              this.clearPendingGradesOverviewAutoScroll();
             } else {
               this.clearGradesOverviewAssessmentSpotlight();
-              this.pendingGradesOverviewAutoScrollCourseId = normalizedCourseId;
+              this.cancelPendingGradesOverviewAutoScrollFrame();
+              this.pendingGradesOverviewAutoScroll = {
+                courseId: normalizedCourseId,
+                assessmentId: null,
+                attempts: 0
+              };
             }
             const switched = this.switchGradesSubView("overview");
-            if (!switched && Number(this.pendingGradesOverviewAutoScrollCourseId || 0) === normalizedCourseId) {
-              this.pendingGradesOverviewAutoScrollCourseId = null;
+            if (!switched && Number(this.pendingGradesOverviewAutoScroll?.courseId || 0) === normalizedCourseId) {
+              this.clearPendingGradesOverviewAutoScroll();
             }
             if (switched) {
               this.notifyParentPlanningViewRequest("grades");

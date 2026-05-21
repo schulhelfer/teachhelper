@@ -15,6 +15,10 @@
   --warn: #f59e0b;
   --error: #ef4444;
   --inner: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  --scrollbar-size: 12px;
+  --scrollbar-track: rgba(15, 23, 42, 0.14);
+  --scrollbar-thumb: rgba(148, 163, 184, 0.55);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.78);
   color-scheme: dark;
 }
 
@@ -35,11 +39,37 @@
   --warn: #d97706;
   --error: #dc2626;
   --inner: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  --scrollbar-track: rgba(15, 23, 42, 0.08);
+  --scrollbar-thumb: rgba(100, 116, 139, 0.42);
+  --scrollbar-thumb-hover: rgba(71, 85, 105, 0.62);
   color-scheme: light;
 }
 
 * {
   box-sizing: border-box;
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+}
+
+*::-webkit-scrollbar {
+  width: var(--scrollbar-size);
+  height: var(--scrollbar-size);
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: 999px;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 html,
