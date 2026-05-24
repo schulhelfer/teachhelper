@@ -14707,7 +14707,7 @@
             }
             if (
               element.closest(
-                "button, input, textarea, select, a, label, [contenteditable='true'], .sidebar-header, .sidebar-controls, .sidebar-footer-actions"
+                "button, input, textarea, select, a, label, [contenteditable='true'], .sidebar-header, .sidebar-controls"
               )
             ) {
               return false;
