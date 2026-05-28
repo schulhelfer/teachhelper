@@ -5630,7 +5630,10 @@
             this.gradeDeficitThresholdUserEdited = false;
             this.gradesEntryDraft = null;
             this.gradesEntrySaveNotice = "";
+            this.gradesEntrySaveNoticeFading = false;
             this.gradesEntrySaveNoticeTimer = 0;
+            this.gradesEntrySaveNoticeFadeTimer = 0;
+            this.gradesEntrySaveNoticeOverlay = null;
             this.gradeSimulationState = {
               courseId: null,
               value: 0,
@@ -11761,7 +11764,7 @@
             const testTaskInput = event.target.closest("input[data-grade-test-task-field]");
             if (testTaskInput) {
               if (this.updateGradeTestTaskFromInput(testTaskInput)) {
-                this.renderGradesView();
+                this.refreshVisibleGradeTestResultsForTaskInput(testTaskInput);
               }
               return;
             }
@@ -15008,26 +15011,135 @@
             }
           }
 
-          queueGradesEntrySaveNotice(message = "Noten gespeichert", duration = 2200) {
+          ensureGradesEntrySaveNoticeOverlay() {
+            if (typeof document === "undefined" || !document.body) {
+              return null;
+            }
+            if (this.gradesEntrySaveNoticeOverlay?.isConnected) {
+              return this.gradesEntrySaveNoticeOverlay;
+            }
+            const overlay = document.createElement("div");
+            overlay.className = "grades-entry-save-overlay";
+            overlay.setAttribute("aria-hidden", "false");
+            overlay.addEventListener("click", (event) => {
+              if (event.target !== overlay) {
+                return;
+              }
+              event.preventDefault();
+              event.stopPropagation();
+              this.dismissGradesEntrySaveNoticeOverlay();
+            });
+            const dialog = document.createElement("div");
+            dialog.className = "grades-entry-save-dialog";
+            dialog.setAttribute("role", "alertdialog");
+            dialog.setAttribute("aria-modal", "true");
+            dialog.setAttribute("aria-live", "polite");
+            dialog.setAttribute("aria-atomic", "true");
+            dialog.setAttribute("aria-label", "Speicherhinweis");
+            const content = document.createElement("div");
+            content.className = "grades-entry-save-dialog-content";
+            const icon = document.createElement("span");
+            icon.className = "grades-entry-save-dialog-icon";
+            icon.setAttribute("aria-hidden", "true");
+            icon.textContent = "\u2713";
+            const text = document.createElement("span");
+            text.dataset.gradesEntrySaveNoticeText = "1";
+            content.append(icon, text);
+            const okButton = document.createElement("button");
+            okButton.type = "button";
+            okButton.className = "grades-entry-save-dialog-ok";
+            okButton.textContent = "OK";
+            okButton.addEventListener("click", () => {
+              this.dismissGradesEntrySaveNoticeOverlay();
+            });
+            dialog.append(content, okButton);
+            overlay.append(dialog);
+            document.body.append(overlay);
+            this.gradesEntrySaveNoticeOverlay = overlay;
+            return overlay;
+          }
+
+          renderGradesEntrySaveNoticeOverlay() {
+            const text = String(this.gradesEntrySaveNotice || "").trim();
+            if (!text) {
+              this.removeGradesEntrySaveNoticeOverlay();
+              return;
+            }
+            const overlay = this.ensureGradesEntrySaveNoticeOverlay();
+            if (!overlay) {
+              return;
+            }
+            overlay.classList.toggle("is-fading", Boolean(this.gradesEntrySaveNoticeFading));
+            const textNode = overlay.querySelector("[data-grades-entry-save-notice-text='1']");
+            if (textNode) {
+              textNode.textContent = text;
+            }
+            const okButton = overlay.querySelector(".grades-entry-save-dialog-ok");
+            if (!this.gradesEntrySaveNoticeFading && okButton instanceof HTMLElement) {
+              requestAnimationFrame(() => {
+                if (okButton.isConnected) {
+                  okButton.focus({ preventScroll: true });
+                }
+              });
+            }
+          }
+
+          removeGradesEntrySaveNoticeOverlay() {
+            const overlay = this.gradesEntrySaveNoticeOverlay;
+            if (overlay?.isConnected) {
+              overlay.remove();
+            }
+            this.gradesEntrySaveNoticeOverlay = null;
+          }
+
+          dismissGradesEntrySaveNoticeOverlay() {
+            if (this.gradesEntrySaveNoticeTimer) {
+              window.clearTimeout(this.gradesEntrySaveNoticeTimer);
+              this.gradesEntrySaveNoticeTimer = 0;
+            }
+            if (this.gradesEntrySaveNoticeFadeTimer) {
+              window.clearTimeout(this.gradesEntrySaveNoticeFadeTimer);
+              this.gradesEntrySaveNoticeFadeTimer = 0;
+            }
+            if (!this.gradesEntrySaveNoticeOverlay?.isConnected) {
+              this.gradesEntrySaveNotice = "";
+              this.gradesEntrySaveNoticeFading = false;
+              return;
+            }
+            this.gradesEntrySaveNoticeFading = true;
+            this.renderGradesEntrySaveNoticeOverlay();
+            this.gradesEntrySaveNoticeFadeTimer = window.setTimeout(() => {
+              this.gradesEntrySaveNoticeFadeTimer = 0;
+              this.gradesEntrySaveNotice = "";
+              this.gradesEntrySaveNoticeFading = false;
+              this.removeGradesEntrySaveNoticeOverlay();
+            }, 450);
+          }
+
+          queueGradesEntrySaveNotice(message = "Noten gespeichert", duration = 1500) {
             const text = String(message || "").trim();
             if (this.gradesEntrySaveNoticeTimer) {
               window.clearTimeout(this.gradesEntrySaveNoticeTimer);
               this.gradesEntrySaveNoticeTimer = 0;
             }
+            if (this.gradesEntrySaveNoticeFadeTimer) {
+              window.clearTimeout(this.gradesEntrySaveNoticeFadeTimer);
+              this.gradesEntrySaveNoticeFadeTimer = 0;
+            }
             this.gradesEntrySaveNotice = text;
+            this.gradesEntrySaveNoticeFading = false;
             if (!text) {
+              this.removeGradesEntrySaveNoticeOverlay();
               return;
             }
+            this.renderGradesEntrySaveNoticeOverlay();
             this.gradesEntrySaveNoticeTimer = window.setTimeout(() => {
               this.gradesEntrySaveNoticeTimer = 0;
               if (!this.gradesEntrySaveNotice) {
                 return;
               }
-              this.gradesEntrySaveNotice = "";
-              if (this.currentView === "grades" && this.normalizeGradesSubView(this.gradesSubView) === "entry") {
-                this.renderGradesView();
-              }
-            }, Math.max(600, Number(duration) || 2200));
+              this.dismissGradesEntrySaveNoticeOverlay();
+            }, Math.max(600, Number(duration) || 1500));
           }
 
           resetGradesEntryDraftAfterSave(values = null) {
@@ -15607,7 +15719,7 @@
                   </label>
                 </div>
               </fieldset>
-              <label class="grades-entry-field">
+              <label class="grades-entry-field${editorMode === "homework" ? " is-hidden" : ""}">
                 <span>Gewichtung</span>
                 <input
                   type="number"
@@ -15620,7 +15732,7 @@
                   ${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? "disabled" : ""}
                 >
               </label>
-              <label class="grades-entry-field">
+              <label class="grades-entry-field${editorMode === "homework" ? " is-hidden" : ""}">
                 <span>Defizitgrenze</span>
                 <input
                   type="number"
@@ -15657,7 +15769,6 @@
                   </div>
                 ` : ""}
               </div>
-              <p class="grades-entry-save-hint${this.gradesEntrySaveNotice ? " is-visible" : ""}" aria-live="polite">${escapeHtml(this.gradesEntrySaveNotice || "")}</p>
             </div>
           </div>
         </div>
@@ -18609,10 +18720,34 @@
               return !requireValue;
             }
             task.maxBe = parsed.value === null ? null : parsed.value;
+            input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
             this.setGradeTestTaskMaxInputValidity(input, true);
             this.syncVisibleGradeTestTaskColumnLock(input, false);
             this.syncVisibleGradeTestTaskScoreValidity(input, parsed.value);
             return this.updateGradeTestContextTasks(tasks);
+          }
+
+          refreshVisibleGradeTestResultsForTaskInput(input) {
+            const root = input instanceof Element
+              ? input.closest("#grades-entry-content") || this.refs.gradesEntryContent
+              : this.refs.gradesEntryContent;
+            if (!root) {
+              return;
+            }
+            const assessmentId = Number(this.selectedGradesEntryAssessmentId || 0) || null;
+            const studentIds = new Set(
+              [...root.querySelectorAll("input[data-grade-test-score='1'][data-student-id]")]
+                .map((node) => Number(node.dataset.studentId || 0))
+                .filter((studentId) => studentId > 0)
+            );
+            studentIds.forEach((studentId) => {
+              this.refreshVisibleGradeTestResult(studentId, assessmentId);
+            });
+            this.refreshVisibleGradeTestAverages(assessmentId);
+            if (assessmentId) {
+              this.refreshGradeTotals();
+              this.renderGradePrivacyOverlay();
+            }
           }
 
           buildGradesTestEntryTable(course, students, assessment = null, draft = null) {
@@ -19420,6 +19555,7 @@
           renderGradesTableHeaderCell(cell, options = {}) {
             const th = document.createElement("th");
             const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
+            const studentCount = Number(options.studentCount || 0);
             if (cell.rowSpan > 1) {
               th.rowSpan = cell.rowSpan;
             }
@@ -19438,7 +19574,13 @@
             };
 
             if (cell.type === "student") {
-              th.className = "student-col";
+              th.className = "student-col grades-student-count-head";
+              th.innerHTML = `
+        <div class="grades-student-count-label">
+          <span>Lernendenanzahl:</span>
+          <strong>${studentCount}</strong>
+        </div>
+      `;
               return th;
             }
 
@@ -19618,20 +19760,21 @@
               table.dataset.gradeMotionScope = String(motion.scope || "category");
             }
             const thead = document.createElement("thead");
+            const displayStudents = this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder);
+            const studentCount = displayStudents.filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0).length;
             model.headerRows.forEach((row) => {
               if (!row.length) {
                 return;
               }
               const tr = document.createElement("tr");
               row.forEach((cell) => {
-                tr.append(this.renderGradesTableHeaderCell(cell, { spotlightAssessmentId }));
+                tr.append(this.renderGradesTableHeaderCell(cell, { spotlightAssessmentId, studentCount }));
               });
               thead.append(tr);
             });
             table.append(thead);
 
             const tbody = document.createElement("tbody");
-            const displayStudents = this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder);
             displayStudents.forEach((student, rowIndex) => {
               const tr = document.createElement("tr");
               const studentName = this.getGradeStudentOverviewDisplayName(student);
