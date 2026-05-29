@@ -1142,6 +1142,19 @@
           text-overflow: ellipsis;
         }
 
+        .sidebar-grade-display-title {
+          display: grid;
+          gap: 0.12rem;
+          white-space: normal;
+        }
+
+        .sidebar-grade-display-title small {
+          color: rgba(148, 163, 184, 0.74);
+          font-size: 0.58rem;
+          font-weight: 700;
+          line-height: 1;
+        }
+
         .sidebar-grade-sort-control,
         .sidebar-grade-display-control {
           width: calc(100% + 12px);
