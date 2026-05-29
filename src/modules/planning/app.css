@@ -868,6 +868,7 @@
 
         .sidebar-grade-privacy-toggle,
         .sidebar-grade-name-order-toggle,
+        .sidebar-grade-display-system-toggle,
         .sidebar-grade-print-btn,
         .sidebar-grade-simulation-btn {
           width: 100%;
@@ -913,12 +914,14 @@
         }
 
         .sidebar-grade-privacy-toggle.is-inactive,
-        .sidebar-grade-name-order-toggle.is-inactive {
+        .sidebar-grade-name-order-toggle.is-inactive,
+        .sidebar-grade-display-system-toggle.is-inactive {
           color: rgba(203, 213, 225, 0.72);
         }
 
         .sidebar-grade-privacy-toggle.is-active,
-        .sidebar-grade-name-order-toggle.is-active {
+        .sidebar-grade-name-order-toggle.is-active,
+        .sidebar-grade-display-system-toggle.is-active {
           background:
             linear-gradient(180deg, rgba(37, 99, 235, 0.62), rgba(29, 78, 216, 0.5)),
             rgba(30, 64, 175, 0.68);
@@ -936,6 +939,13 @@
           box-shadow: none;
         }
 
+        .sidebar-grade-display-system-toggle.is-active {
+          background: rgba(28, 34, 44, 0.75);
+          border-color: rgba(148, 163, 184, 0.28);
+          color: rgba(203, 213, 225, 0.72);
+          box-shadow: none;
+        }
+
         .sidebar-grade-privacy-toggle.is-active {
           background: rgba(28, 34, 44, 0.75);
           box-shadow: none;
@@ -945,6 +955,8 @@
         .sidebar-grade-privacy-toggle:not(:disabled):focus-visible,
         .sidebar-grade-name-order-toggle:not(:disabled):hover,
         .sidebar-grade-name-order-toggle:not(:disabled):focus-visible,
+        .sidebar-grade-display-system-toggle:not(:disabled):hover,
+        .sidebar-grade-display-system-toggle:not(:disabled):focus-visible,
         .sidebar-grade-print-btn:not(:disabled):hover,
         .sidebar-grade-print-btn:not(:disabled):focus-visible,
         .sidebar-grade-simulation-btn:not(:disabled):hover,
@@ -957,14 +969,18 @@
         .sidebar-grade-privacy-toggle.is-active:not(:disabled):hover,
         .sidebar-grade-privacy-toggle.is-active:not(:disabled):focus-visible,
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):hover,
-        .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible {
+        .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible,
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):hover,
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible {
           background:
             linear-gradient(180deg, rgba(59, 130, 246, 0.72), rgba(37, 99, 235, 0.58)),
             rgba(30, 64, 175, 0.78);
         }
 
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):hover,
-        .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible {
+        .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible,
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):hover,
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible {
           background: rgba(60, 72, 92, 0.98);
         }
 
@@ -975,6 +991,7 @@
 
         .sidebar-grade-privacy-toggle:disabled,
         .sidebar-grade-name-order-toggle:disabled,
+        .sidebar-grade-display-system-toggle:disabled,
         .sidebar-grade-print-btn:disabled,
         .sidebar-grade-simulation-btn:disabled {
           cursor: not-allowed;
@@ -1073,6 +1090,38 @@
           transform: translateX(16px);
         }
 
+        .sidebar-grade-display-system-switch {
+          position: relative;
+          flex: 0 0 34px;
+          width: 34px;
+          height: 18px;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.78);
+          border: 1px solid rgba(148, 163, 184, 0.45);
+          box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.34);
+        }
+
+        .sidebar-grade-display-system-thumb {
+          position: absolute;
+          top: 2px;
+          left: 2px;
+          width: 12px;
+          height: 12px;
+          border-radius: 50%;
+          background: rgba(248, 250, 252, 0.96);
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.42);
+          transition: transform 0.16s ease, background 0.16s ease;
+        }
+
+        .sidebar-grade-display-system-toggle.is-active .sidebar-grade-display-system-switch {
+          background: rgba(37, 99, 235, 0.72);
+          border-color: rgba(191, 219, 254, 0.78);
+        }
+
+        .sidebar-grade-display-system-toggle.is-active .sidebar-grade-display-system-thumb {
+          transform: translateX(16px);
+        }
+
         .sidebar-grade-action-section {
           display: grid;
           justify-items: center;
@@ -1093,7 +1142,8 @@
           text-overflow: ellipsis;
         }
 
-        .sidebar-grade-sort-control {
+        .sidebar-grade-sort-control,
+        .sidebar-grade-display-control {
           width: calc(100% + 12px);
           min-width: 0;
           margin-inline: -6px;
@@ -1103,7 +1153,8 @@
           column-gap: 1rem;
         }
 
-        .sidebar-grade-sort-option {
+        .sidebar-grade-sort-option,
+        .sidebar-grade-display-option {
           min-width: 0;
           color: rgba(148, 163, 184, 0.72);
           font-size: 0.62rem;
@@ -1121,8 +1172,17 @@
           text-align: right;
         }
 
+        .sidebar-grade-display-option-points {
+          text-align: left;
+        }
+
+        .sidebar-grade-display-option-school {
+          text-align: right;
+        }
+
         .sidebar-grade-privacy-toggle,
-        .sidebar-grade-name-order-toggle {
+        .sidebar-grade-name-order-toggle,
+        .sidebar-grade-display-system-toggle {
           width: auto;
           min-width: 0;
           min-height: 0;
@@ -1139,7 +1199,8 @@
         }
 
         .sidebar-grade-privacy-toggle.is-active,
-        .sidebar-grade-name-order-toggle.is-active {
+        .sidebar-grade-name-order-toggle.is-active,
+        .sidebar-grade-display-system-toggle.is-active {
           background: transparent;
           border-color: transparent;
           color: inherit;
@@ -1153,7 +1214,11 @@
         .sidebar-grade-name-order-toggle:hover,
         .sidebar-grade-name-order-toggle:focus-visible,
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):hover,
-        .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible {
+        .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible,
+        .sidebar-grade-display-system-toggle:hover,
+        .sidebar-grade-display-system-toggle:focus-visible,
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):hover,
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible {
           background: transparent;
           border-color: transparent;
           color: inherit;

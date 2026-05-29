@@ -18,6 +18,8 @@
         const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
         const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
         const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
+        const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
+        const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
         const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
         const GRADE_RATIO_TOOLTIP = "Rot = Kurz vor besserer Note";
         const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
@@ -2129,8 +2131,9 @@
         }
 
         function normalizeGradeDisplaySystem(value) {
-          void value;
-          return GRADE_DISPLAY_SYSTEM_DEFAULT;
+          return String(value || "").trim().toLowerCase() === GRADE_DISPLAY_SYSTEM_SCHOOL
+            ? GRADE_DISPLAY_SYSTEM_SCHOOL
+            : GRADE_DISPLAY_SYSTEM_DEFAULT;
         }
 
         function normalizeLessonTimeValue(value) {
@@ -2369,10 +2372,12 @@
         }
 
         function formatGradeDisplayForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT) {
-          void displaySystem;
           const rounded = getRoundedGradeDisplayValue(value);
           if (rounded === null) {
             return "—";
+          }
+          if (normalizeGradeDisplaySystem(displaySystem) === GRADE_DISPLAY_SYSTEM_SCHOOL) {
+            return GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS[rounded] || "—";
           }
           return formatGradeInteger(rounded);
         }
@@ -5302,6 +5307,7 @@
             this.currentView = "grades";
             this.shellTabContext = "grades";
             this.gradesSubView = "entry";
+            this.gradeOverviewDisplaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
             this._planningReadySignalToken = 0;
             this.activeSettingsTab = "dayoff";
             this.settingsSourceView = "planning";
@@ -5341,10 +5347,12 @@
               sidebarGradePrivacyActions: document.querySelector("#sidebar-grade-privacy-actions"),
               sidebarGradePrivacySection: document.querySelector("#sidebar-grade-privacy-section"),
               sidebarGradeSortSection: document.querySelector("#sidebar-grade-sort-section"),
+              sidebarGradeDisplaySection: document.querySelector("#sidebar-grade-display-section"),
               sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
               sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
               sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
               sidebarGradeNameOrderToggleBtn: document.querySelector("#sidebar-grade-name-order-toggle-btn"),
+              sidebarGradeDisplaySystemToggleBtn: document.querySelector("#sidebar-grade-display-system-toggle-btn"),
               sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
               sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
 
@@ -12085,6 +12093,11 @@
                 this.handleGradeNameOrderToggleRequest(event);
               });
             }
+            if (this.refs.sidebarGradeDisplaySystemToggleBtn) {
+              this.refs.sidebarGradeDisplaySystemToggleBtn.addEventListener("click", (event) => {
+                this.handleGradeDisplaySystemToggleRequest(event);
+              });
+            }
             if (this.refs.sidebarGradePrintBtn) {
               this.refs.sidebarGradePrintBtn.addEventListener("click", (event) => {
                 this.handleGradePrintOverviewRequest(event);
@@ -13596,6 +13609,9 @@
             });
             window.addEventListener("keydown", (event) => {
               if (this.handleGradesEntryDistributionOverlayDocumentKeyDown(event)) {
+                return;
+              }
+              if (this.handleGradePrivacyDocumentArrowKeyDown(event)) {
                 return;
               }
               if (event.key === "Escape") {
@@ -15804,6 +15820,7 @@
               this.hideGradePrivacyOverlay();
               this.updateSidebarGradePrivacyToggleState();
               this.updateSidebarGradeNameOrderToggleState();
+              this.updateSidebarGradeDisplaySystemToggleState();
               this.updateSidebarGradePrintButtonState();
               this.updateSidebarGradeSimulationButtonState();
               return;
@@ -15864,6 +15881,7 @@
                 this.updateGradeVaultActionButtons();
                 this.updateSidebarGradePrivacyToggleState();
                 this.updateSidebarGradeNameOrderToggleState();
+                this.updateSidebarGradeDisplaySystemToggleState();
                 this.updateSidebarGradePrintButtonState();
                 this.updateSidebarGradeSimulationButtonState();
                 return;
@@ -15882,6 +15900,7 @@
                 this.updateGradeVaultActionButtons();
                 this.updateSidebarGradePrivacyToggleState();
                 this.updateSidebarGradeNameOrderToggleState();
+                this.updateSidebarGradeDisplaySystemToggleState();
                 this.updateSidebarGradePrintButtonState();
                 this.updateSidebarGradeSimulationButtonState();
                 return;
@@ -15892,6 +15911,7 @@
             this.updateGradeVaultActionButtons();
             this.updateSidebarGradePrivacyToggleState();
             this.updateSidebarGradeNameOrderToggleState();
+            this.updateSidebarGradeDisplaySystemToggleState();
             this.updateSidebarGradePrintButtonState();
             this.updateSidebarGradeSimulationButtonState();
           }
@@ -16176,6 +16196,35 @@
             return true;
           }
 
+          handleGradePrivacyDocumentArrowKeyDown(event) {
+            if (
+              !event
+              || (event.key !== "ArrowUp" && event.key !== "ArrowDown")
+              || event.altKey
+              || event.ctrlKey
+              || event.metaKey
+              || event.shiftKey
+              || !this.isGradesTopTabActive()
+              || this.currentView !== "grades"
+              || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+              || !this.privacyFocusedGradeStudentId
+            ) {
+              return false;
+            }
+            const target = event.target instanceof Element ? event.target : null;
+            const editableTarget = Boolean(
+              target?.closest("input, textarea, select, [contenteditable='true']")
+            );
+            if (editableTarget) {
+              return false;
+            }
+            this.handleGradePrivacyStudentNavigation(
+              event.key === "ArrowUp" ? "previous" : "next",
+              event
+            );
+            return true;
+          }
+
           getGradePrivacyNavigationStudentId(direction) {
             const currentStudentId = Number(this.privacyFocusedGradeStudentId || 0);
             if (!currentStudentId || !this.refs.gradesTable) {
@@ -16328,6 +16377,30 @@
                 ? "last"
                 : "first";
             }
+            this.renderGradesView();
+          }
+
+          handleGradeDisplaySystemToggleRequest(event = null) {
+            event?.preventDefault?.();
+            event?.stopPropagation?.();
+            if (!this.isGradesTopTabActive()) {
+              this.updateSidebarGradeDisplaySystemToggleState();
+              return;
+            }
+            const isGradesOverview = this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            if (!isGradesOverview || this.locked) {
+              this.updateSidebarGradeDisplaySystemToggleState();
+              return;
+            }
+            if (!this.commitVisibleGradeInputs()) {
+              this.updateSidebarGradeDisplaySystemToggleState();
+              return;
+            }
+            const currentSystem = this.getCurrentGradeOverviewDisplaySystem();
+            this.gradeOverviewDisplaySystem = currentSystem === GRADE_DISPLAY_SYSTEM_SCHOOL
+              ? GRADE_DISPLAY_SYSTEM_DEFAULT
+              : GRADE_DISPLAY_SYSTEM_SCHOOL;
             this.renderGradesView();
           }
 
@@ -16954,6 +17027,42 @@
                 isAvailable
                   ? `Namenssortierung auf ${nextNameOrderLabel} umstellen`
                   : "Namenssortierung in der Kursübersicht verfügbar"
+              );
+          }
+
+          updateSidebarGradeDisplaySystemToggleState() {
+            const actions = this.refs.sidebarGradePrivacyActions;
+            const section = this.refs.sidebarGradeDisplaySection;
+            const button = this.refs.sidebarGradeDisplaySystemToggleBtn;
+            if (!actions || !button) {
+              return;
+            }
+            const isGradesOverview = this.isGradesTopTabActive()
+              && this.currentView === "grades"
+              && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+            const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
+            const isSchoolDisplay = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
+            const canToggle = isGradesOverview && !this.locked;
+            actions.hidden = !this.shouldShowSidebarGradeActions();
+            if (section) {
+              section.hidden = !isGradesOverview;
+            }
+            button.disabled = !canToggle;
+            button.classList.toggle("is-active", isSchoolDisplay);
+            button.classList.toggle("is-inactive", !isSchoolDisplay);
+            button.setAttribute("aria-pressed", isSchoolDisplay ? "true" : "false");
+            button.setAttribute(
+              "aria-label",
+              isSchoolDisplay
+                ? "Notenanzeige aktuell Schulnoten; auf 15-Punkte umstellen"
+                : "Notenanzeige aktuell 15-Punkte; auf Schulnoten umstellen"
+            );
+            button.title = this.locked
+              ? "Notenanzeige gesperrt"
+              : (
+                canToggle
+                  ? (isSchoolDisplay ? "Notenanzeige auf 15-Punkte umstellen" : "Notenanzeige auf Schulnoten umstellen")
+                  : "Notenanzeige in der Kursübersicht verfügbar"
               );
           }
 
@@ -18089,8 +18198,16 @@
             return this.store.getGradeDisplaySystem();
           }
 
+          getCurrentGradeOverviewDisplaySystem() {
+            return normalizeGradeDisplaySystem(this.gradeOverviewDisplaySystem);
+          }
+
           formatDisplayedGrade(value) {
             return formatGradeDisplayForSystem(value, this.getCurrentGradeDisplaySystem());
+          }
+
+          formatDisplayedOverviewGrade(value) {
+            return formatGradeDisplayForSystem(value, this.getCurrentGradeOverviewDisplaySystem());
           }
 
           formatDisplayedHomeworkSummary(summary = null) {
@@ -18256,6 +18373,7 @@
             const categoryAttr = categoryKey ? ` data-category-id="${categoryKey}"` : "";
             const subcategoryAttr = subcategoryKey ? ` data-subcategory-id="${subcategoryKey}"` : "";
             const periodAttr = ` data-period="${period}"`;
+            const displaySystem = normalizeGradeDisplaySystem(options.displaySystem);
             const periodLabel = getGradePeriodLabel(period);
             const scopeLabel = normalizedScope === "course"
               ? `${periodLabel} Gesamtnote`
@@ -18300,7 +18418,7 @@
             data-scope="${normalizedScope}"${periodAttr}${categoryAttr}${subcategoryAttr}${disabledAttr}
             aria-label="${scopeLabel} manuell setzen"
             ${tooltipAttr}
-          ><span class="grade-total-value">${this.formatDisplayedGrade(displayValue)}</span></button>
+          ><span class="grade-total-value">${formatGradeDisplayForSystem(displayValue, displaySystem)}</span></button>
         `;
           }
 
@@ -18323,11 +18441,12 @@
             const studentName = this.getGradeStudentDisplayName(student);
             const entry = this.store.getGradeEntry(student.id, assessment.id);
             const disabled = Boolean(options.disabled);
+            const displaySystem = normalizeGradeDisplaySystem(options.displaySystem);
             const isHomework = this.isHomeworkAssessment(assessment);
             const isTest = this.isTestAssessment(assessment);
             if (isTest) {
               const rawValue = entry && entry.value !== null ? entry.value : null;
-              const displayValue = this.formatDisplayedGrade(rawValue);
+              const displayValue = formatGradeDisplayForSystem(rawValue, displaySystem);
               const emptyClass = displayValue === "—" ? " is-empty" : "";
               const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
               const lowClass = isDeficit ? " is-grade-low" : "";
@@ -18378,7 +18497,7 @@
               return this.buildHomeworkDisplayButtonMarkup(assessment, student, rowIndex, entry?.checked === true, { disabled });
             }
             const rawValue = entry && entry.value !== null ? entry.value : null;
-            const displayValue = this.formatDisplayedGrade(rawValue);
+            const displayValue = formatGradeDisplayForSystem(rawValue, displaySystem);
             const emptyClass = displayValue === "—" ? " is-empty" : "";
             const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
             const lowClass = isDeficit ? " is-grade-low" : "";
@@ -19754,6 +19873,7 @@
             const table = document.createElement("table");
             table.className = "grades-master-table";
             const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
+            const gradeDisplaySystem = this.getCurrentGradeOverviewDisplaySystem();
             if (motion && (motion.kind === "expand" || motion.kind === "collapse")) {
               table.classList.add("is-toggle-animating");
               table.dataset.gradeMotionKind = motion.kind;
@@ -19817,7 +19937,7 @@
                     course.id,
                     "course",
                     this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year"),
-                    { period: "year", disabled: isPrivacyBlurred }
+                    { period: "year", disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -19835,7 +19955,7 @@
                     course.id,
                     "course",
                     this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period),
-                    { period: column.period, disabled: isPrivacyBlurred }
+                    { period: column.period, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -19853,7 +19973,7 @@
                     course.id,
                     "category",
                     this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
-                    { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred }
+                    { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -19878,7 +19998,7 @@
                     course.id,
                     "subcategory",
                     this.store.calculateGradeForStudentInSubcategoryPeriod(student.id, course.id, column.categoryId, column.subcategoryId, column.period),
-                    { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred }
+                    { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -19896,7 +20016,7 @@
                     course.id,
                     "category",
                     this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
-                    { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred }
+                    { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -19921,7 +20041,7 @@
                     course.id,
                     "subcategory",
                     this.store.calculateGradeForStudentInSubcategoryPeriod(student.id, course.id, column.categoryId, column.subcategoryId, column.period),
-                    { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred }
+                    { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -19967,7 +20087,7 @@
                     rowIndex,
                     columnIndex,
                     column.subcategoryId,
-                    { disabled: isPrivacyBlurred }
+                    { disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
                   );
                   tr.append(td);
                   return;
@@ -20322,22 +20442,22 @@
               return this.getGradeStudentOverviewDisplayName(student);
             }
             if (column.type === "total") {
-              return this.formatDisplayedGrade(
+              return this.formatDisplayedOverviewGrade(
                 this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year")
               );
             }
             if (column.type === "period-total") {
-              return this.formatDisplayedGrade(
+              return this.formatDisplayedOverviewGrade(
                 this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period)
               );
             }
             if (column.type === "category-partial") {
-              return this.formatDisplayedGrade(
+              return this.formatDisplayedOverviewGrade(
                 this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period)
               );
             }
             if (column.type === "subcategory-partial") {
-              return this.formatDisplayedGrade(
+              return this.formatDisplayedOverviewGrade(
                 this.store.calculateGradeForStudentInSubcategoryPeriod(
                   student.id,
                   course.id,
@@ -20363,7 +20483,7 @@
               if (this.isHomeworkAssessment(column.assessment)) {
                 return entry?.checked === true ? "fehlt" : "—";
               }
-              return this.formatDisplayedGrade(entry && entry.value !== null ? entry.value : null);
+              return this.formatDisplayedOverviewGrade(entry && entry.value !== null ? entry.value : null);
             }
             return "";
           }
@@ -20453,6 +20573,9 @@
               return;
             }
             const courseId = Number(this.selectedCourseId || 0);
+            const displaySystem = root === this.refs.gradesTable
+              ? this.getCurrentGradeOverviewDisplaySystem()
+              : this.getCurrentGradeDisplaySystem();
             root.querySelectorAll("button[data-grade-open-override='1']").forEach((node) => {
               const studentId = Number(node.getAttribute("data-student-id") || 0);
               const scope = normalizeGradeOverrideScope(node.getAttribute("data-scope") || "");
@@ -20469,7 +20592,7 @@
               node.removeAttribute("title");
               const valueNode = node.querySelector(".grade-total-value");
               if (valueNode) {
-                valueNode.textContent = this.formatDisplayedGrade(state.value);
+                valueNode.textContent = formatGradeDisplayForSystem(state.value, displaySystem);
               }
             });
             root.querySelectorAll("[data-grade-entry-partial='1']").forEach((node) => {
@@ -20478,14 +20601,15 @@
               const categoryId = Number(node.getAttribute("data-category-id") || 0);
               const subcategoryId = Number(node.getAttribute("data-subcategory-id") || 0);
               const period = normalizeGradePeriod(node.getAttribute("data-period") || "year");
-              node.textContent = this.formatDisplayedGrade(
+              node.textContent = formatGradeDisplayForSystem(
                 this.store.calculateGradeForStudentInSubcategoryPeriod(
                   studentId,
                   courseKey,
                   categoryId,
                   subcategoryId,
                   period
-                )
+                ),
+                displaySystem
               );
             });
             root.querySelectorAll("[data-grade-homework-summary='1']").forEach((node) => {
@@ -23225,6 +23349,7 @@
             }
             this.updateSidebarGradePrivacyToggleState();
             this.updateSidebarGradeNameOrderToggleState();
+            this.updateSidebarGradeDisplaySystemToggleState();
             this.updateSidebarGradePrintButtonState();
             this.updateSidebarGradeSimulationButtonState();
             this.renderSidebarFooterActions();
