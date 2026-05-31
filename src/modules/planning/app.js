@@ -1614,6 +1614,41 @@
           return normalizeGradeTestScale(scale) === "sek1" ? 3 : GRADE_DEFICIT_THRESHOLD_DEFAULT;
         }
 
+        function getDefaultGradeTestPredicateSuffixes(scale = GRADE_TEST_SCALE_DEFAULT) {
+          return normalizeGradeTestScale(scale) !== "sek1";
+        }
+
+        function normalizeGradeTestPredicateSuffixes(value, fallback = true) {
+          if (value === true || value === false) {
+            return value;
+          }
+          if (value === 1 || value === "1") {
+            return true;
+          }
+          if (value === 0 || value === "0") {
+            return false;
+          }
+          const text = String(value ?? "").trim().toLowerCase();
+          if (text === "true" || text === "yes" || text === "ja" || text === "on") {
+            return true;
+          }
+          if (text === "false" || text === "no" || text === "nein" || text === "off") {
+            return false;
+          }
+          return Boolean(fallback);
+        }
+
+        function applyGradeTestPredicateSuffixes(value, enabled = true) {
+          if (value === null || value === undefined || value === "") {
+            return null;
+          }
+          const grade = clamp(Math.round(Number(value) || 0), 0, 15);
+          if (normalizeGradeTestPredicateSuffixes(enabled, true) || grade === 0) {
+            return grade;
+          }
+          return Math.max(0, (Math.floor((grade - 1) / 3) * 3) + 2);
+        }
+
         function normalizeGradeTestThresholds(thresholds = null, fallback = null) {
           const fallbackThresholds = cloneGradeTestThresholds(
             fallback || GRADE_TEST_SCALE_THRESHOLDS[GRADE_TEST_SCALE_DEFAULT]
@@ -1918,15 +1953,15 @@
           `;
         }
 
-        function calculateGradeTestValue(tasks = [], scores = {}, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+        function calculateGradeTestValue(tasks = [], scores = {}, scale = GRADE_TEST_SCALE_DEFAULT, settings = null, predicateSuffixes = true) {
           const ratioState = calculateGradeTestRatio(tasks, scores);
           if (!ratioState) {
             return null;
           }
-          return calculateGradeTestValueFromRatio(ratioState, scale, settings);
+          return calculateGradeTestValueFromRatio(ratioState, scale, settings, predicateSuffixes);
         }
 
-        function calculateGradeTestValueFromRatio(ratioState = null, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+        function calculateGradeTestValueFromRatio(ratioState = null, scale = GRADE_TEST_SCALE_DEFAULT, settings = null, predicateSuffixes = true) {
           if (!ratioState || Number(ratioState.maxSum || 0) <= 0) {
             return null;
           }
@@ -1935,7 +1970,7 @@
             ? normalizeGradeTestScaleSnapshot(scale, scale.id, settings).thresholds
             : buildGradeTestScaleSnapshot(settings, scale).thresholds;
           const match = thresholds.find(([threshold]) => ratio + 0.0000001 >= threshold);
-          return match ? match[1] : 0;
+          return applyGradeTestPredicateSuffixes(match ? match[1] : 0, predicateSuffixes);
         }
 
         function isGradeTestRatioInUpperThirdOfGradeBand(ratio, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
@@ -2033,7 +2068,7 @@
           return classes;
         }
 
-        function calculateGradeTestAverageState(tasks = [], scoreEntries = [], scale = GRADE_TEST_SCALE_DEFAULT, settings = null, deficitThreshold = GRADE_DEFICIT_THRESHOLD_DEFAULT) {
+        function calculateGradeTestAverageState(tasks = [], scoreEntries = [], scale = GRADE_TEST_SCALE_DEFAULT, settings = null, deficitThreshold = GRADE_DEFICIT_THRESHOLD_DEFAULT, predicateSuffixes = true) {
           const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
           const normalizedScoresList = (Array.isArray(scoreEntries) ? scoreEntries : [])
             .map((scores) => normalizeGradeTestScores(scores))
@@ -2080,9 +2115,9 @@
             taskAverages,
             taskAverageClasses: getGradeTestAverageTaskColorClasses(normalizedTasks, taskAverages),
             ratioState,
-            gradeValue: calculateGradeTestValueFromRatio(ratioState, scale, settings),
+            gradeValue: calculateGradeTestValueFromRatio(ratioState, scale, settings, predicateSuffixes),
             deficitShare: calculateGradeDeficitShare(
-              normalizedScoresList.map((scores) => calculateGradeTestValue(normalizedTasks, scores, scale, settings)),
+              normalizedScoresList.map((scores) => calculateGradeTestValue(normalizedTasks, scores, scale, settings, predicateSuffixes)),
               deficitThreshold
             )
           };
@@ -3399,6 +3434,12 @@
             this.gradeVaultState.counters.gradeAssessment = nextAssessmentId + 1;
             const mode = normalizeGradeAssessmentMode(payload.mode);
             const testScale = normalizeGradeTestScale(payload.testScale);
+            const testPredicateSuffixes = mode === "test"
+              ? normalizeGradeTestPredicateSuffixes(
+                payload.testPredicateSuffixes,
+                getDefaultGradeTestPredicateSuffixes(testScale)
+              )
+              : true;
             const assessment = {
               id: nextAssessmentId,
               courseId: id,
@@ -3412,6 +3453,7 @@
               testScaleSnapshot: mode === "test"
                 ? this.buildGradeTestScaleSnapshot(testScale)
                 : null,
+              testPredicateSuffixes,
               testTasks: normalizeGradeTestTasks(payload.testTasks),
               halfYear: normalizeGradeHalfYear(payload.halfYear),
               sortOrder: Number(payload.sortOrder || nextSortOrder)
@@ -3444,11 +3486,17 @@
             } else if (!assessment.testScale) {
               assessment.testScale = GRADE_TEST_SCALE_DEFAULT;
             }
+            if (patch.testPredicateSuffixes !== undefined) {
+              assessment.testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(patch.testPredicateSuffixes, true);
+            } else if (assessment.testPredicateSuffixes === undefined) {
+              assessment.testPredicateSuffixes = true;
+            }
             if (normalizeGradeAssessmentMode(assessment.mode) === "test" && !assessment.testScaleSnapshot) {
               assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
             }
             if (normalizeGradeAssessmentMode(assessment.mode) !== "test") {
               assessment.testScaleSnapshot = null;
+              assessment.testPredicateSuffixes = true;
             }
             if (patch.testTasks !== undefined) {
               assessment.testTasks = normalizeGradeTestTasks(patch.testTasks);
@@ -3609,7 +3657,13 @@
               }
               return true;
             }
-            const value = calculateGradeTestValue(assessment.testTasks, normalizedScores, assessment.testScaleSnapshot || assessment.testScale);
+            const value = calculateGradeTestValue(
+              assessment.testTasks,
+              normalizedScores,
+              assessment.testScaleSnapshot || assessment.testScale,
+              null,
+              normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
+            );
             if (existing) {
               existing.value = value;
               existing.checked = null;
@@ -3651,7 +3705,13 @@
                   ...entry,
                   checked: null,
                   testScores,
-                  value: calculateGradeTestValue(assessment.testTasks, testScores, assessment.testScaleSnapshot || assessment.testScale)
+                  value: calculateGradeTestValue(
+                    assessment.testTasks,
+                    testScores,
+                    assessment.testScaleSnapshot || assessment.testScale,
+                    null,
+                    normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
+                  )
                 };
               })
               .filter((entry) => Number(entry.assessmentId) !== Number(assessment.id) || hasGradeTestScores(entry.testScores));
@@ -5111,6 +5171,9 @@
                 testScaleSnapshot: mode === "test"
                   ? normalizeGradeTestScaleSnapshot(item.testScaleSnapshot, testScale, gradeTestScaleSettings)
                   : null,
+                testPredicateSuffixes: mode === "test"
+                  ? normalizeGradeTestPredicateSuffixes(item.testPredicateSuffixes, true)
+                  : true,
                 testTasks: normalizeGradeTestTasks(item.testTasks),
                 halfYear: normalizeGradeHalfYear(item.halfYear),
                 sortOrder: Number(item.sortOrder || 0)
@@ -5951,6 +6014,9 @@
                   testScaleSnapshot: row.testScaleSnapshot
                     ? normalizeGradeTestScaleSnapshot(row.testScaleSnapshot, row.testScale, this.store.getGradeTestScaleSettings())
                     : null,
+                  testPredicateSuffixes: normalizeGradeAssessmentMode(row.mode) === "test"
+                    ? normalizeGradeTestPredicateSuffixes(row.testPredicateSuffixes, true)
+                    : true,
                   testTasks: normalizeGradeTestTasks(row.testTasks),
                   halfYear: normalizeGradeHalfYear(row.halfYear),
                   sortOrder: Number(row.sortOrder || 0)
@@ -11763,7 +11829,20 @@
                 testScale,
                 testScaleSnapshot: activeAssessment && normalizeGradeTestScale(activeAssessment.testScale) === testScale
                   ? activeAssessment.testScaleSnapshot || null
-                  : draft.testScaleSnapshot || null
+                  : draft.testScaleSnapshot || null,
+                testPredicateSuffixes: activeAssessment
+                  ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+                  : getDefaultGradeTestPredicateSuffixes(testScale)
+              };
+              this.renderGradesView();
+              return;
+            }
+
+            const testPredicateSuffixesInput = event.target.closest("input[data-grades-entry-test-predicate-suffixes='1']");
+            if (testPredicateSuffixesInput) {
+              this.gradesEntryDraft = {
+                ...draft,
+                testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(testPredicateSuffixesInput.value, true)
               };
               this.renderGradesView();
               return;
@@ -11800,6 +11879,13 @@
                 mode,
                 weight: mode === "homework" ? 1 : draft.weight,
                 testScale,
+                testPredicateSuffixes: mode === "test"
+                  ? (
+                    activeAssessment
+                      ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+                      : getDefaultGradeTestPredicateSuffixes(testScale)
+                  )
+                  : true,
                 testTasks: normalizeGradeTestTasks(draft.testTasks)
               };
               this.renderGradesView();
@@ -15178,6 +15264,10 @@
               weight: normalizeGradeInteger(draftValues?.weight, 1),
               mode: normalizeGradeAssessmentMode(draftValues?.mode),
               testScale: normalizeGradeTestScale(draftValues?.testScale),
+              testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
+                draftValues?.testPredicateSuffixes,
+                getDefaultGradeTestPredicateSuffixes(draftValues?.testScale)
+              ),
               testTasks: normalizeGradeTestTasks(draftValues?.testTasks),
               categoryId,
               subcategoryId,
@@ -15200,6 +15290,7 @@
               mode: normalizeGradeAssessmentMode(assessment.mode),
               testScale: normalizeGradeTestScale(assessment.testScale),
               testScaleSnapshot: assessment.testScaleSnapshot || null,
+              testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
               testTasks: normalizeGradeTestTasks(assessment.testTasks),
               categoryId: Number(assessment.categoryId) || null,
               subcategoryId: Number(assessment.subcategoryId) || null,
@@ -15230,6 +15321,9 @@
               mode: normalizeGradeAssessmentMode(previous.mode || base.mode),
               testScale: normalizeGradeTestScale(previous.testScale || base.testScale),
               testScaleSnapshot: previous.testScaleSnapshot || base.testScaleSnapshot || null,
+              testPredicateSuffixes: Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
+                ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, true)
+                : normalizeGradeTestPredicateSuffixes(base.testPredicateSuffixes, true),
               testTasks: normalizeGradeTestTasks(previous.testTasks || base.testTasks),
               categoryId: Number(previous.categoryId || base.categoryId || 0) || null,
               subcategoryId: Number(previous.subcategoryId || base.subcategoryId || 0) || null,
@@ -15251,6 +15345,9 @@
               mode: normalizeGradeAssessmentMode(state?.mode || assessment.mode),
               testScale: normalizeGradeTestScale(state?.testScale || assessment.testScale),
               testScaleSnapshot: state?.testScaleSnapshot || assessment.testScaleSnapshot || null,
+              testPredicateSuffixes: Object.prototype.hasOwnProperty.call(state || {}, "testPredicateSuffixes")
+                ? normalizeGradeTestPredicateSuffixes(state.testPredicateSuffixes, true)
+                : normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
               testTasks: normalizeGradeTestTasks(state?.testTasks || assessment.testTasks),
               categoryId: Number(state?.categoryId || assessment.categoryId || 0) || null,
               subcategoryId: Number(state?.subcategoryId || assessment.subcategoryId || 0) || null
@@ -15304,6 +15401,9 @@
               const scaleSnapshot = assessment
                 ? normalizeGradeTestScaleSnapshot(assessment.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
                 : this.store.buildGradeTestScaleSnapshot(scale);
+              const testPredicateSuffixes = assessment
+                ? normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
+                : normalizeGradeTestPredicateSuffixes(draft?.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(scale));
               return displayStudents
                 .map((student) => {
                   const entry = assessment
@@ -15313,7 +15413,7 @@
                       : null);
                   const scores = normalizeGradeTestScores(entry?.testScores);
                   return hasGradeTestScores(scores)
-                    ? calculateGradeTestValue(tasks, scores, scaleSnapshot)
+                    ? calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes)
                     : null;
                 })
                 .filter((value) => value !== null && value !== undefined);
@@ -15543,6 +15643,7 @@
               weight: mode === "homework" ? 1 : normalizeGradeInteger(editorValues.weight, assessment.weight || 1),
               mode,
               testScale: normalizeGradeTestScale(editorValues.testScale),
+              testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(editorValues.testPredicateSuffixes, true),
               testTasks: normalizeGradeTestTasks(editorValues.testTasks),
               categoryId: editorValues.categoryId,
               subcategoryId: editorValues.subcategoryId
@@ -15682,6 +15783,10 @@
               selectedSnapshot: editorState.testScaleSnapshot || null,
               disabled: editorMode !== "test"
             });
+            const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
+              editorState.testPredicateSuffixes,
+              selectedAssessment ? true : getDefaultGradeTestPredicateSuffixes(editorState.testScale)
+            );
             const deficitThreshold = normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, deficitThresholdDefault);
             const editor = document.createElement("section");
             editor.className = "grades-entry-editor";
@@ -15702,17 +15807,17 @@
               <fieldset class="grades-entry-field grades-entry-mode-field is-wide">
                 <legend>Modus</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Leistungsmodus">
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="grade"${normalizeGradeAssessmentMode(editorState.mode) === "grade" ? " checked" : ""}>
-                    <span>Bewertung</span>
+                  <label class="assessment-mode-option" title="Einzelnote">
+                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="grade" aria-label="Einzelnote"${normalizeGradeAssessmentMode(editorState.mode) === "grade" ? " checked" : ""}>
+                    <span>Note</span>
                   </label>
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="homework"${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? " checked" : ""}>
-                    <span>Hausaufgaben</span>
+                  <label class="assessment-mode-option" title="Bewertungseinheiten">
+                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="test" aria-label="Bewertungseinheiten"${normalizeGradeAssessmentMode(editorState.mode) === "test" ? " checked" : ""}>
+                    <span>BE</span>
                   </label>
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="test"${normalizeGradeAssessmentMode(editorState.mode) === "test" ? " checked" : ""}>
-                    <span>Test</span>
+                  <label class="assessment-mode-option" title="Hausaufgaben">
+                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="homework" aria-label="Hausaufgaben"${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? " checked" : ""}>
+                    <span>HA</span>
                   </label>
                 </div>
               </fieldset>
@@ -15720,6 +15825,19 @@
                 <legend>Prozentgrenzen</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
                   ${testScaleOptionsMarkup}
+                </div>
+              </fieldset>
+              <fieldset class="grades-entry-field grades-entry-test-predicate-field is-wide${editorMode === "test" ? "" : " is-hidden"}">
+                <legend>Prädikatsanhängsel</legend>
+                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prädikatsanhängsel">
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-test-predicate-suffixes" data-grades-entry-test-predicate-suffixes="1" value="true"${testPredicateSuffixes ? " checked" : ""}${editorMode === "test" ? "" : " disabled"}>
+                    <span>Ja</span>
+                  </label>
+                  <label class="assessment-mode-option">
+                    <input type="radio" name="grades-entry-test-predicate-suffixes" data-grades-entry-test-predicate-suffixes="1" value="false"${testPredicateSuffixes ? "" : " checked"}${editorMode === "test" ? "" : " disabled"}>
+                    <span>Nein</span>
+                  </label>
                 </div>
               </fieldset>
               <fieldset class="grades-entry-field grades-entry-halfyear-field is-wide">
@@ -18458,7 +18576,7 @@
             data-row-index="${rowIndex}"
             data-student-id="${student.id}"
             ${disabled ? "disabled" : ""}
-            aria-label="Test ${escapeHtml(assessment.title)} bearbeiten"
+            aria-label="Bewertungseinheiten ${escapeHtml(assessment.title)} bearbeiten"
             title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"
           >${displayValue}</button>
         `;
@@ -18604,7 +18722,7 @@
             headRow.append(studentHead);
             const gradeHead = document.createElement("th");
             gradeHead.className = "grade-assessment-col";
-            gradeHead.textContent = entryMode === "homework" ? "Hausaufgaben" : "Bewertung";
+            gradeHead.textContent = entryMode === "homework" ? "Hausaufgabe" : "Einzelnote";
             headRow.append(gradeHead);
             thead.append(headRow);
             table.append(thead);
@@ -18643,7 +18761,7 @@
                     `name="grade-draft-${student.id}" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}"`,
                     { disabled: false }
                   )
-                  : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="numeric" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInteger(draftEntry.value)}" aria-label="Bewertung für ${escapeHtml(studentName)}" title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">`;
+                  : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="numeric" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInteger(draftEntry.value)}" aria-label="Einzelnote für ${escapeHtml(studentName)}" title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">`;
               }
               tr.append(gradeCell);
               tbody.append(tr);
@@ -18877,6 +18995,9 @@
             const scaleSnapshot = assessment
               ? normalizeGradeTestScaleSnapshot(assessment.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
               : this.store.buildGradeTestScaleSnapshot(scale);
+            const testPredicateSuffixes = assessment
+              ? normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
+              : normalizeGradeTestPredicateSuffixes(activeDraft?.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(scale));
             const courseColor = normalizeCourseColor(course?.color, Boolean(course?.noLesson));
             const displayStudents = this.getSortedGradeStudentsForNameOrder(students);
             const visibleMaxNameLength = displayStudents.reduce(
@@ -18891,7 +19012,14 @@
                   : (Object.prototype.hasOwnProperty.call(entries, student.id) ? normalizeGradeDraftEntry(entries[student.id]) : null);
                 return normalizeGradeTestScores(entry?.testScores);
               });
-            const averageState = calculateGradeTestAverageState(tasks, averageScores, scaleSnapshot, null, this.gradeDeficitThreshold);
+            const averageState = calculateGradeTestAverageState(
+              tasks,
+              averageScores,
+              scaleSnapshot,
+              null,
+              this.gradeDeficitThreshold,
+              testPredicateSuffixes
+            );
             const table = document.createElement("table");
             table.className = "grade-block-table grades-entry-table grades-test-entry-table";
             if (visibleMaxNameLength > 0) {
@@ -18964,9 +19092,7 @@
               const scores = normalizeGradeTestScores(entry?.testScores);
               const resultCell = document.createElement("td");
               resultCell.className = "grade-test-result-col";
-              const resultValue = assessment
-                ? calculateGradeTestValue(tasks, scores, scaleSnapshot)
-                : calculateGradeTestValue(tasks, scores, scaleSnapshot);
+              const resultValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes);
               const isResultDeficit = isGradeValueBelowThreshold(resultValue, this.gradeDeficitThreshold);
               resultCell.innerHTML = `<div class="grade-total-value${isResultDeficit ? " is-grade-low" : ""}" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${this.formatDisplayedGrade(resultValue)}</div>`;
               tr.append(resultCell);
@@ -19145,6 +19271,7 @@
             }, {});
             const halfYear = normalizeGradeHalfYear(previous.halfYear || this.getDefaultGradeAssessmentHalfYear());
             const mode = normalizeGradeAssessmentMode(previous.mode);
+            const testScale = normalizeGradeTestScale(previous.testScale);
             const defaultSelection = this.getMostUsedGradeAssessmentSelection(courseId);
             const categoryId = categories.some((item) => Number(item.id) === Number(previous.categoryId || 0))
               ? Number(previous.categoryId)
@@ -19164,7 +19291,10 @@
               halfYear,
               weight: normalizeGradeInteger(previous.weight, 1),
               mode,
-              testScale: normalizeGradeTestScale(previous.testScale),
+              testScale,
+              testPredicateSuffixes: Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
+                ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(testScale))
+                : getDefaultGradeTestPredicateSuffixes(testScale),
               testTasks: normalizeGradeTestTasks(previous.testTasks),
               categoryId,
               subcategoryId,
@@ -19249,6 +19379,10 @@
               weight: normalizeGradeAssessmentMode(values?.mode) === "homework" ? 1 : normalizeGradeInteger(values?.weight, 1),
               mode: normalizeGradeAssessmentMode(values?.mode),
               testScale: normalizeGradeTestScale(values?.testScale),
+              testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
+                values?.testPredicateSuffixes,
+                getDefaultGradeTestPredicateSuffixes(values?.testScale)
+              ),
               testTasks: normalizeGradeTestTasks(values?.testTasks),
               categoryId,
               subcategoryId,
@@ -19272,6 +19406,7 @@
             const weightInput = root.querySelector("input[data-grades-entry-weight]");
             const modeInput = root.querySelector("input[data-grades-entry-mode='1']:checked");
             const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
+            const testPredicateSuffixesInput = root.querySelector("input[data-grades-entry-test-predicate-suffixes='1']:checked");
             const categorySelect = root.querySelector("select[data-grades-entry-category]");
             const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
             const taskInputById = new Map(
@@ -19295,6 +19430,12 @@
               mode: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade"),
               testScale: normalizeGradeTestScale(testScaleInput?.value || draft.testScale),
               testScaleSnapshot: draft.testScaleSnapshot || null,
+              testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
+                testPredicateSuffixesInput?.value,
+                Object.prototype.hasOwnProperty.call(draft || {}, "testPredicateSuffixes")
+                  ? draft.testPredicateSuffixes
+                  : getDefaultGradeTestPredicateSuffixes(testScaleInput?.value || draft.testScale)
+              ),
               testTasks,
               categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
               subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
@@ -19811,7 +19952,7 @@
               applyBoundaryClasses();
               applyColumnSelection();
               th.textContent = "HA";
-              th.setAttribute("aria-label", "Hausaufgaben");
+              th.setAttribute("aria-label", "Hausaufgabe");
               return th;
             }
 
@@ -21281,8 +21422,11 @@
               const scaleSnapshot = draft
                 ? this.store.buildGradeTestScaleSnapshot(scale)
                 : assessment?.testScaleSnapshot || assessment?.testScale;
+              const testPredicateSuffixes = draft
+                ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+                : normalizeGradeTestPredicateSuffixes(assessment?.testPredicateSuffixes, true);
               if (node) {
-                const value = calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot);
+                const value = calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot, null, testPredicateSuffixes);
                 const isDeficit = isGradeValueBelowThreshold(value, this.gradeDeficitThreshold);
                 node.textContent = this.formatDisplayedGrade(value);
                 node.classList.toggle("is-grade-low", isDeficit);
@@ -21303,7 +21447,11 @@
               : null;
             if (node) {
               const scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft.testScale);
-              const value = calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot);
+              const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
+                draft.testPredicateSuffixes,
+                getDefaultGradeTestPredicateSuffixes(draft.testScale)
+              );
+              const value = calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot, null, testPredicateSuffixes);
               const isDeficit = isGradeValueBelowThreshold(value, this.gradeDeficitThreshold);
               node.textContent = this.formatDisplayedGrade(value);
               node.classList.toggle("is-grade-low", isDeficit);
@@ -21328,6 +21476,7 @@
               .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
             let tasks = [];
             let scaleSnapshot = null;
+            let testPredicateSuffixes = true;
             let scoreEntries = [];
             if (assessmentId) {
               const assessment = this.store.getGradeAssessment(assessmentId);
@@ -21342,6 +21491,9 @@
               scaleSnapshot = draft
                 ? this.store.buildGradeTestScaleSnapshot(scale)
                 : assessment.testScaleSnapshot || assessment.testScale;
+              testPredicateSuffixes = draft
+                ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+                : normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true);
               scoreEntries = students.map((student) => normalizeGradeTestScores(
                 this.store.getGradeEntry(student.id, assessment.id)?.testScores
               ));
@@ -21349,6 +21501,10 @@
               const draft = this.getGradesEntryDraft(courseId);
               tasks = normalizeGradeTestTasks(draft?.testTasks);
               scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft?.testScale);
+              testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
+                draft?.testPredicateSuffixes,
+                getDefaultGradeTestPredicateSuffixes(draft?.testScale)
+              );
               const entries = draft && typeof draft.entries === "object" ? draft.entries : {};
               scoreEntries = students.map((student) => {
                 const entry = Object.prototype.hasOwnProperty.call(entries, student.id)
@@ -21357,7 +21513,14 @@
                 return normalizeGradeTestScores(entry?.testScores);
               });
             }
-            const averageState = calculateGradeTestAverageState(tasks, scoreEntries, scaleSnapshot, null, this.gradeDeficitThreshold);
+            const averageState = calculateGradeTestAverageState(
+              tasks,
+              scoreEntries,
+              scaleSnapshot,
+              null,
+              this.gradeDeficitThreshold,
+              testPredicateSuffixes
+            );
             const resultSelector = assessmentId
               ? `[data-grade-test-average-result="1"][data-assessment-id="${Number(assessmentId)}"]`
               : `[data-grade-test-average-result="1"][data-grade-test-draft-average-result="1"]`;
@@ -23756,7 +23919,7 @@
             };
             root.innerHTML = `
               <div class="grade-test-scale-settings-intro">
-                <p class="muted">Änderungen gelten für neue Tests. Bestehende Tests behalten ihre gespeicherten Grenzen.</p>
+                <p class="muted">Änderungen gelten für neue Bewertungseinheiten. Bestehende Bewertungseinheiten behalten ihre gespeicherten Grenzen.</p>
               </div>
               <div class="grade-test-scale-settings-grid">
                 ${renderScaleCard("sek1")}

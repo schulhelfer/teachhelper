@@ -801,6 +801,17 @@
           text-overflow: ellipsis;
         }
 
+        .grades-entry-nav-btn,
+        .week-view-nav-btn {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 3.4rem;
+          padding: 0;
+          font-size: 2.2rem;
+          line-height: 1;
+        }
+
         .nav-btn.active {
           background: rgba(60, 72, 92, 0.98);
           border-color: rgba(148, 163, 184, 0.58);
@@ -3941,6 +3952,7 @@
 
         .grades-entry-mode-field,
         .grades-entry-test-scale-field,
+        .grades-entry-test-predicate-field,
         .grades-entry-halfyear-field {
           padding-top: 0.05rem;
         }
@@ -4029,6 +4041,7 @@
 
         .grades-entry-mode-field .assessment-mode-toggle,
         .grades-entry-test-scale-field .assessment-mode-toggle,
+        .grades-entry-test-predicate-field .assessment-mode-toggle,
         .grades-entry-halfyear-field .assessment-mode-toggle {
           padding: 0.25rem;
           border-radius: 14px;
@@ -4045,12 +4058,17 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .grades-entry-test-predicate-field .assessment-mode-toggle {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
         .grades-entry-halfyear-field .assessment-mode-toggle {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
         .grades-entry-mode-field .assessment-mode-option span,
         .grades-entry-test-scale-field .assessment-mode-option span,
+        .grades-entry-test-predicate-field .assessment-mode-option span,
         .grades-entry-halfyear-field .assessment-mode-option span {
           min-height: 2.8rem;
           padding: 0.5rem 0.8rem;
@@ -4062,6 +4080,7 @@
 
         .grades-entry-mode-field .assessment-mode-option:hover span,
         .grades-entry-test-scale-field .assessment-mode-option:hover span,
+        .grades-entry-test-predicate-field .assessment-mode-option:hover span,
         .grades-entry-halfyear-field .assessment-mode-option:hover span {
           color: rgba(248, 250, 252, 0.94);
           background: rgba(148, 163, 184, 0.08);
@@ -4069,6 +4088,7 @@
 
         .grades-entry-mode-field .assessment-mode-option input:checked+span,
         .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
+        .grades-entry-test-predicate-field .assessment-mode-option input:checked+span,
         .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #f8fbff;
           background: rgba(59, 130, 246, 0.24);
@@ -4529,6 +4549,7 @@
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-toggle,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-toggle,
+        :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-toggle,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-toggle {
           border-color: rgba(14, 165, 233, 0.14);
           background: rgba(226, 242, 255, 0.48);
@@ -4537,12 +4558,14 @@
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option span,
+        :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-option span,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option span {
           color: #475569;
         }
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option:hover span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option:hover span,
+        :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-option:hover span,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option:hover span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.08);
@@ -4550,6 +4573,7 @@
 
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option input:checked+span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
+        :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-option input:checked+span,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.18);
