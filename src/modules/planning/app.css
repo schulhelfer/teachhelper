@@ -7300,6 +7300,81 @@
           justify-content: center;
         }
 
+        .course-dialog-structure-period-toggle {
+          display: inline-flex;
+          width: fit-content;
+          flex: 0 0 auto;
+          align-self: flex-start;
+          gap: 0.2rem;
+          padding: 0.2rem;
+          border-radius: 999px;
+          background: rgba(15, 23, 42, 0.56);
+          border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .course-structure-dialog-actions-top .course-dialog-structure-period-toggle {
+          align-self: center;
+          margin-right: 0.25rem;
+        }
+
+        .course-dialog-structure-period-option {
+          display: inline-flex;
+          cursor: pointer;
+        }
+
+        .course-dialog-structure-period-option input {
+          position: absolute;
+          opacity: 0;
+          pointer-events: none;
+        }
+
+        .course-dialog-structure-period-option span {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 3.1rem;
+          min-height: 2rem;
+          padding: 0 0.75rem;
+          border-radius: 999px;
+          color: rgba(226, 232, 240, 0.78);
+          font-weight: 700;
+        }
+
+        .course-dialog-structure-period-option input:checked+span {
+          background: rgba(14, 165, 233, 0.24);
+          color: #f8fafc;
+          box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.28);
+        }
+
+        .course-dialog-structure-period-option:focus-within span {
+          outline: 2px solid rgba(56, 189, 248, 0.55);
+          outline-offset: 2px;
+        }
+
+        :root[data-theme='light'] .course-dialog-structure-period-toggle {
+          background: rgba(248, 250, 252, 0.92);
+          border-color: rgba(148, 163, 184, 0.35);
+        }
+
+        :root[data-theme='light'] .course-dialog-structure-period-option span {
+          color: rgba(51, 65, 85, 0.78);
+        }
+
+        :root[data-theme='light'] .course-dialog-structure-period-option input:checked+span {
+          background: rgba(14, 165, 233, 0.14);
+          color: #0f172a;
+          box-shadow: inset 0 0 0 1px rgba(14, 165, 233, 0.28);
+        }
+
+        .course-dialog-copy-h1-to-h2 {
+          flex: 0 0 auto;
+          min-height: 2.1rem;
+          padding: 0.35rem 0.65rem;
+          font-size: 0.82rem;
+          font-weight: 700;
+          white-space: nowrap;
+        }
+
         .course-dialog-students-list {
           display: grid;
           gap: 0.55rem;

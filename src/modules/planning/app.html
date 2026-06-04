@@ -501,7 +501,21 @@
         <form id="course-structure-dialog-form" class="form-grid" method="dialog">
           <div class="dialog-header">
             <h3 id="course-structure-dialog-title" class="settings-panel-title">Notenstruktur</h3>
-            <div class="dialog-actions-top">
+            <div class="dialog-actions-top course-structure-dialog-actions-top">
+              <button type="button" id="course-dialog-copy-h1-to-h2" class="ghost course-dialog-copy-h1-to-h2" hidden>
+                Aus HJ1 übernehmen
+              </button>
+              <div id="course-dialog-structure-period-toggle" class="course-dialog-structure-period-toggle" role="radiogroup"
+                aria-label="Halbjahr für Gewichtungen">
+                <label class="course-dialog-structure-period-option">
+                  <input type="radio" name="course-structure-period" data-course-structure-period="1" value="h1" checked>
+                  <span>HJ1</span>
+                </label>
+              <label class="course-dialog-structure-period-option">
+                <input type="radio" name="course-structure-period" data-course-structure-period="1" value="h2">
+                  <span>HJ2</span>
+                </label>
+              </div>
               <button type="button" id="course-structure-dialog-cancel" class="ghost dialog-icon-button"
                 aria-label="Abbrechen" title="Abbrechen">❌</button>
               <button type="submit" class="dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>

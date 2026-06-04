@@ -1525,11 +1525,11 @@
         }
 
         function shouldShowGradeWeight(weight) {
-          return Math.abs(normalizeGradeNumber(weight, 1) - 1) > 0.0000001;
+          return Math.abs(normalizeGradeStructureWeight(weight, 1) - 1) > 0.0000001;
         }
 
         function formatGradeWeightValue(weight) {
-          return String(normalizeGradeNumber(weight, 1)).replace(".", ",");
+          return String(normalizeGradeStructureWeight(weight, 1)).replace(".", ",");
         }
 
         function formatGradeWeightPercentSuffix(weight) {
@@ -2497,22 +2497,105 @@
           return `${Number(courseId) || 0}:${normalizeGradePeriod(period)}:${Number(categoryId) || 0}:${Number(subcategoryId) || 0}`;
         }
 
+        function normalizeGradeStructureWeight(value, fallback = 1) {
+          const parsed = Number(value);
+          if (!Number.isFinite(parsed) || parsed < 0) {
+            const fallbackNumber = Number(fallback);
+            return Number.isFinite(fallbackNumber) && fallbackNumber >= 0 ? fallbackNumber : 1;
+          }
+          return parsed;
+        }
+
+        function normalizeGradeStructureWeights(weights = null, fallback = 1) {
+          const source = weights && typeof weights === "object" ? weights : {};
+          const fallbackWeight = normalizeGradeStructureWeight(fallback, 1);
+          return {
+            h1: normalizeGradeStructureWeight(source.h1, fallbackWeight),
+            h2: normalizeGradeStructureWeight(source.h2, fallbackWeight)
+          };
+        }
+
+        function getGradeStructurePeriodWeight(item = null, period = "h1") {
+          const normalizedPeriod = normalizeGradeHalfYear(period);
+          const fallback = normalizeGradeStructureWeight(item && item.weight, 1);
+          const weights = normalizeGradeStructureWeights(item && item.weights, fallback);
+          return weights[normalizedPeriod];
+        }
+
+        function setGradeStructurePeriodWeight(item = null, period = "h1", value = 0) {
+          if (!item || typeof item !== "object") {
+            return;
+          }
+          const normalizedPeriod = normalizeGradeHalfYear(period);
+          const fallback = normalizeGradeStructureWeight(item.weight, 1);
+          const weights = normalizeGradeStructureWeights(item.weights, fallback);
+          weights[normalizedPeriod] = normalizeGradeStructureWeight(value, weights[normalizedPeriod]);
+          item.weights = weights;
+          item.weight = weights.h1;
+        }
+
         function normalizeGradeStructureDraft(categories) {
+          if (!Array.isArray(categories)) {
+            return [];
+          }
+          return categories.map((category) => {
+            const fallbackWeight = normalizeGradeStructureWeight(category && category.weight, 1);
+            const weights = normalizeGradeStructureWeights(category && category.weights, fallbackWeight);
+            return {
+              id: Number(category && category.id) || 0,
+              name: normalizeGradeTextPart(category && category.name),
+              weight: weights.h1,
+              weights,
+              subcategories: Array.isArray(category && category.subcategories)
+                ? category.subcategories.map((subcategory) => {
+                  const subcategoryFallbackWeight = normalizeGradeStructureWeight(subcategory && subcategory.weight, 1);
+                  const subcategoryWeights = normalizeGradeStructureWeights(subcategory && subcategory.weights, subcategoryFallbackWeight);
+                  return {
+                    id: Number(subcategory && subcategory.id) || 0,
+                    name: normalizeGradeTextPart(subcategory && subcategory.name),
+                    weight: subcategoryWeights.h1,
+                    weights: subcategoryWeights,
+                  };
+                })
+                : [],
+            };
+          });
+        }
+
+        function normalizeGradeStructurePeriodDraft(categories) {
           if (!Array.isArray(categories)) {
             return [];
           }
           return categories.map((category) => ({
             id: Number(category && category.id) || 0,
             name: normalizeGradeTextPart(category && category.name),
-            weight: normalizeGradeNumber(category && category.weight, 1),
+            weight: normalizeGradeStructureWeight(category && category.weight, 1),
             subcategories: Array.isArray(category && category.subcategories)
               ? category.subcategories.map((subcategory) => ({
                 id: Number(subcategory && subcategory.id) || 0,
                 name: normalizeGradeTextPart(subcategory && subcategory.name),
-                weight: normalizeGradeNumber(subcategory && subcategory.weight, 1),
+                weight: normalizeGradeStructureWeight(subcategory && subcategory.weight, 1),
               }))
               : [],
           }));
+        }
+
+        function normalizeGradeStructurePeriodCategories(source = null) {
+          const record = source && typeof source === "object" && !Array.isArray(source) ? source : {};
+          const legacyCategories = Array.isArray(source)
+            ? source
+            : (Array.isArray(record.categories) ? record.categories : []);
+          const periodCategories = record.periodCategories && typeof record.periodCategories === "object"
+            ? record.periodCategories
+            : {};
+          return {
+            h1: Array.isArray(periodCategories.h1)
+              ? normalizeGradeStructurePeriodDraft(periodCategories.h1)
+              : normalizeGradeStructurePeriodDraft(buildGradeStructureForPeriod(legacyCategories, "h1")),
+            h2: Array.isArray(periodCategories.h2)
+              ? normalizeGradeStructurePeriodDraft(periodCategories.h2)
+              : normalizeGradeStructurePeriodDraft(buildGradeStructureForPeriod(legacyCategories, "h2"))
+          };
         }
 
         function normalizePercentWeights(items) {
@@ -2551,10 +2634,81 @@
         }
 
         function normalizeGradeStructurePercentDraft(categories) {
-          const normalizedCategories = normalizePercentWeights(normalizeGradeStructureDraft(categories));
+          const draftCategories = normalizeGradeStructureDraft(categories);
+          const normalizedByPeriod = {
+            h1: normalizePercentWeights(draftCategories.map((category) => ({
+              ...category,
+              weight: getGradeStructurePeriodWeight(category, "h1")
+            }))),
+            h2: normalizePercentWeights(draftCategories.map((category) => ({
+              ...category,
+              weight: getGradeStructurePeriodWeight(category, "h2")
+            })))
+          };
+          const normalizedCategories = draftCategories.map((category, categoryIndex) => {
+            const weights = {
+              h1: Number(normalizedByPeriod.h1[categoryIndex]?.weight) || 0,
+              h2: Number(normalizedByPeriod.h2[categoryIndex]?.weight) || 0
+            };
+            return {
+              ...category,
+              weight: weights.h1,
+              weights
+            };
+          });
+          return normalizedCategories.map((category) => {
+            const normalizedSubcategoriesByPeriod = {
+              h1: normalizePercentWeights((category.subcategories || []).map((item) => ({
+                ...item,
+                weight: getGradeStructurePeriodWeight(item, "h1")
+              }))),
+              h2: normalizePercentWeights((category.subcategories || []).map((item) => ({
+                ...item,
+                weight: getGradeStructurePeriodWeight(item, "h2")
+              })))
+            };
+            return {
+              ...category,
+              subcategories: (category.subcategories || []).map((subcategory, subcategoryIndex) => {
+                const weights = {
+                  h1: Number(normalizedSubcategoriesByPeriod.h1[subcategoryIndex]?.weight) || 0,
+                  h2: Number(normalizedSubcategoriesByPeriod.h2[subcategoryIndex]?.weight) || 0
+                };
+                return {
+                  ...subcategory,
+                  weight: weights.h1,
+                  weights
+                };
+              }),
+            };
+          });
+        }
+
+        function normalizeGradeStructurePeriodPercentDraft(categories) {
+          const normalizedCategories = normalizePercentWeights(normalizeGradeStructurePeriodDraft(categories));
           return normalizedCategories.map((category) => ({
             ...category,
-            subcategories: normalizePercentWeights(category.subcategories || []),
+            subcategories: normalizePercentWeights(category.subcategories || [])
+          }));
+        }
+
+        function normalizeGradeStructurePeriodCategoriesPercentDraft(source = null) {
+          const periodCategories = normalizeGradeStructurePeriodCategories(source);
+          return {
+            h1: normalizeGradeStructurePeriodPercentDraft(periodCategories.h1),
+            h2: normalizeGradeStructurePeriodPercentDraft(periodCategories.h2)
+          };
+        }
+
+        function buildGradeStructureForPeriod(categories, period = "h1") {
+          const normalizedPeriod = normalizeGradeHalfYear(period);
+          return normalizeGradeStructureDraft(categories).map((category) => ({
+            ...category,
+            weight: getGradeStructurePeriodWeight(category, normalizedPeriod),
+            subcategories: (category.subcategories || []).map((subcategory) => ({
+              ...subcategory,
+              weight: getGradeStructurePeriodWeight(subcategory, normalizedPeriod)
+            }))
           }));
         }
 
@@ -2564,15 +2718,17 @@
               id: 0,
               name: "Schriftlich",
               weight: 50,
-              subcategories: [{ id: 0, name: "Arbeiten", weight: 100 }],
+              weights: { h1: 50, h2: 50 },
+              subcategories: [{ id: 0, name: "Arbeiten", weight: 100, weights: { h1: 100, h2: 100 } }],
             },
             {
               id: 0,
               name: "Mündlich",
               weight: 50,
+              weights: { h1: 50, h2: 50 },
               subcategories: [
-                { id: 0, name: "Beteiligung", weight: 80 },
-                { id: 0, name: "Kurze Lernkontrolle", weight: 20 }
+                { id: 0, name: "Beteiligung", weight: 80, weights: { h1: 80, h2: 80 } },
+                { id: 0, name: "Kurze Lernkontrolle", weight: 20, weights: { h1: 20, h2: 20 } }
               ],
             },
           ];
@@ -3205,55 +3361,119 @@
             const id = Number(courseId);
             const row = this.gradeVaultState.gradeStructures.find((item) => Number(item.courseId) === id);
             if (!row) {
-              return { courseId: id, categories: [] };
+              return { courseId: id, categories: [], periodCategories: { h1: [], h2: [] } };
             }
+            const periodCategories = normalizeGradeStructurePeriodCategories(row);
             return {
               courseId: id,
-              categories: normalizeGradeStructureDraft(row.categories)
+              categories: periodCategories.h1,
+              periodCategories
             };
           }
 
-          saveGradeStructure(courseId, categories) {
+          getGradeStructureForPeriod(courseId, period = "h1") {
+            const structure = this.getGradeStructure(courseId);
+            const normalizedPeriod = normalizeGradeHalfYear(period);
+            return {
+              courseId: structure.courseId,
+              categories: normalizeGradeStructurePeriodDraft(structure.periodCategories?.[normalizedPeriod] || structure.categories)
+            };
+          }
+
+          saveGradeStructure(courseId, categoriesOrPeriodCategories) {
             const id = Number(courseId);
-            const normalized = normalizeGradeStructureDraft(categories).map((category) => ({
-              id: Number(category.id) > 0 ? Number(category.id) : this._nextId("gradeCategory"),
-              name: category.name,
-              weight: normalizeGradeNumber(category.weight, 1),
-              subcategories: (category.subcategories || []).map((subcategory) => ({
-                id: Number(subcategory.id) > 0 ? Number(subcategory.id) : this._nextId("gradeSubcategory"),
-                name: subcategory.name,
-                weight: normalizeGradeNumber(subcategory.weight, 1)
-              }))
-            }));
+            const sourcePeriodCategories = Array.isArray(categoriesOrPeriodCategories)
+              ? normalizeGradeStructurePeriodCategories({ categories: categoriesOrPeriodCategories })
+              : normalizeGradeStructurePeriodCategories({ periodCategories: categoriesOrPeriodCategories });
+            const assignPeriodCategories = (categories, counterpart = []) => (
+              normalizeGradeStructurePeriodDraft(categories).map((category, categoryIndex) => {
+                const counterpartCategory = counterpart[categoryIndex] || null;
+                const canReuseCounterpartCategory = (
+                  Number(category.id || 0) <= 0
+                  && Number(counterpartCategory?.id || 0) > 0
+                  && normalizeGradeTextPart(counterpartCategory?.name) === normalizeGradeTextPart(category.name)
+                );
+                const categoryId = Number(category.id) > 0
+                  ? Number(category.id)
+                  : (canReuseCounterpartCategory ? Number(counterpartCategory.id) : this._nextId("gradeCategory"));
+                return {
+                  id: categoryId,
+                  name: category.name,
+                  weight: normalizeGradeStructureWeight(category.weight, 1),
+                  subcategories: (category.subcategories || []).map((subcategory, subcategoryIndex) => {
+                    const counterpartSubcategory = counterpartCategory?.subcategories?.[subcategoryIndex] || null;
+                    const canReuseCounterpartSubcategory = (
+                      Number(subcategory.id || 0) <= 0
+                      && Number(counterpartSubcategory?.id || 0) > 0
+                      && normalizeGradeTextPart(counterpartSubcategory?.name) === normalizeGradeTextPart(subcategory.name)
+                    );
+                    return {
+                      id: Number(subcategory.id) > 0
+                        ? Number(subcategory.id)
+                        : (canReuseCounterpartSubcategory ? Number(counterpartSubcategory.id) : this._nextId("gradeSubcategory")),
+                      name: subcategory.name,
+                      weight: normalizeGradeStructureWeight(subcategory.weight, 1)
+                    };
+                  })
+                };
+              })
+            );
+            const h1Categories = assignPeriodCategories(sourcePeriodCategories.h1);
+            const h2Categories = assignPeriodCategories(sourcePeriodCategories.h2, h1Categories);
+            const periodCategories = {
+              h1: h1Categories,
+              h2: h2Categories
+            };
+            const normalized = periodCategories.h1;
             const existing = this.gradeVaultState.gradeStructures.find((item) => Number(item.courseId) === id);
             if (existing) {
               existing.categories = normalized;
+              existing.periodCategories = periodCategories;
             } else {
               this.gradeVaultState.gradeStructures.push({
                 courseId: id,
-                categories: normalized
+                categories: normalized,
+                periodCategories
               });
             }
-            const validCategoryIds = new Set(normalized.map((category) => Number(category.id)));
-            const validSubcategoryIdsByCategory = new Map(
-              normalized.map((category) => [
-                Number(category.id),
-                new Set((category.subcategories || []).map((subcategory) => Number(subcategory.id)))
-              ])
-            );
+            const buildValidity = (categories) => ({
+              categoryIds: new Set(categories.map((category) => Number(category.id))),
+              subcategoryIdsByCategory: new Map(
+                categories.map((category) => [
+                  Number(category.id),
+                  new Set((category.subcategories || []).map((subcategory) => Number(subcategory.id)))
+                ])
+              )
+            });
+            const validByPeriod = {
+              h1: buildValidity(periodCategories.h1),
+              h2: buildValidity(periodCategories.h2)
+            };
+            const isValidSelection = (period, categoryId, subcategoryId, scope = "subcategory") => {
+              const normalizedPeriod = normalizeGradeHalfYear(period);
+              const valid = validByPeriod[normalizedPeriod] || validByPeriod.h1;
+              if (!categoryId || !valid.categoryIds.has(categoryId)) {
+                return false;
+              }
+              if (scope === "category") {
+                return true;
+              }
+              const validSubcategoryIds = valid.subcategoryIdsByCategory.get(categoryId);
+              return Boolean(subcategoryId && validSubcategoryIds && validSubcategoryIds.has(subcategoryId));
+            };
             this.gradeVaultState.gradeAssessments.forEach((assessment) => {
               if (Number(assessment.courseId) !== id) {
                 return;
               }
               const categoryId = Number(assessment.categoryId) || 0;
               const subcategoryId = Number(assessment.subcategoryId) || 0;
-              if (!categoryId || !validCategoryIds.has(categoryId)) {
+              const period = normalizeGradeHalfYear(assessment.halfYear);
+              if (!isValidSelection(period, categoryId, subcategoryId, "category")) {
                 assessment.categoryId = null;
                 assessment.subcategoryId = null;
                 return;
               }
-              const validSubcategoryIds = validSubcategoryIdsByCategory.get(categoryId);
-              if (!subcategoryId || !validSubcategoryIds || !validSubcategoryIds.has(subcategoryId)) {
+              if (!isValidSelection(period, categoryId, subcategoryId, "subcategory")) {
                 assessment.subcategoryId = null;
               }
             });
@@ -3267,14 +3487,14 @@
               if (scope === "course") {
                 return true;
               }
-              if (!categoryId || !validCategoryIds.has(categoryId)) {
-                return false;
+              const period = normalizeGradePeriod(entry.period);
+              if (period === "h1" || period === "h2") {
+                return isValidSelection(period, categoryId, subcategoryId, scope);
               }
-              if (scope === "category") {
-                return true;
-              }
-              const validSubcategoryIds = validSubcategoryIdsByCategory.get(categoryId);
-              return Boolean(subcategoryId && validSubcategoryIds && validSubcategoryIds.has(subcategoryId));
+              return (
+                isValidSelection("h1", categoryId, subcategoryId, scope)
+                || isValidSelection("h2", categoryId, subcategoryId, scope)
+              );
             });
             this._save();
             this._saveGradeVault();
@@ -3777,33 +3997,35 @@
           }
 
           getGroupedGradeAssessments(courseId) {
-            const structure = this.getGradeStructure(courseId);
             const assessments = this.listGradeAssessments(courseId);
-            const categories = Array.isArray(structure.categories) ? structure.categories : [];
             const periods = [
               { id: "h1", label: "HJ1", includeAssessments: true },
               { id: "h2", label: "HJ2", includeAssessments: true }
             ];
-            return periods.map((period) => ({
-              period: period.id,
-              label: period.label,
-              categories: categories.map((category) => {
-                const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
-                return {
-                  ...category,
-                  subcategories: subcategories.map((subcategory) => ({
-                    ...subcategory,
-                    assessments: period.includeAssessments
-                      ? assessments.filter((assessment) => (
-                        Number(assessment.categoryId) === Number(category.id)
-                        && Number(assessment.subcategoryId) === Number(subcategory.id)
-                        && normalizeGradeHalfYear(assessment.halfYear) === period.id
-                      ))
-                      : []
-                  }))
-                };
-              })
-            }));
+            return periods.map((period) => {
+              const structure = this.getGradeStructureForPeriod(courseId, period.id);
+              const categories = Array.isArray(structure.categories) ? structure.categories : [];
+              return {
+                period: period.id,
+                label: period.label,
+                categories: categories.map((category) => {
+                  const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
+                  return {
+                    ...category,
+                    subcategories: subcategories.map((subcategory) => ({
+                      ...subcategory,
+                      assessments: period.includeAssessments
+                        ? assessments.filter((assessment) => (
+                          Number(assessment.categoryId) === Number(category.id)
+                          && Number(assessment.subcategoryId) === Number(subcategory.id)
+                          && normalizeGradeHalfYear(assessment.halfYear) === period.id
+                        ))
+                        : []
+                    }))
+                  };
+                })
+              };
+            });
           }
 
           calculateComputedGradeForStudentInSubcategoryPeriod(studentId, courseId, categoryId, subcategoryId, period = "year") {
@@ -3873,7 +4095,7 @@
               }
               return null;
             }
-            const structure = this.getGradeStructure(courseId);
+            const structure = this.getGradeStructureForPeriod(courseId, normalizedPeriod);
             const categoryKey = Number(categoryId);
             const category = (Array.isArray(structure.categories) ? structure.categories : []).find((item) => Number(item.id) === categoryKey);
             if (!category) {
@@ -3892,7 +4114,7 @@
               if (partial === null) {
                 return;
               }
-              const weight = normalizeGradeNumber(subcategory.weight, 1);
+              const weight = normalizeGradeStructureWeight(subcategory.weight, 1);
               weightedSum += partial * weight;
               weightSum += weight;
             });
@@ -3929,13 +4151,13 @@
             }
             let weightedSum = 0;
             let weightSum = 0;
-            const structure = this.getGradeStructure(courseId);
+            const structure = this.getGradeStructureForPeriod(courseId, normalizedPeriod);
             (Array.isArray(structure.categories) ? structure.categories : []).forEach((category) => {
               const partial = this.calculateGradeForStudentInCategoryPeriod(studentId, courseId, category.id, normalizedPeriod);
               if (partial === null) {
                 return;
               }
-              const weight = normalizeGradeNumber(category.weight, 1);
+              const weight = normalizeGradeStructureWeight(category.weight, 1);
               weightedSum += partial * weight;
               weightSum += weight;
             });
@@ -5149,9 +5371,11 @@
             },
             gradeStructures: Array.isArray(source.gradeStructures) ? source.gradeStructures.map((raw) => {
               const item = asObject(raw);
+              const periodCategories = normalizeGradeStructurePeriodCategories(item);
               return {
                 courseId: Number(item.courseId),
-                categories: normalizeGradeStructureDraft(item.categories)
+                categories: periodCategories.h1,
+                periodCategories
               };
             }) : [],
             gradeAssessments: Array.isArray(source.gradeAssessments) ? source.gradeAssessments.map((raw) => {
@@ -5276,6 +5500,18 @@
             const nested = getter(row);
             return Math.max(max, ...nested.map((item) => Number(item.id) || 0), 0);
           }, 0);
+          const getAllGradeStructureCategories = (row) => {
+            const periodCategories = row?.periodCategories && typeof row.periodCategories === "object"
+              ? row.periodCategories
+              : null;
+            if (periodCategories) {
+              return [
+                ...(Array.isArray(periodCategories.h1) ? periodCategories.h1 : []),
+                ...(Array.isArray(periodCategories.h2) ? periodCategories.h2 : [])
+              ];
+            }
+            return Array.isArray(row?.categories) ? row.categories : [];
+          };
           const normalizedPublic = this.normalizePublicState(publicState);
           const normalizedVault = this.normalizeGradeVaultState(gradeVaultState, {
             gradeTestScaleSettings: normalizedPublic.settings.gradeTestScaleSettings
@@ -5290,14 +5526,13 @@
           );
           normalizedPublic.counters.gradeCategory = Math.max(
             Number(normalizedPublic.counters.gradeCategory) || 1,
-            maxNestedBy(normalizedVault.gradeStructures, (row) => Array.isArray(row.categories) ? row.categories : []) + 1
+            maxNestedBy(normalizedVault.gradeStructures, getAllGradeStructureCategories) + 1
           );
           normalizedPublic.counters.gradeSubcategory = Math.max(
             Number(normalizedPublic.counters.gradeSubcategory) || 1,
             maxNestedBy(normalizedVault.gradeStructures, (row) => (
-              Array.isArray(row.categories)
-                ? row.categories.flatMap((category) => Array.isArray(category.subcategories) ? category.subcategories : [])
-                : []
+              getAllGradeStructureCategories(row)
+                .flatMap((category) => Array.isArray(category.subcategories) ? category.subcategories : [])
             )) + 1
           );
           normalizedPublic.counters.gradeAssessment = Math.max(
@@ -5523,6 +5758,8 @@
               courseStructureDialogForm: document.querySelector("#course-structure-dialog-form"),
               courseStructureDialogTitle: document.querySelector("#course-structure-dialog-title"),
               courseStructureDialogId: document.querySelector("#course-structure-dialog-id"),
+              courseDialogStructurePeriodToggle: document.querySelector("#course-dialog-structure-period-toggle"),
+              courseDialogCopyH1ToH2: document.querySelector("#course-dialog-copy-h1-to-h2"),
               courseDialogStudentsFile: document.querySelector("#course-dialog-students-file"),
               courseDialogStudentsPick: document.querySelector("#course-dialog-students-pick"),
               courseDialogStudentsTemplate: document.querySelector("#course-dialog-students-template"),
@@ -5998,7 +6235,8 @@
               gradeStructures: state.gradeStructures
                 .filter((row) => Number(row.courseId) === courseKey)
                 .map((row) => ({
-                  categories: cloneJsonValue(row.categories, [])
+                  categories: cloneJsonValue(row.categories, []),
+                  periodCategories: cloneJsonValue(row.periodCategories, null)
                 })),
               gradeAssessments: state.gradeAssessments
                 .filter((row) => Number(row.courseId) === courseKey)
@@ -6072,7 +6310,8 @@
             runtimeState.gradeStructures = Array.isArray(source.gradeStructures)
               ? source.gradeStructures.map((row) => ({
                 courseId: courseKey,
-                categories: cloneJsonValue(row?.categories, [])
+                categories: cloneJsonValue(row?.categories, []),
+                periodCategories: cloneJsonValue(row?.periodCategories, null)
               }))
               : [];
             runtimeState.gradeAssessments = Array.isArray(source.gradeAssessments)
@@ -9203,7 +9442,11 @@
             const students = course ? this.store.listGradeStudents(course.id) : [];
             const structure = course ? this.store.getGradeStructure(course.id) : { categories: [] };
             const importMeta = course ? this.store.getGradeImportMeta(course.id) : null;
-            const categories = normalizeGradeStructurePercentDraft(structure.categories);
+            const periodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(structure);
+            const hasPeriodCategories = ["h1", "h2"].some((period) => (
+              Array.isArray(periodCategories[period]) && periodCategories[period].length > 0
+            ));
+            const defaultPeriodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(createDefaultGradeStructureDraft());
             return {
               id: course ? Number(course.id) : 0,
               name: course ? String(course.name || "") : "",
@@ -9218,7 +9461,9 @@
                 lastName: String(student.lastName || ""),
                 firstName: String(student.firstName || "")
               })),
-              categories: categories.length > 0 ? categories : createDefaultGradeStructureDraft(),
+              structurePeriod: "h1",
+              periodCategories: hasPeriodCategories ? periodCategories : defaultPeriodCategories,
+              categories: hasPeriodCategories ? periodCategories.h1 : defaultPeriodCategories.h1,
               importMeta: importMeta ? { ...importMeta, replacesExisting: false } : null
             };
           }
@@ -9255,11 +9500,36 @@
             }
           }
 
+          getCourseDialogStructureCategories(period = null) {
+            if (!this.courseDialogDraft) {
+              return [];
+            }
+            const normalizedPeriod = normalizeGradeHalfYear(period || this.courseDialogDraft.structurePeriod || "h1");
+            if (!this.courseDialogDraft.periodCategories || typeof this.courseDialogDraft.periodCategories !== "object") {
+              this.courseDialogDraft.periodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(this.courseDialogDraft.categories || []);
+            }
+            if (!Array.isArray(this.courseDialogDraft.periodCategories[normalizedPeriod])) {
+              this.courseDialogDraft.periodCategories[normalizedPeriod] = [];
+            }
+            this.courseDialogDraft.categories = this.courseDialogDraft.periodCategories[normalizedPeriod];
+            return this.courseDialogDraft.periodCategories[normalizedPeriod];
+          }
+
           renderCourseDialogStructure() {
             if (!this.refs.courseDialogStructureList || !this.courseDialogDraft) {
               return;
             }
-            const categories = Array.isArray(this.courseDialogDraft.categories) ? this.courseDialogDraft.categories : [];
+            const period = normalizeGradeHalfYear(this.courseDialogDraft.structurePeriod || "h1");
+            this.courseDialogDraft.structurePeriod = period;
+            this.refs.courseDialogStructurePeriodToggle
+              ?.querySelectorAll("input[data-course-structure-period='1']")
+              .forEach((input) => {
+                input.checked = input.value === period;
+              });
+            if (this.refs.courseDialogCopyH1ToH2) {
+              this.refs.courseDialogCopyH1ToH2.hidden = period !== "h2";
+            }
+            const categories = this.getCourseDialogStructureCategories(period);
             this.refs.courseDialogStructureList.innerHTML = "";
             if (categories.length === 0) {
               return;
@@ -9271,7 +9541,7 @@
         <div class="course-dialog-subcategory-row">
           <input type="text" name="subcategory-name-${categoryIndex}-${subcategoryIndex}" data-structure-field="subcategory-name" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(subcategory.name || "").replace(/"/g, "&quot;")}" placeholder="Unterkategorie" autocomplete="off">
           <label class="course-dialog-weight-field" aria-label="Unterkategorie-Gewichtung in Prozent">
-            <input type="number" name="subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(subcategory.weight || 0).replace(/"/g, "&quot;")}" aria-label="Unterkategorie-Gewichtung in Prozent">
+            <input type="number" name="subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(getGradeStructurePeriodWeight(subcategory, period)).replace(/"/g, "&quot;")}" aria-label="Unterkategorie-Gewichtung in Prozent">
             <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
           </label>
           <button type="button" class="ghost" data-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
@@ -9281,7 +9551,7 @@
         <div class="course-dialog-category-head">
           <input type="text" name="category-name-${categoryIndex}" data-structure-field="category-name" data-category-index="${categoryIndex}" value="${String(category.name || "").replace(/"/g, "&quot;")}" placeholder="Kategorie" autocomplete="off">
           <label class="course-dialog-weight-field" aria-label="Kategorie-Gewichtung in Prozent">
-            <input type="number" name="category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-structure-field="category-weight" data-category-index="${categoryIndex}" value="${String(category.weight || 0).replace(/"/g, "&quot;")}" aria-label="Kategorie-Gewichtung in Prozent">
+            <input type="number" name="category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-structure-field="category-weight" data-category-index="${categoryIndex}" value="${String(getGradeStructurePeriodWeight(category, period)).replace(/"/g, "&quot;")}" aria-label="Kategorie-Gewichtung in Prozent">
             <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
           </label>
           <button type="button" class="ghost" data-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
@@ -9307,7 +9577,7 @@
             if (!this.courseDialogDraft) {
               return;
             }
-            this.courseDialogDraft.categories.push({
+            this.getCourseDialogStructureCategories().push({
               id: 0,
               name: "",
               weight: 0,
@@ -9351,7 +9621,7 @@
             const field = String(input.dataset.structureField || "");
             const categoryIndex = Number(input.dataset.categoryIndex || -1);
             const subcategoryIndex = Number(input.dataset.subcategoryIndex || -1);
-            const category = this.courseDialogDraft.categories[categoryIndex];
+            const category = this.getCourseDialogStructureCategories()[categoryIndex];
             if (!category) {
               return;
             }
@@ -9374,6 +9644,29 @@
             }
           }
 
+          handleCourseDialogStructurePeriodChange(event) {
+            const input = event.target.closest("input[data-course-structure-period='1']");
+            if (!input || !this.courseDialogDraft) {
+              return;
+            }
+            this.courseDialogDraft.structurePeriod = normalizeGradeHalfYear(input.value);
+            this.renderCourseDialogStructure();
+          }
+
+          copyCourseDialogH1StructureToH2() {
+            if (!this.courseDialogDraft) {
+              return;
+            }
+            if (!this.courseDialogDraft.periodCategories || typeof this.courseDialogDraft.periodCategories !== "object") {
+              this.courseDialogDraft.periodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(this.courseDialogDraft.categories || []);
+            }
+            this.courseDialogDraft.periodCategories.h2 = normalizeGradeStructurePeriodDraft(
+              cloneJsonValue(this.courseDialogDraft.periodCategories.h1, [])
+            );
+            this.courseDialogDraft.structurePeriod = "h2";
+            this.renderCourseDialogStructure();
+          }
+
           handleCourseDialogStructureClick(event) {
             if (!this.courseDialogDraft) {
               return;
@@ -9382,7 +9675,7 @@
             if (removeCategoryButton) {
               const categoryIndex = Number(removeCategoryButton.dataset.structureRemoveCategory || -1);
               if (categoryIndex >= 0) {
-                this.courseDialogDraft.categories.splice(categoryIndex, 1);
+                this.getCourseDialogStructureCategories().splice(categoryIndex, 1);
                 this.renderCourseDialogStructure();
               }
               return;
@@ -9390,7 +9683,7 @@
             const addSubcategoryButton = event.target.closest("button[data-structure-add-subcategory]");
             if (addSubcategoryButton) {
               const categoryIndex = Number(addSubcategoryButton.dataset.structureAddSubcategory || -1);
-              const category = this.courseDialogDraft.categories[categoryIndex];
+              const category = this.getCourseDialogStructureCategories()[categoryIndex];
               if (category) {
                 category.subcategories.push({ id: 0, name: "", weight: 0 });
                 this.renderCourseDialogStructure();
@@ -9400,7 +9693,7 @@
             const removeSubcategoryButton = event.target.closest("button[data-structure-remove-subcategory]");
             if (removeSubcategoryButton) {
               const [categoryIndexRaw, subcategoryIndexRaw] = String(removeSubcategoryButton.dataset.structureRemoveSubcategory || "").split(":");
-              const category = this.courseDialogDraft.categories[Number(categoryIndexRaw || -1)];
+              const category = this.getCourseDialogStructureCategories()[Number(categoryIndexRaw || -1)];
               if (category) {
                 category.subcategories.splice(Number(subcategoryIndexRaw || -1), 1);
                 this.renderCourseDialogStructure();
@@ -9408,40 +9701,46 @@
             }
           }
 
-          validateCourseDialogStructure(categories) {
-            const normalized = normalizeGradeStructureDraft(categories);
-            const categoryWeightSum = Number(
-              normalized.reduce((sum, category) => sum + (Number(category.weight) || 0), 0).toFixed(2)
-            );
-            for (const category of normalized) {
-              if (!category.name) {
-                return { ok: false, message: "Kategorien dürfen nicht leer sein.", tab: "structure" };
-              }
-              if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
-                return { ok: false, message: "Jede Kategorie braucht mindestens eine Unterkategorie.", tab: "structure" };
-              }
-              if (!(Number(category.weight) >= 0) || Number(category.weight) > 100) {
-                return { ok: false, message: "Kategorie-Gewichtungen müssen zwischen 0 und 100 liegen.", tab: "structure" };
-              }
-              const subcategoryWeightSum = Number(
-                category.subcategories.reduce((sum, subcategory) => sum + (Number(subcategory.weight) || 0), 0).toFixed(2)
+          validateCourseDialogStructure(periodCategories) {
+            const normalizedByPeriod = normalizeGradeStructurePeriodCategories({ periodCategories });
+            for (const period of ["h1", "h2"]) {
+              const periodLabel = getGradePeriodLabel(period);
+              const normalized = normalizedByPeriod[period];
+              const categoryWeightSum = Number(
+                normalized.reduce((sum, category) => sum + normalizeGradeStructureWeight(category.weight, 1), 0).toFixed(2)
               );
-              for (const subcategory of category.subcategories) {
-                if (!subcategory.name) {
-                  return { ok: false, message: "Unterkategorien dürfen nicht leer sein.", tab: "structure" };
+              for (const category of normalized) {
+                if (!category.name) {
+                  return { ok: false, message: `Kategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
                 }
-                if (!(Number(subcategory.weight) >= 0) || Number(subcategory.weight) > 100) {
-                  return { ok: false, message: "Unterkategorie-Gewichtungen müssen zwischen 0 und 100 liegen.", tab: "structure" };
+                if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
+                  return { ok: false, message: `Jede Kategorie in ${periodLabel} braucht mindestens eine Unterkategorie.`, tab: "structure" };
+                }
+                const categoryWeight = normalizeGradeStructureWeight(category.weight, 1);
+                if (!(categoryWeight >= 0) || categoryWeight > 100) {
+                  return { ok: false, message: `Kategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
+                }
+                const subcategoryWeightSum = Number(
+                  category.subcategories.reduce((sum, subcategory) => sum + normalizeGradeStructureWeight(subcategory.weight, 1), 0).toFixed(2)
+                );
+                for (const subcategory of category.subcategories) {
+                  if (!subcategory.name) {
+                    return { ok: false, message: `Unterkategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
+                  }
+                  const subcategoryWeight = normalizeGradeStructureWeight(subcategory.weight, 1);
+                  if (!(subcategoryWeight >= 0) || subcategoryWeight > 100) {
+                    return { ok: false, message: `Unterkategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
+                  }
+                }
+                if (Math.abs(subcategoryWeightSum - 100) > 0.01) {
+                  return { ok: false, message: `Die Unterkategorien von "${category.name}" müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
                 }
               }
-              if (Math.abs(subcategoryWeightSum - 100) > 0.01) {
-                return { ok: false, message: `Die Unterkategorien von "${category.name}" müssen zusammen 100 % ergeben.`, tab: "structure" };
+              if (Math.abs(categoryWeightSum - 100) > 0.01) {
+                return { ok: false, message: `Die Kategorien müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
               }
             }
-            if (Math.abs(categoryWeightSum - 100) > 0.01) {
-              return { ok: false, message: "Die Kategorien müssen zusammen 100 % ergeben.", tab: "structure" };
-            }
-            return { ok: true, categories: normalized };
+            return { ok: true, periodCategories: normalizedByPeriod };
           }
 
           validateCourseDialogStudents(students) {
@@ -9884,12 +10183,12 @@
             if (!this.gradeVaultSession.planningPublicLoaded) {
               await this.ensurePlanningPublicLoaded();
             }
-            const structureValidation = this.validateCourseDialogStructure(this.courseDialogDraft.categories);
+            const structureValidation = this.validateCourseDialogStructure(this.courseDialogDraft.periodCategories);
             if (!structureValidation.ok) {
               await this.showInfoMessage(structureValidation.message);
               return;
             }
-            this.store.saveGradeStructure(id, structureValidation.categories);
+            this.store.saveGradeStructure(id, structureValidation.periodCategories);
             this.closeCourseStructureDialog();
             this.renderAll();
           }
@@ -11253,6 +11552,12 @@
             if (!target) {
               return;
             }
+            if (target.closest("button[data-grades-entry-save='1']")) {
+              if (event.cancelable) {
+                event.preventDefault();
+              }
+              return;
+            }
             const targetGradeInput = target.closest("input[data-grade-input='1']:not(:disabled)");
             const activeInput = document.activeElement instanceof Element
               ? document.activeElement.closest("input[data-grade-input='1']:not(:disabled)")
@@ -11788,15 +12093,13 @@
               this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
               return;
             }
-            const structure = this.store.getGradeStructure(courseId);
-            const categories = (Array.isArray(structure.categories) ? structure.categories : [])
-              .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
             const activeAssessment = this.selectedGradesEntryAssessmentId
               ? this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId)
               : null;
             const draft = activeAssessment
               ? this.getGradesEntryAssessmentDraft(activeAssessment)
               : this.getGradesEntryDraft(courseId);
+            const categories = this.getGradesEntryStructureCategories(courseId, draft?.halfYear || "h1");
             const courseSelect = event.target.closest("select[data-grades-entry-course]");
             if (courseSelect) {
               if (!this.commitVisibleGradeInputs()) {
@@ -12366,6 +12669,12 @@
             });
             this.refs.courseDialogStructureList?.addEventListener("click", (event) => {
               this.handleCourseDialogStructureClick(event);
+            });
+            this.refs.courseDialogStructurePeriodToggle?.addEventListener("change", (event) => {
+              this.handleCourseDialogStructurePeriodChange(event);
+            });
+            this.refs.courseDialogCopyH1ToH2?.addEventListener("click", () => {
+              this.copyCourseDialogH1StructureToH2();
             });
             if (this.refs.courseDialogStudentsDropzone) {
               let dragDepth = 0;
@@ -15246,21 +15555,22 @@
 
           resetGradesEntryDraftAfterSave(values = null) {
             const draftValues = values || this.readGradesEntryEditorValues();
-            const categories = this.getGradesEntryStructureCategories(this.selectedCourseId);
-            const fallbackSelection = this.getMostUsedGradeAssessmentSelection(this.selectedCourseId);
+            const halfYear = normalizeGradeHalfYear(draftValues?.halfYear || this.getDefaultGradeAssessmentHalfYear());
+            const categories = this.getGradesEntryStructureCategories(this.selectedCourseId, halfYear);
+            const fallbackSelection = this.getMostUsedGradeAssessmentSelection(this.selectedCourseId, null, halfYear);
             const categoryId = categories.some((item) => Number(item.id) === Number(draftValues?.categoryId || 0))
               ? Number(draftValues.categoryId)
               : fallbackSelection.categoryId;
             const category = categories.find((item) => Number(item.id) === Number(categoryId || 0)) || null;
             const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
-            const fallbackSubcategorySelection = this.getMostUsedGradeAssessmentSelection(this.selectedCourseId, categoryId);
+            const fallbackSubcategorySelection = this.getMostUsedGradeAssessmentSelection(this.selectedCourseId, categoryId, halfYear);
             const subcategoryId = subcategories.some((item) => Number(item.id) === Number(draftValues?.subcategoryId || 0))
               ? Number(draftValues.subcategoryId)
               : fallbackSubcategorySelection.subcategoryId;
             this.selectedGradesEntryAssessmentId = null;
             this.gradesEntryDraft = {
               title: "",
-              halfYear: normalizeGradeHalfYear(draftValues?.halfYear || this.getDefaultGradeAssessmentHalfYear()),
+              halfYear,
               weight: normalizeGradeInteger(draftValues?.weight, 1),
               mode: normalizeGradeAssessmentMode(draftValues?.mode),
               testScale: normalizeGradeTestScale(draftValues?.testScale),
@@ -15701,8 +16011,9 @@
             }
             let structure = this.store.getGradeStructure(course.id);
             let categories = Array.isArray(structure.categories) ? structure.categories : [];
-            const hasPersistedStructure = categories.some((category) => (
-              Array.isArray(category?.subcategories) && category.subcategories.length > 0
+            const hasPersistedStructure = ["h1", "h2"].some((period) => (
+              (Array.isArray(structure.periodCategories?.[period]) ? structure.periodCategories[period] : [])
+                .some((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0)
             ));
             if (!hasPersistedStructure) {
               if (!this.gradeVaultSession.planningPublicLoaded) {
@@ -15756,6 +16067,7 @@
             const rawEditorState = selectedAssessment
               ? this.getGradesEntryAssessmentDraft(selectedAssessment)
               : draft;
+            categories = this.getGradesEntryStructureCategories(course.id, rawEditorState.halfYear);
             const editorCategoryId = categories.some((item) => Number(item.id) === Number(rawEditorState.categoryId || 0))
               ? Number(rawEditorState.categoryId || 0)
               : Number(categories[0]?.id || 0) || null;
@@ -16546,7 +16858,8 @@
               : null;
             const courseId = Number(course?.id || 0);
             const students = courseId ? this.store.listGradeStudents(courseId) : [];
-            const categories = courseId ? this.getGradesEntryStructureCategories(courseId) : [];
+            const simulationPeriod = normalizeGradeHalfYear(this.gradeSimulationState?.halfYear || "h1");
+            const categories = courseId ? this.getGradesEntryStructureCategories(courseId, simulationPeriod) : [];
             const hasCompleteStructure = categories.some((category) => (
               Number(category?.id || 0) > 0
               && Array.isArray(category?.subcategories)
@@ -16724,7 +17037,11 @@
           }
 
           handleGradeSimulationControlChange() {
+            const previousHalfYear = normalizeGradeHalfYear(this.gradeSimulationState?.halfYear);
             this.gradeSimulationState = this.readGradeSimulationStateFromControls();
+            if (normalizeGradeHalfYear(this.gradeSimulationState?.halfYear) !== previousHalfYear) {
+              this.renderGradeSimulationDialogControls();
+            }
             this.renderGradeSimulationResults();
           }
 
@@ -16733,7 +17050,7 @@
             const state = this.readGradeSimulationStateFromControls();
             const category = context.categories.find((item) => Number(item.id) === Number(state.categoryId || 0)) || null;
             const selection = category
-              ? this.getLeastUsedGradeAssessmentSelection(state.courseId || context.course?.id, category.id)
+              ? this.getLeastUsedGradeAssessmentSelection(state.courseId || context.course?.id, category.id, state.halfYear)
               : { subcategoryId: null };
             this.gradeSimulationState = {
               ...state,
@@ -16743,8 +17060,9 @@
             this.renderGradeSimulationResults();
           }
 
-          getLeastUsedGradeAssessmentSelection(courseId = this.selectedCourseId, preferredCategoryId = null) {
-            const categories = this.getGradesEntryStructureCategories(courseId);
+          getLeastUsedGradeAssessmentSelection(courseId = this.selectedCourseId, preferredCategoryId = null, period = "") {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            const categories = this.getGradesEntryStructureCategories(courseId, normalizedPeriod);
             if (!categories.length) {
               return {
                 categoryId: null,
@@ -16754,6 +17072,12 @@
             const assessmentCountsByCategory = new Map();
             const assessmentCountsBySubcategory = new Map();
             this.store.listGradeAssessments(courseId).forEach((assessment) => {
+              if (
+                (normalizedPeriod === "h1" || normalizedPeriod === "h2")
+                && normalizeGradeHalfYear(assessment.halfYear) !== normalizedPeriod
+              ) {
+                return;
+              }
               const categoryId = Number(assessment.categoryId) || 0;
               const subcategoryId = Number(assessment.subcategoryId) || 0;
               if (!categoryId || !subcategoryId) {
@@ -16879,7 +17203,7 @@
               }
               return null;
             }
-            const structure = this.store.getGradeStructure(courseId);
+            const structure = this.store.getGradeStructureForPeriod(courseId, normalizedPeriod);
             const category = (Array.isArray(structure.categories) ? structure.categories : [])
               .find((item) => Number(item.id) === Number(categoryId));
             if (!category) {
@@ -16899,7 +17223,7 @@
               if (partial === null) {
                 return;
               }
-              const weight = normalizeGradeNumber(subcategory.weight, 1);
+              const weight = normalizeGradeStructureWeight(subcategory.weight, 1);
               weightedSum += partial * weight;
               weightSum += weight;
             });
@@ -16934,7 +17258,7 @@
               }
               return null;
             }
-            const structure = this.store.getGradeStructure(courseId);
+            const structure = this.store.getGradeStructureForPeriod(courseId, normalizedPeriod);
             let weightedSum = 0;
             let weightSum = 0;
             (Array.isArray(structure.categories) ? structure.categories : []).forEach((category) => {
@@ -16942,7 +17266,7 @@
               if (partial === null) {
                 return;
               }
-              const weight = normalizeGradeNumber(category.weight, 1);
+              const weight = normalizeGradeStructureWeight(category.weight, 1);
               weightedSum += partial * weight;
               weightSum += weight;
             });
@@ -19202,14 +19526,18 @@
             select.click();
           }
 
-          getGradesEntryStructureCategories(courseId = this.selectedCourseId) {
-            const structure = this.store.getGradeStructure(courseId);
+          getGradesEntryStructureCategories(courseId = this.selectedCourseId, period = "") {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            const structure = normalizedPeriod === "h1" || normalizedPeriod === "h2"
+              ? this.store.getGradeStructureForPeriod(courseId, normalizedPeriod)
+              : this.store.getGradeStructure(courseId);
             return (Array.isArray(structure.categories) ? structure.categories : [])
               .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
           }
 
-          getMostUsedGradeAssessmentSelection(courseId = this.selectedCourseId, preferredCategoryId = null) {
-            const categories = this.getGradesEntryStructureCategories(courseId);
+          getMostUsedGradeAssessmentSelection(courseId = this.selectedCourseId, preferredCategoryId = null, period = "") {
+            const normalizedPeriod = normalizeGradePeriod(period);
+            const categories = this.getGradesEntryStructureCategories(courseId, normalizedPeriod);
             if (!categories.length) {
               return {
                 categoryId: null,
@@ -19221,7 +19549,15 @@
               : [];
             const eligibleCategories = matchingCategories.length ? matchingCategories : categories;
             const counts = new Map();
-            this.store.listGradeAssessments(courseId).forEach((assessment) => {
+            let bestCategory = null;
+            let bestSubcategory = null;
+            let bestCount = -1;
+            const matchingAssessments = this.store.listGradeAssessments(courseId).filter((assessment) => (
+              normalizedPeriod !== "h1" && normalizedPeriod !== "h2"
+                ? true
+                : normalizeGradeHalfYear(assessment.halfYear) === normalizedPeriod
+            ));
+            matchingAssessments.forEach((assessment) => {
               const categoryId = Number(assessment.categoryId) || 0;
               const subcategoryId = Number(assessment.subcategoryId) || 0;
               if (!categoryId || !subcategoryId) {
@@ -19230,9 +19566,6 @@
               const key = `${categoryId}:${subcategoryId}`;
               counts.set(key, (counts.get(key) || 0) + 1);
             });
-            let bestCategory = null;
-            let bestSubcategory = null;
-            let bestCount = -1;
             eligibleCategories.forEach((category) => {
               (category.subcategories || []).forEach((subcategory) => {
                 const key = `${Number(category.id) || 0}:${Number(subcategory.id) || 0}`;
@@ -19253,7 +19586,6 @@
           }
 
           getGradesEntryDraft(courseId = this.selectedCourseId) {
-            const categories = this.getGradesEntryStructureCategories(courseId);
             const previous = this.gradesEntryDraft && !this.gradesEntryDraft.assessmentId
               ? this.gradesEntryDraft
               : {};
@@ -19270,15 +19602,16 @@
               return result;
             }, {});
             const halfYear = normalizeGradeHalfYear(previous.halfYear || this.getDefaultGradeAssessmentHalfYear());
+            const categories = this.getGradesEntryStructureCategories(courseId, halfYear);
             const mode = normalizeGradeAssessmentMode(previous.mode);
             const testScale = normalizeGradeTestScale(previous.testScale);
-            const defaultSelection = this.getMostUsedGradeAssessmentSelection(courseId);
+            const defaultSelection = this.getMostUsedGradeAssessmentSelection(courseId, null, halfYear);
             const categoryId = categories.some((item) => Number(item.id) === Number(previous.categoryId || 0))
               ? Number(previous.categoryId)
               : defaultSelection.categoryId;
             const category = categories.find((item) => Number(item.id) === Number(categoryId || 0)) || null;
             const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
-            const defaultSubcategorySelection = this.getMostUsedGradeAssessmentSelection(courseId, categoryId);
+            const defaultSubcategorySelection = this.getMostUsedGradeAssessmentSelection(courseId, categoryId, halfYear);
             const subcategoryId = subcategories.some((item) => Number(item.id) === Number(previous.subcategoryId || 0))
               ? Number(previous.subcategoryId)
               : defaultSubcategorySelection.subcategoryId;
@@ -20890,8 +21223,11 @@
             if (!this.commitVisibleGradeInputs()) {
               return;
             }
-            const categories = this.getGradesEntryStructureCategories(this.selectedCourseId);
-            const defaultSelection = this.getMostUsedGradeAssessmentSelection(this.selectedCourseId);
+            const resolvedHalfYear = halfYear
+              ? normalizeGradeHalfYear(halfYear)
+              : this.getDefaultGradeAssessmentHalfYear();
+            const categories = this.getGradesEntryStructureCategories(this.selectedCourseId, resolvedHalfYear);
+            const defaultSelection = this.getMostUsedGradeAssessmentSelection(this.selectedCourseId, null, resolvedHalfYear);
             let targetCategory = categories.find((category) => Number(category.id) === Number(defaultSelection.categoryId || 0)) || categories[0] || null;
             let targetSubcategory = targetCategory
               ? (targetCategory.subcategories || []).find((subcategory) => Number(subcategory.id) === Number(defaultSelection.subcategoryId || 0))
@@ -20913,9 +21249,6 @@
               await this.showInfoMessage("Bitte zuerst im Kurs mindestens eine Kategorie mit Unterkategorie anlegen.");
               return;
             }
-            const resolvedHalfYear = halfYear
-              ? normalizeGradeHalfYear(halfYear)
-              : this.getDefaultGradeAssessmentHalfYear();
             const assessmentId = this.store.createGradeAssessment(this.selectedCourseId, {
               categoryId: targetCategory ? targetCategory.id : null,
               subcategoryId: targetSubcategory ? targetSubcategory.id : null,
@@ -21183,6 +21516,15 @@
               return;
             }
             if (this.isHomeworkGradeInput(input)) {
+              if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !event.ctrlKey && !event.altKey && !event.metaKey) {
+                event.preventDefault();
+                event.stopPropagation();
+                const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
+                if (this.commitGradeCellInput(input)) {
+                  this.focusVerticalGradeInput(input, event.key === "ArrowDown" ? 1 : -1, navigationSnapshot);
+                }
+                return;
+              }
               if (event.key === "Enter") {
                 event.preventDefault();
                 event.stopPropagation();
@@ -21214,6 +21556,19 @@
               return;
             }
             if (this.isTestGradeInput(input)) {
+              if (
+                (event.key === "ArrowDown" || event.key === "ArrowUp" || event.key === "ArrowLeft" || event.key === "ArrowRight")
+                && !event.ctrlKey
+                && !event.altKey
+                && !event.metaKey
+              ) {
+                event.preventDefault();
+                event.stopPropagation();
+                const axis = event.key === "ArrowLeft" || event.key === "ArrowRight" ? "horizontal" : "vertical";
+                const direction = event.key === "ArrowUp" || event.key === "ArrowLeft" ? -1 : 1;
+                this.commitAndFocusGradeTestGridInput(input, axis, direction);
+                return;
+              }
               if (event.key === "Enter" || event.key === "Tab") {
                 event.preventDefault();
                 event.stopPropagation();
@@ -21228,18 +21583,12 @@
             if (event.key === "Tab" && this.handleGradeTestMatrixFallbackTab(event)) {
               return;
             }
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if ((event.key === "ArrowDown" || event.key === "ArrowUp") && !event.ctrlKey && !event.altKey && !event.metaKey) {
               event.preventDefault();
               event.stopPropagation();
-              const delta = event.key === "ArrowDown" ? 1 : -1;
-              if (!this.gradePickerState.open) {
-                this.openGradePickerForInput(input);
-              } else {
-                const maxIndex = this.gradePickerState.values.length - 1;
-                this.gradePickerState.activeIndex = this.gradePickerState.activeIndex < 0
-                  ? (event.key === "ArrowUp" ? maxIndex : 0)
-                  : clamp(this.gradePickerState.activeIndex + delta, 0, maxIndex);
-                this.renderGradePicker();
+              const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
+              if (this.commitGradeCellInput(input)) {
+                this.focusVerticalGradeInput(input, event.key === "ArrowDown" ? 1 : -1, navigationSnapshot);
               }
               return;
             }
@@ -21885,6 +22234,94 @@
             return nextIndex >= 0 && nextIndex < candidateInputs.length
               ? candidateInputs[nextIndex]
               : null;
+          }
+
+          getGradeTestGridInputs(input) {
+            const root = this.getGradeInputRoot(input);
+            if (!root || !this.isTestGradeInput(input)) {
+              return [];
+            }
+            const tableRoot = input.closest(".grades-test-entry-table") || root;
+            const assessmentId = Number(input.dataset.assessmentId || 0);
+            const isDraftInput = input.dataset.gradeDraftInput === "1";
+            return [...tableRoot.querySelectorAll("input[data-grade-test-score='1']:not(:disabled)")]
+              .filter((node) => {
+                if (!(node instanceof HTMLInputElement)) {
+                  return false;
+                }
+                if (isDraftInput) {
+                  return node.dataset.gradeDraftInput === "1";
+                }
+                return assessmentId > 0 && Number(node.dataset.assessmentId || 0) === assessmentId;
+              })
+              .sort((left, right) => {
+                const leftRow = Number(left.dataset.rowIndex || 0);
+                const rightRow = Number(right.dataset.rowIndex || 0);
+                if (leftRow !== rightRow) {
+                  return leftRow - rightRow;
+                }
+                return Number(left.dataset.colIndex || 0) - Number(right.dataset.colIndex || 0);
+              });
+          }
+
+          getNextGradeTestGridInput(input, axis = "vertical", direction = 1) {
+            if (!this.isTestGradeInput(input)) {
+              return null;
+            }
+            const candidateInputs = this.getGradeTestGridInputs(input);
+            if (!candidateInputs.length) {
+              return null;
+            }
+            const step = direction < 0 ? -1 : 1;
+            const rowIndex = Number(input.dataset.rowIndex || -1);
+            const colIndex = Number(input.dataset.colIndex || -1);
+            const studentId = Number(input.dataset.studentId || 0);
+            const taskId = String(input.dataset.taskId || "").trim();
+            const sameStudentCandidates = candidateInputs
+              .filter((node) => (
+                Number(node.dataset.studentId || 0) === studentId
+                && Number(node.dataset.rowIndex || -1) === rowIndex
+              ))
+              .sort((left, right) => Number(left.dataset.colIndex || 0) - Number(right.dataset.colIndex || 0));
+            if (axis === "horizontal") {
+              const currentIndex = sameStudentCandidates.indexOf(input);
+              const nextIndex = currentIndex + step;
+              return nextIndex >= 0 && nextIndex < sameStudentCandidates.length
+                ? sameStudentCandidates[nextIndex]
+                : null;
+            }
+            const sameTaskCandidates = candidateInputs
+              .filter((node) => (
+                String(node.dataset.taskId || "").trim() === taskId
+                && Number(node.dataset.colIndex || -1) === colIndex
+              ))
+              .sort((left, right) => Number(left.dataset.rowIndex || 0) - Number(right.dataset.rowIndex || 0));
+            const currentIndex = sameTaskCandidates.indexOf(input);
+            return this.getNextGradeInputFromCandidates(sameTaskCandidates, currentIndex, step);
+          }
+
+          commitAndFocusGradeTestGridInput(input, axis = "vertical", direction = 1) {
+            if (!this.isTestGradeInput(input)) {
+              return false;
+            }
+            const next = this.getNextGradeTestGridInput(input, axis, direction);
+            const nextSnapshot = next instanceof HTMLInputElement
+              ? this.getGradeInputNavigationSnapshot(next)
+              : null;
+            if (!this.commitGradeCellInput(input)) {
+              return false;
+            }
+            const resolvedNext = next instanceof HTMLInputElement && document.body.contains(next)
+              ? next
+              : this.findGradeInputFromNavigationSnapshot(nextSnapshot);
+            if (resolvedNext instanceof HTMLInputElement && !resolvedNext.disabled) {
+              if (!this.gradeInputBlurCommitSkip) {
+                this.gradeInputBlurCommitSkip = new WeakSet();
+              }
+              this.gradeInputBlurCommitSkip.add(input);
+              this.focusGradeInputAfterNavigation(resolvedNext);
+            }
+            return true;
           }
 
           commitAndFocusNextTestGradeInput(input, direction = 1) {
@@ -22775,10 +23212,6 @@
             if (!this.courseAllowsGrades(course)) {
               return null;
             }
-            const categories = this.getGradesEntryStructureCategories(courseKey);
-            if (!categories.length) {
-              return null;
-            }
             const normalizedLessonDate = String(lessonDate || "").trim();
             const defaultDraft = this.getGradesEntryDraft(courseKey);
             const assessment = this.findCourseSeatplanGradeAssessmentByLessonDate(courseKey, normalizedLessonDate);
@@ -22788,6 +23221,11 @@
                 Array.isArray(students) ? students : this.buildCourseSeatplanStudents(courseKey)
               )
               : null;
+            const halfYear = normalizeGradeHalfYear(assessmentPayload?.halfYear || defaultDraft?.halfYear || this.getDefaultGradeAssessmentHalfYear());
+            const categories = this.getGradesEntryStructureCategories(courseKey, halfYear);
+            if (!categories.length) {
+              return null;
+            }
             const assessmentCategoryId = Number(assessmentPayload?.categoryId || 0) || null;
             const assessmentCategory = categories.find((item) => Number(item.id) === Number(assessmentCategoryId || 0)) || null;
             const assessmentSubcategoryId = Number(assessmentPayload?.subcategoryId || 0) || null;
@@ -22795,24 +23233,25 @@
               assessmentCategory
               && (assessmentCategory.subcategories || []).some((item) => Number(item.id) === Number(assessmentSubcategoryId || 0))
             );
+            const categoriesForHalfYear = this.getGradesEntryStructureCategories(courseKey, halfYear);
             return {
               courseId: courseKey,
               courseName: String(course?.name || "Kurs"),
               assessmentId: assessmentPayload?.assessmentId || null,
               title: assessmentPayload?.title || (normalizedLessonDate ? formatShortDateLabel(normalizedLessonDate) : formatShortDateLabel(new Date())),
-              halfYear: normalizeGradeHalfYear(assessmentPayload?.halfYear || defaultDraft?.halfYear || this.getDefaultGradeAssessmentHalfYear()),
+              halfYear,
               weight: normalizeGradeInteger(assessmentPayload?.weight || defaultDraft?.weight, 1),
               categoryId: Number((hasAssessmentSelection ? assessmentCategoryId : defaultDraft?.categoryId) || 0) || null,
               subcategoryId: Number((hasAssessmentSelection ? assessmentSubcategoryId : defaultDraft?.subcategoryId) || 0) || null,
               entries: Array.isArray(assessmentPayload?.entries) ? assessmentPayload.entries : [],
-              categories: categories.map((category) => ({
+              categories: categoriesForHalfYear.map((category) => ({
                 id: Number(category.id) || 0,
                 name: String(category.name || ""),
-                weight: normalizeGradeNumber(category.weight, 1),
+                weight: normalizeGradeStructureWeight(category.weight, 1),
                 subcategories: (Array.isArray(category.subcategories) ? category.subcategories : []).map((subcategory) => ({
                   id: Number(subcategory.id) || 0,
                   name: String(subcategory.name || ""),
-                  weight: normalizeGradeNumber(subcategory.weight, 1)
+                  weight: normalizeGradeStructureWeight(subcategory.weight, 1)
                 }))
               }))
             };
