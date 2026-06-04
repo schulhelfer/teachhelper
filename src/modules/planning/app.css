@@ -4939,30 +4939,60 @@
           height: auto;
           overflow-x: auto;
           overflow-y: hidden;
-          scrollbar-width: thin;
-          scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
-          -ms-overflow-style: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
         }
 
         .grades-table-scroll::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+
+        .grades-table-sticky-scrollbar {
+          position: sticky;
+          bottom: 0;
+          z-index: 12;
+          width: 100%;
+          max-width: 100%;
+          height: var(--scrollbar-size);
+          overflow-x: auto;
+          overflow-y: hidden;
+          scrollbar-width: thin;
+          scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+          -ms-overflow-style: auto;
+          background: rgba(24, 31, 43, 0.96);
+          border-radius: 999px;
+        }
+
+        .grades-table-sticky-scrollbar[hidden] {
+          display: none;
+        }
+
+        .grades-table-sticky-scrollbar-spacer {
+          height: 1px;
+          min-height: 1px;
+        }
+
+        .grades-table-sticky-scrollbar::-webkit-scrollbar {
           width: var(--scrollbar-size);
           height: var(--scrollbar-size);
           display: block;
         }
 
-        .grades-table-scroll::-webkit-scrollbar-track {
+        .grades-table-sticky-scrollbar::-webkit-scrollbar-track {
           background: var(--scrollbar-track);
           border-radius: 999px;
         }
 
-        .grades-table-scroll::-webkit-scrollbar-thumb {
+        .grades-table-sticky-scrollbar::-webkit-scrollbar-thumb {
           background: var(--scrollbar-thumb);
           border: 2px solid transparent;
           border-radius: 999px;
           background-clip: padding-box;
         }
 
-        .grades-table-scroll::-webkit-scrollbar-thumb:hover {
+        .grades-table-sticky-scrollbar::-webkit-scrollbar-thumb:hover {
           background: var(--scrollbar-thumb-hover);
         }
 
@@ -4971,6 +5001,10 @@
           gap: 0.75rem;
           min-width: 100%;
           width: max-content;
+        }
+
+        :root[data-theme='light'] .grades-table-sticky-scrollbar {
+          background: rgba(255, 255, 255, 0.96);
         }
 
         :root[data-theme='light'] .grades-privacy-card {

@@ -5691,6 +5691,8 @@
               gradesBookPanel: document.querySelector("#grades-book-panel"),
               gradesPrivacyOverlay: document.querySelector("#grades-privacy-overlay"),
               gradesTableScroll: document.querySelector("#grades-table-scroll"),
+              gradesTableStickyScrollbar: document.querySelector("#grades-table-sticky-scrollbar"),
+              gradesTableStickyScrollbarSpacer: document.querySelector("#grades-table-sticky-scrollbar-spacer"),
               gradesTable: document.querySelector("#grades-table"),
               gradesPrintArea: document.querySelector("#grades-print-area"),
               gradesEntryContent: document.querySelector("#grades-entry-content"),
@@ -12099,6 +12101,14 @@
             const draft = activeAssessment
               ? this.getGradesEntryAssessmentDraft(activeAssessment)
               : this.getGradesEntryDraft(courseId);
+            const commitAndGetLatestDraft = () => {
+              if (!this.commitGradesEntryInputsBeforeRerender()) {
+                return null;
+              }
+              return activeAssessment
+                ? this.getGradesEntryAssessmentDraft(activeAssessment)
+                : this.getGradesEntryDraft(courseId);
+            };
             const categories = this.getGradesEntryStructureCategories(courseId, draft?.halfYear || "h1");
             const courseSelect = event.target.closest("select[data-grades-entry-course]");
             if (courseSelect) {
@@ -12115,26 +12125,34 @@
 
             const titleInput = event.target.closest("input[data-grades-entry-title]");
             if (titleInput) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const nextTitle = String(titleInput.value || "").trim();
-              this.persistGradesEntryTitleValue(nextTitle, { draft });
+              this.persistGradesEntryTitleValue(nextTitle, { draft: latestDraft });
               this.renderGradesView();
               return;
             }
 
             const testScaleInput = event.target.closest("input[data-grades-entry-test-scale='1']");
             if (testScaleInput) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const testScale = normalizeGradeTestScale(testScaleInput.value);
               if (!this.gradeDeficitThresholdUserEdited) {
                 this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(testScale);
               }
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 testScale,
                 testScaleSnapshot: activeAssessment && normalizeGradeTestScale(activeAssessment.testScale) === testScale
                   ? activeAssessment.testScaleSnapshot || null
-                  : draft.testScaleSnapshot || null,
+                  : latestDraft.testScaleSnapshot || null,
                 testPredicateSuffixes: activeAssessment
-                  ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+                  ? normalizeGradeTestPredicateSuffixes(latestDraft.testPredicateSuffixes, true)
                   : getDefaultGradeTestPredicateSuffixes(testScale)
               };
               this.renderGradesView();
@@ -12143,8 +12161,12 @@
 
             const testPredicateSuffixesInput = event.target.closest("input[data-grades-entry-test-predicate-suffixes='1']");
             if (testPredicateSuffixesInput) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(testPredicateSuffixesInput.value, true)
               };
               this.renderGradesView();
@@ -12161,9 +12183,13 @@
 
             const halfYearInput = event.target.closest("input[data-grades-entry-halfyear='1']");
             if (halfYearInput) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const halfYear = normalizeGradeHalfYear(halfYearInput.value || "h1");
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 halfYear
               };
               this.renderGradesView();
@@ -12172,24 +12198,28 @@
 
             const modeInput = event.target.closest("input[data-grades-entry-mode='1']");
             if (modeInput) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const mode = normalizeGradeAssessmentMode(modeInput.value || "grade");
-              const testScale = draft.testScale || GRADE_TEST_SCALE_DEFAULT;
+              const testScale = latestDraft.testScale || GRADE_TEST_SCALE_DEFAULT;
               if (!this.gradeDeficitThresholdUserEdited) {
                 this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(mode === "test" ? testScale : GRADE_TEST_SCALE_DEFAULT);
               }
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 mode,
-                weight: mode === "homework" ? 1 : draft.weight,
+                weight: mode === "homework" ? 1 : latestDraft.weight,
                 testScale,
                 testPredicateSuffixes: mode === "test"
                   ? (
                     activeAssessment
-                      ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+                      ? normalizeGradeTestPredicateSuffixes(latestDraft.testPredicateSuffixes, true)
                       : getDefaultGradeTestPredicateSuffixes(testScale)
                   )
                   : true,
-                testTasks: normalizeGradeTestTasks(draft.testTasks)
+                testTasks: normalizeGradeTestTasks(latestDraft.testTasks)
               };
               this.renderGradesView();
               return;
@@ -12197,9 +12227,13 @@
 
             const weightInput = event.target.closest("input[data-grades-entry-weight]");
             if (weightInput) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const weight = normalizeGradeInteger(weightInput.value, 1);
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 weight
               };
               this.renderGradesView();
@@ -12208,6 +12242,9 @@
 
             const deficitThresholdInput = event.target.closest("input[data-grades-entry-deficit-threshold]");
             if (deficitThresholdInput) {
+              if (!this.commitGradesEntryInputsBeforeRerender()) {
+                return;
+              }
               this.gradeDeficitThresholdUserEdited = true;
               this.gradeDeficitThreshold = normalizeGradeDeficitThreshold(deficitThresholdInput.value, this.gradeDeficitThreshold);
               this.renderGradesView();
@@ -12216,13 +12253,17 @@
 
             const categorySelect = event.target.closest("select[data-grades-entry-category]");
             if (categorySelect) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const categoryId = Number(categorySelect.value || 0) || null;
               const category = categories.find((item) => Number(item.id) === Number(categoryId)) || null;
               const nextSubcategoryId = category
                 ? this.getMostUsedGradeAssessmentSelection(courseId, category.id).subcategoryId
                 : null;
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 categoryId,
                 subcategoryId: nextSubcategoryId
               };
@@ -12232,9 +12273,13 @@
 
             const subcategorySelect = event.target.closest("select[data-grades-entry-subcategory]");
             if (subcategorySelect) {
+              const latestDraft = commitAndGetLatestDraft();
+              if (!latestDraft) {
+                return;
+              }
               const subcategoryId = Number(subcategorySelect.value || 0) || null;
               this.gradesEntryDraft = {
-                ...draft,
+                ...latestDraft,
                 subcategoryId
               };
               this.renderGradesView();
@@ -13863,10 +13908,14 @@
               this.positionGradePrivacyNavigationOverlay();
             });
             this.refs.gradesTableScroll?.addEventListener("scroll", () => {
-              if (this.pendingGradesOverviewAutoScroll) {
+              if (this.pendingGradesOverviewAutoScroll && !this.syncingGradesTableStickyScrollbar) {
                 this.clearPendingGradesOverviewAutoScroll();
               }
+              this.syncGradesTableStickyScrollbarFromTable();
               this.positionGradePrivacyNavigationOverlay();
+            });
+            this.refs.gradesTableStickyScrollbar?.addEventListener("scroll", () => {
+              this.syncGradesTableScrollFromStickyScrollbar();
             });
             this.refs.gradesPrivacyOverlay?.addEventListener("pointerdown", (event) => {
               this.handleGradePrivacyOverlayPointerDown(event);
@@ -13975,6 +14024,7 @@
               this.positionGradesTitleDatePicker();
               this.positionGradePrivacyOverlay();
               this.positionGradePrivacyNavigationOverlay();
+              this.updateGradesTableStickyScrollbar();
               if (this.refs.weekCalendarDialog && this.refs.weekCalendarDialog.open) {
                 this.positionWeekCalendarDialog();
               }
@@ -16407,6 +16457,10 @@
             };
           }
 
+          commitGradesEntryInputsBeforeRerender(options = {}) {
+            return this.commitVisibleGradeInputs(options);
+          }
+
           commitVisibleGradeInputs(options = {}) {
             const root = this.getGradeInputRoot();
             if (!root) {
@@ -18189,6 +18243,55 @@
             };
           }
 
+          updateGradesTableStickyScrollbar() {
+            const tableScroll = this.refs.gradesTableScroll;
+            const scrollbar = this.refs.gradesTableStickyScrollbar;
+            const spacer = this.refs.gradesTableStickyScrollbarSpacer;
+            if (!tableScroll || !scrollbar || !spacer) {
+              return;
+            }
+            const scrollWidth = Math.max(
+              Number(tableScroll.scrollWidth || 0),
+              Number(tableScroll.clientWidth || 0)
+            );
+            const hasHorizontalOverflow = scrollWidth - Number(tableScroll.clientWidth || 0) > 1;
+            scrollbar.hidden = !hasHorizontalOverflow;
+            spacer.style.width = `${scrollWidth}px`;
+            if (!hasHorizontalOverflow) {
+              scrollbar.scrollLeft = 0;
+              return;
+            }
+            scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+          }
+
+          syncGradesTableStickyScrollbarFromTable() {
+            const tableScroll = this.refs.gradesTableScroll;
+            const scrollbar = this.refs.gradesTableStickyScrollbar;
+            if (!tableScroll || !scrollbar || scrollbar.hidden) {
+              return;
+            }
+            if (Number(scrollbar.scrollLeft || 0) !== Number(tableScroll.scrollLeft || 0)) {
+              scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+            }
+          }
+
+          syncGradesTableScrollFromStickyScrollbar() {
+            const tableScroll = this.refs.gradesTableScroll;
+            const scrollbar = this.refs.gradesTableStickyScrollbar;
+            if (!tableScroll || !scrollbar || scrollbar.hidden) {
+              return;
+            }
+            if (Number(tableScroll.scrollLeft || 0) === Number(scrollbar.scrollLeft || 0)) {
+              return;
+            }
+            this.syncingGradesTableStickyScrollbar = true;
+            tableScroll.scrollLeft = Number(scrollbar.scrollLeft || 0);
+            this.positionGradePrivacyNavigationOverlay();
+            requestAnimationFrame(() => {
+              this.syncingGradesTableStickyScrollbar = false;
+            });
+          }
+
           restoreGradesOverviewScroll(snapshot = null) {
             if (!snapshot) {
               return;
@@ -18199,6 +18302,7 @@
             if (this.refs.gradesTableScroll) {
               this.refs.gradesTableScroll.scrollLeft = Number(snapshot.tableLeft || 0);
             }
+            this.updateGradesTableStickyScrollbar();
           }
 
           renderGradesViewPreservingOverviewScroll(afterRender = null) {
@@ -20681,6 +20785,7 @@
               + (nodeRect.right - containerRect.right)
               + gap;
             container.scrollLeft = clamp(targetLeft, 0, maxScrollLeft);
+            this.updateGradesTableStickyScrollbar();
             return true;
           }
 
@@ -20733,6 +20838,7 @@
               return false;
             }
             tableScroll.scrollLeft = 0;
+            this.updateGradesTableStickyScrollbar();
             return true;
           }
 
@@ -20841,6 +20947,7 @@
               }
               this.refs.gradesTable.append(empty);
               this.removeGradePrivacyNavigationOverlay();
+              this.updateGradesTableStickyScrollbar();
               return;
             }
 
@@ -20850,6 +20957,10 @@
               ? this.preparePendingGradesOverviewAutoScroll(course, groupedAssessments, options)
               : null;
             this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
+            this.updateGradesTableStickyScrollbar();
+            requestAnimationFrame(() => {
+              this.updateGradesTableStickyScrollbar();
+            });
             if (!spotlightAssessmentId && pendingAutoScrollTarget) {
               this.schedulePendingGradesOverviewAutoScroll();
             }
