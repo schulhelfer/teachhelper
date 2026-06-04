@@ -11654,6 +11654,12 @@
                 testTaskMaxInput,
                 parsed.valid && Number(parsed.value || 0) > 0 ? parsed.value : null
               );
+              if (!removedCharacters && parsed.valid) {
+                const updated = this.updateGradeTestTaskFromInput(testTaskMaxInput);
+                if (updated) {
+                  this.refreshVisibleGradeTestResultsForTaskInput(testTaskMaxInput);
+                }
+              }
               if (invalidMaxBe) {
                 this.showGradeInputInvalidFeedback(testTaskMaxInput, {
                   persist: true
@@ -21493,6 +21499,7 @@
               }
               gradeInput.setAttribute("aria-invalid", "false");
               this.clearGradeInputInvalidFeedback(gradeInput);
+              this.commitGradeCellInput(gradeInput);
               return;
             }
             if (gradeInput.dataset.gradeOverrideInput === "1") {
