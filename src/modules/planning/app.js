@@ -1929,22 +1929,75 @@
             : "—";
         }
 
-        function buildGradeTestScaleTooltipMarkup(scaleOrTemplate = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+        function calculateGradeTestMaxBeSum(tasks = []) {
+          const maxSum = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+            .reduce((sum, task) => {
+              const maxBe = Number(task.maxBe || 0);
+              return maxBe > 0 ? sum + maxBe : sum;
+            }, 0);
+          return maxSum > 0 ? Math.round(maxSum * 2) / 2 : 0;
+        }
+
+        function formatGradeTestRequiredBeForThreshold(threshold, grade, maxBeSum = null) {
+          const totalMaxBe = Number(maxBeSum);
+          if (!Number.isFinite(totalMaxBe) || totalMaxBe <= 0) {
+            return "—";
+          }
+          if (Number(grade) === 0) {
+            return "0";
+          }
+          const requiredBe = Math.ceil((clamp(Number(threshold) || 0, 0, 1) * totalMaxBe * 2) - 0.0000001) / 2;
+          return formatGradeBeValue(clamp(requiredBe, 0, totalMaxBe));
+        }
+
+        function getGradeTestScaleTooltipRows(thresholds = [], predicateSuffixes = true) {
+          const normalizedThresholds = normalizeGradeTestThresholds(thresholds);
+          if (normalizeGradeTestPredicateSuffixes(predicateSuffixes, true)) {
+            return normalizedThresholds.map(([threshold, grade]) => ({
+              threshold,
+              grade,
+              label: formatGradeInteger(grade)
+            }));
+          }
+          const thresholdByGrade = new Map(
+            normalizedThresholds.map(([threshold, grade]) => [Number(grade), Number(threshold) || 0])
+          );
+          return [
+            { label: "sehr gut", grade: 13 },
+            { label: "gut", grade: 10 },
+            { label: "befriedigend", grade: 7 },
+            { label: "ausreichend", grade: 4 },
+            { label: "mangelhaft", grade: 1 },
+            { label: "ungenügend", grade: 0 }
+          ].map((row) => ({
+            ...row,
+            threshold: thresholdByGrade.has(row.grade) ? thresholdByGrade.get(row.grade) : 0
+          }));
+        }
+
+        function buildGradeTestScaleTooltipMarkup(scaleOrTemplate = GRADE_TEST_SCALE_DEFAULT, settings = null, options = {}) {
           const template = scaleOrTemplate && typeof scaleOrTemplate === "object"
             ? normalizeGradeTestScaleSnapshot(scaleOrTemplate, scaleOrTemplate.id, settings)
             : buildGradeTestScaleSnapshot(settings, scaleOrTemplate);
-          const thresholds = template.thresholds;
+          const predicateSuffixes = normalizeGradeTestPredicateSuffixes(options.predicateSuffixes, true);
+          const rows = getGradeTestScaleTooltipRows(template.thresholds, predicateSuffixes);
+          const showBeColumn = Boolean(options.showBeColumn);
+          const maxBeSum = Object.prototype.hasOwnProperty.call(options, "maxBeSum")
+            ? Number(options.maxBeSum)
+            : calculateGradeTestMaxBeSum(options.testTasks);
+          const labelHead = predicateSuffixes ? "Note" : "Stufe";
           return `
             <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
               <table>
                 <thead>
-                  <tr><th>Grenze</th><th>Note</th></tr>
+                  <tr><th>Grenze</th><th>${labelHead}</th>${showBeColumn ? "<th>BE</th>" : ""}</tr>
                 </thead>
                 <tbody>
-                  ${thresholds.map(([threshold, grade]) => `
+                  ${rows.map((row) => `
                     <tr>
-                      <td>${Math.round(Number(threshold || 0) * 100)}%</td>
-                      <td>${formatGradeInteger(grade)}</td>
+                      <td>${Math.round(Number(row.threshold || 0) * 100)}%</td>
+                      <td>${escapeHtml(row.label)}</td>
+                      ${showBeColumn ? `<td>${formatGradeTestRequiredBeForThreshold(row.threshold, row.grade, maxBeSum)}</td>` : ""}
                     </tr>
                   `).join("")}
                 </tbody>
@@ -16138,17 +16191,19 @@
             if (!this.gradeDeficitThresholdUserEdited) {
               this.gradeDeficitThreshold = deficitThresholdDefault;
             }
+            const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
+              editorState.testPredicateSuffixes,
+              selectedAssessment ? true : getDefaultGradeTestPredicateSuffixes(editorState.testScale)
+            );
             const testScaleOptionsMarkup = this.buildGradeTestScaleOptionsMarkup({
               inputName: "grades-entry-test-scale",
               dataAttribute: "data-grades-entry-test-scale=\"1\"",
               selectedScale: editorState.testScale,
               selectedSnapshot: editorState.testScaleSnapshot || null,
-              disabled: editorMode !== "test"
+              disabled: editorMode !== "test",
+              testTasks: editorMode === "test" ? editorState.testTasks : null,
+              predicateSuffixes: testPredicateSuffixes
             });
-            const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
-              editorState.testPredicateSuffixes,
-              selectedAssessment ? true : getDefaultGradeTestPredicateSuffixes(editorState.testScale)
-            );
             const deficitThreshold = normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, deficitThresholdDefault);
             const editor = document.createElement("section");
             editor.className = "grades-entry-editor";
@@ -16838,15 +16893,11 @@
           handleGradeNameOrderToggleRequest(event = null) {
             event?.preventDefault?.();
             event?.stopPropagation?.();
-            if (!this.isGradesTopTabActive()) {
+            if (!this.shouldShowSidebarGradeNameOrderToggle()) {
               this.updateSidebarGradeNameOrderToggleState();
               return;
             }
             const subView = this.normalizeGradesSubView(this.gradesSubView);
-            if (subView !== "overview" && subView !== "entry") {
-              this.updateSidebarGradeNameOrderToggleState();
-              return;
-            }
             if (!this.commitVisibleGradeInputs()) {
               this.updateSidebarGradeNameOrderToggleState();
               return;
@@ -16862,6 +16913,7 @@
                 : "first";
             }
             this.renderGradesView();
+            this.updateSidebarGradeNameOrderToggleState();
           }
 
           handleGradeDisplaySystemToggleRequest(event = null) {
@@ -16938,6 +16990,14 @@
           }
 
           shouldShowSidebarGradeActions() {
+            if (!this.isGradesTopTabActive() || this.currentView !== "grades") {
+              return false;
+            }
+            const subView = this.normalizeGradesSubView(this.gradesSubView);
+            return subView === "overview" || subView === "entry";
+          }
+
+          shouldShowSidebarGradeNameOrderToggle() {
             if (!this.isGradesTopTabActive() || this.currentView !== "grades") {
               return false;
             }
@@ -17498,7 +17558,7 @@
             const subView = this.normalizeGradesSubView(this.gradesSubView);
             const isGradesOverview = isGradesContext && this.currentView === "grades" && subView === "overview";
             const isGradesEntry = isGradesContext && this.currentView === "grades" && subView === "entry";
-            const isAvailable = isGradesOverview || isGradesEntry;
+            const isAvailable = this.shouldShowSidebarGradeNameOrderToggle();
             const nameOrder = normalizeGradeStudentNameOrder(
               isGradesEntry ? this.gradesEntryNameOrder : this.gradesOverviewNameOrder
             );
@@ -17522,7 +17582,7 @@
               : (
                 isAvailable
                   ? `Namenssortierung auf ${nextNameOrderLabel} umstellen`
-                  : "Namenssortierung in der Kursübersicht verfügbar"
+                  : "Namenssortierung in Kursübersicht und Eingabemaske verfügbar"
               );
           }
 
@@ -18843,9 +18903,16 @@
             dataAttribute,
             selectedScale = GRADE_TEST_SCALE_DEFAULT,
             selectedSnapshot = null,
-            disabled = false
+            disabled = false,
+            testTasks = null,
+            maxBeSum = null,
+            predicateSuffixes = true
           } = {}) {
             const normalizedSelected = normalizeGradeTestScale(selectedScale);
+            const showBeColumn = Array.isArray(testTasks) || maxBeSum !== null;
+            const tooltipMaxBeSum = maxBeSum !== null
+              ? Number(maxBeSum)
+              : calculateGradeTestMaxBeSum(testTasks);
             return this.getGradeTestScaleTemplatesForEditor(normalizedSelected, selectedSnapshot)
               .map((template) => {
                 const scale = normalizeGradeTestScale(template.id);
@@ -18854,7 +18921,7 @@
                   <label class="assessment-mode-option grade-test-scale-option">
                     <input type="radio" name="${escapeHtml(inputName)}" ${dataAttribute} value="${escapeHtml(scale)}"${scale === normalizedSelected ? " checked" : ""}${disabled ? " disabled" : ""}>
                     <span>${escapeHtml(label)}</span>
-                    ${buildGradeTestScaleTooltipMarkup(template)}
+                    ${buildGradeTestScaleTooltipMarkup(template, null, { showBeColumn, maxBeSum: tooltipMaxBeSum, predicateSuffixes })}
                   </label>
                 `;
               }).join("");
@@ -19392,6 +19459,48 @@
             return this.updateGradeTestContextTasks(tasks);
           }
 
+          refreshVisibleGradeTestScaleTooltips() {
+            const root = this.refs.gradesEntryContent;
+            const field = root?.querySelector(".grades-entry-test-scale-field");
+            if (!field) {
+              return;
+            }
+            const editorValues = this.readGradesEntryEditorValues();
+            const templates = this.getGradeTestScaleTemplatesForEditor(
+              editorValues?.testScale,
+              editorValues?.testScaleSnapshot || null
+            );
+            const templateByScale = new Map(
+              templates.map((template) => [normalizeGradeTestScale(template.id), template])
+            );
+            const maxBeSum = calculateGradeTestMaxBeSum(editorValues?.testTasks);
+            const activeTooltipOption = this.gradeTestScaleTooltipState?.anchor;
+            const shouldRefreshPortal = (
+              activeTooltipOption instanceof HTMLElement
+              && field.contains(activeTooltipOption)
+              && this.gradeTestScaleTooltipState?.portal?.classList.contains("is-visible")
+            );
+            field.querySelectorAll(".grade-test-scale-option").forEach((option) => {
+              const input = option.querySelector("input[data-grades-entry-test-scale='1']");
+              const scale = normalizeGradeTestScale(input?.value);
+              const template = templateByScale.get(scale) || this.store.buildGradeTestScaleSnapshot(scale);
+              const wrapper = document.createElement("div");
+              wrapper.innerHTML = buildGradeTestScaleTooltipMarkup(template, null, {
+                showBeColumn: true,
+                maxBeSum,
+                predicateSuffixes: editorValues?.testPredicateSuffixes
+              }).trim();
+              const nextTooltip = wrapper.firstElementChild;
+              const currentTooltip = option.querySelector(".grade-test-scale-tooltip:not(.grade-test-scale-tooltip-portal)");
+              if (nextTooltip && currentTooltip) {
+                currentTooltip.replaceWith(nextTooltip);
+              }
+            });
+            if (shouldRefreshPortal && activeTooltipOption.isConnected) {
+              this.showGradeTestScaleTooltip(activeTooltipOption);
+            }
+          }
+
           refreshVisibleGradeTestResultsForTaskInput(input) {
             const root = input instanceof Element
               ? input.closest("#grades-entry-content") || this.refs.gradesEntryContent
@@ -19409,6 +19518,7 @@
               this.refreshVisibleGradeTestResult(studentId, assessmentId);
             });
             this.refreshVisibleGradeTestAverages(assessmentId);
+            this.refreshVisibleGradeTestScaleTooltips();
             if (assessmentId) {
               this.refreshGradeTotals();
               this.renderGradePrivacyOverlay();
