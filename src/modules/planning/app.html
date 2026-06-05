@@ -199,6 +199,8 @@
                     aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="gradeTestScales"
                     aria-controls="settings-tab-grade-test-scales" aria-selected="false">Prozentgrenzen</button>
+                  <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
+                    aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
                     aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="database"
@@ -338,6 +340,41 @@
                     <div id="grade-test-scale-settings-content" class="grade-test-scale-settings"></div>
                   </div>
 
+                  <div id="settings-tab-grade-structure" class="settings-panel" role="tabpanel" hidden>
+                    <div class="settings-grade-structure-panel">
+                      <div class="settings-grade-structure-head">
+                        <h3 class="settings-panel-title">Default-Notenstruktur</h3>
+                        <div class="settings-grade-structure-actions">
+                          <button type="button" id="settings-grade-structure-copy-h1-to-h2"
+                            class="ghost course-dialog-copy-h1-to-h2" hidden>
+                            1. HJ nach 2. HJ übernehmen
+                          </button>
+                          <div id="settings-grade-structure-period-toggle"
+                            class="course-dialog-structure-period-toggle" role="radiogroup"
+                            aria-label="Halbjahr">
+                            <label class="course-dialog-structure-period-option">
+                              <input type="radio" name="settings-grade-structure-period"
+                                data-default-grade-structure-period="1" value="h1" checked>
+                              <span>1. HJ</span>
+                            </label>
+                            <label class="course-dialog-structure-period-option">
+                              <input type="radio" name="settings-grade-structure-period"
+                                data-default-grade-structure-period="1" value="h2">
+                              <span>2. HJ</span>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                      <div class="course-dialog-structure-row settings-grade-structure-row">
+                        <div id="settings-grade-structure-list" class="course-dialog-structure-list"></div>
+                        <button type="button" id="settings-grade-structure-category-add" class="sidebar-add-btn"
+                          aria-label="Kategorie hinzufügen" title="Kategorie hinzufügen">
+                          <span class="sidebar-add-plus" aria-hidden="true"></span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
                   <div id="settings-tab-lesson-times" class="settings-panel" role="tabpanel" hidden>
                     <div class="lesson-times-panel">
                       <p class="muted">Die Zuordnung von Stunden zu Uhrzeiten dient dem automatischen Öffnen des
@@ -367,6 +404,15 @@
                       werden.</p>
                     <div id="grade-vault-settings-section" class="settings-extra-section" hidden>
                       <h3 class="settings-panel-title">Verschlüsselung</h3>
+                      <div class="settings-form-table">
+                        <div class="settings-form-row">
+                          <span class="settings-form-label">Notenbereich</span>
+                          <label class="checkbox-line settings-inline-checkbox">
+                            <input id="grade-vault-encryption-enabled" type="checkbox">
+                            verschlüsseln
+                          </label>
+                        </div>
+                      </div>
                       <p id="grade-vault-settings-status" class="muted"></p>
                       <p id="grade-vault-settings-hint" class="muted"></p>
                       <div class="button-row" style="margin-top: 0.45rem;">

@@ -297,7 +297,7 @@
           background: rgba(34, 211, 238, 0.08);
         }
 
-        .main > #sidebar-score {
+        .main>#sidebar-score {
           align-self: center;
           margin: 4px 0 8px;
         }
@@ -1017,7 +1017,7 @@
           --seat-name-padding-inline: clamp(2px, calc(var(--seat-font-size) * 0.14), 8px);
           --seat-chip-padding-block: clamp(2px, calc(var(--seat-font-size) * 0.12), 6px);
           --seat-chip-padding-inline: clamp(4px, calc(var(--seat-font-size) * 0.28), 12px);
-          --seat-teacher-icon-size: clamp(62px, min(calc(var(--seat-min-height) * 1.08), calc(var(--seat-min-width) * 0.92)), calc(var(--seat-min-height) * 1.22));
+          --seat-teacher-icon-size: clamp(32px, min(calc(var(--seat-min-height) * 0.5), calc(var(--seat-min-width) * 0.92)), calc(var(--seat-min-height) * 1.22));
           --seat-teacher-label-size: clamp(14px, min(calc(var(--seat-min-height) * 0.2), calc(var(--seat-min-width) * 0.16)), calc(var(--seat-min-height) * 0.25));
           --seat-merge-icon-size: clamp(18px, min(calc(var(--seat-min-height) * 0.34), calc(var(--seat-min-width) * 0.22)), calc(var(--seat-min-height) * 0.42));
           display: grid;

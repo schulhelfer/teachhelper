@@ -24,7 +24,9 @@
         const GRADE_RATIO_TOOLTIP = "Rot = Kurz vor besserer Note";
         const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
         const SYNC_META_KEY = "teachhelper-sync-meta-v1";
-        const APP_DB_SCHEMA = "teachhelper-db-v1";
+        const APP_DB_SCHEMA_LEGACY = "teachhelper-db-v1";
+        const APP_DB_SCHEMA = "teachhelper-db-v2";
+        const APP_DB_CRYPTO_AAD_SCHEMA = APP_DB_SCHEMA_LEGACY;
         const APP_DB_MAGIC = "THDB1";
         const APP_DB_HEADER_READ_BYTES = 65536;
         const APP_DB_STARTUP_SHELL_SCHEMA = "teachhelper-db-shell-v1";
@@ -35,6 +37,7 @@
         const GRADE_VAULT_KDF_ITERATIONS = 250000;
         const GRADE_VAULT_PASSWORD_MIN_LENGTH = 10;
         const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
+        const GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT = false;
         const SYNC_HANDLE_DB_NAME = "teachhelper-sync-handles-v1";
         const SYNC_HANDLE_STORE_NAME = "handles";
         const SYNC_HANDLE_FILE_KEY = "sync-file";
@@ -203,9 +206,16 @@
           );
         }
 
+        function countGradeVaultEntries(vaultState) {
+          return Array.isArray(vaultState?.gradeEntries)
+            ? vaultState.gradeEntries.length
+            : 0;
+        }
+
         function createInitialGradeVaultSessionState() {
           return {
             configured: false,
+            encryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
             unlocked: false,
             dirty: false,
             publicStateDirty: false,
@@ -223,6 +233,7 @@
             gradeCourseSegmentTexts: {},
             gradeCourseCache: {},
             dirtyGradeCourseIds: {},
+            gradeEntryCount: null,
             loadedGradeCourseId: null,
             loadingGradeCourseId: null,
             unlockedAt: "",
@@ -264,6 +275,39 @@
             cipher: normalizeGradeVaultCipherConfig(rawEnvelope.cipher),
             ciphertext: String(rawEnvelope.ciphertext || "")
           };
+        }
+
+        function parsePersistedGradeCourseSegmentText(text = "") {
+          const value = String(text || "").trim();
+          if (!value) {
+            return null;
+          }
+          let parsed;
+          try {
+            parsed = JSON.parse(value);
+          } catch (_error) {
+            return null;
+          }
+          const encryptedEnvelope = normalizeGradeVaultEnvelope(parsed);
+          if (encryptedEnvelope) {
+            return {
+              encrypted: true,
+              envelope: encryptedEnvelope,
+              state: null
+            };
+          }
+          if (isRecord(parsed) && String(parsed.schema || "") === GRADE_COURSE_SCHEMA) {
+            return {
+              encrypted: false,
+              envelope: null,
+              state: parsed
+            };
+          }
+          return null;
+        }
+
+        function isPersistedGradeCourseSegmentEncrypted(text = "") {
+          return parsePersistedGradeCourseSegmentText(text)?.encrypted === true;
         }
 
         function normalizeGradeVaultConfig(rawConfig = null) {
@@ -308,6 +352,7 @@
           if (!shell || String(shell.schema || "") !== APP_DB_STARTUP_SHELL_SCHEMA) {
             return null;
           }
+          const hasGradeEntryCount = Object.prototype.hasOwnProperty.call(shell, "gradeEntryCount");
           return {
             schema: APP_DB_STARTUP_SHELL_SCHEMA,
             settings: cloneJsonValue(isRecord(shell.settings) ? shell.settings : {}, createInitialState().settings),
@@ -315,12 +360,16 @@
             courses: cloneJsonValue(Array.isArray(shell.courses) ? shell.courses : [], []),
             freeRanges: cloneJsonValue(Array.isArray(shell.freeRanges) ? shell.freeRanges : [], []),
             specialDays: cloneJsonValue(Array.isArray(shell.specialDays) ? shell.specialDays : [], []),
-            gradeVaultConfigured: Boolean(shell.gradeVaultConfigured)
+            gradeVaultConfigured: Boolean(shell.gradeVaultConfigured),
+            gradeEntryCount: hasGradeEntryCount ? Math.max(0, Number(shell.gradeEntryCount) || 0) : null
           };
         }
 
-        function buildStartupShellFromPublicState(publicState, gradeVaultConfigured = false) {
+        function buildStartupShellFromPublicState(publicState, gradeVaultConfigured = false, gradeEntryCount = null) {
           const state = isRecord(publicState) ? publicState : createInitialState();
+          const normalizedGradeEntryCount = gradeEntryCount === null || gradeEntryCount === undefined
+            ? null
+            : Math.max(0, Number(gradeEntryCount) || 0);
           return {
             schema: APP_DB_STARTUP_SHELL_SCHEMA,
             settings: cloneJsonValue(state.settings, createInitialState().settings),
@@ -328,7 +377,8 @@
             courses: cloneJsonValue(state.courses, []),
             freeRanges: cloneJsonValue(state.freeRanges, []),
             specialDays: cloneJsonValue(state.specialDays, []),
-            gradeVaultConfigured: Boolean(gradeVaultConfigured)
+            gradeVaultConfigured: Boolean(gradeVaultConfigured),
+            gradeEntryCount: normalizedGradeEntryCount
           };
         }
 
@@ -354,11 +404,12 @@
         }
 
         function normalizeAppDatabaseHeader(rawHeader = null) {
-          if (!isRecord(rawHeader) || String(rawHeader.schema || "") !== APP_DB_SCHEMA) {
+          const schema = String(rawHeader?.schema || "");
+          if (!isRecord(rawHeader) || (schema !== APP_DB_SCHEMA && schema !== APP_DB_SCHEMA_LEGACY)) {
             return null;
           }
           return {
-            schema: APP_DB_SCHEMA,
+            schema,
             revision: Math.max(0, Number(rawHeader.revision) || 0),
             updatedAt: String(rawHeader.updatedAt || ""),
             deviceId: String(rawHeader.deviceId || ""),
@@ -2794,6 +2845,43 @@
           ];
         }
 
+        function stripGradeStructureIds(categories) {
+          return normalizeGradeStructurePeriodDraft(categories).map((category) => ({
+            id: 0,
+            name: category.name,
+            weight: normalizeGradeStructureWeight(category.weight, 1),
+            subcategories: (category.subcategories || []).map((subcategory) => ({
+              id: 0,
+              name: subcategory.name,
+              weight: normalizeGradeStructureWeight(subcategory.weight, 1)
+            }))
+          }));
+        }
+
+        function normalizeDefaultGradeStructureSetting(value = null) {
+          const source = value && typeof value === "object"
+            ? value
+            : { periodCategories: normalizeGradeStructurePeriodCategoriesPercentDraft(createDefaultGradeStructureDraft()) };
+          const normalized = normalizeGradeStructurePeriodCategoriesPercentDraft(source);
+          return {
+            periodCategories: {
+              h1: stripGradeStructureIds(normalized.h1),
+              h2: stripGradeStructureIds(normalized.h2)
+            }
+          };
+        }
+
+        function createDefaultGradeStructureSetting() {
+          return normalizeDefaultGradeStructureSetting({
+            periodCategories: normalizeGradeStructurePeriodCategoriesPercentDraft(createDefaultGradeStructureDraft())
+          });
+        }
+
+        function defaultGradeStructureSettingsEqual(left = null, right = null) {
+          return JSON.stringify(normalizeDefaultGradeStructureSetting(left))
+            === JSON.stringify(normalizeDefaultGradeStructureSetting(right));
+        }
+
         function gradeDataTransferHasFiles(dt) {
           if (!dt) {
             return false;
@@ -2846,6 +2934,8 @@
               showHiddenSidebarCourses: SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
               gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
               gradeTestScaleSettings: buildDefaultGradeTestScaleSettings(),
+              defaultGradeStructure: createDefaultGradeStructureSetting(),
+              gradeVaultEncryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
               backupEnabled: BACKUP_ENABLED_DEFAULT,
               backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
               lastAutoBackupAt: null
@@ -3080,6 +3170,29 @@
             this.state.settings.gradeTestScaleSettings = normalizeGradeTestScaleSettings(settings);
             this._save();
             return this.getGradeTestScaleSettings();
+          }
+
+          getDefaultGradeStructure() {
+            this.state.settings.defaultGradeStructure = normalizeDefaultGradeStructureSetting(
+              this.state.settings.defaultGradeStructure
+            );
+            return cloneJsonValue(this.state.settings.defaultGradeStructure, createDefaultGradeStructureSetting());
+          }
+
+          setDefaultGradeStructure(structure = null) {
+            this.state.settings.defaultGradeStructure = normalizeDefaultGradeStructureSetting(structure);
+            this._save();
+            return this.getDefaultGradeStructure();
+          }
+
+          getGradeVaultEncryptionEnabled() {
+            return Boolean(this.getSetting("gradeVaultEncryptionEnabled", GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT));
+          }
+
+          setGradeVaultEncryptionEnabled(enabled) {
+            this.state.settings.gradeVaultEncryptionEnabled = Boolean(enabled);
+            this._save();
+            return this.getGradeVaultEncryptionEnabled();
           }
 
           getGradeDisplaySystem() {
@@ -5415,6 +5528,8 @@
           delete normalized.settings.gradeDisplaySystem;
           normalized.settings.lessonTimes = normalizeLessonTimes(normalized.settings.lessonTimes, normalizedHoursPerDay);
           normalized.settings.gradeTestScaleSettings = normalizeGradeTestScaleSettings(normalized.settings.gradeTestScaleSettings);
+          normalized.settings.defaultGradeStructure = normalizeDefaultGradeStructureSetting(normalized.settings.defaultGradeStructure);
+          normalized.settings.gradeVaultEncryptionEnabled = Boolean(normalized.settings.gradeVaultEncryptionEnabled);
 
           normalized.schoolYears = normalized.schoolYears.filter(
             (item) => item.id > 0 && item.name && item.startDate && item.endDate
@@ -5757,21 +5872,26 @@
 
               settingsTabs: [...document.querySelectorAll(".settings-tab")],
               settingsPanels: {
-                dayoff: document.querySelector("#settings-tab-dayoff"),
-                display: document.querySelector("#settings-tab-display"),
-                gradeTestScales: document.querySelector("#settings-tab-grade-test-scales"),
-                lessonTimes: document.querySelector("#settings-tab-lesson-times"),
-                database: document.querySelector("#settings-tab-database")
+	                dayoff: document.querySelector("#settings-tab-dayoff"),
+	                display: document.querySelector("#settings-tab-display"),
+	                gradeTestScales: document.querySelector("#settings-tab-grade-test-scales"),
+	                gradeStructure: document.querySelector("#settings-tab-grade-structure"),
+	                lessonTimes: document.querySelector("#settings-tab-lesson-times"),
+	                database: document.querySelector("#settings-tab-database")
               },
               settingsResetAll: document.querySelector("#settings-reset-all"),
               settingsSaveAll: document.querySelector("#settings-save-all"),
               settingsCancelAll: document.querySelector("#settings-cancel-all"),
               settingsActionsRow: document.querySelector(".settings-actions-row"),
-              settingsDisplayHoursRow: document.querySelector("#settings-display-hours-row"),
-              settingsGradesPrivacyGraphThresholdRow: document.querySelector("#settings-grades-privacy-graph-threshold-row"),
-              gradeTestScaleSettingsContent: document.querySelector("#grade-test-scale-settings-content"),
+	              settingsDisplayHoursRow: document.querySelector("#settings-display-hours-row"),
+	              settingsGradesPrivacyGraphThresholdRow: document.querySelector("#settings-grades-privacy-graph-threshold-row"),
+	              gradeTestScaleSettingsContent: document.querySelector("#grade-test-scale-settings-content"),
+	              settingsGradeStructurePeriodToggle: document.querySelector("#settings-grade-structure-period-toggle"),
+	              settingsGradeStructureCopyH1ToH2: document.querySelector("#settings-grade-structure-copy-h1-to-h2"),
+	              settingsGradeStructureList: document.querySelector("#settings-grade-structure-list"),
+	              settingsGradeStructureCategoryAdd: document.querySelector("#settings-grade-structure-category-add"),
 
-              courseTitle: document.querySelector("#course-title"),
+	              courseTitle: document.querySelector("#course-title"),
               courseTable: document.querySelector("#course-table"),
               gradesCollapsedTitleShell: document.querySelector("#grades-collapsed-title-shell"),
               gradesTitle: document.querySelector("#grades-title"),
@@ -5781,6 +5901,7 @@
               gradeVaultSaveBtn: document.querySelector("#grade-vault-save-btn"),
               gradesVaultBanner: document.querySelector("#grades-vault-banner"),
               gradeVaultSettingsSection: document.querySelector("#grade-vault-settings-section"),
+              gradeVaultEncryptionEnabled: document.querySelector("#grade-vault-encryption-enabled"),
               gradeVaultSettingsStatus: document.querySelector("#grade-vault-settings-status"),
               gradeVaultSettingsHint: document.querySelector("#grade-vault-settings-hint"),
               gradeVaultSettingsActionBtn: document.querySelector("#grade-vault-settings-action-btn"),
@@ -6024,6 +6145,7 @@
             this.pendingTopicLessonId = null;
             this.pendingGradeVaultDialogMode = "";
             this.pendingGradeVaultContinuation = null;
+            this.pendingGradeVaultEncryptionDisable = false;
             this.inlineTopicLessonId = null;
             this.inlineTopicDraft = "";
             this.courseDialogDraft = null;
@@ -6100,6 +6222,8 @@
             this.pendingGradesOverviewAutoScroll = null;
             this.pendingGradesOverviewAutoScrollFrame = 0;
             this.pendingGradesOverviewAutoScrollFrameType = "";
+            this.initialDatabaseSetupInfoShown = false;
+            this.initialDatabaseSetupInfoQueued = false;
             this.gradeVaultSession = createInitialGradeVaultSessionState();
             this.pendingWeekGradeAssessmentLoadKey = "";
             this.gradesOverviewAssessmentSpotlight = null;
@@ -6107,11 +6231,12 @@
             this.weekCalendarMonthIso = null;
             this.weekCalendarHoverWeekStart = null;
             this.courseDialogSelectedColor = normalizeHexColor(DEFAULT_COURSE_COLOR, DEFAULT_COURSE_COLOR);
-            this.courseDialogColorBackup = this.courseDialogSelectedColor;
-            this.courseDialogDefaultColor = this.courseDialogSelectedColor;
-            this.courseColorDialogSelectedColor = this.courseDialogSelectedColor;
-            this.courseColorDialogDefaultColor = this.courseDialogSelectedColor;
-            this.settingsDraft = this.buildSettingsDraftFromStore();
+	            this.courseDialogColorBackup = this.courseDialogSelectedColor;
+	            this.courseDialogDefaultColor = this.courseDialogSelectedColor;
+	            this.courseColorDialogSelectedColor = this.courseDialogSelectedColor;
+	            this.courseColorDialogDefaultColor = this.courseDialogSelectedColor;
+	            this.settingsDefaultGradeStructurePeriod = "h1";
+	            this.settingsDraft = this.buildSettingsDraftFromStore();
             this.settingsDirty = false;
             this.syncMeta = this.loadSyncMeta();
             this.syncState = {
@@ -6171,10 +6296,11 @@
             const hoursPerDay = this.store.getHoursPerDay();
             return {
               hoursPerDay,
-              lessonTimes: this.store.getLessonTimes(hoursPerDay),
-              gradesPrivacyGraphThreshold: this.store.getGradesPrivacyGraphThreshold(),
-              gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
-              showHiddenSidebarCourses: Boolean(
+	              lessonTimes: this.store.getLessonTimes(hoursPerDay),
+	              gradesPrivacyGraphThreshold: this.store.getGradesPrivacyGraphThreshold(),
+	              gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
+	              defaultGradeStructure: this.store.getDefaultGradeStructure(),
+	              showHiddenSidebarCourses: Boolean(
                 this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
               ),
               backupEnabled: this.store.getBackupEnabled(),
@@ -6195,6 +6321,7 @@
               schema: APP_DB_SCHEMA,
               publicState: this.getCurrentPublicStateSnapshot(),
               gradeVaultState: this.getCurrentGradeVaultSnapshot(),
+              gradeVaultEncryptionEnabled: this.isGradeVaultEncryptionEnabled(),
               gradeVaultConfigured: this.isGradeVaultConfigured(),
               gradeVaultUnlocked: this.isGradeVaultUnlocked(),
               gradeVaultDirty: Boolean(this.gradeVaultSession.dirty)
@@ -6202,15 +6329,25 @@
           }
 
           isGradeVaultConfigured() {
-            return Boolean(
+            return Boolean(this.isGradeVaultEncryptionEnabled() && (
               this.gradeVaultSession.configured
               || this.gradeVaultSession.gradeVaultConfig?.configured
-              || Object.keys(this.gradeVaultSession.gradeCourseDirectory || {}).length > 0
+            ));
+          }
+
+          isGradeVaultEncryptionEnabled() {
+            return Boolean(
+              this.gradeVaultSession.encryptionEnabled
+              || this.store.getGradeVaultEncryptionEnabled()
             );
           }
 
           isGradeVaultUnlocked() {
-            return Boolean(this.gradeVaultSession.configured && this.gradeVaultSession.unlocked);
+            return Boolean(this.isGradeVaultEncryptionEnabled() && this.gradeVaultSession.configured && this.gradeVaultSession.unlocked);
+          }
+
+          canAccessGradeVault() {
+            return !this.isGradeVaultEncryptionEnabled() || this.isGradeVaultUnlocked();
           }
 
           hasGradeVaultUnlockConfig() {
@@ -6226,8 +6363,54 @@
             );
           }
 
+          getKnownGradeEntryCount() {
+            const knownCourseIds = new Set();
+            let count = 0;
+            const loadedCourseId = Number(this.gradeVaultSession.loadedGradeCourseId || 0);
+            if (loadedCourseId) {
+              knownCourseIds.add(loadedCourseId);
+              count += countGradeVaultEntries(this.getCurrentGradeVaultSnapshot());
+            }
+            Object.entries(this.gradeVaultSession.gradeCourseCache || {}).forEach(([courseId, vaultState]) => {
+              const courseKey = Number(courseId) || 0;
+              if (!courseKey || knownCourseIds.has(courseKey)) {
+                return;
+              }
+              knownCourseIds.add(courseKey);
+              count += countGradeVaultEntries(vaultState);
+            });
+            Object.entries(this.gradeVaultSession.gradeCourseSegmentTexts || {}).forEach(([courseId, text]) => {
+              const courseKey = Number(courseId) || 0;
+              if (!courseKey || knownCourseIds.has(courseKey)) {
+                return;
+              }
+              const parsedSegment = parsePersistedGradeCourseSegmentText(text);
+              if (!parsedSegment || parsedSegment.encrypted) {
+                return;
+              }
+              knownCourseIds.add(courseKey);
+              count += countGradeVaultEntries(parsedSegment.state);
+            });
+            const directoryCourseIds = Object.keys(this.gradeVaultSession.gradeCourseDirectory || {})
+              .map((courseId) => Number(courseId) || 0)
+              .filter((courseId) => courseId > 0);
+            const unknownDirectoryCourseExists = directoryCourseIds.some((courseId) => !knownCourseIds.has(courseId));
+            if (unknownDirectoryCourseExists) {
+              return Number.isFinite(this.gradeVaultSession.gradeEntryCount)
+                ? Math.max(0, Number(this.gradeVaultSession.gradeEntryCount) || 0)
+                : null;
+            }
+            return count;
+          }
+
+          hasKnownGradeEntries() {
+            const count = this.getKnownGradeEntryCount();
+            return count === null ? true : count > 0;
+          }
+
           syncGradeVaultConfiguredFlag(configured) {
             this.gradeVaultSession.configured = Boolean(configured);
+            this.gradeVaultSession.encryptionEnabled = Boolean(configured);
           }
 
           createGradeVaultKdfConfig() {
@@ -6241,7 +6424,7 @@
 
           buildGradeVaultAadBytes(scope = {}) {
             return utf8ToBytes(JSON.stringify({
-              schema: APP_DB_SCHEMA,
+              schema: APP_DB_CRYPTO_AAD_SCHEMA,
               gradeVault: {
                 schema: GRADE_VAULT_SCHEMA,
                 type: String(scope.type || "vault"),
@@ -6503,7 +6686,8 @@
                 dbConnected: this.hasShellDatabaseConnection(),
                 configured: this.hasGradeVaultUnlockConfig(),
                 unlocked: this.isGradeVaultUnlocked(),
-                setupRequired: !this.isGradeVaultConfigured()
+                encryptionEnabled: this.isGradeVaultEncryptionEnabled(),
+                setupRequired: this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig()
               }
             }));
           }
@@ -6583,7 +6767,7 @@
 
           async ensureGradeCourseLoaded(courseId) {
             const courseKey = Number(courseId) || 0;
-            if (!courseKey || !this.isGradeVaultUnlocked()) {
+            if (!courseKey || !this.canAccessGradeVault()) {
               return false;
             }
             if (this.isGradeCourseLoaded(courseKey)) {
@@ -6605,21 +6789,18 @@
                 this.gradeVaultSession.loadedGradeCourseId = courseKey;
                 return true;
               }
-              let envelope;
-              try {
-                envelope = normalizeGradeVaultEnvelope(JSON.parse(courseText));
-              } catch (_error) {
-                envelope = null;
+              const parsedSegment = parsePersistedGradeCourseSegmentText(courseText);
+              if (!parsedSegment) {
+                throw new Error("Der gespeicherte Notenkurs ist ungültig.");
               }
-              if (!envelope) {
-                throw new Error("Der verschlüsselte Notenkurs ist ungültig.");
-              }
-              const vaultState = await this.decryptGradeCourseStateWithKey(
-                courseKey,
-                envelope,
-                this.gradeVaultSession.cryptoKey,
-                this.gradeVaultSession.kdf || envelope.kdf
-              );
+              const vaultState = parsedSegment.encrypted
+                ? await this.decryptGradeCourseStateWithKey(
+                  courseKey,
+                  parsedSegment.envelope,
+                  this.gradeVaultSession.cryptoKey,
+                  this.gradeVaultSession.kdf || parsedSegment.envelope.kdf
+                )
+                : this.hydratePersistedGradeCourseState(courseKey, parsedSegment.state);
               this.store.replaceGradeVaultState(vaultState);
               this.gradeVaultSession.gradeCourseCache[courseKey] = this.getCurrentGradeVaultSnapshot();
               this.gradeVaultSession.loadedGradeCourseId = courseKey;
@@ -6691,12 +6872,21 @@
                 .map((segment) => [Number(segment.courseId) || 0, String(segment.text || "")])
                 .filter((entry) => entry[0] > 0)
             );
+            const hasEncryptedLoadedCourseSegment = Object.values(loadedCourseSegments)
+              .some((text) => isPersistedGradeCourseSegmentEncrypted(text));
+            const encryptionEnabled = Boolean(
+              this.store.getGradeVaultEncryptionEnabled()
+              || container.startupShell?.gradeVaultConfigured
+              || container.gradeVaultConfig?.configured
+              || hasEncryptedLoadedCourseSegment
+            );
+            this.store.state.settings.gradeVaultEncryptionEnabled = encryptionEnabled;
             this.resetGradeVaultSession({
-              configured: Boolean(
+              configured: encryptionEnabled && Boolean(
                 container.startupShell?.gradeVaultConfigured
                 || container.gradeVaultConfig?.configured
-                || Object.keys(container.gradeCourseDirectory || {}).length > 0
               ),
+              encryptionEnabled,
               unlocked: false,
               dirty: false,
               planningPublicLoaded: !startupShellOnly,
@@ -6715,6 +6905,9 @@
               gradeCourseSegmentTexts: loadedCourseSegments,
               gradeCourseCache: {},
               dirtyGradeCourseIds: {},
+              gradeEntryCount: Number.isFinite(container.startupShell?.gradeEntryCount)
+                ? Math.max(0, Number(container.startupShell.gradeEntryCount) || 0)
+                : null,
               loadedGradeCourseId: null,
               loadingGradeCourseId: null,
               unlockedAt: "",
@@ -6729,23 +6922,7 @@
 
           async buildPersistableDatabasePayload({ explicit = false } = {}) {
             const publicState = this.getCurrentPublicStateSnapshot();
-            const hasProtectedData = this.hasProtectedGradeDataPending();
-            if (!this.isGradeVaultConfigured()) {
-              if (hasProtectedData) {
-                throw new Error("Für vorhandene geschützte Notendaten muss zuerst ein Passwort eingerichtet werden.");
-              }
-              return {
-                schema: APP_DB_SCHEMA,
-                exportedAt: new Date().toISOString(),
-                startupShell: buildStartupShellFromPublicState(publicState, false),
-                planningPublicText: this.gradeVaultSession.planningPublicLoaded
-                  ? JSON.stringify(publicState)
-                  : (await this.ensurePlanningPublicSegmentTextLoaded()),
-                gradeVaultConfig: normalizeGradeVaultConfig(null),
-                gradeVaultConfigText: JSON.stringify(normalizeGradeVaultConfig(null)),
-                gradeCourseSegments: []
-              };
-            }
+            const encryptionEnabled = this.isGradeVaultEncryptionEnabled();
             this.cacheLoadedGradeCourseState();
             const gradeCourseIds = new Set(
               [
@@ -6760,20 +6937,56 @@
                 .filter((courseId) => courseId > 0)
             );
             const gradeCourseSegments = [];
+            let gradeEntryCount = 0;
+            let gradeEntryCountKnown = true;
+            const rememberGradeEntryCount = (vaultState = null) => {
+              gradeEntryCount += countGradeVaultEntries(vaultState);
+            };
             for (const courseId of [...gradeCourseIds].sort((a, b) => a - b)) {
               if (!availableCourseIds.has(courseId)) {
                 continue;
               }
               const isDirty = Boolean(this.gradeVaultSession.dirtyGradeCourseIds[courseId]);
-              if (isDirty) {
-                if (!this.isGradeVaultUnlocked() || !this.gradeVaultSession.cryptoKey || !this.gradeVaultSession.kdf) {
-                  throw new Error("Der geschützte Notenbereich muss vor dem Speichern entsperrt sein.");
-                }
-                const vaultState = this.gradeVaultSession.loadedGradeCourseId === courseId
+              const persistedText = isDirty ? "" : await this.ensurePersistedGradeCourseSegmentTextLoaded(courseId);
+              const parsedPersistedSegment = persistedText ? parsePersistedGradeCourseSegmentText(persistedText) : null;
+              const mustRewriteForEncryptionMode = Boolean(
+                parsedPersistedSegment
+                && (
+                  (encryptionEnabled && !parsedPersistedSegment.encrypted)
+                  || (!encryptionEnabled && parsedPersistedSegment.encrypted)
+                )
+              );
+              if (isDirty || mustRewriteForEncryptionMode) {
+                let vaultState = this.gradeVaultSession.loadedGradeCourseId === courseId
                   ? this.getCurrentGradeVaultSnapshot()
-                  : (this.gradeVaultSession.gradeCourseCache[courseId] || createInitialGradeVaultState());
+                  : (this.gradeVaultSession.gradeCourseCache[courseId] || null);
+                if (!vaultState && parsedPersistedSegment?.encrypted) {
+                  if (!this.isGradeVaultUnlocked() || !this.gradeVaultSession.cryptoKey || !this.gradeVaultSession.kdf) {
+                    throw new Error("Der geschützte Notenbereich muss vor dem Speichern entsperrt sein.");
+                  }
+                  vaultState = await this.decryptGradeCourseStateWithKey(
+                    courseId,
+                    parsedPersistedSegment.envelope,
+                    this.gradeVaultSession.cryptoKey,
+                    this.gradeVaultSession.kdf || parsedPersistedSegment.envelope.kdf
+                  );
+                } else if (!vaultState && parsedPersistedSegment?.state) {
+                  vaultState = this.hydratePersistedGradeCourseState(courseId, parsedPersistedSegment.state);
+                }
+                vaultState = vaultState || createInitialGradeVaultState();
+                rememberGradeEntryCount(vaultState);
                 if (!gradeVaultHasSensitiveData(vaultState) && (!Array.isArray(vaultState.gradeAssessments) || vaultState.gradeAssessments.length === 0)) {
                   continue;
+                }
+                if (!encryptionEnabled) {
+                  gradeCourseSegments.push({
+                    courseId,
+                    text: JSON.stringify(this.buildPersistedGradeCourseState(courseId, vaultState))
+                  });
+                  continue;
+                }
+                if (!this.isGradeVaultUnlocked() || !this.gradeVaultSession.cryptoKey || !this.gradeVaultSession.kdf) {
+                  throw new Error("Der geschützte Notenbereich muss vor dem Speichern entsperrt sein.");
                 }
                 const envelope = await this.encryptGradeCourseStateWithKey(
                   courseId,
@@ -6787,16 +7000,45 @@
                 });
                 continue;
               }
-              const persistedText = await this.ensurePersistedGradeCourseSegmentTextLoaded(courseId);
               if (persistedText) {
+                if (parsedPersistedSegment?.encrypted) {
+                  if (this.isGradeVaultUnlocked() && this.gradeVaultSession.cryptoKey && this.gradeVaultSession.kdf) {
+                    try {
+                      const vaultState = await this.decryptGradeCourseStateWithKey(
+                        courseId,
+                        parsedPersistedSegment.envelope,
+                        this.gradeVaultSession.cryptoKey,
+                        this.gradeVaultSession.kdf || parsedPersistedSegment.envelope.kdf
+                      );
+                      rememberGradeEntryCount(vaultState);
+                    } catch (_error) {
+                      gradeEntryCountKnown = false;
+                    }
+                  } else {
+                    gradeEntryCountKnown = false;
+                  }
+                } else if (parsedPersistedSegment?.state) {
+                  rememberGradeEntryCount(parsedPersistedSegment.state);
+                } else {
+                  gradeEntryCountKnown = false;
+                }
                 gradeCourseSegments.push({
                   courseId,
                   text: persistedText
                 });
               }
             }
-            let gradeVaultConfig = this.gradeVaultSession.gradeVaultConfig || normalizeGradeVaultConfig(null);
-            if (explicit && this.isGradeVaultUnlocked() && this.gradeVaultSession.cryptoKey && this.gradeVaultSession.kdf) {
+            const persistedGradeEntryCount = gradeEntryCountKnown
+              ? gradeEntryCount
+              : (
+                Number.isFinite(this.gradeVaultSession.gradeEntryCount)
+                  ? Math.max(0, Number(this.gradeVaultSession.gradeEntryCount) || 0)
+                  : this.getKnownGradeEntryCount()
+              );
+            let gradeVaultConfig = encryptionEnabled
+              ? (this.gradeVaultSession.gradeVaultConfig || normalizeGradeVaultConfig(null))
+              : normalizeGradeVaultConfig(null);
+            if (encryptionEnabled && explicit && this.isGradeVaultUnlocked() && this.gradeVaultSession.cryptoKey && this.gradeVaultSession.kdf) {
               const validation = await this.encryptGradeVaultTextWithKey(
                 GRADE_VAULT_VALIDATION_TOKEN,
                 this.gradeVaultSession.cryptoKey,
@@ -6813,7 +7055,11 @@
             return {
               schema: APP_DB_SCHEMA,
               exportedAt: new Date().toISOString(),
-              startupShell: buildStartupShellFromPublicState(publicState, true),
+              startupShell: buildStartupShellFromPublicState(
+                publicState,
+                encryptionEnabled,
+                persistedGradeEntryCount
+              ),
               planningPublicText: this.gradeVaultSession.planningPublicLoaded
                 ? JSON.stringify(publicState)
                 : (await this.ensurePlanningPublicSegmentTextLoaded()),
@@ -6898,10 +7144,14 @@
                 .map((segment) => [Number(segment.courseId) || 0, String(segment.text || "")])
                 .filter((entry) => entry[0] > 0)
             );
+            this.gradeVaultSession.gradeEntryCount = Number.isFinite(payload?.startupShell?.gradeEntryCount)
+              ? Math.max(0, Number(payload.startupShell.gradeEntryCount) || 0)
+              : this.getKnownGradeEntryCount();
             this.gradeVaultSession.persistedGradeCourseHandle = this.syncState.fileHandle || null;
+            this.gradeVaultSession.encryptionEnabled = Boolean(payload?.startupShell?.settings?.gradeVaultEncryptionEnabled);
             this.gradeVaultSession.configured = Boolean(
-              this.gradeVaultSession.gradeVaultConfig?.configured
-              || Object.keys(this.gradeVaultSession.gradeCourseDirectory || {}).length > 0
+              this.gradeVaultSession.encryptionEnabled
+              && this.gradeVaultSession.gradeVaultConfig?.configured
             );
             this.gradeVaultSession.publicStateDirty = false;
             if (clearDirty) {
@@ -6911,6 +7161,9 @@
           }
 
           getGradeVaultStatusMode() {
+            if (!this.isGradeVaultEncryptionEnabled()) {
+              return "off";
+            }
             if (!this.isGradeVaultConfigured()) {
               return "setup";
             }
@@ -6921,6 +7174,9 @@
           }
 
           getShellGradeVaultStatusMode() {
+            if (!this.isGradeVaultEncryptionEnabled()) {
+              return "off";
+            }
             if (!this.hasShellDatabaseConnection()) {
               return "setup";
             }
@@ -6936,6 +7192,13 @@
 
           getGradeVaultBannerContent() {
             const mode = this.getGradeVaultStatusMode();
+            if (mode === "off") {
+              return {
+                title: "Notenbereich unverschlüsselt",
+                text: "Notenstruktur, Teilnehmende und Noten werden ohne Passwort in der Datenbankdatei gespeichert.",
+                actionLabel: ""
+              };
+            }
             if (mode === "setup") {
               return {
                 title: "Notenmodul noch nicht geschützt",
@@ -6977,11 +7240,11 @@
               const mode = this.getGradeVaultStatusMode();
               toggleButton.textContent = "Noten-Datenbank entsperren";
               toggleButton.disabled = false;
-              toggleButton.hidden = mode === "ready";
+              toggleButton.hidden = mode === "ready" || mode === "off";
             }
             if (saveButton) {
-              saveButton.hidden = !(this.isGradeVaultUnlocked() && this.gradeVaultSession.dirty);
-              saveButton.disabled = !this.isGradeVaultUnlocked();
+              saveButton.hidden = !(this.canAccessGradeVault() && this.gradeVaultSession.dirty);
+              saveButton.disabled = !this.canAccessGradeVault();
             }
           }
 
@@ -7136,11 +7399,12 @@
             this.gradeVaultSession.lastPromptMode = this.pendingGradeVaultDialogMode || this.gradeVaultSession.lastPromptMode || "";
             this.pendingGradeVaultDialogMode = "";
             this.pendingGradeVaultContinuation = null;
+            this.pendingGradeVaultEncryptionDisable = false;
             this.closeDialog(this.refs.gradeVaultDialog);
           }
 
           async ensureGradeVaultReadyForProtectedAction() {
-            if (this.isGradeVaultUnlocked()) {
+            if (this.canAccessGradeVault()) {
               return true;
             }
             this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
@@ -7183,6 +7447,13 @@
           }
 
           resumeAfterGradeVaultUnlock(options = {}) {
+            if (this.pendingGradeVaultEncryptionDisable) {
+              this.pendingGradeVaultEncryptionDisable = false;
+              requestAnimationFrame(() => {
+                void this.setGradeVaultEncryptionEnabledFromSettings(false);
+              });
+              return;
+            }
             if (this.pendingGradeVaultContinuation) {
               requestAnimationFrame(() => {
                 this.runPendingGradeVaultContinuation();
@@ -7282,10 +7553,12 @@
 
               const kdf = this.createGradeVaultKdfConfig();
               const { cryptoKey, kdf: normalizedKdf } = await this.deriveGradeVaultCryptoKey(password, kdf);
+              this.store.setGradeVaultEncryptionEnabled(true);
               this.syncGradeVaultConfiguredFlag(true);
               this.resetGradeVaultSession({
                 ...this.gradeVaultSession,
                 configured: true,
+                encryptionEnabled: true,
                 unlocked: true,
                 dirty: true,
                 gradeVaultConfig: {
@@ -7314,7 +7587,7 @@
           }
 
           async saveGradeVaultChanges() {
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return false;
             }
@@ -7345,6 +7618,77 @@
               await showSaveFailure("Die verschlüsselten Notendaten konnten nicht in die Datenbankdatei geschrieben werden.");
             }
             return saved;
+          }
+
+          async loadAllPersistedGradeCoursesForEncryptionModeChange() {
+            const courseIds = new Set(
+              [
+                ...Object.keys(this.gradeVaultSession.gradeCourseDirectory || {}),
+                ...Object.keys(this.gradeVaultSession.gradeCourseCache || {}),
+                ...Object.keys(this.gradeVaultSession.dirtyGradeCourseIds || {})
+              ].map((courseId) => Number(courseId) || 0).filter((courseId) => courseId > 0)
+            );
+            for (const courseId of [...courseIds].sort((a, b) => a - b)) {
+              const loaded = await this.ensureGradeCourseLoaded(courseId);
+              if (!loaded) {
+                throw new Error("Notenkurs konnte vor dem Umschalten der Verschlüsselung nicht geladen werden.");
+              }
+              this.gradeVaultSession.dirtyGradeCourseIds[courseId] = true;
+            }
+          }
+
+          async setGradeVaultEncryptionEnabledFromSettings(enabled) {
+            const nextEnabled = Boolean(enabled);
+            if (nextEnabled === this.isGradeVaultEncryptionEnabled()) {
+              this.renderDatabaseSection();
+              return true;
+            }
+            if (nextEnabled) {
+              this.openGradeVaultDialog("setup");
+              this.renderDatabaseSection();
+              return false;
+            }
+            if (!this.canAccessGradeVault()) {
+              if (!this.hasGradeVaultUnlockConfig()) {
+                await this.showInfoMessage(
+                  "Die Verschlüsselung kann erst deaktiviert werden, wenn der geschützte Notenbereich vollständig eingerichtet und entsperrt ist.",
+                  "Verschlüsselung"
+                );
+                this.renderDatabaseSection();
+                return false;
+              }
+              this.pendingGradeVaultEncryptionDisable = true;
+              this.openGradeVaultDialog("unlock");
+              this.renderDatabaseSection();
+              return false;
+            }
+            try {
+              await this.loadAllPersistedGradeCoursesForEncryptionModeChange();
+              this.store.setGradeVaultEncryptionEnabled(false);
+              this.gradeVaultSession.encryptionEnabled = false;
+              this.gradeVaultSession.configured = false;
+              this.gradeVaultSession.unlocked = false;
+              this.gradeVaultSession.kdf = null;
+              this.gradeVaultSession.cryptoKey = null;
+              this.gradeVaultSession.gradeVaultConfig = normalizeGradeVaultConfig(null);
+              this.gradeVaultSession.gradeVaultConfigText = JSON.stringify(normalizeGradeVaultConfig(null));
+              this.gradeVaultSession.dirty = true;
+              this.gradeVaultSession.publicStateDirty = true;
+              const saved = await this.saveGradeVaultChanges();
+              if (!saved) {
+                this.renderAll();
+              }
+              return saved;
+            } catch (error) {
+              await this.showInfoMessage(
+                error instanceof Error && error.message
+                  ? error.message
+                  : "Die Verschlüsselung konnte nicht deaktiviert werden.",
+                "Verschlüsselung"
+              );
+              this.renderDatabaseSection();
+              return false;
+            }
           }
 
           loadSyncMeta() {
@@ -7530,11 +7874,16 @@
           }
 
           getCurrentStateHash() {
-            if (this.isGradeVaultConfigured() && !this.gradeVaultSession.dirty && !this.gradeVaultSession.publicStateDirty) {
+            if (
+              (this.isGradeVaultEncryptionEnabled() || Object.keys(this.gradeVaultSession.gradeCourseDirectory || {}).length > 0)
+              && !this.gradeVaultSession.dirty
+              && !this.gradeVaultSession.publicStateDirty
+            ) {
               return getDatabaseContainerStateHash({
                 startupShell: buildStartupShellFromPublicState(
                   this.getCurrentPublicStateSnapshot(),
-                  true
+                  this.isGradeVaultEncryptionEnabled(),
+                  this.getKnownGradeEntryCount()
                 ),
                 planningPublicText: "",
                 planningPublicLocator: this.gradeVaultSession.persistedPlanningPublicLocator,
@@ -7547,7 +7896,11 @@
             }
             return hashStateObject({
               schema: APP_DB_SCHEMA,
-              startupShell: buildStartupShellFromPublicState(this.getCurrentPublicStateSnapshot(), this.isGradeVaultConfigured()),
+              startupShell: buildStartupShellFromPublicState(
+                this.getCurrentPublicStateSnapshot(),
+                this.isGradeVaultEncryptionEnabled(),
+                this.getKnownGradeEntryCount()
+              ),
               planningPublicLoaded: this.gradeVaultSession.planningPublicLoaded,
               publicState: this.getCurrentPublicStateSnapshot(),
               gradeVaultState: this.getCurrentGradeVaultSnapshot(),
@@ -8073,10 +8426,10 @@
               return;
             }
             this.renderDatabaseSection();
-            if (this.isGradeVaultConfigured() && this.gradeVaultSession.dirty && !this.isGradeVaultUnlocked()) {
+            if (this.isGradeVaultEncryptionEnabled() && this.gradeVaultSession.dirty && !this.isGradeVaultUnlocked()) {
               return;
             }
-            if (!this.isGradeVaultConfigured() && this.hasProtectedGradeDataPending()) {
+            if (this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig() && this.hasProtectedGradeDataPending()) {
               return;
             }
             const localHash = this.getCurrentStateHash();
@@ -8139,6 +8492,7 @@
                 this.activeSettingsTab = "database";
                 this.settingsSourceView = "planning";
                 this.renderAll();
+                this.queueInitialDatabaseSetupInfo();
               } else {
                 this.renderDatabaseSection();
                 this.dispatchGradeVaultState();
@@ -8161,6 +8515,7 @@
               this.renderDatabaseSection();
               this.dispatchGradeVaultState();
               this.queuePlanningReadySignal();
+              this.queueInitialDatabaseSetupInfo();
               return;
             }
             this.syncState.storedFileHandle = storedSyncHandle;
@@ -8213,6 +8568,43 @@
             this.renderSettingsTabs();
             this.renderDatabaseSection();
             this.renderSidebarCourseList();
+          }
+
+          queueInitialDatabaseSetupInfo() {
+            if (
+              this.initialDatabaseSetupInfoShown
+              || this.initialDatabaseSetupInfoQueued
+              || this.hasShellDatabaseConnection()
+            ) {
+              return;
+            }
+            if (this.currentView !== "settings" || this.activeSettingsTab !== "database") {
+              return;
+            }
+            this.initialDatabaseSetupInfoQueued = true;
+            const show = () => {
+              this.initialDatabaseSetupInfoQueued = false;
+              if (
+                this.initialDatabaseSetupInfoShown
+                || this.hasShellDatabaseConnection()
+                || this.currentView !== "settings"
+                || this.activeSettingsTab !== "database"
+              ) {
+                return;
+              }
+              this.initialDatabaseSetupInfoShown = true;
+	              const message = this.isManualPersistenceMode()
+	                ? "Für Planungsmodul oder Notenmodul brauchst du eine Datenbankdatei. Lade eine bestehende Datei oder speichere eine neue. Außerdem musst Du einen Speicherort für Backups festlegen."
+	                : "Für Planungsmodul oder Notenmodul brauchst du eine Datenbankdatei. Wähle eine bestehende Datei aus oder lege eine neue an. Außerdem musst Du einen Speicherort für Backups festlegen.";
+              this.showInfoMessage(message, "Datenbank erforderlich").catch(() => undefined);
+            };
+            if (typeof requestAnimationFrame === "function") {
+              requestAnimationFrame(() => {
+                requestAnimationFrame(show);
+              });
+            } else {
+              setTimeout(show, 0);
+            }
           }
 
           ensureStandaloneSettingsView() {
@@ -8590,11 +8982,14 @@
             if (Number(draft.gradesPrivacyGraphThreshold) !== Number(this.store.getGradesPrivacyGraphThreshold())) {
               return true;
             }
-            if (!gradeTestScaleSettingsEqual(draft.gradeTestScaleSettings, this.store.getGradeTestScaleSettings())) {
-              return true;
-            }
-            if (
-              Boolean(draft.showHiddenSidebarCourses)
+	            if (!gradeTestScaleSettingsEqual(draft.gradeTestScaleSettings, this.store.getGradeTestScaleSettings())) {
+	              return true;
+	            }
+	            if (!defaultGradeStructureSettingsEqual(draft.defaultGradeStructure, this.store.getDefaultGradeStructure())) {
+	              return true;
+	            }
+	            if (
+	              Boolean(draft.showHiddenSidebarCourses)
               !== Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT))
             ) {
               return true;
@@ -8623,12 +9018,15 @@
 
           async applySettingsDraftToStore() {
             const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
-            if (this.currentView === "settings" && this.activeSettingsTab === "gradeTestScales") {
-              draft.gradeTestScaleSettings = this.readGradeTestScaleSettingsFromDom();
-            }
-            if (!this.gradeVaultSession.planningPublicLoaded) {
-              await this.ensurePlanningPublicLoaded();
-            }
+	            if (this.currentView === "settings" && this.activeSettingsTab === "gradeTestScales") {
+	              draft.gradeTestScaleSettings = this.readGradeTestScaleSettingsFromDom();
+	            }
+	            if (this.currentView === "settings" && this.activeSettingsTab === "gradeStructure") {
+	              draft.defaultGradeStructure = this.readDefaultGradeStructureSettingsFromDom();
+	            }
+	            if (!this.gradeVaultSession.planningPublicLoaded) {
+	              await this.ensurePlanningPublicLoaded();
+	            }
             const lessonTimesValidation = validateLessonTimes(draft.lessonTimes, draft.hoursPerDay);
             if (!lessonTimesValidation.valid) {
               await this.showInfoMessage(lessonTimesValidation.message || "Die Stundenzeiten sind ungültig.");
@@ -8644,14 +9042,27 @@
               this.activeSettingsTab = "gradeTestScales";
               this.settingsSourceView = "grades";
               this.renderSettingsTabs();
-              this.renderGradeTestScaleSettingsSection();
-              return false;
-            }
-            this.store.setHoursPerDay(draft.hoursPerDay);
-            this.store.setLessonTimes(lessonTimesValidation.normalized, draft.hoursPerDay);
-            this.store.setGradesPrivacyGraphThreshold(draft.gradesPrivacyGraphThreshold);
-            this.store.setGradeTestScaleSettings(draft.gradeTestScaleSettings);
-            this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
+	              this.renderGradeTestScaleSettingsSection();
+	              return false;
+	            }
+	            const defaultStructureValidation = this.validateCourseDialogStructure(draft.defaultGradeStructure?.periodCategories);
+	            if (!defaultStructureValidation.ok) {
+	              await this.showInfoMessage(defaultStructureValidation.message || "Die Notenstruktur ist ungültig.");
+	              this.activeSettingsTab = "gradeStructure";
+	              this.settingsSourceView = "grades";
+	              this.renderSettingsTabs();
+	              this.renderDefaultGradeStructureSettingsSection();
+	              return false;
+	            }
+	            draft.defaultGradeStructure = normalizeDefaultGradeStructureSetting({
+	              periodCategories: defaultStructureValidation.periodCategories
+	            });
+	            this.store.setHoursPerDay(draft.hoursPerDay);
+	            this.store.setLessonTimes(lessonTimesValidation.normalized, draft.hoursPerDay);
+	            this.store.setGradesPrivacyGraphThreshold(draft.gradesPrivacyGraphThreshold);
+	            this.store.setGradeTestScaleSettings(draft.gradeTestScaleSettings);
+	            this.store.setDefaultGradeStructure(draft.defaultGradeStructure);
+	            this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
             this.store.setBackupEnabled(draft.backupEnabled);
             this.store.setBackupIntervalDays(draft.backupIntervalDays);
             if (this.store.getBackupEnabled()) {
@@ -8667,9 +9078,10 @@
           cancelSettingsDraftChanges() {
             this.settingsDraft = this.buildSettingsDraftFromStore();
             this.settingsDirty = false;
-            this.renderDisplaySection();
-            this.renderGradeTestScaleSettingsSection();
-            this.renderLessonTimesSection();
+	            this.renderDisplaySection();
+	            this.renderGradeTestScaleSettingsSection();
+	            this.renderDefaultGradeStructureSettingsSection();
+	            this.renderLessonTimesSection();
             this.renderBackupSection();
             this.renderDatabaseSection();
             this.updateSettingsActionButtons();
@@ -8715,13 +9127,21 @@
               this.refreshSettingsDirtyState();
               return;
             }
-            if (tab === "gradeTestScales") {
-              this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
-              this.settingsDraft.gradeTestScaleSettings = buildDefaultGradeTestScaleSettings();
-              this.renderGradeTestScaleSettingsSection();
-              this.refreshSettingsDirtyState();
-              return;
-            }
+	            if (tab === "gradeTestScales") {
+	              this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	              this.settingsDraft.gradeTestScaleSettings = buildDefaultGradeTestScaleSettings();
+	              this.renderGradeTestScaleSettingsSection();
+	              this.refreshSettingsDirtyState();
+	              return;
+	            }
+	            if (tab === "gradeStructure") {
+	              this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	              this.settingsDraft.defaultGradeStructure = createDefaultGradeStructureSetting();
+	              this.settingsDefaultGradeStructurePeriod = "h1";
+	              this.renderDefaultGradeStructureSettingsSection();
+	              this.refreshSettingsDirtyState();
+	              return;
+	            }
             if (tab === "lessonTimes") {
               this.settingsDraft.lessonTimes = buildDefaultLessonTimes(
                 clamp(Number(this.settingsDraft?.hoursPerDay) || this.store.getHoursPerDay(), 1, 12)
@@ -8740,9 +9160,9 @@
 
           async applySettingsSaveForActiveTab() {
             const tab = this.activeSettingsTab;
-            if (tab === "display" || tab === "gradeTestScales" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
-              if (!this.settingsDirty) {
-                return;
+	            if (tab === "display" || tab === "gradeTestScales" || tab === "gradeStructure" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
+	              if (!this.settingsDirty) {
+	                return;
               }
               await this.applySettingsDraftToStore();
             }
@@ -8750,9 +9170,9 @@
 
           applySettingsCancelForActiveTab() {
             const tab = this.activeSettingsTab;
-            if (tab === "display" || tab === "gradeTestScales" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
-              this.cancelSettingsDraftChanges();
-              return;
+	            if (tab === "display" || tab === "gradeTestScales" || tab === "gradeStructure" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
+	              this.cancelSettingsDraftChanges();
+	              return;
             }
             if (tab === "dayoff") {
               this.renderDayOffSection();
@@ -8776,11 +9196,15 @@
                 || Boolean(this.settingsDraft.showHiddenSidebarCourses) !== SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
               saveEnabled = this.settingsDirty;
               cancelEnabled = this.settingsDirty;
-            } else if (tab === "gradeTestScales") {
-              resetEnabled = !gradeTestScaleSettingsEqual(this.settingsDraft.gradeTestScaleSettings, buildDefaultGradeTestScaleSettings());
-              saveEnabled = this.settingsDirty;
-              cancelEnabled = this.settingsDirty;
-            } else if (tab === "lessonTimes") {
+	            } else if (tab === "gradeTestScales") {
+	              resetEnabled = !gradeTestScaleSettingsEqual(this.settingsDraft.gradeTestScaleSettings, buildDefaultGradeTestScaleSettings());
+	              saveEnabled = this.settingsDirty;
+	              cancelEnabled = this.settingsDirty;
+	            } else if (tab === "gradeStructure") {
+	              resetEnabled = !defaultGradeStructureSettingsEqual(this.settingsDraft.defaultGradeStructure, createDefaultGradeStructureSetting());
+	              saveEnabled = this.settingsDirty;
+	              cancelEnabled = this.settingsDirty;
+	            } else if (tab === "lessonTimes") {
               resetEnabled = this.getSettingsDraftLessonTimes().some((entry) => Boolean(entry.start || entry.end));
               saveEnabled = this.settingsDirty;
               cancelEnabled = this.settingsDirty;
@@ -9550,7 +9974,7 @@
             const hasPeriodCategories = ["h1", "h2"].some((period) => (
               Array.isArray(periodCategories[period]) && periodCategories[period].length > 0
             ));
-            const defaultPeriodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(createDefaultGradeStructureDraft());
+	            const defaultPeriodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(this.store.getDefaultGradeStructure());
             return {
               id: course ? Number(course.id) : 0,
               name: course ? String(course.name || "") : "",
@@ -9859,7 +10283,7 @@
           }
 
           ensureGradeVaultConfiguredBeforeGradeCourseCreate() {
-            if (!this.isGradesTopTabActive() || this.isGradeVaultConfigured()) {
+            if (!this.isGradesTopTabActive() || !this.isGradeVaultEncryptionEnabled() || this.hasGradeVaultUnlockConfig()) {
               return true;
             }
             this.openGradeVaultDialog("setup");
@@ -9878,7 +10302,7 @@
             const course = numericId
               ? this.store.listCourses(year.id).find((item) => item.id === numericId)
               : null;
-            if (course && !course.noLesson && this.isGradeVaultUnlocked()) {
+            if (course && !course.noLesson && this.canAccessGradeVault()) {
               try {
                 await this.ensureGradeCourseLoaded(course.id);
               } catch (error) {
@@ -10155,8 +10579,11 @@
                 return;
               }
               targetCourseId = created;
-              if (!noLesson && this.isGradeVaultUnlocked()) {
-                this.store.saveGradeStructure(created, createDefaultGradeStructureDraft());
+              if (!noLesson && this.canAccessGradeVault()) {
+                this.cacheLoadedGradeCourseState();
+                this.store.replaceGradeVaultState(createInitialGradeVaultState());
+                this.gradeVaultSession.loadedGradeCourseId = created;
+	                this.store.saveGradeStructure(created, this.store.getDefaultGradeStructure().periodCategories);
               }
               if (!noLesson && !this.selectedCourseId) {
                 this.selectedCourseId = created;
@@ -10173,7 +10600,7 @@
             if (!year || !id || !this.refs.courseStudentsDialog) {
               return;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
@@ -10209,7 +10636,7 @@
             if (!id || !this.courseDialogDraft) {
               return;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
@@ -10244,7 +10671,7 @@
             if (!year || !id || !this.refs.courseStructureDialog) {
               return;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
@@ -10280,7 +10707,7 @@
             if (!id || !this.courseDialogDraft) {
               return;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
@@ -10481,7 +10908,7 @@
             if (!file || !this.courseDialogDraft) {
               return;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
@@ -11563,10 +11990,11 @@
             this.renderViewState();
             this.renderSidebarCourseList();
             if (viewName === "settings") {
-              this.renderSettingsTabs();
-              this.renderDisplaySection();
-              this.renderLessonTimesSection();
-              this.renderDayOffSection();
+	              this.renderSettingsTabs();
+	              this.renderDisplaySection();
+	              this.renderDefaultGradeStructureSettingsSection();
+	              this.renderLessonTimesSection();
+	              this.renderDayOffSection();
               this.renderBackupSection();
               this.renderDatabaseSection();
             } else if (viewName === "week") {
@@ -11602,9 +12030,11 @@
             const activeTab = this.activeSettingsTab;
             if (activeTab === "display") {
               this.renderDisplaySection();
-            } else if (activeTab === "gradeTestScales") {
-              this.renderGradeTestScaleSettingsSection();
-            } else if (activeTab === "lessonTimes") {
+	            } else if (activeTab === "gradeTestScales") {
+	              this.renderGradeTestScaleSettingsSection();
+	            } else if (activeTab === "gradeStructure") {
+	              this.renderDefaultGradeStructureSettingsSection();
+	            } else if (activeTab === "lessonTimes") {
               this.renderLessonTimesSection();
             } else if (activeTab === "dayoff") {
               this.renderDayOffSection();
@@ -12591,9 +13021,15 @@
             this.refs.gradeVaultSaveBtn?.addEventListener("click", () => {
               void this.saveGradeVaultChanges();
             });
+            this.refs.gradeVaultEncryptionEnabled?.addEventListener("change", () => {
+              const enabled = Boolean(this.refs.gradeVaultEncryptionEnabled.checked);
+              void this.setGradeVaultEncryptionEnabledFromSettings(enabled);
+            });
             this.refs.gradeVaultSettingsActionBtn?.addEventListener("click", () => {
               const mode = this.getGradeVaultStatusMode();
-              this.openGradeVaultDialog(mode === "ready" ? "change" : mode);
+              if (mode !== "off") {
+                this.openGradeVaultDialog(mode === "ready" ? "change" : mode);
+              }
             });
             this.refs.gradesVaultBanner?.addEventListener("click", (event) => {
               const button = event.target.closest("button[data-grade-vault-banner-action]");
@@ -13496,13 +13932,29 @@
               });
             }
 
-            if (this.refs.gradeTestScaleSettingsContent) {
-              this.refs.gradeTestScaleSettingsContent.addEventListener("input", (event) => {
-                this.handleGradeTestScaleSettingsInput(event);
-              });
-            }
+	            if (this.refs.gradeTestScaleSettingsContent) {
+	              this.refs.gradeTestScaleSettingsContent.addEventListener("input", (event) => {
+	                this.handleGradeTestScaleSettingsInput(event);
+	              });
+	            }
 
-            if (this.refs.backupAutoEnabled) {
+	            this.refs.settingsGradeStructureCategoryAdd?.addEventListener("click", () => {
+	              this.addDefaultGradeStructureCategoryDraft();
+	            });
+	            this.refs.settingsGradeStructureList?.addEventListener("input", (event) => {
+	              this.handleDefaultGradeStructureSettingsInput(event);
+	            });
+	            this.refs.settingsGradeStructureList?.addEventListener("click", (event) => {
+	              this.handleDefaultGradeStructureSettingsClick(event);
+	            });
+	            this.refs.settingsGradeStructurePeriodToggle?.addEventListener("change", (event) => {
+	              this.handleDefaultGradeStructurePeriodChange(event);
+	            });
+	            this.refs.settingsGradeStructureCopyH1ToH2?.addEventListener("click", () => {
+	              this.copyDefaultGradeStructureH1ToH2();
+	            });
+
+	            if (this.refs.backupAutoEnabled) {
               this.refs.backupAutoEnabled.addEventListener("change", () => {
                 this.settingsDraft.backupEnabled = Boolean(this.refs.backupAutoEnabled.checked);
                 this.renderBackupSection();
@@ -14517,19 +14969,28 @@
             }
             if (gradesSettingsContext) {
               const mode = this.getGradeVaultStatusMode();
+              const encryptionEnabled = this.isGradeVaultEncryptionEnabled();
+              if (this.refs.gradeVaultEncryptionEnabled) {
+                this.refs.gradeVaultEncryptionEnabled.checked = encryptionEnabled;
+                this.refs.gradeVaultEncryptionEnabled.disabled = this.locked && !allowDatabaseControls;
+              }
               if (this.refs.gradeVaultSettingsStatus) {
-                this.refs.gradeVaultSettingsStatus.textContent = mode === "setup"
-                  ? "Der geschützte Notenbereich ist noch nicht eingerichtet."
-                  : (mode === "unlock"
-                    ? "Der geschützte Notenbereich ist aktuell gesperrt."
-                    : "");
+                this.refs.gradeVaultSettingsStatus.textContent = mode === "off"
+                  ? "Der Notenbereich wird unverschlüsselt gespeichert."
+                  : (mode === "setup"
+                    ? "Der geschützte Notenbereich ist noch nicht eingerichtet."
+                    : (mode === "unlock"
+                      ? "Der geschützte Notenbereich ist aktuell gesperrt."
+                      : "Der geschützte Notenbereich ist entsperrt."));
               }
               if (this.refs.gradeVaultSettingsHint) {
-                const hintText = mode === "setup"
-                  ? "Vergib ein Passwort, damit Notendaten verschlüsselt werden."
-                  : (mode === "unlock"
-                    ? "Zum Passwortwechsel muss das Notenmodul zuerst entsperrt werden."
-                    : "");
+                const hintText = mode === "off"
+                  ? "Aktiviere die Option, um Notendaten künftig nur nach Passworteingabe zu speichern."
+                  : (mode === "setup"
+                    ? "Vergib ein Passwort, damit Notendaten verschlüsselt werden."
+                    : (mode === "unlock"
+                      ? "Zum Passwortwechsel oder Deaktivieren muss das Notenmodul zuerst entsperrt werden."
+                      : ""));
                 this.refs.gradeVaultSettingsHint.textContent = hintText;
                 this.refs.gradeVaultSettingsHint.hidden = !hintText;
               }
@@ -14537,7 +14998,8 @@
                 this.refs.gradeVaultSettingsActionBtn.textContent = mode === "setup"
                   ? "Passwort einrichten"
                   : (mode === "unlock" ? "Notenmodul entsperren" : "Passwort ändern");
-                this.refs.gradeVaultSettingsActionBtn.disabled = false;
+                this.refs.gradeVaultSettingsActionBtn.hidden = mode === "off";
+                this.refs.gradeVaultSettingsActionBtn.disabled = mode === "off";
               }
             }
             this.updateSettingsActionButtons();
@@ -15436,7 +15898,7 @@
             const primaryAction = String(options.primaryAction || "");
             const showPrimaryButton = primaryAction === "createCourse" || primaryAction === "manageStudents";
             const showUnlockButton = Boolean(options.showUnlockButton);
-            const unlockButtonLabel = this.isGradeVaultConfigured() ? "Entsperren" : "Passwort einrichten";
+            const unlockButtonLabel = this.hasGradeVaultUnlockConfig() ? "Entsperren" : "Passwort einrichten";
             const primaryButtonLabel = primaryAction === "createCourse" ? "Neuen Kurs anlegen" : "Teilnehmende verwalten";
             const buttonRow = this.refs.gradesEmptyState?.querySelector(".button-row");
             const offsetTopThird = true;
@@ -15479,7 +15941,7 @@
               this.activeGradeOverrideContext = null;
               this.clearPrivacyFocusedGradeStudent();
               this.hideGradePrivacyOverlay();
-              if (!this.isGradeVaultConfigured()) {
+              if (this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig()) {
                 this.setGradesOverviewEmptyState(
                   "Passwort für Notenmodul erforderlich",
                   "Lege zuerst ein Passwort für das Notenmodul fest. Danach kannst du im Notenmodul Kurse anlegen.",
@@ -15489,7 +15951,7 @@
               }
               this.setGradesOverviewEmptyState(
                 "Kein Kurs vorhanden",
-                "Lege einen Kurs an, um die Notenverwaltung zu nutzen.",
+                "Lege einen Kurs an, um das Notenmodul oder das Planungsmodul zu nutzen.",
                 { primaryAction: "createCourse", offsetTopThird: true }
               );
               return;
@@ -15501,8 +15963,8 @@
             ) {
               this.activeGradeOverrideContext = null;
             }
-            const isVaultUnlocked = this.isGradeVaultUnlocked();
-            if (!isVaultUnlocked) {
+            const canAccessVault = this.canAccessGradeVault();
+            if (!canAccessVault) {
               this.clearActiveGradeAssessment();
               this.activeGradeOverrideContext = null;
               this.clearPrivacyFocusedGradeStudent();
@@ -15551,7 +16013,7 @@
             const primaryAction = String(options.primaryAction || "");
             const showPrimaryButton = primaryAction === "createCourse" || primaryAction === "manageStudents";
             const showUnlockButton = Boolean(options.showUnlockButton);
-            const unlockButtonLabel = this.isGradeVaultConfigured() ? "Entsperren" : "Passwort einrichten";
+            const unlockButtonLabel = this.hasGradeVaultUnlockConfig() ? "Entsperren" : "Passwort einrichten";
             const primaryButtonLabel = primaryAction === "createCourse" ? "Neuen Kurs anlegen" : "Teilnehmende verwalten";
             const offsetTopThird = true;
             this.refs.gradesEntryContent.classList.toggle("is-empty-state", showUnlockButton);
@@ -15579,7 +16041,7 @@
             }
             if (showUnlockButton) {
               this.refs.gradesEntryContent.querySelector("button[data-grades-entry-unlock='1']")?.addEventListener("click", () => {
-                this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+                this.openGradeVaultDialog(this.hasGradeVaultUnlockConfig() ? "unlock" : "setup");
               });
             }
           }
@@ -16164,7 +16626,7 @@
             }
             if (!entryCourse) {
               this.clearActiveGradeAssessment();
-              if (!this.isGradeVaultConfigured()) {
+              if (this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig()) {
                 this.renderGradesEntryEmptyState(
                   "Passwort erforderlich",
                   "Zum Verwenden des Notenmoduls ist es erforderlich, ein Passwort für das Verschlüsseln der Noten-Datenbank festzulegen.",
@@ -16174,14 +16636,14 @@
               }
               this.renderGradesEntryEmptyState(
                 "Kein Kurs vorhanden",
-                "Lege einen Kurs an, um die Notenverwaltung zu nutzen.",
+                "Lege einen Kurs an, um das Notenmodul oder das Planungsmodul zu nutzen.",
                 { primaryAction: "createCourse", offsetTopThird: true }
               );
               return;
             }
             course = entryCourse;
-            const isVaultUnlocked = this.isGradeVaultUnlocked();
-            if (!isVaultUnlocked) {
+            const canAccessVault = this.canAccessGradeVault();
+            if (!canAccessVault) {
               this.clearActiveGradeAssessment();
               this.renderGradesEntryEmptyState(
                 "Noten-Datenbank verschlüsselt",
@@ -16211,13 +16673,13 @@
                 this.renderGradesEntryEmptyState("Planungsdaten werden geladen", "");
                 return;
               }
-              this.store.saveGradeStructure(course.id, createDefaultGradeStructureDraft());
+	              this.store.saveGradeStructure(course.id, this.store.getDefaultGradeStructure().periodCategories);
               structure = this.store.getGradeStructure(course.id);
               categories = Array.isArray(structure.categories) ? structure.categories : [];
             }
             groupedAssessments = this.store.getGroupedGradeAssessments(course.id);
             students = this.store.listGradeStudents(course.id);
-            if (isVaultUnlocked && students.length === 0) {
+            if (canAccessVault && students.length === 0) {
               this.clearActiveGradeAssessment();
               this.renderGradesEntryEmptyState(
                 "Noch keine Teilnehmenden eingetragen",
@@ -16447,9 +16909,9 @@
             const year = this.activeSchoolYear;
             const allCourses = year ? this.store.listCourses(year.id) : [];
             const course = allCourses.find((item) => item.id === this.selectedCourseId && this.courseAllowsGrades(item)) || null;
-            const isVaultUnlocked = this.isGradeVaultUnlocked();
+            const canAccessVault = this.canAccessGradeVault();
             const courseLoaded = course ? this.isGradeCourseLoaded(course.id) : false;
-            if (course && isVaultUnlocked && !courseLoaded && Number(this.gradeVaultSession.loadingGradeCourseId || 0) !== Number(course.id)) {
+            if (course && canAccessVault && !courseLoaded && Number(this.gradeVaultSession.loadingGradeCourseId || 0) !== Number(course.id)) {
               void this.ensureGradeCourseLoaded(course.id).then(() => {
                 if (this.currentView === "grades" && Number(this.selectedCourseId || 0) === Number(course.id)) {
                   this.renderGradesView();
@@ -16461,8 +16923,8 @@
                 );
               });
             }
-            const students = course && isVaultUnlocked && courseLoaded ? this.store.listGradeStudents(course.id) : [];
-            const groupedAssessments = course && isVaultUnlocked && courseLoaded
+            const students = course && canAccessVault && courseLoaded ? this.store.listGradeStudents(course.id) : [];
+            const groupedAssessments = course && canAccessVault && courseLoaded
               ? this.store.getGroupedGradeAssessments(course.id)
               : [];
 
@@ -16489,7 +16951,7 @@
 
             if (normalizedSubview === "entry") {
               this.clearPrivacyFocusedGradeStudent();
-              if (course && isVaultUnlocked && !courseLoaded) {
+              if (course && canAccessVault && !courseLoaded) {
                 this.renderGradesEntryEmptyState("Notenkurs wird geladen", "");
                 this.renderGradeVaultBanner();
                 this.updateGradeVaultActionButtons();
@@ -16505,7 +16967,7 @@
               this.gradesEntryDistributionOverlayOpen = false;
               this.removeGradesEntryDistributionOverlay();
               this.hideGradesTitleDatePicker();
-              if (course && isVaultUnlocked && !courseLoaded) {
+              if (course && canAccessVault && !courseLoaded) {
                 this.clearActiveGradeAssessment();
                 this.clearPrivacyFocusedGradeStudent();
                 this.hideGradePrivacyOverlay();
@@ -17060,7 +17522,7 @@
                 isGradesOverview
                 && !this.locked
                 && course
-                && this.isGradeVaultUnlocked()
+                && this.canAccessGradeVault()
                 && this.isGradeCourseLoaded(courseId)
                 && students.length > 0
                 && hasCompleteStructure
@@ -21308,8 +21770,8 @@
             const course = year
               ? this.store.listCourses(year.id).find((item) => item.id === this.selectedCourseId && this.courseAllowsGrades(item))
               : null;
-            if (!course || !this.isGradeVaultUnlocked() || !this.isGradeCourseLoaded(course.id)) {
-              this.setSyncStatus("Kursnoten können erst in einer geladenen, entsperrten Kursansicht gedruckt werden.", true);
+            if (!course || !this.canAccessGradeVault() || !this.isGradeCourseLoaded(course.id)) {
+              this.setSyncStatus("Kursnoten können erst in einer geladenen Kursansicht gedruckt werden.", true);
               return;
             }
             const students = this.store.listGradeStudents(course.id);
@@ -21416,7 +21878,7 @@
             if (!context) {
               return;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               return;
             }
@@ -23005,10 +23467,13 @@
             if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "display")) {
               this.renderDisplaySection();
             }
-            if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "gradeTestScales")) {
-              this.renderGradeTestScaleSettingsSection();
-            }
-            if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "lessonTimes")) {
+	            if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "gradeTestScales")) {
+	              this.renderGradeTestScaleSettingsSection();
+	            }
+	            if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "gradeStructure")) {
+	              this.renderDefaultGradeStructureSettingsSection();
+	            }
+	            if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "lessonTimes")) {
               this.renderLessonTimesSection();
             }
             if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "dayoff")) {
@@ -23040,14 +23505,17 @@
             const gradeVaultDbConnected = this.hasShellDatabaseConnection();
             const gradeVaultUnlockConfigured = this.hasGradeVaultUnlockConfig();
             const gradeVaultUnlocked = this.isGradeVaultUnlocked();
-            const gradeVaultSetupRequired = !this.isGradeVaultConfigured();
+            const gradeVaultEncryptionEnabled = this.isGradeVaultEncryptionEnabled();
+            const gradeVaultSetupRequired = gradeVaultEncryptionEnabled && !this.hasGradeVaultUnlockConfig();
             const detail = {
               view: String(this.currentView || ""),
               gradeVaultMode,
               gradeVaultDbConnected,
               gradeVaultUnlockConfigured,
               gradeVaultUnlocked,
-              gradeVaultSetupRequired
+              gradeVaultEncryptionEnabled,
+              gradeVaultSetupRequired,
+              hasGradeEntries: this.hasKnownGradeEntries()
             };
             const token = (Number(this._planningReadySignalToken) || 0) + 1;
             this._planningReadySignalToken = token;
@@ -23461,7 +23929,7 @@
             if (!lesson || !courseId || !this.lessonAllowsGrades(lesson)) {
               return false;
             }
-            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.queueGradeVaultContinuation({
                 type: "seatplan",
                 lessonId: normalizedLessonId
@@ -23584,7 +24052,7 @@
               });
               return false;
             }
-            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               this.dispatchCourseSeatplanGradeConfigResult({
                 requestId,
@@ -23661,7 +24129,7 @@
               });
               return false;
             }
-            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               this.dispatchCourseSeatplanGradeSaveResult({
                 requestId,
@@ -23818,7 +24286,7 @@
               });
               return false;
             }
-            if (!this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
               this.dispatchCourseSeatplanSaveResult({
                 requestId,
@@ -24037,7 +24505,7 @@
           }
 
           ensureWeekGradeAssessmentsLoaded(courseIds = [], weekStartIso = this.weekStartIso) {
-            if (!this.isGradeVaultConfigured() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               return;
             }
             const missingCourseIds = Array.from(new Set(
@@ -24081,7 +24549,7 @@
           }
 
           buildWeekGradeAssessmentLookup(lessons = []) {
-            if (!this.isGradeVaultConfigured() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               return new Map();
             }
             const lookup = new Map();
@@ -24113,10 +24581,10 @@
           getGradeEntryTriggerStateForLesson(lesson, assessmentLookup = null) {
             const courseId = Number(lesson?.courseId || 0);
             const lessonDate = String(lesson?.lessonDate || "").trim();
-            if (!this.lessonAllowsGrades(lesson) || !this.hasGradeVaultUnlockConfig() || !courseId || !lessonDate) {
+            if (!this.lessonAllowsGrades(lesson) || !courseId || !lessonDate) {
               return null;
             }
-            if (!this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               return {
                 hasExistingAssessment: false,
                 assessmentResolved: false,
@@ -24149,7 +24617,7 @@
               return false;
             }
             const normalizedTriggerMode = String(triggerMode || "entry").trim() || "entry";
-            if (normalizedTriggerMode === "unlock" || !this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+            if (normalizedTriggerMode === "unlock" || !this.canAccessGradeVault()) {
               this.queueGradeVaultContinuation({
                 type: "grade-entry",
                 lessonId: normalizedLessonId,
@@ -24186,7 +24654,7 @@
             if (!normalizedCourseId || !normalizedLessonDate) {
               return false;
             }
-            if (!this.isGradeVaultConfigured() || !this.isGradeVaultUnlocked()) {
+            if (!this.canAccessGradeVault()) {
               return false;
             }
             const expectedTitle = normalizeGradeTextPart(formatShortDateLabel(normalizedLessonDate));
@@ -24286,13 +24754,15 @@
             const showPlanningOnlySettings = this.isPlanningTopTabActive();
             const fallbackTab = showPlanningOnlySettings ? "dayoff" : "display";
             const allowManualDatabaseWhileHolidayLocked = !this.syncState.supported;
+            const isDatabaseLock = this.locked
+              && (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired");
             const activeTabAllowedInContext = this.refs.settingsPanels[this.activeSettingsTab] && (
-              (showPlanningOnlySettings && this.activeSettingsTab !== "gradeTestScales")
+              (showPlanningOnlySettings && this.activeSettingsTab !== "gradeTestScales" && this.activeSettingsTab !== "gradeStructure")
               || (!showPlanningOnlySettings && this.activeSettingsTab !== "dayoff" && this.activeSettingsTab !== "lessonTimes")
             );
             let tabName = activeTabAllowedInContext ? this.activeSettingsTab : fallbackTab;
             if (this.locked) {
-              tabName = (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired")
+              tabName = isDatabaseLock
                 ? "database"
                 : (
                   allowManualDatabaseWhileHolidayLocked && tabName === "database"
@@ -24306,15 +24776,16 @@
               const isActive = button.dataset.tab === tabName;
               const isPlanningOnlyHidden = !showPlanningOnlySettings
                 && (button.dataset.tab === "dayoff" || button.dataset.tab === "lessonTimes");
-              const isGradesOnlyHidden = showPlanningOnlySettings && button.dataset.tab === "gradeTestScales";
+              const isGradesOnlyHidden = showPlanningOnlySettings
+                && (button.dataset.tab === "gradeTestScales" || button.dataset.tab === "gradeStructure");
               const isLockedHidden = this.locked
                 && this.lockReason === "holidaysRequired"
                 && !(allowManualDatabaseWhileHolidayLocked && button.dataset.tab === "database")
                 && button.dataset.tab !== "dayoff";
-              const isHidden = isPlanningOnlyHidden || isGradesOnlyHidden || isLockedHidden;
+              const isDatabaseLockHidden = isDatabaseLock && button.dataset.tab !== "database";
+              const isHidden = isPlanningOnlyHidden || isGradesOnlyHidden || isLockedHidden || isDatabaseLockHidden;
               const isLockedDisabled = isHidden || (
-                this.locked
-                && (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired")
+                isDatabaseLock
                 && button.dataset.tab !== "database"
               );
               button.hidden = isHidden;
@@ -24326,8 +24797,9 @@
 
             Object.entries(this.refs.settingsPanels).forEach(([name, panel]) => {
               const isPlanningOnlyHidden = !showPlanningOnlySettings && (name === "dayoff" || name === "lessonTimes");
-              const isGradesOnlyHidden = showPlanningOnlySettings && name === "gradeTestScales";
-              const isActive = name === tabName && !isPlanningOnlyHidden && !isGradesOnlyHidden;
+              const isGradesOnlyHidden = showPlanningOnlySettings && (name === "gradeTestScales" || name === "gradeStructure");
+              const isDatabaseLockHidden = isDatabaseLock && name !== "database";
+              const isActive = name === tabName && !isPlanningOnlyHidden && !isGradesOnlyHidden && !isDatabaseLockHidden;
               panel.hidden = !isActive;
               panel.classList.toggle("active", isActive);
             });
@@ -24405,7 +24877,9 @@
             }
 
             this.refs.sidebarCourseList.innerHTML = "";
-            const suppressEmptyPulseForGradeVaultSetup = isGradesView && !this.isGradeVaultConfigured();
+            const suppressEmptyPulseForGradeVaultSetup = isGradesView
+              && this.isGradeVaultEncryptionEnabled()
+              && !this.hasGradeVaultUnlockConfig();
             this.refs.sidebarCourseList.classList.toggle(
               "empty-pulse",
               !this.locked && selectableCourses.length === 0 && !suppressEmptyPulseForGradeVaultSetup
@@ -24454,7 +24928,9 @@
             addButton.type = "button";
             addButton.className = "sidebar-add-btn";
             addButton.dataset.addCourse = "1";
-            const requiresGradeVaultSetup = isGradesView && !this.isGradeVaultConfigured();
+            const requiresGradeVaultSetup = isGradesView
+              && this.isGradeVaultEncryptionEnabled()
+              && !this.hasGradeVaultUnlockConfig();
             addButton.setAttribute(
               "aria-label",
               requiresGradeVaultSetup ? "Vor Kursanlage Passwort für Notenmodul einrichten" : "Neuen Kurs anlegen"
@@ -24725,11 +25201,11 @@
             return { valid: true };
           }
 
-          handleGradeTestScaleSettingsInput(event) {
-            const target = event.target instanceof HTMLElement ? event.target : null;
-            if (!target || !this.refs.gradeTestScaleSettingsContent?.contains(target)) {
-              return;
-            }
+	          handleGradeTestScaleSettingsInput(event) {
+	            const target = event.target instanceof HTMLElement ? event.target : null;
+	            if (!target || !this.refs.gradeTestScaleSettingsContent?.contains(target)) {
+	              return;
+	            }
             if (
               !target.matches("input[data-grade-test-scale-custom-name='1']")
               && !target.matches("input[data-grade-test-scale-threshold]")
@@ -24741,11 +25217,188 @@
             }
             this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
             this.settingsDraft.gradeTestScaleSettings = this.readGradeTestScaleSettingsFromDom();
-            this.settingsDirty = true;
-            this.updateSettingsActionButtons();
-          }
+	            this.settingsDirty = true;
+	            this.updateSettingsActionButtons();
+	          }
 
-          renderDisplaySection() {
+	          getDefaultGradeStructureSettingsDraft() {
+	            const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	            draft.defaultGradeStructure = normalizeDefaultGradeStructureSetting(draft.defaultGradeStructure);
+	            return draft.defaultGradeStructure;
+	          }
+
+	          getDefaultGradeStructureSettingsCategories(period = null) {
+	            const structure = this.getDefaultGradeStructureSettingsDraft();
+	            const normalizedPeriod = normalizeGradeHalfYear(period || this.settingsDefaultGradeStructurePeriod || "h1");
+	            if (!structure.periodCategories || typeof structure.periodCategories !== "object") {
+	              structure.periodCategories = createDefaultGradeStructureSetting().periodCategories;
+	            }
+	            if (!Array.isArray(structure.periodCategories[normalizedPeriod])) {
+	              structure.periodCategories[normalizedPeriod] = [];
+	            }
+	            return structure.periodCategories[normalizedPeriod];
+	          }
+
+	          renderDefaultGradeStructureSettingsSection() {
+	            const root = this.refs.settingsGradeStructureList;
+	            if (!root) {
+	              return;
+	            }
+	            if (!this.isGradesTopTabActive()) {
+	              root.innerHTML = "";
+	              this.updateSettingsActionButtons();
+	              return;
+	            }
+	            const period = normalizeGradeHalfYear(this.settingsDefaultGradeStructurePeriod || "h1");
+	            this.settingsDefaultGradeStructurePeriod = period;
+	            this.refs.settingsGradeStructurePeriodToggle
+	              ?.querySelectorAll("input[data-default-grade-structure-period='1']")
+	              .forEach((input) => {
+	                input.checked = input.value === period;
+	              });
+	            if (this.refs.settingsGradeStructureCopyH1ToH2) {
+	              this.refs.settingsGradeStructureCopyH1ToH2.hidden = period !== "h2";
+	            }
+	            const categories = this.getDefaultGradeStructureSettingsCategories(period);
+	            root.innerHTML = "";
+	            categories.forEach((category, categoryIndex) => {
+	              const card = document.createElement("div");
+	              card.className = "course-dialog-category-card";
+	              const subcategoriesHtml = (category.subcategories || []).map((subcategory, subcategoryIndex) => `
+	        <div class="course-dialog-subcategory-row">
+	          <input type="text" name="default-subcategory-name-${categoryIndex}-${subcategoryIndex}" data-default-grade-structure-field="subcategory-name" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${escapeHtml(subcategory.name || "")}" placeholder="Unterkategorie" autocomplete="off">
+	          <label class="course-dialog-weight-field" aria-label="Unterkategorie-Gewichtung in Prozent">
+	            <input type="number" name="default-subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-default-grade-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${escapeHtml(String(subcategory.weight ?? ""))}" aria-label="Unterkategorie-Gewichtung in Prozent">
+	            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
+	          </label>
+	          <button type="button" class="ghost" data-default-grade-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
+	        </div>
+	      `).join("");
+	              card.innerHTML = `
+	        <div class="course-dialog-category-head">
+	          <input type="text" name="default-category-name-${categoryIndex}" data-default-grade-structure-field="category-name" data-category-index="${categoryIndex}" value="${escapeHtml(category.name || "")}" placeholder="Kategorie" autocomplete="off">
+	          <label class="course-dialog-weight-field" aria-label="Kategorie-Gewichtung in Prozent">
+	            <input type="number" name="default-category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-default-grade-structure-field="category-weight" data-category-index="${categoryIndex}" value="${escapeHtml(String(category.weight ?? ""))}" aria-label="Kategorie-Gewichtung in Prozent">
+	            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
+	          </label>
+	          <button type="button" class="ghost" data-default-grade-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
+	        </div>
+	        <div class="course-dialog-subcategories">${subcategoriesHtml}</div>
+	        <button type="button" class="sidebar-add-btn course-dialog-subcategory-add" data-default-grade-structure-add-subcategory="${categoryIndex}" aria-label="Unterkategorie hinzufügen" title="Unterkategorie hinzufügen">
+	          <span class="sidebar-add-plus" aria-hidden="true"></span>
+	        </button>
+	      `;
+	              root.append(card);
+	            });
+	            this.updateSettingsActionButtons();
+	          }
+
+	          readDefaultGradeStructureSettingsFromDom() {
+	            return normalizeDefaultGradeStructureSetting(
+	              this.settingsDraft?.defaultGradeStructure || this.store.getDefaultGradeStructure()
+	            );
+	          }
+
+	          addDefaultGradeStructureCategoryDraft() {
+	            this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	            this.getDefaultGradeStructureSettingsCategories().push({
+	              id: 0,
+	              name: "",
+	              weight: 0,
+	              subcategories: [{ id: 0, name: "", weight: 100 }]
+	            });
+	            this.settingsDirty = true;
+	            this.renderDefaultGradeStructureSettingsSection();
+	          }
+
+	          handleDefaultGradeStructureSettingsInput(event) {
+	            const input = event.target.closest("input[data-default-grade-structure-field]");
+	            if (!input) {
+	              return;
+	            }
+	            this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	            const field = String(input.dataset.defaultGradeStructureField || "");
+	            const categoryIndex = Number(input.dataset.categoryIndex || -1);
+	            const subcategoryIndex = Number(input.dataset.subcategoryIndex || -1);
+	            const category = this.getDefaultGradeStructureSettingsCategories()[categoryIndex];
+	            if (!category) {
+	              return;
+	            }
+	            if (field === "category-name") {
+	              category.name = String(input.value || "");
+	            } else if (field === "category-weight") {
+	              category.weight = input.value;
+	            } else {
+	              const subcategory = category.subcategories?.[subcategoryIndex];
+	              if (!subcategory) {
+	                return;
+	              }
+	              if (field === "subcategory-name") {
+	                subcategory.name = String(input.value || "");
+	              } else if (field === "subcategory-weight") {
+	                subcategory.weight = input.value;
+	              }
+	            }
+	            this.settingsDirty = true;
+	            this.updateSettingsActionButtons();
+	          }
+
+	          handleDefaultGradeStructurePeriodChange(event) {
+	            const input = event.target.closest("input[data-default-grade-structure-period='1']");
+	            if (!input) {
+	              return;
+	            }
+	            this.settingsDefaultGradeStructurePeriod = normalizeGradeHalfYear(input.value);
+	            this.renderDefaultGradeStructureSettingsSection();
+	          }
+
+	          copyDefaultGradeStructureH1ToH2() {
+	            this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	            const structure = this.getDefaultGradeStructureSettingsDraft();
+	            structure.periodCategories.h2 = stripGradeStructureIds(
+	              cloneJsonValue(structure.periodCategories.h1, [])
+	            );
+	            this.settingsDefaultGradeStructurePeriod = "h2";
+	            this.settingsDirty = true;
+	            this.renderDefaultGradeStructureSettingsSection();
+	          }
+
+	          handleDefaultGradeStructureSettingsClick(event) {
+	            this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+	            const removeCategoryButton = event.target.closest("button[data-default-grade-structure-remove-category]");
+	            if (removeCategoryButton) {
+	              const categoryIndex = Number(removeCategoryButton.dataset.defaultGradeStructureRemoveCategory || -1);
+	              if (categoryIndex >= 0) {
+	                this.getDefaultGradeStructureSettingsCategories().splice(categoryIndex, 1);
+	                this.settingsDirty = true;
+	                this.renderDefaultGradeStructureSettingsSection();
+	              }
+	              return;
+	            }
+	            const addSubcategoryButton = event.target.closest("button[data-default-grade-structure-add-subcategory]");
+	            if (addSubcategoryButton) {
+	              const categoryIndex = Number(addSubcategoryButton.dataset.defaultGradeStructureAddSubcategory || -1);
+	              const category = this.getDefaultGradeStructureSettingsCategories()[categoryIndex];
+	              if (category) {
+	                category.subcategories.push({ id: 0, name: "", weight: 0 });
+	                this.settingsDirty = true;
+	                this.renderDefaultGradeStructureSettingsSection();
+	              }
+	              return;
+	            }
+	            const removeSubcategoryButton = event.target.closest("button[data-default-grade-structure-remove-subcategory]");
+	            if (removeSubcategoryButton) {
+	              const [categoryIndexRaw, subcategoryIndexRaw] = String(removeSubcategoryButton.dataset.defaultGradeStructureRemoveSubcategory || "").split(":");
+	              const category = this.getDefaultGradeStructureSettingsCategories()[Number(categoryIndexRaw || -1)];
+	              if (category) {
+	                category.subcategories.splice(Number(subcategoryIndexRaw || -1), 1);
+	                this.settingsDirty = true;
+	                this.renderDefaultGradeStructureSettingsSection();
+	              }
+	            }
+	          }
+
+	          renderDisplaySection() {
             const draftHours = clamp(
               Number((this.settingsDraft && this.settingsDraft.hoursPerDay) || this.store.getHoursPerDay()),
               1,
@@ -25616,7 +26269,7 @@
                     && !block.isNoLesson
                     && !block.isNoGrades
                     && Number(block.courseId || 0) > 0
-                    && this.hasGradeVaultUnlockConfig()
+                    && (!this.isGradeVaultEncryptionEnabled() || this.hasGradeVaultUnlockConfig())
                   );
                   if (seatplanTriggerVisible) {
                     chip.classList.add("has-seatplan-trigger");
@@ -25625,10 +26278,10 @@
                     seatplanTrigger.dataset.seatplanLessonId = String(block.firstLessonId);
                     seatplanTrigger.setAttribute("role", "button");
                     seatplanTrigger.setAttribute("tabindex", "0");
-                    seatplanTrigger.setAttribute("aria-label", this.isGradeVaultUnlocked()
+                    seatplanTrigger.setAttribute("aria-label", this.canAccessGradeVault()
                       ? "Kurs-Sitzplan öffnen (mit Noteneingabe)"
                       : "Notenmodul entsperren");
-                    seatplanTrigger.title = this.isGradeVaultUnlocked()
+                    seatplanTrigger.title = this.canAccessGradeVault()
                       ? "Kurs-Sitzplan öffnen (mit Noteneingabe)"
                       : "Notenmodul entsperren";
                     seatplanTrigger.textContent = "🪑";

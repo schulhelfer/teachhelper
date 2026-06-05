@@ -409,7 +409,7 @@ export function createShellController({
   function renderPlanningGradeVaultUnlockButton() {
     if (!els.tabGradesUnlock) return;
     const planningGradeVaultState = state.planningGradeVaultState || {};
-    const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'setup';
+    const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'off';
     const configured = Boolean(planningGradeVaultState.configured);
     const unlocked = Boolean(planningGradeVaultState.unlocked);
     const setupRequired = Boolean(planningGradeVaultState.setupRequired);
@@ -581,10 +581,11 @@ export function createShellController({
     const mode = typeof nextDetail.mode === 'string' ? nextDetail.mode : '';
     state.planningGradeVaultState = {
       ...state.planningGradeVaultState,
-      mode: mode === 'unlock' || mode === 'ready' || mode === 'setup' ? mode : 'setup',
+      mode: mode === 'off' || mode === 'unlock' || mode === 'ready' || mode === 'setup' ? mode : 'off',
       dbConnected: Boolean(nextDetail.dbConnected),
       configured: Boolean(nextDetail.configured),
       unlocked: Boolean(nextDetail.unlocked),
+      encryptionEnabled: Boolean(nextDetail.encryptionEnabled),
       setupRequired: Boolean(nextDetail.setupRequired),
     };
     renderPlanningGradeVaultUnlockButton();
@@ -596,17 +597,21 @@ export function createShellController({
     state.planningGradeVaultState = {
       ...state.planningGradeVaultState,
       ready: true,
-      mode: mode === 'unlock' || mode === 'ready' || mode === 'setup'
+      mode: mode === 'off' || mode === 'unlock' || mode === 'ready' || mode === 'setup'
         ? mode
-        : 'setup',
+        : 'off',
       dbConnected: Boolean(nextDetail.gradeVaultDbConnected ?? state.planningGradeVaultState?.dbConnected),
       configured: Boolean(nextDetail.gradeVaultUnlockConfigured ?? state.planningGradeVaultState?.configured),
       unlocked: Boolean(nextDetail.gradeVaultUnlocked ?? state.planningGradeVaultState?.unlocked),
+      encryptionEnabled: Boolean(nextDetail.gradeVaultEncryptionEnabled ?? state.planningGradeVaultState?.encryptionEnabled),
       setupRequired: Boolean(nextDetail.gradeVaultSetupRequired ?? state.planningGradeVaultState?.setupRequired),
     };
     if (!state.planningInitialPaintPending) {
       renderPlanningGradeVaultUnlockButton();
       return;
+    }
+    if (state.activeTab === TAB_GRADES && nextDetail.hasGradeEntries === false) {
+      state.activeTab = TAB_PLANNING;
     }
     state.planningInitialPaintPending = false;
     renderTabs();
@@ -636,7 +641,7 @@ export function createShellController({
   if (els.tabGradesUnlock) {
     els.tabGradesUnlock.addEventListener('click', () => {
       const planningGradeVaultState = state.planningGradeVaultState || {};
-      const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'setup';
+      const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'off';
       const shouldAllowRequest = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
         && Boolean(planningGradeVaultState.ready)
         && Boolean(planningGradeVaultState.dbConnected)
