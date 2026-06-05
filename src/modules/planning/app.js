@@ -1914,8 +1914,16 @@
             earnedSum,
             maxSum,
             ratio,
-            percent: Math.round(ratio * 100)
+            percent: Math.round(ratio * 1000) / 10
           };
+        }
+
+        function formatGradeTestPercentDisplay(ratioState = null) {
+          const rawPercent = Number.isFinite(Number(ratioState?.ratio))
+            ? Number(ratioState.ratio) * 100
+            : Number(ratioState?.percent || 0);
+          const percent = Math.round(clamp(rawPercent, 0, 100) * 10) / 10;
+          return `${percent.toFixed(1).replace(".", ",")}%`;
         }
 
         function formatGradeTestRatioDisplay(ratioState = null) {
@@ -1925,7 +1933,7 @@
           const earned = formatGradeBeValue(ratioState.earnedSum);
           const max = formatGradeBeValue(ratioState.maxSum);
           return earned && max
-            ? `${earned} / ${max} = ${Math.round(Number(ratioState.percent || 0))}%`
+            ? `${earned} / ${max} = ${formatGradeTestPercentDisplay(ratioState)}`
             : "—";
         }
 
@@ -1985,12 +1993,11 @@
           const maxBeSum = Object.prototype.hasOwnProperty.call(options, "maxBeSum")
             ? Number(options.maxBeSum)
             : calculateGradeTestMaxBeSum(options.testTasks);
-          const labelHead = predicateSuffixes ? "Note" : "Stufe";
           return `
             <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
               <table>
                 <thead>
-                  <tr><th>Grenze</th><th>${labelHead}</th>${showBeColumn ? "<th>BE</th>" : ""}</tr>
+                  <tr><th>Grenze</th><th>Note</th>${showBeColumn ? "<th>BE</th>" : ""}</tr>
                 </thead>
                 <tbody>
                   ${rows.map((row) => `
@@ -2064,7 +2071,7 @@
           const earned = formatGradeBeAverageValue(ratioState.earnedSum);
           const max = formatGradeBeValue(ratioState.maxSum);
           return earned && max
-            ? `${earned} / ${max} = ${Math.round(Number(ratioState.percent || 0))}%`
+            ? `${earned} / ${max} = ${formatGradeTestPercentDisplay(ratioState)}`
             : "—";
         }
 
@@ -2162,7 +2169,7 @@
             earnedSum,
             maxSum,
             ratio,
-            percent: Math.round(ratio * 100)
+            percent: Math.round(ratio * 1000) / 10
           };
           return {
             taskAverages,
@@ -3686,6 +3693,47 @@
 
           getGradeAssessment(assessmentId) {
             return this.gradeVaultState.gradeAssessments.find((assessment) => Number(assessment.id) === Number(assessmentId)) || null;
+          }
+
+          createGradeAssessmentSnapshot(assessmentId) {
+            const assessmentKey = Number(assessmentId || 0);
+            const assessment = this.getGradeAssessment(assessmentKey);
+            if (!assessment) {
+              return null;
+            }
+            const entries = (Array.isArray(this.gradeVaultState.gradeEntries) ? this.gradeVaultState.gradeEntries : [])
+              .filter((entry) => Number(entry.assessmentId) === assessmentKey);
+            return {
+              assessmentId: assessmentKey,
+              assessment: cloneJsonValue(assessment, null),
+              entries: cloneJsonValue(entries, [])
+            };
+          }
+
+          restoreGradeAssessmentSnapshot(snapshot = null) {
+            const assessmentKey = Number(snapshot?.assessmentId || snapshot?.assessment?.id || 0);
+            const assessmentIndex = this.gradeVaultState.gradeAssessments.findIndex(
+              (assessment) => Number(assessment.id) === assessmentKey
+            );
+            if (!assessmentKey || assessmentIndex < 0) {
+              return false;
+            }
+            const assessment = cloneJsonValue(snapshot?.assessment, null);
+            if (!assessment || Number(assessment.id) !== assessmentKey) {
+              return false;
+            }
+            const entries = Array.isArray(snapshot?.entries)
+              ? cloneJsonValue(snapshot.entries, [])
+              : [];
+            this.gradeVaultState.gradeAssessments[assessmentIndex] = assessment;
+            this.gradeVaultState.gradeEntries = (Array.isArray(this.gradeVaultState.gradeEntries) ? this.gradeVaultState.gradeEntries : [])
+              .filter((entry) => Number(entry.assessmentId) !== assessmentKey)
+              .concat(entries.map((entry) => ({
+                ...entry,
+                assessmentId: assessmentKey
+              })));
+            this._saveGradeVault();
+            return true;
           }
 
           getGradeTestScaleTemplate(scale = GRADE_TEST_SCALE_DEFAULT) {
@@ -5992,6 +6040,7 @@
             this.gradeDeficitThreshold = GRADE_DEFICIT_THRESHOLD_DEFAULT;
             this.gradeDeficitThresholdUserEdited = false;
             this.gradesEntryDraft = null;
+            this.gradesEntryEditSnapshot = null;
             this.gradesEntrySaveNotice = "";
             this.gradesEntrySaveNoticeFading = false;
             this.gradesEntrySaveNoticeTimer = 0;
@@ -11784,6 +11833,12 @@
             const cancelEntryButton = event.target.closest("button[data-grades-entry-cancel]");
             if (cancelEntryButton) {
               event.stopPropagation();
+              const assessmentId = Number(this.selectedGradesEntryAssessmentId || 0);
+              if (assessmentId) {
+                this.restoreGradesEntryEditSnapshot(assessmentId);
+              } else {
+                this.gradesEntryEditSnapshot = null;
+              }
               this.queueGradesEntrySaveNotice("");
               this.hideGradePicker();
               this.selectedGradesEntryAssessmentId = null;
@@ -11820,6 +11875,7 @@
                 }
                 this.queueGradesEntrySaveNotice("Noten gespeichert");
                 if (isDraftSave) {
+                  this.gradesEntryEditSnapshot = null;
                   this.resetGradesEntryDraftAfterSave(draftValues);
                   this.renderGradesView();
                   requestAnimationFrame(() => {
@@ -11830,6 +11886,7 @@
                   return;
                 }
                 this.activeGradeAssessmentId = assessment.id;
+                this.captureGradesEntryEditSnapshot(assessment.id);
                 this.renderGradesView();
                 requestAnimationFrame(() => {
                   this.focusGradeAssessmentInput(assessment.id, 0);
@@ -11850,6 +11907,7 @@
                 const courseId = Number(this.selectedCourseId || 0);
                 this.selectedGradesEntryAssessmentId = null;
                 this.gradesEntryDraft = null;
+                this.gradesEntryEditSnapshot = null;
                 this.activeGradeAssessmentId = null;
                 this.activeGradeStudentId = null;
                 if (courseId && this.openGradesOverviewForCourse(courseId)) {
@@ -12172,6 +12230,7 @@
               this.selectedCourseId = Number(courseSelect.value || 0) || null;
               this.selectedGradesEntryAssessmentId = null;
               this.gradesEntryDraft = null;
+              this.gradesEntryEditSnapshot = null;
               this.renderGradesView();
               return;
             }
@@ -15671,6 +15730,7 @@
               ? Number(draftValues.subcategoryId)
               : fallbackSubcategorySelection.subcategoryId;
             this.selectedGradesEntryAssessmentId = null;
+            this.gradesEntryEditSnapshot = null;
             this.gradesEntryDraft = {
               title: "",
               halfYear,
@@ -15709,6 +15769,24 @@
               subcategoryId: Number(assessment.subcategoryId) || null,
               entries: {}
             };
+          }
+
+          captureGradesEntryEditSnapshot(assessmentId) {
+            const snapshot = this.store.createGradeAssessmentSnapshot(assessmentId);
+            this.gradesEntryEditSnapshot = snapshot;
+            return snapshot;
+          }
+
+          restoreGradesEntryEditSnapshot(assessmentId) {
+            const assessmentKey = Number(assessmentId || 0);
+            const snapshotKey = Number(this.gradesEntryEditSnapshot?.assessmentId || 0);
+            if (!assessmentKey || snapshotKey !== assessmentKey) {
+              this.gradesEntryEditSnapshot = null;
+              return false;
+            }
+            const restored = this.store.restoreGradeAssessmentSnapshot(this.gradesEntryEditSnapshot);
+            this.gradesEntryEditSnapshot = null;
+            return restored;
           }
 
           getGradesEntryAssessmentDraft(assessment) {
@@ -16165,6 +16243,7 @@
             const draft = selectedAssessment ? null : this.getGradesEntryDraft(course.id);
             if (!selectedAssessment) {
               this.selectedGradesEntryAssessmentId = null;
+              this.gradesEntryEditSnapshot = null;
             }
 
             const rawEditorState = selectedAssessment
@@ -21444,6 +21523,7 @@
             if (!this.commitVisibleGradeInputs()) {
               return;
             }
+            this.gradesEntryEditSnapshot = null;
             const resolvedHalfYear = halfYear
               ? normalizeGradeHalfYear(halfYear)
               : this.getDefaultGradeAssessmentHalfYear();
@@ -23048,6 +23128,7 @@
             }
             if (normalized !== "entry") {
               this.queueGradesEntrySaveNotice("");
+              this.gradesEntryEditSnapshot = null;
             }
             this.hideGradePicker();
             this.gradesSubView = normalized;
@@ -23055,6 +23136,7 @@
               this.clearPrivacyFocusedGradeStudent();
               this.selectedGradesEntryAssessmentId = null;
               this.gradesEntryDraft = null;
+              this.gradesEntryEditSnapshot = null;
               this.activeGradeAssessmentId = null;
               this.activeGradeStudentId = null;
               this.pendingGradesEntryCourseAutoSelect = true;
@@ -23107,6 +23189,7 @@
             this.pendingGradesEntryCourseAutoSelect = false;
             this.clearPendingGradesOverviewAutoScroll();
             this.gradesEntryDraft = null;
+            this.captureGradesEntryEditSnapshot(id);
             if (this.currentView !== "grades") {
               this.switchView("grades");
               this.notifyParentPlanningViewRequest("grades");
@@ -23139,6 +23222,7 @@
             this.shellTabContext = "grades";
             this.gradesSubView = "entry";
             this.selectedGradesEntryAssessmentId = null;
+            this.gradesEntryEditSnapshot = null;
             this.activeGradeAssessmentId = null;
             this.activeGradeStudentId = null;
             this.pendingGradesEntryCourseAutoSelect = false;
