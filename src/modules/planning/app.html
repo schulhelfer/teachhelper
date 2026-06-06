@@ -343,12 +343,10 @@
                   <div id="settings-tab-grade-structure" class="settings-panel" role="tabpanel" hidden>
                     <div class="settings-grade-structure-panel">
                       <div class="settings-grade-structure-head">
-                        <h3 class="settings-panel-title">Default-Notenstruktur</h3>
+                        <h3 class="settings-panel-title">Voreinstellung Notenstruktur</h3>
+                        <p class="muted">Änderungen gelten für neu angelegte Kurse. Kurse ohne gespeicherte
+                          Notenstruktur verwenden diese Voreinstellung beim ersten Öffnen.</p>
                         <div class="settings-grade-structure-actions">
-                          <button type="button" id="settings-grade-structure-copy-h1-to-h2"
-                            class="ghost course-dialog-copy-h1-to-h2" hidden>
-                            1. HJ nach 2. HJ übernehmen
-                          </button>
                           <div id="settings-grade-structure-period-toggle"
                             class="course-dialog-structure-period-toggle" role="radiogroup"
                             aria-label="Halbjahr">
@@ -363,6 +361,10 @@
                               <span>2. HJ</span>
                             </label>
                           </div>
+                          <button type="button" id="settings-grade-structure-copy-h1-to-h2"
+                            class="ghost course-dialog-copy-h1-to-h2" hidden>
+                            1. HJ nach 2. HJ übernehmen
+                          </button>
                         </div>
                       </div>
                       <div class="course-dialog-structure-row settings-grade-structure-row">
