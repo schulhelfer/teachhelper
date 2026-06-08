@@ -64,6 +64,7 @@
             preferencesForm: document.getElementById('preferences-form'),
             preferencesTableBody: document.getElementById('preferences-tbody'),
             preferencesGuessGender: document.getElementById('preferences-guess-gender'),
+            preferencesResetAll: document.getElementById('preferences-reset-all'),
             preferencesResetGender: document.getElementById('preferences-reset-gender'),
             preferencesGuessHint: document.getElementById('preferences-guess-hint'),
             preferencesCancel: document.getElementById('preferences-cancel'),
@@ -2005,6 +2006,40 @@
               });
             });
             const hintText = 'Geschlecht vermutet - bitte überprüfen! Kriterium durch Haken aktiv.';
+            if (els.preferencesGuessHint) {
+              els.preferencesGuessHint.textContent = hintText;
+              els.preferencesGuessHint.title = hintText;
+              fitPreferencesHintText();
+            } else {
+              showMessage(hintText, 'info');
+            }
+          }
+          function resetAllPreferencesInDialog() {
+            if (!els.preferencesTableBody) return;
+            const studentIds = new Set();
+            const selects = Array.from(
+              els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]')
+            );
+            const checkboxes = Array.from(
+              els.preferencesTableBody.querySelectorAll('input[type="checkbox"][data-student-id]')
+            );
+            selects.forEach(select => {
+              if (select.dataset.studentId) {
+                studentIds.add(select.dataset.studentId);
+              }
+              select.value = '';
+            });
+            checkboxes.forEach(input => {
+              if (input.dataset.studentId) {
+                studentIds.add(input.dataset.studentId);
+              }
+              input.checked = false;
+            });
+            studentIds.forEach(studentId => {
+              updatePreferenceOptionDisablingForStudent(studentId);
+              syncBuddyPreferenceAvailability(studentId);
+            });
+            const hintText = 'Kriterien zurückgesetzt. Mit Speichern übernehmen.';
             if (els.preferencesGuessHint) {
               els.preferencesGuessHint.textContent = hintText;
               els.preferencesGuessHint.title = hintText;
@@ -7089,6 +7124,9 @@
           });
           els.preferencesGuessGender?.addEventListener('click', () => {
             applyGenderGuessInPreferences();
+          });
+          els.preferencesResetAll?.addEventListener('click', () => {
+            resetAllPreferencesInDialog();
           });
           els.preferencesResetGender?.addEventListener('click', () => {
             resetGenderAssignmentsInPreferences();
