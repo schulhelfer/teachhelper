@@ -715,9 +715,6 @@ export function createShellController({
       renderPlanningGradeVaultUnlockButton();
       return;
     }
-    if (state.activeTab === TAB_GRADES && nextDetail.hasGradeEntries === false) {
-      state.activeTab = TAB_PLANNING;
-    }
     state.planningInitialPaintPending = false;
     renderTabs();
   }

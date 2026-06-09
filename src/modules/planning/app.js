@@ -6073,6 +6073,7 @@ class PlannerApp {
       syncFileStatus: document.querySelector("#sync-file-status"),
       dbSelectExistingBtn: document.querySelector("#db-select-existing-btn"),
       dbCreateNewBtn: document.querySelector("#db-create-new-btn"),
+      dbCreateFromCurrentBtn: document.querySelector("#db-create-from-current-btn"),
       dbAutoActions: document.querySelector("#db-auto-actions"),
       dbManualActions: document.querySelector("#db-manual-actions"),
       dbManualHint: document.querySelector("#db-manual-hint"),
@@ -6355,7 +6356,13 @@ class PlannerApp {
   }
 
   isGradeVaultUnlocked() {
-    return Boolean(this.isGradeVaultEncryptionEnabled() && this.gradeVaultSession.configured && this.gradeVaultSession.unlocked);
+    return Boolean(
+      this.isGradeVaultEncryptionEnabled()
+      && this.isGradeVaultConfigured()
+      && this.gradeVaultSession.unlocked
+      && this.gradeVaultSession.cryptoKey
+      && this.gradeVaultSession.kdf
+    );
   }
 
   canAccessGradeVault() {
@@ -7172,6 +7179,102 @@ class PlannerApp {
         planningPublicText: built.planningPublicText,
         gradeVaultConfigText: built.gradeVaultConfigText,
         gradeCourseSegments: payload.gradeCourseSegments
+      })
+    };
+  }
+
+  buildFreshDatabasePublicState() {
+    const state = createInitialState();
+    const now = new Date();
+    const startYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const schoolYear = {
+      id: 1,
+      name: `${startYear}/${startYear + 1}`,
+      startDate: `${startYear}-08-01`,
+      endDate: `${startYear + 1}-07-31`
+    };
+    state.counters.schoolYear = 2;
+    state.counters.freeRange = 1;
+    state.counters.specialDay = 1;
+    state.schoolYears = [schoolYear];
+    state.settings.activeSchoolYearId = schoolYear.id;
+    for (const spec of requiredHolidayRowSpecs()) {
+      const [startDate, endDate] = defaultHolidayRangeForRow(startYear, spec.label, spec.occurrence);
+      if (!startDate && !endDate) {
+        continue;
+      }
+      state.freeRanges.push({
+        id: state.counters.freeRange,
+        schoolYearId: schoolYear.id,
+        label: spec.label,
+        startDate,
+        endDate
+      });
+      state.counters.freeRange += 1;
+    }
+    for (const item of defaultSpecialDays(startYear)) {
+      state.specialDays.push({
+        id: state.counters.specialDay,
+        name: item.name,
+        dayDate: item.dayDate
+      });
+      state.counters.specialDay += 1;
+    }
+    return this.store.normalizePublicState(state);
+  }
+
+  buildDatabaseContainerFromPayload({
+    publicState,
+    gradeVaultConfig = normalizeGradeVaultConfig(null),
+    gradeCourseSegments = [],
+    revision = 0,
+    updatedAt = "",
+    deviceId = "",
+    reason = ""
+  } = {}) {
+    const normalizedPublicState = this.store.normalizePublicState(publicState);
+    const normalizedGradeVaultConfig = normalizeGradeVaultConfig(gradeVaultConfig) || normalizeGradeVaultConfig(null);
+    const planningPublicText = JSON.stringify(normalizedPublicState);
+    const built = buildDatabaseContainerBytes({
+      startupShell: buildStartupShellFromPublicState(normalizedPublicState, Boolean(normalizedGradeVaultConfig.configured), 0),
+      planningPublicText,
+      gradeVaultConfig: normalizedGradeVaultConfig,
+      gradeVaultConfigText: JSON.stringify(normalizedGradeVaultConfig),
+      gradeCourseSegments,
+      revision,
+      updatedAt,
+      deviceId,
+      reason
+    });
+    return {
+      schema: APP_DB_SCHEMA,
+      exportedAt: updatedAt || new Date().toISOString(),
+      startupShell: buildStartupShellFromPublicState(normalizedPublicState, Boolean(normalizedGradeVaultConfig.configured), 0),
+      planningPublicText,
+      gradeVaultConfig: normalizedGradeVaultConfig,
+      gradeVaultConfigText: JSON.stringify(normalizedGradeVaultConfig),
+      gradeCourseSegments,
+      header: built.header,
+      bytes: built.bytes,
+      startupShellText: built.startupShellText,
+      planningPublicLocator: built.header.planningPublicLength > 0
+        ? {
+          offset: built.header.planningPublicOffset,
+          length: built.header.planningPublicLength
+        }
+        : null,
+      gradeVaultConfigLocator: built.header.gradeVaultConfigLength > 0
+        ? {
+          offset: built.header.gradeVaultConfigOffset,
+          length: built.header.gradeVaultConfigLength
+        }
+        : null,
+      gradeCourseDirectory: {},
+      stateHash: getDatabaseContainerStateHash({
+        startupShell: buildStartupShellFromPublicState(normalizedPublicState, Boolean(normalizedGradeVaultConfig.configured), 0),
+        planningPublicText: built.planningPublicText,
+        gradeVaultConfigText: built.gradeVaultConfigText,
+        gradeCourseSegments
       })
     };
   }
@@ -8251,6 +8354,122 @@ class PlannerApp {
     return true;
   }
 
+  async prepareNewSyncFileHandle(handle) {
+    if (!handle) {
+      return false;
+    }
+    this.syncState.fileHandle = handle;
+    this.syncState.storedFileHandle = handle;
+    this.syncState.fileName = String(handle.name || this.syncMeta.fileName || this.syncState.fileName || "");
+    this.syncMeta.fileName = this.syncState.fileName;
+    this.saveSyncMeta();
+    await storeHandle(SYNC_HANDLE_FILE_KEY, handle);
+    const backupDirectoryReady = await this.ensureBackupDirectoryReady(handle, {
+      allowPrompt: true
+    });
+    if (backupDirectoryReady) {
+      this.setBackupStatus("Backups werden im selben Ordner wie die Datenbankdatei erstellt.");
+    } else {
+      this.setBackupStatus("Backup-Ordner fehlt. Bei Bedarf bitte über den Button auswählen.");
+    }
+    return true;
+  }
+
+  async confirmOverwriteNonEmptySyncFile(handle, message) {
+    if (!await this.hasNonEmptySyncFile(handle)) {
+      return true;
+    }
+    return this.showConfirmMessage(message);
+  }
+
+  async createFreshDatabaseOnHandle(handle) {
+    const allowOverwrite = await this.confirmOverwriteNonEmptySyncFile(
+      handle,
+      "Diese Datei enthält bereits Daten. Mit einer leeren TeachHelper-Datenbank überschreiben?"
+    );
+    if (!allowOverwrite) {
+      this.setSyncStatus("Neue leere Datenbank wurde nicht angelegt.");
+      return false;
+    }
+    const createdAt = new Date().toISOString();
+    const publicState = this.buildFreshDatabasePublicState();
+    const envelope = this.buildDatabaseContainerFromPayload({
+      publicState,
+      revision: 1,
+      updatedAt: createdAt,
+      deviceId: String(this.syncMeta.deviceId || randomId()),
+      reason: "new-empty-database"
+    });
+    const writeOk = await this.writeSyncEnvelopeToHandle(handle, envelope);
+    if (!writeOk) {
+      this.setSyncStatus("Neue leere Datenbankdatei konnte nicht geschrieben werden.", true);
+      return false;
+    }
+    if (!await this.prepareNewSyncFileHandle(handle)) {
+      return false;
+    }
+    const result = this.loadPersistedDatabaseContainer(envelope, "manual");
+    if (!result.ok) {
+      this.setSyncStatus(result.message || "Neue leere Datenbankdatei konnte nicht geladen werden.", true);
+      return false;
+    }
+    this.settingsDraft = this.buildSettingsDraftFromStore();
+    this.settingsDirty = false;
+    this.weekStartIso = this._clampWeekStart(currentWeekStartForDisplay());
+    this.selectedLessonId = null;
+    this.selectedCourseId = null;
+    this.pendingGradesEntryCourseAutoSelect = true;
+    this.syncState.initialized = true;
+    this.commitPersistedGradeVaultEnvelope(envelope, { clearDirty: true });
+    this.markKnownRemote(envelope);
+    this.setSyncStatus("Neue leere Datenbankdatei angelegt.");
+    this.renderAll();
+    return true;
+  }
+
+  async createCurrentDatabaseOnHandle(handle) {
+    const allowOverwrite = await this.confirmOverwriteNonEmptySyncFile(
+      handle,
+      "Diese Datei enthält bereits Daten. Mit den aktuellen TeachHelper-Daten überschreiben?"
+    );
+    if (!allowOverwrite) {
+      this.setSyncStatus("Neue Datenbankdatei mit aktuellen Daten wurde nicht angelegt.");
+      return false;
+    }
+    try {
+      const createdAt = new Date().toISOString();
+      const envelope = await this.buildPersistableDatabaseContainer({
+        explicit: true,
+        revision: 1,
+        updatedAt: createdAt,
+        deviceId: String(this.syncMeta.deviceId || randomId()),
+        reason: "new-current-database"
+      });
+      const writeOk = await this.writeSyncEnvelopeToHandle(handle, envelope);
+      if (!writeOk) {
+        this.setSyncStatus("Datenbankdatei mit aktuellen Daten konnte nicht geschrieben werden.", true);
+        return false;
+      }
+      if (!await this.prepareNewSyncFileHandle(handle)) {
+        return false;
+      }
+      this.syncState.initialized = true;
+      this.commitPersistedGradeVaultEnvelope(envelope, { clearDirty: true });
+      this.markKnownRemote(envelope);
+      this.setSyncStatus("Neue Datenbankdatei mit aktuellen Daten angelegt.");
+      this.renderAll();
+      return true;
+    } catch (error) {
+      this.setSyncStatus(
+        error instanceof Error && error.message
+          ? error.message
+          : "Datenbankdatei mit aktuellen Daten konnte nicht angelegt werden.",
+        true
+      );
+      return false;
+    }
+  }
+
   async tryReconnectStoredSyncFile() {
     if (this.syncState.fileHandle) {
       return false;
@@ -8551,7 +8770,7 @@ class PlannerApp {
     }
     let handle = null;
     try {
-      if (mode === "new") {
+      if (mode === "new-empty" || mode === "new-current") {
         if (typeof window.showSaveFilePicker !== "function") {
           await this.showInfoMessage("Neue Datenbankdatei anlegen wird in diesem Browser nicht unterstützt.");
           return;
@@ -8572,6 +8791,14 @@ class PlannerApp {
     }
     if (!await this.ensureSyncFilePermission(handle, true)) {
       this.setSyncStatus("Zugriff auf die Datenbankdatei wurde verweigert.", true);
+      return;
+    }
+    if (mode === "new-empty") {
+      await this.createFreshDatabaseOnHandle(handle);
+      return;
+    }
+    if (mode === "new-current") {
+      await this.createCurrentDatabaseOnHandle(handle);
       return;
     }
     await this.connectSyncFileHandle(handle, "manual");
@@ -14263,7 +14490,13 @@ class PlannerApp {
 
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.addEventListener("click", async () => {
-        await this.selectSyncFile("new");
+        await this.selectSyncFile("new-empty");
+      });
+    }
+
+    if (this.refs.dbCreateFromCurrentBtn) {
+      this.refs.dbCreateFromCurrentBtn.addEventListener("click", async () => {
+        await this.selectSyncFile("new-current");
       });
     }
 
@@ -15088,6 +15321,10 @@ class PlannerApp {
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.disabled = disabled;
       this.refs.dbCreateNewBtn.classList.toggle("attention-pulse", shouldPulse);
+    }
+    if (this.refs.dbCreateFromCurrentBtn) {
+      this.refs.dbCreateFromCurrentBtn.disabled = disabled;
+      this.refs.dbCreateFromCurrentBtn.classList.toggle("attention-pulse", shouldPulse);
     }
     if (this.refs.dbManualLoadBtn) {
       this.refs.dbManualLoadBtn.disabled = false;
