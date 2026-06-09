@@ -7568,12 +7568,27 @@ class PlannerApp {
     return false;
   }
 
+  ensureGradeVaultReadyForGradesEntryMutation(options = {}) {
+    if (this.canAccessGradeVault()) {
+      return true;
+    }
+    if (options?.queueSave) {
+      this.queueGradeVaultContinuation({ type: "grades-entry-save" });
+    }
+    this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+    return false;
+  }
+
   queueGradeVaultContinuation(action = null) {
     if (!action || typeof action !== "object") {
       this.pendingGradeVaultContinuation = null;
       return;
     }
     const type = String(action.type || "").trim();
+    if (type === "grades-entry-save") {
+      this.pendingGradeVaultContinuation = { type };
+      return;
+    }
     const lessonId = Number(action.lessonId || 0);
     if (!lessonId || (type !== "grade-entry" && type !== "seatplan")) {
       this.pendingGradeVaultContinuation = null;
@@ -7598,6 +7613,10 @@ class PlannerApp {
     }
     if (action.type === "grade-entry") {
       void this.activateGradeEntryTrigger(action.lessonId, action.triggerMode || "auto");
+      return true;
+    }
+    if (action.type === "grades-entry-save") {
+      void this.saveCurrentGradesEntry();
       return true;
     }
     return false;
@@ -7670,6 +7689,10 @@ class PlannerApp {
         });
         this.closeDialog(this.refs.gradeVaultDialog);
         this.pendingGradeVaultDialogMode = "";
+        if (this.pendingGradeVaultContinuation?.type === "grades-entry-save") {
+          this.resumeAfterGradeVaultUnlock({ focusDefault: false });
+          return;
+        }
         this.renderAll();
         this.resumeAfterGradeVaultUnlock();
         return;
@@ -7733,6 +7756,10 @@ class PlannerApp {
       });
       this.closeDialog(this.refs.gradeVaultDialog);
       this.pendingGradeVaultDialogMode = "";
+      if (this.pendingGradeVaultContinuation?.type === "grades-entry-save") {
+        this.resumeAfterGradeVaultUnlock({ focusDefault: false });
+        return;
+      }
       const saved = await this.saveGradeVaultChanges();
       if (!saved) {
         this.renderAll();
@@ -12537,6 +12564,69 @@ class PlannerApp {
     this.positionGradesTitleDatePicker();
   }
 
+  async saveCurrentGradesEntry() {
+    if (!this.selectedCourseId) {
+      return false;
+    }
+    if (!this.ensureGradeVaultReadyForGradesEntryMutation({ queueSave: true })) {
+      return false;
+    }
+    const isDraftSave = !this.selectedGradesEntryAssessmentId;
+    if (isDraftSave && !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+      return false;
+    }
+    if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs(this.getGradeInputRoot(), { requireValue: true })) {
+      return false;
+    }
+    const draftValues = this.readGradesEntryEditorValues();
+    const assessment = this.ensureGradesEntryDraftAssessment(this.selectedCourseId, draftValues);
+    if (!assessment) {
+      return false;
+    }
+    if (!isDraftSave) {
+      const applied = await this.applyGradesEntryAssessmentEditorValues(assessment.id, draftValues);
+      if (!applied || !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+        return false;
+      }
+    }
+    if (isDraftSave) {
+      this.persistGradesEntryDraftEntries(assessment.id, this.selectedCourseId);
+    }
+    const savedImmediately = await this.saveGradesEntryImmediatelyAfterDiskSave();
+    if (!savedImmediately) {
+      this.queueGradesEntrySaveNotice("Noten übernommen, Datenbank nicht gespeichert", 3000);
+      this.gradesEntryDraft = null;
+      this.clearGradesEntryDraftDirty();
+      this.activeGradeAssessmentId = assessment.id;
+      this.captureGradesEntryEditSnapshot(assessment.id);
+      this.renderGradesView();
+      requestAnimationFrame(() => {
+        this.focusGradeAssessmentInput(assessment.id, 0);
+      });
+      return false;
+    }
+    this.queueGradesEntrySaveNotice("Noten gespeichert");
+    if (isDraftSave) {
+      this.gradesEntryEditSnapshot = null;
+      this.resetGradesEntryDraftAfterSave(draftValues);
+      this.renderGradesView();
+      requestAnimationFrame(() => {
+        const firstDraftInput = this.refs.gradesEntryContent?.querySelector("input[data-grade-draft-input='1']");
+        firstDraftInput?.focus();
+        firstDraftInput?.select();
+      });
+      return true;
+    }
+    this.clearGradesEntryDraftDirty();
+    this.activeGradeAssessmentId = assessment.id;
+    this.captureGradesEntryEditSnapshot(assessment.id);
+    this.renderGradesView();
+    requestAnimationFrame(() => {
+      this.focusGradeAssessmentInput(assessment.id, 0);
+    });
+    return true;
+  }
+
   async handleGradesSurfaceClick(event) {
     const clickedGradeInput = event.target instanceof Element
       ? event.target.closest("input[data-grade-input='1']:not(:disabled)")
@@ -12613,61 +12703,7 @@ class PlannerApp {
     const saveEntryButton = event.target.closest("button[data-grades-entry-save]");
     if (saveEntryButton) {
       event.stopPropagation();
-      if (!this.selectedCourseId) {
-        return;
-      }
-      const isDraftSave = !this.selectedGradesEntryAssessmentId;
-      if (isDraftSave && !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
-        return;
-      }
-      if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs(this.getGradeInputRoot(), { requireValue: true })) {
-        return;
-      }
-      const draftValues = this.readGradesEntryEditorValues();
-      const assessment = this.ensureGradesEntryDraftAssessment(this.selectedCourseId, draftValues);
-      if (assessment) {
-        if (!isDraftSave) {
-          const applied = await this.applyGradesEntryAssessmentEditorValues(assessment.id, draftValues);
-          if (!applied || !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
-            return;
-          }
-        }
-        if (isDraftSave) {
-          this.persistGradesEntryDraftEntries(assessment.id, this.selectedCourseId);
-        }
-        const savedImmediately = await this.saveGradesEntryImmediatelyAfterDiskSave();
-        if (!savedImmediately) {
-          this.queueGradesEntrySaveNotice("Noten übernommen, Datenbank nicht gespeichert", 3000);
-          this.gradesEntryDraft = null;
-          this.clearGradesEntryDraftDirty();
-          this.activeGradeAssessmentId = assessment.id;
-          this.captureGradesEntryEditSnapshot(assessment.id);
-          this.renderGradesView();
-          requestAnimationFrame(() => {
-            this.focusGradeAssessmentInput(assessment.id, 0);
-          });
-          return;
-        }
-        this.queueGradesEntrySaveNotice("Noten gespeichert");
-        if (isDraftSave) {
-          this.gradesEntryEditSnapshot = null;
-          this.resetGradesEntryDraftAfterSave(draftValues);
-          this.renderGradesView();
-          requestAnimationFrame(() => {
-            const firstDraftInput = this.refs.gradesEntryContent?.querySelector("input[data-grade-draft-input='1']");
-            firstDraftInput?.focus();
-            firstDraftInput?.select();
-          });
-          return;
-        }
-        this.clearGradesEntryDraftDirty();
-        this.activeGradeAssessmentId = assessment.id;
-        this.captureGradesEntryEditSnapshot(assessment.id);
-        this.renderGradesView();
-        requestAnimationFrame(() => {
-          this.focusGradeAssessmentInput(assessment.id, 0);
-        });
-      }
+      await this.saveCurrentGradesEntry();
       return;
     }
     const deleteEntryButton = event.target.closest("button[data-grades-entry-delete='1']");
@@ -17519,6 +17555,11 @@ class PlannerApp {
       invalidInput.focus();
       invalidInput.select();
       return false;
+    }
+    if ([...groups.values()].some((group) => !group.isDraftInput)) {
+      if (!this.ensureGradeVaultReadyForGradesEntryMutation()) {
+        return false;
+      }
     }
     let draft = null;
     let nextDraftEntries = null;
@@ -23212,6 +23253,9 @@ class PlannerApp {
         this.refreshVisibleGradeTestResult(studentId, null);
         this.refreshVisibleGradeTestAverages(null);
         return true;
+      }
+      if (!this.ensureGradeVaultReadyForGradesEntryMutation()) {
+        return false;
       }
       this.store.setGradeTestEntry(studentId, assessmentId, nextScores);
       this.refreshVisibleGradeTestResult(studentId, assessmentId);
