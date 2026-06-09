@@ -1014,6 +1014,13 @@
             state.pendingCourseGradeStudentId = '';
           }
 
+          function selectStudentForCourseGrade(studentId) {
+            const sid = String(studentId || '').trim();
+            state.selectedStudentId = sid || null;
+            updateCriteriaPanel();
+            updateSeatSelectionHighlight(state.seatDiagnosticsBySeat);
+          }
+
           function openFirstCourseGradePicker() {
             const input = getCourseGradeInputOrder()[0] || null;
             if (!input) return;
@@ -1304,6 +1311,7 @@
             const studentId = String(input.dataset.studentId || '');
             if (!studentId) return;
             markCourseGradeStudentVisited(studentId);
+            selectStudentForCourseGrade(studentId);
             state.courseGradePickerStudentId = studentId;
             els.courseGradePicker.hidden = false;
             els.courseGradePicker.textContent = '';
@@ -1451,6 +1459,7 @@
             button.addEventListener('click', event => {
               event.preventDefault();
               event.stopPropagation();
+              selectStudentForCourseGrade(sid);
               requestCourseGradeConfig(sid);
             });
             return button;
@@ -4865,12 +4874,15 @@
 
           function updateSeatSelectionHighlight(bySeat) {
             if (!els.grid) return;
-            const selectedId = state.selectedStudentId;
+            const selectedId = String(state.selectedStudentId || '');
             els.grid.querySelectorAll('.seat.seat-selected').forEach(seat => seat.classList.remove('seat-selected'));
-            if (!selectedId || !(bySeat instanceof Map)) return;
-            const seatEntry = Array.from(bySeat.entries()).find(([, diag]) => diag.studentId === selectedId);
-            if (!seatEntry) return;
-            const seatId = seatEntry[0];
+            if (!selectedId) return;
+            const seatEntry = bySeat instanceof Map
+              ? Array.from(bySeat.entries()).find(([, diag]) => String(diag.studentId || '') === selectedId)
+              : null;
+            const seatId = seatEntry?.[0] || Object.entries(state.seats || {})
+              .find(([, value]) => String(value || '') === selectedId)?.[0];
+            if (!seatId) return;
             const seatEl = els.grid.querySelector(`.seat[data-seat="${seatId}"]`);
             if (seatEl) seatEl.classList.add('seat-selected');
           }

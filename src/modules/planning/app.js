@@ -12515,7 +12515,10 @@ class PlannerApp {
     if (editButton) {
       event.preventDefault();
       event.stopPropagation();
-      this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment);
+      this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment, {
+        studentId: Number(editButton.dataset.studentId || 0),
+        rowIndex: Number(editButton.dataset.rowIndex || 0)
+      });
     }
   }
 
@@ -12815,7 +12818,10 @@ class PlannerApp {
     const editButton = event.target.closest("button[data-grade-edit-assessment]");
     if (editButton) {
       event.stopPropagation();
-      this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment);
+      this.openGradesEntryForAssessment(editButton.dataset.gradeEditAssessment, {
+        studentId: Number(editButton.dataset.studentId || 0),
+        rowIndex: Number(editButton.dataset.rowIndex || 0)
+      });
       return;
     }
     const selectedColumnHeader = event.target.closest(".grades-master-table th[data-grade-column-key]");
@@ -19114,6 +19120,12 @@ class PlannerApp {
     if (this.currentView !== "grades" || this.normalizeGradesSubView(this.gradesSubView) !== "entry") {
       return;
     }
+    const activeAssessmentId = Number(this.activeGradeAssessmentId || this.selectedGradesEntryAssessmentId || 0);
+    const activeStudentId = Number(this.activeGradeStudentId || 0);
+    if (activeAssessmentId && activeStudentId) {
+      this.focusGradeAssessmentInput(activeAssessmentId, 0, activeStudentId);
+      return;
+    }
     const input = this.refs.gradesEntryContent?.querySelector("input[data-grade-input='1']:not(:disabled)");
     if (!(input instanceof HTMLInputElement)) {
       return;
@@ -19121,25 +19133,43 @@ class PlannerApp {
     this.focusGradeInputElement(input, { preventScroll: true });
   }
 
-  focusGradeAssessmentInput(assessmentId, rowIndex = 0) {
+  focusGradeAssessmentInput(assessmentId, rowIndex = 0, studentId = null) {
     const root = this.getGradeInputRoot();
     if (!root) {
       return;
     }
     const id = Number(assessmentId || 0);
     const targetRowIndex = Math.max(0, Number(rowIndex) || 0);
+    const targetStudentId = Number(studentId || 0) || null;
     if (!id) {
       return;
     }
+    const studentTestSelector = targetStudentId
+      ? `input[data-grade-test-score='1']:not(:disabled)[data-assessment-id="${id}"][data-student-id="${targetStudentId}"]`
+      : "";
+    const studentSelector = targetStudentId
+      ? `input[data-grade-input='1']:not(:disabled)[data-assessment-id="${id}"][data-student-id="${targetStudentId}"]`
+      : "";
     const selector = `input[data-grade-input='1']:not(:disabled)[data-assessment-id="${id}"][data-row-index="${targetRowIndex}"]`;
     const fallbackSelector = `input[data-grade-input='1']:not(:disabled)[data-assessment-id="${id}"]`;
-    const input = root.querySelector(selector) || root.querySelector(fallbackSelector);
+    const input = (studentTestSelector ? root.querySelector(studentTestSelector) : null)
+      || (studentSelector ? root.querySelector(studentSelector) : null)
+      || root.querySelector(selector)
+      || root.querySelector(fallbackSelector);
     if (!input) {
+      if (targetStudentId) {
+        this.activeGradeStudentId = targetStudentId;
+        this.updateActiveGradeStudentHighlight();
+      }
       return;
     }
-    this.activeGradeStudentId = Number(input.dataset.studentId || 0) || null;
+    this.activeGradeStudentId = targetStudentId || Number(input.dataset.studentId || 0) || null;
     this.updateActiveGradeStudentHighlight();
     this.focusGradeInputElement(input);
+    if (targetStudentId) {
+      this.activeGradeStudentId = targetStudentId;
+      this.updateActiveGradeStudentHighlight();
+    }
     if (!this.isHomeworkGradeInput(input)) {
       this.openGradePickerForInput(input);
     }
@@ -24083,6 +24113,8 @@ class PlannerApp {
 
   openGradesEntryForAssessment(assessmentId, options = {}) {
     const id = Number(assessmentId || 0);
+    const targetStudentId = Number(options.studentId || 0) || null;
+    const targetRowIndex = Math.max(0, Number(options.rowIndex) || 0);
     const assessment = this.store.getGradeAssessment(id);
     if (!assessment) {
       return false;
@@ -24110,23 +24142,26 @@ class PlannerApp {
     this.gradesSubView = "entry";
     this.selectedGradesEntryAssessmentId = id;
     this.activeGradeAssessmentId = id;
-    this.activeGradeStudentId = null;
+    this.activeGradeStudentId = targetStudentId;
     this.pendingGradesEntryCourseAutoSelect = false;
     this.clearPendingGradesOverviewAutoScroll();
     this.gradesEntryDraft = null;
     this.clearGradesEntryDraftDirty();
     this.captureGradesEntryEditSnapshot(id);
+    const focusTarget = () => {
+      this.focusGradeAssessmentInput(id, targetRowIndex, targetStudentId);
+    };
     if (this.currentView !== "grades") {
       this.switchView("grades");
+      this.pendingGradesEntryCourseAutoSelect = false;
+      requestAnimationFrame(focusTarget);
       this.notifyParentPlanningViewRequest("grades");
       return true;
     }
     this.renderViewState();
     this.renderSidebarCourseList();
     this.renderGradesView();
-    requestAnimationFrame(() => {
-      this.focusGradeAssessmentInput(id, 0);
-    });
+    requestAnimationFrame(focusTarget);
     this.notifyParentPlanningViewRequest("grades");
     return true;
   }
