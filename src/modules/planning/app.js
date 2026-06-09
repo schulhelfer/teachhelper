@@ -2084,7 +2084,7 @@ function calculateGradeTestValueFromRatio(ratioState = null, scale = GRADE_TEST_
   return applyGradeTestPredicateSuffixes(match ? match[1] : 0, predicateSuffixes);
 }
 
-function isGradeTestRatioInUpperThirdOfGradeBand(ratio, scale = GRADE_TEST_SCALE_DEFAULT, settings = null) {
+function isGradeTestRatioInUpperThirdOfGradeBand(ratio, scale = GRADE_TEST_SCALE_DEFAULT, settings = null, predicateSuffixes = true) {
   const normalizedRatio = clamp(Number(ratio) || 0, 0, 1);
   const thresholds = scale && typeof scale === "object"
     ? normalizeGradeTestScaleSnapshot(scale, scale.id, settings).thresholds
@@ -2093,10 +2093,21 @@ function isGradeTestRatioInUpperThirdOfGradeBand(ratio, scale = GRADE_TEST_SCALE
   if (matchIndex < 0) {
     return false;
   }
-  const lowerBound = clamp(Number(thresholds[matchIndex]?.[0] || 0), 0, 1);
-  const upperBound = matchIndex === 0
+  let lowerBound = clamp(Number(thresholds[matchIndex]?.[0] || 0), 0, 1);
+  let upperBound = matchIndex === 0
     ? 1
     : clamp(Number(thresholds[matchIndex - 1]?.[0] || 0), 0, 1);
+  if (!normalizeGradeTestPredicateSuffixes(predicateSuffixes, true)) {
+    const groupedRows = getGradeTestScaleTooltipRows(thresholds, false);
+    const currentGrade = Number(thresholds[matchIndex]?.[1]);
+    const groupIndex = groupedRows.findIndex((row) => Number(row.grade) <= currentGrade);
+    if (groupIndex >= 0) {
+      lowerBound = clamp(Number(groupedRows[groupIndex]?.threshold || 0), 0, 1);
+      upperBound = groupIndex === 0
+        ? 1
+        : clamp(Number(groupedRows[groupIndex - 1]?.threshold || 0), 0, 1);
+    }
+  }
   const bandWidth = upperBound - lowerBound;
   if (bandWidth <= 0.0000001) {
     return false;
@@ -6162,6 +6173,7 @@ class PlannerApp {
     this.gradeDeficitThreshold = GRADE_DEFICIT_THRESHOLD_DEFAULT;
     this.gradeDeficitThresholdUserEdited = false;
     this.gradesEntryDraft = null;
+    this.gradesEntryDraftDirty = false;
     this.gradesEntryEditSnapshot = null;
     this.gradesEntrySaveNotice = "";
     this.gradesEntrySaveNoticeFading = false;
@@ -6669,6 +6681,7 @@ class PlannerApp {
     this.gradeVaultSession = next;
     this.pendingWeekGradeAssessmentLoadKey = "";
     this.clearGradesOverviewAssessmentSpotlight();
+    this.clearGradesEntryDraftDirty({ dispatch: false });
     this.dispatchGradeVaultState();
     if (this.isManualPersistenceMode()) {
       this.markManualDirtyIfNeeded();
@@ -6698,7 +6711,11 @@ class PlannerApp {
     const planningDirty = this.isManualPersistenceMode()
       ? Boolean(this.manualPersistenceState.dirty)
       : Boolean(this.gradeVaultSession.publicStateDirty);
-    const gradesDirty = Boolean(this.gradeVaultSession.dirty || dirtyGradeCourseIds.length > 0);
+    const gradesDirty = Boolean(
+      this.gradeVaultSession.dirty
+      || dirtyGradeCourseIds.length > 0
+      || this.gradesEntryDraftDirty
+    );
     return {
       dirty: planningDirty || gradesDirty,
       planningDirty,
@@ -6714,6 +6731,18 @@ class PlannerApp {
     window.dispatchEvent(new CustomEvent("classroom:planning-unsaved-state", {
       detail: this.getPlanningUnsavedState()
     }));
+  }
+
+  markGradesEntryDraftDirty() {
+    this.gradesEntryDraftDirty = true;
+    this.dispatchPlanningUnsavedState();
+  }
+
+  clearGradesEntryDraftDirty(options = {}) {
+    this.gradesEntryDraftDirty = false;
+    if (options?.dispatch !== false) {
+      this.dispatchPlanningUnsavedState();
+    }
   }
 
   applyPersistedPublicState(publicState, options = {}) {
@@ -7641,6 +7670,44 @@ class PlannerApp {
       this.renderAll();
     } else {
       await showSaveFailure("Die verschlüsselten Notendaten konnten nicht in die Datenbankdatei geschrieben werden.");
+    }
+    return saved;
+  }
+
+  async saveGradesEntryImmediatelyAfterDiskSave() {
+    if (!this.canAccessGradeVault()) {
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      return false;
+    }
+    if (this.syncState.pendingSaveTimer) {
+      clearTimeout(this.syncState.pendingSaveTimer);
+      this.syncState.pendingSaveTimer = 0;
+    }
+    this.syncState.pendingSaveReason = "";
+    this.syncState.pendingSaveExplicitVault = false;
+    const showSaveFailure = async (fallbackMessage) => {
+      const statusText = String(this.refs.syncFileStatus?.textContent || "").trim();
+      await this.showInfoMessage(statusText || fallbackMessage, "Noten speichern");
+    };
+    if (this.isManualPersistenceMode()) {
+      const saved = await this.saveManualDatabase({ explicitVault: true });
+      if (!saved) {
+        await showSaveFailure("Noten übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.");
+      }
+      return saved;
+    }
+    if (!this.syncState.fileHandle) {
+      await showSaveFailure("Noten übernommen. Bitte zuerst eine Datenbankdatei auswählen, damit die Noten gespeichert werden können.");
+      return false;
+    }
+    const saved = await this.pushLocalStateToSyncFile({
+      manual: true,
+      allowConflictPrompt: true,
+      reason: "grades-entry-explicit-save",
+      explicitVault: true
+    });
+    if (!saved) {
+      await showSaveFailure("Noten übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.");
     }
     return saved;
   }
@@ -12201,6 +12268,7 @@ class PlannerApp {
   handleGradesSurfaceInput(event) {
     const testTaskMaxInput = event.target.closest("input[data-grade-test-task-field='maxBe']");
     if (testTaskMaxInput) {
+      this.markGradesEntryDraftDirty();
       const rawValue = String(testTaskMaxInput.value || "");
       const maxLength = Math.max(1, Number(testTaskMaxInput.getAttribute("maxlength")) || 5);
       const sanitizedValue = sanitizeGradeBeInput(rawValue, maxLength);
@@ -12224,6 +12292,13 @@ class PlannerApp {
       }
     }
     const titleInput = event.target.closest("input[data-grades-entry-title]");
+    if (titleInput) {
+      this.markGradesEntryDraftDirty();
+    }
+    const gradeEntryInput = event.target.closest("input[data-grade-input='1']");
+    if (gradeEntryInput && this.refs.gradesEntryContent?.contains(gradeEntryInput)) {
+      this.markGradesEntryDraftDirty();
+    }
     if (!titleInput || this.gradesTitleDatePickerState.input !== titleInput || !this.gradesTitleDatePickerState.open) {
       return;
     }
@@ -12302,6 +12377,7 @@ class PlannerApp {
       this.hideGradePicker();
       this.selectedGradesEntryAssessmentId = null;
       this.gradesEntryDraft = null;
+      this.clearGradesEntryDraftDirty();
       this.activeGradeAssessmentId = null;
       this.activeGradeStudentId = null;
       this.renderGradesView();
@@ -12332,6 +12408,19 @@ class PlannerApp {
         if (isDraftSave) {
           this.persistGradesEntryDraftEntries(assessment.id, this.selectedCourseId);
         }
+        const savedImmediately = await this.saveGradesEntryImmediatelyAfterDiskSave();
+        if (!savedImmediately) {
+          this.queueGradesEntrySaveNotice("Noten übernommen, Datenbank nicht gespeichert", 3000);
+          this.gradesEntryDraft = null;
+          this.clearGradesEntryDraftDirty();
+          this.activeGradeAssessmentId = assessment.id;
+          this.captureGradesEntryEditSnapshot(assessment.id);
+          this.renderGradesView();
+          requestAnimationFrame(() => {
+            this.focusGradeAssessmentInput(assessment.id, 0);
+          });
+          return;
+        }
         this.queueGradesEntrySaveNotice("Noten gespeichert");
         if (isDraftSave) {
           this.gradesEntryEditSnapshot = null;
@@ -12344,6 +12433,7 @@ class PlannerApp {
           });
           return;
         }
+        this.clearGradesEntryDraftDirty();
         this.activeGradeAssessmentId = assessment.id;
         this.captureGradesEntryEditSnapshot(assessment.id);
         this.renderGradesView();
@@ -12367,6 +12457,7 @@ class PlannerApp {
         this.selectedGradesEntryAssessmentId = null;
         this.gradesEntryDraft = null;
         this.gradesEntryEditSnapshot = null;
+        this.clearGradesEntryDraftDirty();
         this.activeGradeAssessmentId = null;
         this.activeGradeStudentId = null;
         if (courseId && this.openGradesOverviewForCourse(courseId)) {
@@ -12383,6 +12474,7 @@ class PlannerApp {
       if (!this.commitVisibleGradeInputs()) {
         return;
       }
+      this.markGradesEntryDraftDirty();
       this.addGradeTestTask();
       return;
     }
@@ -12393,6 +12485,7 @@ class PlannerApp {
       if (!this.commitVisibleGradeInputs()) {
         return;
       }
+      this.markGradesEntryDraftDirty();
       this.removeGradeTestTask(removeTestTaskButton.dataset.taskId || "");
       return;
     }
@@ -12690,6 +12783,7 @@ class PlannerApp {
       this.selectedGradesEntryAssessmentId = null;
       this.gradesEntryDraft = null;
       this.gradesEntryEditSnapshot = null;
+      this.clearGradesEntryDraftDirty();
       this.renderGradesView();
       return;
     }
@@ -12701,6 +12795,7 @@ class PlannerApp {
         return;
       }
       const nextTitle = String(titleInput.value || "").trim();
+      this.markGradesEntryDraftDirty();
       this.persistGradesEntryTitleValue(nextTitle, { draft: latestDraft });
       this.renderGradesView();
       return;
@@ -12716,6 +12811,7 @@ class PlannerApp {
       if (!this.gradeDeficitThresholdUserEdited) {
         this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(testScale);
       }
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         testScale,
@@ -12736,6 +12832,7 @@ class PlannerApp {
       if (!latestDraft) {
         return;
       }
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(testPredicateSuffixesInput.value, true)
@@ -12747,6 +12844,7 @@ class PlannerApp {
     const testTaskInput = event.target.closest("input[data-grade-test-task-field]");
     if (testTaskInput) {
       if (this.updateGradeTestTaskFromInput(testTaskInput)) {
+        this.markGradesEntryDraftDirty();
         this.refreshVisibleGradeTestResultsForTaskInput(testTaskInput);
       }
       return;
@@ -12759,6 +12857,7 @@ class PlannerApp {
         return;
       }
       const halfYear = normalizeGradeHalfYear(halfYearInput.value || "h1");
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         halfYear
@@ -12778,6 +12877,7 @@ class PlannerApp {
       if (!this.gradeDeficitThresholdUserEdited) {
         this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(mode === "test" ? testScale : GRADE_TEST_SCALE_DEFAULT);
       }
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         mode,
@@ -12803,6 +12903,7 @@ class PlannerApp {
         return;
       }
       const weight = normalizeGradeInteger(weightInput.value, 1);
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         weight
@@ -12833,6 +12934,7 @@ class PlannerApp {
       const nextSubcategoryId = category
         ? this.getMostUsedGradeAssessmentSelection(courseId, category.id).subcategoryId
         : null;
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         categoryId,
@@ -12849,6 +12951,7 @@ class PlannerApp {
         return;
       }
       const subcategoryId = Number(subcategorySelect.value || 0) || null;
+      this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
         ...latestDraft,
         subcategoryId
@@ -16237,6 +16340,7 @@ class PlannerApp {
       subcategoryId,
       entries: {}
     };
+    this.clearGradesEntryDraftDirty();
     this.hideGradePicker();
     this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
@@ -16631,6 +16735,7 @@ class PlannerApp {
       subcategoryId: editorValues.subcategoryId
     });
     this.gradesEntryDraft = null;
+    this.clearGradesEntryDraftDirty();
     return true;
   }
 
@@ -17205,6 +17310,7 @@ class PlannerApp {
         ...draft,
         entries: nextDraftEntries
       };
+      this.markGradesEntryDraftDirty();
       groups.forEach((group) => {
         if (group.isDraftInput) {
           this.refreshVisibleGradeTestResult(group.studentId, null);
@@ -19294,6 +19400,12 @@ class PlannerApp {
     const titleInput = event.target.closest("input[data-grades-entry-title]");
     if (titleInput) {
       this.openGradesTitleDatePicker(titleInput);
+      requestAnimationFrame(() => {
+        if (!(titleInput instanceof HTMLInputElement) || !document.body.contains(titleInput)) {
+          return;
+        }
+        titleInput.select();
+      });
       return;
     }
     this.hideGradesTitleDatePicker(event);
@@ -20207,7 +20319,12 @@ class PlannerApp {
       const ratioCell = document.createElement("td");
       ratioCell.className = "grade-test-ratio-col";
       const ratioState = calculateGradeTestRatio(tasks, scores);
-      const isRatioNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(ratioState?.ratio, scaleSnapshot);
+      const isRatioNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
+        ratioState?.ratio,
+        scaleSnapshot,
+        null,
+        testPredicateSuffixes
+      );
       const ratioClass = isRatioNearBetterGrade ? " is-grade-low" : "";
       ratioCell.innerHTML = `<div class="grade-test-ratio-value${ratioClass}" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""} title="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestRatioDisplay(ratioState))}</div>`;
       tr.append(ratioCell);
@@ -20268,7 +20385,12 @@ class PlannerApp {
     averageRow.append(averageResultCell);
     const averageRatioCell = document.createElement("td");
     averageRatioCell.className = "grade-test-ratio-col";
-    const isAverageRatioNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(averageState.ratioState?.ratio, scaleSnapshot);
+    const isAverageRatioNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
+      averageState.ratioState?.ratio,
+      scaleSnapshot,
+      null,
+      testPredicateSuffixes
+    );
     const averageRatioClass = isAverageRatioNearBetterGrade ? " is-grade-low" : "";
     averageRatioCell.innerHTML = `<div class="grade-test-ratio-value${averageRatioClass}" data-grade-test-average-ratio="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-ratio=\"1\""} title="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestAverageRatioDisplay(averageState.ratioState))}</div>`;
     averageRow.append(averageRatioCell);
@@ -22575,7 +22697,12 @@ class PlannerApp {
       }
       if (ratioNode) {
         const ratioState = calculateGradeTestRatio(tasks, entry?.testScores || {});
-        const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(ratioState?.ratio, scaleSnapshot);
+        const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
+          ratioState?.ratio,
+          scaleSnapshot,
+          null,
+          testPredicateSuffixes
+        );
         ratioNode.textContent = formatGradeTestRatioDisplay(ratioState);
         ratioNode.classList.toggle("is-grade-low", isNearBetterGrade);
         this.syncGradeRatioTooltip(ratioNode, isNearBetterGrade);
@@ -22600,8 +22727,17 @@ class PlannerApp {
     }
     if (ratioNode) {
       const scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft.testScale);
+      const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
+        draft.testPredicateSuffixes,
+        getDefaultGradeTestPredicateSuffixes(draft.testScale)
+      );
       const ratioState = calculateGradeTestRatio(draft.testTasks, entry?.testScores || {});
-      const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(ratioState?.ratio, scaleSnapshot);
+      const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
+        ratioState?.ratio,
+        scaleSnapshot,
+        null,
+        testPredicateSuffixes
+      );
       ratioNode.textContent = formatGradeTestRatioDisplay(ratioState);
       ratioNode.classList.toggle("is-grade-low", isNearBetterGrade);
       this.syncGradeRatioTooltip(ratioNode, isNearBetterGrade);
@@ -22677,7 +22813,12 @@ class PlannerApp {
       this.syncGradeDeficitTooltip(resultNode, isDeficit);
     }
     if (ratioNode) {
-      const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(averageState.ratioState?.ratio, scaleSnapshot);
+      const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
+        averageState.ratioState?.ratio,
+        scaleSnapshot,
+        null,
+        testPredicateSuffixes
+      );
       ratioNode.textContent = formatGradeTestAverageRatioDisplay(averageState.ratioState);
       ratioNode.classList.toggle("is-grade-low", isNearBetterGrade);
       this.syncGradeRatioTooltip(ratioNode, isNearBetterGrade);
@@ -22780,6 +22921,7 @@ class PlannerApp {
           ...draft,
           entries: nextEntries
         };
+        this.markGradesEntryDraftDirty();
         return true;
       }
       this.store.setGradeEntry(studentId, assessmentId, input.checked);
@@ -22829,6 +22971,7 @@ class PlannerApp {
           ...draft,
           entries: nextEntries
         };
+        this.markGradesEntryDraftDirty();
         this.refreshVisibleGradeTestResult(studentId, null);
         this.refreshVisibleGradeTestAverages(null);
         return true;
@@ -22873,6 +23016,7 @@ class PlannerApp {
         ...draft,
         entries: nextEntries
       };
+      this.markGradesEntryDraftDirty();
       this.refreshVisibleGradeEntryAverage(null);
       return true;
     }
@@ -23625,7 +23769,9 @@ class PlannerApp {
     }
     if (normalized !== "entry") {
       this.queueGradesEntrySaveNotice("");
+      this.gradesEntryDraft = null;
       this.gradesEntryEditSnapshot = null;
+      this.clearGradesEntryDraftDirty();
     }
     this.hideGradePicker();
     this.gradesSubView = normalized;
@@ -23634,6 +23780,7 @@ class PlannerApp {
       this.selectedGradesEntryAssessmentId = null;
       this.gradesEntryDraft = null;
       this.gradesEntryEditSnapshot = null;
+      this.clearGradesEntryDraftDirty();
       this.activeGradeAssessmentId = null;
       this.activeGradeStudentId = null;
       this.pendingGradesEntryCourseAutoSelect = true;
@@ -23686,6 +23833,7 @@ class PlannerApp {
     this.pendingGradesEntryCourseAutoSelect = false;
     this.clearPendingGradesOverviewAutoScroll();
     this.gradesEntryDraft = null;
+    this.clearGradesEntryDraftDirty();
     this.captureGradesEntryEditSnapshot(id);
     if (this.currentView !== "grades") {
       this.switchView("grades");
@@ -23724,6 +23872,7 @@ class PlannerApp {
     this.activeGradeStudentId = null;
     this.pendingGradesEntryCourseAutoSelect = false;
     this.clearPendingGradesOverviewAutoScroll();
+    this.clearGradesEntryDraftDirty();
     this.gradesEntryDraft = {
       ...this.getGradesEntryDraft(courseId),
       title: formatShortDateLabel(lessonDate),
