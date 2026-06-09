@@ -1,6 +1,7 @@
     (() => {
       const MANUAL_SAVE_STATE_EVENT = 'classroom:planning-manual-save-state';
       const MANUAL_SAVE_REQUEST_EVENT = 'classroom:planning-manual-save-request';
+      const UNSAVED_STATE_EVENT = 'classroom:planning-unsaved-state';
       const GRADE_VAULT_STATE_EVENT = 'classroom:planning-grade-vault-state';
       const GRADE_VAULT_REQUEST_EVENT = 'classroom:planning-grade-vault-request';
       const COURSE_SEATPLAN_OPEN_EVENT = 'classroom:planning-course-seatplan-open';
@@ -74,6 +75,12 @@
         if (!window.parent || window.parent === window) return;
         const detail = event instanceof CustomEvent ? event.detail : null;
         window.parent.postMessage({ type: MANUAL_SAVE_STATE_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
+      });
+
+      window.addEventListener(UNSAVED_STATE_EVENT, (event) => {
+        if (!window.parent || window.parent === window) return;
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        window.parent.postMessage({ type: UNSAVED_STATE_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
       });
 
       window.addEventListener(READY_EVENT, (event) => {

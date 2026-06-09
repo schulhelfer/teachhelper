@@ -5,6 +5,7 @@ import {
   PLANNING_MANUAL_SAVE_REQUEST_EVENT,
   PLANNING_MANUAL_SAVE_STATE_EVENT,
   PLANNING_READY_EVENT,
+  PLANNING_UNSAVED_STATE_EVENT,
   TAB_GRADES,
   TAB_GROUPS,
   TAB_DUPLICATE_CHECK,
@@ -70,6 +71,85 @@ export function createShellController({
   const refreshLayouts = typeof onRefreshLayouts === 'function'
     ? onRefreshLayouts
     : (() => {});
+  let unsavedTabConfirmPromise = null;
+
+  function isPlanningTab(tab) {
+    return tab === TAB_PLANNING || tab === TAB_GRADES;
+  }
+
+  function getUnsavedAreaLabel() {
+    const unsaved = state.planningUnsavedState || {};
+    if (unsaved.planningDirty && unsaved.gradesDirty) {
+      return 'Planung und Noten';
+    }
+    if (unsaved.planningDirty) {
+      return 'Planung';
+    }
+    if (unsaved.gradesDirty) {
+      return 'Noten';
+    }
+    return 'Planung oder Noten';
+  }
+
+  function shouldConfirmPlanningTabLeave(nextTab, options = {}) {
+    if (options.skipUnsavedPrompt) return false;
+    if (!isPlanningTab(state.activeTab) || isPlanningTab(nextTab)) return false;
+    return Boolean(state.planningUnsavedState?.dirty);
+  }
+
+  function showUnsavedTabLeaveDialog() {
+    if (unsavedTabConfirmPromise) {
+      return unsavedTabConfirmPromise;
+    }
+    const dialog = els.unsavedDataDialog;
+    if (!dialog) {
+      return Promise.resolve(true);
+    }
+    const areaLabel = getUnsavedAreaLabel();
+    if (els.unsavedDataDialogText) {
+      els.unsavedDataDialogText.textContent = `In ${areaLabel} gibt es ungespeicherte Änderungen. Speichere sie, bevor du die Ansicht verlässt, oder wechsle trotzdem.`;
+    }
+    unsavedTabConfirmPromise = new Promise((resolve) => {
+      const finish = (confirmed) => {
+        els.unsavedDataDialogStay?.removeEventListener('click', onStay);
+        els.unsavedDataDialogLeave?.removeEventListener('click', onLeave);
+        dialog.removeEventListener('cancel', onCancel);
+        dialog.removeEventListener('close', onClose);
+        if (dialog.open && typeof dialog.close === 'function') {
+          dialog.close(confirmed ? 'leave' : 'stay');
+        } else {
+          dialog.removeAttribute('open');
+        }
+        unsavedTabConfirmPromise = null;
+        resolve(Boolean(confirmed));
+      };
+      const onStay = () => finish(false);
+      const onLeave = () => finish(true);
+      const onCancel = (event) => {
+        event.preventDefault();
+        finish(false);
+      };
+      const onClose = () => finish(dialog.returnValue === 'leave');
+      els.unsavedDataDialogStay?.addEventListener('click', onStay);
+      els.unsavedDataDialogLeave?.addEventListener('click', onLeave);
+      dialog.addEventListener('cancel', onCancel);
+      dialog.addEventListener('close', onClose);
+      try {
+        if (typeof dialog.showModal === 'function') {
+          if (!dialog.open) {
+            dialog.showModal();
+          }
+        } else {
+          dialog.setAttribute('open', 'open');
+        }
+      } catch (_error) {
+        finish(false);
+        return;
+      }
+      els.unsavedDataDialogStay?.focus();
+    });
+    return unsavedTabConfirmPromise;
+  }
 
   function updateSeatPreferencesTrigger() {
     const isPicker = state.activeTab === TAB_RANDOM_PICKER;
@@ -490,8 +570,19 @@ export function createShellController({
     setChromeCollapsed(!state.chromeCollapsed);
   }
 
-  function setActiveTab(tab) {
+  function setActiveTab(tab, options = {}) {
     const nextTab = normalizeTab(tab);
+    if (shouldConfirmPlanningTabLeave(nextTab, options)) {
+      if (unsavedTabConfirmPromise) {
+        return;
+      }
+      showUnsavedTabLeaveDialog().then((confirmed) => {
+        if (confirmed) {
+          setActiveTab(nextTab, { skipUnsavedPrompt: true });
+        }
+      });
+      return;
+    }
     const planningTabActive = state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES;
     const planningTabNext = nextTab === TAB_PLANNING || nextTab === TAB_GRADES;
     const skipAnimatedTabSwitch = nextTab === TAB_GROUPS
@@ -591,6 +682,20 @@ export function createShellController({
     renderPlanningGradeVaultUnlockButton();
   }
 
+  function setPlanningUnsavedState(detail = null) {
+    const nextDetail = detail && typeof detail === 'object' ? detail : {};
+    const planningDirty = Boolean(nextDetail.planningDirty);
+    const gradesDirty = Boolean(nextDetail.gradesDirty);
+    state.planningUnsavedState = {
+      dirty: Boolean(nextDetail.dirty || planningDirty || gradesDirty),
+      planningDirty,
+      gradesDirty,
+      dirtyGradeCourseIds: Array.isArray(nextDetail.dirtyGradeCourseIds)
+        ? nextDetail.dirtyGradeCourseIds.map((id) => String(id)).filter(Boolean)
+        : [],
+    };
+  }
+
   function markPlanningReady(detail = null) {
     const nextDetail = detail && typeof detail === 'object' ? detail : {};
     const mode = typeof nextDetail.gradeVaultMode === 'string' ? nextDetail.gradeVaultMode : '';
@@ -626,9 +731,21 @@ export function createShellController({
     renderPlanningManualSaveButton();
   }
 
+  function handleBeforeUnload(event) {
+    if (!state.planningUnsavedState?.dirty) {
+      return;
+    }
+    event.preventDefault();
+    event.returnValue = '';
+  }
+
   window.addEventListener(PLANNING_MANUAL_SAVE_STATE_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     setPlanningManualSaveState(detail);
+  });
+  window.addEventListener(PLANNING_UNSAVED_STATE_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    setPlanningUnsavedState(detail);
   });
   window.addEventListener(PLANNING_GRADE_VAULT_STATE_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
@@ -666,6 +783,7 @@ export function createShellController({
       window.dispatchEvent(new CustomEvent(PLANNING_MANUAL_SAVE_REQUEST_EVENT));
     });
   }
+  window.addEventListener('beforeunload', handleBeforeUnload);
 
   return {
     getActiveTab: () => state.activeTab,
@@ -684,6 +802,7 @@ export function createShellController({
     setChromeOverlayVisibility,
     setPlanningManualSaveState,
     setPlanningGradeVaultState,
+    setPlanningUnsavedState,
     markPlanningReady,
     syncChromeState,
   };

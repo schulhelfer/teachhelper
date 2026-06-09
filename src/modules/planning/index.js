@@ -12,6 +12,7 @@ import {
   PLANNING_MANUAL_SAVE_STATE_EVENT,
   PLANNING_READY_EVENT,
   PLANNING_SHELL_LAYOUT_EVENT,
+  PLANNING_UNSAVED_STATE_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
 } from '../../shell/tabs.js';
 
@@ -69,6 +70,12 @@ export function mountPlanning({ host }) {
     if (!data || typeof data !== 'object') return;
     if (data.type === PLANNING_MANUAL_SAVE_STATE_EVENT) {
       window.dispatchEvent(new CustomEvent(PLANNING_MANUAL_SAVE_STATE_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_UNSAVED_STATE_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_UNSAVED_STATE_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
       return;

@@ -12,6 +12,7 @@ export const TAB_TIMER = 'timer';
 
 export const PLANNING_MANUAL_SAVE_STATE_EVENT = 'classroom:planning-manual-save-state';
 export const PLANNING_MANUAL_SAVE_REQUEST_EVENT = 'classroom:planning-manual-save-request';
+export const PLANNING_UNSAVED_STATE_EVENT = 'classroom:planning-unsaved-state';
 export const PLANNING_VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
 export const PLANNING_READY_EVENT = 'classroom:planning-ready';
 export const PLANNING_GRADE_VAULT_STATE_EVENT = 'classroom:planning-grade-vault-state';

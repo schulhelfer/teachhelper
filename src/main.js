@@ -165,6 +165,12 @@ import { applyTheme } from './shell/theme.js';
           unlocked: false,
           setupRequired: false,
         },
+        planningUnsavedState: {
+          dirty: false,
+          planningDirty: false,
+          gradesDirty: false,
+          dirtyGradeCourseIds: [],
+        },
         chromeCollapsed: false,
         chromeTransitionState: 'idle',
         chromeTransitionTimer: 0,

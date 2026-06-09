@@ -4688,6 +4688,10 @@
       min-width: 110px;
     }
 
+    #unsaved-data-dialog {
+      max-width: min(420px, calc(100vw - 32px));
+    }
+
     #preferences-dialog {
       width: fit-content;
       min-width: 0;
@@ -5993,6 +5997,18 @@
           <button type="button" id="preferences-reset" class="ghost" hidden>Zurücksetzen</button>
           <button type="button" id="preferences-cancel" class="ghost">Abbrechen</button>
           <button type="submit" class="primary">Speichern</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="unsaved-data-dialog" aria-labelledby="unsaved-data-dialog-title">
+      <form method="dialog" class="dialog-form">
+        <h2 id="unsaved-data-dialog-title">Ungespeicherte Änderungen</h2>
+        <p id="unsaved-data-dialog-text" class="dialog-copy">
+          Es gibt ungespeicherte Änderungen.
+        </p>
+        <div class="dialog-actions">
+          <button type="button" id="unsaved-data-dialog-stay" class="ghost">Bleiben</button>
+          <button type="button" id="unsaved-data-dialog-leave" class="primary">Trotzdem wechseln</button>
         </div>
       </form>
     </dialog>
