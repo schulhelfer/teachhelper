@@ -7006,7 +7006,13 @@ class PlannerApp {
       if (!availableCourseIds.has(courseId)) {
         continue;
       }
-      const isDirty = Boolean(this.gradeVaultSession.dirtyGradeCourseIds[courseId]);
+      const hasLoadedVaultState = Number(this.gradeVaultSession.loadedGradeCourseId || 0) === courseId;
+      const hasCachedVaultState = Object.prototype.hasOwnProperty.call(
+        this.gradeVaultSession.gradeCourseCache || {},
+        courseId
+      );
+      const markedDirty = Boolean(this.gradeVaultSession.dirtyGradeCourseIds[courseId]);
+      const isDirty = markedDirty && (hasLoadedVaultState || hasCachedVaultState);
       const persistedText = isDirty ? "" : await this.ensurePersistedGradeCourseSegmentTextLoaded(courseId);
       const parsedPersistedSegment = persistedText ? parsePersistedGradeCourseSegmentText(persistedText) : null;
       const mustRewriteForEncryptionMode = Boolean(
