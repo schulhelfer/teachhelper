@@ -22,6 +22,7 @@ const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_RATIO_TOOLTIP = "Rot = Kurz vor besserer Note";
+const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
 const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
 const SYNC_META_KEY = "teachhelper-sync-meta-v1";
 const APP_DB_SCHEMA_LEGACY = "teachhelper-db-v1";
@@ -1487,6 +1488,18 @@ function normalizeGradeTextPart(value) {
   return String(value || "").trim().replace(/\s+/g, " ");
 }
 
+function normalizeGradePerformanceFlair(value) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return GRADE_STUDENT_PERFORMANCE_FLAIRS.includes(normalized) ? normalized : "";
+}
+
+function buildGradeStudentNameMatchKey(lastName, firstName) {
+  return [
+    normalizeGradeTextPart(lastName).toLocaleLowerCase("de"),
+    normalizeGradeTextPart(firstName).toLocaleLowerCase("de")
+  ].join("|");
+}
+
 function buildGradeStudentSortKey(lastName, firstName, id) {
   return [
     normalizeGradeTextPart(lastName).toLocaleLowerCase("de"),
@@ -2607,6 +2620,18 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
+function buildGradeStudentPerformanceFlairBadgeMarkup(student) {
+  const performanceFlair = normalizeGradePerformanceFlair(student && student.performanceFlair);
+  if (!performanceFlair) {
+    return "";
+  }
+  return `<span class="grades-student-flair" aria-label="Flair ${escapeHtml(performanceFlair)}">${escapeHtml(performanceFlair)}</span>`;
+}
+
+function buildGradeStudentNameInnerMarkup(student, studentName) {
+  return `${escapeHtml(studentName)}${buildGradeStudentPerformanceFlairBadgeMarkup(student)}`;
+}
+
 function buildGradePeriodKey(courseId, period = "year") {
   return `${Number(courseId) || 0}:${normalizeGradePeriod(period)}`;
 }
@@ -2718,6 +2743,166 @@ function normalizeGradeStructurePeriodCategories(source = null) {
       ? normalizeGradeStructurePeriodDraft(periodCategories.h2)
       : normalizeGradeStructurePeriodDraft(buildGradeStructureForPeriod(legacyCategories, "h2"))
   };
+}
+
+function createEmptyGradeStructureWeightOverridePeriod() {
+  return { categories: {}, subcategories: {} };
+}
+
+function normalizeGradeStructureWeightOverridePeriod(rawPeriod = null) {
+  const source = rawPeriod && typeof rawPeriod === "object" ? rawPeriod : {};
+  const normalizeMap = (rawMap) => {
+    const result = {};
+    if (!rawMap || typeof rawMap !== "object") {
+      return result;
+    }
+    Object.entries(rawMap).forEach(([key, value]) => {
+      const normalizedKey = String(key || "").trim();
+      if (!normalizedKey) {
+        return;
+      }
+      const parsedValue = Number(value);
+      if (!Number.isFinite(parsedValue) || parsedValue < 0) {
+        return;
+      }
+      const normalizedValue = normalizeGradeStructureWeight(parsedValue, 0);
+      result[normalizedKey] = normalizedValue;
+    });
+    return result;
+  };
+  return {
+    categories: normalizeMap(source.categories),
+    subcategories: normalizeMap(source.subcategories)
+  };
+}
+
+function normalizeGradeStructurePerformanceFlairWeightOverrides(rawOverrides = null) {
+  const source = rawOverrides && typeof rawOverrides === "object" ? rawOverrides : {};
+  const result = {};
+  GRADE_STUDENT_PERFORMANCE_FLAIRS.forEach((flair) => {
+    const flairSource = source[flair] && typeof source[flair] === "object" ? source[flair] : {};
+    const normalizedFlair = {};
+    ["h1", "h2"].forEach((period) => {
+      const normalizedPeriod = normalizeGradeStructureWeightOverridePeriod(flairSource[period]);
+      if (Object.keys(normalizedPeriod.categories).length > 0 || Object.keys(normalizedPeriod.subcategories).length > 0) {
+        normalizedFlair[period] = normalizedPeriod;
+      }
+    });
+    if (Object.keys(normalizedFlair).length > 0) {
+      result[flair] = normalizedFlair;
+    }
+  });
+  return result;
+}
+
+function materializeGradeStructurePerformanceFlairWeightOverrides(periodCategories, rawOverrides = null) {
+  const normalizedByPeriod = normalizeGradeStructurePeriodCategories({ periodCategories });
+  const result = normalizeGradeStructurePerformanceFlairWeightOverrides(rawOverrides);
+  GRADE_STUDENT_PERFORMANCE_FLAIRS.forEach((flair) => {
+    if (!result[flair]) {
+      result[flair] = {};
+    }
+    ["h1", "h2"].forEach((period) => {
+      const categories = normalizedByPeriod[period] || [];
+      const periodOverrides = normalizeGradeStructureWeightOverridePeriod(result[flair][period]);
+      categories.forEach((category, categoryIndex) => {
+        const categoryKey = getGradeStructureOverrideKeyForCategory(category, categoryIndex);
+        if (!Object.prototype.hasOwnProperty.call(periodOverrides.categories, categoryKey)) {
+          periodOverrides.categories[categoryKey] = normalizeGradeStructureWeight(category.weight, 1);
+        }
+        (category.subcategories || []).forEach((subcategory, subcategoryIndex) => {
+          const subcategoryKey = getGradeStructureOverrideKeyForSubcategory(subcategory, categoryIndex, subcategoryIndex);
+          if (!Object.prototype.hasOwnProperty.call(periodOverrides.subcategories, subcategoryKey)) {
+            periodOverrides.subcategories[subcategoryKey] = normalizeGradeStructureWeight(subcategory.weight, 1);
+          }
+        });
+      });
+      result[flair][period] = periodOverrides;
+    });
+  });
+  return normalizeGradeStructurePerformanceFlairWeightOverrides(result);
+}
+
+function getGradeStructureOverrideKeyForCategory(category, categoryIndex) {
+  const id = Number(category && category.id) || 0;
+  return id > 0 ? String(id) : `index:${Number(categoryIndex) || 0}`;
+}
+
+function getGradeStructureOverrideKeyForSubcategory(subcategory, categoryIndex, subcategoryIndex) {
+  const id = Number(subcategory && subcategory.id) || 0;
+  return id > 0 ? String(id) : `index:${Number(categoryIndex) || 0}:${Number(subcategoryIndex) || 0}`;
+}
+
+function getGradeStructureWeightOverrideValue(overrides, flair, period, scope, key) {
+  const normalizedFlair = normalizeGradePerformanceFlair(flair);
+  const normalizedPeriod = normalizeGradeHalfYear(period);
+  if (!normalizedFlair || !key) {
+    return null;
+  }
+  const periodOverrides = overrides?.[normalizedFlair]?.[normalizedPeriod];
+  const map = scope === "subcategory" ? periodOverrides?.subcategories : periodOverrides?.categories;
+  if (!map || !Object.prototype.hasOwnProperty.call(map, key)) {
+    return null;
+  }
+  const parsedValue = Number(map[key]);
+  return Number.isFinite(parsedValue) && parsedValue >= 0
+    ? normalizeGradeStructureWeight(parsedValue, 0)
+    : null;
+}
+
+function setGradeStructureWeightOverride(overrides, flair, period, scope, key, value) {
+  const normalizedFlair = normalizeGradePerformanceFlair(flair);
+  const normalizedPeriod = normalizeGradeHalfYear(period);
+  if (!normalizedFlair || !key) {
+    return normalizeGradeStructurePerformanceFlairWeightOverrides(overrides);
+  }
+  const next = cloneJsonValue(overrides && typeof overrides === "object" ? overrides : {}, {});
+  const normalizedValue = normalizeGradeStructureWeight(value, 0);
+  const periodOverrides = next[normalizedFlair]?.[normalizedPeriod] || createEmptyGradeStructureWeightOverridePeriod();
+  const targetMap = scope === "subcategory" ? periodOverrides.subcategories : periodOverrides.categories;
+  targetMap[key] = normalizedValue;
+  next[normalizedFlair] = {
+    ...(next[normalizedFlair] || {}),
+    [normalizedPeriod]: periodOverrides
+  };
+  return normalizeGradeStructurePerformanceFlairWeightOverrides(next);
+}
+
+function applyGradeStructurePerformanceFlairWeightOverrides(categories, overrides, flair, period) {
+  const normalizedFlair = normalizeGradePerformanceFlair(flair);
+  const normalizedPeriod = normalizeGradeHalfYear(period);
+  const sourceCategories = normalizeGradeStructurePeriodDraft(categories);
+  if (!normalizedFlair) {
+    return sourceCategories;
+  }
+  return sourceCategories.map((category, categoryIndex) => {
+    const categoryKey = getGradeStructureOverrideKeyForCategory(category, categoryIndex);
+    const categoryOverride = getGradeStructureWeightOverrideValue(
+      overrides,
+      normalizedFlair,
+      normalizedPeriod,
+      "category",
+      categoryKey
+    );
+    return {
+      ...category,
+      weight: categoryOverride === null ? category.weight : categoryOverride,
+      subcategories: (category.subcategories || []).map((subcategory, subcategoryIndex) => {
+        const subcategoryKey = getGradeStructureOverrideKeyForSubcategory(subcategory, categoryIndex, subcategoryIndex);
+        const subcategoryOverride = getGradeStructureWeightOverrideValue(
+          overrides,
+          normalizedFlair,
+          normalizedPeriod,
+          "subcategory",
+          subcategoryKey
+        );
+        return {
+          ...subcategory,
+          weight: subcategoryOverride === null ? subcategory.weight : subcategoryOverride
+        };
+      })
+    };
+  });
 }
 
 function normalizePercentWeights(items) {
@@ -3541,30 +3726,47 @@ class PlannerStore {
       .sort(compareGradeStudents);
   }
 
+  getGradeStudentPerformanceFlair(studentId, courseId = null) {
+    const id = Number(studentId) || 0;
+    const courseKey = Number(courseId) || 0;
+    const student = this.gradeVaultState.gradeStudents.find((item) => (
+      Number(item.id) === id
+      && (!courseKey || Number(item.courseId) === courseKey)
+    ));
+    return normalizeGradePerformanceFlair(student && student.performanceFlair);
+  }
+
   getGradeStructure(courseId) {
     const id = Number(courseId);
     const row = this.gradeVaultState.gradeStructures.find((item) => Number(item.courseId) === id);
     if (!row) {
-      return { courseId: id, categories: [], periodCategories: { h1: [], h2: [] } };
+      return { courseId: id, categories: [], periodCategories: { h1: [], h2: [] }, performanceFlairWeightOverrides: {} };
     }
     const periodCategories = normalizeGradeStructurePeriodCategories(row);
     return {
       courseId: id,
       categories: periodCategories.h1,
-      periodCategories
+      periodCategories,
+      performanceFlairWeightOverrides: normalizeGradeStructurePerformanceFlairWeightOverrides(row.performanceFlairWeightOverrides)
     };
   }
 
-  getGradeStructureForPeriod(courseId, period = "h1") {
+  getGradeStructureForPeriod(courseId, period = "h1", performanceFlair = "") {
     const structure = this.getGradeStructure(courseId);
     const normalizedPeriod = normalizeGradeHalfYear(period);
+    const categories = normalizeGradeStructurePeriodDraft(structure.periodCategories?.[normalizedPeriod] || structure.categories);
     return {
       courseId: structure.courseId,
-      categories: normalizeGradeStructurePeriodDraft(structure.periodCategories?.[normalizedPeriod] || structure.categories)
+      categories: applyGradeStructurePerformanceFlairWeightOverrides(
+        categories,
+        structure.performanceFlairWeightOverrides,
+        performanceFlair,
+        normalizedPeriod
+      )
     };
   }
 
-  saveGradeStructure(courseId, categoriesOrPeriodCategories) {
+  saveGradeStructure(courseId, categoriesOrPeriodCategories, performanceFlairWeightOverrides = null) {
     const id = Number(courseId);
     const sourcePeriodCategories = Array.isArray(categoriesOrPeriodCategories)
       ? normalizeGradeStructurePeriodCategories({ categories: categoriesOrPeriodCategories })
@@ -3608,16 +3810,79 @@ class PlannerStore {
       h1: h1Categories,
       h2: h2Categories
     };
-    const normalized = periodCategories.h1;
+    const remapOverridesToSavedIds = (rawOverrides) => {
+      const normalizedOverrides = materializeGradeStructurePerformanceFlairWeightOverrides(periodCategories, rawOverrides);
+      const remapped = {};
+      const resolveKey = (period, scope, key) => {
+        const rawKey = String(key || "");
+        const categories = periodCategories[period] || [];
+        if (/^\d+$/.test(rawKey) && Number(rawKey) > 0) {
+          const numericKey = Number(rawKey);
+          const exists = scope === "category"
+            ? categories.some((category) => Number(category.id) === numericKey)
+            : categories.some((category) => (
+              Array.isArray(category.subcategories)
+              && category.subcategories.some((subcategory) => Number(subcategory.id) === numericKey)
+            ));
+          return exists ? rawKey : "";
+        }
+        const parts = rawKey.split(":");
+        if (parts[0] !== "index") {
+          return "";
+        }
+        if (scope === "category") {
+          return String(Number(categories[Number(parts[1] || 0)]?.id) || "");
+        }
+        const subcategory = categories[Number(parts[1] || 0)]?.subcategories?.[Number(parts[2] || 0)];
+        return String(Number(subcategory?.id) || "");
+      };
+      GRADE_STUDENT_PERFORMANCE_FLAIRS.forEach((flair) => {
+        ["h1", "h2"].forEach((period) => {
+          const periodOverrides = normalizedOverrides?.[flair]?.[period];
+          if (!periodOverrides) {
+            return;
+          }
+          const nextPeriod = createEmptyGradeStructureWeightOverridePeriod();
+          Object.entries(periodOverrides.categories || {}).forEach(([key, value]) => {
+            const resolvedKey = resolveKey(period, "category", key);
+            const normalizedValue = normalizeGradeStructureWeight(value, 0);
+            if (resolvedKey) {
+              nextPeriod.categories[resolvedKey] = normalizedValue;
+            }
+          });
+          Object.entries(periodOverrides.subcategories || {}).forEach(([key, value]) => {
+            const resolvedKey = resolveKey(period, "subcategory", key);
+            const normalizedValue = normalizeGradeStructureWeight(value, 0);
+            if (resolvedKey) {
+              nextPeriod.subcategories[resolvedKey] = normalizedValue;
+            }
+          });
+          if (Object.keys(nextPeriod.categories).length > 0 || Object.keys(nextPeriod.subcategories).length > 0) {
+            if (!remapped[flair]) {
+              remapped[flair] = {};
+            }
+            remapped[flair][period] = nextPeriod;
+          }
+        });
+      });
+      return normalizeGradeStructurePerformanceFlairWeightOverrides(remapped);
+    };
     const existing = this.gradeVaultState.gradeStructures.find((item) => Number(item.courseId) === id);
+    const sourceOverrides = performanceFlairWeightOverrides === null
+      ? existing?.performanceFlairWeightOverrides
+      : performanceFlairWeightOverrides;
+    const normalizedOverrides = remapOverridesToSavedIds(sourceOverrides);
+    const normalized = periodCategories.h1;
     if (existing) {
       existing.categories = normalized;
       existing.periodCategories = periodCategories;
+      existing.performanceFlairWeightOverrides = normalizedOverrides;
     } else {
       this.gradeVaultState.gradeStructures.push({
         courseId: id,
         categories: normalized,
-        periodCategories
+        periodCategories,
+        performanceFlairWeightOverrides: normalizedOverrides
       });
     }
     const buildValidity = (categories) => ({
@@ -3709,6 +3974,7 @@ class PlannerStore {
     for (const rawStudent of students || []) {
       const lastName = normalizeGradeTextPart(rawStudent && rawStudent.lastName);
       const firstName = normalizeGradeTextPart(rawStudent && rawStudent.firstName);
+      const performanceFlair = normalizeGradePerformanceFlair(rawStudent && rawStudent.performanceFlair);
       if (!lastName && !firstName) {
         continue;
       }
@@ -3726,6 +3992,7 @@ class PlannerStore {
         courseId: id,
         lastName,
         firstName,
+        performanceFlair,
         sortKey: buildGradeStudentSortKey(lastName, firstName, studentId)
       });
     }
@@ -4320,7 +4587,11 @@ class PlannerStore {
       }
       return null;
     }
-    const structure = this.getGradeStructureForPeriod(courseId, normalizedPeriod);
+    const structure = this.getGradeStructureForPeriod(
+      courseId,
+      normalizedPeriod,
+      this.getGradeStudentPerformanceFlair(studentId, courseId)
+    );
     const categoryKey = Number(categoryId);
     const category = (Array.isArray(structure.categories) ? structure.categories : []).find((item) => Number(item.id) === categoryKey);
     if (!category) {
@@ -4376,7 +4647,11 @@ class PlannerStore {
     }
     let weightedSum = 0;
     let weightSum = 0;
-    const structure = this.getGradeStructureForPeriod(courseId, normalizedPeriod);
+    const structure = this.getGradeStructureForPeriod(
+      courseId,
+      normalizedPeriod,
+      this.getGradeStudentPerformanceFlair(studentId, courseId)
+    );
     (Array.isArray(structure.categories) ? structure.categories : []).forEach((category) => {
       const partial = this.calculateGradeForStudentInCategoryPeriod(studentId, courseId, category.id, normalizedPeriod);
       if (partial === null) {
@@ -5602,7 +5877,8 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
       return {
         courseId: Number(item.courseId),
         categories: periodCategories.h1,
-        periodCategories
+        periodCategories,
+        performanceFlairWeightOverrides: normalizeGradeStructurePerformanceFlairWeightOverrides(item.performanceFlairWeightOverrides)
       };
     }) : [],
     gradeAssessments: Array.isArray(source.gradeAssessments) ? source.gradeAssessments.map((raw) => {
@@ -5636,11 +5912,13 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
       const courseId = Number(item.courseId);
       const lastName = normalizeGradeTextPart(item.lastName);
       const firstName = normalizeGradeTextPart(item.firstName);
+      const performanceFlair = normalizeGradePerformanceFlair(item.performanceFlair);
       return {
         id,
         courseId,
         lastName,
         firstName,
+        performanceFlair,
         sortKey: buildGradeStudentSortKey(lastName, firstName, id)
       };
     }) : [],
@@ -5994,6 +6272,7 @@ class PlannerApp {
       courseStructureDialogTitle: document.querySelector("#course-structure-dialog-title"),
       courseStructureDialogId: document.querySelector("#course-structure-dialog-id"),
       courseDialogStructurePeriodToggle: document.querySelector("#course-dialog-structure-period-toggle"),
+      courseDialogStructureFlairSelect: document.querySelector("#course-dialog-structure-flair-select"),
       courseDialogCopyH1ToH2: document.querySelector("#course-dialog-copy-h1-to-h2"),
       courseDialogStudentsFile: document.querySelector("#course-dialog-students-file"),
       courseDialogStudentsPick: document.querySelector("#course-dialog-students-pick"),
@@ -6542,7 +6821,11 @@ class PlannerApp {
         .filter((row) => Number(row.courseId) === courseKey)
         .map((row) => ({
           categories: cloneJsonValue(row.categories, []),
-          periodCategories: cloneJsonValue(row.periodCategories, null)
+          periodCategories: cloneJsonValue(row.periodCategories, null),
+          performanceFlairWeightOverrides: cloneJsonValue(
+            normalizeGradeStructurePerformanceFlairWeightOverrides(row.performanceFlairWeightOverrides),
+            {}
+          )
         })),
       gradeAssessments: state.gradeAssessments
         .filter((row) => Number(row.courseId) === courseKey)
@@ -6570,7 +6853,8 @@ class PlannerApp {
         .map((row) => ({
           id: Number(row.id) || 0,
           lastName: String(row.lastName || ""),
-          firstName: String(row.firstName || "")
+          firstName: String(row.firstName || ""),
+          performanceFlair: normalizeGradePerformanceFlair(row.performanceFlair)
         })),
       gradeEntries: cloneJsonValue(state.gradeEntries, []),
       gradeOverrides: state.gradeOverrides
@@ -6617,7 +6901,11 @@ class PlannerApp {
       ? source.gradeStructures.map((row) => ({
         courseId: courseKey,
         categories: cloneJsonValue(row?.categories, []),
-        periodCategories: cloneJsonValue(row?.periodCategories, null)
+        periodCategories: cloneJsonValue(row?.periodCategories, null),
+        performanceFlairWeightOverrides: cloneJsonValue(
+          normalizeGradeStructurePerformanceFlairWeightOverrides(row?.performanceFlairWeightOverrides),
+          {}
+        )
       }))
       : [];
     runtimeState.gradeAssessments = Array.isArray(source.gradeAssessments)
@@ -6629,7 +6917,8 @@ class PlannerApp {
     runtimeState.gradeStudents = Array.isArray(source.gradeStudents)
       ? source.gradeStudents.map((row) => ({
         ...cloneJsonValue(row, {}),
-        courseId: courseKey
+        courseId: courseKey,
+        performanceFlair: normalizeGradePerformanceFlair(row?.performanceFlair)
       }))
       : [];
     runtimeState.gradeEntries = cloneJsonValue(Array.isArray(source.gradeEntries) ? source.gradeEntries : [], []);
@@ -10343,11 +10632,17 @@ class PlannerApp {
       students: students.map((student) => ({
         id: Number(student.id),
         lastName: String(student.lastName || ""),
-        firstName: String(student.firstName || "")
+        firstName: String(student.firstName || ""),
+        performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair)
       })),
       structurePeriod: "h1",
+      structurePerformanceFlair: "",
       periodCategories: hasPeriodCategories ? periodCategories : defaultPeriodCategories,
       categories: hasPeriodCategories ? periodCategories.h1 : defaultPeriodCategories.h1,
+      performanceFlairWeightOverrides: materializeGradeStructurePerformanceFlairWeightOverrides(
+        hasPeriodCategories ? periodCategories : defaultPeriodCategories,
+        structure.performanceFlairWeightOverrides
+      ),
       importMeta: importMeta ? { ...importMeta, replacesExisting: false } : null
     };
   }
@@ -10360,12 +10655,22 @@ class PlannerApp {
     this.refs.courseDialogStudentsList.innerHTML = "";
     if (students.length > 0) {
       students.forEach((student, index) => {
+        const performanceFlair = normalizeGradePerformanceFlair(student.performanceFlair);
+        const flairOptions = [
+          `<option value=""${performanceFlair ? "" : " selected"}>-</option>`,
+          ...GRADE_STUDENT_PERFORMANCE_FLAIRS.map((flair) => (
+            `<option value="${flair}"${performanceFlair === flair ? " selected" : ""}>${flair}</option>`
+          ))
+        ].join("");
         const row = document.createElement("div");
         row.className = "course-dialog-student-row";
         row.innerHTML = `
           <div class="course-dialog-student-grid">
             <input type="text" name="student-last-name-${index}" data-student-field="lastName" data-student-index="${index}" value="${String(student.lastName || "").replace(/"/g, "&quot;")}" placeholder="Nachname" autocomplete="off">
             <input type="text" name="student-first-name-${index}" data-student-field="firstName" data-student-index="${index}" value="${String(student.firstName || "").replace(/"/g, "&quot;")}" placeholder="Vorname" autocomplete="off">
+            <select name="student-performance-flair-${index}" class="course-dialog-student-flair-select${performanceFlair ? " has-flair" : ""}" data-student-field="performanceFlair" data-student-index="${index}" aria-label="Flair für Teilnehmende">
+              ${flairOptions}
+            </select>
             <button type="button" class="ghost" data-student-remove="${index}" aria-label="Teilnehmende entfernen" title="Teilnehmende entfernen">🗑️</button>
           </div>
         `;
@@ -10399,12 +10704,62 @@ class PlannerApp {
     return this.courseDialogDraft.periodCategories[normalizedPeriod];
   }
 
+  getCourseDialogStructurePerformanceFlair() {
+    return normalizeGradePerformanceFlair(this.courseDialogDraft?.structurePerformanceFlair);
+  }
+
+  getCourseDialogStructureWeightDisplayValue(item, period, scope, categoryIndex, subcategoryIndex = null) {
+    const standardValue = normalizeGradeStructureWeight(item && item.weight, 1);
+    const performanceFlair = this.getCourseDialogStructurePerformanceFlair();
+    if (!performanceFlair) {
+      return standardValue;
+    }
+    const key = scope === "subcategory"
+      ? getGradeStructureOverrideKeyForSubcategory(item, categoryIndex, subcategoryIndex)
+      : getGradeStructureOverrideKeyForCategory(item, categoryIndex);
+    const overrideValue = getGradeStructureWeightOverrideValue(
+      this.courseDialogDraft?.performanceFlairWeightOverrides,
+      performanceFlair,
+      period,
+      scope,
+      key
+    );
+    return overrideValue === null ? standardValue : overrideValue;
+  }
+
+  setCourseDialogStructureWeightValue(item, period, scope, categoryIndex, subcategoryIndex, value) {
+    const performanceFlair = this.getCourseDialogStructurePerformanceFlair();
+    if (!performanceFlair) {
+      item.weight = value;
+      return;
+    }
+    const key = scope === "subcategory"
+      ? getGradeStructureOverrideKeyForSubcategory(item, categoryIndex, subcategoryIndex)
+      : getGradeStructureOverrideKeyForCategory(item, categoryIndex);
+    this.courseDialogDraft.performanceFlairWeightOverrides = setGradeStructureWeightOverride(
+      this.courseDialogDraft.performanceFlairWeightOverrides,
+      performanceFlair,
+      period,
+      scope,
+      key,
+      value
+    );
+  }
+
   renderCourseDialogStructure() {
     if (!this.refs.courseDialogStructureList || !this.courseDialogDraft) {
       return;
     }
     const period = normalizeGradeHalfYear(this.courseDialogDraft.structurePeriod || "h1");
     this.courseDialogDraft.structurePeriod = period;
+    this.courseDialogDraft.structurePerformanceFlair = this.getCourseDialogStructurePerformanceFlair();
+    if (this.refs.courseDialogStructureFlairSelect) {
+      this.refs.courseDialogStructureFlairSelect.value = this.courseDialogDraft.structurePerformanceFlair;
+      this.refs.courseDialogStructureFlairSelect.classList.toggle(
+        "has-flair",
+        Boolean(this.courseDialogDraft.structurePerformanceFlair)
+      );
+    }
     this.refs.courseDialogStructurePeriodToggle
       ?.querySelectorAll("input[data-course-structure-period='1']")
       .forEach((input) => {
@@ -10425,7 +10780,7 @@ class PlannerApp {
         <div class="course-dialog-subcategory-row">
           <input type="text" name="subcategory-name-${categoryIndex}-${subcategoryIndex}" data-structure-field="subcategory-name" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(subcategory.name || "").replace(/"/g, "&quot;")}" placeholder="Unterkategorie" autocomplete="off">
           <label class="course-dialog-weight-field" aria-label="Unterkategorie-Gewichtung in Prozent">
-            <input type="number" name="subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(getGradeStructurePeriodWeight(subcategory, period)).replace(/"/g, "&quot;")}" aria-label="Unterkategorie-Gewichtung in Prozent">
+            <input type="number" name="subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(this.getCourseDialogStructureWeightDisplayValue(subcategory, period, "subcategory", categoryIndex, subcategoryIndex)).replace(/"/g, "&quot;")}" aria-label="Unterkategorie-Gewichtung in Prozent">
             <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
           </label>
           <button type="button" class="ghost" data-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
@@ -10435,7 +10790,7 @@ class PlannerApp {
         <div class="course-dialog-category-head">
           <input type="text" name="category-name-${categoryIndex}" data-structure-field="category-name" data-category-index="${categoryIndex}" value="${String(category.name || "").replace(/"/g, "&quot;")}" placeholder="Kategorie" autocomplete="off">
           <label class="course-dialog-weight-field" aria-label="Kategorie-Gewichtung in Prozent">
-            <input type="number" name="category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-structure-field="category-weight" data-category-index="${categoryIndex}" value="${String(getGradeStructurePeriodWeight(category, period)).replace(/"/g, "&quot;")}" aria-label="Kategorie-Gewichtung in Prozent">
+            <input type="number" name="category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-structure-field="category-weight" data-category-index="${categoryIndex}" value="${String(this.getCourseDialogStructureWeightDisplayValue(category, period, "category", categoryIndex)).replace(/"/g, "&quot;")}" aria-label="Kategorie-Gewichtung in Prozent">
             <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
           </label>
           <button type="button" class="ghost" data-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
@@ -10453,7 +10808,7 @@ class PlannerApp {
     if (!this.courseDialogDraft) {
       return;
     }
-    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "" });
+    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", performanceFlair: "" });
     this.renderCourseDialogStudents();
   }
 
@@ -10471,17 +10826,23 @@ class PlannerApp {
   }
 
   handleCourseDialogStudentListInput(event) {
-    const input = event.target.closest("input[data-student-field][data-student-index]");
+    const input = event.target.closest("input[data-student-field][data-student-index], select[data-student-field][data-student-index]");
     if (!input || !this.courseDialogDraft) {
       return;
     }
     const index = Number(input.dataset.studentIndex || -1);
     const field = String(input.dataset.studentField || "");
     const student = this.courseDialogDraft.students[index];
-    if (!student || !["lastName", "firstName"].includes(field)) {
+    if (!student || !["lastName", "firstName", "performanceFlair"].includes(field)) {
       return;
     }
-    student[field] = String(input.value || "");
+    student[field] = field === "performanceFlair"
+      ? normalizeGradePerformanceFlair(input.value)
+      : String(input.value || "");
+    if (field === "performanceFlair") {
+      input.value = student[field];
+      input.classList.toggle("has-flair", Boolean(student[field]));
+    }
   }
 
   handleCourseDialogStudentListClick(event) {
@@ -10514,7 +10875,14 @@ class PlannerApp {
       return;
     }
     if (field === "category-weight") {
-      category.weight = input.value;
+      this.setCourseDialogStructureWeightValue(
+        category,
+        this.courseDialogDraft.structurePeriod || "h1",
+        "category",
+        categoryIndex,
+        null,
+        input.value
+      );
       return;
     }
     const subcategory = category.subcategories[subcategoryIndex];
@@ -10524,8 +10892,26 @@ class PlannerApp {
     if (field === "subcategory-name") {
       subcategory.name = String(input.value || "");
     } else if (field === "subcategory-weight") {
-      subcategory.weight = input.value;
+      this.setCourseDialogStructureWeightValue(
+        subcategory,
+        this.courseDialogDraft.structurePeriod || "h1",
+        "subcategory",
+        categoryIndex,
+        subcategoryIndex,
+        input.value
+      );
     }
+  }
+
+  commitCourseDialogStructureInputs() {
+    if (!this.refs.courseDialogStructureList || !this.courseDialogDraft) {
+      return;
+    }
+    this.refs.courseDialogStructureList
+      .querySelectorAll("input[data-structure-field]")
+      .forEach((input) => {
+        this.handleCourseDialogStructureInput({ target: input });
+      });
   }
 
   handleCourseDialogStructurePeriodChange(event) {
@@ -10534,6 +10920,15 @@ class PlannerApp {
       return;
     }
     this.courseDialogDraft.structurePeriod = normalizeGradeHalfYear(input.value);
+    this.renderCourseDialogStructure();
+  }
+
+  handleCourseDialogStructureFlairChange(event) {
+    const select = event.target.closest("select[data-course-structure-flair='1']");
+    if (!select || !this.courseDialogDraft) {
+      return;
+    }
+    this.courseDialogDraft.structurePerformanceFlair = normalizeGradePerformanceFlair(select.value);
     this.renderCourseDialogStructure();
   }
 
@@ -10585,46 +10980,80 @@ class PlannerApp {
     }
   }
 
-  validateCourseDialogStructure(periodCategories) {
+  validateCourseDialogStructure(periodCategories, performanceFlairWeightOverrides = null) {
     const normalizedByPeriod = normalizeGradeStructurePeriodCategories({ periodCategories });
-    for (const period of ["h1", "h2"]) {
-      const periodLabel = getGradePeriodLabel(period);
-      const normalized = normalizedByPeriod[period];
-      const categoryWeightSum = Number(
-        normalized.reduce((sum, category) => sum + normalizeGradeStructureWeight(category.weight, 1), 0).toFixed(2)
-      );
-      for (const category of normalized) {
-        if (!category.name) {
-          return { ok: false, message: `Kategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
-        }
-        if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
-          return { ok: false, message: `Jede Kategorie in ${periodLabel} braucht mindestens eine Unterkategorie.`, tab: "structure" };
-        }
-        const categoryWeight = normalizeGradeStructureWeight(category.weight, 1);
-        if (!(categoryWeight >= 0) || categoryWeight > 100) {
-          return { ok: false, message: `Kategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
-        }
-        const subcategoryWeightSum = Number(
-          category.subcategories.reduce((sum, subcategory) => sum + normalizeGradeStructureWeight(subcategory.weight, 1), 0).toFixed(2)
+    const normalizedOverrides = materializeGradeStructurePerformanceFlairWeightOverrides(
+      normalizedByPeriod,
+      performanceFlairWeightOverrides
+    );
+    const validateByPeriod = (categoriesByPeriod, labelSuffix = "") => {
+      for (const period of ["h1", "h2"]) {
+        const periodLabel = `${getGradePeriodLabel(period)}${labelSuffix}`;
+        const normalized = categoriesByPeriod[period];
+        const categoryWeightSum = Number(
+          normalized.reduce((sum, category) => sum + normalizeGradeStructureWeight(category.weight, 1), 0).toFixed(2)
         );
-        for (const subcategory of category.subcategories) {
-          if (!subcategory.name) {
-            return { ok: false, message: `Unterkategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
+        for (const category of normalized) {
+          if (!category.name) {
+            return { ok: false, message: `Kategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
           }
-          const subcategoryWeight = normalizeGradeStructureWeight(subcategory.weight, 1);
-          if (!(subcategoryWeight >= 0) || subcategoryWeight > 100) {
-            return { ok: false, message: `Unterkategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
+          if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
+            return { ok: false, message: `Jede Kategorie in ${periodLabel} braucht mindestens eine Unterkategorie.`, tab: "structure" };
+          }
+          const categoryWeight = normalizeGradeStructureWeight(category.weight, 1);
+          if (!(categoryWeight >= 0) || categoryWeight > 100) {
+            return { ok: false, message: `Kategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
+          }
+          const subcategoryWeightSum = Number(
+            category.subcategories.reduce((sum, subcategory) => sum + normalizeGradeStructureWeight(subcategory.weight, 1), 0).toFixed(2)
+          );
+          for (const subcategory of category.subcategories) {
+            if (!subcategory.name) {
+              return { ok: false, message: `Unterkategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
+            }
+            const subcategoryWeight = normalizeGradeStructureWeight(subcategory.weight, 1);
+            if (!(subcategoryWeight >= 0) || subcategoryWeight > 100) {
+              return { ok: false, message: `Unterkategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
+            }
+          }
+          if (Math.abs(subcategoryWeightSum - 100) > 0.01) {
+            return { ok: false, message: `Die Unterkategorien von "${category.name}" müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
           }
         }
-        if (Math.abs(subcategoryWeightSum - 100) > 0.01) {
-          return { ok: false, message: `Die Unterkategorien von "${category.name}" müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
+        if (Math.abs(categoryWeightSum - 100) > 0.01) {
+          return { ok: false, message: `Die Kategorien müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
         }
       }
-      if (Math.abs(categoryWeightSum - 100) > 0.01) {
-        return { ok: false, message: `Die Kategorien müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
+      return { ok: true };
+    };
+    const standardValidation = validateByPeriod(normalizedByPeriod);
+    if (!standardValidation.ok) {
+      return standardValidation;
+    }
+    for (const flair of GRADE_STUDENT_PERFORMANCE_FLAIRS) {
+      if (!normalizedOverrides[flair]) {
+        continue;
+      }
+      const effectiveByPeriod = {
+        h1: applyGradeStructurePerformanceFlairWeightOverrides(
+          normalizedByPeriod.h1,
+          normalizedOverrides,
+          flair,
+          "h1"
+        ),
+        h2: applyGradeStructurePerformanceFlairWeightOverrides(
+          normalizedByPeriod.h2,
+          normalizedOverrides,
+          flair,
+          "h2"
+        )
+      };
+      const validation = validateByPeriod(effectiveByPeriod, ` · ${flair}`);
+      if (!validation.ok) {
+        return validation;
       }
     }
-    return { ok: true, periodCategories: normalizedByPeriod };
+    return { ok: true, periodCategories: normalizedByPeriod, performanceFlairWeightOverrides: normalizedOverrides };
   }
 
   validateCourseDialogStudents(students) {
@@ -10632,7 +11061,8 @@ class PlannerApp {
       .map((student) => ({
         id: Number(student && student.id) || 0,
         lastName: normalizeGradeTextPart(student && student.lastName),
-        firstName: normalizeGradeTextPart(student && student.firstName)
+        firstName: normalizeGradeTextPart(student && student.firstName),
+        performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair)
       }))
       .filter((student) => student.lastName || student.firstName)
       .sort(compareGradeStudents);
@@ -11070,12 +11500,20 @@ class PlannerApp {
     if (!this.gradeVaultSession.planningPublicLoaded) {
       await this.ensurePlanningPublicLoaded();
     }
-    const structureValidation = this.validateCourseDialogStructure(this.courseDialogDraft.periodCategories);
+    this.commitCourseDialogStructureInputs();
+    const structureValidation = this.validateCourseDialogStructure(
+      this.courseDialogDraft.periodCategories,
+      this.courseDialogDraft.performanceFlairWeightOverrides
+    );
     if (!structureValidation.ok) {
       await this.showInfoMessage(structureValidation.message);
       return;
     }
-    this.store.saveGradeStructure(id, structureValidation.periodCategories);
+    this.store.saveGradeStructure(
+      id,
+      structureValidation.periodCategories,
+      structureValidation.performanceFlairWeightOverrides
+    );
     this.closeCourseStructureDialog();
     this.renderAll();
   }
@@ -11221,6 +11659,27 @@ class PlannerApp {
     const lastIndex = findIndex(["nachname", "name", "surname", "last", "familienname"]);
     const firstIndex = findIndex(["vorname", "firstname", "first", "givenname", "rufname"]);
     const combinedIndex = normalizedHeader.findIndex((cell) => ["schüler", "schueler", "student", "lernende", "lernender"].includes(cell));
+    const draftStudents = Array.isArray(this.courseDialogDraft?.students) ? this.courseDialogDraft.students : [];
+    const existingStudents = draftStudents.length > 0
+      ? draftStudents
+      : (this.courseDialogDraft?.id ? this.store.listGradeStudents(this.courseDialogDraft.id) : []);
+    const existingFlairByNameKey = new Map();
+    const duplicateNameKeys = new Set();
+    (existingStudents || []).forEach((student) => {
+      const lastName = normalizeGradeTextPart(student && student.lastName);
+      const firstName = normalizeGradeTextPart(student && student.firstName);
+      if (!lastName && !firstName) {
+        return;
+      }
+      const key = buildGradeStudentNameMatchKey(lastName, firstName);
+      if (existingFlairByNameKey.has(key)) {
+        duplicateNameKeys.add(key);
+        existingFlairByNameKey.delete(key);
+        return;
+      }
+      existingFlairByNameKey.set(key, normalizeGradePerformanceFlair(student && student.performanceFlair));
+    });
+    duplicateNameKeys.forEach((key) => existingFlairByNameKey.delete(key));
     const students = [];
     dataRows.forEach((row) => {
       let lastName = "";
@@ -11246,7 +11705,18 @@ class PlannerApp {
       if (!lastName && !firstName) {
         return;
       }
-      students.push({ id: 0, lastName, firstName });
+      const performanceFlair = existingFlairByNameKey.get(buildGradeStudentNameMatchKey(lastName, firstName)) || "";
+      students.push({ id: 0, lastName, firstName, performanceFlair });
+    });
+    const importedNameCounts = new Map();
+    students.forEach((student) => {
+      const key = buildGradeStudentNameMatchKey(student.lastName, student.firstName);
+      importedNameCounts.set(key, (importedNameCounts.get(key) || 0) + 1);
+    });
+    students.forEach((student) => {
+      if ((importedNameCounts.get(buildGradeStudentNameMatchKey(student.lastName, student.firstName)) || 0) > 1) {
+        student.performanceFlair = "";
+      }
     });
     return {
       students: students.sort(compareGradeStudents),
@@ -13658,6 +14128,9 @@ class PlannerApp {
     this.refs.courseDialogStudentsList?.addEventListener("input", (event) => {
       this.handleCourseDialogStudentListInput(event);
     });
+    this.refs.courseDialogStudentsList?.addEventListener("change", (event) => {
+      this.handleCourseDialogStudentListInput(event);
+    });
     this.refs.courseDialogStudentsList?.addEventListener("click", (event) => {
       this.handleCourseDialogStudentListClick(event);
     });
@@ -13667,11 +14140,17 @@ class PlannerApp {
     this.refs.courseDialogStructureList?.addEventListener("input", (event) => {
       this.handleCourseDialogStructureInput(event);
     });
+    this.refs.courseDialogStructureList?.addEventListener("change", (event) => {
+      this.handleCourseDialogStructureInput(event);
+    });
     this.refs.courseDialogStructureList?.addEventListener("click", (event) => {
       this.handleCourseDialogStructureClick(event);
     });
     this.refs.courseDialogStructurePeriodToggle?.addEventListener("change", (event) => {
       this.handleCourseDialogStructurePeriodChange(event);
+    });
+    this.refs.courseDialogStructureFlairSelect?.addEventListener("change", (event) => {
+      this.handleCourseDialogStructureFlairChange(event);
     });
     this.refs.courseDialogCopyH1ToH2?.addEventListener("click", () => {
       this.copyCourseDialogH1StructureToH2();
@@ -18283,7 +18762,11 @@ class PlannerApp {
       }
       return null;
     }
-    const structure = this.store.getGradeStructureForPeriod(courseId, normalizedPeriod);
+    const structure = this.store.getGradeStructureForPeriod(
+      courseId,
+      normalizedPeriod,
+      this.store.getGradeStudentPerformanceFlair(studentId, courseId)
+    );
     const category = (Array.isArray(structure.categories) ? structure.categories : [])
       .find((item) => Number(item.id) === Number(categoryId));
     if (!category) {
@@ -18338,7 +18821,11 @@ class PlannerApp {
       }
       return null;
     }
-    const structure = this.store.getGradeStructureForPeriod(courseId, normalizedPeriod);
+    const structure = this.store.getGradeStructureForPeriod(
+      courseId,
+      normalizedPeriod,
+      this.store.getGradeStudentPerformanceFlair(studentId, courseId)
+    );
     let weightedSum = 0;
     let weightSum = 0;
     (Array.isArray(structure.categories) ? structure.categories : []).forEach((category) => {
@@ -20146,7 +20633,7 @@ class PlannerApp {
       const studentCell = document.createElement("td");
       studentCell.className = "student-col";
       const studentName = this.getGradeStudentDisplayName(student);
-      studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(studentName)}">${escapeHtml(studentName)}</div>`;
+      studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(studentName)}">${buildGradeStudentNameInnerMarkup(student, studentName)}</div>`;
       tr.append(studentCell);
       const totalCell = document.createElement("td");
       totalCell.className = "grade-total-col";
@@ -20226,7 +20713,7 @@ class PlannerApp {
       const isActive = student.id > 0 && student.id === Number(this.activeGradeStudentId || 0);
       const studentCell = document.createElement("td");
       studentCell.className = "student-col";
-      studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : escapeHtml(studentName)}</div>`;
+      studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : buildGradeStudentNameInnerMarkup(student, studentName)}</div>`;
       tr.append(studentCell);
       const gradeCell = document.createElement("td");
       gradeCell.className = "grade-assessment-col";
@@ -20618,7 +21105,7 @@ class PlannerApp {
       const isActive = student.id > 0 && student.id === Number(this.activeGradeStudentId || 0);
       const studentCell = document.createElement("td");
       studentCell.className = "student-col";
-      studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : escapeHtml(studentName)}</div>`;
+      studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : buildGradeStudentNameInnerMarkup(student, studentName)}</div>`;
       tr.append(studentCell);
       const entry = assessment
         ? this.store.getGradeEntry(student.id, assessment.id)
@@ -21012,7 +21499,7 @@ class PlannerApp {
       const studentName = this.getGradeStudentDisplayName(student);
       const studentCell = document.createElement("td");
       studentCell.className = "student-col";
-      studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(studentName)}">${escapeHtml(studentName)}</div>`;
+      studentCell.innerHTML = `<div class="grades-student-name" data-student-label="${escapeHtml(studentName)}">${buildGradeStudentNameInnerMarkup(student, studentName)}</div>`;
       tr.append(studentCell);
       const partialCell = document.createElement("td");
       partialCell.className = "grade-partial-col";
@@ -21613,8 +22100,8 @@ class PlannerApp {
             : "";
           const privacyBlurredClass = isPrivacyBlurred ? " is-privacy-blurred" : "";
           const privacyClass = isPrivacyFocused ? " is-privacy-focused" : "";
-          const nameButtonMarkup = `<button type="button" class="grades-student-name is-clickable${activeClass}${privacyBlurredClass}${privacyClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
-          td.innerHTML = nameButtonMarkup;
+          const nameButtonMarkup = `<button type="button" class="grades-student-name is-clickable${activeClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
+          td.innerHTML = `<div class="grades-student-name-wrap${privacyBlurredClass}${privacyClass}">${nameButtonMarkup}${buildGradeStudentPerformanceFlairBadgeMarkup(student)}</div>`;
           tr.append(td);
           return;
         }
@@ -24289,7 +24776,7 @@ class PlannerApp {
         id: String(Number(student.id) || ""),
         first: String(student.firstName || ""),
         last: String(student.lastName || ""),
-        performanceFlair: "",
+        performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair),
         buddies: [],
         foes: []
       }))
