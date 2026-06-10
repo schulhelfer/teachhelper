@@ -20,6 +20,7 @@ const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
+const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_RATIO_TOOLTIP = "Rot = Kurz vor besserer Note";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
@@ -1928,6 +1929,7 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
       id,
       title: normalizeGradeTextPart(item.title) || `Aufgabe ${result.length + 1}`,
       maxBe: parsedMaxBe.valid && parsedMaxBe.value !== null ? parsedMaxBe.value : null,
+      afb: normalizeGradeTestAfb(item.afb),
       sortOrder: Number(item.sortOrder || index + 1)
     });
     return result;
@@ -1937,6 +1939,7 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
       id: "1",
       title: "Aufgabe 1",
       maxBe: null,
+      afb: "",
       sortOrder: 1
     });
   }
@@ -1944,6 +1947,16 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
     ...task,
     sortOrder: index + 1
   }));
+}
+
+function buildGradeTestAfbOptionsMarkup(selectedValue = "") {
+  const selectedAfb = normalizeGradeTestAfb(selectedValue);
+  return [
+    `<option value=""${selectedAfb ? "" : " selected"}></option>`,
+    ...GRADE_TEST_AFB_OPTIONS.map((option) => (
+      `<option value="${escapeHtml(option)}"${selectedAfb === option ? " selected" : ""}>${escapeHtml(option)}</option>`
+    ))
+  ].join("");
 }
 
 function getNextGradeTestTaskId(tasks = []) {
@@ -2304,6 +2317,11 @@ function normalizeGradeDisplaySystem(value) {
   return String(value || "").trim().toLowerCase() === GRADE_DISPLAY_SYSTEM_SCHOOL
     ? GRADE_DISPLAY_SYSTEM_SCHOOL
     : GRADE_DISPLAY_SYSTEM_DEFAULT;
+}
+
+function normalizeGradeTestAfb(value) {
+  const text = String(value || "").trim().toUpperCase();
+  return GRADE_TEST_AFB_OPTIONS.includes(text) ? text : "";
 }
 
 function normalizeLessonTimeValue(value) {
@@ -13586,7 +13604,7 @@ class PlannerApp {
       return;
     }
 
-    const testTaskInput = event.target.closest("input[data-grade-test-task-field]");
+    const testTaskInput = event.target.closest("[data-grade-test-task-field]");
     if (testTaskInput) {
       if (this.updateGradeTestTaskFromInput(testTaskInput)) {
         this.markGradesEntryDraftDirty();
@@ -15392,7 +15410,7 @@ class PlannerApp {
         ? event.target.closest("input[data-grade-input='1']:not(:disabled)")
         : null;
       const activeGradeTestTaskInputTarget = event.target instanceof Element
-        ? event.target.closest("input[data-grade-test-task-field]:not(:disabled)")
+        ? event.target.closest("[data-grade-test-task-field]:not(:disabled)")
         : null;
       const gradeActivationTarget = event.target instanceof Element
         ? event.target.closest(
@@ -18107,7 +18125,7 @@ class PlannerApp {
       return true;
     }
     const requireValue = Boolean(options.requireValue);
-    const testTaskInputs = [...root.querySelectorAll("input[data-grade-test-task-field]")];
+    const testTaskInputs = [...root.querySelectorAll("[data-grade-test-task-field]")];
     for (const input of testTaskInputs) {
       if (!this.updateGradeTestTaskFromInput(input, { requireValue })) {
         if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
@@ -18368,9 +18386,7 @@ class PlannerApp {
       this.updateSidebarGradeDisplaySystemToggleState();
       return;
     }
-    const isGradesOverview = this.currentView === "grades"
-      && this.normalizeGradesSubView(this.gradesSubView) === "overview";
-    if (!isGradesOverview || this.locked) {
+    if (!this.shouldShowSidebarGradeDisplaySystemToggle() || this.locked) {
       this.updateSidebarGradeDisplaySystemToggleState();
       return;
     }
@@ -18448,6 +18464,28 @@ class PlannerApp {
     }
     const subView = this.normalizeGradesSubView(this.gradesSubView);
     return subView === "overview" || subView === "entry";
+  }
+
+  shouldShowSidebarGradeDisplaySystemToggle() {
+    if (!this.isGradesTopTabActive() || this.currentView !== "grades") {
+      return false;
+    }
+    const subView = this.normalizeGradesSubView(this.gradesSubView);
+    if (subView === "overview") {
+      return true;
+    }
+    if (subView !== "entry") {
+      return false;
+    }
+    const modeInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked");
+    if (modeInput) {
+      return normalizeGradeAssessmentMode(modeInput.value) === "test";
+    }
+    const activeAssessment = this.getGradesEntryActiveAssessment(this.selectedCourseId);
+    if (activeAssessment) {
+      return this.isTestAssessment(activeAssessment);
+    }
+    return normalizeGradeAssessmentMode(this.gradesEntryDraft?.mode) === "test";
   }
 
   updateSidebarGradeSimulationButtonState() {
@@ -19046,15 +19084,13 @@ class PlannerApp {
     if (!actions || !button) {
       return;
     }
-    const isGradesOverview = this.isGradesTopTabActive()
-      && this.currentView === "grades"
-      && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+    const isAvailable = this.shouldShowSidebarGradeDisplaySystemToggle();
     const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
     const isSchoolDisplay = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
-    const canToggle = isGradesOverview && !this.locked;
+    const canToggle = isAvailable && !this.locked;
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
-      section.hidden = !isGradesOverview;
+      section.hidden = !isAvailable;
     }
     button.disabled = !canToggle;
     button.classList.toggle("is-active", isSchoolDisplay);
@@ -19071,7 +19107,7 @@ class PlannerApp {
       : (
         canToggle
           ? (isSchoolDisplay ? "Notenanzeige auf 15-Punkte umstellen" : "Notenanzeige auf Schulnoten umstellen")
-          : "Notenanzeige in der Kursübersicht verfügbar"
+          : "Notenanzeige in der Eingabemaske nur im BE-Modus verfügbar"
       );
   }
 
@@ -20902,13 +20938,13 @@ class PlannerApp {
   }
 
   updateGradeTestTaskFromInput(input, options = {}) {
-    if (!(input instanceof HTMLInputElement)) {
+    if (!(input instanceof HTMLInputElement) && !(input instanceof HTMLSelectElement)) {
       return false;
     }
     const requireValue = Boolean(options.requireValue);
     const taskId = String(input.dataset.taskId || "").trim();
     const field = String(input.dataset.gradeTestTaskField || "").trim();
-    if (!taskId || field !== "maxBe") {
+    if (!taskId || (field !== "maxBe" && field !== "afb")) {
       return false;
     }
     const { assessment, draft } = this.getActiveGradeTestContext();
@@ -20917,6 +20953,11 @@ class PlannerApp {
     const task = tasks.find((item) => item.id === taskId);
     if (!task) {
       return false;
+    }
+    if (field === "afb") {
+      task.afb = normalizeGradeTestAfb(input.value);
+      input.value = task.afb;
+      return this.updateGradeTestContextTasks(tasks);
     }
     const parsed = parseGradeBeValue(input.value);
     const missingMaxBe = parsed.valid && Number(parsed.value || 0) <= 0;
@@ -21041,6 +21082,7 @@ class PlannerApp {
       this.gradeDeficitThreshold,
       testPredicateSuffixes
     );
+    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
     const table = document.createElement("table");
     table.className = "grade-block-table grades-entry-table grades-test-entry-table";
     if (visibleMaxNameLength > 0) {
@@ -21085,6 +21127,12 @@ class PlannerApp {
                     <span>BE1</span>
                     <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" class="${hasTaskMaxBe ? "" : "invalid"}" aria-label="Erreichbare BE1 fuer ${escapeHtml(taskLabel)}" aria-invalid="${hasTaskMaxBe ? "false" : "true"}">
                   </label>
+                  <label class="grade-test-task-afb">
+                    <span>AFB</span>
+                    <select data-grade-test-task-field="afb" data-task-id="${escapeHtml(task.id)}" aria-label="AFB fuer ${escapeHtml(taskLabel)}">
+                      ${buildGradeTestAfbOptionsMarkup(task.afb)}
+                    </select>
+                  </label>
                   <button type="button" class="ghost grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
                 </div>
               `;
@@ -21115,7 +21163,7 @@ class PlannerApp {
       resultCell.className = "grade-test-result-col";
       const resultValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes);
       const isResultDeficit = isGradeValueBelowThreshold(resultValue, this.gradeDeficitThreshold);
-      resultCell.innerHTML = `<div class="grade-total-value${isResultDeficit ? " is-grade-low" : ""}" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${this.formatDisplayedGrade(resultValue)}</div>`;
+      resultCell.innerHTML = `<div class="grade-total-value${isResultDeficit ? " is-grade-low" : ""}" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${formatGradeDisplayForSystem(resultValue, displaySystem)}</div>`;
       tr.append(resultCell);
       const ratioCell = document.createElement("td");
       ratioCell.className = "grade-test-ratio-col";
@@ -21182,7 +21230,7 @@ class PlannerApp {
     const averageResultCell = document.createElement("td");
     averageResultCell.className = "grade-test-result-col";
     const isAverageResultDeficit = isGradeValueBelowThreshold(averageState.gradeValue, this.gradeDeficitThreshold);
-    averageResultCell.innerHTML = `<div class="grade-total-value${isAverageResultDeficit ? " is-grade-low" : ""}" data-grade-test-average-result="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-result=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${this.formatDisplayedGrade(averageState.gradeValue)}</div>`;
+    averageResultCell.innerHTML = `<div class="grade-total-value${isAverageResultDeficit ? " is-grade-low" : ""}" data-grade-test-average-result="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-result=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${formatGradeDisplayForSystem(averageState.gradeValue, displaySystem)}</div>`;
     averageRow.append(averageResultCell);
     const averageRatioCell = document.createElement("td");
     averageRatioCell.className = "grade-test-ratio-col";
@@ -21458,9 +21506,21 @@ class PlannerApp {
         })
         .filter(Boolean)
     );
+    const taskAfbById = new Map(
+      [...root.querySelectorAll("select[data-grade-test-task-field='afb']")]
+        .map((select) => {
+          const taskId = String(select.dataset.taskId || "").trim();
+          return taskId ? [taskId, normalizeGradeTestAfb(select.value)] : null;
+        })
+        .filter(Boolean)
+    );
     const testTasks = normalizeGradeTestTasks(draft.testTasks).map((task) => (
-      taskInputById.has(task.id)
-        ? { ...task, maxBe: taskInputById.get(task.id) }
+      taskInputById.has(task.id) || taskAfbById.has(task.id)
+        ? {
+            ...task,
+            maxBe: taskInputById.has(task.id) ? taskInputById.get(task.id) : task.maxBe,
+            afb: taskAfbById.has(task.id) ? taskAfbById.get(task.id) : task.afb
+          }
         : task
     ));
     return {
@@ -23472,6 +23532,7 @@ class PlannerApp {
       : `[data-grade-test-ratio-student="${studentKey}"][data-grade-test-draft-ratio="1"]`;
     const node = this.refs.gradesEntryContent?.querySelector(selector);
     const ratioNode = this.refs.gradesEntryContent?.querySelector(ratioSelector);
+    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
     if (assessmentId) {
       const entry = this.store.getGradeEntry(studentKey, assessmentId);
       const assessment = this.store.getGradeAssessment(assessmentId);
@@ -23492,7 +23553,7 @@ class PlannerApp {
       if (node) {
         const value = calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot, null, testPredicateSuffixes);
         const isDeficit = isGradeValueBelowThreshold(value, this.gradeDeficitThreshold);
-        node.textContent = this.formatDisplayedGrade(value);
+        node.textContent = formatGradeDisplayForSystem(value, displaySystem);
         node.classList.toggle("is-grade-low", isDeficit);
         this.syncGradeDeficitTooltip(node, isDeficit);
       }
@@ -23522,7 +23583,7 @@ class PlannerApp {
       );
       const value = calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot, null, testPredicateSuffixes);
       const isDeficit = isGradeValueBelowThreshold(value, this.gradeDeficitThreshold);
-      node.textContent = this.formatDisplayedGrade(value);
+      node.textContent = formatGradeDisplayForSystem(value, displaySystem);
       node.classList.toggle("is-grade-low", isDeficit);
       this.syncGradeDeficitTooltip(node, isDeficit);
     }
@@ -23607,9 +23668,10 @@ class PlannerApp {
       : `[data-grade-test-average-ratio="1"][data-grade-test-draft-average-ratio="1"]`;
     const resultNode = this.refs.gradesEntryContent.querySelector(resultSelector);
     const ratioNode = this.refs.gradesEntryContent.querySelector(ratioSelector);
+    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
     if (resultNode) {
       const isDeficit = isGradeValueBelowThreshold(averageState.gradeValue, this.gradeDeficitThreshold);
-      resultNode.textContent = this.formatDisplayedGrade(averageState.gradeValue);
+      resultNode.textContent = formatGradeDisplayForSystem(averageState.gradeValue, displaySystem);
       resultNode.classList.toggle("is-grade-low", isDeficit);
       this.syncGradeDeficitTooltip(resultNode, isDeficit);
     }

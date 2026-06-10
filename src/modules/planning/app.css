@@ -4270,9 +4270,9 @@
 
         .grades-test-entry-table th.grade-test-task-col,
         .grades-test-entry-table td.grade-test-task-col {
-          width: 5.1rem;
-          min-width: 5.1rem;
-          max-width: 5.1rem;
+          width: 5.8rem;
+          min-width: 5.8rem;
+          max-width: 5.8rem;
           padding-inline: 0.08rem;
           text-align: center;
         }
@@ -4376,7 +4376,8 @@
           min-width: 0;
         }
 
-        .grade-test-task-max input {
+        .grade-test-task-max input,
+        .grade-test-task-afb select {
           box-sizing: border-box;
           width: 100%;
           min-width: 0;
@@ -4410,10 +4411,11 @@
           text-align: center;
         }
 
-        .grade-test-task-max {
+        .grade-test-task-max,
+        .grade-test-task-afb {
           grid-column: 1 / -1;
           display: grid;
-          grid-template-columns: auto 2.35rem;
+          grid-template-columns: auto 3rem;
           gap: 0.18rem;
           align-items: center;
           justify-content: center;
@@ -4424,9 +4426,19 @@
           text-transform: uppercase;
         }
 
-        .grade-test-task-max input {
+        .grade-test-task-afb {
+          margin-top: 0.08rem;
+        }
+
+        .grade-test-task-max input,
+        .grade-test-task-afb select {
           min-height: 2rem;
           padding: 0.3rem 0.4rem;
+        }
+
+        .grade-test-task-afb select {
+          appearance: auto;
+          text-transform: none;
         }
 
         .grade-test-task-remove {
@@ -4552,7 +4564,8 @@
             0 1px 2px rgba(15, 23, 42, 0.08);
         }
 
-        :root[data-theme='light'] .grade-test-task-max input {
+        :root[data-theme='light'] .grade-test-task-max input,
+        :root[data-theme='light'] .grade-test-task-afb select {
           background: rgba(255, 255, 255, 0.92);
           border-color: rgba(148, 163, 184, 0.3);
           color: #0f172a;
