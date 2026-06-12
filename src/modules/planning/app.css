@@ -2899,6 +2899,50 @@
           margin-top: 0;
         }
 
+        #settings-tab-expectation-horizon {
+          display: grid;
+          align-content: start;
+          gap: 1.35rem;
+        }
+
+        .expectation-horizon-settings-section {
+          display: grid;
+          gap: 0.58rem;
+        }
+
+        .expectation-horizon-settings-section+.expectation-horizon-settings-section {
+          border-top: 1px solid var(--line-soft);
+          padding-top: 1.1rem;
+        }
+
+        .expectation-horizon-settings-section .settings-panel-title,
+        .expectation-horizon-settings-section p {
+          margin-top: 0;
+          margin-bottom: 0;
+        }
+
+        #settings-tab-expectation-horizon .settings-form-row {
+          grid-template-columns: minmax(220px, 320px);
+          justify-content: start;
+          gap: 0.35rem;
+        }
+
+        #settings-tab-expectation-horizon #expectation-horizon-location {
+          width: 100%;
+        }
+
+        #settings-tab-expectation-horizon .expectation-horizon-comment-row {
+          grid-template-columns: minmax(320px, 720px);
+          align-items: start;
+        }
+
+        #settings-tab-expectation-horizon #expectation-horizon-comment-template {
+          width: 100%;
+          min-height: 11.5rem;
+          resize: vertical;
+          line-height: 1.45;
+        }
+
         .settings-link-hint {
           margin: 0 0 0.52rem;
           font-size: 0.88rem;
@@ -3658,6 +3702,37 @@
           gap: 1rem;
           align-content: start;
           padding: clamp(0.8rem, 1.3vw, 1.2rem);
+          overflow-x: hidden;
+          overflow-y: auto;
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+
+        .grades-entry-content::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+
+        .grades-entry-content::-webkit-scrollbar:horizontal {
+          height: 0;
+          display: none;
+        }
+
+        .grades-entry-content::-webkit-scrollbar-track:vertical {
+          background: var(--scrollbar-track);
+          border-radius: 999px;
+        }
+
+        .grades-entry-content::-webkit-scrollbar-thumb:vertical {
+          background: var(--scrollbar-thumb);
+          border: 2px solid transparent;
+          border-radius: 999px;
+          background-clip: padding-box;
+        }
+
+        .grades-entry-content::-webkit-scrollbar-thumb:vertical:hover {
+          background: var(--scrollbar-thumb-hover);
         }
 
         .grades-entry-content.is-empty-state {
@@ -4488,12 +4563,108 @@
         }
 
         .grades-entry-table-wrap {
-          overflow: auto;
+          overflow: visible;
           order: 1;
-          width: fit-content;
+          width: 100%;
           max-width: 100%;
           min-width: 0;
-          justify-self: start;
+          justify-self: stretch;
+        }
+
+        .grades-entry-table-wrap::-webkit-scrollbar {
+          width: 0;
+          height: 0;
+          display: none;
+        }
+
+        #view-grades .grades-entry-table-wrap {
+          overflow: visible;
+        }
+
+        .grades-entry-table-sticky-scrollbar {
+          flex: 0 0 auto;
+          width: 100%;
+          max-width: 100%;
+          height: var(--scrollbar-size);
+          overflow-x: auto;
+          overflow-y: hidden;
+          scrollbar-width: thin;
+          scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+          -ms-overflow-style: auto;
+          background: rgba(24, 31, 43, 0.96);
+          border-radius: 999px;
+        }
+
+        .grades-entry-table-sticky-scrollbar[hidden] {
+          display: none;
+        }
+
+        .grades-entry-table-sticky-scrollbar-spacer {
+          height: 1px;
+          min-height: 1px;
+        }
+
+        .grades-entry-table-sticky-scrollbar::-webkit-scrollbar {
+          width: var(--scrollbar-size);
+          height: var(--scrollbar-size);
+          display: block;
+        }
+
+        .grades-entry-table-sticky-scrollbar::-webkit-scrollbar-track {
+          background: var(--scrollbar-track);
+          border-radius: 999px;
+        }
+
+        .grades-entry-table-sticky-scrollbar::-webkit-scrollbar-thumb {
+          background: var(--scrollbar-thumb);
+          border: 2px solid transparent;
+          border-radius: 999px;
+          background-clip: padding-box;
+        }
+
+        .grades-entry-table-sticky-scrollbar::-webkit-scrollbar-thumb:hover {
+          background: var(--scrollbar-thumb-hover);
+        }
+
+        .grade-block-table.grades-entry-table {
+          overflow: visible;
+        }
+
+        .grade-block-table.grades-entry-table thead th {
+          position: sticky;
+          top: 0;
+          z-index: 5;
+          background: rgba(30, 36, 46, 0.995);
+          background-clip: padding-box;
+        }
+
+        .grade-block-table.grades-entry-table th.student-col,
+        .grade-block-table.grades-entry-table td.student-col {
+          position: sticky;
+          left: 0;
+          z-index: 7;
+          background: rgba(24, 31, 43, 0.995);
+          background-clip: padding-box;
+        }
+
+        .grade-block-table.grades-entry-table thead th.student-col {
+          z-index: 12;
+        }
+
+        .grade-block-table.grades-entry-table thead tr:first-child>th:first-child {
+          border-top-left-radius: 11px;
+        }
+
+        .grade-block-table.grades-entry-table thead tr:first-child>th:last-child {
+          border-top-right-radius: 11px;
+        }
+
+        .grade-block-table.grades-entry-table tbody tr:last-child>td:first-child {
+          border-bottom-left-radius: 11px;
+        }
+
+        .grade-block-table.grades-entry-table tbody tr:last-child>td:last-child {
+          border-bottom-right-radius: 11px;
         }
 
         .grades-entry-table th.grade-assessment-col,
@@ -5300,7 +5471,7 @@
           min-height: 0;
           height: auto;
           overflow-x: auto;
-          overflow-y: hidden;
+          overflow-y: clip;
           scrollbar-width: none;
           -ms-overflow-style: none;
         }
@@ -5365,7 +5536,8 @@
           width: max-content;
         }
 
-        :root[data-theme='light'] .grades-table-sticky-scrollbar {
+        :root[data-theme='light'] .grades-table-sticky-scrollbar,
+        :root[data-theme='light'] .grades-entry-table-sticky-scrollbar {
           background: rgba(255, 255, 255, 0.96);
         }
 
@@ -5652,8 +5824,28 @@
         .grades-master-table th {
           color: #dbe4ef;
           text-align: center;
-          background: rgba(30, 36, 46, 0.7);
+          background: rgba(30, 36, 46, 0.96);
           position: static;
+        }
+
+        .grades-master-table thead {
+          position: relative;
+          z-index: 10;
+          transform: translateY(var(--grades-overview-header-offset, 0px));
+          will-change: transform;
+        }
+
+        .grades-master-table thead th {
+          position: relative;
+          z-index: 10;
+          background: rgba(24, 31, 43, 0.99);
+          background-clip: padding-box;
+        }
+
+        .grades-master-table thead th.student-col {
+          position: sticky;
+          left: 0;
+          z-index: 14;
         }
 
         .grades-master-table thead tr:first-child>th:first-child {
@@ -5676,7 +5868,7 @@
         .grades-master-table th.grade-subcategory-head,
         .grades-master-table th.grade-category-collapsed-head,
         .grades-master-table th.grade-subcategory-collapsed-head {
-          background: rgba(24, 31, 43, 0.92);
+          background: rgba(24, 31, 43, 0.99);
         }
 
         .grades-master-table th.grade-category-head,
@@ -5685,7 +5877,7 @@
         }
 
         .grades-master-table th.grade-period-head {
-          background: rgba(24, 31, 43, 0.92);
+          background: rgba(24, 31, 43, 0.99);
           font-weight: 800;
           letter-spacing: 0.02em;
           text-align: left;
@@ -5706,7 +5898,7 @@
 
         .grades-master-table th.grade-period-total-head,
         .grades-master-table td.grade-period-total-col {
-          background: rgba(24, 31, 43, 0.92);
+          background: rgba(24, 31, 43, 0.99);
         }
 
         .grades-master-table th.is-boundary-category,
@@ -5843,6 +6035,12 @@
             inset 0 10px 18px rgba(96, 165, 250, 0.08);
         }
 
+        .grades-master-table thead th.grade-assessment-col.is-lesson-spotlight {
+          background:
+            linear-gradient(180deg, rgba(82, 150, 255, 0.22), rgba(82, 150, 255, 0.12)),
+            rgba(24, 31, 43, 0.96);
+        }
+
         .grades-master-table th.grade-assessment-col.is-lesson-spotlight .grade-assessment-label,
         .grades-master-table td.grade-assessment-col.is-lesson-spotlight .grade-cell-display-button,
         .grades-master-table td.grade-assessment-col.is-lesson-spotlight .grade-checkbox-display-button {
@@ -5924,17 +6122,17 @@
         }
 
         .grades-master-table th.grade-category-partial-col.is-merged-head {
-          background: rgba(24, 31, 43, 0.92);
+          background: rgba(24, 31, 43, 0.99);
           padding: 0.18rem 0.18rem;
         }
 
         .grades-master-table th.grade-subcategory-partial-col.is-merged-head {
-          background: rgba(24, 31, 43, 0.92);
+          background: rgba(24, 31, 43, 0.99);
           padding: 0.18rem 0.18rem;
         }
 
         .grades-master-table th.grade-homework-col.is-merged-head {
-          background: rgba(19, 45, 34, 0.9);
+          background: rgba(19, 45, 34, 0.98);
           color: rgba(220, 252, 231, 0.95);
           padding: 0.18rem 0.28rem;
           letter-spacing: 0.04em;
@@ -5949,7 +6147,7 @@
           padding-inline: 0.12rem;
           max-width: none;
           text-align: center;
-          background: rgba(24, 31, 43, 0.92);
+          background: rgba(24, 31, 43, 0.99);
         }
 
         .grades-master-table td.grade-category-collapsed-col,
@@ -6733,7 +6931,7 @@
           --grades-master-assessment-col-min-width: var(--grade-cell-control-box-width);
           --grades-master-homework-col-min-width: var(--grade-cell-control-box-width);
           --grades-master-override-col-min-width: var(--grade-cell-control-box-width);
-          --grades-master-sticky-student-bg: rgba(24, 31, 43, 0.98);
+          --grades-master-sticky-student-bg: rgba(24, 31, 43, 0.995);
           --grades-master-sticky-student-shadow:
             10px 0 18px rgba(15, 23, 42, 0.22),
             inset -1px 0 0 rgba(148, 163, 184, 0.18);
@@ -7130,6 +7328,15 @@
           --grades-master-sticky-student-shadow:
             10px 0 18px rgba(148, 163, 184, 0.18),
             inset -1px 0 0 rgba(14, 165, 233, 0.14);
+        }
+
+        :root[data-theme='light'] .grade-block-table.grades-entry-table thead th {
+          background: rgba(241, 245, 249, 0.98);
+        }
+
+        :root[data-theme='light'] .grade-block-table.grades-entry-table th.student-col,
+        :root[data-theme='light'] .grade-block-table.grades-entry-table td.student-col {
+          background: rgba(255, 255, 255, 0.98);
         }
 
         :root[data-theme='light'] .grade-checkbox-display-button {
@@ -8465,6 +8672,10 @@
           .settings-form-row {
             grid-template-columns: 1fr;
             align-items: stretch;
+          }
+
+          #settings-tab-expectation-horizon .settings-form-row {
+            grid-template-columns: 1fr;
           }
 
           .header-glass {

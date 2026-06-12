@@ -191,6 +191,9 @@
               </div>
               <div id="grades-entry-panel" class="grades-subview-panel" hidden>
                 <div id="grades-entry-content" class="table-panel grades-entry-content"></div>
+                <div id="grades-entry-table-sticky-scrollbar" class="grades-entry-table-sticky-scrollbar" aria-hidden="true" hidden>
+                  <div id="grades-entry-table-sticky-scrollbar-spacer" class="grades-entry-table-sticky-scrollbar-spacer"></div>
+                </div>
               </div>
             </section>
 
@@ -205,6 +208,8 @@
                     aria-controls="settings-tab-grade-test-scales" aria-selected="false">Prozentgrenzen</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
                     aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
+                  <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
+                    aria-controls="settings-tab-expectation-horizon" aria-selected="false">Erwartungshorizont</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
                     aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
                   <button class="settings-tab" type="button" role="tab" data-tab="database"
@@ -379,6 +384,36 @@
                         </button>
                       </div>
                     </div>
+                  </div>
+
+                  <div id="settings-tab-expectation-horizon" class="settings-panel" role="tabpanel" hidden>
+                    <section class="expectation-horizon-settings-section">
+                      <h3 class="settings-panel-title">Angaben</h3>
+                      <p class="muted">Der Ort ersetzt den Platzhalter &lt;&lt;Ort&gt;&gt; in erzeugten Erwartungshorizonten.</p>
+                      <form class="settings-form-table" autocomplete="off">
+                        <div class="settings-form-row">
+                          <label class="settings-form-label" for="expectation-horizon-location">Ort</label>
+                          <input id="expectation-horizon-location" type="text" maxlength="120" autocomplete="off">
+                        </div>
+                        <div class="settings-form-row expectation-horizon-comment-row">
+                          <label class="settings-form-label" for="expectation-horizon-comment-template">Kommentar</label>
+                          <textarea id="expectation-horizon-comment-template" rows="8" spellcheck="true"></textarea>
+                        </div>
+                      </form>
+                      <p class="muted">Im Kommentar können &lt;&lt;Aufgabenlabel&gt;&gt; und &lt;&lt;Aufgabenliste&gt;&gt; verwendet werden.</p>
+                    </section>
+                    <section class="expectation-horizon-settings-section">
+                      <h3 class="settings-panel-title">Standardvorlage</h3>
+                      <p class="muted">Die Standardvorlage wird verwendet, wenn im Generieren-Dialog keine Vorlage nur für diese Arbeit hochgeladen wird.</p>
+                      <input id="expectation-horizon-template-settings-file" class="visually-hidden" type="file"
+                        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                      <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
+                      <div class="button-row">
+                        <button type="button" id="expectation-horizon-template-settings-download" class="ghost">Standardvorlage herunterladen</button>
+                        <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte Standardvorlage hochladen</button>
+                        <button type="button" id="expectation-horizon-template-settings-reset" class="ghost">Auf eingebaute Vorlage zurücksetzen</button>
+                      </div>
+                    </section>
                   </div>
 
                   <div id="settings-tab-lesson-times" class="settings-panel" role="tabpanel" hidden>
@@ -860,12 +895,13 @@
             accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
           <button id="expectation-horizon-dropzone" class="expectation-horizon-dropzone" type="button">
             <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
-            <span>DOCX-Datei hier ablegen oder klicken, um Datei auszuwählen</span>
+            <span>Geänderte Vorlage für diese Arbeit hochladen</span>
           </button>
           <div id="expectation-horizon-file-name" class="expectation-horizon-file-name" aria-live="polite"></div>
           <div id="expectation-horizon-status" class="expectation-horizon-status" aria-live="polite"></div>
           <div class="button-row dialog-actions">
             <button type="button" id="expectation-horizon-cancel" class="ghost">Abbrechen</button>
+            <button type="button" id="expectation-horizon-template-download" class="ghost">Vorlage herunterladen</button>
             <span class="dialog-grow"></span>
             <button type="submit" id="expectation-horizon-generate">Generieren</button>
           </div>

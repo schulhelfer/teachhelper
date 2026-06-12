@@ -1,5 +1,15 @@
 import { createDocxFromTemplate, isDocxZipSupported } from "./docx.js";
 
+const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
+const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
+const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
+  "Schriftliche Arbeiten dienen nicht nur der Leistungsfeststellung, sondern auch der Diagnose. Sie sind ein Zwischenschritt und nicht der Endpunkt Deines Lernprozesses. Entscheidend ist, dass Du etwaige Defizite gezielt aufarbeitest. Dabei unterstütze ich Dich gerne, doch der Wille dazu muss von Dir selbst kommen!",
+  "Im IServ-Aufgabenmodul findest Du zu genau den grundlegenden Kompetenzen, bei denen sich in Deiner schriftlichen Arbeit noch Unsicherheiten gezeigt haben (<<Aufgabenlabel>> <<Aufgabenliste>>), passendes Übungsmaterial:",
+  "1. Sieh Dir die Musterlösung der entsprechenden Aufgabe im IServ-Ordner sorgfältig an.",
+  "2. Schau Dir das Erklärvideo unter dem im Aufgabenmodul verlinkten Applet an.",
+  "3. Übe mit den Aufgaben im Applet.",
+  "4. Lade einen Screenshot Deiner Bearbeitung im Aufgabenmodul hoch."
+].join("\n");
 const DAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr"];
 const REQUIRED_HOLIDAYS = [
   "Herbstferien",
@@ -46,6 +56,7 @@ const SYNC_HANDLE_DB_NAME = "teachhelper-sync-handles-v1";
 const SYNC_HANDLE_STORE_NAME = "handles";
 const SYNC_HANDLE_FILE_KEY = "sync-file";
 const SYNC_HANDLE_BACKUP_DIR_KEY = "backup-dir";
+const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
   "#60A5FA",
@@ -70,6 +81,17 @@ function randomId() {
     return crypto.randomUUID();
   }
   return `device-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeExpectationHorizonCommentTemplate(value = EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT) {
+  if (value === undefined || value === null) {
+    return EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
+  }
+  return String(value).replace(/\r\n?/g, "\n");
+}
+
+function replaceExpectationHorizonCommentPlaceholder(text, placeholder, value) {
+  return String(text || "").split(placeholder).join(value);
 }
 
 function getGradeVaultAutofillMetadata() {
@@ -983,6 +1005,18 @@ async function clearStoredHandle(key) {
   } catch (_error) {
     return false;
   }
+}
+
+async function getStoredLocalValue(key) {
+  return getStoredHandle(key);
+}
+
+async function storeLocalValue(key, value) {
+  return storeHandle(key, value);
+}
+
+async function clearStoredLocalValue(key) {
+  return clearStoredHandle(key);
 }
 
 function clamp(value, min, max) {
@@ -3302,6 +3336,8 @@ function createInitialState() {
       gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
       gradeTestScaleSettings: buildDefaultGradeTestScaleSettings(),
       defaultGradeStructure: createDefaultGradeStructureSetting(),
+      expectationHorizonLocation: "",
+      expectationHorizonCommentTemplate: EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT,
       gradeVaultEncryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
       backupEnabled: BACKUP_ENABLED_DEFAULT,
       backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
@@ -3551,6 +3587,30 @@ class PlannerStore {
     this.state.settings.defaultGradeStructure = normalizeDefaultGradeStructureSetting(structure);
     this._save();
     return this.getDefaultGradeStructure();
+  }
+
+  getExpectationHorizonLocation() {
+    return String(this.getSetting("expectationHorizonLocation", "") || "").trim();
+  }
+
+  setExpectationHorizonLocation(value = "") {
+    const location = String(value || "").trim();
+    this.state.settings.expectationHorizonLocation = location;
+    this._save();
+    return location;
+  }
+
+  getExpectationHorizonCommentTemplate() {
+    return normalizeExpectationHorizonCommentTemplate(
+      this.getSetting("expectationHorizonCommentTemplate", EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT)
+    );
+  }
+
+  setExpectationHorizonCommentTemplate(value = "") {
+    const template = normalizeExpectationHorizonCommentTemplate(value);
+    this.state.settings.expectationHorizonCommentTemplate = template;
+    this._save();
+    return template;
   }
 
   getGradeVaultEncryptionEnabled() {
@@ -6023,6 +6083,9 @@ PlannerStore.prototype.normalizePublicState = function (rawState = null) {
   normalized.settings.lessonTimes = normalizeLessonTimes(normalized.settings.lessonTimes, normalizedHoursPerDay);
   normalized.settings.gradeTestScaleSettings = normalizeGradeTestScaleSettings(normalized.settings.gradeTestScaleSettings);
   normalized.settings.defaultGradeStructure = normalizeDefaultGradeStructureSetting(normalized.settings.defaultGradeStructure);
+  normalized.settings.expectationHorizonCommentTemplate = normalizeExpectationHorizonCommentTemplate(
+    normalized.settings.expectationHorizonCommentTemplate
+  );
   normalized.settings.gradeVaultEncryptionEnabled = Boolean(normalized.settings.gradeVaultEncryptionEnabled);
 
   normalized.schoolYears = normalized.schoolYears.filter(
@@ -6338,6 +6401,10 @@ class PlannerApp {
     this.slotDialogEndDateBackup = null;
     this.expectationHorizonTemplateFile = null;
     this.expectationHorizonGenerating = false;
+    this.expectationHorizonStoredTemplate = null;
+    this.expectationHorizonStoredTemplateLoaded = false;
+    this.boundGradesEntryTableScroll = null;
+    this.syncingGradesEntryTableStickyScrollbar = false;
 
     this.refs = {
       schoolYearSelect: document.querySelector("#school-year-select"),
@@ -6382,6 +6449,7 @@ class PlannerApp {
         display: document.querySelector("#settings-tab-display"),
         gradeTestScales: document.querySelector("#settings-tab-grade-test-scales"),
         gradeStructure: document.querySelector("#settings-tab-grade-structure"),
+        expectationHorizon: document.querySelector("#settings-tab-expectation-horizon"),
         lessonTimes: document.querySelector("#settings-tab-lesson-times"),
         database: document.querySelector("#settings-tab-database")
       },
@@ -6424,6 +6492,8 @@ class PlannerApp {
       gradesTable: document.querySelector("#grades-table"),
       gradesPrintArea: document.querySelector("#grades-print-area"),
       gradesEntryContent: document.querySelector("#grades-entry-content"),
+      gradesEntryTableStickyScrollbar: document.querySelector("#grades-entry-table-sticky-scrollbar"),
+      gradesEntryTableStickyScrollbarSpacer: document.querySelector("#grades-entry-table-sticky-scrollbar-spacer"),
       gradePicker: document.querySelector("#grade-picker"),
       gradesTitleDatePicker: document.querySelector("#grades-title-date-picker"),
       gradeVaultDialog: document.querySelector("#grade-vault-dialog"),
@@ -6466,6 +6536,13 @@ class PlannerApp {
       gradeSimulationCategory: document.querySelector("#grade-simulation-category"),
       gradeSimulationSubcategory: document.querySelector("#grade-simulation-subcategory"),
       gradeSimulationResult: document.querySelector("#grade-simulation-result"),
+      expectationHorizonLocation: document.querySelector("#expectation-horizon-location"),
+      expectationHorizonCommentTemplate: document.querySelector("#expectation-horizon-comment-template"),
+      expectationHorizonTemplateSettingsFile: document.querySelector("#expectation-horizon-template-settings-file"),
+      expectationHorizonTemplateSettingsStatus: document.querySelector("#expectation-horizon-template-settings-status"),
+      expectationHorizonTemplateSettingsDownload: document.querySelector("#expectation-horizon-template-settings-download"),
+      expectationHorizonTemplateSettingsUpload: document.querySelector("#expectation-horizon-template-settings-upload"),
+      expectationHorizonTemplateSettingsReset: document.querySelector("#expectation-horizon-template-settings-reset"),
       expectationHorizonDialog: document.querySelector("#expectation-horizon-dialog"),
       expectationHorizonDialogForm: document.querySelector("#expectation-horizon-dialog-form"),
       expectationHorizonCancel: document.querySelector("#expectation-horizon-cancel"),
@@ -6474,6 +6551,7 @@ class PlannerApp {
       expectationHorizonDropzone: document.querySelector("#expectation-horizon-dropzone"),
       expectationHorizonFileName: document.querySelector("#expectation-horizon-file-name"),
       expectationHorizonStatus: document.querySelector("#expectation-horizon-status"),
+      expectationHorizonTemplateDownload: document.querySelector("#expectation-horizon-template-download"),
       expectationHorizonGenerate: document.querySelector("#expectation-horizon-generate"),
 
       courseDialog: document.querySelector("#course-dialog"),
@@ -6819,6 +6897,8 @@ class PlannerApp {
       gradesPrivacyGraphThreshold: this.store.getGradesPrivacyGraphThreshold(),
       gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
       defaultGradeStructure: this.store.getDefaultGradeStructure(),
+      expectationHorizonLocation: this.store.getExpectationHorizonLocation(),
+      expectationHorizonCommentTemplate: this.store.getExpectationHorizonCommentTemplate(),
       showHiddenSidebarCourses: Boolean(
         this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
       ),
@@ -9864,6 +9944,15 @@ class PlannerApp {
     if (!defaultGradeStructureSettingsEqual(draft.defaultGradeStructure, this.store.getDefaultGradeStructure())) {
       return true;
     }
+    if (String(draft.expectationHorizonLocation || "").trim() !== this.store.getExpectationHorizonLocation()) {
+      return true;
+    }
+    if (
+      normalizeExpectationHorizonCommentTemplate(draft.expectationHorizonCommentTemplate)
+      !== this.store.getExpectationHorizonCommentTemplate()
+    ) {
+      return true;
+    }
     if (
       Boolean(draft.showHiddenSidebarCourses)
       !== Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT))
@@ -9938,6 +10027,8 @@ class PlannerApp {
     this.store.setGradesPrivacyGraphThreshold(draft.gradesPrivacyGraphThreshold);
     this.store.setGradeTestScaleSettings(draft.gradeTestScaleSettings);
     this.store.setDefaultGradeStructure(draft.defaultGradeStructure);
+    this.store.setExpectationHorizonLocation(draft.expectationHorizonLocation);
+    this.store.setExpectationHorizonCommentTemplate(draft.expectationHorizonCommentTemplate);
     this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
     this.store.setBackupEnabled(draft.backupEnabled);
     this.store.setBackupIntervalDays(draft.backupIntervalDays);
@@ -9957,6 +10048,7 @@ class PlannerApp {
     this.renderDisplaySection();
     this.renderGradeTestScaleSettingsSection();
     this.renderDefaultGradeStructureSettingsSection();
+    this.renderExpectationHorizonSettingsSection();
     this.renderLessonTimesSection();
     this.renderBackupSection();
     this.renderDatabaseSection();
@@ -10018,6 +10110,14 @@ class PlannerApp {
       this.refreshSettingsDirtyState();
       return;
     }
+    if (tab === "expectationHorizon") {
+      this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+      this.settingsDraft.expectationHorizonLocation = "";
+      this.settingsDraft.expectationHorizonCommentTemplate = EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
+      this.renderExpectationHorizonSettingsSection();
+      this.refreshSettingsDirtyState();
+      return;
+    }
     if (tab === "lessonTimes") {
       this.settingsDraft.lessonTimes = buildDefaultLessonTimes(
         clamp(Number(this.settingsDraft?.hoursPerDay) || this.store.getHoursPerDay(), 1, 12)
@@ -10036,7 +10136,7 @@ class PlannerApp {
 
   async applySettingsSaveForActiveTab() {
     const tab = this.activeSettingsTab;
-    if (tab === "display" || tab === "gradeTestScales" || tab === "gradeStructure" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
+    if (tab === "display" || tab === "gradeTestScales" || tab === "gradeStructure" || tab === "expectationHorizon" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
       if (!this.settingsDirty) {
         return;
       }
@@ -10046,7 +10146,7 @@ class PlannerApp {
 
   applySettingsCancelForActiveTab() {
     const tab = this.activeSettingsTab;
-    if (tab === "display" || tab === "gradeTestScales" || tab === "gradeStructure" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
+    if (tab === "display" || tab === "gradeTestScales" || tab === "gradeStructure" || tab === "expectationHorizon" || tab === "lessonTimes" || tab === "backup" || tab === "database") {
       this.cancelSettingsDraftChanges();
       return;
     }
@@ -10078,6 +10178,12 @@ class PlannerApp {
       cancelEnabled = this.settingsDirty;
     } else if (tab === "gradeStructure") {
       resetEnabled = !defaultGradeStructureSettingsEqual(this.settingsDraft.defaultGradeStructure, createDefaultGradeStructureSetting());
+      saveEnabled = this.settingsDirty;
+      cancelEnabled = this.settingsDirty;
+    } else if (tab === "expectationHorizon") {
+      resetEnabled = Boolean(String(this.settingsDraft.expectationHorizonLocation || "").trim())
+        || normalizeExpectationHorizonCommentTemplate(this.settingsDraft.expectationHorizonCommentTemplate)
+          !== EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
       saveEnabled = this.settingsDirty;
       cancelEnabled = this.settingsDirty;
     } else if (tab === "lessonTimes") {
@@ -13149,6 +13255,8 @@ class PlannerApp {
       this.renderGradeTestScaleSettingsSection();
     } else if (activeTab === "gradeStructure") {
       this.renderDefaultGradeStructureSettingsSection();
+    } else if (activeTab === "expectationHorizon") {
+      this.renderExpectationHorizonSettingsSection();
     } else if (activeTab === "lessonTimes") {
       this.renderLessonTimesSection();
     } else if (activeTab === "dayoff") {
@@ -13621,6 +13729,7 @@ class PlannerApp {
       this.activeGradeOverrideContext = null;
       this.togglePrivacyFocusedGradeStudent(studentButton.dataset.gradeStudentName);
       this.renderGradesView();
+      this.scheduleGradePrivacyFocusedStudentIntoView();
       return;
     }
     const privacyToggleButton = event.target.closest("button[data-grade-privacy-toggle='1']");
@@ -15219,6 +15328,33 @@ class PlannerApp {
       });
     }
 
+    this.refs.expectationHorizonLocation?.addEventListener("input", () => {
+      this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+      this.settingsDraft.expectationHorizonLocation = String(this.refs.expectationHorizonLocation.value || "");
+      this.refreshSettingsDirtyState();
+    });
+    this.refs.expectationHorizonCommentTemplate?.addEventListener("input", () => {
+      this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+      this.settingsDraft.expectationHorizonCommentTemplate = String(this.refs.expectationHorizonCommentTemplate.value || "");
+      this.refreshSettingsDirtyState();
+    });
+    this.refs.expectationHorizonTemplateSettingsDownload?.addEventListener("click", () => {
+      void this.downloadBuiltInExpectationHorizonTemplate();
+    });
+    this.refs.expectationHorizonTemplateSettingsUpload?.addEventListener("click", () => {
+      this.refs.expectationHorizonTemplateSettingsFile?.click();
+    });
+    this.refs.expectationHorizonTemplateSettingsFile?.addEventListener("change", async () => {
+      const [file] = this.refs.expectationHorizonTemplateSettingsFile.files || [];
+      if (file) {
+        await this.setStoredExpectationHorizonTemplateFile(file);
+      }
+      this.refs.expectationHorizonTemplateSettingsFile.value = "";
+    });
+    this.refs.expectationHorizonTemplateSettingsReset?.addEventListener("click", () => {
+      void this.resetStoredExpectationHorizonTemplate();
+    });
+
     this.refs.settingsGradeStructureCategoryAdd?.addEventListener("click", () => {
       this.addDefaultGradeStructureCategoryDraft();
     });
@@ -15755,6 +15891,7 @@ class PlannerApp {
       this.handleGradesEmptyPrimaryAction(this.refs.gradesEmptyOpenDialog?.dataset.emptyAction || "");
     });
     this.refs.gradesBookPanel?.addEventListener("scroll", () => {
+      this.positionGradesOverviewStickyHeader();
       this.positionGradePrivacyOverlay();
       this.positionGradePrivacyNavigationOverlay();
     });
@@ -15763,10 +15900,14 @@ class PlannerApp {
         this.clearPendingGradesOverviewAutoScroll();
       }
       this.syncGradesTableStickyScrollbarFromTable();
+      this.positionGradesOverviewStickyHeader();
       this.positionGradePrivacyNavigationOverlay();
     });
     this.refs.gradesTableStickyScrollbar?.addEventListener("scroll", () => {
       this.syncGradesTableScrollFromStickyScrollbar();
+    });
+    this.refs.gradesEntryTableStickyScrollbar?.addEventListener("scroll", () => {
+      this.syncGradesEntryTableScrollFromStickyScrollbar();
     });
     this.refs.gradesPrivacyOverlay?.addEventListener("pointerdown", (event) => {
       this.handleGradePrivacyOverlayPointerDown(event);
@@ -15876,6 +16017,8 @@ class PlannerApp {
       this.positionGradePrivacyOverlay();
       this.positionGradePrivacyNavigationOverlay();
       this.updateGradesTableStickyScrollbar();
+      this.positionGradesOverviewStickyHeader();
+      this.updateGradesEntryTableStickyScrollbar();
       if (this.refs.weekCalendarDialog && this.refs.weekCalendarDialog.open) {
         this.positionWeekCalendarDialog();
       }
@@ -17331,6 +17474,8 @@ class PlannerApp {
           ` : ""}
         </div>
       `;
+    this.boundGradesEntryTableScroll = null;
+    this.updateGradesEntryTableStickyScrollbar();
     if (showPrimaryButton) {
       this.refs.gradesEntryContent.querySelector("button[data-grades-entry-primary-action]")?.addEventListener("click", () => {
         this.handleGradesEmptyPrimaryAction(primaryAction);
@@ -18313,6 +18458,11 @@ class PlannerApp {
     tableWrap.append(this.buildGradesEntryTable(course, students, tableAssessment));
     editor.querySelector(".grades-entry-layout")?.append(tableWrap);
     this.refs.gradesEntryContent.append(editor);
+    this.bindGradesEntryTableScrollSync();
+    this.updateGradesEntryTableStickyScrollbar();
+    requestAnimationFrame(() => {
+      this.updateGradesEntryTableStickyScrollbar();
+    });
   }
 
   renderGradesView() {
@@ -18392,6 +18542,7 @@ class PlannerApp {
     } else {
       this.gradesEntryDistributionOverlayOpen = false;
       this.removeGradesEntryDistributionOverlay();
+      this.updateGradesEntryTableStickyScrollbar();
       this.hideGradesTitleDatePicker();
       if (course && canAccessVault && !courseLoaded) {
         this.clearActiveGradeAssessment();
@@ -18756,6 +18907,7 @@ class PlannerApp {
     this.privacyFocusedGradeStudentId = studentId;
     this.updateActiveGradeStudentHighlight();
     this.renderGradesView();
+    this.scheduleGradePrivacyFocusedStudentIntoView();
     return true;
   }
 
@@ -18831,6 +18983,7 @@ class PlannerApp {
     this.privacyFocusedGradeStudentId = nextStudentId;
     this.updateActiveGradeStudentHighlight();
     this.renderGradesView();
+    this.scheduleGradePrivacyFocusedStudentIntoView();
   }
 
   removeGradePrivacyNavigationOverlay() {
@@ -18845,6 +18998,69 @@ class PlannerApp {
     }
     return [...this.refs.gradesTable.querySelectorAll("button[data-grade-student-name]")]
       .find((node) => Number(node.getAttribute("data-grade-student-name") || 0) === focusedStudentId) || null;
+  }
+
+  scheduleGradePrivacyFocusedStudentIntoView() {
+    if (!this.privacyFocusedGradeStudentId) {
+      return;
+    }
+    const run = () => {
+      this.scrollGradePrivacyFocusedStudentIntoView();
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+      return;
+    }
+    if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+      window.setTimeout(run, 0);
+      return;
+    }
+    run();
+  }
+
+  scrollGradePrivacyFocusedStudentIntoView() {
+    const bookPanel = this.refs.gradesBookPanel;
+    const studentButton = this.getGradePrivacyFocusedStudentButton();
+    if (
+      !bookPanel
+      || !studentButton
+      || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+      || !this.privacyFocusedGradeStudentId
+    ) {
+      return false;
+    }
+    const targetRow = studentButton.closest("tr") || studentButton;
+    const panelRect = bookPanel.getBoundingClientRect();
+    const targetRect = targetRow.getBoundingClientRect();
+    if (!panelRect.height || !targetRect.height) {
+      return false;
+    }
+    const header = this.refs.gradesTable?.querySelector(".grades-master-table thead");
+    const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;
+    const stickyScrollbar = this.refs.gradesTableStickyScrollbar;
+    const stickyScrollbarRect = stickyScrollbar instanceof HTMLElement && !stickyScrollbar.hidden
+      ? stickyScrollbar.getBoundingClientRect()
+      : null;
+    const scrollMargin = 8;
+    const headerHeight = headerRect?.height || 0;
+    const stickyScrollbarHeight = stickyScrollbarRect?.height || 0;
+    const visibleTop = panelRect.top + headerHeight + scrollMargin;
+    const visibleBottom = panelRect.bottom - stickyScrollbarHeight - scrollMargin;
+    let nextScrollTop = Number(bookPanel.scrollTop || 0);
+    if (targetRect.top < visibleTop) {
+      nextScrollTop += targetRect.top - visibleTop;
+    } else if (targetRect.bottom > visibleBottom) {
+      nextScrollTop += targetRect.bottom - visibleBottom;
+    } else {
+      this.positionGradePrivacyOverlay();
+      this.positionGradePrivacyNavigationOverlay();
+      return false;
+    }
+    const maxScrollTop = Math.max(0, bookPanel.scrollHeight - bookPanel.clientHeight);
+    bookPanel.scrollTop = clamp(Math.round(nextScrollTop), 0, maxScrollTop);
+    this.positionGradePrivacyOverlay();
+    this.positionGradePrivacyNavigationOverlay();
+    return true;
   }
 
   positionGradePrivacyNavigationOverlay() {
@@ -19173,7 +19389,7 @@ class PlannerApp {
       this.updateSidebarExpectationHorizonButtonState();
       return;
     }
-    this.openExpectationHorizonDialog();
+    void this.openExpectationHorizonDialog();
   }
 
   bindExpectationHorizonDialogEvents() {
@@ -19195,6 +19411,9 @@ class PlannerApp {
     this.refs.expectationHorizonDialogForm?.addEventListener("submit", (event) => {
       event.preventDefault();
       void this.generateExpectationHorizons();
+    });
+    this.refs.expectationHorizonTemplateDownload?.addEventListener("click", () => {
+      void this.downloadBuiltInExpectationHorizonTemplate();
     });
     this.refs.expectationHorizonFile?.addEventListener("change", (event) => {
       const [file] = event.target.files || [];
@@ -19251,13 +19470,14 @@ class PlannerApp {
     document.addEventListener("dragend", clearDrag);
   }
 
-  openExpectationHorizonDialog() {
+  async openExpectationHorizonDialog() {
     this.expectationHorizonTemplateFile = null;
     this.expectationHorizonGenerating = false;
+    await this.ensureStoredExpectationHorizonTemplateLoaded();
     if (this.refs.expectationHorizonFile) {
       this.refs.expectationHorizonFile.value = "";
     }
-    this.setExpectationHorizonFileName("");
+    this.setExpectationHorizonFileName(this.getExpectationHorizonDefaultTemplateLabel());
     this.setExpectationHorizonStatus("");
     this.syncExpectationHorizonGenerateState();
     this.openDialog(this.refs.expectationHorizonDialog);
@@ -19305,16 +19525,117 @@ class PlannerApp {
   setExpectationHorizonTemplateFile(file) {
     if (!this.isExpectationHorizonDocxFile(file)) {
       this.expectationHorizonTemplateFile = null;
-      this.setExpectationHorizonFileName("");
-      this.setExpectationHorizonStatus("Bitte eine DOCX-Datei auswählen.", "error");
+      this.setExpectationHorizonFileName(this.getExpectationHorizonDefaultTemplateLabel());
+      this.setExpectationHorizonStatus("Bitte eine DOCX-Datei auswählen. Die Standardvorlage bleibt aktiv.", "error");
       this.syncExpectationHorizonGenerateState();
       return false;
     }
     this.expectationHorizonTemplateFile = file;
-    this.setExpectationHorizonFileName(file.name);
+    this.setExpectationHorizonFileName(`Temporäre Vorlage: ${file.name}`);
     this.setExpectationHorizonStatus("");
     this.syncExpectationHorizonGenerateState();
     return true;
+  }
+
+  async loadBuiltInExpectationHorizonTemplateBytes() {
+    const response = await fetch(EXPECTATION_HORIZON_TEMPLATE_URL);
+    if (!response || !response.ok) {
+      throw new Error("Die eingebaute Erwartungshorizont-Vorlage konnte nicht geladen werden.");
+    }
+    return new Uint8Array(await response.arrayBuffer());
+  }
+
+  async ensureStoredExpectationHorizonTemplateLoaded() {
+    if (this.expectationHorizonStoredTemplateLoaded) {
+      return this.expectationHorizonStoredTemplate;
+    }
+    const stored = await getStoredLocalValue(EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY);
+    if (stored && stored.bytes) {
+      this.expectationHorizonStoredTemplate = {
+        name: String(stored.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
+        bytes: stored.bytes instanceof Uint8Array ? stored.bytes : new Uint8Array(stored.bytes || [])
+      };
+    } else {
+      this.expectationHorizonStoredTemplate = null;
+    }
+    this.expectationHorizonStoredTemplateLoaded = true;
+    return this.expectationHorizonStoredTemplate;
+  }
+
+  async getDefaultExpectationHorizonTemplateBytes() {
+    const stored = await this.ensureStoredExpectationHorizonTemplateLoaded();
+    if (stored?.bytes?.length) {
+      return stored.bytes;
+    }
+    return this.loadBuiltInExpectationHorizonTemplateBytes();
+  }
+
+  getExpectationHorizonDefaultTemplateLabel() {
+    return this.expectationHorizonStoredTemplate
+      ? `Eigene Standardvorlage: ${this.expectationHorizonStoredTemplate.name}`
+      : `Standardvorlage: ${EXPECTATION_HORIZON_TEMPLATE_FILE_NAME}`;
+  }
+
+  async setStoredExpectationHorizonTemplateFile(file) {
+    if (!this.isExpectationHorizonDocxFile(file)) {
+      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
+      return false;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const template = {
+      name: String(file.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
+      bytes
+    };
+    const saved = await storeLocalValue(EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY, template);
+    if (!saved) {
+      this.setExpectationHorizonTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true);
+      return false;
+    }
+    this.expectationHorizonStoredTemplate = template;
+    this.expectationHorizonStoredTemplateLoaded = true;
+    this.renderExpectationHorizonSettingsSection();
+    this.setExpectationHorizonTemplateSettingsStatus("Eigene Standardvorlage gespeichert.");
+    return true;
+  }
+
+  async resetStoredExpectationHorizonTemplate() {
+    await clearStoredLocalValue(EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY);
+    this.expectationHorizonStoredTemplate = null;
+    this.expectationHorizonStoredTemplateLoaded = true;
+    this.renderExpectationHorizonSettingsSection();
+    this.setExpectationHorizonTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.");
+  }
+
+  setExpectationHorizonTemplateSettingsStatus(message = "", isError = false) {
+    const node = this.refs.expectationHorizonTemplateSettingsStatus;
+    if (!node) {
+      return;
+    }
+    node.textContent = String(message || "");
+    node.style.color = isError ? "#ff8a8a" : "";
+  }
+
+  async downloadBuiltInExpectationHorizonTemplate() {
+    try {
+      const bytes = await this.getDefaultExpectationHorizonTemplateBytes();
+      const blob = new Blob([bytes], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = this.expectationHorizonStoredTemplate?.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      this.setExpectationHorizonStatus("Vorlage wurde als Download gestartet.", "success");
+      this.setExpectationHorizonTemplateSettingsStatus("Standardvorlage wurde als Download gestartet.");
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
+      this.setExpectationHorizonStatus(message, "error");
+      this.setExpectationHorizonTemplateSettingsStatus(message, true);
+    }
   }
 
   getExpectationHorizonGradeText(value) {
@@ -19469,14 +19790,11 @@ class PlannerApp {
       .map((number) => Number(number || 0))
       .filter((number) => Number.isInteger(number) && number > 0)
       .length === 1 ? "Aufgabe" : "Aufgaben";
-    return [
-      "Schriftliche Arbeiten dienen nicht nur der Leistungsfeststellung, sondern auch der Diagnose. Sie sind ein Zwischenschritt und nicht der Endpunkt Deines Lernprozesses. Entscheidend ist, dass Du etwaige Defizite gezielt aufarbeitest. Dabei unterstütze ich Dich gerne, doch der Wille dazu muss von Dir selbst kommen!",
-      `Im IServ-Aufgabenmodul findest Du zu genau den grundlegenden Kompetenzen, bei denen sich in Deiner schriftlichen Arbeit noch Unsicherheiten gezeigt haben (${taskLabel} ${taskList}), passendes Übungsmaterial:`,
-      "1. Sieh Dir die Musterlösung der entsprechenden Aufgabe im IServ-Ordner sorgfältig an.",
-      "2. Schau Dir das Erklärvideo unter dem im Aufgabenmodul verlinkten Applet an.",
-      "3. Übe mit den Aufgaben im Applet.",
-      "4. Lade einen Screenshot Deiner Bearbeitung im Aufgabenmodul hoch."
-    ].join("\n");
+    let comment = this.store.getExpectationHorizonCommentTemplate();
+    comment = replaceExpectationHorizonCommentPlaceholder(comment, "<<Aufgabenlabel>>", taskLabel);
+    comment = replaceExpectationHorizonCommentPlaceholder(comment, "<< Aufgabenlabel >>", taskLabel);
+    comment = replaceExpectationHorizonCommentPlaceholder(comment, "<<Aufgabenliste>>", taskList);
+    return replaceExpectationHorizonCommentPlaceholder(comment, "<< Aufgabenliste >>", taskList);
   }
 
   buildExpectationHorizonStudentRecords(context) {
@@ -19493,6 +19811,7 @@ class PlannerApp {
     const jg = this.formatExpectationHorizonJg(values);
     const subject = String(context.course?.subject || "").trim();
     const dateLabel = formatLongDateLabel(new Date()) || "—";
+    const location = this.store.getExpectationHorizonLocation();
     const topic = normalizeGradeAssessmentTopic(values.topic) || "—";
     const afbColumnValues = tasks.map((task) => task.afb || "");
     const be1ColumnValues = tasks.map((task) => (
@@ -19532,6 +19851,7 @@ class PlannerApp {
           "<<Name>>": name || "—",
           "<<Fach>>": subject || "—",
           "<<Datum>>": dateLabel,
+          "<<Ort>>": location || "—",
           "<<Thema>>": topic,
           "<<Note>>": this.formatExpectationHorizonNote(gradeValue, scale),
           "<<Notentext>>": this.formatExpectationHorizonGradeNarrative(gradeValue, scale),
@@ -19582,10 +19902,6 @@ class PlannerApp {
     if (this.expectationHorizonGenerating) {
       return;
     }
-    if (!this.expectationHorizonTemplateFile) {
-      this.setExpectationHorizonStatus("Bitte zuerst eine DOCX-Vorlage auswählen.", "error");
-      return;
-    }
     if (!isDocxZipSupported()) {
       this.setExpectationHorizonStatus("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.", "error");
       return;
@@ -19604,7 +19920,9 @@ class PlannerApp {
     this.syncExpectationHorizonGenerateState();
     this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
     try {
-      const templateBytes = new Uint8Array(await this.expectationHorizonTemplateFile.arrayBuffer());
+      const templateBytes = this.expectationHorizonTemplateFile
+        ? new Uint8Array(await this.expectationHorizonTemplateFile.arrayBuffer())
+        : await this.getDefaultExpectationHorizonTemplateBytes();
       const records = this.buildExpectationHorizonStudentRecords(context);
       if (!records.length) {
         this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");
@@ -20572,7 +20890,7 @@ class PlannerApp {
     const innerHeight = Math.max(1, height - padding.top - padding.bottom);
     const maxValue = 15;
     const minValue = 0;
-    const guideValues = [15, 13, 10, 7, 4, 1];
+    const guideValues = [13, 10, 7, 4, 1];
     const palette = [
       "#60a5fa",
       "#22d3ee",
@@ -20603,7 +20921,7 @@ class PlannerApp {
       label.setAttribute("x", String(padding.left - 6));
       label.setAttribute("y", String(y));
       label.setAttribute("class", "grades-privacy-chart-label");
-      label.textContent = this.formatDisplayedGrade(guideValue);
+      label.textContent = this.formatDisplayedOverviewGrade(guideValue);
       svg.append(label);
     });
 
@@ -20923,6 +21241,34 @@ class PlannerApp {
     };
   }
 
+  positionGradesOverviewStickyHeader() {
+    const table = this.refs.gradesTable?.querySelector(".grades-master-table");
+    const shell = table?.closest(".grades-master-table-shell");
+    const header = table?.querySelector("thead");
+    const bookPanel = this.refs.gradesBookPanel;
+    if (
+      !(table instanceof HTMLElement)
+      || !(shell instanceof HTMLElement)
+      || !(header instanceof HTMLElement)
+      || !(bookPanel instanceof HTMLElement)
+      || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+    ) {
+      table?.style?.removeProperty?.("--grades-overview-header-offset");
+      return;
+    }
+    const panelRect = bookPanel.getBoundingClientRect();
+    const shellRect = shell.getBoundingClientRect();
+    const headerRect = header.getBoundingClientRect();
+    if (!panelRect.height || !shellRect.height || !headerRect.height) {
+      table.style.removeProperty("--grades-overview-header-offset");
+      return;
+    }
+    const desiredOffset = Math.max(0, panelRect.top - shellRect.top);
+    const maxOffset = Math.max(0, shellRect.height - headerRect.height);
+    const offset = clamp(Math.round(desiredOffset), 0, Math.round(maxOffset));
+    table.style.setProperty("--grades-overview-header-offset", `${offset}px`);
+  }
+
   updateGradesTableStickyScrollbar() {
     const tableScroll = this.refs.gradesTableScroll;
     const scrollbar = this.refs.gradesTableStickyScrollbar;
@@ -20939,9 +21285,11 @@ class PlannerApp {
     spacer.style.width = `${scrollWidth}px`;
     if (!hasHorizontalOverflow) {
       scrollbar.scrollLeft = 0;
+      this.positionGradesOverviewStickyHeader();
       return;
     }
     scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+    this.positionGradesOverviewStickyHeader();
   }
 
   syncGradesTableStickyScrollbarFromTable() {
@@ -20966,9 +21314,82 @@ class PlannerApp {
     }
     this.syncingGradesTableStickyScrollbar = true;
     tableScroll.scrollLeft = Number(scrollbar.scrollLeft || 0);
+    this.positionGradesOverviewStickyHeader();
     this.positionGradePrivacyNavigationOverlay();
     requestAnimationFrame(() => {
       this.syncingGradesTableStickyScrollbar = false;
+    });
+  }
+
+  getGradesEntryTableScroll() {
+    return this.refs.gradesEntryContent || null;
+  }
+
+  updateGradesEntryTableStickyScrollbar() {
+    const tableScroll = this.getGradesEntryTableScroll();
+    const scrollbar = this.refs.gradesEntryTableStickyScrollbar;
+    const spacer = this.refs.gradesEntryTableStickyScrollbarSpacer;
+    if (!scrollbar || !spacer) {
+      return;
+    }
+    if (!tableScroll || this.normalizeGradesSubView(this.gradesSubView) !== "entry") {
+      scrollbar.hidden = true;
+      scrollbar.scrollLeft = 0;
+      spacer.style.width = "0px";
+      return;
+    }
+    const scrollWidth = Math.max(
+      Number(tableScroll.scrollWidth || 0),
+      Number(tableScroll.clientWidth || 0)
+    );
+    const hasHorizontalOverflow = scrollWidth - Number(tableScroll.clientWidth || 0) > 1;
+    scrollbar.hidden = !hasHorizontalOverflow;
+    spacer.style.width = `${scrollWidth}px`;
+    if (!hasHorizontalOverflow) {
+      scrollbar.scrollLeft = 0;
+      return;
+    }
+    scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+  }
+
+  syncGradesEntryTableStickyScrollbarFromTable() {
+    const tableScroll = this.getGradesEntryTableScroll();
+    const scrollbar = this.refs.gradesEntryTableStickyScrollbar;
+    if (!tableScroll || !scrollbar || scrollbar.hidden) {
+      return;
+    }
+    if (Number(scrollbar.scrollLeft || 0) !== Number(tableScroll.scrollLeft || 0)) {
+      scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+    }
+  }
+
+  syncGradesEntryTableScrollFromStickyScrollbar() {
+    const tableScroll = this.getGradesEntryTableScroll();
+    const scrollbar = this.refs.gradesEntryTableStickyScrollbar;
+    if (!tableScroll || !scrollbar || scrollbar.hidden) {
+      return;
+    }
+    if (Number(tableScroll.scrollLeft || 0) === Number(scrollbar.scrollLeft || 0)) {
+      return;
+    }
+    this.syncingGradesEntryTableStickyScrollbar = true;
+    tableScroll.scrollLeft = Number(scrollbar.scrollLeft || 0);
+    requestAnimationFrame(() => {
+      this.syncingGradesEntryTableStickyScrollbar = false;
+    });
+  }
+
+  bindGradesEntryTableScrollSync() {
+    const tableScroll = this.getGradesEntryTableScroll();
+    if (!tableScroll || tableScroll === this.boundGradesEntryTableScroll) {
+      return;
+    }
+    this.boundGradesEntryTableScroll = tableScroll;
+    tableScroll.addEventListener("scroll", () => {
+      if (this.syncingGradesEntryTableStickyScrollbar) {
+        return;
+      }
+      this.syncGradesEntryTableStickyScrollbarFromTable();
     });
   }
 
@@ -20983,6 +21404,7 @@ class PlannerApp {
       this.refs.gradesTableScroll.scrollLeft = Number(snapshot.tableLeft || 0);
     }
     this.updateGradesTableStickyScrollbar();
+    this.positionGradesOverviewStickyHeader();
   }
 
   renderGradesViewPreservingOverviewScroll(afterRender = null) {
@@ -23871,6 +24293,7 @@ class PlannerApp {
       this.refs.gradesTable.append(empty);
       this.removeGradePrivacyNavigationOverlay();
       this.updateGradesTableStickyScrollbar();
+      this.positionGradesOverviewStickyHeader();
       return;
     }
 
@@ -23881,8 +24304,10 @@ class PlannerApp {
       : null;
     this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
     this.updateGradesTableStickyScrollbar();
+    this.positionGradesOverviewStickyHeader();
     requestAnimationFrame(() => {
       this.updateGradesTableStickyScrollbar();
+      this.positionGradesOverviewStickyHeader();
     });
     if (!spotlightAssessmentId && pendingAutoScrollTarget) {
       this.schedulePendingGradesOverviewAutoScroll();
@@ -25770,6 +26195,9 @@ class PlannerApp {
     if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "gradeStructure")) {
       this.renderDefaultGradeStructureSettingsSection();
     }
+    if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "expectationHorizon")) {
+      this.renderExpectationHorizonSettingsSection();
+    }
     if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "lessonTimes")) {
       this.renderLessonTimesSection();
     }
@@ -27067,7 +27495,7 @@ class PlannerApp {
     const isDatabaseLock = this.locked
       && (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired");
     const activeTabAllowedInContext = this.refs.settingsPanels[this.activeSettingsTab] && (
-      (showPlanningOnlySettings && this.activeSettingsTab !== "gradeTestScales" && this.activeSettingsTab !== "gradeStructure")
+      (showPlanningOnlySettings && this.activeSettingsTab !== "gradeTestScales" && this.activeSettingsTab !== "gradeStructure" && this.activeSettingsTab !== "expectationHorizon")
       || (!showPlanningOnlySettings && this.activeSettingsTab !== "dayoff" && this.activeSettingsTab !== "lessonTimes")
     );
     let tabName = activeTabAllowedInContext ? this.activeSettingsTab : fallbackTab;
@@ -27087,7 +27515,7 @@ class PlannerApp {
       const isPlanningOnlyHidden = !showPlanningOnlySettings
         && (button.dataset.tab === "dayoff" || button.dataset.tab === "lessonTimes");
       const isGradesOnlyHidden = showPlanningOnlySettings
-        && (button.dataset.tab === "gradeTestScales" || button.dataset.tab === "gradeStructure");
+        && (button.dataset.tab === "gradeTestScales" || button.dataset.tab === "gradeStructure" || button.dataset.tab === "expectationHorizon");
       const isLockedHidden = this.locked
         && this.lockReason === "holidaysRequired"
         && !(allowManualDatabaseWhileHolidayLocked && button.dataset.tab === "database")
@@ -27107,7 +27535,7 @@ class PlannerApp {
 
     Object.entries(this.refs.settingsPanels).forEach(([name, panel]) => {
       const isPlanningOnlyHidden = !showPlanningOnlySettings && (name === "dayoff" || name === "lessonTimes");
-      const isGradesOnlyHidden = showPlanningOnlySettings && (name === "gradeTestScales" || name === "gradeStructure");
+      const isGradesOnlyHidden = showPlanningOnlySettings && (name === "gradeTestScales" || name === "gradeStructure" || name === "expectationHorizon");
       const isDatabaseLockHidden = isDatabaseLock && name !== "database";
       const isActive = name === tabName && !isPlanningOnlyHidden && !isGradesOnlyHidden && !isDatabaseLockHidden;
       panel.hidden = !isActive;
@@ -27749,6 +28177,37 @@ class PlannerApp {
       this.refs.appVersion.textContent = this.appVersion || "unbekannt";
     }
     this.syncAllNumberSteppers();
+    this.updateSettingsActionButtons();
+  }
+
+  renderExpectationHorizonSettingsSection() {
+    if (!this.refs.expectationHorizonLocation && !this.refs.expectationHorizonCommentTemplate) {
+      return;
+    }
+    const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
+    if (this.refs.expectationHorizonLocation) {
+      this.refs.expectationHorizonLocation.value = String(draft.expectationHorizonLocation || "");
+    }
+    if (this.refs.expectationHorizonCommentTemplate) {
+      this.refs.expectationHorizonCommentTemplate.value = normalizeExpectationHorizonCommentTemplate(
+        draft.expectationHorizonCommentTemplate
+      );
+    }
+    if (this.refs.expectationHorizonTemplateSettingsStatus) {
+      if (!this.expectationHorizonStoredTemplateLoaded) {
+        void this.ensureStoredExpectationHorizonTemplateLoaded().then(() => {
+          this.renderExpectationHorizonSettingsSection();
+        });
+      } else {
+        this.refs.expectationHorizonTemplateSettingsStatus.textContent = this.expectationHorizonStoredTemplate
+          ? `Aktiv: eigene Standardvorlage (${this.expectationHorizonStoredTemplate.name})`
+          : `Aktiv: eingebaute Standardvorlage (${EXPECTATION_HORIZON_TEMPLATE_FILE_NAME})`;
+        this.refs.expectationHorizonTemplateSettingsStatus.style.color = "";
+      }
+    }
+    if (this.refs.expectationHorizonTemplateSettingsReset) {
+      this.refs.expectationHorizonTemplateSettingsReset.disabled = !this.expectationHorizonStoredTemplate;
+    }
     this.updateSettingsActionButtons();
   }
 

@@ -26,6 +26,7 @@ const APP_SHELL = [
   './src/modules/planning/app.css',
   './src/modules/planning/app.js',
   './src/modules/planning/docx.js',
+  './src/modules/planning/expectation-horizon-template.docx',
   './src/modules/planning/bridge.js',
   './src/modules/merger/index.js',
   './src/modules/merger/app.html',
@@ -60,7 +61,7 @@ function isStaticAssetRequest(request, url) {
     || request.destination === 'image'
     || request.destination === 'font'
     || request.destination === 'manifest'
-    || /\.(?:css|js|mjs|png|svg|jpg|jpeg|gif|webp|ico|woff2?|ttf|otf)$/i.test(url.pathname)
+    || /\.(?:css|js|mjs|docx|png|svg|jpg|jpeg|gif|webp|ico|woff2?|ttf|otf)$/i.test(url.pathname)
   );
 }
 
