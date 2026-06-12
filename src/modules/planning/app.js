@@ -1,3 +1,5 @@
+import { createDocxFromTemplate, isDocxZipSupported } from "./docx.js";
+
 const DAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr"];
 const REQUIRED_HOLIDAYS = [
   "Herbstferien",
@@ -22,7 +24,7 @@ const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
-const GRADE_RATIO_TOOLTIP = "Rot = Kurz vor besserer Note";
+const GRADE_RATIO_TOOLTIP = "Orange = Kurz vor besserer Note";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
 const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
 const SYNC_META_KEY = "teachhelper-sync-meta-v1";
@@ -1035,6 +1037,18 @@ function formatShortDateLabel(value = new Date()) {
   });
 }
 
+function formatLongDateLabel(value = new Date()) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toLocaleDateString("de-DE", {
+    day: "numeric",
+    month: "long",
+    year: "numeric"
+  });
+}
+
 function parseShortDateLabel(value) {
   const match = String(value || "").trim().match(/^(\d{2})\.(\d{2})\.(\d{2})$/);
   if (!match) {
@@ -1667,6 +1681,42 @@ function normalizeGradeAssessmentMode(value) {
   return "grade";
 }
 
+function normalizeGradeAssessmentYearLevel(value) {
+  const text = String(value ?? "").trim();
+  if (!text) {
+    return null;
+  }
+  const parsed = Math.round(Number(text));
+  return parsed >= 5 && parsed <= 13 ? parsed : null;
+}
+
+function isGradeAssessmentCourseLevelDisabled(yearLevel) {
+  const normalized = normalizeGradeAssessmentYearLevel(yearLevel);
+  return normalized === null || normalized < 12;
+}
+
+function normalizeGradeAssessmentCourseLevel(value, yearLevel = null) {
+  if (isGradeAssessmentCourseLevelDisabled(yearLevel)) {
+    return "";
+  }
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "gk" || normalized === "lk" ? normalized : "";
+}
+
+function normalizeGradeAssessmentNumber(value) {
+  const text = String(value ?? "").replace(/\D+/g, "").slice(0, 2);
+  return text ? Number(text) : null;
+}
+
+function formatGradeAssessmentNumber(value) {
+  const normalized = normalizeGradeAssessmentNumber(value);
+  return normalized === null ? "" : String(normalized);
+}
+
+function normalizeGradeAssessmentTopic(value) {
+  return String(value || "").replace(/\r\n?/g, "\n").trim();
+}
+
 function normalizeGradeTestScale(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "sek1" || normalized === GRADE_TEST_SCALE_CUSTOM) {
@@ -1911,6 +1961,19 @@ function hasGradeTestScores(scores = {}) {
   return Object.keys(normalizeGradeTestScores(scores)).length > 0;
 }
 
+function isGradeTestDeficitFollowUpScore(task, scoreValue) {
+  const normalizedTask = task && typeof task === "object" ? task : {};
+  if (normalizedTask.deficitDiagnosisFollowUp !== true) {
+    return false;
+  }
+  const maxBe = Number(normalizedTask.maxBe || 0);
+  if (!Number.isFinite(maxBe) || maxBe <= 0) {
+    return false;
+  }
+  const parsed = parseGradeBeValue(scoreValue);
+  return parsed.valid && parsed.value !== null && Number(parsed.value) < maxBe / 3;
+}
+
 function normalizeGradeTestTasks(tasks = [], options = {}) {
   const source = Array.isArray(tasks) ? tasks : [];
   const usedIds = new Set();
@@ -1930,6 +1993,7 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
       title: normalizeGradeTextPart(item.title) || `Aufgabe ${result.length + 1}`,
       maxBe: parsedMaxBe.valid && parsedMaxBe.value !== null ? parsedMaxBe.value : null,
       afb: normalizeGradeTestAfb(item.afb),
+      deficitDiagnosisFollowUp: item.deficitDiagnosisFollowUp === true,
       sortOrder: Number(item.sortOrder || index + 1)
     });
     return result;
@@ -1940,6 +2004,7 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
       title: "Aufgabe 1",
       maxBe: null,
       afb: "",
+      deficitDiagnosisFollowUp: false,
       sortOrder: 1
     });
   }
@@ -2021,6 +2086,94 @@ function calculateGradeTestMaxBeSum(tasks = []) {
       return maxBe > 0 ? sum + maxBe : sum;
     }, 0);
   return maxSum > 0 ? Math.round(maxSum * 2) / 2 : 0;
+}
+
+function calculateGradeTestAfbShares(tasks = [], courseLevel = "") {
+  const totals = { I: 0, II: 0, III: 0 };
+  const totalMaxBe = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+    .reduce((sum, task) => {
+      const maxBe = Number(task.maxBe || 0);
+      if (maxBe <= 0) {
+        return sum;
+      }
+      const afb = normalizeGradeTestAfb(task.afb);
+      if (afb === "I") {
+        totals.I += maxBe;
+      } else if (afb === "I/II") {
+        totals.I += maxBe / 2;
+        totals.II += maxBe / 2;
+      } else if (afb === "II") {
+        totals.II += maxBe;
+      } else if (afb === "II/III") {
+        totals.II += maxBe / 2;
+        totals.III += maxBe / 2;
+      } else if (afb === "III") {
+        totals.III += maxBe;
+      }
+      return sum + maxBe;
+    }, 0);
+  const normalizedTotal = Math.round(totalMaxBe * 2) / 2;
+  const baseRows = ["I", "II", "III"].map((afb) => {
+    const be = Math.round(Number(totals[afb] || 0) * 2) / 2;
+    const ratio = normalizedTotal > 0 ? be / normalizedTotal : 0;
+    return {
+      afb,
+      be,
+      percent: Math.round(ratio * 1000) / 10,
+      hasShare: be > 0
+    };
+  });
+  const byAfb = baseRows.reduce((result, row) => {
+    result[row.afb] = row;
+    return result;
+  }, {});
+  const courseLevelValue = String(courseLevel || "").trim().toLowerCase();
+  const isLk = courseLevelValue === "lk";
+  const allPositiveOk = baseRows.every((row) => row.hasShare);
+  const afbIiLargestOk = byAfb.II.be > byAfb.I.be && byAfb.II.be > byAfb.III.be;
+  const afbIiiOrderOk = isLk ? byAfb.III.be > byAfb.I.be : byAfb.I.be > byAfb.III.be;
+  const rules = [
+    {
+      id: "all-positive",
+      label: "Berücksichtigung aller AFB",
+      ok: allPositiveOk
+    },
+    {
+      id: "afb-ii-largest",
+      label: "Schwerpunkt im AFB II",
+      ok: afbIiLargestOk
+    },
+    {
+      id: "afb-i-iii-order",
+      label: isLk
+        ? "Stärkere Akzentuierung von AFB III als I"
+        : "Stärkere Akzentuierung von AFB I als III",
+      ok: afbIiiOrderOk
+    }
+  ];
+  const rows = baseRows.map((row) => {
+    const warnings = [];
+    if (!row.hasShare) {
+      warnings.push("all-positive");
+    }
+    if (row.afb === "II" && !afbIiLargestOk) {
+      warnings.push("afb-ii-largest");
+    }
+    if ((row.afb === "I" || row.afb === "III") && !afbIiiOrderOk) {
+      warnings.push("afb-i-iii-order");
+    }
+    return {
+      ...row,
+      ok: warnings.length === 0,
+      warnings
+    };
+  });
+  return {
+    totalBe: normalizedTotal,
+    rows,
+    rules,
+    ok: rules.every((rule) => rule.ok)
+  };
 }
 
 function formatGradeTestRequiredBeForThreshold(threshold, grade, maxBeSum = null) {
@@ -3268,6 +3421,7 @@ class PlannerStore {
         continue;
       }
       const isNoLesson = Boolean(course.noLesson);
+      course.subject = String(course.subject || "");
       course.noLesson = isNoLesson;
       course.noGrades = Boolean(course.noGrades);
       course.hiddenInSidebar = Boolean(course.hiddenInSidebar);
@@ -3571,9 +3725,10 @@ class PlannerStore {
       });
   }
 
-  createCourse(schoolYearId, name, color, noLesson = false, hiddenInSidebar = false) {
+  createCourse(schoolYearId, name, color, noLesson = false, hiddenInSidebar = false, subject = "") {
     const yearId = Number(schoolYearId);
     const cleanName = String(name || "").trim();
+    const cleanSubject = String(subject || "").trim();
     if (!cleanName) {
       return null;
     }
@@ -3592,6 +3747,7 @@ class PlannerStore {
       id: this._nextId("course"),
       schoolYearId: yearId,
       name: cleanName,
+      subject: cleanSubject,
       color: normalizeCourseColor(resolvedColor, courseNoLesson),
       previousColor: courseNoLesson ? null : normalizeCourseColor(resolvedColor, false),
       noLesson: courseNoLesson,
@@ -3605,7 +3761,7 @@ class PlannerStore {
     return course.id;
   }
 
-  updateCourse(schoolYearId, courseId, name, color, noLesson = false, hiddenInSidebar = undefined) {
+  updateCourse(schoolYearId, courseId, name, color, noLesson = false, hiddenInSidebar = undefined, subject = undefined) {
     const yearId = Number(schoolYearId);
     const id = Number(courseId);
     const cleanName = String(name || "").trim();
@@ -3621,6 +3777,7 @@ class PlannerStore {
     }
     const courseNoLesson = Boolean(noLesson);
     course.name = cleanName;
+    course.subject = subject === undefined ? String(course.subject || "") : String(subject || "").trim();
     course.noLesson = courseNoLesson;
     course.noGrades = Boolean(course.noGrades);
     if (hiddenInSidebar === undefined) {
@@ -4170,6 +4327,7 @@ class PlannerStore {
         getDefaultGradeTestPredicateSuffixes(testScale)
       )
       : true;
+    const yearLevel = normalizeGradeAssessmentYearLevel(payload.yearLevel);
     const assessment = {
       id: nextAssessmentId,
       courseId: id,
@@ -4185,6 +4343,10 @@ class PlannerStore {
         : null,
       testPredicateSuffixes,
       testTasks: normalizeGradeTestTasks(payload.testTasks),
+      yearLevel,
+      courseLevel: normalizeGradeAssessmentCourseLevel(payload.courseLevel, yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(payload.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(payload.topic),
       halfYear: normalizeGradeHalfYear(payload.halfYear),
       sortOrder: Number(payload.sortOrder || nextSortOrder)
     };
@@ -4232,6 +4394,33 @@ class PlannerStore {
       assessment.testTasks = normalizeGradeTestTasks(patch.testTasks);
     } else {
       assessment.testTasks = normalizeGradeTestTasks(assessment.testTasks);
+    }
+    if (patch.yearLevel !== undefined) {
+      assessment.yearLevel = normalizeGradeAssessmentYearLevel(patch.yearLevel);
+      assessment.courseLevel = normalizeGradeAssessmentCourseLevel(assessment.courseLevel, assessment.yearLevel);
+    } else if (assessment.yearLevel === undefined) {
+      assessment.yearLevel = normalizeGradeAssessmentYearLevel(assessment.yearLevel);
+    }
+    if (patch.courseLevel !== undefined) {
+      assessment.courseLevel = normalizeGradeAssessmentCourseLevel(patch.courseLevel, assessment.yearLevel);
+    } else if (assessment.courseLevel === undefined || isGradeAssessmentCourseLevelDisabled(assessment.yearLevel)) {
+      assessment.courseLevel = normalizeGradeAssessmentCourseLevel(assessment.courseLevel, assessment.yearLevel);
+    }
+    if (patch.assessmentNumber !== undefined) {
+      assessment.assessmentNumber = normalizeGradeAssessmentNumber(patch.assessmentNumber);
+    } else if (assessment.assessmentNumber === undefined) {
+      assessment.assessmentNumber = normalizeGradeAssessmentNumber(assessment.assessmentNumber);
+    }
+    if (patch.topic !== undefined) {
+      assessment.topic = normalizeGradeAssessmentTopic(patch.topic);
+    } else if (assessment.topic === undefined) {
+      assessment.topic = normalizeGradeAssessmentTopic(assessment.topic);
+    }
+    if (normalizeGradeAssessmentMode(assessment.mode) !== "test") {
+      assessment.yearLevel = null;
+      assessment.courseLevel = "";
+      assessment.assessmentNumber = null;
+      assessment.topic = "";
     }
     if (patch.halfYear !== undefined) {
       assessment.halfYear = normalizeGradeHalfYear(patch.halfYear);
@@ -5768,6 +5957,7 @@ PlannerStore.prototype.normalizePublicState = function (rawState = null) {
         id: Number(item.id),
         schoolYearId: Number(item.schoolYearId),
         name: String(item.name || ""),
+        subject: String(item.subject || ""),
         color: normalizeCourseColor(item.color, noLesson),
         previousColor: item.previousColor == null ? null : normalizeCourseColor(item.previousColor, false),
         noLesson,
@@ -5903,6 +6093,7 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
       const item = asObject(raw);
       const mode = normalizeGradeAssessmentMode(item.mode);
       const testScale = normalizeGradeTestScale(item.testScale);
+      const yearLevel = mode === "test" ? normalizeGradeAssessmentYearLevel(item.yearLevel) : null;
       return {
         id: Number(item.id),
         courseId: Number(item.courseId),
@@ -5920,6 +6111,10 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
           ? normalizeGradeTestPredicateSuffixes(item.testPredicateSuffixes, true)
           : true,
         testTasks: normalizeGradeTestTasks(item.testTasks),
+        yearLevel,
+        courseLevel: mode === "test" ? normalizeGradeAssessmentCourseLevel(item.courseLevel, yearLevel) : "",
+        assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(item.assessmentNumber) : null,
+        topic: mode === "test" ? normalizeGradeAssessmentTopic(item.topic) : "",
         halfYear: normalizeGradeHalfYear(item.halfYear),
         sortOrder: Number(item.sortOrder || 0)
       };
@@ -6141,6 +6336,8 @@ class PlannerApp {
     this.dragDropCommitted = false;
     this.slotDialogStartMinIso = null;
     this.slotDialogEndDateBackup = null;
+    this.expectationHorizonTemplateFile = null;
+    this.expectationHorizonGenerating = false;
 
     this.refs = {
       schoolYearSelect: document.querySelector("#school-year-select"),
@@ -6170,11 +6367,13 @@ class PlannerApp {
       sidebarGradeSortSection: document.querySelector("#sidebar-grade-sort-section"),
       sidebarGradeDisplaySection: document.querySelector("#sidebar-grade-display-section"),
       sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
+      sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
       sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
       sidebarGradeNameOrderToggleBtn: document.querySelector("#sidebar-grade-name-order-toggle-btn"),
       sidebarGradeDisplaySystemToggleBtn: document.querySelector("#sidebar-grade-display-system-toggle-btn"),
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
+      sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
 
       settingsTabs: [...document.querySelectorAll(".settings-tab")],
@@ -6267,11 +6466,21 @@ class PlannerApp {
       gradeSimulationCategory: document.querySelector("#grade-simulation-category"),
       gradeSimulationSubcategory: document.querySelector("#grade-simulation-subcategory"),
       gradeSimulationResult: document.querySelector("#grade-simulation-result"),
+      expectationHorizonDialog: document.querySelector("#expectation-horizon-dialog"),
+      expectationHorizonDialogForm: document.querySelector("#expectation-horizon-dialog-form"),
+      expectationHorizonCancel: document.querySelector("#expectation-horizon-cancel"),
+      expectationHorizonCancelTop: document.querySelector("#expectation-horizon-cancel-top"),
+      expectationHorizonFile: document.querySelector("#expectation-horizon-file"),
+      expectationHorizonDropzone: document.querySelector("#expectation-horizon-dropzone"),
+      expectationHorizonFileName: document.querySelector("#expectation-horizon-file-name"),
+      expectationHorizonStatus: document.querySelector("#expectation-horizon-status"),
+      expectationHorizonGenerate: document.querySelector("#expectation-horizon-generate"),
 
       courseDialog: document.querySelector("#course-dialog"),
       courseDialogForm: document.querySelector("#course-dialog-form"),
       courseDialogTitle: document.querySelector("#course-dialog-title"),
       courseDialogId: document.querySelector("#course-dialog-id"),
+      courseDialogSubject: document.querySelector("#course-dialog-subject"),
       courseDialogName: document.querySelector("#course-dialog-name"),
       courseDialogColorPanel: document.querySelector("#course-dialog-color-panel"),
       courseDialogColorPalette: document.querySelector("#course-dialog-color-palette"),
@@ -6863,6 +7072,10 @@ class PlannerApp {
             ? normalizeGradeTestPredicateSuffixes(row.testPredicateSuffixes, true)
             : true,
           testTasks: normalizeGradeTestTasks(row.testTasks),
+          yearLevel: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentYearLevel(row.yearLevel) : null,
+          courseLevel: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentCourseLevel(row.courseLevel, row.yearLevel) : "",
+          assessmentNumber: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentNumber(row.assessmentNumber) : null,
+          topic: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentTopic(row.topic) : "",
           halfYear: normalizeGradeHalfYear(row.halfYear),
           sortOrder: Number(row.sortOrder || 0)
         })),
@@ -10374,7 +10587,9 @@ class PlannerApp {
     cancelText = "Abbrechen",
     defaultValue = "",
     inputLabel = "Eingabe",
-    dangerOk = false
+    inputListId = "",
+    dangerOk = false,
+    warning = false
   } = {}) {
     const normalizedMode = mode === "confirm" || mode === "prompt" ? mode : "alert";
     if (
@@ -10403,6 +10618,7 @@ class PlannerApp {
       this._resolveMessageDialog("cancel");
     }
     this.refs.messageDialogTitle.textContent = String(title || "Hinweis");
+    this.refs.messageDialog.classList.toggle("is-warning-message", Boolean(warning));
     this.refs.messageDialogText.textContent = String(message || "");
     this.refs.messageDialogText.hidden = !String(message || "").trim();
     this.refs.messageDialogOk.textContent = String(okText || "OK");
@@ -10418,8 +10634,15 @@ class PlannerApp {
     this.refs.messageDialogCancel.hidden = normalizedMode === "alert";
     if (isPrompt) {
       this.refs.messageDialogInput.value = String(defaultValue || "");
+      const listId = String(inputListId || "").trim();
+      if (listId) {
+        this.refs.messageDialogInput.setAttribute("list", listId);
+      } else {
+        this.refs.messageDialogInput.removeAttribute("list");
+      }
     } else {
       this.refs.messageDialogInput.value = "";
+      this.refs.messageDialogInput.removeAttribute("list");
     }
 
     return new Promise((resolve) => {
@@ -10453,7 +10676,8 @@ class PlannerApp {
       message,
       okText: options.okText || "Ja",
       cancelText: options.cancelText || "Abbrechen",
-      dangerOk: Boolean(options.dangerOk)
+      dangerOk: Boolean(options.dangerOk),
+      warning: Boolean(options.warning)
     });
   }
 
@@ -10465,7 +10689,8 @@ class PlannerApp {
       okText: options.okText || "Übernehmen",
       cancelText: options.cancelText || "Abbrechen",
       defaultValue,
-      inputLabel: options.inputLabel ?? "Eingabe"
+      inputLabel: options.inputLabel ?? "Eingabe",
+      inputListId: options.inputListId || ""
     });
   }
 
@@ -11122,6 +11347,9 @@ class PlannerApp {
 
     this.refs.courseDialogId.value = course ? String(course.id) : "";
     this.refs.courseDialogTitle.textContent = course ? "Kurs anpassen" : "Kurs anlegen";
+    if (this.refs.courseDialogSubject) {
+      this.refs.courseDialogSubject.value = course ? String(course.subject || "") : "";
+    }
     this.refs.courseDialogName.value = course ? String(course.name || "") : "";
     this.courseDialogDefaultColor = defaultColor;
     this.courseDialogSelectedColor = (course && !course.noLesson)
@@ -11180,6 +11408,48 @@ class PlannerApp {
     );
     if (!ok) {
       await this.showInfoMessage("Kursname bereits vorhanden.");
+      return;
+    }
+    this.renderAll();
+  }
+
+  async openCourseSubjectDialog(courseId) {
+    const year = this.activeSchoolYear;
+    const id = Number(courseId || 0);
+    if (!year || !id) {
+      return;
+    }
+    const course = this.store.listCourses(year.id).find((item) => item.id === id);
+    if (!course) {
+      return;
+    }
+    const nextSubject = await this.showPromptMessage(
+      "",
+      String(course.subject || ""),
+      {
+        title: "Fach ändern",
+        okText: "Speichern",
+        inputLabel: "Fach",
+        inputListId: "course-dialog-subject-options"
+      }
+    );
+    if (nextSubject === null) {
+      return;
+    }
+    if (!this.gradeVaultSession.planningPublicLoaded) {
+      await this.ensurePlanningPublicLoaded();
+    }
+    const ok = this.store.updateCourse(
+      year.id,
+      id,
+      String(course.name || ""),
+      course.noLesson ? null : normalizeCourseColor(course.color, false),
+      Boolean(course.noLesson),
+      Boolean(course.hiddenInSidebar),
+      String(nextSubject || "").trim()
+    );
+    if (!ok) {
+      await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.");
       return;
     }
     this.renderAll();
@@ -11352,6 +11622,7 @@ class PlannerApp {
       await this.ensurePlanningPublicLoaded();
     }
     const id = Number(this.refs.courseDialogId.value || 0);
+    const subject = String(this.refs.courseDialogSubject?.value || "").trim();
     const name = String(this.refs.courseDialogName.value || "").trim();
     const noLesson = Boolean(this.refs.courseDialogNoLesson.checked);
     const hiddenInSidebar = Boolean(this.courseDialogDraft && this.courseDialogDraft.hiddenInSidebar);
@@ -11365,7 +11636,7 @@ class PlannerApp {
 
     let targetCourseId = id;
     if (id) {
-      const ok = this.store.updateCourse(year.id, id, name, color, noLesson, hiddenInSidebar);
+      const ok = this.store.updateCourse(year.id, id, name, color, noLesson, hiddenInSidebar, subject);
       if (!ok) {
         await this.showInfoMessage("Kursname bereits vorhanden.");
         return;
@@ -11377,7 +11648,7 @@ class PlannerApp {
       if (!this.ensureGradeVaultConfiguredBeforeGradeCourseCreate()) {
         return;
       }
-      const created = this.store.createCourse(year.id, name, color, noLesson, hiddenInSidebar);
+      const created = this.store.createCourse(year.id, name, color, noLesson, hiddenInSidebar, subject);
       if (!created) {
         await this.showInfoMessage("Kursname bereits vorhanden.");
         return;
@@ -13046,6 +13317,19 @@ class PlannerApp {
     if (titleInput) {
       this.markGradesEntryDraftDirty();
     }
+    const assessmentNumberInput = event.target.closest("input[data-grades-entry-number]");
+    if (assessmentNumberInput) {
+      const rawValue = String(assessmentNumberInput.value || "");
+      const sanitizedValue = rawValue.replace(/\D+/g, "").slice(0, 2);
+      if (assessmentNumberInput.value !== sanitizedValue) {
+        assessmentNumberInput.value = sanitizedValue;
+      }
+      this.markGradesEntryDraftDirty();
+    }
+    const topicInput = event.target.closest("input[data-grades-entry-topic]");
+    if (topicInput) {
+      this.markGradesEntryDraftDirty();
+    }
     const gradeEntryInput = event.target.closest("input[data-grade-input='1']");
     if (gradeEntryInput && this.refs.gradesEntryContent?.contains(gradeEntryInput)) {
       this.markGradesEntryDraftDirty();
@@ -13069,13 +13353,19 @@ class PlannerApp {
       return false;
     }
     const isDraftSave = !this.selectedGradesEntryAssessmentId;
-    if (isDraftSave && !this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+    if (isDraftSave && !this.commitGradesEntryInputsBeforeRerender({ requireTestTaskValues: true })) {
       return false;
     }
     if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs(this.getGradeInputRoot(), { requireValue: true })) {
       return false;
     }
+    if (!isDraftSave) {
+      this.commitVisibleGradesEntryMetadataInputs();
+    }
     const draftValues = this.readGradesEntryEditorValues();
+    if (!await this.confirmGradesEntryAfbRequirementsBeforeSave(draftValues)) {
+      return false;
+    }
     const assessment = this.ensureGradesEntryDraftAssessment(this.selectedCourseId, draftValues);
     if (!assessment) {
       return false;
@@ -13122,6 +13412,27 @@ class PlannerApp {
       this.focusGradeAssessmentInput(assessment.id, 0);
     });
     return true;
+  }
+
+  async confirmGradesEntryAfbRequirementsBeforeSave(values = null) {
+    const mode = normalizeGradeAssessmentMode(values?.mode);
+    if (mode !== "test") {
+      return true;
+    }
+    const afbState = calculateGradeTestAfbShares(values?.testTasks, values?.courseLevel);
+    if (afbState.ok) {
+      return true;
+    }
+    return this.showConfirmMessage(
+      "Die kerncurricularen AFB-Vorgaben sind nicht erfüllt.",
+      {
+        title: "Kerncurriculare AFB-Vorgaben",
+        okText: "Trotzdem speichern",
+        cancelText: "Abbrechen",
+        dangerOk: true,
+        warning: true
+      }
+    );
   }
 
   async handleGradesSurfaceClick(event) {
@@ -13238,6 +13549,19 @@ class PlannerApp {
       this.addGradeTestTask();
       return;
     }
+    const deficitFollowUpButton = event.target.closest("button[data-grade-test-deficit-followup='1']");
+    if (deficitFollowUpButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.commitVisibleGradeInputs()) {
+        return;
+      }
+      if (this.toggleGradeTestTaskDeficitFollowUp(deficitFollowUpButton.dataset.taskId || "")) {
+        this.markGradesEntryDraftDirty();
+        this.renderGradesView();
+      }
+      return;
+    }
     const removeTestTaskButton = event.target.closest("button[data-grade-test-remove-task='1']");
     if (removeTestTaskButton) {
       event.preventDefault();
@@ -13245,8 +13569,23 @@ class PlannerApp {
       if (!this.commitVisibleGradeInputs()) {
         return;
       }
+      const taskId = removeTestTaskButton.dataset.taskId || "";
+      if (this.gradeTestTaskHasEnteredValues(taskId)) {
+        const confirmed = await this.showConfirmMessage(
+          "Zu dieser Aufgabe sind bereits BE-Werte eingetragen. Aufgabe wirklich löschen?",
+          {
+            title: "Aufgabe löschen",
+            okText: "Aufgabe löschen",
+            cancelText: "Abbrechen",
+            dangerOk: true
+          }
+        );
+        if (!confirmed) {
+          return;
+        }
+      }
       this.markGradesEntryDraftDirty();
-      this.removeGradeTestTask(removeTestTaskButton.dataset.taskId || "");
+      this.removeGradeTestTask(taskId);
       return;
     }
     const nameOrderToggleButton = event.target.closest("button[data-grade-name-order-toggle='1']");
@@ -13686,6 +14025,38 @@ class PlannerApp {
       return;
     }
 
+    const yearLevelSelect = event.target.closest("select[data-grades-entry-year-level]");
+    if (yearLevelSelect) {
+      const latestDraft = commitAndGetLatestDraft();
+      if (!latestDraft) {
+        return;
+      }
+      const yearLevel = normalizeGradeAssessmentYearLevel(yearLevelSelect.value);
+      this.markGradesEntryDraftDirty();
+      this.gradesEntryDraft = {
+        ...latestDraft,
+        yearLevel,
+        courseLevel: normalizeGradeAssessmentCourseLevel(latestDraft.courseLevel, yearLevel)
+      };
+      this.renderGradesView();
+      return;
+    }
+
+    const courseLevelInput = event.target.closest("input[data-grades-entry-course-level='1']");
+    if (courseLevelInput) {
+      const latestDraft = commitAndGetLatestDraft();
+      if (!latestDraft) {
+        return;
+      }
+      this.markGradesEntryDraftDirty();
+      this.gradesEntryDraft = {
+        ...latestDraft,
+        courseLevel: normalizeGradeAssessmentCourseLevel(courseLevelInput.value, latestDraft.yearLevel)
+      };
+      this.renderGradesView();
+      return;
+    }
+
     const categorySelect = event.target.closest("select[data-grades-entry-category]");
     if (categorySelect) {
       const latestDraft = commitAndGetLatestDraft();
@@ -13980,6 +14351,11 @@ class PlannerApp {
         this.handleGradePrintOverviewRequest(event);
       });
     }
+    if (this.refs.sidebarGradeExpectationBtn) {
+      this.refs.sidebarGradeExpectationBtn.addEventListener("click", (event) => {
+        this.handleExpectationHorizonOpenRequest(event);
+      });
+    }
     if (this.refs.sidebarGradeSimulationBtn) {
       this.refs.sidebarGradeSimulationBtn.addEventListener("click", (event) => {
         this.handleGradeSimulationOpenRequest(event);
@@ -14004,6 +14380,7 @@ class PlannerApp {
     this.refs.gradeSimulationSubcategory?.addEventListener("change", () => {
       this.handleGradeSimulationControlChange();
     });
+    this.bindExpectationHorizonDialogEvents();
     if (this.refs.contextMenu) {
       this.refs.contextMenu.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -16734,6 +17111,12 @@ class PlannerApp {
         }
       },
       {
+        label: "Fach ändern",
+        handler: async () => {
+          await this.openCourseSubjectDialog(id);
+        }
+      },
+      {
         label: "Farbe bearbeiten",
         disabled: Boolean(course.noLesson),
         handler: () => {
@@ -17118,6 +17501,10 @@ class PlannerApp {
         getDefaultGradeTestPredicateSuffixes(draftValues?.testScale)
       ),
       testTasks: normalizeGradeTestTasks(draftValues?.testTasks),
+      yearLevel: normalizeGradeAssessmentYearLevel(draftValues?.yearLevel),
+      courseLevel: normalizeGradeAssessmentCourseLevel(draftValues?.courseLevel, draftValues?.yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(draftValues?.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(draftValues?.topic),
       categoryId,
       subcategoryId,
       entries: {}
@@ -17142,6 +17529,10 @@ class PlannerApp {
       testScaleSnapshot: assessment.testScaleSnapshot || null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(assessment.testTasks),
+      yearLevel: normalizeGradeAssessmentYearLevel(assessment.yearLevel),
+      courseLevel: normalizeGradeAssessmentCourseLevel(assessment.courseLevel, assessment.yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(assessment.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(assessment.topic),
       categoryId: Number(assessment.categoryId) || null,
       subcategoryId: Number(assessment.subcategoryId) || null,
       entries: {}
@@ -17193,6 +17584,19 @@ class PlannerApp {
         ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(base.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(previous.testTasks || base.testTasks),
+      yearLevel: Object.prototype.hasOwnProperty.call(previous, "yearLevel")
+        ? normalizeGradeAssessmentYearLevel(previous.yearLevel)
+        : normalizeGradeAssessmentYearLevel(base.yearLevel),
+      courseLevel: normalizeGradeAssessmentCourseLevel(
+        Object.prototype.hasOwnProperty.call(previous, "courseLevel") ? previous.courseLevel : base.courseLevel,
+        Object.prototype.hasOwnProperty.call(previous, "yearLevel") ? previous.yearLevel : base.yearLevel
+      ),
+      assessmentNumber: Object.prototype.hasOwnProperty.call(previous, "assessmentNumber")
+        ? normalizeGradeAssessmentNumber(previous.assessmentNumber)
+        : normalizeGradeAssessmentNumber(base.assessmentNumber),
+      topic: Object.prototype.hasOwnProperty.call(previous, "topic")
+        ? normalizeGradeAssessmentTopic(previous.topic)
+        : normalizeGradeAssessmentTopic(base.topic),
       categoryId: Number(previous.categoryId || base.categoryId || 0) || null,
       subcategoryId: Number(previous.subcategoryId || base.subcategoryId || 0) || null,
       entries: {}
@@ -17217,6 +17621,10 @@ class PlannerApp {
         ? normalizeGradeTestPredicateSuffixes(state.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(state?.testTasks || assessment.testTasks),
+      yearLevel: normalizeGradeAssessmentYearLevel(state?.yearLevel ?? assessment.yearLevel),
+      courseLevel: normalizeGradeAssessmentCourseLevel(state?.courseLevel ?? assessment.courseLevel, state?.yearLevel ?? assessment.yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(state?.assessmentNumber ?? assessment.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(state?.topic ?? assessment.topic),
       categoryId: Number(state?.categoryId || assessment.categoryId || 0) || null,
       subcategoryId: Number(state?.subcategoryId || assessment.subcategoryId || 0) || null
     };
@@ -17315,6 +17723,12 @@ class PlannerApp {
       ? normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, deficitThresholdDefault)
       : deficitThresholdDefault;
     const deficitShare = calculateGradeDeficitShare(values, deficitThreshold);
+    const afbShareState = mode === "test"
+      ? calculateGradeTestAfbShares(
+        assessment?.testTasks || draft?.testTasks,
+        assessment?.courseLevel ?? draft?.courseLevel
+      )
+      : null;
     const rows = isLevelView
       ? state.groups.map((group) => ({
         label: group.label,
@@ -17381,6 +17795,32 @@ class PlannerApp {
               </div>
             `;
     };
+    const buildAfbCheckMarkup = () => {
+      if (!afbShareState) {
+        return "";
+      }
+      return `
+              <div class="grades-entry-afb-check${afbShareState.ok ? " is-ok" : " has-warning"}" aria-label="AFB-Pruefung">
+                <div class="grades-entry-afb-check-head">
+                  <h4>Kerncurriculare AFB-Vorgaben</h4>
+                  <span>${afbShareState.ok ? "erfüllt" : "nicht erfüllt"}</span>
+                </div>
+                <div class="grades-entry-afb-check-grid">
+                  ${afbShareState.rows.map((row) => `
+                    <div class="grades-entry-afb-check-item${row.ok ? " is-ok" : " has-warning"}">
+                      <span>AFB ${escapeHtml(row.afb)}</span>
+                      <strong>${escapeHtml(formatGradeTestPercentDisplay({ percent: row.percent }))}</strong>
+                    </div>
+                  `).join("")}
+                </div>
+                <ul class="grades-entry-afb-check-rules">
+                  ${afbShareState.rules.map((rule) => `
+                    <li class="${rule.ok ? "is-ok" : "has-warning"}">${escapeHtml(rule.label)}</li>
+                  `).join("")}
+                </ul>
+              </div>
+            `;
+    };
     const panel = document.createElement("aside");
     panel.className = "table-panel grades-entry-distribution";
     panel.setAttribute("aria-label", "Notenverteilung");
@@ -17396,6 +17836,7 @@ class PlannerApp {
                     ${buildDistributionToggleMarkup("grades-entry-distribution-overlay-view")}
                   </div>
                   ${buildDistributionChartMarkup({ overlay: true })}
+                  ${buildAfbCheckMarkup()}
                 </div>
               `;
       return overlay;
@@ -17406,6 +17847,7 @@ class PlannerApp {
                 ${buildDistributionToggleMarkup("grades-entry-distribution-view")}
               </div>
               ${buildDistributionChartMarkup()}
+              ${buildAfbCheckMarkup()}
             `;
     return panel;
   }
@@ -17513,6 +17955,10 @@ class PlannerApp {
       testScale: normalizeGradeTestScale(editorValues.testScale),
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(editorValues.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(editorValues.testTasks),
+      yearLevel: mode === "test" ? normalizeGradeAssessmentYearLevel(editorValues.yearLevel) : null,
+      courseLevel: mode === "test" ? normalizeGradeAssessmentCourseLevel(editorValues.courseLevel, editorValues.yearLevel) : "",
+      assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(editorValues.assessmentNumber) : null,
+      topic: mode === "test" ? normalizeGradeAssessmentTopic(editorValues.topic) : "",
       categoryId: editorValues.categoryId,
       subcategoryId: editorValues.subcategoryId
     });
@@ -17662,6 +18108,17 @@ class PlannerApp {
       predicateSuffixes: testPredicateSuffixes
     });
     const deficitThreshold = normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, deficitThresholdDefault);
+    const editorYearLevel = normalizeGradeAssessmentYearLevel(editorState.yearLevel);
+    const editorCourseLevel = normalizeGradeAssessmentCourseLevel(editorState.courseLevel, editorYearLevel);
+    const courseLevelDisabled = isGradeAssessmentCourseLevelDisabled(editorYearLevel);
+    const courseLevelValue = courseLevelDisabled ? "" : editorCourseLevel;
+    const gradeYearLevelOptionsMarkup = [
+      `<option value=""${editorYearLevel === null ? " selected" : ""}></option>`,
+      ...Array.from({ length: 9 }, (_item, index) => {
+        const yearLevel = index + 5;
+        return `<option value="${yearLevel}"${editorYearLevel === yearLevel ? " selected" : ""}>${yearLevel}</option>`;
+      })
+    ].join("");
     const editor = document.createElement("section");
     editor.className = "grades-entry-editor";
     editor.innerHTML = `
@@ -17754,6 +18211,57 @@ class PlannerApp {
                   title="Noten bis einschließlich diesem Wert zählen als Defizit"
                 >
               </label>
+              <div class="grades-entry-be-options is-wide${editorMode === "test" ? "" : " is-hidden"}">
+                <label class="grades-entry-field grades-entry-year-level-field">
+                  <span>Jahrgangsstufe</span>
+                  <select name="grades-entry-year-level" data-grades-entry-year-level="1"${editorMode === "test" ? "" : " disabled"}>
+                    ${gradeYearLevelOptionsMarkup}
+                  </select>
+                </label>
+                <fieldset class="grades-entry-field grades-entry-course-level-field${courseLevelDisabled ? " is-disabled" : ""}">
+                  <legend>Anforderungsniveau</legend>
+                  <div class="assessment-mode-toggle" role="radiogroup" aria-label="Anforderungsniveau">
+                    <label class="assessment-mode-option">
+                      <input type="radio" name="grades-entry-course-level" data-grades-entry-course-level="1" value="gk"${courseLevelValue === "gk" ? " checked" : ""}${editorMode === "test" && !courseLevelDisabled ? "" : " disabled"}>
+                      <span>GK</span>
+                    </label>
+                    <label class="assessment-mode-option" title="Keine Auswahl">
+                      <input type="radio" name="grades-entry-course-level" data-grades-entry-course-level="1" value=""${courseLevelValue ? "" : " checked"}${editorMode === "test" && !courseLevelDisabled ? "" : " disabled"}>
+                      <span>-</span>
+                    </label>
+                    <label class="assessment-mode-option">
+                      <input type="radio" name="grades-entry-course-level" data-grades-entry-course-level="1" value="lk"${courseLevelValue === "lk" ? " checked" : ""}${editorMode === "test" && !courseLevelDisabled ? "" : " disabled"}>
+                      <span>LK</span>
+                    </label>
+                  </div>
+                </fieldset>
+              </div>
+              <div class="grades-entry-topic-row is-wide${editorMode === "test" ? "" : " is-hidden"}">
+                <label class="grades-entry-field grades-entry-topic-field">
+                  <span>Thema</span>
+                  <input
+                    type="text"
+                    name="grades-entry-topic"
+                    data-grades-entry-topic="1"
+                    value="${escapeHtml(normalizeGradeAssessmentTopic(editorState.topic))}"
+                    placeholder="Thema"
+                    ${editorMode === "test" ? "" : "disabled"}
+                  >
+                </label>
+                <label class="grades-entry-field grades-entry-number-field">
+                  <span>Nummer</span>
+                  <input
+                    type="text"
+                    name="grades-entry-number"
+                    data-grades-entry-number="1"
+                    inputmode="numeric"
+                    pattern="\\d{0,2}"
+                    maxlength="2"
+                    value="${escapeHtml(formatGradeAssessmentNumber(editorState.assessmentNumber))}"
+                    ${editorMode === "test" ? "" : "disabled"}
+                  >
+                </label>
+              </div>
               <label class="grades-entry-field is-wide">
                 <span>Kategorie</span>
                 <select name="grades-entry-category" data-grades-entry-category="1">
@@ -17814,6 +18322,7 @@ class PlannerApp {
       this.updateSidebarGradeNameOrderToggleState();
       this.updateSidebarGradeDisplaySystemToggleState();
       this.updateSidebarGradePrintButtonState();
+      this.updateSidebarExpectationHorizonButtonState();
       this.updateSidebarGradeSimulationButtonState();
       return;
     }
@@ -17875,6 +18384,7 @@ class PlannerApp {
         this.updateSidebarGradeNameOrderToggleState();
         this.updateSidebarGradeDisplaySystemToggleState();
         this.updateSidebarGradePrintButtonState();
+        this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarGradeSimulationButtonState();
         return;
       }
@@ -17894,6 +18404,7 @@ class PlannerApp {
         this.updateSidebarGradeNameOrderToggleState();
         this.updateSidebarGradeDisplaySystemToggleState();
         this.updateSidebarGradePrintButtonState();
+        this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarGradeSimulationButtonState();
         return;
       }
@@ -17905,6 +18416,7 @@ class PlannerApp {
     this.updateSidebarGradeNameOrderToggleState();
     this.updateSidebarGradeDisplaySystemToggleState();
     this.updateSidebarGradePrintButtonState();
+    this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarGradeSimulationButtonState();
   }
 
@@ -17969,6 +18481,63 @@ class PlannerApp {
     };
   }
 
+  commitVisibleGradesEntryMetadataInputs(root = this.refs.gradesEntryContent) {
+    if (!root) {
+      return true;
+    }
+    const hasEditor = root.querySelector(".grades-entry-editor");
+    if (!hasEditor) {
+      return true;
+    }
+    const courseId = Number(this.selectedCourseId || 0);
+    if (!courseId) {
+      return true;
+    }
+    const activeAssessment = this.getGradesEntryActiveAssessment(courseId);
+    const draft = activeAssessment
+      ? this.getGradesEntryAssessmentDraft(activeAssessment)
+      : this.getGradesEntryDraft(courseId);
+    if (!draft) {
+      return true;
+    }
+    const titleInput = root.querySelector("input[data-grades-entry-title]");
+    const halfYearInput = root.querySelector("input[data-grades-entry-halfyear='1']:checked");
+    const weightInput = root.querySelector("input[data-grades-entry-weight]");
+    const modeInput = root.querySelector("input[data-grades-entry-mode='1']:checked");
+    const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
+    const testPredicateSuffixesInput = root.querySelector("input[data-grades-entry-test-predicate-suffixes='1']:checked");
+    const yearLevelSelect = root.querySelector("select[data-grades-entry-year-level]");
+    const courseLevelInput = root.querySelector("input[data-grades-entry-course-level='1']:checked");
+    const assessmentNumberInput = root.querySelector("input[data-grades-entry-number]");
+    const topicInput = root.querySelector("input[data-grades-entry-topic]");
+    const categorySelect = root.querySelector("select[data-grades-entry-category]");
+    const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
+    const mode = normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade");
+    const yearLevel = normalizeGradeAssessmentYearLevel(yearLevelSelect?.value ?? draft.yearLevel);
+    const testScale = normalizeGradeTestScale(testScaleInput?.value || draft.testScale);
+    this.gradesEntryDraft = {
+      ...draft,
+      title: String(titleInput?.value ?? draft.title ?? "").trim(),
+      halfYear: normalizeGradeHalfYear(halfYearInput?.value || draft.halfYear || "h1"),
+      weight: mode === "homework" ? 1 : normalizeGradeInteger(weightInput?.value, draft.weight || 1),
+      mode,
+      testScale,
+      testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
+        testPredicateSuffixesInput?.value,
+        Object.prototype.hasOwnProperty.call(draft || {}, "testPredicateSuffixes")
+          ? draft.testPredicateSuffixes
+          : getDefaultGradeTestPredicateSuffixes(testScale)
+      ),
+      yearLevel,
+      courseLevel: normalizeGradeAssessmentCourseLevel(courseLevelInput?.value ?? draft.courseLevel, yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(assessmentNumberInput?.value ?? draft.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(topicInput?.value ?? draft.topic),
+      categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
+      subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
+    };
+    return true;
+  }
+
   commitGradesEntryInputsBeforeRerender(options = {}) {
     return this.commitVisibleGradeInputs(options);
   }
@@ -17978,6 +18547,7 @@ class PlannerApp {
     if (!root) {
       return true;
     }
+    this.commitVisibleGradesEntryMetadataInputs(root);
     if (!this.commitVisibleGradeTestTaskInputs(root, {
       requireValue: Boolean(options.requireTestTaskValues)
     })) {
@@ -18036,12 +18606,14 @@ class PlannerApp {
       ) {
         input.classList.add("invalid");
         input.setAttribute("aria-invalid", "true");
+        this.syncGradeTestDeficitFollowUpScoreClass(input, null, parsed.value);
         invalidInput = invalidInput || input;
         continue;
       }
       input.classList.remove("invalid");
       input.setAttribute("aria-invalid", "false");
       input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
+      this.syncGradeTestDeficitFollowUpScoreClass(input, task, parsed.value);
       const groupKey = isDraftInput
         ? `draft:${studentId}`
         : `assessment:${assessmentId}:${studentId}`;
@@ -18526,6 +19098,541 @@ class PlannerApp {
       return;
     }
     this.openGradeSimulationDialog();
+  }
+
+  getExpectationHorizonCourseContext() {
+    const isGradesEntry = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "entry";
+    if (!isGradesEntry) {
+      return { ready: false, reason: "Nur in der BE-Eingabemaske verfügbar." };
+    }
+    if (this.locked) {
+      return { ready: false, reason: "Erwartungshorizont gesperrt." };
+    }
+    if (!this.canAccessGradeVault()) {
+      return { ready: false, reason: "Notenmodul zuerst entsperren." };
+    }
+    const year = this.activeSchoolYear;
+    const course = year
+      ? this.store.listCourses(year.id).find((item) => item.id === this.selectedCourseId && this.courseAllowsGrades(item))
+      : null;
+    if (!course) {
+      return { ready: false, reason: "Bitte zuerst einen Notenkurs wählen." };
+    }
+    if (!this.isGradeCourseLoaded(course.id)) {
+      return { ready: false, reason: "Notenkurs wird geladen." };
+    }
+    const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id))
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+    if (!students.length) {
+      return { ready: false, reason: "Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden." };
+    }
+    const assessment = this.getGradesEntryActiveAssessment(course.id);
+    const draft = assessment
+      ? this.getGradesEntryAssessmentDraft(assessment)
+      : this.getGradesEntryDraft(course.id);
+    const values = this.refs.gradesEntryContent ? this.readGradesEntryEditorValues() : draft;
+    if (normalizeGradeAssessmentMode(values?.mode) !== "test") {
+      return { ready: false, reason: "Nur im BE-Modus verfügbar." };
+    }
+    return {
+      ready: true,
+      course,
+      students,
+      assessment,
+      draft,
+      values
+    };
+  }
+
+  updateSidebarExpectationHorizonButtonState() {
+    const actions = this.refs.sidebarGradePrivacyActions;
+    const section = this.refs.sidebarGradeExpectationSection;
+    const button = this.refs.sidebarGradeExpectationBtn;
+    if (!actions || !button) {
+      return;
+    }
+    const isGradesEntry = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "entry";
+    const context = this.getExpectationHorizonCourseContext();
+    actions.hidden = !this.shouldShowSidebarGradeActions();
+    if (section) {
+      section.hidden = !isGradesEntry;
+    }
+    button.disabled = !context.ready;
+    button.title = context.ready ? "Erwartungshorizont" : context.reason || "Nur im BE-Modus verfügbar.";
+  }
+
+  handleExpectationHorizonOpenRequest(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      this.updateSidebarExpectationHorizonButtonState();
+      return;
+    }
+    this.openExpectationHorizonDialog();
+  }
+
+  bindExpectationHorizonDialogEvents() {
+    this.refs.expectationHorizonCancel?.addEventListener("click", () => {
+      this.closeExpectationHorizonDialog();
+    });
+    this.refs.expectationHorizonCancelTop?.addEventListener("click", () => {
+      this.closeExpectationHorizonDialog();
+    });
+    this.refs.expectationHorizonDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeExpectationHorizonDialog();
+    });
+    this.refs.expectationHorizonDialog?.addEventListener("click", (event) => {
+      if (event.target === this.refs.expectationHorizonDialog) {
+        this.closeExpectationHorizonDialog();
+      }
+    });
+    this.refs.expectationHorizonDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.generateExpectationHorizons();
+    });
+    this.refs.expectationHorizonFile?.addEventListener("change", (event) => {
+      const [file] = event.target.files || [];
+      if (file) {
+        this.setExpectationHorizonTemplateFile(file);
+      }
+    });
+    const dropzone = this.refs.expectationHorizonDropzone;
+    if (!dropzone) {
+      return;
+    }
+    let dragDepth = 0;
+    const clearDrag = () => {
+      dragDepth = 0;
+      dropzone.classList.remove("drag-over");
+    };
+    dropzone.addEventListener("click", () => {
+      this.refs.expectationHorizonFile?.click();
+    });
+    dropzone.addEventListener("dragenter", (event) => {
+      if (!gradeDataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      dragDepth += 1;
+      dropzone.classList.add("drag-over");
+    });
+    dropzone.addEventListener("dragover", (event) => {
+      if (!gradeDataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      dropzone.classList.add("drag-over");
+    });
+    dropzone.addEventListener("dragleave", (event) => {
+      event.preventDefault();
+      dragDepth = Math.max(0, dragDepth - 1);
+      if (dragDepth === 0) {
+        dropzone.classList.remove("drag-over");
+      }
+    });
+    dropzone.addEventListener("drop", (event) => {
+      if (!gradeDataTransferHasFiles(event.dataTransfer)) {
+        return;
+      }
+      event.preventDefault();
+      clearDrag();
+      const [file] = Array.from(event.dataTransfer?.files || []);
+      if (file) {
+        this.setExpectationHorizonTemplateFile(file);
+      }
+    });
+    document.addEventListener("drop", clearDrag);
+    document.addEventListener("dragend", clearDrag);
+  }
+
+  openExpectationHorizonDialog() {
+    this.expectationHorizonTemplateFile = null;
+    this.expectationHorizonGenerating = false;
+    if (this.refs.expectationHorizonFile) {
+      this.refs.expectationHorizonFile.value = "";
+    }
+    this.setExpectationHorizonFileName("");
+    this.setExpectationHorizonStatus("");
+    this.syncExpectationHorizonGenerateState();
+    this.openDialog(this.refs.expectationHorizonDialog);
+    requestAnimationFrame(() => {
+      this.refs.expectationHorizonDropzone?.focus({ preventScroll: true });
+    });
+  }
+
+  closeExpectationHorizonDialog() {
+    if (this.expectationHorizonGenerating) {
+      return;
+    }
+    this.closeDialog(this.refs.expectationHorizonDialog);
+  }
+
+  setExpectationHorizonStatus(message = "", type = "") {
+    const node = this.refs.expectationHorizonStatus;
+    if (!node) {
+      return;
+    }
+    node.textContent = String(message || "");
+    node.classList.toggle("is-error", type === "error");
+    node.classList.toggle("is-success", type === "success");
+    this.refs.expectationHorizonDropzone?.classList.toggle("has-error", type === "error");
+  }
+
+  setExpectationHorizonFileName(name = "") {
+    if (this.refs.expectationHorizonFileName) {
+      this.refs.expectationHorizonFileName.textContent = String(name || "");
+    }
+  }
+
+  syncExpectationHorizonGenerateState() {
+    if (this.refs.expectationHorizonGenerate) {
+      this.refs.expectationHorizonGenerate.disabled = this.expectationHorizonGenerating;
+      this.refs.expectationHorizonGenerate.textContent = this.expectationHorizonGenerating ? "Generiere..." : "Generieren";
+    }
+  }
+
+  isExpectationHorizonDocxFile(file) {
+    const name = String(file?.name || "").trim().toLowerCase();
+    return Boolean(file && name.endsWith(".docx"));
+  }
+
+  setExpectationHorizonTemplateFile(file) {
+    if (!this.isExpectationHorizonDocxFile(file)) {
+      this.expectationHorizonTemplateFile = null;
+      this.setExpectationHorizonFileName("");
+      this.setExpectationHorizonStatus("Bitte eine DOCX-Datei auswählen.", "error");
+      this.syncExpectationHorizonGenerateState();
+      return false;
+    }
+    this.expectationHorizonTemplateFile = file;
+    this.setExpectationHorizonFileName(file.name);
+    this.setExpectationHorizonStatus("");
+    this.syncExpectationHorizonGenerateState();
+    return true;
+  }
+
+  getExpectationHorizonGradeText(value) {
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
+    const grade = clamp(Math.round(Number(value) || 0), 0, 15);
+    if (grade >= 13) {
+      return "sehr gut";
+    }
+    if (grade >= 10) {
+      return "gut";
+    }
+    if (grade >= 7) {
+      return "befriedigend";
+    }
+    if (grade >= 4) {
+      return "ausreichend";
+    }
+    if (grade >= 1) {
+      return "mangelhaft";
+    }
+    return "ungenügend";
+  }
+
+  getExpectationHorizonSchoolGrade(value) {
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
+    const grade = clamp(Math.round(Number(value) || 0), 0, 15);
+    if (grade >= 13) {
+      return "1";
+    }
+    if (grade >= 10) {
+      return "2";
+    }
+    if (grade >= 7) {
+      return "3";
+    }
+    if (grade >= 4) {
+      return "4";
+    }
+    if (grade >= 1) {
+      return "5";
+    }
+    return "6";
+  }
+
+  formatExpectationHorizonNote(value, scale) {
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
+    const text = this.getExpectationHorizonGradeText(value);
+    if (normalizeGradeTestScale(scale) === "sek1") {
+      return `${text} (${this.getExpectationHorizonSchoolGrade(value)})`;
+    }
+    return `${formatGradeInteger(value)} (${text})`;
+  }
+
+  formatExpectationHorizonGradeNarrative(value, scale) {
+    if (value === null || value === undefined || value === "") {
+      return "—";
+    }
+    const sek1Texts = {
+      1: "Die schriftliche Arbeit zeigt eine Leistung, die den Anforderungen in besonderem Maße entspricht.",
+      2: "Die schriftliche Arbeit zeigt eine Leistung, die den Anforderungen voll entspricht.",
+      3: "Die schriftliche Arbeit zeigt eine Leistung, die im Allgemeinen den Anforderungen entspricht.",
+      4: "Die schriftliche Arbeit zeigt eine Leistung, die zwar Mängel aufweist, aber im Ganzen den Anforderungen noch entspricht.",
+      5: "Die schriftliche Arbeit zeigt eine Leistung, die den Anforderungen nicht entspricht, jedoch erkennen lässt, dass die notwendigen Grundkenntnisse vorhanden sind und die Mängel in absehbarer Zeit behoben werden könnten.",
+      6: "Die schriftliche Arbeit zeigt eine Leistung, die den Anforderungen nicht entspricht und bei der selbst die Grundkenntnisse so lückenhaft sind, dass die Mängel in absehbarer Zeit nicht behoben werden können."
+    };
+    const sek2Texts = [
+      "Die schriftliche Arbeit zeigt eine den Anforderungen in besonderem Maße entsprechende Leistung.",
+      "Die schriftliche Arbeit zeigt eine weitestgehend den Anforderungen in besonderem Maße entsprechende Leistung.",
+      "Die schriftliche Arbeit zeigt eine überwiegend den Anforderungen in besonderem Maße entsprechende Leistung.",
+      "Die schriftliche Arbeit zeigt eine Leistung, die den Anforderungen voll entspricht und geringe Teile der Leistung sind mit sehr gut zu bewerten.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen voll entsprechende Leistung.",
+      "Die schriftliche Arbeit zeigt eine überwiegend den Anforderungen voll entsprechende Leistung.",
+      "Die schriftliche Arbeit zeigt eine Leistung, die den Anforderungen im Allgemeinen entspricht und geringe Teile der Leistung sind mit gut zu bewerten.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen im Allgemeinen entsprechende Leistung.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen im Allgemeinen entsprechende Leistung, die jedoch Mängel aufweist.",
+      "Die schriftliche Arbeit zeigt eine Leistung, die zwar Mängel aufweist, aber den Anforderungen entspricht.",
+      "Die schriftliche Arbeit zeigt eine Leistung, die zwar Mängel aufweist, aber im Ganzen den Anforderungen noch entspricht.",
+      "Die schriftliche Arbeit zeigt eine Leistung, die zwar deutliche Mängel aufweist, aber im Ganzen den Anforderungen noch entspricht.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen nicht entsprechende Leistung, die jedoch erkennen lässt, dass die notwendigen Grundkenntnisse vorhanden sind, und die deutliche Mängel auf entscheidenden Ebenen aufweist.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen nicht entsprechende Leistung, die jedoch erkennen lässt, dass die notwendigen Grundkenntnisse vorhanden sind, und die sehr deutliche Mängel auf entscheidenden Ebenen aufweist.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen nicht entsprechende Leistung, die jedoch erkennen lässt, dass die notwendigen Grundkenntnisse vorhanden sind, und die sehr deutliche Mängel auf nahezu allen Ebenen aufweist.",
+      "Die schriftliche Arbeit zeigt eine den Anforderungen nicht entsprechende Leistung, bei der selbst die Grundkenntnisse lückenhaft sind."
+    ];
+    const grade = clamp(Math.round(Number(value) || 0), 0, 15);
+    if (normalizeGradeTestScale(scale) === "sek1") {
+      const schoolGrade = this.getExpectationHorizonSchoolGrade(grade);
+      return sek1Texts[schoolGrade] || "—";
+    }
+    return sek2Texts[15 - grade] || "—";
+  }
+
+  formatExpectationHorizonJg(values = {}) {
+    const yearLevel = normalizeGradeAssessmentYearLevel(values.yearLevel);
+    if (yearLevel === null) {
+      return "";
+    }
+    const halfYearNumber = normalizeGradeHalfYear(values.halfYear) === "h2" ? "2" : "1";
+    const assessmentNumber = normalizeGradeAssessmentNumber(values.assessmentNumber);
+    return `${yearLevel}-${halfYearNumber}${assessmentNumber === null ? "" : `-${assessmentNumber}`}`;
+  }
+
+  sanitizeExpectationHorizonFileName(name, fallback = "Schueler") {
+    const normalized = String(name || "")
+      .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+      .replace(/\s+/g, " ")
+      .replace(/[. ]+$/g, "")
+      .trim()
+      .slice(0, 120);
+    return normalized || fallback;
+  }
+
+  makeUniqueExpectationHorizonFileNames(records) {
+    const counts = new Map();
+    return records.map((record) => {
+      const base = this.sanitizeExpectationHorizonFileName(record.name);
+      const key = base.toLowerCase();
+      const count = (counts.get(key) || 0) + 1;
+      counts.set(key, count);
+      return {
+        ...record,
+        fileName: `${base}${count > 1 ? ` (${count})` : ""}.docx`
+      };
+    });
+  }
+
+  formatExpectationHorizonTaskNumberList(numbers = []) {
+    const values = numbers
+      .map((number) => Number(number || 0))
+      .filter((number) => Number.isInteger(number) && number > 0)
+      .map(String);
+    if (values.length <= 1) {
+      return values[0] || "";
+    }
+    if (values.length === 2) {
+      return `${values[0]} und ${values[1]}`;
+    }
+    return `${values.slice(0, -1).join(", ")} und ${values[values.length - 1]}`;
+  }
+
+  buildExpectationHorizonComment(taskNumbers = []) {
+    const taskList = this.formatExpectationHorizonTaskNumberList(taskNumbers);
+    if (!taskList) {
+      return "";
+    }
+    const taskLabel = taskNumbers
+      .map((number) => Number(number || 0))
+      .filter((number) => Number.isInteger(number) && number > 0)
+      .length === 1 ? "Aufgabe" : "Aufgaben";
+    return [
+      "Schriftliche Arbeiten dienen nicht nur der Leistungsfeststellung, sondern auch der Diagnose. Sie sind ein Zwischenschritt und nicht der Endpunkt Deines Lernprozesses. Entscheidend ist, dass Du etwaige Defizite gezielt aufarbeitest. Dabei unterstütze ich Dich gerne, doch der Wille dazu muss von Dir selbst kommen!",
+      `Im IServ-Aufgabenmodul findest Du zu genau den grundlegenden Kompetenzen, bei denen sich in Deiner schriftlichen Arbeit noch Unsicherheiten gezeigt haben (${taskLabel} ${taskList}), passendes Übungsmaterial:`,
+      "1. Sieh Dir die Musterlösung der entsprechenden Aufgabe im IServ-Ordner sorgfältig an.",
+      "2. Schau Dir das Erklärvideo unter dem im Aufgabenmodul verlinkten Applet an.",
+      "3. Übe mit den Aufgaben im Applet.",
+      "4. Lade einen Screenshot Deiner Bearbeitung im Aufgabenmodul hoch."
+    ].join("\n");
+  }
+
+  buildExpectationHorizonStudentRecords(context) {
+    const values = context.values || {};
+    const tasks = normalizeGradeTestTasks(values.testTasks);
+    const scale = normalizeGradeTestScale(values.testScale);
+    const scaleSnapshot = values.testScaleSnapshot
+      ? normalizeGradeTestScaleSnapshot(values.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
+      : this.store.buildGradeTestScaleSnapshot(scale);
+    const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
+      values.testPredicateSuffixes,
+      getDefaultGradeTestPredicateSuffixes(scale)
+    );
+    const jg = this.formatExpectationHorizonJg(values);
+    const subject = String(context.course?.subject || "").trim();
+    const dateLabel = formatLongDateLabel(new Date()) || "—";
+    const topic = normalizeGradeAssessmentTopic(values.topic) || "—";
+    const afbColumnValues = tasks.map((task) => task.afb || "");
+    const be1ColumnValues = tasks.map((task) => (
+      task.maxBe !== null && task.maxBe !== undefined ? formatGradeBeValue(task.maxBe) : ""
+    ));
+    const maxBeSum = tasks
+      .filter((task) => Number(task.maxBe || 0) > 0)
+      .reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+    const records = context.students.map((student) => {
+      const name = this.getGradeStudentDisplayName(student);
+      const entry = context.assessment
+        ? this.store.getGradeEntry(student.id, context.assessment.id)
+        : (
+          context.draft
+          && typeof context.draft.entries === "object"
+          && Object.prototype.hasOwnProperty.call(context.draft.entries, student.id)
+            ? normalizeGradeDraftEntry(context.draft.entries[student.id])
+            : null
+        );
+      const scores = normalizeGradeTestScores(entry?.testScores);
+      const deficitFollowUpTaskNumbers = tasks.reduce((result, task, index) => {
+        if (isGradeTestDeficitFollowUpScore(task, scores[task.id])) {
+          result.push(index + 1);
+        }
+        return result;
+      }, []);
+      const expectationHorizonComment = this.buildExpectationHorizonComment(deficitFollowUpTaskNumbers);
+      const be2ColumnValues = tasks.map((task) => (
+        Object.prototype.hasOwnProperty.call(scores, task.id) ? formatGradeBeValue(scores[task.id]) : ""
+      ));
+      const ratioState = calculateGradeTestRatio(tasks, scores);
+      const gradeValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes);
+      return {
+        name,
+        replacements: {
+          "<<JG>>": jg || "—",
+          "<<Name>>": name || "—",
+          "<<Fach>>": subject || "—",
+          "<<Datum>>": dateLabel,
+          "<<Thema>>": topic,
+          "<<Note>>": this.formatExpectationHorizonNote(gradeValue, scale),
+          "<<Notentext>>": this.formatExpectationHorizonGradeNarrative(gradeValue, scale),
+          "<<BE1>>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
+          "<< BE1 >>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
+          "<<BE2>>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
+          "<< BE2 >>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
+          "<<Kommentar>>": expectationHorizonComment,
+          "<< Kommentar >>": expectationHorizonComment
+        },
+        tableColumnReplacements: [
+          {
+            header: "AFB",
+            values: afbColumnValues
+          },
+          {
+            header: "BE1",
+            values: be1ColumnValues
+          },
+          {
+            header: "BE2",
+            values: be2ColumnValues
+          }
+        ]
+      };
+    });
+    return this.makeUniqueExpectationHorizonFileNames(records);
+  }
+
+  async downloadExpectationHorizonFiles(files) {
+    for (const file of files) {
+      const blob = new Blob([file.data], {
+        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = file.name;
+      document.body.append(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+    }
+  }
+
+  async generateExpectationHorizons() {
+    if (this.expectationHorizonGenerating) {
+      return;
+    }
+    if (!this.expectationHorizonTemplateFile) {
+      this.setExpectationHorizonStatus("Bitte zuerst eine DOCX-Vorlage auswählen.", "error");
+      return;
+    }
+    if (!isDocxZipSupported()) {
+      this.setExpectationHorizonStatus("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.", "error");
+      return;
+    }
+    if (!this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+      this.setExpectationHorizonStatus("Bitte zuerst die markierten BE-Eingaben korrigieren.", "error");
+      return;
+    }
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      this.setExpectationHorizonStatus(context.reason || "Erwartungshorizont kann hier nicht erzeugt werden.", "error");
+      this.updateSidebarExpectationHorizonButtonState();
+      return;
+    }
+    this.expectationHorizonGenerating = true;
+    this.syncExpectationHorizonGenerateState();
+    this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
+    try {
+      const templateBytes = new Uint8Array(await this.expectationHorizonTemplateFile.arrayBuffer());
+      const records = this.buildExpectationHorizonStudentRecords(context);
+      if (!records.length) {
+        this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");
+        return;
+      }
+      const files = [];
+      for (const record of records) {
+        const data = await createDocxFromTemplate(templateBytes, record.replacements, {
+          tableColumnReplacements: record.tableColumnReplacements
+        });
+        files.push({ name: record.fileName, data });
+      }
+      await this.downloadExpectationHorizonFiles(files);
+      this.setExpectationHorizonStatus(`${files.length} DOCX-Dateien als Downloads gestartet.`, "success");
+      this.expectationHorizonGenerating = false;
+      this.syncExpectationHorizonGenerateState();
+      this.closeExpectationHorizonDialog();
+    } catch (error) {
+      this.setExpectationHorizonStatus(
+        error instanceof Error && error.message ? error.message : "Erwartungshorizonte konnten nicht erzeugt werden.",
+        "error"
+      );
+    } finally {
+      if (this.expectationHorizonGenerating) {
+        this.expectationHorizonGenerating = false;
+        this.syncExpectationHorizonGenerateState();
+      }
+    }
   }
 
   closeGradeSimulationDialog() {
@@ -20862,6 +21969,7 @@ class PlannerApp {
       id,
       title: `Aufgabe ${tasks.length + 1}`,
       maxBe: null,
+      deficitDiagnosisFollowUp: false,
       sortOrder: tasks.length + 1
     });
     if (this.updateGradeTestContextTasks(tasks)) {
@@ -20875,6 +21983,124 @@ class PlannerApp {
     }
   }
 
+  toggleGradeTestTaskDeficitFollowUp(taskId) {
+    const normalizedTaskId = String(taskId || "").trim();
+    if (!normalizedTaskId) {
+      return false;
+    }
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const sourceTasks = draft?.testTasks || assessment?.testTasks;
+    const tasks = normalizeGradeTestTasks(sourceTasks);
+    let changed = false;
+    const nextTasks = tasks.map((task) => {
+      if (task.id !== normalizedTaskId) {
+        return task;
+      }
+      changed = true;
+      return {
+        ...task,
+        deficitDiagnosisFollowUp: task.deficitDiagnosisFollowUp !== true
+      };
+    });
+    if (!changed) {
+      return false;
+    }
+    return this.updateGradeTestContextTasks(nextTasks);
+  }
+
+  removeGradeTestTaskScoresFromAssessment(assessment, draft, taskId, tasks) {
+    const assessmentKey = Number(assessment?.id || 0);
+    const normalizedTaskId = String(taskId || "").trim();
+    if (!assessmentKey || !normalizedTaskId || !Array.isArray(this.store.gradeVaultState?.gradeEntries)) {
+      return false;
+    }
+    const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+    const validTaskIds = new Set(normalizedTasks.map((task) => task.id));
+    const scale = normalizeGradeTestScale(draft?.testScale || assessment?.testScale);
+    const scaleSnapshot = draft
+      ? this.store.buildGradeTestScaleSnapshot(scale)
+      : (assessment?.testScaleSnapshot || assessment?.testScale);
+    const testPredicateSuffixes = draft
+      ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
+      : normalizeGradeTestPredicateSuffixes(assessment?.testPredicateSuffixes, true);
+    let changed = false;
+    this.store.gradeVaultState.gradeEntries = this.store.gradeVaultState.gradeEntries
+      .map((entry) => {
+        if (Number(entry?.assessmentId || 0) !== assessmentKey) {
+          return entry;
+        }
+        const previousScores = normalizeGradeTestScores(entry?.testScores);
+        const testScores = Object.entries(previousScores).reduce((result, [scoreTaskId, score]) => {
+          if (scoreTaskId !== normalizedTaskId && validTaskIds.has(scoreTaskId)) {
+            result[scoreTaskId] = score;
+          }
+          return result;
+        }, {});
+        if (!hasGradeTestScores(testScores)) {
+          changed = true;
+          return null;
+        }
+        const value = calculateGradeTestValue(
+          normalizedTasks,
+          testScores,
+          scaleSnapshot,
+          null,
+          testPredicateSuffixes
+        );
+        const previousKeys = Object.keys(previousScores);
+        const nextKeys = Object.keys(testScores);
+        const scoresChanged = (
+          previousKeys.length !== nextKeys.length
+          || previousKeys.some((scoreTaskId) => testScores[scoreTaskId] !== previousScores[scoreTaskId])
+        );
+        if (scoresChanged || Number(entry?.value) !== Number(value) || entry?.checked !== null) {
+          changed = true;
+        }
+        return {
+          ...entry,
+          checked: null,
+          testScores,
+          value
+        };
+      })
+      .filter(Boolean);
+    if (changed) {
+      this.store._saveGradeVault();
+    }
+    return changed;
+  }
+
+  gradeTestTaskHasEnteredValues(taskId) {
+    const normalizedTaskId = String(taskId || "").trim();
+    if (!normalizedTaskId) {
+      return false;
+    }
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const tasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
+    const task = tasks.find((item) => item.id === normalizedTaskId);
+    if (!task) {
+      return false;
+    }
+    if (Number(task.maxBe || 0) > 0 || Boolean(normalizeGradeTestAfb(task.afb))) {
+      return true;
+    }
+    if (assessment) {
+      const entries = Array.isArray(this.store.gradeVaultState?.gradeEntries)
+        ? this.store.gradeVaultState.gradeEntries
+        : [];
+      return entries.some((entry) => (
+        Number(entry?.assessmentId || 0) === Number(assessment.id || 0)
+        && Object.prototype.hasOwnProperty.call(normalizeGradeTestScores(entry?.testScores), normalizedTaskId)
+      ));
+    }
+    if (draft && typeof draft.entries === "object") {
+      return Object.values(draft.entries).some((entry) => (
+        Object.prototype.hasOwnProperty.call(normalizeGradeTestScores(normalizeGradeDraftEntry(entry).testScores), normalizedTaskId)
+      ));
+    }
+    return false;
+  }
+
   removeGradeTestTask(taskId) {
     const normalizedTaskId = String(taskId || "").trim();
     if (!normalizedTaskId) {
@@ -20883,7 +22109,11 @@ class PlannerApp {
     const { assessment, draft } = this.getActiveGradeTestContext();
     const sourceTasks = draft?.testTasks || assessment?.testTasks;
     const tasks = normalizeGradeTestTasks(sourceTasks).filter((task) => task.id !== normalizedTaskId);
-    this.updateGradeTestContextTasks(tasks.length ? tasks : normalizeGradeTestTasks([], { ensureDefault: true }));
+    const nextTasks = tasks.length ? tasks : normalizeGradeTestTasks([], { ensureDefault: true });
+    if (assessment) {
+      this.removeGradeTestTaskScoresFromAssessment(assessment, draft, normalizedTaskId, nextTasks);
+    }
+    this.updateGradeTestContextTasks(nextTasks);
     this.renderGradesView();
   }
 
@@ -20925,6 +22155,11 @@ class PlannerApp {
       return;
     }
     const maxValue = Number(maxBe || 0);
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const sourceTasks = draft?.testTasks || assessment?.testTasks;
+    const task = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false })
+      .find((item) => item.id === taskId);
+    const followUpTask = task ? { ...task, maxBe: maxValue > 0 ? maxValue : null } : null;
     const root = this.refs.gradesEntryContent;
     root?.querySelectorAll("input[data-grade-test-score='1'][data-task-id]").forEach((node) => {
       if (!(node instanceof HTMLInputElement) || String(node.dataset.taskId || "").trim() !== taskId) {
@@ -20934,7 +22169,17 @@ class PlannerApp {
       const invalid = maxValue > 0 && parsed.valid && parsed.value !== null && Number(parsed.value || 0) > maxValue;
       node.classList.toggle("invalid", invalid);
       node.setAttribute("aria-invalid", invalid ? "true" : "false");
+      this.syncGradeTestDeficitFollowUpScoreClass(node, invalid ? null : followUpTask, parsed.value);
     });
+  }
+
+  syncGradeTestDeficitFollowUpScoreClass(input, task = null, scoreValue = undefined) {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    const rawValue = scoreValue === undefined ? input.value : scoreValue;
+    const invalid = input.classList.contains("invalid") || input.getAttribute("aria-invalid") === "true";
+    input.classList.toggle("is-deficit-followup-low", !invalid && isGradeTestDeficitFollowUpScore(task, rawValue));
   }
 
   updateGradeTestTaskFromInput(input, options = {}) {
@@ -21118,6 +22363,7 @@ class PlannerApp {
     tasks.forEach((task, index) => {
       const taskLabel = `Aufgabe ${index + 1}`;
       const hasTaskMaxBe = Number(task.maxBe || 0) > 0;
+      const hasDeficitFollowUp = task.deficitDiagnosisFollowUp === true;
       const taskHead = document.createElement("th");
       taskHead.className = "grade-test-task-col";
       taskHead.innerHTML = `
@@ -21133,6 +22379,7 @@ class PlannerApp {
                       ${buildGradeTestAfbOptionsMarkup(task.afb)}
                     </select>
                   </label>
+                  <button type="button" class="ghost grade-test-task-deficit-followup${hasDeficitFollowUp ? " is-active" : ""}" data-grade-test-deficit-followup="1" data-task-id="${escapeHtml(task.id)}" aria-label="Nachbereitung bei Defizitdiagnose fuer ${escapeHtml(taskLabel)}" aria-pressed="${hasDeficitFollowUp ? "true" : "false"}" title="Nachbereitung bei Defizitdiagnose">🛠️</button>
                   <button type="button" class="ghost grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
                 </div>
               `;
@@ -21174,8 +22421,8 @@ class PlannerApp {
         null,
         testPredicateSuffixes
       );
-      const ratioClass = isRatioNearBetterGrade ? " is-grade-low" : "";
-      ratioCell.innerHTML = `<div class="grade-test-ratio-value${ratioClass}" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""} title="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestRatioDisplay(ratioState))}</div>`;
+      const ratioClass = isRatioNearBetterGrade ? " is-grade-near-better" : "";
+      ratioCell.innerHTML = `<div class="grade-test-ratio-value${ratioClass}" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""} data-grade-tooltip="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestRatioDisplay(ratioState))}</div>`;
       tr.append(ratioCell);
       tasks.forEach((task, columnIndex) => {
         const taskLabel = `Aufgabe ${columnIndex + 1}`;
@@ -21188,11 +22435,12 @@ class PlannerApp {
           const value = Object.prototype.hasOwnProperty.call(scores, task.id) ? scores[task.id] : null;
           const taskMaxBe = Number(task.maxBe || 0);
           const isInvalidScore = value !== null && taskMaxBe > 0 && Number(value || 0) > taskMaxBe;
+          const isDeficitFollowUpLow = !isInvalidScore && isGradeTestDeficitFollowUpScore(task, value);
           td.innerHTML = `
                     <input
                       type="text"
                       name="grade-test-${escapeHtml(String(assessment?.id || "draft"))}-${escapeHtml(task.id)}-${student.id}"
-                      class="grade-cell-input grade-test-score-input${isInvalidScore ? " invalid" : ""}"
+                      class="grade-cell-input grade-test-score-input${isInvalidScore ? " invalid" : ""}${isDeficitFollowUpLow ? " is-deficit-followup-low" : ""}"
                       inputmode="decimal"
                       maxlength="5"
                       data-grade-input="1"
@@ -21234,14 +22482,7 @@ class PlannerApp {
     averageRow.append(averageResultCell);
     const averageRatioCell = document.createElement("td");
     averageRatioCell.className = "grade-test-ratio-col";
-    const isAverageRatioNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
-      averageState.ratioState?.ratio,
-      scaleSnapshot,
-      null,
-      testPredicateSuffixes
-    );
-    const averageRatioClass = isAverageRatioNearBetterGrade ? " is-grade-low" : "";
-    averageRatioCell.innerHTML = `<div class="grade-test-ratio-value${averageRatioClass}" data-grade-test-average-ratio="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-ratio=\"1\""} title="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestAverageRatioDisplay(averageState.ratioState))}</div>`;
+    averageRatioCell.innerHTML = `<div class="grade-test-ratio-value" data-grade-test-average-ratio="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-ratio=\"1\""} data-grade-tooltip="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestAverageRatioDisplay(averageState.ratioState))}</div>`;
     averageRow.append(averageRatioCell);
     tasks.forEach((task) => {
       const averageTaskCell = document.createElement("td");
@@ -21384,6 +22625,10 @@ class PlannerApp {
         ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(testScale))
         : getDefaultGradeTestPredicateSuffixes(testScale),
       testTasks: normalizeGradeTestTasks(previous.testTasks),
+      yearLevel: normalizeGradeAssessmentYearLevel(previous.yearLevel),
+      courseLevel: normalizeGradeAssessmentCourseLevel(previous.courseLevel, previous.yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(previous.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(previous.topic),
       categoryId,
       subcategoryId,
       entries
@@ -21461,17 +22706,23 @@ class PlannerApp {
     if (!categoryId || !subcategoryId) {
       return null;
     }
+    const mode = normalizeGradeAssessmentMode(values?.mode);
+    const yearLevel = mode === "test" ? normalizeGradeAssessmentYearLevel(values?.yearLevel) : null;
     const assessmentId = this.store.createGradeAssessment(courseKey, {
       title: values?.title || "",
       halfYear: values?.halfYear || "h1",
-      weight: normalizeGradeAssessmentMode(values?.mode) === "homework" ? 1 : normalizeGradeInteger(values?.weight, 1),
-      mode: normalizeGradeAssessmentMode(values?.mode),
+      weight: mode === "homework" ? 1 : normalizeGradeInteger(values?.weight, 1),
+      mode,
       testScale: normalizeGradeTestScale(values?.testScale),
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
         values?.testPredicateSuffixes,
         getDefaultGradeTestPredicateSuffixes(values?.testScale)
       ),
       testTasks: normalizeGradeTestTasks(values?.testTasks),
+      yearLevel,
+      courseLevel: mode === "test" ? normalizeGradeAssessmentCourseLevel(values?.courseLevel, yearLevel) : "",
+      assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(values?.assessmentNumber) : null,
+      topic: mode === "test" ? normalizeGradeAssessmentTopic(values?.topic) : "",
       categoryId,
       subcategoryId,
       maxPoints: 15
@@ -21495,6 +22746,10 @@ class PlannerApp {
     const modeInput = root.querySelector("input[data-grades-entry-mode='1']:checked");
     const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
     const testPredicateSuffixesInput = root.querySelector("input[data-grades-entry-test-predicate-suffixes='1']:checked");
+    const yearLevelSelect = root.querySelector("select[data-grades-entry-year-level]");
+    const courseLevelInput = root.querySelector("input[data-grades-entry-course-level='1']:checked");
+    const assessmentNumberInput = root.querySelector("input[data-grades-entry-number]");
+    const topicInput = root.querySelector("input[data-grades-entry-topic]");
     const categorySelect = root.querySelector("select[data-grades-entry-category]");
     const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
     const taskInputById = new Map(
@@ -21523,6 +22778,7 @@ class PlannerApp {
           }
         : task
     ));
+    const yearLevel = normalizeGradeAssessmentYearLevel(yearLevelSelect?.value ?? draft.yearLevel);
     return {
       title: String(titleInput?.value || draft.title || "").trim(),
       halfYear: normalizeGradeHalfYear(halfYearInput?.value || draft.halfYear || "h1"),
@@ -21537,6 +22793,10 @@ class PlannerApp {
           : getDefaultGradeTestPredicateSuffixes(testScaleInput?.value || draft.testScale)
       ),
       testTasks,
+      yearLevel,
+      courseLevel: normalizeGradeAssessmentCourseLevel(courseLevelInput?.value ?? draft.courseLevel, yearLevel),
+      assessmentNumber: normalizeGradeAssessmentNumber(assessmentNumberInput?.value ?? draft.assessmentNumber),
+      topic: normalizeGradeAssessmentTopic(topicInput?.value ?? draft.topic),
       categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
       subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
     };
@@ -23113,7 +24373,8 @@ class PlannerApp {
     if (!(node instanceof Element)) {
       return;
     }
-    node.setAttribute("title", GRADE_RATIO_TOOLTIP);
+    node.setAttribute("data-grade-tooltip", GRADE_RATIO_TOOLTIP);
+    node.removeAttribute("title");
   }
 
   handleGradesTableInput(event) {
@@ -23566,7 +24827,7 @@ class PlannerApp {
           testPredicateSuffixes
         );
         ratioNode.textContent = formatGradeTestRatioDisplay(ratioState);
-        ratioNode.classList.toggle("is-grade-low", isNearBetterGrade);
+        ratioNode.classList.toggle("is-grade-near-better", isNearBetterGrade);
         this.syncGradeRatioTooltip(ratioNode, isNearBetterGrade);
       }
       return;
@@ -23601,7 +24862,7 @@ class PlannerApp {
         testPredicateSuffixes
       );
       ratioNode.textContent = formatGradeTestRatioDisplay(ratioState);
-      ratioNode.classList.toggle("is-grade-low", isNearBetterGrade);
+      ratioNode.classList.toggle("is-grade-near-better", isNearBetterGrade);
       this.syncGradeRatioTooltip(ratioNode, isNearBetterGrade);
     }
   }
@@ -23676,15 +24937,9 @@ class PlannerApp {
       this.syncGradeDeficitTooltip(resultNode, isDeficit);
     }
     if (ratioNode) {
-      const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
-        averageState.ratioState?.ratio,
-        scaleSnapshot,
-        null,
-        testPredicateSuffixes
-      );
       ratioNode.textContent = formatGradeTestAverageRatioDisplay(averageState.ratioState);
-      ratioNode.classList.toggle("is-grade-low", isNearBetterGrade);
-      this.syncGradeRatioTooltip(ratioNode, isNearBetterGrade);
+      ratioNode.classList.remove("is-grade-near-better");
+      this.syncGradeRatioTooltip(ratioNode, false);
     }
     tasks.forEach((task) => {
       const taskNode = [...this.refs.gradesEntryContent.querySelectorAll("[data-grade-test-average-task]")]
@@ -23798,6 +25053,7 @@ class PlannerApp {
       if (!parsed.valid || !taskId) {
         input.classList.add("invalid");
         input.setAttribute("aria-invalid", "true");
+        this.syncGradeTestDeficitFollowUpScoreClass(input, null, parsed.value);
         return false;
       }
       const context = this.getGradeTestInputContext(input);
@@ -23805,11 +25061,13 @@ class PlannerApp {
       if (parsed.value !== null && task && Number(task.maxBe || 0) > 0 && parsed.value > Number(task.maxBe || 0)) {
         input.classList.add("invalid");
         input.setAttribute("aria-invalid", "true");
+        this.syncGradeTestDeficitFollowUpScoreClass(input, null, parsed.value);
         return false;
       }
       input.classList.remove("invalid");
       input.setAttribute("aria-invalid", "false");
       input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
+      this.syncGradeTestDeficitFollowUpScoreClass(input, task, parsed.value);
       const nextScores = { ...context.scores };
       if (parsed.value === null) {
         delete nextScores[taskId];
@@ -25777,6 +27035,7 @@ class PlannerApp {
     this.updateSidebarGradeNameOrderToggleState();
     this.updateSidebarGradeDisplaySystemToggleState();
     this.updateSidebarGradePrintButtonState();
+    this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarGradeSimulationButtonState();
     this.renderSidebarFooterActions();
     if (this.refs.mainPane) {

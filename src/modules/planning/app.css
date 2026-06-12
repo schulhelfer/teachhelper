@@ -84,6 +84,16 @@
           -webkit-touch-callout: none;
         }
 
+        .visually-hidden {
+          position: absolute !important;
+          width: 1px !important;
+          height: 1px !important;
+          overflow: hidden !important;
+          clip: rect(0 0 0 0) !important;
+          white-space: nowrap !important;
+          clip-path: inset(50%) !important;
+        }
+
         *:not(input):not(textarea):not(select):not(option):not([contenteditable="true"]) {
           -webkit-user-select: none;
           user-select: none;
@@ -490,6 +500,39 @@
           max-width: 440px;
         }
 
+        #message-dialog.app-dialog.is-warning-message {
+          border-color: rgba(248, 113, 113, 0.45);
+          box-shadow:
+            0 0 0 1px rgba(248, 113, 113, 0.18),
+            var(--module-surface-shadow);
+        }
+
+        #message-dialog.is-warning-message #message-dialog-form {
+          grid-template-columns: auto minmax(0, 1fr);
+          column-gap: 0.78rem;
+          row-gap: 0.52rem;
+        }
+
+        #message-dialog.is-warning-message #message-dialog-form::before {
+          content: "⚠️";
+          grid-column: 1;
+          grid-row: 1 / span 2;
+          align-self: start;
+          margin-top: -0.08rem;
+          font-size: 2.65rem;
+          line-height: 1;
+        }
+
+        #message-dialog.is-warning-message .dialog-header,
+        #message-dialog.is-warning-message .message-dialog-text,
+        #message-dialog.is-warning-message .message-dialog-input-row {
+          grid-column: 2;
+        }
+
+        #message-dialog.is-warning-message .dialog-actions {
+          grid-column: 1 / -1;
+        }
+
         #message-dialog-ok.danger-action {
           background: linear-gradient(180deg,
               rgba(164, 33, 33, 0.96) 0%,
@@ -881,6 +924,7 @@
         .sidebar-grade-name-order-toggle,
         .sidebar-grade-display-system-toggle,
         .sidebar-grade-print-btn,
+        .sidebar-grade-expectation-btn,
         .sidebar-grade-simulation-btn {
           width: 100%;
           min-width: 0;
@@ -904,6 +948,14 @@
         }
 
         .sidebar-grade-simulation-btn {
+          min-height: 40px;
+          padding: 0.46rem 0.5rem;
+          white-space: normal;
+          text-align: center;
+          font-size: 0.72rem;
+        }
+
+        .sidebar-grade-expectation-btn {
           min-height: 40px;
           padding: 0.46rem 0.5rem;
           white-space: normal;
@@ -970,6 +1022,8 @@
         .sidebar-grade-display-system-toggle:not(:disabled):focus-visible,
         .sidebar-grade-print-btn:not(:disabled):hover,
         .sidebar-grade-print-btn:not(:disabled):focus-visible,
+        .sidebar-grade-expectation-btn:not(:disabled):hover,
+        .sidebar-grade-expectation-btn:not(:disabled):focus-visible,
         .sidebar-grade-simulation-btn:not(:disabled):hover,
         .sidebar-grade-simulation-btn:not(:disabled):focus-visible {
           background: rgba(60, 72, 92, 0.98);
@@ -1004,6 +1058,7 @@
         .sidebar-grade-name-order-toggle:disabled,
         .sidebar-grade-display-system-toggle:disabled,
         .sidebar-grade-print-btn:disabled,
+        .sidebar-grade-expectation-btn:disabled,
         .sidebar-grade-simulation-btn:disabled {
           cursor: not-allowed;
           opacity: 0.48;
@@ -1264,6 +1319,15 @@
         }
 
         .sidebar-grade-simulation-btn {
+          width: 100%;
+          min-width: 0;
+          min-height: 38px;
+          border-radius: 10px;
+          padding: 0.42rem 0.5rem;
+          line-height: 1.12;
+        }
+
+        .sidebar-grade-expectation-btn {
           width: 100%;
           min-width: 0;
           min-height: 38px;
@@ -3925,6 +3989,124 @@
           overflow-wrap: anywhere;
         }
 
+        .grades-entry-afb-check {
+          display: grid;
+          gap: 0.62rem;
+          min-width: 0;
+          padding: 0.72rem;
+          border: 1px solid rgba(148, 163, 184, 0.14);
+          border-radius: 16px;
+          background: rgba(15, 23, 42, 0.22);
+        }
+
+        .grades-entry-afb-check-head {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.6rem;
+          min-width: 0;
+        }
+
+        .grades-entry-afb-check-head h4 {
+          margin: 0;
+          color: var(--text);
+          font-size: 0.84rem;
+          font-weight: 900;
+          line-height: 1.1;
+        }
+
+        .grades-entry-afb-check-head span {
+          flex: none;
+          padding: 0.18rem 0.42rem;
+          border-radius: 999px;
+          color: #bbf7d0;
+          background: rgba(34, 197, 94, 0.16);
+          font-size: 0.66rem;
+          font-weight: 400;
+          line-height: 1.1;
+        }
+
+        .grades-entry-afb-check.has-warning .grades-entry-afb-check-head span {
+          color: #fecaca;
+          background: rgba(239, 68, 68, 0.16);
+        }
+
+        .grades-entry-afb-check-grid {
+          display: grid;
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+          gap: 0.42rem;
+          min-width: 0;
+        }
+
+        .grades-entry-afb-check-item {
+          display: grid;
+          gap: 0.24rem;
+          min-width: 0;
+          padding: 0.52rem 0.42rem;
+          border: 1px solid rgba(34, 197, 94, 0.22);
+          border-radius: 12px;
+          background: rgba(34, 197, 94, 0.08);
+        }
+
+        .grades-entry-afb-check-item.has-warning {
+          border-color: rgba(239, 68, 68, 0.26);
+          background: rgba(239, 68, 68, 0.08);
+        }
+
+        .grades-entry-afb-check-item span {
+          color: var(--muted);
+          font-size: 0.62rem;
+          font-weight: 400;
+          line-height: 1;
+          text-transform: uppercase;
+        }
+
+        .grades-entry-afb-check-item strong {
+          color: var(--text);
+          font-size: 0.76rem;
+          font-weight: 400;
+          line-height: 1.05;
+          white-space: nowrap;
+        }
+
+        .grades-entry-afb-check-rules {
+          display: grid;
+          gap: 0.28rem;
+          min-width: 0;
+          margin: 0;
+          padding: 0;
+          list-style: none;
+        }
+
+        .grades-entry-afb-check-rules li {
+          position: relative;
+          min-width: 0;
+          padding-left: 1rem;
+          color: rgba(226, 232, 240, 0.78);
+          font-size: 0.66rem;
+          font-weight: 400;
+          line-height: 1.25;
+        }
+
+        .grades-entry-afb-check-rules li::before {
+          content: "";
+          position: absolute;
+          top: 0.32em;
+          left: 0.1rem;
+          width: 0.45rem;
+          height: 0.45rem;
+          border-radius: 999px;
+          background: rgba(34, 197, 94, 0.78);
+        }
+
+        .grades-entry-afb-check-rules li.has-warning {
+          color: #fecaca;
+        }
+
+        .grades-entry-afb-check-rules li.has-warning::before {
+          background: rgba(239, 68, 68, 0.9);
+        }
+
         @keyframes gradesDistributionOverlayFade {
           from {
             opacity: 0;
@@ -3973,13 +4155,16 @@
           display: none;
         }
 
-        .grades-entry-field.is-wide {
+        .grades-entry-field.is-wide,
+        .grades-entry-be-options.is-wide,
+        .grades-entry-topic-row.is-wide {
           grid-column: 1 / -1;
         }
 
         .grades-entry-mode-field,
         .grades-entry-test-scale-field,
         .grades-entry-test-predicate-field,
+        .grades-entry-course-level-field,
         .grades-entry-halfyear-field {
           padding-top: 0.05rem;
         }
@@ -4069,6 +4254,7 @@
         .grades-entry-mode-field .assessment-mode-toggle,
         .grades-entry-test-scale-field .assessment-mode-toggle,
         .grades-entry-test-predicate-field .assessment-mode-toggle,
+        .grades-entry-course-level-field .assessment-mode-toggle,
         .grades-entry-halfyear-field .assessment-mode-toggle {
           padding: 0.25rem;
           border-radius: 14px;
@@ -4089,6 +4275,10 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .grades-entry-course-level-field .assessment-mode-toggle {
+          grid-template-columns: repeat(3, minmax(0, 1fr));
+        }
+
         .grades-entry-halfyear-field .assessment-mode-toggle {
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
@@ -4096,6 +4286,7 @@
         .grades-entry-mode-field .assessment-mode-option span,
         .grades-entry-test-scale-field .assessment-mode-option span,
         .grades-entry-test-predicate-field .assessment-mode-option span,
+        .grades-entry-course-level-field .assessment-mode-option span,
         .grades-entry-halfyear-field .assessment-mode-option span {
           min-height: 2.8rem;
           padding: 0.5rem 0.8rem;
@@ -4108,6 +4299,7 @@
         .grades-entry-mode-field .assessment-mode-option:hover span,
         .grades-entry-test-scale-field .assessment-mode-option:hover span,
         .grades-entry-test-predicate-field .assessment-mode-option:hover span,
+        .grades-entry-course-level-field .assessment-mode-option:hover span,
         .grades-entry-halfyear-field .assessment-mode-option:hover span {
           color: rgba(248, 250, 252, 0.94);
           background: rgba(148, 163, 184, 0.08);
@@ -4116,11 +4308,56 @@
         .grades-entry-mode-field .assessment-mode-option input:checked+span,
         .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
         .grades-entry-test-predicate-field .assessment-mode-option input:checked+span,
+        .grades-entry-course-level-field .assessment-mode-option input:checked+span,
         .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #f8fbff;
           background: rgba(59, 130, 246, 0.24);
           border-color: rgba(96, 165, 250, 0.34);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        }
+
+        .grades-entry-be-options {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(9rem, 1.15fr);
+          gap: 0.85rem;
+          align-items: start;
+        }
+
+        .grades-entry-topic-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) minmax(5.5rem, 0.28fr);
+          gap: 0.85rem;
+          align-items: start;
+        }
+
+        .grades-entry-be-options.is-hidden,
+        .grades-entry-topic-row.is-hidden {
+          display: none;
+        }
+
+        .grades-entry-course-level-field.is-disabled .assessment-mode-toggle {
+          border-color: rgba(148, 163, 184, 0.12);
+          background: rgba(15, 23, 42, 0.28);
+          cursor: not-allowed;
+        }
+
+        .grades-entry-course-level-field.is-disabled .assessment-mode-option {
+          cursor: not-allowed;
+        }
+
+        .grades-entry-course-level-field.is-disabled .assessment-mode-option span {
+          color: rgba(148, 163, 184, 0.54);
+          background: transparent;
+          border-color: transparent;
+          box-shadow: none;
+        }
+
+        .grades-entry-course-level-field.is-disabled .assessment-mode-option:hover span,
+        .grades-entry-course-level-field.is-disabled .assessment-mode-option input:checked+span {
+          color: rgba(148, 163, 184, 0.62);
+          background: rgba(148, 163, 184, 0.1);
+          border-color: rgba(148, 163, 184, 0.12);
+          box-shadow: none;
         }
 
         .grades-entry-actions {
@@ -4306,6 +4543,7 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          position: relative;
           min-height: var(--grades-entry-assessment-box-height);
           color: var(--muted);
           font-size: 0.76rem;
@@ -4369,7 +4607,7 @@
 
         .grade-test-task-head {
           display: grid;
-          grid-template-columns: 1.85rem 1.55rem;
+          grid-template-columns: 1.85rem 1.55rem 1.55rem;
           gap: 0.14rem 0.22rem;
           align-items: center;
           justify-content: center;
@@ -4441,8 +4679,8 @@
           text-transform: none;
         }
 
+        .grade-test-task-deficit-followup,
         .grade-test-task-remove {
-          grid-column: 2 / 3;
           grid-row: 1 / 2;
           width: 1.55rem;
           min-width: 1.55rem;
@@ -4453,6 +4691,27 @@
           border-radius: 8px;
           font-size: 0.82rem;
           line-height: 1;
+        }
+
+        .grade-test-task-deficit-followup {
+          grid-column: 2 / 3;
+        }
+
+        .grade-test-task-remove {
+          grid-column: 3 / 4;
+        }
+
+        .grade-test-task-deficit-followup.is-active {
+          border-color: rgba(250, 204, 21, 0.72);
+          background: rgba(250, 204, 21, 0.2);
+          color: #facc15;
+        }
+
+        button.ghost.grade-test-task-deficit-followup:hover:not(:disabled),
+        button.ghost.grade-test-task-deficit-followup:focus-visible:not(:disabled) {
+          border-color: rgba(250, 204, 21, 0.72);
+          background: rgba(250, 204, 21, 0.2);
+          color: #facc15;
         }
 
         .grade-block-table.grades-entry-table th.student-col,
@@ -4542,6 +4801,39 @@
           color: rgba(100, 116, 139, 0.82);
         }
 
+        :root[data-theme='light'] .grades-entry-afb-check {
+          border-color: rgba(14, 165, 233, 0.12);
+          background: rgba(255, 255, 255, 0.42);
+        }
+
+        :root[data-theme='light'] .grades-entry-afb-check-head span {
+          color: #166534;
+          background: rgba(34, 197, 94, 0.14);
+        }
+
+        :root[data-theme='light'] .grades-entry-afb-check.has-warning .grades-entry-afb-check-head span {
+          color: #991b1b;
+          background: rgba(220, 38, 38, 0.12);
+        }
+
+        :root[data-theme='light'] .grades-entry-afb-check-item {
+          border-color: rgba(22, 163, 74, 0.22);
+          background: rgba(34, 197, 94, 0.08);
+        }
+
+        :root[data-theme='light'] .grades-entry-afb-check-item.has-warning {
+          border-color: rgba(220, 38, 38, 0.22);
+          background: rgba(220, 38, 38, 0.07);
+        }
+
+        :root[data-theme='light'] .grades-entry-afb-check-rules li {
+          color: rgba(71, 85, 105, 0.88);
+        }
+
+        :root[data-theme='light'] .grades-entry-afb-check-rules li.has-warning {
+          color: #991b1b;
+        }
+
         :root[data-theme='light'] .grades-entry-form {
           border-color: rgba(14, 165, 233, 0.12);
           background: rgba(255, 255, 255, 0.34);
@@ -4590,6 +4882,7 @@
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-toggle,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-toggle,
         :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-toggle,
+        :root[data-theme='light'] .grades-entry-course-level-field .assessment-mode-toggle,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-toggle {
           border-color: rgba(14, 165, 233, 0.14);
           background: rgba(226, 242, 255, 0.48);
@@ -4599,6 +4892,7 @@
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option span,
         :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-option span,
+        :root[data-theme='light'] .grades-entry-course-level-field .assessment-mode-option span,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option span {
           color: #475569;
         }
@@ -4606,6 +4900,7 @@
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option:hover span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option:hover span,
         :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-option:hover span,
+        :root[data-theme='light'] .grades-entry-course-level-field .assessment-mode-option:hover span,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option:hover span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.08);
@@ -4614,10 +4909,29 @@
         :root[data-theme='light'] .grades-entry-mode-field .assessment-mode-option input:checked+span,
         :root[data-theme='light'] .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
         :root[data-theme='light'] .grades-entry-test-predicate-field .assessment-mode-option input:checked+span,
+        :root[data-theme='light'] .grades-entry-course-level-field .assessment-mode-option input:checked+span,
         :root[data-theme='light'] .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #0f172a;
           background: rgba(14, 165, 233, 0.18);
           border-color: rgba(14, 165, 233, 0.28);
+        }
+
+        :root[data-theme='light'] .grades-entry-course-level-field.is-disabled .assessment-mode-toggle {
+          border-color: rgba(148, 163, 184, 0.18);
+          background: rgba(226, 232, 240, 0.36);
+        }
+
+        :root[data-theme='light'] .grades-entry-course-level-field.is-disabled .assessment-mode-option span {
+          color: rgba(100, 116, 139, 0.66);
+          background: transparent;
+        }
+
+        :root[data-theme='light'] .grades-entry-course-level-field.is-disabled .assessment-mode-option:hover span,
+        :root[data-theme='light'] .grades-entry-course-level-field.is-disabled .assessment-mode-option input:checked+span {
+          color: rgba(71, 85, 105, 0.72);
+          background: rgba(100, 116, 139, 0.1);
+          border-color: rgba(100, 116, 139, 0.14);
+          box-shadow: none;
         }
 
         @media (max-width: 1240px) {
@@ -4664,6 +4978,14 @@
 
         @media (max-width: 720px) {
           .grades-entry-form {
+            grid-template-columns: 1fr;
+          }
+
+          .grades-entry-be-options {
+            grid-template-columns: 1fr;
+          }
+
+          .grades-entry-topic-row {
             grid-template-columns: 1fr;
           }
 
@@ -5982,6 +6304,11 @@
           pointer-events: none;
         }
 
+        .grades-entry-field .assessment-mode-option input,
+        .grades-entry-field .assessment-mode-option input:disabled {
+          opacity: 0;
+        }
+
         .assessment-mode-option span {
           display: flex;
           align-items: center;
@@ -6874,6 +7201,64 @@
           width: 100%;
         }
 
+        .expectation-horizon-dialog form {
+          gap: 0.85rem;
+        }
+
+        .expectation-horizon-dropzone {
+          width: 100%;
+          min-height: 112px;
+          display: grid;
+          place-items: center;
+          gap: 0.42rem;
+          padding: 1rem;
+          border: 1px dashed rgba(82, 150, 255, 0.42);
+          border-radius: 12px;
+          background: rgba(20, 26, 34, 0.48);
+          color: var(--muted);
+          text-align: center;
+          font-weight: 800;
+          line-height: 1.25;
+          cursor: pointer;
+          white-space: normal;
+          transition: border-color 0.12s ease, background-color 0.12s ease, color 0.12s ease;
+        }
+
+        .expectation-horizon-dropzone:hover,
+        .expectation-horizon-dropzone:focus-visible,
+        .expectation-horizon-dropzone.drag-over {
+          border-color: rgba(82, 150, 255, 0.78);
+          background: rgba(82, 150, 255, 0.12);
+          color: var(--text);
+        }
+
+        .expectation-horizon-dropzone.has-error {
+          border-color: rgba(248, 113, 113, 0.8);
+          background: rgba(127, 29, 29, 0.18);
+        }
+
+        .expectation-horizon-dropzone-icon {
+          font-size: 1.7rem;
+          line-height: 1;
+        }
+
+        .expectation-horizon-file-name,
+        .expectation-horizon-status {
+          min-height: 1.25rem;
+          color: rgba(226, 232, 240, 0.82);
+          font-size: 0.84rem;
+          font-weight: 700;
+          line-height: 1.25;
+        }
+
+        .expectation-horizon-status.is-error {
+          color: #fca5a5;
+        }
+
+        .expectation-horizon-status.is-success {
+          color: #86efac;
+        }
+
         .grade-simulation-summary {
           padding: 0.55rem 0.7rem;
           border: 1px solid rgba(148, 163, 184, 0.28);
@@ -6958,6 +7343,17 @@
           -webkit-text-fill-color: #f87171;
         }
 
+        .grades-entry-table .grade-cell-input.is-deficit-followup-low:not(.invalid):not([aria-invalid="true"]) {
+          color: #facc15;
+          -webkit-text-fill-color: #facc15;
+        }
+
+        .grades-entry-table .is-grade-near-better,
+        .grades-master-table .is-grade-near-better {
+          color: #fb923c;
+          -webkit-text-fill-color: #fb923c;
+        }
+
         .grade-total-button {
           display: inline-flex;
           align-items: center;
@@ -6980,14 +7376,17 @@
         }
 
         .grade-total-button[data-grade-tooltip],
-        .grade-cell-display-button[data-grade-tooltip] {
+        .grade-cell-display-button[data-grade-tooltip],
+        .grade-test-ratio-value[data-grade-tooltip] {
           overflow: visible;
         }
 
         .grade-total-button[data-grade-tooltip]::after,
         .grade-total-button[data-grade-tooltip]::before,
         .grade-cell-display-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::before {
+        .grade-cell-display-button[data-grade-tooltip]::before,
+        .grade-test-ratio-value[data-grade-tooltip]::after,
+        .grade-test-ratio-value[data-grade-tooltip]::before {
           position: absolute;
           opacity: 0;
           pointer-events: none;
@@ -6996,7 +7395,8 @@
         }
 
         .grade-total-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::after {
+        .grade-cell-display-button[data-grade-tooltip]::after,
+        .grade-test-ratio-value[data-grade-tooltip]::after {
           content: attr(data-grade-tooltip);
           min-width: 3.4rem;
           padding: 0.48rem 0.7rem;
@@ -7014,7 +7414,8 @@
         }
 
         .grade-total-button[data-grade-tooltip]::before,
-        .grade-cell-display-button[data-grade-tooltip]::before {
+        .grade-cell-display-button[data-grade-tooltip]::before,
+        .grade-test-ratio-value[data-grade-tooltip]::before {
           content: "";
         }
 
@@ -7033,12 +7434,18 @@
         }
 
         .grade-cell-display-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::before {
+        .grade-cell-display-button[data-grade-tooltip]::before,
+        .grade-test-ratio-value[data-grade-tooltip]::after,
+        .grade-test-ratio-value[data-grade-tooltip]::before {
           left: 50%;
           transform: translateX(-50%) translateY(-4px);
         }
 
         .grade-cell-display-button[data-grade-tooltip]::after {
+          top: calc(100% + 12px);
+        }
+
+        .grade-test-ratio-value[data-grade-tooltip]::after {
           top: calc(100% + 12px);
         }
 
@@ -7049,6 +7456,33 @@
           border-bottom: 6px solid rgba(15, 23, 42, 0.96);
         }
 
+        .grade-test-ratio-value[data-grade-tooltip]::before {
+          top: calc(100% + 6px);
+          border-left: 6px solid transparent;
+          border-right: 6px solid transparent;
+          border-bottom: 6px solid rgba(15, 23, 42, 0.96);
+        }
+
+        .grade-total-button.is-grade-near-better[data-grade-tooltip]::after,
+        .grade-cell-display-button.is-grade-near-better[data-grade-tooltip]::after,
+        .grade-test-ratio-value.is-grade-near-better[data-grade-tooltip]::after {
+          border-color: rgba(251, 146, 60, 0.72);
+          background: rgba(67, 38, 13, 0.98);
+          color: #fed7aa;
+        }
+
+        .grade-total-button.is-grade-near-better[data-grade-tooltip]::before {
+          border-right-color: rgba(67, 38, 13, 0.98);
+        }
+
+        .grade-cell-display-button.is-grade-near-better[data-grade-tooltip]::before {
+          border-bottom-color: rgba(67, 38, 13, 0.98);
+        }
+
+        .grade-test-ratio-value.is-grade-near-better[data-grade-tooltip]::before {
+          border-bottom-color: rgba(67, 38, 13, 0.98);
+        }
+
         .grade-total-button[data-grade-tooltip]:hover::after,
         .grade-total-button[data-grade-tooltip]:hover::before,
         .grade-total-button[data-grade-tooltip]:focus-visible::after,
@@ -7056,7 +7490,9 @@
         .grade-cell-display-button[data-grade-tooltip]:hover::after,
         .grade-cell-display-button[data-grade-tooltip]:hover::before,
         .grade-cell-display-button[data-grade-tooltip]:focus-visible::after,
-        .grade-cell-display-button[data-grade-tooltip]:focus-visible::before {
+        .grade-cell-display-button[data-grade-tooltip]:focus-visible::before,
+        .grade-test-ratio-value[data-grade-tooltip]:hover::after,
+        .grade-test-ratio-value[data-grade-tooltip]:hover::before {
           opacity: 1;
         }
 
@@ -7070,7 +7506,9 @@
         .grade-cell-display-button[data-grade-tooltip]:hover::after,
         .grade-cell-display-button[data-grade-tooltip]:hover::before,
         .grade-cell-display-button[data-grade-tooltip]:focus-visible::after,
-        .grade-cell-display-button[data-grade-tooltip]:focus-visible::before {
+        .grade-cell-display-button[data-grade-tooltip]:focus-visible::before,
+        .grade-test-ratio-value[data-grade-tooltip]:hover::after,
+        .grade-test-ratio-value[data-grade-tooltip]:hover::before {
           transform: translateX(-50%) translateY(0);
         }
 

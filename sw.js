@@ -25,6 +25,7 @@ const APP_SHELL = [
   './src/modules/planning/app.html',
   './src/modules/planning/app.css',
   './src/modules/planning/app.js',
+  './src/modules/planning/docx.js',
   './src/modules/planning/bridge.js',
   './src/modules/merger/index.js',
   './src/modules/merger/app.html',

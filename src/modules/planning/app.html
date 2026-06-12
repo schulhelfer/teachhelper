@@ -82,6 +82,10 @@
                   <span class="sidebar-grade-print-icon" aria-hidden="true">🖨️</span>
                 </button>
               </div>
+              <div id="sidebar-grade-expectation-section" class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
+                <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
+                  aria-label="Erwartungshorizont" title="Erwartungshorizont" disabled>Erwartungshorizont</button>
+              </div>
               <div id="sidebar-grade-simulation-section" class="sidebar-grade-action-section sidebar-grade-action-section-simulation">
                 <button id="sidebar-grade-simulation-btn" class="sidebar-grade-simulation-btn" type="button"
                   aria-label="Warnungen (Simulation)" title="Warnungen (Simulation)" disabled>Warnungen (Simulation)</button>
@@ -476,6 +480,36 @@
           <input type="hidden" id="course-dialog-id">
           <section class="course-dialog-panel active" data-panel="general">
             <label>
+              Fach
+              <input id="course-dialog-subject" maxlength="80" placeholder="z. B. Mathematik" autocomplete="off"
+                list="course-dialog-subject-options">
+              <datalist id="course-dialog-subject-options">
+                <option value="Deutsch"></option>
+                <option value="Mathematik"></option>
+                <option value="Englisch"></option>
+                <option value="Französisch"></option>
+                <option value="Latein"></option>
+                <option value="Griechisch"></option>
+                <option value="Spanisch"></option>
+                <option value="Biologie"></option>
+                <option value="Chemie"></option>
+                <option value="Physik"></option>
+                <option value="Geschichte"></option>
+                <option value="Erdkunde"></option>
+                <option value="Politik-Wirtschaft"></option>
+                <option value="Religion"></option>
+                <option value="Werte und Normen"></option>
+                <option value="Philosophie"></option>
+                <option value="Kunst"></option>
+                <option value="Musik"></option>
+                <option value="Sport"></option>
+                <option value="Informatik"></option>
+                <option value="Wahlpflichtfach"></option>
+                <option value="Darstellendes Spiel"></option>
+                <option value="Seminarfach"></option>
+              </datalist>
+            </label>
+            <label>
               Kursname
               <input id="course-dialog-name" required maxlength="80" placeholder="z. B. Ma 8a" autocomplete="off">
             </label>
@@ -809,6 +843,32 @@
             </label>
           </div>
           <div id="grade-simulation-result" class="grade-simulation-result" aria-live="polite"></div>
+        </form>
+      </dialog>
+
+      <dialog id="expectation-horizon-dialog" class="app-dialog expectation-horizon-dialog"
+        aria-labelledby="expectation-horizon-dialog-title">
+        <form id="expectation-horizon-dialog-form" class="form-grid" method="dialog">
+          <div class="dialog-header">
+            <h3 id="expectation-horizon-dialog-title" class="settings-panel-title">Erwartungshorizont erstellen</h3>
+            <div class="dialog-actions-top">
+              <button type="button" id="expectation-horizon-cancel-top" class="ghost dialog-icon-button"
+                aria-label="Abbrechen" title="Abbrechen">❌</button>
+            </div>
+          </div>
+          <input id="expectation-horizon-file" class="visually-hidden" type="file"
+            accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+          <button id="expectation-horizon-dropzone" class="expectation-horizon-dropzone" type="button">
+            <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+            <span>DOCX-Datei hier ablegen oder klicken, um Datei auszuwählen</span>
+          </button>
+          <div id="expectation-horizon-file-name" class="expectation-horizon-file-name" aria-live="polite"></div>
+          <div id="expectation-horizon-status" class="expectation-horizon-status" aria-live="polite"></div>
+          <div class="button-row dialog-actions">
+            <button type="button" id="expectation-horizon-cancel" class="ghost">Abbrechen</button>
+            <span class="dialog-grow"></span>
+            <button type="submit" id="expectation-horizon-generate">Generieren</button>
+          </div>
         </form>
       </dialog>
 
