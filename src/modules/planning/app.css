@@ -500,6 +500,113 @@
           max-width: 440px;
         }
 
+        #schoolmanager-transfer-dialog.app-dialog {
+          width: min(620px, calc(100vw - 24px));
+          max-width: 620px;
+        }
+
+        .schoolmanager-transfer-form {
+          gap: 1rem;
+        }
+
+        .schoolmanager-transfer-steps {
+          display: grid;
+          gap: 1rem;
+        }
+
+        .schoolmanager-transfer-step {
+          display: grid;
+          gap: 0.48rem;
+          margin: 0;
+          padding: 0;
+          min-width: 0;
+        }
+
+        .schoolmanager-transfer-step p {
+          margin: 0;
+          color: rgba(226, 232, 240, 0.88);
+          font-size: 0.92rem;
+          line-height: 1.35;
+        }
+
+        .schoolmanager-transfer-warning {
+          margin: 0.45rem 0 0;
+          color: #f87171;
+          font-size: 0.92rem;
+          font-weight: 700;
+          line-height: 1.35;
+          text-align: center;
+        }
+
+        .schoolmanager-transfer-control {
+          width: min(260px, 100%);
+          min-width: 0;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+          align-items: center;
+          column-gap: 1rem;
+        }
+
+        .schoolmanager-transfer-number-row>span {
+          color: rgba(226, 232, 240, 0.88);
+          font-size: 0.92rem;
+          line-height: 1.35;
+        }
+
+        .schoolmanager-transfer-number-row input {
+          width: 7rem;
+        }
+
+        .schoolmanager-transfer-bookmarklet-row {
+          display: grid;
+          grid-template-columns: minmax(0, 1fr) auto;
+          align-items: start;
+          gap: 0.5rem;
+        }
+
+        .schoolmanager-transfer-bookmarklet {
+          width: 100%;
+          margin: 0;
+          min-width: 0;
+          min-height: 7rem;
+          max-height: 8.8rem;
+          overflow: auto;
+          padding: 0.72rem;
+          border-radius: 8px;
+          border: 1px solid rgba(148, 163, 184, 0.26);
+          background: rgba(15, 23, 42, 0.72);
+          color: rgba(226, 232, 240, 0.94);
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+          font-size: 0.74rem;
+          line-height: 1.45;
+          white-space: pre-wrap;
+          overflow-wrap: anywhere;
+          resize: vertical;
+          user-select: text;
+        }
+
+        textarea.schoolmanager-transfer-bookmarklet {
+          appearance: none;
+        }
+
+        .schoolmanager-transfer-copy-btn {
+          width: 38px;
+          min-width: 38px;
+          height: 38px;
+          min-height: 38px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          padding: 0;
+          border-radius: 10px;
+          font-size: 1.08rem;
+          line-height: 1;
+        }
+
+        .schoolmanager-transfer-dialog .dialog-actions {
+          justify-content: center;
+        }
+
         #message-dialog.app-dialog.is-warning-message {
           border-color: rgba(248, 113, 113, 0.45);
           box-shadow:
@@ -923,6 +1030,7 @@
         .sidebar-grade-privacy-toggle,
         .sidebar-grade-name-order-toggle,
         .sidebar-grade-display-system-toggle,
+        .sidebar-grade-predicate-suffix-toggle,
         .sidebar-grade-print-btn,
         .sidebar-grade-expectation-btn,
         .sidebar-grade-simulation-btn {
@@ -978,13 +1086,15 @@
 
         .sidebar-grade-privacy-toggle.is-inactive,
         .sidebar-grade-name-order-toggle.is-inactive,
-        .sidebar-grade-display-system-toggle.is-inactive {
+        .sidebar-grade-display-system-toggle.is-inactive,
+        .sidebar-grade-predicate-suffix-toggle.is-inactive {
           color: rgba(203, 213, 225, 0.72);
         }
 
         .sidebar-grade-privacy-toggle.is-active,
         .sidebar-grade-name-order-toggle.is-active,
-        .sidebar-grade-display-system-toggle.is-active {
+        .sidebar-grade-display-system-toggle.is-active,
+        .sidebar-grade-predicate-suffix-toggle.is-active {
           background:
             linear-gradient(180deg, rgba(37, 99, 235, 0.62), rgba(29, 78, 216, 0.5)),
             rgba(30, 64, 175, 0.68);
@@ -1009,6 +1119,13 @@
           box-shadow: none;
         }
 
+        .sidebar-grade-predicate-suffix-toggle.is-active {
+          background: rgba(28, 34, 44, 0.75);
+          border-color: rgba(148, 163, 184, 0.28);
+          color: rgba(203, 213, 225, 0.72);
+          box-shadow: none;
+        }
+
         .sidebar-grade-privacy-toggle.is-active {
           background: rgba(28, 34, 44, 0.75);
           box-shadow: none;
@@ -1020,6 +1137,8 @@
         .sidebar-grade-name-order-toggle:not(:disabled):focus-visible,
         .sidebar-grade-display-system-toggle:not(:disabled):hover,
         .sidebar-grade-display-system-toggle:not(:disabled):focus-visible,
+        .sidebar-grade-predicate-suffix-toggle:not(:disabled):hover,
+        .sidebar-grade-predicate-suffix-toggle:not(:disabled):focus-visible,
         .sidebar-grade-print-btn:not(:disabled):hover,
         .sidebar-grade-print-btn:not(:disabled):focus-visible,
         .sidebar-grade-expectation-btn:not(:disabled):hover,
@@ -1036,7 +1155,9 @@
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):hover,
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible,
         .sidebar-grade-display-system-toggle.is-active:not(:disabled):hover,
-        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible {
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible,
+        .sidebar-grade-predicate-suffix-toggle.is-active:not(:disabled):hover,
+        .sidebar-grade-predicate-suffix-toggle.is-active:not(:disabled):focus-visible {
           background:
             linear-gradient(180deg, rgba(59, 130, 246, 0.72), rgba(37, 99, 235, 0.58)),
             rgba(30, 64, 175, 0.78);
@@ -1045,7 +1166,9 @@
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):hover,
         .sidebar-grade-name-order-toggle.is-active:not(:disabled):focus-visible,
         .sidebar-grade-display-system-toggle.is-active:not(:disabled):hover,
-        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible {
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible,
+        .sidebar-grade-predicate-suffix-toggle.is-active:not(:disabled):hover,
+        .sidebar-grade-predicate-suffix-toggle.is-active:not(:disabled):focus-visible {
           background: rgba(60, 72, 92, 0.98);
         }
 
@@ -1057,6 +1180,7 @@
         .sidebar-grade-privacy-toggle:disabled,
         .sidebar-grade-name-order-toggle:disabled,
         .sidebar-grade-display-system-toggle:disabled,
+        .sidebar-grade-predicate-suffix-toggle:disabled,
         .sidebar-grade-print-btn:disabled,
         .sidebar-grade-expectation-btn:disabled,
         .sidebar-grade-simulation-btn:disabled {
@@ -1156,7 +1280,8 @@
           transform: translateX(16px);
         }
 
-        .sidebar-grade-display-system-switch {
+        .sidebar-grade-display-system-switch,
+        .sidebar-grade-predicate-suffix-switch {
           position: relative;
           flex: 0 0 34px;
           width: 34px;
@@ -1167,7 +1292,8 @@
           box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.34);
         }
 
-        .sidebar-grade-display-system-thumb {
+        .sidebar-grade-display-system-thumb,
+        .sidebar-grade-predicate-suffix-thumb {
           position: absolute;
           top: 2px;
           left: 2px;
@@ -1179,12 +1305,14 @@
           transition: transform 0.16s ease, background 0.16s ease;
         }
 
-        .sidebar-grade-display-system-toggle.is-active .sidebar-grade-display-system-switch {
+        .sidebar-grade-display-system-toggle.is-active .sidebar-grade-display-system-switch,
+        .sidebar-grade-predicate-suffix-toggle.is-active .sidebar-grade-predicate-suffix-switch {
           background: rgba(37, 99, 235, 0.72);
           border-color: rgba(191, 219, 254, 0.78);
         }
 
-        .sidebar-grade-display-system-toggle.is-active .sidebar-grade-display-system-thumb {
+        .sidebar-grade-display-system-toggle.is-active .sidebar-grade-display-system-thumb,
+        .sidebar-grade-predicate-suffix-toggle.is-active .sidebar-grade-predicate-suffix-thumb {
           transform: translateX(16px);
         }
 
@@ -1261,7 +1389,8 @@
 
         .sidebar-grade-privacy-toggle,
         .sidebar-grade-name-order-toggle,
-        .sidebar-grade-display-system-toggle {
+        .sidebar-grade-display-system-toggle,
+        .sidebar-grade-predicate-suffix-toggle {
           width: auto;
           min-width: 0;
           min-height: 0;
@@ -1279,7 +1408,8 @@
 
         .sidebar-grade-privacy-toggle.is-active,
         .sidebar-grade-name-order-toggle.is-active,
-        .sidebar-grade-display-system-toggle.is-active {
+        .sidebar-grade-display-system-toggle.is-active,
+        .sidebar-grade-predicate-suffix-toggle.is-active {
           background: transparent;
           border-color: transparent;
           color: inherit;
@@ -1297,7 +1427,11 @@
         .sidebar-grade-display-system-toggle:hover,
         .sidebar-grade-display-system-toggle:focus-visible,
         .sidebar-grade-display-system-toggle.is-active:not(:disabled):hover,
-        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible {
+        .sidebar-grade-display-system-toggle.is-active:not(:disabled):focus-visible,
+        .sidebar-grade-predicate-suffix-toggle:hover,
+        .sidebar-grade-predicate-suffix-toggle:focus-visible,
+        .sidebar-grade-predicate-suffix-toggle.is-active:not(:disabled):hover,
+        .sidebar-grade-predicate-suffix-toggle.is-active:not(:disabled):focus-visible {
           background: transparent;
           border-color: transparent;
           color: inherit;

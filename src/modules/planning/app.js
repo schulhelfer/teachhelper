@@ -2746,13 +2746,14 @@ function getRoundedGradeDisplayValue(value) {
   return clamp(Math.round(Number(value) || 0), 0, 15);
 }
 
-function formatGradeDisplayForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT) {
+function formatGradeDisplayForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT, options = {}) {
   const rounded = getRoundedGradeDisplayValue(value);
   if (rounded === null) {
     return "—";
   }
   if (normalizeGradeDisplaySystem(displaySystem) === GRADE_DISPLAY_SYSTEM_SCHOOL) {
-    return GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS[rounded] || "—";
+    const label = GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS[rounded] || "—";
+    return options.predicateSuffixes === false ? label.replace(/[+-]$/, "") : label;
   }
   return formatGradeInteger(rounded);
 }
@@ -6387,6 +6388,14 @@ class PlannerApp {
     this.shellTabContext = "grades";
     this.gradesSubView = "entry";
     this.gradeOverviewDisplaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
+    this.gradeOverviewPredicateSuffixes = true;
+    this.schoolmanagerTransferDialogState = {
+      nameOrder: "last",
+      displaySystem: GRADE_DISPLAY_SYSTEM_DEFAULT,
+      predicateSuffixes: true,
+      firstGradeFieldIndex: 7,
+      transferColumnKey: ""
+    };
     this._planningReadySignalToken = 0;
     this.activeSettingsTab = "dayoff";
     this.settingsSourceView = "planning";
@@ -6433,12 +6442,14 @@ class PlannerApp {
       sidebarGradePrivacySection: document.querySelector("#sidebar-grade-privacy-section"),
       sidebarGradeSortSection: document.querySelector("#sidebar-grade-sort-section"),
       sidebarGradeDisplaySection: document.querySelector("#sidebar-grade-display-section"),
+      sidebarGradePredicateSection: document.querySelector("#sidebar-grade-predicate-section"),
       sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
       sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
       sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
       sidebarGradeNameOrderToggleBtn: document.querySelector("#sidebar-grade-name-order-toggle-btn"),
       sidebarGradeDisplaySystemToggleBtn: document.querySelector("#sidebar-grade-display-system-toggle-btn"),
+      sidebarGradePredicateSuffixToggleBtn: document.querySelector("#sidebar-grade-predicate-suffix-toggle-btn"),
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
@@ -6528,6 +6539,16 @@ class PlannerApp {
       messageDialogCancelTop: document.querySelector("#message-dialog-cancel-top"),
       messageDialogOkTop: document.querySelector("#message-dialog-ok-top"),
       messageDialogActionsBottom: document.querySelector("#message-dialog-actions-bottom"),
+      schoolmanagerTransferDialog: document.querySelector("#schoolmanager-transfer-dialog"),
+      schoolmanagerTransferDialogForm: document.querySelector("#schoolmanager-transfer-dialog-form"),
+      schoolmanagerTransferDialogCancel: document.querySelector("#schoolmanager-transfer-dialog-cancel"),
+      schoolmanagerTransferNameOrderToggle: document.querySelector("#schoolmanager-transfer-name-order-toggle"),
+      schoolmanagerTransferDisplaySystemToggle: document.querySelector("#schoolmanager-transfer-display-system-toggle"),
+      schoolmanagerTransferPredicateSuffixToggle: document.querySelector("#schoolmanager-transfer-predicate-suffix-toggle"),
+      schoolmanagerTransferFirstGradeField: document.querySelector("#schoolmanager-transfer-first-grade-field"),
+      schoolmanagerTransferBookmarkletCode: document.querySelector("#schoolmanager-transfer-bookmarklet-code"),
+      schoolmanagerTransferBookmarkletCopy: document.querySelector("#schoolmanager-transfer-bookmarklet-copy"),
+      schoolmanagerTransferSubmit: document.querySelector("#schoolmanager-transfer-submit"),
       gradeSimulationDialog: document.querySelector("#grade-simulation-dialog"),
       gradeSimulationDialogForm: document.querySelector("#grade-simulation-dialog-form"),
       gradeSimulationDialogClose: document.querySelector("#grade-simulation-dialog-close"),
@@ -10800,6 +10821,343 @@ class PlannerApp {
     });
   }
 
+  openSchoolmanagerTransferDialog(options = {}) {
+    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
+    this.schoolmanagerTransferDialogState = {
+      nameOrder: "last",
+      displaySystem,
+      predicateSuffixes: this.gradeOverviewPredicateSuffixes !== false,
+      firstGradeFieldIndex: 7,
+      transferColumnKey: String(options.transferColumnKey || "").trim()
+    };
+    this.syncSchoolmanagerTransferDialogControls();
+    this.resetSchoolmanagerTransferBookmarkletCopyButton();
+    this.resetSchoolmanagerTransferSubmitButton();
+    this.openDialog(this.refs.schoolmanagerTransferDialog);
+  }
+
+  closeSchoolmanagerTransferDialog() {
+    this.closeDialog(this.refs.schoolmanagerTransferDialog);
+  }
+
+  async submitSchoolmanagerTransferDialog() {
+    const input = this.refs.schoolmanagerTransferFirstGradeField;
+    const parsedIndex = this.getSchoolmanagerTransferFirstGradeFieldIndex();
+    this.schoolmanagerTransferDialogState = {
+      ...this.schoolmanagerTransferDialogState,
+      firstGradeFieldIndex: parsedIndex
+    };
+    if (input) {
+      input.value = String(parsedIndex);
+    }
+    this.updateSchoolmanagerTransferBookmarkletCode();
+    const values = this.buildSchoolmanagerTransferColumnClipboardValues(this.schoolmanagerTransferDialogState);
+    await this.writeClipboardText(values.join(";"));
+    this.markSchoolmanagerTransferSubmitCopied();
+  }
+
+  toggleSchoolmanagerTransferNameOrder() {
+    const current = normalizeGradeStudentNameOrder(this.schoolmanagerTransferDialogState?.nameOrder || "last");
+    this.schoolmanagerTransferDialogState = {
+      ...this.schoolmanagerTransferDialogState,
+      nameOrder: current === "last" ? "first" : "last"
+    };
+    this.syncSchoolmanagerTransferDialogControls();
+    this.resetSchoolmanagerTransferSubmitButton();
+  }
+
+  toggleSchoolmanagerTransferDisplaySystem() {
+    const current = normalizeGradeDisplaySystem(this.schoolmanagerTransferDialogState?.displaySystem);
+    this.schoolmanagerTransferDialogState = {
+      ...this.schoolmanagerTransferDialogState,
+      displaySystem: current === GRADE_DISPLAY_SYSTEM_SCHOOL
+        ? GRADE_DISPLAY_SYSTEM_DEFAULT
+        : GRADE_DISPLAY_SYSTEM_SCHOOL
+    };
+    this.syncSchoolmanagerTransferDialogControls();
+    this.resetSchoolmanagerTransferSubmitButton();
+  }
+
+  toggleSchoolmanagerTransferPredicateSuffixes() {
+    const state = this.schoolmanagerTransferDialogState || {};
+    if (normalizeGradeDisplaySystem(state.displaySystem) !== GRADE_DISPLAY_SYSTEM_SCHOOL) {
+      this.syncSchoolmanagerTransferDialogControls();
+      return;
+    }
+    this.schoolmanagerTransferDialogState = {
+      ...state,
+      predicateSuffixes: state.predicateSuffixes === false ? true : false
+    };
+    this.syncSchoolmanagerTransferDialogControls();
+    this.resetSchoolmanagerTransferSubmitButton();
+  }
+
+  syncSchoolmanagerTransferDialogControls() {
+    const state = this.schoolmanagerTransferDialogState || {};
+    const nameOrder = normalizeGradeStudentNameOrder(state.nameOrder || "last");
+    const displaySystem = normalizeGradeDisplaySystem(state.displaySystem);
+    const isLastNameOrder = nameOrder === "last";
+    const isSchoolDisplay = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
+    const predicateSuffixes = state.predicateSuffixes !== false;
+
+    const nameOrderButton = this.refs.schoolmanagerTransferNameOrderToggle;
+    if (nameOrderButton) {
+      nameOrderButton.classList.toggle("is-active", isLastNameOrder);
+      nameOrderButton.classList.toggle("is-inactive", !isLastNameOrder);
+      nameOrderButton.setAttribute("aria-pressed", isLastNameOrder ? "true" : "false");
+      nameOrderButton.setAttribute(
+        "aria-label",
+        isLastNameOrder
+          ? "Namenssortierung aktuell Nachname, Vorname; auf Vorname Nachname umstellen"
+          : "Namenssortierung aktuell Vorname Nachname; auf Nachname, Vorname umstellen"
+      );
+      nameOrderButton.title = isLastNameOrder
+        ? "Namenssortierung auf Vorname Nachname umstellen"
+        : "Namenssortierung auf Nachname, Vorname umstellen";
+    }
+
+    const displayButton = this.refs.schoolmanagerTransferDisplaySystemToggle;
+    if (displayButton) {
+      displayButton.classList.toggle("is-active", isSchoolDisplay);
+      displayButton.classList.toggle("is-inactive", !isSchoolDisplay);
+      displayButton.setAttribute("aria-pressed", isSchoolDisplay ? "true" : "false");
+      displayButton.setAttribute(
+        "aria-label",
+        isSchoolDisplay
+          ? "Notensystem aktuell 1-6; auf 15-00 umstellen"
+          : "Notensystem aktuell 15-00; auf 1-6 umstellen"
+      );
+      displayButton.title = isSchoolDisplay
+        ? "Notensystem auf 15-00 umstellen"
+        : "Notensystem auf 1-6 umstellen";
+    }
+
+    const predicateButton = this.refs.schoolmanagerTransferPredicateSuffixToggle;
+    if (predicateButton) {
+      predicateButton.disabled = !isSchoolDisplay;
+      predicateButton.classList.toggle("is-active", predicateSuffixes);
+      predicateButton.classList.toggle("is-inactive", !predicateSuffixes);
+      predicateButton.setAttribute("aria-pressed", predicateSuffixes ? "true" : "false");
+      predicateButton.setAttribute(
+        "aria-label",
+        predicateSuffixes
+          ? "Prädikatsanhängsel aktuell zulässig; nicht zulassen"
+          : "Prädikatsanhängsel aktuell nicht zulässig; zulassen"
+      );
+      predicateButton.title = isSchoolDisplay
+        ? (predicateSuffixes ? "Prädikatsanhängsel nicht zulassen" : "Prädikatsanhängsel zulassen")
+        : "Prädikatsanhängsel nur bei Notensystem 1-6 verfügbar";
+    }
+
+    const input = this.refs.schoolmanagerTransferFirstGradeField;
+    if (input) {
+      input.value = String(clamp(Math.round(Number(state.firstGradeFieldIndex || 7) || 7), 1, 99));
+    }
+    this.updateSchoolmanagerTransferBookmarkletCode();
+  }
+
+  getSchoolmanagerTransferFirstGradeFieldIndex() {
+    const input = this.refs.schoolmanagerTransferFirstGradeField;
+    return clamp(Math.round(Number(input?.value || 7) || 7), 1, 99);
+  }
+
+  syncSchoolmanagerTransferFirstGradeFieldFromInput() {
+    this.schoolmanagerTransferDialogState = {
+      ...this.schoolmanagerTransferDialogState,
+      firstGradeFieldIndex: this.getSchoolmanagerTransferFirstGradeFieldIndex()
+    };
+    this.updateSchoolmanagerTransferBookmarkletCode();
+    this.resetSchoolmanagerTransferBookmarkletCopyButton();
+    this.resetSchoolmanagerTransferSubmitButton();
+  }
+
+  getSchoolmanagerTransferStudentCount() {
+    const course = this.getSchoolmanagerTransferCourse();
+    if (!course || !this.canAccessGradeVault() || !this.isGradeCourseLoaded(course.id)) {
+      return 0;
+    }
+    return this.store.listGradeStudents(course.id)
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
+      .length;
+  }
+
+  buildSchoolmanagerTransferBookmarkletCode() {
+    const firstFieldIndex = clamp(
+      Math.round(Number(this.schoolmanagerTransferDialogState?.firstGradeFieldIndex || 7) || 7),
+      1,
+      99
+    );
+    const startIndex = Math.max(0, firstFieldIndex - 1);
+    return `javascript:(async()=>{let v=(await navigator.clipboard.readText()).split(';');[...document.querySelectorAll('input,textarea')].filter(e=>e.offsetParent&&!e.disabled&&!e.readOnly&&!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(${startIndex}).map((e,i)=>v[i]!=null&&(e.value=v[i],e.dispatchEvent(new Event('input',{bubbles:1})),e.dispatchEvent(new Event('change',{bubbles:1}))))})()`;
+  }
+
+  updateSchoolmanagerTransferBookmarkletCode() {
+    const codeNode = this.refs.schoolmanagerTransferBookmarkletCode;
+    if (!codeNode) {
+      return;
+    }
+    const code = this.buildSchoolmanagerTransferBookmarkletCode();
+    if ("value" in codeNode) {
+      codeNode.value = code;
+    } else {
+      codeNode.textContent = code;
+    }
+  }
+
+  resetSchoolmanagerTransferBookmarkletCopyButton() {
+    const button = this.refs.schoolmanagerTransferBookmarkletCopy;
+    if (!button) {
+      return;
+    }
+    button.textContent = "📋";
+    button.setAttribute("aria-label", "Bookmarklet kopieren");
+    button.title = "Bookmarklet kopieren";
+  }
+
+  async copySchoolmanagerTransferBookmarklet() {
+    const codeNode = this.refs.schoolmanagerTransferBookmarkletCode;
+    const code = String((codeNode && "value" in codeNode ? codeNode.value : codeNode?.textContent) || "").trim();
+    if (!code) {
+      return;
+    }
+    await this.writeClipboardText(code);
+
+    const button = this.refs.schoolmanagerTransferBookmarkletCopy;
+    if (!button) {
+      return;
+    }
+    button.textContent = "✔️";
+    button.setAttribute("aria-label", "Bookmarklet kopiert");
+    button.title = "Bookmarklet kopiert";
+  }
+
+  resetSchoolmanagerTransferSubmitButton() {
+    const button = this.refs.schoolmanagerTransferSubmit;
+    if (!button) {
+      return;
+    }
+    button.textContent = "Noten in Zwischenablage kopieren";
+    button.setAttribute("aria-label", "Noten in Zwischenablage kopieren");
+    button.title = "";
+  }
+
+  markSchoolmanagerTransferSubmitCopied() {
+    const button = this.refs.schoolmanagerTransferSubmit;
+    if (!button) {
+      return;
+    }
+    button.textContent = "✔️";
+    button.setAttribute("aria-label", "Noten in die Zwischenablage kopiert");
+    button.title = "Noten in die Zwischenablage kopiert";
+  }
+
+  getSchoolmanagerTransferCourse() {
+    const year = this.activeSchoolYear;
+    const courseId = Number(this.selectedCourseId || 0);
+    if (!year || !courseId) {
+      return null;
+    }
+    return this.store.listCourses(year.id).find((item) => (
+      Number(item.id) === courseId
+      && this.courseAllowsGrades(item)
+    )) || null;
+  }
+
+  resolveSchoolmanagerTransferColumn(course, columnKey) {
+    const normalizedKey = String(columnKey || "").trim();
+    if (!course || !normalizedKey) {
+      return null;
+    }
+    if (normalizedKey.startsWith("add:")) {
+      const [, periodRaw = "year", categoryIdRaw = "0", subcategoryIdRaw = "0"] = normalizedKey.split(":");
+      return {
+        type: "add",
+        period: normalizeGradePeriod(periodRaw || "year"),
+        categoryId: Number(categoryIdRaw || 0),
+        subcategoryId: Number(subcategoryIdRaw || 0)
+      };
+    }
+    const groupedAssessments = this.store.getGroupedGradeAssessments(course.id);
+    const model = this.buildGradesTableModel(course, groupedAssessments);
+    return model.columns.find((column) => this.getGradesOverviewColumnKey(column) === normalizedKey) || null;
+  }
+
+  formatSchoolmanagerTransferGradeValue(value, state = {}) {
+    if (getRoundedGradeDisplayValue(value) === null) {
+      return "";
+    }
+    const displaySystem = normalizeGradeDisplaySystem(state.displaySystem);
+    const predicateSuffixes = displaySystem !== GRADE_DISPLAY_SYSTEM_SCHOOL
+      || state.predicateSuffixes !== false;
+    return formatGradeDisplayForSystem(value, displaySystem, { predicateSuffixes });
+  }
+
+  getSchoolmanagerTransferCellValue(course, student, column, state = {}) {
+    if (!course || !student || !column) {
+      return "";
+    }
+    if (column.type === "total") {
+      return this.formatSchoolmanagerTransferGradeValue(
+        this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year"),
+        state
+      );
+    }
+    if (column.type === "period-total") {
+      return this.formatSchoolmanagerTransferGradeValue(
+        this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period),
+        state
+      );
+    }
+    if (column.type === "category-collapsed" || column.type === "category-partial") {
+      return this.formatSchoolmanagerTransferGradeValue(
+        this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
+        state
+      );
+    }
+    if (column.type === "subcategory-collapsed" || column.type === "subcategory-partial") {
+      return this.formatSchoolmanagerTransferGradeValue(
+        this.store.calculateGradeForStudentInSubcategoryPeriod(
+          student.id,
+          course.id,
+          column.categoryId,
+          column.subcategoryId,
+          column.period
+        ),
+        state
+      );
+    }
+    if (column.type === "subcategory-homework") {
+      const summary = this.store.calculateHomeworkSummaryForStudentInSubcategoryPeriod(
+        student.id,
+        course.id,
+        column.categoryId,
+        column.subcategoryId,
+        column.period
+      );
+      return summary.total > 0 ? this.formatDisplayedHomeworkSummary(summary) : "";
+    }
+    if (column.type === "assessment") {
+      const entry = this.store.getGradeEntry(student.id, column.assessment?.id);
+      if (this.isHomeworkAssessment(column.assessment)) {
+        return entry?.checked === true ? "fehlt" : "";
+      }
+      return this.formatSchoolmanagerTransferGradeValue(entry && entry.value !== null ? entry.value : null, state);
+    }
+    return "";
+  }
+
+  buildSchoolmanagerTransferColumnClipboardValues(state = {}) {
+    const course = this.getSchoolmanagerTransferCourse();
+    const column = this.resolveSchoolmanagerTransferColumn(course, state.transferColumnKey);
+    if (!course || !column || !this.canAccessGradeVault() || !this.isGradeCourseLoaded(course.id)) {
+      return [];
+    }
+    return this
+      .getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id), state.nameOrder || "last")
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
+      .map((student) => this.getSchoolmanagerTransferCellValue(course, student, column, state));
+  }
+
   _courseDialogExistingColors(excludeCourseId = null) {
     const year = this.activeSchoolYear;
     if (!year) {
@@ -11194,13 +11552,39 @@ class PlannerApp {
     }
   }
 
-  handleCourseDialogStudentListClick(event) {
+  async handleCourseDialogStudentListClick(event) {
     const button = event.target.closest("button[data-student-remove]");
     if (!button || !this.courseDialogDraft) {
       return;
     }
+    event.preventDefault();
+    event.stopPropagation();
     const index = Number(button.dataset.studentRemove || -1);
     if (index < 0) {
+      return;
+    }
+    const student = this.courseDialogDraft.students[index];
+    if (!student) {
+      return;
+    }
+    const studentName = buildGradeStudentDisplayName(student.lastName, student.firstName);
+    const hasSavedStudent = Number(student.id || 0) > 0;
+    const confirmed = await this.showConfirmMessage(
+      studentName
+        ? (
+          hasSavedStudent
+            ? `${studentName} wirklich aus der Teilnehmendenliste entfernen? Beim Speichern werden zugehörige Noteneinträge gelöscht.`
+            : `${studentName} wirklich aus der Teilnehmendenliste entfernen?`
+        )
+        : "Diese Person wirklich aus der Teilnehmendenliste entfernen?",
+      {
+        title: "Teilnehmende entfernen",
+        okText: "Entfernen",
+        cancelText: "Abbrechen",
+        dangerOk: true
+      }
+    );
+    if (!confirmed) {
       return;
     }
     this.courseDialogDraft.students.splice(index, 1);
@@ -13281,6 +13665,9 @@ class PlannerApp {
     root.addEventListener("click", async (event) => {
       await this.handleGradesSurfaceClick(event);
     });
+    root.addEventListener("contextmenu", (event) => {
+      this.handleGradesSurfaceContextMenu(event);
+    });
     root.addEventListener("change", (event) => {
       this.handleGradesSurfaceChange(event);
     });
@@ -13451,6 +13838,23 @@ class PlannerApp {
     }
     this.renderGradesTitleDatePicker();
     this.positionGradesTitleDatePicker();
+  }
+
+  handleGradesSurfaceContextMenu(event) {
+    if (!(event.target instanceof Element)) {
+      return;
+    }
+    const header = event.target.closest(".grades-master-table th");
+    if (!(header instanceof HTMLElement)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.button !== 2 || header.classList.contains("student-col")) {
+      this.hideContextMenu();
+      return;
+    }
+    this.openGradesHeaderContextMenu(header, event.clientX, event.clientY);
   }
 
   async saveCurrentGradesEntry() {
@@ -14335,6 +14739,9 @@ class PlannerApp {
   bindEvents() {
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("contextmenu", (event) => {
+        if (event.target instanceof Element && event.target.closest("#schoolmanager-transfer-bookmarklet-code")) {
+          return;
+        }
         event.preventDefault();
       });
       window.addEventListener("classroom:planning-view-request", (event) => {
@@ -14453,6 +14860,11 @@ class PlannerApp {
     if (this.refs.sidebarGradeDisplaySystemToggleBtn) {
       this.refs.sidebarGradeDisplaySystemToggleBtn.addEventListener("click", (event) => {
         this.handleGradeDisplaySystemToggleRequest(event);
+      });
+    }
+    if (this.refs.sidebarGradePredicateSuffixToggleBtn) {
+      this.refs.sidebarGradePredicateSuffixToggleBtn.addEventListener("click", (event) => {
+        this.handleGradeOverviewPredicateSuffixToggleRequest(event);
       });
     }
     if (this.refs.sidebarGradePrintBtn) {
@@ -14820,6 +15232,44 @@ class PlannerApp {
         }
       });
     }
+
+    this.refs.schoolmanagerTransferDialogForm?.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await this.submitSchoolmanagerTransferDialog();
+    });
+    this.refs.schoolmanagerTransferDialogCancel?.addEventListener("click", () => {
+      this.closeSchoolmanagerTransferDialog();
+    });
+    this.refs.schoolmanagerTransferDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeSchoolmanagerTransferDialog();
+    });
+    this.refs.schoolmanagerTransferNameOrderToggle?.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.toggleSchoolmanagerTransferNameOrder();
+    });
+    this.refs.schoolmanagerTransferDisplaySystemToggle?.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.toggleSchoolmanagerTransferDisplaySystem();
+    });
+    this.refs.schoolmanagerTransferPredicateSuffixToggle?.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.toggleSchoolmanagerTransferPredicateSuffixes();
+    });
+    this.refs.schoolmanagerTransferFirstGradeField?.addEventListener("input", () => {
+      this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
+    });
+    this.refs.schoolmanagerTransferFirstGradeField?.addEventListener("change", () => {
+      this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
+    });
+    this.refs.schoolmanagerTransferBookmarkletCode?.addEventListener("focus", (event) => {
+      event.target?.select?.();
+    });
+    this.refs.schoolmanagerTransferBookmarkletCopy?.addEventListener("click", async (event) => {
+      event.preventDefault();
+      this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
+      await this.copySchoolmanagerTransferBookmarklet();
+    });
 
     this.refs.slotDialogCancel.addEventListener("click", () => {
       this.closeSlotDialog();
@@ -15974,6 +16424,9 @@ class PlannerApp {
     });
 
     document.addEventListener("contextmenu", (event) => {
+      if (event.target instanceof Element && event.target.closest("#schoolmanager-transfer-bookmarklet-code")) {
+        return;
+      }
       event.preventDefault();
       if (event.button !== 2) {
         this.hideContextMenu();
@@ -15991,6 +16444,8 @@ class PlannerApp {
         event.target && event.target.closest && event.target.closest("tr[data-lesson-id]")
       ) || Boolean(
         event.target && event.target.closest && event.target.closest("#sidebar-course-list li[data-course-id]")
+      ) || Boolean(
+        event.target && event.target.closest && event.target.closest(".grades-master-table th")
       ) || Boolean(
         this.isSidebarEmptyContextTarget(event.target)
       );
@@ -16742,6 +17197,50 @@ class PlannerApp {
       menu.style.left = `${left}px`;
       menu.style.top = `${top}px`;
     });
+  }
+
+  openGradesHeaderContextMenu(header, clientX, clientY) {
+    if (!(header instanceof HTMLElement)) {
+      return;
+    }
+    const transferColumnKey = String(
+      header.dataset.gradeTransferColumnKey
+      || header.dataset.gradeColumnKey
+      || ""
+    ).trim();
+    const assessmentId = header.classList.contains("grade-assessment-col")
+      ? Number(header.dataset.gradeAssessmentId || 0)
+      : 0;
+    const assessment = assessmentId > 0 ? this.store.getGradeAssessment(assessmentId) : null;
+    const disableSchoolmanagerTransfer = !transferColumnKey
+      || transferColumnKey.startsWith("homework:")
+      || this.isHomeworkAssessment(assessment);
+    const items = [
+      {
+        label: "In Schulmanager übertragen",
+        disabled: disableSchoolmanagerTransfer,
+        handler: () => {
+          this.openSchoolmanagerTransferDialog({ transferColumnKey });
+        }
+      }
+    ];
+    if (assessmentId > 0) {
+      items.push({
+        label: "In Eingabemaske bearbeiten",
+        handler: () => {
+          this.openGradesEntryForAssessment(assessmentId);
+        }
+      });
+    } else {
+      items.push({
+        label: "Notenstruktur verwalten",
+        disabled: !Number(this.selectedCourseId || 0),
+        handler: () => {
+          this.openCourseStructureDialog(this.selectedCourseId);
+        }
+      });
+    }
+    this.showContextMenu(items, clientX, clientY);
   }
 
   async writeClipboardText(text) {
@@ -18471,6 +18970,7 @@ class PlannerApp {
       this.updateSidebarGradePrivacyToggleState();
       this.updateSidebarGradeNameOrderToggleState();
       this.updateSidebarGradeDisplaySystemToggleState();
+      this.updateSidebarGradePredicateSuffixToggleState();
       this.updateSidebarGradePrintButtonState();
       this.updateSidebarExpectationHorizonButtonState();
       this.updateSidebarGradeSimulationButtonState();
@@ -18533,6 +19033,7 @@ class PlannerApp {
         this.updateSidebarGradePrivacyToggleState();
         this.updateSidebarGradeNameOrderToggleState();
         this.updateSidebarGradeDisplaySystemToggleState();
+        this.updateSidebarGradePredicateSuffixToggleState();
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarGradeSimulationButtonState();
@@ -18554,6 +19055,7 @@ class PlannerApp {
         this.updateSidebarGradePrivacyToggleState();
         this.updateSidebarGradeNameOrderToggleState();
         this.updateSidebarGradeDisplaySystemToggleState();
+        this.updateSidebarGradePredicateSuffixToggleState();
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarGradeSimulationButtonState();
@@ -18566,6 +19068,7 @@ class PlannerApp {
     this.updateSidebarGradePrivacyToggleState();
     this.updateSidebarGradeNameOrderToggleState();
     this.updateSidebarGradeDisplaySystemToggleState();
+    this.updateSidebarGradePredicateSuffixToggleState();
     this.updateSidebarGradePrintButtonState();
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarGradeSimulationButtonState();
@@ -19172,20 +19675,42 @@ class PlannerApp {
     event?.stopPropagation?.();
     if (!this.isGradesTopTabActive()) {
       this.updateSidebarGradeDisplaySystemToggleState();
+      this.updateSidebarGradePredicateSuffixToggleState();
       return;
     }
     if (!this.shouldShowSidebarGradeDisplaySystemToggle() || this.locked) {
       this.updateSidebarGradeDisplaySystemToggleState();
+      this.updateSidebarGradePredicateSuffixToggleState();
       return;
     }
     if (!this.commitVisibleGradeInputs()) {
       this.updateSidebarGradeDisplaySystemToggleState();
+      this.updateSidebarGradePredicateSuffixToggleState();
       return;
     }
     const currentSystem = this.getCurrentGradeOverviewDisplaySystem();
     this.gradeOverviewDisplaySystem = currentSystem === GRADE_DISPLAY_SYSTEM_SCHOOL
       ? GRADE_DISPLAY_SYSTEM_DEFAULT
       : GRADE_DISPLAY_SYSTEM_SCHOOL;
+    this.renderGradesView();
+  }
+
+  handleGradeOverviewPredicateSuffixToggleRequest(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!this.shouldShowSidebarGradePredicateSuffixToggle() || this.locked) {
+      this.updateSidebarGradePredicateSuffixToggleState();
+      return;
+    }
+    if (this.getCurrentGradeOverviewDisplaySystem() !== GRADE_DISPLAY_SYSTEM_SCHOOL) {
+      this.updateSidebarGradePredicateSuffixToggleState();
+      return;
+    }
+    if (!this.commitVisibleGradeInputs()) {
+      this.updateSidebarGradePredicateSuffixToggleState();
+      return;
+    }
+    this.gradeOverviewPredicateSuffixes = this.gradeOverviewPredicateSuffixes === false ? true : false;
     this.renderGradesView();
   }
 
@@ -19274,6 +19799,12 @@ class PlannerApp {
       return this.isTestAssessment(activeAssessment);
     }
     return normalizeGradeAssessmentMode(this.gradesEntryDraft?.mode) === "test";
+  }
+
+  shouldShowSidebarGradePredicateSuffixToggle() {
+    return this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "overview";
   }
 
   updateSidebarGradeSimulationButtonState() {
@@ -20533,6 +21064,44 @@ class PlannerApp {
         canToggle
           ? (isSchoolDisplay ? "Notenanzeige auf 15-Punkte umstellen" : "Notenanzeige auf Schulnoten umstellen")
           : "Notenanzeige in der Eingabemaske nur im BE-Modus verfügbar"
+      );
+  }
+
+  updateSidebarGradePredicateSuffixToggleState() {
+    const actions = this.refs.sidebarGradePrivacyActions;
+    const section = this.refs.sidebarGradePredicateSection;
+    const button = this.refs.sidebarGradePredicateSuffixToggleBtn;
+    if (!actions || !button) {
+      return;
+    }
+    const isAvailable = this.shouldShowSidebarGradePredicateSuffixToggle();
+    const isSchoolDisplay = this.getCurrentGradeOverviewDisplaySystem() === GRADE_DISPLAY_SYSTEM_SCHOOL;
+    const isActive = this.gradeOverviewPredicateSuffixes !== false;
+    const canToggle = isAvailable && isSchoolDisplay && !this.locked;
+    actions.hidden = !this.shouldShowSidebarGradeActions();
+    if (section) {
+      section.hidden = !isAvailable;
+    }
+    button.disabled = !canToggle;
+    button.classList.toggle("is-active", isActive);
+    button.classList.toggle("is-inactive", !isActive);
+    button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    button.setAttribute(
+      "aria-label",
+      isActive
+        ? "Prädikatsanhängsel aktuell sichtbar; ausblenden"
+        : "Prädikatsanhängsel aktuell ausgeblendet; einblenden"
+    );
+    button.title = this.locked
+      ? "Prädikatsanhängsel gesperrt"
+      : (
+        !isAvailable
+          ? "Prädikatsanhängsel in der Kursübersicht verfügbar"
+          : (
+            !isSchoolDisplay
+              ? "Prädikatsanhängsel nur bei Schulnotenanzeige verfügbar"
+              : (isActive ? "Prädikatsanhängsel ausblenden" : "Prädikatsanhängsel einblenden")
+          )
       );
   }
 
@@ -21856,12 +22425,21 @@ class PlannerApp {
     return normalizeGradeDisplaySystem(this.gradeOverviewDisplaySystem);
   }
 
+  getCurrentGradeOverviewPredicateSuffixes() {
+    return this.getCurrentGradeOverviewDisplaySystem() !== GRADE_DISPLAY_SYSTEM_SCHOOL
+      || this.gradeOverviewPredicateSuffixes !== false;
+  }
+
   formatDisplayedGrade(value) {
     return formatGradeDisplayForSystem(value, this.getCurrentGradeDisplaySystem());
   }
 
   formatDisplayedOverviewGrade(value) {
-    return formatGradeDisplayForSystem(value, this.getCurrentGradeOverviewDisplaySystem());
+    return formatGradeDisplayForSystem(
+      value,
+      this.getCurrentGradeOverviewDisplaySystem(),
+      { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }
+    );
   }
 
   formatDisplayedHomeworkSummary(summary = null) {
@@ -22035,6 +22613,7 @@ class PlannerApp {
     const subcategoryAttr = subcategoryKey ? ` data-subcategory-id="${subcategoryKey}"` : "";
     const periodAttr = ` data-period="${period}"`;
     const displaySystem = normalizeGradeDisplaySystem(options.displaySystem);
+    const predicateSuffixes = options.predicateSuffixes !== false;
     const periodLabel = getGradePeriodLabel(period);
     const scopeLabel = normalizedScope === "course"
       ? `${periodLabel} Gesamtnote`
@@ -22079,7 +22658,7 @@ class PlannerApp {
             data-scope="${normalizedScope}"${periodAttr}${categoryAttr}${subcategoryAttr}${disabledAttr}
             aria-label="${scopeLabel} manuell setzen"
             ${tooltipAttr}
-          ><span class="grade-total-value">${formatGradeDisplayForSystem(displayValue, displaySystem)}</span></button>
+          ><span class="grade-total-value">${formatGradeDisplayForSystem(displayValue, displaySystem, { predicateSuffixes })}</span></button>
         `;
   }
 
@@ -22103,11 +22682,12 @@ class PlannerApp {
     const entry = this.store.getGradeEntry(student.id, assessment.id);
     const disabled = Boolean(options.disabled);
     const displaySystem = normalizeGradeDisplaySystem(options.displaySystem);
+    const predicateSuffixes = options.predicateSuffixes !== false;
     const isHomework = this.isHomeworkAssessment(assessment);
     const isTest = this.isTestAssessment(assessment);
     if (isTest) {
       const rawValue = entry && entry.value !== null ? entry.value : null;
-      const displayValue = formatGradeDisplayForSystem(rawValue, displaySystem);
+      const displayValue = formatGradeDisplayForSystem(rawValue, displaySystem, { predicateSuffixes });
       const emptyClass = displayValue === "—" ? " is-empty" : "";
       const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
       const lowClass = isDeficit ? " is-grade-low" : "";
@@ -22158,7 +22738,7 @@ class PlannerApp {
       return this.buildHomeworkDisplayButtonMarkup(assessment, student, rowIndex, entry?.checked === true, { disabled });
     }
     const rawValue = entry && entry.value !== null ? entry.value : null;
-    const displayValue = formatGradeDisplayForSystem(rawValue, displaySystem);
+    const displayValue = formatGradeDisplayForSystem(rawValue, displaySystem, { predicateSuffixes });
     const emptyClass = displayValue === "—" ? " is-empty" : "";
     const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
     const lowClass = isDeficit ? " is-grade-low" : "";
@@ -23583,6 +24163,26 @@ class PlannerApp {
     return "";
   }
 
+  getGradesOverviewTransferColumnKey(column = {}) {
+    const type = String(column?.type || "");
+    const period = normalizeGradePeriod(column?.period || "year");
+    const categoryId = Number(column?.categoryId || column?.category?.id || 0);
+    const subcategoryId = Number(column?.subcategoryId || column?.subcategory?.id || 0);
+    if (type === "period") {
+      return `period-total:${period}`;
+    }
+    if (type === "category-open" && categoryId > 0) {
+      return `category:${period}:${categoryId}`;
+    }
+    if (type === "subcategory-open" && categoryId > 0 && subcategoryId > 0) {
+      return `subcategory:${period}:${categoryId}:${subcategoryId}`;
+    }
+    if (type === "add" && categoryId > 0 && subcategoryId > 0) {
+      return `add:${period}:${categoryId}:${subcategoryId}`;
+    }
+    return this.getGradesOverviewColumnKey(column);
+  }
+
   applyGradesOverviewColumnSelection(element, columnKey) {
     if (!(element instanceof HTMLElement) || !columnKey) {
       return;
@@ -23596,8 +24196,14 @@ class PlannerApp {
 
   renderGradesTableHeaderCell(cell, options = {}) {
     const th = document.createElement("th");
+    const transferColumnKey = this.getGradesOverviewTransferColumnKey(cell);
+    if (transferColumnKey) {
+      th.dataset.gradeTransferColumnKey = transferColumnKey;
+    }
     const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
     const studentCount = Number(options.studentCount || 0);
+    const nonAssessmentTooltip = "Linksklick: Einklappen bzw. Ausklappen / Rechtsklick: Weitere Optionen";
+    const assessmentTooltip = "Linksklick: In Eingabemaske bearbeiten / Rechtsklick: Weitere Optionen";
     if (cell.rowSpan > 1) {
       th.rowSpan = cell.rowSpan;
     }
@@ -23613,6 +24219,12 @@ class PlannerApp {
         return;
       }
       this.applyGradesOverviewColumnSelection(th, this.getGradesOverviewColumnKey(cell));
+    };
+    const applyNonAssessmentTooltip = () => {
+      th.title = nonAssessmentTooltip;
+    };
+    const applyAssessmentTooltip = () => {
+      th.title = assessmentTooltip;
     };
 
     if (cell.type === "student") {
@@ -23630,8 +24242,9 @@ class PlannerApp {
       const isExpanded = cell.expanded !== false;
       th.className = `grade-period-head${isExpanded ? "" : " grade-period-collapsed-head"}`;
       applyBoundaryClasses();
+      applyNonAssessmentTooltip();
       th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-grade-toggle-period="${escapeHtml(cell.period || "year")}" aria-expanded="${isExpanded ? "true" : "false"}">
+        <button type="button" class="grades-master-group-button" data-grade-toggle-period="${escapeHtml(cell.period || "year")}" aria-expanded="${isExpanded ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret${isExpanded ? " is-expanded" : ""}" aria-hidden="true">▸</span>
             <span class="grades-master-group-title">${escapeHtml(cell.label || getGradePeriodLabel(cell.period))}</span>
@@ -23645,6 +24258,7 @@ class PlannerApp {
       th.className = "grade-total-col";
       applyBoundaryClasses();
       applyColumnSelection();
+      applyNonAssessmentTooltip();
       th.textContent = "Jahr";
       return th;
     }
@@ -23653,6 +24267,7 @@ class PlannerApp {
       th.className = "grade-total-col grade-period-total-head";
       applyBoundaryClasses();
       applyColumnSelection();
+      applyNonAssessmentTooltip();
       th.textContent = "";
       return th;
     }
@@ -23662,11 +24277,12 @@ class PlannerApp {
         ? "grade-category-head grade-category-collapsed-head grade-category-collapsed-col"
         : "grade-category-head";
       applyBoundaryClasses();
+      applyNonAssessmentTooltip();
       if (cell.type === "category-collapsed") {
         const tooltip = escapeHtml(cell.category.name);
         applyColumnSelection();
         th.innerHTML = `
-        <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${tooltip}">
+        <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret" aria-hidden="true">▸</span>
           </span>
@@ -23675,7 +24291,7 @@ class PlannerApp {
         return th;
       }
       th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="true">
+        <button type="button" class="grades-master-group-button" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="true" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret is-expanded" aria-hidden="true">▸</span>
             <span class="grades-master-group-title">${escapeHtml(cell.category.name)}${escapeHtml(formatGradeWeightPercentSuffix(cell.category.weight))}</span>
@@ -23688,6 +24304,7 @@ class PlannerApp {
     if (cell.type === "category-partial") {
       th.className = "grade-category-partial-col is-merged-head";
       applyColumnSelection();
+      applyNonAssessmentTooltip();
       th.innerHTML = "&nbsp;";
       th.setAttribute("aria-label", "");
       return th;
@@ -23698,11 +24315,12 @@ class PlannerApp {
         ? "grade-subcategory-head grade-subcategory-collapsed-head grade-subcategory-collapsed-col"
         : "grade-subcategory-head";
       applyBoundaryClasses();
+      applyNonAssessmentTooltip();
       if (cell.type === "subcategory-collapsed") {
         const tooltip = escapeHtml(cell.subcategory.name);
         applyColumnSelection();
         th.innerHTML = `
-        <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${tooltip}">
+        <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret" aria-hidden="true">▸</span>
           </span>
@@ -23711,7 +24329,7 @@ class PlannerApp {
         return th;
       }
       th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="${cell.type === "subcategory-open" ? "true" : "false"}">
+        <button type="button" class="grades-master-group-button" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="${cell.type === "subcategory-open" ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret${cell.type === "subcategory-open" ? " is-expanded" : ""}" aria-hidden="true">▸</span>
             <span class="grades-master-group-title">${escapeHtml(cell.subcategory.name)}${escapeHtml(formatGradeWeightPercentSuffix(cell.subcategory.weight))}</span>
@@ -23724,6 +24342,7 @@ class PlannerApp {
     if (cell.type === "subcategory-partial") {
       th.className = "grade-subcategory-partial-col is-merged-head";
       applyColumnSelection();
+      applyNonAssessmentTooltip();
       th.innerHTML = "&nbsp;";
       th.setAttribute("aria-label", "");
       return th;
@@ -23733,6 +24352,7 @@ class PlannerApp {
       th.className = "grade-homework-col is-merged-head";
       applyBoundaryClasses();
       applyColumnSelection();
+      applyNonAssessmentTooltip();
       th.textContent = "HA";
       th.setAttribute("aria-label", "Hausaufgabe");
       return th;
@@ -23746,12 +24366,13 @@ class PlannerApp {
       }
       applyBoundaryClasses();
       applyColumnSelection();
+      applyAssessmentTooltip();
       const assessmentLabelClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
         ? "grade-assessment-label"
         : "grade-assessment-label is-weightless";
       th.innerHTML = `
         <div class="grade-assessment-head">
-          <button type="button" class="${assessmentLabelClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="In Eingabe bearbeiten">
+          <button type="button" class="${assessmentLabelClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="${escapeHtml(assessmentTooltip)}">
             <span class="grade-assessment-title">${buildGradeAssessmentDisplayTitleMarkup(cell.assessment.title)}</span>
             ${buildGradeAssessmentWeightMarkup(cell.assessment.weight, cell.assessment.mode)}
           </button>
@@ -23797,6 +24418,7 @@ class PlannerApp {
     table.className = "grades-master-table";
     const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
     const gradeDisplaySystem = this.getCurrentGradeOverviewDisplaySystem();
+    const predicateSuffixes = this.getCurrentGradeOverviewPredicateSuffixes();
     if (motion && (motion.kind === "expand" || motion.kind === "collapse")) {
       table.classList.add("is-toggle-animating");
       table.dataset.gradeMotionKind = motion.kind;
@@ -23860,7 +24482,7 @@ class PlannerApp {
             course.id,
             "course",
             this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year"),
-            { period: "year", disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { period: "year", disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -23878,7 +24500,7 @@ class PlannerApp {
             course.id,
             "course",
             this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period),
-            { period: column.period, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { period: column.period, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -23896,7 +24518,7 @@ class PlannerApp {
             course.id,
             "category",
             this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
-            { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -23921,7 +24543,7 @@ class PlannerApp {
             course.id,
             "subcategory",
             this.store.calculateGradeForStudentInSubcategoryPeriod(student.id, course.id, column.categoryId, column.subcategoryId, column.period),
-            { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -23939,7 +24561,7 @@ class PlannerApp {
             course.id,
             "category",
             this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
-            { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -23964,7 +24586,7 @@ class PlannerApp {
             course.id,
             "subcategory",
             this.store.calculateGradeForStudentInSubcategoryPeriod(student.id, course.id, column.categoryId, column.subcategoryId, column.period),
-            { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -24010,7 +24632,7 @@ class PlannerApp {
             rowIndex,
             columnIndex,
             column.subcategoryId,
-            { disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem }
+            { disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
           );
           tr.append(td);
           return;
@@ -24509,6 +25131,9 @@ class PlannerApp {
     const displaySystem = root === this.refs.gradesTable
       ? this.getCurrentGradeOverviewDisplaySystem()
       : this.getCurrentGradeDisplaySystem();
+    const predicateSuffixes = root === this.refs.gradesTable
+      ? this.getCurrentGradeOverviewPredicateSuffixes()
+      : true;
     root.querySelectorAll("button[data-grade-open-override='1']").forEach((node) => {
       const studentId = Number(node.getAttribute("data-student-id") || 0);
       const scope = normalizeGradeOverrideScope(node.getAttribute("data-scope") || "");
@@ -24525,7 +25150,7 @@ class PlannerApp {
       node.removeAttribute("title");
       const valueNode = node.querySelector(".grade-total-value");
       if (valueNode) {
-        valueNode.textContent = formatGradeDisplayForSystem(state.value, displaySystem);
+        valueNode.textContent = formatGradeDisplayForSystem(state.value, displaySystem, { predicateSuffixes });
       }
     });
     root.querySelectorAll("[data-grade-entry-partial='1']").forEach((node) => {
@@ -24542,7 +25167,8 @@ class PlannerApp {
           subcategoryId,
           period
         ),
-        displaySystem
+        displaySystem,
+        { predicateSuffixes }
       );
     });
     root.querySelectorAll("[data-grade-homework-summary='1']").forEach((node) => {
@@ -27462,6 +28088,7 @@ class PlannerApp {
     this.updateSidebarGradePrivacyToggleState();
     this.updateSidebarGradeNameOrderToggleState();
     this.updateSidebarGradeDisplaySystemToggleState();
+    this.updateSidebarGradePredicateSuffixToggleState();
     this.updateSidebarGradePrintButtonState();
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarGradeSimulationButtonState();
