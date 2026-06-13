@@ -6546,6 +6546,7 @@ class PlannerApp {
       schoolmanagerTransferDisplaySystemToggle: document.querySelector("#schoolmanager-transfer-display-system-toggle"),
       schoolmanagerTransferPredicateSuffixToggle: document.querySelector("#schoolmanager-transfer-predicate-suffix-toggle"),
       schoolmanagerTransferFirstGradeField: document.querySelector("#schoolmanager-transfer-first-grade-field"),
+      schoolmanagerTransferBookmarkletLink: document.querySelector("#schoolmanager-transfer-bookmarklet-link"),
       schoolmanagerTransferBookmarkletCode: document.querySelector("#schoolmanager-transfer-bookmarklet-code"),
       schoolmanagerTransferBookmarkletCopy: document.querySelector("#schoolmanager-transfer-bookmarklet-copy"),
       schoolmanagerTransferSubmit: document.querySelector("#schoolmanager-transfer-submit"),
@@ -11002,6 +11003,11 @@ class PlannerApp {
     } else {
       codeNode.textContent = code;
     }
+    const link = this.refs.schoolmanagerTransferBookmarkletLink;
+    if (link) {
+      link.href = code;
+      link.setAttribute("aria-label", "Bookmarklet Schulmanager-Übernahme in die Lesezeichenleiste ziehen");
+    }
   }
 
   resetSchoolmanagerTransferBookmarkletCopyButton() {
@@ -15264,6 +15270,17 @@ class PlannerApp {
     });
     this.refs.schoolmanagerTransferBookmarkletCode?.addEventListener("focus", (event) => {
       event.target?.select?.();
+    });
+    this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("click", (event) => {
+      event.preventDefault();
+    });
+    this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("dragstart", (event) => {
+      const code = String(this.refs.schoolmanagerTransferBookmarkletLink?.href || "").trim();
+      if (!code || !event.dataTransfer) {
+        return;
+      }
+      event.dataTransfer.setData("text/uri-list", code);
+      event.dataTransfer.setData("text/plain", code);
     });
     this.refs.schoolmanagerTransferBookmarkletCopy?.addEventListener("click", async (event) => {
       event.preventDefault();

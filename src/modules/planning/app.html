@@ -921,6 +921,12 @@
             </label>
             <section class="schoolmanager-transfer-step">
               <p>5. Öffne Deinen Browser und lege <strong>einmalig</strong> ein <strong>Lesezeichen/Favorit</strong> mit folgendem URL an:</p>
+              <div class="schoolmanager-transfer-bookmarklet-drag">
+                <a id="schoolmanager-transfer-bookmarklet-link" class="schoolmanager-transfer-bookmarklet-link"
+                  href="javascript:(async()=&gt;{let v=(await navigator.clipboard.readText()).split(';');[...document.querySelectorAll('input,textarea')].filter(e=&gt;e.offsetParent&amp;&amp;!e.disabled&amp;&amp;!e.readOnly&amp;&amp;!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(6).map((e,i)=&gt;v[i]!=null&amp;&amp;(e.value=v[i],e.dispatchEvent(new Event('input',{bubbles:1})),e.dispatchEvent(new Event('change',{bubbles:1}))))})()"
+                  draggable="true" aria-label="Bookmarklet Schulmanager-Übernahme in die Lesezeichenleiste ziehen">Schulmanager-Übernahme</a>
+                <span>In die Lesezeichenleiste ziehen</span>
+              </div>
               <div class="schoolmanager-transfer-bookmarklet-row">
                 <textarea id="schoolmanager-transfer-bookmarklet-code" class="schoolmanager-transfer-bookmarklet"
                   readonly rows="5" spellcheck="false" aria-label="Bookmarklet-URL zum Markieren und Kopieren">javascript:(async()=&gt;{let v=(await navigator.clipboard.readText()).split(';');[...document.querySelectorAll('input,textarea')].filter(e=&gt;e.offsetParent&amp;&amp;!e.disabled&amp;&amp;!e.readOnly&amp;&amp;!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(6).map((e,i)=&gt;v[i]!=null&amp;&amp;(e.value=v[i],e.dispatchEvent(new Event('input',{bubbles:1})),e.dispatchEvent(new Event('change',{bubbles:1}))))})()</textarea>

@@ -557,6 +557,46 @@
           width: 7rem;
         }
 
+        .schoolmanager-transfer-bookmarklet-drag {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: center;
+          gap: 0.45rem 0.7rem;
+          color: rgba(203, 213, 225, 0.78);
+          font-size: 0.84rem;
+          line-height: 1.3;
+          text-align: center;
+        }
+
+        .schoolmanager-transfer-bookmarklet-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 34px;
+          padding: 0.36rem 0.72rem;
+          border-radius: 999px;
+          border: 1px solid rgba(96, 165, 250, 0.55);
+          background: rgba(37, 99, 235, 0.18);
+          color: rgba(219, 234, 254, 0.96);
+          font-size: 0.88rem;
+          font-weight: 700;
+          text-decoration: none;
+          cursor: grab;
+        }
+
+        .schoolmanager-transfer-bookmarklet-link:hover,
+        .schoolmanager-transfer-bookmarklet-link:focus-visible {
+          border-color: rgba(147, 197, 253, 0.84);
+          background: rgba(37, 99, 235, 0.3);
+          color: #fff;
+          outline: none;
+        }
+
+        .schoolmanager-transfer-bookmarklet-link:active {
+          cursor: grabbing;
+        }
+
         .schoolmanager-transfer-bookmarklet-row {
           display: grid;
           grid-template-columns: minmax(0, 1fr) auto;
