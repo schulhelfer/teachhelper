@@ -1210,11 +1210,13 @@
         }
 
         .sidebar-grade-simulation-btn {
+          width: 40px;
+          min-width: 40px;
+          height: 40px;
           min-height: 40px;
           padding: 0.44rem;
           white-space: nowrap;
           text-align: center;
-          font-size: 1.34rem;
           line-height: 1;
         }
 
@@ -1567,12 +1569,16 @@
         }
 
         .sidebar-grade-simulation-btn {
-          width: 100%;
-          min-width: 0;
-          min-height: 38px;
+          width: 36px;
+          min-width: 36px;
+          height: 36px;
+          min-height: 36px;
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
           border-radius: 10px;
-          padding: 0.42rem 0.5rem;
-          line-height: 1.12;
+          padding: 0;
+          line-height: 1;
         }
 
         .sidebar-grade-expectation-btn {

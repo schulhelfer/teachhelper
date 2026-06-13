@@ -6840,6 +6840,7 @@ class PlannerApp {
     this.pendingGradesOverviewAutoScroll = null;
     this.pendingGradesOverviewAutoScrollFrame = 0;
     this.pendingGradesOverviewAutoScrollFrameType = "";
+    this.gradesTableStickyScrollbarPointerActive = false;
     this.initialDatabaseSetupInfoShown = false;
     this.initialDatabaseSetupInfoQueued = false;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
@@ -16274,6 +16275,43 @@ class PlannerApp {
     this.refs.gradesTableStickyScrollbar?.addEventListener("scroll", () => {
       this.syncGradesTableScrollFromStickyScrollbar();
     });
+    this.refs.gradesTableStickyScrollbar?.addEventListener("pointerdown", () => {
+      this.gradesTableStickyScrollbarPointerActive = true;
+      this.clearPendingGradesOverviewAutoScroll();
+    });
+    this.refs.gradesTableStickyScrollbar?.addEventListener("mousedown", () => {
+      this.gradesTableStickyScrollbarPointerActive = true;
+      this.clearPendingGradesOverviewAutoScroll();
+    });
+    this.refs.gradesTableStickyScrollbar?.addEventListener("pointerup", () => {
+      this.gradesTableStickyScrollbarPointerActive = false;
+      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+    });
+    this.refs.gradesTableStickyScrollbar?.addEventListener("pointercancel", () => {
+      this.gradesTableStickyScrollbarPointerActive = false;
+      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+    });
+    window.addEventListener("pointerup", () => {
+      if (!this.gradesTableStickyScrollbarPointerActive) {
+        return;
+      }
+      this.gradesTableStickyScrollbarPointerActive = false;
+      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+    });
+    window.addEventListener("pointercancel", () => {
+      if (!this.gradesTableStickyScrollbarPointerActive) {
+        return;
+      }
+      this.gradesTableStickyScrollbarPointerActive = false;
+      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+    });
+    window.addEventListener("mouseup", () => {
+      if (!this.gradesTableStickyScrollbarPointerActive) {
+        return;
+      }
+      this.gradesTableStickyScrollbarPointerActive = false;
+      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+    });
     this.refs.gradesEntryTableStickyScrollbar?.addEventListener("scroll", () => {
       this.syncGradesEntryTableScrollFromStickyScrollbar();
     });
@@ -21722,14 +21760,19 @@ class PlannerApp {
       this.positionGradesOverviewStickyHeader();
       return;
     }
-    scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+    if (!this.gradesTableStickyScrollbarPointerActive) {
+      scrollbar.scrollLeft = Number(tableScroll.scrollLeft || 0);
+    }
     this.positionGradesOverviewStickyHeader();
   }
 
-  syncGradesTableStickyScrollbarFromTable() {
+  syncGradesTableStickyScrollbarFromTable(options = {}) {
     const tableScroll = this.refs.gradesTableScroll;
     const scrollbar = this.refs.gradesTableStickyScrollbar;
     if (!tableScroll || !scrollbar || scrollbar.hidden) {
+      return;
+    }
+    if (this.gradesTableStickyScrollbarPointerActive && !options.force) {
       return;
     }
     if (Number(scrollbar.scrollLeft || 0) !== Number(tableScroll.scrollLeft || 0)) {
@@ -21743,6 +21786,7 @@ class PlannerApp {
     if (!tableScroll || !scrollbar || scrollbar.hidden) {
       return;
     }
+    this.clearPendingGradesOverviewAutoScroll();
     if (Number(tableScroll.scrollLeft || 0) === Number(scrollbar.scrollLeft || 0)) {
       return;
     }
