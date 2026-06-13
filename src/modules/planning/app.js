@@ -32,6 +32,7 @@ const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
+const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager-Import";
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_RATIO_TOOLTIP = "Orange = Kurz vor besserer Note";
@@ -6447,9 +6448,9 @@ class PlannerApp {
       sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
       sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
-      sidebarGradeNameOrderToggleBtn: document.querySelector("#sidebar-grade-name-order-toggle-btn"),
-      sidebarGradeDisplaySystemToggleBtn: document.querySelector("#sidebar-grade-display-system-toggle-btn"),
-      sidebarGradePredicateSuffixToggleBtn: document.querySelector("#sidebar-grade-predicate-suffix-toggle-btn"),
+      sidebarGradeNameOrderInputs: document.querySelectorAll("[data-grade-name-order]"),
+      sidebarGradeDisplaySystemInputs: document.querySelectorAll("[data-grade-display-system]"),
+      sidebarGradePredicateSuffixInputs: document.querySelectorAll("[data-grade-predicate-suffixes]"),
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
@@ -6542,13 +6543,11 @@ class PlannerApp {
       schoolmanagerTransferDialog: document.querySelector("#schoolmanager-transfer-dialog"),
       schoolmanagerTransferDialogForm: document.querySelector("#schoolmanager-transfer-dialog-form"),
       schoolmanagerTransferDialogCancel: document.querySelector("#schoolmanager-transfer-dialog-cancel"),
-      schoolmanagerTransferNameOrderToggle: document.querySelector("#schoolmanager-transfer-name-order-toggle"),
-      schoolmanagerTransferDisplaySystemToggle: document.querySelector("#schoolmanager-transfer-display-system-toggle"),
-      schoolmanagerTransferPredicateSuffixToggle: document.querySelector("#schoolmanager-transfer-predicate-suffix-toggle"),
+      schoolmanagerTransferNameOrderInputs: document.querySelectorAll("[data-schoolmanager-transfer-name-order]"),
+      schoolmanagerTransferDisplaySystemInputs: document.querySelectorAll("[data-schoolmanager-transfer-display-system]"),
+      schoolmanagerTransferPredicateSuffixInputs: document.querySelectorAll("[data-schoolmanager-transfer-predicate-suffixes]"),
       schoolmanagerTransferFirstGradeField: document.querySelector("#schoolmanager-transfer-first-grade-field"),
       schoolmanagerTransferBookmarkletLink: document.querySelector("#schoolmanager-transfer-bookmarklet-link"),
-      schoolmanagerTransferBookmarkletCode: document.querySelector("#schoolmanager-transfer-bookmarklet-code"),
-      schoolmanagerTransferBookmarkletCopy: document.querySelector("#schoolmanager-transfer-bookmarklet-copy"),
       schoolmanagerTransferSubmit: document.querySelector("#schoolmanager-transfer-submit"),
       gradeSimulationDialog: document.querySelector("#grade-simulation-dialog"),
       gradeSimulationDialogForm: document.querySelector("#grade-simulation-dialog-form"),
@@ -10832,7 +10831,6 @@ class PlannerApp {
       transferColumnKey: String(options.transferColumnKey || "").trim()
     };
     this.syncSchoolmanagerTransferDialogControls();
-    this.resetSchoolmanagerTransferBookmarkletCopyButton();
     this.resetSchoolmanagerTransferSubmitButton();
     this.openDialog(this.refs.schoolmanagerTransferDialog);
   }
@@ -10857,29 +10855,27 @@ class PlannerApp {
     this.markSchoolmanagerTransferSubmitCopied();
   }
 
-  toggleSchoolmanagerTransferNameOrder() {
-    const current = normalizeGradeStudentNameOrder(this.schoolmanagerTransferDialogState?.nameOrder || "last");
+  setSchoolmanagerTransferNameOrder(value) {
+    const nameOrder = normalizeGradeStudentNameOrder(value || "last");
     this.schoolmanagerTransferDialogState = {
       ...this.schoolmanagerTransferDialogState,
-      nameOrder: current === "last" ? "first" : "last"
+      nameOrder
     };
     this.syncSchoolmanagerTransferDialogControls();
     this.resetSchoolmanagerTransferSubmitButton();
   }
 
-  toggleSchoolmanagerTransferDisplaySystem() {
-    const current = normalizeGradeDisplaySystem(this.schoolmanagerTransferDialogState?.displaySystem);
+  setSchoolmanagerTransferDisplaySystem(value) {
+    const displaySystem = normalizeGradeDisplaySystem(value);
     this.schoolmanagerTransferDialogState = {
       ...this.schoolmanagerTransferDialogState,
-      displaySystem: current === GRADE_DISPLAY_SYSTEM_SCHOOL
-        ? GRADE_DISPLAY_SYSTEM_DEFAULT
-        : GRADE_DISPLAY_SYSTEM_SCHOOL
+      displaySystem
     };
     this.syncSchoolmanagerTransferDialogControls();
     this.resetSchoolmanagerTransferSubmitButton();
   }
 
-  toggleSchoolmanagerTransferPredicateSuffixes() {
+  setSchoolmanagerTransferPredicateSuffixes(value) {
     const state = this.schoolmanagerTransferDialogState || {};
     if (normalizeGradeDisplaySystem(state.displaySystem) !== GRADE_DISPLAY_SYSTEM_SCHOOL) {
       this.syncSchoolmanagerTransferDialogControls();
@@ -10887,7 +10883,7 @@ class PlannerApp {
     }
     this.schoolmanagerTransferDialogState = {
       ...state,
-      predicateSuffixes: state.predicateSuffixes === false ? true : false
+      predicateSuffixes: String(value) !== "false"
     };
     this.syncSchoolmanagerTransferDialogControls();
     this.resetSchoolmanagerTransferSubmitButton();
@@ -10897,58 +10893,19 @@ class PlannerApp {
     const state = this.schoolmanagerTransferDialogState || {};
     const nameOrder = normalizeGradeStudentNameOrder(state.nameOrder || "last");
     const displaySystem = normalizeGradeDisplaySystem(state.displaySystem);
-    const isLastNameOrder = nameOrder === "last";
     const isSchoolDisplay = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
     const predicateSuffixes = state.predicateSuffixes !== false;
 
-    const nameOrderButton = this.refs.schoolmanagerTransferNameOrderToggle;
-    if (nameOrderButton) {
-      nameOrderButton.classList.toggle("is-active", isLastNameOrder);
-      nameOrderButton.classList.toggle("is-inactive", !isLastNameOrder);
-      nameOrderButton.setAttribute("aria-pressed", isLastNameOrder ? "true" : "false");
-      nameOrderButton.setAttribute(
-        "aria-label",
-        isLastNameOrder
-          ? "Namenssortierung aktuell Nachname, Vorname; auf Vorname Nachname umstellen"
-          : "Namenssortierung aktuell Vorname Nachname; auf Nachname, Vorname umstellen"
-      );
-      nameOrderButton.title = isLastNameOrder
-        ? "Namenssortierung auf Vorname Nachname umstellen"
-        : "Namenssortierung auf Nachname, Vorname umstellen";
-    }
-
-    const displayButton = this.refs.schoolmanagerTransferDisplaySystemToggle;
-    if (displayButton) {
-      displayButton.classList.toggle("is-active", isSchoolDisplay);
-      displayButton.classList.toggle("is-inactive", !isSchoolDisplay);
-      displayButton.setAttribute("aria-pressed", isSchoolDisplay ? "true" : "false");
-      displayButton.setAttribute(
-        "aria-label",
-        isSchoolDisplay
-          ? "Notensystem aktuell 1-6; auf 15-00 umstellen"
-          : "Notensystem aktuell 15-00; auf 1-6 umstellen"
-      );
-      displayButton.title = isSchoolDisplay
-        ? "Notensystem auf 15-00 umstellen"
-        : "Notensystem auf 1-6 umstellen";
-    }
-
-    const predicateButton = this.refs.schoolmanagerTransferPredicateSuffixToggle;
-    if (predicateButton) {
-      predicateButton.disabled = !isSchoolDisplay;
-      predicateButton.classList.toggle("is-active", predicateSuffixes);
-      predicateButton.classList.toggle("is-inactive", !predicateSuffixes);
-      predicateButton.setAttribute("aria-pressed", predicateSuffixes ? "true" : "false");
-      predicateButton.setAttribute(
-        "aria-label",
-        predicateSuffixes
-          ? "Prädikatsanhängsel aktuell zulässig; nicht zulassen"
-          : "Prädikatsanhängsel aktuell nicht zulässig; zulassen"
-      );
-      predicateButton.title = isSchoolDisplay
-        ? (predicateSuffixes ? "Prädikatsanhängsel nicht zulassen" : "Prädikatsanhängsel zulassen")
-        : "Prädikatsanhängsel nur bei Notensystem 1-6 verfügbar";
-    }
+    this.refs.schoolmanagerTransferNameOrderInputs?.forEach((input) => {
+      input.checked = normalizeGradeStudentNameOrder(input.value) === nameOrder;
+    });
+    this.refs.schoolmanagerTransferDisplaySystemInputs?.forEach((input) => {
+      input.checked = normalizeGradeDisplaySystem(input.value) === displaySystem;
+    });
+    this.refs.schoolmanagerTransferPredicateSuffixInputs?.forEach((input) => {
+      input.disabled = !isSchoolDisplay;
+      input.checked = (input.value !== "false") === predicateSuffixes;
+    });
 
     const input = this.refs.schoolmanagerTransferFirstGradeField;
     if (input) {
@@ -10968,18 +10925,7 @@ class PlannerApp {
       firstGradeFieldIndex: this.getSchoolmanagerTransferFirstGradeFieldIndex()
     };
     this.updateSchoolmanagerTransferBookmarkletCode();
-    this.resetSchoolmanagerTransferBookmarkletCopyButton();
     this.resetSchoolmanagerTransferSubmitButton();
-  }
-
-  getSchoolmanagerTransferStudentCount() {
-    const course = this.getSchoolmanagerTransferCourse();
-    if (!course || !this.canAccessGradeVault() || !this.isGradeCourseLoaded(course.id)) {
-      return 0;
-    }
-    return this.store.listGradeStudents(course.id)
-      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
-      .length;
   }
 
   buildSchoolmanagerTransferBookmarkletCode() {
@@ -10993,48 +10939,12 @@ class PlannerApp {
   }
 
   updateSchoolmanagerTransferBookmarkletCode() {
-    const codeNode = this.refs.schoolmanagerTransferBookmarkletCode;
-    if (!codeNode) {
-      return;
-    }
     const code = this.buildSchoolmanagerTransferBookmarkletCode();
-    if ("value" in codeNode) {
-      codeNode.value = code;
-    } else {
-      codeNode.textContent = code;
-    }
     const link = this.refs.schoolmanagerTransferBookmarkletLink;
     if (link) {
       link.href = code;
-      link.setAttribute("aria-label", "Bookmarklet Schulmanager-Übernahme in die Lesezeichenleiste ziehen");
+      link.setAttribute("aria-label", `${SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
     }
-  }
-
-  resetSchoolmanagerTransferBookmarkletCopyButton() {
-    const button = this.refs.schoolmanagerTransferBookmarkletCopy;
-    if (!button) {
-      return;
-    }
-    button.textContent = "📋";
-    button.setAttribute("aria-label", "Bookmarklet kopieren");
-    button.title = "Bookmarklet kopieren";
-  }
-
-  async copySchoolmanagerTransferBookmarklet() {
-    const codeNode = this.refs.schoolmanagerTransferBookmarkletCode;
-    const code = String((codeNode && "value" in codeNode ? codeNode.value : codeNode?.textContent) || "").trim();
-    if (!code) {
-      return;
-    }
-    await this.writeClipboardText(code);
-
-    const button = this.refs.schoolmanagerTransferBookmarkletCopy;
-    if (!button) {
-      return;
-    }
-    button.textContent = "✔️";
-    button.setAttribute("aria-label", "Bookmarklet kopiert");
-    button.title = "Bookmarklet kopiert";
   }
 
   resetSchoolmanagerTransferSubmitButton() {
@@ -14106,11 +14016,6 @@ class PlannerApp {
       this.removeGradeTestTask(taskId);
       return;
     }
-    const nameOrderToggleButton = event.target.closest("button[data-grade-name-order-toggle='1']");
-    if (nameOrderToggleButton) {
-      this.handleGradeNameOrderToggleRequest(event);
-      return;
-    }
     const printOverviewButton = event.target.closest("button[data-grade-print-overview='1']");
     if (printOverviewButton) {
       this.handleGradePrintOverviewRequest(event);
@@ -14745,9 +14650,6 @@ class PlannerApp {
   bindEvents() {
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("contextmenu", (event) => {
-        if (event.target instanceof Element && event.target.closest("#schoolmanager-transfer-bookmarklet-code")) {
-          return;
-        }
         event.preventDefault();
       });
       window.addEventListener("classroom:planning-view-request", (event) => {
@@ -14858,21 +14760,27 @@ class PlannerApp {
         this.handleGradePrivacyToggleRequest(event);
       });
     }
-    if (this.refs.sidebarGradeNameOrderToggleBtn) {
-      this.refs.sidebarGradeNameOrderToggleBtn.addEventListener("click", (event) => {
-        this.handleGradeNameOrderToggleRequest(event);
+    this.refs.sidebarGradeNameOrderInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (input.checked) {
+          this.handleGradeNameOrderChangeRequest(input.value, event);
+        }
       });
-    }
-    if (this.refs.sidebarGradeDisplaySystemToggleBtn) {
-      this.refs.sidebarGradeDisplaySystemToggleBtn.addEventListener("click", (event) => {
-        this.handleGradeDisplaySystemToggleRequest(event);
+    });
+    this.refs.sidebarGradeDisplaySystemInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (input.checked) {
+          this.handleGradeDisplaySystemChangeRequest(input.value, event);
+        }
       });
-    }
-    if (this.refs.sidebarGradePredicateSuffixToggleBtn) {
-      this.refs.sidebarGradePredicateSuffixToggleBtn.addEventListener("click", (event) => {
-        this.handleGradeOverviewPredicateSuffixToggleRequest(event);
+    });
+    this.refs.sidebarGradePredicateSuffixInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (input.checked) {
+          this.handleGradeOverviewPredicateSuffixChangeRequest(input.value, event);
+        }
       });
-    }
+    });
     if (this.refs.sidebarGradePrintBtn) {
       this.refs.sidebarGradePrintBtn.addEventListener("click", (event) => {
         this.handleGradePrintOverviewRequest(event);
@@ -15250,17 +15158,26 @@ class PlannerApp {
       event.preventDefault();
       this.closeSchoolmanagerTransferDialog();
     });
-    this.refs.schoolmanagerTransferNameOrderToggle?.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.toggleSchoolmanagerTransferNameOrder();
+    this.refs.schoolmanagerTransferNameOrderInputs?.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          this.setSchoolmanagerTransferNameOrder(input.value);
+        }
+      });
     });
-    this.refs.schoolmanagerTransferDisplaySystemToggle?.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.toggleSchoolmanagerTransferDisplaySystem();
+    this.refs.schoolmanagerTransferDisplaySystemInputs?.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          this.setSchoolmanagerTransferDisplaySystem(input.value);
+        }
+      });
     });
-    this.refs.schoolmanagerTransferPredicateSuffixToggle?.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.toggleSchoolmanagerTransferPredicateSuffixes();
+    this.refs.schoolmanagerTransferPredicateSuffixInputs?.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (input.checked) {
+          this.setSchoolmanagerTransferPredicateSuffixes(input.value);
+        }
+      });
     });
     this.refs.schoolmanagerTransferFirstGradeField?.addEventListener("input", () => {
       this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
@@ -15268,24 +15185,8 @@ class PlannerApp {
     this.refs.schoolmanagerTransferFirstGradeField?.addEventListener("change", () => {
       this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
     });
-    this.refs.schoolmanagerTransferBookmarkletCode?.addEventListener("focus", (event) => {
-      event.target?.select?.();
-    });
     this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("click", (event) => {
       event.preventDefault();
-    });
-    this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("dragstart", (event) => {
-      const code = String(this.refs.schoolmanagerTransferBookmarkletLink?.href || "").trim();
-      if (!code || !event.dataTransfer) {
-        return;
-      }
-      event.dataTransfer.setData("text/uri-list", code);
-      event.dataTransfer.setData("text/plain", code);
-    });
-    this.refs.schoolmanagerTransferBookmarkletCopy?.addEventListener("click", async (event) => {
-      event.preventDefault();
-      this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
-      await this.copySchoolmanagerTransferBookmarklet();
     });
 
     this.refs.slotDialogCancel.addEventListener("click", () => {
@@ -16441,9 +16342,6 @@ class PlannerApp {
     });
 
     document.addEventListener("contextmenu", (event) => {
-      if (event.target instanceof Element && event.target.closest("#schoolmanager-transfer-bookmarklet-code")) {
-        return;
-      }
       event.preventDefault();
       if (event.button !== 2) {
         this.hideContextMenu();
@@ -19661,10 +19559,10 @@ class PlannerApp {
     this.tryEnterGradePrivacyMode(event);
   }
 
-  handleGradeNameOrderToggleRequest(event = null) {
+  handleGradeNameOrderChangeRequest(value, event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    if (!this.shouldShowSidebarGradeNameOrderToggle()) {
+    if (!this.shouldShowSidebarGradeNameOrderToggle() || this.locked) {
       this.updateSidebarGradeNameOrderToggleState();
       return;
     }
@@ -19674,20 +19572,17 @@ class PlannerApp {
       return;
     }
     this.activeGradeOverrideContext = null;
+    const nameOrder = normalizeGradeStudentNameOrder(value);
     if (subView === "entry") {
-      this.gradesEntryNameOrder = normalizeGradeStudentNameOrder(this.gradesEntryNameOrder) === "first"
-        ? "last"
-        : "first";
+      this.gradesEntryNameOrder = nameOrder;
     } else {
-      this.gradesOverviewNameOrder = normalizeGradeStudentNameOrder(this.gradesOverviewNameOrder) === "first"
-        ? "last"
-        : "first";
+      this.gradesOverviewNameOrder = nameOrder;
     }
     this.renderGradesView();
     this.updateSidebarGradeNameOrderToggleState();
   }
 
-  handleGradeDisplaySystemToggleRequest(event = null) {
+  handleGradeDisplaySystemChangeRequest(value, event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (!this.isGradesTopTabActive()) {
@@ -19705,14 +19600,11 @@ class PlannerApp {
       this.updateSidebarGradePredicateSuffixToggleState();
       return;
     }
-    const currentSystem = this.getCurrentGradeOverviewDisplaySystem();
-    this.gradeOverviewDisplaySystem = currentSystem === GRADE_DISPLAY_SYSTEM_SCHOOL
-      ? GRADE_DISPLAY_SYSTEM_DEFAULT
-      : GRADE_DISPLAY_SYSTEM_SCHOOL;
+    this.gradeOverviewDisplaySystem = normalizeGradeDisplaySystem(value);
     this.renderGradesView();
   }
 
-  handleGradeOverviewPredicateSuffixToggleRequest(event = null) {
+  handleGradeOverviewPredicateSuffixChangeRequest(value, event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
     if (!this.shouldShowSidebarGradePredicateSuffixToggle() || this.locked) {
@@ -19727,7 +19619,7 @@ class PlannerApp {
       this.updateSidebarGradePredicateSuffixToggleState();
       return;
     }
-    this.gradeOverviewPredicateSuffixes = this.gradeOverviewPredicateSuffixes === false ? true : false;
+    this.gradeOverviewPredicateSuffixes = String(value) !== "false";
     this.renderGradesView();
   }
 
@@ -21014,8 +20906,8 @@ class PlannerApp {
   updateSidebarGradeNameOrderToggleState() {
     const actions = this.refs.sidebarGradePrivacyActions;
     const section = this.refs.sidebarGradeSortSection;
-    const button = this.refs.sidebarGradeNameOrderToggleBtn;
-    if (!actions || !button) {
+    const inputs = this.refs.sidebarGradeNameOrderInputs;
+    if (!actions || !inputs) {
       return;
     }
     const isGradesContext = this.isGradesTopTabActive();
@@ -21026,69 +20918,42 @@ class PlannerApp {
     const nameOrder = normalizeGradeStudentNameOrder(
       isGradesEntry ? this.gradesEntryNameOrder : this.gradesOverviewNameOrder
     );
-    const currentNameOrderLabel = nameOrder === "first" ? "Vorname Nachname" : "Nachname, Vorname";
-    const nextNameOrderLabel = nameOrder === "first" ? "Nachname, Vorname" : "Vorname Nachname";
-    const isLastNameOrder = nameOrder === "last";
+    const canChange = isAvailable && !this.locked;
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
       section.hidden = !isAvailable;
     }
-    button.disabled = !isAvailable || this.locked;
-    button.classList.toggle("is-active", isLastNameOrder);
-    button.classList.toggle("is-inactive", !isLastNameOrder);
-    button.setAttribute("aria-pressed", isLastNameOrder ? "true" : "false");
-    button.setAttribute(
-      "aria-label",
-      `Namenssortierung aktuell ${currentNameOrderLabel}; auf ${nextNameOrderLabel} umstellen`
-    );
-    button.title = this.locked
-      ? "Namenssortierung gesperrt"
-      : (
-        isAvailable
-          ? `Namenssortierung auf ${nextNameOrderLabel} umstellen`
-          : "Namenssortierung in Kursübersicht und Eingabemaske verfügbar"
-      );
+    inputs.forEach((input) => {
+      input.disabled = !canChange;
+      input.checked = normalizeGradeStudentNameOrder(input.value) === nameOrder;
+    });
   }
 
   updateSidebarGradeDisplaySystemToggleState() {
     const actions = this.refs.sidebarGradePrivacyActions;
     const section = this.refs.sidebarGradeDisplaySection;
-    const button = this.refs.sidebarGradeDisplaySystemToggleBtn;
-    if (!actions || !button) {
+    const inputs = this.refs.sidebarGradeDisplaySystemInputs;
+    if (!actions || !inputs) {
       return;
     }
     const isAvailable = this.shouldShowSidebarGradeDisplaySystemToggle();
     const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
-    const isSchoolDisplay = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
-    const canToggle = isAvailable && !this.locked;
+    const canChange = isAvailable && !this.locked;
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
       section.hidden = !isAvailable;
     }
-    button.disabled = !canToggle;
-    button.classList.toggle("is-active", isSchoolDisplay);
-    button.classList.toggle("is-inactive", !isSchoolDisplay);
-    button.setAttribute("aria-pressed", isSchoolDisplay ? "true" : "false");
-    button.setAttribute(
-      "aria-label",
-      isSchoolDisplay
-        ? "Notenanzeige aktuell Schulnoten; auf 15-Punkte umstellen"
-        : "Notenanzeige aktuell 15-Punkte; auf Schulnoten umstellen"
-    );
-    button.title = this.locked
-      ? "Notenanzeige gesperrt"
-      : (
-        canToggle
-          ? (isSchoolDisplay ? "Notenanzeige auf 15-Punkte umstellen" : "Notenanzeige auf Schulnoten umstellen")
-          : "Notenanzeige in der Eingabemaske nur im BE-Modus verfügbar"
-      );
+    inputs.forEach((input) => {
+      input.disabled = !canChange;
+      input.checked = normalizeGradeDisplaySystem(input.value) === displaySystem;
+    });
   }
 
   updateSidebarGradePredicateSuffixToggleState() {
     const actions = this.refs.sidebarGradePrivacyActions;
     const section = this.refs.sidebarGradePredicateSection;
-    const button = this.refs.sidebarGradePredicateSuffixToggleBtn;
-    if (!actions || !button) {
+    const inputs = this.refs.sidebarGradePredicateSuffixInputs;
+    if (!actions || !inputs) {
       return;
     }
     const isAvailable = this.shouldShowSidebarGradePredicateSuffixToggle();
@@ -21099,27 +20964,10 @@ class PlannerApp {
     if (section) {
       section.hidden = !isAvailable;
     }
-    button.disabled = !canToggle;
-    button.classList.toggle("is-active", isActive);
-    button.classList.toggle("is-inactive", !isActive);
-    button.setAttribute("aria-pressed", isActive ? "true" : "false");
-    button.setAttribute(
-      "aria-label",
-      isActive
-        ? "Prädikatsanhängsel aktuell sichtbar; ausblenden"
-        : "Prädikatsanhängsel aktuell ausgeblendet; einblenden"
-    );
-    button.title = this.locked
-      ? "Prädikatsanhängsel gesperrt"
-      : (
-        !isAvailable
-          ? "Prädikatsanhängsel in der Kursübersicht verfügbar"
-          : (
-            !isSchoolDisplay
-              ? "Prädikatsanhängsel nur bei Schulnotenanzeige verfügbar"
-              : (isActive ? "Prädikatsanhängsel ausblenden" : "Prädikatsanhängsel einblenden")
-          )
-      );
+    inputs.forEach((input) => {
+      input.disabled = !canToggle;
+      input.checked = (input.value !== "false") === isActive;
+    });
   }
 
   updateSidebarGradePrintButtonState() {
