@@ -16285,32 +16285,32 @@ class PlannerApp {
     });
     this.refs.gradesTableStickyScrollbar?.addEventListener("pointerup", () => {
       this.gradesTableStickyScrollbarPointerActive = false;
-      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+      this.syncGradesTableScrollFromStickyScrollbar();
     });
     this.refs.gradesTableStickyScrollbar?.addEventListener("pointercancel", () => {
       this.gradesTableStickyScrollbarPointerActive = false;
-      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+      this.syncGradesTableScrollFromStickyScrollbar();
     });
     window.addEventListener("pointerup", () => {
       if (!this.gradesTableStickyScrollbarPointerActive) {
         return;
       }
       this.gradesTableStickyScrollbarPointerActive = false;
-      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+      this.syncGradesTableScrollFromStickyScrollbar();
     });
     window.addEventListener("pointercancel", () => {
       if (!this.gradesTableStickyScrollbarPointerActive) {
         return;
       }
       this.gradesTableStickyScrollbarPointerActive = false;
-      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+      this.syncGradesTableScrollFromStickyScrollbar();
     });
     window.addEventListener("mouseup", () => {
       if (!this.gradesTableStickyScrollbarPointerActive) {
         return;
       }
       this.gradesTableStickyScrollbarPointerActive = false;
-      this.syncGradesTableStickyScrollbarFromTable({ force: true });
+      this.syncGradesTableScrollFromStickyScrollbar();
     });
     this.refs.gradesEntryTableStickyScrollbar?.addEventListener("scroll", () => {
       this.syncGradesEntryTableScrollFromStickyScrollbar();
@@ -19664,15 +19664,24 @@ class PlannerApp {
   handleGradePrintOverviewRequest(event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
-    if (!this.isGradesTopTabActive() || this.normalizeGradesSubView(this.gradesSubView) !== "overview" || this.locked) {
+    if (!this.isGradesTopTabActive() || this.currentView !== "grades" || this.locked) {
       this.updateSidebarGradePrintButtonState();
       return;
     }
+    const subView = this.normalizeGradesSubView(this.gradesSubView);
     if (!this.commitVisibleGradeInputs()) {
       this.updateSidebarGradePrintButtonState();
       return;
     }
-    this.printGradesOverview();
+    if (subView === "entry") {
+      this.printGradesEntry();
+      return;
+    }
+    if (subView === "overview") {
+      this.printGradesOverview();
+      return;
+    }
+    this.updateSidebarGradePrintButtonState();
   }
 
   getGradeSimulationCourseContext() {
@@ -19850,13 +19859,27 @@ class PlannerApp {
     const isGradesEntry = this.isGradesTopTabActive()
       && this.currentView === "grades"
       && this.normalizeGradesSubView(this.gradesSubView) === "entry";
+    let isTestMode = false;
+    if (isGradesEntry) {
+      const modeInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked");
+      if (modeInput) {
+        isTestMode = normalizeGradeAssessmentMode(modeInput.value) === "test";
+      } else {
+        const activeAssessment = this.getGradesEntryActiveAssessment(this.selectedCourseId);
+        const draft = activeAssessment
+          ? this.getGradesEntryAssessmentDraft(activeAssessment)
+          : this.getGradesEntryDraft(this.selectedCourseId);
+        isTestMode = normalizeGradeAssessmentMode(draft?.mode || activeAssessment?.mode) === "test";
+      }
+    }
     const context = this.getExpectationHorizonCourseContext();
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
-      section.hidden = !isGradesEntry;
+      section.hidden = !isGradesEntry || !isTestMode;
     }
     button.disabled = !context.ready;
-    button.title = context.ready ? "Erwartungshorizont" : context.reason || "Nur im BE-Modus verfügbar.";
+    button.setAttribute("aria-label", "Erwartungshorizont erzeugen");
+    button.title = context.ready ? "Erwartungshorizont erzeugen" : context.reason || "Nur im BE-Modus verfügbar.";
   }
 
   handleExpectationHorizonOpenRequest(event = null) {
@@ -21016,9 +21039,9 @@ class PlannerApp {
       return;
     }
     const isGradesContext = this.isGradesTopTabActive();
-    const isGradesOverview = isGradesContext
-      && this.currentView === "grades"
-      && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+    const subView = this.normalizeGradesSubView(this.gradesSubView);
+    const isGradesOverview = isGradesContext && this.currentView === "grades" && subView === "overview";
+    const isGradesEntry = isGradesContext && this.currentView === "grades" && subView === "entry";
     const hasPrintableOverview = Boolean(
       isGradesOverview
       && this.refs.gradesOverviewPanel
@@ -21026,17 +21049,33 @@ class PlannerApp {
       && this.refs.gradesTable
       && this.refs.gradesTable.querySelector("table")
     );
+    const entryContext = isGradesEntry ? this.getGradesEntryPrintContext({ includeEditorValues: false }) : null;
+    const entryMode = normalizeGradeAssessmentMode(entryContext?.values?.mode || entryContext?.assessment?.mode || entryContext?.draft?.mode);
+    const hasPrintableEntry = Boolean(
+      entryContext?.ready
+      && (entryMode === "grade" || entryMode === "test")
+      && this.refs.gradesEntryContent?.querySelector(".grades-entry-editor")
+    );
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
-      section.hidden = !isGradesOverview;
+      section.hidden = !(isGradesOverview || isGradesEntry);
     }
-    button.disabled = this.locked || !hasPrintableOverview;
+    button.disabled = this.locked || !(hasPrintableOverview || hasPrintableEntry);
+    button.setAttribute("aria-label", isGradesEntry ? "Noteneingabe drucken" : "Kursnoten drucken");
     button.title = this.locked
       ? "Drucken gesperrt"
       : (
         hasPrintableOverview
           ? "Spalten einklappen, um ihren Druck zu unterbinden"
-          : "Drucken in der Kursübersicht verfügbar"
+          : (
+            hasPrintableEntry
+              ? "Noteneingabe drucken"
+              : (
+                isGradesEntry && entryMode === "homework"
+                  ? "Drucken in der Eingabeansicht nur für Note und BE verfügbar"
+                  : (isGradesEntry ? "Drucken in einer geladenen Noteneingabe verfügbar" : "Drucken in der Kursübersicht verfügbar")
+              )
+          )
       );
   }
 
@@ -24985,6 +25024,371 @@ class PlannerApp {
     });
     table.append(tbody);
     return table;
+  }
+
+  getGradesEntryPrintContext(options = {}) {
+    const includeEditorValues = options.includeEditorValues !== false;
+    const isGradesEntry = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "entry";
+    const year = this.activeSchoolYear;
+    const course = year
+      ? this.store.listCourses(year.id).find((item) => Number(item.id) === Number(this.selectedCourseId) && this.courseAllowsGrades(item))
+      : null;
+    if (!isGradesEntry || !course || !this.canAccessGradeVault() || !this.isGradeCourseLoaded(course.id)) {
+      return { ready: false, course, reason: "Noteneingabe kann erst in einem geladenen Notenkurs gedruckt werden." };
+    }
+    const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id), this.gradesEntryNameOrder)
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+    if (!students.length) {
+      return { ready: false, course, students, reason: "Für den Ausdruck fehlen Teilnehmende." };
+    }
+    const activeAssessment = this.getGradesEntryActiveAssessment(course.id);
+    const baseDraft = activeAssessment
+      ? this.getGradesEntryAssessmentDraft(activeAssessment)
+      : this.getGradesEntryDraft(course.id);
+    const editorValues = includeEditorValues && this.refs.gradesEntryContent
+      ? this.readGradesEntryEditorValues()
+      : baseDraft;
+    const values = {
+      ...(baseDraft || {}),
+      ...(editorValues || {}),
+      entries: baseDraft && typeof baseDraft.entries === "object" ? baseDraft.entries : {}
+    };
+    const mode = normalizeGradeAssessmentMode(values.mode);
+    const categories = this.getGradesEntryStructureCategories(course.id, values.halfYear);
+    const category = categories.find((item) => Number(item.id) === Number(values.categoryId || 0)) || null;
+    const subcategory = (Array.isArray(category?.subcategories) ? category.subcategories : [])
+      .find((item) => Number(item.id) === Number(values.subcategoryId || 0)) || null;
+    const assessment = activeAssessment
+      ? this.buildGradesEntryAssessmentPreview(activeAssessment, values)
+      : null;
+    const draft = activeAssessment ? null : values;
+    return {
+      ready: mode === "grade" || mode === "test",
+      reason: mode === "homework"
+        ? "Drucken in der Eingabeansicht ist nur für Note und BE verfügbar."
+        : "",
+      course,
+      students,
+      assessment,
+      draft,
+      values,
+      mode,
+      category,
+      subcategory
+    };
+  }
+
+  formatGradesEntryPrintMode(mode) {
+    const normalized = normalizeGradeAssessmentMode(mode);
+    if (normalized === "test") {
+      return "Bewertungseinheiten";
+    }
+    if (normalized === "homework") {
+      return "Hausaufgabe";
+    }
+    return "Einzelnote";
+  }
+
+  formatGradesEntryPrintScaleLabel(scale) {
+    const normalized = normalizeGradeTestScale(scale);
+    const template = this.store.getGradeTestScaleTemplate(normalized);
+    const label = String(template?.label || getGradeTestScaleDefaultLabel(normalized) || "").trim();
+    if (label) {
+      return label;
+    }
+    return normalized === GRADE_TEST_SCALE_CUSTOM ? "Eigene Skala" : normalized.toUpperCase();
+  }
+
+  buildGradesEntryPrintOptions(context) {
+    const values = context.values || {};
+    const mode = normalizeGradeAssessmentMode(values.mode);
+    const optionRows = [
+      ["Kurs", context.course?.name || "Kurs"],
+      ["Leistungstitel", values.title || "Leistung"],
+      ["Modus", this.formatGradesEntryPrintMode(mode)],
+      ["Halbjahr", getGradePeriodLabel(values.halfYear)],
+      ["Kategorie", context.category ? `${context.category.name}${formatGradeWeightPercentSuffix(context.category.weight)}` : "—"],
+      ["Unterkategorie", context.subcategory ? `${context.subcategory.name}${formatGradeWeightPercentSuffix(context.subcategory.weight)}` : "—"],
+      ["Gewichtung", mode === "homework" ? "—" : formatGradeWeightValue(values.weight)],
+      ["Defizitgrenze", formatGradeInteger(this.gradeDeficitThreshold)]
+    ];
+    if (mode === "test") {
+      const yearLevel = normalizeGradeAssessmentYearLevel(values.yearLevel);
+      const courseLevel = normalizeGradeAssessmentCourseLevel(values.courseLevel, yearLevel).toUpperCase();
+      const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
+      const taskSummary = tasks.length
+        ? tasks.map((task, index) => {
+          const parts = [`A${index + 1}`];
+          if (Number(task.maxBe || 0) > 0) {
+            parts.push(`BE1 ${formatGradeBeValue(task.maxBe)}`);
+          }
+          if (normalizeGradeTestAfb(task.afb)) {
+            parts.push(`AFB ${normalizeGradeTestAfb(task.afb)}`);
+          }
+          return parts.join(": ");
+        }).join("; ")
+        : "—";
+      optionRows.push(
+        ["Prozentgrenzen", this.formatGradesEntryPrintScaleLabel(values.testScale)],
+        ["Prädikatsanhängsel", normalizeGradeTestPredicateSuffixes(values.testPredicateSuffixes, true) ? "Ja" : "Nein"],
+        ["Jahrgangsstufe", yearLevel === null ? "—" : String(yearLevel)],
+        ["Anforderungsniveau", courseLevel || "—"],
+        ["Thema", normalizeGradeAssessmentTopic(values.topic) || "—"],
+        ["Nummer", formatGradeAssessmentNumber(values.assessmentNumber) || "—"],
+        ["Aufgaben / AFB", taskSummary]
+      );
+    }
+    const section = document.createElement("section");
+    section.className = "grades-print-options";
+    const heading = document.createElement("h2");
+    heading.textContent = "Optionen";
+    const grid = document.createElement("dl");
+    optionRows.forEach(([label, value]) => {
+      const item = document.createElement("div");
+      const dt = document.createElement("dt");
+      const dd = document.createElement("dd");
+      dt.textContent = label;
+      dd.textContent = value || "—";
+      item.append(dt, dd);
+      grid.append(item);
+    });
+    section.append(heading, grid);
+    return section;
+  }
+
+  getGradesEntryPrintEntry(context, student) {
+    if (context.assessment) {
+      return this.store.getGradeEntry(student.id, context.assessment.id);
+    }
+    const entries = context.draft && typeof context.draft.entries === "object" ? context.draft.entries : {};
+    return Object.prototype.hasOwnProperty.call(entries, student.id)
+      ? normalizeGradeDraftEntry(entries[student.id])
+      : null;
+  }
+
+  buildGradesEntryGradePrintTable(context) {
+    const table = document.createElement("table");
+    table.className = "grades-print-table grades-entry-print-table";
+    const thead = document.createElement("thead");
+    thead.innerHTML = `
+      <tr>
+        <th class="student-col">Name</th>
+        <th>Note</th>
+      </tr>
+    `;
+    table.append(thead);
+    const tbody = document.createElement("tbody");
+    const gradeValues = [];
+    context.students.forEach((student) => {
+      const entry = this.getGradesEntryPrintEntry(context, student);
+      const value = entry?.value;
+      if (value !== null && value !== undefined && value !== "") {
+        gradeValues.push(value);
+      }
+      const tr = document.createElement("tr");
+      const nameCell = document.createElement("td");
+      nameCell.className = "student-col";
+      nameCell.textContent = this.getGradeStudentDisplayName(student);
+      const gradeCell = document.createElement("td");
+      gradeCell.textContent = formatGradeDisplayForSystem(value, GRADE_DISPLAY_SYSTEM_DEFAULT);
+      tr.append(nameCell, gradeCell);
+      tbody.append(tr);
+    });
+    const average = calculateGradeEntryAverage(gradeValues);
+    const averageRow = document.createElement("tr");
+    averageRow.className = "grades-print-average-row";
+    const averageLabel = document.createElement("td");
+    averageLabel.className = "student-col";
+    averageLabel.textContent = "Durchschnitt";
+    const averageValue = document.createElement("td");
+    averageValue.textContent = average === null || average === undefined ? "—" : formatPedagogicalGradeInput(average);
+    averageRow.append(averageLabel, averageValue);
+    tbody.append(averageRow);
+    table.append(tbody);
+    return table;
+  }
+
+  buildGradesEntryTestPrintTable(context) {
+    const source = context.assessment || context.draft || {};
+    const tasks = normalizeGradeTestTasks(source.testTasks);
+    const scale = normalizeGradeTestScale(source.testScale);
+    const scaleSnapshot = context.assessment
+      ? normalizeGradeTestScaleSnapshot(source.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
+      : this.store.buildGradeTestScaleSnapshot(scale);
+    const testPredicateSuffixes = context.assessment
+      ? normalizeGradeTestPredicateSuffixes(source.testPredicateSuffixes, true)
+      : normalizeGradeTestPredicateSuffixes(source.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(scale));
+    const table = document.createElement("table");
+    table.className = "grades-print-table grades-entry-print-table grades-entry-test-print-table";
+    const thead = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    ["Name", "Note", "BE2 / BE1", ...tasks.map((task, index) => {
+      const parts = [`A${index + 1}`];
+      if (Number(task.maxBe || 0) > 0) {
+        parts.push(`BE1 ${formatGradeBeValue(task.maxBe)}`);
+      }
+      if (normalizeGradeTestAfb(task.afb)) {
+        parts.push(`AFB ${normalizeGradeTestAfb(task.afb)}`);
+      }
+      return parts.join(" · ");
+    })].forEach((label, index) => {
+      const th = document.createElement("th");
+      th.textContent = label;
+      if (index === 0) {
+        th.className = "student-col";
+      }
+      headRow.append(th);
+    });
+    thead.append(headRow);
+    table.append(thead);
+    const tbody = document.createElement("tbody");
+    const scoreEntries = [];
+    context.students.forEach((student) => {
+      const entry = this.getGradesEntryPrintEntry(context, student);
+      const scores = normalizeGradeTestScores(entry?.testScores);
+      scoreEntries.push(scores);
+      const ratioState = calculateGradeTestRatio(tasks, scores);
+      const gradeValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes);
+      const tr = document.createElement("tr");
+      const nameCell = document.createElement("td");
+      nameCell.className = "student-col";
+      nameCell.textContent = this.getGradeStudentDisplayName(student);
+      const gradeCell = document.createElement("td");
+      gradeCell.textContent = formatGradeDisplayForSystem(gradeValue, this.getCurrentGradeOverviewDisplaySystem());
+      const ratioCell = document.createElement("td");
+      ratioCell.textContent = formatGradeTestRatioDisplay(ratioState);
+      tr.append(nameCell, gradeCell, ratioCell);
+      tasks.forEach((task) => {
+        const td = document.createElement("td");
+        td.textContent = Object.prototype.hasOwnProperty.call(scores, task.id)
+          ? formatGradeBeValue(scores[task.id])
+          : "—";
+        tr.append(td);
+      });
+      tbody.append(tr);
+    });
+    const averageState = calculateGradeTestAverageState(
+      tasks,
+      scoreEntries,
+      scaleSnapshot,
+      null,
+      this.gradeDeficitThreshold,
+      testPredicateSuffixes
+    );
+    const averageRow = document.createElement("tr");
+    averageRow.className = "grades-print-average-row";
+    const averageLabel = document.createElement("td");
+    averageLabel.className = "student-col";
+    averageLabel.textContent = "Durchschnitt";
+    const averageGrade = document.createElement("td");
+    averageGrade.textContent = formatGradeDisplayForSystem(averageState.gradeValue, this.getCurrentGradeOverviewDisplaySystem());
+    const averageRatio = document.createElement("td");
+    averageRatio.textContent = formatGradeTestAverageRatioDisplay(averageState.ratioState);
+    averageRow.append(averageLabel, averageGrade, averageRatio);
+    tasks.forEach((task) => {
+      const td = document.createElement("td");
+      const value = averageState.taskAverages[task.id];
+      td.textContent = value === null || value === undefined ? "—" : formatGradeBeAverageValue(value);
+      averageRow.append(td);
+    });
+    tbody.append(averageRow);
+    table.append(tbody);
+    return table;
+  }
+
+  buildGradesEntryPrintTable(context) {
+    return context.mode === "test"
+      ? this.buildGradesEntryTestPrintTable(context)
+      : this.buildGradesEntryGradePrintTable(context);
+  }
+
+  buildGradesEntryPrintDistribution(context) {
+    const source = context.assessment || context.draft || {};
+    const values = this.getGradesEntryDistributionValues(context.course, context.students, context.assessment, context.draft);
+    const state = this.buildGradesEntryDistributionState(values);
+    const deficitThresholdDefault = getGradeDeficitThresholdDefaultForScale(
+      context.mode === "test" ? source.testScale : GRADE_TEST_SCALE_DEFAULT
+    );
+    const deficitThreshold = this.gradeDeficitThresholdUserEdited
+      ? normalizeGradeDeficitThreshold(this.gradeDeficitThreshold, deficitThresholdDefault)
+      : deficitThresholdDefault;
+    const deficitShare = calculateGradeDeficitShare(values, deficitThreshold);
+    const rows = state.groups.map((group) => ({
+      label: group.label,
+      count: group.count || 0,
+      height: Math.round(((group.count || 0) / state.groupMaxCount) * 100),
+      isDeficitRange: group.grades.some((grade) => isGradeValueBelowThreshold(grade, deficitThreshold))
+    }));
+    const section = document.createElement("section");
+    section.className = "grades-print-distribution";
+    const heading = document.createElement("h2");
+    heading.textContent = "Verteilung: Notenstufen";
+    const chart = document.createElement("div");
+    chart.className = "grades-print-distribution-chart";
+    rows.forEach((row) => {
+      const item = document.createElement("div");
+      item.className = `grades-print-distribution-item${row.isDeficitRange ? " is-deficit-range" : ""}`;
+      const count = document.createElement("strong");
+      count.textContent = String(row.count);
+      const barWrap = document.createElement("div");
+      barWrap.className = "grades-print-distribution-bar-wrap";
+      const bar = document.createElement("div");
+      bar.className = "grades-print-distribution-bar";
+      bar.style.setProperty("--grades-print-distribution-bar-height", `${row.height}%`);
+      barWrap.append(bar);
+      const label = document.createElement("span");
+      label.textContent = row.label;
+      item.append(count, barWrap, label);
+      chart.append(item);
+    });
+    const summary = document.createElement("div");
+    summary.className = "grades-print-distribution-summary";
+    summary.textContent = `Defizit: ${formatGradeDeficitShare(deficitShare)}`;
+    section.append(heading, chart, summary);
+    return section;
+  }
+
+  printGradesEntry() {
+    if (typeof window === "undefined" || typeof window.print !== "function" || !this.refs.gradesPrintArea) {
+      return;
+    }
+    if (this.currentView !== "grades" || this.normalizeGradesSubView(this.gradesSubView) !== "entry") {
+      return;
+    }
+    if (!this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+      this.updateSidebarGradePrintButtonState();
+      return;
+    }
+    const context = this.getGradesEntryPrintContext({ includeEditorValues: true });
+    if (!context.ready) {
+      this.setSyncStatus(context.reason || "Noteneingabe kann aktuell nicht gedruckt werden.", true);
+      this.updateSidebarGradePrintButtonState();
+      return;
+    }
+    const printArea = this.refs.gradesPrintArea;
+    printArea.textContent = "";
+    const title = document.createElement("h1");
+    const assessmentTitle = String(context.values?.title || "").trim();
+    title.textContent = assessmentTitle
+      ? `${context.course.name || "Kurs"} - ${assessmentTitle}`
+      : `${context.course.name || "Kurs"} - Noteneingabe`;
+    printArea.append(title);
+    printArea.append(this.buildGradesEntryPrintOptions(context));
+    printArea.append(this.buildGradesEntryPrintTable(context));
+    printArea.append(this.buildGradesEntryPrintDistribution(context));
+    printArea.hidden = false;
+
+    const cleanup = () => {
+      printArea.hidden = true;
+      printArea.textContent = "";
+      window.removeEventListener("afterprint", cleanup);
+    };
+    window.addEventListener("afterprint", cleanup);
+    requestAnimationFrame(() => {
+      window.print();
+    });
   }
 
   printGradesOverview() {
