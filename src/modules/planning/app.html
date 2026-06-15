@@ -1021,10 +1021,18 @@
       </div>
       <input id="expectation-horizon-file" class="visually-hidden" type="file"
         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-      <button id="expectation-horizon-dropzone" class="expectation-horizon-dropzone" type="button">
-        <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
-        <span>Geänderte Vorlage für diese Arbeit hochladen</span>
-      </button>
+      <input id="expectation-horizon-latex-file" class="visually-hidden" type="file"
+        accept=".tex,.ltx,.latex,text/plain,text/x-tex,application/x-tex">
+      <div class="expectation-horizon-dropzone-grid">
+        <button id="expectation-horizon-dropzone" class="expectation-horizon-dropzone" type="button">
+          <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+          <span>Geänderte Vorlage für diese Arbeit hochladen</span>
+        </button>
+        <button id="expectation-horizon-latex-dropzone" class="expectation-horizon-dropzone" type="button">
+          <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+          <span>Aus LaTeX-Datei Inhalte in EWH hinzufügen</span>
+        </button>
+      </div>
       <div id="expectation-horizon-file-name" class="expectation-horizon-file-name" aria-live="polite"></div>
       <div id="expectation-horizon-status" class="expectation-horizon-status" aria-live="polite"></div>
       <div class="button-row dialog-actions">

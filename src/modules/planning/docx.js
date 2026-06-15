@@ -4,6 +4,13 @@ const ZIP_END_OF_CENTRAL_DIRECTORY = 0x06054b50;
 const ZIP_UTF8_FLAG = 0x0800;
 const ZIP_STORE = 0;
 const ZIP_DEFLATE = 8;
+const WORD_NAMESPACE = "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+const MATH_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math";
+const CONTENT_TYPES_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/content-types";
+const PACKAGE_RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/package/2006/relationships";
+const OFFICE_RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const WORD_NUMBERING_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
+const WORD_NUMBERING_RELATIONSHIP_TYPE = `${OFFICE_RELATIONSHIPS_NAMESPACE}/numbering`;
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8");
@@ -219,7 +226,167 @@ function normalizeWordCellText(value) {
 
 function getWordNamespace(doc) {
   return doc.documentElement?.lookupNamespaceURI("w")
-    || "http://schemas.openxmlformats.org/wordprocessingml/2006/main";
+    || WORD_NAMESPACE;
+}
+
+function parseXmlDocument(xml, message = "Ein XML-Teil der DOCX-Datei konnte nicht gelesen werden.") {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xml, "application/xml");
+  if (doc.getElementsByTagName("parsererror").length) {
+    throw new Error(message);
+  }
+  return doc;
+}
+
+function serializeXmlDocument(doc) {
+  return new XMLSerializer().serializeToString(doc);
+}
+
+function upsertZipEntry(entries, name, xml) {
+  const data = textEncoder.encode(xml);
+  const index = entries.findIndex((entry) => entry.name === name);
+  if (index >= 0) {
+    return entries.map((entry, entryIndex) => (
+      entryIndex === index ? { ...entry, data } : entry
+    ));
+  }
+  return [...entries, { name, data, flags: ZIP_UTF8_FLAG }];
+}
+
+function getElementAttributeValue(element, namespace, localName) {
+  return element.getAttributeNS(namespace, localName)
+    || element.getAttribute(`w:${localName}`)
+    || element.getAttribute(localName)
+    || "";
+}
+
+function getMaxLocalElementId(doc, localName, attributeName) {
+  return Array.from(doc.getElementsByTagName("*"))
+    .filter((element) => element.localName === localName)
+    .reduce((max, element) => {
+      const value = Number(getElementAttributeValue(element, WORD_NAMESPACE, attributeName));
+      return Number.isFinite(value) ? Math.max(max, value) : max;
+    }, -1);
+}
+
+function appendHyphenBulletNumberingDefinition(doc) {
+  const namespace = doc.documentElement?.lookupNamespaceURI("w") || WORD_NAMESPACE;
+  const abstractNumId = getMaxLocalElementId(doc, "abstractNum", "abstractNumId") + 1;
+  const numId = getMaxLocalElementId(doc, "num", "numId") + 1;
+  const abstractNum = doc.createElementNS(namespace, "w:abstractNum");
+  abstractNum.setAttributeNS(namespace, "w:abstractNumId", String(Math.max(0, abstractNumId)));
+
+  const multiLevelType = doc.createElementNS(namespace, "w:multiLevelType");
+  multiLevelType.setAttributeNS(namespace, "w:val", "singleLevel");
+  abstractNum.append(multiLevelType);
+
+  const level = doc.createElementNS(namespace, "w:lvl");
+  level.setAttributeNS(namespace, "w:ilvl", "0");
+  const start = doc.createElementNS(namespace, "w:start");
+  start.setAttributeNS(namespace, "w:val", "1");
+  const numFmt = doc.createElementNS(namespace, "w:numFmt");
+  numFmt.setAttributeNS(namespace, "w:val", "bullet");
+  const lvlText = doc.createElementNS(namespace, "w:lvlText");
+  lvlText.setAttributeNS(namespace, "w:val", "-");
+  const suffix = doc.createElementNS(namespace, "w:suff");
+  suffix.setAttributeNS(namespace, "w:val", "tab");
+  const pPr = doc.createElementNS(namespace, "w:pPr");
+  const tabs = doc.createElementNS(namespace, "w:tabs");
+  const tab = doc.createElementNS(namespace, "w:tab");
+  tab.setAttributeNS(namespace, "w:val", "num");
+  tab.setAttributeNS(namespace, "w:pos", "340");
+  tabs.append(tab);
+  const indent = doc.createElementNS(namespace, "w:ind");
+  indent.setAttributeNS(namespace, "w:left", "340");
+  indent.setAttributeNS(namespace, "w:hanging", "283");
+  pPr.append(tabs, indent);
+  level.append(start, numFmt, lvlText, suffix, pPr);
+  abstractNum.append(level);
+
+  const num = doc.createElementNS(namespace, "w:num");
+  num.setAttributeNS(namespace, "w:numId", String(Math.max(1, numId)));
+  const abstractNumIdElement = doc.createElementNS(namespace, "w:abstractNumId");
+  abstractNumIdElement.setAttributeNS(namespace, "w:val", String(Math.max(0, abstractNumId)));
+  num.append(abstractNumIdElement);
+  doc.documentElement.append(abstractNum, num);
+  return Math.max(1, numId);
+}
+
+function ensureNumberingXmlEntry(entries) {
+  const existing = entries.find((entry) => entry.name === "word/numbering.xml");
+  const doc = existing
+    ? parseXmlDocument(textDecoder.decode(existing.data), "Die Nummerierungsdefinition der DOCX-Datei konnte nicht gelesen werden.")
+    : parseXmlDocument(`<w:numbering xmlns:w="${WORD_NAMESPACE}"></w:numbering>`);
+  const numId = appendHyphenBulletNumberingDefinition(doc);
+  return {
+    entries: upsertZipEntry(entries, "word/numbering.xml", serializeXmlDocument(doc)),
+    numId
+  };
+}
+
+function ensureNumberingContentType(entries) {
+  const existing = entries.find((entry) => entry.name === "[Content_Types].xml");
+  const doc = existing
+    ? parseXmlDocument(textDecoder.decode(existing.data), "Die Content-Type-Definition der DOCX-Datei konnte nicht gelesen werden.")
+    : parseXmlDocument(`<Types xmlns="${CONTENT_TYPES_NAMESPACE}"></Types>`);
+  const hasOverride = Array.from(doc.getElementsByTagName("*"))
+    .some((element) => (
+      element.localName === "Override"
+      && element.getAttribute("PartName") === "/word/numbering.xml"
+    ));
+  if (!hasOverride) {
+    const namespace = doc.documentElement?.namespaceURI || CONTENT_TYPES_NAMESPACE;
+    const override = doc.createElementNS(namespace, "Override");
+    override.setAttribute("PartName", "/word/numbering.xml");
+    override.setAttribute("ContentType", WORD_NUMBERING_CONTENT_TYPE);
+    doc.documentElement.append(override);
+  }
+  return upsertZipEntry(entries, "[Content_Types].xml", serializeXmlDocument(doc));
+}
+
+function ensureNumberingDocumentRelationship(entries) {
+  const name = "word/_rels/document.xml.rels";
+  const existing = entries.find((entry) => entry.name === name);
+  const doc = existing
+    ? parseXmlDocument(textDecoder.decode(existing.data), "Die Relationship-Definition der DOCX-Datei konnte nicht gelesen werden.")
+    : parseXmlDocument(`<Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE}"></Relationships>`);
+  const relationships = Array.from(doc.getElementsByTagName("*"))
+    .filter((element) => element.localName === "Relationship");
+  const hasRelationship = relationships.some((element) => element.getAttribute("Type") === WORD_NUMBERING_RELATIONSHIP_TYPE);
+  if (!hasRelationship) {
+    const maxRid = relationships.reduce((max, element) => {
+      const match = String(element.getAttribute("Id") || "").match(/^rId(\d+)$/);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0);
+    const namespace = doc.documentElement?.namespaceURI || PACKAGE_RELATIONSHIPS_NAMESPACE;
+    const relationship = doc.createElementNS(namespace, "Relationship");
+    relationship.setAttribute("Id", `rId${maxRid + 1}`);
+    relationship.setAttribute("Type", WORD_NUMBERING_RELATIONSHIP_TYPE);
+    relationship.setAttribute("Target", "numbering.xml");
+    doc.documentElement.append(relationship);
+  }
+  return upsertZipEntry(entries, name, serializeXmlDocument(doc));
+}
+
+function richTextReplacementsNeedHyphenBulletNumbering(replacements) {
+  return replacements.some((replacement) => (
+    replacement.values.some((value) => (
+      isWordRichTextValue(value)
+      && value.runs.some((run) => run.list === "hyphenBullet")
+    ))
+  ));
+}
+
+function ensureHyphenBulletNumbering(entries) {
+  let nextEntries = entries.slice();
+  const numberingResult = ensureNumberingXmlEntry(nextEntries);
+  nextEntries = numberingResult.entries;
+  nextEntries = ensureNumberingContentType(nextEntries);
+  nextEntries = ensureNumberingDocumentRelationship(nextEntries);
+  return {
+    entries: nextEntries,
+    numId: numberingResult.numId
+  };
 }
 
 function setWordTextElementText(doc, textElement, value) {
@@ -247,7 +414,415 @@ function setWordTextElementText(doc, textElement, value) {
   });
 }
 
-function setWordCellText(doc, cell, value) {
+function isWordRichTextValue(value) {
+  return value && typeof value === "object" && Array.isArray(value.runs);
+}
+
+function normalizeWordRichTextRuns(value) {
+  if (!isWordRichTextValue(value)) {
+    return null;
+  }
+  return value.runs
+    .map((run) => {
+      const item = run && typeof run === "object" ? run : {};
+      return {
+        text: String(item.text ?? ""),
+        italic: item.italic === true,
+        math: item.math === true,
+        paragraphBreak: item.paragraphBreak === true,
+        list: item.list === "hyphenBullet" ? "hyphenBullet" : ""
+      };
+    })
+    .filter((run) => run.text.length > 0);
+}
+
+function setWordTextPreserveSpace(textElement, text) {
+  textElement.textContent = String(text ?? "");
+  if (/^\s|\s$| {2,}/.test(textElement.textContent || "")) {
+    textElement.setAttribute("xml:space", "preserve");
+  }
+}
+
+function createMathElement(doc, localName) {
+  return doc.createElementNS(MATH_NAMESPACE, `m:${localName}`);
+}
+
+function appendMathText(doc, parent, text) {
+  if (String(text ?? "") === "") {
+    return;
+  }
+  const run = createMathElement(doc, "r");
+  const textElement = createMathElement(doc, "t");
+  setWordTextPreserveSpace(textElement, text);
+  run.append(textElement);
+  parent.append(run);
+}
+
+function normalizeLatexMathCommand(command) {
+  const symbols = {
+    alpha: "α",
+    beta: "β",
+    gamma: "γ",
+    delta: "δ",
+    epsilon: "ε",
+    theta: "θ",
+    lambda: "λ",
+    mu: "μ",
+    pi: "π",
+    rho: "ρ",
+    sigma: "σ",
+    tau: "τ",
+    phi: "φ",
+    omega: "ω",
+    cdot: "⋅",
+    times: "×",
+    div: "÷",
+    leq: "≤",
+    geq: "≥",
+    neq: "≠",
+    infty: "∞",
+    pm: "±",
+    degree: "°",
+    cdots: "⋯",
+    ldots: "…",
+    left: "",
+    right: ""
+  };
+  return Object.prototype.hasOwnProperty.call(symbols, command) ? symbols[command] : command;
+}
+
+function createLatexMathParser(source) {
+  const text = String(source || "");
+  const parser = {
+    index: 0,
+    skipSpaces() {
+      while (this.index < text.length && /\s/.test(text[this.index])) {
+        this.index += 1;
+      }
+    },
+    parseSequence(stopChar = "") {
+      const nodes = [];
+      while (this.index < text.length) {
+        if (stopChar && text[this.index] === stopChar) {
+          this.index += 1;
+          break;
+        }
+        const node = this.parseScriptedAtom();
+        if (node) {
+          nodes.push(node);
+        } else {
+          this.index += 1;
+        }
+      }
+      return nodes;
+    },
+    parseGroup() {
+      this.skipSpaces();
+      if (text[this.index] !== "{") {
+        const node = this.parseAtom();
+        return node ? [node] : [];
+      }
+      this.index += 1;
+      return this.parseSequence("}");
+    },
+    parseOptionalGroup() {
+      this.skipSpaces();
+      if (text[this.index] !== "[") {
+        return [];
+      }
+      this.index += 1;
+      return this.parseSequence("]");
+    },
+    parseCommand() {
+      this.index += 1;
+      const start = this.index;
+      while (this.index < text.length && /[a-zA-Z]/.test(text[this.index])) {
+        this.index += 1;
+      }
+      if (start === this.index && this.index < text.length) {
+        const char = text[this.index];
+        this.index += 1;
+        return { type: "text", text: char };
+      }
+      const command = text.slice(start, this.index);
+      if (command === "frac") {
+        return { type: "frac", numerator: this.parseGroup(), denominator: this.parseGroup() };
+      }
+      if (command === "sqrt") {
+        const degree = this.parseOptionalGroup();
+        return { type: "sqrt", degree, value: this.parseGroup() };
+      }
+      return { type: "text", text: normalizeLatexMathCommand(command) };
+    },
+    parseAtom() {
+      this.skipSpaces();
+      if (this.index >= text.length) {
+        return null;
+      }
+      const char = text[this.index];
+      if (char === "{") {
+        this.index += 1;
+        return { type: "group", children: this.parseSequence("}") };
+      }
+      if (char === "\\") {
+        return this.parseCommand();
+      }
+      if (char === "}" || char === "]") {
+        return null;
+      }
+      this.index += 1;
+      return { type: "text", text: char };
+    },
+    parseScriptArgument() {
+      this.skipSpaces();
+      if (text[this.index] === "{") {
+        this.index += 1;
+        return this.parseSequence("}");
+      }
+      const atom = this.parseAtom();
+      return atom ? [atom] : [];
+    },
+    parseScriptedAtom() {
+      const base = this.parseAtom();
+      if (!base) {
+        return null;
+      }
+      let sub = null;
+      let sup = null;
+      while (true) {
+        this.skipSpaces();
+        if (text[this.index] === "_") {
+          this.index += 1;
+          sub = this.parseScriptArgument();
+          continue;
+        }
+        if (text[this.index] === "^") {
+          this.index += 1;
+          sup = this.parseScriptArgument();
+          continue;
+        }
+        break;
+      }
+      if (sub && sup) {
+        return { type: "subSup", base: [base], sub, sup };
+      }
+      if (sub) {
+        return { type: "sub", base: [base], sub };
+      }
+      if (sup) {
+        return { type: "sup", base: [base], sup };
+      }
+      return base;
+    }
+  };
+  return parser;
+}
+
+function appendMathNodes(doc, parent, nodes) {
+  (Array.isArray(nodes) ? nodes : []).forEach((node) => {
+    appendMathNode(doc, parent, node);
+  });
+}
+
+function appendMathNode(doc, parent, node) {
+  if (!node) {
+    return;
+  }
+  if (node.type === "text") {
+    appendMathText(doc, parent, node.text);
+    return;
+  }
+  if (node.type === "group") {
+    appendMathNodes(doc, parent, node.children);
+    return;
+  }
+  if (node.type === "frac") {
+    const fraction = createMathElement(doc, "f");
+    const numerator = createMathElement(doc, "num");
+    const denominator = createMathElement(doc, "den");
+    appendMathNodes(doc, numerator, node.numerator);
+    appendMathNodes(doc, denominator, node.denominator);
+    fraction.append(numerator, denominator);
+    parent.append(fraction);
+    return;
+  }
+  if (node.type === "sqrt") {
+    const radical = createMathElement(doc, "rad");
+    if (node.degree && node.degree.length) {
+      const degree = createMathElement(doc, "deg");
+      appendMathNodes(doc, degree, node.degree);
+      radical.append(degree);
+    }
+    const value = createMathElement(doc, "e");
+    appendMathNodes(doc, value, node.value);
+    radical.append(value);
+    parent.append(radical);
+    return;
+  }
+  if (node.type === "sup" || node.type === "sub" || node.type === "subSup") {
+    const element = createMathElement(doc, node.type === "sup" ? "sSup" : (node.type === "sub" ? "sSub" : "sSubSup"));
+    const base = createMathElement(doc, "e");
+    appendMathNodes(doc, base, node.base);
+    element.append(base);
+    if (node.type === "sub" || node.type === "subSup") {
+      const sub = createMathElement(doc, "sub");
+      appendMathNodes(doc, sub, node.sub);
+      element.append(sub);
+    }
+    if (node.type === "sup" || node.type === "subSup") {
+      const sup = createMathElement(doc, "sup");
+      appendMathNodes(doc, sup, node.sup);
+      element.append(sup);
+    }
+    parent.append(element);
+  }
+}
+
+function appendWordMathRun(doc, paragraph, latex) {
+  const math = createMathElement(doc, "oMath");
+  const parser = createLatexMathParser(latex);
+  const nodes = parser.parseSequence();
+  if (nodes.length) {
+    appendMathNodes(doc, math, nodes);
+  } else {
+    appendMathText(doc, math, String(latex || ""));
+  }
+  paragraph.append(math);
+}
+
+function appendWordRichTextRun(doc, paragraph, run) {
+  if (run.math) {
+    appendWordMathRun(doc, paragraph, run.text);
+    return;
+  }
+  const namespace = getWordNamespace(doc);
+  const runElement = doc.createElementNS(namespace, "w:r");
+  if (run.italic) {
+    const runProperties = doc.createElementNS(namespace, "w:rPr");
+    runProperties.append(doc.createElementNS(namespace, "w:i"));
+    runElement.append(runProperties);
+  }
+  const lines = String(run.text ?? "").replace(/\r\n?/g, "\n").split("\n");
+  lines.forEach((line, lineIndex) => {
+    if (lineIndex > 0) {
+      runElement.append(doc.createElementNS(namespace, "w:br"));
+    }
+    const textElement = doc.createElementNS(namespace, "w:t");
+    setWordTextPreserveSpace(textElement, line);
+    runElement.append(textElement);
+  });
+  paragraph.append(runElement);
+}
+
+function createWordParagraph(doc, baseParagraphProperties = null, list = "", richTextContext = null) {
+  const namespace = getWordNamespace(doc);
+  const paragraph = doc.createElementNS(namespace, "w:p");
+  const properties = baseParagraphProperties
+    ? baseParagraphProperties.cloneNode(true)
+    : doc.createElementNS(namespace, "w:pPr");
+  if (list === "hyphenBullet") {
+    Array.from(properties.children || []).forEach((child) => {
+      if (child.localName === "numPr") {
+        properties.removeChild(child);
+      }
+    });
+    const numPr = doc.createElementNS(namespace, "w:numPr");
+    const ilvl = doc.createElementNS(namespace, "w:ilvl");
+    ilvl.setAttributeNS(namespace, "w:val", "0");
+    const numId = doc.createElementNS(namespace, "w:numId");
+    numId.setAttributeNS(namespace, "w:val", String(richTextContext?.hyphenBulletNumId || 1));
+    numPr.append(ilvl, numId);
+    properties.append(numPr);
+  }
+  if (properties.children.length || properties.attributes.length) {
+    paragraph.append(properties);
+  }
+  return paragraph;
+}
+
+function pushWordRichTextParagraph(paragraphs, paragraph) {
+  if (!paragraph) {
+    return;
+  }
+  const hasText = getWordElementText(paragraph).length > 0;
+  const hasNumbering = Array.from(paragraph.getElementsByTagName("*"))
+    .some((element) => element.localName === "numPr");
+  if (hasText || hasNumbering) {
+    paragraphs.push(paragraph);
+  }
+}
+
+function buildWordRichTextParagraphs(doc, runs, baseParagraphProperties, richTextContext) {
+  const paragraphs = [];
+  let paragraph = createWordParagraph(doc, baseParagraphProperties, "", richTextContext);
+  const hasParagraphContent = () => getWordElementText(paragraph).length > 0;
+  const startParagraph = (list = "") => {
+    pushWordRichTextParagraph(paragraphs, paragraph);
+    paragraph = createWordParagraph(doc, baseParagraphProperties, list, richTextContext);
+  };
+  runs.forEach((run) => {
+    const lines = String(run.text ?? "").replace(/\r\n?/g, "\n").split("\n");
+    lines.forEach((line, lineIndex) => {
+      const wantsNewParagraph = run.paragraphBreak || lineIndex > 0;
+      if (wantsNewParagraph && hasParagraphContent()) {
+        startParagraph(run.list || "");
+      } else if (run.list === "hyphenBullet" && hasParagraphContent()) {
+        startParagraph(run.list);
+      } else if (run.list === "hyphenBullet") {
+        paragraph = createWordParagraph(doc, baseParagraphProperties, run.list, richTextContext);
+      }
+      appendWordRichTextRun(doc, paragraph, {
+        ...run,
+        text: line
+      });
+    });
+  });
+  pushWordRichTextParagraph(paragraphs, paragraph);
+  return paragraphs;
+}
+
+function wordRichTextNeedsParagraphs(runs) {
+  return runs.some((run) => run.paragraphBreak || run.list);
+}
+
+function setWordCellRichText(doc, cell, value, richTextContext = null) {
+  const runs = normalizeWordRichTextRuns(value);
+  if (!runs || !runs.length) {
+    setWordCellText(doc, cell, "");
+    return;
+  }
+  const namespace = getWordNamespace(doc);
+  const paragraph = getChildElementsByLocalName(cell, "p")[0] || doc.createElementNS(namespace, "w:p");
+  const baseParagraphProperties = getChildElementsByLocalName(paragraph, "pPr")[0]?.cloneNode(true) || null;
+  if (wordRichTextNeedsParagraphs(runs)) {
+    Array.from(cell.children || []).forEach((child) => {
+      if (child.localName === "p") {
+        cell.removeChild(child);
+      }
+    });
+    buildWordRichTextParagraphs(doc, runs, baseParagraphProperties, richTextContext).forEach((nextParagraph) => {
+      cell.append(nextParagraph);
+    });
+    return;
+  }
+  Array.from(paragraph.children || []).forEach((child) => {
+    if (child.localName !== "pPr") {
+      paragraph.removeChild(child);
+    }
+  });
+  runs.forEach((run) => {
+    appendWordRichTextRun(doc, paragraph, run);
+  });
+  if (!paragraph.parentNode) {
+    cell.append(paragraph);
+  }
+}
+
+function setWordCellText(doc, cell, value, richTextContext = null) {
+  if (isWordRichTextValue(value)) {
+    setWordCellRichText(doc, cell, value, richTextContext);
+    return;
+  }
   const textElements = getWordTextElements(cell);
   const text = String(value ?? "");
   if (textElements.length) {
@@ -283,14 +858,168 @@ function normalizeTableColumnReplacements(tableColumnReplacements) {
       }
       return {
         header,
-        values: Array.isArray(item.values) ? item.values.map((value) => String(value ?? "")) : []
+        values: Array.isArray(item.values) ? item.values.map((value) => (
+          isWordRichTextValue(value)
+            ? { runs: normalizeWordRichTextRuns(value) || [] }
+            : String(value ?? "")
+        )) : [],
+        targetRowHeader: normalizeWordCellText(item.targetRowHeader),
+        targetRowPattern: item.targetRowPattern instanceof RegExp ? item.targetRowPattern : null,
+        targetSectionEndText: normalizeWordCellText(item.targetSectionEndText),
+        extendRows: item.extendRows === true,
+        numberContinuation: item.numberContinuation === true,
+        numberTargetRows: item.numberTargetRows === true,
+        removeUnusedTargetRows: item.removeUnusedTargetRows === true
       };
     })
     .filter(Boolean);
 }
 
-function applyTableColumnReplacements(doc, tableColumnReplacements) {
-  const replacements = normalizeTableColumnReplacements(tableColumnReplacements);
+function createTableReplacementStats(replacements) {
+  return replacements.map((replacement) => ({
+    replacement,
+    foundColumn: false,
+    foundTargetRowColumn: false,
+    foundTargetSectionEnd: false,
+    foundTargetRows: false,
+    applied: false
+  }));
+}
+
+function findWordTableHeaderColumnIndex(headerCells, header) {
+  return headerCells.findIndex(
+    (cell) => normalizeWordCellText(getWordElementText(cell)) === header
+  );
+}
+
+function matchesWordTargetRow(text, pattern) {
+  const value = normalizeWordCellText(text);
+  if (pattern instanceof RegExp) {
+    pattern.lastIndex = 0;
+    return pattern.test(value);
+  }
+  return Boolean(value);
+}
+
+function hasWordCellNumbering(cell) {
+  return Array.from(cell?.getElementsByTagName("*") || [])
+    .some((element) => element.localName === "numPr");
+}
+
+function matchesWordTargetRowCell(cell, pattern) {
+  const text = getWordElementText(cell);
+  if (matchesWordTargetRow(text, pattern)) {
+    return true;
+  }
+  return !normalizeWordCellText(text) && hasWordCellNumbering(cell);
+}
+
+function getWordNumberCellValue(cell) {
+  const match = normalizeWordCellText(getWordElementText(cell)).match(/^\((\d+)\)$/);
+  return match ? Number(match[1]) : null;
+}
+
+function removeWordCellNumbering(cell) {
+  Array.from(cell?.getElementsByTagName("*") || [])
+    .filter((element) => element.localName === "numPr")
+    .forEach((numPr) => {
+      numPr.parentNode?.removeChild(numPr);
+    });
+}
+
+function insertWordTableRowsForReplacement(doc, table, targetRows, replacement, columnIndex, targetColumnIndex) {
+  if (!replacement.extendRows || targetRows.length >= replacement.values.length || !targetRows.length) {
+    return;
+  }
+  let insertAfter = targetRows[targetRows.length - 1];
+  const baseRow = insertAfter;
+  const baseNumberCell = getChildElementsByLocalName(baseRow, "tc")[targetColumnIndex];
+  let nextNumber = getWordNumberCellValue(baseNumberCell) || targetRows.length;
+  while (targetRows.length < replacement.values.length) {
+    const row = baseRow.cloneNode(true);
+    const cells = getChildElementsByLocalName(row, "tc");
+    cells.forEach((cell) => {
+      setWordCellText(doc, cell, "");
+    });
+    if (replacement.numberContinuation) {
+      nextNumber += 1;
+      const numberCell = cells[targetColumnIndex];
+      if (numberCell && !hasWordCellNumbering(numberCell)) {
+        setWordCellText(doc, numberCell, `(${nextNumber})`);
+      }
+    }
+    const contentCell = cells[columnIndex];
+    if (contentCell) {
+      setWordCellText(doc, contentCell, "");
+    }
+    table.insertBefore(row, insertAfter.nextSibling);
+    targetRows.push(row);
+    insertAfter = row;
+  }
+}
+
+function insertWordTableSectionRowsForReplacement(doc, table, targetRows, replacement, columnIndex, targetColumnIndex, insertBefore) {
+  if (!replacement.extendRows || targetRows.length >= replacement.values.length || !targetRows.length) {
+    return;
+  }
+  const baseRow = targetRows[targetRows.length - 1];
+  while (targetRows.length < replacement.values.length) {
+    const row = baseRow.cloneNode(true);
+    const cells = getChildElementsByLocalName(row, "tc");
+    cells.forEach((cell) => {
+      removeWordCellNumbering(cell);
+      setWordCellText(doc, cell, "");
+    });
+    const numberCell = cells[targetColumnIndex];
+    if (numberCell) {
+      removeWordCellNumbering(numberCell);
+      setWordCellText(doc, numberCell, "");
+    }
+    const contentCell = cells[columnIndex];
+    if (contentCell) {
+      setWordCellText(doc, contentCell, "");
+    }
+    table.insertBefore(row, insertBefore);
+    targetRows.push(row);
+  }
+}
+
+function removeUnusedWordTableRowsForReplacement(targetRows, replacement) {
+  if (!replacement.removeUnusedTargetRows || targetRows.length <= replacement.values.length) {
+    return;
+  }
+  targetRows.slice(replacement.values.length).forEach((row) => {
+    row.parentNode?.removeChild(row);
+  });
+  targetRows.length = replacement.values.length;
+}
+
+function setWordTableTargetRowNumbers(doc, targetRows, targetColumnIndex) {
+  targetRows.forEach((row, rowIndex) => {
+    const cell = getChildElementsByLocalName(row, "tc")[targetColumnIndex];
+    if (!cell) {
+      return;
+    }
+    removeWordCellNumbering(cell);
+    setWordCellText(doc, cell, `(${rowIndex + 1})`);
+  });
+}
+
+function getWordTableSectionTargetRows(bodyRows, targetColumnIndex, sectionEndText) {
+  const endIndex = bodyRows.findIndex((row) => {
+    const cell = getChildElementsByLocalName(row, "tc")[targetColumnIndex];
+    return cell && normalizeWordCellText(getWordElementText(cell)) === sectionEndText;
+  });
+  if (endIndex < 0) {
+    return null;
+  }
+  return {
+    endRow: bodyRows[endIndex],
+    rows: bodyRows.slice(0, endIndex)
+  };
+}
+
+function applyTableColumnReplacements(doc, replacements, stats = null, richTextContext = null) {
   if (!replacements.length) {
     return;
   }
@@ -306,21 +1035,116 @@ function applyTableColumnReplacements(doc, tableColumnReplacements) {
     if (!headerCells.length) {
       return;
     }
-    replacements.forEach((replacement) => {
-      const columnIndex = headerCells.findIndex(
-        (cell) => normalizeWordCellText(getWordElementText(cell)) === replacement.header
-      );
+    replacements.forEach((replacement, replacementIndex) => {
+      const replacementStats = stats ? stats[replacementIndex] : null;
+      const columnIndex = findWordTableHeaderColumnIndex(headerCells, replacement.header);
       if (columnIndex < 0) {
+        return;
+      }
+      if (replacementStats) {
+        replacementStats.foundColumn = true;
+      }
+      if (replacement.targetRowHeader) {
+        const targetColumnIndex = findWordTableHeaderColumnIndex(headerCells, replacement.targetRowHeader);
+        if (targetColumnIndex < 0) {
+          return;
+        }
+        if (replacementStats) {
+          replacementStats.foundTargetRowColumn = true;
+        }
+        if (replacement.targetSectionEndText) {
+          const section = getWordTableSectionTargetRows(bodyRows, targetColumnIndex, replacement.targetSectionEndText);
+          if (!section) {
+            return;
+          }
+          if (replacementStats) {
+            replacementStats.foundTargetSectionEnd = true;
+          }
+          const targetRows = section.rows;
+          if (targetRows.length) {
+            if (replacementStats) {
+              replacementStats.foundTargetRows = true;
+            }
+            insertWordTableSectionRowsForReplacement(
+              doc,
+              table,
+              targetRows,
+              replacement,
+              columnIndex,
+              targetColumnIndex,
+              section.endRow
+            );
+            removeUnusedWordTableRowsForReplacement(targetRows, replacement);
+            if (replacement.numberTargetRows) {
+              setWordTableTargetRowNumbers(doc, targetRows, targetColumnIndex);
+            }
+          }
+          targetRows.slice(0, replacement.values.length).forEach((row, rowIndex) => {
+            const cell = getChildElementsByLocalName(row, "tc")[columnIndex];
+            if (cell) {
+              setWordCellText(doc, cell, replacement.values[rowIndex], richTextContext);
+              if (replacementStats) {
+                replacementStats.applied = true;
+              }
+            }
+          });
+          return;
+        }
+        const targetRows = bodyRows.filter((row) => {
+          const cell = getChildElementsByLocalName(row, "tc")[targetColumnIndex];
+          return cell && matchesWordTargetRowCell(cell, replacement.targetRowPattern);
+        });
+        if (targetRows.length) {
+          if (replacementStats) {
+            replacementStats.foundTargetRows = true;
+          }
+          insertWordTableRowsForReplacement(doc, table, targetRows, replacement, columnIndex, targetColumnIndex);
+          removeUnusedWordTableRowsForReplacement(targetRows, replacement);
+        }
+        targetRows.slice(0, replacement.values.length).forEach((row, rowIndex) => {
+          const cell = getChildElementsByLocalName(row, "tc")[columnIndex];
+          if (cell) {
+            setWordCellText(doc, cell, replacement.values[rowIndex], richTextContext);
+            if (replacementStats) {
+              replacementStats.applied = true;
+            }
+          }
+        });
         return;
       }
       bodyRows.slice(0, replacement.values.length).forEach((row, rowIndex) => {
         const cell = getChildElementsByLocalName(row, "tc")[columnIndex];
         if (cell) {
-          setWordCellText(doc, cell, replacement.values[rowIndex]);
+          setWordCellText(doc, cell, replacement.values[rowIndex], richTextContext);
         }
       });
     });
   });
+}
+
+function assertRequiredTableReplacementsApplied(stats) {
+  stats
+    .filter((entry) => entry.replacement.targetRowHeader && entry.replacement.values.length)
+    .forEach((entry) => {
+      if (!entry.foundColumn) {
+        throw new Error(`Die Spalte „${entry.replacement.header}“ wurde in der EWH-Vorlage nicht gefunden.`);
+      }
+      if (!entry.foundTargetRowColumn) {
+        throw new Error(`Die Spalte „${entry.replacement.targetRowHeader}“ wurde in der EWH-Vorlage nicht gefunden.`);
+      }
+      if (entry.replacement.targetSectionEndText && !entry.foundTargetSectionEnd) {
+        throw new Error(`Die Summenzeile „${entry.replacement.targetSectionEndText}“ wurde in der Spalte „${entry.replacement.targetRowHeader}“ nicht gefunden.`);
+      }
+      if (!entry.foundTargetRows) {
+        if (entry.replacement.targetSectionEndText) {
+          throw new Error(`Vor der Summenzeile „${entry.replacement.targetSectionEndText}“ ist keine Aufgabenzeile vorhanden.`);
+        }
+        throw new Error(`In der Spalte „${entry.replacement.targetRowHeader}“ wurde keine Nummerierung oder Nummer im Format (10) gefunden.`);
+      }
+      if (!entry.applied) {
+        throw new Error(`Die Inhalte konnten nicht in die Spalte „${entry.replacement.header}“ eingefügt werden.`);
+      }
+    });
 }
 
 function replacePlaceholderInTextElements(doc, textElements, placeholder, replacement) {
@@ -377,15 +1201,16 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
 }
 
 function replaceXmlPlaceholders(xml, replacements, options = {}) {
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(xml, "application/xml");
-  if (doc.getElementsByTagName("parsererror").length) {
-    throw new Error("Ein XML-Teil der DOCX-Datei konnte nicht gelesen werden.");
-  }
+  const doc = parseXmlDocument(xml);
   Object.entries(replacements || {}).forEach(([placeholder, replacement]) => {
     replacePlaceholderInTextElements(doc, getWordTextElements(doc), placeholder, replacement);
   });
-  applyTableColumnReplacements(doc, options.tableColumnReplacements);
+  applyTableColumnReplacements(
+    doc,
+    options.tableColumnReplacements || [],
+    options.tableColumnReplacementStats || null,
+    options.richTextContext || null
+  );
   return new XMLSerializer().serializeToString(doc);
 }
 
@@ -401,17 +1226,33 @@ export function isDocxZipSupported() {
 
 export async function createDocxFromTemplate(templateBytes, replacements = {}, options = {}) {
   const entries = await readZipEntries(templateBytes);
-  const nextEntries = entries.map((entry) => {
+  const tableColumnReplacements = normalizeTableColumnReplacements(options.tableColumnReplacements);
+  const tableColumnReplacementStats = createTableReplacementStats(tableColumnReplacements);
+  const richTextContext = {};
+  const sourceEntries = richTextReplacementsNeedHyphenBulletNumbering(tableColumnReplacements)
+    ? (() => {
+      const result = ensureHyphenBulletNumbering(entries);
+      richTextContext.hyphenBulletNumId = result.numId;
+      return result.entries;
+    })()
+    : entries;
+  const nextEntries = sourceEntries.map((entry) => {
     if (!isWordXmlPart(entry.name)) {
       return entry;
     }
     const xml = textDecoder.decode(entry.data);
-    const replaced = replaceXmlPlaceholders(xml, replacements, options);
+    const replaced = replaceXmlPlaceholders(xml, replacements, {
+      ...options,
+      tableColumnReplacements,
+      tableColumnReplacementStats,
+      richTextContext
+    });
     return {
       ...entry,
       data: textEncoder.encode(replaced)
     };
   });
+  assertRequiredTableReplacementsApplied(tableColumnReplacementStats);
   return buildZip(nextEntries);
 }
 

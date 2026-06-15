@@ -6569,7 +6569,9 @@ class PlannerApp {
       expectationHorizonCancel: document.querySelector("#expectation-horizon-cancel"),
       expectationHorizonCancelTop: document.querySelector("#expectation-horizon-cancel-top"),
       expectationHorizonFile: document.querySelector("#expectation-horizon-file"),
+      expectationHorizonLatexFile: document.querySelector("#expectation-horizon-latex-file"),
       expectationHorizonDropzone: document.querySelector("#expectation-horizon-dropzone"),
+      expectationHorizonLatexDropzone: document.querySelector("#expectation-horizon-latex-dropzone"),
       expectationHorizonFileName: document.querySelector("#expectation-horizon-file-name"),
       expectationHorizonStatus: document.querySelector("#expectation-horizon-status"),
       expectationHorizonTemplateDownload: document.querySelector("#expectation-horizon-template-download"),
@@ -13609,6 +13611,9 @@ class PlannerApp {
     if (event._gradeInputPointerActivationHandled) {
       return;
     }
+    if (event.type === "mousedown" && typeof window !== "undefined" && "PointerEvent" in window) {
+      return;
+    }
     const target = event.target instanceof Element ? event.target : null;
     if (!target) {
       return;
@@ -13664,6 +13669,35 @@ class PlannerApp {
       return;
     }
     if (!activeInput || !event.currentTarget?.contains(activeInput)) {
+      return;
+    }
+    const interactiveTarget = target.closest([
+      "button:not(:disabled)",
+      "a[href]",
+      "input:not([data-grade-input='1']):not(:disabled)",
+      "select:not(:disabled)",
+      "textarea:not(:disabled)",
+      "label",
+      "[role='button']",
+      "[role='tab']",
+      "[role='menuitem']",
+      "[tabindex]:not([tabindex='-1'])",
+      "td[data-grade-activate-assessment-cell='1']"
+    ].join(", "));
+    if (this.isTestGradeInput(activeInput) && interactiveTarget) {
+      event._gradeInputPointerActivationHandled = true;
+      if (!this.commitGradeCellInput(activeInput)) {
+        if (event.cancelable) {
+          event.preventDefault();
+        }
+        event.stopPropagation();
+        this.focusGradeTextInputForEditing(activeInput, { preventScroll: true });
+        return;
+      }
+      if (!this.gradeInputBlurCommitSkip) {
+        this.gradeInputBlurCommitSkip = new WeakSet();
+      }
+      this.gradeInputBlurCommitSkip.add(activeInput);
       return;
     }
     const activateButton = target.closest("button[data-grade-activate-assessment]");
@@ -19249,6 +19283,14 @@ class PlannerApp {
         return false;
       }
     }
+    const assessmentIdsToSync = new Set(
+      [...groups.values()]
+        .filter((group) => !group.isDraftInput && Number(group.assessmentId || 0) > 0)
+        .map((group) => Number(group.assessmentId))
+    );
+    assessmentIdsToSync.forEach((id) => {
+      this.syncActiveGradeTestDraftTasksToAssessment(id);
+    });
     let draft = null;
     let nextDraftEntries = null;
     groups.forEach((group) => {
@@ -19914,15 +19956,35 @@ class PlannerApp {
       void this.generateExpectationHorizons();
     });
     this.refs.expectationHorizonTemplateDownload?.addEventListener("click", () => {
-      void this.downloadBuiltInExpectationHorizonTemplate();
+      void this.downloadCurrentExpectationHorizonDialogTemplate();
     });
-    this.refs.expectationHorizonFile?.addEventListener("change", (event) => {
+    this.refs.expectationHorizonFile?.addEventListener("change", async (event) => {
       const [file] = event.target.files || [];
       if (file) {
-        this.setExpectationHorizonTemplateFile(file);
+        await this.setExpectationHorizonTemplateFile(file);
       }
+      event.target.value = "";
     });
-    const dropzone = this.refs.expectationHorizonDropzone;
+    this.refs.expectationHorizonLatexFile?.addEventListener("change", async (event) => {
+      const [file] = event.target.files || [];
+      if (file) {
+        await this.addExpectationHorizonLatexFileToTemplate(file);
+      }
+      event.target.value = "";
+    });
+    this.bindExpectationHorizonFileDropzone(
+      this.refs.expectationHorizonDropzone,
+      () => this.refs.expectationHorizonFile?.click(),
+      (file) => this.setExpectationHorizonTemplateFile(file)
+    );
+    this.bindExpectationHorizonFileDropzone(
+      this.refs.expectationHorizonLatexDropzone,
+      () => this.refs.expectationHorizonLatexFile?.click(),
+      (file) => this.addExpectationHorizonLatexFileToTemplate(file)
+    );
+  }
+
+  bindExpectationHorizonFileDropzone(dropzone, openPicker, handleFile) {
     if (!dropzone) {
       return;
     }
@@ -19932,7 +19994,7 @@ class PlannerApp {
       dropzone.classList.remove("drag-over");
     };
     dropzone.addEventListener("click", () => {
-      this.refs.expectationHorizonFile?.click();
+      openPicker();
     });
     dropzone.addEventListener("dragenter", (event) => {
       if (!gradeDataTransferHasFiles(event.dataTransfer)) {
@@ -19956,7 +20018,7 @@ class PlannerApp {
         dropzone.classList.remove("drag-over");
       }
     });
-    dropzone.addEventListener("drop", (event) => {
+    dropzone.addEventListener("drop", async (event) => {
       if (!gradeDataTransferHasFiles(event.dataTransfer)) {
         return;
       }
@@ -19964,7 +20026,7 @@ class PlannerApp {
       clearDrag();
       const [file] = Array.from(event.dataTransfer?.files || []);
       if (file) {
-        this.setExpectationHorizonTemplateFile(file);
+        await handleFile(file);
       }
     });
     document.addEventListener("drop", clearDrag);
@@ -19977,6 +20039,9 @@ class PlannerApp {
     await this.ensureStoredExpectationHorizonTemplateLoaded();
     if (this.refs.expectationHorizonFile) {
       this.refs.expectationHorizonFile.value = "";
+    }
+    if (this.refs.expectationHorizonLatexFile) {
+      this.refs.expectationHorizonLatexFile.value = "";
     }
     this.setExpectationHorizonFileName(this.getExpectationHorizonDefaultTemplateLabel());
     this.setExpectationHorizonStatus("");
@@ -20003,6 +20068,7 @@ class PlannerApp {
     node.classList.toggle("is-error", type === "error");
     node.classList.toggle("is-success", type === "success");
     this.refs.expectationHorizonDropzone?.classList.toggle("has-error", type === "error");
+    this.refs.expectationHorizonLatexDropzone?.classList.toggle("has-error", type === "error");
   }
 
   setExpectationHorizonFileName(name = "") {
@@ -20023,19 +20089,646 @@ class PlannerApp {
     return Boolean(file && name.endsWith(".docx"));
   }
 
-  setExpectationHorizonTemplateFile(file) {
+  isExpectationHorizonLatexFile(file) {
+    const name = String(file?.name || "").trim().toLowerCase();
+    const type = String(file?.type || "").trim().toLowerCase();
+    return Boolean(
+      file
+      && (
+        name.endsWith(".tex")
+        || name.endsWith(".ltx")
+        || name.endsWith(".latex")
+        || type === "text/plain"
+        || type === "text/x-tex"
+        || type === "application/x-tex"
+      )
+    );
+  }
+
+  async setExpectationHorizonTemplateFile(file) {
     if (!this.isExpectationHorizonDocxFile(file)) {
-      this.expectationHorizonTemplateFile = null;
-      this.setExpectationHorizonFileName(this.getExpectationHorizonDefaultTemplateLabel());
-      this.setExpectationHorizonStatus("Bitte eine DOCX-Datei auswählen. Die Standardvorlage bleibt aktiv.", "error");
+      this.setExpectationHorizonStatus("Bitte eine DOCX-Datei auswählen. Die aktuelle Vorlage bleibt aktiv.", "error");
       this.syncExpectationHorizonGenerateState();
       return false;
     }
-    this.expectationHorizonTemplateFile = file;
-    this.setExpectationHorizonFileName(`Temporäre Vorlage: ${file.name}`);
-    this.setExpectationHorizonStatus("");
-    this.syncExpectationHorizonGenerateState();
-    return true;
+    try {
+      this.setExpectationHorizonStatus("Lade temporäre Vorlage...");
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      this.expectationHorizonTemplateFile = {
+        name: String(file.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
+        bytes
+      };
+      this.setExpectationHorizonFileName(`Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`);
+      this.setExpectationHorizonStatus("");
+      this.syncExpectationHorizonGenerateState();
+      return true;
+    } catch (error) {
+      this.setExpectationHorizonStatus("Die Vorlage konnte nicht in die PWA geladen werden. Die aktuelle Vorlage bleibt aktiv.", "error");
+      this.syncExpectationHorizonGenerateState();
+      return false;
+    }
+  }
+
+  getCurrentExpectationHorizonTemplateName() {
+    return this.expectationHorizonTemplateFile?.name
+      || this.expectationHorizonStoredTemplate?.name
+      || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME;
+  }
+
+  async getCurrentExpectationHorizonTemplateBytes() {
+    if (this.expectationHorizonTemplateFile?.bytes?.length) {
+      return this.expectationHorizonTemplateFile.bytes;
+    }
+    return this.getDefaultExpectationHorizonTemplateBytes();
+  }
+
+  makeLatexAugmentedExpectationHorizonTemplateName(latexFile) {
+    const currentName = this.getCurrentExpectationHorizonTemplateName();
+    const base = String(currentName || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME).replace(/\.docx$/i, "");
+    const latexBase = String(latexFile?.name || "LaTeX").replace(/\.[^.]+$/u, "");
+    const name = this.sanitizeExpectationHorizonFileName(`${base} + ${latexBase}`, "EWH-LaTeX");
+    return `${name}.docx`;
+  }
+
+  async addExpectationHorizonLatexFileToTemplate(file) {
+    if (!this.isExpectationHorizonLatexFile(file)) {
+      this.setExpectationHorizonStatus("Bitte eine LaTeX-Datei auswählen. Die aktuelle Vorlage bleibt aktiv.", "error");
+      return false;
+    }
+    if (!isDocxZipSupported()) {
+      this.setExpectationHorizonStatus("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.", "error");
+      return false;
+    }
+    try {
+      this.setExpectationHorizonStatus("Lese LaTeX-Datei...");
+      const latexText = await file.text();
+      const tasks = this.extractExpectationHorizonLatexTasks(latexText);
+      if (!tasks.length) {
+        this.setExpectationHorizonStatus("In der LaTeX-Datei wurden keine nicht auskommentierten Aufgabe-Umgebungen gefunden.", "error");
+        return false;
+      }
+      this.setExpectationHorizonStatus("Ergänze EWH-Vorlage...");
+      const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
+      const bytes = await createDocxFromTemplate(templateBytes, {}, {
+        tableColumnReplacements: [
+          {
+            header: "Erwartete Prüfungsleistungen",
+            values: tasks,
+            targetRowHeader: "Nr.",
+            targetSectionEndText: "∑",
+            extendRows: true,
+            numberTargetRows: true,
+            removeUnusedTargetRows: true
+          }
+        ]
+      });
+      this.expectationHorizonTemplateFile = {
+        name: this.makeLatexAugmentedExpectationHorizonTemplateName(file),
+        bytes
+      };
+      this.setExpectationHorizonFileName(`Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`);
+      this.setExpectationHorizonStatus(`${tasks.length} Aufgabeninhalt${tasks.length === 1 ? "" : "e"} aus LaTeX ergänzt.`, "success");
+      this.syncExpectationHorizonGenerateState();
+      return true;
+    } catch (error) {
+      const message = error instanceof Error && error.message
+        ? error.message
+        : "Die LaTeX-Inhalte konnten nicht in die EWH-Vorlage eingefügt werden.";
+      this.setExpectationHorizonStatus(message, "error");
+      this.syncExpectationHorizonGenerateState();
+      return false;
+    }
+  }
+
+  extractExpectationHorizonLatexTasks(text) {
+    const beginMarker = "\\begin{Aufgabe}";
+    const endMarker = "\\end{Aufgabe}";
+    const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
+    const tasks = [];
+    let collecting = false;
+    let buffer = [];
+    lines.forEach((rawLine) => {
+      if (String(rawLine || "").trimStart().startsWith("%")) {
+        return;
+      }
+      let rest = String(rawLine || "");
+      while (rest.length) {
+        if (!collecting) {
+          const beginIndex = rest.indexOf(beginMarker);
+          if (beginIndex < 0) {
+            return;
+          }
+          rest = rest.slice(beginIndex + beginMarker.length);
+          rest = this.stripExpectationHorizonLatexLeadingOptionalArguments(rest);
+          collecting = true;
+          buffer = [];
+        }
+        const endIndex = rest.indexOf(endMarker);
+        if (endIndex >= 0) {
+          buffer.push(rest.slice(0, endIndex));
+          const cleaned = this.cleanExpectationHorizonLatexTask(buffer.join("\n"));
+          if (this.getExpectationHorizonLatexTaskPlainText(cleaned)) {
+            tasks.push(cleaned);
+          }
+          collecting = false;
+          buffer = [];
+          rest = rest.slice(endIndex + endMarker.length);
+          continue;
+        }
+        buffer.push(rest);
+        return;
+      }
+    });
+    return tasks;
+  }
+
+  getExpectationHorizonLatexTaskPlainText(value) {
+    if (value && typeof value === "object" && Array.isArray(value.runs)) {
+      return value.runs.map((run) => String(run?.text || "")).join("").trim();
+    }
+    return String(value || "").trim();
+  }
+
+  stripExpectationHorizonLatexLeadingOptionalArguments(text) {
+    let result = String(text || "");
+    while (true) {
+      const match = result.match(/^\s*\[[^\]]*\]/);
+      if (!match) {
+        break;
+      }
+      result = result.slice(match[0].length);
+    }
+    return result;
+  }
+
+  findExpectationHorizonLatexMatchingBrace(text, openIndex) {
+    let depth = 0;
+    for (let index = openIndex; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === "\\" && index + 1 < text.length) {
+        index += 1;
+        continue;
+      }
+      if (char === "{") {
+        depth += 1;
+      } else if (char === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
+
+  replaceExpectationHorizonLatexCommandArgument(text, command, prefix = "") {
+    const needle = `\\${command}{`;
+    let result = "";
+    let cursor = 0;
+    while (cursor < text.length) {
+      const index = text.indexOf(needle, cursor);
+      if (index < 0) {
+        result += text.slice(cursor);
+        break;
+      }
+      result += text.slice(cursor, index);
+      const openIndex = index + needle.length - 1;
+      const closeIndex = this.findExpectationHorizonLatexMatchingBrace(text, openIndex);
+      if (closeIndex < 0) {
+        result += text.slice(index, index + needle.length);
+        cursor = index + needle.length;
+        continue;
+      }
+      result += `${prefix}${text.slice(openIndex + 1, closeIndex)}`;
+      cursor = closeIndex + 1;
+    }
+    return result;
+  }
+
+  removeExpectationHorizonLatexEnvironmentWithContent(text, environmentName) {
+    const name = String(environmentName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp(`\\\\begin\\{${name}\\}(?:\\s*\\[[^\\]]*\\]|\\s*\\([^)]*\\)|\\s*\\{[^{}]*\\})*[\\s\\S]*?\\\\end\\{${name}\\}`, "g");
+    return String(text || "").replace(pattern, " ");
+  }
+
+  stripExpectationHorizonLatexEnvironmentMarkers(text, environmentName) {
+    const name = String(environmentName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const beginPattern = new RegExp(`\\\\begin\\{${name}\\}(?:\\s*\\[[^\\]]*\\]|\\s*\\([^)]*\\)|\\s*\\{[^{}]*\\})*`, "g");
+    const endPattern = new RegExp(`\\\\end\\{${name}\\}`, "g");
+    return String(text || "")
+      .replace(beginPattern, " ")
+      .replace(endPattern, " ");
+  }
+
+  findExpectationHorizonLatexMatchingDelimiter(text, openIndex, openChar, closeChar) {
+    let depth = 0;
+    for (let index = openIndex; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === "\\" && index + 1 < text.length) {
+        index += 1;
+        continue;
+      }
+      if (char === openChar) {
+        depth += 1;
+      } else if (char === closeChar) {
+        depth -= 1;
+        if (depth === 0) {
+          return index;
+        }
+      }
+    }
+    return -1;
+  }
+
+  removeExpectationHorizonLatexCommandWithArguments(text, command) {
+    const source = String(text || "");
+    const needle = `\\${command}`;
+    let result = "";
+    let cursor = 0;
+    while (cursor < source.length) {
+      const index = source.indexOf(needle, cursor);
+      if (index < 0) {
+        result += source.slice(cursor);
+        break;
+      }
+      result += source.slice(cursor, index);
+      let next = index + needle.length;
+      if (/[a-zA-Z]/.test(source[next] || "")) {
+        result += source.slice(index, next);
+        cursor = next;
+        continue;
+      }
+      if (source[next] === "*") {
+        next += 1;
+      }
+      while (next < source.length) {
+        while (next < source.length && /\s/.test(source[next])) {
+          next += 1;
+        }
+        const char = source[next];
+        if (char === "[") {
+          const close = this.findExpectationHorizonLatexMatchingDelimiter(source, next, "[", "]");
+          next = close >= 0 ? close + 1 : next + 1;
+          continue;
+        }
+        if (char === "{") {
+          const close = this.findExpectationHorizonLatexMatchingBrace(source, next);
+          next = close >= 0 ? close + 1 : next + 1;
+          continue;
+        }
+        if (char === "(") {
+          const close = this.findExpectationHorizonLatexMatchingDelimiter(source, next, "(", ")");
+          next = close >= 0 ? close + 1 : next + 1;
+          continue;
+        }
+        break;
+      }
+      result += " ";
+      cursor = next;
+    }
+    return result;
+  }
+
+  normalizeExpectationHorizonLatexCellText(text, options = {}) {
+    const keepEmptyLines = options.keepEmptyLines === true;
+    const trimEdges = options.trimEdges !== false;
+    const lines = String(text || "")
+      .replace(/\r\n?/g, "\n")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/[ \t]*\n[ \t]*/g, "\n")
+      .replace(/\n{2,}/g, "\n")
+      .split("\n")
+      .map((line) => line.trim());
+    const normalizedLines = keepEmptyLines ? lines : lines.filter(Boolean);
+    const normalized = normalizedLines.join("\n");
+    return trimEdges ? normalized.trim() : normalized;
+  }
+
+  preprocessExpectationHorizonLatexTask(text) {
+    let result = String(text || "").replace(/\r\n?/g, "\n");
+    result = this.removeExpectationHorizonLatexEnvironmentWithContent(result, "framed");
+    result = this.removeExpectationHorizonLatexEnvironmentWithContent(result, "lsg");
+    result = this.removeExpectationHorizonLatexEnvironmentWithContent(result, "tikzpicture");
+    result = this.stripExpectationHorizonLatexEnvironmentMarkers(result, "tasks")
+      .replace(/\\task\b(?:\s*\[[^\]]*\]|\s*\([^)]*\)|\s*\{[^{}]*\})*/g, " ");
+    result = this.stripExpectationHorizonLatexEnvironmentMarkers(result, "minipage");
+    result = this.removeExpectationHorizonLatexCommandWithArguments(result, "includegraphics");
+    return this.normalizeExpectationHorizonLatexCellText(result);
+  }
+
+  isExpectationHorizonLatexEscapedAt(text, index) {
+    let slashCount = 0;
+    for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) {
+      slashCount += 1;
+    }
+    return slashCount % 2 === 1;
+  }
+
+  findExpectationHorizonLatexMathStart(text, cursor = 0) {
+    const source = String(text || "");
+    for (let index = cursor; index < source.length; index += 1) {
+      if (source[index] === "$" && !this.isExpectationHorizonLatexEscapedAt(source, index)) {
+        return {
+          index,
+          contentStart: index + 1,
+          delimiter: "$",
+          closeChar: "$"
+        };
+      }
+      if (
+        source[index] === "\\"
+        && !this.isExpectationHorizonLatexEscapedAt(source, index)
+        && (source[index + 1] === "(" || source[index + 1] === "[")
+      ) {
+        return {
+          index,
+          contentStart: index + 2,
+          delimiter: source[index + 1],
+          closeChar: source[index + 1] === "(" ? ")" : "]"
+        };
+      }
+    }
+    return null;
+  }
+
+  findExpectationHorizonLatexMathEnd(text, start) {
+    const source = String(text || "");
+    if (!start) {
+      return null;
+    }
+    if (start.delimiter === "$") {
+      for (let index = start.contentStart; index < source.length; index += 1) {
+        if (source[index] === "$" && !this.isExpectationHorizonLatexEscapedAt(source, index)) {
+          return { index, after: index + 1 };
+        }
+      }
+      return null;
+    }
+    for (let index = start.contentStart; index < source.length - 1; index += 1) {
+      if (
+        source[index] === "\\"
+        && !this.isExpectationHorizonLatexEscapedAt(source, index)
+        && source[index + 1] === start.closeChar
+      ) {
+        return { index, after: index + 2 };
+      }
+    }
+    return null;
+  }
+
+  splitExpectationHorizonLatexMathPieces(text) {
+    const source = String(text || "");
+    const pieces = [];
+    let cursor = 0;
+    while (cursor < source.length) {
+      const start = this.findExpectationHorizonLatexMathStart(source, cursor);
+      if (!start) {
+        pieces.push({ text: source.slice(cursor), math: false });
+        break;
+      }
+      const end = this.findExpectationHorizonLatexMathEnd(source, start);
+      if (!end) {
+        pieces.push({ text: source.slice(cursor), math: false });
+        break;
+      }
+      if (start.index > cursor) {
+        pieces.push({ text: source.slice(cursor, start.index), math: false });
+      }
+      pieces.push({ text: source.slice(start.contentStart, end.index), math: true });
+      cursor = end.after;
+    }
+    return pieces;
+  }
+
+  findExpectationHorizonLatexSolutionCommand(text, cursor = 0) {
+    const source = String(text || "");
+    const needle = "\\lsgZwei";
+    let searchCursor = cursor;
+    while (searchCursor < source.length) {
+      const commandIndex = source.indexOf(needle, searchCursor);
+      if (commandIndex < 0) {
+        return null;
+      }
+      let next = commandIndex + needle.length;
+      if (/[a-zA-Z]/.test(source[next] || "")) {
+        searchCursor = next;
+        continue;
+      }
+      while (next < source.length && /\s/.test(source[next])) {
+        next += 1;
+      }
+      while (source[next] === "[") {
+        const close = this.findExpectationHorizonLatexMatchingDelimiter(source, next, "[", "]");
+        if (close < 0) {
+          return { index: commandIndex, openIndex: -1, closeIndex: -1 };
+        }
+        next = close + 1;
+        while (next < source.length && /\s/.test(source[next])) {
+          next += 1;
+        }
+      }
+      if (source[next] !== "{") {
+        searchCursor = next;
+        continue;
+      }
+      const closeIndex = this.findExpectationHorizonLatexMatchingBrace(source, next);
+      let afterIndex = closeIndex >= 0 ? closeIndex + 1 : closeIndex;
+      while (afterIndex > 0) {
+        while (afterIndex < source.length && /\s/.test(source[afterIndex])) {
+          afterIndex += 1;
+        }
+        if (source[afterIndex] !== "[") {
+          break;
+        }
+        const optionClose = this.findExpectationHorizonLatexMatchingDelimiter(source, afterIndex, "[", "]");
+        if (optionClose < 0) {
+          break;
+        }
+        afterIndex = optionClose + 1;
+      }
+      return {
+        index: commandIndex,
+        openIndex: next,
+        closeIndex,
+        afterIndex
+      };
+    }
+    return null;
+  }
+
+  splitExpectationHorizonLatexSolutionSegments(text) {
+    const source = this.preprocessExpectationHorizonLatexTask(text);
+    const segments = [];
+    let cursor = 0;
+    while (cursor < source.length) {
+      const command = this.findExpectationHorizonLatexSolutionCommand(source, cursor);
+      if (!command) {
+        segments.push({ text: source.slice(cursor), italic: true, leadingBreak: false });
+        break;
+      }
+      if (command.index > cursor) {
+        segments.push({ text: source.slice(cursor, command.index), italic: true, leadingBreak: false });
+      }
+      if (command.openIndex < 0 || command.closeIndex < 0) {
+        segments.push({ text: source.slice(command.index), italic: true, leadingBreak: false });
+        break;
+      }
+      segments.push({ text: source.slice(command.openIndex + 1, command.closeIndex), italic: false, leadingBreak: true });
+      cursor = command.afterIndex > command.closeIndex ? command.afterIndex : command.closeIndex + 1;
+    }
+    return segments;
+  }
+
+  cleanExpectationHorizonLatexSegment(text, options = {}) {
+    let result = String(text || "").replace(/\r\n?/g, "\n");
+    const argumentCommands = ["textbf", "textit", "textsc", "texttt"];
+    for (let pass = 0; pass < 8; pass += 1) {
+      const before = result;
+      argumentCommands.forEach((command) => {
+        result = this.replaceExpectationHorizonLatexCommandArgument(result, command);
+      });
+      if (result === before) {
+        break;
+      }
+    }
+    const cleaned = result
+      .replace(/\\begin\{[^}]+\}/g, " ")
+      .replace(/\\end\{[^}]+\}/g, " ")
+      .replace(/\\[a-zA-Z]+\*?(?:\s*\[[^\]]*\]|\s*\{[^{}]*\})*/g, " ")
+      .replace(/\\./g, " ")
+      .replace(/[{}]/g, "");
+    const normalized = this.normalizeExpectationHorizonLatexCellText(cleaned);
+    if (options.trim === false && normalized) {
+      const prefix = /^\s/.test(cleaned) ? " " : "";
+      const suffix = /\s$/.test(cleaned) ? " " : "";
+      return `${prefix}${normalized}${suffix}`;
+    }
+    return normalized;
+  }
+
+  appendExpectationHorizonLatexTaskRun(runs, text, options = {}) {
+    const rawValue = String(text || "");
+    const normalized = this.normalizeExpectationHorizonLatexCellText(rawValue);
+    const value = options.preserveOuterSpaces === true && normalized
+      ? `${/^\s/.test(rawValue) ? " " : ""}${normalized}${/\s$/.test(rawValue) ? " " : ""}`
+      : normalized;
+    if (!value) {
+      return;
+    }
+    const previous = runs[runs.length - 1];
+    const nextRun = {
+      text: value,
+      italic: options.italic === true,
+      math: options.math === true,
+      paragraphBreak: options.paragraphBreak === true,
+      list: options.list || ""
+    };
+    if (
+      previous
+      && previous.italic === nextRun.italic
+      && previous.math === nextRun.math
+      && previous.paragraphBreak === nextRun.paragraphBreak
+      && previous.list === nextRun.list
+      && !nextRun.paragraphBreak
+      && !nextRun.list
+      && !nextRun.math
+    ) {
+      previous.text += nextRun.text;
+      return;
+    }
+    runs.push(nextRun);
+  }
+
+  trimExpectationHorizonLatexTaskRuns(runs) {
+    const trimmedRuns = (Array.isArray(runs) ? runs : [])
+      .map((run) => ({ ...run, text: String(run?.text || "") }));
+    while (trimmedRuns.length && !trimmedRuns[0].math && !trimmedRuns[0].text.trim()) {
+      trimmedRuns.shift();
+    }
+    while (trimmedRuns.length) {
+      const first = trimmedRuns[0];
+      if (first.math) {
+        break;
+      }
+      const text = first.text.replace(/^\s+/, "");
+      if (text) {
+        first.text = text;
+        first.paragraphBreak = false;
+        break;
+      }
+      trimmedRuns.shift();
+    }
+    while (trimmedRuns.length && !trimmedRuns[trimmedRuns.length - 1].math && !trimmedRuns[trimmedRuns.length - 1].text.trim()) {
+      trimmedRuns.pop();
+    }
+    while (trimmedRuns.length) {
+      const last = trimmedRuns[trimmedRuns.length - 1];
+      if (last.math) {
+        break;
+      }
+      const text = last.text.replace(/\s+$/, "");
+      if (text) {
+        last.text = text;
+        break;
+      }
+      trimmedRuns.pop();
+    }
+    return trimmedRuns;
+  }
+
+  cleanExpectationHorizonLatexTask(text) {
+    const runs = [];
+    this.splitExpectationHorizonLatexSolutionSegments(text).forEach((segment) => {
+      let segmentHasContent = false;
+      const pieces = this.splitExpectationHorizonLatexMathPieces(segment.text);
+      const preserveMathSpacing = pieces.some((piece) => piece.math);
+      pieces.forEach((piece) => {
+        if (piece.math) {
+          const formula = String(piece.text || "").trim();
+          if (!formula) {
+            return;
+          }
+          this.appendExpectationHorizonLatexTaskRun(runs, formula, {
+            italic: false,
+            math: true,
+            paragraphBreak: segment.leadingBreak && !segmentHasContent && runs.length > 0
+          });
+          segmentHasContent = true;
+          return;
+        }
+        const cleaned = this.cleanExpectationHorizonLatexSegment(piece.text, { trim: !preserveMathSpacing });
+        if (!cleaned) {
+          return;
+        }
+        if (segment.italic) {
+          const textValue = segment.leadingBreak && !segmentHasContent && runs.length ? `\n${cleaned}` : cleaned;
+          this.appendExpectationHorizonLatexTaskRun(runs, textValue, {
+            italic: true,
+            preserveOuterSpaces: preserveMathSpacing
+          });
+          segmentHasContent = true;
+          return;
+        }
+        cleaned.split("\n").forEach((line, lineIndex) => {
+          const trimmedLine = line.trim();
+          if (!trimmedLine) {
+            return;
+          }
+          const bulletMatch = trimmedLine.match(/^-\s*(.*)$/);
+          this.appendExpectationHorizonLatexTaskRun(
+            runs,
+            bulletMatch ? bulletMatch[1] : trimmedLine,
+            {
+              italic: false,
+              paragraphBreak: (segment.leadingBreak && !segmentHasContent) || lineIndex > 0 || runs.length > 0,
+              list: bulletMatch ? "hyphenBullet" : ""
+            }
+          );
+          segmentHasContent = true;
+        });
+      });
+    });
+    return { runs: this.trimExpectationHorizonLatexTaskRuns(runs) };
   }
 
   async loadBuiltInExpectationHorizonTemplateBytes() {
@@ -20116,26 +20809,50 @@ class PlannerApp {
     node.style.color = isError ? "#ff8a8a" : "";
   }
 
+  downloadExpectationHorizonTemplateBytes(bytes, fileName = EXPECTATION_HORIZON_TEMPLATE_FILE_NAME) {
+    const blob = new Blob([bytes], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = String(fileName || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME);
+    document.body.append(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }
+
   async downloadBuiltInExpectationHorizonTemplate() {
     try {
       const bytes = await this.getDefaultExpectationHorizonTemplateBytes();
-      const blob = new Blob([bytes], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = this.expectationHorizonStoredTemplate?.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
+      this.downloadExpectationHorizonTemplateBytes(
+        bytes,
+        this.expectationHorizonStoredTemplate?.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME
+      );
       this.setExpectationHorizonStatus("Vorlage wurde als Download gestartet.", "success");
       this.setExpectationHorizonTemplateSettingsStatus("Standardvorlage wurde als Download gestartet.");
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
       this.setExpectationHorizonStatus(message, "error");
       this.setExpectationHorizonTemplateSettingsStatus(message, true);
+    }
+  }
+
+  async downloadCurrentExpectationHorizonDialogTemplate() {
+    try {
+      if (this.expectationHorizonTemplateFile) {
+        this.downloadExpectationHorizonTemplateBytes(
+          this.expectationHorizonTemplateFile.bytes,
+          this.expectationHorizonTemplateFile.name
+        );
+        this.setExpectationHorizonStatus("Temporäre Vorlage wurde als Download gestartet.", "success");
+        return;
+      }
+      await this.downloadBuiltInExpectationHorizonTemplate();
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
+      this.setExpectationHorizonStatus(message, "error");
     }
   }
 
@@ -20421,9 +21138,7 @@ class PlannerApp {
     this.syncExpectationHorizonGenerateState();
     this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
     try {
-      const templateBytes = this.expectationHorizonTemplateFile
-        ? new Uint8Array(await this.expectationHorizonTemplateFile.arrayBuffer())
-        : await this.getDefaultExpectationHorizonTemplateBytes();
+      const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
       const records = this.buildExpectationHorizonStudentRecords(context);
       if (!records.length) {
         this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");
@@ -22908,6 +23623,27 @@ class PlannerApp {
       return true;
     }
     return false;
+  }
+
+  syncActiveGradeTestDraftTasksToAssessment(assessmentId) {
+    const assessmentKey = Number(assessmentId || 0);
+    if (!assessmentKey || Number(this.selectedGradesEntryAssessmentId || 0) !== assessmentKey) {
+      return false;
+    }
+    const assessment = this.store.getGradeAssessment(assessmentKey);
+    if (!assessment || normalizeGradeAssessmentMode(assessment.mode) !== "test") {
+      return false;
+    }
+    const draft = this.getGradesEntryAssessmentDraft(assessment);
+    const draftTasks = normalizeGradeTestTasks(draft?.testTasks);
+    const assessmentTasks = normalizeGradeTestTasks(assessment.testTasks);
+    if (JSON.stringify(draftTasks) === JSON.stringify(assessmentTasks)) {
+      return false;
+    }
+    this.store.updateGradeAssessment(assessmentKey, {
+      testTasks: draftTasks
+    });
+    return true;
   }
 
   addGradeTestTask() {
@@ -26464,6 +27200,7 @@ class PlannerApp {
       if (!this.ensureGradeVaultReadyForGradesEntryMutation()) {
         return false;
       }
+      this.syncActiveGradeTestDraftTasksToAssessment(assessmentId);
       this.store.setGradeTestEntry(studentId, assessmentId, nextScores);
       this.refreshVisibleGradeTestResult(studentId, assessmentId);
       this.refreshVisibleGradeTestAverages(assessmentId);
