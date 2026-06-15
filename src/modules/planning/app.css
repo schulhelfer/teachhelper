@@ -1071,7 +1071,11 @@
           gap: 0;
           min-width: 0;
           min-height: 100%;
-          overflow: visible;
+          overflow-x: hidden;
+          overflow-y: auto;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior: contain;
+          scrollbar-gutter: auto;
         }
 
         .sidebar-header {

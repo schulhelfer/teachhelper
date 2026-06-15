@@ -260,7 +260,7 @@
       scrollbar-width: auto !important;
       scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track) !important;
       -ms-overflow-style: auto !important;
-      scrollbar-gutter: stable;
+      scrollbar-gutter: auto;
     }
 
     .app.app-tab-groups>.side::-webkit-scrollbar,
@@ -751,8 +751,11 @@
       width: 100%;
       max-width: 100%;
       min-height: 0;
-      overflow-x: visible;
+      overflow-x: hidden;
       overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
+      scrollbar-gutter: auto;
       align-self: stretch;
       height: 100%;
       max-height: 100%;
@@ -1075,7 +1078,10 @@
     #seatplan-side-host>.side,
     #seatplan-side-host .side {
       padding: 0 !important;
-      overflow: visible !important;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+      -webkit-overflow-scrolling: touch;
+      overscroll-behavior: contain;
       scrollbar-gutter: auto !important;
     }
 
