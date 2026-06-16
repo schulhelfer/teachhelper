@@ -15,6 +15,7 @@ import {
   TAB_GROUPS,
   TAB_MERGER,
   TAB_PLANNING,
+  TAB_QR,
   TAB_RANDOM_PICKER,
   TAB_SEATPLAN,
   TAB_WORK_PHASE,
@@ -209,6 +210,7 @@ import { applyTheme } from './shell/theme.js';
           [els.tabRandomPicker, TAB_RANDOM_PICKER],
           [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
           [els.tabWorkPhase, TAB_WORK_PHASE],
+          [els.tabQr, TAB_QR],
         ].forEach(([button, tabKey]) => {
           button?.addEventListener('click', () => setActiveTab(tabKey));
         });
@@ -413,9 +415,13 @@ import { applyTheme } from './shell/theme.js';
               : (
                 tab === TAB_DUPLICATE_CHECK
                   ? 'DuplikatCheck konnte nicht initialisiert werden.'
-                  : tab === TAB_SEATPLAN
-                  ? 'Sitzplan-Modul konnte nicht initialisiert werden.'
-                  : 'Planungs-Modul konnte nicht initialisiert werden.'
+                  : (
+                    tab === TAB_QR
+                      ? 'QR-Tools konnten nicht initialisiert werden.'
+                      : tab === TAB_SEATPLAN
+                      ? 'Sitzplan-Modul konnte nicht initialisiert werden.'
+                      : 'Planungs-Modul konnte nicht initialisiert werden.'
+                  )
               );
             reportAppError(error, userMessage, {
               scope: 'tab-init',

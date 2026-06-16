@@ -6,6 +6,7 @@ export const TAB_GROUPS = 'groups';
 export const TAB_RANDOM_PICKER = 'random-picker';
 export const TAB_SEATPLAN = 'seatplan';
 export const TAB_WORK_PHASE = 'work-phase';
+export const TAB_QR = 'qr';
 export const TAB_MONITOR = 'monitor';
 export const TAB_WORK_ORDER = 'work-order';
 export const TAB_TIMER = 'timer';
@@ -30,6 +31,7 @@ export const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-co
 export const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
 export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
 export const DUPLICATE_CHECK_SHELL_LAYOUT_EVENT = 'classroom:duplicate-check-shell-layout';
+export const QR_SHELL_LAYOUT_EVENT = 'classroom:qr-shell-layout';
 export const PLANNING_SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
 
 export function normalizeTab(tab) {
@@ -39,6 +41,7 @@ export function normalizeTab(tab) {
   if (tab === TAB_GRADES) return TAB_GRADES;
   if (tab === TAB_RANDOM_PICKER) return TAB_RANDOM_PICKER;
   if (tab === TAB_SEATPLAN) return TAB_SEATPLAN;
+  if (tab === TAB_QR) return TAB_QR;
   if (tab === TAB_WORK_PHASE || tab === TAB_MONITOR || tab === TAB_WORK_ORDER || tab === TAB_TIMER) {
     return TAB_WORK_PHASE;
   }

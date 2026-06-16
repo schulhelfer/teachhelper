@@ -11,6 +11,7 @@ import {
   TAB_DUPLICATE_CHECK,
   TAB_MERGER,
   TAB_PLANNING,
+  TAB_QR,
   TAB_RANDOM_PICKER,
   TAB_SEATPLAN,
   TAB_WORK_PHASE,
@@ -170,6 +171,7 @@ export function createShellController({
     updateSeatPreferencesTrigger();
     els.app.classList.toggle('app-tab-merger', state.activeTab === TAB_MERGER);
     els.app.classList.toggle('app-tab-duplicate-check', state.activeTab === TAB_DUPLICATE_CHECK);
+    els.app.classList.toggle('app-tab-qr', state.activeTab === TAB_QR);
     els.app.classList.toggle('app-tab-planning', state.activeTab === TAB_PLANNING);
     els.app.classList.toggle('app-tab-grades', state.activeTab === TAB_GRADES);
     els.app.classList.toggle(
@@ -186,6 +188,9 @@ export function createShellController({
     }
     if (els.duplicateCheckShell) {
       els.duplicateCheckShell.hidden = state.activeTab !== TAB_DUPLICATE_CHECK;
+    }
+    if (els.qrShell) {
+      els.qrShell.hidden = state.activeTab !== TAB_QR;
     }
     if (els.planningShell) {
       els.planningShell.hidden = state.activeTab !== TAB_PLANNING && state.activeTab !== TAB_GRADES;
@@ -220,6 +225,7 @@ export function createShellController({
       [els.tabRandomPicker, TAB_RANDOM_PICKER],
       [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
       [els.tabWorkPhase, TAB_WORK_PHASE],
+      [els.tabQr, TAB_QR],
     ].forEach(([button, tabKey]) => {
       if (!button) return;
       const selected = state.activeTab === tabKey;
@@ -267,7 +273,7 @@ export function createShellController({
     if (!els.app) return [];
     return Array.from(els.app.children).filter((child) => {
       if (!(child instanceof HTMLElement)) return false;
-      if (!child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .planning-shell, .monitor-shell, .work-order-shell, .timer-shell')) {
+      if (!child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .monitor-shell, .work-order-shell, .timer-shell')) {
         return false;
       }
       if (child.hidden) return false;
@@ -279,7 +285,7 @@ export function createShellController({
     if (!els.app) return [];
     return Array.from(els.app.children).filter((child) => (
       child instanceof HTMLElement
-      && child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .planning-shell, .monitor-shell, .work-order-shell, .timer-shell')
+      && child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .monitor-shell, .work-order-shell, .timer-shell')
     ));
   }
 

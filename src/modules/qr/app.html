@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="de" data-theme="dark">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="color-scheme" content="light dark">
+  <title>QR</title>
+  <link rel="manifest" href="../../../manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png">
+  <link rel="stylesheet" href="./app.css?v=qr-r4">
+</head>
+
+<body>
+  <div class="qr-runtime-root">
+    <div class="app">
+      <aside class="side" aria-label="QR-Werkzeuge">
+        <div class="sidebar-header">
+          <h1 class="sidebar-title">QR</h1>
+        </div>
+        <div class="tool-tab-bar" role="tablist" aria-label="QR-Werkzeuge">
+          <button id="tool-tab-generator" class="tool-tab active" type="button" role="tab" data-tool="generator"
+            aria-controls="tool-panel-generator" aria-selected="true">QR-Generator</button>
+          <button id="tool-tab-decoder" class="tool-tab" type="button" role="tab" data-tool="decoder"
+            aria-controls="tool-panel-decoder" aria-selected="false">QR-Decoder</button>
+        </div>
+      </aside>
+
+      <main class="main" aria-live="polite">
+        <section id="tool-panel-generator" class="tool-panel" data-tool-panel="generator" role="tabpanel"
+          aria-labelledby="tool-tab-generator">
+          <div class="panel-head">
+            <div>
+              <h2 class="card-title">QR-Code aus Link erstellen</h2>
+            </div>
+          </div>
+
+          <div class="stack-layout">
+            <form id="generatorForm" class="options-panel generator-form">
+              <label class="field" for="generatorLinkInput">
+                <span>Link</span>
+                <input id="generatorLinkInput" type="text" inputmode="url" autocomplete="url"
+                  placeholder="https://example.com">
+              </label>
+              <div class="controls">
+                <button id="generateButton" class="start" type="submit">QR-Code erstellen</button>
+              </div>
+            </form>
+
+            <section id="generatorResult" class="result-panel empty" aria-live="polite">
+              <div id="generatorEmpty" class="empty-state">Noch kein QR-Code erstellt.</div>
+              <div id="qrPreviewShell" class="qr-preview-shell hidden">
+                <canvas id="qrCanvas" width="320" height="320" aria-label="Erstellter QR-Code"></canvas>
+                <a id="qrEncodedLink" class="encoded-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+                <div class="result-actions">
+                  <button id="downloadQrButton" class="btn-small primary" type="button">Download</button>
+                  <button id="copyQrImageButton" class="btn-small" type="button">In Zwischenablage kopieren</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tool-panel-decoder" class="tool-panel" data-tool-panel="decoder" role="tabpanel"
+          aria-labelledby="tool-tab-decoder" hidden>
+          <div class="panel-head">
+            <div>
+              <h2 class="card-title">QR-Code lesen</h2>
+            </div>
+          </div>
+
+          <div class="stack-layout">
+            <div id="decoderDropZone" class="drop awaiting-file" tabindex="0" role="button"
+              aria-label="QR-Code-Bild auswählen">
+              <input id="decoderFileInput" type="file" accept="image/*" hidden>
+              <div class="drop-content">
+                <div id="decoderDropHint">
+                  <strong>QR-Code hier ablegen</strong>
+                  <div>oder klicken zum Auswählen</div>
+                </div>
+                <div id="decoderFileSummary" class="drop-summary hidden"></div>
+              </div>
+            </div>
+
+            <div class="decoder-actions">
+              <button id="pasteImageButton" class="btn-small primary" type="button">Aus Zwischenablage einfügen</button>
+              <button id="cameraButton" class="btn-small" type="button">Kamera</button>
+            </div>
+
+            <section id="cameraPanel" class="camera-panel hidden" aria-label="Kamera-Scan">
+              <video id="cameraVideo" playsinline muted></video>
+              <div class="camera-actions">
+                <button id="stopCameraButton" class="btn-small" type="button">Kamera stoppen</button>
+              </div>
+            </section>
+
+            <section id="decoderResult" class="result-panel empty" aria-live="polite">
+              <div id="decoderEmpty" class="empty-state">Noch kein QR-Code gelesen.</div>
+              <div id="decodedValuePanel" class="decoded-value-panel hidden">
+                <a id="decodedLink" class="encoded-link hidden" href="#" target="_blank" rel="noopener noreferrer"></a>
+                <pre id="decodedText" class="decoded-text hidden"></pre>
+                <div class="result-actions">
+                  <button id="copyDecodedButton" class="btn-small primary" type="button">In Zwischenablage kopieren</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="messageDialog" class="settings-dialog hidden" aria-labelledby="messageTitle"
+    aria-describedby="messageText">
+    <p id="messageTitle" class="settings-title">Hinweis</p>
+    <p id="messageText" class="message-text"></p>
+    <div class="dialog-actions">
+      <button id="messageCloseButton" class="btn-small primary" type="button">OK</button>
+    </div>
+  </dialog>
+
+  <script src="./vendor/qrcode.min.js?v=qr-r4"></script>
+  <script src="./vendor/jsQR.js?v=qr-r4"></script>
+  <script type="module" src="./app.js?v=qr-r4"></script>
+</body>
+
+</html>

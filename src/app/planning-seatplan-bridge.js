@@ -18,11 +18,13 @@ import {
   TAB_GRADES,
   TAB_MERGER,
   TAB_PLANNING,
+  TAB_QR,
   TAB_SEATPLAN,
 } from '../shell/tabs.js';
 import { mountDuplicateCheck } from '../modules/duplicate-check/index.js';
 import { mountMerger } from '../modules/merger/index.js';
 import { mountPlanning } from '../modules/planning/index.js';
+import { mountQr } from '../modules/qr/index.js';
 import { mountSeatplan } from '../modules/seatplan/index.js';
 
 export function createPlanningSeatplanBridge({
@@ -33,11 +35,13 @@ export function createPlanningSeatplanBridge({
 } = {}) {
   let mergerController = null;
   let duplicateCheckController = null;
+  let qrController = null;
   let planningController = null;
   let seatplanController = null;
   const tabInitState = {
     [TAB_MERGER]: false,
     [TAB_DUPLICATE_CHECK]: false,
+    [TAB_QR]: false,
     [TAB_PLANNING]: false,
     [TAB_SEATPLAN]: false,
   };
@@ -73,6 +77,13 @@ export function createPlanningSeatplanBridge({
     if (!host || host.dataset.initialized === '1') return;
     duplicateCheckController = mountDuplicateCheck({ host });
     duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+  };
+
+  const initQrTab = (root = els.qrHost) => {
+    const host = root;
+    if (!host || host.dataset.initialized === '1') return;
+    qrController = mountQr({ host });
+    qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
   };
 
   const initSeatplanTabNative = (
@@ -169,6 +180,7 @@ export function createPlanningSeatplanBridge({
   function refreshModuleLayouts({ activeTab, isIOSDevice = false } = {}) {
     mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
@@ -185,6 +197,12 @@ export function createPlanningSeatplanBridge({
       if (tabInitState[TAB_DUPLICATE_CHECK]) return;
       initDuplicateCheckTab(els.duplicateCheckHost);
       tabInitState[TAB_DUPLICATE_CHECK] = true;
+      return;
+    }
+    if (tab === TAB_QR) {
+      if (tabInitState[TAB_QR]) return;
+      initQrTab(els.qrHost);
+      tabInitState[TAB_QR] = true;
       return;
     }
     if (tab === TAB_PLANNING || tab === TAB_GRADES) {

@@ -688,6 +688,7 @@
     .app>.main,
     .app>.merger-shell,
     .app>.duplicate-check-shell,
+    .app>.qr-shell,
     .app>.planning-shell,
     .app>.monitor-shell,
     .app>.work-order-shell,
@@ -700,6 +701,7 @@
     .app.is-tab-switching>.main,
     .app.is-tab-switching>.merger-shell,
     .app.is-tab-switching>.duplicate-check-shell,
+    .app.is-tab-switching>.qr-shell,
     .app.is-tab-switching>.planning-shell,
     .app.is-tab-switching>.monitor-shell,
     .app.is-tab-switching>.work-order-shell,
@@ -800,6 +802,7 @@
 
     .merger-shell,
     .duplicate-check-shell,
+    .qr-shell,
     .planning-shell,
     .monitor-shell,
     .work-order-shell,
@@ -819,6 +822,7 @@
 
     .merger-shell,
     .duplicate-check-shell,
+    .qr-shell,
     .planning-shell {
       padding: 0;
       overflow-x: hidden;
@@ -832,7 +836,8 @@
       border-radius: 0;
     }
 
-    .duplicate-check-shell {
+    .duplicate-check-shell,
+    .qr-shell {
       background: transparent;
       backdrop-filter: none;
       border: none;
@@ -848,6 +853,7 @@
 
     .merger-host,
     .duplicate-check-host,
+    .qr-host,
     .planning-host {
       width: 100%;
       height: 100%;
@@ -868,6 +874,7 @@
     #seatplan-side-host,
     .merger-host,
     .duplicate-check-host,
+    .qr-host,
     #groups-main-host .groups-grid-wrap,
     #seatplan-main-host .grid-wrap,
     .random-picker-shell,
@@ -894,7 +901,8 @@
     }
 
     .merger-host,
-    .duplicate-check-host {
+    .duplicate-check-host,
+    .qr-host {
       overflow: hidden;
       -webkit-overflow-scrolling: touch;
       overscroll-behavior: contain;
@@ -903,6 +911,7 @@
     .app.app-tab-merger>.side,
     .app.app-tab-merger>.main,
     .app.app-tab-merger>.duplicate-check-shell,
+    .app.app-tab-merger>.qr-shell,
     .app.app-tab-merger>.monitor-shell,
     .app.app-tab-merger>.work-order-shell,
     .app.app-tab-merger>.timer-shell {
@@ -918,6 +927,7 @@
     .app.app-tab-duplicate-check>.side,
     .app.app-tab-duplicate-check>.main,
     .app.app-tab-duplicate-check>.merger-shell,
+    .app.app-tab-duplicate-check>.qr-shell,
     .app.app-tab-duplicate-check>.monitor-shell,
     .app.app-tab-duplicate-check>.work-order-shell,
     .app.app-tab-duplicate-check>.timer-shell {
@@ -930,10 +940,28 @@
       grid-row: 2;
     }
 
+    .app.app-tab-qr>.side,
+    .app.app-tab-qr>.main,
+    .app.app-tab-qr>.merger-shell,
+    .app.app-tab-qr>.duplicate-check-shell,
+    .app.app-tab-qr>.planning-shell,
+    .app.app-tab-qr>.monitor-shell,
+    .app.app-tab-qr>.work-order-shell,
+    .app.app-tab-qr>.timer-shell {
+      display: none;
+    }
+
+    .app.app-tab-qr>.qr-shell {
+      display: block;
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
     .app.app-tab-planning>.side,
     .app.app-tab-planning>.main,
     .app.app-tab-planning>.merger-shell,
     .app.app-tab-planning>.duplicate-check-shell,
+    .app.app-tab-planning>.qr-shell,
     .app.app-tab-planning>.monitor-shell,
     .app.app-tab-planning>.work-order-shell,
     .app.app-tab-planning>.timer-shell {
@@ -950,6 +978,7 @@
     .app.app-tab-grades>.main,
     .app.app-tab-grades>.merger-shell,
     .app.app-tab-grades>.duplicate-check-shell,
+    .app.app-tab-grades>.qr-shell,
     .app.app-tab-grades>.monitor-shell,
     .app.app-tab-grades>.work-order-shell,
     .app.app-tab-grades>.timer-shell {
@@ -985,6 +1014,7 @@
 
     .app.app-tab-seatplan>.merger-shell,
     .app.app-tab-seatplan>.duplicate-check-shell,
+    .app.app-tab-seatplan>.qr-shell,
     .app.app-tab-seatplan>.monitor-shell,
     .app.app-tab-seatplan>.work-order-shell,
     .app.app-tab-seatplan>.timer-shell {
@@ -1873,6 +1903,7 @@
 
     .app.app-tab-work-phase>.merger-shell,
     .app.app-tab-work-phase>.duplicate-check-shell,
+    .app.app-tab-work-phase>.qr-shell,
     .app.app-tab-work-phase>.planning-shell {
       display: none;
     }
@@ -2083,7 +2114,9 @@
     .app.is-collapsing.app-tab-merger .merger-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-host,
     .app.is-collapsing.app-tab-duplicate-check .duplicate-check-host,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-duplicate-check .duplicate-check-host {
+    .app.chrome-collapsed:not(.is-expanding).app-tab-duplicate-check .duplicate-check-host,
+    .app.is-collapsing.app-tab-qr .qr-host,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-qr .qr-host {
       padding-left: var(--chrome-overlay-clearance);
     }
 
@@ -2244,6 +2277,7 @@
     .app.chrome-collapsed:not(.is-expanding)>.main,
     .app.chrome-collapsed:not(.is-expanding)>.merger-shell,
     .app.chrome-collapsed:not(.is-expanding)>.duplicate-check-shell,
+    .app.chrome-collapsed:not(.is-expanding)>.qr-shell,
     .app.chrome-collapsed:not(.is-expanding)>.planning-shell,
     .app.chrome-collapsed:not(.is-expanding)>.monitor-shell,
     .app.chrome-collapsed:not(.is-expanding)>.work-order-shell,
@@ -5275,6 +5309,11 @@
         grid-row: auto;
       }
 
+      .app.app-tab-qr>.qr-shell {
+        grid-column: 1;
+        grid-row: auto;
+      }
+
       .app.app-tab-planning>.planning-shell {
         grid-column: 1;
         grid-row: auto;
@@ -5555,6 +5594,7 @@
       .main,
       .merger-shell,
       .duplicate-check-shell,
+      .qr-shell,
       .planning-shell,
       .monitor-shell,
       .work-order-shell,
@@ -5564,6 +5604,7 @@
       #seatplan-main-host,
       .merger-host,
       .duplicate-check-host,
+      .qr-host,
       .merger-runtime-root,
       .duplicate-check-runtime-root,
       .random-picker-shell,
@@ -5586,6 +5627,7 @@
     #planning-host > .planning-frame,
     #merger-host > .merger-frame,
     #duplicate-check-host > .duplicate-check-frame,
+    #qr-host > .qr-frame,
     #seatplan-main-host > .seatplan-frame {
       width: 100%;
       height: 100%;
@@ -5659,6 +5701,8 @@
           aria-selected="false">DuplikatCheck</button>
         <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
           aria-selected="false">Arbeitsphase</button>
+        <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr"
+          aria-selected="false">QR</button>
       </nav>
     </header>
     <button id="sidebar-manual-save-btn" class="ghost header-icon-button manual-header-save-btn" type="button"
@@ -5924,6 +5968,9 @@
     </section>
     <section id="duplicate-check-shell" class="duplicate-check-shell" hidden aria-label="DuplikatCheck">
       <div id="duplicate-check-host" class="duplicate-check-host" aria-label="DuplikatCheck"></div>
+    </section>
+    <section id="qr-shell" class="qr-shell" hidden aria-label="QR">
+      <div id="qr-host" class="qr-host" aria-label="QR"></div>
     </section>
     <section id="planning-shell" class="planning-shell" hidden aria-label="Planung">
       <div id="planning-host" class="planning-host" aria-live="polite"></div>
