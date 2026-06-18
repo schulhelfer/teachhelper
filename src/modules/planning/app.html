@@ -115,6 +115,15 @@
             </button>
           </div>
         </div>
+        <div id="sidebar-archive-actions" class="sidebar-archive-actions" hidden>
+          <div id="sidebar-archive-section" class="sidebar-grade-action-section sidebar-grade-action-section-archive">
+            <div class="sidebar-grade-action-title">Archivieren</div>
+            <button id="sidebar-archive-btn" class="sidebar-grade-print-btn sidebar-archive-btn" type="button"
+              aria-label="Archivieren" title="PDF-Export des gesamten Schuljahres" disabled>
+              <span class="sidebar-grade-print-icon" aria-hidden="true">🗄️</span>
+            </button>
+          </div>
+        </div>
       </div>
 
     </aside>
@@ -1084,6 +1093,67 @@
       <div class="grade-vault-dialog-submit-row">
         <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
           title="Bestätigen">🔓</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="archive-dialog" class="app-dialog archive-dialog" aria-labelledby="archive-dialog-title">
+    <form id="archive-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="archive-dialog-title" class="settings-panel-title">Schuljahr archivieren</h3>
+        <div class="dialog-actions-top">
+          <button type="button" id="archive-dialog-cancel-top" class="ghost dialog-icon-button" aria-label="Abbrechen"
+            title="Abbrechen">❌</button>
+        </div>
+      </div>
+      <p class="archive-dialog-copy">PDF-Export des gesamten Schuljahres</p>
+      <section class="archive-dialog-section">
+        <label class="checkbox-line archive-dialog-toggle">
+          <input id="archive-export-grades" type="checkbox">
+          <span class="archive-dialog-toggle-text">Noten exportieren
+            <span id="archive-grades-locked-hint" class="archive-dialog-info" role="note" hidden>
+              Notenexport erst nach Entsperren des Notenmoduls.
+            </span>
+          </span>
+        </label>
+        <div id="archive-grades-options" class="archive-dialog-nested">
+          <div class="archive-dialog-choice-group" role="radiogroup" aria-label="Noten-Umfang">
+            <label class="archive-dialog-radio">
+              <input type="radio" name="archive-grade-scope" value="categories" checked>
+              <span>nur Kategorie-Noten</span>
+            </label>
+            <label class="archive-dialog-radio">
+              <input type="radio" name="archive-grade-scope" value="details">
+              <span>Kategorie- und Einzelnoten</span>
+            </label>
+          </div>
+          <label class="checkbox-line archive-dialog-be-mask">
+            <input id="archive-grade-be-mask" type="checkbox">
+            <span>BE-Eingabemaske mit BE2, BE1, AFB usw.</span>
+          </label>
+        </div>
+      </section>
+      <section class="archive-dialog-section">
+        <label class="checkbox-line archive-dialog-toggle">
+          <input id="archive-export-planning" type="checkbox">
+          <span>Planung exportieren</span>
+        </label>
+        <div id="archive-planning-options" class="archive-dialog-nested archive-dialog-choice-group">
+          <label class="checkbox-line">
+            <input id="archive-planning-courses" type="checkbox">
+            <span>Kursansichten</span>
+          </label>
+          <label class="checkbox-line">
+            <input id="archive-planning-weeks" type="checkbox">
+            <span>Wochenansichten</span>
+          </label>
+        </div>
+      </section>
+      <p id="archive-dialog-status" class="archive-dialog-status" aria-live="polite"></p>
+      <div class="button-row dialog-actions">
+        <button type="button" id="archive-dialog-cancel" class="ghost">Abbrechen</button>
+        <span class="dialog-grow"></span>
+        <button type="submit" id="archive-dialog-generate">PDF erstellen</button>
       </div>
     </form>
   </dialog>

@@ -2,6 +2,8 @@ import { createDocxFromTemplate, isDocxZipSupported } from "./docx.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
+const ARCHIVE_PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
+const ARCHIVE_PDF_LIB_CACHE_KEY = "teachhelper.pdf-lib.min.js.v1";
 const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
   "Schriftliche Arbeiten dienen nicht nur der Leistungsfeststellung, sondern auch der Diagnose. Sie sind ein Zwischenschritt und nicht der Endpunkt Deines Lernprozesses. Entscheidend ist, dass Du etwaige Defizite gezielt aufarbeitest. Dabei unterstütze ich Dich gerne, doch der Wille dazu muss von Dir selbst kommen!",
   "Im IServ-Aufgabenmodul findest Du zu genau den grundlegenden Kompetenzen, bei denen sich in Deiner schriftlichen Arbeit noch Unsicherheiten gezeigt haben (<<Aufgabenlabel>> <<Aufgabenliste>>), passendes Übungsmaterial:",
@@ -171,6 +173,97 @@ function utf8ToBytes(value) {
 
 function bytesToUtf8(bytes) {
   return new TextDecoder().decode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []));
+}
+
+function hasArchivePdfLibLoaded() {
+  return Boolean(
+    typeof window !== "undefined"
+    && window.PDFLib
+    && typeof window.PDFLib.PDFDocument?.create === "function"
+  );
+}
+
+function injectArchiveScriptSource(source) {
+  if (!source || typeof document === "undefined" || !document.head) {
+    return false;
+  }
+  const script = document.createElement("script");
+  script.textContent = source;
+  document.head.append(script);
+  script.remove();
+  return hasArchivePdfLibLoaded();
+}
+
+function getCachedArchivePdfLibSource() {
+  try {
+    return window.localStorage?.getItem(ARCHIVE_PDF_LIB_CACHE_KEY) || "";
+  } catch (_error) {
+    return "";
+  }
+}
+
+function cacheArchivePdfLibSource(source) {
+  try {
+    window.localStorage?.setItem(ARCHIVE_PDF_LIB_CACHE_KEY, source);
+  } catch (_error) {
+    // A full localStorage cache must not block PDF export.
+  }
+}
+
+let archivePdfLibLoadPromise = null;
+async function ensureArchivePdfLibLoaded() {
+  if (hasArchivePdfLibLoaded()) {
+    return window.PDFLib;
+  }
+  if (!archivePdfLibLoadPromise) {
+    archivePdfLibLoadPromise = (async () => {
+      const cachedSource = getCachedArchivePdfLibSource();
+      if (cachedSource && injectArchiveScriptSource(cachedSource)) {
+        return window.PDFLib;
+      }
+      if (cachedSource) {
+        try {
+          window.localStorage?.removeItem(ARCHIVE_PDF_LIB_CACHE_KEY);
+        } catch (_error) {
+        }
+      }
+      const response = await fetch(ARCHIVE_PDF_LIB_CDN_URL, { cache: "force-cache" });
+      if (!response.ok) {
+        throw new Error(`PDF-Library konnte nicht geladen werden (${response.status}).`);
+      }
+      const source = await response.text();
+      if (!injectArchiveScriptSource(source)) {
+        throw new Error("PDF-Library wurde geladen, ist aber unvollständig.");
+      }
+      cacheArchivePdfLibSource(source);
+      return window.PDFLib;
+    })().catch((error) => {
+      archivePdfLibLoadPromise = null;
+      throw error;
+    });
+  }
+  return archivePdfLibLoadPromise;
+}
+
+function sanitizePdfText(value) {
+  return String(value ?? "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[\u2010-\u2015]/g, "-")
+    .replace(/\u2026/g, "...")
+    .replace(/[“”]/g, "\"")
+    .replace(/[‘’]/g, "'")
+    .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, "?");
+}
+
+function sanitizeArchiveFileName(value, fallback = "Teachhelper-Archiv") {
+  const text = String(value || "")
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^\w.\- ]+/g, "-")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+  return text || fallback;
 }
 
 function randomBytes(length) {
@@ -6460,6 +6553,9 @@ class PlannerApp {
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
+      sidebarArchiveActions: document.querySelector("#sidebar-archive-actions"),
+      sidebarArchiveSection: document.querySelector("#sidebar-archive-section"),
+      sidebarArchiveBtn: document.querySelector("#sidebar-archive-btn"),
 
       settingsTabs: [...document.querySelectorAll(".settings-tab")],
       settingsPanels: {
@@ -6529,6 +6625,21 @@ class PlannerApp {
       gradeVaultDialogHint: document.querySelector("#grade-vault-dialog-hint"),
       gradeVaultDialogError: document.querySelector("#grade-vault-dialog-error"),
       gradeVaultDialogCancel: document.querySelector("#grade-vault-dialog-cancel"),
+      archiveDialog: document.querySelector("#archive-dialog"),
+      archiveDialogForm: document.querySelector("#archive-dialog-form"),
+      archiveDialogCancel: document.querySelector("#archive-dialog-cancel"),
+      archiveDialogCancelTop: document.querySelector("#archive-dialog-cancel-top"),
+      archiveExportGrades: document.querySelector("#archive-export-grades"),
+      archiveGradesLockedHint: document.querySelector("#archive-grades-locked-hint"),
+      archiveGradesOptions: document.querySelector("#archive-grades-options"),
+      archiveGradeScopeInputs: document.querySelectorAll("input[name='archive-grade-scope']"),
+      archiveGradeBeMask: document.querySelector("#archive-grade-be-mask"),
+      archiveExportPlanning: document.querySelector("#archive-export-planning"),
+      archivePlanningOptions: document.querySelector("#archive-planning-options"),
+      archivePlanningCourses: document.querySelector("#archive-planning-courses"),
+      archivePlanningWeeks: document.querySelector("#archive-planning-weeks"),
+      archiveDialogStatus: document.querySelector("#archive-dialog-status"),
+      archiveDialogGenerate: document.querySelector("#archive-dialog-generate"),
 
       sidebarPanel: document.querySelector("#sidebarPanel"),
       weekTable: document.querySelector("#week-table"),
@@ -6839,6 +6950,8 @@ class PlannerApp {
       input: null,
       monthIso: null
     };
+    this.archiveExportInProgress = false;
+    this.archiveGradesLockedHintTimer = 0;
     this.gradeCollapsedPeriodKeys = new Set();
     this.gradePeriodDefaultInitializedKeys = new Set();
     this.gradeCollapsedCategoryKeys = new Set();
@@ -7341,6 +7454,7 @@ class PlannerApp {
       }
     }));
     this.dispatchPlanningUnsavedState();
+    this.refreshArchiveDialogGradeVaultAccessState();
   }
 
   getPlanningUnsavedState() {
@@ -14698,6 +14812,9 @@ class PlannerApp {
         const requestedView = detail && detail.view === "grades" ? "grades" : "week";
         this.shellTabContext = requestedView === "grades" ? "grades" : "planning";
         if (this.locked) {
+          this.renderViewState();
+          this.renderSidebarCourseList();
+          this.queuePlanningReadySignal();
           return;
         }
         const manualDatabaseSetupPending = this.shouldPromptForManualDatabaseOnStartup()
@@ -14827,6 +14944,12 @@ class PlannerApp {
         this.handleGradePrintOverviewRequest(event);
       });
     }
+    if (this.refs.sidebarArchiveBtn) {
+      this.refs.sidebarArchiveBtn.addEventListener("click", (event) => {
+        this.handleArchiveOpenRequest(event);
+      });
+    }
+    this.bindArchiveDialogEvents();
     if (this.refs.sidebarGradeExpectationBtn) {
       this.refs.sidebarGradeExpectationBtn.addEventListener("click", (event) => {
         this.handleExpectationHorizonOpenRequest(event);
@@ -19063,6 +19186,7 @@ class PlannerApp {
     this.updateSidebarGradeDisplaySystemToggleState();
     this.updateSidebarGradePredicateSuffixToggleState();
     this.updateSidebarGradePrintButtonState();
+    this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarGradeSimulationButtonState();
   }
@@ -19732,6 +19856,805 @@ class PlannerApp {
     this.updateSidebarGradePrintButtonState();
   }
 
+  updateSidebarArchiveButtonState() {
+    const actions = this.refs.sidebarArchiveActions;
+    const button = this.refs.sidebarArchiveBtn;
+    if (!actions || !button) {
+      return;
+    }
+    const hasYear = Boolean(this.activeSchoolYear);
+    const archiveTabContext = this.getArchiveTabContext();
+    const isArchiveContext = archiveTabContext === "grades"
+      || archiveTabContext === "planning"
+      || this.currentView === "grades"
+      || this.currentView === "week"
+      || this.currentView === "course";
+    const isGradesArchiveContext = archiveTabContext === "grades";
+    const gradesEncryptedLocked = isGradesArchiveContext
+      && this.isGradeVaultEncryptionEnabled()
+      && !this.canAccessGradeVault();
+    actions.hidden = !isArchiveContext;
+    button.disabled = this.archiveExportInProgress || (isGradesArchiveContext && (!hasYear || this.locked || gradesEncryptedLocked));
+    button.title = gradesEncryptedLocked
+      ? "Archivieren erst nach Entsperren des verschlüsselten Notenmoduls verfügbar"
+      : (
+        this.archiveExportInProgress
+          ? "PDF-Export wird erstellt"
+          : "PDF-Export des gesamten Schuljahres"
+      );
+    button.setAttribute("aria-label", "Archivieren");
+  }
+
+  bindArchiveDialogEvents() {
+    const refs = this.refs;
+    refs.archiveDialogCancel?.addEventListener("click", () => {
+      if (!this.archiveExportInProgress) {
+        this.closeDialog(refs.archiveDialog);
+      }
+    });
+    refs.archiveDialogCancelTop?.addEventListener("click", () => {
+      if (!this.archiveExportInProgress) {
+        this.closeDialog(refs.archiveDialog);
+      }
+    });
+    refs.archiveDialog?.addEventListener("cancel", (event) => {
+      if (this.archiveExportInProgress) {
+        event.preventDefault();
+      }
+    });
+    refs.archiveDialog?.addEventListener("close", () => {
+      this.setArchiveGradesLockedHintVisible(false);
+    });
+    [
+      refs.archiveExportGrades,
+      refs.archiveGradeBeMask,
+      refs.archiveExportPlanning,
+      refs.archivePlanningCourses,
+      refs.archivePlanningWeeks,
+      ...Array.from(refs.archiveGradeScopeInputs || [])
+    ].filter(Boolean).forEach((input) => {
+      input.addEventListener("change", () => {
+        this.syncArchiveDialogState({ showValidation: false });
+      });
+    });
+    refs.archiveDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.handleArchiveGenerateRequest();
+    });
+  }
+
+  handleArchiveOpenRequest(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const isGradesArchiveContext = this.getArchiveTabContext() === "grades";
+    const gradesEncryptedLocked = isGradesArchiveContext
+      && this.isGradeVaultEncryptionEnabled()
+      && !this.canAccessGradeVault();
+    if (this.archiveExportInProgress || (isGradesArchiveContext && (!this.activeSchoolYear || this.locked || gradesEncryptedLocked))) {
+      this.updateSidebarArchiveButtonState();
+      return;
+    }
+    this.applyArchiveDialogDefaults();
+    this.openDialog(this.refs.archiveDialog);
+  }
+
+  applyArchiveDialogDefaults() {
+    const isGradesContext = this.getArchiveTabContext() === "grades";
+    const gradesLockedForPlanning = this.shouldDisableArchiveGradeSelection();
+    if (this.refs.archiveExportGrades) {
+      this.refs.archiveExportGrades.checked = isGradesContext && !gradesLockedForPlanning;
+    }
+    if (this.refs.archiveExportPlanning) {
+      this.refs.archiveExportPlanning.checked = !isGradesContext;
+    }
+    this.refs.archiveGradeScopeInputs?.forEach((input) => {
+      input.checked = input.value === "categories";
+    });
+    if (this.refs.archiveGradeBeMask) {
+      this.refs.archiveGradeBeMask.checked = true;
+    }
+    if (this.refs.archivePlanningCourses) {
+      this.refs.archivePlanningCourses.checked = true;
+    }
+    if (this.refs.archivePlanningWeeks) {
+      this.refs.archivePlanningWeeks.checked = true;
+    }
+    this.setArchiveDialogStatus("");
+    this.syncArchiveDialogState({ showValidation: false, showLockedHint: true });
+  }
+
+  readArchiveDialogOptions() {
+    const gradeScopeInput = Array.from(this.refs.archiveGradeScopeInputs || []).find((input) => input.checked);
+    const exportGrades = Boolean(this.refs.archiveExportGrades?.checked);
+    const exportPlanning = Boolean(this.refs.archiveExportPlanning?.checked);
+    const gradeScope = gradeScopeInput?.value === "details" ? "details" : "categories";
+    return {
+      exportGrades,
+      gradeScope,
+      includeGradeDetails: exportGrades && gradeScope === "details",
+      includeBeMask: exportGrades && gradeScope === "details" && Boolean(this.refs.archiveGradeBeMask?.checked),
+      exportPlanning,
+      includePlanningCourses: exportPlanning && Boolean(this.refs.archivePlanningCourses?.checked),
+      includePlanningWeeks: exportPlanning && Boolean(this.refs.archivePlanningWeeks?.checked)
+    };
+  }
+
+  validateArchiveDialogOptions(options = this.readArchiveDialogOptions()) {
+    if (!options.exportGrades && !options.exportPlanning) {
+      return "Bitte Noten oder Planung für den Export auswählen.";
+    }
+    if (options.exportPlanning && !options.includePlanningCourses && !options.includePlanningWeeks) {
+      return "Bitte für die Planung Kursansichten oder Wochenansichten auswählen.";
+    }
+    return "";
+  }
+
+  syncArchiveDialogState(optionsArg = {}) {
+    const showValidation = Boolean(optionsArg?.showValidation);
+    const options = this.readArchiveDialogOptions();
+    const gradesLockedForPlanning = this.shouldDisableArchiveGradeSelection();
+    if (gradesLockedForPlanning && this.refs.archiveExportGrades?.checked) {
+      this.refs.archiveExportGrades.checked = false;
+    }
+    if (!this.refs.archiveExportGrades?.checked && this.refs.archiveGradeBeMask?.checked) {
+      this.refs.archiveGradeBeMask.checked = false;
+    }
+    if (!this.refs.archiveExportPlanning?.checked) {
+      if (this.refs.archivePlanningCourses?.checked) {
+        this.refs.archivePlanningCourses.checked = false;
+      }
+      if (this.refs.archivePlanningWeeks?.checked) {
+        this.refs.archivePlanningWeeks.checked = false;
+      }
+    }
+    if (
+      this.refs.archiveExportPlanning?.checked
+      && !this.refs.archivePlanningCourses?.checked
+      && !this.refs.archivePlanningWeeks?.checked
+    ) {
+      this.refs.archivePlanningCourses.checked = true;
+    }
+    const effectiveOptions = (gradesLockedForPlanning || options.exportPlanning)
+      ? this.readArchiveDialogOptions()
+      : options;
+    const gradeControls = [
+      ...Array.from(this.refs.archiveGradeScopeInputs || []),
+      this.refs.archiveGradeBeMask
+    ].filter(Boolean);
+    const planningControls = [
+      this.refs.archivePlanningCourses,
+      this.refs.archivePlanningWeeks
+    ].filter(Boolean);
+    const setInputDisabled = (input, disabled) => {
+      if (input && input.disabled !== Boolean(disabled)) {
+        input.disabled = Boolean(disabled);
+      }
+    };
+    const setAriaDisabled = (node, disabled) => {
+      const value = disabled ? "true" : "false";
+      if (node && node.getAttribute("aria-disabled") !== value) {
+        node.setAttribute("aria-disabled", value);
+      }
+    };
+    gradeControls.forEach((input) => {
+      const isBeMask = input === this.refs.archiveGradeBeMask;
+      setInputDisabled(input, this.archiveExportInProgress
+        || gradesLockedForPlanning
+        || !effectiveOptions.exportGrades
+        || (isBeMask && effectiveOptions.gradeScope !== "details"));
+    });
+    planningControls.forEach((input) => {
+      setInputDisabled(input, this.archiveExportInProgress || !effectiveOptions.exportPlanning);
+    });
+    if (this.refs.archiveGradesOptions) {
+      setAriaDisabled(this.refs.archiveGradesOptions, !effectiveOptions.exportGrades || gradesLockedForPlanning);
+    }
+    if (this.refs.archivePlanningOptions) {
+      setAriaDisabled(this.refs.archivePlanningOptions, !effectiveOptions.exportPlanning);
+    }
+    if (this.refs.archiveExportGrades) {
+      setInputDisabled(this.refs.archiveExportGrades, this.archiveExportInProgress || gradesLockedForPlanning);
+      const title = gradesLockedForPlanning
+        ? "Notenexport ist im Planungsmodul deaktiviert, solange das verschlüsselte Notenmodul gesperrt ist."
+        : "";
+      if (this.refs.archiveExportGrades.title !== title) {
+        this.refs.archiveExportGrades.title = title;
+      }
+    }
+    if (this.refs.archiveGradesLockedHint && optionsArg?.showLockedHint) {
+      this.setArchiveGradesLockedHintVisible(gradesLockedForPlanning);
+    } else if (this.refs.archiveGradesLockedHint && !gradesLockedForPlanning) {
+      this.setArchiveGradesLockedHintVisible(false);
+    }
+    if (this.refs.archiveExportPlanning) {
+      setInputDisabled(this.refs.archiveExportPlanning, this.archiveExportInProgress);
+    }
+    const validationMessage = this.validateArchiveDialogOptions(effectiveOptions);
+    if (this.refs.archiveDialogGenerate) {
+      setInputDisabled(this.refs.archiveDialogGenerate, this.archiveExportInProgress || Boolean(validationMessage));
+    }
+    if (validationMessage && showValidation && !this.archiveExportInProgress) {
+      this.setArchiveDialogStatus(validationMessage, "error");
+    } else if (!this.archiveExportInProgress && this.refs.archiveDialogStatus?.classList.contains("is-error")) {
+      this.setArchiveDialogStatus("");
+    }
+  }
+
+  shouldDisableArchiveGradeSelection() {
+    return this.getArchiveTabContext() === "planning"
+      && this.isGradeVaultEncryptionEnabled()
+      && !this.canAccessGradeVault();
+  }
+
+  refreshArchiveDialogGradeVaultAccessState() {
+    this.updateSidebarArchiveButtonState();
+    if (!this.refs.archiveDialog?.open) {
+      this.setArchiveGradesLockedHintVisible(false);
+      return;
+    }
+    this.syncArchiveDialogState({ showValidation: false, showLockedHint: false });
+  }
+
+  setArchiveGradesLockedHintVisible(visible) {
+    const node = this.refs.archiveGradesLockedHint;
+    if (this.archiveGradesLockedHintTimer) {
+      window.clearTimeout(this.archiveGradesLockedHintTimer);
+      this.archiveGradesLockedHintTimer = 0;
+    }
+    if (!node) {
+      return;
+    }
+    if (!visible) {
+      node.hidden = true;
+      return;
+    }
+    node.hidden = false;
+    this.archiveGradesLockedHintTimer = window.setTimeout(() => {
+      node.hidden = true;
+      this.archiveGradesLockedHintTimer = 0;
+    }, 2000);
+  }
+
+  setArchiveDialogStatus(message = "", tone = "") {
+    const node = this.refs.archiveDialogStatus;
+    if (!node) {
+      return;
+    }
+    node.textContent = String(message || "");
+    node.classList.toggle("is-error", tone === "error");
+    node.classList.toggle("is-ok", tone === "ok");
+  }
+
+  async handleArchiveGenerateRequest() {
+    const options = this.readArchiveDialogOptions();
+    const validationMessage = this.validateArchiveDialogOptions(options);
+    if (validationMessage) {
+      this.setArchiveDialogStatus(validationMessage, "error");
+      this.syncArchiveDialogState({ showValidation: true });
+      return;
+    }
+    const year = this.activeSchoolYear;
+    if (!year) {
+      this.setArchiveDialogStatus("Kein aktives Schuljahr gefunden.", "error");
+      return;
+    }
+    if (options.exportGrades && !this.canAccessGradeVault()) {
+      this.setArchiveDialogStatus("Bitte Notenmodul entsperren und den Export erneut starten.", "error");
+      this.closeDialog(this.refs.archiveDialog);
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      return;
+    }
+    if (options.exportGrades && !this.commitVisibleGradeInputs()) {
+      this.setArchiveDialogStatus("Bitte die aktuelle Noteneingabe korrigieren.", "error");
+      return;
+    }
+    this.archiveExportInProgress = true;
+    this.updateSidebarArchiveButtonState();
+    this.syncArchiveDialogState();
+    try {
+      const sections = [];
+      if (options.exportPlanning && !this.gradeVaultSession.planningPublicLoaded) {
+        this.setArchiveDialogStatus("Planungsdaten werden geladen ...");
+        await this.ensurePlanningPublicLoaded();
+      }
+      if (options.exportGrades) {
+        sections.push(...await this.collectArchiveGradeSections(year, options));
+      }
+      if (options.exportPlanning) {
+        sections.push(...this.collectArchivePlanningSections(year, options));
+      }
+      if (!sections.length) {
+        this.setArchiveDialogStatus("Für die gewählte Auswahl wurden keine Daten gefunden.", "error");
+        return;
+      }
+      this.setArchiveDialogStatus("PDF wird erstellt ...");
+      const bytes = await this.buildArchivePdfBytes(year, sections);
+      this.downloadArchivePdfBytes(bytes, year);
+      this.setArchiveDialogStatus("PDF wurde erstellt.", "ok");
+    } catch (error) {
+      this.setArchiveDialogStatus(
+        error instanceof Error && error.message ? error.message : "PDF-Export konnte nicht erstellt werden.",
+        "error"
+      );
+    } finally {
+      this.archiveExportInProgress = false;
+      this.updateSidebarArchiveButtonState();
+      this.syncArchiveDialogState();
+    }
+  }
+
+  async collectArchiveGradeSections(year, options = {}) {
+    const courses = this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course));
+    const sections = [];
+    if (!courses.length) {
+      return [{
+        type: "note",
+        title: "Noten",
+        text: "Im aktiven Schuljahr sind keine benotbaren Kurse angelegt."
+      }];
+    }
+    for (const course of courses) {
+      this.setArchiveDialogStatus(`Notenkurs wird geladen: ${course.name || "Kurs"} ...`);
+      await this.ensureGradeCourseLoaded(course.id);
+      sections.push(...this.buildArchiveGradeCourseSections(course, options));
+    }
+    return sections;
+  }
+
+  buildArchiveGradeCourseSections(course, options = {}) {
+    const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id), "last")
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+    const groupedAssessments = this.store.getGroupedGradeAssessments(course.id);
+    const hasCategories = groupedAssessments.some((periodGroup) => (
+      Array.isArray(periodGroup?.categories) && periodGroup.categories.length > 0
+    ));
+    const sections = [];
+    if (!students.length || !hasCategories) {
+      sections.push({
+        type: "note",
+        title: `Noten - ${course.name || "Kurs"}`,
+        text: "Für diesen Kurs fehlen Teilnehmende oder Notenstruktur."
+      });
+      return sections;
+    }
+    const lookup = this.buildGradesPrintLookup(groupedAssessments);
+    const overviewColumns = this.getArchiveGradeCourseColumns(course, groupedAssessments, { includeAssessments: false });
+    sections.push({
+      type: "table",
+      title: `Noten - ${course.name || "Kurs"} - Kategorie-Noten`,
+      columns: overviewColumns.map((column) => this.getGradesPrintColumnLabel(column, lookup)),
+      rows: students.map((student) => (
+        overviewColumns.map((column) => this.getGradesPrintCellValue(course, student, column))
+      ))
+    });
+    if (!options.includeGradeDetails) {
+      return sections;
+    }
+    const detailColumns = this.getArchiveGradeCourseColumns(course, groupedAssessments, { includeAssessments: true });
+    const assessmentColumns = detailColumns.filter((column) => column.type === "assessment");
+    if (!assessmentColumns.length) {
+      sections.push({
+        type: "note",
+        title: `Noten - ${course.name || "Kurs"} - Einzelnoten`,
+        text: "In diesem Kurs sind keine Einzelnoten oder BE-Leistungen angelegt."
+      });
+      return sections;
+    }
+    sections.push({
+      type: "table",
+      title: `Noten - ${course.name || "Kurs"} - Kategorie- und Einzelnoten`,
+      columns: detailColumns.map((column) => this.getGradesPrintColumnLabel(column, lookup)),
+      rows: students.map((student) => (
+        detailColumns.map((column) => this.getGradesPrintCellValue(course, student, column))
+      ))
+    });
+    if (options.includeBeMask) {
+      const testAssessments = assessmentColumns
+        .map((column) => column.assessment)
+        .filter((assessment) => normalizeGradeAssessmentMode(assessment?.mode) === "test");
+      testAssessments.forEach((assessment) => {
+        sections.push(this.buildArchiveGradeBeMaskSection(course, students, assessment));
+      });
+    }
+    return sections;
+  }
+
+  getArchiveGradeCourseColumns(course, groupedAssessments, options = {}) {
+    const includeAssessments = options.includeAssessments !== false;
+    const model = this.buildGradesFullyExpandedTableModel(course, groupedAssessments, { includeAddColumns: false });
+    const allowedTypes = new Set([
+      "student",
+      "total",
+      "period-total",
+      "category-partial",
+      "subcategory-partial",
+      "subcategory-homework",
+      "assessment"
+    ]);
+    return model.columns.filter((column) => (
+      allowedTypes.has(column.type)
+      && (includeAssessments || column.type !== "assessment")
+      && (includeAssessments || column.type !== "subcategory-homework")
+    ));
+  }
+
+  buildArchiveGradeBeMaskSection(course, students, assessment) {
+    const title = formatGradeAssessmentDisplayTitle(assessment?.title || "Leistung") || "Leistung";
+    const tasks = normalizeGradeTestTasks(assessment?.testTasks, { ensureDefault: false });
+    const scale = normalizeGradeTestScale(assessment?.testScale);
+    const scaleSnapshot = normalizeGradeTestScaleSnapshot(
+      assessment?.testScaleSnapshot,
+      scale,
+      this.store.getGradeTestScaleSettings()
+    );
+    const predicateSuffixes = normalizeGradeTestPredicateSuffixes(assessment?.testPredicateSuffixes, true);
+    const taskColumns = tasks.map((task, index) => {
+      const parts = [`A${index + 1}`];
+      if (Number(task.maxBe || 0) > 0) {
+        parts.push(`BE1 ${formatGradeBeValue(task.maxBe)}`);
+      }
+      if (normalizeGradeTestAfb(task.afb)) {
+        parts.push(`AFB ${normalizeGradeTestAfb(task.afb)}`);
+      }
+      return parts.join(" - ");
+    });
+    return {
+      type: "table",
+      title: `BE-Eingabemaske - ${course.name || "Kurs"} - ${title}`,
+      columns: ["Name", "Note", "BE2 / BE1", ...taskColumns],
+      rows: students.map((student) => {
+        const entry = this.store.getGradeEntry(student.id, assessment.id);
+        const scores = normalizeGradeTestScores(entry?.testScores);
+        const ratioState = calculateGradeTestRatio(tasks, scores);
+        const gradeValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, predicateSuffixes);
+        return [
+          this.getGradeStudentDisplayName(student),
+          formatGradeDisplayForSystem(gradeValue, this.getCurrentGradeOverviewDisplaySystem()),
+          formatGradeTestRatioDisplay(ratioState),
+          ...taskColumns.map((_column, index) => {
+            const task = tasks[index];
+            return task && Object.prototype.hasOwnProperty.call(scores, task.id)
+              ? formatGradeBeValue(scores[task.id])
+              : "—";
+          })
+        ];
+      })
+    };
+  }
+
+  collectArchivePlanningSections(year, options = {}) {
+    this.store.ensureLessonsForYear(year.id);
+    const sections = [];
+    const courses = this.store.listCourses(year.id).filter((course) => !course.noLesson);
+    if (options.includePlanningCourses) {
+      courses.forEach((course) => {
+        sections.push(this.buildArchivePlanningCourseSection(year, course));
+      });
+    }
+    if (options.includePlanningWeeks) {
+      sections.push(...this.buildArchivePlanningWeekSections(year));
+    }
+    return sections;
+  }
+
+  buildArchivePlanningCourseSection(year, course) {
+    const lessons = this.store.listLessonsForWeek(year.id, year.startDate, year.endDate, course.id);
+    const blocks = this._buildCourseTableBlocks(lessons);
+    if (!blocks.length) {
+      return {
+        type: "note",
+        title: `Planung - Kursansicht - ${course.name || "Kurs"}`,
+        text: "Für diesen Kurs sind im Schuljahr keine Unterrichtsstunden angelegt."
+      };
+    }
+    return {
+      type: "table",
+      title: `Planung - Kursansicht - ${course.name || "Kurs"}`,
+      columns: ["Datum", "Stunde", "Thema", "Notizen", "Markierungen"],
+      rows: blocks.map((block) => this.buildArchivePlanningCourseRow(block))
+    };
+  }
+
+  buildArchivePlanningCourseRow(block = []) {
+    const topLesson = block[0] || {};
+    const lastLesson = block[block.length - 1] || topLesson;
+    const topics = Array.from(new Set(
+      block.map((lesson) => String(lesson.topic || "").trim()).filter(Boolean)
+    ));
+    const notes = Array.from(new Set(
+      block.map((lesson) => String(lesson.notes || "").trim()).filter(Boolean)
+    ));
+    const flags = [];
+    if (block.every((lesson) => lesson.canceled)) {
+      flags.push(topLesson.cancelLabel || "Unterrichtsfrei");
+    }
+    if (block.some((lesson) => lesson.isEntfall)) {
+      flags.push("Entfall");
+    }
+    if (block.some((lesson) => lesson.isWrittenExam)) {
+      flags.push("Klausur");
+    }
+    const topicText = topics.length === 0
+      ? ""
+      : (topics.length === 1 ? topics[0] : topics.join(" / "));
+    return [
+      formatDate(topLesson.lessonDate || ""),
+      Number(topLesson.hour || 0) === Number(lastLesson.hour || 0)
+        ? String(topLesson.hour || "")
+        : `${topLesson.hour || ""}-${lastLesson.hour || ""}`,
+      topicText,
+      notes.join("\n"),
+      flags.join(", ")
+    ];
+  }
+
+  buildArchivePlanningWeekSections(year) {
+    const sections = [];
+    const hoursPerDay = this.store.getHoursPerDay();
+    for (
+      let weekStart = weekStartFor(year.startDate);
+      weekStart <= year.endDate;
+      weekStart = addDays(weekStart, 7)
+    ) {
+      const days = [0, 1, 2, 3, 4].map((offset) => addDays(weekStart, offset));
+      const lessons = this.store.listLessonsForWeek(year.id, days[0], days[4]);
+      const lessonsByDayHour = new Map();
+      lessons.forEach((lesson) => {
+        const key = `${lesson.lessonDate}|${lesson.hour}`;
+        if (!lessonsByDayHour.has(key)) {
+          lessonsByDayHour.set(key, []);
+        }
+        lessonsByDayHour.get(key).push(lesson);
+      });
+      const rows = [];
+      for (let hour = 1; hour <= hoursPerDay; hour += 1) {
+        rows.push([
+          String(hour),
+          ...days.map((dayIso) => this.formatArchiveWeekCell(lessonsByDayHour.get(`${dayIso}|${hour}`) || []))
+        ]);
+      }
+      sections.push({
+        type: "table",
+        title: `Planung - Wochenansicht KW ${String(isoWeekNumber(weekStart)).padStart(2, "0")} (${formatDate(days[0])} - ${formatDate(days[4])})`,
+        columns: ["Std.", ...days.map((dayIso, index) => `${DAYS_SHORT[index]} ${formatDate(dayIso).slice(0, 5)}`)],
+        rows
+      });
+    }
+    return sections;
+  }
+
+  formatArchiveWeekCell(lessons = []) {
+    if (!Array.isArray(lessons) || !lessons.length) {
+      return "";
+    }
+    return lessons.map((lesson) => {
+      if (lesson.canceled) {
+        return lesson.cancelLabel || "Unterrichtsfrei";
+      }
+      const parts = [lesson.courseName || ""];
+      const topic = String(lesson.topic || "").trim();
+      const notes = String(lesson.notes || "").trim();
+      if (topic) {
+        parts.push(topic);
+      }
+      if (lesson.isEntfall) {
+        parts.push("Entfall");
+      }
+      if (lesson.isWrittenExam) {
+        parts.push("Klausur");
+      }
+      if (notes) {
+        parts.push(notes);
+      }
+      return parts.filter(Boolean).join(" - ");
+    }).join("\n");
+  }
+
+  async buildArchivePdfBytes(year, sections = []) {
+    const PDFLib = await ensureArchivePdfLibLoaded();
+    const { PDFDocument, StandardFonts, rgb } = PDFLib;
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const pageWidth = 841.89;
+    const pageHeight = 595.28;
+    const margin = 30;
+    const contentWidth = pageWidth - margin * 2;
+    let page = null;
+    let y = 0;
+    let pageNumber = 0;
+    const colors = {
+      text: rgb(0.08, 0.1, 0.14),
+      muted: rgb(0.36, 0.42, 0.5),
+      line: rgb(0.78, 0.82, 0.88),
+      headerBg: rgb(0.9, 0.93, 0.97),
+      title: rgb(0.05, 0.12, 0.24)
+    };
+
+    const addPage = () => {
+      page = pdfDoc.addPage([pageWidth, pageHeight]);
+      pageNumber += 1;
+      y = pageHeight - margin;
+      page.drawText(sanitizePdfText(`Teachhelper Archiv - ${year.name || ""}`), {
+        x: margin,
+        y,
+        size: 8,
+        font,
+        color: colors.muted
+      });
+      page.drawText(String(pageNumber), {
+        x: pageWidth - margin - 20,
+        y,
+        size: 8,
+        font,
+        color: colors.muted
+      });
+      y -= 22;
+    };
+
+    const ensureSpace = (height) => {
+      if (!page || y - height < margin) {
+        addPage();
+        return true;
+      }
+      return false;
+    };
+
+    const wrapText = (value, maxWidth, size, activeFont = font, maxLines = 4) => {
+      const text = sanitizePdfText(value || "");
+      const paragraphs = text.split("\n");
+      const lines = [];
+      paragraphs.forEach((paragraph) => {
+        const words = paragraph.split(/\s+/).filter(Boolean);
+        if (!words.length) {
+          lines.push("");
+          return;
+        }
+        let line = "";
+        words.forEach((word) => {
+          const next = line ? `${line} ${word}` : word;
+          if (activeFont.widthOfTextAtSize(next, size) <= maxWidth || !line) {
+            line = next;
+          } else {
+            lines.push(line);
+            line = word;
+          }
+        });
+        lines.push(line);
+      });
+      if (lines.length > maxLines) {
+        const clipped = lines.slice(0, maxLines);
+        clipped[clipped.length - 1] = `${clipped[clipped.length - 1].replace(/\.*$/, "")}...`;
+        return clipped;
+      }
+      return lines;
+    };
+
+    const drawLines = (lines, x, topY, size, activeFont = font, color = colors.text, lineHeight = size + 2) => {
+      lines.forEach((line, index) => {
+        page.drawText(sanitizePdfText(line), {
+          x,
+          y: topY - (index + 1) * lineHeight,
+          size,
+          font: activeFont,
+          color
+        });
+      });
+    };
+
+    const drawHeading = (title, level = 1) => {
+      const size = level === 1 ? 16 : 11;
+      const activeFont = level === 1 ? boldFont : boldFont;
+      const lines = wrapText(title, contentWidth, size, activeFont, 3);
+      const height = lines.length * (size + 3) + 8;
+      ensureSpace(height);
+      drawLines(lines, margin, y, size, activeFont, level === 1 ? colors.title : colors.text, size + 3);
+      y -= height;
+    };
+
+    const drawParagraph = (text) => {
+      const lines = wrapText(text, contentWidth, 9, font, 8);
+      const height = Math.max(18, lines.length * 11 + 4);
+      ensureSpace(height);
+      drawLines(lines, margin, y, 9, font, colors.text, 11);
+      y -= height;
+    };
+
+    const drawTablePart = (title, columns, rows) => {
+      drawHeading(title, 2);
+      const tableFontSize = 7;
+      const lineHeight = 8.5;
+      const firstColumnWidth = columns.length > 1 ? 104 : contentWidth;
+      const otherWidth = columns.length > 1
+        ? Math.max(54, (contentWidth - firstColumnWidth) / (columns.length - 1))
+        : contentWidth;
+      const widths = columns.map((_column, index) => index === 0 ? firstColumnWidth : otherWidth);
+      const drawRow = (cells, isHeader = false) => {
+        const cellLines = cells.map((cell, index) => (
+          wrapText(cell, widths[index] - 7, tableFontSize, isHeader ? boldFont : font, isHeader ? 3 : 4)
+        ));
+        const rowHeight = Math.max(18, Math.max(...cellLines.map((lines) => lines.length)) * lineHeight + 8);
+        const pageBroke = ensureSpace(rowHeight + (isHeader ? 0 : 18));
+        if (pageBroke && !isHeader) {
+          drawRow(columns, true);
+        }
+        let x = margin;
+        cells.forEach((_cell, index) => {
+          const rectangleOptions = {
+            x,
+            y: y - rowHeight,
+            width: widths[index],
+            height: rowHeight,
+            borderColor: colors.line,
+            borderWidth: 0.5
+          };
+          if (isHeader) {
+            rectangleOptions.color = colors.headerBg;
+          }
+          page.drawRectangle(rectangleOptions);
+          drawLines(cellLines[index], x + 3.5, y - 3, tableFontSize, isHeader ? boldFont : font, colors.text, lineHeight);
+          x += widths[index];
+        });
+        y -= rowHeight;
+      };
+      drawRow(columns, true);
+      if (!rows.length) {
+        drawRow(["Keine Daten", ...columns.slice(1).map(() => "")]);
+      } else {
+        rows.forEach((row) => {
+          drawRow(row.map((cell) => cell === null || cell === undefined || cell === "" ? "—" : String(cell)));
+        });
+      }
+      y -= 10;
+    };
+
+    const drawTable = (section) => {
+      const columns = Array.isArray(section.columns) ? section.columns : [];
+      const rows = Array.isArray(section.rows) ? section.rows : [];
+      if (columns.length <= 1) {
+        drawTablePart(section.title, columns.length ? columns : ["Daten"], rows);
+        return;
+      }
+      const firstColumnWidth = 104;
+      const minOtherWidth = 72;
+      const maxOtherColumns = Math.max(1, Math.floor((contentWidth - firstColumnWidth) / minOtherWidth));
+      const remainingColumns = columns.slice(1);
+      for (let start = 0; start < remainingColumns.length; start += maxOtherColumns) {
+        const chunk = remainingColumns.slice(start, start + maxOtherColumns);
+        const chunkRows = rows.map((row) => [row[0], ...row.slice(1 + start, 1 + start + chunk.length)]);
+        const partSuffix = remainingColumns.length > maxOtherColumns
+          ? ` (${Math.floor(start / maxOtherColumns) + 1}/${Math.ceil(remainingColumns.length / maxOtherColumns)})`
+          : "";
+        drawTablePart(`${section.title}${partSuffix}`, [columns[0], ...chunk], chunkRows);
+      }
+    };
+
+    addPage();
+    drawHeading(`Teachhelper Archiv ${year.name || ""}`, 1);
+    drawParagraph(`Schuljahr: ${formatDate(year.startDate)} bis ${formatDate(year.endDate)}`);
+    sections.forEach((section) => {
+      if (section?.type === "note") {
+        drawHeading(section.title || "Hinweis", 2);
+        drawParagraph(section.text || "Keine Daten.");
+      } else if (section?.type === "table") {
+        drawTable(section);
+      }
+    });
+    return pdfDoc.save();
+  }
+
+  downloadArchivePdfBytes(bytes, year) {
+    const rawYearName = String(year?.name || `${String(year?.startDate || "").slice(0, 4)}-${String(year?.endDate || "").slice(0, 4)}`);
+    const fileName = `${sanitizeArchiveFileName(`Teachhelper-Archiv-${rawYearName}`)}.pdf`;
+    const blob = new Blob([bytes], { type: "application/pdf" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = fileName;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 30_000);
+  }
+
   getGradeSimulationCourseContext() {
     const isGradesOverview = this.isGradesTopTabActive()
       && this.currentView === "grades"
@@ -19773,6 +20696,22 @@ class PlannerApp {
     }
     const subView = this.normalizeGradesSubView(this.gradesSubView);
     return subView === "overview" || subView === "entry";
+  }
+
+  isGradeSidebarVaultInaccessible() {
+    return this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.isGradeVaultEncryptionEnabled()
+      && !this.canAccessGradeVault();
+  }
+
+  syncSidebarGradeActionsAccessState(actions = this.refs.sidebarGradePrivacyActions) {
+    if (!actions) {
+      return false;
+    }
+    const inaccessible = this.isGradeSidebarVaultInaccessible();
+    actions.classList.toggle("is-vault-inaccessible", inaccessible);
+    return inaccessible;
   }
 
   shouldShowSidebarGradeNameOrderToggle() {
@@ -19824,16 +20763,21 @@ class PlannerApp {
       && this.normalizeGradesSubView(this.gradesSubView) === "overview";
     const context = this.getGradeSimulationCourseContext();
     actions.hidden = !this.shouldShowSidebarGradeActions();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
     if (section) {
       section.hidden = !isGradesOverview;
     }
-    button.disabled = !context.ready;
+    button.disabled = vaultInaccessible || !context.ready;
     button.title = this.locked
       ? "Simulation gesperrt"
       : (
-        context.ready
-          ? "Warnungen (Simulation)"
-          : "Simulation in der entsperrten Kursübersicht verfügbar"
+        vaultInaccessible
+          ? "Notenmodul zuerst entsperren"
+          : (
+            context.ready
+              ? "Warnungen (Simulation)"
+              : "Simulation in der entsperrten Kursübersicht verfügbar"
+          )
       );
   }
 
@@ -19922,12 +20866,15 @@ class PlannerApp {
     }
     const context = this.getExpectationHorizonCourseContext();
     actions.hidden = !this.shouldShowSidebarGradeActions();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
     if (section) {
       section.hidden = !isGradesEntry || !isTestMode;
     }
-    button.disabled = !context.ready;
+    button.disabled = vaultInaccessible || !context.ready;
     button.setAttribute("aria-label", "Erwartungshorizont erzeugen");
-    button.title = context.ready ? "Erwartungshorizont erzeugen" : context.reason || "Nur im BE-Modus verfügbar.";
+    button.title = vaultInaccessible
+      ? "Notenmodul zuerst entsperren"
+      : (context.ready ? "Erwartungshorizont erzeugen" : context.reason || "Nur im BE-Modus verfügbar.");
   }
 
   handleExpectationHorizonOpenRequest(event = null) {
@@ -21822,7 +22769,8 @@ class PlannerApp {
       && this.normalizeGradesSubView(this.gradesSubView) === "overview";
     const isActive = Boolean(this.privacyFocusedGradeStudentId);
     const hasPreferredStudent = isGradesOverview && Boolean(this.getPreferredGradePrivacyStudentId());
-    const canToggle = isGradesOverview && !this.locked && (isActive || hasPreferredStudent);
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    const canToggle = isGradesOverview && !this.locked && !vaultInaccessible && (isActive || hasPreferredStudent);
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
       section.hidden = !isGradesOverview;
@@ -21840,7 +22788,7 @@ class PlannerApp {
       : (
         canToggle
           ? "Datenschutzmodus inaktiv"
-          : (this.locked
+          : (this.locked || vaultInaccessible
             ? "Datenschutzmodus gesperrt"
             : (
               isGradesOverview
@@ -21865,7 +22813,8 @@ class PlannerApp {
     const nameOrder = normalizeGradeStudentNameOrder(
       isGradesEntry ? this.gradesEntryNameOrder : this.gradesOverviewNameOrder
     );
-    const canChange = isAvailable && !this.locked;
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    const canChange = isAvailable && !this.locked && !vaultInaccessible;
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
       section.hidden = !isAvailable;
@@ -21885,7 +22834,8 @@ class PlannerApp {
     }
     const isAvailable = this.shouldShowSidebarGradeDisplaySystemToggle();
     const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
-    const canChange = isAvailable && !this.locked;
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    const canChange = isAvailable && !this.locked && !vaultInaccessible;
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
       section.hidden = !isAvailable;
@@ -21906,7 +22856,8 @@ class PlannerApp {
     const isAvailable = this.shouldShowSidebarGradePredicateSuffixToggle();
     const isSchoolDisplay = this.getCurrentGradeOverviewDisplaySystem() === GRADE_DISPLAY_SYSTEM_SCHOOL;
     const isActive = this.gradeOverviewPredicateSuffixes !== false;
-    const canToggle = isAvailable && isSchoolDisplay && !this.locked;
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    const canToggle = isAvailable && isSchoolDisplay && !this.locked && !vaultInaccessible;
     actions.hidden = !this.shouldShowSidebarGradeActions();
     if (section) {
       section.hidden = !isAvailable;
@@ -21943,12 +22894,13 @@ class PlannerApp {
       && this.refs.gradesEntryContent?.querySelector(".grades-entry-editor")
     );
     actions.hidden = !this.shouldShowSidebarGradeActions();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
     if (section) {
       section.hidden = !(isGradesOverview || isGradesEntry);
     }
-    button.disabled = this.locked || !(hasPrintableOverview || hasPrintableEntry);
+    button.disabled = this.locked || vaultInaccessible || !(hasPrintableOverview || hasPrintableEntry);
     button.setAttribute("aria-label", isGradesEntry ? "Noteneingabe drucken" : "Kursnoten drucken");
-    button.title = this.locked
+    button.title = this.locked || vaultInaccessible
       ? "Drucken gesperrt"
       : (
         hasPrintableOverview
@@ -29332,6 +30284,7 @@ class PlannerApp {
     this.updateSidebarGradeDisplaySystemToggleState();
     this.updateSidebarGradePredicateSuffixToggleState();
     this.updateSidebarGradePrintButtonState();
+    this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarGradeSimulationButtonState();
     this.renderSidebarFooterActions();
@@ -29425,6 +30378,19 @@ class PlannerApp {
       return this.settingsSourceView === "grades";
     }
     return this.shellTabContext === "grades";
+  }
+
+  getArchiveTabContext() {
+    if (this.shellTabContext === "grades") {
+      return "grades";
+    }
+    if (this.shellTabContext === "planning") {
+      return "planning";
+    }
+    if (this.currentView === "settings" && this.settingsSourceView === "grades") {
+      return "grades";
+    }
+    return "planning";
   }
 
   courseAllowsGrades(course) {

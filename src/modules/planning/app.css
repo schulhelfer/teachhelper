@@ -391,6 +391,11 @@
           max-width: 760px;
         }
 
+        #archive-dialog.app-dialog {
+          width: min(560px, calc(100vw - 24px));
+          max-width: 560px;
+        }
+
         #course-dialog .dialog-actions,
         #course-color-dialog .dialog-actions,
         #course-students-dialog .dialog-actions,
@@ -1206,8 +1211,26 @@
           padding: 0 6px;
         }
 
+        .sidebar-archive-actions {
+          flex: 0 0 auto;
+          display: grid;
+          gap: 0.7rem;
+          margin-top: 0.7rem;
+          padding: 0 6px;
+        }
+
+        .sidebar-archive-actions[hidden],
         .sidebar-grade-privacy-actions[hidden] {
           display: none !important;
+        }
+
+        .sidebar-grade-privacy-actions.is-vault-inaccessible .sidebar-grade-action-section {
+          opacity: 0.48;
+          filter: grayscale(0.85);
+        }
+
+        .sidebar-grade-privacy-actions.is-vault-inaccessible .sidebar-grade-action-title {
+          color: rgba(148, 163, 184, 0.58);
         }
 
         .sidebar-grade-privacy-divider {
@@ -1217,7 +1240,8 @@
         .sidebar-grade-privacy-toggle,
         .sidebar-grade-print-btn,
         .sidebar-grade-expectation-btn,
-        .sidebar-grade-simulation-btn {
+        .sidebar-grade-simulation-btn,
+        .sidebar-archive-btn {
           width: 100%;
           min-width: 0;
           min-height: 42px;
@@ -1285,6 +1309,8 @@
         .sidebar-grade-privacy-toggle:not(:disabled):focus-visible,
         .sidebar-grade-print-btn:not(:disabled):hover,
         .sidebar-grade-print-btn:not(:disabled):focus-visible,
+        .sidebar-archive-btn:not(:disabled):hover,
+        .sidebar-archive-btn:not(:disabled):focus-visible,
         .sidebar-grade-expectation-btn:not(:disabled):hover,
         .sidebar-grade-expectation-btn:not(:disabled):focus-visible,
         .sidebar-grade-simulation-btn:not(:disabled):hover,
@@ -1308,6 +1334,7 @@
 
         .sidebar-grade-privacy-toggle:disabled,
         .sidebar-grade-print-btn:disabled,
+        .sidebar-archive-btn:disabled,
         .sidebar-grade-expectation-btn:disabled,
         .sidebar-grade-simulation-btn:disabled {
           cursor: not-allowed;
@@ -3081,6 +3108,178 @@
           gap: 0.4rem;
         }
 
+        .archive-dialog-copy {
+          margin: -0.1rem 0 0.2rem;
+          color: rgba(226, 232, 240, 0.78);
+          font-size: 0.9rem;
+          line-height: 1.4;
+        }
+
+        .archive-dialog-section {
+          display: grid;
+          gap: 0.58rem;
+          padding: 0.7rem;
+          border: 1px solid var(--line-soft);
+          border-radius: 12px;
+          background: rgba(22, 29, 40, 0.55);
+        }
+
+        .archive-dialog-toggle {
+          color: rgba(226, 232, 240, 0.95);
+          font-weight: 700;
+          min-height: 22px;
+        }
+
+        .archive-dialog-toggle-text {
+          position: relative;
+          display: inline-flex;
+          align-items: center;
+          width: max-content;
+          min-height: 22px;
+          line-height: 1.25;
+        }
+
+        .archive-dialog-info {
+          display: block;
+          position: absolute;
+          left: calc(100% + 10px);
+          top: 50%;
+          z-index: 40;
+          width: max-content;
+          max-width: min(260px, calc(100vw - 80px));
+          margin: 0;
+          padding: 6px 9px;
+          border: 1px solid rgba(148, 163, 184, 0.3);
+          border-radius: 12px;
+          background: rgba(15, 23, 42, 0.96);
+          box-shadow: 0 10px 26px rgba(2, 6, 23, 0.28);
+          color: #e2e8f0;
+          font-size: 0.76rem;
+          font-weight: 600;
+          line-height: 1.35;
+          pointer-events: none;
+          transform: translateY(-50%);
+          animation: archive-hint-pop 180ms ease-out;
+        }
+
+        .archive-dialog-info::before {
+          content: "";
+          position: absolute;
+          left: -6px;
+          top: 50%;
+          width: 10px;
+          height: 10px;
+          transform: translateY(-50%) rotate(45deg);
+          background: rgba(15, 23, 42, 0.96);
+          border-left: 1px solid rgba(148, 163, 184, 0.3);
+          border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+        }
+
+        .archive-dialog-info[hidden] {
+          display: none;
+        }
+
+        @keyframes archive-hint-pop {
+          from {
+            opacity: 0;
+            transform: translateY(-50%) translateX(-4px);
+          }
+
+          to {
+            opacity: 1;
+            transform: translateY(-50%) translateX(0);
+          }
+        }
+
+        .archive-dialog-nested {
+          display: grid;
+          gap: 0.52rem;
+          padding-left: 1.55rem;
+        }
+
+        #archive-dialog input:disabled {
+          opacity: 1;
+          filter: none;
+        }
+
+        #archive-dialog input[type="checkbox"],
+        #archive-dialog input[type="radio"] {
+          flex: 0 0 18px;
+          inline-size: 18px;
+          block-size: 18px;
+          min-inline-size: 18px;
+          min-block-size: 18px;
+          margin: 0;
+          padding: 0;
+          align-self: center;
+          box-sizing: border-box;
+          line-height: 1;
+          accent-color: #60a5fa;
+          transition: none;
+        }
+
+        #archive-dialog input[type="checkbox"]:focus,
+        #archive-dialog input[type="radio"]:focus {
+          background-color: var(--control-bg);
+          box-shadow: 0 0 0 2px rgba(82, 150, 255, 0.22);
+        }
+
+        .archive-dialog-nested[aria-disabled="true"] {
+          color: rgba(148, 163, 184, 0.68);
+          pointer-events: none;
+        }
+
+        .archive-dialog-nested[aria-disabled="true"] label,
+        .archive-dialog-nested[aria-disabled="true"] span {
+          color: rgba(148, 163, 184, 0.68);
+        }
+
+        #archive-dialog .archive-dialog-nested[aria-disabled="true"] input[type="checkbox"],
+        #archive-dialog .archive-dialog-nested[aria-disabled="true"] input[type="radio"] {
+          opacity: 0.58;
+        }
+
+        .archive-dialog-choice-group {
+          display: grid;
+          gap: 0.42rem;
+        }
+
+        .archive-dialog-radio {
+          grid-template-columns: 18px 1fr;
+          align-items: center;
+          gap: 0.4rem;
+          min-height: 22px;
+          line-height: 1.25;
+        }
+
+        .archive-dialog-be-mask {
+          align-items: start;
+          margin-left: 1.25rem;
+          min-height: 22px;
+          line-height: 1.25;
+        }
+
+        #archive-planning-options .checkbox-line {
+          min-height: 22px;
+          line-height: 1.25;
+        }
+
+        .archive-dialog-status {
+          min-height: 1.25rem;
+          margin: 0;
+          color: rgba(226, 232, 240, 0.78);
+          font-size: 0.88rem;
+          line-height: 1.4;
+        }
+
+        .archive-dialog-status.is-error {
+          color: #fecaca;
+        }
+
+        .archive-dialog-status.is-ok {
+          color: #bbf7d0;
+        }
+
         .course-color-panel {
           border: 1px solid var(--line-soft);
           border-radius: 10px;
@@ -3323,6 +3522,51 @@
           gap: 0.4rem;
           grid-template-columns: none;
           margin: 0;
+        }
+
+        .settings-inline-checkbox input[type="checkbox"] {
+          flex: 0 0 18px;
+          inline-size: 18px;
+          block-size: 18px;
+          min-inline-size: 18px;
+          min-block-size: 18px;
+          margin: 0;
+          padding: 0;
+          align-self: center;
+          box-sizing: border-box;
+          line-height: 1;
+          accent-color: #60a5fa;
+          transition: none;
+        }
+
+        .settings-inline-checkbox input[type="checkbox"]:focus {
+          background-color: var(--control-bg);
+          box-shadow: 0 0 0 2px rgba(82, 150, 255, 0.22);
+        }
+
+        .settings-inline-checkbox input[type="checkbox"]:disabled {
+          opacity: 0.72;
+          filter: none;
+        }
+
+        #course-dialog .checkbox-line input[type="checkbox"] {
+          flex: 0 0 18px;
+          inline-size: 18px;
+          block-size: 18px;
+          min-inline-size: 18px;
+          min-block-size: 18px;
+          margin: 0;
+          padding: 0;
+          align-self: center;
+          box-sizing: border-box;
+          line-height: 1;
+          accent-color: #60a5fa;
+          transition: none;
+        }
+
+        #course-dialog .checkbox-line input[type="checkbox"]:focus {
+          background-color: var(--control-bg);
+          box-shadow: 0 0 0 2px rgba(82, 150, 255, 0.22);
         }
 
         .grade-test-scale-settings {
