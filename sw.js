@@ -11,6 +11,7 @@ const APP_SHELL = [
   './icon-512.png',
   './src/main.js',
   './src/app/dom.js',
+  './src/app/first-run-tutorial.js',
   './src/app/planning-seatplan-bridge.js',
   './src/app/pwa-updates.js',
   './src/app/shell.js',

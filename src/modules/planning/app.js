@@ -6962,8 +6962,6 @@ class PlannerApp {
     this.pendingGradesOverviewAutoScrollFrame = 0;
     this.pendingGradesOverviewAutoScrollFrameType = "";
     this.gradesTableStickyScrollbarPointerActive = false;
-    this.initialDatabaseSetupInfoShown = false;
-    this.initialDatabaseSetupInfoQueued = false;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
     this.pendingWeekGradeAssessmentLoadKey = "";
     this.gradesOverviewAssessmentSpotlight = null;
@@ -7438,15 +7436,56 @@ class PlannerApp {
     }
   }
 
+  getGradeTutorialState() {
+    const databaseConnected = this.hasShellDatabaseConnection();
+    const backupConnected = this.isManualPersistenceMode()
+      ? databaseConnected
+      : Boolean(this.backupState.directoryHandle);
+    const year = this.activeSchoolYear;
+    const courses = year
+      ? this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course))
+      : [];
+    const planningCourses = year
+      ? this.store.listCourses(year.id).filter((course) => !course.noLesson)
+      : [];
+    const planningCourseIds = new Set(planningCourses.map((course) => Number(course.id)));
+    const hasPlanningSlot = Boolean(
+      year
+      && this.store.listSlotsForYear(year.id).some((slot) => planningCourseIds.has(Number(slot.courseId)))
+    );
+    const selectedCourse = courses.find((course) => Number(course.id) === Number(this.selectedCourseId))
+      || courses[0]
+      || null;
+    const hasGradeStudents = Boolean(
+      selectedCourse
+      && this.isGradeCourseLoaded(selectedCourse.id)
+      && this.store.listGradeStudents(selectedCourse.id).some((student) => (
+        !student?.isPlaceholder && Number(student?.id || 0) > 0
+      ))
+    );
+    return {
+      backupConnected,
+      hasGradeCourse: courses.length > 0,
+      hasGradeStudents,
+      planningAccessReady: !this.isAccessLocked(),
+      hasPlanningCourse: planningCourses.length > 0,
+      hasPlanningSlot,
+    };
+  }
+
   dispatchGradeVaultState() {
     if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
       return;
     }
     const mode = this.getShellGradeVaultStatusMode();
+    const tutorialState = this.getGradeTutorialState();
     window.dispatchEvent(new CustomEvent("classroom:planning-grade-vault-state", {
       detail: {
         mode,
         dbConnected: this.hasShellDatabaseConnection(),
+        backupConnected: tutorialState.backupConnected,
+        hasGradeCourse: tutorialState.hasGradeCourse,
+        hasGradeStudents: tutorialState.hasGradeStudents,
         configured: this.hasGradeVaultUnlockConfig(),
         unlocked: this.isGradeVaultUnlocked(),
         encryptionEnabled: this.isGradeVaultEncryptionEnabled(),
@@ -9590,9 +9629,8 @@ class PlannerApp {
       if (this.shouldPromptForManualDatabaseOnStartup()) {
         this.currentView = "settings";
         this.activeSettingsTab = "database";
-        this.settingsSourceView = "planning";
+        this.settingsSourceView = this.shellTabContext === "grades" ? "grades" : "planning";
         this.renderAll();
-        this.queueInitialDatabaseSetupInfo();
       } else {
         this.renderDatabaseSection();
         this.dispatchGradeVaultState();
@@ -9615,7 +9653,6 @@ class PlannerApp {
       this.renderDatabaseSection();
       this.dispatchGradeVaultState();
       this.queuePlanningReadySignal();
-      this.queueInitialDatabaseSetupInfo();
       return;
     }
     this.syncState.storedFileHandle = storedSyncHandle;
@@ -9663,48 +9700,11 @@ class PlannerApp {
     }
     this.currentView = "settings";
     this.activeSettingsTab = "database";
-    this.settingsSourceView = "planning";
+    this.settingsSourceView = this.shellTabContext === "grades" ? "grades" : "planning";
     this.renderViewState();
     this.renderSettingsTabs();
     this.renderDatabaseSection();
     this.renderSidebarCourseList();
-  }
-
-  queueInitialDatabaseSetupInfo() {
-    if (
-      this.initialDatabaseSetupInfoShown
-      || this.initialDatabaseSetupInfoQueued
-      || this.hasShellDatabaseConnection()
-    ) {
-      return;
-    }
-    if (this.currentView !== "settings" || this.activeSettingsTab !== "database") {
-      return;
-    }
-    this.initialDatabaseSetupInfoQueued = true;
-    const show = () => {
-      this.initialDatabaseSetupInfoQueued = false;
-      if (
-        this.initialDatabaseSetupInfoShown
-        || this.hasShellDatabaseConnection()
-        || this.currentView !== "settings"
-        || this.activeSettingsTab !== "database"
-      ) {
-        return;
-      }
-      this.initialDatabaseSetupInfoShown = true;
-      const message = this.isManualPersistenceMode()
-        ? "Planungsmodul oder Notenmodul erfordern eine Datenbankdatei: Wähle eine bestehende Datei aus oder lege eine neue an. Außerdem muss ein Speicherort für Backups festgelegt werden."
-        : "Planungsmodul oder Notenmodul erfordern eine Datenbankdatei: Wähle eine bestehende Datei aus oder lege eine neue an. Außerdem muss ein Speicherort für Backups festgelegt werden.";
-      this.showInfoMessage(message, "Datenbank erforderlich").catch(() => undefined);
-    };
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(show);
-      });
-    } else {
-      setTimeout(show, 0);
-    }
   }
 
   ensureStandaloneSettingsView() {
@@ -10453,7 +10453,7 @@ class PlannerApp {
       this.closeTopicDialog();
       this.resetInlineWeekBlockTopicEdit();
       this.currentView = "settings";
-      this.settingsSourceView = "planning";
+      this.settingsSourceView = this.shellTabContext === "grades" ? "grades" : "planning";
       this.activeSettingsTab = (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired")
         ? "database"
         : (manualDatabaseAllowed ? "database" : "dayoff");
@@ -14809,12 +14809,32 @@ class PlannerApp {
       });
       window.addEventListener("classroom:planning-view-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
-        const requestedView = detail && detail.view === "grades" ? "grades" : "week";
+        const requestedView = detail && detail.view === "grades"
+          ? "grades"
+          : (
+            detail && detail.view === "settings"
+              ? "settings"
+              : (detail && detail.view === "course" ? "course" : "week")
+          );
+        const requestedSettingsTab = String(detail?.settingsTab || "").trim();
+        const requestedSettingsContext = detail?.settingsContext === "grades" ? "grades" : "planning";
+        const requestedGradesSubView = detail?.gradesSubview === "entry"
+          ? "entry"
+          : (detail?.gradesSubview === "overview" ? "overview" : "");
+        const allowedSettingsTabs = new Set(["dayoff", "display", "lessonTimes", "database"]);
+        if (requestedView === "settings" && allowedSettingsTabs.has(requestedSettingsTab)) {
+          this.shellTabContext = requestedSettingsContext;
+          this.currentView = "settings";
+          this.settingsSourceView = requestedSettingsContext;
+          this.activeSettingsTab = requestedSettingsTab;
+          this.renderAll();
+          this.queuePlanningReadySignal();
+          return;
+        }
         this.shellTabContext = requestedView === "grades" ? "grades" : "planning";
         if (this.locked) {
-          this.renderViewState();
-          this.renderSidebarCourseList();
-          this.queuePlanningReadySignal();
+          this.settingsSourceView = this.shellTabContext;
+          this.renderAll({ visibleOnly: true });
           return;
         }
         const manualDatabaseSetupPending = this.shouldPromptForManualDatabaseOnStartup()
@@ -14823,7 +14843,14 @@ class PlannerApp {
         if (manualDatabaseSetupPending) {
           return;
         }
+        const isTutorialRequest = detail?.source === "tutorial";
+        if (requestedView === "grades" && requestedGradesSubView && isTutorialRequest) {
+          this.gradesSubView = requestedGradesSubView;
+        }
         this.switchView(requestedView);
+        if (requestedView === "grades" && requestedGradesSubView && !isTutorialRequest) {
+          this.switchGradesSubView(requestedGradesSubView);
+        }
       });
       window.addEventListener("classroom:planning-grade-vault-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
@@ -16975,9 +17002,15 @@ class PlannerApp {
     if (gradesSettingsContext) {
       const mode = this.getGradeVaultStatusMode();
       const encryptionEnabled = this.isGradeVaultEncryptionEnabled();
+      const databaseConnected = this.hasShellDatabaseConnection();
       if (this.refs.gradeVaultEncryptionEnabled) {
         this.refs.gradeVaultEncryptionEnabled.checked = encryptionEnabled;
-        this.refs.gradeVaultEncryptionEnabled.disabled = this.locked && !allowDatabaseControls;
+        this.refs.gradeVaultEncryptionEnabled.disabled = !databaseConnected
+          || (this.locked && !allowDatabaseControls);
+        this.refs.gradeVaultEncryptionEnabled.closest("label")?.classList.toggle(
+          "is-disabled",
+          !databaseConnected
+        );
       }
       if (this.refs.gradeVaultSettingsStatus) {
         this.refs.gradeVaultSettingsStatus.textContent = mode === "off"
@@ -17004,7 +17037,7 @@ class PlannerApp {
           ? "Passwort einrichten"
           : (mode === "unlock" ? "Notenmodul entsperren" : "Passwort ändern");
         this.refs.gradeVaultSettingsActionBtn.hidden = mode === "off";
-        this.refs.gradeVaultSettingsActionBtn.disabled = mode === "off";
+        this.refs.gradeVaultSettingsActionBtn.disabled = mode === "off" || !databaseConnected;
       }
     }
     this.updateSettingsActionButtons();
@@ -19106,6 +19139,7 @@ class PlannerApp {
       void this.ensureGradeCourseLoaded(course.id).then(() => {
         if (this.currentView === "grades" && Number(this.selectedCourseId || 0) === Number(course.id)) {
           this.renderGradesView();
+          this.queuePlanningReadySignal();
         }
       }).catch((error) => {
         this.setSyncStatus(
@@ -29049,6 +29083,7 @@ class PlannerApp {
     const gradeVaultUnlocked = this.isGradeVaultUnlocked();
     const gradeVaultEncryptionEnabled = this.isGradeVaultEncryptionEnabled();
     const gradeVaultSetupRequired = gradeVaultEncryptionEnabled && !this.hasGradeVaultUnlockConfig();
+    const gradeTutorialState = this.getGradeTutorialState();
     const detail = {
       view: String(this.currentView || ""),
       gradeVaultMode,
@@ -29057,6 +29092,12 @@ class PlannerApp {
       gradeVaultUnlocked,
       gradeVaultEncryptionEnabled,
       gradeVaultSetupRequired,
+      gradeBackupConnected: gradeTutorialState.backupConnected,
+      hasGradeCourse: gradeTutorialState.hasGradeCourse,
+      hasGradeStudents: gradeTutorialState.hasGradeStudents,
+      planningAccessReady: gradeTutorialState.planningAccessReady,
+      hasPlanningCourse: gradeTutorialState.hasPlanningCourse,
+      hasPlanningSlot: gradeTutorialState.hasPlanningSlot,
       hasGradeEntries: this.hasKnownGradeEntries()
     };
     const token = (Number(this._planningReadySignalToken) || 0) + 1;

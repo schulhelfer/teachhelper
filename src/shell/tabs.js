@@ -30,6 +30,7 @@ export const SEATPLAN_COURSE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-sav
 export const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-course-grade-config-request';
 export const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
 export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
+export const MERGER_TOOL_REQUEST_EVENT = 'classroom:merger-tool-request';
 export const DUPLICATE_CHECK_SHELL_LAYOUT_EVENT = 'classroom:duplicate-check-shell-layout';
 export const QR_SHELL_LAYOUT_EVENT = 'classroom:qr-shell-layout';
 export const PLANNING_SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';

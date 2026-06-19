@@ -1,5 +1,6 @@
 import { APP_VERSION } from './shared/app-version.js';
 import { createAppDom } from './app/dom.js';
+import { createFirstRunTutorial } from './app/first-run-tutorial.js';
 import { createPlanningSeatplanBridge } from './app/planning-seatplan-bridge.js';
 import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createShellController } from './app/shell.js';
@@ -22,1084 +23,2443 @@ import {
 } from './shell/tabs.js';
 import { applyTheme } from './shell/theme.js';
 
-    (function () {
-      const { appEl, els, monitorLights, themeColorMeta } = createAppDom(document);
-      if (!appEl) {
+(function () {
+  const { appEl, els, monitorLights, themeColorMeta } = createAppDom(document);
+  if (!appEl) {
+    return;
+  }
+  if (els.preferencesDialog && !els.preferencesDialog.hasAttribute('tabindex')) {
+    els.preferencesDialog.setAttribute('tabindex', '-1');
+  }
+  appEl.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  }, true);
+  const monitorLightNodes = Object.values(monitorLights).filter(Boolean);
+  const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
+  const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
+  const UPDATE_APPLIED_HINT_SESSION_KEY = 'teachhelper:update-applied-hint';
+  let versionUpdateHintTimer = 0;
+  let versionUpdateAvailable = false;
+  let versionUpdateAppliedVisible = false;
+
+  const renderVersionUpdateHint = () => {
+    if (!els.headerVersion) {
+      return;
+    }
+    const hintText = versionUpdateAppliedVisible
+      ? 'Aktualisiert'
+      : (versionUpdateAvailable ? 'Update verfügbar' : '');
+    els.headerVersion.classList.toggle('has-update-hint', Boolean(hintText));
+    if (hintText) {
+      els.headerVersion.dataset.updateHint = hintText;
+    } else {
+      delete els.headerVersion.dataset.updateHint;
+    }
+  };
+
+  const clearVersionUpdateHintTimer = () => {
+    if (versionUpdateHintTimer) {
+      window.clearTimeout(versionUpdateHintTimer);
+      versionUpdateHintTimer = 0;
+    }
+  };
+
+  const dismissVersionUpdateHint = () => {
+    versionUpdateAppliedVisible = false;
+    clearVersionUpdateHintTimer();
+    renderVersionUpdateHint();
+  };
+
+  const showVersionUpdateHint = () => {
+    if (!els.headerVersion) {
+      return;
+    }
+    versionUpdateAppliedVisible = true;
+    clearVersionUpdateHintTimer();
+    renderVersionUpdateHint();
+    versionUpdateHintTimer = window.setTimeout(() => {
+      dismissVersionUpdateHint();
+    }, 8000);
+  };
+
+  const setVersionUpdateAvailability = (isAvailable) => {
+    versionUpdateAvailable = Boolean(isAvailable);
+    renderVersionUpdateHint();
+  };
+
+  const markVersionUpdateHintPending = () => {
+    try {
+      window.sessionStorage?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
+    } catch {
+      // Ignore storage errors. The update still proceeds without the hint.
+    }
+  };
+
+  const consumePendingVersionUpdateHint = () => {
+    try {
+      if (window.sessionStorage?.getItem(UPDATE_APPLIED_HINT_SESSION_KEY) !== '1') {
         return;
       }
-      if (els.preferencesDialog && !els.preferencesDialog.hasAttribute('tabindex')) {
-        els.preferencesDialog.setAttribute('tabindex', '-1');
+      window.sessionStorage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
+      showVersionUpdateHint();
+    } catch {
+      // Ignore storage errors.
+    }
+  };
+
+  const setDisplayedAppVersion = (version) => {
+    if (els.headerVersion) {
+      const safeVersion = String(version || '').trim();
+      els.headerVersion.textContent = safeVersion ? `(v${safeVersion})` : '';
+      if (safeVersion) {
+        els.headerVersion.setAttribute('role', 'button');
+        els.headerVersion.setAttribute('tabindex', '0');
+        els.headerVersion.setAttribute('title', 'Auf Updates prüfen');
+        els.headerVersion.setAttribute('aria-label', `Version v${safeVersion}. Auf Updates prüfen`);
+      } else {
+        els.headerVersion.removeAttribute('role');
+        els.headerVersion.removeAttribute('tabindex');
+        els.headerVersion.removeAttribute('title');
+        els.headerVersion.removeAttribute('aria-label');
       }
-      appEl.addEventListener('contextmenu', (event) => {
-        event.preventDefault();
-      }, true);
-      const monitorLightNodes = Object.values(monitorLights).filter(Boolean);
-      const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
-      const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
-      const UPDATE_APPLIED_HINT_SESSION_KEY = 'teachhelper:update-applied-hint';
-      let versionUpdateHintTimer = 0;
-      let versionUpdateAvailable = false;
-      let versionUpdateAppliedVisible = false;
-
-      const renderVersionUpdateHint = () => {
-        if (!els.headerVersion) {
-          return;
+    }
+  };
+  setDisplayedAppVersion(APP_VERSION);
+  consumePendingVersionUpdateHint();
+  applyTheme({ root: document.documentElement, themeColorMeta });
+  const isIOSDevice = (() => {
+    if (typeof navigator === 'undefined') {
+      return false;
+    }
+    const nav = navigator;
+    const ua = typeof nav.userAgent === 'string' ? nav.userAgent : '';
+    const platform = typeof nav.platform === 'string' ? nav.platform : '';
+    const touchPoints = typeof nav.maxTouchPoints === 'number' ? nav.maxTouchPoints : 0;
+    if (/\b(iPad|iPhone|iPod)\b/i.test(ua) || /\b(iPad|iPhone|iPod)\b/i.test(platform)) {
+      return true;
+    }
+    return /\bMac\b/i.test(platform) && touchPoints > 1;
+  })();
+  if (isIOSDevice) {
+    appEl.classList.add('app-ios-optimized');
+  }
+  const { showMessage } = createMessageApi(document);
+  const reportAppError = (error, userMessage = '', context = {}) => (
+    reportError(error, userMessage, context, { showMessage })
+  );
+  const shellSupportsExternalFileSync = typeof window !== 'undefined'
+    && typeof window.showOpenFilePicker === 'function'
+    && typeof window.showSaveFilePicker === 'function';
+  const shellState = {
+    activeTab: TAB_GRADES,
+    planningInitialPaintPending: true,
+    planningManualSaveState: {
+      isManualMode: false,
+      dirty: false,
+      title: 'Datenbank speichern/neu anlegen',
+      ariaLabel: 'Datenbank speichern/neu anlegen',
+    },
+    planningGradeVaultState: {
+      ready: false,
+      mode: 'setup',
+      dbConnected: false,
+      backupConnected: false,
+      hasGradeCourse: false,
+      hasGradeStudents: false,
+      planningAccessReady: false,
+      hasPlanningCourse: false,
+      hasPlanningSlot: false,
+      configured: false,
+      unlocked: false,
+      setupRequired: false,
+    },
+    planningUnsavedState: {
+      dirty: false,
+      planningDirty: false,
+      gradesDirty: false,
+      dirtyGradeCourseIds: [],
+    },
+    chromeCollapsed: false,
+    chromeTransitionState: 'idle',
+    chromeTransitionTimer: 0,
+    tabTransitionState: 'idle',
+    tabTransitionTimer: 0,
+    pendingTabTransitionTarget: null,
+  };
+  const RANDOM_PICKER_MIN_WEIGHT = 0;
+  const RANDOM_PICKER_MAX_WEIGHT = 4;
+  const RANDOM_PICKER_DEFAULT_WEIGHT = 1;
+  const RANDOM_PICKER_CERTAIN_WEIGHT = 4;
+  const RANDOM_PICKER_SPIN_DURATION_MS = 4000;
+  let bridgeController = null;
+  let shellController = null;
+  const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
+  const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : shellState.chromeCollapsed);
+  const getChromeTransitionState = () => (
+    shellController ? shellController.getChromeTransitionState() : shellState.chromeTransitionState
+  );
+  const setChromeCollapsed = (collapsed) => shellController?.setChromeCollapsed(collapsed);
+  const toggleChromeCollapsed = () => shellController?.toggleChromeCollapsed();
+  const setActiveTab = (tab) => shellController?.setActiveTab(tab);
+  const setActiveTabForTutorial = (tab) => {
+    shellController?.setActiveTab(tab, { skipUnsavedPrompt: true });
+    if (shellController?.getActiveTab() !== tab) {
+      shellController?.setActiveTabImmediate(tab);
+    }
+  };
+  const setActiveTabImmediate = (tab) => shellController?.setActiveTabImmediate(tab);
+  const syncChromeState = () => shellController?.syncChromeState();
+  let tabNavigationBound = false;
+  const getPlanningFrame = () => els.planningHost?.querySelector('iframe') || null;
+  const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
+  const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
+  const getSeatplanFrame = () => els.seatplanMainHost?.querySelector('iframe') || null;
+  const openMergerToolForTutorial = (tool = 'layout') => {
+    bridgeController?.ensureTabInitialized(TAB_MERGER);
+    bridgeController?.dispatchMergerToolRequest?.(tool);
+  };
+  const openPlanningSettingsForTutorial = (settingsTab = 'dayoff') => {
+    bridgeController?.ensureTabInitialized(TAB_PLANNING);
+    bridgeController?.dispatchPlanningViewRequest({
+      view: 'settings',
+      settingsTab,
+      settingsContext: 'planning',
+      source: 'tutorial',
+    });
+  };
+  const openPlanningDatabaseSettingsForTutorial = () => openPlanningSettingsForTutorial('database');
+  const openPlanningDayOffSettingsForTutorial = () => openPlanningSettingsForTutorial('dayoff');
+  const openPlanningDisplaySettingsForTutorial = () => openPlanningSettingsForTutorial('display');
+  const openPlanningLessonTimesForTutorial = () => openPlanningSettingsForTutorial('lessonTimes');
+  const openGradesDatabaseSettingsForTutorial = () => {
+    bridgeController?.ensureTabInitialized(TAB_PLANNING);
+    bridgeController?.dispatchPlanningViewRequest({
+      view: 'settings',
+      settingsTab: 'database',
+      settingsContext: 'grades',
+      source: 'tutorial',
+    });
+  };
+  const openPlanningWeekForTutorial = () => {
+    bridgeController?.ensureTabInitialized(TAB_PLANNING);
+    bridgeController?.dispatchPlanningViewRequest({
+      view: 'week',
+      source: 'tutorial',
+    });
+  };
+  const openPlanningCourseForTutorial = () => {
+    bridgeController?.ensureTabInitialized(TAB_PLANNING);
+    bridgeController?.dispatchPlanningViewRequest({
+      view: 'course',
+      source: 'tutorial',
+    });
+  };
+  const openPlanningGradesForTutorial = (gradesSubview = 'overview') => {
+    bridgeController?.ensureTabInitialized(TAB_PLANNING);
+    bridgeController?.dispatchPlanningViewRequest({
+      view: 'grades',
+      gradesSubview,
+      source: 'tutorial',
+    });
+  };
+  const openPlanningGradesOverviewForTutorial = () => openPlanningGradesForTutorial('overview');
+  const openPlanningGradesEntryForTutorial = () => openPlanningGradesForTutorial('entry');
+  const planningFrameTarget = (selector, resolveFallback = (nodes) => nodes.planningShell || nodes.tabPlanning) => (
+    (nodes) => ({
+      frame: getPlanningFrame,
+      selector,
+      fallback: resolveFallback(nodes),
+    })
+  );
+  const mergerFrameTarget = (selector, resolveFallback = (nodes) => nodes.mergerShell || nodes.tabMerger) => (
+    (nodes) => ({
+      frame: getMergerFrame,
+      selector,
+      fallback: resolveFallback(nodes),
+    })
+  );
+  const duplicateCheckFrameTarget = (
+    selector,
+    resolveFallback = (nodes) => nodes.duplicateCheckShell || nodes.duplicateCheckHost || nodes.tabDuplicateCheck
+  ) => (
+    (nodes) => ({
+      frame: getDuplicateCheckFrame,
+      selector,
+      fallback: resolveFallback(nodes),
+    })
+  );
+  const seatplanFrameTarget = (
+    selector,
+    resolveFallback = (nodes) => nodes.seatplanMainHost || nodes.tabSeatplan
+  ) => (
+    (nodes) => ({
+      frame: getSeatplanFrame,
+      selector,
+      fallback: resolveFallback(nodes),
+    })
+  );
+  const createModuleTutorialStep = ({
+    tab,
+    title,
+    copy,
+    target,
+    placement = 'bottom',
+    beforeRender = null,
+  }) => {
+    const step = {
+      title,
+      copy,
+      target,
+      tab,
+      placement,
+      expandChrome: true,
+    };
+    if (typeof beforeRender === 'function') {
+      step.beforeRender = beforeRender;
+    }
+    return step;
+  };
+  const addTutorialContinuationHint = (steps, prerequisite) => {
+    const lastStep = steps[steps.length - 1];
+    if (lastStep && typeof lastStep.copy === 'string') {
+      lastStep.copy = `${lastStep.copy} Sobald du ${prerequisite} hast, kannst du das Tutorial über ℹ️ fortsetzen.`;
+    }
+    return steps;
+  };
+  const getCurrentModuleTutorialSteps = ({ activeTab } = {}) => {
+    switch (activeTab) {
+      case TAB_GRADES:
+      {
+        const gradesFallback = (nodes) => nodes.planningShell || nodes.tabGrades;
+        const databaseSteps = [
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Datenbank und Backup',
+            copy: 'Noten und Planung werden gemeinsam in einer Datenbankdatei gespeichert. Wähle eine bestehende Datei aus oder lege eine neue an.',
+            target: planningFrameTarget(
+              ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
+              gradesFallback
+            ),
+            beforeRender: openGradesDatabaseSettingsForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Backups',
+            copy: shellSupportsExternalFileSync
+              ? 'Wähle einen Backup-Ordner für automatische Sicherungen. Hier kannst du Backups außerdem sofort erstellen oder wieder importieren.'
+              : 'Auf diesem Gerät sicherst du die Datenbank manuell als Datei. Nach einem Neustart lädst du diese Datei hier wieder in TeachHelper.',
+            target: planningFrameTarget(
+              shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
+              gradesFallback
+            ),
+            beforeRender: openGradesDatabaseSettingsForTutorial,
+          }),
+        ];
+        const gradeState = shellState.planningGradeVaultState || {};
+        if (!gradeState.dbConnected || !gradeState.backupConnected) {
+          return addTutorialContinuationHint(
+            databaseSteps,
+            'eine Datenbankdatei und die Datensicherung eingerichtet'
+          );
         }
-        const hintText = versionUpdateAppliedVisible
-          ? 'Aktualisiert'
-          : (versionUpdateAvailable ? 'Update verfügbar' : '');
-        els.headerVersion.classList.toggle('has-update-hint', Boolean(hintText));
-        if (hintText) {
-          els.headerVersion.dataset.updateHint = hintText;
-        } else {
-          delete els.headerVersion.dataset.updateHint;
+
+        const setupSteps = [
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Verschlüsselung',
+            copy: 'Auf Wunsch schützt du den Notenbereich mit einem Passwort. Dann werden Notenstruktur, Teilnehmende und Bewertungen verschlüsselt gespeichert.',
+            target: planningFrameTarget('#grade-vault-settings-section', gradesFallback),
+            beforeRender: openGradesDatabaseSettingsForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Kurse',
+            copy: 'In der Sidebar wählst du einen Notenkurs aus oder legst über das Plus einen neuen Kurs an.',
+            target: planningFrameTarget('#sidebar-course-list', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+        ];
+        const steps = [...databaseSteps, ...setupSteps];
+        if (!gradeState.hasGradeCourse) {
+          return addTutorialContinuationHint(steps, 'einen Notenkurs angelegt');
         }
-      };
 
-      const clearVersionUpdateHintTimer = () => {
-        if (versionUpdateHintTimer) {
-          window.clearTimeout(versionUpdateHintTimer);
-          versionUpdateHintTimer = 0;
+        steps.push(createModuleTutorialStep({
+          tab: TAB_GRADES,
+          title: 'Teilnehmende',
+          copy: 'Hier verwaltest du die Teilnehmenden des ausgewählten Kurses. Erst danach stehen Notentabelle und Auswertungen vollständig bereit.',
+          target: planningFrameTarget(
+            ['#grades-empty-open-dialog', '#grades-table', '#grades-overview-panel'],
+            gradesFallback
+          ),
+          beforeRender: openPlanningGradesOverviewForTutorial,
+        }));
+        if (!gradeState.hasGradeStudents) {
+          return addTutorialContinuationHint(steps, 'Kursteilnehmende eingegeben');
         }
-      };
 
-      const dismissVersionUpdateHint = () => {
-        versionUpdateAppliedVisible = false;
-        clearVersionUpdateHintTimer();
-        renderVersionUpdateHint();
-      };
-
-      const showVersionUpdateHint = () => {
-        if (!els.headerVersion) {
-          return;
-        }
-        versionUpdateAppliedVisible = true;
-        clearVersionUpdateHintTimer();
-        renderVersionUpdateHint();
-        versionUpdateHintTimer = window.setTimeout(() => {
-          dismissVersionUpdateHint();
-        }, 8000);
-      };
-
-      const setVersionUpdateAvailability = (isAvailable) => {
-        versionUpdateAvailable = Boolean(isAvailable);
-        renderVersionUpdateHint();
-      };
-
-      const markVersionUpdateHintPending = () => {
-        try {
-          window.sessionStorage?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
-        } catch {
-          // Ignore storage errors. The update still proceeds without the hint.
-        }
-      };
-
-      const consumePendingVersionUpdateHint = () => {
-        try {
-          if (window.sessionStorage?.getItem(UPDATE_APPLIED_HINT_SESSION_KEY) !== '1') {
-            return;
-          }
-          window.sessionStorage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
-          showVersionUpdateHint();
-        } catch {
-          // Ignore storage errors.
-        }
-      };
-
-      const setDisplayedAppVersion = (version) => {
-        if (els.headerVersion) {
-          const safeVersion = String(version || '').trim();
-          els.headerVersion.textContent = safeVersion ? `(v${safeVersion})` : '';
-          if (safeVersion) {
-            els.headerVersion.setAttribute('role', 'button');
-            els.headerVersion.setAttribute('tabindex', '0');
-            els.headerVersion.setAttribute('title', 'Auf Updates prüfen');
-            els.headerVersion.setAttribute('aria-label', `Version v${safeVersion}. Auf Updates prüfen`);
-          } else {
-            els.headerVersion.removeAttribute('role');
-            els.headerVersion.removeAttribute('tabindex');
-            els.headerVersion.removeAttribute('title');
-            els.headerVersion.removeAttribute('aria-label');
-          }
-        }
-      };
-      setDisplayedAppVersion(APP_VERSION);
-      consumePendingVersionUpdateHint();
-      applyTheme({ root: document.documentElement, themeColorMeta });
-      const isIOSDevice = (() => {
-        if (typeof navigator === 'undefined') {
-          return false;
-        }
-        const nav = navigator;
-        const ua = typeof nav.userAgent === 'string' ? nav.userAgent : '';
-        const platform = typeof nav.platform === 'string' ? nav.platform : '';
-        const touchPoints = typeof nav.maxTouchPoints === 'number' ? nav.maxTouchPoints : 0;
-        if (/\b(iPad|iPhone|iPod)\b/i.test(ua) || /\b(iPad|iPhone|iPod)\b/i.test(platform)) {
-          return true;
-        }
-        return /\bMac\b/i.test(platform) && touchPoints > 1;
-      })();
-      if (isIOSDevice) {
-        appEl.classList.add('app-ios-optimized');
-      }
-      const { showMessage } = createMessageApi(document);
-      const reportAppError = (error, userMessage = '', context = {}) => (
-        reportError(error, userMessage, context, { showMessage })
-      );
-      const shellSupportsExternalFileSync = typeof window !== 'undefined'
-        && typeof window.showOpenFilePicker === 'function'
-        && typeof window.showSaveFilePicker === 'function';
-      const shellState = {
-        activeTab: TAB_GRADES,
-        planningInitialPaintPending: true,
-        planningManualSaveState: {
-          isManualMode: false,
-          dirty: false,
-          title: 'Datenbank speichern/neu anlegen',
-          ariaLabel: 'Datenbank speichern/neu anlegen',
-        },
-        planningGradeVaultState: {
-          ready: false,
-          mode: 'setup',
-          dbConnected: false,
-          configured: false,
-          unlocked: false,
-          setupRequired: false,
-        },
-        planningUnsavedState: {
-          dirty: false,
-          planningDirty: false,
-          gradesDirty: false,
-          dirtyGradeCourseIds: [],
-        },
-        chromeCollapsed: false,
-        chromeTransitionState: 'idle',
-        chromeTransitionTimer: 0,
-        tabTransitionState: 'idle',
-        tabTransitionTimer: 0,
-        pendingTabTransitionTarget: null,
-      };
-      const RANDOM_PICKER_MIN_WEIGHT = 0;
-      const RANDOM_PICKER_MAX_WEIGHT = 4;
-      const RANDOM_PICKER_DEFAULT_WEIGHT = 1;
-      const RANDOM_PICKER_CERTAIN_WEIGHT = 4;
-      const RANDOM_PICKER_SPIN_DURATION_MS = 4000;
-      let bridgeController = null;
-      let shellController = null;
-      const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
-      const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : shellState.chromeCollapsed);
-      const getChromeTransitionState = () => (
-        shellController ? shellController.getChromeTransitionState() : shellState.chromeTransitionState
-      );
-      const setChromeCollapsed = (collapsed) => shellController?.setChromeCollapsed(collapsed);
-      const toggleChromeCollapsed = () => shellController?.toggleChromeCollapsed();
-      const setActiveTab = (tab) => shellController?.setActiveTab(tab);
-      const setActiveTabImmediate = (tab) => shellController?.setActiveTabImmediate(tab);
-      const syncChromeState = () => shellController?.syncChromeState();
-      let tabNavigationBound = false;
-
-      function bindTabNavigation() {
-        if (tabNavigationBound) return;
-        tabNavigationBound = true;
-        [
-          [els.tabMerger, TAB_MERGER],
-          [els.tabPlanning, TAB_PLANNING],
-          [els.tabGrades, TAB_GRADES],
-          [els.tabSeatplan, TAB_SEATPLAN],
-          [els.tabGroups, TAB_GROUPS],
-          [els.tabRandomPicker, TAB_RANDOM_PICKER],
-          [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
-          [els.tabWorkPhase, TAB_WORK_PHASE],
-          [els.tabQr, TAB_QR],
-        ].forEach(([button, tabKey]) => {
-          button?.addEventListener('click', () => setActiveTab(tabKey));
-        });
-      }
-
-      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-        window.addEventListener('classroom:planning-view-request', (event) => {
-          const detail = event instanceof CustomEvent ? event.detail : null;
-          if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
-            return;
-          }
-          setActiveTab(detail.view === 'grades' ? TAB_GRADES : TAB_PLANNING);
-        });
-        window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, (event) => {
-          const detail = event instanceof CustomEvent ? event.detail : null;
-          if (!detail || typeof detail !== 'object') {
-            return;
-          }
-          bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
-          bridgeController?.sendCourseSeatplanContext(detail);
-          setActiveTab(TAB_SEATPLAN);
-        });
-      }
-
-      function stripJsonWarning(text) {
-        if (typeof text !== 'string') return '';
-        return text.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trimStart();
-      }
-
-      const state = {
-        students: [],
-        seats: {},
-        gridRows: 3,
-        gridCols: 3,
-        activeSeats: new Set(),
-        activeSeatOrder: [],
-        lockedSeats: new Set(),
-        dragSourceSeat: null,
-        dragPayloadType: null,
-        headers: [],
-        delim: ',',
-        minGroupSize: 2,
-        maxGroupSize: 4,
-        seatTopics: {},
-        _lastImport: false,
-        workOrder: '',
-        workOrderDurationMinutes: null,
-        workOrderStartISO: null,
-        workOrderAlarmed: false,
-        scrollHintDismissed: true,
-        csvName: '',
-        lastDirectoryHandle: null,
-        performanceFlairCount: 4,
-      };
-      let randomPickerSpinInProgress = false;
-      let randomPickerCurrentIndex = 0;
-      let randomPickerLockedWidthPx = 0;
-      let lastRosterImportedAt = 0;
-
-      const cloneStudentsForSync = (students) => {
-        if (!Array.isArray(students)) return [];
-        return students
-          .map((student, index) => {
-            if (!student || typeof student !== 'object') return null;
-            const rawId = typeof student.id === 'string'
-              ? student.id.trim()
-              : String(student.id ?? '').trim();
-            const id = rawId || String(index + 1).padStart(2, '0');
-            return {
-              id,
-              first: typeof student.first === 'string' ? student.first : '',
-              last: typeof student.last === 'string' ? student.last : '',
-              performanceFlair: normalizePerformanceFlair(student.performanceFlair),
-              buddies: Array.isArray(student.buddies)
-                ? student.buddies.map(v => String(v)).filter(Boolean)
-                : [],
-              foes: Array.isArray(student.foes)
-                ? student.foes.map(v => String(v)).filter(Boolean)
-                : [],
-              randomWeight: normalizeRandomPickerWeight(student.randomWeight),
-            };
+        steps.push(
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Notenübersicht',
+            copy: 'Die Notenübersicht bündelt alle Leistungen und berechneten Ergebnisse des ausgewählten Kurses.',
+            target: planningFrameTarget(['#grades-table', '#grades-book-panel'], gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Leistungen eintragen',
+            copy: 'In der Eingabe legst du Leistungen an, konfigurierst ihre Gewichtung und trägst die Ergebnisse der Teilnehmenden ein.',
+            target: planningFrameTarget(['#view-grades-entry-btn', '#grades-entry-panel'], gradesFallback),
+            beforeRender: openPlanningGradesEntryForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Datenschutzmodus',
+            copy: 'Der Datenschutzmodus hebt eine einzelne Person hervor und verdeckt die übrigen Noten für Gespräche am Bildschirm.',
+            target: planningFrameTarget('#sidebar-grade-privacy-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Sortierung',
+            copy: 'Hier wechselst du zwischen der Sortierung nach Vorname und der Sortierung nach Nachname.',
+            target: planningFrameTarget('#sidebar-grade-sort-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Notensystem',
+            copy: 'Für die Anzeige kannst du zwischen dem 15-Punkte-System und Schulnoten von 1 bis 6 wechseln.',
+            target: planningFrameTarget('#sidebar-grade-display-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Prädikatsanhängsel',
+            copy: 'Bei der Schulnotenanzeige legst du hier fest, ob Zusätze wie Plus und Minus eingeblendet werden.',
+            target: planningFrameTarget('#sidebar-grade-predicate-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Drucken',
+            copy: 'Über das Druckwerkzeug gibst du die aktuelle Kursübersicht aus. Eingeklappte Spalten werden dabei ausgelassen.',
+            target: planningFrameTarget('#sidebar-grade-print-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Erwartungshorizont',
+            copy: 'In der Eingabe mit Bewertungseinheiten erzeugst du aus den Bewertungsdaten einen Erwartungshorizont für Auswertung und Rückmeldung.',
+            target: planningFrameTarget('#sidebar-grade-expectation-section', gradesFallback),
+            beforeRender: openPlanningGradesEntryForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Warnungen (Simulation)',
+            copy: 'Die Simulation zeigt, wie sich angenommene Ergebnisse auf Jahresnoten und mögliche Warnungen auswirken.',
+            target: planningFrameTarget('#sidebar-grade-simulation-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title: 'Archivieren',
+            copy: 'Zum Schuljahresabschluss exportierst du die gesammelten Daten als vollständiges PDF-Archiv.',
+            target: planningFrameTarget('#sidebar-archive-section', gradesFallback),
+            beforeRender: openPlanningGradesOverviewForTutorial,
           })
-          .filter(Boolean);
-      };
-
-      const SharedTimerStore = createSharedTimerStore({
-        workOrderText: state.workOrder,
-        durationMinutes: state.workOrderDurationMinutes,
-        startISO: state.workOrderStartISO,
-        alarmState: state.workOrderAlarmed,
-      });
-      const SharedRosterStore = createSharedRosterStore({
-        documentBus: document,
-        initialDetail: {
-          source: STUDENTS_SYNC_SOURCE_GROUPS,
-          students: cloneStudentsForSync(state.students),
-          performanceFlairCount: state.performanceFlairCount,
-          csvName: state.csvName,
-          headers: state.headers,
-          delim: state.delim,
-          importedAt: Date.now(),
-        },
-      });
-      const syncSharedRosterState = (source = STUDENTS_SYNC_SOURCE_GROUPS, importedAt = Date.now()) => {
-        const detail = {
-          ...SharedRosterStore.getState(),
-          source,
-          students: cloneStudentsForSync(state.students),
-          performanceFlairCount: state.performanceFlairCount,
-          csvName: state.csvName || '',
-          headers: Array.isArray(state.headers) ? state.headers.slice() : [],
-          delim: state.delim,
-          importedAt,
-        };
-        return SharedRosterStore.dispatch(detail);
-      };
-      const MIC_UI_STATE = Object.freeze({
-        READY: 'ready',
-        STARTING: 'starting',
-        ACTIVE: 'active',
-        UNSUPPORTED: 'unsupported',
-        ERROR: 'error',
-      });
-      const TIMER_UI_STATE = Object.freeze({
-        READY: 'ready',
-        RUNNING: 'running',
-        ALARM: 'alarm',
-      });
-      let timerUiState = TIMER_UI_STATE.READY;
-      const syncStateFromTimerStore = (timerState = SharedTimerStore.getState()) => {
-        state.workOrder = timerState.workOrderText;
-        state.workOrderDurationMinutes = timerState.durationMinutes;
-        state.workOrderStartISO = timerState.startISO;
-        state.workOrderAlarmed = timerState.alarmState;
-        renderWorkOrderTimerButtonsState();
-      };
-      const replaceTimerState = (next) => {
-        SharedTimerStore.replace(next);
-        syncStateFromTimerStore();
-      };
-      syncStateFromTimerStore();
-      SharedTimerStore.subscribe((timerState) => {
-        syncStateFromTimerStore(timerState);
-      });
-      bridgeController = createPlanningSeatplanBridge({
-        els,
-        getChromeCollapsed: isChromeCollapsed,
-        rosterStore: SharedRosterStore,
-        documentBus: document,
-      });
-      SharedRosterStore.subscribe((detail) => {
-        if (!detail || typeof detail !== 'object') return;
-        const importedAt = Number(detail.importedAt);
-        if (Number.isFinite(importedAt) && importedAt <= lastRosterImportedAt) return;
-        lastRosterImportedAt = Number.isFinite(importedAt) ? importedAt : Date.now();
-        state.students = cloneStudentsForSync(detail.students);
-        state.performanceFlairCount = clampPerformanceFlairCount(
-          detail.performanceFlairCount,
-          state.performanceFlairCount
         );
-        state.headers = Array.isArray(detail.headers) ? detail.headers.slice() : [];
-        if (typeof detail.delim === 'string' && detail.delim) {
-          state.delim = detail.delim;
+        return steps;
+      }
+      case TAB_PLANNING:
+      {
+        const planningFallback = (nodes) => nodes.planningShell || nodes.tabPlanning;
+        const storageSteps = [
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Datenbank und Backup',
+            copy: 'Deine Planung wird in einer Datenbankdatei gespeichert. Wähle eine bestehende Datei aus oder lege eine neue an.',
+            target: planningFrameTarget(
+              ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
+              planningFallback
+            ),
+            beforeRender: openPlanningDatabaseSettingsForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Backups',
+            copy: shellSupportsExternalFileSync
+              ? 'Wähle einen Backup-Ordner für automatische Sicherungen. Hier kannst du Backups außerdem sofort erstellen oder wieder importieren.'
+              : 'Auf diesem Gerät sicherst du die Datenbank manuell als Datei. Nach einem Neustart lädst du diese Datei hier wieder in TeachHelper.',
+            target: planningFrameTarget(
+              shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
+              planningFallback
+            ),
+            beforeRender: openPlanningDatabaseSettingsForTutorial,
+          }),
+        ];
+        const planningState = shellState.planningGradeVaultState || {};
+        if (!planningState.dbConnected || !planningState.backupConnected) {
+          return addTutorialContinuationHint(
+            storageSteps,
+            'eine Datenbankdatei und die Datensicherung eingerichtet'
+          );
         }
-        if (typeof detail.csvName === 'string') {
-          const rawLabel = detail.csvName.trim();
-          state.csvName = rawLabel ? sanitizeExportFileName(rawLabel) : '';
-          updateCsvStatusDisplay();
-        }
-        state.seats = {};
-        state.seatTopics = {};
-        SharedTimerStore.setWorkOrder({
-          workOrderText: '',
-          durationMinutes: null,
-          startISO: null,
-        });
-        SharedTimerStore.stop();
-        syncStateFromTimerStore();
-        state.lockedSeats.clear();
-        syncGroupSizeInputs();
-        els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
-        refreshUnseated();
-        renderRandomPicker();
-        renderSeats();
-        renderWorkOrder();
-        requestGroupGridLayoutRefresh({ resetViewport: true });
-        state.scrollHintDismissed = false;
-        state._lastImport = true;
-        updateScrollHint();
-      });
-      shellController = createShellController({
-        els,
-        state: shellState,
-        isIOSDevice,
-        shellSupportsExternalFileSync,
-        onEnsureTabInitialized: (tab) => {
-          try {
-            bridgeController?.ensureTabInitialized(tab);
-          } catch (error) {
-            const userMessage = tab === TAB_MERGER
-              ? 'PDF-Tools konnten nicht initialisiert werden.'
-              : (
-                tab === TAB_DUPLICATE_CHECK
-                  ? 'DuplikatCheck konnte nicht initialisiert werden.'
-                  : (
-                    tab === TAB_QR
-                      ? 'QR-Tools konnten nicht initialisiert werden.'
-                      : tab === TAB_SEATPLAN
-                      ? 'Sitzplan-Modul konnte nicht initialisiert werden.'
-                      : 'Planungs-Modul konnte nicht initialisiert werden.'
-                  )
-              );
-            reportAppError(error, userMessage, {
-              scope: 'tab-init',
-              tab,
-            });
-            if ((tab === TAB_PLANNING || tab === TAB_GRADES) && els.planningHost) {
-              els.planningHost.textContent = 'Planung konnte nicht geladen werden.';
-            }
-          }
-        },
-        onDispatchPlanningViewRequest: (view) => bridgeController?.dispatchPlanningViewRequest(view),
-        onRenderRandomPicker: () => renderRandomPicker(),
-        onPositionWorkOrderHintOverlay: () => positionWorkOrderHintOverlay(),
-        onRefreshLayouts: () => refreshChromeDependentLayouts(),
-      });
-      bindTabNavigation();
-      const PREFERENCE_SLOT_COUNT = 3;
-      const MAX_GRID_SIZE = 20;
-      const MAX_PERFORMANCE_FLAIR_COUNT = 10;
-      const TOUCH_DRAG_DELAY_MS = 90;
-      const TOUCH_DRAG_CANCEL_DISTANCE = 10;
-      const touchPoints = typeof navigator !== 'undefined' ? (navigator.maxTouchPoints || 0) : 0;
-      const supportsTouchDrag = typeof window !== 'undefined'
-        && (('ontouchstart' in window) || touchPoints > 0);
-      let touchDragState = null;
-      let workOrderTimerId = null;
-      let workOrderAlarmIntervalId = null;
-      let workOrderAudioCtx = null;
-      let timerVisualWarningTimeoutId = null;
-      let timerWarningToneEnabled = { end: true, half: true, quarter: true };
-      let timerMilestoneTriggered = { half: false, quarter: false };
-      let timerLastRemainingRatio = null;
-      let timerShowSeconds = true;
-      const SCROLL_HINT_HIDE_OFFSET = 0;
 
-      function toggleScrollHint(visible) {
-        if (!els.scrollHint) return;
-        els.scrollHint.classList.toggle('active', Boolean(visible));
-        positionScrollHintBox();
-      }
-      function dismissScrollHint() {
-        toggleScrollHint(false);
-      }
-      function setScrollHintText() {
-        if (!els.scrollHint) return;
-        const textNode = els.scrollHint.querySelector('.text');
-        if (!textNode) return;
-        const count = Array.isArray(state.students) ? state.students.length : 0;
-        if (count > 0) {
-          const label = count === 1 ? 'Name' : 'Namen';
-          textNode.textContent = `${count} ${label} wurden importiert.`;
-        } else {
-          textNode.textContent = 'Namen importiert';
+        const steps = [
+          ...storageSteps,
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Ferien und unterrichtsfreie Tage',
+            copy: 'Trage Ferienzeiträume und einzelne unterrichtsfreie Tage ein. Die Pflicht-Ferien legen zugleich den gültigen Planungszeitraum fest.',
+            target: planningFrameTarget('#settings-tab-dayoff', planningFallback),
+            beforeRender: openPlanningDayOffSettingsForTutorial,
+          }),
+        ];
+        if (!planningState.planningAccessReady) {
+          return addTutorialContinuationHint(steps, 'die Pflicht-Ferien vollständig eingetragen');
         }
-      }
-      function positionScrollHintBox() {
-        if (!els.scrollHint) return;
-        const hint = els.scrollHint;
-        if (!hint.classList.contains('active')) {
-          hint.style.left = '';
-          hint.style.transform = '';
-          return;
-        }
-        const panelRect = els.sidePanel?.getBoundingClientRect();
-        const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-        const inset = 12;
-        const hintWidth = hint.offsetWidth || hint.getBoundingClientRect().width || 0;
-        if (panelRect && viewportWidth && hintWidth) {
-          const targetCenter = panelRect.left + (panelRect.width / 2);
-          const minCenter = inset + (hintWidth / 2);
-          const maxCenter = viewportWidth - inset - (hintWidth / 2);
-          const clampedCenter = Math.min(Math.max(targetCenter, minCenter), maxCenter);
-          hint.style.left = `${clampedCenter}px`;
-          hint.style.transform = 'translateX(-50%)';
-        } else {
-          hint.style.left = '50%';
-          hint.style.transform = 'translateX(-50%)';
-        }
-      }
-      function initSeatTopicInput(input) {
-        if (!input) return;
-        const defaultPlaceholder = input.getAttribute('data-default-placeholder') || input.getAttribute('placeholder') || 'Thema';
-        input.dataset.defaultPlaceholder = defaultPlaceholder;
-        input.addEventListener('focus', () => {
-          input.placeholder = '';
-        });
-        input.addEventListener('blur', () => {
-          if (!input.value.trim()) {
-            input.placeholder = input.dataset.defaultPlaceholder || 'Thema';
-          }
-        });
-      }
-      function syncSeatTopicState(seat, topicValue) {
-        if (!seat) return;
-        const hasTopic = Boolean(String(topicValue || '').trim());
-        seat.classList.toggle('seat-topic-empty', !hasTopic);
-      }
-      function updateScrollHint() {
-        if (!els.scrollHint || !els.sidePanel) return;
-        setScrollHintText();
-        const requiresScroll = (els.sidePanel.scrollHeight - els.sidePanel.clientHeight) > 16;
-        const isAtTop = els.sidePanel.scrollTop <= 4;
-        toggleScrollHint(requiresScroll && isAtTop && state.students.length > 0);
-      }
-      function handleSideScroll() {
-        if (!els.sidePanel) return;
-        if (els.sidePanel.scrollTop > SCROLL_HINT_HIDE_OFFSET) { dismissScrollHint(); }
-      }
-      function handleRosterScroll(e) {
-        const scroller = e?.target;
-        if (!scroller) return;
-        if (scroller.scrollTop > SCROLL_HINT_HIDE_OFFSET) { dismissScrollHint(); }
-      }
-      els.sidePanel?.addEventListener('scroll', handleSideScroll, { passive: true });
-      els.rosterPanel?.addEventListener('scroll', handleRosterScroll, { passive: true });
-      els.unseated?.addEventListener('scroll', handleRosterScroll, { passive: true });
-      els.groupsGridWrap?.addEventListener('scroll', dismissScrollHint, { passive: true });
-      window.addEventListener('resize', () => {
-        updateScrollHint();
-        positionScrollHintBox();
-      });
-      window.addEventListener('scroll', (e) => {
-        if (state.scrollHintDismissed) return;
-        const target = e?.target;
-        if (target && typeof target.scrollTop === 'number' && target.scrollTop > SCROLL_HINT_HIDE_OFFSET) {
-          dismissScrollHint();
-          return;
-        }
-        const doc = document;
-        const isMainScroll = target === doc || target === doc.body || target === doc.documentElement;
-        if (isMainScroll) {
-          const offset = window.scrollY
-            || doc.documentElement?.scrollTop
-            || doc.body?.scrollTop
-            || 0;
-          if (offset > SCROLL_HINT_HIDE_OFFSET) {
-            dismissScrollHint();
-          }
-        }
-      }, true);
 
-      function normalizeGridDimension(value) {
-        if (value === undefined || value === null) return null;
-        const parsed = Math.floor(Number(value));
-        if (!Number.isFinite(parsed)) return null;
-        return Math.min(MAX_GRID_SIZE, Math.max(1, parsed));
-      }
-      function clampGridDimension(value) {
-        return normalizeGridDimension(value) ?? 1;
-      }
-      function findBestGridSize(target) {
-        const limit = MAX_GRID_SIZE;
-        const cappedTarget = Math.max(1, Math.min(target, limit * limit));
-        let best = { rows: 1, cols: 1, area: 1, diff: Infinity };
-        for (let rows = 1; rows <= limit; rows++) {
-          const cols = Math.ceil(cappedTarget / rows);
-          if (cols > limit) continue;
-          const area = rows * cols;
-          const diff = area - cappedTarget;
-          if (diff < best.diff || (diff === best.diff && Math.abs(rows - cols) < Math.abs(best.rows - best.cols))) {
-            best = { rows, cols, area, diff };
-          }
+        steps.push(createModuleTutorialStep({
+          tab: TAB_PLANNING,
+          title: 'Kurse',
+          copy: 'Über das Plus in der Sidebar legst du Kurse an. Ein Klick auf einen Kurs öffnet seine Kursansicht.',
+          target: planningFrameTarget('#sidebar-course-list', planningFallback),
+          beforeRender: openPlanningWeekForTutorial,
+        }));
+        if (!planningState.hasPlanningCourse) {
+          return addTutorialContinuationHint(steps, 'einen Planungskurs angelegt');
         }
-        return { rows: clampGridDimension(best.rows), cols: clampGridDimension(best.cols) };
-      }
 
-      function nextSeatSlot() {
-        const limit = MAX_GRID_SIZE;
-        let rows = clampGridDimension(state.gridRows);
-        let cols = clampGridDimension(state.gridCols);
-        const occupied = new Set(state.activeSeatOrder || state.activeSeats);
-        // find first gap in existing grid
-        for (let r = 1; r <= rows; r++) {
-          for (let c = 1; c <= cols; c++) {
-            const id = seatId(r, c);
-            if (!occupied.has(id)) {
-              return { id, rows, cols };
-            }
-          }
-        }
-        // need to grow grid by one line/column
-        if (cols < limit) {
-          cols += 1;
-          return { id: seatId(rows, cols), rows, cols };
-        }
-        if (rows < limit) {
-          rows += 1;
-          return { id: seatId(rows, 1), rows, cols };
-        }
-        return null;
-      }
-
-      function ensureCapacityForStudents(maxSize, minSize = state.minGroupSize || 1) {
-        const total = Math.max(0, state.students.length || 0);
-        const minGroupsNeeded = Math.max(1, Math.ceil(total / Math.max(1, maxSize)));
-        const maxGroupsAllowed = Math.max(1, Math.floor(total / Math.max(1, minSize))) || 1;
-        const targetGroups = Math.max(1, Math.min(maxGroupsAllowed, minGroupsNeeded));
-        const { rows, cols } = findBestGridSize(targetGroups);
-        const full = Array.from(buildFullActiveSet(rows, cols));
-        state.activeSeatOrder = full;
-        state.activeSeats = new Set(full);
-        state.gridRows = rows;
-        state.gridCols = cols;
-        buildGrid();
-      }
-      function maxGroupLimit() {
-        const total = Math.max(1, state.students.length || 0);
-        const fallback = Math.max(99, state.activeSeats.size || (state.gridRows * state.gridCols) || 0);
-        return Math.max(total, fallback);
-      }
-      function clampMaxGroupSize(value) {
-        const limit = maxGroupLimit();
-        const parsed = Math.floor(Number(value));
-        if (!Number.isFinite(parsed) || parsed < 1) return 1;
-        const maxed = Math.max(1, Math.min(limit, parsed));
-        return Math.max(state.minGroupSize || 1, maxed);
-      }
-      function clampMinGroupSize(value) {
-        const parsed = Math.floor(Number(value));
-        if (!Number.isFinite(parsed) || parsed < 1) return 1;
-        const maxLimit = clampMaxGroupSize(state.maxGroupSize || 1);
-        return Math.min(parsed, maxLimit);
-      }
-      function syncGroupSizeInputs() {
-        if (els.maxGroupSize) {
-          const limit = maxGroupLimit();
-          els.maxGroupSize.min = '1';
-          els.maxGroupSize.max = String(limit);
-        }
-        state.minGroupSize = clampMinGroupSize(state.minGroupSize);
-        state.maxGroupSize = clampMaxGroupSize(state.maxGroupSize);
-        if (state.minGroupSize > state.maxGroupSize) {
-          state.maxGroupSize = clampMaxGroupSize(state.minGroupSize);
-        }
-        if (els.minGroupSize) els.minGroupSize.value = String(state.minGroupSize);
-        if (els.maxGroupSize) els.maxGroupSize.value = String(state.maxGroupSize);
-      }
-      function hasAnyAssignedGroupStudents() {
-        return Object.values(state.seats || {}).some((seatList) => ensureSeatList(seatList).length > 0);
-      }
-      function syncGroupGridFromSizeInputs(options = {}) {
-        const { forceCapacity = false } = options;
-        syncGroupSizeInputs();
-        if (!state.students.length) {
-          requestGroupGridLayoutRefresh({ resetViewport: true });
-          return;
-        }
-        if (forceCapacity || !hasAnyAssignedGroupStudents()) {
-          const maxSize = clampMaxGroupSize(state.maxGroupSize);
-          const minSize = clampMinGroupSize(state.minGroupSize);
-          ensureCapacityForStudents(maxSize, minSize);
-          return;
-        }
-        requestGroupGridLayoutRefresh({ resetViewport: true });
-      }
-      const guardGroupInput = () => {
-        if (!state.students.length) {
-          showMessage('Importiere zuerst die Namensliste!', 'warn');
-          return false;
-        }
-        return true;
-      };
-      const adjustMinGroupSize = (delta) => {
-        if (!guardGroupInput()) return;
-        const current = state.minGroupSize || 1;
-        state.minGroupSize = clampMinGroupSize(current + delta);
-        if (state.minGroupSize > state.maxGroupSize) {
-          state.maxGroupSize = clampMaxGroupSize(state.minGroupSize);
-        }
-        syncGroupGridFromSizeInputs();
-      };
-      const adjustMaxGroupSize = (delta) => {
-        if (!guardGroupInput()) return;
-        const current = state.maxGroupSize || 1;
-        state.maxGroupSize = clampMaxGroupSize(current + delta);
-        if (state.minGroupSize > state.maxGroupSize) {
-          state.minGroupSize = clampMinGroupSize(state.maxGroupSize);
-        }
-        syncGroupGridFromSizeInputs();
-      };
-      els.minGroupSize?.addEventListener('change', () => {
-        if (!guardGroupInput()) return;
-        state.minGroupSize = clampMinGroupSize(Number(els.minGroupSize.value));
-        if (state.minGroupSize > state.maxGroupSize) {
-          state.maxGroupSize = clampMaxGroupSize(state.minGroupSize);
-        }
-        syncGroupGridFromSizeInputs();
-      });
-      els.maxGroupSize?.addEventListener('change', () => {
-        if (!guardGroupInput()) return;
-        state.maxGroupSize = clampMaxGroupSize(Number(els.maxGroupSize.value));
-        if (state.minGroupSize > state.maxGroupSize) {
-          state.minGroupSize = clampMinGroupSize(state.maxGroupSize);
-        }
-        syncGroupGridFromSizeInputs();
-      });
-      els.minGroupDec?.addEventListener('click', () => adjustMinGroupSize(-1));
-      els.minGroupInc?.addEventListener('click', () => adjustMinGroupSize(1));
-      els.maxGroupDec?.addEventListener('click', () => adjustMaxGroupSize(-1));
-      els.maxGroupInc?.addEventListener('click', () => adjustMaxGroupSize(1));
-      syncGroupSizeInputs();
-      function ensureSeatList(val) {
-        if (!val) return [];
-        if (Array.isArray(val)) return Array.from(new Set(val.filter(Boolean).map(String)));
-        return [String(val)].filter(Boolean);
-      }
-      function startWiggle() {
-        document.querySelectorAll('.seat-chip, .student').forEach(el => el.classList.add('wiggle'));
-      }
-      function stopWiggle() {
-        document.querySelectorAll('.wiggle').forEach(el => el.classList.remove('wiggle'));
-      }
-      function getSeatList(id) {
-        return ensureSeatList(state.seats[id]);
-      }
-      function setSeatList(id, list) {
-        state.seats[id] = ensureSeatList(list);
-      }
-      function addStudentToSeat(seatId, studentId) {
-        if (!seatId || !studentId) return;
-        const list = getSeatList(seatId);
-        if (!list.includes(studentId)) {
-          list.push(studentId);
-          setSeatList(seatId, list);
-        }
-      }
-      function removeStudentFromSeat(seatId, studentId) {
-        if (!seatId || !studentId) return;
-        const list = getSeatList(seatId);
-        const next = list.filter(id => id !== studentId);
-        setSeatList(seatId, next);
-      }
-      function buildFullActiveSet(rows, cols) {
-        const set = new Set();
-        for (let r = 1; r <= rows; r++) {
-          for (let c = 1; c <= cols; c++) {
-            set.add(seatId(r, c));
-          }
-        }
-        return set;
-      }
-      function seatId(r, c) { return `${r}-${c}` }
-      function displayName(s) { return `${s.first || ''} ${s.last || ''}`.trim(); }
-      function formatStudentLabel(student) {
-        if (!student) return '';
-        const name = displayName(student);
-        return name || `ID ${student.id || ''}`.trim();
-      }
-      function getPerformanceFlairLabel(index) {
-        let remaining = Math.max(0, Math.floor(Number(index) || 0));
-        let label = '';
-        do {
-          label = String.fromCharCode(65 + (remaining % 26)) + label;
-          remaining = Math.floor(remaining / 26) - 1;
-        } while (remaining >= 0);
-        return label;
-      }
-      function clampPerformanceFlairCount(value, fallback = 4) {
-        const parsed = Number.parseInt(value, 10);
-        const fallbackParsed = Number.parseInt(fallback, 10);
-        const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2
-          ? Math.min(MAX_PERFORMANCE_FLAIR_COUNT, fallbackParsed)
-          : 4;
-        if (!Number.isFinite(parsed)) return normalizedFallback;
-        if (parsed < 2) return normalizedFallback;
-        return Math.min(MAX_PERFORMANCE_FLAIR_COUNT, parsed);
-      }
-      function normalizePerformanceFlair(value) {
-        const normalized = String(value || '').trim().toUpperCase();
-        return /^[A-Z]+$/.test(normalized) ? normalized : '';
-      }
-      function getAllowedPerformanceFlairs(count = state.performanceFlairCount) {
-        const total = clampPerformanceFlairCount(count, 4);
-        return Array.from({ length: total }, (_, index) => getPerformanceFlairLabel(index));
-      }
-      function sanitizePerformanceFlairForCount(value, count = state.performanceFlairCount) {
-        const normalized = normalizePerformanceFlair(value);
-        return getAllowedPerformanceFlairs(count).includes(normalized) ? normalized : '';
-      }
-      function getPerformanceFlairRank(value, count = state.performanceFlairCount) {
-        const flair = sanitizePerformanceFlairForCount(value, count);
-        if (!flair) return -1;
-        return getAllowedPerformanceFlairs(count).indexOf(flair);
-      }
-      function getPerformanceFlairDistance(first, second, count = state.performanceFlairCount) {
-        const firstRank = getPerformanceFlairRank(first, count);
-        const secondRank = getPerformanceFlairRank(second, count);
-        if (firstRank < 0 || secondRank < 0) return null;
-        return Math.abs(firstRank - secondRank);
-      }
-      function sanitizePerformanceFlairCountInStudents(count = state.performanceFlairCount, students = state.students) {
-        if (!Array.isArray(students)) return;
-        students.forEach((student) => {
-          if (!student || typeof student !== 'object') return;
-          student.performanceFlair = sanitizePerformanceFlairForCount(student.performanceFlair, count);
-        });
-      }
-      function formatPerformanceFlairRangeLabel(count = state.performanceFlairCount) {
-        const normalizedCount = clampPerformanceFlairCount(count, 4);
-        return `A-${getPerformanceFlairLabel(normalizedCount - 1)}`;
-      }
-      function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
-        const parsed = Number.parseInt(value, 10);
-        if (!Number.isFinite(parsed)) return fallback;
-        if (parsed <= RANDOM_PICKER_MIN_WEIGHT) return RANDOM_PICKER_MIN_WEIGHT;
-        if (parsed >= RANDOM_PICKER_CERTAIN_WEIGHT) return RANDOM_PICKER_CERTAIN_WEIGHT;
-        if (parsed >= RANDOM_PICKER_MAX_WEIGHT) return RANDOM_PICKER_MAX_WEIGHT;
-        return RANDOM_PICKER_DEFAULT_WEIGHT;
-      }
-      function sanitizeRandomPickerStudent(student) {
-        if (!student || typeof student !== 'object') return student;
-        student.randomWeight = normalizeRandomPickerWeight(student.randomWeight);
-        student.performanceFlair = sanitizePerformanceFlairForCount(student.performanceFlair);
-        return student;
-      }
-      function getRandomPickerCandidates({ includeZeroWeight = false } = {}) {
-        return state.students
-          .map((student) => {
-            const name = formatStudentLabel(student);
-            if (!name) return null;
-            const weight = normalizeRandomPickerWeight(student?.randomWeight);
-            return {
-              id: student.id,
-              name,
-              weight,
-            };
+        steps.push(
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Kursverwaltung',
+            copy: 'Per Rechtsklick verwaltest du Kursname, Fach, Farbe, Sichtbarkeit und Kurstyp oder löschst den Kurs.',
+            target: planningFrameTarget('#sidebar-course-list li[data-course-id]', planningFallback),
+            beforeRender: openPlanningWeekForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Stundenplan',
+            copy: 'Mit einem Doppelklick auf ein freies Feld legst du eine Unterrichtsserie an. Bestehende Serien kannst du später anpassen.',
+            target: planningFrameTarget('#week-table', planningFallback),
+            beforeRender: openPlanningWeekForTutorial,
           })
-          .filter((entry) => entry && (includeZeroWeight || entry.weight > 0));
+        );
+        if (!planningState.hasPlanningSlot) {
+          return addTutorialContinuationHint(steps, 'eine Unterrichtsserie angelegt');
+        }
+
+        steps.push(
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Wochenansicht',
+            copy: 'Das Wochenraster zeigt deine Unterrichtsstunden, Themen, Ausfälle und verknüpften Werkzeuge auf einen Blick.',
+            target: planningFrameTarget(['#week-table', '#view-week'], planningFallback),
+            beforeRender: openPlanningWeekForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Wochennavigation',
+            copy: 'Mit den Pfeilen wechselst du die Woche. Über Kalenderwoche und Kalendersymbol springst du gezielt zu einem Datum.',
+            target: planningFrameTarget('#headerGlass', planningFallback),
+            beforeRender: openPlanningWeekForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Themen und Notizen',
+            copy: 'Klicke auf eine Unterrichtsstunde, um ihr Thema direkt zu bearbeiten. Die ausführliche Planung ergänzt längere Notizen.',
+            target: planningFrameTarget(
+              ['.lesson-block[data-lesson-id] .topic-zone', '.lesson-block[data-lesson-id]'],
+              planningFallback
+            ),
+            beforeRender: openPlanningWeekForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Verknüpfte Werkzeuge',
+            copy: 'Direkt an einer Unterrichtsstunde öffnest du bei Bedarf den Sitzplan oder die zugehörige Noteneingabe.',
+            target: planningFrameTarget(
+              ['.lesson-block-seatplan-trigger', '.lesson-block-grade-entry', '.lesson-block[data-lesson-id]'],
+              planningFallback
+            ),
+            beforeRender: openPlanningWeekForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Stundenaktionen',
+            copy: 'Per Rechtsklick bearbeitest du die Serie, markierst schriftliche Arbeiten oder Entfall und verschiebst die weitere Planung vor oder zurück.',
+            target: planningFrameTarget('.lesson-block[data-lesson-id]', planningFallback),
+            beforeRender: openPlanningWeekForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Kursansicht',
+            copy: 'Die Kursansicht öffnest du über die Sidebar oder direkt über den Kursnamen im Wochenraster.',
+            target: planningFrameTarget(['#course-title', '#view-course'], planningFallback),
+            beforeRender: openPlanningCourseForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Unterrichtsverlauf',
+            copy: 'Hier bearbeitest du Themen und ausführliche Notizen chronologisch und erkennst Entfall, Arbeiten und unterrichtsfreie Tage.',
+            target: planningFrameTarget('#course-table', planningFallback),
+            beforeRender: openPlanningCourseForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Anzeige',
+            copy: 'In den Anzeige-Einstellungen bestimmst du die maximale Stundenzahl pro Tag und ob ausgeblendete Kurse in der Sidebar erscheinen.',
+            target: planningFrameTarget('#settings-tab-display', planningFallback),
+            beforeRender: openPlanningDisplaySettingsForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Unterrichtszeiten',
+            copy: 'Hinterlege Start- und Endzeiten der Unterrichtsstunden, damit TeachHelper den zeitlich passenden Kurs erkennen kann.',
+            target: planningFrameTarget('#settings-tab-lesson-times', planningFallback),
+            beforeRender: openPlanningLessonTimesForTutorial,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title: 'Archivieren',
+            copy: 'Zum Schuljahresabschluss exportierst du ausgewählte Wochen- und Kursansichten als vollständiges PDF-Archiv.',
+            target: planningFrameTarget('#sidebar-archive-section', planningFallback),
+            beforeRender: openPlanningWeekForTutorial,
+          })
+        );
+        return steps;
       }
-      function getRandomPickerNames({ includeZeroWeight = true } = {}) {
-        return getRandomPickerCandidates({ includeZeroWeight }).map((entry) => entry.name);
-      }
-      function pickWeightedRandomPickerCandidate(candidates) {
-        const pool = Array.isArray(candidates)
-          ? candidates.filter((entry) => entry && entry.weight > 0)
-          : [];
-        const certainCandidate = pool.find((entry) => entry.weight === RANDOM_PICKER_CERTAIN_WEIGHT);
-        if (certainCandidate) return certainCandidate;
-        const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
-        if (!pool.length || totalWeight <= 0) return null;
-        let threshold = Math.random() * totalWeight;
-        for (const entry of pool) {
-          threshold -= entry.weight;
-          if (threshold < 0) return entry;
-        }
-        return pool[pool.length - 1] || null;
-      }
-      function measureRandomPickerWheelWidth(labels = []) {
-        if (!els.randomPickerWheel || typeof document === 'undefined') return 0;
-        const probeCard = els.randomPickerCards?.[3] || els.randomPickerCards?.[0];
-        if (!probeCard) return 0;
-        const wheelStyle = window.getComputedStyle(els.randomPickerWheel);
-        const cardStyle = window.getComputedStyle(probeCard);
-        const horizontalPadding = ['paddingLeft', 'paddingRight']
-          .reduce((sum, key) => sum + (Number.parseFloat(wheelStyle[key]) || 0), 0);
-        const cardHorizontal = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
-          .reduce((sum, key) => sum + (Number.parseFloat(cardStyle[key]) || 0), 0);
-        const candidates = Array.from(new Set(
-          labels
-            .map((label) => String(label || '').trim())
-            .filter(Boolean)
-            .concat(['Noch keine Namen importiert', 'Keine Auswahl aktiv'])
-        ));
-        if (!candidates.length) return 0;
-        const measurer = document.createElement('span');
-        measurer.style.position = 'absolute';
-        measurer.style.visibility = 'hidden';
-        measurer.style.pointerEvents = 'none';
-        measurer.style.whiteSpace = 'nowrap';
-        measurer.style.font = cardStyle.font;
-        measurer.style.fontWeight = cardStyle.fontWeight;
-        measurer.style.letterSpacing = cardStyle.letterSpacing;
-        measurer.style.textTransform = cardStyle.textTransform;
-        measurer.style.padding = '0';
-        measurer.style.border = '0';
-        measurer.style.top = '-9999px';
-        measurer.style.left = '-9999px';
-        document.body.appendChild(measurer);
-        let maxLabelWidth = 0;
-        candidates.forEach((label) => {
-          measurer.textContent = label;
-          maxLabelWidth = Math.max(maxLabelWidth, Math.ceil(measurer.getBoundingClientRect().width));
-        });
-        measurer.remove();
-        const arrowClearance = Number.parseFloat(wheelStyle.getPropertyValue('--random-picker-arrow-clearance')) || 0;
-        return Math.ceil(maxLabelWidth + cardHorizontal + horizontalPadding + arrowClearance);
-      }
-      function applyRandomPickerWheelWidth(widthPx = 0) {
-        if (!els.randomPickerWheel) return;
-        if (widthPx > 0) {
-          const wheelStyle = window.getComputedStyle(els.randomPickerWheel);
-          const horizontalPadding = ['paddingLeft', 'paddingRight']
-            .reduce((sum, key) => sum + (Number.parseFloat(wheelStyle[key]) || 0), 0);
-          const arrowClearance = Number.parseFloat(wheelStyle.getPropertyValue('--random-picker-arrow-clearance')) || 0;
-          const cardWidthPx = Math.max(0, widthPx - horizontalPadding - arrowClearance);
-          randomPickerLockedWidthPx = widthPx;
-          els.randomPickerWheel.style.setProperty('--random-picker-wheel-static-width', `${widthPx}px`);
-          els.randomPickerWheel.style.setProperty('--random-picker-card-static-width', `${cardWidthPx}px`);
-          return;
-        }
-        randomPickerLockedWidthPx = 0;
-        els.randomPickerWheel.style.removeProperty('--random-picker-wheel-static-width');
-        els.randomPickerWheel.style.removeProperty('--random-picker-card-static-width');
-      }
-      function refreshRandomPickerWheelWidth(labels = []) {
-        const measuredWidth = measureRandomPickerWheelWidth(labels);
-        applyRandomPickerWheelWidth(measuredWidth);
-        return measuredWidth;
-      }
-      function getRandomPickerStartButtons() {
-        return Array.from(els.randomPickerStartButtons || []).filter(Boolean);
-      }
-      function setRandomPickerStartButtons({ disabled, text } = {}) {
-        getRandomPickerStartButtons().forEach((button) => {
-          if (typeof disabled === 'boolean') {
-            button.disabled = disabled;
-          }
-          if (typeof text === 'string') {
-            if (button.dataset.collapsedIcon === '1') {
-              button.textContent = '✨';
-            } else {
-              button.textContent = text;
-            }
-          }
-        });
-      }
-      function updateRandomPickerCards(centerIndex = 0, { final = false } = {}) {
-        if (!els.randomPickerCards?.length) return;
-        const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
-        const names = getRandomPickerNames({ includeZeroWeight: true });
-        const total = names.length;
-        const cards = Array.from(els.randomPickerCards);
-        if (!total) {
-          const emptyLabel = allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen importiert';
-          cards.forEach((card, slotIndex) => {
-            const distance = Math.abs(slotIndex - 3);
-            card.textContent = emptyLabel;
-            card.dataset.distance = String(distance);
-            card.classList.toggle('is-final', false);
-          });
-          randomPickerCurrentIndex = 0;
-          return;
-        }
-        const safeIndex = ((Math.round(centerIndex) % total) + total) % total;
-        randomPickerCurrentIndex = safeIndex;
-        cards.forEach((card, slotIndex) => {
-          const offset = slotIndex - 3;
-          const candidateIndex = ((safeIndex + offset) % total + total) % total;
-          const distance = Math.abs(offset);
-          card.textContent = names[candidateIndex];
-          card.dataset.distance = String(Math.min(3, distance));
-          card.classList.toggle('is-final', final && offset === 0);
-        });
-      }
-      function renderRandomPicker() {
-        const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
-        const candidates = getRandomPickerCandidates();
-        const names = allCandidates.map((entry) => entry.name);
-        refreshRandomPickerWheelWidth(names);
-        const count = candidates.length;
-        if (els.randomPickerCount) {
-          els.randomPickerCount.textContent = String(count);
-        }
-        if (!count) {
-          randomPickerSpinInProgress = false;
-          if (els.randomPickerResultName) {
-            els.randomPickerResultName.textContent = allCandidates.length
-              ? 'Keine Auswahl aktiv'
-              : 'Noch keine Namen importiert';
-          }
-          if (els.randomPickerResultNote) {
-            els.randomPickerResultNote.textContent = allCandidates.length
-              ? 'Alle Einträge stehen auf „unmöglich“. Stelle mindestens einen Eintrag auf „normal“, „doppelt“, „dreifach“ oder „sicher“.'
-              : 'Importiere zuerst eine Namensliste in der Sidebar.';
-          }
-          if (els.randomPickerActionNote) {
-            els.randomPickerActionNote.textContent = allCandidates.length
-              ? 'Lege im Dialog Bedingungen pro Name „unmöglich“, „normal“, „doppelt“, „dreifach“ oder „sicher“ fest.'
-              : 'Tippe auf den Button, damit der Generator losläuft.';
-          }
-          setRandomPickerStartButtons({ disabled: !allCandidates.length, text: 'Start' });
-          updateRandomPickerCards(0);
-          return;
-        }
-        const safeIndex = Math.min(randomPickerCurrentIndex, Math.max(0, names.length - 1));
-        updateRandomPickerCards(safeIndex);
-        if (!randomPickerSpinInProgress) {
-          setRandomPickerStartButtons({ disabled: false });
-        }
-        if (els.randomPickerResultName && !randomPickerSpinInProgress) {
-          els.randomPickerResultName.textContent = names[safeIndex];
-        }
-        if (els.randomPickerResultNote) {
-          els.randomPickerResultNote.textContent = randomPickerSpinInProgress
-            ? 'Der Generator läuft und bremst kontrolliert ab.'
-            : 'Die Auswahl erfolgt zufällig aus allen importierten Namen.';
-        }
-        if (els.randomPickerActionNote && !randomPickerSpinInProgress) {
-          els.randomPickerActionNote.textContent = count === 1
-            ? 'Es ist nur ein Name verfügbar.'
-            : 'Tippe auf den Button, damit der Generator losläuft.';
-        }
-      }
-      async function startRandomPickerSpin() {
-        const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
-        if (!allCandidates.length) {
-          showMessage('Importiere zuerst die Namensliste!', 'warn');
-          return;
-        }
-        const candidates = allCandidates.filter((entry) => entry.weight > 0);
-        if (!candidates.length) {
-          showMessage('Für den Picker ist aktuell kein Name auf „normal“, „doppelt“, „dreifach“ oder „sicher“ gesetzt.', 'warn');
-          return;
-        }
-        const displayNames = allCandidates.map((entry) => entry.name);
-        if (randomPickerSpinInProgress) return;
-        refreshRandomPickerWheelWidth(displayNames);
-        randomPickerSpinInProgress = true;
-        setRandomPickerStartButtons({ disabled: true, text: 'Läuft...' });
-        if (els.randomPickerResultNote) {
-          els.randomPickerResultNote.textContent = 'Der Generator läuft und bremst kontrolliert ab.';
-        }
-        if (els.randomPickerActionNote) {
-          els.randomPickerActionNote.textContent = 'Zufallsgenerator läuft...';
-        }
+      case TAB_MERGER:
+        return [
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Werkzeugauswahl',
+            copy: 'Hier wechselst du zwischen Seitenlayout, Zusammenführen mehrerer Dateien, Drehen und Aufteilen.',
+            target: mergerFrameTarget('.tool-tab-bar'),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Seiten auf ein Blatt',
+            copy: 'Dieses Werkzeug ordnet mehrere PDF-Seiten gemeinsam auf einem neuen Blatt an.',
+            target: mergerFrameTarget(['#tool-panel-layout .panel-head', '#tool-panel-layout']),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'PDF auswählen',
+            copy: 'Ziehe eine PDF in diese Fläche oder klicke darauf, um eine Datei auszuwählen.',
+            target: mergerFrameTarget('#layoutDropZone'),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Seiten pro Blatt',
+            copy: 'Lege fest, ob zwei, vier, sechs oder acht Ausgangsseiten auf einem Blatt angeordnet werden.',
+            target: mergerFrameTarget('#pagesButtons'),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Spezialmodus für drei Seiten',
+            copy: 'Bei einer dreiseitigen PDF erzeugt dieser Modus eine doppelte erste Seite und ein gemeinsames Blatt für Seite zwei und drei.',
+            target: mergerFrameTarget('#specialThreeModeButton'),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Ausrichtung und Lernendenanzahl',
+            copy: 'Die Ausrichtung kann automatisch optimiert werden. Mit der optionalen Lernendenanzahl berechnet TeachHelper passende Kopien.',
+            target: mergerFrameTarget(['.layout-form-grid', '#optionsPanel']),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Restseiten',
+            copy: 'Entscheide, ob freie Plätze leer bleiben oder mit vorhandenen Seiten aufgefüllt werden.',
+            target: mergerFrameTarget(['#optionsPanel .setting-group', '#optionsPanel']),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Layout erstellen',
+            copy: 'Mit diesem Button erzeugst du die PDF mit dem gewählten Seitenlayout.',
+            target: mergerFrameTarget('#layoutStartButton'),
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Dateien verbinden',
+            copy: 'Lade mehrere PDFs gleichzeitig oder nacheinander, um sie zu einer Datei zusammenzuführen.',
+            target: mergerFrameTarget('#mergeDropZone'),
+            beforeRender: () => openMergerToolForTutorial('merge'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Dateireihenfolge',
+            copy: 'Geladene Dateien kannst du per Ziehen sortieren, ergänzen oder wieder aus der Liste entfernen.',
+            target: mergerFrameTarget(['#mergeFileListShell', '#mergeAppendFileList', '#mergeDropZone']),
+            beforeRender: () => openMergerToolForTutorial('merge'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Dateien zusammenführen',
+            copy: 'Dieser Button verbindet alle geladenen PDFs in der angezeigten Reihenfolge.',
+            target: mergerFrameTarget('#mergeStartButton'),
+            beforeRender: () => openMergerToolForTutorial('merge'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'PDF drehen',
+            copy: 'Wähle hier die PDF aus, deren Seiten du drehen möchtest.',
+            target: mergerFrameTarget('#rotateDropZone'),
+            beforeRender: () => openMergerToolForTutorial('rotate'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Ganzes Dokument drehen',
+            copy: 'Wende eine Drehung von 90, 180 oder 270 Grad einheitlich auf das gesamte Dokument an.',
+            target: mergerFrameTarget('#rotateDocumentDegreesGroup'),
+            beforeRender: () => openMergerToolForTutorial('rotate'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Einzelne Seiten drehen',
+            copy: 'Nach dem Laden kannst du für jede Seite eine eigene Drehung wählen und das Ergebnis in der Vorschau prüfen.',
+            target: mergerFrameTarget(['.rotate-page-card', '#rotatePagesList', '#tool-panel-rotate .compact-options']),
+            beforeRender: () => openMergerToolForTutorial('rotate'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Gedrehte PDF erstellen',
+            copy: 'Mit diesem Button erzeugst du eine neue PDF mit den festgelegten Drehungen.',
+            target: mergerFrameTarget('#rotateStartButton'),
+            beforeRender: () => openMergerToolForTutorial('rotate'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'PDF aufteilen',
+            copy: 'Lade die PDF, aus der du einzelne Seiten oder Seitengruppen ausgeben möchtest.',
+            target: mergerFrameTarget('#splitDropZone'),
+            beforeRender: () => openMergerToolForTutorial('split'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Seitenauswahl',
+            copy: 'Wähle Seiten einzeln aus oder schalte mit den Sammelaktionen alle Seiten ein beziehungsweise aus.',
+            target: mergerFrameTarget([
+              '.split-page-card',
+              '#splitPagesList',
+              '.split-toolbar-group-selection',
+              '#tool-panel-split',
+            ]),
+            beforeRender: () => openMergerToolForTutorial('split'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Seitengruppen',
+            copy: 'Bilde Seitenbereiche, löse Gruppen wieder auf oder ziehe Seiten direkt zu einer anderen Gruppe.',
+            target: mergerFrameTarget(['#splitGroupRowsList', '.split-toolbar-group-config', '#tool-panel-split']),
+            beforeRender: () => openMergerToolForTutorial('split'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Ausgabeformat',
+            copy: 'Lege fest, ob die ausgewählten Seiten gemeinsam in einer PDF oder als einzelne Dateien ausgegeben werden.',
+            target: mergerFrameTarget('#splitOutputModeGroup'),
+            beforeRender: () => openMergerToolForTutorial('split'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'PDF aufteilen',
+            copy: 'Dieser Button erstellt die gewählte gemeinsame oder einzelne Ausgabe.',
+            target: mergerFrameTarget('#splitStartButton'),
+            beforeRender: () => openMergerToolForTutorial('split'),
+          }),
+        ];
+      case TAB_SEATPLAN:
+      {
+        const seatplanFallback = (nodes) => nodes.seatplanMainHost || nodes.tabSeatplan;
+        let seatplanApp = null;
         try {
-          const winner = pickWeightedRandomPickerCandidate(candidates);
-          const total = displayNames.length;
-          const winnerIndex = Math.max(0, allCandidates.findIndex((entry) => entry.id === winner?.id));
-          const loops = total <= 1 ? 0 : Math.max(2, Math.ceil(14 / total));
-          const totalSteps = total <= 1
-            ? 1
-            : Math.max(18, (loops * total) + winnerIndex - randomPickerCurrentIndex + (winnerIndex >= randomPickerCurrentIndex ? 0 : total));
-          const stepWeights = [];
-          for (let step = 1; step <= totalSteps; step += 1) {
-            const progress = totalSteps <= 1 ? 1 : step / totalSteps;
-            stepWeights.push(1 + Math.pow(progress, 2.2) * 6.5);
+          seatplanApp = getSeatplanFrame()?.contentDocument?.getElementById('app') || null;
+        } catch {
+          seatplanApp = null;
+        }
+        const isCourseSeatplan = seatplanApp?.dataset.courseSeatplan === '1';
+        const isCourseGradeMode = seatplanApp?.dataset.courseGradeMode === '1';
+        const steps = [
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: isCourseSeatplan ? 'Kursliste aus dem Notenmodul' : 'Namensliste importieren',
+            copy: isCourseSeatplan
+              ? 'Die Teilnehmenden dieses Kurses wurden automatisch aus dem Notenmodul übernommen. Solange der Kurs verknüpft ist, ist der Dateiimport gesperrt.'
+              : 'Importiere eine CSV-Namensliste per Dateiauswahl oder Drag-and-drop. Falls du noch keine passende Datei hast, kannst du die angebotene Vorlage verwenden.',
+            target: seatplanFrameTarget('#csv-drop-zone', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Sitzplätze festlegen',
+            copy: 'Klicke auf einzelne Felder, um verfügbare Sitzplätze zu aktivieren oder wieder zu deaktivieren. Nur aktive Plätze werden später belegt.',
+            target: seatplanFrameTarget(['#grid .seat.active', '#grid'], seatplanFallback),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Raumform auswählen',
+            copy: 'Mit diesen Vorlagen erzeugst du typische Raumformen wie U-Form, Reihen oder Reihen mit Mittelgang. Danach kannst du einzelne Plätze weiter anpassen.',
+            target: seatplanFrameTarget('#tutorial-seat-patterns', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Rastergröße anpassen',
+            copy: 'Über „Raster anpassen“ änderst du Zeilen und Spalten. Im Dialog kann das Raster außerdem auf den kleinsten Bereich mit aktiven Plätzen reduziert werden.',
+            target: seatplanFrameTarget('#adjust-grid', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Lehrkraft platzieren',
+            copy: 'Ziehe die Lehrkraft auf einen aktiven Sitzplatz. Ihre Position kann bei Kriterien wie „weit vorne“ in die Optimierung einbezogen werden.',
+            target: seatplanFrameTarget('#teacher-card', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Zweiertische festlegen',
+            copy: 'Lege fest, ob benachbarte Plätze zu Zweiertischen verbunden werden dürfen, ob nur die Verbindungssymbole ausgeblendet werden oder ob Zweiertische ganz unzulässig sind.',
+            target: seatplanFrameTarget('#tutorial-two-seat-options', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Freie Lernende platzieren',
+            copy: 'Noch nicht gesetzte Lernende erscheinen in dieser Liste. Ziehe sie auf aktive Plätze, um den Sitzplan manuell aufzubauen oder einen Vorschlag nachzubearbeiten.',
+            target: seatplanFrameTarget(['#unseated .student', '#roster-panel'], seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Sitzkriterien eingeben',
+            copy: 'Hier hinterlegst du optional Geschlecht, einen Platz weit vorne, einen Einzelplatz sowie gute oder schlechte Sitznachbarschaften. Der optimierte Vorschlag berücksichtigt diese Angaben.',
+            target: seatplanFrameTarget('#seat-preferences', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Vorschlag oder Zufall',
+            copy: '„Vorschlag“ sucht eine möglichst gute Verteilung anhand deiner Kriterien. „Zufall“ verteilt die Lernenden dagegen ohne diese Optimierung.',
+            target: seatplanFrameTarget('#tutorial-distribution-actions', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Kriterien auswerten',
+            copy: 'Der Gesamtscore fasst die Kriterienerfüllung zusammen. Nach einer Verteilung kannst du die Score-Anzeige anklicken und die Einzelwerte der Lernenden prüfen.',
+            target: seatplanFrameTarget(['#sidebar-score', '.seat-score', '#grid'], seatplanFallback),
+            placement: 'bottom',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Sitzplan nachbearbeiten',
+            copy: 'Ziehe gesetzte Lernende auf andere Plätze, um sie zu verschieben oder zu tauschen. Ein Klick auf einen belegten Platz löst die Person wieder vom Platz.',
+            target: seatplanFrameTarget(['#grid .seat-content:not(.teacher)', '#grid .seat.active', '#grid'], seatplanFallback),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Belegung oder Raster zurücksetzen',
+            copy: 'Setze wahlweise nur die Verteilung der Lernenden zurück oder deaktiviere das gesamte Platzraster. Die beiden Aktionen wirken bewusst unterschiedlich.',
+            target: seatplanFrameTarget('#tutorial-plan-edit-actions', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Perspektive umdrehen',
+            copy: 'Spiegle den fertigen Sitzplan horizontal, um zwischen der Sicht der Lehrkraft und der Sicht der Lernenden zu wechseln.',
+            target: seatplanFrameTarget('#toggle-perspective', seatplanFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Laden, speichern und drucken',
+            copy: 'Lade einen gespeicherten Sitzplan, sichere den aktuellen Stand als Datei oder erzeuge eine druckfreundliche Ausgabe.',
+            target: seatplanFrameTarget('#tutorial-plan-file-actions', seatplanFallback),
+            placement: 'right',
+          }),
+        ];
+
+        if (isCourseSeatplan) {
+          steps.push(createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Im Notenmodul speichern',
+            copy: 'Bei einem verknüpften Kurs kannst du den Sitzplan wahlweise als separate Datei oder direkt beim Kurs im Notenmodul speichern.',
+            target: seatplanFrameTarget('#export-plan', seatplanFallback),
+            placement: 'right',
+          }));
+        }
+
+        if (isCourseGradeMode) {
+          steps.push(createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Noten am Sitzplatz eingeben',
+            copy: 'Wähle die Note direkt am Sitzplatz über die Schnellauswahl. Nachdem du alle gesetzten Lernenden durchgegangen bist, kannst du die Noten gemeinsam im Notenmodul speichern.',
+            target: seatplanFrameTarget([
+              "button[data-course-grade-trigger='1']",
+              "input[data-course-grade-input='1']",
+              '.course-grade-seat-content',
+              '#grid',
+            ], seatplanFallback),
+            placement: 'top',
+          }));
+        }
+
+        return steps;
+      }
+      case TAB_GROUPS:
+      {
+        const groupFallback = (nodes) => nodes.groupsMainHost || nodes.groupsGridWrap || nodes.tabGroups;
+        const setupSteps = [
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Namensliste importieren',
+            copy: 'Wähle eine CSV-Namensliste aus oder ziehe sie in dieses Feld. Falls du noch keine passende Datei hast, kannst du über den Link die Vorlage herunterladen.',
+            target: (nodes) => nodes.csvDropZone || nodes.tabGroups,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Gruppengröße festlegen',
+            copy: 'Lege die minimale und maximale Anzahl Lernender pro Gruppe fest. TeachHelper berechnet daraus automatisch eine passende Anzahl an Gruppen.',
+            target: (nodes) => nodes.groupSizeControls || nodes.minGroupSize || nodes.sidePanel || nodes.tabGroups,
+            placement: 'right',
+          }),
+        ];
+        if (!state.students.length) {
+          return addTutorialContinuationHint(setupSteps, 'eine Namensliste importiert');
+        }
+
+        return [
+          ...setupSteps,
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Freie Lernende',
+            copy: 'Noch nicht zugeteilte Lernende erscheinen hier. Von dort kannst du sie per Drag-and-drop in eine Gruppe ziehen.',
+            target: (nodes) => nodes.unseated?.querySelector('.student') || nodes.rosterPanel || nodes.unseated || groupFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Gruppenraster',
+            copy: 'Aus Namensanzahl und Gruppengröße erzeugt TeachHelper automatisch die benötigten Gruppenfelder. Jede Karte stellt eine Gruppe dar.',
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat') || groupFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Gute und schlechte Gruppenpartner',
+            copy: 'In den Gruppenpräferenzen kannst du für jede Person gewünschte und ungünstige Partner angeben. Der Vorschlag versucht Wünsche zu erfüllen und Ausschlüsse zu vermeiden.',
+            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabGroups,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Leistungsklassen',
+            copy: 'Dort kannst du außerdem Leistungsklassen vergeben und ihre Anzahl anpassen. Der Gruppenvorschlag bildet daraus möglichst leistungshomogene Gruppen.',
+            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabGroups,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Vorschlag erzeugen',
+            copy: 'Dieser Button erstellt eine Verteilung unter Beachtung der Gruppengröße, Partnerwünsche, Ausschlüsse, Leistungsklassen und gesperrten Gruppen.',
+            target: (nodes) => nodes.groupSuggest || nodes.groupsGridWrap || nodes.tabGroups,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Einteilung manuell anpassen',
+            copy: 'Ziehe freie oder bereits zugeteilte Lernende in eine Gruppe. Ziehst du eine Person direkt auf eine andere, tauschen beide ihre Plätze.',
+            target: (nodes) => (
+              nodes.unseated?.querySelector('.student')
+              || nodes.groupsGrid?.querySelector('.seat-chip')
+              || nodes.groupsGrid?.querySelector('.seat')
+              || groupFallback(nodes)
+            ),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Gruppen sperren',
+            copy: 'Mit einem Doppelklick auf eine Gruppe sperrst oder entsperrst du sie. Gesperrte Gruppen bleiben bei neuen Vorschlägen unverändert und lassen keine Verschiebungen zu.',
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat') || groupFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Gruppenthemen eintragen',
+            copy: 'Im Themenfeld kannst du jeder Gruppe einen Arbeitsauftrag, ein Thema oder eine Station zuweisen. Der Eintrag wird mitgespeichert und mitgedruckt.',
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-topic') || groupFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Weitere Gruppe hinzufügen',
+            copy: 'Klicke auf den freien Platzhalter oder ziehe eine Person darauf, um eine zusätzliche Gruppe anzulegen.',
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-placeholder') || groupFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Gruppe löschen',
+            copy: 'Über den Papierkorb entfernst du eine Gruppe. Ihre Lernenden wechseln dabei zurück in die Liste der freien Lernenden.',
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-delete-button') || groupFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Belegung zurücksetzen',
+            copy: 'Damit löst du alle Lernenden aus ihren Gruppen, entfernst Sperren und Gruppenthemen und behältst die importierte Namensliste.',
+            target: (nodes) => nodes.groupResetLearners || nodes.sidePanel || nodes.tabGroups,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Laden, speichern und drucken',
+            copy: 'Lade eine gespeicherte Gruppeneinteilung, sichere den aktuellen Stand als Datei oder erstelle eine druckfreundliche Gruppenübersicht.',
+            target: (nodes) => nodes.groupPlanActions || nodes.groupExportPlan || nodes.sidePanel || nodes.tabGroups,
+            placement: 'right',
+          }),
+        ];
+      }
+      case TAB_RANDOM_PICKER:
+      {
+        const pickerFallback = (nodes) => nodes.randomPickerHost || nodes.randomPickerWheel || nodes.tabRandomPicker;
+        const setupSteps = [
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Namensliste importieren',
+            copy: 'Wähle eine CSV-Namensliste aus oder ziehe sie in das Importfeld. Falls du noch keine passende Datei hast, kannst du über den Link die Vorlage herunterladen.',
+            target: (nodes) => nodes.csvDropZone || nodes.randomPickerImport || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+        ];
+        if (!state.students.length) {
+          return addTutorialContinuationHint(setupSteps, 'eine Namensliste importiert');
+        }
+
+        return [
+          ...setupSteps,
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Gemeinsame Namensliste',
+            copy: 'Gruppen-Modul und Picker verwenden dieselbe Namensliste. Über „Liste wählen“ kannst du sie hier jederzeit durch eine andere CSV-Datei ersetzen.',
+            target: (nodes) => nodes.randomPickerImport || nodes.csvDropZone || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Bedingungen festlegen',
+            copy: 'Öffne hier die Bedingungen, um die Auswahlwahrscheinlichkeit für jede Person einzeln einzustellen.',
+            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Auswahl gewichten',
+            copy: '„Unmöglich“ schließt eine Person von der Ziehung aus. „Normal“, „doppelt“ und „dreifach“ geben ihr entsprechend ein-, zwei- oder dreimal so viel Gewicht im Zufallspool.',
+            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Sichere Auswahl',
+            copy: 'Mit „sicher“ bestimmst du eine garantierte Auswahl. Beim Speichern setzt TeachHelper diese Person auf „sicher“ und alle übrigen auf „unmöglich“.',
+            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Bedingungen zurücksetzen und speichern',
+            copy: 'Im Dialog setzt „Zurücksetzen“ alle Personen wieder auf „normal“. Erst mit „Speichern“ werden die angezeigten Bedingungen auf den Picker angewendet.',
+            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Picker-Rad',
+            copy: 'Das Rad zeigt die importierten Namen während der Animation. Auch Personen mit „unmöglich“ können dabei sichtbar vorbeilaufen, sie können jedoch nicht als Ergebnis ausgewählt werden.',
+            target: (nodes) => nodes.randomPickerWheel || pickerFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Auswahl starten',
+            copy: 'Mit „Start“ beginnt eine gewichtete Zufallsauswahl. Während das Rad läuft, ist der Button vorübergehend gesperrt.',
+            target: (nodes) => nodes.randomPickerStartRow || nodes.randomPickerStart || pickerFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Ergebnis erkennen',
+            copy: 'Das Rad bremst beim Gewinner ab. Die Person in der mittleren, hervorgehobenen Karte ist das Ergebnis der Ziehung.',
+            target: (nodes) => nodes.randomPickerCards?.[3] || nodes.randomPickerWheel || pickerFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Erneut auswählen',
+            copy: 'Nach der Ziehung wird der Button zu „Nochmal“. Jede Ziehung ist unabhängig; ausgewählte Personen werden nicht automatisch entfernt und können erneut gewinnen.',
+            target: (nodes) => nodes.randomPickerStartRow || nodes.randomPickerStart || pickerFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_RANDOM_PICKER,
+            title: 'Pickerstand speichern',
+            copy: '„Picker speichern“ sichert Namensliste und Gewichtungen als JSON-Datei. Ziehe diese Datei später an eine freie Stelle in TeachHelper, um den Stand wiederherzustellen.',
+            target: (nodes) => nodes.randomPickerPlanActions || nodes.randomPickerExport || nodes.sidePanel || nodes.tabRandomPicker,
+            placement: 'right',
+          }),
+        ];
+      }
+      case TAB_DUPLICATE_CHECK:
+      {
+        const duplicateFallback = (nodes) => (
+          nodes.duplicateCheckShell || nodes.duplicateCheckHost || nodes.tabDuplicateCheck
+        );
+        let duplicateDocument = null;
+        try {
+          duplicateDocument = getDuplicateCheckFrame()?.contentDocument || null;
+        } catch {
+          duplicateDocument = null;
+        }
+        const hasSuccessfulResult = Boolean(duplicateDocument?.querySelector('#resultPanel .summary-grid'));
+        const hasDuplicateGroups = Boolean(duplicateDocument?.querySelector('#resultPanel .duplicate-group'));
+        const hasImageComparison = Boolean(duplicateDocument?.querySelector('#resultPanel .compare-button'));
+        const setupSteps = [
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Prüfkriterien auswählen',
+            copy: 'Lege fest, woran TeachHelper mögliche Duplikate erkennen soll. Die aktiven Kriterien werden unabhängig geprüft; bereits ein Treffer in einem Kriterium genügt.',
+            target: duplicateCheckFrameTarget('.rule-toggle-list', duplicateFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Gleicher Dateiname',
+            copy: 'Diese Regel gruppiert Dateien mit demselben Namen. Groß- und Kleinschreibung sowie die Dateiendung werden beim Vergleich ignoriert.',
+            target: duplicateCheckFrameTarget('[data-duplicate-rule="name"]', duplicateFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Gleiche Dateigröße',
+            copy: 'Diese Regel findet Dateien mit exakt gleicher Größe in Byte. Das ist ein nützlicher Hinweis, aber allein noch kein Beweis für identischen Inhalt.',
+            target: duplicateCheckFrameTarget('[data-duplicate-rule="size"]', duplicateFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Ähnlicher Bildinhalt',
+            copy: 'Diese Regel vergleicht unterstützte Bilddateien anhand ihres visuellen Inhalts. Das Ergebnis ist eine Ähnlichkeitseinschätzung und sollte bei Bedarf kontrolliert werden.',
+            target: duplicateCheckFrameTarget('[data-duplicate-rule="visual"]', duplicateFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Mindestens ein Kriterium',
+            copy: 'Du kannst Kriterien beliebig kombinieren. Damit eine Prüfung möglich bleibt, lässt TeachHelper jedoch immer mindestens eine Regel aktiviert.',
+            target: duplicateCheckFrameTarget('.rule-panel', duplicateFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Abgaben als ZIP prüfen',
+            copy: 'Lade die markierten Abgaben im IServ-Aufgabenmodul als ZIP herunter. Ziehe anschließend genau diese eine ZIP-Datei hier hinein oder klicke zum Auswählen.',
+            target: duplicateCheckFrameTarget('#zipDropZone', duplicateFallback),
+            placement: 'top',
+          }),
+        ];
+        if (!hasSuccessfulResult) {
+          return addTutorialContinuationHint(setupSteps, 'eine gültige ZIP-Datei erfolgreich analysiert');
+        }
+
+        const resultSteps = [
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Zusammenfassung',
+            copy: 'Die Zusammenfassung zeigt die Zahl der geprüften Dateien und für jedes aktive Kriterium die Anzahl gefundener Duplikatgruppen.',
+            target: duplicateCheckFrameTarget('#resultPanel .summary-grid', duplicateFallback),
+            placement: 'top',
+          }),
+        ];
+
+        if (hasDuplicateGroups) {
+          resultSteps.push(
+            createModuleTutorialStep({
+              tab: TAB_DUPLICATE_CHECK,
+              title: 'Duplikatgruppen',
+              copy: 'Jede Gruppe bündelt Dateien, die nach mindestens einem aktiven Kriterium zusammengehören. Die Überschrift zeigt, wie viele Dateien enthalten sind.',
+              target: duplicateCheckFrameTarget('#resultPanel .duplicate-group', duplicateFallback),
+              placement: 'top',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_DUPLICATE_CHECK,
+              title: 'Treffergründe',
+              copy: 'Die farbigen Hinweise zeigen, ob gleicher Dateiname, gleiche Dateigröße oder ähnlicher Bildinhalt zur Gruppe geführt haben. Eine Gruppe kann mehrere Gründe tragen.',
+              target: duplicateCheckFrameTarget('#resultPanel .badge-row', duplicateFallback),
+              placement: 'top',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_DUPLICATE_CHECK,
+              title: 'Einzelne Dateien öffnen',
+              copy: 'Klicke auf einen Dateipfad, um die aus dem ZIP gelesene Datei in einem neuen Browser-Tab zu kontrollieren.',
+              target: duplicateCheckFrameTarget('#resultPanel .file-link', duplicateFallback),
+              placement: 'top',
+            })
+          );
+          if (hasImageComparison) {
+            resultSteps.push(createModuleTutorialStep({
+              tab: TAB_DUPLICATE_CHECK,
+              title: 'Bilder vergleichen',
+              copy: 'Bei passenden Bildgruppen öffnet „Vergleichen“ zwei Dateien nebeneinander. Im Vergleich wechselst du mit „Zurück“ und „Weiter“ durch weitere Bildpaare.',
+              target: duplicateCheckFrameTarget('#resultPanel .compare-button', duplicateFallback),
+              placement: 'top',
+            }));
           }
-          const totalWeight = stepWeights.reduce((sum, weight) => sum + weight, 0) || 1;
-          for (let step = 1; step <= totalSteps; step += 1) {
-            const frameIndex = total <= 1 ? winnerIndex : (randomPickerCurrentIndex + 1) % total;
-            updateRandomPickerCards(frameIndex, { final: false });
-            const delayMs = (RANDOM_PICKER_SPIN_DURATION_MS * stepWeights[step - 1]) / totalWeight;
-            await waitMs(delayMs);
-          }
-          updateRandomPickerCards(winnerIndex, { final: true });
-          if (els.randomPickerResultName) {
-            els.randomPickerResultName.textContent = winner?.name || displayNames[winnerIndex] || '';
-          }
-          if (els.randomPickerResultNote) {
-            els.randomPickerResultNote.textContent = 'Der Zufallsgenerator ist stehen geblieben.';
-          }
-          if (els.randomPickerActionNote) {
-            els.randomPickerActionNote.textContent = `Gewählt wurde: ${winner?.name || displayNames[winnerIndex] || ''}`;
-          }
-          setRandomPickerStartButtons({ text: 'Nochmal' });
-        } finally {
-          randomPickerSpinInProgress = false;
-          getRandomPickerStartButtons().forEach((button) => {
-            button.disabled = false;
-            if (button.textContent.trim() === 'Läuft...') {
-              button.textContent = button.dataset.collapsedIcon === '1' ? '✨' : 'Start';
-            }
-          });
+        } else {
+          resultSteps.push(createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Keine Duplikate gefunden',
+            copy: 'Die Analyse war erfolgreich, hat mit den aktuell aktiven Kriterien aber keine Duplikatgruppen gefunden. Du kannst die Regeln anpassen und das Ergebnis neu bewerten lassen.',
+            target: duplicateCheckFrameTarget('#resultPanel .summary-grid', duplicateFallback),
+            placement: 'top',
+          }));
+        }
+
+        resultSteps.push(
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Ergebnis neu auswerten',
+            copy: 'Schalte Kriterien nach der Analyse ein oder aus. TeachHelper wertet die bereits gelesenen Dateien sofort neu aus; ein erneuter ZIP-Import ist dafür nicht nötig.',
+            target: duplicateCheckFrameTarget('.rule-toggle-list', duplicateFallback),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Neue ZIP-Datei prüfen',
+            copy: 'Wählst du hier eine neue ZIP-Datei, wird die bisherige Analyse vollständig durch die neue Prüfung ersetzt.',
+            target: duplicateCheckFrameTarget('#zipDropZone', duplicateFallback),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_DUPLICATE_CHECK,
+            title: 'Originale bleiben unverändert',
+            copy: 'DuplikatCheck dient zum Prüfen und Öffnen von Dateien. Er löscht oder verändert weder Dateien im ursprünglichen ZIP noch die Abgaben in IServ.',
+            target: duplicateCheckFrameTarget('#resultPanel', duplicateFallback),
+            placement: 'top',
+          })
+        );
+
+        return [...setupSteps, ...resultSteps];
+      }
+      case TAB_WORK_PHASE:
+      {
+        const workPhaseFallback = (nodes) => nodes.workOrderPanel || nodes.monitorShell || nodes.tabWorkPhase;
+        const activeTimerButton = (nodes) => (
+          nodes.timerWorkOrderStop && !nodes.timerWorkOrderStop.disabled
+            ? nodes.timerWorkOrderStop
+            : nodes.timerWorkOrderStart
+        );
+        const activeMonitorButton = (nodes) => (
+          nodes.monitorMicStopButton && !nodes.monitorMicStopButton.disabled
+            ? nodes.monitorMicStopButton
+            : nodes.monitorMicStartButton
+        );
+        return [
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Arbeitsphase im Überblick',
+            copy: 'Das Modul verbindet einen sichtbaren Arbeitsauftrag, eine Lautstärkeampel und einen Arbeitszeit-Timer. Alle drei Bereiche können gemeinsam oder einzeln genutzt werden.',
+            target: (nodes) => nodes.workOrderPanel || nodes.monitorShell || nodes.tabWorkPhase,
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Arbeitsauftrag eingeben',
+            copy: 'Formuliere hier den Arbeitsauftrag für die Lerngruppe. Änderungen werden unmittelbar übernommen, ohne dass du zusätzlich speichern musst.',
+            target: (nodes) => nodes.workOrderTextarea || nodes.workOrderPanel || nodes.tabWorkPhase,
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Auftrag sichtbar halten',
+            copy: 'Der eingegebene Auftrag bleibt beim Wechsel zwischen Modulen erhalten. In der Präsentationsansicht wird er groß und gut lesbar für den Raum dargestellt.',
+            target: (nodes) => nodes.workOrderDisplay || nodes.workOrderPanel || workPhaseFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Arbeitsdauer festlegen',
+            copy: 'Trage den Zeitrahmen in Minuten ein oder passe ihn mit Plus und Minus an. Der kleinste gültige Wert ist eine Minute.',
+            target: (nodes) => nodes.timerDurationField || nodes.workOrderDurationInput || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Sekunden ein- oder ausblenden',
+            copy: 'Mit diesem Schalter bestimmst du, ob Restzeiten mit Sekunden oder nur mit Stunden und Minuten angezeigt werden.',
+            target: (nodes) => nodes.timerSecondsToggleButton || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Zwischenwarnungen konfigurieren',
+            copy: 'Aktiviere bei Bedarf Warntöne nach der Hälfte und nach drei Vierteln der Arbeitszeit. Die visuellen Hinweise erscheinen unabhängig von diesen Tonschaltern.',
+            target: (nodes) => nodes.timerHalfToneButton || nodes.timerQuarterToneButton || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Endsignal konfigurieren',
+            copy: 'Der Warnton bei Ende kann separat ein- oder ausgeschaltet werden. Der sichtbare Endalarm bleibt auch ohne Ton aktiv.',
+            target: (nodes) => nodes.timerEndToneButton || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Arbeitszeit starten',
+            copy: 'Das Uhrsymbol startet den Countdown. Ohne gültige Dauer weist TeachHelper dich darauf hin, zuerst einen Zeitrahmen festzulegen.',
+            target: (nodes) => nodes.timerWorkOrderStart || nodes.timerWorkOrderActions || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Restzeit und Endzeit',
+            copy: 'Während der Timer läuft, siehst du die verbleibende Zeit und die berechnete Uhrzeit, zu der die Arbeitsphase endet.',
+            target: (nodes) => nodes.workOrderMeta || nodes.timerPanel || workPhaseFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Arbeitszeit stoppen',
+            copy: 'Das jeweils aktive Uhrsymbol beendet den laufenden Timer oder Alarm. Arbeitsauftrag und eingestellte Dauer bleiben dabei erhalten.',
+            target: (nodes) => activeTimerButton(nodes) || nodes.timerWorkOrderActions || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Zeitliche Warnungen',
+            copy: 'Bei 50 %, 75 % und am Ende hebt TeachHelper den Timer zusätzlich farblich hervor. Der Endalarm bleibt sichtbar, bis du ihn quittierst.',
+            target: (nodes) => nodes.timerPanel || nodes.timerWarningBanner || workPhaseFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Endalarm quittieren',
+            copy: 'Klicke auf die Restzeituhr, den eingeblendeten Hinweis oder das Stoppsymbol, um den Endalarm samt Warnton zu beenden.',
+            target: (nodes) => nodes.workOrderRestClock || nodes.timerPanel || workPhaseFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Ampelschwellen festlegen',
+            copy: 'Bestimme, ab welchem Pegel die Ampel gelb beziehungsweise rot wird. Die rote Schwelle bleibt automatisch mindestens einen Schritt oberhalb der gelben.',
+            target: (nodes) => nodes.monitorThresholdControls || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Ampel-Warntöne',
+            copy: 'Für Gelb und Rot kannst du getrennte Warntöne aktivieren. Solange die jeweilige Farbe anliegt, wird ihr Signal regelmäßig wiederholt.',
+            target: (nodes) => nodes.monitorToneControls || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Lautstärkeüberwachung starten',
+            copy: 'Das Ampelsymbol startet die Messung. Beim ersten Start benötigt TeachHelper die Mikrofonfreigabe des Browsers und ein unterstütztes Eingabegerät.',
+            target: (nodes) => nodes.monitorMicStartButton || nodes.monitorMicActions || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Ampelfarben verstehen',
+            copy: 'Grün liegt unter der gelben Schwelle, Gelb zwischen beiden Schwellen und Rot darüber. TeachHelper mittelt mehrere Messungen, damit die Anzeige nicht bei jedem kurzen Geräusch springt.',
+            target: (nodes) => nodes.monitorAmpel || nodes.monitorShell || workPhaseFallback(nodes),
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Schwellen an den Raum anpassen',
+            copy: 'Der angezeigte Pegel hängt von Mikrofon, Geräteposition und Raumakustik ab. Passe die Schwellen deshalb praktisch an deine Unterrichtssituation an.',
+            target: (nodes) => nodes.monitorThresholdControls || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Überwachung stoppen',
+            copy: 'Das jeweils aktive Ampelsymbol stoppt die Überwachung und beendet den verwendeten Mikrofonstream.',
+            target: (nodes) => activeMonitorButton(nodes) || nodes.monitorMicActions || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Präsentationsansicht',
+            copy: 'Mit dem Vollbildschalter blendest du Navigation und Einstellungen aus, damit Arbeitsauftrag, Ampel und Timer aus größerer Entfernung gut erkennbar sind.',
+            target: (nodes) => nodes.chromeToggle || nodes.appHeader || nodes.tabWorkPhase,
+            placement: 'bottom',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Automatisches Vollbildlayout',
+            copy: 'Die Präsentationsansicht richtet sich nach dem aktuellen Inhalt: Auftrag und laufender Timer erhalten eigene Flächen; ohne beide wird die Ampel besonders groß hervorgehoben.',
+            target: (nodes) => nodes.monitorShell || nodes.workOrderShell || nodes.timerShell || nodes.tabWorkPhase,
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
+            title: 'Schnellaktionen im Vollbild',
+            copy: 'Auch bei ausgeblendeten Leisten bleiben Schnellaktionen für Timer und Mikrofon erreichbar. Mit Escape oder dem Vollbildsymbol blendest du die Bedienung wieder ein.',
+            target: (nodes) => nodes.chromeToggle || nodes.appHeader || nodes.tabWorkPhase,
+            placement: 'bottom',
+          }),
+        ];
+      }
+      case TAB_QR:
+        return [
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Werkzeug',
+            copy: 'Hier erstellst oder scannst du QR-Codes für Links, Material und schnelle Unterrichtswege.',
+            target: (nodes) => nodes.qrHost || nodes.qrShell || nodes.tabQr,
+            placement: 'top',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Arbeitsfläche',
+            copy: 'Die Arbeitsfläche zeigt Eingaben, Vorschau und Ergebnis des aktuellen QR-Vorgangs.',
+            target: (nodes) => nodes.qrShell || nodes.qrHost || nodes.tabQr,
+            placement: 'top',
+          }),
+        ];
+      default:
+        return [
+          createModuleTutorialStep({
+            tab: TAB_GROUPS,
+            title: 'Detailtour wählen',
+            copy: 'Öffne zuerst das gewünschte Modul und klicke dann auf ℹ️. Dann startet die genauere Einführung für genau diesen Bereich.',
+            target: (nodes) => nodes.firstRunTutorialStart || nodes.appHeader,
+            placement: 'top',
+          }),
+        ];
+    }
+  };
+  const FIRST_RUN_TUTORIAL_STEPS = [
+    {
+      title: 'Tableiste',
+      copy: 'In dieser Tableiste wechselst du zwischen den Modulen.',
+      target: (nodes) => nodes.tabNav,
+      tab: TAB_GROUPS,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Noten',
+      copy: 'Im Notenmodul verwaltest Du Leistungsbewertungen. Das Notenmodul kann verschlüsselt werden.',
+      target: (nodes) => nodes.tabGrades,
+      tab: TAB_GRADES,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Planung',
+      copy: 'Im Planungsmodul planst du deine Unterrichtsreihen (Kursansicht) und Unterrichtswochen (Wochenansicht).',
+      target: (nodes) => nodes.tabPlanning,
+      tab: TAB_PLANNING,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'PDF-Tools',
+      copy: 'Im PDF-Modul kannst du PDF-Dokumente zusammenführen, drehen oder aufteilen.',
+      target: (nodes) => nodes.tabMerger,
+      tab: TAB_MERGER,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Sitzplan',
+      copy: 'Im Sitzplanmodul erstellst du Sitzpläne für deine Lerngruppen.',
+      target: (nodes) => nodes.tabSeatplan,
+      tab: TAB_SEATPLAN,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Gruppen',
+      copy: 'Im Gruppenmodul kannst du Lernende in passende Gruppen einteilen.',
+      target: (nodes) => nodes.tabGroups,
+      tab: TAB_GROUPS,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Picker',
+      copy: 'Im Picker kannst du zufällig eine Person aus einer Namensliste auswählen lassen.',
+      target: (nodes) => nodes.tabRandomPicker,
+      tab: TAB_RANDOM_PICKER,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'DuplikatCheck',
+      copy: 'Im Duplikatmodul prüfst du Abgaben auf Duplikate.',
+      target: (nodes) => nodes.tabDuplicateCheck,
+      tab: TAB_DUPLICATE_CHECK,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Arbeitsphase',
+      copy: 'Im Arbeitsphasenmodul organisierst du dein Classroommanagement in Arbeitsphasen.',
+      target: (nodes) => nodes.tabWorkPhase,
+      tab: TAB_WORK_PHASE,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'QR',
+      copy: 'Im QR-Modul machst erstellst du aus einem Link einen QR-Code oder list aus einem QR-Code den Link aus.',
+      target: (nodes) => nodes.tabQr,
+      tab: TAB_QR,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Vollbild',
+      copy: 'Mit dem Vollbildbutton blendest du die Bedienleisten ein oder aus, wenn du mehr Platz für die aktuelle Ansicht brauchst.',
+      target: (nodes) => nodes.chromeToggle || nodes.appHeader,
+      placement: 'bottom',
+      expandChrome: true,
+    },
+    {
+      title: 'Einführung in die Module',
+      copy: 'Nach der allgemeinen Einführung kannst du jetzt jedes Modul einzeln kennenlernen. Klicke dafür auf das ℹ️, wenn das entsprechende Modul geöffnet ist.',
+      target: (nodes) => nodes.firstRunTutorialStart,
+      tab: TAB_GROUPS,
+      placement: 'top',
+      expandChrome: true,
+    },
+  ];
+
+  function bindTabNavigation() {
+    if (tabNavigationBound) return;
+    tabNavigationBound = true;
+    [
+      [els.tabMerger, TAB_MERGER],
+      [els.tabPlanning, TAB_PLANNING],
+      [els.tabGrades, TAB_GRADES],
+      [els.tabSeatplan, TAB_SEATPLAN],
+      [els.tabGroups, TAB_GROUPS],
+      [els.tabRandomPicker, TAB_RANDOM_PICKER],
+      [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
+      [els.tabWorkPhase, TAB_WORK_PHASE],
+      [els.tabQr, TAB_QR],
+    ].forEach(([button, tabKey]) => {
+      button?.addEventListener('click', () => setActiveTab(tabKey));
+    });
+  }
+
+  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('classroom:planning-view-request', (event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
+        return;
+      }
+      setActiveTab(detail.view === 'grades' ? TAB_GRADES : TAB_PLANNING);
+    });
+    window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, (event) => {
+      const detail = event instanceof CustomEvent ? event.detail : null;
+      if (!detail || typeof detail !== 'object') {
+        return;
+      }
+      bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
+      bridgeController?.sendCourseSeatplanContext(detail);
+      setActiveTab(TAB_SEATPLAN);
+    });
+  }
+
+  function stripJsonWarning(text) {
+    if (typeof text !== 'string') return '';
+    return text.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trimStart();
+  }
+
+  const state = {
+    students: [],
+    seats: {},
+    gridRows: 3,
+    gridCols: 3,
+    activeSeats: new Set(),
+    activeSeatOrder: [],
+    lockedSeats: new Set(),
+    dragSourceSeat: null,
+    dragPayloadType: null,
+    headers: [],
+    delim: ',',
+    minGroupSize: 2,
+    maxGroupSize: 4,
+    seatTopics: {},
+    _lastImport: false,
+    workOrder: '',
+    workOrderDurationMinutes: null,
+    workOrderStartISO: null,
+    workOrderAlarmed: false,
+    scrollHintDismissed: true,
+    csvName: '',
+    lastDirectoryHandle: null,
+    performanceFlairCount: 4,
+  };
+  let randomPickerSpinInProgress = false;
+  let randomPickerCurrentIndex = 0;
+  let randomPickerLockedWidthPx = 0;
+  let lastRosterImportedAt = 0;
+
+  const cloneStudentsForSync = (students) => {
+    if (!Array.isArray(students)) return [];
+    return students
+      .map((student, index) => {
+        if (!student || typeof student !== 'object') return null;
+        const rawId = typeof student.id === 'string'
+          ? student.id.trim()
+          : String(student.id ?? '').trim();
+        const id = rawId || String(index + 1).padStart(2, '0');
+        return {
+          id,
+          first: typeof student.first === 'string' ? student.first : '',
+          last: typeof student.last === 'string' ? student.last : '',
+          performanceFlair: normalizePerformanceFlair(student.performanceFlair),
+          buddies: Array.isArray(student.buddies)
+            ? student.buddies.map(v => String(v)).filter(Boolean)
+            : [],
+          foes: Array.isArray(student.foes)
+            ? student.foes.map(v => String(v)).filter(Boolean)
+            : [],
+          randomWeight: normalizeRandomPickerWeight(student.randomWeight),
+        };
+      })
+      .filter(Boolean);
+  };
+
+  const SharedTimerStore = createSharedTimerStore({
+    workOrderText: state.workOrder,
+    durationMinutes: state.workOrderDurationMinutes,
+    startISO: state.workOrderStartISO,
+    alarmState: state.workOrderAlarmed,
+  });
+  const SharedRosterStore = createSharedRosterStore({
+    documentBus: document,
+    initialDetail: {
+      source: STUDENTS_SYNC_SOURCE_GROUPS,
+      students: cloneStudentsForSync(state.students),
+      performanceFlairCount: state.performanceFlairCount,
+      csvName: state.csvName,
+      headers: state.headers,
+      delim: state.delim,
+      importedAt: Date.now(),
+    },
+  });
+  const syncSharedRosterState = (source = STUDENTS_SYNC_SOURCE_GROUPS, importedAt = Date.now()) => {
+    const detail = {
+      ...SharedRosterStore.getState(),
+      source,
+      students: cloneStudentsForSync(state.students),
+      performanceFlairCount: state.performanceFlairCount,
+      csvName: state.csvName || '',
+      headers: Array.isArray(state.headers) ? state.headers.slice() : [],
+      delim: state.delim,
+      importedAt,
+    };
+    return SharedRosterStore.dispatch(detail);
+  };
+  const MIC_UI_STATE = Object.freeze({
+    READY: 'ready',
+    STARTING: 'starting',
+    ACTIVE: 'active',
+    UNSUPPORTED: 'unsupported',
+    ERROR: 'error',
+  });
+  const TIMER_UI_STATE = Object.freeze({
+    READY: 'ready',
+    RUNNING: 'running',
+    ALARM: 'alarm',
+  });
+  let timerUiState = TIMER_UI_STATE.READY;
+  const syncStateFromTimerStore = (timerState = SharedTimerStore.getState()) => {
+    state.workOrder = timerState.workOrderText;
+    state.workOrderDurationMinutes = timerState.durationMinutes;
+    state.workOrderStartISO = timerState.startISO;
+    state.workOrderAlarmed = timerState.alarmState;
+    renderWorkOrderTimerButtonsState();
+  };
+  const replaceTimerState = (next) => {
+    SharedTimerStore.replace(next);
+    syncStateFromTimerStore();
+  };
+  syncStateFromTimerStore();
+  SharedTimerStore.subscribe((timerState) => {
+    syncStateFromTimerStore(timerState);
+  });
+  bridgeController = createPlanningSeatplanBridge({
+    els,
+    getChromeCollapsed: isChromeCollapsed,
+    rosterStore: SharedRosterStore,
+    documentBus: document,
+  });
+  SharedRosterStore.subscribe((detail) => {
+    if (!detail || typeof detail !== 'object') return;
+    const importedAt = Number(detail.importedAt);
+    if (Number.isFinite(importedAt) && importedAt <= lastRosterImportedAt) return;
+    lastRosterImportedAt = Number.isFinite(importedAt) ? importedAt : Date.now();
+    state.students = cloneStudentsForSync(detail.students);
+    state.performanceFlairCount = clampPerformanceFlairCount(
+      detail.performanceFlairCount,
+      state.performanceFlairCount
+    );
+    state.headers = Array.isArray(detail.headers) ? detail.headers.slice() : [];
+    if (typeof detail.delim === 'string' && detail.delim) {
+      state.delim = detail.delim;
+    }
+    if (typeof detail.csvName === 'string') {
+      const rawLabel = detail.csvName.trim();
+      state.csvName = rawLabel ? sanitizeExportFileName(rawLabel) : '';
+      updateCsvStatusDisplay();
+    }
+    state.seats = {};
+    state.seatTopics = {};
+    SharedTimerStore.setWorkOrder({
+      workOrderText: '',
+      durationMinutes: null,
+      startISO: null,
+    });
+    SharedTimerStore.stop();
+    syncStateFromTimerStore();
+    state.lockedSeats.clear();
+    syncGroupSizeInputs();
+    els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
+    refreshUnseated();
+    renderRandomPicker();
+    renderSeats();
+    renderWorkOrder();
+    requestGroupGridLayoutRefresh({ resetViewport: true });
+    state.scrollHintDismissed = false;
+    state._lastImport = true;
+    updateScrollHint();
+  });
+  shellController = createShellController({
+    els,
+    state: shellState,
+    isIOSDevice,
+    shellSupportsExternalFileSync,
+    onEnsureTabInitialized: (tab) => {
+      try {
+        bridgeController?.ensureTabInitialized(tab);
+      } catch (error) {
+        const userMessage = tab === TAB_MERGER
+          ? 'PDF-Tools konnten nicht initialisiert werden.'
+          : (
+            tab === TAB_DUPLICATE_CHECK
+              ? 'DuplikatCheck konnte nicht initialisiert werden.'
+              : (
+                tab === TAB_QR
+                  ? 'QR-Tools konnten nicht initialisiert werden.'
+                  : tab === TAB_SEATPLAN
+                    ? 'Sitzplan-Modul konnte nicht initialisiert werden.'
+                    : 'Planungs-Modul konnte nicht initialisiert werden.'
+              )
+          );
+        reportAppError(error, userMessage, {
+          scope: 'tab-init',
+          tab,
+        });
+        if ((tab === TAB_PLANNING || tab === TAB_GRADES) && els.planningHost) {
+          els.planningHost.textContent = 'Planung konnte nicht geladen werden.';
         }
       }
-      function isRandomPickerTabActive() {
-        return getActiveTab() === TAB_RANDOM_PICKER;
+    },
+    onDispatchPlanningViewRequest: (view) => bridgeController?.dispatchPlanningViewRequest(view),
+    onRenderRandomPicker: () => renderRandomPicker(),
+    onPositionWorkOrderHintOverlay: () => positionWorkOrderHintOverlay(),
+    onRefreshLayouts: () => refreshChromeDependentLayouts(),
+  });
+  bindTabNavigation();
+  const PREFERENCE_SLOT_COUNT = 3;
+  const MAX_GRID_SIZE = 20;
+  const MAX_PERFORMANCE_FLAIR_COUNT = 10;
+  const TOUCH_DRAG_DELAY_MS = 90;
+  const TOUCH_DRAG_CANCEL_DISTANCE = 10;
+  const touchPoints = typeof navigator !== 'undefined' ? (navigator.maxTouchPoints || 0) : 0;
+  const supportsTouchDrag = typeof window !== 'undefined'
+    && (('ontouchstart' in window) || touchPoints > 0);
+  let touchDragState = null;
+  let workOrderTimerId = null;
+  let workOrderAlarmIntervalId = null;
+  let workOrderAudioCtx = null;
+  let timerVisualWarningTimeoutId = null;
+  let timerWarningToneEnabled = { end: true, half: true, quarter: true };
+  let timerMilestoneTriggered = { half: false, quarter: false };
+  let timerLastRemainingRatio = null;
+  let timerShowSeconds = true;
+  const SCROLL_HINT_HIDE_OFFSET = 0;
+
+  function toggleScrollHint(visible) {
+    if (!els.scrollHint) return;
+    els.scrollHint.classList.toggle('active', Boolean(visible));
+    positionScrollHintBox();
+  }
+  function dismissScrollHint() {
+    toggleScrollHint(false);
+  }
+  function setScrollHintText() {
+    if (!els.scrollHint) return;
+    const textNode = els.scrollHint.querySelector('.text');
+    if (!textNode) return;
+    const count = Array.isArray(state.students) ? state.students.length : 0;
+    if (count > 0) {
+      const label = count === 1 ? 'Name' : 'Namen';
+      textNode.textContent = `${count} ${label} wurden importiert.`;
+    } else {
+      textNode.textContent = 'Namen importiert';
+    }
+  }
+  function positionScrollHintBox() {
+    if (!els.scrollHint) return;
+    const hint = els.scrollHint;
+    if (!hint.classList.contains('active')) {
+      hint.style.left = '';
+      hint.style.transform = '';
+      return;
+    }
+    const panelRect = els.sidePanel?.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const inset = 12;
+    const hintWidth = hint.offsetWidth || hint.getBoundingClientRect().width || 0;
+    if (panelRect && viewportWidth && hintWidth) {
+      const targetCenter = panelRect.left + (panelRect.width / 2);
+      const minCenter = inset + (hintWidth / 2);
+      const maxCenter = viewportWidth - inset - (hintWidth / 2);
+      const clampedCenter = Math.min(Math.max(targetCenter, minCenter), maxCenter);
+      hint.style.left = `${clampedCenter}px`;
+      hint.style.transform = 'translateX(-50%)';
+    } else {
+      hint.style.left = '50%';
+      hint.style.transform = 'translateX(-50%)';
+    }
+  }
+  function initSeatTopicInput(input) {
+    if (!input) return;
+    const defaultPlaceholder = input.getAttribute('data-default-placeholder') || input.getAttribute('placeholder') || 'Thema';
+    input.dataset.defaultPlaceholder = defaultPlaceholder;
+    input.addEventListener('focus', () => {
+      input.placeholder = '';
+    });
+    input.addEventListener('blur', () => {
+      if (!input.value.trim()) {
+        input.placeholder = input.dataset.defaultPlaceholder || 'Thema';
       }
-      function setPreferencesResetVisibility(isVisible) {
-        if (!els.preferencesReset) return;
-        els.preferencesReset.hidden = !isVisible;
+    });
+  }
+  function syncSeatTopicState(seat, topicValue) {
+    if (!seat) return;
+    const hasTopic = Boolean(String(topicValue || '').trim());
+    seat.classList.toggle('seat-topic-empty', !hasTopic);
+  }
+  function updateScrollHint() {
+    if (!els.scrollHint || !els.sidePanel) return;
+    setScrollHintText();
+    const requiresScroll = (els.sidePanel.scrollHeight - els.sidePanel.clientHeight) > 16;
+    const isAtTop = els.sidePanel.scrollTop <= 4;
+    toggleScrollHint(requiresScroll && isAtTop && state.students.length > 0);
+  }
+  function handleSideScroll() {
+    if (!els.sidePanel) return;
+    if (els.sidePanel.scrollTop > SCROLL_HINT_HIDE_OFFSET) { dismissScrollHint(); }
+  }
+  function handleRosterScroll(e) {
+    const scroller = e?.target;
+    if (!scroller) return;
+    if (scroller.scrollTop > SCROLL_HINT_HIDE_OFFSET) { dismissScrollHint(); }
+  }
+  els.sidePanel?.addEventListener('scroll', handleSideScroll, { passive: true });
+  els.rosterPanel?.addEventListener('scroll', handleRosterScroll, { passive: true });
+  els.unseated?.addEventListener('scroll', handleRosterScroll, { passive: true });
+  els.groupsGridWrap?.addEventListener('scroll', dismissScrollHint, { passive: true });
+  window.addEventListener('resize', () => {
+    updateScrollHint();
+    positionScrollHintBox();
+  });
+  window.addEventListener('scroll', (e) => {
+    if (state.scrollHintDismissed) return;
+    const target = e?.target;
+    if (target && typeof target.scrollTop === 'number' && target.scrollTop > SCROLL_HINT_HIDE_OFFSET) {
+      dismissScrollHint();
+      return;
+    }
+    const doc = document;
+    const isMainScroll = target === doc || target === doc.body || target === doc.documentElement;
+    if (isMainScroll) {
+      const offset = window.scrollY
+        || doc.documentElement?.scrollTop
+        || doc.body?.scrollTop
+        || 0;
+      if (offset > SCROLL_HINT_HIDE_OFFSET) {
+        dismissScrollHint();
       }
-      function renderSeatPreferencesHeader() {
-        if (!els.preferencesDialogTitle || !els.preferencesTableHead) return;
-        setPreferencesResetVisibility(false);
-        els.preferencesDialogTitle.textContent = 'Bedingungen';
-        els.preferencesTableHead.innerHTML = `
+    }
+  }, true);
+
+  function normalizeGridDimension(value) {
+    if (value === undefined || value === null) return null;
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed)) return null;
+    return Math.min(MAX_GRID_SIZE, Math.max(1, parsed));
+  }
+  function clampGridDimension(value) {
+    return normalizeGridDimension(value) ?? 1;
+  }
+  function findBestGridSize(target) {
+    const limit = MAX_GRID_SIZE;
+    const cappedTarget = Math.max(1, Math.min(target, limit * limit));
+    let best = { rows: 1, cols: 1, area: 1, diff: Infinity };
+    for (let rows = 1; rows <= limit; rows++) {
+      const cols = Math.ceil(cappedTarget / rows);
+      if (cols > limit) continue;
+      const area = rows * cols;
+      const diff = area - cappedTarget;
+      if (diff < best.diff || (diff === best.diff && Math.abs(rows - cols) < Math.abs(best.rows - best.cols))) {
+        best = { rows, cols, area, diff };
+      }
+    }
+    return { rows: clampGridDimension(best.rows), cols: clampGridDimension(best.cols) };
+  }
+
+  function nextSeatSlot() {
+    const limit = MAX_GRID_SIZE;
+    let rows = clampGridDimension(state.gridRows);
+    let cols = clampGridDimension(state.gridCols);
+    const occupied = new Set(state.activeSeatOrder || state.activeSeats);
+    // find first gap in existing grid
+    for (let r = 1; r <= rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        const id = seatId(r, c);
+        if (!occupied.has(id)) {
+          return { id, rows, cols };
+        }
+      }
+    }
+    // need to grow grid by one line/column
+    if (cols < limit) {
+      cols += 1;
+      return { id: seatId(rows, cols), rows, cols };
+    }
+    if (rows < limit) {
+      rows += 1;
+      return { id: seatId(rows, 1), rows, cols };
+    }
+    return null;
+  }
+
+  function ensureCapacityForStudents(maxSize, minSize = state.minGroupSize || 1) {
+    const total = Math.max(0, state.students.length || 0);
+    const minGroupsNeeded = Math.max(1, Math.ceil(total / Math.max(1, maxSize)));
+    const maxGroupsAllowed = Math.max(1, Math.floor(total / Math.max(1, minSize))) || 1;
+    const targetGroups = Math.max(1, Math.min(maxGroupsAllowed, minGroupsNeeded));
+    const { rows, cols } = findBestGridSize(targetGroups);
+    const full = Array.from(buildFullActiveSet(rows, cols));
+    state.activeSeatOrder = full;
+    state.activeSeats = new Set(full);
+    state.gridRows = rows;
+    state.gridCols = cols;
+    buildGrid();
+  }
+  function maxGroupLimit() {
+    const total = Math.max(1, state.students.length || 0);
+    const fallback = Math.max(99, state.activeSeats.size || (state.gridRows * state.gridCols) || 0);
+    return Math.max(total, fallback);
+  }
+  function clampMaxGroupSize(value) {
+    const limit = maxGroupLimit();
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed) || parsed < 1) return 1;
+    const maxed = Math.max(1, Math.min(limit, parsed));
+    return Math.max(state.minGroupSize || 1, maxed);
+  }
+  function clampMinGroupSize(value) {
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed) || parsed < 1) return 1;
+    const maxLimit = clampMaxGroupSize(state.maxGroupSize || 1);
+    return Math.min(parsed, maxLimit);
+  }
+  function syncGroupSizeInputs() {
+    if (els.maxGroupSize) {
+      const limit = maxGroupLimit();
+      els.maxGroupSize.min = '1';
+      els.maxGroupSize.max = String(limit);
+    }
+    state.minGroupSize = clampMinGroupSize(state.minGroupSize);
+    state.maxGroupSize = clampMaxGroupSize(state.maxGroupSize);
+    if (state.minGroupSize > state.maxGroupSize) {
+      state.maxGroupSize = clampMaxGroupSize(state.minGroupSize);
+    }
+    if (els.minGroupSize) els.minGroupSize.value = String(state.minGroupSize);
+    if (els.maxGroupSize) els.maxGroupSize.value = String(state.maxGroupSize);
+  }
+  function hasAnyAssignedGroupStudents() {
+    return Object.values(state.seats || {}).some((seatList) => ensureSeatList(seatList).length > 0);
+  }
+  function syncGroupGridFromSizeInputs(options = {}) {
+    const { forceCapacity = false } = options;
+    syncGroupSizeInputs();
+    if (!state.students.length) {
+      requestGroupGridLayoutRefresh({ resetViewport: true });
+      return;
+    }
+    if (forceCapacity || !hasAnyAssignedGroupStudents()) {
+      const maxSize = clampMaxGroupSize(state.maxGroupSize);
+      const minSize = clampMinGroupSize(state.minGroupSize);
+      ensureCapacityForStudents(maxSize, minSize);
+      return;
+    }
+    requestGroupGridLayoutRefresh({ resetViewport: true });
+  }
+  const guardGroupInput = () => {
+    if (!state.students.length) {
+      showMessage('Importiere zuerst die Namensliste!', 'warn');
+      return false;
+    }
+    return true;
+  };
+  const adjustMinGroupSize = (delta) => {
+    if (!guardGroupInput()) return;
+    const current = state.minGroupSize || 1;
+    state.minGroupSize = clampMinGroupSize(current + delta);
+    if (state.minGroupSize > state.maxGroupSize) {
+      state.maxGroupSize = clampMaxGroupSize(state.minGroupSize);
+    }
+    syncGroupGridFromSizeInputs();
+  };
+  const adjustMaxGroupSize = (delta) => {
+    if (!guardGroupInput()) return;
+    const current = state.maxGroupSize || 1;
+    state.maxGroupSize = clampMaxGroupSize(current + delta);
+    if (state.minGroupSize > state.maxGroupSize) {
+      state.minGroupSize = clampMinGroupSize(state.maxGroupSize);
+    }
+    syncGroupGridFromSizeInputs();
+  };
+  els.minGroupSize?.addEventListener('change', () => {
+    if (!guardGroupInput()) return;
+    state.minGroupSize = clampMinGroupSize(Number(els.minGroupSize.value));
+    if (state.minGroupSize > state.maxGroupSize) {
+      state.maxGroupSize = clampMaxGroupSize(state.minGroupSize);
+    }
+    syncGroupGridFromSizeInputs();
+  });
+  els.maxGroupSize?.addEventListener('change', () => {
+    if (!guardGroupInput()) return;
+    state.maxGroupSize = clampMaxGroupSize(Number(els.maxGroupSize.value));
+    if (state.minGroupSize > state.maxGroupSize) {
+      state.minGroupSize = clampMinGroupSize(state.maxGroupSize);
+    }
+    syncGroupGridFromSizeInputs();
+  });
+  els.minGroupDec?.addEventListener('click', () => adjustMinGroupSize(-1));
+  els.minGroupInc?.addEventListener('click', () => adjustMinGroupSize(1));
+  els.maxGroupDec?.addEventListener('click', () => adjustMaxGroupSize(-1));
+  els.maxGroupInc?.addEventListener('click', () => adjustMaxGroupSize(1));
+  syncGroupSizeInputs();
+  function ensureSeatList(val) {
+    if (!val) return [];
+    if (Array.isArray(val)) return Array.from(new Set(val.filter(Boolean).map(String)));
+    return [String(val)].filter(Boolean);
+  }
+  function startWiggle() {
+    document.querySelectorAll('.seat-chip, .student').forEach(el => el.classList.add('wiggle'));
+  }
+  function stopWiggle() {
+    document.querySelectorAll('.wiggle').forEach(el => el.classList.remove('wiggle'));
+  }
+  function getSeatList(id) {
+    return ensureSeatList(state.seats[id]);
+  }
+  function setSeatList(id, list) {
+    state.seats[id] = ensureSeatList(list);
+  }
+  function addStudentToSeat(seatId, studentId) {
+    if (!seatId || !studentId) return;
+    const list = getSeatList(seatId);
+    if (!list.includes(studentId)) {
+      list.push(studentId);
+      setSeatList(seatId, list);
+    }
+  }
+  function removeStudentFromSeat(seatId, studentId) {
+    if (!seatId || !studentId) return;
+    const list = getSeatList(seatId);
+    const next = list.filter(id => id !== studentId);
+    setSeatList(seatId, next);
+  }
+  function buildFullActiveSet(rows, cols) {
+    const set = new Set();
+    for (let r = 1; r <= rows; r++) {
+      for (let c = 1; c <= cols; c++) {
+        set.add(seatId(r, c));
+      }
+    }
+    return set;
+  }
+  function seatId(r, c) { return `${r}-${c}` }
+  function displayName(s) { return `${s.first || ''} ${s.last || ''}`.trim(); }
+  function formatStudentLabel(student) {
+    if (!student) return '';
+    const name = displayName(student);
+    return name || `ID ${student.id || ''}`.trim();
+  }
+  function getPerformanceFlairLabel(index) {
+    let remaining = Math.max(0, Math.floor(Number(index) || 0));
+    let label = '';
+    do {
+      label = String.fromCharCode(65 + (remaining % 26)) + label;
+      remaining = Math.floor(remaining / 26) - 1;
+    } while (remaining >= 0);
+    return label;
+  }
+  function clampPerformanceFlairCount(value, fallback = 4) {
+    const parsed = Number.parseInt(value, 10);
+    const fallbackParsed = Number.parseInt(fallback, 10);
+    const normalizedFallback = Number.isFinite(fallbackParsed) && fallbackParsed >= 2
+      ? Math.min(MAX_PERFORMANCE_FLAIR_COUNT, fallbackParsed)
+      : 4;
+    if (!Number.isFinite(parsed)) return normalizedFallback;
+    if (parsed < 2) return normalizedFallback;
+    return Math.min(MAX_PERFORMANCE_FLAIR_COUNT, parsed);
+  }
+  function normalizePerformanceFlair(value) {
+    const normalized = String(value || '').trim().toUpperCase();
+    return /^[A-Z]+$/.test(normalized) ? normalized : '';
+  }
+  function getAllowedPerformanceFlairs(count = state.performanceFlairCount) {
+    const total = clampPerformanceFlairCount(count, 4);
+    return Array.from({ length: total }, (_, index) => getPerformanceFlairLabel(index));
+  }
+  function sanitizePerformanceFlairForCount(value, count = state.performanceFlairCount) {
+    const normalized = normalizePerformanceFlair(value);
+    return getAllowedPerformanceFlairs(count).includes(normalized) ? normalized : '';
+  }
+  function getPerformanceFlairRank(value, count = state.performanceFlairCount) {
+    const flair = sanitizePerformanceFlairForCount(value, count);
+    if (!flair) return -1;
+    return getAllowedPerformanceFlairs(count).indexOf(flair);
+  }
+  function getPerformanceFlairDistance(first, second, count = state.performanceFlairCount) {
+    const firstRank = getPerformanceFlairRank(first, count);
+    const secondRank = getPerformanceFlairRank(second, count);
+    if (firstRank < 0 || secondRank < 0) return null;
+    return Math.abs(firstRank - secondRank);
+  }
+  function sanitizePerformanceFlairCountInStudents(count = state.performanceFlairCount, students = state.students) {
+    if (!Array.isArray(students)) return;
+    students.forEach((student) => {
+      if (!student || typeof student !== 'object') return;
+      student.performanceFlair = sanitizePerformanceFlairForCount(student.performanceFlair, count);
+    });
+  }
+  function formatPerformanceFlairRangeLabel(count = state.performanceFlairCount) {
+    const normalizedCount = clampPerformanceFlairCount(count, 4);
+    return `A-${getPerformanceFlairLabel(normalizedCount - 1)}`;
+  }
+  function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isFinite(parsed)) return fallback;
+    if (parsed <= RANDOM_PICKER_MIN_WEIGHT) return RANDOM_PICKER_MIN_WEIGHT;
+    if (parsed >= RANDOM_PICKER_CERTAIN_WEIGHT) return RANDOM_PICKER_CERTAIN_WEIGHT;
+    if (parsed >= RANDOM_PICKER_MAX_WEIGHT) return RANDOM_PICKER_MAX_WEIGHT;
+    return RANDOM_PICKER_DEFAULT_WEIGHT;
+  }
+  function sanitizeRandomPickerStudent(student) {
+    if (!student || typeof student !== 'object') return student;
+    student.randomWeight = normalizeRandomPickerWeight(student.randomWeight);
+    student.performanceFlair = sanitizePerformanceFlairForCount(student.performanceFlair);
+    return student;
+  }
+  function getRandomPickerCandidates({ includeZeroWeight = false } = {}) {
+    return state.students
+      .map((student) => {
+        const name = formatStudentLabel(student);
+        if (!name) return null;
+        const weight = normalizeRandomPickerWeight(student?.randomWeight);
+        return {
+          id: student.id,
+          name,
+          weight,
+        };
+      })
+      .filter((entry) => entry && (includeZeroWeight || entry.weight > 0));
+  }
+  function getRandomPickerNames({ includeZeroWeight = true } = {}) {
+    return getRandomPickerCandidates({ includeZeroWeight }).map((entry) => entry.name);
+  }
+  function pickWeightedRandomPickerCandidate(candidates) {
+    const pool = Array.isArray(candidates)
+      ? candidates.filter((entry) => entry && entry.weight > 0)
+      : [];
+    const certainCandidate = pool.find((entry) => entry.weight === RANDOM_PICKER_CERTAIN_WEIGHT);
+    if (certainCandidate) return certainCandidate;
+    const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
+    if (!pool.length || totalWeight <= 0) return null;
+    let threshold = Math.random() * totalWeight;
+    for (const entry of pool) {
+      threshold -= entry.weight;
+      if (threshold < 0) return entry;
+    }
+    return pool[pool.length - 1] || null;
+  }
+  function measureRandomPickerWheelWidth(labels = []) {
+    if (!els.randomPickerWheel || typeof document === 'undefined') return 0;
+    const probeCard = els.randomPickerCards?.[3] || els.randomPickerCards?.[0];
+    if (!probeCard) return 0;
+    const wheelStyle = window.getComputedStyle(els.randomPickerWheel);
+    const cardStyle = window.getComputedStyle(probeCard);
+    const horizontalPadding = ['paddingLeft', 'paddingRight']
+      .reduce((sum, key) => sum + (Number.parseFloat(wheelStyle[key]) || 0), 0);
+    const cardHorizontal = ['paddingLeft', 'paddingRight', 'borderLeftWidth', 'borderRightWidth']
+      .reduce((sum, key) => sum + (Number.parseFloat(cardStyle[key]) || 0), 0);
+    const candidates = Array.from(new Set(
+      labels
+        .map((label) => String(label || '').trim())
+        .filter(Boolean)
+        .concat(['Noch keine Namen importiert', 'Keine Auswahl aktiv'])
+    ));
+    if (!candidates.length) return 0;
+    const measurer = document.createElement('span');
+    measurer.style.position = 'absolute';
+    measurer.style.visibility = 'hidden';
+    measurer.style.pointerEvents = 'none';
+    measurer.style.whiteSpace = 'nowrap';
+    measurer.style.font = cardStyle.font;
+    measurer.style.fontWeight = cardStyle.fontWeight;
+    measurer.style.letterSpacing = cardStyle.letterSpacing;
+    measurer.style.textTransform = cardStyle.textTransform;
+    measurer.style.padding = '0';
+    measurer.style.border = '0';
+    measurer.style.top = '-9999px';
+    measurer.style.left = '-9999px';
+    document.body.appendChild(measurer);
+    let maxLabelWidth = 0;
+    candidates.forEach((label) => {
+      measurer.textContent = label;
+      maxLabelWidth = Math.max(maxLabelWidth, Math.ceil(measurer.getBoundingClientRect().width));
+    });
+    measurer.remove();
+    const arrowClearance = Number.parseFloat(wheelStyle.getPropertyValue('--random-picker-arrow-clearance')) || 0;
+    return Math.ceil(maxLabelWidth + cardHorizontal + horizontalPadding + arrowClearance);
+  }
+  function applyRandomPickerWheelWidth(widthPx = 0) {
+    if (!els.randomPickerWheel) return;
+    if (widthPx > 0) {
+      const wheelStyle = window.getComputedStyle(els.randomPickerWheel);
+      const horizontalPadding = ['paddingLeft', 'paddingRight']
+        .reduce((sum, key) => sum + (Number.parseFloat(wheelStyle[key]) || 0), 0);
+      const arrowClearance = Number.parseFloat(wheelStyle.getPropertyValue('--random-picker-arrow-clearance')) || 0;
+      const cardWidthPx = Math.max(0, widthPx - horizontalPadding - arrowClearance);
+      randomPickerLockedWidthPx = widthPx;
+      els.randomPickerWheel.style.setProperty('--random-picker-wheel-static-width', `${widthPx}px`);
+      els.randomPickerWheel.style.setProperty('--random-picker-card-static-width', `${cardWidthPx}px`);
+      return;
+    }
+    randomPickerLockedWidthPx = 0;
+    els.randomPickerWheel.style.removeProperty('--random-picker-wheel-static-width');
+    els.randomPickerWheel.style.removeProperty('--random-picker-card-static-width');
+  }
+  function refreshRandomPickerWheelWidth(labels = []) {
+    const measuredWidth = measureRandomPickerWheelWidth(labels);
+    applyRandomPickerWheelWidth(measuredWidth);
+    return measuredWidth;
+  }
+  function getRandomPickerStartButtons() {
+    return Array.from(els.randomPickerStartButtons || []).filter(Boolean);
+  }
+  function setRandomPickerStartButtons({ disabled, text } = {}) {
+    getRandomPickerStartButtons().forEach((button) => {
+      if (typeof disabled === 'boolean') {
+        button.disabled = disabled;
+      }
+      if (typeof text === 'string') {
+        if (button.dataset.collapsedIcon === '1') {
+          button.textContent = '✨';
+        } else {
+          button.textContent = text;
+        }
+      }
+    });
+  }
+  function updateRandomPickerCards(centerIndex = 0, { final = false } = {}) {
+    if (!els.randomPickerCards?.length) return;
+    const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
+    const names = getRandomPickerNames({ includeZeroWeight: true });
+    const total = names.length;
+    const cards = Array.from(els.randomPickerCards);
+    if (!total) {
+      const emptyLabel = allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen importiert';
+      cards.forEach((card, slotIndex) => {
+        const distance = Math.abs(slotIndex - 3);
+        card.textContent = emptyLabel;
+        card.dataset.distance = String(distance);
+        card.classList.toggle('is-final', false);
+      });
+      randomPickerCurrentIndex = 0;
+      return;
+    }
+    const safeIndex = ((Math.round(centerIndex) % total) + total) % total;
+    randomPickerCurrentIndex = safeIndex;
+    cards.forEach((card, slotIndex) => {
+      const offset = slotIndex - 3;
+      const candidateIndex = ((safeIndex + offset) % total + total) % total;
+      const distance = Math.abs(offset);
+      card.textContent = names[candidateIndex];
+      card.dataset.distance = String(Math.min(3, distance));
+      card.classList.toggle('is-final', final && offset === 0);
+    });
+  }
+  function renderRandomPicker() {
+    const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
+    const candidates = getRandomPickerCandidates();
+    const names = allCandidates.map((entry) => entry.name);
+    refreshRandomPickerWheelWidth(names);
+    const count = candidates.length;
+    if (els.randomPickerCount) {
+      els.randomPickerCount.textContent = String(count);
+    }
+    if (!count) {
+      randomPickerSpinInProgress = false;
+      if (els.randomPickerResultName) {
+        els.randomPickerResultName.textContent = allCandidates.length
+          ? 'Keine Auswahl aktiv'
+          : 'Noch keine Namen importiert';
+      }
+      if (els.randomPickerResultNote) {
+        els.randomPickerResultNote.textContent = allCandidates.length
+          ? 'Alle Einträge stehen auf „unmöglich“. Stelle mindestens einen Eintrag auf „normal“, „doppelt“, „dreifach“ oder „sicher“.'
+          : 'Importiere zuerst eine Namensliste in der Sidebar.';
+      }
+      if (els.randomPickerActionNote) {
+        els.randomPickerActionNote.textContent = allCandidates.length
+          ? 'Lege im Dialog Bedingungen pro Name „unmöglich“, „normal“, „doppelt“, „dreifach“ oder „sicher“ fest.'
+          : 'Tippe auf den Button, damit der Generator losläuft.';
+      }
+      setRandomPickerStartButtons({ disabled: !allCandidates.length, text: 'Start' });
+      updateRandomPickerCards(0);
+      return;
+    }
+    const safeIndex = Math.min(randomPickerCurrentIndex, Math.max(0, names.length - 1));
+    updateRandomPickerCards(safeIndex);
+    if (!randomPickerSpinInProgress) {
+      setRandomPickerStartButtons({ disabled: false });
+    }
+    if (els.randomPickerResultName && !randomPickerSpinInProgress) {
+      els.randomPickerResultName.textContent = names[safeIndex];
+    }
+    if (els.randomPickerResultNote) {
+      els.randomPickerResultNote.textContent = randomPickerSpinInProgress
+        ? 'Der Generator läuft und bremst kontrolliert ab.'
+        : 'Die Auswahl erfolgt zufällig aus allen importierten Namen.';
+    }
+    if (els.randomPickerActionNote && !randomPickerSpinInProgress) {
+      els.randomPickerActionNote.textContent = count === 1
+        ? 'Es ist nur ein Name verfügbar.'
+        : 'Tippe auf den Button, damit der Generator losläuft.';
+    }
+  }
+  async function startRandomPickerSpin() {
+    const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
+    if (!allCandidates.length) {
+      showMessage('Importiere zuerst die Namensliste!', 'warn');
+      return;
+    }
+    const candidates = allCandidates.filter((entry) => entry.weight > 0);
+    if (!candidates.length) {
+      showMessage('Für den Picker ist aktuell kein Name auf „normal“, „doppelt“, „dreifach“ oder „sicher“ gesetzt.', 'warn');
+      return;
+    }
+    const displayNames = allCandidates.map((entry) => entry.name);
+    if (randomPickerSpinInProgress) return;
+    refreshRandomPickerWheelWidth(displayNames);
+    randomPickerSpinInProgress = true;
+    setRandomPickerStartButtons({ disabled: true, text: 'Läuft...' });
+    if (els.randomPickerResultNote) {
+      els.randomPickerResultNote.textContent = 'Der Generator läuft und bremst kontrolliert ab.';
+    }
+    if (els.randomPickerActionNote) {
+      els.randomPickerActionNote.textContent = 'Zufallsgenerator läuft...';
+    }
+    try {
+      const winner = pickWeightedRandomPickerCandidate(candidates);
+      const total = displayNames.length;
+      const winnerIndex = Math.max(0, allCandidates.findIndex((entry) => entry.id === winner?.id));
+      const loops = total <= 1 ? 0 : Math.max(2, Math.ceil(14 / total));
+      const totalSteps = total <= 1
+        ? 1
+        : Math.max(18, (loops * total) + winnerIndex - randomPickerCurrentIndex + (winnerIndex >= randomPickerCurrentIndex ? 0 : total));
+      const stepWeights = [];
+      for (let step = 1; step <= totalSteps; step += 1) {
+        const progress = totalSteps <= 1 ? 1 : step / totalSteps;
+        stepWeights.push(1 + Math.pow(progress, 2.2) * 6.5);
+      }
+      const totalWeight = stepWeights.reduce((sum, weight) => sum + weight, 0) || 1;
+      for (let step = 1; step <= totalSteps; step += 1) {
+        const frameIndex = total <= 1 ? winnerIndex : (randomPickerCurrentIndex + 1) % total;
+        updateRandomPickerCards(frameIndex, { final: false });
+        const delayMs = (RANDOM_PICKER_SPIN_DURATION_MS * stepWeights[step - 1]) / totalWeight;
+        await waitMs(delayMs);
+      }
+      updateRandomPickerCards(winnerIndex, { final: true });
+      if (els.randomPickerResultName) {
+        els.randomPickerResultName.textContent = winner?.name || displayNames[winnerIndex] || '';
+      }
+      if (els.randomPickerResultNote) {
+        els.randomPickerResultNote.textContent = 'Der Zufallsgenerator ist stehen geblieben.';
+      }
+      if (els.randomPickerActionNote) {
+        els.randomPickerActionNote.textContent = `Gewählt wurde: ${winner?.name || displayNames[winnerIndex] || ''}`;
+      }
+      setRandomPickerStartButtons({ text: 'Nochmal' });
+    } finally {
+      randomPickerSpinInProgress = false;
+      getRandomPickerStartButtons().forEach((button) => {
+        button.disabled = false;
+        if (button.textContent.trim() === 'Läuft...') {
+          button.textContent = button.dataset.collapsedIcon === '1' ? '✨' : 'Start';
+        }
+      });
+    }
+  }
+  function isRandomPickerTabActive() {
+    return getActiveTab() === TAB_RANDOM_PICKER;
+  }
+  function setPreferencesResetVisibility(isVisible) {
+    if (!els.preferencesReset) return;
+    els.preferencesReset.hidden = !isVisible;
+  }
+  function renderSeatPreferencesHeader() {
+    if (!els.preferencesDialogTitle || !els.preferencesTableHead) return;
+    setPreferencesResetVisibility(false);
+    els.preferencesDialogTitle.textContent = 'Bedingungen';
+    els.preferencesTableHead.innerHTML = `
           <tr>
             <th colspan="3" class="group-header">
               Gute Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
@@ -1111,4318 +2471,4332 @@ import { applyTheme } from './shell/theme.js';
             </th>
           </tr>
         `;
+  }
+  function createSeatPreferencesDraft(students = state.students) {
+    const draft = new Map();
+    (Array.isArray(students) ? students : []).forEach((student) => {
+      if (!student || typeof student !== 'object') return;
+      const sid = String(student.id || '').trim();
+      if (!sid) return;
+      draft.set(sid, {
+        buddies: Array.from({ length: PREFERENCE_SLOT_COUNT }, (_, index) => student.buddies?.[index] || ''),
+        foes: Array.from({ length: PREFERENCE_SLOT_COUNT }, (_, index) => student.foes?.[index] || ''),
+        performanceFlair: sanitizePerformanceFlairForCount(student.performanceFlair),
+      });
+    });
+    return draft;
+  }
+  function readSeatPreferencesDraftFromForm() {
+    if (!els.preferencesTableBody || !els.preferencesTableBody.children.length) return null;
+    const draft = createSeatPreferencesDraft();
+    const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id]');
+    selects.forEach((select) => {
+      const sid = String(select.dataset.studentId || '').trim();
+      if (!sid) return;
+      if (!draft.has(sid)) {
+        draft.set(sid, {
+          buddies: Array(PREFERENCE_SLOT_COUNT).fill(''),
+          foes: Array(PREFERENCE_SLOT_COUNT).fill(''),
+          performanceFlair: '',
+        });
       }
-      function createSeatPreferencesDraft(students = state.students) {
-        const draft = new Map();
-        (Array.isArray(students) ? students : []).forEach((student) => {
-          if (!student || typeof student !== 'object') return;
-          const sid = String(student.id || '').trim();
-          if (!sid) return;
-          draft.set(sid, {
-            buddies: Array.from({ length: PREFERENCE_SLOT_COUNT }, (_, index) => student.buddies?.[index] || ''),
-            foes: Array.from({ length: PREFERENCE_SLOT_COUNT }, (_, index) => student.foes?.[index] || ''),
-            performanceFlair: sanitizePerformanceFlairForCount(student.performanceFlair),
-          });
-        });
-        return draft;
+      const entry = draft.get(sid);
+      if (select.dataset.preference === 'performance-flair') {
+        entry.performanceFlair = sanitizePerformanceFlairForCount(select.value);
+        return;
       }
-      function readSeatPreferencesDraftFromForm() {
-        if (!els.preferencesTableBody || !els.preferencesTableBody.children.length) return null;
-        const draft = createSeatPreferencesDraft();
-        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id]');
-        selects.forEach((select) => {
-          const sid = String(select.dataset.studentId || '').trim();
-          if (!sid) return;
-          if (!draft.has(sid)) {
-            draft.set(sid, {
-              buddies: Array(PREFERENCE_SLOT_COUNT).fill(''),
-              foes: Array(PREFERENCE_SLOT_COUNT).fill(''),
-              performanceFlair: '',
-            });
-          }
-          const entry = draft.get(sid);
-          if (select.dataset.preference === 'performance-flair') {
-            entry.performanceFlair = sanitizePerformanceFlairForCount(select.value);
-            return;
-          }
-          const slot = Number(select.dataset.prefSlot);
-          if (Number.isNaN(slot)) return;
-          if (select.dataset.prefType === 'foe') {
-            entry.foes[slot] = select.value || '';
-          } else if (select.dataset.prefType === 'buddy') {
-            entry.buddies[slot] = select.value || '';
-          }
-        });
-        return draft;
+      const slot = Number(select.dataset.prefSlot);
+      if (Number.isNaN(slot)) return;
+      if (select.dataset.prefType === 'foe') {
+        entry.foes[slot] = select.value || '';
+      } else if (select.dataset.prefType === 'buddy') {
+        entry.buddies[slot] = select.value || '';
       }
-      function buildSeatPreferencesTable(draft = null) {
-        if (!els.preferencesTableBody) return;
-        renderSeatPreferencesHeader();
-        els.preferencesTableBody.innerHTML = '';
-        const safeDraft = draft instanceof Map ? draft : createSeatPreferencesDraft();
-        const ordered = state.students.slice().sort((a, b) => {
-          const nameA = formatStudentLabel(a).toLowerCase();
-          const nameB = formatStudentLabel(b).toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return 0;
-        });
-        ordered.forEach(student => {
-          els.preferencesTableBody.appendChild(createPreferenceRow(student, ordered, safeDraft));
-        });
-        const binds = els.preferencesTableBody.querySelectorAll('select[data-pref-type]');
-        binds.forEach(sel => {
-          sel.addEventListener('change', () => {
-            refreshPreferenceOptionsForStudent(sel.dataset.studentId);
-          });
-        });
-        refreshAllPreferenceOptions();
-        renderSeatPreferencesPerformanceSummary(safeDraft);
-      }
-      function buildRandomPickerConditionsTable() {
-        if (!els.preferencesDialogTitle || !els.preferencesTableHead || !els.preferencesTableBody) return;
-        setPreferencesResetVisibility(true);
-        els.preferencesDialogTitle.textContent = 'Bedingungen';
-        els.preferencesTableHead.innerHTML = `
+    });
+    return draft;
+  }
+  function buildSeatPreferencesTable(draft = null) {
+    if (!els.preferencesTableBody) return;
+    renderSeatPreferencesHeader();
+    els.preferencesTableBody.innerHTML = '';
+    const safeDraft = draft instanceof Map ? draft : createSeatPreferencesDraft();
+    const ordered = state.students.slice().sort((a, b) => {
+      const nameA = formatStudentLabel(a).toLowerCase();
+      const nameB = formatStudentLabel(b).toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+    ordered.forEach(student => {
+      els.preferencesTableBody.appendChild(createPreferenceRow(student, ordered, safeDraft));
+    });
+    const binds = els.preferencesTableBody.querySelectorAll('select[data-pref-type]');
+    binds.forEach(sel => {
+      sel.addEventListener('change', () => {
+        refreshPreferenceOptionsForStudent(sel.dataset.studentId);
+      });
+    });
+    refreshAllPreferenceOptions();
+    renderSeatPreferencesPerformanceSummary(safeDraft);
+  }
+  function buildRandomPickerConditionsTable() {
+    if (!els.preferencesDialogTitle || !els.preferencesTableHead || !els.preferencesTableBody) return;
+    setPreferencesResetVisibility(true);
+    els.preferencesDialogTitle.textContent = 'Bedingungen';
+    els.preferencesTableHead.innerHTML = `
           <tr>
             <th class="group-header name-header">Name</th>
             <th class="group-header">Wahrscheinlichkeit</th>
           </tr>
         `;
-        els.preferencesTableBody.innerHTML = '';
-        if (els.preferencesPerformanceSummary) {
-          els.preferencesPerformanceSummary.hidden = true;
-          els.preferencesPerformanceSummary.textContent = '';
+    els.preferencesTableBody.innerHTML = '';
+    if (els.preferencesPerformanceSummary) {
+      els.preferencesPerformanceSummary.hidden = true;
+      els.preferencesPerformanceSummary.textContent = '';
+    }
+    const ordered = state.students.slice().sort((a, b) => {
+      const nameA = formatStudentLabel(a).toLowerCase();
+      const nameB = formatStudentLabel(b).toLowerCase();
+      if (nameA < nameB) return -1;
+      if (nameA > nameB) return 1;
+      return 0;
+    });
+    ordered.forEach((student) => {
+      sanitizeRandomPickerStudent(student);
+      const row = document.createElement('tr');
+
+      const nameCell = document.createElement('th');
+      nameCell.scope = 'row';
+      nameCell.className = 'name-cell';
+      nameCell.textContent = formatStudentLabel(student);
+      row.appendChild(nameCell);
+
+      const weightCell = document.createElement('td');
+      weightCell.className = 'weight-cell';
+      const wrap = document.createElement('div');
+      wrap.className = 'weight-choice-group';
+      const currentValue = String(normalizeRandomPickerWeight(student.randomWeight));
+      const choiceName = `random-weight-${student.id}`;
+      [
+        { value: '0', label: 'unmöglich' },
+        { value: '1', label: 'normal' },
+        { value: '2', label: 'doppelt' },
+        { value: '3', label: 'dreifach' },
+        { value: '4', label: 'sicher' },
+      ].forEach((optionConfig) => {
+        const choice = document.createElement('label');
+        choice.className = 'weight-choice';
+        const input = document.createElement('input');
+        input.type = 'radio';
+        input.name = choiceName;
+        input.value = optionConfig.value;
+        input.dataset.studentId = student.id;
+        input.dataset.preference = 'random-weight';
+        input.checked = currentValue === optionConfig.value;
+        const text = document.createElement('span');
+        text.textContent = optionConfig.label;
+        choice.appendChild(input);
+        choice.appendChild(text);
+        wrap.appendChild(choice);
+      });
+      weightCell.appendChild(wrap);
+      row.appendChild(weightCell);
+
+      els.preferencesTableBody.appendChild(row);
+    });
+  }
+  function createPreferenceRow(student, optionsList, draftMap = null) {
+    const draft = draftMap instanceof Map ? draftMap.get(student.id) : null;
+    const row = document.createElement('tr');
+    for (let i = 0; i < PREFERENCE_SLOT_COUNT; i++) {
+      row.appendChild(createPreferenceCell(student, 'buddy', i, optionsList, draft));
+    }
+    const nameCell = document.createElement('th');
+    nameCell.scope = 'row';
+    nameCell.className = 'name-cell';
+    nameCell.textContent = formatStudentLabel(student);
+    row.appendChild(nameCell);
+    row.appendChild(createPerformanceFlairCell(student, draft));
+    for (let i = 0; i < PREFERENCE_SLOT_COUNT; i++) {
+      row.appendChild(createPreferenceCell(student, 'foe', i, optionsList, draft));
+    }
+    return row;
+  }
+  function createPerformanceFlairCell(student, draft = null) {
+    const cell = document.createElement('td');
+    cell.className = 'performance-flair-col';
+    const select = document.createElement('select');
+    select.dataset.studentId = student.id;
+    select.dataset.preference = 'performance-flair';
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '-';
+    select.appendChild(placeholder);
+    getAllowedPerformanceFlairs().forEach((flair) => {
+      const option = document.createElement('option');
+      option.value = flair;
+      option.textContent = flair;
+      select.appendChild(option);
+    });
+    select.value = sanitizePerformanceFlairForCount(draft?.performanceFlair ?? student.performanceFlair);
+    const wrap = document.createElement('div');
+    wrap.className = 'select-wrap';
+    wrap.appendChild(select);
+    cell.appendChild(wrap);
+    return cell;
+  }
+  function createPreferenceCell(student, type, slotIndex, optionsList, draft = null) {
+    const cell = document.createElement('td');
+    cell.className = type === 'buddy' ? 'buddy-col' : 'foe-col';
+    const select = document.createElement('select');
+    select.dataset.studentId = student.id;
+    select.dataset.prefType = type;
+    select.dataset.prefSlot = String(slotIndex);
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = '-';
+    select.appendChild(placeholder);
+    optionsList.forEach(optionStudent => {
+      if (!optionStudent || optionStudent.id === student.id) return;
+      const option = document.createElement('option');
+      option.value = optionStudent.id;
+      option.textContent = formatStudentLabel(optionStudent);
+      select.appendChild(option);
+    });
+    const source = type === 'buddy'
+      ? (draft?.buddies || student.buddies || [])
+      : (draft?.foes || student.foes || []);
+    select.value = source[slotIndex] || '';
+    const wrap = document.createElement('div');
+    wrap.className = 'select-wrap';
+    wrap.appendChild(select);
+    cell.appendChild(wrap);
+    return cell;
+  }
+  function refreshPreferenceOptionsForStudent(studentId) {
+    if (!studentId || !els.preferencesTableBody) return;
+    const selects = els.preferencesTableBody.querySelectorAll(`select[data-student-id="${studentId}"][data-pref-type]`);
+    const chosen = new Set();
+    selects.forEach(sel => {
+      const val = sel.value || '';
+      if (val) chosen.add(val);
+    });
+    selects.forEach(sel => {
+      sel.querySelectorAll('option').forEach(opt => {
+        if (!opt.value) { opt.disabled = false; return; }
+        const shouldDisable = chosen.has(opt.value) && opt.value !== sel.value;
+        opt.disabled = shouldDisable;
+      });
+    });
+  }
+  function refreshAllPreferenceOptions() {
+    if (!els.preferencesTableBody) return;
+    const seen = new Set();
+    const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]');
+    selects.forEach(sel => {
+      const sid = sel.dataset.studentId;
+      if (!sid || seen.has(sid)) return;
+      seen.add(sid);
+      refreshPreferenceOptionsForStudent(sid);
+    });
+  }
+  function buildPerformanceFlairSummaryStats(draft = null, count = state.performanceFlairCount) {
+    const flairs = getAllowedPerformanceFlairs(count);
+    const counts = new Map(flairs.map((flair) => [flair, 0]));
+    let unassigned = 0;
+    state.students.forEach((student) => {
+      if (!student || typeof student !== 'object') return;
+      const sid = String(student.id || '').trim();
+      const draftEntry = draft instanceof Map && sid ? draft.get(sid) : null;
+      const flair = sanitizePerformanceFlairForCount(draftEntry?.performanceFlair ?? student.performanceFlair, count);
+      if (!flair) {
+        unassigned += 1;
+        return;
+      }
+      counts.set(flair, (counts.get(flair) || 0) + 1);
+    });
+    return { flairs, counts, unassigned };
+  }
+  function renderSeatPreferencesPerformanceSummary(draft = null) {
+    if (!els.preferencesPerformanceSummary) return;
+    if (isRandomPickerTabActive() || !state.students.length) {
+      els.preferencesPerformanceSummary.hidden = true;
+      els.preferencesPerformanceSummary.textContent = '';
+      return;
+    }
+    const { flairs, counts, unassigned } = buildPerformanceFlairSummaryStats(draft);
+    els.preferencesPerformanceSummary.hidden = false;
+    els.preferencesPerformanceSummary.innerHTML = '';
+
+    const valuesLabel = document.createElement('span');
+    valuesLabel.className = 'preferences-performance-summary-sublabel';
+    valuesLabel.textContent = 'Lernendenanzahl pro Leistungsklasse:';
+    els.preferencesPerformanceSummary.appendChild(valuesLabel);
+
+    const values = document.createElement('div');
+    values.className = 'preferences-performance-summary-values';
+    flairs.forEach((flair) => {
+      const pill = document.createElement('span');
+      pill.className = 'preferences-performance-summary-pill';
+      pill.textContent = `${flair}: ${counts.get(flair) || 0}`;
+      values.appendChild(pill);
+    });
+    if (unassigned > 0) {
+      const pill = document.createElement('span');
+      pill.className = 'preferences-performance-summary-pill is-unassigned';
+      pill.textContent = `Ohne Zuordnung: ${unassigned}`;
+      values.appendChild(pill);
+    }
+    els.preferencesPerformanceSummary.appendChild(values);
+
+    const countControl = document.createElement('label');
+    countControl.className = 'preferences-performance-summary-control';
+    countControl.htmlFor = 'performance-flair-count-input';
+
+    const countLabel = document.createElement('span');
+    countLabel.className = 'preferences-performance-summary-control-label';
+    countLabel.textContent = 'Anzahl an Leistungsklassen:';
+    countControl.appendChild(countLabel);
+
+    const countInput = document.createElement('input');
+    countInput.type = 'text';
+    countInput.id = 'performance-flair-count-input';
+    countInput.inputMode = 'numeric';
+    countInput.maxLength = 3;
+    countInput.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
+    countInput.dataset.performanceFlairCountInput = '1';
+    countInput.setAttribute('aria-label', 'Anzahl an Leistungsklassen');
+    countControl.appendChild(countInput);
+
+    els.preferencesPerformanceSummary.appendChild(countControl);
+  }
+  function applyPerformanceFlairCount(nextValue, draft = null) {
+    const nextCount = clampPerformanceFlairCount(nextValue);
+    state.performanceFlairCount = nextCount;
+    sanitizePerformanceFlairCountInStudents(nextCount);
+    if (draft instanceof Map) {
+      draft.forEach((entry) => {
+        if (!entry || typeof entry !== 'object') return;
+        entry.performanceFlair = sanitizePerformanceFlairForCount(entry.performanceFlair, nextCount);
+      });
+      buildSeatPreferencesTable(draft);
+      return;
+    }
+    buildSeatPreferencesTable();
+  }
+  function savePreferencesFromForm() {
+    if (!els.preferencesTableBody) return;
+    const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]');
+    const performanceSelects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-preference="performance-flair"]');
+    const buddyMap = new Map();
+    const foeMap = new Map();
+    selects.forEach(select => {
+      const sid = select.dataset.studentId;
+      const type = select.dataset.prefType;
+      const slot = Number(select.dataset.prefSlot);
+      if (!sid || Number.isNaN(slot)) return;
+      const map = type === 'foe' ? foeMap : buddyMap;
+      if (!map.has(sid)) {
+        map.set(sid, Array(PREFERENCE_SLOT_COUNT).fill(''));
+      }
+      map.get(sid)[slot] = select.value || '';
+    });
+    const flairMap = new Map();
+    performanceSelects.forEach((select) => {
+      const sid = String(select.dataset.studentId || '').trim();
+      if (!sid) return;
+      flairMap.set(sid, sanitizePerformanceFlairForCount(select.value));
+    });
+    state.students.forEach(student => {
+      const buddySlots = buddyMap.get(student.id) || [];
+      const foeSlots = foeMap.get(student.id) || [];
+      applyPreferenceSlots(student, buddySlots, 'buddy');
+      applyPreferenceSlots(student, foeSlots, 'foe');
+      student.performanceFlair = flairMap.get(student.id) || '';
+    });
+  }
+  function saveRandomPickerConditionsFromForm() {
+    if (!els.preferencesTableBody) return;
+    const inputs = els.preferencesTableBody.querySelectorAll('input[type="radio"][data-student-id][data-preference="random-weight"]:checked');
+    const weightsById = new Map();
+    let certainStudentId = '';
+    inputs.forEach((input) => {
+      const studentId = typeof input.dataset.studentId === 'string' ? input.dataset.studentId : '';
+      if (!studentId) return;
+      const normalizedWeight = normalizeRandomPickerWeight(input.value);
+      weightsById.set(studentId, normalizedWeight);
+      if (normalizedWeight === RANDOM_PICKER_CERTAIN_WEIGHT) {
+        certainStudentId = studentId;
+      }
+    });
+    state.students.forEach((student) => {
+      if (!student) return;
+      if (certainStudentId) {
+        student.randomWeight = student.id === certainStudentId
+          ? RANDOM_PICKER_CERTAIN_WEIGHT
+          : RANDOM_PICKER_MIN_WEIGHT;
+        return;
+      }
+      student.randomWeight = weightsById.has(student.id)
+        ? weightsById.get(student.id)
+        : normalizeRandomPickerWeight(student.randomWeight);
+    });
+    renderRandomPicker();
+  }
+  function resetRandomPickerConditionsInForm() {
+    if (!els.preferencesTableBody) return;
+    const normalChoices = els.preferencesTableBody.querySelectorAll(
+      `input[type="radio"][data-preference="random-weight"][value="${RANDOM_PICKER_DEFAULT_WEIGHT}"]`
+    );
+    normalChoices.forEach((input) => {
+      if (!(input instanceof HTMLInputElement)) return;
+      input.checked = true;
+    });
+  }
+  function applyPreferenceSlots(student, slots, variant) {
+    const entries = [];
+    const seen = new Set();
+    slots.forEach(value => {
+      if (!value || value === student.id || seen.has(value)) return;
+      seen.add(value);
+      entries.push(value);
+    });
+    if (variant === 'buddy') {
+      student.buddies = entries;
+    } else {
+      student.foes = entries;
+    }
+  }
+  function isSeatWithinBounds(id, rows, cols) {
+    if (!id) return false;
+    const [rStr, cStr] = id.split('-');
+    const r = parseInt(rStr, 10);
+    const c = parseInt(cStr, 10);
+    if (!Number.isFinite(r) || !Number.isFinite(c)) return false;
+    return r >= 1 && r <= rows && c >= 1 && c <= cols;
+  }
+  function sanitizeSeatIdWithinLimit(id, maxRows = MAX_GRID_SIZE, maxCols = MAX_GRID_SIZE) {
+    if (typeof id !== 'string') return null;
+    const [rStr, cStr] = id.split('-');
+    const r = parseInt(rStr, 10);
+    const c = parseInt(cStr, 10);
+    if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
+    if (r < 1 || r > maxRows || c < 1 || c > maxCols) return null;
+    return seatId(r, c);
+  }
+  function enforceGridBounds() {
+    const rows = clampGridDimension(state.gridRows);
+    const cols = clampGridDimension(state.gridCols);
+    state.gridRows = rows;
+    state.gridCols = cols;
+    const filterSet = (set) => {
+      const next = new Set();
+      set.forEach(id => {
+        if (isSeatWithinBounds(id, rows, cols)) next.add(id);
+      });
+      return next;
+    };
+    state.activeSeats = filterSet(state.activeSeats);
+    state.lockedSeats = filterSet(state.lockedSeats);
+    const trimmedSeats = {};
+    Object.entries(state.seats).forEach(([id, val]) => {
+      if (isSeatWithinBounds(id, rows, cols)) {
+        trimmedSeats[id] = ensureSeatList(val);
+      }
+    });
+    state.seats = trimmedSeats;
+    const trimmedTopics = {};
+    state.activeSeats.forEach(id => {
+      const val = state.seatTopics?.[id];
+      if (typeof val === 'string') { trimmedTopics[id] = val; }
+    });
+    state.seatTopics = trimmedTopics;
+  }
+  function createPlanSnapshot() {
+    if (!state.activeSeats.size) {
+      showMessage('Keine aktiven Gruppenfelder vorhanden.', 'warn');
+      return null;
+    }
+    const orderedActiveIds = Array.isArray(state.activeSeatOrder)
+      ? state.activeSeatOrder.filter(id => state.activeSeats.has(id))
+      : [];
+    const activeIds = orderedActiveIds.length ? orderedActiveIds : Array.from(state.activeSeats);
+    const seatSnapshot = {};
+    activeIds.forEach(id => {
+      seatSnapshot[id] = getSeatList(id);
+    });
+    const storedDuration = parseWorkOrderDuration(state.workOrderDurationMinutes);
+    return {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      grid: { rows: state.gridRows, cols: state.gridCols },
+      activeSeats: activeIds,
+      lockedSeats: Array.from(state.lockedSeats),
+      seats: seatSnapshot,
+      seatTopics: activeIds.reduce((acc, id) => {
+        if (typeof state.seatTopics?.[id] === 'string') {
+          acc[id] = state.seatTopics[id];
         }
-        const ordered = state.students.slice().sort((a, b) => {
-          const nameA = formatStudentLabel(a).toLowerCase();
-          const nameB = formatStudentLabel(b).toLowerCase();
-          if (nameA < nameB) return -1;
-          if (nameA > nameB) return 1;
-          return 0;
-        });
-        ordered.forEach((student) => {
-          sanitizeRandomPickerStudent(student);
-          const row = document.createElement('tr');
+        return acc;
+      }, {}),
+      workOrder: typeof state.workOrder === 'string' ? state.workOrder : '',
+      workOrderDurationMinutes: storedDuration,
+      workOrderStartISO: hasWorkOrderTiming() ? state.workOrderStartISO : null,
+      students: state.students,
+      performanceFlairCount: clampPerformanceFlairCount(state.performanceFlairCount),
+      headers: state.headers,
+      delim: state.delim,
+      csvName: state.csvName || '',
+      minGroupSize: clampMinGroupSize(state.minGroupSize || 1),
+      maxGroupSize: clampMaxGroupSize(state.maxGroupSize || 1),
+    };
+  }
 
-          const nameCell = document.createElement('th');
-          nameCell.scope = 'row';
-          nameCell.className = 'name-cell';
-          nameCell.textContent = formatStudentLabel(student);
-          row.appendChild(nameCell);
+  function getDefaultPlanModeLabel() {
+    return getActiveTab() === TAB_RANDOM_PICKER ? 'Picker' : 'Gruppen';
+  }
 
-          const weightCell = document.createElement('td');
-          weightCell.className = 'weight-cell';
-          const wrap = document.createElement('div');
-          wrap.className = 'weight-choice-group';
-          const currentValue = String(normalizeRandomPickerWeight(student.randomWeight));
-          const choiceName = `random-weight-${student.id}`;
-          [
-            { value: '0', label: 'unmöglich' },
-            { value: '1', label: 'normal' },
-            { value: '2', label: 'doppelt' },
-            { value: '3', label: 'dreifach' },
-            { value: '4', label: 'sicher' },
-          ].forEach((optionConfig) => {
-            const choice = document.createElement('label');
-            choice.className = 'weight-choice';
-            const input = document.createElement('input');
-            input.type = 'radio';
-            input.name = choiceName;
-            input.value = optionConfig.value;
-            input.dataset.studentId = student.id;
-            input.dataset.preference = 'random-weight';
-            input.checked = currentValue === optionConfig.value;
-            const text = document.createElement('span');
-            text.textContent = optionConfig.label;
-            choice.appendChild(input);
-            choice.appendChild(text);
-            wrap.appendChild(choice);
-          });
-          weightCell.appendChild(wrap);
-          row.appendChild(weightCell);
+  function sanitizeExportFileName(name) {
+    const raw = typeof name === 'string' ? name : '';
+    const trimmed = raw.trim();
+    if (!trimmed) return '';
+    return trimmed.replace(/[\\/:*?"<>|]/g, '-');
+  }
 
-          els.preferencesTableBody.appendChild(row);
-        });
-      }
-      function createPreferenceRow(student, optionsList, draftMap = null) {
-        const draft = draftMap instanceof Map ? draftMap.get(student.id) : null;
-        const row = document.createElement('tr');
-        for (let i = 0; i < PREFERENCE_SLOT_COUNT; i++) {
-          row.appendChild(createPreferenceCell(student, 'buddy', i, optionsList, draft));
-        }
-        const nameCell = document.createElement('th');
-        nameCell.scope = 'row';
-        nameCell.className = 'name-cell';
-        nameCell.textContent = formatStudentLabel(student);
-        row.appendChild(nameCell);
-        row.appendChild(createPerformanceFlairCell(student, draft));
-        for (let i = 0; i < PREFERENCE_SLOT_COUNT; i++) {
-          row.appendChild(createPreferenceCell(student, 'foe', i, optionsList, draft));
-        }
-        return row;
-      }
-      function createPerformanceFlairCell(student, draft = null) {
-        const cell = document.createElement('td');
-        cell.className = 'performance-flair-col';
-        const select = document.createElement('select');
-        select.dataset.studentId = student.id;
-        select.dataset.preference = 'performance-flair';
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = '-';
-        select.appendChild(placeholder);
-        getAllowedPerformanceFlairs().forEach((flair) => {
-          const option = document.createElement('option');
-          option.value = flair;
-          option.textContent = flair;
-          select.appendChild(option);
-        });
-        select.value = sanitizePerformanceFlairForCount(draft?.performanceFlair ?? student.performanceFlair);
-        const wrap = document.createElement('div');
-        wrap.className = 'select-wrap';
-        wrap.appendChild(select);
-        cell.appendChild(wrap);
-        return cell;
-      }
-      function createPreferenceCell(student, type, slotIndex, optionsList, draft = null) {
-        const cell = document.createElement('td');
-        cell.className = type === 'buddy' ? 'buddy-col' : 'foe-col';
-        const select = document.createElement('select');
-        select.dataset.studentId = student.id;
-        select.dataset.prefType = type;
-        select.dataset.prefSlot = String(slotIndex);
-        const placeholder = document.createElement('option');
-        placeholder.value = '';
-        placeholder.textContent = '-';
-        select.appendChild(placeholder);
-        optionsList.forEach(optionStudent => {
-          if (!optionStudent || optionStudent.id === student.id) return;
-          const option = document.createElement('option');
-          option.value = optionStudent.id;
-          option.textContent = formatStudentLabel(optionStudent);
-          select.appendChild(option);
-        });
-        const source = type === 'buddy'
-          ? (draft?.buddies || student.buddies || [])
-          : (draft?.foes || student.foes || []);
-        select.value = source[slotIndex] || '';
-        const wrap = document.createElement('div');
-        wrap.className = 'select-wrap';
-        wrap.appendChild(select);
-        cell.appendChild(wrap);
-        return cell;
-      }
-      function refreshPreferenceOptionsForStudent(studentId) {
-        if (!studentId || !els.preferencesTableBody) return;
-        const selects = els.preferencesTableBody.querySelectorAll(`select[data-student-id="${studentId}"][data-pref-type]`);
-        const chosen = new Set();
-        selects.forEach(sel => {
-          const val = sel.value || '';
-          if (val) chosen.add(val);
-        });
-        selects.forEach(sel => {
-          sel.querySelectorAll('option').forEach(opt => {
-            if (!opt.value) { opt.disabled = false; return; }
-            const shouldDisable = chosen.has(opt.value) && opt.value !== sel.value;
-            opt.disabled = shouldDisable;
-          });
-        });
-      }
-      function refreshAllPreferenceOptions() {
-        if (!els.preferencesTableBody) return;
-        const seen = new Set();
-        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]');
-        selects.forEach(sel => {
-          const sid = sel.dataset.studentId;
-          if (!sid || seen.has(sid)) return;
-          seen.add(sid);
-          refreshPreferenceOptionsForStudent(sid);
-        });
-      }
-      function buildPerformanceFlairSummaryStats(draft = null, count = state.performanceFlairCount) {
-        const flairs = getAllowedPerformanceFlairs(count);
-        const counts = new Map(flairs.map((flair) => [flair, 0]));
-        let unassigned = 0;
-        state.students.forEach((student) => {
-          if (!student || typeof student !== 'object') return;
-          const sid = String(student.id || '').trim();
-          const draftEntry = draft instanceof Map && sid ? draft.get(sid) : null;
-          const flair = sanitizePerformanceFlairForCount(draftEntry?.performanceFlair ?? student.performanceFlair, count);
-          if (!flair) {
-            unassigned += 1;
-            return;
-          }
-          counts.set(flair, (counts.get(flair) || 0) + 1);
-        });
-        return { flairs, counts, unassigned };
-      }
-      function renderSeatPreferencesPerformanceSummary(draft = null) {
-        if (!els.preferencesPerformanceSummary) return;
-        if (isRandomPickerTabActive() || !state.students.length) {
-          els.preferencesPerformanceSummary.hidden = true;
-          els.preferencesPerformanceSummary.textContent = '';
-          return;
-        }
-        const { flairs, counts, unassigned } = buildPerformanceFlairSummaryStats(draft);
-        els.preferencesPerformanceSummary.hidden = false;
-        els.preferencesPerformanceSummary.innerHTML = '';
+  function getDefaultPlanBaseName() {
+    const modeLabel = getDefaultPlanModeLabel();
+    return state.csvName ? `${state.csvName} (${modeLabel})` : modeLabel;
+  }
 
-        const valuesLabel = document.createElement('span');
-        valuesLabel.className = 'preferences-performance-summary-sublabel';
-        valuesLabel.textContent = 'Lernendenanzahl pro Leistungsklasse:';
-        els.preferencesPerformanceSummary.appendChild(valuesLabel);
+  function getSuggestedPlanFileName() {
+    return sanitizeExportFileName(getDefaultPlanBaseName());
+  }
 
-        const values = document.createElement('div');
-        values.className = 'preferences-performance-summary-values';
-        flairs.forEach((flair) => {
-          const pill = document.createElement('span');
-          pill.className = 'preferences-performance-summary-pill';
-          pill.textContent = `${flair}: ${counts.get(flair) || 0}`;
-          values.appendChild(pill);
-        });
-        if (unassigned > 0) {
-          const pill = document.createElement('span');
-          pill.className = 'preferences-performance-summary-pill is-unassigned';
-          pill.textContent = `Ohne Zuordnung: ${unassigned}`;
-          values.appendChild(pill);
-        }
-        els.preferencesPerformanceSummary.appendChild(values);
+  function ensureJsonFilename(name) {
+    const normalized = (typeof name === 'string' ? name : '').trim() || getDefaultPlanModeLabel();
+    return normalized.toLowerCase().endsWith('.json') ? normalized : `${normalized}.json`;
+  }
 
-        const countControl = document.createElement('label');
-        countControl.className = 'preferences-performance-summary-control';
-        countControl.htmlFor = 'performance-flair-count-input';
+  async function savePlanWithPicker(blob, filename) {
+    const finalName = ensureJsonFilename(filename);
+    const canUsePicker = typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function';
+    if (!canUsePicker) return 'fallback';
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: finalName,
+        startIn: state.lastDirectoryHandle || 'downloads',
+        types: [{
+          description: `${getDefaultPlanModeLabel()} JSON`,
+          accept: { 'application/json': ['.json'] }
+        }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      state.lastDirectoryHandle = handle || state.lastDirectoryHandle;
+      return 'saved';
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return 'aborted';
+      }
+      console.warn('Fallback auf Download, Speichern via Picker fehlgeschlagen:', err);
+      return 'fallback';
+    }
+  }
 
-        const countLabel = document.createElement('span');
-        countLabel.className = 'preferences-performance-summary-control-label';
-        countLabel.textContent = 'Anzahl an Leistungsklassen:';
-        countControl.appendChild(countLabel);
+  function triggerBlobDownload(blob, filename, options = {}) {
+    const {
+      defaultName = 'download',
+      forceJsonExtension = false,
+      iosDelay = 4000,
+      defaultDelay = 1200,
+      onErrorMessage = null,
+    } = options;
+    const normalizedName = (typeof filename === 'string' ? filename : '').trim() || defaultName;
+    const finalName = forceJsonExtension ? ensureJsonFilename(normalizedName) : normalizedName;
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = finalName;
+    link.rel = 'noopener';
+    link.style.display = 'none';
+    const parent = document.body || document.documentElement;
+    if (parent) {
+      parent.appendChild(link);
+    }
+    try {
+      if (typeof link.click === 'function') {
+        link.click();
+      } else {
+        const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
+        link.dispatchEvent(evt);
+      }
+    } catch (err) {
+      if (onErrorMessage) {
+        console.warn(onErrorMessage, err);
+      } else {
+        console.warn('Download konnte nicht gestartet werden:', err);
+      }
+    }
+    const cleanup = () => {
+      if (link.parentNode) {
+        link.remove();
+      }
+      URL.revokeObjectURL(url);
+    };
+    const delay = isIOSDevice ? iosDelay : defaultDelay;
+    setTimeout(cleanup, delay);
+  }
 
-        const countInput = document.createElement('input');
-        countInput.type = 'text';
-        countInput.id = 'performance-flair-count-input';
-        countInput.inputMode = 'numeric';
-        countInput.maxLength = 3;
-        countInput.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
-        countInput.dataset.performanceFlairCountInput = '1';
-        countInput.setAttribute('aria-label', 'Anzahl an Leistungsklassen');
-        countControl.appendChild(countInput);
+  function triggerPlanDownload(blob, filename) {
+    triggerBlobDownload(blob, filename, {
+      defaultName: getDefaultPlanModeLabel(),
+      forceJsonExtension: true,
+      iosDelay: 4000,
+      defaultDelay: 1200,
+    });
+  }
 
-        els.preferencesPerformanceSummary.appendChild(countControl);
-      }
-      function applyPerformanceFlairCount(nextValue, draft = null) {
-        const nextCount = clampPerformanceFlairCount(nextValue);
-        state.performanceFlairCount = nextCount;
-        sanitizePerformanceFlairCountInStudents(nextCount);
-        if (draft instanceof Map) {
-          draft.forEach((entry) => {
-            if (!entry || typeof entry !== 'object') return;
-            entry.performanceFlair = sanitizePerformanceFlairForCount(entry.performanceFlair, nextCount);
-          });
-          buildSeatPreferencesTable(draft);
-          return;
-        }
-        buildSeatPreferencesTable();
-      }
-      function savePreferencesFromForm() {
-        if (!els.preferencesTableBody) return;
-        const selects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-pref-type]');
-        const performanceSelects = els.preferencesTableBody.querySelectorAll('select[data-student-id][data-preference="performance-flair"]');
-        const buddyMap = new Map();
-        const foeMap = new Map();
-        selects.forEach(select => {
-          const sid = select.dataset.studentId;
-          const type = select.dataset.prefType;
-          const slot = Number(select.dataset.prefSlot);
-          if (!sid || Number.isNaN(slot)) return;
-          const map = type === 'foe' ? foeMap : buddyMap;
-          if (!map.has(sid)) {
-            map.set(sid, Array(PREFERENCE_SLOT_COUNT).fill(''));
-          }
-          map.get(sid)[slot] = select.value || '';
-        });
-        const flairMap = new Map();
-        performanceSelects.forEach((select) => {
-          const sid = String(select.dataset.studentId || '').trim();
-          if (!sid) return;
-          flairMap.set(sid, sanitizePerformanceFlairForCount(select.value));
-        });
-        state.students.forEach(student => {
-          const buddySlots = buddyMap.get(student.id) || [];
-          const foeSlots = foeMap.get(student.id) || [];
-          applyPreferenceSlots(student, buddySlots, 'buddy');
-          applyPreferenceSlots(student, foeSlots, 'foe');
-          student.performanceFlair = flairMap.get(student.id) || '';
-        });
-      }
-      function saveRandomPickerConditionsFromForm() {
-        if (!els.preferencesTableBody) return;
-        const inputs = els.preferencesTableBody.querySelectorAll('input[type="radio"][data-student-id][data-preference="random-weight"]:checked');
-        const weightsById = new Map();
-        let certainStudentId = '';
-        inputs.forEach((input) => {
-          const studentId = typeof input.dataset.studentId === 'string' ? input.dataset.studentId : '';
-          if (!studentId) return;
-          const normalizedWeight = normalizeRandomPickerWeight(input.value);
-          weightsById.set(studentId, normalizedWeight);
-          if (normalizedWeight === RANDOM_PICKER_CERTAIN_WEIGHT) {
-            certainStudentId = studentId;
-          }
-        });
-        state.students.forEach((student) => {
-          if (!student) return;
-          if (certainStudentId) {
-            student.randomWeight = student.id === certainStudentId
-              ? RANDOM_PICKER_CERTAIN_WEIGHT
-              : RANDOM_PICKER_MIN_WEIGHT;
-            return;
-          }
-          student.randomWeight = weightsById.has(student.id)
-            ? weightsById.get(student.id)
-            : normalizeRandomPickerWeight(student.randomWeight);
-        });
-        renderRandomPicker();
-      }
-      function resetRandomPickerConditionsInForm() {
-        if (!els.preferencesTableBody) return;
-        const normalChoices = els.preferencesTableBody.querySelectorAll(
-          `input[type="radio"][data-preference="random-weight"][value="${RANDOM_PICKER_DEFAULT_WEIGHT}"]`
-        );
-        normalChoices.forEach((input) => {
-          if (!(input instanceof HTMLInputElement)) return;
-          input.checked = true;
-        });
-      }
-      function applyPreferenceSlots(student, slots, variant) {
-        const entries = [];
-        const seen = new Set();
-        slots.forEach(value => {
-          if (!value || value === student.id || seen.has(value)) return;
-          seen.add(value);
-          entries.push(value);
-        });
-        if (variant === 'buddy') {
-          student.buddies = entries;
-        } else {
-          student.foes = entries;
-        }
-      }
-      function isSeatWithinBounds(id, rows, cols) {
-        if (!id) return false;
-        const [rStr, cStr] = id.split('-');
-        const r = parseInt(rStr, 10);
-        const c = parseInt(cStr, 10);
-        if (!Number.isFinite(r) || !Number.isFinite(c)) return false;
-        return r >= 1 && r <= rows && c >= 1 && c <= cols;
-      }
-      function sanitizeSeatIdWithinLimit(id, maxRows = MAX_GRID_SIZE, maxCols = MAX_GRID_SIZE) {
-        if (typeof id !== 'string') return null;
-        const [rStr, cStr] = id.split('-');
-        const r = parseInt(rStr, 10);
-        const c = parseInt(cStr, 10);
-        if (!Number.isFinite(r) || !Number.isFinite(c)) return null;
-        if (r < 1 || r > maxRows || c < 1 || c > maxCols) return null;
-        return seatId(r, c);
-      }
-      function enforceGridBounds() {
-        const rows = clampGridDimension(state.gridRows);
-        const cols = clampGridDimension(state.gridCols);
-        state.gridRows = rows;
-        state.gridCols = cols;
-        const filterSet = (set) => {
-          const next = new Set();
-          set.forEach(id => {
-            if (isSeatWithinBounds(id, rows, cols)) next.add(id);
-          });
-          return next;
-        };
-        state.activeSeats = filterSet(state.activeSeats);
-        state.lockedSeats = filterSet(state.lockedSeats);
-        const trimmedSeats = {};
-        Object.entries(state.seats).forEach(([id, val]) => {
-          if (isSeatWithinBounds(id, rows, cols)) {
-            trimmedSeats[id] = ensureSeatList(val);
-          }
-        });
-        state.seats = trimmedSeats;
-        const trimmedTopics = {};
-        state.activeSeats.forEach(id => {
-          const val = state.seatTopics?.[id];
-          if (typeof val === 'string') { trimmedTopics[id] = val; }
-        });
-        state.seatTopics = trimmedTopics;
-      }
-      function createPlanSnapshot() {
-        if (!state.activeSeats.size) {
-          showMessage('Keine aktiven Gruppenfelder vorhanden.', 'warn');
-          return null;
-        }
-        const orderedActiveIds = Array.isArray(state.activeSeatOrder)
-          ? state.activeSeatOrder.filter(id => state.activeSeats.has(id))
-          : [];
-        const activeIds = orderedActiveIds.length ? orderedActiveIds : Array.from(state.activeSeats);
-        const seatSnapshot = {};
-        activeIds.forEach(id => {
-          seatSnapshot[id] = getSeatList(id);
-        });
-        const storedDuration = parseWorkOrderDuration(state.workOrderDurationMinutes);
-        return {
-          version: 1,
-          generatedAt: new Date().toISOString(),
-          grid: { rows: state.gridRows, cols: state.gridCols },
-          activeSeats: activeIds,
-          lockedSeats: Array.from(state.lockedSeats),
-          seats: seatSnapshot,
-          seatTopics: activeIds.reduce((acc, id) => {
-            if (typeof state.seatTopics?.[id] === 'string') {
-              acc[id] = state.seatTopics[id];
-            }
-            return acc;
-          }, {}),
-          workOrder: typeof state.workOrder === 'string' ? state.workOrder : '',
-          workOrderDurationMinutes: storedDuration,
-          workOrderStartISO: hasWorkOrderTiming() ? state.workOrderStartISO : null,
-          students: state.students,
-          performanceFlairCount: clampPerformanceFlairCount(state.performanceFlairCount),
-          headers: state.headers,
-          delim: state.delim,
-          csvName: state.csvName || '',
-          minGroupSize: clampMinGroupSize(state.minGroupSize || 1),
-          maxGroupSize: clampMaxGroupSize(state.maxGroupSize || 1),
-        };
-      }
+  function downloadCsvTemplate() {
+    const blob = new Blob([TEMPLATE_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' });
+    triggerBlobDownload(blob, TEMPLATE_CSV_NAME, {
+      defaultName: TEMPLATE_CSV_NAME,
+      forceJsonExtension: false,
+      iosDelay: 6000,
+      defaultDelay: 2500,
+      onErrorMessage: 'CSV-Download konnte nicht gestartet werden:',
+    });
+  }
 
-      function getDefaultPlanModeLabel() {
-        return getActiveTab() === TAB_RANDOM_PICKER ? 'Picker' : 'Gruppen';
-      }
+  async function downloadSeatPlan() {
+    const snapshot = createPlanSnapshot();
+    if (!snapshot) return;
+    const defaultName = getSuggestedPlanFileName();
+    let nameInput = defaultName;
+    if (!isIOSDevice) {
+      const promptLabel = getActiveTab() === TAB_RANDOM_PICKER
+        ? 'Bitte gib einen Dateinamen für den Pickerstand ein:'
+        : 'Bitte gib einen Dateinamen ein:';
+      const desiredName = prompt(promptLabel, defaultName);
+      if (desiredName === null) return;
+      nameInput = desiredName || '';
+    }
+    const safeName = sanitizeExportFileName(nameInput) || defaultName;
+    const prettyJson = JSON.stringify(snapshot, null, 2);
+    const blob = new Blob([prettyJson], { type: 'application/json' });
+    const saveStatus = await savePlanWithPicker(blob, safeName);
+    if (saveStatus === 'aborted') {
+      return;
+    }
+    if (saveStatus === 'fallback') {
+      triggerPlanDownload(blob, safeName);
+    }
+    showMessage('Man kann die Gruppen NICHT durch Anklicken der eben erstellten Datenbankdatei öffnen.\n\nStattdessen muss man die Datenbankdatei hier in TeachHelper über „Gruppen laden“ auswählen oder sie irgendwo in TeachHelper ziehen.', 'info');
+  }
 
-      function sanitizeExportFileName(name) {
-        const raw = typeof name === 'string' ? name : '';
-        const trimmed = raw.trim();
-        if (!trimmed) return '';
-        return trimmed.replace(/[\\/:*?"<>|]/g, '-');
+  function printSeatPlan() {
+    if (typeof window === 'undefined' || typeof window.print !== 'function') {
+      showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn');
+      return;
+    }
+    if (els.printPlanTitle) {
+      els.printPlanTitle.textContent = getSuggestedPlanFileName();
+    }
+    applyPrintScale();
+    requestAnimationFrame(() => {
+      try {
+        window.print();
+      } finally {
+        resetPrintScale();
       }
+    });
+  }
 
-      function getDefaultPlanBaseName() {
-        const modeLabel = getDefaultPlanModeLabel();
-        return state.csvName ? `${state.csvName} (${modeLabel})` : modeLabel;
-      }
+  let printScaleApplied = false;
+  function measurePrintTitleBlockHeight(maxWidth) {
+    if (!els.printPlanTitle) return 0;
+    const titleEl = els.printPlanTitle;
+    const prev = {
+      display: titleEl.style.display,
+      position: titleEl.style.position,
+      left: titleEl.style.left,
+      top: titleEl.style.top,
+      visibility: titleEl.style.visibility,
+      pointerEvents: titleEl.style.pointerEvents,
+      width: titleEl.style.width,
+      maxWidth: titleEl.style.maxWidth,
+    };
+    const width = Math.max(120, Math.floor(maxWidth || 120));
+    titleEl.style.display = 'block';
+    titleEl.style.position = 'fixed';
+    titleEl.style.left = '0';
+    titleEl.style.top = '0';
+    titleEl.style.visibility = 'hidden';
+    titleEl.style.pointerEvents = 'none';
+    titleEl.style.width = `${width}px`;
+    titleEl.style.maxWidth = `${width}px`;
+    const rect = titleEl.getBoundingClientRect();
+    const style = getComputedStyle(titleEl);
+    const marginTop = parseFloat(style.marginTop) || 0;
+    const marginBottom = parseFloat(style.marginBottom) || 0;
+    titleEl.style.display = prev.display;
+    titleEl.style.position = prev.position;
+    titleEl.style.left = prev.left;
+    titleEl.style.top = prev.top;
+    titleEl.style.visibility = prev.visibility;
+    titleEl.style.pointerEvents = prev.pointerEvents;
+    titleEl.style.width = prev.width;
+    titleEl.style.maxWidth = prev.maxWidth;
+    return Math.max(0, rect.height + marginTop + marginBottom);
+  }
 
-      function getSuggestedPlanFileName() {
-        return sanitizeExportFileName(getDefaultPlanBaseName());
-      }
+  function applyPrintScale() {
+    const target = els.groupsGrid || els.groupsGridWrap;
+    if (!target) return;
+    const rect = target.getBoundingClientRect();
+    const contentWidth = Math.max(1, rect.width, target.scrollWidth || 0);
+    const contentHeight = Math.max(1, rect.height, target.scrollHeight || 0);
+    const marginMm = 6;
+    const mmPerIn = 25.4;
+    const marginIn = marginMm / mmPerIn;
+    const a4Landscape = { widthIn: 297 / mmPerIn, heightIn: 210 / mmPerIn };
+    const letterLandscape = { widthIn: 11, heightIn: 8.5 };
+    const printableWidthIn = Math.min(
+      a4Landscape.widthIn - 2 * marginIn,
+      letterLandscape.widthIn - 2 * marginIn
+    );
+    const printableHeightIn = Math.min(
+      a4Landscape.heightIn - 2 * marginIn,
+      letterLandscape.heightIn - 2 * marginIn
+    );
+    const pxPerIn = 96;
+    const pageWidthPx = printableWidthIn * pxPerIn;
+    const pageHeightPx = printableHeightIn * pxPerIn;
+    const roundingReservePx = 6;
+    const maxWidth = Math.max(1, pageWidthPx - roundingReservePx);
+    const titleBlockHeight = measurePrintTitleBlockHeight(maxWidth);
+    const maxHeight = Math.max(1, pageHeightPx - roundingReservePx - titleBlockHeight);
+    if (!contentWidth || !contentHeight) {
+      document.documentElement.style.setProperty('--print-scale', '1');
+      printScaleApplied = true;
+      return;
+    }
+    const rawScale = Math.min(1, maxWidth / contentWidth, maxHeight / contentHeight);
+    const precisionReserve = rawScale < 1 ? 0.002 : 0;
+    const scale = Math.max(0.05, rawScale - precisionReserve);
+    document.documentElement.style.setProperty('--print-scale', scale.toFixed(3));
+    printScaleApplied = true;
+  }
 
-      function ensureJsonFilename(name) {
-        const normalized = (typeof name === 'string' ? name : '').trim() || getDefaultPlanModeLabel();
-        return normalized.toLowerCase().endsWith('.json') ? normalized : `${normalized}.json`;
-      }
+  function resetPrintScale() {
+    if (!printScaleApplied) return;
+    document.documentElement.style.setProperty('--print-scale', '1');
+    printScaleApplied = false;
+  }
 
-      async function savePlanWithPicker(blob, filename) {
-        const finalName = ensureJsonFilename(filename);
-        const canUsePicker = typeof window !== 'undefined' && typeof window.showSaveFilePicker === 'function';
-        if (!canUsePicker) return 'fallback';
-        try {
-          const handle = await window.showSaveFilePicker({
-            suggestedName: finalName,
-            startIn: state.lastDirectoryHandle || 'downloads',
-            types: [{
-              description: `${getDefaultPlanModeLabel()} JSON`,
-              accept: { 'application/json': ['.json'] }
-            }],
-          });
-          const writable = await handle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          state.lastDirectoryHandle = handle || state.lastDirectoryHandle;
-          return 'saved';
-        } catch (err) {
-          if (err && err.name === 'AbortError') {
-            return 'aborted';
-          }
-          console.warn('Fallback auf Download, Speichern via Picker fehlgeschlagen:', err);
-          return 'fallback';
-        }
-      }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('beforeprint', applyPrintScale);
+    window.addEventListener('afterprint', resetPrintScale);
+  }
 
-      function triggerBlobDownload(blob, filename, options = {}) {
-        const {
-          defaultName = 'download',
-          forceJsonExtension = false,
-          iosDelay = 4000,
-          defaultDelay = 1200,
-          onErrorMessage = null,
-        } = options;
-        const normalizedName = (typeof filename === 'string' ? filename : '').trim() || defaultName;
-        const finalName = forceJsonExtension ? ensureJsonFilename(normalizedName) : normalizedName;
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = finalName;
-        link.rel = 'noopener';
-        link.style.display = 'none';
-        const parent = document.body || document.documentElement;
-        if (parent) {
-          parent.appendChild(link);
-        }
-        try {
-          if (typeof link.click === 'function') {
-            link.click();
-          } else {
-            const evt = new MouseEvent('click', { bubbles: true, cancelable: true, view: window });
-            link.dispatchEvent(evt);
-          }
-        } catch (err) {
-          if (onErrorMessage) {
-            console.warn(onErrorMessage, err);
-          } else {
-            console.warn('Download konnte nicht gestartet werden:', err);
-          }
-        }
-        const cleanup = () => {
-          if (link.parentNode) {
-            link.remove();
-          }
-          URL.revokeObjectURL(url);
-        };
-        const delay = isIOSDevice ? iosDelay : defaultDelay;
-        setTimeout(cleanup, delay);
-      }
-
-      function triggerPlanDownload(blob, filename) {
-        triggerBlobDownload(blob, filename, {
-          defaultName: getDefaultPlanModeLabel(),
-          forceJsonExtension: true,
-          iosDelay: 4000,
-          defaultDelay: 1200,
-        });
-      }
-
-      function downloadCsvTemplate() {
-        const blob = new Blob([TEMPLATE_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' });
-        triggerBlobDownload(blob, TEMPLATE_CSV_NAME, {
-          defaultName: TEMPLATE_CSV_NAME,
-          forceJsonExtension: false,
-          iosDelay: 6000,
-          defaultDelay: 2500,
-          onErrorMessage: 'CSV-Download konnte nicht gestartet werden:',
-        });
-      }
-
-      async function downloadSeatPlan() {
-        const snapshot = createPlanSnapshot();
-        if (!snapshot) return;
-        const defaultName = getSuggestedPlanFileName();
-        let nameInput = defaultName;
-        if (!isIOSDevice) {
-          const promptLabel = getActiveTab() === TAB_RANDOM_PICKER
-            ? 'Bitte gib einen Dateinamen für den Pickerstand ein:'
-            : 'Bitte gib einen Dateinamen ein:';
-          const desiredName = prompt(promptLabel, defaultName);
-          if (desiredName === null) return;
-          nameInput = desiredName || '';
-        }
-        const safeName = sanitizeExportFileName(nameInput) || defaultName;
-        const prettyJson = JSON.stringify(snapshot, null, 2);
-        const blob = new Blob([prettyJson], { type: 'application/json' });
-        const saveStatus = await savePlanWithPicker(blob, safeName);
-        if (saveStatus === 'aborted') {
-          return;
-        }
-        if (saveStatus === 'fallback') {
-          triggerPlanDownload(blob, safeName);
-        }
-        showMessage('Man kann die Gruppen NICHT durch Anklicken der eben erstellten Datenbankdatei öffnen.\n\nStattdessen muss man die Datenbankdatei hier in TeachHelper über „Gruppen laden“ auswählen oder sie irgendwo in TeachHelper ziehen.', 'info');
-      }
-
-      function printSeatPlan() {
-        if (typeof window === 'undefined' || typeof window.print !== 'function') {
-          showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn');
-          return;
-        }
-        if (els.printPlanTitle) {
-          els.printPlanTitle.textContent = getSuggestedPlanFileName();
-        }
-        applyPrintScale();
-        requestAnimationFrame(() => {
-          try {
-            window.print();
-          } finally {
-            resetPrintScale();
-          }
-        });
-      }
-
-      let printScaleApplied = false;
-      function measurePrintTitleBlockHeight(maxWidth) {
-        if (!els.printPlanTitle) return 0;
-        const titleEl = els.printPlanTitle;
-        const prev = {
-          display: titleEl.style.display,
-          position: titleEl.style.position,
-          left: titleEl.style.left,
-          top: titleEl.style.top,
-          visibility: titleEl.style.visibility,
-          pointerEvents: titleEl.style.pointerEvents,
-          width: titleEl.style.width,
-          maxWidth: titleEl.style.maxWidth,
-        };
-        const width = Math.max(120, Math.floor(maxWidth || 120));
-        titleEl.style.display = 'block';
-        titleEl.style.position = 'fixed';
-        titleEl.style.left = '0';
-        titleEl.style.top = '0';
-        titleEl.style.visibility = 'hidden';
-        titleEl.style.pointerEvents = 'none';
-        titleEl.style.width = `${width}px`;
-        titleEl.style.maxWidth = `${width}px`;
-        const rect = titleEl.getBoundingClientRect();
-        const style = getComputedStyle(titleEl);
-        const marginTop = parseFloat(style.marginTop) || 0;
-        const marginBottom = parseFloat(style.marginBottom) || 0;
-        titleEl.style.display = prev.display;
-        titleEl.style.position = prev.position;
-        titleEl.style.left = prev.left;
-        titleEl.style.top = prev.top;
-        titleEl.style.visibility = prev.visibility;
-        titleEl.style.pointerEvents = prev.pointerEvents;
-        titleEl.style.width = prev.width;
-        titleEl.style.maxWidth = prev.maxWidth;
-        return Math.max(0, rect.height + marginTop + marginBottom);
-      }
-
-      function applyPrintScale() {
-        const target = els.groupsGrid || els.groupsGridWrap;
-        if (!target) return;
-        const rect = target.getBoundingClientRect();
-        const contentWidth = Math.max(1, rect.width, target.scrollWidth || 0);
-        const contentHeight = Math.max(1, rect.height, target.scrollHeight || 0);
-        const marginMm = 6;
-        const mmPerIn = 25.4;
-        const marginIn = marginMm / mmPerIn;
-        const a4Landscape = { widthIn: 297 / mmPerIn, heightIn: 210 / mmPerIn };
-        const letterLandscape = { widthIn: 11, heightIn: 8.5 };
-        const printableWidthIn = Math.min(
-          a4Landscape.widthIn - 2 * marginIn,
-          letterLandscape.widthIn - 2 * marginIn
-        );
-        const printableHeightIn = Math.min(
-          a4Landscape.heightIn - 2 * marginIn,
-          letterLandscape.heightIn - 2 * marginIn
-        );
-        const pxPerIn = 96;
-        const pageWidthPx = printableWidthIn * pxPerIn;
-        const pageHeightPx = printableHeightIn * pxPerIn;
-        const roundingReservePx = 6;
-        const maxWidth = Math.max(1, pageWidthPx - roundingReservePx);
-        const titleBlockHeight = measurePrintTitleBlockHeight(maxWidth);
-        const maxHeight = Math.max(1, pageHeightPx - roundingReservePx - titleBlockHeight);
-        if (!contentWidth || !contentHeight) {
-          document.documentElement.style.setProperty('--print-scale', '1');
-          printScaleApplied = true;
-          return;
-        }
-        const rawScale = Math.min(1, maxWidth / contentWidth, maxHeight / contentHeight);
-        const precisionReserve = rawScale < 1 ? 0.002 : 0;
-        const scale = Math.max(0.05, rawScale - precisionReserve);
-        document.documentElement.style.setProperty('--print-scale', scale.toFixed(3));
-        printScaleApplied = true;
-      }
-
-      function resetPrintScale() {
-        if (!printScaleApplied) return;
-        document.documentElement.style.setProperty('--print-scale', '1');
-        printScaleApplied = false;
-      }
-
-      if (typeof window !== 'undefined') {
-        window.addEventListener('beforeprint', applyPrintScale);
-        window.addEventListener('afterprint', resetPrintScale);
-      }
-
-      function applyPlanData(data, options = {}) {
-        const restoreSeatAssignments = options.restoreSeatAssignments !== false;
-        if (!data || typeof data !== 'object') throw new Error('Ungültiges Plan-Format.');
-        const incomingStudents = Array.isArray(data.students) ? data.students : [];
-        const incomingSeats = data.seats && typeof data.seats === 'object' ? data.seats : {};
-        const incomingTopics = data.seatTopics && typeof data.seatTopics === 'object' ? data.seatTopics : {};
-        const incomingActive = Array.isArray(data.activeSeats) ? data.activeSeats.filter(Boolean) : [];
-        const incomingCsvName = typeof data.csvName === 'string' ? data.csvName : '';
-        const seatAssignments = new Map();
-        const seatIds = new Set();
-        const activeSeatOrder = [];
-        const activeSeatSet = new Set();
-        const registerSeat = (rawId) => {
-          const normalized = sanitizeSeatIdWithinLimit(rawId);
-          if (!normalized) return null;
-          seatIds.add(normalized);
-          return normalized;
-        };
-        const registerActiveSeat = (rawId) => {
-          const normalized = registerSeat(rawId);
-          if (!normalized || activeSeatSet.has(normalized)) return normalized;
-          activeSeatSet.add(normalized);
-          activeSeatOrder.push(normalized);
-          return normalized;
-        };
-        incomingActive.forEach(registerActiveSeat);
-        Object.entries(incomingSeats).forEach(([id, val]) => {
-          const normalized = registerSeat(id);
-          if (normalized) {
-            seatAssignments.set(normalized, ensureSeatList(val));
-            if (!incomingActive.length) {
-              registerActiveSeat(normalized);
-            }
-          }
-        });
+  function applyPlanData(data, options = {}) {
+    const restoreSeatAssignments = options.restoreSeatAssignments !== false;
+    if (!data || typeof data !== 'object') throw new Error('Ungültiges Plan-Format.');
+    const incomingStudents = Array.isArray(data.students) ? data.students : [];
+    const incomingSeats = data.seats && typeof data.seats === 'object' ? data.seats : {};
+    const incomingTopics = data.seatTopics && typeof data.seatTopics === 'object' ? data.seatTopics : {};
+    const incomingActive = Array.isArray(data.activeSeats) ? data.activeSeats.filter(Boolean) : [];
+    const incomingCsvName = typeof data.csvName === 'string' ? data.csvName : '';
+    const seatAssignments = new Map();
+    const seatIds = new Set();
+    const activeSeatOrder = [];
+    const activeSeatSet = new Set();
+    const registerSeat = (rawId) => {
+      const normalized = sanitizeSeatIdWithinLimit(rawId);
+      if (!normalized) return null;
+      seatIds.add(normalized);
+      return normalized;
+    };
+    const registerActiveSeat = (rawId) => {
+      const normalized = registerSeat(rawId);
+      if (!normalized || activeSeatSet.has(normalized)) return normalized;
+      activeSeatSet.add(normalized);
+      activeSeatOrder.push(normalized);
+      return normalized;
+    };
+    incomingActive.forEach(registerActiveSeat);
+    Object.entries(incomingSeats).forEach(([id, val]) => {
+      const normalized = registerSeat(id);
+      if (normalized) {
+        seatAssignments.set(normalized, ensureSeatList(val));
         if (!incomingActive.length) {
-          Object.keys(incomingTopics).forEach(registerActiveSeat);
-          (Array.isArray(data.lockedSeats) ? data.lockedSeats : []).forEach(registerActiveSeat);
+          registerActiveSeat(normalized);
         }
-        if (!seatIds.size) throw new Error('Plan enthält keine Gruppenfelder.');
-        const maxFromIds = (idx) => {
-          let max = 1;
-          seatIds.forEach(id => {
-            const parts = id.split('-').map(Number);
-            const val = parts[idx];
-            if (Number.isFinite(val) && val > max) max = val;
-          });
-          return max;
+      }
+    });
+    if (!incomingActive.length) {
+      Object.keys(incomingTopics).forEach(registerActiveSeat);
+      (Array.isArray(data.lockedSeats) ? data.lockedSeats : []).forEach(registerActiveSeat);
+    }
+    if (!seatIds.size) throw new Error('Plan enthält keine Gruppenfelder.');
+    const maxFromIds = (idx) => {
+      let max = 1;
+      seatIds.forEach(id => {
+        const parts = id.split('-').map(Number);
+        const val = parts[idx];
+        if (Number.isFinite(val) && val > max) max = val;
+      });
+      return max;
+    };
+    const planRows = normalizeGridDimension(data.grid?.rows);
+    const planCols = normalizeGridDimension(data.grid?.cols);
+    const requiredRows = maxFromIds(0);
+    const requiredCols = maxFromIds(1);
+    const currentRows = clampGridDimension(state.gridRows);
+    const currentCols = clampGridDimension(state.gridCols);
+    state.gridRows = planRows !== null
+      ? clampGridDimension(Math.max(planRows, requiredRows))
+      : clampGridDimension(Math.max(currentRows, requiredRows));
+    state.gridCols = planCols !== null
+      ? clampGridDimension(Math.max(planCols, requiredCols))
+      : clampGridDimension(Math.max(currentCols, requiredCols));
+    state.performanceFlairCount = clampPerformanceFlairCount(data.performanceFlairCount, 4);
+    state.students = incomingStudents.map(student => sanitizeRandomPickerStudent(student));
+    state.headers = Array.isArray(data.headers) ? data.headers : [];
+    state.delim = typeof data.delim === 'string' ? data.delim : ',';
+    const normalizedCsvName = String(incomingCsvName || '')
+      .trim()
+      .replace(/[\\/:*?"<>|]/g, '-');
+    state.csvName = normalizedCsvName || state.csvName || '';
+    state.minGroupSize = clampMinGroupSize(data.minGroupSize ?? state.minGroupSize);
+    state.maxGroupSize = clampMaxGroupSize(data.maxGroupSize ?? state.maxGroupSize);
+    const fallbackActiveOrder = Array.from(buildFullActiveSet(state.gridRows, state.gridCols));
+    const nextActiveOrder = activeSeatOrder.length
+      ? activeSeatOrder
+      : (incomingActive.length ? Array.from(seatIds) : fallbackActiveOrder);
+    state.activeSeatOrder = nextActiveOrder;
+    state.activeSeats = new Set(nextActiveOrder);
+    const locked = Array.isArray(data.lockedSeats) ? data.lockedSeats : [];
+    const sanitizedLocks = locked
+      .map(id => sanitizeSeatIdWithinLimit(id))
+      .filter(id => id && state.activeSeats.has(id));
+    state.lockedSeats = restoreSeatAssignments ? new Set(sanitizedLocks) : new Set();
+    state.seats = {};
+    state.activeSeats.forEach(id => {
+      state.seats[id] = restoreSeatAssignments && seatAssignments.has(id)
+        ? ensureSeatList(seatAssignments.get(id))
+        : [];
+    });
+    const topics = {};
+    state.activeSeats.forEach(id => {
+      if (typeof incomingTopics[id] === 'string') {
+        topics[id] = incomingTopics[id];
+      }
+    });
+    state.seatTopics = topics;
+    const importedWorkOrder = typeof data.workOrder === 'string' ? data.workOrder : '';
+    const incomingStart = typeof data.workOrderStartISO === 'string'
+      ? data.workOrderStartISO
+      : (typeof data.workOrderStart === 'string' ? data.workOrderStart : null);
+    const incomingDuration = parseWorkOrderDuration(
+      data.workOrderDurationMinutes ?? data.workOrderDuration
+    );
+    const nextStart = importedWorkOrder.trim() && incomingDuration && incomingStart && Number.isFinite(Date.parse(incomingStart))
+      ? incomingStart
+      : null;
+    replaceTimerState({
+      ...SharedTimerStore.getState(),
+      workOrderText: importedWorkOrder,
+      durationMinutes: incomingDuration,
+      startISO: nextStart,
+      alarmState: false,
+    });
+    state._lastImport = !restoreSeatAssignments;
+    state.scrollHintDismissed = restoreSeatAssignments;
+    enforceGridBounds();
+    buildGrid();
+    if (!restoreSeatAssignments) {
+      els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
+    }
+    renderRandomPicker();
+    refreshUnseated();
+    renderWorkOrder();
+    updateScrollHint();
+  }
+
+  async function importPlanFromFile(file, handle) {
+    if (!file) return;
+    const planLabelFromFile = sanitizeExportFileName(stripFileExtension(file.name || ''));
+    const rawText = await file.text();
+    const text = stripJsonWarning(rawText);
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      throw new Error('Datei ist kein gültiges JSON.');
+    }
+    if (handle) {
+      state.lastDirectoryHandle = handle;
+    }
+    applyPlanData(data, { restoreSeatAssignments: true });
+    const importedLabel = typeof data?.csvName === 'string' ? data.csvName.trim() : '';
+    if (!importedLabel) {
+      state.csvName = planLabelFromFile || state.csvName;
+    }
+  }
+
+  function createStudentNode(s) {
+    const tpl = document.getElementById('student-tpl');
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    node.dataset.sid = s.id;
+    node.querySelector('.name').textContent = displayName(s);
+    node.querySelector('.tag').textContent = s.id;
+    if (getActiveTab() === TAB_RANDOM_PICKER) {
+      node.setAttribute('draggable', 'false');
+      node.removeAttribute('title');
+    } else {
+      addDragHandlers(node);
+      enableTouchDragSource(node, () => {
+        return {
+          type: 'assignment',
+          studentId: s.id,
+          fromSeat: null,
+          label: displayName(s) || s.id
         };
-        const planRows = normalizeGridDimension(data.grid?.rows);
-        const planCols = normalizeGridDimension(data.grid?.cols);
-        const requiredRows = maxFromIds(0);
-        const requiredCols = maxFromIds(1);
-        const currentRows = clampGridDimension(state.gridRows);
-        const currentCols = clampGridDimension(state.gridCols);
-        state.gridRows = planRows !== null
-          ? clampGridDimension(Math.max(planRows, requiredRows))
-          : clampGridDimension(Math.max(currentRows, requiredRows));
-        state.gridCols = planCols !== null
-          ? clampGridDimension(Math.max(planCols, requiredCols))
-          : clampGridDimension(Math.max(currentCols, requiredCols));
-        state.performanceFlairCount = clampPerformanceFlairCount(data.performanceFlairCount, 4);
-        state.students = incomingStudents.map(student => sanitizeRandomPickerStudent(student));
-        state.headers = Array.isArray(data.headers) ? data.headers : [];
-        state.delim = typeof data.delim === 'string' ? data.delim : ',';
-        const normalizedCsvName = String(incomingCsvName || '')
-          .trim()
-          .replace(/[\\/:*?"<>|]/g, '-');
-        state.csvName = normalizedCsvName || state.csvName || '';
-        state.minGroupSize = clampMinGroupSize(data.minGroupSize ?? state.minGroupSize);
-        state.maxGroupSize = clampMaxGroupSize(data.maxGroupSize ?? state.maxGroupSize);
-        const fallbackActiveOrder = Array.from(buildFullActiveSet(state.gridRows, state.gridCols));
-        const nextActiveOrder = activeSeatOrder.length
-          ? activeSeatOrder
-          : (incomingActive.length ? Array.from(seatIds) : fallbackActiveOrder);
-        state.activeSeatOrder = nextActiveOrder;
-        state.activeSeats = new Set(nextActiveOrder);
-        const locked = Array.isArray(data.lockedSeats) ? data.lockedSeats : [];
-        const sanitizedLocks = locked
-          .map(id => sanitizeSeatIdWithinLimit(id))
-          .filter(id => id && state.activeSeats.has(id));
-        state.lockedSeats = restoreSeatAssignments ? new Set(sanitizedLocks) : new Set();
-        state.seats = {};
-        state.activeSeats.forEach(id => {
-          state.seats[id] = restoreSeatAssignments && seatAssignments.has(id)
-            ? ensureSeatList(seatAssignments.get(id))
-            : [];
-        });
-        const topics = {};
-        state.activeSeats.forEach(id => {
-          if (typeof incomingTopics[id] === 'string') {
-            topics[id] = incomingTopics[id];
-          }
-        });
-        state.seatTopics = topics;
-        const importedWorkOrder = typeof data.workOrder === 'string' ? data.workOrder : '';
-        const incomingStart = typeof data.workOrderStartISO === 'string'
-          ? data.workOrderStartISO
-          : (typeof data.workOrderStart === 'string' ? data.workOrderStart : null);
-        const incomingDuration = parseWorkOrderDuration(
-          data.workOrderDurationMinutes ?? data.workOrderDuration
-        );
-        const nextStart = importedWorkOrder.trim() && incomingDuration && incomingStart && Number.isFinite(Date.parse(incomingStart))
-          ? incomingStart
-          : null;
-        replaceTimerState({
-          ...SharedTimerStore.getState(),
-          workOrderText: importedWorkOrder,
-          durationMinutes: incomingDuration,
-          startISO: nextStart,
-          alarmState: false,
-        });
-        state._lastImport = !restoreSeatAssignments;
-        state.scrollHintDismissed = restoreSeatAssignments;
-        enforceGridBounds();
-        buildGrid();
-        if (!restoreSeatAssignments) {
-          els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
-        }
-        renderRandomPicker();
-        refreshUnseated();
-        renderWorkOrder();
-        updateScrollHint();
-      }
+      });
+    }
+    return node;
+  }
 
-      async function importPlanFromFile(file, handle) {
-        if (!file) return;
-        const planLabelFromFile = sanitizeExportFileName(stripFileExtension(file.name || ''));
-        const rawText = await file.text();
-        const text = stripJsonWarning(rawText);
-        let data;
-        try {
-          data = JSON.parse(text);
-        } catch (err) {
-          throw new Error('Datei ist kein gültiges JSON.');
-        }
-        if (handle) {
-          state.lastDirectoryHandle = handle;
-        }
-        applyPlanData(data, { restoreSeatAssignments: true });
-        const importedLabel = typeof data?.csvName === 'string' ? data.csvName.trim() : '';
-        if (!importedLabel) {
-          state.csvName = planLabelFromFile || state.csvName;
-        }
-      }
+  function refreshUnseated() {
+    if (!els.unseated) return;
+    els.unseated.innerHTML = '';
+    const seatedIds = new Set(
+      Object.values(state.seats)
+        .map(ensureSeatList)
+        .flat()
+    );
+    const unassigned = state.students.filter(s => !seatedIds.has(s.id));
+    unassigned.forEach(s => {
+      els.unseated.appendChild(createStudentNode(s));
+    });
+    updateScrollHint();
+    syncGroupSizeInputs();
+  }
 
-      function createStudentNode(s) {
-        const tpl = document.getElementById('student-tpl');
-        const node = tpl.content.firstElementChild.cloneNode(true);
-        node.dataset.sid = s.id;
-        node.querySelector('.name').textContent = displayName(s);
-        node.querySelector('.tag').textContent = s.id;
-        if (getActiveTab() === TAB_RANDOM_PICKER) {
-          node.setAttribute('draggable', 'false');
-          node.removeAttribute('title');
-        } else {
-          addDragHandlers(node);
-          enableTouchDragSource(node, () => {
-            return {
-              type: 'assignment',
-              studentId: s.id,
-              fromSeat: null,
-              label: displayName(s) || s.id
-            };
-          });
-        }
-        return node;
-      }
-
-      function refreshUnseated() {
-        if (!els.unseated) return;
-        els.unseated.innerHTML = '';
-        const seatedIds = new Set(
-          Object.values(state.seats)
-            .map(ensureSeatList)
-            .flat()
-        );
-        const unassigned = state.students.filter(s => !seatedIds.has(s.id));
-        unassigned.forEach(s => {
-          els.unseated.appendChild(createStudentNode(s));
-        });
-        updateScrollHint();
-        syncGroupSizeInputs();
-      }
-
-      function parseWorkOrderDuration(value) {
-        if (value === null || value === undefined) return null;
-        const parsed = Math.floor(Number(value));
-        if (!Number.isFinite(parsed) || parsed <= 0) return null;
-        return parsed;
-      }
-      function getTimerPlaceholder() {
-        return timerShowSeconds ? '--:--:--' : '--:--';
-      }
-      function formatDurationHMS(minutes) {
-        if (!Number.isFinite(minutes) || minutes <= 0) return getTimerPlaceholder();
-        const totalMinutes = Math.floor(minutes);
-        const totalSeconds = totalMinutes * 60;
-        const hours = Math.floor(totalSeconds / 3600);
-        const mins = Math.floor((totalSeconds % 3600) / 60);
-        if (timerShowSeconds) {
-          const seconds = totalSeconds % 60;
-          return [hours, mins, seconds].map(v => String(v).padStart(2, '0')).join(':');
-        }
-        return [hours, mins].map(v => String(v).padStart(2, '0')).join(':');
-      }
-      function formatRemainingDuration(remainingMs) {
-        const safeRemaining = Math.max(0, remainingMs);
-        if (timerShowSeconds) {
-          const remainingSeconds = Math.ceil(safeRemaining / 1000);
-          const hours = Math.floor(remainingSeconds / 3600);
-          const mins = Math.floor((remainingSeconds % 3600) / 60);
-          const seconds = remainingSeconds % 60;
-          return [hours, mins, seconds].map(v => String(Math.max(0, v)).padStart(2, '0')).join(':');
-        }
-        const remainingMinutes = Math.ceil(safeRemaining / 60000);
-        const hours = Math.floor(remainingMinutes / 60);
-        const mins = remainingMinutes % 60;
-        return [hours, mins].map(v => String(Math.max(0, v)).padStart(2, '0')).join(':');
-      }
-      function positionWorkOrderHintOverlay() {
-        const overlay = els.workOrderHintOverlay;
-        const target = els.workOrderRestClock;
-        if (!overlay || !target) return;
-        if (!overlay.classList.contains('visible')) return;
-        const rect = target.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0) return;
-        const overlayRect = overlay.getBoundingClientRect();
-        const width = overlayRect.width || overlay.offsetWidth || 0;
-        const height = overlayRect.height || overlay.offsetHeight || 0;
-        const offsetParentRect = overlay.offsetParent && typeof overlay.offsetParent.getBoundingClientRect === 'function'
-          ? overlay.offsetParent.getBoundingClientRect()
-          : null;
-        const containerRect = offsetParentRect
-          || (els.workOrderShell && !els.workOrderShell.hidden ? els.workOrderShell.getBoundingClientRect() : null)
-          || els.mainPanel?.getBoundingClientRect();
-        const containerWidth = containerRect?.width || window.innerWidth || document.documentElement.clientWidth || width;
-        const containerHeight = containerRect?.height || window.innerHeight || document.documentElement.clientHeight || height;
-        const containerLeft = containerRect?.left || 0;
-        const containerTop = containerRect?.top || 0;
-        const inset = 12;
-        const horizontalCenter = (rect.left - containerLeft) + (rect.width / 2);
-        const maxLeft = Math.max(inset, containerWidth - width - inset);
-        const desiredLeft = horizontalCenter - (width / 2);
-        const clampedLeft = Math.min(Math.max(desiredLeft, inset), maxLeft);
-        let top = (rect.top - containerTop) - height - inset;
-        let positionFlag = 'above';
-        if (top < inset) {
-          top = (rect.bottom - containerTop) + inset;
-          positionFlag = 'below';
-        }
-        const maxTop = Math.max(inset, containerHeight - height - inset);
-        const clampedTop = Math.min(Math.max(top, inset), maxTop);
-        overlay.style.left = `${clampedLeft}px`;
-        overlay.style.top = `${clampedTop}px`;
-        overlay.setAttribute('data-position', positionFlag);
-      }
-      function hasWorkOrderTiming() {
-        const duration = Number(state.workOrderDurationMinutes);
-        if (!Number.isFinite(duration) || duration <= 0) return false;
-        const startIso = typeof state.workOrderStartISO === 'string' ? state.workOrderStartISO.trim() : '';
-        if (!startIso) return false;
-        return Number.isFinite(Date.parse(startIso));
-      }
-      function renderControlStatus(el, status, text) {
-        if (!el) return;
-        const normalized = typeof status === 'string' && status.trim() ? status.trim() : 'ready';
-        el.textContent = text || 'Status: bereit';
-        el.className = `control-status is-${normalized}`;
-      }
-      function renderWorkOrderTimerButtonsState() {
-        timerUiState = state.workOrderAlarmed
-          ? TIMER_UI_STATE.ALARM
-          : (hasWorkOrderTiming() ? TIMER_UI_STATE.RUNNING : TIMER_UI_STATE.READY);
-        const active = timerUiState !== TIMER_UI_STATE.READY;
-        appEl.classList.toggle('work-order-timer-inactive', !active);
-        const startButtons = [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean);
-        const stopButtons = [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean);
-        startButtons.forEach((button) => {
-          button.disabled = active;
-          button.textContent = '⏰';
-          button.classList.toggle('is-running', false);
-          button.classList.toggle('is-off', false);
-          button.setAttribute('aria-label', 'Arbeitszeit starten');
-          button.setAttribute('title', 'Arbeitszeit starten');
-        });
-        stopButtons.forEach((button) => {
-          button.disabled = !active;
-          button.textContent = '⏰';
-          button.classList.toggle('is-running', active);
-          button.classList.toggle('is-off', true);
-          button.setAttribute('aria-label', 'Arbeitszeit stoppen');
-          button.setAttribute('title', 'Arbeitszeit stoppen');
-        });
-        const timerStatusText = timerUiState === TIMER_UI_STATE.ALARM
-          ? 'Status: alarm'
-          : (timerUiState === TIMER_UI_STATE.RUNNING ? 'Status: läuft' : 'Status: bereit');
-        renderControlStatus(els.timerControlStatus, timerUiState, timerStatusText);
-      }
-      function resetWorkOrderTimerDisplay() {
-        if (els.workOrderCountdown) {
-          els.workOrderCountdown.textContent = getTimerPlaceholder();
-        }
-        if (els.workOrderEndtime) {
-          els.workOrderEndtime.textContent = '--:--';
-        }
-      }
-      function resetTimerWarningMilestones(lastRatio = null) {
-        timerMilestoneTriggered = { half: false, quarter: false };
-        if (Number.isFinite(lastRatio)) {
-          timerLastRemainingRatio = Math.max(0, Math.min(1, Number(lastRatio)));
-        } else {
-          timerLastRemainingRatio = null;
-        }
-      }
-      function isTimerWarningToneEnabled(toneKey) {
-        if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return false;
-        return Boolean(timerWarningToneEnabled[toneKey]);
-      }
-      function getTimerWarningToneLabel(toneKey) {
-        if (toneKey === 'half') return 'Warnton nach 50%';
-        if (toneKey === 'quarter') return 'Warnton nach 75%';
-        return 'Warnton bei Ende';
-      }
-      function getTimerWarningMessage(level) {
-        if (level === 'half') return '50 % erreicht';
-        if (level === 'quarter') return '75 % erreicht';
-        return 'Zeit abgelaufen';
-      }
-      function clearTimerWarningBanner() {
-        const banner = els.timerWarningBanner;
-        if (!banner) return;
-        banner.hidden = true;
-        banner.textContent = '';
-        banner.classList.remove('visible', 'level-half', 'level-quarter', 'level-end');
-      }
-      function showTimerWarningBanner(level) {
-        const banner = els.timerWarningBanner;
-        if (!banner) return;
-        const normalizedLevel = level === 'end' ? 'end' : (level === 'quarter' ? 'quarter' : 'half');
-        banner.hidden = false;
-        banner.textContent = getTimerWarningMessage(normalizedLevel);
-        banner.classList.remove('level-half', 'level-quarter', 'level-end');
-        banner.classList.add(`level-${normalizedLevel}`);
-        banner.classList.remove('visible');
-        void banner.offsetWidth;
-        banner.classList.add('visible');
-      }
-      function clearTimerVisualWarnings() {
-        if (!els.timerShell) return;
-        els.timerShell.classList.remove('timer-warning-half', 'timer-warning-quarter', 'timer-warning-end');
-        clearTimerWarningBanner();
-      }
-      function triggerTimerVisualWarning(level, { persistent = false } = {}) {
-        if (!els.timerShell) return;
-        clearTimerVisualWarnings();
-        const tone = level === 'end' ? 'end' : (level === 'quarter' ? 'quarter' : 'half');
-        els.timerShell.classList.add(`timer-warning-${tone}`);
-        showTimerWarningBanner(tone);
-        if (timerVisualWarningTimeoutId) {
-          clearTimeout(timerVisualWarningTimeoutId);
-          timerVisualWarningTimeoutId = null;
-        }
-        if (persistent) return;
-        const durationMs = tone === 'quarter' ? 2600 : 2000;
-        timerVisualWarningTimeoutId = setTimeout(() => {
-          timerVisualWarningTimeoutId = null;
-          if (state.workOrderAlarmed) return;
-          clearTimerVisualWarnings();
-        }, durationMs);
-      }
-      function ensureWorkOrderAudioContext({ resume = false } = {}) {
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (!AudioCtx) return null;
-        if (!workOrderAudioCtx || workOrderAudioCtx.state === 'closed') {
-          workOrderAudioCtx = new AudioCtx();
-        }
-        const ctx = workOrderAudioCtx;
-        if (resume && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-          const resumePromise = ctx.resume();
-          if (resumePromise && typeof resumePromise.catch === 'function') {
-            resumePromise.catch((error) => {
-              reportAppError(error, '', {
-                scope: 'timer-audio',
-                action: 'resume-audio-context',
-              });
-            });
-          }
-        }
-        return ctx;
-      }
-      function closeWorkOrderAudioContext() {
-        if (!workOrderAudioCtx || workOrderAudioCtx.state === 'closed' || typeof workOrderAudioCtx.close !== 'function') {
-          workOrderAudioCtx = null;
-          return;
-        }
-        const ctx = workOrderAudioCtx;
-        workOrderAudioCtx = null;
-        const closePromise = ctx.close();
-        if (closePromise && typeof closePromise.catch === 'function') {
-          closePromise.catch((error) => {
-            reportAppError(error, '', {
-              scope: 'timer-audio',
-              action: 'close-audio-context',
-            });
-          });
-        }
-      }
-      function scheduleTimerMilestoneTone(ctx, toneKey) {
-        if (!ctx || ctx.state === 'closed') return;
-        const pulses = toneKey === 'quarter'
-          ? [
-            { frequency: 1180, gain: 0.16, durationMs: 150, offsetMs: 0, type: 'triangle' },
-            { frequency: 900, gain: 0.14, durationMs: 150, offsetMs: 180, type: 'triangle' },
-            { frequency: 1180, gain: 0.16, durationMs: 150, offsetMs: 360, type: 'triangle' },
-          ]
-          : [
-            { frequency: 1040, gain: 0.13, durationMs: 170, offsetMs: 0, type: 'triangle' },
-            { frequency: 780, gain: 0.12, durationMs: 160, offsetMs: 180, type: 'triangle' },
-          ];
-        pulses.forEach(({ frequency, gain, durationMs, offsetMs, type }) => {
-          const startTime = ctx.currentTime + (offsetMs / 1000);
-          const endTime = startTime + (durationMs / 1000);
-          const oscillator = ctx.createOscillator();
-          const gainNode = ctx.createGain();
-          oscillator.type = type || 'sine';
-          oscillator.frequency.setValueAtTime(frequency, startTime);
-          gainNode.gain.setValueAtTime(0.0001, startTime);
-          gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.01);
-          gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-          oscillator.connect(gainNode);
-          gainNode.connect(ctx.destination);
-          oscillator.start(startTime);
-          oscillator.stop(endTime + 0.015);
-        });
-      }
-      function playTimerMilestoneTone(toneKey) {
-        try {
-          const ctx = ensureWorkOrderAudioContext();
-          if (!ctx) return;
-          if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-            const resumePromise = ctx.resume();
-            if (resumePromise && typeof resumePromise.then === 'function') {
-              resumePromise
-                .then(() => scheduleTimerMilestoneTone(ctx, toneKey))
-                .catch((error) => {
-                  reportAppError(error, '', {
-                    scope: 'timer-audio',
-                    action: 'play-milestone-tone',
-                    toneKey,
-                  });
-                });
-              return;
-            }
-          }
-          scheduleTimerMilestoneTone(ctx, toneKey);
-        } catch (error) {
+  function parseWorkOrderDuration(value) {
+    if (value === null || value === undefined) return null;
+    const parsed = Math.floor(Number(value));
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    return parsed;
+  }
+  function getTimerPlaceholder() {
+    return timerShowSeconds ? '--:--:--' : '--:--';
+  }
+  function formatDurationHMS(minutes) {
+    if (!Number.isFinite(minutes) || minutes <= 0) return getTimerPlaceholder();
+    const totalMinutes = Math.floor(minutes);
+    const totalSeconds = totalMinutes * 60;
+    const hours = Math.floor(totalSeconds / 3600);
+    const mins = Math.floor((totalSeconds % 3600) / 60);
+    if (timerShowSeconds) {
+      const seconds = totalSeconds % 60;
+      return [hours, mins, seconds].map(v => String(v).padStart(2, '0')).join(':');
+    }
+    return [hours, mins].map(v => String(v).padStart(2, '0')).join(':');
+  }
+  function formatRemainingDuration(remainingMs) {
+    const safeRemaining = Math.max(0, remainingMs);
+    if (timerShowSeconds) {
+      const remainingSeconds = Math.ceil(safeRemaining / 1000);
+      const hours = Math.floor(remainingSeconds / 3600);
+      const mins = Math.floor((remainingSeconds % 3600) / 60);
+      const seconds = remainingSeconds % 60;
+      return [hours, mins, seconds].map(v => String(Math.max(0, v)).padStart(2, '0')).join(':');
+    }
+    const remainingMinutes = Math.ceil(safeRemaining / 60000);
+    const hours = Math.floor(remainingMinutes / 60);
+    const mins = remainingMinutes % 60;
+    return [hours, mins].map(v => String(Math.max(0, v)).padStart(2, '0')).join(':');
+  }
+  function positionWorkOrderHintOverlay() {
+    const overlay = els.workOrderHintOverlay;
+    const target = els.workOrderRestClock;
+    if (!overlay || !target) return;
+    if (!overlay.classList.contains('visible')) return;
+    const rect = target.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return;
+    const overlayRect = overlay.getBoundingClientRect();
+    const width = overlayRect.width || overlay.offsetWidth || 0;
+    const height = overlayRect.height || overlay.offsetHeight || 0;
+    const offsetParentRect = overlay.offsetParent && typeof overlay.offsetParent.getBoundingClientRect === 'function'
+      ? overlay.offsetParent.getBoundingClientRect()
+      : null;
+    const containerRect = offsetParentRect
+      || (els.workOrderShell && !els.workOrderShell.hidden ? els.workOrderShell.getBoundingClientRect() : null)
+      || els.mainPanel?.getBoundingClientRect();
+    const containerWidth = containerRect?.width || window.innerWidth || document.documentElement.clientWidth || width;
+    const containerHeight = containerRect?.height || window.innerHeight || document.documentElement.clientHeight || height;
+    const containerLeft = containerRect?.left || 0;
+    const containerTop = containerRect?.top || 0;
+    const inset = 12;
+    const horizontalCenter = (rect.left - containerLeft) + (rect.width / 2);
+    const maxLeft = Math.max(inset, containerWidth - width - inset);
+    const desiredLeft = horizontalCenter - (width / 2);
+    const clampedLeft = Math.min(Math.max(desiredLeft, inset), maxLeft);
+    let top = (rect.top - containerTop) - height - inset;
+    let positionFlag = 'above';
+    if (top < inset) {
+      top = (rect.bottom - containerTop) + inset;
+      positionFlag = 'below';
+    }
+    const maxTop = Math.max(inset, containerHeight - height - inset);
+    const clampedTop = Math.min(Math.max(top, inset), maxTop);
+    overlay.style.left = `${clampedLeft}px`;
+    overlay.style.top = `${clampedTop}px`;
+    overlay.setAttribute('data-position', positionFlag);
+  }
+  function hasWorkOrderTiming() {
+    const duration = Number(state.workOrderDurationMinutes);
+    if (!Number.isFinite(duration) || duration <= 0) return false;
+    const startIso = typeof state.workOrderStartISO === 'string' ? state.workOrderStartISO.trim() : '';
+    if (!startIso) return false;
+    return Number.isFinite(Date.parse(startIso));
+  }
+  function renderControlStatus(el, status, text) {
+    if (!el) return;
+    const normalized = typeof status === 'string' && status.trim() ? status.trim() : 'ready';
+    el.textContent = text || 'Status: bereit';
+    el.className = `control-status is-${normalized}`;
+  }
+  function renderWorkOrderTimerButtonsState() {
+    timerUiState = state.workOrderAlarmed
+      ? TIMER_UI_STATE.ALARM
+      : (hasWorkOrderTiming() ? TIMER_UI_STATE.RUNNING : TIMER_UI_STATE.READY);
+    const active = timerUiState !== TIMER_UI_STATE.READY;
+    appEl.classList.toggle('work-order-timer-inactive', !active);
+    const startButtons = [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean);
+    const stopButtons = [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean);
+    startButtons.forEach((button) => {
+      button.disabled = active;
+      button.textContent = '⏰';
+      button.classList.toggle('is-running', false);
+      button.classList.toggle('is-off', false);
+      button.setAttribute('aria-label', 'Arbeitszeit starten');
+      button.setAttribute('title', 'Arbeitszeit starten');
+    });
+    stopButtons.forEach((button) => {
+      button.disabled = !active;
+      button.textContent = '⏰';
+      button.classList.toggle('is-running', active);
+      button.classList.toggle('is-off', true);
+      button.setAttribute('aria-label', 'Arbeitszeit stoppen');
+      button.setAttribute('title', 'Arbeitszeit stoppen');
+    });
+    const timerStatusText = timerUiState === TIMER_UI_STATE.ALARM
+      ? 'Status: alarm'
+      : (timerUiState === TIMER_UI_STATE.RUNNING ? 'Status: läuft' : 'Status: bereit');
+    renderControlStatus(els.timerControlStatus, timerUiState, timerStatusText);
+  }
+  function resetWorkOrderTimerDisplay() {
+    if (els.workOrderCountdown) {
+      els.workOrderCountdown.textContent = getTimerPlaceholder();
+    }
+    if (els.workOrderEndtime) {
+      els.workOrderEndtime.textContent = '--:--';
+    }
+  }
+  function resetTimerWarningMilestones(lastRatio = null) {
+    timerMilestoneTriggered = { half: false, quarter: false };
+    if (Number.isFinite(lastRatio)) {
+      timerLastRemainingRatio = Math.max(0, Math.min(1, Number(lastRatio)));
+    } else {
+      timerLastRemainingRatio = null;
+    }
+  }
+  function isTimerWarningToneEnabled(toneKey) {
+    if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return false;
+    return Boolean(timerWarningToneEnabled[toneKey]);
+  }
+  function getTimerWarningToneLabel(toneKey) {
+    if (toneKey === 'half') return 'Warnton nach 50%';
+    if (toneKey === 'quarter') return 'Warnton nach 75%';
+    return 'Warnton bei Ende';
+  }
+  function getTimerWarningMessage(level) {
+    if (level === 'half') return '50 % erreicht';
+    if (level === 'quarter') return '75 % erreicht';
+    return 'Zeit abgelaufen';
+  }
+  function clearTimerWarningBanner() {
+    const banner = els.timerWarningBanner;
+    if (!banner) return;
+    banner.hidden = true;
+    banner.textContent = '';
+    banner.classList.remove('visible', 'level-half', 'level-quarter', 'level-end');
+  }
+  function showTimerWarningBanner(level) {
+    const banner = els.timerWarningBanner;
+    if (!banner) return;
+    const normalizedLevel = level === 'end' ? 'end' : (level === 'quarter' ? 'quarter' : 'half');
+    banner.hidden = false;
+    banner.textContent = getTimerWarningMessage(normalizedLevel);
+    banner.classList.remove('level-half', 'level-quarter', 'level-end');
+    banner.classList.add(`level-${normalizedLevel}`);
+    banner.classList.remove('visible');
+    void banner.offsetWidth;
+    banner.classList.add('visible');
+  }
+  function clearTimerVisualWarnings() {
+    if (!els.timerShell) return;
+    els.timerShell.classList.remove('timer-warning-half', 'timer-warning-quarter', 'timer-warning-end');
+    clearTimerWarningBanner();
+  }
+  function triggerTimerVisualWarning(level, { persistent = false } = {}) {
+    if (!els.timerShell) return;
+    clearTimerVisualWarnings();
+    const tone = level === 'end' ? 'end' : (level === 'quarter' ? 'quarter' : 'half');
+    els.timerShell.classList.add(`timer-warning-${tone}`);
+    showTimerWarningBanner(tone);
+    if (timerVisualWarningTimeoutId) {
+      clearTimeout(timerVisualWarningTimeoutId);
+      timerVisualWarningTimeoutId = null;
+    }
+    if (persistent) return;
+    const durationMs = tone === 'quarter' ? 2600 : 2000;
+    timerVisualWarningTimeoutId = setTimeout(() => {
+      timerVisualWarningTimeoutId = null;
+      if (state.workOrderAlarmed) return;
+      clearTimerVisualWarnings();
+    }, durationMs);
+  }
+  function ensureWorkOrderAudioContext({ resume = false } = {}) {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!workOrderAudioCtx || workOrderAudioCtx.state === 'closed') {
+      workOrderAudioCtx = new AudioCtx();
+    }
+    const ctx = workOrderAudioCtx;
+    if (resume && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+      const resumePromise = ctx.resume();
+      if (resumePromise && typeof resumePromise.catch === 'function') {
+        resumePromise.catch((error) => {
           reportAppError(error, '', {
             scope: 'timer-audio',
-            action: 'schedule-milestone-tone',
-            toneKey,
+            action: 'resume-audio-context',
           });
-        }
+        });
       }
-      function handleTimerMilestones(remainingMs, totalDurationMs) {
-        if (!Number.isFinite(totalDurationMs) || totalDurationMs <= 0) return;
-        const ratio = Math.max(0, Math.min(1, remainingMs / totalDurationMs));
-        if (!Number.isFinite(timerLastRemainingRatio)) {
-          timerLastRemainingRatio = ratio;
-          return;
-        }
-        const crossedThreshold = (threshold) => timerLastRemainingRatio > threshold && ratio <= threshold;
-        if (!timerMilestoneTriggered.half && crossedThreshold(0.5)) {
-          timerMilestoneTriggered.half = true;
-          triggerTimerVisualWarning('half');
-          if (isTimerWarningToneEnabled('half')) {
-            playTimerMilestoneTone('half');
-          }
-        }
-        if (!timerMilestoneTriggered.quarter && crossedThreshold(0.25)) {
-          timerMilestoneTriggered.quarter = true;
-          triggerTimerVisualWarning('quarter');
-          if (isTimerWarningToneEnabled('quarter')) {
-            playTimerMilestoneTone('quarter');
-          }
-        }
-        timerLastRemainingRatio = ratio;
-      }
-      function stopWorkOrderTimer() {
-        if (workOrderTimerId !== null) {
-          clearInterval(workOrderTimerId);
-          workOrderTimerId = null;
-        }
-        updateWorkOrderAlert(false);
-      }
-      function startWorkOrderAlarmSound() {
-        if (!isTimerWarningToneEnabled('end')) return;
-        if (workOrderAlarmIntervalId !== null) return;
-        triggerWorkOrderBell();
-        workOrderAlarmIntervalId = setInterval(triggerWorkOrderBell, 900);
-      }
-      function stopWorkOrderAlarmSound() {
-        if (workOrderAlarmIntervalId !== null) {
-          clearInterval(workOrderAlarmIntervalId);
-          workOrderAlarmIntervalId = null;
-        }
-      }
-      function triggerWorkOrderBell() {
-        try {
-          const ctx = ensureWorkOrderAudioContext();
-          if (!ctx) return;
-          if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-            const resumePromise = ctx.resume();
-            if (resumePromise && typeof resumePromise.then === 'function') {
-              resumePromise
-                .then(() => triggerWorkOrderBell())
-                .catch((error) => {
-                  reportAppError(error, '', {
-                    scope: 'timer-audio',
-                    action: 'trigger-bell-resume',
-                  });
-                });
-              return;
-            }
-          }
-          const duration = 1.5;
-          const base = ctx.createOscillator();
-          const overtone = ctx.createOscillator();
-          const gain = ctx.createGain();
-          base.type = 'sine';
-          overtone.type = 'sine';
-          base.frequency.setValueAtTime(420, ctx.currentTime);
-          overtone.frequency.setValueAtTime(840, ctx.currentTime);
-          gain.gain.setValueAtTime(0.28, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-          base.connect(gain);
-          overtone.connect(gain);
-          gain.connect(ctx.destination);
-          base.start();
-          overtone.start();
-          base.stop(ctx.currentTime + duration);
-          overtone.stop(ctx.currentTime + duration);
-        } catch (err) {
-          reportAppError(err, '', {
-            scope: 'timer-audio',
-            action: 'trigger-bell',
-          });
-        }
-      }
-      function updateWorkOrderAlert(active) {
-        if (!els.workOrderRestClock) return;
-        els.workOrderRestClock.classList.toggle('alert', Boolean(active));
-        if (els.workOrderHintOverlay) {
-          if (active) {
-            els.workOrderHintOverlay.classList.add('visible');
-            positionWorkOrderHintOverlay();
-          } else {
-            els.workOrderHintOverlay.classList.remove('visible');
-          }
-        }
-        if (!active) {
-          if (state.workOrderAlarmed) {
-            clearTimerVisualWarnings();
-            replaceTimerState({
-              ...SharedTimerStore.getState(),
-              alarmState: false,
+    }
+    return ctx;
+  }
+  function closeWorkOrderAudioContext() {
+    if (!workOrderAudioCtx || workOrderAudioCtx.state === 'closed' || typeof workOrderAudioCtx.close !== 'function') {
+      workOrderAudioCtx = null;
+      return;
+    }
+    const ctx = workOrderAudioCtx;
+    workOrderAudioCtx = null;
+    const closePromise = ctx.close();
+    if (closePromise && typeof closePromise.catch === 'function') {
+      closePromise.catch((error) => {
+        reportAppError(error, '', {
+          scope: 'timer-audio',
+          action: 'close-audio-context',
+        });
+      });
+    }
+  }
+  function scheduleTimerMilestoneTone(ctx, toneKey) {
+    if (!ctx || ctx.state === 'closed') return;
+    const pulses = toneKey === 'quarter'
+      ? [
+        { frequency: 1180, gain: 0.16, durationMs: 150, offsetMs: 0, type: 'triangle' },
+        { frequency: 900, gain: 0.14, durationMs: 150, offsetMs: 180, type: 'triangle' },
+        { frequency: 1180, gain: 0.16, durationMs: 150, offsetMs: 360, type: 'triangle' },
+      ]
+      : [
+        { frequency: 1040, gain: 0.13, durationMs: 170, offsetMs: 0, type: 'triangle' },
+        { frequency: 780, gain: 0.12, durationMs: 160, offsetMs: 180, type: 'triangle' },
+      ];
+    pulses.forEach(({ frequency, gain, durationMs, offsetMs, type }) => {
+      const startTime = ctx.currentTime + (offsetMs / 1000);
+      const endTime = startTime + (durationMs / 1000);
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      oscillator.type = type || 'sine';
+      oscillator.frequency.setValueAtTime(frequency, startTime);
+      gainNode.gain.setValueAtTime(0.0001, startTime);
+      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.01);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      oscillator.start(startTime);
+      oscillator.stop(endTime + 0.015);
+    });
+  }
+  function playTimerMilestoneTone(toneKey) {
+    try {
+      const ctx = ensureWorkOrderAudioContext();
+      if (!ctx) return;
+      if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+        const resumePromise = ctx.resume();
+        if (resumePromise && typeof resumePromise.then === 'function') {
+          resumePromise
+            .then(() => scheduleTimerMilestoneTone(ctx, toneKey))
+            .catch((error) => {
+              reportAppError(error, '', {
+                scope: 'timer-audio',
+                action: 'play-milestone-tone',
+                toneKey,
+              });
             });
-          } else if (!hasWorkOrderTiming()) {
-            clearTimerVisualWarnings();
-          }
-          stopWorkOrderAlarmSound();
-        } else if (state.workOrderAlarmed) {
-          triggerTimerVisualWarning('end', { persistent: true });
-          startWorkOrderAlarmSound();
-        }
-        renderWorkOrderTimerButtonsState();
-      }
-      function getTimerSecondsToggleLabel() {
-        return 'Sekunden anzeigen';
-      }
-      function renderTimerWarningToneState() {
-        els.timerWarningToneButtons?.forEach((button) => {
-          const toneKey = button.dataset.timerWarningToneToggle;
-          if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
-          const label = getTimerWarningToneLabel(toneKey);
-          button.setAttribute('aria-checked', String(isTimerWarningToneEnabled(toneKey)));
-          button.setAttribute('aria-label', label);
-          button.setAttribute('title', label);
-        });
-        els.timerWarningToneLabels?.forEach((labelElement) => {
-          const toneKey = labelElement.dataset.timerWarningToneLabel;
-          if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
-          labelElement.textContent = getTimerWarningToneLabel(toneKey);
-        });
-      }
-      function renderTimerSecondsToggleState() {
-        const label = getTimerSecondsToggleLabel();
-        els.timerSecondsToggleButtons?.forEach((button) => {
-          button.setAttribute('aria-checked', String(timerShowSeconds));
-          button.setAttribute('aria-label', label);
-          button.setAttribute('title', label);
-        });
-        els.timerSecondsToggleLabels?.forEach((labelElement) => {
-          labelElement.textContent = label;
-        });
-      }
-      function updateWorkOrderCountdown() {
-        if (!hasWorkOrderTiming()) {
-          resetTimerWarningMilestones(null);
-          resetWorkOrderTimerDisplay();
-          stopWorkOrderTimer();
           return;
         }
-        const startMs = Date.parse(state.workOrderStartISO);
-        const durationMinutes = Number(state.workOrderDurationMinutes);
-        if (!Number.isFinite(startMs) || !Number.isFinite(durationMinutes)) {
-          resetTimerWarningMilestones(null);
-          resetWorkOrderTimerDisplay();
-          stopWorkOrderTimer();
-          return;
-        }
-        const totalDurationMs = durationMinutes * 60000;
-        const endMs = startMs + totalDurationMs;
-        const now = Date.now();
-        const remaining = Math.max(0, endMs - now);
-        handleTimerMilestones(remaining, totalDurationMs);
-        if (els.workOrderCountdown) {
-          els.workOrderCountdown.textContent = formatRemainingDuration(remaining);
-        }
-        if (els.workOrderEndtime) {
-          const endDate = new Date(endMs);
-          els.workOrderEndtime.textContent = endDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-        }
-        if (remaining <= 0) {
-          timerLastRemainingRatio = 0;
-          stopWorkOrderTimer();
-          if (!state.workOrderAlarmed) {
-            replaceTimerState({
-              ...SharedTimerStore.getState(),
-              alarmState: true,
+      }
+      scheduleTimerMilestoneTone(ctx, toneKey);
+    } catch (error) {
+      reportAppError(error, '', {
+        scope: 'timer-audio',
+        action: 'schedule-milestone-tone',
+        toneKey,
+      });
+    }
+  }
+  function handleTimerMilestones(remainingMs, totalDurationMs) {
+    if (!Number.isFinite(totalDurationMs) || totalDurationMs <= 0) return;
+    const ratio = Math.max(0, Math.min(1, remainingMs / totalDurationMs));
+    if (!Number.isFinite(timerLastRemainingRatio)) {
+      timerLastRemainingRatio = ratio;
+      return;
+    }
+    const crossedThreshold = (threshold) => timerLastRemainingRatio > threshold && ratio <= threshold;
+    if (!timerMilestoneTriggered.half && crossedThreshold(0.5)) {
+      timerMilestoneTriggered.half = true;
+      triggerTimerVisualWarning('half');
+      if (isTimerWarningToneEnabled('half')) {
+        playTimerMilestoneTone('half');
+      }
+    }
+    if (!timerMilestoneTriggered.quarter && crossedThreshold(0.25)) {
+      timerMilestoneTriggered.quarter = true;
+      triggerTimerVisualWarning('quarter');
+      if (isTimerWarningToneEnabled('quarter')) {
+        playTimerMilestoneTone('quarter');
+      }
+    }
+    timerLastRemainingRatio = ratio;
+  }
+  function stopWorkOrderTimer() {
+    if (workOrderTimerId !== null) {
+      clearInterval(workOrderTimerId);
+      workOrderTimerId = null;
+    }
+    updateWorkOrderAlert(false);
+  }
+  function startWorkOrderAlarmSound() {
+    if (!isTimerWarningToneEnabled('end')) return;
+    if (workOrderAlarmIntervalId !== null) return;
+    triggerWorkOrderBell();
+    workOrderAlarmIntervalId = setInterval(triggerWorkOrderBell, 900);
+  }
+  function stopWorkOrderAlarmSound() {
+    if (workOrderAlarmIntervalId !== null) {
+      clearInterval(workOrderAlarmIntervalId);
+      workOrderAlarmIntervalId = null;
+    }
+  }
+  function triggerWorkOrderBell() {
+    try {
+      const ctx = ensureWorkOrderAudioContext();
+      if (!ctx) return;
+      if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
+        const resumePromise = ctx.resume();
+        if (resumePromise && typeof resumePromise.then === 'function') {
+          resumePromise
+            .then(() => triggerWorkOrderBell())
+            .catch((error) => {
+              reportAppError(error, '', {
+                scope: 'timer-audio',
+                action: 'trigger-bell-resume',
+              });
             });
-            updateWorkOrderAlert(true);
-            startWorkOrderAlarmSound();
-          }
-        } else {
-          updateWorkOrderAlert(false);
-        }
-      }
-      function refreshWorkOrderTimer() {
-        stopWorkOrderTimer();
-        if (!hasWorkOrderTiming()) {
-          resetTimerWarningMilestones(null);
-          resetWorkOrderTimerDisplay();
           return;
         }
-        updateWorkOrderCountdown();
-        workOrderTimerId = setInterval(updateWorkOrderCountdown, 1000);
       }
-
-      function renderWorkOrder() {
-        const container = els.workOrderDisplay;
-        if (!container) return;
-        const text = typeof state.workOrder === 'string' ? state.workOrder : '';
-        const hasContent = text.trim().length > 0;
-        appEl.classList.toggle('work-order-empty', !hasContent);
-        if (els.workOrderTextarea && document.activeElement !== els.workOrderTextarea && els.workOrderTextarea.value !== text) {
-          els.workOrderTextarea.value = text;
-        }
-        if (els.workOrderBody) {
-          els.workOrderBody.textContent = hasContent ? text : '';
-        }
-        container.hidden = false;
-        const durationValue = parseWorkOrderDuration(state.workOrderDurationMinutes);
-        const durationText = durationValue ? String(durationValue) : '';
-        if (els.workOrderDurationInput && document.activeElement !== els.workOrderDurationInput
-          && els.workOrderDurationInput.value !== durationText) {
-          els.workOrderDurationInput.value = durationText;
-        }
-        const showTiming = Number.isFinite(durationValue) && durationValue > 0;
-        if (els.workOrderMeta) {
-          els.workOrderMeta.hidden = false;
-          els.workOrderMeta.classList.add('visible');
-        }
-        if (!showTiming) {
-          resetTimerWarningMilestones(null);
-          stopWorkOrderTimer();
-          resetWorkOrderTimerDisplay();
-          updateWorkOrderAlert(false);
-          return;
-        }
-        if (showTiming && hasWorkOrderTiming()) {
-          refreshWorkOrderTimer();
-        } else {
-          resetTimerWarningMilestones(null);
-          stopWorkOrderTimer();
-          if (els.workOrderCountdown) {
-            els.workOrderCountdown.textContent = formatDurationHMS(durationValue);
-          }
-          if (els.workOrderEndtime) {
-            els.workOrderEndtime.textContent = '--:--';
-          }
-          updateWorkOrderAlert(false);
-        }
+      const duration = 1.5;
+      const base = ctx.createOscillator();
+      const overtone = ctx.createOscillator();
+      const gain = ctx.createGain();
+      base.type = 'sine';
+      overtone.type = 'sine';
+      base.frequency.setValueAtTime(420, ctx.currentTime);
+      overtone.frequency.setValueAtTime(840, ctx.currentTime);
+      gain.gain.setValueAtTime(0.28, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
+      base.connect(gain);
+      overtone.connect(gain);
+      gain.connect(ctx.destination);
+      base.start();
+      overtone.start();
+      base.stop(ctx.currentTime + duration);
+      overtone.stop(ctx.currentTime + duration);
+    } catch (err) {
+      reportAppError(err, '', {
+        scope: 'timer-audio',
+        action: 'trigger-bell',
+      });
+    }
+  }
+  function updateWorkOrderAlert(active) {
+    if (!els.workOrderRestClock) return;
+    els.workOrderRestClock.classList.toggle('alert', Boolean(active));
+    if (els.workOrderHintOverlay) {
+      if (active) {
+        els.workOrderHintOverlay.classList.add('visible');
+        positionWorkOrderHintOverlay();
+      } else {
+        els.workOrderHintOverlay.classList.remove('visible');
       }
+    }
+    if (!active) {
+      if (state.workOrderAlarmed) {
+        clearTimerVisualWarnings();
+        replaceTimerState({
+          ...SharedTimerStore.getState(),
+          alarmState: false,
+        });
+      } else if (!hasWorkOrderTiming()) {
+        clearTimerVisualWarnings();
+      }
+      stopWorkOrderAlarmSound();
+    } else if (state.workOrderAlarmed) {
+      triggerTimerVisualWarning('end', { persistent: true });
+      startWorkOrderAlarmSound();
+    }
+    renderWorkOrderTimerButtonsState();
+  }
+  function getTimerSecondsToggleLabel() {
+    return 'Sekunden anzeigen';
+  }
+  function renderTimerWarningToneState() {
+    els.timerWarningToneButtons?.forEach((button) => {
+      const toneKey = button.dataset.timerWarningToneToggle;
+      if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
+      const label = getTimerWarningToneLabel(toneKey);
+      button.setAttribute('aria-checked', String(isTimerWarningToneEnabled(toneKey)));
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    });
+    els.timerWarningToneLabels?.forEach((labelElement) => {
+      const toneKey = labelElement.dataset.timerWarningToneLabel;
+      if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
+      labelElement.textContent = getTimerWarningToneLabel(toneKey);
+    });
+  }
+  function renderTimerSecondsToggleState() {
+    const label = getTimerSecondsToggleLabel();
+    els.timerSecondsToggleButtons?.forEach((button) => {
+      button.setAttribute('aria-checked', String(timerShowSeconds));
+      button.setAttribute('aria-label', label);
+      button.setAttribute('title', label);
+    });
+    els.timerSecondsToggleLabels?.forEach((labelElement) => {
+      labelElement.textContent = label;
+    });
+  }
+  function updateWorkOrderCountdown() {
+    if (!hasWorkOrderTiming()) {
+      resetTimerWarningMilestones(null);
+      resetWorkOrderTimerDisplay();
+      stopWorkOrderTimer();
+      return;
+    }
+    const startMs = Date.parse(state.workOrderStartISO);
+    const durationMinutes = Number(state.workOrderDurationMinutes);
+    if (!Number.isFinite(startMs) || !Number.isFinite(durationMinutes)) {
+      resetTimerWarningMilestones(null);
+      resetWorkOrderTimerDisplay();
+      stopWorkOrderTimer();
+      return;
+    }
+    const totalDurationMs = durationMinutes * 60000;
+    const endMs = startMs + totalDurationMs;
+    const now = Date.now();
+    const remaining = Math.max(0, endMs - now);
+    handleTimerMilestones(remaining, totalDurationMs);
+    if (els.workOrderCountdown) {
+      els.workOrderCountdown.textContent = formatRemainingDuration(remaining);
+    }
+    if (els.workOrderEndtime) {
+      const endDate = new Date(endMs);
+      els.workOrderEndtime.textContent = endDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    }
+    if (remaining <= 0) {
+      timerLastRemainingRatio = 0;
+      stopWorkOrderTimer();
+      if (!state.workOrderAlarmed) {
+        replaceTimerState({
+          ...SharedTimerStore.getState(),
+          alarmState: true,
+        });
+        updateWorkOrderAlert(true);
+        startWorkOrderAlarmSound();
+      }
+    } else {
+      updateWorkOrderAlert(false);
+    }
+  }
+  function refreshWorkOrderTimer() {
+    stopWorkOrderTimer();
+    if (!hasWorkOrderTiming()) {
+      resetTimerWarningMilestones(null);
+      resetWorkOrderTimerDisplay();
+      return;
+    }
+    updateWorkOrderCountdown();
+    workOrderTimerId = setInterval(updateWorkOrderCountdown, 1000);
+  }
 
-      const GROUP_GRID_LAYOUT = Object.freeze({
-        seatWidth: 560,
-        seatHeight: 380,
-        gap: 12,
-        padding: 10,
-      });
-      const GROUP_GRID_LAYOUT_COLLAPSED = Object.freeze({
-        seatWidth: 460,
-        seatHeight: 170,
-        gap: 10,
-        padding: 8,
-      });
-      const GROUP_TILE_CONTENT_LAYOUT = Object.freeze({
-        expanded: Object.freeze({
-          seatPaddingTop: 120,
-          seatPaddingBottom: 16,
-          seatPaddingX: 16,
-          chipTrackWidth: 240,
-          chipGap: 10,
-          chipHeight: 46,
-        }),
-        collapsed: Object.freeze({
-          seatPaddingTop: 70,
-          seatPaddingBottom: 8,
-          seatPaddingX: 10,
-          chipTrackWidth: 200,
-          chipGap: 6,
-          chipHeight: 32,
-        }),
-      });
-      let groupGridLayoutRafId = 0;
-      let lastGroupGridLayoutSignature = '';
-      let lastGroupGridViewportMode = '';
-      let groupGridLayoutRetryTimers = [];
+  function renderWorkOrder() {
+    const container = els.workOrderDisplay;
+    if (!container) return;
+    const text = typeof state.workOrder === 'string' ? state.workOrder : '';
+    const hasContent = text.trim().length > 0;
+    appEl.classList.toggle('work-order-empty', !hasContent);
+    if (els.workOrderTextarea && document.activeElement !== els.workOrderTextarea && els.workOrderTextarea.value !== text) {
+      els.workOrderTextarea.value = text;
+    }
+    if (els.workOrderBody) {
+      els.workOrderBody.textContent = hasContent ? text : '';
+    }
+    container.hidden = false;
+    const durationValue = parseWorkOrderDuration(state.workOrderDurationMinutes);
+    const durationText = durationValue ? String(durationValue) : '';
+    if (els.workOrderDurationInput && document.activeElement !== els.workOrderDurationInput
+      && els.workOrderDurationInput.value !== durationText) {
+      els.workOrderDurationInput.value = durationText;
+    }
+    const showTiming = Number.isFinite(durationValue) && durationValue > 0;
+    if (els.workOrderMeta) {
+      els.workOrderMeta.hidden = false;
+      els.workOrderMeta.classList.add('visible');
+    }
+    if (!showTiming) {
+      resetTimerWarningMilestones(null);
+      stopWorkOrderTimer();
+      resetWorkOrderTimerDisplay();
+      updateWorkOrderAlert(false);
+      return;
+    }
+    if (showTiming && hasWorkOrderTiming()) {
+      refreshWorkOrderTimer();
+    } else {
+      resetTimerWarningMilestones(null);
+      stopWorkOrderTimer();
+      if (els.workOrderCountdown) {
+        els.workOrderCountdown.textContent = formatDurationHMS(durationValue);
+      }
+      if (els.workOrderEndtime) {
+        els.workOrderEndtime.textContent = '--:--';
+      }
+      updateWorkOrderAlert(false);
+    }
+  }
 
-      function isGroupCollapsedViewport() {
-        const hostApp = els.groupsMainHost?.closest('.app');
-        return Boolean(
-          hostApp?.classList.contains('app-tab-groups')
-          && (
-            hostApp.classList.contains('is-collapsing')
-            || hostApp.classList.contains('chrome-collapsed')
+  const GROUP_GRID_LAYOUT = Object.freeze({
+    seatWidth: 560,
+    seatHeight: 380,
+    gap: 12,
+    padding: 10,
+  });
+  const GROUP_GRID_LAYOUT_COLLAPSED = Object.freeze({
+    seatWidth: 460,
+    seatHeight: 170,
+    gap: 10,
+    padding: 8,
+  });
+  const GROUP_TILE_CONTENT_LAYOUT = Object.freeze({
+    expanded: Object.freeze({
+      seatPaddingTop: 120,
+      seatPaddingBottom: 16,
+      seatPaddingX: 16,
+      chipTrackWidth: 240,
+      chipGap: 10,
+      chipHeight: 46,
+    }),
+    collapsed: Object.freeze({
+      seatPaddingTop: 70,
+      seatPaddingBottom: 8,
+      seatPaddingX: 10,
+      chipTrackWidth: 200,
+      chipGap: 6,
+      chipHeight: 32,
+    }),
+  });
+  let groupGridLayoutRafId = 0;
+  let lastGroupGridLayoutSignature = '';
+  let lastGroupGridViewportMode = '';
+  let groupGridLayoutRetryTimers = [];
+
+  function isGroupCollapsedViewport() {
+    const hostApp = els.groupsMainHost?.closest('.app');
+    return Boolean(
+      hostApp?.classList.contains('app-tab-groups')
+      && (
+        hostApp.classList.contains('is-collapsing')
+        || hostApp.classList.contains('chrome-collapsed')
+      )
+    );
+  }
+
+  function getGroupElementPaddingSize(element) {
+    if (!element || typeof getComputedStyle !== 'function') {
+      return { x: 0, y: 0 };
+    }
+    const style = getComputedStyle(element);
+    return {
+      x: (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0),
+      y: (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0),
+    };
+  }
+
+  function getGroupElementContentBoxSize(element) {
+    if (!element) return { width: 0, height: 0 };
+    const rect = element.getBoundingClientRect();
+    const padding = getGroupElementPaddingSize(element);
+    return {
+      width: Math.max(0, Math.round(Math.max(element.clientWidth - padding.x, rect.width - padding.x))),
+      height: Math.max(0, Math.round(Math.max(element.clientHeight - padding.y, rect.height - padding.y))),
+    };
+  }
+
+  function pickGroupViewportDimension(candidates) {
+    const sizes = candidates
+      .map((value) => Math.max(0, Math.round(Number(value) || 0)));
+    for (let index = 0; index < sizes.length; index += 1) {
+      const candidate = sizes[index];
+      const maxRemaining = Math.max(0, ...sizes.slice(index + 1));
+      if (candidate > 40 && (maxRemaining <= 80 || candidate >= maxRemaining * 0.55)) {
+        return candidate;
+      }
+    }
+    return Math.max(0, ...sizes);
+  }
+
+  function rememberStableGroupViewportSize(size) {
+    if (!size) return;
+    const width = Math.max(0, Math.round(Number(size.width) || 0));
+    const height = Math.max(0, Math.round(Number(size.height) || 0));
+    if (width <= 80 || height <= 80) return;
+    getGroupGridViewportSize._lastStable = { width, height };
+  }
+
+  function getGroupGridViewportSize() {
+    if (!els.groupsGridWrap) return { width: 0, height: 0 };
+    let width = els.groupsGridWrap.clientWidth;
+    let height = els.groupsGridWrap.clientHeight;
+    const wrapRect = els.groupsGridWrap.getBoundingClientRect();
+    const host = els.groupsMainHost || els.groupsGridWrap.closest('#groups-main-host');
+    const main = els.groupsGridWrap.closest('.main');
+    const groupsCollapsed = isGroupCollapsedViewport();
+
+    width = Math.max(width, Math.round(wrapRect.width));
+    height = Math.max(height, Math.round(wrapRect.height));
+
+    if (groupsCollapsed) {
+      const hostPadding = getGroupElementPaddingSize(host);
+      const mainSize = getGroupElementContentBoxSize(main);
+      const hostSize = getGroupElementContentBoxSize(host);
+      const visualViewportWidth = typeof window !== 'undefined'
+        ? Math.max(
+          0,
+          Math.round(
+            ((window.visualViewport?.width ?? window.innerWidth ?? 0) || 0) - hostPadding.x
           )
-        );
+        )
+        : 0;
+      const visualViewportHeight = typeof window !== 'undefined'
+        ? Math.max(
+          0,
+          Math.round(window.visualViewport?.height ?? window.innerHeight ?? 0)
+        )
+        : 0;
+      const measured = {
+        width: pickGroupViewportDimension([
+          mainSize.width,
+          hostSize.width,
+          visualViewportWidth,
+          width,
+        ]),
+        height: pickGroupViewportDimension([
+          mainSize.height,
+          hostSize.height,
+          visualViewportHeight,
+          height,
+        ]),
+      };
+      const lastStable = getGroupGridViewportSize._lastStable || null;
+      if (lastStable) {
+        const unstableWidth = measured.width <= 80 && lastStable.width > 120;
+        const unstableHeight = measured.height <= 80 && lastStable.height > 120;
+        if (unstableWidth) measured.width = lastStable.width;
+        if (unstableHeight) measured.height = lastStable.height;
       }
+      rememberStableGroupViewportSize(measured);
+      return measured;
+    }
 
-      function getGroupElementPaddingSize(element) {
-        if (!element || typeof getComputedStyle !== 'function') {
-          return { x: 0, y: 0 };
-        }
-        const style = getComputedStyle(element);
-        return {
-          x: (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0),
-          y: (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0),
-        };
-      }
+    if (width > 40 && height > 40) {
+      const measured = { width, height };
+      rememberStableGroupViewportSize(measured);
+      return measured;
+    }
 
-      function getGroupElementContentBoxSize(element) {
-        if (!element) return { width: 0, height: 0 };
-        const rect = element.getBoundingClientRect();
-        const padding = getGroupElementPaddingSize(element);
-        return {
-          width: Math.max(0, Math.round(Math.max(element.clientWidth - padding.x, rect.width - padding.x))),
-          height: Math.max(0, Math.round(Math.max(element.clientHeight - padding.y, rect.height - padding.y))),
-        };
-      }
+    if (main) {
+      const mainRect = main.getBoundingClientRect();
+      width = Math.max(width, Math.round(mainRect.width));
+      const topOffset = Math.max(0, wrapRect.top - mainRect.top);
+      height = Math.max(height, Math.round(mainRect.height - topOffset));
+    }
+    if (host) {
+      const hostRect = host.getBoundingClientRect();
+      width = Math.max(width, Math.round(hostRect.width));
+      height = Math.max(height, Math.round(hostRect.height));
+    }
+    const measured = { width, height };
+    rememberStableGroupViewportSize(measured);
+    return measured;
+  }
 
-      function pickGroupViewportDimension(candidates) {
-        const sizes = candidates
-          .map((value) => Math.max(0, Math.round(Number(value) || 0)));
-        for (let index = 0; index < sizes.length; index += 1) {
-          const candidate = sizes[index];
-          const maxRemaining = Math.max(0, ...sizes.slice(index + 1));
-          if (candidate > 40 && (maxRemaining <= 80 || candidate >= maxRemaining * 0.55)) {
-            return candidate;
-          }
-        }
-        return Math.max(0, ...sizes);
-      }
+  function clearGroupGridLayout() {
+    if (!els.groupsGrid) return;
+    lastGroupGridLayoutSignature = '';
+    els.groupsGrid.style.removeProperty('--group-fit-scale');
+    els.groupsGrid.style.removeProperty('grid-template-columns');
+    els.groupsGrid.style.removeProperty('grid-auto-rows');
+  }
 
-      function rememberStableGroupViewportSize(size) {
-        if (!size) return;
-        const width = Math.max(0, Math.round(Number(size.width) || 0));
-        const height = Math.max(0, Math.round(Number(size.height) || 0));
-        if (width <= 80 || height <= 80) return;
-        getGroupGridViewportSize._lastStable = { width, height };
-      }
+  function clearGroupGridLayoutRetryTimers() {
+    if (!groupGridLayoutRetryTimers.length || typeof window === 'undefined') return;
+    groupGridLayoutRetryTimers.forEach((timerId) => window.clearTimeout(timerId));
+    groupGridLayoutRetryTimers = [];
+  }
 
-      function getGroupGridViewportSize() {
-        if (!els.groupsGridWrap) return { width: 0, height: 0 };
-        let width = els.groupsGridWrap.clientWidth;
-        let height = els.groupsGridWrap.clientHeight;
-        const wrapRect = els.groupsGridWrap.getBoundingClientRect();
-        const host = els.groupsMainHost || els.groupsGridWrap.closest('#groups-main-host');
-        const main = els.groupsGridWrap.closest('.main');
-        const groupsCollapsed = isGroupCollapsedViewport();
+  function measureGroupGridOverflow() {
+    if (!els.groupsGridWrap || !els.groupsGrid) {
+      return { overflowX: 0, overflowY: 0 };
+    }
+    const wrapRect = els.groupsGridWrap.getBoundingClientRect();
+    const gridRect = els.groupsGrid.getBoundingClientRect();
+    return {
+      overflowX: Math.max(0, gridRect.right - wrapRect.right, els.groupsGridWrap.scrollWidth - els.groupsGridWrap.clientWidth),
+      overflowY: Math.max(0, gridRect.bottom - wrapRect.bottom, els.groupsGridWrap.scrollHeight - els.groupsGridWrap.clientHeight),
+    };
+  }
 
-        width = Math.max(width, Math.round(wrapRect.width));
-        height = Math.max(height, Math.round(wrapRect.height));
+  function getMaxGroupSeatOccupancy() {
+    const order = Array.isArray(state.activeSeatOrder) && state.activeSeatOrder.length
+      ? state.activeSeatOrder
+      : Array.from(state.activeSeats || []);
+    if (!order.length) return 0;
+    return order.reduce((max, id) => Math.max(max, getSeatList(id).length), 0);
+  }
 
-        if (groupsCollapsed) {
-          const hostPadding = getGroupElementPaddingSize(host);
-          const mainSize = getGroupElementContentBoxSize(main);
-          const hostSize = getGroupElementContentBoxSize(host);
-          const visualViewportWidth = typeof window !== 'undefined'
-            ? Math.max(
-              0,
-              Math.round(
-                ((window.visualViewport?.width ?? window.innerWidth ?? 0) || 0) - hostPadding.x
-              )
-            )
-            : 0;
-          const visualViewportHeight = typeof window !== 'undefined'
-            ? Math.max(
-              0,
-              Math.round(window.visualViewport?.height ?? window.innerHeight ?? 0)
-            )
-            : 0;
-          const measured = {
-            width: pickGroupViewportDimension([
-              mainSize.width,
-              hostSize.width,
-              visualViewportWidth,
-              width,
-            ]),
-            height: pickGroupViewportDimension([
-              mainSize.height,
-              hostSize.height,
-              visualViewportHeight,
-              height,
-            ]),
-          };
-          const lastStable = getGroupGridViewportSize._lastStable || null;
-          if (lastStable) {
-            const unstableWidth = measured.width <= 80 && lastStable.width > 120;
-            const unstableHeight = measured.height <= 80 && lastStable.height > 120;
-            if (unstableWidth) measured.width = lastStable.width;
-            if (unstableHeight) measured.height = lastStable.height;
-          }
-          rememberStableGroupViewportSize(measured);
-          return measured;
-        }
+  function estimateRequiredGroupTileHeight(tileWidth, scale, viewportMode) {
+    const contentLayout = GROUP_TILE_CONTENT_LAYOUT[viewportMode] || GROUP_TILE_CONTENT_LAYOUT.expanded;
+    const maxOccupancy = getMaxGroupSeatOccupancy();
+    if (maxOccupancy <= 0) return 0;
+    const contentWidth = Math.max(
+      1,
+      tileWidth - (contentLayout.seatPaddingX * 2 * scale)
+    );
+    const chipTrackWidth = Math.max(1, contentLayout.chipTrackWidth * scale);
+    const chipGap = Math.max(0, contentLayout.chipGap * scale);
+    const chipHeight = Math.max(1, contentLayout.chipHeight * scale);
+    const columns = Math.max(1, Math.floor((contentWidth + chipGap) / (chipTrackWidth + chipGap)));
+    const rows = Math.max(1, Math.ceil(maxOccupancy / columns));
+    const tagsHeight = (rows * chipHeight) + (Math.max(0, rows - 1) * chipGap);
+    return Math.ceil((contentLayout.seatPaddingTop * scale) + (contentLayout.seatPaddingBottom * scale) + tagsHeight);
+  }
 
-        if (width > 40 && height > 40) {
-          const measured = { width, height };
-          rememberStableGroupViewportSize(measured);
-          return measured;
-        }
-
-        if (main) {
-          const mainRect = main.getBoundingClientRect();
-          width = Math.max(width, Math.round(mainRect.width));
-          const topOffset = Math.max(0, wrapRect.top - mainRect.top);
-          height = Math.max(height, Math.round(mainRect.height - topOffset));
-        }
-        if (host) {
-          const hostRect = host.getBoundingClientRect();
-          width = Math.max(width, Math.round(hostRect.width));
-          height = Math.max(height, Math.round(hostRect.height));
-        }
-        const measured = { width, height };
-        rememberStableGroupViewportSize(measured);
-        return measured;
-      }
-
-      function clearGroupGridLayout() {
-        if (!els.groupsGrid) return;
-        lastGroupGridLayoutSignature = '';
-        els.groupsGrid.style.removeProperty('--group-fit-scale');
-        els.groupsGrid.style.removeProperty('grid-template-columns');
-        els.groupsGrid.style.removeProperty('grid-auto-rows');
-      }
-
-      function clearGroupGridLayoutRetryTimers() {
-        if (!groupGridLayoutRetryTimers.length || typeof window === 'undefined') return;
-        groupGridLayoutRetryTimers.forEach((timerId) => window.clearTimeout(timerId));
-        groupGridLayoutRetryTimers = [];
-      }
-
-      function measureGroupGridOverflow() {
-        if (!els.groupsGridWrap || !els.groupsGrid) {
-          return { overflowX: 0, overflowY: 0 };
-        }
-        const wrapRect = els.groupsGridWrap.getBoundingClientRect();
-        const gridRect = els.groupsGrid.getBoundingClientRect();
-        return {
-          overflowX: Math.max(0, gridRect.right - wrapRect.right, els.groupsGridWrap.scrollWidth - els.groupsGridWrap.clientWidth),
-          overflowY: Math.max(0, gridRect.bottom - wrapRect.bottom, els.groupsGridWrap.scrollHeight - els.groupsGridWrap.clientHeight),
-        };
-      }
-
-      function getMaxGroupSeatOccupancy() {
-        const order = Array.isArray(state.activeSeatOrder) && state.activeSeatOrder.length
-          ? state.activeSeatOrder
-          : Array.from(state.activeSeats || []);
-        if (!order.length) return 0;
-        return order.reduce((max, id) => Math.max(max, getSeatList(id).length), 0);
-      }
-
-      function estimateRequiredGroupTileHeight(tileWidth, scale, viewportMode) {
-        const contentLayout = GROUP_TILE_CONTENT_LAYOUT[viewportMode] || GROUP_TILE_CONTENT_LAYOUT.expanded;
-        const maxOccupancy = getMaxGroupSeatOccupancy();
-        if (maxOccupancy <= 0) return 0;
-        const contentWidth = Math.max(
-          1,
-          tileWidth - (contentLayout.seatPaddingX * 2 * scale)
-        );
-        const chipTrackWidth = Math.max(1, contentLayout.chipTrackWidth * scale);
-        const chipGap = Math.max(0, contentLayout.chipGap * scale);
-        const chipHeight = Math.max(1, contentLayout.chipHeight * scale);
-        const columns = Math.max(1, Math.floor((contentWidth + chipGap) / (chipTrackWidth + chipGap)));
-        const rows = Math.max(1, Math.ceil(maxOccupancy / columns));
-        const tagsHeight = (rows * chipHeight) + (Math.max(0, rows - 1) * chipGap);
-        return Math.ceil((contentLayout.seatPaddingTop * scale) + (contentLayout.seatPaddingBottom * scale) + tagsHeight);
-      }
-
-      function applyBestFitGroupGridLayout() {
-        if (!els.groupsGrid || !els.groupsGridWrap) return;
-        const canMeasure = getActiveTab() === TAB_GROUPS && els.groupsMainHost && !els.groupsMainHost.hidden;
-        if (!canMeasure) return;
-        const groupsCollapsed = isGroupCollapsedViewport();
-        const viewportMode = groupsCollapsed ? 'collapsed' : 'expanded';
-        if (viewportMode !== lastGroupGridViewportMode) {
-          lastGroupGridViewportMode = viewportMode;
-          lastGroupGridLayoutSignature = '';
-        }
-        const layout = groupsCollapsed ? GROUP_GRID_LAYOUT_COLLAPSED : GROUP_GRID_LAYOUT;
-        const maxScale = groupsCollapsed ? 2.4 : 1;
-        const seatCount = Array.isArray(state.activeSeatOrder) && state.activeSeatOrder.length
-          ? state.activeSeatOrder.length
-          : state.activeSeats.size;
-        const visualItemCount = Math.max(1, seatCount + (groupsCollapsed ? 0 : 1));
-        const { width: wrapWidth, height: wrapHeight } = getGroupGridViewportSize();
-        if (wrapWidth <= 40 || wrapHeight <= 40) {
-          if (typeof window !== 'undefined') {
-            if (applyBestFitGroupGridLayout._retryTimer) {
-              window.clearTimeout(applyBestFitGroupGridLayout._retryTimer);
-            }
-            applyBestFitGroupGridLayout._retryTimer = window.setTimeout(() => {
-              applyBestFitGroupGridLayout._retryTimer = 0;
-              applyBestFitGroupGridLayout();
-            }, groupsCollapsed ? 120 : 90);
-          }
-          return;
-        }
-        if (typeof window !== 'undefined' && applyBestFitGroupGridLayout._retryTimer) {
+  function applyBestFitGroupGridLayout() {
+    if (!els.groupsGrid || !els.groupsGridWrap) return;
+    const canMeasure = getActiveTab() === TAB_GROUPS && els.groupsMainHost && !els.groupsMainHost.hidden;
+    if (!canMeasure) return;
+    const groupsCollapsed = isGroupCollapsedViewport();
+    const viewportMode = groupsCollapsed ? 'collapsed' : 'expanded';
+    if (viewportMode !== lastGroupGridViewportMode) {
+      lastGroupGridViewportMode = viewportMode;
+      lastGroupGridLayoutSignature = '';
+    }
+    const layout = groupsCollapsed ? GROUP_GRID_LAYOUT_COLLAPSED : GROUP_GRID_LAYOUT;
+    const maxScale = groupsCollapsed ? 2.4 : 1;
+    const seatCount = Array.isArray(state.activeSeatOrder) && state.activeSeatOrder.length
+      ? state.activeSeatOrder.length
+      : state.activeSeats.size;
+    const visualItemCount = Math.max(1, seatCount + (groupsCollapsed ? 0 : 1));
+    const { width: wrapWidth, height: wrapHeight } = getGroupGridViewportSize();
+    if (wrapWidth <= 40 || wrapHeight <= 40) {
+      if (typeof window !== 'undefined') {
+        if (applyBestFitGroupGridLayout._retryTimer) {
           window.clearTimeout(applyBestFitGroupGridLayout._retryTimer);
+        }
+        applyBestFitGroupGridLayout._retryTimer = window.setTimeout(() => {
           applyBestFitGroupGridLayout._retryTimer = 0;
-        }
-        const wrapStyle = getComputedStyle(els.groupsGridWrap);
-        const innerWidth = wrapWidth
-          - (parseFloat(wrapStyle.paddingLeft) || 0)
-          - (parseFloat(wrapStyle.paddingRight) || 0);
-        const innerHeight = wrapHeight
-          - (parseFloat(wrapStyle.paddingTop) || 0)
-          - (parseFloat(wrapStyle.paddingBottom) || 0);
-        if (innerWidth <= 0 || innerHeight <= 0) return;
-
-        let best = null;
-        for (let cols = 1; cols <= visualItemCount; cols += 1) {
-          const rows = Math.max(1, Math.ceil(visualItemCount / cols));
-          const horizontalGaps = (Math.max(0, cols - 1) * layout.gap) + (layout.padding * 2);
-          const verticalGaps = (Math.max(0, rows - 1) * layout.gap) + (layout.padding * 2);
-          const usableWidth = Math.max(1, innerWidth - horizontalGaps);
-          const usableHeight = Math.max(1, innerHeight - verticalGaps);
-          const scale = Math.min(maxScale, usableWidth / (cols * layout.seatWidth), usableHeight / (rows * layout.seatHeight));
-          const tileWidth = Math.max(1, Math.floor(layout.seatWidth * scale));
-          const tileHeight = Math.max(1, Math.floor(layout.seatHeight * scale));
-          const requiredTileHeight = estimateRequiredGroupTileHeight(tileWidth, scale, viewportMode);
-          const contentFits = requiredTileHeight <= tileHeight;
-          const emptySlots = (rows * cols) - visualItemCount;
-          const candidate = {
-            cols,
-            rows,
-            scale,
-            emptySlots,
-            tileWidth,
-            tileHeight,
-            requiredTileHeight,
-            contentFits,
-            tileArea: tileWidth * tileHeight,
-          };
-          if (!best
-            || (candidate.contentFits && !best.contentFits)
-            || (candidate.contentFits === best.contentFits && candidate.scale > best.scale + 0.0001)
-            || (candidate.contentFits === best.contentFits && Math.abs(candidate.scale - best.scale) <= 0.0001
-              && (candidate.emptySlots < best.emptySlots
-                || (candidate.emptySlots === best.emptySlots && candidate.tileArea > best.tileArea)))) {
-            best = candidate;
-          }
-        }
-
-        if (!best) {
-          clearGroupGridLayout();
-          return;
-        }
-        let scale = Math.max(0.01, Math.min(maxScale, best.scale || 1));
-        let fittedWidth = Math.max(1, best.tileWidth || Math.floor(layout.seatWidth * scale));
-        let fittedHeight = Math.max(1, best.tileHeight || Math.floor(layout.seatHeight * scale));
-        const applyScale = () => {
-          els.groupsGrid.style.setProperty('--group-fit-scale', scale.toFixed(4));
-          els.groupsGrid.style.gridTemplateColumns = `repeat(${Math.max(1, best.cols)}, minmax(0, ${fittedWidth}px))`;
-          els.groupsGrid.style.gridAutoRows = `${fittedHeight}px`;
-        };
-        applyScale();
-        const { overflowX, overflowY } = measureGroupGridOverflow();
-        if (overflowX > 0.5 || overflowY > 0.5) {
-          const safeWidth = Math.max(1, innerWidth);
-          const safeHeight = Math.max(1, innerHeight);
-          const adjustX = overflowX > 0.5 ? safeWidth / (safeWidth + overflowX) : 1;
-          const adjustY = overflowY > 0.5 ? safeHeight / (safeHeight + overflowY) : 1;
-          scale = Math.max(0.01, scale * Math.min(adjustX, adjustY) * 0.995);
-          fittedWidth = Math.max(1, Math.floor(layout.seatWidth * scale));
-          fittedHeight = Math.max(1, Math.floor(layout.seatHeight * scale));
-          applyScale();
-        }
-        const signature = `${viewportMode}|${visualItemCount}|${best.cols}|${best.rows}|${fittedWidth}|${fittedHeight}|${best.requiredTileHeight}|${best.contentFits ? 1 : 0}|${scale.toFixed(4)}`;
-        if (signature === lastGroupGridLayoutSignature) return;
-        lastGroupGridLayoutSignature = signature;
-        applyScale();
-      }
-
-      function scheduleBestFitGroupGridLayout() {
-        if (!els.groupsGrid) return;
-        if (groupGridLayoutRafId && typeof cancelAnimationFrame === 'function') {
-          cancelAnimationFrame(groupGridLayoutRafId);
-          groupGridLayoutRafId = 0;
-        }
-        const run = () => {
-          groupGridLayoutRafId = 0;
           applyBestFitGroupGridLayout();
-          if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => {
-              applyBestFitGroupGridLayout();
-            });
-          }
-        };
-        if (typeof requestAnimationFrame === 'function') {
-          groupGridLayoutRafId = requestAnimationFrame(run);
-        } else {
-          setTimeout(run, 16);
-        }
+        }, groupsCollapsed ? 120 : 90);
       }
+      return;
+    }
+    if (typeof window !== 'undefined' && applyBestFitGroupGridLayout._retryTimer) {
+      window.clearTimeout(applyBestFitGroupGridLayout._retryTimer);
+      applyBestFitGroupGridLayout._retryTimer = 0;
+    }
+    const wrapStyle = getComputedStyle(els.groupsGridWrap);
+    const innerWidth = wrapWidth
+      - (parseFloat(wrapStyle.paddingLeft) || 0)
+      - (parseFloat(wrapStyle.paddingRight) || 0);
+    const innerHeight = wrapHeight
+      - (parseFloat(wrapStyle.paddingTop) || 0)
+      - (parseFloat(wrapStyle.paddingBottom) || 0);
+    if (innerWidth <= 0 || innerHeight <= 0) return;
 
-      function requestGroupGridLayoutRefresh(options = {}) {
-        if (!els.groupsGrid) return;
-        const { resetViewport = false } = options;
-        clearGroupGridLayoutRetryTimers();
-        if (resetViewport) {
-          clearGroupGridLayout();
-          delete getGroupGridViewportSize._lastStable;
-        }
+    let best = null;
+    for (let cols = 1; cols <= visualItemCount; cols += 1) {
+      const rows = Math.max(1, Math.ceil(visualItemCount / cols));
+      const horizontalGaps = (Math.max(0, cols - 1) * layout.gap) + (layout.padding * 2);
+      const verticalGaps = (Math.max(0, rows - 1) * layout.gap) + (layout.padding * 2);
+      const usableWidth = Math.max(1, innerWidth - horizontalGaps);
+      const usableHeight = Math.max(1, innerHeight - verticalGaps);
+      const scale = Math.min(maxScale, usableWidth / (cols * layout.seatWidth), usableHeight / (rows * layout.seatHeight));
+      const tileWidth = Math.max(1, Math.floor(layout.seatWidth * scale));
+      const tileHeight = Math.max(1, Math.floor(layout.seatHeight * scale));
+      const requiredTileHeight = estimateRequiredGroupTileHeight(tileWidth, scale, viewportMode);
+      const contentFits = requiredTileHeight <= tileHeight;
+      const emptySlots = (rows * cols) - visualItemCount;
+      const candidate = {
+        cols,
+        rows,
+        scale,
+        emptySlots,
+        tileWidth,
+        tileHeight,
+        requiredTileHeight,
+        contentFits,
+        tileArea: tileWidth * tileHeight,
+      };
+      if (!best
+        || (candidate.contentFits && !best.contentFits)
+        || (candidate.contentFits === best.contentFits && candidate.scale > best.scale + 0.0001)
+        || (candidate.contentFits === best.contentFits && Math.abs(candidate.scale - best.scale) <= 0.0001
+          && (candidate.emptySlots < best.emptySlots
+            || (candidate.emptySlots === best.emptySlots && candidate.tileArea > best.tileArea)))) {
+        best = candidate;
+      }
+    }
+
+    if (!best) {
+      clearGroupGridLayout();
+      return;
+    }
+    let scale = Math.max(0.01, Math.min(maxScale, best.scale || 1));
+    let fittedWidth = Math.max(1, best.tileWidth || Math.floor(layout.seatWidth * scale));
+    let fittedHeight = Math.max(1, best.tileHeight || Math.floor(layout.seatHeight * scale));
+    const applyScale = () => {
+      els.groupsGrid.style.setProperty('--group-fit-scale', scale.toFixed(4));
+      els.groupsGrid.style.gridTemplateColumns = `repeat(${Math.max(1, best.cols)}, minmax(0, ${fittedWidth}px))`;
+      els.groupsGrid.style.gridAutoRows = `${fittedHeight}px`;
+    };
+    applyScale();
+    const { overflowX, overflowY } = measureGroupGridOverflow();
+    if (overflowX > 0.5 || overflowY > 0.5) {
+      const safeWidth = Math.max(1, innerWidth);
+      const safeHeight = Math.max(1, innerHeight);
+      const adjustX = overflowX > 0.5 ? safeWidth / (safeWidth + overflowX) : 1;
+      const adjustY = overflowY > 0.5 ? safeHeight / (safeHeight + overflowY) : 1;
+      scale = Math.max(0.01, scale * Math.min(adjustX, adjustY) * 0.995);
+      fittedWidth = Math.max(1, Math.floor(layout.seatWidth * scale));
+      fittedHeight = Math.max(1, Math.floor(layout.seatHeight * scale));
+      applyScale();
+    }
+    const signature = `${viewportMode}|${visualItemCount}|${best.cols}|${best.rows}|${fittedWidth}|${fittedHeight}|${best.requiredTileHeight}|${best.contentFits ? 1 : 0}|${scale.toFixed(4)}`;
+    if (signature === lastGroupGridLayoutSignature) return;
+    lastGroupGridLayoutSignature = signature;
+    applyScale();
+  }
+
+  function scheduleBestFitGroupGridLayout() {
+    if (!els.groupsGrid) return;
+    if (groupGridLayoutRafId && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(groupGridLayoutRafId);
+      groupGridLayoutRafId = 0;
+    }
+    const run = () => {
+      groupGridLayoutRafId = 0;
+      applyBestFitGroupGridLayout();
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          applyBestFitGroupGridLayout();
+        });
+      }
+    };
+    if (typeof requestAnimationFrame === 'function') {
+      groupGridLayoutRafId = requestAnimationFrame(run);
+    } else {
+      setTimeout(run, 16);
+    }
+  }
+
+  function requestGroupGridLayoutRefresh(options = {}) {
+    if (!els.groupsGrid) return;
+    const { resetViewport = false } = options;
+    clearGroupGridLayoutRetryTimers();
+    if (resetViewport) {
+      clearGroupGridLayout();
+      delete getGroupGridViewportSize._lastStable;
+    }
+    scheduleBestFitGroupGridLayout();
+    if (typeof window === 'undefined') return;
+    [48, 120, 240].forEach((delay) => {
+      const timerId = window.setTimeout(() => {
+        groupGridLayoutRetryTimers = groupGridLayoutRetryTimers.filter((id) => id !== timerId);
         scheduleBestFitGroupGridLayout();
-        if (typeof window === 'undefined') return;
-        [48, 120, 240].forEach((delay) => {
-          const timerId = window.setTimeout(() => {
-            groupGridLayoutRetryTimers = groupGridLayoutRetryTimers.filter((id) => id !== timerId);
-            scheduleBestFitGroupGridLayout();
-          }, delay);
-          groupGridLayoutRetryTimers.push(timerId);
+      }, delay);
+      groupGridLayoutRetryTimers.push(timerId);
+    });
+  }
+
+  function deleteGroupSeat(seatId, seatEl = null) {
+    const id = typeof seatId === 'string' ? seatId : String(seatId || '');
+    if (!id || !state.activeSeats.has(id)) return false;
+    const finalizeRemoval = () => {
+      state.activeSeats.delete(id);
+      state.activeSeatOrder = (state.activeSeatOrder || []).filter(x => x !== id);
+      state.lockedSeats.delete(id);
+      delete state.seats[id];
+      delete state.seatTopics[id];
+      state._lastImport = false;
+      state.scrollHintDismissed = true;
+      buildGrid();
+      refreshUnseated();
+    };
+    if (seatEl instanceof HTMLElement) {
+      seatEl.classList.add('removing');
+      window.setTimeout(finalizeRemoval, 220);
+      return true;
+    }
+    finalizeRemoval();
+    return true;
+  }
+
+  function buildGrid() {
+    enforceGridBounds();
+    const rows = state.gridRows;
+    const cols = state.gridCols;
+    let order = Array.isArray(state.activeSeatOrder) ? state.activeSeatOrder.slice() : Array.from(state.activeSeats);
+    if (!order.length) {
+      order = Array.from(buildFullActiveSet(rows, cols));
+    } else {
+      order = order.filter(id => isSeatWithinBounds(id, rows, cols));
+    }
+    state.activeSeatOrder = order;
+    state.activeSeats = new Set(order);
+    order.forEach(id => {
+      if (!state.seats[id]) state.seats[id] = [];
+      if (typeof state.seatTopics[id] !== 'string') state.seatTopics[id] = '';
+    });
+    let groupCounter = 0;
+    els.groupsGrid.innerHTML = '';
+    order.forEach(id => {
+      const seat = document.createElement('div');
+      seat.className = 'seat';
+      seat.dataset.seat = id;
+      const label = `${++groupCounter}`;
+      seat.innerHTML = `<div class="seat-header">${label}</div><button type="button" class="seat-delete-button" data-seat-delete="${id}" aria-label="Gruppe löschen" title="Gruppe löschen">🗑️</button><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div>`;
+      seat.classList.add('active');
+      if (state.lockedSeats.has(id)) {
+        seat.classList.add('locked');
+      }
+      addDropHandlers(seat);
+      const topicInput = seat.querySelector('.seat-topic');
+      initSeatTopicInput(topicInput);
+      if (topicInput) {
+        topicInput.value = typeof state.seatTopics[id] === 'string' ? state.seatTopics[id] : '';
+        syncSeatTopicState(seat, topicInput.value);
+        topicInput.addEventListener('input', () => {
+          state.seatTopics[id] = topicInput.value;
+          syncSeatTopicState(seat, topicInput.value);
+        });
+      } else {
+        syncSeatTopicState(seat, state.seatTopics[id]);
+      }
+      const deleteButton = seat.querySelector('.seat-delete-button');
+      if (deleteButton) {
+        deleteButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          deleteGroupSeat(id, seat);
+        });
+        deleteButton.addEventListener('dblclick', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
         });
       }
-
-      function deleteGroupSeat(seatId, seatEl = null) {
-        const id = typeof seatId === 'string' ? seatId : String(seatId || '');
-        if (!id || !state.activeSeats.has(id)) return false;
-        const finalizeRemoval = () => {
-          state.activeSeats.delete(id);
-          state.activeSeatOrder = (state.activeSeatOrder || []).filter(x => x !== id);
-          state.lockedSeats.delete(id);
-          delete state.seats[id];
-          delete state.seatTopics[id];
-          state._lastImport = false;
-          state.scrollHintDismissed = true;
-          buildGrid();
-          refreshUnseated();
-        };
-        if (seatEl instanceof HTMLElement) {
-          seatEl.classList.add('removing');
-          window.setTimeout(finalizeRemoval, 220);
-          return true;
-        }
-        finalizeRemoval();
-        return true;
-      }
-
-      function buildGrid() {
-        enforceGridBounds();
-        const rows = state.gridRows;
-        const cols = state.gridCols;
-        let order = Array.isArray(state.activeSeatOrder) ? state.activeSeatOrder.slice() : Array.from(state.activeSeats);
-        if (!order.length) {
-          order = Array.from(buildFullActiveSet(rows, cols));
-        } else {
-          order = order.filter(id => isSeatWithinBounds(id, rows, cols));
-        }
-        state.activeSeatOrder = order;
-        state.activeSeats = new Set(order);
-        order.forEach(id => {
-          if (!state.seats[id]) state.seats[id] = [];
-          if (typeof state.seatTopics[id] !== 'string') state.seatTopics[id] = '';
-        });
-        let groupCounter = 0;
-        els.groupsGrid.innerHTML = '';
-        order.forEach(id => {
-          const seat = document.createElement('div');
-          seat.className = 'seat';
-          seat.dataset.seat = id;
-          const label = `${++groupCounter}`;
-          seat.innerHTML = `<div class="seat-header">${label}</div><button type="button" class="seat-delete-button" data-seat-delete="${id}" aria-label="Gruppe löschen" title="Gruppe löschen">🗑️</button><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div>`;
-          seat.classList.add('active');
-          if (state.lockedSeats.has(id)) {
-            seat.classList.add('locked');
-          }
-          addDropHandlers(seat);
-          const topicInput = seat.querySelector('.seat-topic');
-          initSeatTopicInput(topicInput);
-          if (topicInput) {
-            topicInput.value = typeof state.seatTopics[id] === 'string' ? state.seatTopics[id] : '';
-            syncSeatTopicState(seat, topicInput.value);
-            topicInput.addEventListener('input', () => {
-              state.seatTopics[id] = topicInput.value;
-              syncSeatTopicState(seat, topicInput.value);
-            });
-          } else {
-            syncSeatTopicState(seat, state.seatTopics[id]);
-          }
-          const deleteButton = seat.querySelector('.seat-delete-button');
-          if (deleteButton) {
-            deleteButton.addEventListener('click', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              deleteGroupSeat(id, seat);
-            });
-            deleteButton.addEventListener('dblclick', (e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            });
-          }
-          seat.addEventListener('dblclick', () => {
-            const occupants = getSeatList(id);
-            if (!occupants.length) return;
-            if (state.lockedSeats.has(id)) state.lockedSeats.delete(id); else state.lockedSeats.add(id);
-            renderSeats();
-          });
-          els.groupsGrid.appendChild(seat);
-        });
-        const placeholder = document.createElement('div');
-        placeholder.className = 'seat-placeholder';
-        placeholder.setAttribute('aria-label', 'Neue Gruppe anlegen');
-        placeholder.setAttribute('tabindex', '0');
-        placeholder.setAttribute('role', 'button');
-        placeholder.innerHTML = `
+      seat.addEventListener('dblclick', () => {
+        const occupants = getSeatList(id);
+        if (!occupants.length) return;
+        if (state.lockedSeats.has(id)) state.lockedSeats.delete(id); else state.lockedSeats.add(id);
+        renderSeats();
+      });
+      els.groupsGrid.appendChild(seat);
+    });
+    const placeholder = document.createElement('div');
+    placeholder.className = 'seat-placeholder';
+    placeholder.setAttribute('aria-label', 'Neue Gruppe anlegen');
+    placeholder.setAttribute('tabindex', '0');
+    placeholder.setAttribute('role', 'button');
+    placeholder.innerHTML = `
         <div class="seat-placeholder-main">+</div>
         <div class="seat-placeholder-hint">[Gruppen über den Papierkorb oben rechts löschen]</div>
       `;
-        addPlaceholderDropHandlers(placeholder);
-        const handlePlaceholderAdd = () => {
-          createNewSeatAndAssign();
-        };
-        placeholder.addEventListener('click', handlePlaceholderAdd);
-        placeholder.addEventListener('keydown', e => {
-          if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
-            e.preventDefault();
-            handlePlaceholderAdd();
-          }
-        });
-        els.groupsGrid.appendChild(placeholder);
-        renderSeats();
-        requestGroupGridLayoutRefresh({ resetViewport: true });
+    addPlaceholderDropHandlers(placeholder);
+    const handlePlaceholderAdd = () => {
+      createNewSeatAndAssign();
+    };
+    placeholder.addEventListener('click', handlePlaceholderAdd);
+    placeholder.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ' || e.code === 'Space') {
+        e.preventDefault();
+        handlePlaceholderAdd();
       }
+    });
+    els.groupsGrid.appendChild(placeholder);
+    renderSeats();
+    requestGroupGridLayoutRefresh({ resetViewport: true });
+  }
 
-      function renderSeats() {
-        [...els.groupsGrid.querySelectorAll('.seat')].forEach(seat => {
-          const id = seat.dataset.seat;
-          const occupants = getSeatList(id);
-          const nameEl = seat.querySelector('.name');
-          syncSeatTopicState(seat, state.seatTopics[id]);
-          nameEl.innerHTML = '';
-          seat.classList.toggle('locked', state.lockedSeats.has(id));
-          if (!occupants.length) {
-            seat.removeAttribute('draggable');
-            delete seat.dataset.emptyDraggable;
-            return;
-          }
-          seat.removeAttribute('draggable');
-          delete seat.dataset.emptyDraggable;
-          const content = document.createElement('div');
-          content.className = 'seat-content';
-          nameEl.appendChild(content);
-          occupants.forEach(sid => {
-            const student = state.students.find(x => x.id === sid);
-            const label = student ? displayName(student).trim() : sid;
-            if (!label) return;
-            const flair = sanitizePerformanceFlairForCount(student?.performanceFlair);
-            const chip = document.createElement('div');
-            chip.className = 'seat-chip';
-            chip.dataset.sid = sid;
-            chip.dataset.fromSeat = id;
-            chip.setAttribute('draggable', 'true');
-            const nameText = document.createElement('span');
-            nameText.className = 'seat-chip-name';
-            nameText.textContent = label;
-            chip.appendChild(nameText);
-            if (flair) {
-              const flairTag = document.createElement('span');
-              flairTag.className = 'seat-chip-flair';
-              flairTag.textContent = flair;
-              chip.appendChild(flairTag);
-            }
-            content.appendChild(chip);
-            addDragHandlers(chip);
-            enableTouchDragSource(chip, () => {
-              const sidVal = chip.dataset.sid;
-              if (!sidVal) return null;
-              const fromSeat = chip.dataset.fromSeat || null;
-              if (fromSeat && state.lockedSeats.has(fromSeat)) return null;
-              if (fromSeat && !getSeatList(fromSeat).includes(sidVal)) return null;
-              return {
-                type: 'assignment',
-                studentId: sidVal,
-                fromSeat,
-                label: label || 'Lernende/r'
-              };
-            });
-          });
-        });
-        requestGroupGridLayoutRefresh();
+  function renderSeats() {
+    [...els.groupsGrid.querySelectorAll('.seat')].forEach(seat => {
+      const id = seat.dataset.seat;
+      const occupants = getSeatList(id);
+      const nameEl = seat.querySelector('.name');
+      syncSeatTopicState(seat, state.seatTopics[id]);
+      nameEl.innerHTML = '';
+      seat.classList.toggle('locked', state.lockedSeats.has(id));
+      if (!occupants.length) {
+        seat.removeAttribute('draggable');
+        delete seat.dataset.emptyDraggable;
+        return;
       }
-
-      function addDragHandlers(el) {
-        if (el.dataset.dragBound) return;
-        if (el.getAttribute('draggable') !== 'true') return;
-        el.dataset.dragBound = '1';
-        el.addEventListener('dragstart', e => {
-          const sid = el.dataset.sid;
-          const fromSeat = el.dataset.fromSeat || null;
-          if (!sid) { e.preventDefault(); return; }
-          if (fromSeat && state.lockedSeats.has(fromSeat)) { e.preventDefault(); return; }
-          if (fromSeat && !getSeatList(fromSeat).includes(sid)) { e.preventDefault(); return; }
-          e.dataTransfer.setData('text/plain', sid);
-          e.dataTransfer.effectAllowed = 'move';
-          state.dragSourceSeat = fromSeat;
-          state.dragPayloadType = 'assignment';
-          startWiggle();
-        });
-        el.addEventListener('dragend', () => {
-          state.dragSourceSeat = null;
-          state.dragPayloadType = null;
-          stopWiggle();
-        });
-      }
-
-      let currentChipHover = null;
-      function clearChipHover() {
-        if (currentChipHover) {
-          currentChipHover.classList.remove('drag-over-target');
-          currentChipHover = null;
+      seat.removeAttribute('draggable');
+      delete seat.dataset.emptyDraggable;
+      const content = document.createElement('div');
+      content.className = 'seat-content';
+      nameEl.appendChild(content);
+      occupants.forEach(sid => {
+        const student = state.students.find(x => x.id === sid);
+        const label = student ? displayName(student).trim() : sid;
+        if (!label) return;
+        const flair = sanitizePerformanceFlairForCount(student?.performanceFlair);
+        const chip = document.createElement('div');
+        chip.className = 'seat-chip';
+        chip.dataset.sid = sid;
+        chip.dataset.fromSeat = id;
+        chip.setAttribute('draggable', 'true');
+        const nameText = document.createElement('span');
+        nameText.className = 'seat-chip-name';
+        nameText.textContent = label;
+        chip.appendChild(nameText);
+        if (flair) {
+          const flairTag = document.createElement('span');
+          flairTag.className = 'seat-chip-flair';
+          flairTag.textContent = flair;
+          chip.appendChild(flairTag);
         }
-      }
-      function addDropHandlers(seat) {
-        seat.addEventListener('dragover', e => {
-          e.preventDefault();
-          seat.classList.add('drag-over');
-          const targetChip = e.target.closest('.seat-chip');
-          if (targetChip && targetChip !== currentChipHover) {
-            clearChipHover();
-            currentChipHover = targetChip;
-            currentChipHover.classList.add('drag-over-target');
-          }
-          if (!targetChip) {
-            clearChipHover();
-          }
-        });
-        seat.addEventListener('dragleave', () => {
-          seat.classList.remove('drag-over');
-          clearChipHover();
-        });
-        seat.addEventListener('drop', e => {
-          e.preventDefault(); seat.classList.remove('drag-over'); clearChipHover();
-          stopWiggle();
-          const payload = e.dataTransfer.getData('text/plain') || '';
-          const targetId = seat.dataset.seat;
-          const sourceSeat = state.dragSourceSeat;
-          const targetChip = e.target.closest('.seat-chip');
-          const targetStudentId = targetChip?.dataset?.sid || null;
-          state.dragSourceSeat = null;
-          state.dragPayloadType = null;
-          const context = {
-            targetSeatEl: seat,
-            targetId,
-            targetStudentId,
-          };
-          if (payload) {
-            context.studentId = payload;
-            context.sourceSeatId = sourceSeat || null;
-          }
-          applySeatDropAction(context);
-        });
-      }
-
-      function addPlaceholderDropHandlers(el) {
-        if (!el) return;
-        el.addEventListener('dragover', e => {
-          if (state.dragPayloadType !== 'assignment') return;
-          e.preventDefault();
-        });
-        el.addEventListener('drop', e => {
-          if (state.dragPayloadType !== 'assignment') return;
-          e.preventDefault();
-          stopWiggle();
-          const payload = e.dataTransfer.getData('text/plain') || '';
-          const studentId = payload.trim();
-          const sourceSeat = state.dragSourceSeat || null;
-          state.dragSourceSeat = null;
-          state.dragPayloadType = null;
-          if (!studentId) return;
-          createNewSeatAndAssign(studentId, sourceSeat);
-        });
-      }
-
-      function createNewSeatAndAssign(studentId = null, sourceSeatId = null) {
-        const limit = MAX_GRID_SIZE * MAX_GRID_SIZE;
-        const currentCount = state.activeSeats.size || (state.gridRows * state.gridCols);
-        if (currentCount >= limit) {
-          showMessage('Maximale Anzahl an Gruppen erreicht.', 'warn');
-          return false;
-        }
-        const slot = nextSeatSlot();
-        if (!slot || !slot.id) {
-          showMessage('Keine weitere Gruppe kann angelegt werden.', 'warn');
-          return false;
-        }
-        state.gridRows = slot.rows;
-        state.gridCols = slot.cols;
-        if (!state.activeSeats.has(slot.id)) {
-          state.activeSeats.add(slot.id);
-        }
-        if (!state.activeSeatOrder.includes(slot.id)) {
-          state.activeSeatOrder.push(slot.id);
-        }
-        if (!state.seats[slot.id]) {
-          state.seats[slot.id] = [];
-        }
-        if (typeof state.seatTopics[slot.id] !== 'string') {
-          state.seatTopics[slot.id] = '';
-        }
-        buildGrid();
-        if (sourceSeatId && studentId) {
-          removeStudentFromSeat(sourceSeatId, studentId);
-        }
-        if (studentId) {
-          addStudentToSeat(slot.id, studentId);
-        }
-        renderSeats();
-        refreshUnseated();
-        return true;
-      }
-
-      let backgroundDropLock = false;
-      function bindBackgroundDrop(target, options = {}) {
-        const { ignoreInsideGrid = false } = options;
-        if (!target) return;
-        target.addEventListener('dragover', e => {
-          if (e.target.closest('.seat')) return;
-          if (state.dragPayloadType !== 'assignment') return;
-          if (ignoreInsideGrid && e.target.closest('#groups-grid')) return;
-          e.preventDefault();
-          e.stopPropagation();
-        });
-        target.addEventListener('drop', e => {
-          if (e.target.closest('.seat')) return;
-          if (state.dragPayloadType !== 'assignment') return;
-          if (ignoreInsideGrid && e.target.closest('#groups-grid')) return;
-          e.preventDefault();
-          e.stopPropagation();
-          if (backgroundDropLock) return;
-          backgroundDropLock = true;
-          stopWiggle();
-          const payload = e.dataTransfer.getData('text/plain') || '';
-          const studentId = payload.trim();
-          const sourceSeat = state.dragSourceSeat || null;
-          state.dragSourceSeat = null;
-          state.dragPayloadType = null;
-          if (studentId) {
-            createNewSeatAndAssign(studentId, sourceSeat);
-          }
-          setTimeout(() => { backgroundDropLock = false; }, 25);
-        });
-      }
-
-      function applySeatDropAction(opts) {
-        if (!opts || !opts.targetSeatEl || !opts.targetId) return false;
-        const seatEl = opts.targetSeatEl;
-        const targetId = opts.targetId;
-        const seatDragSourceId = opts.seatDragSourceId || null;
-        const studentId = opts.studentId || null;
-        const sourceSeatId = opts.sourceSeatId || null;
-        const targetStudentId = opts.targetStudentId || null;
-        if (seatDragSourceId) return false;
-        if (!studentId) return false;
-        if (sourceSeatId && state.lockedSeats.has(sourceSeatId)) return false;
-        if (state.lockedSeats.has(targetId)) return false;
-        const limit = clampMaxGroupSize(state.maxGroupSize);
-        if (!targetStudentId && getSeatList(targetId).length >= limit && sourceSeatId !== targetId) {
-          showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn');
-          return false;
-        }
-        if (sourceSeatId && targetStudentId) {
-          const sourceList = getSeatList(sourceSeatId);
-          const targetList = getSeatList(targetId);
-          const idxSource = sourceList.indexOf(studentId);
-          const idxTarget = targetList.indexOf(targetStudentId);
-          if (idxSource === -1 || idxTarget === -1) return false;
-          sourceList[idxSource] = targetStudentId;
-          targetList[idxTarget] = studentId;
-          setSeatList(sourceSeatId, sourceList);
-          setSeatList(targetId, targetList);
-        } else {
-          if (targetStudentId) {
-            removeStudentFromSeat(targetId, targetStudentId);
-          }
-          if (getSeatList(targetId).length >= limit) {
-            showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn');
-            return false;
-          }
-          if (sourceSeatId) {
-            removeStudentFromSeat(sourceSeatId, studentId);
-          }
-          addStudentToSeat(targetId, studentId);
-        }
-        renderSeats();
-        refreshUnseated();
-        state._lastImport = false;
-        state.scrollHintDismissed = true;
-        return true;
-      }
-
-      function enableTouchDragSource(el, resolver) {
-        if (!supportsTouchDrag || !el || el.dataset.touchDragBound) return;
-        el.dataset.touchDragBound = '1';
-        el.addEventListener('touchstart', e => {
-          if (e.touches.length !== 1) return;
-          const descriptor = typeof resolver === 'function' ? resolver(e) : null;
-          if (!descriptor) return;
-          const touch = e.touches[0];
-          startTouchDragCandidate(descriptor, touch);
-        }, { passive: true });
-        el.addEventListener('touchmove', e => {
-          if (!touchDragState) return;
-          const tracked = findTouchById(e.touches, touchDragState.identifier);
-          if (!tracked) return;
-          handleTouchMove(tracked);
-          if (touchDragState && touchDragState.active) {
-            e.preventDefault();
-          }
-        }, { passive: false });
-        const finish = e => {
-          if (!touchDragState) return;
-          const tracked = findTouchById(e.changedTouches, touchDragState.identifier);
-          if (!tracked) return;
-          finishTouchDrag(e);
-        };
-        const cancel = e => {
-          if (!touchDragState) return;
-          const tracked = findTouchById(e.changedTouches, touchDragState.identifier);
-          if (!tracked) return;
-          cancelTouchDrag();
-        };
-        el.addEventListener('touchend', finish, { passive: false });
-        el.addEventListener('touchcancel', cancel);
-      }
-
-      function startTouchDragCandidate(descriptor, touch) {
-        cancelTouchDrag();
-        const state = {
-          descriptor,
-          identifier: touch.identifier,
-          startX: touch.clientX,
-          startY: touch.clientY,
-          currentX: touch.clientX,
-          currentY: touch.clientY,
-          active: false,
-          ghost: null,
-          overSeat: null,
-          timer: null,
-        };
-        state.timer = setTimeout(() => beginTouchDrag(state), TOUCH_DRAG_DELAY_MS);
-        touchDragState = state;
-      }
-
-      function beginTouchDrag(state) {
-        if (!state || state !== touchDragState) return;
-        state.active = true;
-        state.ghost = createTouchGhost(state.descriptor);
-        updateTouchDrag(state);
-        startWiggle();
-      }
-
-      function handleTouchMove(touch) {
-        if (!touchDragState) return;
-        touchDragState.currentX = touch.clientX;
-        touchDragState.currentY = touch.clientY;
-        if (!touchDragState.active) {
-          const dx = Math.abs(touch.clientX - touchDragState.startX);
-          const dy = Math.abs(touch.clientY - touchDragState.startY);
-          if (dx > TOUCH_DRAG_CANCEL_DISTANCE || dy > TOUCH_DRAG_CANCEL_DISTANCE) {
-            cancelTouchDrag();
-          }
-          return;
-        }
-        updateTouchDrag(touchDragState);
-      }
-
-      function updateTouchDrag(state) {
-        if (!state) return;
-        if (state.ghost) {
-          state.ghost.style.transform = `translate(${state.currentX + 14}px, ${state.currentY + 14}px)`;
-        }
-        const seat = findSeatAtPoint(state.currentX, state.currentY);
-        if (seat !== state.overSeat) {
-          if (state.overSeat) state.overSeat.classList.remove('drag-over');
-          state.overSeat = seat;
-          if (seat) seat.classList.add('drag-over');
-        }
-      }
-
-      function finishTouchDrag(e) {
-        if (!touchDragState) return;
-        const state = touchDragState;
-        const descriptor = state.descriptor;
-        const seatEl = state.overSeat;
-        const wasActive = seatEl ? seatEl.classList.contains('active') : false;
-        const context = seatEl ? buildTouchDropContext(descriptor, seatEl, wasActive) : null;
-        const wasActiveDrag = state.active;
-        cancelTouchDrag();
-        stopWiggle();
-        if (!wasActiveDrag) return;
-        if (e) e.preventDefault();
-        if (context) {
-          applySeatDropAction(context);
-        }
-      }
-
-      function cancelTouchDrag() {
-        if (!touchDragState) return;
-        if (touchDragState.timer) {
-          clearTimeout(touchDragState.timer);
-        }
-        if (touchDragState.overSeat) {
-          touchDragState.overSeat.classList.remove('drag-over');
-        }
-        if (touchDragState.ghost) {
-          touchDragState.ghost.remove();
-        }
-        touchDragState = null;
-        stopWiggle();
-      }
-
-      function buildTouchDropContext(descriptor, seatEl, wasActive) {
-        if (!descriptor || !seatEl) return null;
-        const seatId = seatEl.dataset.seat;
-        if (!seatId) return null;
-        const ctx = { targetSeatEl: seatEl, targetId: seatId, wasActive };
-        if (descriptor.type === 'seat') {
-          ctx.seatDragSourceId = descriptor.seatId;
-        } else if (descriptor.type === 'assignment') {
-          ctx.studentId = descriptor.studentId;
-          ctx.sourceSeatId = descriptor.fromSeat || null;
-        } else {
-          return null;
-        }
-        return ctx;
-      }
-
-      function findSeatAtPoint(x, y) {
-        const el = document.elementFromPoint(x, y);
-        if (!el) return null;
-        return el.closest ? el.closest('.seat') : null;
-      }
-
-      function findTouchById(touchList, id) {
-        if (!touchList || id === undefined || id === null) return null;
-        for (let i = 0; i < touchList.length; i++) {
-          const touch = touchList.item(i);
-          if (touch?.identifier === id) return touch;
-        }
-        return null;
-      }
-
-      function createTouchGhost(descriptor) {
-        const ghost = document.createElement('div');
-        ghost.className = 'touch-drag-ghost';
-        const fallback = descriptor?.type === 'seat' ? 'Gruppe' : 'Ziehen';
-        ghost.textContent = descriptor?.label || fallback;
-        document.body.appendChild(ghost);
-        return ghost;
-      }
-
-      function detectDelimiter(s) {
-        const candidates = [';', ',', '\t'];
-        const lines = String(s || '')
-          .split(/\r?\n/)
-          .map(line => String(line || ''))
-          .filter(line => line.trim() && !/^sep\s*=/.test(line.trim().toLowerCase()))
-          .slice(0, 8);
-        let best = ';';
-        let bestScore = -1;
-        candidates.forEach((candidate) => {
-          const pattern = candidate === '\t' ? /\t/g : new RegExp(`\\${candidate}`, 'g');
-          const score = lines.reduce((sum, line) => sum + ((line.match(pattern) || []).length), 0);
-          if (score > bestScore) {
-            best = candidate;
-            bestScore = score;
-          }
-        });
-        return best;
-      }
-      function parseCSV(text) {
-        const delim = detectDelimiter(text); state.delim = delim;
-        const rows = [];
-        let i = 0, cur = '', inQ = false; const out = []; const push = () => { out.push(cur); cur = '' };
-        const flush = () => { rows.push(out.slice()); out.length = 0 };
-        while (i < text.length) {
-          const ch = text[i++];
-          if (ch === '"') {
-            if (inQ && text[i] == '"') { cur += '"'; i++; }
-            else inQ = !inQ;
-          } else if (ch === delim && !inQ) { push(); }
-          else if ((ch === '\n') && !inQ) { push(); flush(); }
-          else if ((ch === '\r') && !inQ) { }
-          else { cur += ch; }
-        }
-        if (cur.length > 0 || out.length > 0) { push(); flush(); }
-        return rows;
-      }
-
-      function normalizeCsvCell(value) {
-        return String(value ?? '')
-          .replace(/\uFEFF/g, '')
-          .trim();
-      }
-
-      function normalizeCsvHeader(value) {
-        return normalizeCsvCell(value).toLocaleLowerCase('de');
-      }
-
-      function splitCombinedStudentName(value) {
-        const combined = normalizeCsvCell(value);
-        if (!combined) return { first: '', last: '' };
-        if (combined.includes(',')) {
-          const [last, first] = combined.split(',');
+        content.appendChild(chip);
+        addDragHandlers(chip);
+        enableTouchDragSource(chip, () => {
+          const sidVal = chip.dataset.sid;
+          if (!sidVal) return null;
+          const fromSeat = chip.dataset.fromSeat || null;
+          if (fromSeat && state.lockedSeats.has(fromSeat)) return null;
+          if (fromSeat && !getSeatList(fromSeat).includes(sidVal)) return null;
           return {
-            first: normalizeCsvCell(first),
-            last: normalizeCsvCell(last),
+            type: 'assignment',
+            studentId: sidVal,
+            fromSeat,
+            label: label || 'Lernende/r'
           };
-        }
-        const parts = combined.split(/\s+/).filter(Boolean);
-        return {
-          first: normalizeCsvCell(parts.shift() || ''),
-          last: normalizeCsvCell(parts.join(' ')),
-        };
-      }
-
-      function resolveStudentColumnIndexes(headers, rows) {
-        const normalizedHeaders = Array.isArray(headers) ? headers.map(normalizeCsvHeader) : [];
-        const findIndex = aliases => normalizedHeaders.findIndex(cell => aliases.includes(cell));
-        const lastIndex = findIndex(['nachname', 'name', 'surname', 'last', 'lastname', 'familienname']);
-        const firstIndex = findIndex(['vorname', 'firstname', 'first', 'givenname', 'rufname']);
-        const combinedIndex = findIndex(['schüler', 'schueler', 'schülername', 'schuelername', 'student', 'lernende', 'lernender']);
-        if (lastIndex >= 0 || firstIndex >= 0 || combinedIndex >= 0) {
-          return { lastIndex, firstIndex, combinedIndex };
-        }
-        const sampleRow = Array.isArray(rows)
-          ? rows.find(row => Array.isArray(row) && row.some(cell => normalizeCsvCell(cell)))
-          : null;
-        const fallbackOffset = normalizedHeaders[0] === '' && normalizedHeaders.length >= 3 ? 1 : 0;
-        if (sampleRow && sampleRow.length >= fallbackOffset + 2) {
-          return { lastIndex: fallbackOffset, firstIndex: fallbackOffset + 1, combinedIndex: -1 };
-        }
-        if (sampleRow && sampleRow.length >= 3) {
-          return { lastIndex: 1, firstIndex: 2, combinedIndex: -1 };
-        }
-        return { lastIndex: 0, firstIndex: 1, combinedIndex: -1 };
-      }
-
-      function readStudents(rows, headers = []) {
-        const { lastIndex, firstIndex, combinedIndex } = resolveStudentColumnIndexes(headers, rows);
-        const students = [];
-        for (const r of rows) {
-          let first = '';
-          let last = '';
-          if (lastIndex >= 0 || firstIndex >= 0) {
-            last = normalizeCsvCell(r?.[lastIndex] || '');
-            first = normalizeCsvCell(r?.[firstIndex] || '');
-          }
-          if ((!last && !first) && combinedIndex >= 0) {
-            const parsed = splitCombinedStudentName(r?.[combinedIndex] || '');
-            first = parsed.first;
-            last = parsed.last;
-          }
-          if (last || first) {
-            const id = String(students.length + 1).padStart(2, '0');
-            students.push({
-              id,
-              first,
-              last,
-              performanceFlair: '',
-              buddies: [],
-              foes: [],
-              randomWeight: RANDOM_PICKER_DEFAULT_WEIGHT
-            });
-          }
-        }
-        return students;
-      }
-
-      function dataTransferHasFiles(dt) {
-        if (!dt) return false;
-        if (dt.files && dt.files.length > 0) return true;
-        const types = dt.types;
-        if (!types) return false;
-        if (typeof types.includes === 'function') return types.includes('Files');
-        if (typeof types.contains === 'function') return types.contains('Files');
-        return Array.from(types).includes('Files');
-      }
-
-      function isCsvFile(file) {
-        if (!file) return false;
-        const name = String(file.name || '').toLowerCase();
-        const type = String(file.type || '').toLowerCase();
-        return name.endsWith('.csv')
-          || type.includes('text/csv')
-          || type.includes('application/csv')
-          || type.includes('application/vnd.ms-excel');
-      }
-
-      function isJsonFile(file) {
-        if (!file) return false;
-        const name = String(file.name || '').toLowerCase();
-        const type = String(file.type || '').toLowerCase();
-        return name.endsWith('.json')
-          || type.includes('application/json')
-          || type.includes('text/json');
-      }
-
-      function stripFileExtension(name) {
-        const raw = String(name || '').trim();
-        if (!raw) return '';
-        const idx = raw.lastIndexOf('.');
-        if (idx <= 0) return raw;
-        return raw.slice(0, idx);
-      }
-
-      function updateCsvStatusDisplay() {
-        if (!els.csvStatus) return;
-        const label = String(state.csvName || '').trim();
-        els.csvStatus.textContent = label || 'Noch keine Datei importiert';
-      }
-
-      async function importCsvFromFile(file) {
-        if (!file) return;
-        const guessedLabel = sanitizeExportFileName(stripFileExtension(file.name));
-        state.csvName = guessedLabel || state.csvName;
-        updateCsvStatusDisplay();
-        const text = await file.text();
-        let rows = parseCSV(text);
-        if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn'); return; }
-        const isSeparatorRow = (row) => {
-          if (!Array.isArray(row)) return false;
-          const normalized = row
-            .map(val => String(val ?? '').trim())
-            .join('')
-            .toLowerCase();
-          return /^sep\s*=/.test(normalized);
-        };
-        rows = rows.filter(row => !isSeparatorRow(row));
-        if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn'); return; }
-        const firstNonEmptyIdx = rows.findIndex(r => Array.isArray(r) && r.some(x => String(x || '').trim() !== ''));
-        if (firstNonEmptyIdx === -1) { showMessage('Nur leere Zeilen gefunden.', 'warn'); return; }
-
-        const headers = rows[firstNonEmptyIdx] || [];
-        const dataStartIdx = firstNonEmptyIdx + 1;
-        const dataRows = rows.slice(dataStartIdx);
-        state.headers = headers;
-        state.performanceFlairCount = 4;
-        state.students = readStudents(dataRows, headers);
-        state.seats = {};
-        state.seatTopics = {};
-        SharedTimerStore.setWorkOrder({
-          workOrderText: '',
-          durationMinutes: null,
-          startISO: null,
         });
-        SharedTimerStore.stop();
-        syncStateFromTimerStore();
-        state.lockedSeats.clear();
-        syncGroupGridFromSizeInputs({ forceCapacity: true });
-        // Nach Import nach oben springen, damit der Scroll-Hinweis sichtbar werden kann
-        els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
-        refreshUnseated();
-        renderRandomPicker();
-        renderSeats();
-        renderWorkOrder();
-        requestGroupGridLayoutRefresh({ resetViewport: true });
-        state.scrollHintDismissed = false;
-        state._lastImport = true;
-        updateScrollHint();
-        syncSharedRosterState(STUDENTS_SYNC_SOURCE_GROUPS);
-      }
-
-      async function pickPlanFileWithPicker() {
-        const canPick = typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function';
-        if (!canPick) return { supported: false };
-        try {
-          const [handle] = await window.showOpenFilePicker({
-            multiple: false,
-            startIn: state.lastDirectoryHandle || 'downloads',
-            types: [{
-              description: 'Gruppen JSON',
-              accept: { 'application/json': ['.json'] }
-            }],
-            excludeAcceptAllOption: true,
-          });
-          if (!handle) return { supported: true, aborted: true };
-          const file = await handle.getFile();
-          if (!file) return { supported: true, aborted: true };
-          return { supported: true, file, handle };
-        } catch (err) {
-          if (err && err.name === 'AbortError') {
-            return { supported: true, aborted: true };
-          }
-          console.warn('showOpenFilePicker fehlgeschlagen, fallback auf klassische Datei-Auswahl', err);
-          return { supported: true, aborted: true };
-        }
-      }
-
-      async function handlePlanImportAction() {
-        const picked = await pickPlanFileWithPicker();
-        if (picked && picked.file) {
-          try {
-            await importPlanFromFile(picked.file, picked.handle);
-            return;
-          } catch (err) {
-            reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
-              scope: 'plan-import',
-              source: 'file-picker',
-            });
-            return;
-          }
-        }
-        if (picked?.aborted) {
-          return;
-        }
-        if (!picked || picked.supported === false) {
-          els.importPlanFile?.click();
-        }
-      }
-
-      els.templateLink?.addEventListener('click', (e) => {
-        e.preventDefault();
-        downloadCsvTemplate();
       });
+    });
+    requestGroupGridLayoutRefresh();
+  }
 
-      els.file.addEventListener('change', async (e) => {
-        const f = e.target.files && e.target.files[0];
-        if (!f) {
-          state.csvName = '';
-          if (els.csvStatus) {
-            els.csvStatus.textContent = 'Noch keine Datei importiert';
-          }
-          return;
-        }
-        try {
-          await importCsvFromFile(f);
-        } catch (err) {
-          reportAppError(err, err?.message || 'Namensliste konnte nicht geladen werden.', {
-            scope: 'csv-import',
-            source: 'file-input',
-          });
-        }
-      });
+  function addDragHandlers(el) {
+    if (el.dataset.dragBound) return;
+    if (el.getAttribute('draggable') !== 'true') return;
+    el.dataset.dragBound = '1';
+    el.addEventListener('dragstart', e => {
+      const sid = el.dataset.sid;
+      const fromSeat = el.dataset.fromSeat || null;
+      if (!sid) { e.preventDefault(); return; }
+      if (fromSeat && state.lockedSeats.has(fromSeat)) { e.preventDefault(); return; }
+      if (fromSeat && !getSeatList(fromSeat).includes(sid)) { e.preventDefault(); return; }
+      e.dataTransfer.setData('text/plain', sid);
+      e.dataTransfer.effectAllowed = 'move';
+      state.dragSourceSeat = fromSeat;
+      state.dragPayloadType = 'assignment';
+      startWiggle();
+    });
+    el.addEventListener('dragend', () => {
+      state.dragSourceSeat = null;
+      state.dragPayloadType = null;
+      stopWiggle();
+    });
+  }
 
-      const isEventInsideCsvDropZone = (event) => {
-        const target = event?.target;
-        if (!(target instanceof Element)) return false;
-        return Boolean(target.closest('#csv-drop-zone'));
+  let currentChipHover = null;
+  function clearChipHover() {
+    if (currentChipHover) {
+      currentChipHover.classList.remove('drag-over-target');
+      currentChipHover = null;
+    }
+  }
+  function addDropHandlers(seat) {
+    seat.addEventListener('dragover', e => {
+      e.preventDefault();
+      seat.classList.add('drag-over');
+      const targetChip = e.target.closest('.seat-chip');
+      if (targetChip && targetChip !== currentChipHover) {
+        clearChipHover();
+        currentChipHover = targetChip;
+        currentChipHover.classList.add('drag-over-target');
+      }
+      if (!targetChip) {
+        clearChipHover();
+      }
+    });
+    seat.addEventListener('dragleave', () => {
+      seat.classList.remove('drag-over');
+      clearChipHover();
+    });
+    seat.addEventListener('drop', e => {
+      e.preventDefault(); seat.classList.remove('drag-over'); clearChipHover();
+      stopWiggle();
+      const payload = e.dataTransfer.getData('text/plain') || '';
+      const targetId = seat.dataset.seat;
+      const sourceSeat = state.dragSourceSeat;
+      const targetChip = e.target.closest('.seat-chip');
+      const targetStudentId = targetChip?.dataset?.sid || null;
+      state.dragSourceSeat = null;
+      state.dragPayloadType = null;
+      const context = {
+        targetSeatEl: seat,
+        targetId,
+        targetStudentId,
       };
-      const isEventInsideMergerDropZone = (event) => {
-        const target = event?.target;
-        if (!(target instanceof Element)) return false;
-        return Boolean(target.closest('#merger-host') || target.closest('#dropZone'));
-      };
-
-      if (els.csvDropZone) {
-        let csvDragDepth = 0;
-        const clearCsvDragState = () => {
-          csvDragDepth = 0;
-          els.csvDropZone.classList.remove('drag-over-file');
-        };
-        els.csvDropZone.addEventListener('dragenter', (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          csvDragDepth += 1;
-          els.csvDropZone.classList.add('drag-over-file');
-        });
-        els.csvDropZone.addEventListener('dragover', (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          if (e.dataTransfer) {
-            e.dataTransfer.dropEffect = 'copy';
-          }
-          els.csvDropZone.classList.add('drag-over-file');
-        });
-        els.csvDropZone.addEventListener('dragleave', (e) => {
-          e.preventDefault();
-          csvDragDepth = Math.max(0, csvDragDepth - 1);
-          if (csvDragDepth === 0) {
-            els.csvDropZone.classList.remove('drag-over-file');
-          }
-        });
-        els.csvDropZone.addEventListener('drop', async (e) => {
-          if (!dataTransferHasFiles(e.dataTransfer)) return;
-          e.preventDefault();
-          e.stopPropagation();
-          clearCsvDragState();
-          const droppedFiles = Array.from(e.dataTransfer?.files || []);
-          const csvFile = droppedFiles.find(isCsvFile);
-          if (!csvFile) {
-            showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn');
-            return;
-          }
-          try {
-            await importCsvFromFile(csvFile);
-          } catch (err) {
-            reportAppError(err, err?.message || 'Namensliste konnte nicht geladen werden.', {
-              scope: 'csv-import',
-              source: 'drop-zone',
-            });
-          }
-        });
-        document.addEventListener('drop', clearCsvDragState);
-        document.addEventListener('dragend', clearCsvDragState);
+      if (payload) {
+        context.studentId = payload;
+        context.sourceSeatId = sourceSeat || null;
       }
+      applySeatDropAction(context);
+    });
+  }
 
-      document.addEventListener('dragover', (e) => {
-        if (!dataTransferHasFiles(e.dataTransfer)) return;
-        if (isEventInsideCsvDropZone(e)) return;
-        if (isEventInsideMergerDropZone(e)) return;
+  function addPlaceholderDropHandlers(el) {
+    if (!el) return;
+    el.addEventListener('dragover', e => {
+      if (state.dragPayloadType !== 'assignment') return;
+      e.preventDefault();
+    });
+    el.addEventListener('drop', e => {
+      if (state.dragPayloadType !== 'assignment') return;
+      e.preventDefault();
+      stopWiggle();
+      const payload = e.dataTransfer.getData('text/plain') || '';
+      const studentId = payload.trim();
+      const sourceSeat = state.dragSourceSeat || null;
+      state.dragSourceSeat = null;
+      state.dragPayloadType = null;
+      if (!studentId) return;
+      createNewSeatAndAssign(studentId, sourceSeat);
+    });
+  }
+
+  function createNewSeatAndAssign(studentId = null, sourceSeatId = null) {
+    const limit = MAX_GRID_SIZE * MAX_GRID_SIZE;
+    const currentCount = state.activeSeats.size || (state.gridRows * state.gridCols);
+    if (currentCount >= limit) {
+      showMessage('Maximale Anzahl an Gruppen erreicht.', 'warn');
+      return false;
+    }
+    const slot = nextSeatSlot();
+    if (!slot || !slot.id) {
+      showMessage('Keine weitere Gruppe kann angelegt werden.', 'warn');
+      return false;
+    }
+    state.gridRows = slot.rows;
+    state.gridCols = slot.cols;
+    if (!state.activeSeats.has(slot.id)) {
+      state.activeSeats.add(slot.id);
+    }
+    if (!state.activeSeatOrder.includes(slot.id)) {
+      state.activeSeatOrder.push(slot.id);
+    }
+    if (!state.seats[slot.id]) {
+      state.seats[slot.id] = [];
+    }
+    if (typeof state.seatTopics[slot.id] !== 'string') {
+      state.seatTopics[slot.id] = '';
+    }
+    buildGrid();
+    if (sourceSeatId && studentId) {
+      removeStudentFromSeat(sourceSeatId, studentId);
+    }
+    if (studentId) {
+      addStudentToSeat(slot.id, studentId);
+    }
+    renderSeats();
+    refreshUnseated();
+    return true;
+  }
+
+  let backgroundDropLock = false;
+  function bindBackgroundDrop(target, options = {}) {
+    const { ignoreInsideGrid = false } = options;
+    if (!target) return;
+    target.addEventListener('dragover', e => {
+      if (e.target.closest('.seat')) return;
+      if (state.dragPayloadType !== 'assignment') return;
+      if (ignoreInsideGrid && e.target.closest('#groups-grid')) return;
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    target.addEventListener('drop', e => {
+      if (e.target.closest('.seat')) return;
+      if (state.dragPayloadType !== 'assignment') return;
+      if (ignoreInsideGrid && e.target.closest('#groups-grid')) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (backgroundDropLock) return;
+      backgroundDropLock = true;
+      stopWiggle();
+      const payload = e.dataTransfer.getData('text/plain') || '';
+      const studentId = payload.trim();
+      const sourceSeat = state.dragSourceSeat || null;
+      state.dragSourceSeat = null;
+      state.dragPayloadType = null;
+      if (studentId) {
+        createNewSeatAndAssign(studentId, sourceSeat);
+      }
+      setTimeout(() => { backgroundDropLock = false; }, 25);
+    });
+  }
+
+  function applySeatDropAction(opts) {
+    if (!opts || !opts.targetSeatEl || !opts.targetId) return false;
+    const seatEl = opts.targetSeatEl;
+    const targetId = opts.targetId;
+    const seatDragSourceId = opts.seatDragSourceId || null;
+    const studentId = opts.studentId || null;
+    const sourceSeatId = opts.sourceSeatId || null;
+    const targetStudentId = opts.targetStudentId || null;
+    if (seatDragSourceId) return false;
+    if (!studentId) return false;
+    if (sourceSeatId && state.lockedSeats.has(sourceSeatId)) return false;
+    if (state.lockedSeats.has(targetId)) return false;
+    const limit = clampMaxGroupSize(state.maxGroupSize);
+    if (!targetStudentId && getSeatList(targetId).length >= limit && sourceSeatId !== targetId) {
+      showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn');
+      return false;
+    }
+    if (sourceSeatId && targetStudentId) {
+      const sourceList = getSeatList(sourceSeatId);
+      const targetList = getSeatList(targetId);
+      const idxSource = sourceList.indexOf(studentId);
+      const idxTarget = targetList.indexOf(targetStudentId);
+      if (idxSource === -1 || idxTarget === -1) return false;
+      sourceList[idxSource] = targetStudentId;
+      targetList[idxTarget] = studentId;
+      setSeatList(sourceSeatId, sourceList);
+      setSeatList(targetId, targetList);
+    } else {
+      if (targetStudentId) {
+        removeStudentFromSeat(targetId, targetStudentId);
+      }
+      if (getSeatList(targetId).length >= limit) {
+        showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn');
+        return false;
+      }
+      if (sourceSeatId) {
+        removeStudentFromSeat(sourceSeatId, studentId);
+      }
+      addStudentToSeat(targetId, studentId);
+    }
+    renderSeats();
+    refreshUnseated();
+    state._lastImport = false;
+    state.scrollHintDismissed = true;
+    return true;
+  }
+
+  function enableTouchDragSource(el, resolver) {
+    if (!supportsTouchDrag || !el || el.dataset.touchDragBound) return;
+    el.dataset.touchDragBound = '1';
+    el.addEventListener('touchstart', e => {
+      if (e.touches.length !== 1) return;
+      const descriptor = typeof resolver === 'function' ? resolver(e) : null;
+      if (!descriptor) return;
+      const touch = e.touches[0];
+      startTouchDragCandidate(descriptor, touch);
+    }, { passive: true });
+    el.addEventListener('touchmove', e => {
+      if (!touchDragState) return;
+      const tracked = findTouchById(e.touches, touchDragState.identifier);
+      if (!tracked) return;
+      handleTouchMove(tracked);
+      if (touchDragState && touchDragState.active) {
         e.preventDefault();
-        if (e.dataTransfer) {
-          e.dataTransfer.dropEffect = 'copy';
-        }
-      });
+      }
+    }, { passive: false });
+    const finish = e => {
+      if (!touchDragState) return;
+      const tracked = findTouchById(e.changedTouches, touchDragState.identifier);
+      if (!tracked) return;
+      finishTouchDrag(e);
+    };
+    const cancel = e => {
+      if (!touchDragState) return;
+      const tracked = findTouchById(e.changedTouches, touchDragState.identifier);
+      if (!tracked) return;
+      cancelTouchDrag();
+    };
+    el.addEventListener('touchend', finish, { passive: false });
+    el.addEventListener('touchcancel', cancel);
+  }
 
-      document.addEventListener('drop', async (e) => {
-        if (!dataTransferHasFiles(e.dataTransfer)) return;
-        if (isEventInsideCsvDropZone(e)) return;
-        if (isEventInsideMergerDropZone(e)) return;
-        e.preventDefault();
-        const droppedFiles = Array.from(e.dataTransfer?.files || []);
-        const jsonFile = droppedFiles.find(isJsonFile);
-        if (!jsonFile) {
-          const csvFile = droppedFiles.find(isCsvFile);
-          if (csvFile) {
-            showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn');
-          } else {
-            showMessage('Hier können nur Gruppen als JSON geladen werden.', 'warn');
-          }
-          return;
-        }
-        try {
-          await importPlanFromFile(jsonFile);
-        } catch (err) {
-          reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
-            scope: 'plan-import',
-            source: 'document-drop',
-          });
-        }
-      });
+  function startTouchDragCandidate(descriptor, touch) {
+    cancelTouchDrag();
+    const state = {
+      descriptor,
+      identifier: touch.identifier,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      currentX: touch.clientX,
+      currentY: touch.clientY,
+      active: false,
+      ghost: null,
+      overSeat: null,
+      timer: null,
+    };
+    state.timer = setTimeout(() => beginTouchDrag(state), TOUCH_DRAG_DELAY_MS);
+    touchDragState = state;
+  }
 
-      [els.groupExportPlan].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => downloadSeatPlan());
-      });
-      [els.groupPrintPlan].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => printSeatPlan());
-      });
-      [els.groupImportPlan].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          void handlePlanImportAction();
+  function beginTouchDrag(state) {
+    if (!state || state !== touchDragState) return;
+    state.active = true;
+    state.ghost = createTouchGhost(state.descriptor);
+    updateTouchDrag(state);
+    startWiggle();
+  }
+
+  function handleTouchMove(touch) {
+    if (!touchDragState) return;
+    touchDragState.currentX = touch.clientX;
+    touchDragState.currentY = touch.clientY;
+    if (!touchDragState.active) {
+      const dx = Math.abs(touch.clientX - touchDragState.startX);
+      const dy = Math.abs(touch.clientY - touchDragState.startY);
+      if (dx > TOUCH_DRAG_CANCEL_DISTANCE || dy > TOUCH_DRAG_CANCEL_DISTANCE) {
+        cancelTouchDrag();
+      }
+      return;
+    }
+    updateTouchDrag(touchDragState);
+  }
+
+  function updateTouchDrag(state) {
+    if (!state) return;
+    if (state.ghost) {
+      state.ghost.style.transform = `translate(${state.currentX + 14}px, ${state.currentY + 14}px)`;
+    }
+    const seat = findSeatAtPoint(state.currentX, state.currentY);
+    if (seat !== state.overSeat) {
+      if (state.overSeat) state.overSeat.classList.remove('drag-over');
+      state.overSeat = seat;
+      if (seat) seat.classList.add('drag-over');
+    }
+  }
+
+  function finishTouchDrag(e) {
+    if (!touchDragState) return;
+    const state = touchDragState;
+    const descriptor = state.descriptor;
+    const seatEl = state.overSeat;
+    const wasActive = seatEl ? seatEl.classList.contains('active') : false;
+    const context = seatEl ? buildTouchDropContext(descriptor, seatEl, wasActive) : null;
+    const wasActiveDrag = state.active;
+    cancelTouchDrag();
+    stopWiggle();
+    if (!wasActiveDrag) return;
+    if (e) e.preventDefault();
+    if (context) {
+      applySeatDropAction(context);
+    }
+  }
+
+  function cancelTouchDrag() {
+    if (!touchDragState) return;
+    if (touchDragState.timer) {
+      clearTimeout(touchDragState.timer);
+    }
+    if (touchDragState.overSeat) {
+      touchDragState.overSeat.classList.remove('drag-over');
+    }
+    if (touchDragState.ghost) {
+      touchDragState.ghost.remove();
+    }
+    touchDragState = null;
+    stopWiggle();
+  }
+
+  function buildTouchDropContext(descriptor, seatEl, wasActive) {
+    if (!descriptor || !seatEl) return null;
+    const seatId = seatEl.dataset.seat;
+    if (!seatId) return null;
+    const ctx = { targetSeatEl: seatEl, targetId: seatId, wasActive };
+    if (descriptor.type === 'seat') {
+      ctx.seatDragSourceId = descriptor.seatId;
+    } else if (descriptor.type === 'assignment') {
+      ctx.studentId = descriptor.studentId;
+      ctx.sourceSeatId = descriptor.fromSeat || null;
+    } else {
+      return null;
+    }
+    return ctx;
+  }
+
+  function findSeatAtPoint(x, y) {
+    const el = document.elementFromPoint(x, y);
+    if (!el) return null;
+    return el.closest ? el.closest('.seat') : null;
+  }
+
+  function findTouchById(touchList, id) {
+    if (!touchList || id === undefined || id === null) return null;
+    for (let i = 0; i < touchList.length; i++) {
+      const touch = touchList.item(i);
+      if (touch?.identifier === id) return touch;
+    }
+    return null;
+  }
+
+  function createTouchGhost(descriptor) {
+    const ghost = document.createElement('div');
+    ghost.className = 'touch-drag-ghost';
+    const fallback = descriptor?.type === 'seat' ? 'Gruppe' : 'Ziehen';
+    ghost.textContent = descriptor?.label || fallback;
+    document.body.appendChild(ghost);
+    return ghost;
+  }
+
+  function detectDelimiter(s) {
+    const candidates = [';', ',', '\t'];
+    const lines = String(s || '')
+      .split(/\r?\n/)
+      .map(line => String(line || ''))
+      .filter(line => line.trim() && !/^sep\s*=/.test(line.trim().toLowerCase()))
+      .slice(0, 8);
+    let best = ';';
+    let bestScore = -1;
+    candidates.forEach((candidate) => {
+      const pattern = candidate === '\t' ? /\t/g : new RegExp(`\\${candidate}`, 'g');
+      const score = lines.reduce((sum, line) => sum + ((line.match(pattern) || []).length), 0);
+      if (score > bestScore) {
+        best = candidate;
+        bestScore = score;
+      }
+    });
+    return best;
+  }
+  function parseCSV(text) {
+    const delim = detectDelimiter(text); state.delim = delim;
+    const rows = [];
+    let i = 0, cur = '', inQ = false; const out = []; const push = () => { out.push(cur); cur = '' };
+    const flush = () => { rows.push(out.slice()); out.length = 0 };
+    while (i < text.length) {
+      const ch = text[i++];
+      if (ch === '"') {
+        if (inQ && text[i] == '"') { cur += '"'; i++; }
+        else inQ = !inQ;
+      } else if (ch === delim && !inQ) { push(); }
+      else if ((ch === '\n') && !inQ) { push(); flush(); }
+      else if ((ch === '\r') && !inQ) { }
+      else { cur += ch; }
+    }
+    if (cur.length > 0 || out.length > 0) { push(); flush(); }
+    return rows;
+  }
+
+  function normalizeCsvCell(value) {
+    return String(value ?? '')
+      .replace(/\uFEFF/g, '')
+      .trim();
+  }
+
+  function normalizeCsvHeader(value) {
+    return normalizeCsvCell(value).toLocaleLowerCase('de');
+  }
+
+  function splitCombinedStudentName(value) {
+    const combined = normalizeCsvCell(value);
+    if (!combined) return { first: '', last: '' };
+    if (combined.includes(',')) {
+      const [last, first] = combined.split(',');
+      return {
+        first: normalizeCsvCell(first),
+        last: normalizeCsvCell(last),
+      };
+    }
+    const parts = combined.split(/\s+/).filter(Boolean);
+    return {
+      first: normalizeCsvCell(parts.shift() || ''),
+      last: normalizeCsvCell(parts.join(' ')),
+    };
+  }
+
+  function resolveStudentColumnIndexes(headers, rows) {
+    const normalizedHeaders = Array.isArray(headers) ? headers.map(normalizeCsvHeader) : [];
+    const findIndex = aliases => normalizedHeaders.findIndex(cell => aliases.includes(cell));
+    const lastIndex = findIndex(['nachname', 'name', 'surname', 'last', 'lastname', 'familienname']);
+    const firstIndex = findIndex(['vorname', 'firstname', 'first', 'givenname', 'rufname']);
+    const combinedIndex = findIndex(['schüler', 'schueler', 'schülername', 'schuelername', 'student', 'lernende', 'lernender']);
+    if (lastIndex >= 0 || firstIndex >= 0 || combinedIndex >= 0) {
+      return { lastIndex, firstIndex, combinedIndex };
+    }
+    const sampleRow = Array.isArray(rows)
+      ? rows.find(row => Array.isArray(row) && row.some(cell => normalizeCsvCell(cell)))
+      : null;
+    const fallbackOffset = normalizedHeaders[0] === '' && normalizedHeaders.length >= 3 ? 1 : 0;
+    if (sampleRow && sampleRow.length >= fallbackOffset + 2) {
+      return { lastIndex: fallbackOffset, firstIndex: fallbackOffset + 1, combinedIndex: -1 };
+    }
+    if (sampleRow && sampleRow.length >= 3) {
+      return { lastIndex: 1, firstIndex: 2, combinedIndex: -1 };
+    }
+    return { lastIndex: 0, firstIndex: 1, combinedIndex: -1 };
+  }
+
+  function readStudents(rows, headers = []) {
+    const { lastIndex, firstIndex, combinedIndex } = resolveStudentColumnIndexes(headers, rows);
+    const students = [];
+    for (const r of rows) {
+      let first = '';
+      let last = '';
+      if (lastIndex >= 0 || firstIndex >= 0) {
+        last = normalizeCsvCell(r?.[lastIndex] || '');
+        first = normalizeCsvCell(r?.[firstIndex] || '');
+      }
+      if ((!last && !first) && combinedIndex >= 0) {
+        const parsed = splitCombinedStudentName(r?.[combinedIndex] || '');
+        first = parsed.first;
+        last = parsed.last;
+      }
+      if (last || first) {
+        const id = String(students.length + 1).padStart(2, '0');
+        students.push({
+          id,
+          first,
+          last,
+          performanceFlair: '',
+          buddies: [],
+          foes: [],
+          randomWeight: RANDOM_PICKER_DEFAULT_WEIGHT
         });
-      });
-      els.importPlanFile.addEventListener('change', async (e) => {
-        const file = e.target.files && e.target.files[0];
-        if (!file) return;
-        try {
-          await importPlanFromFile(file);
-        } catch (err) {
-          reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
-            scope: 'plan-import',
-            source: 'file-input',
-          });
-        } finally {
-          e.target.value = '';
-        }
-      });
+      }
+    }
+    return students;
+  }
 
-      [els.groupSeatPreferences].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          if (!state.students.length) {
-            showMessage('Importiere zuerst die Namensliste!', 'warn');
-            return;
-          }
-          if (isRandomPickerTabActive()) {
-            buildRandomPickerConditionsTable();
-          } else {
-            buildSeatPreferencesTable();
-          }
-          if (els.preferencesDialog) {
-            if (typeof els.preferencesDialog.showModal === 'function') {
-              els.preferencesDialog.showModal();
-            } else {
-              els.preferencesDialog.setAttribute('open', 'open');
-            }
-            const focusDialog = () => { els.preferencesDialog?.focus({ preventScroll: true }); };
-            if (typeof queueMicrotask === 'function') { queueMicrotask(focusDialog); }
-            else { setTimeout(focusDialog, 0); }
-          }
-        });
+  function dataTransferHasFiles(dt) {
+    if (!dt) return false;
+    if (dt.files && dt.files.length > 0) return true;
+    const types = dt.types;
+    if (!types) return false;
+    if (typeof types.includes === 'function') return types.includes('Files');
+    if (typeof types.contains === 'function') return types.contains('Files');
+    return Array.from(types).includes('Files');
+  }
+
+  function isCsvFile(file) {
+    if (!file) return false;
+    const name = String(file.name || '').toLowerCase();
+    const type = String(file.type || '').toLowerCase();
+    return name.endsWith('.csv')
+      || type.includes('text/csv')
+      || type.includes('application/csv')
+      || type.includes('application/vnd.ms-excel');
+  }
+
+  function isJsonFile(file) {
+    if (!file) return false;
+    const name = String(file.name || '').toLowerCase();
+    const type = String(file.type || '').toLowerCase();
+    return name.endsWith('.json')
+      || type.includes('application/json')
+      || type.includes('text/json');
+  }
+
+  function stripFileExtension(name) {
+    const raw = String(name || '').trim();
+    if (!raw) return '';
+    const idx = raw.lastIndexOf('.');
+    if (idx <= 0) return raw;
+    return raw.slice(0, idx);
+  }
+
+  function updateCsvStatusDisplay() {
+    if (!els.csvStatus) return;
+    const label = String(state.csvName || '').trim();
+    els.csvStatus.textContent = label || 'Noch keine Datei importiert';
+  }
+
+  async function importCsvFromFile(file) {
+    if (!file) return;
+    const guessedLabel = sanitizeExportFileName(stripFileExtension(file.name));
+    state.csvName = guessedLabel || state.csvName;
+    updateCsvStatusDisplay();
+    const text = await file.text();
+    let rows = parseCSV(text);
+    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn'); return; }
+    const isSeparatorRow = (row) => {
+      if (!Array.isArray(row)) return false;
+      const normalized = row
+        .map(val => String(val ?? '').trim())
+        .join('')
+        .toLowerCase();
+      return /^sep\s*=/.test(normalized);
+    };
+    rows = rows.filter(row => !isSeparatorRow(row));
+    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn'); return; }
+    const firstNonEmptyIdx = rows.findIndex(r => Array.isArray(r) && r.some(x => String(x || '').trim() !== ''));
+    if (firstNonEmptyIdx === -1) { showMessage('Nur leere Zeilen gefunden.', 'warn'); return; }
+
+    const headers = rows[firstNonEmptyIdx] || [];
+    const dataStartIdx = firstNonEmptyIdx + 1;
+    const dataRows = rows.slice(dataStartIdx);
+    state.headers = headers;
+    state.performanceFlairCount = 4;
+    state.students = readStudents(dataRows, headers);
+    state.seats = {};
+    state.seatTopics = {};
+    SharedTimerStore.setWorkOrder({
+      workOrderText: '',
+      durationMinutes: null,
+      startISO: null,
+    });
+    SharedTimerStore.stop();
+    syncStateFromTimerStore();
+    state.lockedSeats.clear();
+    syncGroupGridFromSizeInputs({ forceCapacity: true });
+    // Nach Import nach oben springen, damit der Scroll-Hinweis sichtbar werden kann
+    els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
+    refreshUnseated();
+    renderRandomPicker();
+    renderSeats();
+    renderWorkOrder();
+    requestGroupGridLayoutRefresh({ resetViewport: true });
+    state.scrollHintDismissed = false;
+    state._lastImport = true;
+    updateScrollHint();
+    syncSharedRosterState(STUDENTS_SYNC_SOURCE_GROUPS);
+  }
+
+  async function pickPlanFileWithPicker() {
+    const canPick = typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function';
+    if (!canPick) return { supported: false };
+    try {
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        startIn: state.lastDirectoryHandle || 'downloads',
+        types: [{
+          description: 'Gruppen JSON',
+          accept: { 'application/json': ['.json'] }
+        }],
+        excludeAcceptAllOption: true,
       });
-      els.preferencesForm?.addEventListener('submit', e => {
-        e.preventDefault();
-        if (isRandomPickerTabActive()) {
-          saveRandomPickerConditionsFromForm();
+      if (!handle) return { supported: true, aborted: true };
+      const file = await handle.getFile();
+      if (!file) return { supported: true, aborted: true };
+      return { supported: true, file, handle };
+    } catch (err) {
+      if (err && err.name === 'AbortError') {
+        return { supported: true, aborted: true };
+      }
+      console.warn('showOpenFilePicker fehlgeschlagen, fallback auf klassische Datei-Auswahl', err);
+      return { supported: true, aborted: true };
+    }
+  }
+
+  async function handlePlanImportAction() {
+    const picked = await pickPlanFileWithPicker();
+    if (picked && picked.file) {
+      try {
+        await importPlanFromFile(picked.file, picked.handle);
+        return;
+      } catch (err) {
+        reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
+          scope: 'plan-import',
+          source: 'file-picker',
+        });
+        return;
+      }
+    }
+    if (picked?.aborted) {
+      return;
+    }
+    if (!picked || picked.supported === false) {
+      els.importPlanFile?.click();
+    }
+  }
+
+  els.templateLink?.addEventListener('click', (e) => {
+    e.preventDefault();
+    downloadCsvTemplate();
+  });
+
+  els.file.addEventListener('change', async (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (!f) {
+      state.csvName = '';
+      if (els.csvStatus) {
+        els.csvStatus.textContent = 'Noch keine Datei importiert';
+      }
+      return;
+    }
+    try {
+      await importCsvFromFile(f);
+    } catch (err) {
+      reportAppError(err, err?.message || 'Namensliste konnte nicht geladen werden.', {
+        scope: 'csv-import',
+        source: 'file-input',
+      });
+    }
+  });
+
+  const isEventInsideCsvDropZone = (event) => {
+    const target = event?.target;
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('#csv-drop-zone'));
+  };
+  const isEventInsideMergerDropZone = (event) => {
+    const target = event?.target;
+    if (!(target instanceof Element)) return false;
+    return Boolean(target.closest('#merger-host') || target.closest('#dropZone'));
+  };
+
+  if (els.csvDropZone) {
+    let csvDragDepth = 0;
+    const clearCsvDragState = () => {
+      csvDragDepth = 0;
+      els.csvDropZone.classList.remove('drag-over-file');
+    };
+    els.csvDropZone.addEventListener('dragenter', (e) => {
+      if (!dataTransferHasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      csvDragDepth += 1;
+      els.csvDropZone.classList.add('drag-over-file');
+    });
+    els.csvDropZone.addEventListener('dragover', (e) => {
+      if (!dataTransferHasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      if (e.dataTransfer) {
+        e.dataTransfer.dropEffect = 'copy';
+      }
+      els.csvDropZone.classList.add('drag-over-file');
+    });
+    els.csvDropZone.addEventListener('dragleave', (e) => {
+      e.preventDefault();
+      csvDragDepth = Math.max(0, csvDragDepth - 1);
+      if (csvDragDepth === 0) {
+        els.csvDropZone.classList.remove('drag-over-file');
+      }
+    });
+    els.csvDropZone.addEventListener('drop', async (e) => {
+      if (!dataTransferHasFiles(e.dataTransfer)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      clearCsvDragState();
+      const droppedFiles = Array.from(e.dataTransfer?.files || []);
+      const csvFile = droppedFiles.find(isCsvFile);
+      if (!csvFile) {
+        showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn');
+        return;
+      }
+      try {
+        await importCsvFromFile(csvFile);
+      } catch (err) {
+        reportAppError(err, err?.message || 'Namensliste konnte nicht geladen werden.', {
+          scope: 'csv-import',
+          source: 'drop-zone',
+        });
+      }
+    });
+    document.addEventListener('drop', clearCsvDragState);
+    document.addEventListener('dragend', clearCsvDragState);
+  }
+
+  document.addEventListener('dragover', (e) => {
+    if (!dataTransferHasFiles(e.dataTransfer)) return;
+    if (isEventInsideCsvDropZone(e)) return;
+    if (isEventInsideMergerDropZone(e)) return;
+    e.preventDefault();
+    if (e.dataTransfer) {
+      e.dataTransfer.dropEffect = 'copy';
+    }
+  });
+
+  document.addEventListener('drop', async (e) => {
+    if (!dataTransferHasFiles(e.dataTransfer)) return;
+    if (isEventInsideCsvDropZone(e)) return;
+    if (isEventInsideMergerDropZone(e)) return;
+    e.preventDefault();
+    const droppedFiles = Array.from(e.dataTransfer?.files || []);
+    const jsonFile = droppedFiles.find(isJsonFile);
+    if (!jsonFile) {
+      const csvFile = droppedFiles.find(isCsvFile);
+      if (csvFile) {
+        showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn');
+      } else {
+        showMessage('Hier können nur Gruppen als JSON geladen werden.', 'warn');
+      }
+      return;
+    }
+    try {
+      await importPlanFromFile(jsonFile);
+    } catch (err) {
+      reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
+        scope: 'plan-import',
+        source: 'document-drop',
+      });
+    }
+  });
+
+  [els.groupExportPlan].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => downloadSeatPlan());
+  });
+  [els.groupPrintPlan].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => printSeatPlan());
+  });
+  [els.groupImportPlan].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => {
+      void handlePlanImportAction();
+    });
+  });
+  els.importPlanFile.addEventListener('change', async (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try {
+      await importPlanFromFile(file);
+    } catch (err) {
+      reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
+        scope: 'plan-import',
+        source: 'file-input',
+      });
+    } finally {
+      e.target.value = '';
+    }
+  });
+
+  [els.groupSeatPreferences].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => {
+      if (!state.students.length) {
+        showMessage('Importiere zuerst die Namensliste!', 'warn');
+        return;
+      }
+      if (isRandomPickerTabActive()) {
+        buildRandomPickerConditionsTable();
+      } else {
+        buildSeatPreferencesTable();
+      }
+      if (els.preferencesDialog) {
+        if (typeof els.preferencesDialog.showModal === 'function') {
+          els.preferencesDialog.showModal();
         } else {
-          savePreferencesFromForm();
+          els.preferencesDialog.setAttribute('open', 'open');
         }
-        if (els.preferencesDialog) {
-          if (typeof els.preferencesDialog.close === 'function' && els.preferencesDialog.open) {
-            els.preferencesDialog.close();
-          }
-          els.preferencesDialog.removeAttribute('open');
-        }
+        const focusDialog = () => { els.preferencesDialog?.focus({ preventScroll: true }); };
+        if (typeof queueMicrotask === 'function') { queueMicrotask(focusDialog); }
+        else { setTimeout(focusDialog, 0); }
+      }
+    });
+  });
+  els.preferencesForm?.addEventListener('submit', e => {
+    e.preventDefault();
+    if (isRandomPickerTabActive()) {
+      saveRandomPickerConditionsFromForm();
+    } else {
+      savePreferencesFromForm();
+    }
+    if (els.preferencesDialog) {
+      if (typeof els.preferencesDialog.close === 'function' && els.preferencesDialog.open) {
+        els.preferencesDialog.close();
+      }
+      els.preferencesDialog.removeAttribute('open');
+    }
+  });
+  els.preferencesReset?.addEventListener('click', () => {
+    if (!isRandomPickerTabActive()) return;
+    resetRandomPickerConditionsInForm();
+  });
+  els.preferencesTableBody?.addEventListener('change', e => {
+    const target = e.target;
+    if (target instanceof HTMLSelectElement && target.dataset.preference === 'performance-flair') {
+      renderSeatPreferencesPerformanceSummary(readSeatPreferencesDraftFromForm());
+      return;
+    }
+    if (!(target instanceof HTMLInputElement)) return;
+    if (target.dataset.preference !== 'random-weight') return;
+    if (target.checked && target.value === String(RANDOM_PICKER_CERTAIN_WEIGHT)) {
+      const allChoices = els.preferencesTableBody.querySelectorAll('input[type="radio"][data-preference="random-weight"][data-student-id]');
+      allChoices.forEach((input) => {
+        if (!(input instanceof HTMLInputElement)) return;
+        if (input === target) return;
+        if (input.dataset.studentId === target.dataset.studentId) return;
+        input.checked = input.value === String(RANDOM_PICKER_MIN_WEIGHT);
       });
-      els.preferencesReset?.addEventListener('click', () => {
-        if (!isRandomPickerTabActive()) return;
-        resetRandomPickerConditionsInForm();
-      });
-      els.preferencesTableBody?.addEventListener('change', e => {
-        const target = e.target;
-        if (target instanceof HTMLSelectElement && target.dataset.preference === 'performance-flair') {
-          renderSeatPreferencesPerformanceSummary(readSeatPreferencesDraftFromForm());
-          return;
-        }
-        if (!(target instanceof HTMLInputElement)) return;
-        if (target.dataset.preference !== 'random-weight') return;
-        if (target.checked && target.value === String(RANDOM_PICKER_CERTAIN_WEIGHT)) {
-          const allChoices = els.preferencesTableBody.querySelectorAll('input[type="radio"][data-preference="random-weight"][data-student-id]');
-          allChoices.forEach((input) => {
-            if (!(input instanceof HTMLInputElement)) return;
-            if (input === target) return;
-            if (input.dataset.studentId === target.dataset.studentId) return;
-            input.checked = input.value === String(RANDOM_PICKER_MIN_WEIGHT);
-          });
-        }
-        target.checked = true;
-      });
-      els.preferencesPerformanceSummary?.addEventListener('change', (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLInputElement) || target.dataset.performanceFlairCountInput !== '1') return;
-        if (isRandomPickerTabActive()) return;
-        const trimmed = String(target.value || '').trim();
-        const parsed = Number.parseInt(trimmed, 10);
-        if (!/^[0-9]+$/.test(trimmed) || parsed < 2 || parsed > MAX_PERFORMANCE_FLAIR_COUNT) {
-          showMessage(`Bitte eine Zahl zwischen 2 und ${MAX_PERFORMANCE_FLAIR_COUNT} eingeben.`, 'warn');
-          target.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
-          target.focus();
-          target.select();
-          return;
-        }
-        applyPerformanceFlairCount(parsed, readSeatPreferencesDraftFromForm());
-      });
-      els.preferencesCancel?.addEventListener('click', () => {
-        if (els.preferencesDialog) {
-          if (typeof els.preferencesDialog.close === 'function' && els.preferencesDialog.open) {
-            els.preferencesDialog.close();
-          }
-          els.preferencesDialog.removeAttribute('open');
-        }
-      });
-      els.preferencesDialog?.addEventListener('cancel', e => {
-        e.preventDefault();
-        if (typeof els.preferencesDialog?.close === 'function' && els.preferencesDialog.open) {
-          els.preferencesDialog.close();
-        }
-        els.preferencesDialog?.removeAttribute('open');
-      });
+    }
+    target.checked = true;
+  });
+  els.preferencesPerformanceSummary?.addEventListener('change', (event) => {
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement) || target.dataset.performanceFlairCountInput !== '1') return;
+    if (isRandomPickerTabActive()) return;
+    const trimmed = String(target.value || '').trim();
+    const parsed = Number.parseInt(trimmed, 10);
+    if (!/^[0-9]+$/.test(trimmed) || parsed < 2 || parsed > MAX_PERFORMANCE_FLAIR_COUNT) {
+      showMessage(`Bitte eine Zahl zwischen 2 und ${MAX_PERFORMANCE_FLAIR_COUNT} eingeben.`, 'warn');
+      target.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
+      target.focus();
+      target.select();
+      return;
+    }
+    applyPerformanceFlairCount(parsed, readSeatPreferencesDraftFromForm());
+  });
+  els.preferencesCancel?.addEventListener('click', () => {
+    if (els.preferencesDialog) {
+      if (typeof els.preferencesDialog.close === 'function' && els.preferencesDialog.open) {
+        els.preferencesDialog.close();
+      }
+      els.preferencesDialog.removeAttribute('open');
+    }
+  });
+  els.preferencesDialog?.addEventListener('cancel', e => {
+    e.preventDefault();
+    if (typeof els.preferencesDialog?.close === 'function' && els.preferencesDialog.open) {
+      els.preferencesDialog.close();
+    }
+    els.preferencesDialog?.removeAttribute('open');
+  });
 
-      function applyTimerDurationFromInput({ preserveStart = true } = {}) {
-        const duration = parseWorkOrderDuration(els.workOrderDurationInput?.value);
-        SharedTimerStore.setWorkOrder({
-          workOrderText: state.workOrder,
-          durationMinutes: duration,
-          startISO: preserveStart ? state.workOrderStartISO : null,
-        });
-        resetTimerWarningMilestones(null);
-        syncStateFromTimerStore();
-        renderWorkOrder();
-        return duration;
+  function applyTimerDurationFromInput({ preserveStart = true } = {}) {
+    const duration = parseWorkOrderDuration(els.workOrderDurationInput?.value);
+    SharedTimerStore.setWorkOrder({
+      workOrderText: state.workOrder,
+      durationMinutes: duration,
+      startISO: preserveStart ? state.workOrderStartISO : null,
+    });
+    resetTimerWarningMilestones(null);
+    syncStateFromTimerStore();
+    renderWorkOrder();
+    return duration;
+  }
+  function startWorkOrderTimer() {
+    const duration = applyTimerDurationFromInput({ preserveStart: false });
+    if (!duration) {
+      showMessage('Bitte eine Arbeitsdauer festlegen, bevor die Arbeitszeit gestartet wird.', 'warn');
+      return;
+    }
+    SharedTimerStore.setWorkOrder({
+      workOrderText: state.workOrder,
+      durationMinutes: duration,
+      startISO: null,
+    });
+    SharedTimerStore.start(new Date().toISOString());
+    resetTimerWarningMilestones(1);
+    ensureWorkOrderAudioContext({ resume: true });
+    syncStateFromTimerStore();
+    updateWorkOrderAlert(false);
+    renderWorkOrder();
+  }
+  function stopWorkOrderSession() {
+    stopWorkOrderTimer();
+    closeWorkOrderAudioContext();
+    SharedTimerStore.stop();
+    syncStateFromTimerStore();
+    resetTimerWarningMilestones(null);
+    resetWorkOrderTimerDisplay();
+    updateWorkOrderAlert(false);
+    renderWorkOrder();
+  }
+  [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => {
+      startWorkOrderTimer();
+    });
+  });
+  [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => {
+      stopWorkOrderSession();
+    });
+  });
+  const toggleTimerWarningTone = (toneKey) => {
+    if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
+    timerWarningToneEnabled = {
+      ...timerWarningToneEnabled,
+      [toneKey]: !isTimerWarningToneEnabled(toneKey),
+    };
+    renderTimerWarningToneState();
+    if (toneKey === 'end' && !isTimerWarningToneEnabled('end')) {
+      stopWorkOrderAlarmSound();
+      return;
+    }
+    if (toneKey === 'end' && state.workOrderAlarmed) {
+      startWorkOrderAlarmSound();
+    }
+  };
+  els.timerWarningToneButtons?.forEach((button) => {
+    button.addEventListener('click', () => {
+      toggleTimerWarningTone(button.dataset.timerWarningToneToggle);
+    });
+  });
+  const toggleTimerSeconds = () => {
+    timerShowSeconds = !timerShowSeconds;
+    renderTimerSecondsToggleState();
+    renderWorkOrder();
+  };
+  els.timerSecondsToggleButtons?.forEach((button) => {
+    button.addEventListener('click', toggleTimerSeconds);
+  });
+  const saveTimerDurationFromInput = () => {
+    applyTimerDurationFromInput({ preserveStart: true });
+  };
+
+  const adjustTimerDuration = (stepDelta) => {
+    if (!els.workOrderDurationInput) return;
+    const parsedStep = Math.trunc(Number(stepDelta));
+    if (!Number.isFinite(parsedStep) || parsedStep === 0) return;
+    const inputDuration = parseWorkOrderDuration(els.workOrderDurationInput.value);
+    const stateDuration = parseWorkOrderDuration(state.workOrderDurationMinutes);
+    const baseDuration = inputDuration ?? stateDuration ?? 1;
+    const nextDuration = Math.max(1, baseDuration + parsedStep);
+    els.workOrderDurationInput.value = String(nextDuration);
+    applyTimerDurationFromInput({ preserveStart: true });
+  };
+
+  els.workOrderDurationInput?.addEventListener('input', saveTimerDurationFromInput);
+  els.workOrderDurationInput?.addEventListener('change', () => {
+    saveTimerDurationFromInput();
+  });
+  els.workOrderDurationStepButtons?.forEach((button) => {
+    button.addEventListener('click', () => {
+      adjustTimerDuration(button.dataset.durationStep);
+    });
+  });
+  els.chromeToggle?.addEventListener('click', toggleChromeCollapsed);
+  els.chromeOverlayToggle?.addEventListener('click', toggleChromeCollapsed);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!isChromeCollapsed() || getChromeTransitionState() !== 'idle') return;
+    if (document.querySelector('dialog[open]')) return;
+    setChromeCollapsed(false);
+  });
+  const dismissWorkOrderAlarm = () => {
+    if (state.workOrderAlarmed) {
+      updateWorkOrderAlert(false);
+    }
+  };
+  els.workOrderRestClock?.addEventListener('click', dismissWorkOrderAlarm);
+  els.workOrderMeta?.addEventListener('click', dismissWorkOrderAlarm);
+  els.workOrderHintOverlay?.addEventListener('click', dismissWorkOrderAlarm);
+  const saveWorkOrderFromTextarea = () => {
+    const raw = els.workOrderTextarea?.value || '';
+    const normalized = raw.replace(/\s+$/, '');
+    const trimmed = normalized.trim();
+    const nextWorkOrder = trimmed ? normalized : '';
+    SharedTimerStore.setWorkOrder({
+      workOrderText: nextWorkOrder,
+      durationMinutes: state.workOrderDurationMinutes,
+      startISO: state.workOrderStartISO,
+    });
+    syncStateFromTimerStore();
+    renderWorkOrder();
+  };
+  els.workOrderTextarea?.addEventListener('input', saveWorkOrderFromTextarea);
+  els.workOrderTextarea?.addEventListener('change', saveWorkOrderFromTextarea);
+  renderTimerWarningToneState();
+  renderTimerSecondsToggleState();
+  const MonitorModule = (() => {
+    const WARNING_TONES = Object.freeze({
+      yellow: {
+        intervalMs: 1200,
+        pulses: [
+          { frequency: 1480, gain: 0.085, durationMs: 170, offsetMs: 0, type: 'triangle' },
+          { frequency: 1320, gain: 0.075, durationMs: 150, offsetMs: 180, type: 'triangle' },
+        ],
+      },
+      red: {
+        intervalMs: 520,
+        pulses: [
+          { frequency: 900, gain: 0.15, durationMs: 130, offsetMs: 0, type: 'square' },
+          { frequency: 700, gain: 0.14, durationMs: 130, offsetMs: 145, type: 'square' },
+          { frequency: 900, gain: 0.15, durationMs: 130, offsetMs: 290, type: 'square' },
+        ],
+      },
+    });
+    const AVERAGE_WINDOW_MS = 2000;
+    const DB_FLOOR = 30;
+    const DB_CEILING = 100;
+    const DB_OFFSET = 90;
+    const DEFAULT_THRESHOLDS = Object.freeze({ yellow: 60, red: 70 });
+    const MIN_THRESHOLD_GAP = 1;
+    const MONITOR_ASSIGNMENT_PLACEHOLDER = 'Arbeitsauftrag';
+
+    let thresholds = { ...DEFAULT_THRESHOLDS };
+    let audioContext;
+    let analyser;
+    let source;
+    let stream;
+    let rafId;
+    let running = false;
+    let starting = false;
+    let windowStartMs = 0;
+    let windowLevelSum = 0;
+    let windowSampleCount = 0;
+    let currentLightColor = null;
+    let warningToneEnabled = { yellow: true, red: true };
+    let warningToneTimerId;
+    let warningToneLoopToken = 0;
+    let monitorTickId;
+    let micUiState = MIC_UI_STATE.READY;
+    let micUiDetail = '';
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+
+    const formatTimerText = (timerState) => {
+      const duration = parseWorkOrderDuration(timerState.durationMinutes);
+      if (!duration) return getTimerPlaceholder();
+      if (!timerState.startISO) return formatDurationHMS(duration);
+      const startMs = Date.parse(timerState.startISO);
+      if (!Number.isFinite(startMs)) return formatDurationHMS(duration);
+      const remaining = Math.max(0, (startMs + duration * 60000) - Date.now());
+      return formatRemainingDuration(remaining);
+    };
+
+    const updateTimerColor = (timerState) => {
+      if (!els.monitorCountdownDisplay) return;
+      const duration = parseWorkOrderDuration(timerState.durationMinutes);
+      if (!duration || !timerState.startISO) {
+        els.monitorCountdownDisplay.style.color = 'var(--text)';
+        return;
       }
-      function startWorkOrderTimer() {
-        const duration = applyTimerDurationFromInput({ preserveStart: false });
-        if (!duration) {
-          showMessage('Bitte eine Arbeitsdauer festlegen, bevor die Arbeitszeit gestartet wird.', 'warn');
+      const startMs = Date.parse(timerState.startISO);
+      if (!Number.isFinite(startMs)) {
+        els.monitorCountdownDisplay.style.color = 'var(--text)';
+        return;
+      }
+      const endMs = startMs + duration * 60000;
+      const remaining = Math.max(0, endMs - Date.now());
+      const progress = Math.max(0, Math.min(1, remaining / (duration * 60000)));
+      const hue = Math.round(120 * progress);
+      els.monitorCountdownDisplay.style.color = `hsl(${hue} 85% 58%)`;
+    };
+
+    const renderTimer = () => {
+      const timerState = SharedTimerStore.getState();
+      if (els.monitorCountdownDisplay) {
+        els.monitorCountdownDisplay.textContent = formatTimerText(timerState);
+      }
+      updateTimerColor(timerState);
+      if (els.monitorAssignmentDisplay) {
+        const text = typeof timerState.workOrderText === 'string' ? timerState.workOrderText : '';
+        const hasText = text.trim().length > 0;
+        els.monitorAssignmentDisplay.textContent = hasText ? text : MONITOR_ASSIGNMENT_PLACEHOLDER;
+        els.monitorAssignmentDisplay.classList.toggle('is-placeholder', !hasText);
+      }
+    };
+
+    const toEstimatedDb = (rms) => {
+      if (rms <= 0) return DB_FLOOR;
+      const dbFs = 20 * Math.log10(rms);
+      const estimatedDb = dbFs + DB_OFFSET;
+      return Math.round(Math.max(DB_FLOOR, Math.min(DB_CEILING, estimatedDb)));
+    };
+
+    const setActiveLight = (color) => {
+      const nextColor = color || null;
+      const colorChanged = currentLightColor !== nextColor;
+      currentLightColor = nextColor;
+      Object.entries(monitorLights).forEach(([key, element]) => {
+        if (element) {
+          element.classList.toggle('active', key === color);
+        }
+      });
+      if (colorChanged) {
+        syncWarningToneLoop();
+      }
+      if (els.monitorShell) {
+        els.monitorShell.classList.toggle('monitor-warning-yellow', nextColor === 'yellow');
+        els.monitorShell.classList.toggle('monitor-warning-red', nextColor === 'red');
+      }
+    };
+
+    const classifyLevel = (level) => {
+      if (level >= thresholds.red) return 'red';
+      if (level >= thresholds.yellow) return 'yellow';
+      return 'green';
+    };
+
+    const resetAverageWindow = () => {
+      windowStartMs = performance.now();
+      windowLevelSum = 0;
+      windowSampleCount = 0;
+    };
+
+    const playTonePulse = ({ frequency, gain, durationMs, offsetMs, type = 'sine' }) => {
+      if (!audioContext) return;
+      const startTime = audioContext.currentTime + offsetMs / 1000;
+      const endTime = startTime + durationMs / 1000;
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      oscillator.type = type;
+      oscillator.frequency.setValueAtTime(frequency, startTime);
+      gainNode.gain.setValueAtTime(0.0001, startTime);
+      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.012);
+      gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      oscillator.start(startTime);
+      oscillator.stop(endTime + 0.015);
+      oscillator.onended = () => {
+        oscillator.disconnect();
+        gainNode.disconnect();
+      };
+    };
+
+    const playWarningTone = async (color) => {
+      if (!audioContext) return;
+      const config = WARNING_TONES[color];
+      if (!config) return;
+      if (audioContext.state === 'suspended') {
+        try {
+          await audioContext.resume();
+        } catch {
           return;
         }
-        SharedTimerStore.setWorkOrder({
-          workOrderText: state.workOrder,
-          durationMinutes: duration,
-          startISO: null,
-        });
-        SharedTimerStore.start(new Date().toISOString());
-        resetTimerWarningMilestones(1);
-        ensureWorkOrderAudioContext({ resume: true });
-        syncStateFromTimerStore();
-        updateWorkOrderAlert(false);
-        renderWorkOrder();
       }
-      function stopWorkOrderSession() {
-        stopWorkOrderTimer();
-        closeWorkOrderAudioContext();
-        SharedTimerStore.stop();
-        syncStateFromTimerStore();
-        resetTimerWarningMilestones(null);
-        resetWorkOrderTimerDisplay();
-        updateWorkOrderAlert(false);
-        renderWorkOrder();
+      config.pulses.forEach(playTonePulse);
+    };
+
+    const stopWarningToneLoop = () => {
+      warningToneLoopToken += 1;
+      if (warningToneTimerId) {
+        window.clearTimeout(warningToneTimerId);
+        warningToneTimerId = undefined;
       }
-      [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          startWorkOrderTimer();
-        });
+    };
+
+    const isWarningToneEnabled = (toneKey) => {
+      if (toneKey !== 'yellow' && toneKey !== 'red') return false;
+      return Boolean(warningToneEnabled[toneKey]);
+    };
+
+    const getWarningToneLabel = (toneKey) => {
+      const toneName = toneKey === 'red' ? 'Rot' : 'Gelb';
+      return `Warnton ${toneName}`;
+    };
+
+    const renderWarningToneState = () => {
+      els.monitorWarningToneButtons?.forEach((button) => {
+        const toneKey = button.dataset.monitorWarningToneToggle;
+        if (toneKey !== 'yellow' && toneKey !== 'red') return;
+        const label = getWarningToneLabel(toneKey);
+        button.setAttribute('aria-checked', String(isWarningToneEnabled(toneKey)));
+        button.setAttribute('aria-label', label);
+        button.setAttribute('title', label);
       });
-      [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          stopWorkOrderSession();
-        });
+      els.monitorWarningToneLabels?.forEach((labelElement) => {
+        const toneKey = labelElement.dataset.monitorWarningToneLabel;
+        if (toneKey !== 'yellow' && toneKey !== 'red') return;
+        labelElement.textContent = getWarningToneLabel(toneKey);
       });
-      const toggleTimerWarningTone = (toneKey) => {
-        if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
-        timerWarningToneEnabled = {
-          ...timerWarningToneEnabled,
-          [toneKey]: !isTimerWarningToneEnabled(toneKey),
+    };
+
+    const isMicSupported = () => Boolean(
+      navigator.mediaDevices
+      && navigator.mediaDevices.getUserMedia
+      && AudioContextClass
+    );
+
+    const setMicUiState = (nextState, detail = '') => {
+      micUiState = nextState;
+      micUiDetail = typeof detail === 'string' ? detail.trim() : '';
+      renderMicControlState();
+    };
+
+    const getEffectiveMicUiState = () => {
+      if (!isMicSupported()) return MIC_UI_STATE.UNSUPPORTED;
+      if (starting) return MIC_UI_STATE.STARTING;
+      if (running) return MIC_UI_STATE.ACTIVE;
+      return micUiState === MIC_UI_STATE.ERROR ? MIC_UI_STATE.ERROR : MIC_UI_STATE.READY;
+    };
+
+    const getMicStatusText = (stateKey) => {
+      if (stateKey === MIC_UI_STATE.STARTING) return 'Status: startet...';
+      if (stateKey === MIC_UI_STATE.ACTIVE) return 'Status: aktiv';
+      if (stateKey === MIC_UI_STATE.UNSUPPORTED) return 'Status: nicht-unterstützt';
+      if (stateKey === MIC_UI_STATE.ERROR) {
+        return micUiDetail ? `Status: fehler (${micUiDetail})` : 'Status: fehler';
+      }
+      return 'Status: bereit';
+    };
+
+    const renderMicControlState = () => {
+      const effectiveState = getEffectiveMicUiState();
+      const activeMic = effectiveState === MIC_UI_STATE.ACTIVE;
+      const busyMic = effectiveState === MIC_UI_STATE.STARTING;
+      const unsupportedMic = effectiveState === MIC_UI_STATE.UNSUPPORTED;
+      const startButtons = [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean);
+      const stopButtons = [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean);
+      startButtons.forEach((button) => {
+        button.textContent = '🚦';
+        button.classList.toggle('is-running', false);
+        button.classList.toggle('is-off', false);
+        button.disabled = unsupportedMic || busyMic || activeMic;
+        button.setAttribute('aria-label', 'Lautstärkeüberwachung starten');
+        button.setAttribute('title', 'Lautstärkeüberwachung starten');
+      });
+      stopButtons.forEach((button) => {
+        button.textContent = '🚦';
+        button.classList.toggle('is-running', activeMic);
+        button.classList.toggle('is-off', true);
+        button.disabled = unsupportedMic || busyMic || !activeMic;
+        button.setAttribute('aria-label', 'Lautstärkeüberwachung stoppen');
+        button.setAttribute('title', 'Lautstärkeüberwachung stoppen');
+      });
+      renderControlStatus(els.monitorControlStatus, effectiveState, getMicStatusText(effectiveState));
+    };
+
+    const syncWarningToneLoop = () => {
+      stopWarningToneLoop();
+      if (currentLightColor !== 'yellow' && currentLightColor !== 'red') {
+        return;
+      }
+      if (!isWarningToneEnabled(currentLightColor)) {
+        return;
+      }
+      const loopToken = warningToneLoopToken;
+      const loop = async () => {
+        if (loopToken !== warningToneLoopToken) return;
+        if (currentLightColor !== 'yellow' && currentLightColor !== 'red') return;
+        if (!isWarningToneEnabled(currentLightColor)) return;
+        const config = WARNING_TONES[currentLightColor];
+        if (!config) return;
+        await playWarningTone(currentLightColor);
+        if (loopToken !== warningToneLoopToken) return;
+        if (currentLightColor !== 'yellow' && currentLightColor !== 'red') return;
+        if (!isWarningToneEnabled(currentLightColor)) return;
+        warningToneTimerId = window.setTimeout(loop, config.intervalMs);
+      };
+      void loop();
+    };
+
+    const clampThresholdValue = (value, min, max, fallback) => {
+      const parsed = Math.round(Number(value));
+      if (!Number.isFinite(parsed)) return fallback;
+      return Math.min(Math.max(parsed, min), max);
+    };
+
+    const renderThresholdControls = () => {
+      if (els.monitorYellowThresholdInput) {
+        els.monitorYellowThresholdInput.value = String(thresholds.yellow);
+      }
+      if (els.monitorRedThresholdInput) {
+        els.monitorRedThresholdInput.value = String(thresholds.red);
+      }
+      if (els.monitorYellowThresholdValue) {
+        els.monitorYellowThresholdValue.textContent = `${thresholds.yellow} dB`;
+      }
+      if (els.monitorRedThresholdValue) {
+        els.monitorRedThresholdValue.textContent = `${thresholds.red} dB`;
+      }
+    };
+
+    const setMonitorThreshold = (thresholdKey, value) => {
+      if (thresholdKey === 'yellow') {
+        const yellow = clampThresholdValue(value, DB_FLOOR, DB_CEILING - MIN_THRESHOLD_GAP, DEFAULT_THRESHOLDS.yellow);
+        thresholds = {
+          yellow,
+          red: Math.max(thresholds.red, yellow + MIN_THRESHOLD_GAP),
         };
-        renderTimerWarningToneState();
-        if (toneKey === 'end' && !isTimerWarningToneEnabled('end')) {
-          stopWorkOrderAlarmSound();
-          return;
-        }
-        if (toneKey === 'end' && state.workOrderAlarmed) {
-          startWorkOrderAlarmSound();
-        }
-      };
-      els.timerWarningToneButtons?.forEach((button) => {
-        button.addEventListener('click', () => {
-          toggleTimerWarningTone(button.dataset.timerWarningToneToggle);
-        });
-      });
-      const toggleTimerSeconds = () => {
-        timerShowSeconds = !timerShowSeconds;
-        renderTimerSecondsToggleState();
-        renderWorkOrder();
-      };
-      els.timerSecondsToggleButtons?.forEach((button) => {
-        button.addEventListener('click', toggleTimerSeconds);
-      });
-      const saveTimerDurationFromInput = () => {
-        applyTimerDurationFromInput({ preserveStart: true });
-      };
-
-      const adjustTimerDuration = (stepDelta) => {
-        if (!els.workOrderDurationInput) return;
-        const parsedStep = Math.trunc(Number(stepDelta));
-        if (!Number.isFinite(parsedStep) || parsedStep === 0) return;
-        const inputDuration = parseWorkOrderDuration(els.workOrderDurationInput.value);
-        const stateDuration = parseWorkOrderDuration(state.workOrderDurationMinutes);
-        const baseDuration = inputDuration ?? stateDuration ?? 1;
-        const nextDuration = Math.max(1, baseDuration + parsedStep);
-        els.workOrderDurationInput.value = String(nextDuration);
-        applyTimerDurationFromInput({ preserveStart: true });
-      };
-
-      els.workOrderDurationInput?.addEventListener('input', saveTimerDurationFromInput);
-      els.workOrderDurationInput?.addEventListener('change', () => {
-        saveTimerDurationFromInput();
-      });
-      els.workOrderDurationStepButtons?.forEach((button) => {
-        button.addEventListener('click', () => {
-          adjustTimerDuration(button.dataset.durationStep);
-        });
-      });
-      els.chromeToggle?.addEventListener('click', toggleChromeCollapsed);
-      els.chromeOverlayToggle?.addEventListener('click', toggleChromeCollapsed);
-      document.addEventListener('keydown', (event) => {
-        if (event.key !== 'Escape') return;
-        if (!isChromeCollapsed() || getChromeTransitionState() !== 'idle') return;
-        if (document.querySelector('dialog[open]')) return;
-        setChromeCollapsed(false);
-      });
-      const dismissWorkOrderAlarm = () => {
-        if (state.workOrderAlarmed) {
-          updateWorkOrderAlert(false);
-        }
-      };
-      els.workOrderRestClock?.addEventListener('click', dismissWorkOrderAlarm);
-      els.workOrderMeta?.addEventListener('click', dismissWorkOrderAlarm);
-      els.workOrderHintOverlay?.addEventListener('click', dismissWorkOrderAlarm);
-      const saveWorkOrderFromTextarea = () => {
-        const raw = els.workOrderTextarea?.value || '';
-        const normalized = raw.replace(/\s+$/, '');
-        const trimmed = normalized.trim();
-        const nextWorkOrder = trimmed ? normalized : '';
-        SharedTimerStore.setWorkOrder({
-          workOrderText: nextWorkOrder,
-          durationMinutes: state.workOrderDurationMinutes,
-          startISO: state.workOrderStartISO,
-        });
-        syncStateFromTimerStore();
-        renderWorkOrder();
-      };
-      els.workOrderTextarea?.addEventListener('input', saveWorkOrderFromTextarea);
-      els.workOrderTextarea?.addEventListener('change', saveWorkOrderFromTextarea);
-      renderTimerWarningToneState();
-      renderTimerSecondsToggleState();
-      const MonitorModule = (() => {
-        const WARNING_TONES = Object.freeze({
-          yellow: {
-            intervalMs: 1200,
-            pulses: [
-              { frequency: 1480, gain: 0.085, durationMs: 170, offsetMs: 0, type: 'triangle' },
-              { frequency: 1320, gain: 0.075, durationMs: 150, offsetMs: 180, type: 'triangle' },
-            ],
-          },
-          red: {
-            intervalMs: 520,
-            pulses: [
-              { frequency: 900, gain: 0.15, durationMs: 130, offsetMs: 0, type: 'square' },
-              { frequency: 700, gain: 0.14, durationMs: 130, offsetMs: 145, type: 'square' },
-              { frequency: 900, gain: 0.15, durationMs: 130, offsetMs: 290, type: 'square' },
-            ],
-          },
-        });
-        const AVERAGE_WINDOW_MS = 2000;
-        const DB_FLOOR = 30;
-        const DB_CEILING = 100;
-        const DB_OFFSET = 90;
-        const DEFAULT_THRESHOLDS = Object.freeze({ yellow: 60, red: 70 });
-        const MIN_THRESHOLD_GAP = 1;
-        const MONITOR_ASSIGNMENT_PLACEHOLDER = 'Arbeitsauftrag';
-
-        let thresholds = { ...DEFAULT_THRESHOLDS };
-        let audioContext;
-        let analyser;
-        let source;
-        let stream;
-        let rafId;
-        let running = false;
-        let starting = false;
-        let windowStartMs = 0;
-        let windowLevelSum = 0;
-        let windowSampleCount = 0;
-        let currentLightColor = null;
-        let warningToneEnabled = { yellow: true, red: true };
-        let warningToneTimerId;
-        let warningToneLoopToken = 0;
-        let monitorTickId;
-        let micUiState = MIC_UI_STATE.READY;
-        let micUiDetail = '';
-        const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-
-        const formatTimerText = (timerState) => {
-          const duration = parseWorkOrderDuration(timerState.durationMinutes);
-          if (!duration) return getTimerPlaceholder();
-          if (!timerState.startISO) return formatDurationHMS(duration);
-          const startMs = Date.parse(timerState.startISO);
-          if (!Number.isFinite(startMs)) return formatDurationHMS(duration);
-          const remaining = Math.max(0, (startMs + duration * 60000) - Date.now());
-          return formatRemainingDuration(remaining);
+      } else if (thresholdKey === 'red') {
+        const red = clampThresholdValue(value, DB_FLOOR + MIN_THRESHOLD_GAP, DB_CEILING, DEFAULT_THRESHOLDS.red);
+        thresholds = {
+          yellow: Math.min(thresholds.yellow, red - MIN_THRESHOLD_GAP),
+          red,
         };
+      }
+      renderThresholdControls();
+    };
 
-        const updateTimerColor = (timerState) => {
-          if (!els.monitorCountdownDisplay) return;
-          const duration = parseWorkOrderDuration(timerState.durationMinutes);
-          if (!duration || !timerState.startISO) {
-            els.monitorCountdownDisplay.style.color = 'var(--text)';
+    const monitorLevel = () => {
+      if (!analyser || !running) return;
+      const data = new Uint8Array(analyser.fftSize);
+      analyser.getByteTimeDomainData(data);
+      let sumSquares = 0;
+      for (const sample of data) {
+        const normalized = (sample - 128) / 128;
+        sumSquares += normalized * normalized;
+      }
+      const rms = Math.sqrt(sumSquares / data.length);
+      const level = toEstimatedDb(rms);
+      const now = performance.now();
+      windowLevelSum += level;
+      windowSampleCount += 1;
+      if ((now - windowStartMs) >= AVERAGE_WINDOW_MS && windowSampleCount > 0) {
+        const avg = Math.round(windowLevelSum / windowSampleCount);
+        setActiveLight(classifyLevel(avg));
+        windowStartMs = now;
+        windowLevelSum = 0;
+        windowSampleCount = 0;
+      }
+      rafId = requestAnimationFrame(monitorLevel);
+    };
+
+    const stopMeasurement = async ({ silent = false } = {}) => {
+      stopWarningToneLoop();
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      try {
+        source?.disconnect?.();
+      } catch { }
+      try {
+        analyser?.disconnect?.();
+      } catch { }
+      if (stream) {
+        stream.getTracks().forEach((track) => {
+          try {
+            track.stop();
+          } catch { }
+        });
+      }
+      stream = null;
+      source = null;
+      analyser = null;
+      if (audioContext) {
+        try {
+          await audioContext.close();
+        } catch { }
+      }
+      audioContext = null;
+      running = false;
+      starting = false;
+      resetAverageWindow();
+      setActiveLight(null);
+      setMicUiState(MIC_UI_STATE.READY, silent ? '' : 'gestoppt');
+    };
+
+    const startMeasurement = async () => {
+      if (running || starting) return;
+      if (!isMicSupported()) {
+        setMicUiState(MIC_UI_STATE.UNSUPPORTED);
+        setActiveLight(null);
+        return;
+      }
+      if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
+        try {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const hasAudioInput = Array.isArray(devices) && devices.some((device) => device?.kind === 'audioinput');
+          if (!hasAudioInput) {
+            setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
+            showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn');
+            setActiveLight(null);
             return;
           }
-          const startMs = Date.parse(timerState.startISO);
-          if (!Number.isFinite(startMs)) {
-            els.monitorCountdownDisplay.style.color = 'var(--text)';
-            return;
-          }
-          const endMs = startMs + duration * 60000;
-          const remaining = Math.max(0, endMs - Date.now());
-          const progress = Math.max(0, Math.min(1, remaining / (duration * 60000)));
-          const hue = Math.round(120 * progress);
-          els.monitorCountdownDisplay.style.color = `hsl(${hue} 85% 58%)`;
-        };
-
-        const renderTimer = () => {
-          const timerState = SharedTimerStore.getState();
-          if (els.monitorCountdownDisplay) {
-            els.monitorCountdownDisplay.textContent = formatTimerText(timerState);
-          }
-          updateTimerColor(timerState);
-          if (els.monitorAssignmentDisplay) {
-            const text = typeof timerState.workOrderText === 'string' ? timerState.workOrderText : '';
-            const hasText = text.trim().length > 0;
-            els.monitorAssignmentDisplay.textContent = hasText ? text : MONITOR_ASSIGNMENT_PLACEHOLDER;
-            els.monitorAssignmentDisplay.classList.toggle('is-placeholder', !hasText);
-          }
-        };
-
-        const toEstimatedDb = (rms) => {
-          if (rms <= 0) return DB_FLOOR;
-          const dbFs = 20 * Math.log10(rms);
-          const estimatedDb = dbFs + DB_OFFSET;
-          return Math.round(Math.max(DB_FLOOR, Math.min(DB_CEILING, estimatedDb)));
-        };
-
-        const setActiveLight = (color) => {
-          const nextColor = color || null;
-          const colorChanged = currentLightColor !== nextColor;
-          currentLightColor = nextColor;
-          Object.entries(monitorLights).forEach(([key, element]) => {
-            if (element) {
-              element.classList.toggle('active', key === color);
-            }
-          });
-          if (colorChanged) {
-            syncWarningToneLoop();
-          }
-          if (els.monitorShell) {
-            els.monitorShell.classList.toggle('monitor-warning-yellow', nextColor === 'yellow');
-            els.monitorShell.classList.toggle('monitor-warning-red', nextColor === 'red');
-          }
-        };
-
-        const classifyLevel = (level) => {
-          if (level >= thresholds.red) return 'red';
-          if (level >= thresholds.yellow) return 'yellow';
-          return 'green';
-        };
-
-        const resetAverageWindow = () => {
-          windowStartMs = performance.now();
-          windowLevelSum = 0;
-          windowSampleCount = 0;
-        };
-
-        const playTonePulse = ({ frequency, gain, durationMs, offsetMs, type = 'sine' }) => {
-          if (!audioContext) return;
-          const startTime = audioContext.currentTime + offsetMs / 1000;
-          const endTime = startTime + durationMs / 1000;
-          const oscillator = audioContext.createOscillator();
-          const gainNode = audioContext.createGain();
-          oscillator.type = type;
-          oscillator.frequency.setValueAtTime(frequency, startTime);
-          gainNode.gain.setValueAtTime(0.0001, startTime);
-          gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.012);
-          gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-          oscillator.connect(gainNode);
-          gainNode.connect(audioContext.destination);
-          oscillator.start(startTime);
-          oscillator.stop(endTime + 0.015);
-          oscillator.onended = () => {
-            oscillator.disconnect();
-            gainNode.disconnect();
-          };
-        };
-
-        const playWarningTone = async (color) => {
-          if (!audioContext) return;
-          const config = WARNING_TONES[color];
-          if (!config) return;
-          if (audioContext.state === 'suspended') {
-            try {
-              await audioContext.resume();
-            } catch {
-              return;
-            }
-          }
-          config.pulses.forEach(playTonePulse);
-        };
-
-        const stopWarningToneLoop = () => {
-          warningToneLoopToken += 1;
-          if (warningToneTimerId) {
-            window.clearTimeout(warningToneTimerId);
-            warningToneTimerId = undefined;
-          }
-        };
-
-        const isWarningToneEnabled = (toneKey) => {
-          if (toneKey !== 'yellow' && toneKey !== 'red') return false;
-          return Boolean(warningToneEnabled[toneKey]);
-        };
-
-        const getWarningToneLabel = (toneKey) => {
-          const toneName = toneKey === 'red' ? 'Rot' : 'Gelb';
-          return `Warnton ${toneName}`;
-        };
-
-        const renderWarningToneState = () => {
-          els.monitorWarningToneButtons?.forEach((button) => {
-            const toneKey = button.dataset.monitorWarningToneToggle;
-            if (toneKey !== 'yellow' && toneKey !== 'red') return;
-            const label = getWarningToneLabel(toneKey);
-            button.setAttribute('aria-checked', String(isWarningToneEnabled(toneKey)));
-            button.setAttribute('aria-label', label);
-            button.setAttribute('title', label);
-          });
-          els.monitorWarningToneLabels?.forEach((labelElement) => {
-            const toneKey = labelElement.dataset.monitorWarningToneLabel;
-            if (toneKey !== 'yellow' && toneKey !== 'red') return;
-            labelElement.textContent = getWarningToneLabel(toneKey);
-          });
-        };
-
-        const isMicSupported = () => Boolean(
-          navigator.mediaDevices
-          && navigator.mediaDevices.getUserMedia
-          && AudioContextClass
+        } catch {
+          // Falls Browser die Geräteauflistung blockiert, später auf getUserMedia-Fehlerfall gehen.
+        }
+      }
+      starting = true;
+      setMicUiState(MIC_UI_STATE.STARTING);
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
+          },
+        });
+        audioContext = new AudioContextClass();
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 2048;
+        analyser.smoothingTimeConstant = 0.8;
+        source = audioContext.createMediaStreamSource(stream);
+        source.connect(analyser);
+        running = true;
+        setActiveLight(null);
+        resetAverageWindow();
+        monitorLevel();
+        setMicUiState(MIC_UI_STATE.ACTIVE);
+      } catch (error) {
+        setActiveLight(null);
+        const errorName = typeof error?.name === 'string' ? error.name : '';
+        const errorMessage = typeof error?.message === 'string' ? error.message : '';
+        const noMicFound = (
+          errorName === 'NotFoundError'
+          || errorName === 'DevicesNotFoundError'
+          || /no\s+audio\s+input|no\s+input\s+device|device.*not\s*found|kein.*mikrofon/i.test(errorMessage)
         );
-
-        const setMicUiState = (nextState, detail = '') => {
-          micUiState = nextState;
-          micUiDetail = typeof detail === 'string' ? detail.trim() : '';
-          renderMicControlState();
-        };
-
-        const getEffectiveMicUiState = () => {
-          if (!isMicSupported()) return MIC_UI_STATE.UNSUPPORTED;
-          if (starting) return MIC_UI_STATE.STARTING;
-          if (running) return MIC_UI_STATE.ACTIVE;
-          return micUiState === MIC_UI_STATE.ERROR ? MIC_UI_STATE.ERROR : MIC_UI_STATE.READY;
-        };
-
-        const getMicStatusText = (stateKey) => {
-          if (stateKey === MIC_UI_STATE.STARTING) return 'Status: startet...';
-          if (stateKey === MIC_UI_STATE.ACTIVE) return 'Status: aktiv';
-          if (stateKey === MIC_UI_STATE.UNSUPPORTED) return 'Status: nicht-unterstützt';
-          if (stateKey === MIC_UI_STATE.ERROR) {
-            return micUiDetail ? `Status: fehler (${micUiDetail})` : 'Status: fehler';
-          }
-          return 'Status: bereit';
-        };
-
-        const renderMicControlState = () => {
-          const effectiveState = getEffectiveMicUiState();
-          const activeMic = effectiveState === MIC_UI_STATE.ACTIVE;
-          const busyMic = effectiveState === MIC_UI_STATE.STARTING;
-          const unsupportedMic = effectiveState === MIC_UI_STATE.UNSUPPORTED;
-          const startButtons = [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean);
-          const stopButtons = [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean);
-          startButtons.forEach((button) => {
-            button.textContent = '🚦';
-            button.classList.toggle('is-running', false);
-            button.classList.toggle('is-off', false);
-            button.disabled = unsupportedMic || busyMic || activeMic;
-            button.setAttribute('aria-label', 'Lautstärkeüberwachung starten');
-            button.setAttribute('title', 'Lautstärkeüberwachung starten');
-          });
-          stopButtons.forEach((button) => {
-            button.textContent = '🚦';
-            button.classList.toggle('is-running', activeMic);
-            button.classList.toggle('is-off', true);
-            button.disabled = unsupportedMic || busyMic || !activeMic;
-            button.setAttribute('aria-label', 'Lautstärkeüberwachung stoppen');
-            button.setAttribute('title', 'Lautstärkeüberwachung stoppen');
-          });
-          renderControlStatus(els.monitorControlStatus, effectiveState, getMicStatusText(effectiveState));
-        };
-
-        const syncWarningToneLoop = () => {
-          stopWarningToneLoop();
-          if (currentLightColor !== 'yellow' && currentLightColor !== 'red') {
-            return;
-          }
-          if (!isWarningToneEnabled(currentLightColor)) {
-            return;
-          }
-          const loopToken = warningToneLoopToken;
-          const loop = async () => {
-            if (loopToken !== warningToneLoopToken) return;
-            if (currentLightColor !== 'yellow' && currentLightColor !== 'red') return;
-            if (!isWarningToneEnabled(currentLightColor)) return;
-            const config = WARNING_TONES[currentLightColor];
-            if (!config) return;
-            await playWarningTone(currentLightColor);
-            if (loopToken !== warningToneLoopToken) return;
-            if (currentLightColor !== 'yellow' && currentLightColor !== 'red') return;
-            if (!isWarningToneEnabled(currentLightColor)) return;
-            warningToneTimerId = window.setTimeout(loop, config.intervalMs);
-          };
-          void loop();
-        };
-
-        const clampThresholdValue = (value, min, max, fallback) => {
-          const parsed = Math.round(Number(value));
-          if (!Number.isFinite(parsed)) return fallback;
-          return Math.min(Math.max(parsed, min), max);
-        };
-
-        const renderThresholdControls = () => {
-          if (els.monitorYellowThresholdInput) {
-            els.monitorYellowThresholdInput.value = String(thresholds.yellow);
-          }
-          if (els.monitorRedThresholdInput) {
-            els.monitorRedThresholdInput.value = String(thresholds.red);
-          }
-          if (els.monitorYellowThresholdValue) {
-            els.monitorYellowThresholdValue.textContent = `${thresholds.yellow} dB`;
-          }
-          if (els.monitorRedThresholdValue) {
-            els.monitorRedThresholdValue.textContent = `${thresholds.red} dB`;
-          }
-        };
-
-        const setMonitorThreshold = (thresholdKey, value) => {
-          if (thresholdKey === 'yellow') {
-            const yellow = clampThresholdValue(value, DB_FLOOR, DB_CEILING - MIN_THRESHOLD_GAP, DEFAULT_THRESHOLDS.yellow);
-            thresholds = {
-              yellow,
-              red: Math.max(thresholds.red, yellow + MIN_THRESHOLD_GAP),
-            };
-          } else if (thresholdKey === 'red') {
-            const red = clampThresholdValue(value, DB_FLOOR + MIN_THRESHOLD_GAP, DB_CEILING, DEFAULT_THRESHOLDS.red);
-            thresholds = {
-              yellow: Math.min(thresholds.yellow, red - MIN_THRESHOLD_GAP),
-              red,
-            };
-          }
-          renderThresholdControls();
-        };
-
-        const monitorLevel = () => {
-          if (!analyser || !running) return;
-          const data = new Uint8Array(analyser.fftSize);
-          analyser.getByteTimeDomainData(data);
-          let sumSquares = 0;
-          for (const sample of data) {
-            const normalized = (sample - 128) / 128;
-            sumSquares += normalized * normalized;
-          }
-          const rms = Math.sqrt(sumSquares / data.length);
-          const level = toEstimatedDb(rms);
-          const now = performance.now();
-          windowLevelSum += level;
-          windowSampleCount += 1;
-          if ((now - windowStartMs) >= AVERAGE_WINDOW_MS && windowSampleCount > 0) {
-            const avg = Math.round(windowLevelSum / windowSampleCount);
-            setActiveLight(classifyLevel(avg));
-            windowStartMs = now;
-            windowLevelSum = 0;
-            windowSampleCount = 0;
-          }
-          rafId = requestAnimationFrame(monitorLevel);
-        };
-
-        const stopMeasurement = async ({ silent = false } = {}) => {
-          stopWarningToneLoop();
-          if (rafId) {
-            cancelAnimationFrame(rafId);
-            rafId = null;
-          }
-          try {
-            source?.disconnect?.();
-          } catch { }
-          try {
-            analyser?.disconnect?.();
-          } catch { }
-          if (stream) {
-            stream.getTracks().forEach((track) => {
-              try {
-                track.stop();
-              } catch { }
-            });
-          }
-          stream = null;
-          source = null;
-          analyser = null;
-          if (audioContext) {
-            try {
-              await audioContext.close();
-            } catch { }
-          }
-          audioContext = null;
-          running = false;
-          starting = false;
-          resetAverageWindow();
-          setActiveLight(null);
-          setMicUiState(MIC_UI_STATE.READY, silent ? '' : 'gestoppt');
-        };
-
-        const startMeasurement = async () => {
-          if (running || starting) return;
-          if (!isMicSupported()) {
-            setMicUiState(MIC_UI_STATE.UNSUPPORTED);
-            setActiveLight(null);
-            return;
-          }
-          if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
-            try {
-              const devices = await navigator.mediaDevices.enumerateDevices();
-              const hasAudioInput = Array.isArray(devices) && devices.some((device) => device?.kind === 'audioinput');
-              if (!hasAudioInput) {
-                setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
-                showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn');
-                setActiveLight(null);
-                return;
-              }
-            } catch {
-              // Falls Browser die Geräteauflistung blockiert, später auf getUserMedia-Fehlerfall gehen.
-            }
-          }
-          starting = true;
-          setMicUiState(MIC_UI_STATE.STARTING);
-          try {
-            stream = await navigator.mediaDevices.getUserMedia({
-              audio: {
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-              },
-            });
-            audioContext = new AudioContextClass();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 2048;
-            analyser.smoothingTimeConstant = 0.8;
-            source = audioContext.createMediaStreamSource(stream);
-            source.connect(analyser);
-            running = true;
-            setActiveLight(null);
-            resetAverageWindow();
-            monitorLevel();
-            setMicUiState(MIC_UI_STATE.ACTIVE);
-          } catch (error) {
-            setActiveLight(null);
-            const errorName = typeof error?.name === 'string' ? error.name : '';
-            const errorMessage = typeof error?.message === 'string' ? error.message : '';
-            const noMicFound = (
-              errorName === 'NotFoundError'
-              || errorName === 'DevicesNotFoundError'
-              || /no\s+audio\s+input|no\s+input\s+device|device.*not\s*found|kein.*mikrofon/i.test(errorMessage)
-            );
-            if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
-              setMicUiState(MIC_UI_STATE.ERROR, 'Zugriff verweigert');
-            } else if (noMicFound) {
-              setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
-              showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn');
-            } else {
-              setMicUiState(MIC_UI_STATE.ERROR, 'nicht verfügbar');
-            }
-          } finally {
-            starting = false;
-            renderMicControlState();
-          }
-        };
-
-        const init = () => {
-          renderThresholdControls();
-          renderWarningToneState();
-          renderMicControlState();
-          renderTimer();
-          setActiveLight(null);
-          SharedTimerStore.subscribe(() => {
-            renderTimer();
-          });
-          if (monitorTickId) {
-            window.clearInterval(monitorTickId);
-          }
-          monitorTickId = window.setInterval(renderTimer, 250);
-          els.monitorThresholdInputs?.forEach((input) => {
-            input.addEventListener('input', () => {
-              setMonitorThreshold(input.dataset.monitorThreshold, input.value);
-            });
-          });
-          els.monitorWarningToneButtons?.forEach((button) => {
-            button.addEventListener('click', () => {
-              const toneKey = button.dataset.monitorWarningToneToggle;
-              if (toneKey !== 'yellow' && toneKey !== 'red') return;
-              warningToneEnabled = {
-                ...warningToneEnabled,
-                [toneKey]: !isWarningToneEnabled(toneKey),
-              };
-              renderWarningToneState();
-              syncWarningToneLoop();
-            });
-          });
-          [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean).forEach((button) => {
-            button.addEventListener('click', () => {
-              void startMeasurement();
-            });
-          });
-          [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean).forEach((button) => {
-            button.addEventListener('click', () => {
-              void stopMeasurement();
-            });
-          });
-        };
-
-        return Object.freeze({
-          init,
-          startMeasurement,
-          stopMeasurement,
-        });
-      })();
-      function assignStudentsEvenly(options = {}) {
-        const { shuffle = true } = options;
-        if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
-        if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn'); return; }
-        syncGroupSizeInputs();
-        const maxSize = clampMaxGroupSize(state.maxGroupSize);
-        const minSize = clampMinGroupSize(state.minGroupSize);
-        ensureCapacityForStudents(maxSize, minSize);
-        const activeIds = Array.from(state.activeSeats);
-        state._lastImport = false;
-        state.scrollHintDismissed = true;
-        const lockedAssignments = {};
-        const assigned = new Set();
-        state.lockedSeats.forEach(id => {
-          lockedAssignments[id] = getSeatList(id);
-          lockedAssignments[id].forEach(sid => assigned.add(sid));
-        });
-        const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
-        if (!freeSeats.length) {
-          showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn');
-          return;
-        }
-        const capacity = activeIds.length * maxSize;
-        const remainingCount = state.students.length;
-        if (capacity < remainingCount) {
-          showMessage('Raster wurde erweitert, aber es fehlt Platz für alle Lernenden bei dieser Gruppengröße.', 'warn');
-        }
-        const order = state.students.slice().filter(s => !assigned.has(s.id));
-        if (shuffle) {
-          for (let i = order.length - 1; i > 0; i--) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [order[i], order[j]] = [order[j], order[i]];
-          }
-        }
-        const nextSeats = {};
-        activeIds.forEach(id => {
-          nextSeats[id] = state.lockedSeats.has(id) ? ensureSeatList(lockedAssignments[id]) : [];
-        });
-        let idx = 0;
-        order.forEach(student => {
-          let attempts = 0;
-          let target = null;
-          while (attempts < freeSeats.length) {
-            const candidate = freeSeats[idx % freeSeats.length];
-            if ((nextSeats[candidate]?.length || 0) < maxSize) {
-              target = candidate; break;
-            }
-            idx++; attempts++;
-          }
-          if (target === null) {
-            target = freeSeats[idx % freeSeats.length];
-          }
-          nextSeats[target].push(student.id);
-          idx++;
-        });
-        state.seats = nextSeats;
-        renderSeats();
-        refreshUnseated();
-      }
-
-      const GROUP_SUGGEST_ROULETTE_CONFIG = Object.freeze({
-        candidateAttempts: 42,
-        minFrames: 18,
-        maxFrames: 28,
-        minDelayMs: 55,
-        maxDelayMs: 260,
-        finalHoldMs: 900,
-      });
-      let groupSuggestInProgress = false;
-
-      const waitMs = (ms) => new Promise(resolve => setTimeout(resolve, Math.max(0, Math.round(ms))));
-      const nextPaint = () => new Promise(resolve => {
-        if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(() => requestAnimationFrame(resolve));
+        if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
+          setMicUiState(MIC_UI_STATE.ERROR, 'Zugriff verweigert');
+        } else if (noMicFound) {
+          setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
+          showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn');
         } else {
-          setTimeout(resolve, 16);
+          setMicUiState(MIC_UI_STATE.ERROR, 'nicht verfügbar');
         }
+      } finally {
+        starting = false;
+        renderMicControlState();
+      }
+    };
+
+    const init = () => {
+      renderThresholdControls();
+      renderWarningToneState();
+      renderMicControlState();
+      renderTimer();
+      setActiveLight(null);
+      SharedTimerStore.subscribe(() => {
+        renderTimer();
       });
-
-      function flashGroupSuggestionFrame({ final = false } = {}) {
-        if (!els.groupsGrid) return;
-        const seats = Array.from(els.groupsGrid.querySelectorAll('.seat'));
-        els.groupsGrid.classList.add('group-suggesting');
-        seats.forEach((seat) => {
-          seat.classList.remove('group-suggest-frame', 'group-suggest-final');
-          void seat.offsetWidth;
-          seat.classList.add('group-suggest-frame');
-          if (final) {
-            seat.classList.add('group-suggest-final');
-          }
-        });
+      if (monitorTickId) {
+        window.clearInterval(monitorTickId);
       }
-
-      function clearGroupSuggestionFrameState() {
-        if (!els.groupsGrid) return;
-        els.groupsGrid.classList.remove('group-suggesting');
-        els.groupsGrid.querySelectorAll('.seat').forEach((seat) => {
-          seat.classList.remove('group-suggest-frame', 'group-suggest-final');
+      monitorTickId = window.setInterval(renderTimer, 250);
+      els.monitorThresholdInputs?.forEach((input) => {
+        input.addEventListener('input', () => {
+          setMonitorThreshold(input.dataset.monitorThreshold, input.value);
         });
-      }
+      });
+      els.monitorWarningToneButtons?.forEach((button) => {
+        button.addEventListener('click', () => {
+          const toneKey = button.dataset.monitorWarningToneToggle;
+          if (toneKey !== 'yellow' && toneKey !== 'red') return;
+          warningToneEnabled = {
+            ...warningToneEnabled,
+            [toneKey]: !isWarningToneEnabled(toneKey),
+          };
+          renderWarningToneState();
+          syncWarningToneLoop();
+        });
+      });
+      [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean).forEach((button) => {
+        button.addEventListener('click', () => {
+          void startMeasurement();
+        });
+      });
+      [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean).forEach((button) => {
+        button.addEventListener('click', () => {
+          void stopMeasurement();
+        });
+      });
+    };
 
-      function setGroupSuggestProgress(percent, text) {
-        if (!els.suggestProgress || !els.suggestProgressFill || !els.suggestProgressLabel) return;
-        const pct = Math.max(0, Math.min(100, Number(percent) || 0));
-        els.suggestProgress.classList.add('active');
+    return Object.freeze({
+      init,
+      startMeasurement,
+      stopMeasurement,
+    });
+  })();
+  function assignStudentsEvenly(options = {}) {
+    const { shuffle = true } = options;
+    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
+    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn'); return; }
+    syncGroupSizeInputs();
+    const maxSize = clampMaxGroupSize(state.maxGroupSize);
+    const minSize = clampMinGroupSize(state.minGroupSize);
+    ensureCapacityForStudents(maxSize, minSize);
+    const activeIds = Array.from(state.activeSeats);
+    state._lastImport = false;
+    state.scrollHintDismissed = true;
+    const lockedAssignments = {};
+    const assigned = new Set();
+    state.lockedSeats.forEach(id => {
+      lockedAssignments[id] = getSeatList(id);
+      lockedAssignments[id].forEach(sid => assigned.add(sid));
+    });
+    const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
+    if (!freeSeats.length) {
+      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn');
+      return;
+    }
+    const capacity = activeIds.length * maxSize;
+    const remainingCount = state.students.length;
+    if (capacity < remainingCount) {
+      showMessage('Raster wurde erweitert, aber es fehlt Platz für alle Lernenden bei dieser Gruppengröße.', 'warn');
+    }
+    const order = state.students.slice().filter(s => !assigned.has(s.id));
+    if (shuffle) {
+      for (let i = order.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [order[i], order[j]] = [order[j], order[i]];
+      }
+    }
+    const nextSeats = {};
+    activeIds.forEach(id => {
+      nextSeats[id] = state.lockedSeats.has(id) ? ensureSeatList(lockedAssignments[id]) : [];
+    });
+    let idx = 0;
+    order.forEach(student => {
+      let attempts = 0;
+      let target = null;
+      while (attempts < freeSeats.length) {
+        const candidate = freeSeats[idx % freeSeats.length];
+        if ((nextSeats[candidate]?.length || 0) < maxSize) {
+          target = candidate; break;
+        }
+        idx++; attempts++;
+      }
+      if (target === null) {
+        target = freeSeats[idx % freeSeats.length];
+      }
+      nextSeats[target].push(student.id);
+      idx++;
+    });
+    state.seats = nextSeats;
+    renderSeats();
+    refreshUnseated();
+  }
+
+  const GROUP_SUGGEST_ROULETTE_CONFIG = Object.freeze({
+    candidateAttempts: 42,
+    minFrames: 18,
+    maxFrames: 28,
+    minDelayMs: 55,
+    maxDelayMs: 260,
+    finalHoldMs: 900,
+  });
+  let groupSuggestInProgress = false;
+
+  const waitMs = (ms) => new Promise(resolve => setTimeout(resolve, Math.max(0, Math.round(ms))));
+  const nextPaint = () => new Promise(resolve => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    } else {
+      setTimeout(resolve, 16);
+    }
+  });
+
+  function flashGroupSuggestionFrame({ final = false } = {}) {
+    if (!els.groupsGrid) return;
+    const seats = Array.from(els.groupsGrid.querySelectorAll('.seat'));
+    els.groupsGrid.classList.add('group-suggesting');
+    seats.forEach((seat) => {
+      seat.classList.remove('group-suggest-frame', 'group-suggest-final');
+      void seat.offsetWidth;
+      seat.classList.add('group-suggest-frame');
+      if (final) {
+        seat.classList.add('group-suggest-final');
+      }
+    });
+  }
+
+  function clearGroupSuggestionFrameState() {
+    if (!els.groupsGrid) return;
+    els.groupsGrid.classList.remove('group-suggesting');
+    els.groupsGrid.querySelectorAll('.seat').forEach((seat) => {
+      seat.classList.remove('group-suggest-frame', 'group-suggest-final');
+    });
+  }
+
+  function setGroupSuggestProgress(percent, text) {
+    if (!els.suggestProgress || !els.suggestProgressFill || !els.suggestProgressLabel) return;
+    const pct = Math.max(0, Math.min(100, Number(percent) || 0));
+    els.suggestProgress.classList.add('active');
+    els.suggestProgress.classList.remove('fade-out');
+    els.suggestProgress.style.opacity = '';
+    els.suggestProgressFill.style.animation = 'none';
+    els.suggestProgressFill.style.transition = '';
+    els.suggestProgressFill.style.transform = `scaleX(${pct / 100})`;
+    els.suggestProgressLabel.textContent = text || '';
+  }
+
+  function finishGroupSuggestProgress(text) {
+    if (!els.suggestProgress) return;
+    setGroupSuggestProgress(100, text || 'Fertig');
+    setTimeout(() => {
+      if (!els.suggestProgress) return;
+      els.suggestProgress.classList.remove('fade-out');
+      void els.suggestProgress.offsetWidth;
+      els.suggestProgress.classList.add('fade-out');
+      setTimeout(() => {
+        if (!els.suggestProgress) return;
+        els.suggestProgress.classList.remove('active');
         els.suggestProgress.classList.remove('fade-out');
         els.suggestProgress.style.opacity = '';
-        els.suggestProgressFill.style.animation = 'none';
-        els.suggestProgressFill.style.transition = '';
-        els.suggestProgressFill.style.transform = `scaleX(${pct / 100})`;
-        els.suggestProgressLabel.textContent = text || '';
-      }
+      }, 1500);
+    }, 180);
+  }
 
-      function finishGroupSuggestProgress(text) {
-        if (!els.suggestProgress) return;
-        setGroupSuggestProgress(100, text || 'Fertig');
-        setTimeout(() => {
-          if (!els.suggestProgress) return;
-          els.suggestProgress.classList.remove('fade-out');
-          void els.suggestProgress.offsetWidth;
-          els.suggestProgress.classList.add('fade-out');
-          setTimeout(() => {
-            if (!els.suggestProgress) return;
-            els.suggestProgress.classList.remove('active');
-            els.suggestProgress.classList.remove('fade-out');
-            els.suggestProgress.style.opacity = '';
-          }, 1500);
-        }, 180);
-      }
+  function hideGroupSuggestProgress() {
+    if (!els.suggestProgress) return;
+    els.suggestProgress.classList.add('fade-out');
+    setTimeout(() => {
+      if (!els.suggestProgress) return;
+      els.suggestProgress.classList.remove('active');
+      els.suggestProgress.classList.remove('fade-out');
+      els.suggestProgress.style.opacity = '';
+    }, 250);
+  }
 
-      function hideGroupSuggestProgress() {
-        if (!els.suggestProgress) return;
-        els.suggestProgress.classList.add('fade-out');
-        setTimeout(() => {
-          if (!els.suggestProgress) return;
-          els.suggestProgress.classList.remove('active');
-          els.suggestProgress.classList.remove('fade-out');
-          els.suggestProgress.style.opacity = '';
-        }, 250);
-      }
+  function cloneGroupSeatMap(source) {
+    const out = {};
+    if (!source || typeof source !== 'object') return out;
+    Object.entries(source).forEach(([seatId, occupants]) => {
+      out[seatId] = Array.isArray(occupants) ? occupants.slice() : [];
+    });
+    return out;
+  }
 
-      function cloneGroupSeatMap(source) {
-        const out = {};
-        if (!source || typeof source !== 'object') return out;
-        Object.entries(source).forEach(([seatId, occupants]) => {
-          out[seatId] = Array.isArray(occupants) ? occupants.slice() : [];
-        });
-        return out;
-      }
+  function buildGroupSuggestionSignature(seatMap, seatIds) {
+    return seatIds
+      .map((seatId) => {
+        const occupants = Array.isArray(seatMap[seatId]) ? seatMap[seatId] : [];
+        return `${seatId}:${occupants.join(',')}`;
+      })
+      .join('|');
+  }
 
-      function buildGroupSuggestionSignature(seatMap, seatIds) {
-        return seatIds
-          .map((seatId) => {
-            const occupants = Array.isArray(seatMap[seatId]) ? seatMap[seatId] : [];
-            return `${seatId}:${occupants.join(',')}`;
-          })
-          .join('|');
-      }
+  function scoreGroupSuggestionSeatMap(seatMap, studentById) {
+    let score = 0;
+    const buddySetById = new Map();
+    const foeSetById = new Map();
+    const performanceConstraintActive = clampPerformanceFlairCount(state.performanceFlairCount) >= 2
+      && state.students.some((student) => sanitizePerformanceFlairForCount(student?.performanceFlair));
+    studentById.forEach((student, studentId) => {
+      buddySetById.set(studentId, new Set(student?.buddies || []));
+      foeSetById.set(studentId, new Set(student?.foes || []));
+    });
 
-      function scoreGroupSuggestionSeatMap(seatMap, studentById) {
-        let score = 0;
-        const buddySetById = new Map();
-        const foeSetById = new Map();
-        const performanceConstraintActive = clampPerformanceFlairCount(state.performanceFlairCount) >= 2
-          && state.students.some((student) => sanitizePerformanceFlairForCount(student?.performanceFlair));
-        studentById.forEach((student, studentId) => {
-          buddySetById.set(studentId, new Set(student?.buddies || []));
-          foeSetById.set(studentId, new Set(student?.foes || []));
-        });
+    const seatSizes = [];
+    Object.values(seatMap).forEach((occupantsRaw) => {
+      const occupants = Array.isArray(occupantsRaw) ? occupantsRaw : [];
+      const size = occupants.length;
+      seatSizes.push(size);
+      if (size <= 1) return;
 
-        const seatSizes = [];
-        Object.values(seatMap).forEach((occupantsRaw) => {
-          const occupants = Array.isArray(occupantsRaw) ? occupantsRaw : [];
-          const size = occupants.length;
-          seatSizes.push(size);
-          if (size <= 1) return;
+      occupants.forEach((studentId) => {
+        const student = studentById.get(studentId);
+        if (student?.prefersAlone) {
+          score += (size - 1) * 1.2;
+        }
+      });
 
-          occupants.forEach((studentId) => {
-            const student = studentById.get(studentId);
-            if (student?.prefersAlone) {
-              score += (size - 1) * 1.2;
-            }
-          });
-
-          for (let i = 0; i < size; i += 1) {
-            const aId = occupants[i];
-            const aBuddies = buddySetById.get(aId) || new Set();
-            const aFoes = foeSetById.get(aId) || new Set();
-            for (let j = i + 1; j < size; j += 1) {
-              const bId = occupants[j];
-              const bBuddies = buddySetById.get(bId) || new Set();
-              const bFoes = foeSetById.get(bId) || new Set();
-              if (performanceConstraintActive) {
-                const distance = getPerformanceFlairDistance(
-                  studentById.get(aId)?.performanceFlair,
-                  studentById.get(bId)?.performanceFlair
-                );
-                if (distance && distance > 0) {
-                  score += distance * 12000;
-                }
-              }
-              if (aFoes.has(bId)) score += 3;
-              if (bFoes.has(aId)) score += 3;
-              if (aBuddies.has(bId)) score -= 1.7;
-              if (bBuddies.has(aId)) score -= 1.7;
+      for (let i = 0; i < size; i += 1) {
+        const aId = occupants[i];
+        const aBuddies = buddySetById.get(aId) || new Set();
+        const aFoes = foeSetById.get(aId) || new Set();
+        for (let j = i + 1; j < size; j += 1) {
+          const bId = occupants[j];
+          const bBuddies = buddySetById.get(bId) || new Set();
+          const bFoes = foeSetById.get(bId) || new Set();
+          if (performanceConstraintActive) {
+            const distance = getPerformanceFlairDistance(
+              studentById.get(aId)?.performanceFlair,
+              studentById.get(bId)?.performanceFlair
+            );
+            if (distance && distance > 0) {
+              score += distance * 12000;
             }
           }
-        });
+          if (aFoes.has(bId)) score += 3;
+          if (bFoes.has(aId)) score += 3;
+          if (aBuddies.has(bId)) score -= 1.7;
+          if (bBuddies.has(aId)) score -= 1.7;
+        }
+      }
+    });
 
-        if (seatSizes.length > 0) {
-          const avg = seatSizes.reduce((sum, size) => sum + size, 0) / seatSizes.length;
-          seatSizes.forEach((size) => {
-            const delta = size - avg;
-            score += delta * delta * 0.14;
-          });
-        }
+    if (seatSizes.length > 0) {
+      const avg = seatSizes.reduce((sum, size) => sum + size, 0) / seatSizes.length;
+      seatSizes.forEach((size) => {
+        const delta = size - avg;
+        score += delta * delta * 0.14;
+      });
+    }
 
-        return score;
+    return score;
+  }
+  function formatGroupSuggestionSeatLabel(seatId, activeIds = []) {
+    const index = Array.isArray(activeIds) ? activeIds.indexOf(seatId) : -1;
+    return index >= 0 ? `Gruppe ${index + 1}` : `Gruppe ${seatId}`;
+  }
+  function buildPerformanceFlairGroupCountOptions(flairs, remainingCounts, maxSize, minSize, freeSeatCount) {
+    const relevantFlairs = (Array.isArray(flairs) ? flairs : []).filter((flair) => (remainingCounts.get(flair) || 0) > 0);
+    const options = [];
+    const backtrack = (index, usedSeats, current) => {
+      if (usedSeats > freeSeatCount) return;
+      if (index >= relevantFlairs.length) {
+        options.push(new Map(current));
+        return;
       }
-      function formatGroupSuggestionSeatLabel(seatId, activeIds = []) {
-        const index = Array.isArray(activeIds) ? activeIds.indexOf(seatId) : -1;
-        return index >= 0 ? `Gruppe ${index + 1}` : `Gruppe ${seatId}`;
+      const flair = relevantFlairs[index];
+      const count = remainingCounts.get(flair) || 0;
+      const minGroups = Math.ceil(count / Math.max(1, maxSize));
+      const maxGroups = Math.floor(count / Math.max(1, minSize));
+      if (maxGroups < minGroups) return;
+      for (let groupCount = minGroups; groupCount <= maxGroups; groupCount += 1) {
+        current.set(flair, groupCount);
+        backtrack(index + 1, usedSeats + groupCount, current);
       }
-      function buildPerformanceFlairGroupCountOptions(flairs, remainingCounts, maxSize, minSize, freeSeatCount) {
-        const relevantFlairs = (Array.isArray(flairs) ? flairs : []).filter((flair) => (remainingCounts.get(flair) || 0) > 0);
-        const options = [];
-        const backtrack = (index, usedSeats, current) => {
-          if (usedSeats > freeSeatCount) return;
-          if (index >= relevantFlairs.length) {
-            options.push(new Map(current));
-            return;
-          }
-          const flair = relevantFlairs[index];
-          const count = remainingCounts.get(flair) || 0;
-          const minGroups = Math.ceil(count / Math.max(1, maxSize));
-          const maxGroups = Math.floor(count / Math.max(1, minSize));
-          if (maxGroups < minGroups) return;
-          for (let groupCount = minGroups; groupCount <= maxGroups; groupCount += 1) {
-            current.set(flair, groupCount);
-            backtrack(index + 1, usedSeats + groupCount, current);
-          }
-          current.delete(flair);
-        };
-        backtrack(0, 0, new Map());
-        return options.filter((option) => {
-          let used = 0;
-          option.forEach((value) => { used += value; });
-          return used <= freeSeatCount;
-        });
-      }
-      function analyzePerformanceFlairConstraints({
-        activeIds,
-        freeSeats,
-        lockedSeatSet,
-        lockedAssignments,
-        maxSize,
-        minSize,
-        studentById,
-      }) {
-        const allowedFlairs = getAllowedPerformanceFlairs();
-        const assignedFlairs = state.students
-          .map(student => sanitizePerformanceFlairForCount(student?.performanceFlair))
-          .filter(Boolean);
-        if (!allowedFlairs.length || !assignedFlairs.length) {
-          return { active: false };
-        }
-        const invalidStudent = state.students.find((student) => !sanitizePerformanceFlairForCount(student?.performanceFlair));
-        const missingFlairWarningMessage = invalidStudent
-          ? `Nicht alle Lernenden haben eine Leistungsstufe aus ${formatPerformanceFlairRangeLabel()}. Es wird eine bestmögliche Verteilung erstellt.`
-          : null;
-        const lockedCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
-        for (const seatId of activeIds) {
-          if (!lockedSeatSet.has(seatId)) continue;
-          const occupants = ensureSeatList(lockedAssignments[seatId]);
-          if (!occupants.length) continue;
-          if (occupants.length < minSize || occupants.length > maxSize) {
-            showMessage(
-              `${formatGroupSuggestionSeatLabel(seatId, activeIds)} ist gesperrt und verletzt mit ${occupants.length} Lernenden die Gruppengröße ${minSize}-${maxSize}.`,
-              'warn'
-            );
-            return null;
-          }
-          const flairSet = new Set(
-            occupants
-              .map((studentId) => sanitizePerformanceFlairForCount(studentById.get(studentId)?.performanceFlair))
-              .filter(Boolean)
-          );
-          if (flairSet.size !== 1) {
-            showMessage(
-              `${formatGroupSuggestionSeatLabel(seatId, activeIds)} mischt Leistungsstufen. Entsperre oder bereinige die Gruppe zuerst.`,
-              'warn'
-            );
-            return null;
-          }
-          const flair = [...flairSet][0];
-          lockedCounts.set(flair, (lockedCounts.get(flair) || 0) + occupants.length);
-        }
-        const remainingCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
-        state.students.forEach((student) => {
-          const flair = sanitizePerformanceFlairForCount(student?.performanceFlair);
-          remainingCounts.set(flair, (remainingCounts.get(flair) || 0) + 1);
-        });
-        lockedCounts.forEach((count, flair) => {
-          remainingCounts.set(flair, Math.max(0, (remainingCounts.get(flair) || 0) - count));
-        });
-        const groupCountOptions = buildPerformanceFlairGroupCountOptions(
-          allowedFlairs,
-          remainingCounts,
-          maxSize,
-          minSize,
-          freeSeats.length
+      current.delete(flair);
+    };
+    backtrack(0, 0, new Map());
+    return options.filter((option) => {
+      let used = 0;
+      option.forEach((value) => { used += value; });
+      return used <= freeSeatCount;
+    });
+  }
+  function analyzePerformanceFlairConstraints({
+    activeIds,
+    freeSeats,
+    lockedSeatSet,
+    lockedAssignments,
+    maxSize,
+    minSize,
+    studentById,
+  }) {
+    const allowedFlairs = getAllowedPerformanceFlairs();
+    const assignedFlairs = state.students
+      .map(student => sanitizePerformanceFlairForCount(student?.performanceFlair))
+      .filter(Boolean);
+    if (!allowedFlairs.length || !assignedFlairs.length) {
+      return { active: false };
+    }
+    const invalidStudent = state.students.find((student) => !sanitizePerformanceFlairForCount(student?.performanceFlair));
+    const missingFlairWarningMessage = invalidStudent
+      ? `Nicht alle Lernenden haben eine Leistungsstufe aus ${formatPerformanceFlairRangeLabel()}. Es wird eine bestmögliche Verteilung erstellt.`
+      : null;
+    const lockedCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
+    for (const seatId of activeIds) {
+      if (!lockedSeatSet.has(seatId)) continue;
+      const occupants = ensureSeatList(lockedAssignments[seatId]);
+      if (!occupants.length) continue;
+      if (occupants.length < minSize || occupants.length > maxSize) {
+        showMessage(
+          `${formatGroupSuggestionSeatLabel(seatId, activeIds)} ist gesperrt und verletzt mit ${occupants.length} Lernenden die Gruppengröße ${minSize}-${maxSize}.`,
+          'warn'
         );
-        if (!groupCountOptions.length) {
-          return {
-            active: true,
-            bestEffort: true,
-            warningMessage: missingFlairWarningMessage
-              || `Die Leistungsstufen lassen sich mit der aktuellen Gruppenanzahl und Gruppengröße ${minSize}-${maxSize} nicht vollständig homogen verteilen. Es wird eine bestmögliche Verteilung erstellt.`,
-            flairs: allowedFlairs,
-            groupCountOptions: [],
-          };
-        }
-        return {
-          active: true,
-          bestEffort: Boolean(missingFlairWarningMessage),
-          warningMessage: missingFlairWarningMessage,
-          flairs: allowedFlairs,
-          groupCountOptions,
-        };
+        return null;
       }
-      function buildPerformanceFlairSeatAllocation(freeSeats, flairs, groupCounts) {
-        const shuffledSeats = Array.isArray(freeSeats) ? freeSeats.slice() : [];
-        for (let i = shuffledSeats.length - 1; i > 0; i -= 1) {
-          const j = Math.floor(Math.random() * (i + 1));
-          [shuffledSeats[i], shuffledSeats[j]] = [shuffledSeats[j], shuffledSeats[i]];
-        }
-        const flairList = Array.isArray(flairs) ? flairs : [];
-        const allocation = new Map(flairList.map((flair) => [flair, []]));
-        let seatIndex = 0;
-        flairList.forEach((flair) => {
-          const groupCount = groupCounts?.get(flair) || 0;
-          allocation.set(flair, shuffledSeats.slice(seatIndex, seatIndex + groupCount));
-          seatIndex += groupCount;
-        });
-        return allocation;
+      const flairSet = new Set(
+        occupants
+          .map((studentId) => sanitizePerformanceFlairForCount(studentById.get(studentId)?.performanceFlair))
+          .filter(Boolean)
+      );
+      if (flairSet.size !== 1) {
+        showMessage(
+          `${formatGroupSuggestionSeatLabel(seatId, activeIds)} mischt Leistungsstufen. Entsperre oder bereinige die Gruppe zuerst.`,
+          'warn'
+        );
+        return null;
       }
+      const flair = [...flairSet][0];
+      lockedCounts.set(flair, (lockedCounts.get(flair) || 0) + occupants.length);
+    }
+    const remainingCounts = new Map(allowedFlairs.map((flair) => [flair, 0]));
+    state.students.forEach((student) => {
+      const flair = sanitizePerformanceFlairForCount(student?.performanceFlair);
+      remainingCounts.set(flair, (remainingCounts.get(flair) || 0) + 1);
+    });
+    lockedCounts.forEach((count, flair) => {
+      remainingCounts.set(flair, Math.max(0, (remainingCounts.get(flair) || 0) - count));
+    });
+    const groupCountOptions = buildPerformanceFlairGroupCountOptions(
+      allowedFlairs,
+      remainingCounts,
+      maxSize,
+      minSize,
+      freeSeats.length
+    );
+    if (!groupCountOptions.length) {
+      return {
+        active: true,
+        bestEffort: true,
+        warningMessage: missingFlairWarningMessage
+          || `Die Leistungsstufen lassen sich mit der aktuellen Gruppenanzahl und Gruppengröße ${minSize}-${maxSize} nicht vollständig homogen verteilen. Es wird eine bestmögliche Verteilung erstellt.`,
+        flairs: allowedFlairs,
+        groupCountOptions: [],
+      };
+    }
+    return {
+      active: true,
+      bestEffort: Boolean(missingFlairWarningMessage),
+      warningMessage: missingFlairWarningMessage,
+      flairs: allowedFlairs,
+      groupCountOptions,
+    };
+  }
+  function buildPerformanceFlairSeatAllocation(freeSeats, flairs, groupCounts) {
+    const shuffledSeats = Array.isArray(freeSeats) ? freeSeats.slice() : [];
+    for (let i = shuffledSeats.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffledSeats[i], shuffledSeats[j]] = [shuffledSeats[j], shuffledSeats[i]];
+    }
+    const flairList = Array.isArray(flairs) ? flairs : [];
+    const allocation = new Map(flairList.map((flair) => [flair, []]));
+    let seatIndex = 0;
+    flairList.forEach((flair) => {
+      const groupCount = groupCounts?.get(flair) || 0;
+      allocation.set(flair, shuffledSeats.slice(seatIndex, seatIndex + groupCount));
+      seatIndex += groupCount;
+    });
+    return allocation;
+  }
 
-      function buildPreferenceGroupSuggestionCandidate({
-        activeIds,
-        freeSeats,
-        lockedSeatSet,
-        lockedAssignments,
-        initiallyAssignedIds,
-        maxSize,
-        studentById,
-        performanceFlairPlan = null,
-        performanceFlairBestEffort = false,
-      }) {
-        const assigned = new Set(initiallyAssignedIds || []);
-        const nextSeats = {};
-        activeIds.forEach((seatId) => {
-          nextSeats[seatId] = lockedSeatSet.has(seatId) ? ensureSeatList(lockedAssignments[seatId]) : [];
-          nextSeats[seatId].forEach((studentId) => assigned.add(studentId));
-        });
+  function buildPreferenceGroupSuggestionCandidate({
+    activeIds,
+    freeSeats,
+    lockedSeatSet,
+    lockedAssignments,
+    initiallyAssignedIds,
+    maxSize,
+    studentById,
+    performanceFlairPlan = null,
+    performanceFlairBestEffort = false,
+  }) {
+    const assigned = new Set(initiallyAssignedIds || []);
+    const nextSeats = {};
+    activeIds.forEach((seatId) => {
+      nextSeats[seatId] = lockedSeatSet.has(seatId) ? ensureSeatList(lockedAssignments[seatId]) : [];
+      nextSeats[seatId].forEach((studentId) => assigned.add(studentId));
+    });
 
-        const seatScore = (seatId, studentId) => {
-          const occup = nextSeats[seatId] || [];
-          const stu = studentById.get(studentId);
-          const buddies = new Set(stu?.buddies || []);
-          const foes = new Set(stu?.foes || []);
-          const studentFlair = sanitizePerformanceFlairForCount(stu?.performanceFlair);
-          let score = occup.length * 0.4;
-          occup.forEach((otherId) => {
-            if (foes.has(otherId)) score += 3;
-            if (buddies.has(otherId)) score -= 2;
-            if (performanceFlairBestEffort) {
-              const distance = getPerformanceFlairDistance(studentFlair, studentById.get(otherId)?.performanceFlair);
-              if (distance && distance > 0) {
-                score += distance * 2.4;
-              }
-            }
-          });
-          return score;
-        };
-        const orderStudents = (students) => {
-          const ordered = students.slice().sort((a, b) => {
-            const score = (stu) => ((stu.buddies?.length || 0) * -1) + ((stu.foes?.length || 0) * -2);
-            return score(a) - score(b);
-          });
-          for (let i = ordered.length - 1; i > 0; i -= 1) {
-            const j = Math.floor(Math.random() * (i + 1));
-            [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+    const seatScore = (seatId, studentId) => {
+      const occup = nextSeats[seatId] || [];
+      const stu = studentById.get(studentId);
+      const buddies = new Set(stu?.buddies || []);
+      const foes = new Set(stu?.foes || []);
+      const studentFlair = sanitizePerformanceFlairForCount(stu?.performanceFlair);
+      let score = occup.length * 0.4;
+      occup.forEach((otherId) => {
+        if (foes.has(otherId)) score += 3;
+        if (buddies.has(otherId)) score -= 2;
+        if (performanceFlairBestEffort) {
+          const distance = getPerformanceFlairDistance(studentFlair, studentById.get(otherId)?.performanceFlair);
+          if (distance && distance > 0) {
+            score += distance * 2.4;
           }
-          return ordered;
-        };
-        const placeStudents = (students, seatIds) => {
-          orderStudents(students).forEach((student) => {
-            let bestSeat = null;
-            let bestScore = Infinity;
-            seatIds.forEach((seatId) => {
-              if ((nextSeats[seatId]?.length || 0) >= maxSize) return;
-              const value = seatScore(seatId, student.id);
-              if (value < bestScore - 1e-6 || (Math.abs(value - bestScore) < 1e-6 && Math.random() < 0.5)) {
-                bestScore = value;
-                bestSeat = seatId;
-              }
-            });
-            if (!bestSeat) {
-              bestSeat = seatIds.find(id => (nextSeats[id]?.length || 0) < maxSize) || null;
-            }
-            if (bestSeat) {
-              nextSeats[bestSeat].push(student.id);
-            }
-          });
-        };
-
-        if (performanceFlairPlan?.active) {
-          (performanceFlairPlan.flairs || []).forEach((flair) => {
-            placeStudents(
-              state.students.filter((student) => (
-                !assigned.has(student.id)
-                && sanitizePerformanceFlairForCount(student.performanceFlair) === flair
-              )),
-              performanceFlairPlan.seatAllocation.get(flair) || []
-            );
-          });
-          return nextSeats;
         }
+      });
+      return score;
+    };
+    const orderStudents = (students) => {
+      const ordered = students.slice().sort((a, b) => {
+        const score = (stu) => ((stu.buddies?.length || 0) * -1) + ((stu.foes?.length || 0) * -2);
+        return score(a) - score(b);
+      });
+      for (let i = ordered.length - 1; i > 0; i -= 1) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [ordered[i], ordered[j]] = [ordered[j], ordered[i]];
+      }
+      return ordered;
+    };
+    const placeStudents = (students, seatIds) => {
+      orderStudents(students).forEach((student) => {
+        let bestSeat = null;
+        let bestScore = Infinity;
+        seatIds.forEach((seatId) => {
+          if ((nextSeats[seatId]?.length || 0) >= maxSize) return;
+          const value = seatScore(seatId, student.id);
+          if (value < bestScore - 1e-6 || (Math.abs(value - bestScore) < 1e-6 && Math.random() < 0.5)) {
+            bestScore = value;
+            bestSeat = seatId;
+          }
+        });
+        if (!bestSeat) {
+          bestSeat = seatIds.find(id => (nextSeats[id]?.length || 0) < maxSize) || null;
+        }
+        if (bestSeat) {
+          nextSeats[bestSeat].push(student.id);
+        }
+      });
+    };
 
+    if (performanceFlairPlan?.active) {
+      (performanceFlairPlan.flairs || []).forEach((flair) => {
         placeStudents(
-          state.students.filter(student => !assigned.has(student.id)),
-          freeSeats
+          state.students.filter((student) => (
+            !assigned.has(student.id)
+            && sanitizePerformanceFlairForCount(student.performanceFlair) === flair
+          )),
+          performanceFlairPlan.seatAllocation.get(flair) || []
         );
+      });
+      return nextSeats;
+    }
 
-        return nextSeats;
+    placeStudents(
+      state.students.filter(student => !assigned.has(student.id)),
+      freeSeats
+    );
+
+    return nextSeats;
+  }
+
+  async function playGroupSuggestionRoulette(candidates, finalCandidate) {
+    if (!Array.isArray(candidates) || !candidates.length || !finalCandidate) return;
+    const roulettePool = candidates.filter(candidate => candidate?.signature !== finalCandidate.signature);
+    const frameCount = Math.max(
+      GROUP_SUGGEST_ROULETTE_CONFIG.minFrames,
+      Math.min(GROUP_SUGGEST_ROULETTE_CONFIG.maxFrames, roulettePool.length + 1)
+    );
+    const frameSequence = [];
+    if (roulettePool.length > 0) {
+      const randomOffset = Math.floor(Math.random() * roulettePool.length);
+      for (let i = 0; i < frameCount - 1; i += 1) {
+        frameSequence.push(roulettePool[(i + randomOffset) % roulettePool.length]);
       }
+    }
+    while (frameSequence.length < frameCount - 1) {
+      frameSequence.push(finalCandidate);
+    }
+    frameSequence.push(finalCandidate);
 
-      async function playGroupSuggestionRoulette(candidates, finalCandidate) {
-        if (!Array.isArray(candidates) || !candidates.length || !finalCandidate) return;
-        const roulettePool = candidates.filter(candidate => candidate?.signature !== finalCandidate.signature);
-        const frameCount = Math.max(
-          GROUP_SUGGEST_ROULETTE_CONFIG.minFrames,
-          Math.min(GROUP_SUGGEST_ROULETTE_CONFIG.maxFrames, roulettePool.length + 1)
-        );
-        const frameSequence = [];
-        if (roulettePool.length > 0) {
-          const randomOffset = Math.floor(Math.random() * roulettePool.length);
-          for (let i = 0; i < frameCount - 1; i += 1) {
-            frameSequence.push(roulettePool[(i + randomOffset) % roulettePool.length]);
-          }
-        }
-        while (frameSequence.length < frameCount - 1) {
-          frameSequence.push(finalCandidate);
-        }
-        frameSequence.push(finalCandidate);
-
-        for (let i = 0; i < frameSequence.length; i += 1) {
-          const frame = frameSequence[i] || finalCandidate;
-          state.seats = cloneGroupSeatMap(frame.seats);
-          renderSeats();
-          const isFinal = i === frameSequence.length - 1;
-          flashGroupSuggestionFrame({ final: isFinal });
-          await nextPaint();
-          const progress = 35 + Math.round(((i + 1) / frameSequence.length) * 63);
-          setGroupSuggestProgress(progress, isFinal ? 'Finale Verteilung...' : 'Mische Gruppen...');
-          if (isFinal) {
-            await waitMs(GROUP_SUGGEST_ROULETTE_CONFIG.finalHoldMs);
-            break;
-          }
-          const t = i / Math.max(1, frameSequence.length - 2);
-          const eased = t * t;
-          const delayMs = GROUP_SUGGEST_ROULETTE_CONFIG.minDelayMs
-            + ((GROUP_SUGGEST_ROULETTE_CONFIG.maxDelayMs - GROUP_SUGGEST_ROULETTE_CONFIG.minDelayMs) * eased);
-          await waitMs(delayMs);
-        }
+    for (let i = 0; i < frameSequence.length; i += 1) {
+      const frame = frameSequence[i] || finalCandidate;
+      state.seats = cloneGroupSeatMap(frame.seats);
+      renderSeats();
+      const isFinal = i === frameSequence.length - 1;
+      flashGroupSuggestionFrame({ final: isFinal });
+      await nextPaint();
+      const progress = 35 + Math.round(((i + 1) / frameSequence.length) * 63);
+      setGroupSuggestProgress(progress, isFinal ? 'Finale Verteilung...' : 'Mische Gruppen...');
+      if (isFinal) {
+        await waitMs(GROUP_SUGGEST_ROULETTE_CONFIG.finalHoldMs);
+        break;
       }
+      const t = i / Math.max(1, frameSequence.length - 2);
+      const eased = t * t;
+      const delayMs = GROUP_SUGGEST_ROULETTE_CONFIG.minDelayMs
+        + ((GROUP_SUGGEST_ROULETTE_CONFIG.maxDelayMs - GROUP_SUGGEST_ROULETTE_CONFIG.minDelayMs) * eased);
+      await waitMs(delayMs);
+    }
+  }
 
-      async function assignWithPreferences() {
-        if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
-        if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn'); return; }
-        if (groupSuggestInProgress) return;
-        syncGroupSizeInputs();
-        const maxSize = clampMaxGroupSize(state.maxGroupSize);
-        const minSize = clampMinGroupSize(state.minGroupSize);
-        ensureCapacityForStudents(maxSize, minSize);
-        const activeIds = Array.from(state.activeSeats);
-        state._lastImport = false;
-        state.scrollHintDismissed = true;
-        const lockedAssignments = {};
-        const assigned = new Set();
-        state.lockedSeats.forEach(id => {
-          lockedAssignments[id] = getSeatList(id);
-          lockedAssignments[id].forEach(sid => assigned.add(sid));
-        });
-        const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
-        if (!freeSeats.length) {
-          showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn');
-          return;
-        }
-        const capacity = activeIds.length * maxSize;
-        const remainingCount = state.students.length;
-        if (capacity < remainingCount) {
-          showMessage('Raster wurde erweitert, aber es fehlt Platz für alle Lernenden bei dieser Gruppengröße.', 'warn');
-        }
-        const previousSeats = cloneGroupSeatMap(state.seats);
-        const lockedSeatSet = new Set(state.lockedSeats);
-        const studentById = new Map(state.students.map(s => [s.id, s]));
-        const initiallyAssignedIds = new Set(assigned);
-        const performanceFlairConstraints = analyzePerformanceFlairConstraints({
+  async function assignWithPreferences() {
+    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
+    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn'); return; }
+    if (groupSuggestInProgress) return;
+    syncGroupSizeInputs();
+    const maxSize = clampMaxGroupSize(state.maxGroupSize);
+    const minSize = clampMinGroupSize(state.minGroupSize);
+    ensureCapacityForStudents(maxSize, minSize);
+    const activeIds = Array.from(state.activeSeats);
+    state._lastImport = false;
+    state.scrollHintDismissed = true;
+    const lockedAssignments = {};
+    const assigned = new Set();
+    state.lockedSeats.forEach(id => {
+      lockedAssignments[id] = getSeatList(id);
+      lockedAssignments[id].forEach(sid => assigned.add(sid));
+    });
+    const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
+    if (!freeSeats.length) {
+      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn');
+      return;
+    }
+    const capacity = activeIds.length * maxSize;
+    const remainingCount = state.students.length;
+    if (capacity < remainingCount) {
+      showMessage('Raster wurde erweitert, aber es fehlt Platz für alle Lernenden bei dieser Gruppengröße.', 'warn');
+    }
+    const previousSeats = cloneGroupSeatMap(state.seats);
+    const lockedSeatSet = new Set(state.lockedSeats);
+    const studentById = new Map(state.students.map(s => [s.id, s]));
+    const initiallyAssignedIds = new Set(assigned);
+    const performanceFlairConstraints = analyzePerformanceFlairConstraints({
+      activeIds,
+      freeSeats,
+      lockedSeatSet,
+      lockedAssignments,
+      maxSize,
+      minSize,
+      studentById,
+    });
+    if (performanceFlairConstraints === null) {
+      return;
+    }
+    groupSuggestInProgress = true;
+    [els.groupSuggest, els.groupSuggestCollapsed].filter(Boolean).forEach((button) => {
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+    });
+    setGroupSuggestProgress(0, 'Vorschläge werden vorbereitet...');
+
+    try {
+      const candidates = [];
+      const seenSignatures = new Set();
+      const totalAttempts = GROUP_SUGGEST_ROULETTE_CONFIG.candidateAttempts;
+      const usePerformanceFlairPlan = Boolean(
+        performanceFlairConstraints?.active
+        && !performanceFlairConstraints.bestEffort
+        && performanceFlairConstraints.groupCountOptions?.length
+      );
+
+      for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
+        const selectedGroupCounts = usePerformanceFlairPlan
+          ? performanceFlairConstraints.groupCountOptions[
+          Math.floor(Math.random() * performanceFlairConstraints.groupCountOptions.length)
+          ]
+          : null;
+        const candidateSeats = buildPreferenceGroupSuggestionCandidate({
           activeIds,
           freeSeats,
           lockedSeatSet,
           lockedAssignments,
+          initiallyAssignedIds,
           maxSize,
-          minSize,
           studentById,
-        });
-        if (performanceFlairConstraints === null) {
-          return;
-        }
-        groupSuggestInProgress = true;
-        [els.groupSuggest, els.groupSuggestCollapsed].filter(Boolean).forEach((button) => {
-          button.disabled = true;
-          button.setAttribute('aria-busy', 'true');
-        });
-        setGroupSuggestProgress(0, 'Vorschläge werden vorbereitet...');
-
-        try {
-          const candidates = [];
-          const seenSignatures = new Set();
-          const totalAttempts = GROUP_SUGGEST_ROULETTE_CONFIG.candidateAttempts;
-          const usePerformanceFlairPlan = Boolean(
-            performanceFlairConstraints?.active
-            && !performanceFlairConstraints.bestEffort
-            && performanceFlairConstraints.groupCountOptions?.length
-          );
-
-          for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
-            const selectedGroupCounts = usePerformanceFlairPlan
-              ? performanceFlairConstraints.groupCountOptions[
-                Math.floor(Math.random() * performanceFlairConstraints.groupCountOptions.length)
-              ]
-              : null;
-            const candidateSeats = buildPreferenceGroupSuggestionCandidate({
-              activeIds,
-              freeSeats,
-              lockedSeatSet,
-              lockedAssignments,
-              initiallyAssignedIds,
-              maxSize,
-              studentById,
-              performanceFlairPlan: usePerformanceFlairPlan
-                ? {
-                  active: true,
-                  flairs: performanceFlairConstraints.flairs,
-                  seatAllocation: buildPerformanceFlairSeatAllocation(
-                    freeSeats,
-                    performanceFlairConstraints.flairs,
-                    selectedGroupCounts
-                  ),
-                }
-                : null,
-              performanceFlairBestEffort: Boolean(
-                performanceFlairConstraints?.active && performanceFlairConstraints.bestEffort
+          performanceFlairPlan: usePerformanceFlairPlan
+            ? {
+              active: true,
+              flairs: performanceFlairConstraints.flairs,
+              seatAllocation: buildPerformanceFlairSeatAllocation(
+                freeSeats,
+                performanceFlairConstraints.flairs,
+                selectedGroupCounts
               ),
-            });
-            const signature = buildGroupSuggestionSignature(candidateSeats, activeIds);
-            if (seenSignatures.has(signature)) {
-              continue;
             }
-            seenSignatures.add(signature);
-            const candidate = {
-              seats: candidateSeats,
-              signature,
-              score: scoreGroupSuggestionSeatMap(candidateSeats, studentById),
-            };
-            candidates.push(candidate);
-            const progress = 5 + Math.round(((attempt + 1) / totalAttempts) * 28);
-            setGroupSuggestProgress(progress, `Berechne Varianten... (${attempt + 1}/${totalAttempts})`);
-          }
+            : null,
+          performanceFlairBestEffort: Boolean(
+            performanceFlairConstraints?.active && performanceFlairConstraints.bestEffort
+          ),
+        });
+        const signature = buildGroupSuggestionSignature(candidateSeats, activeIds);
+        if (seenSignatures.has(signature)) {
+          continue;
+        }
+        seenSignatures.add(signature);
+        const candidate = {
+          seats: candidateSeats,
+          signature,
+          score: scoreGroupSuggestionSeatMap(candidateSeats, studentById),
+        };
+        candidates.push(candidate);
+        const progress = 5 + Math.round(((attempt + 1) / totalAttempts) * 28);
+        setGroupSuggestProgress(progress, `Berechne Varianten... (${attempt + 1}/${totalAttempts})`);
+      }
 
-          if (!candidates.length) {
-            const fallbackGroupCounts = usePerformanceFlairPlan
-              ? performanceFlairConstraints.groupCountOptions[0]
-              : null;
-            const fallbackSeats = buildPreferenceGroupSuggestionCandidate({
-              activeIds,
-              freeSeats,
-              lockedSeatSet,
-              lockedAssignments,
-              initiallyAssignedIds,
-              maxSize,
-              studentById,
-              performanceFlairPlan: usePerformanceFlairPlan
-                ? {
-                  active: true,
-                  flairs: performanceFlairConstraints.flairs,
-                  seatAllocation: buildPerformanceFlairSeatAllocation(
-                    freeSeats,
-                    performanceFlairConstraints.flairs,
-                    fallbackGroupCounts
-                  ),
-                }
-                : null,
-              performanceFlairBestEffort: Boolean(
-                performanceFlairConstraints?.active && performanceFlairConstraints.bestEffort
+      if (!candidates.length) {
+        const fallbackGroupCounts = usePerformanceFlairPlan
+          ? performanceFlairConstraints.groupCountOptions[0]
+          : null;
+        const fallbackSeats = buildPreferenceGroupSuggestionCandidate({
+          activeIds,
+          freeSeats,
+          lockedSeatSet,
+          lockedAssignments,
+          initiallyAssignedIds,
+          maxSize,
+          studentById,
+          performanceFlairPlan: usePerformanceFlairPlan
+            ? {
+              active: true,
+              flairs: performanceFlairConstraints.flairs,
+              seatAllocation: buildPerformanceFlairSeatAllocation(
+                freeSeats,
+                performanceFlairConstraints.flairs,
+                fallbackGroupCounts
               ),
-            });
-            candidates.push({
-              seats: fallbackSeats,
-              signature: buildGroupSuggestionSignature(fallbackSeats, activeIds),
-              score: scoreGroupSuggestionSeatMap(fallbackSeats, studentById),
-            });
-          }
-
-          candidates.sort((a, b) => {
-            if (a.score !== b.score) return a.score - b.score;
-            return Math.random() < 0.5 ? -1 : 1;
-          });
-
-          const topCandidateCount = Math.max(1, Math.min(3, candidates.length));
-          const finalCandidate = candidates[Math.floor(Math.random() * topCandidateCount)] || candidates[0];
-          const rouletteCandidates = candidates.slice(0, Math.min(candidates.length, 12));
-          await playGroupSuggestionRoulette(rouletteCandidates, finalCandidate);
-
-          state.seats = cloneGroupSeatMap(finalCandidate.seats);
-          renderSeats();
-          refreshUnseated();
-          if (performanceFlairConstraints?.bestEffort && performanceFlairConstraints.warningMessage) {
-            showMessage(performanceFlairConstraints.warningMessage, 'warn');
-          }
-          finishGroupSuggestProgress('Vorschlag steht');
-        } catch (error) {
-          reportAppError(error, 'Gruppenvorschlag konnte nicht erstellt werden.', {
-            scope: 'group-suggestion',
-            action: 'assign-with-preferences',
-          });
-          state.seats = previousSeats;
-          renderSeats();
-          refreshUnseated();
-          hideGroupSuggestProgress();
-        } finally {
-          groupSuggestInProgress = false;
-          clearGroupSuggestionFrameState();
-          [els.groupSuggest, els.groupSuggestCollapsed].filter(Boolean).forEach((button) => {
-            button.disabled = false;
-            button.removeAttribute('aria-busy');
-          });
-        }
+            }
+            : null,
+          performanceFlairBestEffort: Boolean(
+            performanceFlairConstraints?.active && performanceFlairConstraints.bestEffort
+          ),
+        });
+        candidates.push({
+          seats: fallbackSeats,
+          signature: buildGroupSuggestionSignature(fallbackSeats, activeIds),
+          score: scoreGroupSuggestionSeatMap(fallbackSeats, studentById),
+        });
       }
 
+      candidates.sort((a, b) => {
+        if (a.score !== b.score) return a.score - b.score;
+        return Math.random() < 0.5 ? -1 : 1;
+      });
+
+      const topCandidateCount = Math.max(1, Math.min(3, candidates.length));
+      const finalCandidate = candidates[Math.floor(Math.random() * topCandidateCount)] || candidates[0];
+      const rouletteCandidates = candidates.slice(0, Math.min(candidates.length, 12));
+      await playGroupSuggestionRoulette(rouletteCandidates, finalCandidate);
+
+      state.seats = cloneGroupSeatMap(finalCandidate.seats);
+      renderSeats();
+      refreshUnseated();
+      if (performanceFlairConstraints?.bestEffort && performanceFlairConstraints.warningMessage) {
+        showMessage(performanceFlairConstraints.warningMessage, 'warn');
+      }
+      finishGroupSuggestProgress('Vorschlag steht');
+    } catch (error) {
+      reportAppError(error, 'Gruppenvorschlag konnte nicht erstellt werden.', {
+        scope: 'group-suggestion',
+        action: 'assign-with-preferences',
+      });
+      state.seats = previousSeats;
+      renderSeats();
+      refreshUnseated();
+      hideGroupSuggestProgress();
+    } finally {
+      groupSuggestInProgress = false;
+      clearGroupSuggestionFrameState();
       [els.groupSuggest, els.groupSuggestCollapsed].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', assignWithPreferences);
+        button.disabled = false;
+        button.removeAttribute('aria-busy');
       });
+    }
+  }
 
-      [els.groupResetLearners].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          state.seats = {};
-          state.lockedSeats.clear();
-          state.seatTopics = {};
-          state._lastImport = false;
-          state.scrollHintDismissed = true;
-          renderSeats();
-          refreshUnseated();
-        });
-      });
+  [els.groupSuggest, els.groupSuggestCollapsed].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', assignWithPreferences);
+  });
 
-      getRandomPickerStartButtons().forEach((button) => {
-        button.addEventListener('click', () => {
-          void startRandomPickerSpin();
-        });
-      });
-      els.randomPickerImport?.addEventListener('click', () => {
-        if (!els.file) return;
-        els.file.value = '';
-        els.file.click();
-      });
-      els.randomPickerExport?.addEventListener('click', () => {
-        void downloadSeatPlan();
-      });
+  [els.groupResetLearners].filter(Boolean).forEach((button) => {
+    button.addEventListener('click', () => {
+      state.seats = {};
+      state.lockedSeats.clear();
+      state.seatTopics = {};
+      state._lastImport = false;
+      state.scrollHintDismissed = true;
+      renderSeats();
+      refreshUnseated();
+    });
+  });
 
-      const updateMonitorAmpelSizing = () => {
-        const ampel = els.monitorAmpel;
-        if (!ampel || !monitorLightNodes.length) return;
+  getRandomPickerStartButtons().forEach((button) => {
+    button.addEventListener('click', () => {
+      void startRandomPickerSpin();
+    });
+  });
+  els.randomPickerImport?.addEventListener('click', () => {
+    if (!els.file) return;
+    els.file.value = '';
+    els.file.click();
+  });
+  els.randomPickerExport?.addEventListener('click', () => {
+    void downloadSeatPlan();
+  });
 
-        const rect = ampel.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) {
-          ampel.style.removeProperty('--monitor-light-fit-size');
-          return;
-        }
+  const updateMonitorAmpelSizing = () => {
+    const ampel = els.monitorAmpel;
+    if (!ampel || !monitorLightNodes.length) return;
 
-        const computed = window.getComputedStyle(ampel);
-        const paddingInline = (parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0);
-        const paddingBlock = (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0);
-        const gap = parseFloat(computed.rowGap || computed.gap) || 0;
-        const innerWidth = Math.max(0, rect.width - paddingInline);
-        const innerHeight = Math.max(0, rect.height - paddingBlock);
-        const lightCount = monitorLightNodes.length;
-        if (!innerWidth || !innerHeight || !lightCount) {
-          ampel.style.removeProperty('--monitor-light-fit-size');
-          return;
-        }
+    const rect = ampel.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      ampel.style.removeProperty('--monitor-light-fit-size');
+      return;
+    }
 
-        const sizeByWidth = innerWidth;
-        const sizeByHeight = (innerHeight - (gap * (lightCount - 1))) / lightCount;
-        const fitSize = Math.floor(Math.max(0, Math.min(sizeByWidth, sizeByHeight)));
+    const computed = window.getComputedStyle(ampel);
+    const paddingInline = (parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0);
+    const paddingBlock = (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0);
+    const gap = parseFloat(computed.rowGap || computed.gap) || 0;
+    const innerWidth = Math.max(0, rect.width - paddingInline);
+    const innerHeight = Math.max(0, rect.height - paddingBlock);
+    const lightCount = monitorLightNodes.length;
+    if (!innerWidth || !innerHeight || !lightCount) {
+      ampel.style.removeProperty('--monitor-light-fit-size');
+      return;
+    }
 
-        if (fitSize > 0) {
-          ampel.style.setProperty('--monitor-light-fit-size', `${fitSize}px`);
-          return;
-        }
-        ampel.style.removeProperty('--monitor-light-fit-size');
-      };
+    const sizeByWidth = innerWidth;
+    const sizeByHeight = (innerHeight - (gap * (lightCount - 1))) / lightCount;
+    const fitSize = Math.floor(Math.max(0, Math.min(sizeByWidth, sizeByHeight)));
 
-      const handleViewportChange = () => {
-        if (getActiveTab() === TAB_GROUPS) {
-          requestGroupGridLayoutRefresh();
-        }
-        updateMonitorAmpelSizing();
-        positionWorkOrderHintOverlay();
-        if (typeof requestAnimationFrame === 'function') {
-          if (isIOSDevice) {
-            requestAnimationFrame(() => {
-              if (getActiveTab() === TAB_GROUPS) {
-                requestGroupGridLayoutRefresh();
-              }
-              updateMonitorAmpelSizing();
-              positionWorkOrderHintOverlay();
-            });
-            return;
-          }
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              if (getActiveTab() === TAB_GROUPS) {
-                requestGroupGridLayoutRefresh();
-              }
-              updateMonitorAmpelSizing();
-              positionWorkOrderHintOverlay();
-            });
-          });
-        }
-      };
-      function refreshChromeDependentLayouts() {
-        handleViewportChange();
-        bridgeController?.refreshModuleLayouts({
-          activeTab: getActiveTab(),
-          isIOSDevice,
-        });
-        if (getActiveTab() === TAB_GROUPS) {
-          requestGroupGridLayoutRefresh({ resetViewport: true });
-        }
-      }
-      window.addEventListener('resize', handleViewportChange);
-      if (window.visualViewport) {
-        window.visualViewport.addEventListener('resize', handleViewportChange);
-      }
-      if (typeof ResizeObserver === 'function' && els.groupsGridWrap) {
-        const groupGridObserver = new ResizeObserver(() => {
+    if (fitSize > 0) {
+      ampel.style.setProperty('--monitor-light-fit-size', `${fitSize}px`);
+      return;
+    }
+    ampel.style.removeProperty('--monitor-light-fit-size');
+  };
+
+  const handleViewportChange = () => {
+    if (getActiveTab() === TAB_GROUPS) {
+      requestGroupGridLayoutRefresh();
+    }
+    updateMonitorAmpelSizing();
+    positionWorkOrderHintOverlay();
+    if (typeof requestAnimationFrame === 'function') {
+      if (isIOSDevice) {
+        requestAnimationFrame(() => {
           if (getActiveTab() === TAB_GROUPS) {
             requestGroupGridLayoutRefresh();
           }
-        });
-        groupGridObserver.observe(els.groupsGridWrap);
-        if (els.groupsMainHost) {
-          groupGridObserver.observe(els.groupsMainHost);
-        }
-      }
-      if (typeof ResizeObserver === 'function' && els.monitorAmpel) {
-        const monitorAmpelObserver = new ResizeObserver(() => {
           updateMonitorAmpelSizing();
+          positionWorkOrderHintOverlay();
         });
-        monitorAmpelObserver.observe(els.monitorAmpel);
-        els.monitorAmpel.parentElement && monitorAmpelObserver.observe(els.monitorAmpel.parentElement);
+        return;
       }
-      bindTabNavigation();
-      bindBackgroundDrop(els.groupsGrid);
-      bindBackgroundDrop(els.groupsGridWrap, { ignoreInsideGrid: true });
-
-      try {
-        setActiveTab(TAB_GRADES);
-      } catch (error) {
-        reportAppError(error, 'Planung konnte beim Start nicht geladen werden. Gruppenansicht als Fallback geöffnet.', {
-          scope: 'app-init',
-          action: 'set-initial-tab',
-          tab: TAB_GRADES,
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (getActiveTab() === TAB_GROUPS) {
+            requestGroupGridLayoutRefresh();
+          }
+          updateMonitorAmpelSizing();
+          positionWorkOrderHintOverlay();
         });
-        setActiveTabImmediate(TAB_GROUPS);
-      }
-      try {
-        MonitorModule.init();
-      } catch (error) {
-        reportAppError(error, 'Lautstärke-Feedback konnte nicht initialisiert werden.', {
-          scope: 'app-init',
-          action: 'init-monitor-module',
-        });
-      }
-      try {
-        buildGrid();
-        refreshUnseated();
-        renderWorkOrder();
-      } catch (error) {
-        reportAppError(error, 'Die Hauptansicht konnte nicht vollständig initialisiert werden.', {
-          scope: 'app-init',
-          action: 'init-main-view',
-        });
-      }
-      syncChromeState();
-      updateMonitorAmpelSizing();
-      els.app?.classList.add('app-js-ready');
-      window.addEventListener('resize', positionWorkOrderHintOverlay);
-      window.addEventListener('scroll', positionWorkOrderHintOverlay, true);
-      const serviceWorkerUpdates = registerServiceWorkerUpdates({
-        updateDialog: els.updateDialog,
-        updateDialogLater: els.updateDialogLater,
-        updateDialogReload: els.updateDialogReload,
-        beforeReloadForUpdate: markVersionUpdateHintPending,
-        onUpdateAvailabilityChange: setVersionUpdateAvailability,
-        serviceWorkerUrl: './sw.js',
       });
-      if (els.headerVersion && serviceWorkerUpdates?.checkForUpdates) {
-        const runManualUpdateCheck = async () => {
-          if (els.headerVersion.dataset.updateCheckPending === '1') {
-            return;
-          }
-          els.headerVersion.dataset.updateCheckPending = '1';
-          els.headerVersion.classList.add('is-checking-update');
-          try {
-            const result = await serviceWorkerUpdates.checkForUpdates();
-            switch (result?.status) {
-              case 'update-available':
-                showMessage('Update verfügbar. Aktualisieren-Dialog geöffnet.', 'info');
-                break;
-              case 'up-to-date':
-                showMessage('TeachHelper ist aktuell.', 'info');
-                break;
-              case 'disabled':
-                showMessage('Update-Check ist auf localhost deaktiviert.', 'warn');
-                break;
-              case 'unsupported':
-                showMessage('Update-Check wird von diesem Browser nicht unterstützt.', 'warn');
-                break;
-              default:
-                showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
-                break;
-            }
-          } catch {
-            showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
-          } finally {
-            delete els.headerVersion.dataset.updateCheckPending;
-            els.headerVersion.classList.remove('is-checking-update');
-          }
-        };
-        els.headerVersion.addEventListener('click', () => {
-          void runManualUpdateCheck();
-        });
-        els.headerVersion.addEventListener('keydown', (event) => {
-          if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') {
-            return;
-          }
-          event.preventDefault();
-          void runManualUpdateCheck();
-        });
+    }
+  };
+  function refreshChromeDependentLayouts() {
+    handleViewportChange();
+    bridgeController?.refreshModuleLayouts({
+      activeTab: getActiveTab(),
+      isIOSDevice,
+    });
+    if (getActiveTab() === TAB_GROUPS) {
+      requestGroupGridLayoutRefresh({ resetViewport: true });
+    }
+  }
+  window.addEventListener('resize', handleViewportChange);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', handleViewportChange);
+  }
+  if (typeof ResizeObserver === 'function' && els.groupsGridWrap) {
+    const groupGridObserver = new ResizeObserver(() => {
+      if (getActiveTab() === TAB_GROUPS) {
+        requestGroupGridLayoutRefresh();
       }
-    })();
+    });
+    groupGridObserver.observe(els.groupsGridWrap);
+    if (els.groupsMainHost) {
+      groupGridObserver.observe(els.groupsMainHost);
+    }
+  }
+  if (typeof ResizeObserver === 'function' && els.monitorAmpel) {
+    const monitorAmpelObserver = new ResizeObserver(() => {
+      updateMonitorAmpelSizing();
+    });
+    monitorAmpelObserver.observe(els.monitorAmpel);
+    els.monitorAmpel.parentElement && monitorAmpelObserver.observe(els.monitorAmpel.parentElement);
+  }
+  bindTabNavigation();
+  bindBackgroundDrop(els.groupsGrid);
+  bindBackgroundDrop(els.groupsGridWrap, { ignoreInsideGrid: true });
+
+  try {
+    setActiveTab(TAB_GRADES);
+  } catch (error) {
+    reportAppError(error, 'Planung konnte beim Start nicht geladen werden. Gruppenansicht als Fallback geöffnet.', {
+      scope: 'app-init',
+      action: 'set-initial-tab',
+      tab: TAB_GRADES,
+    });
+    setActiveTabImmediate(TAB_GROUPS);
+  }
+  try {
+    MonitorModule.init();
+  } catch (error) {
+    reportAppError(error, 'Lautstärke-Feedback konnte nicht initialisiert werden.', {
+      scope: 'app-init',
+      action: 'init-monitor-module',
+    });
+  }
+  try {
+    buildGrid();
+    refreshUnseated();
+    renderWorkOrder();
+  } catch (error) {
+    reportAppError(error, 'Die Hauptansicht konnte nicht vollständig initialisiert werden.', {
+      scope: 'app-init',
+      action: 'init-main-view',
+    });
+  }
+  syncChromeState();
+  updateMonitorAmpelSizing();
+  els.app?.classList.add('app-js-ready');
+  const firstRunTutorial = createFirstRunTutorial({
+    els,
+    steps: FIRST_RUN_TUTORIAL_STEPS,
+    getContextualSteps: getCurrentModuleTutorialSteps,
+    getActiveTab,
+    setActiveTab: setActiveTabForTutorial,
+    isChromeCollapsed,
+    setChromeCollapsed,
+  });
+  window.setTimeout(() => {
+    if (!firstRunTutorial.start()) {
+      firstRunTutorial.showContextHelp();
+    }
+  }, 0);
+  window.addEventListener('resize', positionWorkOrderHintOverlay);
+  window.addEventListener('scroll', positionWorkOrderHintOverlay, true);
+  const serviceWorkerUpdates = registerServiceWorkerUpdates({
+    updateDialog: els.updateDialog,
+    updateDialogLater: els.updateDialogLater,
+    updateDialogReload: els.updateDialogReload,
+    beforeReloadForUpdate: markVersionUpdateHintPending,
+    onUpdateAvailabilityChange: setVersionUpdateAvailability,
+    serviceWorkerUrl: './sw.js',
+  });
+  if (els.headerVersion && serviceWorkerUpdates?.checkForUpdates) {
+    const runManualUpdateCheck = async () => {
+      if (els.headerVersion.dataset.updateCheckPending === '1') {
+        return;
+      }
+      els.headerVersion.dataset.updateCheckPending = '1';
+      els.headerVersion.classList.add('is-checking-update');
+      try {
+        const result = await serviceWorkerUpdates.checkForUpdates();
+        switch (result?.status) {
+          case 'update-available':
+            showMessage('Update verfügbar. Aktualisieren-Dialog geöffnet.', 'info');
+            break;
+          case 'up-to-date':
+            showMessage('TeachHelper ist aktuell.', 'info');
+            break;
+          case 'disabled':
+            showMessage('Update-Check ist auf localhost deaktiviert.', 'warn');
+            break;
+          case 'unsupported':
+            showMessage('Update-Check wird von diesem Browser nicht unterstützt.', 'warn');
+            break;
+          default:
+            showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
+            break;
+        }
+      } catch {
+        showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
+      } finally {
+        delete els.headerVersion.dataset.updateCheckPending;
+        els.headerVersion.classList.remove('is-checking-update');
+      }
+    };
+    els.headerVersion.addEventListener('click', () => {
+      void runManualUpdateCheck();
+    });
+    els.headerVersion.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') {
+        return;
+      }
+      event.preventDefault();
+      void runManualUpdateCheck();
+    });
+  }
+})();

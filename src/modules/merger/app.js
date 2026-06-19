@@ -1,4 +1,4 @@
-import { MERGER_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
+import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
 
 export function createMergerApp({
   sideRoot = null,
@@ -343,7 +343,15 @@ export function createMergerApp({
     messageListener = (event) => {
       if (event.source !== window.parent) return;
       const data = event.data;
-      if (!data || typeof data !== "object" || data.type !== MERGER_SHELL_LAYOUT_EVENT) return;
+      if (!data || typeof data !== "object") return;
+      if (data.type === MERGER_TOOL_REQUEST_EVENT) {
+        const tool = String(data.detail?.tool || "");
+        if ([TOOL_LAYOUT, TOOL_MERGE, TOOL_ROTATE, TOOL_SPLIT].includes(tool)) {
+          setActiveTool(tool);
+        }
+        return;
+      }
+      if (data.type !== MERGER_SHELL_LAYOUT_EVENT) return;
       const detail = data.detail && typeof data.detail === "object" ? data.detail : null;
       if (detail?.theme) {
         applyTheme(detail.theme);

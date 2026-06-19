@@ -48,7 +48,7 @@
                 </li>
                 <li>
                   <strong>Aktiviere verfügbare Sitzplätze<br>(einzeln anklicken oder nach Muster)</strong>
-                  <div class="step-actions dashed">
+                  <div id="tutorial-seat-patterns" class="step-actions dashed">
                     <button type="button" id="pattern-pi" title="U-förmig">∏</button>
                     <button type="button" id="pattern-e" title="EƎ-förmig">E Ǝ</button>
                     <button type="button" id="pattern-bars-3" title="3 Reihen">☰</button>
@@ -60,7 +60,7 @@
                 <li>
                   <strong>Entscheide, ob es 2er-Tische gibt</strong>
                   <div class="step-actions twoer-row">
-                    <div class="toggle-pill" role="group" aria-label="2er-Tische">
+                    <div id="tutorial-two-seat-options" class="toggle-pill" role="group" aria-label="2er-Tische">
                       <label class="toggle-option" title="Zulässig">
                         <input type="radio" name="twoer-toggle" value="zulässig" aria-label="Zulässig" checked />
                         <span>✓</span>
@@ -100,13 +100,13 @@
               </ol>
             </div>
 
-            <div class="row mt-md">
+            <div id="tutorial-distribution-actions" class="row mt-md">
               <button id="suggest" class="warn flex-1"
                 title="Vorschlag unter Beachtung der Präferenzen generieren">Vorschlag</button>
               <button id="random" class="warn flex-1" title="Zufällige Sitzverteilung erstellen">Zufall</button>
             </div>
 
-            <div class="row">
+            <div id="tutorial-plan-edit-actions" class="row">
               <button id="reset-learners" class="filled flex-1"
                 title="Alle Lernenden von Sitzpläzten lösen">Belegung<br>zurücksetzen</button>
               <button id="reset-raster" class="filled flex-1"
@@ -117,7 +117,7 @@
                 title="Anzahl der Zeilen und Spalten anpassen">Raster<br>anpassen</button>
             </div>
 
-            <div class="row sitzplan-row">
+            <div id="tutorial-plan-file-actions" class="row sitzplan-row">
               <button id="import-plan" class="primary flex-1"
                 title="Gespeicherten Sitzplan laden">Sitzplan<br>laden</button>
               <button id="export-plan" class="primary flex-1"

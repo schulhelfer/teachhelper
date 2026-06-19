@@ -790,6 +790,49 @@
       opacity: 0.85;
     }
 
+    .sidebar-footer {
+      display: flex;
+      position: fixed;
+      left: calc(env(safe-area-inset-left, 0px) + var(--app-shell-padding) + 14px);
+      bottom: calc(env(safe-area-inset-bottom, 0px) + var(--app-shell-padding) + 14px);
+      z-index: 113;
+      justify-content: flex-start;
+      margin: 0;
+      padding: 0;
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .sidebar-help-button {
+      width: 30px;
+      min-width: 30px;
+      height: 30px;
+      min-height: 30px;
+      padding: 0;
+      border: 0 !important;
+      border-radius: 0;
+      background: transparent !important;
+      color: #e2e8f0;
+      font-size: 17px;
+      line-height: 1;
+      box-shadow: none !important;
+      filter: none !important;
+    }
+
+    .sidebar-help-button.has-tutorial-attention {
+      box-shadow: none !important;
+    }
+
+    .sidebar-help-button:hover,
+    .sidebar-help-button:active,
+    .sidebar-help-button:focus,
+    .sidebar-help-button:focus-visible {
+      background: transparent !important;
+      border-color: transparent !important;
+      box-shadow: none !important;
+      filter: none !important;
+    }
+
     .shell-sidebar-header {
       display: none;
     }
@@ -4836,6 +4879,331 @@
       border-bottom-color: rgba(15, 23, 42, 0.14);
     }
 
+    .tutorial-highlight {
+      position: fixed;
+      z-index: 110;
+      pointer-events: none;
+      border: 2px solid color-mix(in srgb, var(--accent) 72%, white 28%);
+      box-shadow: 0 0 0 9999px rgba(2, 6, 23, 0.18), 0 0 0 6px color-mix(in srgb, var(--accent) 18%, transparent 82%);
+      transition: left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease, border-radius 160ms ease;
+    }
+
+    .tutorial-intro-dialog {
+      width: min(390px, calc(100vw - 32px));
+      padding: 24px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 18px;
+      background: rgba(15, 23, 42, 0.98);
+      box-shadow: 0 24px 64px rgba(2, 6, 23, 0.42);
+      color: #e2e8f0;
+      text-align: center;
+    }
+
+    .tutorial-intro-dialog::backdrop {
+      background: rgba(2, 6, 23, 0.5);
+      backdrop-filter: blur(2px);
+    }
+
+    .tutorial-intro-icon {
+      margin-bottom: 10px;
+      font-size: 42px;
+      line-height: 1;
+    }
+
+    .tutorial-intro-dialog h2 {
+      margin: 0 0 8px;
+      color: #f8fafc;
+      font-size: 22px;
+    }
+
+    .tutorial-intro-dialog p {
+      margin: 0;
+      color: #cbd5e1;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .tutorial-intro-start-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 56px;
+      min-width: 56px;
+      height: 48px;
+      margin-top: 18px;
+      padding: 0;
+      border: 0;
+      border-radius: 10px;
+      background: transparent;
+      box-shadow: none;
+      color: #dbeafe;
+      font: inherit;
+      font-size: 26px;
+      cursor: pointer;
+    }
+
+    .tutorial-intro-start-button:hover {
+      background: rgba(148, 163, 184, 0.14);
+      filter: none;
+    }
+
+    .tutorial-intro-start-button:focus,
+    .tutorial-intro-start-button:focus-visible {
+      outline: none;
+    }
+
+    .tutorial-bubble {
+      position: fixed;
+      z-index: 111;
+      width: min(310px, calc(100vw - 28px));
+      padding: 13px 44px 12px 14px;
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.97);
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      box-shadow: 0 18px 42px rgba(2, 6, 23, 0.34);
+      color: #e2e8f0;
+      font-size: 13px;
+      line-height: 1.38;
+      pointer-events: auto;
+      animation: tutorial-bubble-pop 180ms ease-out;
+    }
+
+    .tutorial-bubble::before {
+      content: '';
+      position: absolute;
+      width: 12px;
+      height: 12px;
+      background: inherit;
+      border-color: inherit;
+      border-style: solid;
+      border-width: 0;
+      transform: rotate(45deg);
+      pointer-events: none;
+    }
+
+    .tutorial-bubble[data-placement='bottom']::before {
+      left: var(--tutorial-arrow-left, 50%);
+      top: -7px;
+      margin-left: -6px;
+      border-left-width: 1px;
+      border-top-width: 1px;
+    }
+
+    .tutorial-bubble[data-placement='top']::before {
+      left: var(--tutorial-arrow-left, 50%);
+      bottom: -7px;
+      margin-left: -6px;
+      border-right-width: 1px;
+      border-bottom-width: 1px;
+    }
+
+    .tutorial-bubble[data-placement='left']::before {
+      right: -7px;
+      top: var(--tutorial-arrow-top, 50%);
+      margin-top: -6px;
+      border-right-width: 1px;
+      border-top-width: 1px;
+    }
+
+    .tutorial-bubble[data-placement='right']::before {
+      left: -7px;
+      top: var(--tutorial-arrow-top, 50%);
+      margin-top: -6px;
+      border-left-width: 1px;
+      border-bottom-width: 1px;
+    }
+
+    .tutorial-bubble[data-placement='center']::before {
+      display: none;
+    }
+
+    .tutorial-title {
+      margin: 0 0 6px;
+      color: #f8fafc;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .tutorial-copy {
+      margin: 0;
+      color: #cbd5e1;
+    }
+
+    .tutorial-actions {
+      display: grid;
+      grid-template-columns: 52px minmax(0, 1fr) 52px;
+      align-items: center;
+      gap: 2px;
+      margin-top: 6px;
+      margin-right: -30px;
+    }
+
+    .tutorial-count {
+      color: #94a3b8;
+      font-size: 11px;
+      font-weight: 700;
+      text-align: center;
+    }
+
+    .tutorial-close-button,
+    .tutorial-prev-button,
+    .tutorial-next-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font: inherit;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .tutorial-close-button {
+      position: absolute;
+      top: 7px;
+      right: 7px;
+      width: 40px;
+      min-width: 40px;
+      height: 40px;
+      min-height: 40px;
+      padding: 0;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 12px;
+      background: rgba(15, 23, 42, 0.68);
+      color: #cbd5e1;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .tutorial-prev-button,
+    .tutorial-next-button {
+      width: 52px;
+      min-width: 52px;
+      height: 44px;
+      padding: 0;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      box-shadow: none;
+      font-size: 24px;
+      line-height: 1;
+    }
+
+    .tutorial-prev-button {
+      color: #cbd5e1;
+      justify-self: stretch;
+    }
+
+    .tutorial-next-button {
+      color: #dbeafe;
+      justify-self: stretch;
+    }
+
+    .tutorial-prev-button:disabled {
+      cursor: default;
+      opacity: 0.42;
+    }
+
+    .tutorial-close-button:hover,
+    .tutorial-prev-button:not(:disabled):hover,
+    .tutorial-next-button:hover {
+      background: rgba(148, 163, 184, 0.14);
+      filter: none;
+    }
+
+    .tutorial-close-button:focus-visible {
+      outline: 2px solid color-mix(in srgb, var(--accent) 72%, white 28%);
+      outline-offset: 2px;
+    }
+
+    .tutorial-prev-button:focus,
+    .tutorial-prev-button:focus-visible,
+    .tutorial-next-button:focus,
+    .tutorial-next-button:focus-visible,
+    .sidebar-help-button:focus,
+    .sidebar-help-button:focus-visible {
+      outline: none;
+    }
+
+    @keyframes tutorial-bubble-pop {
+      from {
+        opacity: 0;
+        transform: translateY(4px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    :root[data-theme='light'] .tutorial-highlight {
+      box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.12), 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent 84%);
+    }
+
+    :root[data-theme='light'] .tutorial-intro-dialog {
+      background: rgba(255, 255, 255, 0.99);
+      border-color: rgba(15, 23, 42, 0.14);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+      color: #0f172a;
+    }
+
+    :root[data-theme='light'] .tutorial-intro-dialog h2 {
+      color: #0f172a;
+    }
+
+    :root[data-theme='light'] .tutorial-intro-dialog p {
+      color: #334155;
+    }
+
+    :root[data-theme='light'] .tutorial-bubble {
+      background: rgba(255, 255, 255, 0.98);
+      border-color: rgba(15, 23, 42, 0.14);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+      color: #0f172a;
+    }
+
+    :root[data-theme='light'] .tutorial-title {
+      color: #0f172a;
+    }
+
+    :root[data-theme='light'] .tutorial-copy {
+      color: #334155;
+    }
+
+    :root[data-theme='light'] .tutorial-count {
+      color: #64748b;
+    }
+
+    :root[data-theme='light'] .tutorial-close-button,
+    :root[data-theme='light'] .tutorial-prev-button {
+      background: #f8fafc;
+      border-color: rgba(15, 23, 42, 0.14);
+      color: #334155;
+    }
+
+    :root[data-theme='light'] .tutorial-prev-button,
+    :root[data-theme='light'] .tutorial-next-button {
+      background: transparent;
+      border: 0;
+      color: #1e3a8a;
+    }
+
+    :root[data-theme='light'] .tutorial-close-button:hover,
+    :root[data-theme='light'] .tutorial-prev-button:not(:disabled):hover,
+    :root[data-theme='light'] .tutorial-next-button:hover {
+      background: rgba(15, 23, 42, 0.08);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      .tutorial-bubble {
+        animation: none;
+      }
+
+      .tutorial-highlight {
+        transition: none;
+      }
+    }
+
     :root[data-theme='light'] .grid-wrap {
       background: rgba(248, 250, 252, 0.82);
       border: 1px solid rgba(15, 23, 42, 0.12);
@@ -5624,11 +5992,11 @@
       }
     }
 
-    #planning-host > .planning-frame,
-    #merger-host > .merger-frame,
-    #duplicate-check-host > .duplicate-check-frame,
-    #qr-host > .qr-frame,
-    #seatplan-main-host > .seatplan-frame {
+    #planning-host>.planning-frame,
+    #merger-host>.merger-frame,
+    #duplicate-check-host>.duplicate-check-frame,
+    #qr-host>.qr-frame,
+    #seatplan-main-host>.seatplan-frame {
       width: 100%;
       height: 100%;
       min-height: 70vh;
@@ -5639,15 +6007,15 @@
       box-shadow: none;
     }
 
-    #planning-host > .planning-frame {
+    #planning-host>.planning-frame {
       background: transparent;
     }
 
-    .app.app-seatplan-full > .side {
+    .app.app-seatplan-full>.side {
       display: none !important;
     }
 
-    .app.app-seatplan-full > .main {
+    .app.app-seatplan-full>.main {
       width: 100% !important;
       min-width: 0;
       max-width: none;
@@ -5662,7 +6030,6 @@
     #seatplan-dialog-host {
       display: none !important;
     }
-
   </style>
 </head>
 
@@ -5701,8 +6068,7 @@
           aria-selected="false">DuplikatCheck</button>
         <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
           aria-selected="false">Arbeitsphase</button>
-        <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr"
-          aria-selected="false">QR</button>
+        <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
       </nav>
     </header>
     <button id="sidebar-manual-save-btn" class="ghost header-icon-button manual-header-save-btn" type="button"
@@ -5848,7 +6214,8 @@
         <section class="monitor-controls" aria-label="Monitor-Steuerung (Sidebar)">
           <div class="monitor-thresholds" aria-label="Schwellenwerte einstellen">
             <label class="monitor-threshold-field" for="monitor-yellow-threshold">
-              <span>Gelb ab <output id="monitor-yellow-threshold-value" for="monitor-yellow-threshold">60 dB</output></span>
+              <span>Gelb ab <output id="monitor-yellow-threshold-value" for="monitor-yellow-threshold">60
+                  dB</output></span>
               <input id="monitor-yellow-threshold" type="range" min="30" max="99" step="1" value="60"
                 data-monitor-threshold="yellow" aria-label="Schwellenwert für Gelb">
             </label>
@@ -5936,6 +6303,11 @@
         <div class="list" id="unseated"></div>
       </section>
     </aside>
+
+    <div class="sidebar-footer" aria-label="Hilfe">
+      <button id="first-run-tutorial-start" class="ghost sidebar-help-button" type="button"
+        aria-label="Tutorial starten" title="Tutorial starten">ℹ️</button>
+    </div>
 
     <main class="main">
       <div id="groups-main-host">
@@ -6039,14 +6411,8 @@
           </table>
         </div>
         <div class="dialog-actions">
-          <div
-            id="preferences-performance-summary"
-            class="preferences-performance-summary"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-            hidden
-          ></div>
+          <div id="preferences-performance-summary" class="preferences-performance-summary" role="status"
+            aria-live="polite" aria-atomic="true" hidden></div>
           <button type="button" id="preferences-reset" class="ghost" hidden>Zurücksetzen</button>
           <button type="button" id="preferences-cancel" class="ghost">Abbrechen</button>
           <button type="submit" class="primary">Speichern</button>

@@ -110,11 +110,26 @@ export function createPlanningSeatplanBridge({
     if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
       return;
     }
+    const detail = view && typeof view === 'object'
+      ? {
+        ...view,
+        view: view.view === 'grades'
+          ? 'grades'
+          : (view.view === 'settings' ? 'settings' : (view.view === 'course' ? 'course' : 'week')),
+      }
+      : {
+        view: view === 'grades' ? 'grades' : (view === 'course' ? 'course' : 'week'),
+      };
     window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, {
-      detail: {
-        view: view === 'grades' ? 'grades' : 'week',
-      },
+      detail,
     }));
+  }
+
+  function dispatchMergerToolRequest(tool) {
+    const normalizedTool = ['layout', 'merge', 'rotate', 'split'].includes(tool) ? tool : '';
+    if (!normalizedTool) return;
+    ensureTabInitialized(TAB_MERGER);
+    mergerController?.selectTool?.(normalizedTool);
   }
 
   function scheduleModuleLayoutRefresh(activeTab, isIOSDevice = false) {
@@ -285,6 +300,7 @@ export function createPlanningSeatplanBridge({
   return {
     ensureTabInitialized,
     dispatchPlanningViewRequest,
+    dispatchMergerToolRequest,
     emitStudentsUpdated,
     refreshModuleLayouts,
     sendCourseSeatplanContext,

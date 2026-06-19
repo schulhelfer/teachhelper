@@ -1,6 +1,6 @@
-import { MERGER_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
+import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
 
-const MERGER_VERSION = 'merger-r11';
+const MERGER_VERSION = 'merger-r12';
 const MERGER_URL = new URL(`./app.html?v=${MERGER_VERSION}`, import.meta.url);
 
 export function mountMerger({ host }) {
@@ -17,7 +17,22 @@ export function mountMerger({ host }) {
 
   let ready = false;
   let pendingShellLayout = null;
+  let pendingTool = null;
   let disposed = false;
+
+  const selectTool = (tool) => {
+    if (disposed) return;
+    const normalizedTool = ['layout', 'merge', 'rotate', 'split'].includes(tool) ? tool : '';
+    if (!normalizedTool) return;
+    if (!ready || !frame.contentWindow) {
+      pendingTool = normalizedTool;
+      return;
+    }
+    frame.contentWindow.postMessage({
+      type: MERGER_TOOL_REQUEST_EVENT,
+      detail: { tool: normalizedTool },
+    }, targetOrigin);
+  };
 
   const applyShellLayout = (detail) => {
     if (disposed) return;
@@ -40,6 +55,10 @@ export function mountMerger({ host }) {
     ready = true;
     applyShellLayout(pendingShellLayout || { collapsed: false });
     pendingShellLayout = null;
+    if (pendingTool) {
+      selectTool(pendingTool);
+      pendingTool = null;
+    }
   };
 
   const dispose = () => {
@@ -47,6 +66,7 @@ export function mountMerger({ host }) {
     disposed = true;
     ready = false;
     pendingShellLayout = null;
+    pendingTool = null;
     frame.removeEventListener('load', onFrameLoad);
     if (frame.isConnected) {
       frame.remove();
@@ -57,7 +77,7 @@ export function mountMerger({ host }) {
     }
   };
 
-  const controller = { frame, applyShellLayout, dispose };
+  const controller = { frame, applyShellLayout, selectTool, dispose };
 
   frame.addEventListener('load', onFrameLoad, { once: true });
   host.appendChild(frame);
