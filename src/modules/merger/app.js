@@ -191,10 +191,6 @@ export function createMergerApp({
     "6. Starte den Browser neu"
   ].join("\n");
 
-  function applyTheme(theme) {
-    setScopeAttribute("data-theme", theme === "light" ? "light" : "dark");
-  }
-
   function applyShellLayout(detail) {
     const collapsed = Boolean(detail && typeof detail === "object" && detail.collapsed);
     setScopeAttribute("data-shell-collapsed", collapsed ? "true" : "false");
@@ -334,7 +330,6 @@ export function createMergerApp({
     input._stepperPlus.disabled = disablePlus;
   }
 
-  applyTheme(root?.documentElement?.dataset?.theme);
   applyShellLayout({ collapsed: false });
   initNumberStepper(ui.studentCount);
   hydrateRotateDocumentDegreeButtons();
@@ -353,9 +348,6 @@ export function createMergerApp({
       }
       if (data.type !== MERGER_SHELL_LAYOUT_EVENT) return;
       const detail = data.detail && typeof data.detail === "object" ? data.detail : null;
-      if (detail?.theme) {
-        applyTheme(detail.theme);
-      }
       applyShellLayout(detail);
     };
     window.addEventListener("message", messageListener);

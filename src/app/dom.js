@@ -139,6 +139,5 @@ export function createAppDom(doc = document) {
       yellow: doc.querySelector('[data-monitor-light="yellow"]'),
       green: doc.querySelector('[data-monitor-light="green"]'),
     },
-    themeColorMeta: doc.querySelector('meta[name="theme-color"]'),
   };
 }

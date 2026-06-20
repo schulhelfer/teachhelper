@@ -21,10 +21,9 @@ import {
   TAB_SEATPLAN,
   TAB_WORK_PHASE,
 } from './shell/tabs.js';
-import { applyTheme } from './shell/theme.js';
 
 (function () {
-  const { appEl, els, monitorLights, themeColorMeta } = createAppDom(document);
+  const { appEl, els, monitorLights } = createAppDom(document);
   if (!appEl) {
     return;
   }
@@ -126,7 +125,6 @@ import { applyTheme } from './shell/theme.js';
   };
   setDisplayedAppVersion(APP_VERSION);
   consumePendingVersionUpdateHint();
-  applyTheme({ root: document.documentElement, themeColorMeta });
   const isIOSDevice = (() => {
     if (typeof navigator === 'undefined') {
       return false;
@@ -210,15 +208,78 @@ import { applyTheme } from './shell/theme.js';
   const setActiveTabImmediate = (tab) => shellController?.setActiveTabImmediate(tab);
   const syncChromeState = () => shellController?.syncChromeState();
   let tabNavigationBound = false;
-  const getPlanningFrame = () => els.planningHost?.querySelector('iframe') || null;
+  let firstRunTutorial = null;
+  let planningTutorialDemoFrame = null;
+  let planningTutorialDemoActive = false;
+  let planningTutorialDemoFrameReady = false;
+  let pendingPlanningTutorialDemoView = null;
+  const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
   const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
+  const getQrFrame = () => els.qrHost?.querySelector('iframe') || null;
   const getSeatplanFrame = () => els.seatplanMainHost?.querySelector('iframe') || null;
   const openMergerToolForTutorial = (tool = 'layout') => {
     bridgeController?.ensureTabInitialized(TAB_MERGER);
     bridgeController?.dispatchMergerToolRequest?.(tool);
   };
+  const dispatchPlanningTutorialDemoView = (detail) => {
+    const frame = planningTutorialDemoFrame;
+    pendingPlanningTutorialDemoView = detail;
+    if (!planningTutorialDemoFrameReady || !frame?.contentWindow) return false;
+    frame.contentWindow.postMessage({
+      type: 'classroom:planning-view-request',
+      detail,
+    }, new URL(frame.src, window.location.href).origin);
+    return true;
+  };
+  const getPlanningTutorialApi = (frame = getPlanningFrame()) => {
+    try {
+      return frame?.contentWindow?.__teachhelperPlanningTutorial || null;
+    } catch {
+      return null;
+    }
+  };
+  const waitForPlanningTutorialApi = async (frame = getPlanningFrame()) => {
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      const api = getPlanningTutorialApi(frame);
+      if (api) return api;
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    return null;
+  };
+  const preparePlanningTutorialSurface = async (surface) => {
+    const frame = getPlanningFrame();
+    const api = await waitForPlanningTutorialApi(frame);
+    await api?.showSurface?.(surface);
+  };
+  const prepareGradesTutorialSurface = (surface) => preparePlanningTutorialSurface(surface);
+  const activatePlanningTutorialPresentation = () => {
+    const frame = getPlanningFrame();
+    let activeApi = null;
+    let cancelled = false;
+    void waitForPlanningTutorialApi(frame).then((api) => {
+      if (cancelled) return null;
+      activeApi = api;
+      return api?.activate?.();
+    });
+    return {
+      cleanup: () => {
+        cancelled = true;
+        if (activeApi) activeApi.cleanup?.();
+        else getPlanningTutorialApi(frame)?.cleanup?.();
+      },
+    };
+  };
   const openPlanningSettingsForTutorial = (settingsTab = 'dayoff') => {
+    if (planningTutorialDemoActive) {
+      dispatchPlanningTutorialDemoView({
+        view: 'settings',
+        settingsTab,
+        settingsContext: 'planning',
+        source: 'tutorial',
+      });
+      return;
+    }
     bridgeController?.ensureTabInitialized(TAB_PLANNING);
     bridgeController?.dispatchPlanningViewRequest({
       view: 'settings',
@@ -231,16 +292,11 @@ import { applyTheme } from './shell/theme.js';
   const openPlanningDayOffSettingsForTutorial = () => openPlanningSettingsForTutorial('dayoff');
   const openPlanningDisplaySettingsForTutorial = () => openPlanningSettingsForTutorial('display');
   const openPlanningLessonTimesForTutorial = () => openPlanningSettingsForTutorial('lessonTimes');
-  const openGradesDatabaseSettingsForTutorial = () => {
-    bridgeController?.ensureTabInitialized(TAB_PLANNING);
-    bridgeController?.dispatchPlanningViewRequest({
-      view: 'settings',
-      settingsTab: 'database',
-      settingsContext: 'grades',
-      source: 'tutorial',
-    });
-  };
   const openPlanningWeekForTutorial = () => {
+    if (planningTutorialDemoActive) {
+      dispatchPlanningTutorialDemoView({ view: 'week', source: 'tutorial' });
+      return;
+    }
     bridgeController?.ensureTabInitialized(TAB_PLANNING);
     bridgeController?.dispatchPlanningViewRequest({
       view: 'week',
@@ -248,30 +304,24 @@ import { applyTheme } from './shell/theme.js';
     });
   };
   const openPlanningCourseForTutorial = () => {
+    if (planningTutorialDemoActive) {
+      dispatchPlanningTutorialDemoView({ view: 'course', source: 'tutorial' });
+      return;
+    }
     bridgeController?.ensureTabInitialized(TAB_PLANNING);
     bridgeController?.dispatchPlanningViewRequest({
       view: 'course',
       source: 'tutorial',
     });
   };
-  const openPlanningGradesForTutorial = (gradesSubview = 'overview') => {
-    bridgeController?.ensureTabInitialized(TAB_PLANNING);
-    bridgeController?.dispatchPlanningViewRequest({
-      view: 'grades',
-      gradesSubview,
-      source: 'tutorial',
-    });
-  };
-  const openPlanningGradesOverviewForTutorial = () => openPlanningGradesForTutorial('overview');
-  const openPlanningGradesEntryForTutorial = () => openPlanningGradesForTutorial('entry');
-  const planningFrameTarget = (selector, resolveFallback = (nodes) => nodes.planningShell || nodes.tabPlanning) => (
+  const planningFrameTarget = (selector, resolveFallback = () => null) => (
     (nodes) => ({
       frame: getPlanningFrame,
       selector,
       fallback: resolveFallback(nodes),
     })
   );
-  const mergerFrameTarget = (selector, resolveFallback = (nodes) => nodes.mergerShell || nodes.tabMerger) => (
+  const mergerFrameTarget = (selector, resolveFallback = () => null) => (
     (nodes) => ({
       frame: getMergerFrame,
       selector,
@@ -280,7 +330,7 @@ import { applyTheme } from './shell/theme.js';
   );
   const duplicateCheckFrameTarget = (
     selector,
-    resolveFallback = (nodes) => nodes.duplicateCheckShell || nodes.duplicateCheckHost || nodes.tabDuplicateCheck
+    resolveFallback = () => null
   ) => (
     (nodes) => ({
       frame: getDuplicateCheckFrame,
@@ -288,9 +338,16 @@ import { applyTheme } from './shell/theme.js';
       fallback: resolveFallback(nodes),
     })
   );
+  const qrFrameTarget = (selector, resolveFallback = () => null) => (
+    (nodes) => ({
+      frame: getQrFrame,
+      selector,
+      fallback: resolveFallback(nodes),
+    })
+  );
   const seatplanFrameTarget = (
     selector,
-    resolveFallback = (nodes) => nodes.seatplanMainHost || nodes.tabSeatplan
+    resolveFallback = () => null
   ) => (
     (nodes) => ({
       frame: getSeatplanFrame,
@@ -305,6 +362,7 @@ import { applyTheme } from './shell/theme.js';
     target,
     placement = 'bottom',
     beforeRender = null,
+    skipIfMissing = true,
   }) => {
     const step = {
       title,
@@ -313,6 +371,7 @@ import { applyTheme } from './shell/theme.js';
       tab,
       placement,
       expandChrome: true,
+      skipIfMissing,
     };
     if (typeof beforeRender === 'function') {
       step.beforeRender = beforeRender;
@@ -326,311 +385,516 @@ import { applyTheme } from './shell/theme.js';
     }
     return steps;
   };
+  let requestedQrTutorialTool = 'generator';
+  let requestedQrTutorialSurface = '';
+  let qrTutorialLoadFrame = null;
+  const applyRequestedQrTutorialTool = () => {
+    const frame = getQrFrame();
+    if (!frame) return false;
+    let frameDocument = null;
+    try {
+      frameDocument = frame.contentDocument;
+    } catch {
+      frameDocument = null;
+    }
+    const tab = frameDocument?.getElementById(`tool-tab-${requestedQrTutorialTool}`) || null;
+    if (!tab) return false;
+    if (tab.getAttribute('aria-selected') !== 'true') {
+      tab.click();
+    }
+    try {
+      frame.contentWindow?.__teachhelperQrApp?.showTutorialSurface?.(requestedQrTutorialSurface);
+    } catch {
+      // The tutorial can continue without an optional preview surface.
+    }
+    return true;
+  };
+  const openQrToolForTutorial = (tool = 'generator', surface = '') => {
+    requestedQrTutorialTool = tool === 'decoder' ? 'decoder' : 'generator';
+    requestedQrTutorialSurface = surface;
+    bridgeController?.ensureTabInitialized(TAB_QR);
+    const frame = getQrFrame();
+    if (!frame || applyRequestedQrTutorialTool()) return;
+    if (qrTutorialLoadFrame === frame) return;
+    qrTutorialLoadFrame = frame;
+    frame.addEventListener('load', () => {
+      if (qrTutorialLoadFrame === frame) {
+        qrTutorialLoadFrame = null;
+      }
+      applyRequestedQrTutorialTool();
+    }, { once: true });
+  };
+  function activateQrTutorialDemo() {
+    const frame = getQrFrame();
+    let api = null;
+    try {
+      api = frame?.contentWindow?.__teachhelperQrApp || null;
+    } catch {
+      api = null;
+    }
+    if (!api?.activateTutorialDemo) {
+      throw new Error('QR-Tutorial-Demo ist noch nicht bereit.');
+    }
+    api.activateTutorialDemo();
+    const cleanup = () => api.cleanupTutorialDemo?.();
+    try {
+      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_QR });
+      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  }
+  function activatePlanningTutorialDemo(mode) {
+    const host = els.planningHost;
+    if (!host) return { steps: [] };
+    const realFrame = host.querySelector('iframe:not(.tutorial-demo-frame)');
+    const realFrameWasHidden = Boolean(realFrame?.hidden);
+    const realFrameDisplay = realFrame?.style.display || '';
+    const manualSaveWasDisabled = Boolean(els.sidebarManualSaveBtn?.disabled);
+    const manualSaveTitle = els.sidebarManualSaveBtn?.title || '';
+    planningTutorialDemoActive = true;
+    if (realFrame) {
+      realFrame.hidden = true;
+      realFrame.style.display = 'none';
+    }
+    if (els.sidebarManualSaveBtn) {
+      els.sidebarManualSaveBtn.disabled = true;
+      els.sidebarManualSaveBtn.title = 'Im Demomodus nicht verfügbar';
+    }
+    const frame = document.createElement('iframe');
+    frame.className = 'planning-frame tutorial-demo-frame';
+    frame.setAttribute('title', 'Interaktive Tutorial-Beispieldaten');
+    const demoUrl = new URL('./modules/planning/app.html', import.meta.url);
+    demoUrl.searchParams.set('tutorial-demo', mode === TAB_GRADES ? 'grades' : 'planning');
+    frame.src = demoUrl.href;
+    host.appendChild(frame);
+    planningTutorialDemoFrame = frame;
+    planningTutorialDemoFrameReady = false;
+    frame.addEventListener('load', () => {
+      if (planningTutorialDemoFrame !== frame) return;
+      planningTutorialDemoFrameReady = true;
+      if (pendingPlanningTutorialDemoView) {
+        dispatchPlanningTutorialDemoView(pendingPlanningTutorialDemoView);
+      }
+    }, { once: true });
+    const cleanup = () => {
+      getPlanningTutorialApi(frame)?.cleanup?.();
+      planningTutorialDemoActive = false;
+      planningTutorialDemoFrame?.remove();
+      planningTutorialDemoFrame = null;
+      planningTutorialDemoFrameReady = false;
+      pendingPlanningTutorialDemoView = null;
+      if (realFrame) {
+        realFrame.hidden = realFrameWasHidden;
+        realFrame.style.display = realFrameDisplay;
+      }
+      if (els.sidebarManualSaveBtn) {
+        els.sidebarManualSaveBtn.disabled = manualSaveWasDisabled;
+        els.sidebarManualSaveBtn.title = manualSaveTitle;
+      }
+    };
+    try {
+      const definition = getCurrentModuleTutorialSteps({ activeTab: mode });
+      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  }
+  function activateDuplicateCheckTutorialDemo() {
+    const frame = getDuplicateCheckFrame();
+    let api = null;
+    try {
+      api = frame?.contentWindow?.__teachhelperDuplicateCheckApp || null;
+    } catch {
+      api = null;
+    }
+    if (!api?.activateTutorialDemo) {
+      throw new Error('DuplikatCheck-Demo ist noch nicht bereit.');
+    }
+    api.activateTutorialDemo();
+    const cleanup = () => api.cleanupTutorialDemo?.();
+    try {
+      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_DUPLICATE_CHECK });
+      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  }
   const getCurrentModuleTutorialSteps = ({ activeTab } = {}) => {
     switch (activeTab) {
       case TAB_GRADES:
       {
-        const gradesFallback = (nodes) => nodes.planningShell || nodes.tabGrades;
+        const gradesTarget = (selector) => planningFrameTarget(selector, () => null);
+        const gradesStep = (title, copy, selector, surface, placement = 'bottom') => (
+          createModuleTutorialStep({
+            tab: TAB_GRADES,
+            title,
+            copy,
+            target: gradesTarget(selector),
+            placement,
+            beforeRender: () => prepareGradesTutorialSurface(surface),
+          })
+        );
+        const withGradesLifecycle = (steps, { demo = false } = {}) => ({
+          steps,
+          activate: activatePlanningTutorialPresentation,
+          ...(demo ? { demo: { activate: () => activatePlanningTutorialDemo(TAB_GRADES) } } : {}),
+        });
+        const databaseConnectionStep = gradesStep(
+          'Datenbank verbinden',
+          'Hier wählst du eine vorhandene Datenbank aus oder legst eine neue an. Darin speichert TeachHelper Planung und Noten gemeinsam.',
+          ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])'],
+          'gradesDatabase'
+        );
+        const encryptionStep = gradesStep(
+          'Noten verschlüsseln',
+          'Optional schützt du Notenstruktur, Teilnehmende und Bewertungen mit einem Passwort. Ohne dieses Passwort lassen sich die Notendaten nicht wiederherstellen.',
+          '[data-tutorial-anchor="grades-encryption"]',
+          'gradesDatabase'
+        );
+        const backupStep = gradesStep(
+          'Daten sichern',
+          shellSupportsExternalFileSync
+            ? 'Wähle einen Backup-Ordner und ein Intervall. Zusätzlich kannst du jederzeit eine Sicherung erstellen oder wieder einlesen.'
+            : 'Speichere die Datenbank regelmäßig als Datei. Nach einem Neustart lädst du sie hier wieder in TeachHelper.',
+          shellSupportsExternalFileSync ? '[data-tutorial-anchor="grades-backup"]' : '#db-manual-actions:not([hidden])',
+          'gradesDatabase'
+        );
         const databaseSteps = [
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Datenbank und Backup',
-            copy: 'Noten und Planung werden gemeinsam in einer Datenbankdatei gespeichert. Wähle eine bestehende Datei aus oder lege eine neue an.',
-            target: planningFrameTarget(
-              ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
-              gradesFallback
-            ),
-            beforeRender: openGradesDatabaseSettingsForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Backups',
-            copy: shellSupportsExternalFileSync
-              ? 'Wähle einen Backup-Ordner für automatische Sicherungen. Hier kannst du Backups außerdem sofort erstellen oder wieder importieren.'
-              : 'Auf diesem Gerät sicherst du die Datenbank manuell als Datei. Nach einem Neustart lädst du diese Datei hier wieder in TeachHelper.',
-            target: planningFrameTarget(
-              shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
-              gradesFallback
-            ),
-            beforeRender: openGradesDatabaseSettingsForTutorial,
-          }),
+          databaseConnectionStep,
+          ...(shellSupportsExternalFileSync
+            ? [encryptionStep, backupStep]
+            : [backupStep, encryptionStep]),
         ];
-        const gradeState = shellState.planningGradeVaultState || {};
+        const gradeState = planningTutorialDemoActive ? {
+          dbConnected: true, backupConnected: true, hasGradeCourse: true, hasGradeStudents: true,
+        } : (shellState.planningGradeVaultState || {});
         if (!gradeState.dbConnected || !gradeState.backupConnected) {
-          return addTutorialContinuationHint(
+          const steps = addTutorialContinuationHint(
             databaseSteps,
             'eine Datenbankdatei und die Datensicherung eingerichtet'
           );
+          return withGradesLifecycle(steps, { demo: true });
         }
 
         const setupSteps = [
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Verschlüsselung',
-            copy: 'Auf Wunsch schützt du den Notenbereich mit einem Passwort. Dann werden Notenstruktur, Teilnehmende und Bewertungen verschlüsselt gespeichert.',
-            target: planningFrameTarget('#grade-vault-settings-section', gradesFallback),
-            beforeRender: openGradesDatabaseSettingsForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Kurse',
-            copy: 'In der Sidebar wählst du einen Notenkurs aus oder legst über das Plus einen neuen Kurs an.',
-            target: planningFrameTarget('#sidebar-course-list', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
+          gradesStep(
+            'Notenkurs anlegen',
+            'Mit dem Plus legst du einen neuen Kurs an. Anschließend erscheint er links in der Kursliste und kann dort ausgewählt werden.',
+            '[data-tutorial-anchor="grades-course-add"]',
+            'gradesOverview'
+          ),
         ];
         const steps = [...databaseSteps, ...setupSteps];
         if (!gradeState.hasGradeCourse) {
-          return addTutorialContinuationHint(steps, 'einen Notenkurs angelegt');
-        }
-
-        steps.push(createModuleTutorialStep({
-          tab: TAB_GRADES,
-          title: 'Teilnehmende',
-          copy: 'Hier verwaltest du die Teilnehmenden des ausgewählten Kurses. Erst danach stehen Notentabelle und Auswertungen vollständig bereit.',
-          target: planningFrameTarget(
-            ['#grades-empty-open-dialog', '#grades-table', '#grades-overview-panel'],
-            gradesFallback
-          ),
-          beforeRender: openPlanningGradesOverviewForTutorial,
-        }));
-        if (!gradeState.hasGradeStudents) {
-          return addTutorialContinuationHint(steps, 'Kursteilnehmende eingegeben');
+          return withGradesLifecycle(
+            addTutorialContinuationHint(steps, 'einen Notenkurs angelegt'),
+            { demo: true }
+          );
         }
 
         steps.push(
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Notenübersicht',
-            copy: 'Die Notenübersicht bündelt alle Leistungen und berechneten Ergebnisse des ausgewählten Kurses.',
-            target: planningFrameTarget(['#grades-table', '#grades-book-panel'], gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Leistungen eintragen',
-            copy: 'In der Eingabe legst du Leistungen an, konfigurierst ihre Gewichtung und trägst die Ergebnisse der Teilnehmenden ein.',
-            target: planningFrameTarget(['#view-grades-entry-btn', '#grades-entry-panel'], gradesFallback),
-            beforeRender: openPlanningGradesEntryForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Datenschutzmodus',
-            copy: 'Der Datenschutzmodus hebt eine einzelne Person hervor und verdeckt die übrigen Noten für Gespräche am Bildschirm.',
-            target: planningFrameTarget('#sidebar-grade-privacy-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Sortierung',
-            copy: 'Hier wechselst du zwischen der Sortierung nach Vorname und der Sortierung nach Nachname.',
-            target: planningFrameTarget('#sidebar-grade-sort-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Notensystem',
-            copy: 'Für die Anzeige kannst du zwischen dem 15-Punkte-System und Schulnoten von 1 bis 6 wechseln.',
-            target: planningFrameTarget('#sidebar-grade-display-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Prädikatsanhängsel',
-            copy: 'Bei der Schulnotenanzeige legst du hier fest, ob Zusätze wie Plus und Minus eingeblendet werden.',
-            target: planningFrameTarget('#sidebar-grade-predicate-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Drucken',
-            copy: 'Über das Druckwerkzeug gibst du die aktuelle Kursübersicht aus. Eingeklappte Spalten werden dabei ausgelassen.',
-            target: planningFrameTarget('#sidebar-grade-print-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Erwartungshorizont',
-            copy: 'In der Eingabe mit Bewertungseinheiten erzeugst du aus den Bewertungsdaten einen Erwartungshorizont für Auswertung und Rückmeldung.',
-            target: planningFrameTarget('#sidebar-grade-expectation-section', gradesFallback),
-            beforeRender: openPlanningGradesEntryForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Warnungen (Simulation)',
-            copy: 'Die Simulation zeigt, wie sich angenommene Ergebnisse auf Jahresnoten und mögliche Warnungen auswirken.',
-            target: planningFrameTarget('#sidebar-grade-simulation-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_GRADES,
-            title: 'Archivieren',
-            copy: 'Zum Schuljahresabschluss exportierst du die gesammelten Daten als vollständiges PDF-Archiv.',
-            target: planningFrameTarget('#sidebar-archive-section', gradesFallback),
-            beforeRender: openPlanningGradesOverviewForTutorial,
-          })
+          gradesStep(
+            'Kurs verwalten',
+            'Öffne das Kursmenü mit einem Rechtsklick auf den Kurs. Dort bearbeitest du Kursdaten, Notenstruktur und Teilnehmende.',
+            '[data-tutorial-anchor="grades-course-menu"]',
+            'gradesCourseMenu',
+            'right'
+          ),
+          gradesStep(
+            'Notenstruktur festlegen',
+            'Lege für beide Halbjahre Kategorien, Unterkategorien und Gewichtungen fest. Diese Struktur steuert später die Berechnung der Noten.',
+            '[data-tutorial-anchor="grades-structure-dialog"]',
+            'gradesStructure'
+          ),
+          gradesStep(
+            'Teilnehmende verwalten',
+            'Importiere eine Namensliste als CSV oder füge Personen einzeln hinzu. Speichern übernimmt die Liste in diesen Notenkurs.',
+            '[data-tutorial-anchor="grades-students-dialog"]',
+            'gradesStudents'
+          )
         );
-        return steps;
+        if (!gradeState.hasGradeStudents) {
+          return withGradesLifecycle(
+            addTutorialContinuationHint(steps, 'Kursteilnehmende eingegeben'),
+            { demo: true }
+          );
+        }
+
+        steps.push(
+          gradesStep(
+            'Eingabe öffnen',
+            'Mit dem Stift wechselst du von der Kursübersicht zur Eingabe neuer und vorhandener Leistungen.',
+            '[data-tutorial-anchor="grades-entry-nav"]',
+            'gradesOverview'
+          ),
+          gradesStep(
+            'Leistung benennen',
+            'Vergib einen eindeutigen Titel, damit du die Leistung später sicher wiedererkennst.',
+            '[data-tutorial-anchor="grades-entry-title"]',
+            'gradesEntry'
+          ),
+          gradesStep(
+            'Leistungsmodus wählen',
+            'Note erfasst einzelne Notenpunkte, BE wertet Bewertungseinheiten aus und HA dokumentiert fehlende Hausaufgaben.',
+            '[data-tutorial-anchor="grades-entry-mode"]',
+            'gradesEntry'
+          ),
+          gradesStep(
+            'Leistung einordnen',
+            'Wähle Halbjahr, Kategorie, Unterkategorie und Gewichtung für die Berechnung.',
+            '[data-tutorial-anchor="grades-entry-assignment"]',
+            'gradesEntry'
+          ),
+          gradesStep(
+            'Ergebnisse erfassen',
+            'Trage die Ergebnisse direkt bei den Teilnehmenden ein. Die Eingabefelder passen sich automatisch an Note, BE oder HA an.',
+            '[data-tutorial-anchor="grades-entry-results"]',
+            'gradesEntry',
+            'top'
+          ),
+          gradesStep(
+            'Verteilung prüfen',
+            'Die Verteilung zeigt Häufigkeiten, Durchschnitt und Defizitanteil. So erkennst du auffällige Ergebnisse vor dem Speichern.',
+            '[data-tutorial-anchor="grades-entry-distribution"]',
+            'gradesEntry',
+            'left'
+          ),
+          gradesStep(
+            'Erwartungshorizont erstellen',
+            'Bei einer BE-Leistung erzeugst du aus Aufgaben, Bewertungseinheiten und Ergebnissen individuelle Erwartungshorizonte.',
+            '[data-tutorial-anchor="grades-expectation"]',
+            'gradesEntryBe',
+            'right'
+          ),
+          gradesStep(
+            'Leistung speichern',
+            'Speichere die vollständige Leistung mit der Diskette. Abbrechen verwirft die aktuelle Eingabe.',
+            '[data-tutorial-anchor="grades-entry-save"]',
+            'gradesEntry'
+          ),
+          gradesStep(
+            'Notenübersicht lesen',
+            'Hier siehst du Leistungen, gewichtete Zwischenergebnisse und die berechneten Gesamtwerte des ausgewählten Kurses.',
+            '[data-tutorial-anchor="grades-overview-table"]',
+            'gradesOverviewTable',
+            'top'
+          ),
+          gradesStep(
+            'Gruppen ein- und ausklappen',
+            'Klappe Halbjahre und Kategorien über ihre Überschriften ein oder aus. So steuerst du, wie detailliert die Übersicht und der Ausdruck sind.',
+            '[data-tutorial-anchor="grades-group-toggle"]',
+            'gradesOverviewTable',
+            'top'
+          ),
+          gradesStep(
+            'Gesamtnote festsetzen',
+            'Klicke auf einen berechneten Gesamtwert, wenn du ihn pädagogisch festsetzen möchtest. Eine manuelle Festsetzung lässt sich später wieder entfernen.',
+            '[data-tutorial-anchor="grades-total-override"]',
+            'gradesOverviewTable',
+            'top'
+          ),
+          gradesStep(
+            'Datenschutzmodus',
+            'Aktiviere ihn für Gespräche am Bildschirm. Eine ausgewählte Person bleibt sichtbar, die übrigen Noten werden verdeckt.',
+            '[data-tutorial-anchor="grades-privacy"]',
+            'gradesOverviewActions',
+            'right'
+          ),
+          gradesStep(
+            'Namen sortieren',
+            'Sortiere die Liste wahlweise nach Vorname oder Nachname. Die gespeicherten Personendaten bleiben unverändert.',
+            '[data-tutorial-anchor="grades-sort"]',
+            'gradesOverviewActions',
+            'right'
+          ),
+          gradesStep(
+            'Notensystem wählen',
+            'Wechsle Anzeige und Noteneingabe zwischen 15–00 Punkten und Schulnoten von 1 bis 6. Intern wird weiterhin mit denselben Werten gerechnet.',
+            '[data-tutorial-anchor="grades-display-system"]',
+            'gradesOverviewActions',
+            'right'
+          ),
+          gradesStep(
+            'Plus und Minus',
+            'Bei der Anzeige als Schulnote entscheidest du hier, ob Zusätze wie Plus und Minus erscheinen.',
+            '[data-tutorial-anchor="grades-predicate"]',
+            'gradesOverviewActions',
+            'right'
+          ),
+          gradesStep(
+            'Übersicht drucken',
+            'Drucke die aktuelle Kursübersicht. Eingeklappte Spalten werden im Ausdruck ausgelassen.',
+            '[data-tutorial-anchor="grades-print"]',
+            'gradesOverviewActions',
+            'right'
+          ),
+          gradesStep(
+            'Warnungen simulieren',
+            'Teste eine angenommene Note, ohne Daten zu verändern. Die Simulation zeigt mögliche Auswirkungen auf Halbjahres- und Jahresnoten.',
+            '[data-tutorial-anchor="grades-simulation"]',
+            'gradesOverviewActions',
+            'right'
+          ),
+          gradesStep(
+            'Schuljahr archivieren',
+            'Erstelle zum Schuljahresabschluss ein PDF-Archiv mit den gewünschten Noten- und Planungsdaten.',
+            '[data-tutorial-anchor="grades-archive"]',
+            'gradesOverviewActions',
+            'right'
+          )
+        );
+        return withGradesLifecycle(steps);
       }
       case TAB_PLANNING:
       {
-        const planningFallback = (nodes) => nodes.planningShell || nodes.tabPlanning;
+        const planningFallback = () => null;
+        const planningStep = (title, copy, selector, surface, fallback = planningFallback) => (
+          createModuleTutorialStep({
+            tab: TAB_PLANNING,
+            title,
+            copy,
+            target: planningFrameTarget(selector, fallback),
+            beforeRender: () => preparePlanningTutorialSurface(surface),
+          })
+        );
+        const withPlanningLifecycle = (steps, { demo = false } = {}) => ({
+          steps,
+          activate: activatePlanningTutorialPresentation,
+          ...(demo ? { demo: { activate: () => activatePlanningTutorialDemo(TAB_PLANNING) } } : {}),
+        });
         const storageSteps = [
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Datenbank und Backup',
-            copy: 'Deine Planung wird in einer Datenbankdatei gespeichert. Wähle eine bestehende Datei aus oder lege eine neue an.',
-            target: planningFrameTarget(
-              ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
-              planningFallback
-            ),
-            beforeRender: openPlanningDatabaseSettingsForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Backups',
-            copy: shellSupportsExternalFileSync
-              ? 'Wähle einen Backup-Ordner für automatische Sicherungen. Hier kannst du Backups außerdem sofort erstellen oder wieder importieren.'
-              : 'Auf diesem Gerät sicherst du die Datenbank manuell als Datei. Nach einem Neustart lädst du diese Datei hier wieder in TeachHelper.',
-            target: planningFrameTarget(
-              shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
-              planningFallback
-            ),
-            beforeRender: openPlanningDatabaseSettingsForTutorial,
-          }),
+          planningStep(
+            'Datenbank',
+            'Wähle eine vorhandene Datenbank aus oder lege eine neue an. Darin werden Planung und Noten gemeinsam gespeichert.',
+            ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
+            'database'
+          ),
+          planningStep(
+            'Backup',
+            shellSupportsExternalFileSync
+              ? 'Lege einen Backup-Ordner und ein Sicherungsintervall fest. Du kannst Sicherungen auch sofort erstellen oder wieder einlesen.'
+              : 'Auf diesem Gerät speicherst du die Datenbank manuell als Datei und lädst sie nach einem Neustart hier wieder ein.',
+            shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
+            'database'
+          ),
         ];
-        const planningState = shellState.planningGradeVaultState || {};
+        const planningState = planningTutorialDemoActive ? {
+          dbConnected: true, backupConnected: true, planningAccessReady: true,
+          hasPlanningCourse: true, hasPlanningSlot: true,
+        } : (shellState.planningGradeVaultState || {});
         if (!planningState.dbConnected || !planningState.backupConnected) {
-          return addTutorialContinuationHint(
+          return withPlanningLifecycle(addTutorialContinuationHint(
             storageSteps,
             'eine Datenbankdatei und die Datensicherung eingerichtet'
-          );
+          ), { demo: true });
         }
 
         const steps = [
           ...storageSteps,
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Ferien und unterrichtsfreie Tage',
-            copy: 'Trage Ferienzeiträume und einzelne unterrichtsfreie Tage ein. Die Pflicht-Ferien legen zugleich den gültigen Planungszeitraum fest.',
-            target: planningFrameTarget('#settings-tab-dayoff', planningFallback),
-            beforeRender: openPlanningDayOffSettingsForTutorial,
-          }),
+          planningStep(
+            'Ferien und freie Tage',
+            'Prüfe die Ferienzeiträume und ergänze einzelne unterrichtsfreie Tage. Diese Angaben bestimmen zugleich den verfügbaren Planungszeitraum.',
+            '#settings-tab-dayoff .settings-grid',
+            'dayoff'
+          ),
+          planningStep(
+            'Einstellungen übernehmen',
+            'Übernimm deine Änderungen mit „Bestätigen“. „Abbrechen“ verwirft den aktuellen Entwurf.',
+            '#settings-save-all',
+            'dayoff'
+          ),
         ];
         if (!planningState.planningAccessReady) {
-          return addTutorialContinuationHint(steps, 'die Pflicht-Ferien vollständig eingetragen');
-        }
-
-        steps.push(createModuleTutorialStep({
-          tab: TAB_PLANNING,
-          title: 'Kurse',
-          copy: 'Über das Plus in der Sidebar legst du Kurse an. Ein Klick auf einen Kurs öffnet seine Kursansicht.',
-          target: planningFrameTarget('#sidebar-course-list', planningFallback),
-          beforeRender: openPlanningWeekForTutorial,
-        }));
-        if (!planningState.hasPlanningCourse) {
-          return addTutorialContinuationHint(steps, 'einen Planungskurs angelegt');
+          return withPlanningLifecycle(
+            addTutorialContinuationHint(steps, 'die Pflicht-Ferien vollständig eingetragen'),
+            { demo: true }
+          );
         }
 
         steps.push(
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Kursverwaltung',
-            copy: 'Per Rechtsklick verwaltest du Kursname, Fach, Farbe, Sichtbarkeit und Kurstyp oder löschst den Kurs.',
-            target: planningFrameTarget('#sidebar-course-list li[data-course-id]', planningFallback),
-            beforeRender: openPlanningWeekForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Stundenplan',
-            copy: 'Mit einem Doppelklick auf ein freies Feld legst du eine Unterrichtsserie an. Bestehende Serien kannst du später anpassen.',
-            target: planningFrameTarget('#week-table', planningFallback),
-            beforeRender: openPlanningWeekForTutorial,
-          })
+          planningStep(
+            'Kurs hinzufügen',
+            'Mit diesem Plus legst du einen neuen Kurs für deine Planung an.',
+            "#sidebar-course-list button[data-add-course='1']",
+            'week'
+          ),
+          planningStep(
+            'Kursdaten',
+            'Trage Fach und Kursname ein, wähle eine Farbe und kennzeichne bei Bedarf einen Termin ohne Unterricht. Die Vorschau speichert nichts.',
+            ["#course-dialog [data-panel='general']", '#course-dialog-form'],
+            'courseCreate'
+          )
+        );
+        if (!planningState.hasPlanningCourse) {
+          return withPlanningLifecycle(
+            addTutorialContinuationHint(steps, 'einen Planungskurs angelegt'),
+            { demo: true }
+          );
+        }
+
+        steps.push(
+          planningStep(
+            'Kurse verwenden',
+            'Ein Linksklick öffnet den Unterrichtsverlauf. Ziehen ändert die Reihenfolge; ein Rechtsklick öffnet weitere Kursaktionen.',
+            '#sidebar-course-list li[data-course-id] button[data-course-id]',
+            'week'
+          ),
+          planningStep(
+            'Kursaktionen',
+            'Hier änderst du Name, Fach, Farbe, Unterrichts- und Notenstatus sowie die Sichtbarkeit. Außerdem kannst du den Kurs löschen.',
+            ['#app-context-menu:not([hidden])', '#sidebar-course-list li[data-course-id]'],
+            'courseMenu'
+          ),
+          planningStep(
+            'Unterrichtsserie anlegen',
+            'Doppelklicke auf eine freie Zelle, um dort eine wiederkehrende Unterrichtsserie anzulegen.',
+            ['#week-table td.day-cell.empty[data-day][data-hour]', '#week-table'],
+            'week'
+          ),
+          planningStep(
+            'Serie konfigurieren',
+            'Lege Kurs, Wochentag, Start- und Endstunde, Wiederholung sowie den Gültigkeitszeitraum fest. Diese Vorschau verändert den Stundenplan nicht.',
+            ['#slot-dialog-form', '#slot-dialog'],
+            'slotCreate'
+          )
         );
         if (!planningState.hasPlanningSlot) {
-          return addTutorialContinuationHint(steps, 'eine Unterrichtsserie angelegt');
+          return withPlanningLifecycle(
+            addTutorialContinuationHint(steps, 'eine Unterrichtsserie angelegt'),
+            { demo: true }
+          );
         }
 
         steps.push(
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Wochenansicht',
-            copy: 'Das Wochenraster zeigt deine Unterrichtsstunden, Themen, Ausfälle und verknüpften Werkzeuge auf einen Blick.',
-            target: planningFrameTarget(['#week-table', '#view-week'], planningFallback),
-            beforeRender: openPlanningWeekForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Wochennavigation',
-            copy: 'Mit den Pfeilen wechselst du die Woche. Über Kalenderwoche und Kalendersymbol springst du gezielt zu einem Datum.',
-            target: planningFrameTarget('#headerGlass', planningFallback),
-            beforeRender: openPlanningWeekForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Themen und Notizen',
-            copy: 'Klicke auf eine Unterrichtsstunde, um ihr Thema direkt zu bearbeiten. Die ausführliche Planung ergänzt längere Notizen.',
-            target: planningFrameTarget(
-              ['.lesson-block[data-lesson-id] .topic-zone', '.lesson-block[data-lesson-id]'],
-              planningFallback
-            ),
-            beforeRender: openPlanningWeekForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Verknüpfte Werkzeuge',
-            copy: 'Direkt an einer Unterrichtsstunde öffnest du bei Bedarf den Sitzplan oder die zugehörige Noteneingabe.',
-            target: planningFrameTarget(
-              ['.lesson-block-seatplan-trigger', '.lesson-block-grade-entry', '.lesson-block[data-lesson-id]'],
-              planningFallback
-            ),
-            beforeRender: openPlanningWeekForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Stundenaktionen',
-            copy: 'Per Rechtsklick bearbeitest du die Serie, markierst schriftliche Arbeiten oder Entfall und verschiebst die weitere Planung vor oder zurück.',
-            target: planningFrameTarget('.lesson-block[data-lesson-id]', planningFallback),
-            beforeRender: openPlanningWeekForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Kursansicht',
-            copy: 'Die Kursansicht öffnest du über die Sidebar oder direkt über den Kursnamen im Wochenraster.',
-            target: planningFrameTarget(['#course-title', '#view-course'], planningFallback),
-            beforeRender: openPlanningCourseForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Unterrichtsverlauf',
-            copy: 'Hier bearbeitest du Themen und ausführliche Notizen chronologisch und erkennst Entfall, Arbeiten und unterrichtsfreie Tage.',
-            target: planningFrameTarget('#course-table', planningFallback),
-            beforeRender: openPlanningCourseForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Anzeige',
-            copy: 'In den Anzeige-Einstellungen bestimmst du die maximale Stundenzahl pro Tag und ob ausgeblendete Kurse in der Sidebar erscheinen.',
-            target: planningFrameTarget('#settings-tab-display', planningFallback),
-            beforeRender: openPlanningDisplaySettingsForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Unterrichtszeiten',
-            copy: 'Hinterlege Start- und Endzeiten der Unterrichtsstunden, damit TeachHelper den zeitlich passenden Kurs erkennen kann.',
-            target: planningFrameTarget('#settings-tab-lesson-times', planningFallback),
-            beforeRender: openPlanningLessonTimesForTutorial,
-          }),
-          createModuleTutorialStep({
-            tab: TAB_PLANNING,
-            title: 'Archivieren',
-            copy: 'Zum Schuljahresabschluss exportierst du ausgewählte Wochen- und Kursansichten als vollständiges PDF-Archiv.',
-            target: planningFrameTarget('#sidebar-archive-section', planningFallback),
-            beforeRender: openPlanningWeekForTutorial,
-          })
+          planningStep('Wochenraster', 'Das Raster zeigt Unterricht, Ferien, Entfall, schriftliche Arbeiten und eingetragene Themen auf einen Blick.', '#week-table', 'lesson'),
+          planningStep('Wochennavigation', 'Die Pfeile wechseln die Woche. Über die Kalenderwoche öffnest du den Minikalender; das Kalendersymbol führt zurück zur aktuellen Woche.', '#headerGlass', 'lesson'),
+          planningStep('Thema direkt eintragen', 'Klicke auf die Themenfläche. Enter oder Tab übernimmt deine Eingabe; Escape verwirft sie.', ['.lesson-block[data-lesson-id] .topic-zone', '.lesson-block[data-lesson-id]'], 'lesson'),
+          planningStep('Ausführliche Planung', 'Hier ergänzt du Ablauf, Material, Lernziele und weitere Notizen zur Unterrichtsstunde.', ['#topic-dialog-notes', '#topic-dialog-form'], 'topicDialog'),
+          planningStep('Sitzplan', 'Das Stuhlsymbol öffnet den zum Kurs gehörenden Sitzplan mit der dort verfügbaren Noteneingabe.', ['.lesson-block-seatplan-trigger', '.lesson-block[data-lesson-id]'], 'lesson'),
+          planningStep('Noteneingabe', 'Das Fragezeichen führt zu einer noch anzulegenden Leistung; ein Haken kennzeichnet eine bereits verknüpfte Leistung.', ['.lesson-block-grade-entry', '.lesson-block[data-lesson-id]'], 'lesson'),
+          planningStep('Weitere Stundenaktionen', 'Das Rechtsklickmenü bietet Kopieren, Einfügen, ausführliche Planung, Entfall, schriftliche Arbeit sowie das Verschieben der weiteren Planung.', ['#app-context-menu:not([hidden])', '.lesson-block[data-lesson-id]'], 'lessonMenu'),
+          planningStep('Serie anpassen', 'Passe eine vorhandene Unterrichtsserie vollständig oder ab einem bestimmten Datum an. Hier kannst du die Serie auch löschen.', ['#slot-dialog-form', '#slot-dialog'], 'slotEdit'),
+          planningStep('Kursansicht öffnen', 'Ein Klick auf den Kursnamen innerhalb einer Unterrichtsstunde öffnet den chronologischen Unterrichtsverlauf.', ['.lesson-block .title.course-link[data-course-id]', '.lesson-block[data-lesson-id]'], 'lesson'),
+          planningStep('Unterrichtsverlauf', 'Jede Zeile bündelt Datumssprung, Noteneingabe, Thema und ausführliche Planung einer Stunde.', ['#course-table tbody tr[data-lesson-id]', '#course-table'], 'course'),
+          planningStep('Einstellungen öffnen', 'Über das Zahnrad erreichst du die Einstellungen des Planungsmoduls.', '#view-settings-btn', 'course'),
+          planningStep('Anzeige', 'Bestimme die maximale Zahl sichtbarer Unterrichtsstunden pro Tag und ob ausgeblendete Kurse in der Randleiste erscheinen.', '#settings-tab-display', 'display'),
+          planningStep('Unterrichtszeiten', 'Ordne den Stunden konkrete Anfangs- und Endzeiten zu. Dadurch kann TeachHelper automatisch den zeitlich passenden Kurs erkennen.', ['#lesson-times-list', '#settings-tab-lesson-times'], 'lessonTimes'),
+          planningStep('Archivieren', 'Über diesen Button bereitest du zum Schuljahresabschluss ein PDF-Archiv deiner Planung vor.', '#sidebar-archive-btn', 'course'),
+          planningStep('Archivumfang', 'Wähle aus, ob Kursverläufe, Wochenansichten und – falls verfügbar – Noten in das PDF aufgenommen werden sollen. Die Vorschau erzeugt keine Datei.', ['#archive-planning-options', '#archive-dialog-form'], 'archive'),
+          planningStep(
+            'Speichern und weiterarbeiten',
+            shellSupportsExternalFileSync
+              ? 'Deine Änderungen werden in der verbundenen Datenbank gespeichert. Die Backups sichern den Stand zusätzlich in dem gewählten Ordner.'
+              : 'Speichere deine Änderungen regelmäßig über die Datenbank-Schaltfläche als Datei und lade diese Datei nach einem Neustart wieder ein.',
+            ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
+            'database'
+          )
         );
-        return steps;
+        return withPlanningLifecycle(steps);
       }
       case TAB_MERGER:
         return [
@@ -701,7 +965,7 @@ import { applyTheme } from './shell/theme.js';
             tab: TAB_MERGER,
             title: 'Dateireihenfolge',
             copy: 'Geladene Dateien kannst du per Ziehen sortieren, ergänzen oder wieder aus der Liste entfernen.',
-            target: mergerFrameTarget(['#mergeFileListShell', '#mergeAppendFileList', '#mergeDropZone']),
+            target: mergerFrameTarget(['#mergeFileListShell:not(.hidden)', '#mergeAppendFileList:not(:empty)']),
             beforeRender: () => openMergerToolForTutorial('merge'),
           }),
           createModuleTutorialStep({
@@ -729,7 +993,7 @@ import { applyTheme } from './shell/theme.js';
             tab: TAB_MERGER,
             title: 'Einzelne Seiten drehen',
             copy: 'Nach dem Laden kannst du für jede Seite eine eigene Drehung wählen und das Ergebnis in der Vorschau prüfen.',
-            target: mergerFrameTarget(['.rotate-page-card', '#rotatePagesList', '#tool-panel-rotate .compact-options']),
+            target: mergerFrameTarget(['.rotate-page-card', '#rotatePagesList:not(:empty)']),
             beforeRender: () => openMergerToolForTutorial('rotate'),
           }),
           createModuleTutorialStep({
@@ -752,9 +1016,8 @@ import { applyTheme } from './shell/theme.js';
             copy: 'Wähle Seiten einzeln aus oder schalte mit den Sammelaktionen alle Seiten ein beziehungsweise aus.',
             target: mergerFrameTarget([
               '.split-page-card',
-              '#splitPagesList',
+              '#splitPagesList:not(:empty)',
               '.split-toolbar-group-selection',
-              '#tool-panel-split',
             ]),
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
@@ -762,7 +1025,7 @@ import { applyTheme } from './shell/theme.js';
             tab: TAB_MERGER,
             title: 'Seitengruppen',
             copy: 'Bilde Seitenbereiche, löse Gruppen wieder auf oder ziehe Seiten direkt zu einer anderen Gruppe.',
-            target: mergerFrameTarget(['#splitGroupRowsList', '.split-toolbar-group-config', '#tool-panel-split']),
+            target: mergerFrameTarget(['#splitGroupRowsList:not(:empty)', '.split-toolbar-group-config']),
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
           createModuleTutorialStep({
@@ -782,7 +1045,7 @@ import { applyTheme } from './shell/theme.js';
         ];
       case TAB_SEATPLAN:
       {
-        const seatplanFallback = (nodes) => nodes.seatplanMainHost || nodes.tabSeatplan;
+        const seatplanFallback = () => null;
         let seatplanApp = null;
         try {
           seatplanApp = getSeatplanFrame()?.contentDocument?.getElementById('app') || null;
@@ -803,10 +1066,10 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_SEATPLAN,
-            title: 'Sitzplätze festlegen',
-            copy: 'Klicke auf einzelne Felder, um verfügbare Sitzplätze zu aktivieren oder wieder zu deaktivieren. Nur aktive Plätze werden später belegt.',
-            target: seatplanFrameTarget(['#grid .seat.active', '#grid'], seatplanFallback),
-            placement: 'top',
+            title: 'Rastergröße anpassen',
+            copy: 'Über „Raster anpassen“ änderst du Zeilen und Spalten. Im Dialog kann das Raster außerdem auf den kleinsten Bereich mit aktiven Plätzen reduziert werden.',
+            target: seatplanFrameTarget('#adjust-grid', seatplanFallback),
+            placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_SEATPLAN,
@@ -817,17 +1080,10 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_SEATPLAN,
-            title: 'Rastergröße anpassen',
-            copy: 'Über „Raster anpassen“ änderst du Zeilen und Spalten. Im Dialog kann das Raster außerdem auf den kleinsten Bereich mit aktiven Plätzen reduziert werden.',
-            target: seatplanFrameTarget('#adjust-grid', seatplanFallback),
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_SEATPLAN,
-            title: 'Lehrkraft platzieren',
-            copy: 'Ziehe die Lehrkraft auf einen aktiven Sitzplatz. Ihre Position kann bei Kriterien wie „weit vorne“ in die Optimierung einbezogen werden.',
-            target: seatplanFrameTarget('#teacher-card', seatplanFallback),
-            placement: 'right',
+            title: 'Sitzplätze festlegen',
+            copy: 'Passe die gewählte Raumform an, indem du einzelne Felder aktivierst oder deaktivierst. Nur aktive Plätze werden später belegt.',
+            target: seatplanFrameTarget(['#grid .seat.active', '#grid'], seatplanFallback),
+            placement: 'top',
           }),
           createModuleTutorialStep({
             tab: TAB_SEATPLAN,
@@ -838,9 +1094,9 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_SEATPLAN,
-            title: 'Freie Lernende platzieren',
-            copy: 'Noch nicht gesetzte Lernende erscheinen in dieser Liste. Ziehe sie auf aktive Plätze, um den Sitzplan manuell aufzubauen oder einen Vorschlag nachzubearbeiten.',
-            target: seatplanFrameTarget(['#unseated .student', '#roster-panel'], seatplanFallback),
+            title: 'Lehrkraft platzieren',
+            copy: 'Ziehe die Lehrkraft auf einen aktiven Sitzplatz. Ihre Position kann bei Kriterien wie „weit vorne“ in die Optimierung einbezogen werden.',
+            target: seatplanFrameTarget('#teacher-card', seatplanFallback),
             placement: 'right',
           }),
           createModuleTutorialStep({
@@ -867,8 +1123,8 @@ import { applyTheme } from './shell/theme.js';
           createModuleTutorialStep({
             tab: TAB_SEATPLAN,
             title: 'Sitzplan nachbearbeiten',
-            copy: 'Ziehe gesetzte Lernende auf andere Plätze, um sie zu verschieben oder zu tauschen. Ein Klick auf einen belegten Platz löst die Person wieder vom Platz.',
-            target: seatplanFrameTarget(['#grid .seat-content:not(.teacher)', '#grid .seat.active', '#grid'], seatplanFallback),
+            copy: 'Freie Lernende stehen in der Liste bereit. Ziehe sie auf Plätze oder verschiebe bereits gesetzte Personen, um den Vorschlag nachzubearbeiten; ein Ablegen auf einer anderen Person tauscht beide.',
+            target: seatplanFrameTarget(['#unseated .student', '#grid .seat-content:not(.teacher)', '#roster-panel', '#grid'], seatplanFallback),
             placement: 'top',
           }),
           createModuleTutorialStep({
@@ -885,14 +1141,29 @@ import { applyTheme } from './shell/theme.js';
             target: seatplanFrameTarget('#toggle-perspective', seatplanFallback),
             placement: 'right',
           }),
-          createModuleTutorialStep({
-            tab: TAB_SEATPLAN,
-            title: 'Laden, speichern und drucken',
-            copy: 'Lade einen gespeicherten Sitzplan, sichere den aktuellen Stand als Datei oder erzeuge eine druckfreundliche Ausgabe.',
-            target: seatplanFrameTarget('#tutorial-plan-file-actions', seatplanFallback),
-            placement: 'right',
-          }),
         ];
+
+        if (isCourseGradeMode) {
+          steps.push(createModuleTutorialStep({
+            tab: TAB_SEATPLAN,
+            title: 'Noten am Sitzplatz eingeben',
+            copy: 'Wähle die Note direkt am Sitzplatz über die Schnellauswahl. Nachdem du alle gesetzten Lernenden durchgegangen bist, kannst du die Noten gemeinsam im Notenmodul speichern.',
+            target: seatplanFrameTarget([
+              "button[data-course-grade-trigger='1']",
+              "input[data-course-grade-input='1']",
+              '.course-grade-seat-content',
+            ], seatplanFallback),
+            placement: 'top',
+          }));
+        }
+
+        steps.push(createModuleTutorialStep({
+          tab: TAB_SEATPLAN,
+          title: 'Laden, speichern und drucken',
+          copy: 'Lade einen gespeicherten Sitzplan, sichere den aktuellen Stand als Datei oder erzeuge eine druckfreundliche Ausgabe.',
+          target: seatplanFrameTarget('#tutorial-plan-file-actions', seatplanFallback),
+          placement: 'right',
+        }));
 
         if (isCourseSeatplan) {
           steps.push(createModuleTutorialStep({
@@ -904,81 +1175,69 @@ import { applyTheme } from './shell/theme.js';
           }));
         }
 
-        if (isCourseGradeMode) {
-          steps.push(createModuleTutorialStep({
-            tab: TAB_SEATPLAN,
-            title: 'Noten am Sitzplatz eingeben',
-            copy: 'Wähle die Note direkt am Sitzplatz über die Schnellauswahl. Nachdem du alle gesetzten Lernenden durchgegangen bist, kannst du die Noten gemeinsam im Notenmodul speichern.',
-            target: seatplanFrameTarget([
-              "button[data-course-grade-trigger='1']",
-              "input[data-course-grade-input='1']",
-              '.course-grade-seat-content',
-              '#grid',
-            ], seatplanFallback),
-            placement: 'top',
-          }));
-        }
-
         return steps;
       }
       case TAB_GROUPS:
       {
-        const groupFallback = (nodes) => nodes.groupsMainHost || nodes.groupsGridWrap || nodes.tabGroups;
+        const groupFallback = () => null;
         const setupSteps = [
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Namensliste importieren',
             copy: 'Wähle eine CSV-Namensliste aus oder ziehe sie in dieses Feld. Falls du noch keine passende Datei hast, kannst du über den Link die Vorlage herunterladen.',
-            target: (nodes) => nodes.csvDropZone || nodes.tabGroups,
+            target: (nodes) => nodes.csvDropZone,
             placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Gruppengröße festlegen',
             copy: 'Lege die minimale und maximale Anzahl Lernender pro Gruppe fest. TeachHelper berechnet daraus automatisch eine passende Anzahl an Gruppen.',
-            target: (nodes) => nodes.groupSizeControls || nodes.minGroupSize || nodes.sidePanel || nodes.tabGroups,
+            target: (nodes) => nodes.groupSizeControls || nodes.minGroupSize,
             placement: 'right',
           }),
         ];
         if (!state.students.length) {
-          return addTutorialContinuationHint(setupSteps, 'eine Namensliste importiert');
+          return {
+            steps: addTutorialContinuationHint(setupSteps, 'eine Namensliste importiert'),
+            demo: { activate: () => activateClassroomTutorialDemo(TAB_GROUPS) },
+          };
         }
 
         return [
           ...setupSteps,
           createModuleTutorialStep({
             tab: TAB_GROUPS,
-            title: 'Freie Lernende',
-            copy: 'Noch nicht zugeteilte Lernende erscheinen hier. Von dort kannst du sie per Drag-and-drop in eine Gruppe ziehen.',
-            target: (nodes) => nodes.unseated?.querySelector('.student') || nodes.rosterPanel || nodes.unseated || groupFallback(nodes),
-            placement: 'right',
+            title: 'Gruppenraster',
+            copy: 'Aus Namensanzahl und Gruppengröße erzeugt TeachHelper automatisch die benötigten Gruppenfelder. Jede Karte stellt eine Gruppe dar.',
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat') || nodes.groupsGrid,
+            placement: 'top',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
-            title: 'Gruppenraster',
-            copy: 'Aus Namensanzahl und Gruppengröße erzeugt TeachHelper automatisch die benötigten Gruppenfelder. Jede Karte stellt eine Gruppe dar.',
-            target: (nodes) => nodes.groupsGrid?.querySelector('.seat') || groupFallback(nodes),
-            placement: 'top',
+            title: 'Freie Lernende',
+            copy: 'Noch nicht zugeteilte Lernende erscheinen hier. Von dort kannst du sie per Drag-and-drop in eine Gruppe ziehen.',
+            target: (nodes) => nodes.unseated?.querySelector('.student') || nodes.unseated,
+            placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Gute und schlechte Gruppenpartner',
             copy: 'In den Gruppenpräferenzen kannst du für jede Person gewünschte und ungünstige Partner angeben. Der Vorschlag versucht Wünsche zu erfüllen und Ausschlüsse zu vermeiden.',
-            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabGroups,
+            target: (nodes) => nodes.groupSeatPreferences,
             placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Leistungsklassen',
             copy: 'Dort kannst du außerdem Leistungsklassen vergeben und ihre Anzahl anpassen. Der Gruppenvorschlag bildet daraus möglichst leistungshomogene Gruppen.',
-            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabGroups,
+            target: (nodes) => nodes.groupSeatPreferences,
             placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Vorschlag erzeugen',
             copy: 'Dieser Button erstellt eine Verteilung unter Beachtung der Gruppengröße, Partnerwünsche, Ausschlüsse, Leistungsklassen und gesperrten Gruppen.',
-            target: (nodes) => nodes.groupSuggest || nodes.groupsGridWrap || nodes.tabGroups,
+            target: (nodes) => nodes.groupSuggest,
             placement: 'right',
           }),
           createModuleTutorialStep({
@@ -989,7 +1248,7 @@ import { applyTheme } from './shell/theme.js';
               nodes.unseated?.querySelector('.student')
               || nodes.groupsGrid?.querySelector('.seat-chip')
               || nodes.groupsGrid?.querySelector('.seat')
-              || groupFallback(nodes)
+              || null
             ),
             placement: 'top',
           }),
@@ -997,97 +1256,89 @@ import { applyTheme } from './shell/theme.js';
             tab: TAB_GROUPS,
             title: 'Gruppen sperren',
             copy: 'Mit einem Doppelklick auf eine Gruppe sperrst oder entsperrst du sie. Gesperrte Gruppen bleiben bei neuen Vorschlägen unverändert und lassen keine Verschiebungen zu.',
-            target: (nodes) => nodes.groupsGrid?.querySelector('.seat') || groupFallback(nodes),
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat'),
             placement: 'top',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Gruppenthemen eintragen',
             copy: 'Im Themenfeld kannst du jeder Gruppe einen Arbeitsauftrag, ein Thema oder eine Station zuweisen. Der Eintrag wird mitgespeichert und mitgedruckt.',
-            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-topic') || groupFallback(nodes),
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-topic'),
             placement: 'top',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Weitere Gruppe hinzufügen',
             copy: 'Klicke auf den freien Platzhalter oder ziehe eine Person darauf, um eine zusätzliche Gruppe anzulegen.',
-            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-placeholder') || groupFallback(nodes),
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-placeholder'),
             placement: 'top',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Gruppe löschen',
             copy: 'Über den Papierkorb entfernst du eine Gruppe. Ihre Lernenden wechseln dabei zurück in die Liste der freien Lernenden.',
-            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-delete-button') || groupFallback(nodes),
+            target: (nodes) => nodes.groupsGrid?.querySelector('.seat-delete-button'),
             placement: 'top',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Belegung zurücksetzen',
             copy: 'Damit löst du alle Lernenden aus ihren Gruppen, entfernst Sperren und Gruppenthemen und behältst die importierte Namensliste.',
-            target: (nodes) => nodes.groupResetLearners || nodes.sidePanel || nodes.tabGroups,
+            target: (nodes) => nodes.groupResetLearners,
             placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Laden, speichern und drucken',
             copy: 'Lade eine gespeicherte Gruppeneinteilung, sichere den aktuellen Stand als Datei oder erstelle eine druckfreundliche Gruppenübersicht.',
-            target: (nodes) => nodes.groupPlanActions || nodes.groupExportPlan || nodes.sidePanel || nodes.tabGroups,
+            target: (nodes) => nodes.groupPlanActions || nodes.groupExportPlan,
             placement: 'right',
           }),
         ];
       }
       case TAB_RANDOM_PICKER:
       {
-        const pickerFallback = (nodes) => nodes.randomPickerHost || nodes.randomPickerWheel || nodes.tabRandomPicker;
+        const pickerFallback = () => null;
+        const hasPickerStudents = state.students.length > 0;
         const setupSteps = [
           createModuleTutorialStep({
             tab: TAB_RANDOM_PICKER,
-            title: 'Namensliste importieren',
-            copy: 'Wähle eine CSV-Namensliste aus oder ziehe sie in das Importfeld. Falls du noch keine passende Datei hast, kannst du über den Link die Vorlage herunterladen.',
-            target: (nodes) => nodes.csvDropZone || nodes.randomPickerImport || nodes.tabRandomPicker,
+            title: hasPickerStudents ? 'Gemeinsame Namensliste' : 'Namensliste importieren',
+            copy: hasPickerStudents
+              ? 'Gruppen-Modul und Picker verwenden dieselbe Namensliste. Über „Liste wählen“ kannst du sie hier jederzeit durch eine andere CSV-Datei ersetzen.'
+              : 'Wähle eine CSV-Namensliste aus oder ziehe sie in das Importfeld. Falls du noch keine passende Datei hast, kannst du über den Link die Vorlage herunterladen.',
+            target: (nodes) => nodes.randomPickerImport || nodes.csvDropZone,
             placement: 'right',
           }),
         ];
-        if (!state.students.length) {
-          return addTutorialContinuationHint(setupSteps, 'eine Namensliste importiert');
+        if (!hasPickerStudents) {
+          return {
+            steps: addTutorialContinuationHint(setupSteps, 'eine Namensliste importiert'),
+            demo: { activate: () => activateClassroomTutorialDemo(TAB_RANDOM_PICKER) },
+          };
         }
 
         return [
           ...setupSteps,
           createModuleTutorialStep({
             tab: TAB_RANDOM_PICKER,
-            title: 'Gemeinsame Namensliste',
-            copy: 'Gruppen-Modul und Picker verwenden dieselbe Namensliste. Über „Liste wählen“ kannst du sie hier jederzeit durch eine andere CSV-Datei ersetzen.',
-            target: (nodes) => nodes.randomPickerImport || nodes.csvDropZone || nodes.tabRandomPicker,
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_RANDOM_PICKER,
             title: 'Bedingungen festlegen',
             copy: 'Öffne hier die Bedingungen, um die Auswahlwahrscheinlichkeit für jede Person einzeln einzustellen.',
-            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            target: (nodes) => nodes.groupSeatPreferences,
             placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_RANDOM_PICKER,
-            title: 'Auswahl gewichten',
-            copy: '„Unmöglich“ schließt eine Person von der Ziehung aus. „Normal“, „doppelt“ und „dreifach“ geben ihr entsprechend ein-, zwei- oder dreimal so viel Gewicht im Zufallspool.',
-            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_RANDOM_PICKER,
-            title: 'Sichere Auswahl',
-            copy: 'Mit „sicher“ bestimmst du eine garantierte Auswahl. Beim Speichern setzt TeachHelper diese Person auf „sicher“ und alle übrigen auf „unmöglich“.',
-            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            title: 'Auswahl gewichten oder festlegen',
+            copy: '„Unmöglich“, „normal“, „doppelt“ und „dreifach“ steuern das Gewicht im Zufallspool. Mit „sicher“ legst du eine garantierte Auswahl fest; beim Speichern werden alle übrigen Personen dafür ausgeschlossen.',
+            target: (nodes) => nodes.groupSeatPreferences,
             placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_RANDOM_PICKER,
             title: 'Bedingungen zurücksetzen und speichern',
             copy: 'Im Dialog setzt „Zurücksetzen“ alle Personen wieder auf „normal“. Erst mit „Speichern“ werden die angezeigten Bedingungen auf den Picker angewendet.',
-            target: (nodes) => nodes.groupSeatPreferences || nodes.sidePanel || nodes.tabRandomPicker,
+            target: (nodes) => nodes.groupSeatPreferences,
             placement: 'right',
           }),
           createModuleTutorialStep({
@@ -1122,16 +1373,14 @@ import { applyTheme } from './shell/theme.js';
             tab: TAB_RANDOM_PICKER,
             title: 'Pickerstand speichern',
             copy: '„Picker speichern“ sichert Namensliste und Gewichtungen als JSON-Datei. Ziehe diese Datei später an eine freie Stelle in TeachHelper, um den Stand wiederherzustellen.',
-            target: (nodes) => nodes.randomPickerPlanActions || nodes.randomPickerExport || nodes.sidePanel || nodes.tabRandomPicker,
+            target: (nodes) => nodes.randomPickerPlanActions || nodes.randomPickerExport,
             placement: 'right',
           }),
         ];
       }
       case TAB_DUPLICATE_CHECK:
       {
-        const duplicateFallback = (nodes) => (
-          nodes.duplicateCheckShell || nodes.duplicateCheckHost || nodes.tabDuplicateCheck
-        );
+        const duplicateFallback = () => null;
         let duplicateDocument = null;
         try {
           duplicateDocument = getDuplicateCheckFrame()?.contentDocument || null;
@@ -1145,7 +1394,7 @@ import { applyTheme } from './shell/theme.js';
           createModuleTutorialStep({
             tab: TAB_DUPLICATE_CHECK,
             title: 'Prüfkriterien auswählen',
-            copy: 'Lege fest, woran TeachHelper mögliche Duplikate erkennen soll. Die aktiven Kriterien werden unabhängig geprüft; bereits ein Treffer in einem Kriterium genügt.',
+            copy: 'Lege fest, woran TeachHelper mögliche Duplikate erkennen soll. Die aktiven Kriterien werden unabhängig geprüft; bereits ein Treffer genügt. Damit eine Prüfung möglich bleibt, ist immer mindestens eine Regel aktiv.',
             target: duplicateCheckFrameTarget('.rule-toggle-list', duplicateFallback),
             placement: 'right',
           }),
@@ -1172,13 +1421,6 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_DUPLICATE_CHECK,
-            title: 'Mindestens ein Kriterium',
-            copy: 'Du kannst Kriterien beliebig kombinieren. Damit eine Prüfung möglich bleibt, lässt TeachHelper jedoch immer mindestens eine Regel aktiviert.',
-            target: duplicateCheckFrameTarget('.rule-panel', duplicateFallback),
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_DUPLICATE_CHECK,
             title: 'Abgaben als ZIP prüfen',
             copy: 'Lade die markierten Abgaben im IServ-Aufgabenmodul als ZIP herunter. Ziehe anschließend genau diese eine ZIP-Datei hier hinein oder klicke zum Auswählen.',
             target: duplicateCheckFrameTarget('#zipDropZone', duplicateFallback),
@@ -1186,7 +1428,10 @@ import { applyTheme } from './shell/theme.js';
           }),
         ];
         if (!hasSuccessfulResult) {
-          return addTutorialContinuationHint(setupSteps, 'eine gültige ZIP-Datei erfolgreich analysiert');
+          return {
+            steps: addTutorialContinuationHint(setupSteps, 'eine gültige ZIP-Datei erfolgreich analysiert'),
+            demo: { activate: activateDuplicateCheckTutorialDemo },
+          };
         }
 
         const resultSteps = [
@@ -1298,23 +1543,9 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
-            title: 'Auftrag sichtbar halten',
-            copy: 'Der eingegebene Auftrag bleibt beim Wechsel zwischen Modulen erhalten. In der Präsentationsansicht wird er groß und gut lesbar für den Raum dargestellt.',
-            target: (nodes) => nodes.workOrderDisplay || nodes.workOrderPanel || workPhaseFallback(nodes),
-            placement: 'top',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_WORK_PHASE,
             title: 'Arbeitsdauer festlegen',
             copy: 'Trage den Zeitrahmen in Minuten ein oder passe ihn mit Plus und Minus an. Der kleinste gültige Wert ist eine Minute.',
             target: (nodes) => nodes.timerDurationField || nodes.workOrderDurationInput || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_WORK_PHASE,
-            title: 'Sekunden ein- oder ausblenden',
-            copy: 'Mit diesem Schalter bestimmst du, ob Restzeiten mit Sekunden oder nur mit Stunden und Minuten angezeigt werden.',
-            target: (nodes) => nodes.timerSecondsToggleButton || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
             placement: 'right',
           }),
           createModuleTutorialStep({
@@ -1333,6 +1564,13 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
+            title: 'Sekunden ein- oder ausblenden',
+            copy: 'Mit diesem Schalter bestimmst du, ob Restzeiten mit Sekunden oder nur mit Stunden und Minuten angezeigt werden.',
+            target: (nodes) => nodes.timerSecondsToggleButton || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
+            placement: 'right',
+          }),
+          createModuleTutorialStep({
+            tab: TAB_WORK_PHASE,
             title: 'Arbeitszeit starten',
             copy: 'Das Uhrsymbol startet den Countdown. Ohne gültige Dauer weist TeachHelper dich darauf hin, zuerst einen Zeitrahmen festzulegen.',
             target: (nodes) => nodes.timerWorkOrderStart || nodes.timerWorkOrderActions || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
@@ -1347,13 +1585,6 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
-            title: 'Arbeitszeit stoppen',
-            copy: 'Das jeweils aktive Uhrsymbol beendet den laufenden Timer oder Alarm. Arbeitsauftrag und eingestellte Dauer bleiben dabei erhalten.',
-            target: (nodes) => activeTimerButton(nodes) || nodes.timerWorkOrderActions || nodes.workPhaseTimerSettings || workPhaseFallback(nodes),
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_WORK_PHASE,
             title: 'Zeitliche Warnungen',
             copy: 'Bei 50 %, 75 % und am Ende hebt TeachHelper den Timer zusätzlich farblich hervor. Der Endalarm bleibt sichtbar, bis du ihn quittierst.',
             target: (nodes) => nodes.timerPanel || nodes.timerWarningBanner || workPhaseFallback(nodes),
@@ -1361,15 +1592,15 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
-            title: 'Endalarm quittieren',
-            copy: 'Klicke auf die Restzeituhr, den eingeblendeten Hinweis oder das Stoppsymbol, um den Endalarm samt Warnton zu beenden.',
-            target: (nodes) => nodes.workOrderRestClock || nodes.timerPanel || workPhaseFallback(nodes),
-            placement: 'top',
+            title: 'Timer oder Endalarm beenden',
+            copy: 'Das aktive Uhrsymbol stoppt den laufenden Timer. Einen Endalarm kannst du zusätzlich über die Restzeituhr oder den eingeblendeten Hinweis quittieren; Auftrag und Dauer bleiben erhalten.',
+            target: (nodes) => activeTimerButton(nodes) || nodes.workOrderRestClock || nodes.timerPanel || workPhaseFallback(nodes),
+            placement: 'right',
           }),
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
             title: 'Ampelschwellen festlegen',
-            copy: 'Bestimme, ab welchem Pegel die Ampel gelb beziehungsweise rot wird. Die rote Schwelle bleibt automatisch mindestens einen Schritt oberhalb der gelben.',
+            copy: 'Bestimme, ab welchem Pegel die Ampel gelb beziehungsweise rot wird. Da der Messwert von Mikrofon, Geräteposition und Raumakustik abhängt, passt du die Schwellen am besten praktisch an den Raum an; Rot bleibt automatisch oberhalb von Gelb.',
             target: (nodes) => nodes.monitorThresholdControls || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
             placement: 'right',
           }),
@@ -1396,13 +1627,6 @@ import { applyTheme } from './shell/theme.js';
           }),
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
-            title: 'Schwellen an den Raum anpassen',
-            copy: 'Der angezeigte Pegel hängt von Mikrofon, Geräteposition und Raumakustik ab. Passe die Schwellen deshalb praktisch an deine Unterrichtssituation an.',
-            target: (nodes) => nodes.monitorThresholdControls || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
-            placement: 'right',
-          }),
-          createModuleTutorialStep({
-            tab: TAB_WORK_PHASE,
             title: 'Überwachung stoppen',
             copy: 'Das jeweils aktive Ampelsymbol stoppt die Überwachung und beendet den verwendeten Mikrofonstream.',
             target: (nodes) => activeMonitorButton(nodes) || nodes.monitorMicActions || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
@@ -1411,7 +1635,7 @@ import { applyTheme } from './shell/theme.js';
           createModuleTutorialStep({
             tab: TAB_WORK_PHASE,
             title: 'Präsentationsansicht',
-            copy: 'Mit dem Vollbildschalter blendest du Navigation und Einstellungen aus, damit Arbeitsauftrag, Ampel und Timer aus größerer Entfernung gut erkennbar sind.',
+            copy: 'Der Arbeitsauftrag bleibt beim Modulwechsel erhalten. Mit dem Vollbildschalter blendest du Navigation und Einstellungen aus, damit Auftrag, Ampel und Timer im Raum groß und gut lesbar sind.',
             target: (nodes) => nodes.chromeToggle || nodes.appHeader || nodes.tabWorkPhase,
             placement: 'bottom',
           }),
@@ -1432,22 +1656,133 @@ import { applyTheme } from './shell/theme.js';
         ];
       }
       case TAB_QR:
-        return [
+      {
+        const qrFallback = () => null;
+        const openGenerator = () => openQrToolForTutorial('generator');
+        const openDecoder = () => openQrToolForTutorial('decoder');
+        const openDecoderCamera = () => openQrToolForTutorial('decoder', 'camera');
+        let qrDocument = null;
+        try {
+          qrDocument = getQrFrame()?.contentDocument || null;
+        } catch {
+          qrDocument = null;
+        }
+        const hasGeneratedResult = Boolean(qrDocument?.querySelector('#qrPreviewShell:not(.hidden)'));
+        const hasDecodedResult = Boolean(qrDocument?.querySelector('#decodedValuePanel:not(.hidden)'));
+        const steps = [
           createModuleTutorialStep({
             tab: TAB_QR,
-            title: 'QR-Werkzeug',
-            copy: 'Hier erstellst oder scannst du QR-Codes für Links, Material und schnelle Unterrichtswege.',
-            target: (nodes) => nodes.qrHost || nodes.qrShell || nodes.tabQr,
-            placement: 'top',
+            title: 'QR-Werkzeuge auswählen',
+            copy: 'Im QR-Generator erzeugst du aus einem Link einen QR-Code. Der QR-Decoder liest dagegen einen vorhandenen QR-Code aus Bild, Zwischenablage oder Kamera.',
+            target: qrFrameTarget('.tool-tab-bar', qrFallback),
+            placement: 'right',
+            beforeRender: openGenerator,
           }),
           createModuleTutorialStep({
             tab: TAB_QR,
-            title: 'QR-Arbeitsfläche',
-            copy: 'Die Arbeitsfläche zeigt Eingaben, Vorschau und Ergebnis des aktuellen QR-Vorgangs.',
-            target: (nodes) => nodes.qrShell || nodes.qrHost || nodes.tabQr,
+            title: 'Link eingeben',
+            copy: 'Gib eine HTTP- oder HTTPS-Adresse ohne Leerzeichen und mit gültigem Hostnamen ein. Fehlt das Protokoll, ergänzt TeachHelper automatisch „https://“; zum Beispiel wird example.com akzeptiert.',
+            target: qrFrameTarget('#generatorLinkInput', qrFallback),
             placement: 'top',
+            beforeRender: openGenerator,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Code erstellen',
+            copy: 'Mit diesem Button prüft TeachHelper den Link und erzeugt daraus den QR-Code. Das Tutorial selbst startet keine Erzeugung.',
+            target: qrFrameTarget('#generateButton', qrFallback),
+            placement: 'top',
+            beforeRender: openGenerator,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Code kontrollieren',
+            copy: 'Nach der Erzeugung erscheint hier die QR-Vorschau. Der darunter angezeigte Link ist anklickbar, damit du das codierte Ziel noch einmal prüfen kannst.',
+            target: qrFrameTarget(['#qrPreviewShell:not(.hidden)', '#generatorResult'], qrFallback),
+            placement: 'top',
+            beforeRender: openGenerator,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Code herunterladen',
+            copy: '„Download“ speichert den erzeugten QR-Code als PNG-Datei, die du in Arbeitsblätter, Präsentationen oder Lernplattformen einfügen kannst.',
+            target: qrFrameTarget('#downloadQrButton', qrFallback),
+            placement: 'top',
+            beforeRender: openGenerator,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Bild kopieren',
+            copy: 'Alternativ kopierst du das QR-Bild direkt in die Zwischenablage. Diese Funktion steht nur zur Verfügung, wenn der Browser das Kopieren von Bildern unterstützt.',
+            target: qrFrameTarget('#copyQrImageButton', qrFallback),
+            placement: 'top',
+            beforeRender: openGenerator,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'QR-Code aus Bild lesen',
+            copy: 'Ziehe ein Bild mit QR-Code in diese Fläche oder klicke darauf, um eine Bilddatei auszuwählen. Andere Dateitypen werden nicht verarbeitet.',
+            target: qrFrameTarget('#decoderDropZone', qrFallback),
+            placement: 'top',
+            beforeRender: openDecoder,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'Bild aus der Zwischenablage',
+            copy: 'Mit dieser Aktion liest TeachHelper ein Bild direkt aus der Zwischenablage. Der Browser kann dafür eine Freigabe verlangen; reiner Text genügt nicht.',
+            target: qrFrameTarget('#pasteImageButton', qrFallback),
+            placement: 'top',
+            beforeRender: openDecoder,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'Kamera verwenden',
+            copy: '„Kamera“ startet einen laufenden QR-Scan und bevorzugt auf Mobilgeräten die rückseitige Kamera. Beim ersten Mal musst du den Kamerazugriff erlauben.',
+            target: qrFrameTarget('#cameraButton', qrFallback),
+            placement: 'top',
+            beforeRender: openDecoder,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'Kamerascan beenden',
+            copy: 'Du kannst den Scan jederzeit manuell stoppen. Sobald ein QR-Code erkannt wurde, beendet TeachHelper die Kamera automatisch und gibt den Stream frei.',
+            target: qrFrameTarget('#stopCameraButton', qrFallback),
+            placement: 'top',
+            beforeRender: openDecoderCamera,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'Gelesenes Ergebnis',
+            copy: 'Enthält der QR-Code eine HTTP- oder HTTPS-Adresse, erscheint sie als anklickbarer Link. Andere Inhalte werden sicher als normaler Text dargestellt.',
+            target: qrFrameTarget(['#decodedLink:not(.hidden)', '#decodedText:not(.hidden)', '#decoderResult'], qrFallback),
+            placement: 'top',
+            beforeRender: openDecoder,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'Ergebnis kopieren',
+            copy: 'Mit diesem Button kopierst du den vollständigen gelesenen Link oder Text in die Zwischenablage.',
+            target: qrFrameTarget('#copyDecodedButton', qrFallback),
+            placement: 'top',
+            beforeRender: openDecoder,
+          }),
+          createModuleTutorialStep({
+            tab: TAB_QR,
+            title: 'Wenn das Lesen nicht klappt',
+            copy: 'TeachHelper meldet ungültige Bilder, fehlende QR-Codes sowie nicht unterstützte Kamera- oder Zwischenablagefunktionen. Gute Beleuchtung, ein scharfes Bild und ein vollständig sichtbarer Code mit etwas Rand verbessern Datei- und Kameraerkennung.',
+            target: qrFrameTarget(['#decoderResult', '#cameraPanel:not(.hidden)', '#decoderDropZone'], qrFallback),
+            placement: 'top',
+            beforeRender: openDecoder,
           }),
         ];
+        if (!hasGeneratedResult && !hasDecodedResult) {
+          return {
+            steps,
+            demo: { activate: activateQrTutorialDemo },
+          };
+        }
+        return steps;
+      }
       default:
         return [
           createModuleTutorialStep({
@@ -1463,7 +1798,7 @@ import { applyTheme } from './shell/theme.js';
   const FIRST_RUN_TUTORIAL_STEPS = [
     {
       title: 'Tableiste',
-      copy: 'In dieser Tableiste wechselst du zwischen den Modulen.',
+      copy: 'Über die Tableiste wechselst du zwischen den Modulen.',
       target: (nodes) => nodes.tabNav,
       tab: TAB_GROUPS,
       placement: 'bottom',
@@ -1471,7 +1806,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Noten',
-      copy: 'Im Notenmodul verwaltest Du Leistungsbewertungen. Das Notenmodul kann verschlüsselt werden.',
+      copy: 'Hier verwaltest du Kurse, Leistungen und Noten. Deine Notendaten kannst du mit einem Passwort schützen.',
       target: (nodes) => nodes.tabGrades,
       tab: TAB_GRADES,
       placement: 'bottom',
@@ -1479,7 +1814,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Planung',
-      copy: 'Im Planungsmodul planst du deine Unterrichtsreihen (Kursansicht) und Unterrichtswochen (Wochenansicht).',
+      copy: 'Hier planst du Unterrichtswochen und den Verlauf deiner Kurse.',
       target: (nodes) => nodes.tabPlanning,
       tab: TAB_PLANNING,
       placement: 'bottom',
@@ -1487,7 +1822,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'PDF-Tools',
-      copy: 'Im PDF-Modul kannst du PDF-Dokumente zusammenführen, drehen oder aufteilen.',
+      copy: 'Hier ordnest du PDF-Seiten neu an, verbindest Dateien, drehst Seiten oder teilst PDFs auf.',
       target: (nodes) => nodes.tabMerger,
       tab: TAB_MERGER,
       placement: 'bottom',
@@ -1495,7 +1830,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Sitzplan',
-      copy: 'Im Sitzplanmodul erstellst du Sitzpläne für deine Lerngruppen.',
+      copy: 'Hier erstellst und optimierst du Sitzpläne für deine Lerngruppen.',
       target: (nodes) => nodes.tabSeatplan,
       tab: TAB_SEATPLAN,
       placement: 'bottom',
@@ -1503,7 +1838,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Gruppen',
-      copy: 'Im Gruppenmodul kannst du Lernende in passende Gruppen einteilen.',
+      copy: 'Hier teilst du Lernende passend oder manuell in Gruppen ein.',
       target: (nodes) => nodes.tabGroups,
       tab: TAB_GROUPS,
       placement: 'bottom',
@@ -1511,7 +1846,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Picker',
-      copy: 'Im Picker kannst du zufällig eine Person aus einer Namensliste auswählen lassen.',
+      copy: 'Hier wählst du zufällig eine Person aus deiner Namensliste aus.',
       target: (nodes) => nodes.tabRandomPicker,
       tab: TAB_RANDOM_PICKER,
       placement: 'bottom',
@@ -1519,7 +1854,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'DuplikatCheck',
-      copy: 'Im Duplikatmodul prüfst du Abgaben auf Duplikate.',
+      copy: 'Hier prüfst du eine ZIP-Datei mit Abgaben auf mögliche Duplikate.',
       target: (nodes) => nodes.tabDuplicateCheck,
       tab: TAB_DUPLICATE_CHECK,
       placement: 'bottom',
@@ -1527,7 +1862,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Arbeitsphase',
-      copy: 'Im Arbeitsphasenmodul organisierst du dein Classroommanagement in Arbeitsphasen.',
+      copy: 'Hier kombinierst du Arbeitsauftrag, Timer und Lautstärkeampel.',
       target: (nodes) => nodes.tabWorkPhase,
       tab: TAB_WORK_PHASE,
       placement: 'bottom',
@@ -1535,7 +1870,7 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'QR',
-      copy: 'Im QR-Modul machst erstellst du aus einem Link einen QR-Code oder list aus einem QR-Code den Link aus.',
+      copy: 'Hier erstellst du einen QR-Code aus einem Link oder liest einen vorhandenen QR-Code aus.',
       target: (nodes) => nodes.tabQr,
       tab: TAB_QR,
       placement: 'bottom',
@@ -1543,14 +1878,14 @@ import { applyTheme } from './shell/theme.js';
     },
     {
       title: 'Vollbild',
-      copy: 'Mit dem Vollbildbutton blendest du die Bedienleisten ein oder aus, wenn du mehr Platz für die aktuelle Ansicht brauchst.',
+      copy: 'Blende die Bedienleisten aus, wenn du mehr Platz für das aktuelle Modul brauchst.',
       target: (nodes) => nodes.chromeToggle || nodes.appHeader,
       placement: 'bottom',
       expandChrome: true,
     },
     {
       title: 'Einführung in die Module',
-      copy: 'Nach der allgemeinen Einführung kannst du jetzt jedes Modul einzeln kennenlernen. Klicke dafür auf das ℹ️, wenn das entsprechende Modul geöffnet ist.',
+      copy: 'Öffne ein Modul und klicke auf ℹ️, um seine Einführung zu starten.',
       target: (nodes) => nodes.firstRunTutorialStart,
       tab: TAB_GROUPS,
       placement: 'top',
@@ -1572,7 +1907,12 @@ import { applyTheme } from './shell/theme.js';
       [els.tabWorkPhase, TAB_WORK_PHASE],
       [els.tabQr, TAB_QR],
     ].forEach(([button, tabKey]) => {
-      button?.addEventListener('click', () => setActiveTab(tabKey));
+      button?.addEventListener('click', () => {
+        if (firstRunTutorial?.isActive?.() && getActiveTab() !== tabKey) {
+          firstRunTutorial.finish({ persist: false });
+        }
+        setActiveTab(tabKey);
+      });
     });
   }
 
@@ -1600,7 +1940,7 @@ import { applyTheme } from './shell/theme.js';
     return text.replace(/^\s*\/\*[\s\S]*?\*\/\s*/, '').trimStart();
   }
 
-  const state = {
+  let state = {
     students: [],
     seats: {},
     gridRows: 3,
@@ -1625,6 +1965,79 @@ import { applyTheme } from './shell/theme.js';
     lastDirectoryHandle: null,
     performanceFlairCount: 4,
   };
+  const realClassroomState = state;
+  let classroomTutorialDemoActive = false;
+  function activateClassroomTutorialDemo(tab) {
+    if (classroomTutorialDemoActive) {
+      const current = getCurrentModuleTutorialSteps({ activeTab: tab });
+      return { steps: Array.isArray(current) ? current : current.steps, cleanup: () => {} };
+    }
+    const demoStudents = [
+      ['01', 'Alex', 'Beispiel', 'A', 1], ['02', 'Sam', 'Muster', 'A', 2],
+      ['03', 'Kim', 'Demo', 'B', 1], ['04', 'Robin', 'Test', 'B', 3],
+      ['05', 'Mika', 'Probe', 'C', 1], ['06', 'Toni', 'Beispiel', 'C', 1],
+      ['07', 'Jona', 'Muster', 'D', 1], ['08', 'Noa', 'Demo', 'D', 1],
+    ].map(([id, first, last, performanceFlair, randomWeight]) => ({
+      id, first, last, performanceFlair, randomWeight,
+      buddies: id === '01' ? ['02'] : [],
+      foes: id === '03' ? ['04'] : [],
+    }));
+    const fileInputWasDisabled = Boolean(els.file?.disabled);
+    classroomTutorialDemoActive = true;
+    if (els.file) els.file.disabled = true;
+    state = {
+      ...realClassroomState,
+      students: demoStudents,
+      seats: { '1-1': ['01', '02'], '1-2': ['03', '05'], '2-1': ['04'], '2-2': ['06'] },
+      gridRows: 2,
+      gridCols: 2,
+      activeSeats: new Set(['1-1', '1-2', '2-1', '2-2']),
+      activeSeatOrder: ['1-1', '1-2', '2-1', '2-2'],
+      lockedSeats: new Set(['1-1']),
+      seatTopics: { '1-1': 'Recherche', '1-2': 'Auswertung', '2-1': '', '2-2': '' },
+      headers: ['Nachname', 'Vorname'],
+      csvName: 'Beispielklasse',
+      minGroupSize: 2,
+      maxGroupSize: 3,
+      performanceFlairCount: 4,
+      _lastImport: false,
+      scrollHintDismissed: true,
+    };
+    updateCsvStatusDisplay();
+    syncGroupSizeInputs();
+    refreshUnseated();
+    renderRandomPicker();
+    renderSeats();
+    requestGroupGridLayoutRefresh({ resetViewport: true });
+    const cleanup = () => {
+      if (!classroomTutorialDemoActive) return;
+      if (groupSuggestInProgress || randomPickerSpinInProgress) {
+        window.setTimeout(cleanup, 120);
+        return;
+      }
+      classroomTutorialDemoActive = false;
+      state = realClassroomState;
+      if (els.file) els.file.disabled = fileInputWasDisabled;
+      if (els.preferencesDialog?.open && typeof els.preferencesDialog.close === 'function') {
+        els.preferencesDialog.close();
+      }
+      els.preferencesDialog?.removeAttribute('open');
+      updateCsvStatusDisplay();
+      syncGroupSizeInputs();
+      refreshUnseated();
+      renderRandomPicker();
+      renderSeats();
+      renderWorkOrder();
+      requestGroupGridLayoutRefresh({ resetViewport: true });
+    };
+    try {
+      const current = getCurrentModuleTutorialSteps({ activeTab: tab });
+      return { steps: Array.isArray(current) ? current : current.steps, cleanup };
+    } catch (error) {
+      cleanup();
+      throw error;
+    }
+  }
   let randomPickerSpinInProgress = false;
   let randomPickerCurrentIndex = 0;
   let randomPickerLockedWidthPx = 0;
@@ -1675,6 +2088,7 @@ import { applyTheme } from './shell/theme.js';
     },
   });
   const syncSharedRosterState = (source = STUDENTS_SYNC_SOURCE_GROUPS, importedAt = Date.now()) => {
+    if (classroomTutorialDemoActive) return SharedRosterStore.getState();
     const detail = {
       ...SharedRosterStore.getState(),
       source,
@@ -1722,6 +2136,7 @@ import { applyTheme } from './shell/theme.js';
     documentBus: document,
   });
   SharedRosterStore.subscribe((detail) => {
+    if (classroomTutorialDemoActive) return;
     if (!detail || typeof detail !== 'object') return;
     const importedAt = Number(detail.importedAt);
     if (Number.isFinite(importedAt) && importedAt <= lastRosterImportedAt) return;
@@ -3058,6 +3473,10 @@ import { applyTheme } from './shell/theme.js';
   }
 
   function downloadCsvTemplate() {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Downloads sind für Beispieldaten deaktiviert.', 'info');
+      return;
+    }
     const blob = new Blob([TEMPLATE_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' });
     triggerBlobDownload(blob, TEMPLATE_CSV_NAME, {
       defaultName: TEMPLATE_CSV_NAME,
@@ -3069,6 +3488,10 @@ import { applyTheme } from './shell/theme.js';
   }
 
   async function downloadSeatPlan() {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Speichern und Exportieren ist für Beispieldaten deaktiviert.', 'info');
+      return;
+    }
     const snapshot = createPlanSnapshot();
     if (!snapshot) return;
     const defaultName = getSuggestedPlanFileName();
@@ -3095,6 +3518,10 @@ import { applyTheme } from './shell/theme.js';
   }
 
   function printSeatPlan() {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Drucken ist für Beispieldaten deaktiviert.', 'info');
+      return;
+    }
     if (typeof window === 'undefined' || typeof window.print !== 'function') {
       showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn');
       return;
@@ -3325,6 +3752,10 @@ import { applyTheme } from './shell/theme.js';
   }
 
   async function importPlanFromFile(file, handle) {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      return;
+    }
     if (!file) return;
     const planLabelFromFile = sanitizeExportFileName(stripFileExtension(file.name || ''));
     const rawText = await file.text();
@@ -4965,6 +5396,10 @@ import { applyTheme } from './shell/theme.js';
   }
 
   async function importCsvFromFile(file) {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      return;
+    }
     if (!file) return;
     const guessedLabel = sanitizeExportFileName(stripFileExtension(file.name));
     state.csvName = guessedLabel || state.csvName;
@@ -5042,6 +5477,10 @@ import { applyTheme } from './shell/theme.js';
   }
 
   async function handlePlanImportAction() {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      return;
+    }
     const picked = await pickPlanFileWithPicker();
     if (picked && picked.file) {
       try {
@@ -6595,6 +7034,10 @@ import { applyTheme } from './shell/theme.js';
     });
   });
   els.randomPickerImport?.addEventListener('click', () => {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      return;
+    }
     if (!els.file) return;
     els.file.value = '';
     els.file.click();
@@ -6731,7 +7174,7 @@ import { applyTheme } from './shell/theme.js';
   syncChromeState();
   updateMonitorAmpelSizing();
   els.app?.classList.add('app-js-ready');
-  const firstRunTutorial = createFirstRunTutorial({
+  firstRunTutorial = createFirstRunTutorial({
     els,
     steps: FIRST_RUN_TUTORIAL_STEPS,
     getContextualSteps: getCurrentModuleTutorialSteps,

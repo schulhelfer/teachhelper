@@ -45,7 +45,6 @@ export function mountMerger({ host }) {
       type: MERGER_SHELL_LAYOUT_EVENT,
       detail: {
         ...detail,
-        theme: document.documentElement?.dataset?.theme === 'light' ? 'light' : 'dark',
       },
     }, targetOrigin);
   };

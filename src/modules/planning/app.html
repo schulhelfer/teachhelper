@@ -22,6 +22,7 @@
       </div>
       <div class="sidebar-controls">
         <button id="view-grades-entry-btn" class="nav-btn grades-entry-nav-btn active" type="button"
+          data-tutorial-anchor="grades-entry-nav"
           aria-label="Eingabe" title="Eingabe">✍️</button>
         <button id="view-week-btn" class="nav-btn week-view-nav-btn" type="button" aria-label="Wochenansicht"
           title="Wochenansicht" hidden>🗓️</button>
@@ -31,7 +32,8 @@
         <ul id="sidebar-course-list" class="sidebar-list"></ul>
         <div id="sidebar-grade-privacy-actions" class="sidebar-grade-privacy-actions" hidden>
           <div class="sidebar-grade-privacy-divider" aria-hidden="true"></div>
-          <div id="sidebar-grade-privacy-section" class="sidebar-grade-action-section">
+          <div id="sidebar-grade-privacy-section" class="sidebar-grade-action-section"
+            data-tutorial-anchor="grades-privacy">
             <div class="sidebar-grade-action-title">Datenschutzmodus</div>
             <button id="sidebar-grade-privacy-toggle-btn" class="sidebar-grade-privacy-toggle is-inactive" type="button"
               data-grade-privacy-toggle="1" aria-label="Datenschutzmodus aktivieren" aria-pressed="false"
@@ -41,7 +43,7 @@
               </span>
             </button>
           </div>
-          <div id="sidebar-grade-sort-section" class="sidebar-grade-action-section">
+          <div id="sidebar-grade-sort-section" class="sidebar-grade-action-section" data-tutorial-anchor="grades-sort">
             <div class="sidebar-grade-action-title">Sortierung</div>
             <div class="sidebar-grade-segment-control" role="radiogroup" aria-label="Sortierung">
               <label class="sidebar-grade-segment-option">
@@ -55,10 +57,10 @@
               </label>
             </div>
           </div>
-          <div id="sidebar-grade-display-section" class="sidebar-grade-action-section">
+          <div id="sidebar-grade-display-section" class="sidebar-grade-action-section"
+            data-tutorial-anchor="grades-display-system">
             <div class="sidebar-grade-action-title sidebar-grade-display-title">
               <span>Notensystem</span>
-              <small>(nur Anzeige)</small>
             </div>
             <div class="sidebar-grade-segment-control" role="radiogroup" aria-label="Notensystem">
               <label class="sidebar-grade-segment-option">
@@ -73,7 +75,8 @@
               </label>
             </div>
           </div>
-          <div id="sidebar-grade-predicate-section" class="sidebar-grade-action-section">
+          <div id="sidebar-grade-predicate-section" class="sidebar-grade-action-section"
+            data-tutorial-anchor="grades-predicate">
             <div class="sidebar-grade-action-title">Prädikatsanhängsel</div>
             <div class="sidebar-grade-segment-control" role="radiogroup" aria-label="Prädikatsanhängsel">
               <label class="sidebar-grade-segment-option">
@@ -88,7 +91,8 @@
               </label>
             </div>
           </div>
-          <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print">
+          <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print"
+            data-tutorial-anchor="grades-print">
             <div class="sidebar-grade-action-title">Drucken</div>
             <button id="sidebar-grade-print-btn" class="sidebar-grade-print-btn" type="button"
               data-grade-print-overview="1" aria-label="Kursnoten drucken"
@@ -96,14 +100,14 @@
               <span class="sidebar-grade-print-icon" aria-hidden="true">🖨️</span>
             </button>
           </div>
-          <div id="sidebar-grade-expectation-section"
+          <div id="sidebar-grade-expectation-section" data-tutorial-anchor="grades-expectation"
             class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
             <div class="sidebar-grade-action-title">Erwartungshorizont</div>
             <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
               aria-label="Erwartungshorizont erzeugen" title="Erwartungshorizont erzeugen" disabled><span
                 class="sidebar-grade-print-icon" aria-hidden="true">✨</span></button>
           </div>
-          <div id="sidebar-grade-simulation-section"
+          <div id="sidebar-grade-simulation-section" data-tutorial-anchor="grades-simulation"
             class="sidebar-grade-action-section sidebar-grade-action-section-simulation">
             <div class="sidebar-grade-action-title sidebar-grade-simulation-title">
               <span>Warnungen</span>
@@ -116,7 +120,8 @@
           </div>
         </div>
         <div id="sidebar-archive-actions" class="sidebar-archive-actions" hidden>
-          <div id="sidebar-archive-section" class="sidebar-grade-action-section sidebar-grade-action-section-archive">
+          <div id="sidebar-archive-section" class="sidebar-grade-action-section sidebar-grade-action-section-archive"
+            data-tutorial-anchor="grades-archive">
             <div class="sidebar-grade-action-title">Archivieren</div>
             <button id="sidebar-archive-btn" class="sidebar-grade-print-btn sidebar-archive-btn" type="button"
               aria-label="Archivieren" title="PDF-Export des gesamten Schuljahres" disabled>
@@ -215,7 +220,7 @@
             <div id="grades-book-panel" class="table-panel grades-book-panel" hidden>
               <div id="grades-privacy-overlay" class="grades-privacy-overlay" aria-live="polite" hidden></div>
               <div id="grades-table-scroll" class="grades-table-scroll">
-                <div id="grades-table" class="grades-table"></div>
+                <div id="grades-table" class="grades-table" data-tutorial-anchor="grades-overview"></div>
               </div>
               <div id="grades-table-sticky-scrollbar" class="grades-table-sticky-scrollbar" aria-hidden="true" hidden>
                 <div id="grades-table-sticky-scrollbar-spacer" class="grades-table-sticky-scrollbar-spacer"></div>
@@ -484,7 +489,8 @@
                   gespeichert. Sie muss manuell gesichert werden. Nach dem Neustart der App muss sie außerdem in
                   diesem Fenster wieder geladen werden. Bei der ersten Nutzung muss sie ebenfalls manuell angelegt
                   werden.</p>
-                <div id="grade-vault-settings-section" class="settings-extra-section" hidden>
+                <div id="grade-vault-settings-section" class="settings-extra-section"
+                  data-tutorial-anchor="grades-encryption" hidden>
                   <h3 class="settings-panel-title">Verschlüsselung</h3>
                   <div class="settings-form-table">
                     <div class="settings-form-row">
@@ -501,7 +507,7 @@
                     <button id="grade-vault-settings-action-btn" type="button">Passwort ändern</button>
                   </div>
                 </div>
-                <div id="db-backup-section" class="settings-extra-section">
+                <div id="db-backup-section" class="settings-extra-section" data-tutorial-anchor="grades-backup">
                   <h3 class="settings-panel-title">Backups</h3>
                   <p id="backup-dir-name" class="muted"></p>
                   <div class="button-row" style="margin-top: 0.45rem; margin-bottom: 1rem;">
@@ -624,7 +630,8 @@
     </form>
   </dialog>
 
-  <dialog id="course-students-dialog" class="app-dialog" aria-label="Teilnehmende verwalten">
+  <dialog id="course-students-dialog" class="app-dialog" aria-label="Teilnehmende verwalten"
+    data-tutorial-anchor="grades-students-dialog">
     <form id="course-students-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
         <h3 id="course-students-dialog-title" class="settings-panel-title">Teilnehmende verwalten</h3>
@@ -658,7 +665,8 @@
     </form>
   </dialog>
 
-  <dialog id="course-structure-dialog" class="app-dialog" aria-label="Notenstruktur bearbeiten">
+  <dialog id="course-structure-dialog" class="app-dialog" aria-label="Notenstruktur bearbeiten"
+    data-tutorial-anchor="grades-structure-dialog">
     <form id="course-structure-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
         <h3 id="course-structure-dialog-title" class="settings-panel-title">Notenstruktur</h3>

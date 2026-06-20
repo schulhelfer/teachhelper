@@ -47,161 +47,6 @@
       --print-scale: 1;
     }
 
-    :root[data-theme='light'] {
-      --bg: #e2e8f0;
-      --panel: #f8fafc;
-      --muted: #cbd5e1;
-      --text: #0f172a;
-      --accent: #0ea5e9;
-      --accent-2: #38bdf8;
-      --active: #ea580c;
-      --tab-active: #06b6d4;
-      --danger: #dc2626;
-      --ok: #059669;
-      --card: #ffffff;
-      --seat: #ffffff;
-      --focus: #0284c7;
-      --lock: #d97706;
-      --link: #075985;
-      --shell-bg: rgba(255, 255, 255, 0.86);
-      --shell-border: rgba(15, 23, 42, 0.12);
-      --shell-shadow: 0 10px 22px rgba(15, 23, 42, 0.14);
-      --shell-backdrop: saturate(140%) blur(6px);
-      --shell-bg-strong: rgba(248, 250, 252, 0.92);
-      --sidebar-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(241, 245, 249, 0.76));
-      --sidebar-border: rgba(148, 163, 184, 0.26);
-      --sidebar-shadow: 0 16px 28px rgba(15, 23, 42, 0.12);
-      --scrollbar-track: rgba(15, 23, 42, 0.08);
-      --scrollbar-thumb: rgba(100, 116, 139, 0.42);
-      --scrollbar-thumb-hover: rgba(71, 85, 105, 0.62);
-    }
-
-    :root[data-theme='light'] .app-header,
-    :root[data-theme='light'] .side,
-    :root[data-theme='light'] .main,
-    :root[data-theme='light'] .monitor-shell,
-    :root[data-theme='light'] .work-order-shell,
-    :root[data-theme='light'] .timer-shell,
-    :root[data-theme='light'] .monitor-assignment-card,
-    :root[data-theme='light'] .monitor-controls,
-    :root[data-theme='light'] .monitor-timer-card,
-    :root[data-theme='light'] dialog {
-      background: var(--shell-bg);
-      border-color: var(--shell-border);
-      color: var(--text);
-    }
-
-    :root[data-theme='light'] .monitor-ampel {
-      background: linear-gradient(180deg, #e2e8f0 0%, #cbd5e1 100%);
-      border-color: rgba(15, 23, 42, 0.2);
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.15);
-    }
-
-    :root[data-theme='light'] .monitor-subtitle,
-    :root[data-theme='light'] .hint,
-    :root[data-theme='light'] .file-upload .file-status {
-      color: #475569;
-    }
-
-    :root[data-theme='light'] .timer-duration-field {
-      color: #475569;
-    }
-
-    :root[data-theme='light'] .control-status {
-      background: rgba(248, 250, 252, 0.9);
-      border-color: rgba(148, 163, 184, 0.5);
-      color: #334155;
-    }
-
-    :root[data-theme='light'] .group-size-stepper {
-      background: #f8fafc;
-      border-color: rgba(15, 23, 42, 0.22);
-    }
-
-    :root[data-theme='light'] .group-size-stepper-button {
-      background: linear-gradient(180deg, #94a3b8, #64748b);
-      border-color: rgba(100, 116, 139, 0.45);
-      color: #f8fafc;
-      box-shadow: 0 8px 20px rgba(100, 116, 139, 0.25);
-    }
-
-    :root[data-theme='light'] .group-size-stepper-button:hover {
-      filter: brightness(1.06);
-    }
-
-    :root[data-theme='light'] .group-size-stepper .group-size-input {
-      background: transparent;
-      border-color: transparent;
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .side-timer-settings-controls .duration-stepper {
-      background: #f8fafc;
-      border-color: rgba(15, 23, 42, 0.22);
-    }
-
-    :root[data-theme='light'] .side-timer-settings-controls .duration-stepper-button {
-      background: linear-gradient(180deg, #94a3b8, #64748b);
-      border-color: rgba(100, 116, 139, 0.45);
-      color: #f8fafc;
-      box-shadow: 0 8px 20px rgba(100, 116, 139, 0.25);
-    }
-
-    :root[data-theme='light'] .side-timer-settings-controls .duration-stepper-button:hover {
-      filter: brightness(1.06);
-    }
-
-    :root[data-theme='light'] .tab-button {
-      border-color: rgba(100, 116, 139, 0.45);
-      background: linear-gradient(180deg, #94a3b8, #64748b);
-      color: #f8fafc;
-      box-shadow: 0 8px 20px rgba(100, 116, 139, 0.25);
-    }
-
-    :root[data-theme='light'] .tab-unlock-button {
-      border-color: rgba(100, 116, 139, 0.45);
-      background: linear-gradient(180deg, #94a3b8, #64748b);
-      color: #f8fafc;
-      box-shadow: 0 8px 20px rgba(100, 116, 139, 0.25);
-    }
-
-    :root[data-theme='light'] input[type="number"],
-    :root[data-theme='light'] select,
-    :root[data-theme='light'] .group-size-input,
-    :root[data-theme='light'] .dialog-form input[type="number"],
-    :root[data-theme='light'] .dialog-form textarea,
-    :root[data-theme='light'] .preferences-table select {
-      background: #f8fafc;
-      color: #0f172a;
-      border-color: rgba(15, 23, 42, 0.22);
-    }
-
-    :root[data-theme='light'] .preferences-table td.buddy-col .select-wrap,
-    :root[data-theme='light'] .preferences-table td.foe-col .select-wrap,
-    :root[data-theme='light'] .preferences-table td.performance-flair-col .select-wrap {
-      background: rgba(148, 163, 184, 0.2);
-    }
-
-    :root[data-theme='light'] .preferences-table td.performance-flair-col .select-wrap {
-      background: rgba(251, 146, 60, 0.16);
-    }
-
-    :root[data-theme='light'] .dialog-form input[type="number"]::-webkit-inner-spin-button,
-    :root[data-theme='light'] .dialog-form input[type="number"]::-webkit-outer-spin-button {
-      background: linear-gradient(180deg, #38bdf8, #0ea5e9);
-    }
-
-    :root[data-theme='light'] .preferences-table td.buddy-col select option,
-    :root[data-theme='light'] .preferences-table td.foe-col select option,
-    :root[data-theme='light'] .preferences-table td.performance-flair-col select option {
-      background: #f8fafc;
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] dialog::backdrop {
-      background: rgba(148, 163, 184, 0.45);
-    }
-
     * {
       box-sizing: border-box
     }
@@ -793,17 +638,35 @@
     .sidebar-footer {
       display: flex;
       position: fixed;
-      left: calc(env(safe-area-inset-left, 0px) + var(--app-shell-padding) + 14px);
+      left: calc(env(safe-area-inset-left, 0px) + var(--app-shell-padding));
       bottom: calc(env(safe-area-inset-bottom, 0px) + var(--app-shell-padding) + 14px);
+      width: 360px;
       z-index: 113;
-      justify-content: flex-start;
+      justify-content: center;
       margin: 0;
       padding: 0;
       opacity: 1;
       pointer-events: auto;
     }
 
+    .app.app-tab-planning .sidebar-footer,
+    .app.app-tab-grades .sidebar-footer {
+      width: 188px;
+    }
+
+    @media (max-width:1232px) {
+
+      .app.app-tab-planning .sidebar-footer,
+      .app.app-tab-grades .sidebar-footer {
+        left: calc(env(safe-area-inset-left, 0px) + var(--app-shell-padding) + 10px);
+        width: 176px;
+      }
+    }
+
     .sidebar-help-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       width: 30px;
       min-width: 30px;
       height: 30px;
@@ -4857,28 +4720,6 @@
       }
     }
 
-    :root[data-theme='light'] .app-header-version {
-      color: #475569;
-    }
-
-    :root[data-theme='light'] .app-header-version[role='button']:hover,
-    :root[data-theme='light'] .app-header-version[role='button']:focus-visible {
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .app-header-version.has-update-hint::after {
-      background: rgba(255, 255, 255, 0.98);
-      border-color: rgba(15, 23, 42, 0.14);
-      box-shadow: 0 10px 24px rgba(15, 23, 42, 0.16);
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .app-header-version.has-update-hint::before {
-      background: rgba(255, 255, 255, 0.98);
-      border-right-color: rgba(15, 23, 42, 0.14);
-      border-bottom-color: rgba(15, 23, 42, 0.14);
-    }
-
     .tutorial-highlight {
       position: fixed;
       z-index: 110;
@@ -4966,6 +4807,12 @@
       line-height: 1.38;
       pointer-events: auto;
       animation: tutorial-bubble-pop 180ms ease-out;
+    }
+
+    .tutorial-demo-choice-actions {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
     }
 
     .tutorial-bubble::before {
@@ -5135,64 +4982,6 @@
       }
     }
 
-    :root[data-theme='light'] .tutorial-highlight {
-      box-shadow: 0 0 0 9999px rgba(15, 23, 42, 0.12), 0 0 0 6px color-mix(in srgb, var(--accent) 16%, transparent 84%);
-    }
-
-    :root[data-theme='light'] .tutorial-intro-dialog {
-      background: rgba(255, 255, 255, 0.99);
-      border-color: rgba(15, 23, 42, 0.14);
-      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .tutorial-intro-dialog h2 {
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .tutorial-intro-dialog p {
-      color: #334155;
-    }
-
-    :root[data-theme='light'] .tutorial-bubble {
-      background: rgba(255, 255, 255, 0.98);
-      border-color: rgba(15, 23, 42, 0.14);
-      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .tutorial-title {
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .tutorial-copy {
-      color: #334155;
-    }
-
-    :root[data-theme='light'] .tutorial-count {
-      color: #64748b;
-    }
-
-    :root[data-theme='light'] .tutorial-close-button,
-    :root[data-theme='light'] .tutorial-prev-button {
-      background: #f8fafc;
-      border-color: rgba(15, 23, 42, 0.14);
-      color: #334155;
-    }
-
-    :root[data-theme='light'] .tutorial-prev-button,
-    :root[data-theme='light'] .tutorial-next-button {
-      background: transparent;
-      border: 0;
-      color: #1e3a8a;
-    }
-
-    :root[data-theme='light'] .tutorial-close-button:hover,
-    :root[data-theme='light'] .tutorial-prev-button:not(:disabled):hover,
-    :root[data-theme='light'] .tutorial-next-button:hover {
-      background: rgba(15, 23, 42, 0.08);
-    }
-
     @media (prefers-reduced-motion: reduce) {
 
       .tutorial-bubble {
@@ -5202,78 +4991,6 @@
       .tutorial-highlight {
         transition: none;
       }
-    }
-
-    :root[data-theme='light'] .grid-wrap {
-      background: rgba(248, 250, 252, 0.82);
-      border: 1px solid rgba(15, 23, 42, 0.12);
-    }
-
-    :root[data-theme='light'] .seat {
-      background: linear-gradient(180deg, #ffffff 0%, #e2e8f0 100%);
-      border-color: rgba(15, 23, 42, 0.14);
-      box-shadow: 0 8px 18px rgba(15, 23, 42, 0.18);
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .seat .seat-delete-button {
-      background: rgba(254, 242, 242, 0.92);
-      border-color: rgba(220, 38, 38, 0.24);
-      color: #b91c1c;
-      box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1);
-    }
-
-    :root[data-theme='light'] .seat .seat-delete-button:hover,
-    :root[data-theme='light'] .seat .seat-delete-button:focus-visible,
-    :root[data-theme='light'] .seat .seat-delete-button:active {
-      background: rgba(254, 242, 242, 1);
-      border-color: rgba(220, 38, 38, 0.36);
-      color: #991b1b;
-      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1), 0 6px 12px rgba(15, 23, 42, 0.12);
-    }
-
-    :root[data-theme='light'] .seat .seat-chip {
-      background: rgba(14, 165, 233, 0.18);
-      border-color: rgba(14, 165, 233, 0.42);
-      box-shadow: 0 6px 12px rgba(15, 23, 42, 0.14);
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .seat .seat-chip .seat-chip-flair {
-      background: rgba(234, 88, 12, 0.12);
-      border-color: rgba(234, 88, 12, 0.26);
-      color: #9a3412;
-    }
-
-    :root[data-theme='light'] .teacher-card {
-      background: rgba(255, 255, 255, 0.82);
-      border-color: rgba(15, 23, 42, 0.14);
-    }
-
-    :root[data-theme='light'] .preferences-table-wrap {
-      background: rgba(248, 250, 252, 0.86);
-      border-color: rgba(15, 23, 42, 0.14);
-    }
-
-    :root[data-theme='light'] .preferences-table thead th {
-      background: rgba(226, 232, 240, 0.94);
-    }
-
-    :root[data-theme='light'] .preferences-table select {
-      background: rgba(248, 250, 252, 0.92);
-      border-color: rgba(15, 23, 42, 0.14);
-      color: #0f172a;
-    }
-
-    :root[data-theme='light'] .criteria-panel {
-      background: rgba(248, 250, 252, 0.8);
-      border-color: rgba(15, 23, 42, 0.22);
-    }
-
-    :root[data-theme='light'] .seat-score {
-      background: rgba(248, 250, 252, 0.92);
-      border-color: rgba(15, 23, 42, 0.18);
-      color: #0f172a;
     }
 
     .preferences-form {
@@ -5650,6 +5367,10 @@
         grid-template-columns: minmax(260px, 320px) minmax(0, 1fr)
       }
 
+      .sidebar-footer {
+        width: 320px;
+      }
+
       .monitor-status-layout {
         grid-template-columns: minmax(0, 1fr);
       }
@@ -5665,6 +5386,10 @@
         height: auto;
         grid-auto-rows: auto;
         align-items: start
+      }
+
+      .sidebar-footer {
+        width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - (var(--app-shell-padding) * 2));
       }
 
       .app.app-tab-merger>.merger-shell {

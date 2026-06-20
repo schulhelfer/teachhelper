@@ -20,7 +20,6 @@ const APP_SHELL = [
   './src/shared/messages.js',
   './src/shared/student-sync-bus.js',
   './src/shared/timer-store.js',
-  './src/shell/theme.js',
   './src/shell/tabs.js',
   './src/modules/planning/index.js',
   './src/modules/planning/app.html',

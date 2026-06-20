@@ -80,6 +80,15 @@ const COLOR_PALETTE = [
   "#4A044E"
 ];
 
+const TUTORIAL_DEMO_MODE = (() => {
+  try {
+    const value = new URLSearchParams(window.location.search).get("tutorial-demo");
+    return value === "grades" || value === "planning" ? value : "";
+  } catch (_error) {
+    return "";
+  }
+})();
+
 function randomId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
@@ -2856,6 +2865,61 @@ function formatGradeDisplayForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM
     return options.predicateSuffixes === false ? label.replace(/[+-]$/, "") : label;
   }
   return formatGradeInteger(rounded);
+}
+
+function formatGradeInputForSystem(value, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT, options = {}) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  if (normalizeGradeDisplaySystem(displaySystem) === GRADE_DISPLAY_SYSTEM_SCHOOL) {
+    return GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS[getRoundedGradeDisplayValue(value)] || "";
+  }
+  if (!options.pedagogical) {
+    return formatGradeInteger(value);
+  }
+  const formatted = formatPedagogicalGradeInput(value);
+  const [integerPart, decimalPart] = formatted.split(",");
+  return decimalPart === undefined
+    ? integerPart.padStart(2, "0")
+    : `${integerPart.padStart(2, "0")},${decimalPart}`;
+}
+
+function normalizeSchoolGradeInput(raw) {
+  return String(raw ?? "")
+    .trim()
+    .replace(/[\u2010-\u2015\u2212]/g, "-");
+}
+
+function parseSchoolGradeValue(raw) {
+  const text = normalizeSchoolGradeInput(raw);
+  if (!text) {
+    return { valid: true, value: null };
+  }
+  if (!/^[1-6][+-]?$/.test(text)) {
+    return { valid: false, value: null };
+  }
+  const value = GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS.indexOf(text);
+  return value >= 0
+    ? { valid: true, value }
+    : { valid: false, value: null };
+}
+
+function parseGradeInputForSystem(raw, displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT, options = {}) {
+  if (normalizeGradeDisplaySystem(displaySystem) === GRADE_DISPLAY_SYSTEM_SCHOOL) {
+    return parseSchoolGradeValue(raw);
+  }
+  const text = String(raw ?? "").trim();
+  if (!text) {
+    return { valid: true, value: null };
+  }
+  if (options.pedagogical) {
+    return /^\d{2}(?:[.,]\d)?$/.test(text)
+      ? parsePedagogicalGradeValue(text, 15)
+      : { valid: false, value: null };
+  }
+  return /^\d{2}$/.test(text)
+    ? parseGradeValue(text, 15)
+    : { valid: false, value: null };
 }
 
 function normalizeGradeDeficitThreshold(value, fallback = GRADE_DEFICIT_THRESHOLD_DEFAULT) {
@@ -6478,15 +6542,79 @@ PlannerStore.prototype.ensureLessonsForYear = function (schoolYearId) {
   return true;
 };
 
+function seedTutorialDemoStore(store) {
+  const year = store.getActiveSchoolYear();
+  if (!year) return null;
+  const courseId = store.createCourse(year.id, "Biologie 8a", "#34D399", false, false, "Biologie");
+  const secondCourseId = store.createCourse(
+    year.id,
+    "Naturwissenschaften 9b",
+    "#60A5FA",
+    false,
+    false,
+    "Naturwissenschaften"
+  );
+  if (!courseId) return null;
+  store.createSlot(courseId, 1, 2, 2);
+  store.createSlot(courseId, 3, 3, 1);
+  store.createSlot(courseId, 5, 1, 1);
+  if (secondCourseId) store.createSlot(secondCourseId, 2, 4, 2);
+
+  const topics = [
+    ["Fotosynthese: Licht- und Dunkelreaktion", "Versuchsbeobachtungen auswerten"],
+    ["Aufbau eines Laubblatts", "Material für die nächste Stunde mitbringen"],
+    ["Ökosystem Wald", "Nahrungsnetze wiederholen"]
+  ];
+  const weekStart = currentWeekStartForDisplay();
+  const weekEnd = addDays(weekStart, 4);
+  store.state.lessons
+    .filter((lesson) => (
+      Number(lesson.courseId) === Number(courseId)
+      && lesson.lessonDate >= weekStart
+      && lesson.lessonDate <= weekEnd
+      && !lesson.canceled
+    ))
+    .slice(0, topics.length)
+    .forEach((lesson, index) => {
+      store.updateLessonBlock(lesson.id, { topic: topics[index][0], notes: topics[index][1] });
+    });
+
+  const students = store.replaceGradeStudentsForCourse(courseId, [
+    { firstName: "Alex", lastName: "Beispiel", performanceFlair: "P3" },
+    { firstName: "Sam", lastName: "Muster", performanceFlair: "P2" },
+    { firstName: "Kim", lastName: "Demo", performanceFlair: "P4" },
+    { firstName: "Noah", lastName: "Probe", performanceFlair: "P1" }
+  ], {
+    fileName: "beispiel-namensliste.csv",
+    delimiter: ";",
+    header: ["Nachname", "Vorname"],
+    importedAt: new Date().toISOString()
+  });
+  const assessmentId = store.createGradeAssessment(courseId, {
+    title: "Mündliche Mitarbeit",
+    mode: "grade",
+    weight: 1,
+    halfYear: "h2"
+  });
+  [12, 10, 14, 8].forEach((value, index) => {
+    if (students[index] && assessmentId) {
+      store.setGradeEntry(students[index].id, assessmentId, value);
+    }
+  });
+  return courseId;
+}
+
 class PlannerApp {
   constructor() {
+    this.tutorialDemoMode = TUTORIAL_DEMO_MODE;
     this.store = new PlannerStore();
+    this.tutorialDemoCourseId = this.tutorialDemoMode ? seedTutorialDemoStore(this.store) : null;
     this.weekStartIso = currentWeekStartForDisplay();
     this.selectedLessonId = null;
-    this.selectedCourseId = null;
-    this.currentView = "grades";
-    this.shellTabContext = "grades";
-    this.gradesSubView = "entry";
+    this.selectedCourseId = this.tutorialDemoCourseId;
+    this.currentView = this.tutorialDemoMode === "planning" ? "week" : "grades";
+    this.shellTabContext = this.tutorialDemoMode === "planning" ? "planning" : "grades";
+    this.gradesSubView = "overview";
     this.gradeOverviewDisplaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
     this.gradeOverviewPredicateSuffixes = true;
     this.schoolmanagerTransferDialogState = {
@@ -6963,6 +7091,15 @@ class PlannerApp {
     this.pendingGradesOverviewAutoScrollFrameType = "";
     this.gradesTableStickyScrollbarPointerActive = false;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
+    if (this.tutorialDemoMode && this.tutorialDemoCourseId) {
+      this.gradeVaultSession.configured = true;
+      this.gradeVaultSession.encryptionEnabled = false;
+      this.gradeVaultSession.unlocked = true;
+      this.gradeVaultSession.planningPublicLoaded = true;
+      this.gradeVaultSession.loadedGradeCourseId = this.tutorialDemoCourseId;
+      this.gradeVaultSession.gradeCourseCache[this.tutorialDemoCourseId] = this.getCurrentGradeVaultSnapshot();
+      this.gradeVaultSession.source = "tutorial-demo";
+    }
     this.pendingWeekGradeAssessmentLoadKey = "";
     this.gradesOverviewAssessmentSpotlight = null;
     this.appVersion = "";
@@ -6976,9 +7113,16 @@ class PlannerApp {
     this.settingsDefaultGradeStructurePeriod = "h1";
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.settingsDirty = false;
-    this.syncMeta = this.loadSyncMeta();
+    this.syncMeta = this.tutorialDemoMode ? {
+      deviceId: "tutorial-demo",
+      knownRemoteRevision: 0,
+      knownRemoteHash: "",
+      fileName: "Beispieldaten (flüchtig)",
+      lastSyncedAt: ""
+    } : this.loadSyncMeta();
     this.syncState = {
-      supported: supportsExternalFileSync(),
+      // The demo never receives file handles or starts synchronization. Its UI mode is derived separately.
+      supported: this.tutorialDemoMode ? false : supportsExternalFileSync(),
       initialized: false,
       syncingNow: false,
       pendingSaveTimer: 0,
@@ -6999,7 +7143,7 @@ class PlannerApp {
       dirty: false,
       hasSavedBaseline: false,
       fileName: "",
-      lastAction: ""
+      lastAction: this.tutorialDemoMode ? "tutorial-demo" : ""
     };
     this.beforeUnloadWarningEnabled = false;
     this.lastAutoBackupAt = "";
@@ -7015,11 +7159,446 @@ class PlannerApp {
     this.ensureStandaloneSettingsView();
     this.initNumberSteppers();
     this.bindEvents();
-    this.maybeRunAutomaticWebBackup();
+    this.bindPlanningTutorialPreviewGuards();
+    if (this.tutorialDemoMode) {
+      this.bindTutorialDemoGuards();
+      this.syncState.initialized = true;
+    } else {
+      this.maybeRunAutomaticWebBackup();
+    }
     this.renderAll({ visibleOnly: true });
-    this.initializeExternalFileSync().catch((_error) => {
-      this.setSyncStatus("Datenbankdatei konnte nicht initialisiert werden.", true);
+    if (this.tutorialDemoMode) {
+      this.setSyncStatus("Beispieldaten – Änderungen werden nicht gespeichert.");
+    } else {
+      this.initializeExternalFileSync().catch((_error) => {
+        this.setSyncStatus("Datenbankdatei konnte nicht initialisiert werden.", true);
+      });
+    }
+  }
+
+  bindTutorialDemoGuards() {
+    const externalActionSelector = [
+      "#db-select-existing-btn",
+      "#db-create-new-btn",
+      "#db-create-from-current-btn",
+      "#db-backup-now-btn",
+      "#db-backup-import-btn",
+      "#backup-export-btn",
+      "#backup-import-btn",
+      "#backup-restore-btn",
+      "#backup-dir-change-btn",
+      "#db-manual-load-btn",
+      "#db-manual-save-btn",
+      "#sidebar-archive-btn",
+      "#sidebar-grade-print-btn",
+      "#expectation-horizon-template-download",
+      "#expectation-horizon-generate",
+      "input[type='file']"
+    ].join(",");
+    document.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target.closest(externalActionSelector) : null;
+      if (!target) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.showInfoMessage(
+        "Diese Aktion wird im Tutorial nur erklärt. Die Beispieldaten greifen nicht auf Dateien, Datenbanken oder Downloads zu.",
+        "Beispieldaten"
+      );
+    }, true);
+    document.addEventListener("drop", (event) => {
+      if (!event.dataTransfer?.files?.length) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      void this.showInfoMessage(
+        "Dateiimporte sind im Tutorial deaktiviert, damit die Demo vollständig isoliert bleibt.",
+        "Beispieldaten"
+      );
+    }, true);
+  }
+
+  bindPlanningTutorialPreviewGuards() {
+    document.addEventListener("submit", (event) => {
+      const dialog = event.target instanceof Element
+        ? event.target.closest("dialog[data-tutorial-preview='1']")
+        : null;
+      if (!dialog) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+    document.addEventListener("click", (event) => {
+      const button = event.target instanceof Element
+        ? event.target.closest("dialog[data-tutorial-preview='1'] button")
+        : null;
+      if (!button) return;
+      const isMutating = button.type === "submit"
+        || button.classList.contains("danger-action")
+        || button.id === "archive-dialog-generate";
+      if (!isMutating) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    }, true);
+  }
+
+  activatePlanningTutorial() {
+    if (!this.planningTutorialPresentation) {
+      this.planningTutorialPresentation = {
+        snapshot: {
+          currentView: this.currentView,
+          shellTabContext: this.shellTabContext,
+          gradesSubView: this.gradesSubView,
+          activeSettingsTab: this.activeSettingsTab,
+          settingsSourceView: this.settingsSourceView,
+          weekStartIso: this.weekStartIso,
+          selectedCourseId: this.selectedCourseId,
+          selectedLessonId: this.selectedLessonId,
+          selectedGradesEntryAssessmentId: this.selectedGradesEntryAssessmentId,
+          gradesEntryDraft: this.gradesEntryDraft
+            ? { ...this.gradesEntryDraft, entries: { ...(this.gradesEntryDraft.entries || {}) } }
+            : null,
+          gradesEntryDraftDirty: this.gradesEntryDraftDirty,
+          gradesEntryEditSnapshot: this.gradesEntryEditSnapshot
+        },
+        dialogs: new Set()
+      };
+    }
+    return {
+      cleanup: () => this.cleanupPlanningTutorial()
+    };
+  }
+
+  markPlanningTutorialDialog(dialog) {
+    if (!dialog) return;
+    this.activatePlanningTutorial();
+    dialog.dataset.tutorialPreview = "1";
+    this.planningTutorialPresentation.dialogs.add(dialog);
+  }
+
+  resetPlanningTutorialPresentation() {
+    const presentation = this.planningTutorialPresentation;
+    this.hideContextMenu();
+    this.resetInlineWeekBlockTopicEdit();
+    if (!presentation) return;
+    for (const dialog of presentation.dialogs) {
+      if (dialog?.open) {
+        if (dialog === this.refs.courseDialog) this.closeCourseDialog();
+        else if (dialog === this.refs.courseStudentsDialog) this.closeCourseStudentsDialog();
+        else if (dialog === this.refs.courseStructureDialog) this.closeCourseStructureDialog();
+        else if (dialog === this.refs.topicDialog) this.closeTopicDialog();
+        else if (dialog === this.refs.slotDialog) this.closeSlotDialog();
+        else this.closeDialog(dialog);
+      }
+      dialog?.removeAttribute("data-tutorial-preview");
+    }
+    presentation.dialogs.clear();
+  }
+
+  cleanupPlanningTutorial() {
+    const presentation = this.planningTutorialPresentation;
+    if (!presentation) return;
+    this.resetPlanningTutorialPresentation();
+    this.planningTutorialSurfaceToken = (this.planningTutorialSurfaceToken || 0) + 1;
+    const snapshot = presentation.snapshot;
+    this.planningTutorialPresentation = null;
+    this.currentView = snapshot.currentView;
+    this.shellTabContext = snapshot.shellTabContext;
+    this.gradesSubView = snapshot.gradesSubView;
+    this.activeSettingsTab = snapshot.activeSettingsTab;
+    this.settingsSourceView = snapshot.settingsSourceView;
+    this.weekStartIso = snapshot.weekStartIso;
+    this.selectedCourseId = snapshot.selectedCourseId;
+    this.selectedLessonId = snapshot.selectedLessonId;
+    this.selectedGradesEntryAssessmentId = snapshot.selectedGradesEntryAssessmentId;
+    this.gradesEntryDraft = snapshot.gradesEntryDraft;
+    this.gradesEntryDraftDirty = snapshot.gradesEntryDraftDirty;
+    this.gradesEntryEditSnapshot = snapshot.gradesEntryEditSnapshot;
+    this.renderAll();
+  }
+
+  async showPlanningTutorialSettings(settingsTab, requestToken = this.planningTutorialSurfaceToken) {
+    this.shellTabContext = "planning";
+    this.currentView = "settings";
+    this.settingsSourceView = "planning";
+    this.activeSettingsTab = settingsTab;
+    this.renderAll();
+    await this.waitForPlanningTutorialRender();
+    if (requestToken !== this.planningTutorialSurfaceToken) return null;
+    const readyTargets = {
+      database: ["#db-auto-actions:not([hidden])", "#db-manual-actions:not([hidden])"],
+      dayoff: "#settings-tab-dayoff:not([hidden]) .settings-grid",
+      display: "#settings-tab-display:not([hidden])",
+      lessonTimes: "#settings-tab-lesson-times:not([hidden]) #lesson-times-list"
+    };
+    return this.waitForPlanningTutorialTarget(readyTargets[settingsTab] || `#settings-tab-${settingsTab}:not([hidden])`);
+  }
+
+  async showPlanningTutorialWeek(requestToken = this.planningTutorialSurfaceToken) {
+    this.shellTabContext = "planning";
+    this.currentView = "week";
+    this.settingsSourceView = "planning";
+    this.renderAll();
+    await this.waitForPlanningTutorialRender();
+    if (requestToken !== this.planningTutorialSurfaceToken) return null;
+    if (this.currentView !== "week" || this.shellTabContext !== "planning") {
+      this.shellTabContext = "planning";
+      this.currentView = "week";
+      this.settingsSourceView = "planning";
+      this.renderAll();
+      await this.waitForPlanningTutorialRender();
+    }
+    if (requestToken !== this.planningTutorialSurfaceToken) return null;
+    return this.waitForPlanningTutorialTarget("#week-table");
+  }
+
+  getPlanningTutorialLesson() {
+    const visibleBlock = this.refs.weekTable?.querySelector(".lesson-block[data-lesson-id]:not(.not-selectable)");
+    if (visibleBlock) return this.store.getLessonById(Number(visibleBlock.dataset.lessonId));
+    const year = this.activeSchoolYear;
+    const courseIds = new Set(
+      (year ? this.store.listCourses(year.id) : [])
+        .filter((course) => !course.noLesson)
+        .map((course) => Number(course.id))
+    );
+    const lesson = this.store.state.lessons.find((item) => (
+      courseIds.has(Number(item.courseId)) && !item.canceled && !item.noLesson
+    )) || null;
+    if (lesson) {
+      this.weekStartIso = this._clampWeekStart(weekStartFor(lesson.lessonDate));
+      this.selectedCourseId = Number(lesson.courseId) || this.selectedCourseId;
+      this.renderWeekSection();
+    }
+    return lesson;
+  }
+
+  showPlanningTutorialMenu(items, anchor) {
+    if (!(anchor instanceof HTMLElement)) return;
+    const rect = anchor.getBoundingClientRect();
+    this.showContextMenu(
+      items.map((label, index) => ({
+        label,
+        separatorBefore: index > 0 && (label === "Löschen" || label === "Serie anpassen"),
+        handler: () => undefined
+      })),
+      Math.round(rect.left + Math.min(rect.width / 2, 80)),
+      Math.round(rect.top + Math.min(rect.height / 2, 28))
+    );
+    if (this.refs.contextMenu) {
+      this.refs.contextMenu.dataset.tutorialAnchor = "grades-course-menu";
+    }
+  }
+
+  waitForPlanningTutorialRender() {
+    return new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
     });
+  }
+
+  async waitForPlanningTutorialTarget(selectors, attempts = 40) {
+    const candidates = Array.isArray(selectors) ? selectors : [selectors];
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      const target = candidates
+        .map((selector) => document.querySelector(selector))
+        .find((element) => {
+          if (!(element instanceof HTMLElement) || element.hidden) return false;
+          const rect = element.getBoundingClientRect();
+          const style = getComputedStyle(element);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        });
+      if (target) return target;
+      await new Promise((resolve) => window.setTimeout(resolve, 50));
+    }
+    return null;
+  }
+
+  async showGradesTutorialSurface(surface = "gradesOverview") {
+    const requestToken = this.planningTutorialSurfaceToken;
+    this.activatePlanningTutorial();
+    this.resetPlanningTutorialPresentation();
+    this.shellTabContext = "grades";
+    this.settingsSourceView = "grades";
+    if (surface === "gradesDatabase") {
+      this.currentView = "settings";
+      this.activeSettingsTab = "database";
+      this.renderAll();
+      await this.waitForPlanningTutorialRender();
+      await this.waitForPlanningTutorialTarget([
+        "#db-auto-actions:not([hidden])",
+        "#db-manual-actions:not([hidden])"
+      ]);
+      return;
+    }
+    this.currentView = "grades";
+    this.gradesSubView = surface === "gradesEntry" || surface === "gradesEntryBe" ? "entry" : "overview";
+    if (surface === "gradesEntryBe") {
+      const courseId = Number(this.selectedCourseId || this.tutorialDemoCourseId || 0);
+      if (courseId) {
+        this.selectedGradesEntryAssessmentId = null;
+        const draft = this.getGradesEntryDraft(courseId);
+        this.gradesEntryDraft = {
+          ...draft,
+          mode: "test",
+          entries: draft?.entries && typeof draft.entries === "object" ? { ...draft.entries } : {}
+        };
+      }
+    }
+    this.renderAll();
+    await this.waitForPlanningTutorialRender();
+    if (requestToken !== this.planningTutorialSurfaceToken) return;
+
+    const courseId = Number(this.selectedCourseId || this.tutorialDemoCourseId || 0);
+    const courseButton = this.refs.sidebarCourseList?.querySelector(
+      courseId ? `button[data-course-id="${courseId}"]` : "button[data-course-id]"
+    );
+    if (surface === "gradesCourseMenu") {
+      this.showPlanningTutorialMenu([
+        "Kursname bearbeiten",
+        "Fach ändern",
+        "Farbe bearbeiten",
+        "Als Kurs ohne Noten",
+        "In Randleiste ausblenden",
+        "Löschen",
+        "Notenstruktur verwalten",
+        "Teilnehmende verwalten"
+      ], courseButton);
+    } else if (surface === "gradesStudents" && courseId) {
+      await this.openCourseStudentsDialog(courseId);
+      if (requestToken !== this.planningTutorialSurfaceToken) {
+        this.closeCourseStudentsDialog();
+        return;
+      }
+      this.markPlanningTutorialDialog(this.refs.courseStudentsDialog);
+    } else if (surface === "gradesStructure" && courseId) {
+      await this.openCourseStructureDialog(courseId);
+      if (requestToken !== this.planningTutorialSurfaceToken) {
+        this.closeCourseStructureDialog();
+        return;
+      }
+      this.markPlanningTutorialDialog(this.refs.courseStructureDialog);
+    }
+    await this.waitForPlanningTutorialRender();
+    const readyTargets = {
+      gradesOverview: [
+        "#grades-empty-state:not([hidden])",
+        '[data-tutorial-anchor="grades-course-add"]'
+      ],
+      gradesOverviewTable: ['[data-tutorial-anchor="grades-overview-table"]'],
+      gradesOverviewActions: ['[data-tutorial-anchor="grades-privacy"]'],
+      gradesEntry: [
+        '[data-tutorial-anchor="grades-entry-editor"]',
+        "#grades-entry-content .grades-empty-state"
+      ],
+      gradesEntryBe: ['[data-tutorial-anchor="grades-expectation"]'],
+      gradesCourseMenu: ['[data-tutorial-anchor="grades-course-menu"]'],
+      gradesStudents: ['[data-tutorial-anchor="grades-students-dialog"]'],
+      gradesStructure: ['[data-tutorial-anchor="grades-structure-dialog"]']
+    };
+    await this.waitForPlanningTutorialTarget(readyTargets[surface] || '[data-tutorial-anchor="grades-course-add"]');
+  }
+
+  async showPlanningTutorialSurface(surface = "week") {
+    const requestToken = (this.planningTutorialSurfaceToken || 0) + 1;
+    this.planningTutorialSurfaceToken = requestToken;
+    this.activatePlanningTutorial();
+    this.resetPlanningTutorialPresentation();
+    if (String(surface).startsWith("grades")) {
+      await this.showGradesTutorialSurface(surface);
+      return;
+    }
+    if (surface === "database" || surface === "dayoff" || surface === "display" || surface === "lessonTimes") {
+      await this.showPlanningTutorialSettings(surface, requestToken);
+      return;
+    }
+    await this.showPlanningTutorialWeek(requestToken);
+    if (requestToken !== this.planningTutorialSurfaceToken) return;
+    if (surface === "lesson") {
+      this.getPlanningTutorialLesson();
+      return;
+    }
+    if (surface === "courseCreate") {
+      await this.openCourseDialog();
+      if (requestToken !== this.planningTutorialSurfaceToken) {
+        this.closeCourseDialog();
+        return;
+      }
+      this.markPlanningTutorialDialog(this.refs.courseDialog);
+      return;
+    }
+    if (surface === "courseMenu") {
+      const courseButton = this.refs.sidebarCourseList?.querySelector("button[data-course-id]");
+      this.showPlanningTutorialMenu([
+        "Kursname bearbeiten",
+        "Fach ändern",
+        "Farbe bearbeiten",
+        "Als Termin ohne Unterricht",
+        "Als Kurs ohne Noten",
+        "In Randleiste ausblenden",
+        "Löschen"
+      ], courseButton);
+      return;
+    }
+    if (surface === "slotCreate") {
+      const emptyCell = this.refs.weekTable?.querySelector("td.day-cell.empty[data-day][data-hour]");
+      const day = Number(emptyCell?.dataset.day || 1);
+      const hour = Number(emptyCell?.dataset.hour || 1);
+      await this.openSlotDialogForCreate(day, hour);
+      if (requestToken !== this.planningTutorialSurfaceToken) {
+        this.closeSlotDialog();
+        return;
+      }
+      this.markPlanningTutorialDialog(this.refs.slotDialog);
+      return;
+    }
+    if (surface === "topicDialog") {
+      const lesson = this.getPlanningTutorialLesson();
+      if (lesson) {
+        this.openTopicDialog(lesson.id);
+        this.markPlanningTutorialDialog(this.refs.topicDialog);
+      }
+      return;
+    }
+    if (surface === "lessonMenu") {
+      const lesson = this.getPlanningTutorialLesson();
+      const block = lesson
+        ? this.refs.weekTable?.querySelector(`.lesson-block[data-lesson-id="${lesson.id}"]`)
+        : null;
+      this.showPlanningTutorialMenu([
+        "Kopieren",
+        "Einfügen",
+        "Ausführliche Planung bearbeiten",
+        "Serie anpassen",
+        "Schriftliche Arbeit",
+        "Entfall",
+        "Planung in Zukunft verschieben",
+        "Planung in Vergangenheit verschieben"
+      ], block);
+      return;
+    }
+    if (surface === "slotEdit") {
+      const year = this.activeSchoolYear;
+      const slot = year ? this.store.listSlotsForYear(year.id)[0] : null;
+      if (slot) {
+        await this.openSlotDialogForEdit(slot);
+        if (requestToken !== this.planningTutorialSurfaceToken) {
+          this.closeSlotDialog();
+          return;
+        }
+        this.markPlanningTutorialDialog(this.refs.slotDialog);
+      }
+      return;
+    }
+    if (surface === "course") {
+      const year = this.activeSchoolYear;
+      const courses = year ? this.store.listCourses(year.id).filter((course) => !course.noLesson) : [];
+      if (!courses.some((course) => Number(course.id) === Number(this.selectedCourseId))) {
+        this.selectedCourseId = courses[0]?.id || null;
+      }
+      this.currentView = "course";
+      this.renderAll();
+      return;
+    }
+    if (surface === "archive") {
+      this.handleArchiveOpenRequest();
+      this.markPlanningTutorialDialog(this.refs.archiveDialog);
+    }
   }
 
   get activeSchoolYear() {
@@ -8751,6 +9330,17 @@ class PlannerApp {
     return !this.syncState.supported;
   }
 
+  isExternalFileSyncPresentationSupported() {
+    // Mirror the real browser capability without enabling persistence in the isolated tutorial store.
+    return this.tutorialDemoMode
+      ? supportsExternalFileSync()
+      : this.syncState.supported;
+  }
+
+  isManualPersistencePresentationMode() {
+    return !this.isExternalFileSyncPresentationSupported();
+  }
+
   buildManualDatabaseFileName() {
     const preferred = String(this.manualPersistenceState.fileName || "").trim();
     if (preferred) {
@@ -8873,7 +9463,7 @@ class PlannerApp {
     if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
       return;
     }
-    const isManualMode = this.isManualPersistenceMode();
+    const isManualMode = this.isManualPersistencePresentationMode();
     const title = this.manualPersistenceState.dirty
       ? "Ungespeicherte Änderungen speichern/neu anlegen"
       : "Datenbank speichern/neu anlegen";
@@ -10335,7 +10925,7 @@ class PlannerApp {
       saveEnabled = this.settingsDirty;
       cancelEnabled = this.settingsDirty;
     } else if (tab === "database") {
-      if (!this.syncState.supported || this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired") {
+      if (!this.isExternalFileSyncPresentationSupported() || this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired") {
         resetEnabled = false;
         saveEnabled = false;
         cancelEnabled = false;
@@ -14809,6 +15399,9 @@ class PlannerApp {
       });
       window.addEventListener("classroom:planning-view-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
+        if (this.planningTutorialPresentation && detail?.source !== "tutorial") {
+          return;
+        }
         const requestedView = detail && detail.view === "grades"
           ? "grades"
           : (
@@ -16884,7 +17477,7 @@ class PlannerApp {
   }
 
   renderDatabaseSection() {
-    const unsupported = !this.syncState.supported;
+    const unsupported = !this.isExternalFileSyncPresentationSupported();
     const gradesSettingsContext = this.isGradesTopTabActive();
     const startupDatabaseLoading = !unsupported
       && !this.syncState.initialized
@@ -16931,6 +17524,8 @@ class PlannerApp {
         this.refs.syncFileName.textContent = this.manualPersistenceState.fileName
           ? `Datenbankdatei: ${this.manualPersistenceState.fileName}`
           : "Datenbankdatei: nicht geladen";
+      } else if (this.tutorialDemoMode) {
+        this.refs.syncFileName.textContent = "Datenbankdatei: Tutorial-Vorschau (nicht verbunden)";
       } else if (startupDatabaseLoading && hasKnownLoadingFile) {
         this.refs.syncFileName.textContent = `Datenbankdatei: ${pendingStoredFileName} (wird geladen)`;
       } else if (pendingStoredHandle) {
@@ -17053,12 +17648,16 @@ class PlannerApp {
     const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
     const enabled = Boolean(draft.backupEnabled);
     const interval = clamp(Number(draft.backupIntervalDays) || BACKUP_INTERVAL_DEFAULT_DAYS, 1, 30);
-    const backupFileConnected = Boolean(this.backupState.directoryHandle);
+    const presentationSupported = this.isExternalFileSyncPresentationSupported();
+    const syncFileConnected = this.tutorialDemoMode || Boolean(this.syncState.fileHandle);
+    const backupFileConnected = this.tutorialDemoMode || Boolean(this.backupState.directoryHandle);
     const pendingStoredBackupDir = !backupFileConnected ? this.backupState.storedDirectoryHandle : null;
     if (this.refs.backupDirName) {
-      if (!this.syncState.supported) {
+      if (!presentationSupported) {
         this.refs.backupDirName.textContent = "";
-      } else if (!this.syncState.fileHandle) {
+      } else if (this.tutorialDemoMode) {
+        this.refs.backupDirName.textContent = "Backup-Ordner: Tutorial-Vorschau (nicht verbunden)";
+      } else if (!syncFileConnected) {
         this.refs.backupDirName.textContent = "Backup-Ordner: nicht ausgewählt";
       } else if (backupFileConnected) {
         this.refs.backupDirName.textContent = `Backup-Ordner: ${String(this.backupState.directoryHandle.name || "")}`;
@@ -17068,14 +17667,14 @@ class PlannerApp {
         this.refs.backupDirName.textContent = "Backup-Ordner: nicht ausgewählt";
       }
     }
-    if (!this.syncState.supported) {
+    if (!presentationSupported) {
       this.setBackupStatus("");
     }
     if (this.refs.backupDirChangeBtn) {
-      this.refs.backupDirChangeBtn.disabled = !this.syncState.supported || !this.syncState.fileHandle;
+      this.refs.backupDirChangeBtn.disabled = !presentationSupported || !syncFileConnected;
       this.refs.backupDirChangeBtn.classList.toggle(
         "attention-pulse",
-        this.syncState.supported && Boolean(this.syncState.fileHandle) && !backupFileConnected
+        presentationSupported && syncFileConnected && !backupFileConnected
       );
     }
     if (this.refs.backupAutoEnabled) {
@@ -17306,11 +17905,15 @@ class PlannerApp {
     }
     this.contextMenuItems = available;
     menu.innerHTML = "";
+    menu.removeAttribute("data-tutorial-anchor");
     for (const item of available) {
       const button = document.createElement("button");
       button.type = "button";
       button.className = "context-item";
       button.textContent = item.label;
+      if (item.tutorialAnchor) {
+        button.dataset.tutorialAnchor = String(item.tutorialAnchor);
+      }
       if (item.separatorBefore) {
         button.classList.add("separator-before");
       }
@@ -18616,6 +19219,7 @@ class PlannerApp {
     };
     const panel = document.createElement("aside");
     panel.className = "table-panel grades-entry-distribution";
+    panel.dataset.tutorialAnchor = "grades-entry-distribution";
     panel.setAttribute("aria-label", "Notenverteilung");
     if (overlayOnly) {
       const overlay = document.createElement("div");
@@ -18914,9 +19518,10 @@ class PlannerApp {
     ].join("");
     const editor = document.createElement("section");
     editor.className = "grades-entry-editor";
+    editor.dataset.tutorialAnchor = "grades-entry-editor";
     editor.innerHTML = `
         <div class="grades-entry-layout">
-          <div class="table-panel grades-entry-config">
+          <div class="table-panel grades-entry-config" data-tutorial-anchor="grades-entry-config">
             <div class="grades-entry-form">
               <label class="grades-entry-field">
                 <span>Kurs</span>
@@ -18924,11 +19529,11 @@ class PlannerApp {
                   ${availableCourses.map((item) => `<option value="${item.id}"${Number(item.id) === Number(course.id) ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
                 </select>
               </label>
-              <label class="grades-entry-field is-wide">
+              <label class="grades-entry-field is-wide" data-tutorial-anchor="grades-entry-title">
                 <span>Leistungstitel</span>
                 <input type="text" name="grades-entry-title" data-grades-entry-title="1" value="${escapeHtml(editorState.title || "")}" placeholder="Leistungsname">
               </label>
-              <fieldset class="grades-entry-field grades-entry-mode-field is-wide">
+              <fieldset class="grades-entry-field grades-entry-mode-field is-wide" data-tutorial-anchor="grades-entry-mode">
                 <legend>Modus</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Leistungsmodus">
                   <label class="assessment-mode-option" title="Einzelnote">
@@ -18964,7 +19569,7 @@ class PlannerApp {
                   </label>
                 </div>
               </fieldset>
-              <fieldset class="grades-entry-field grades-entry-halfyear-field is-wide">
+              <fieldset class="grades-entry-field grades-entry-halfyear-field is-wide" data-tutorial-anchor="grades-entry-assignment">
                 <legend>Halbjahr</legend>
                 <div class="assessment-mode-toggle" role="radiogroup" aria-label="Halbjahr">
                   <label class="assessment-mode-option">
@@ -19067,7 +19672,7 @@ class PlannerApp {
                   ${subcategories.map((subcategory) => `<option value="${subcategory.id}"${Number(subcategory.id) === Number(editorState.subcategoryId || 0) ? " selected" : ""}>${escapeHtml(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`)}</option>`).join("")}
                 </select>
               </label>
-              <div class="grades-entry-actions">
+              <div class="grades-entry-actions" data-tutorial-anchor="grades-entry-save">
                 <div class="grades-entry-actions-main">
                   <button type="button" class="ghost dialog-icon-button" data-grades-entry-cancel="1" aria-label="Abbrechen" title="Abbrechen">❌</button>
                   <button type="button" class="dialog-icon-button" data-grades-entry-save="1" aria-label="Speichern" title="Speichern">💾</button>
@@ -19845,6 +20450,18 @@ class PlannerApp {
       return;
     }
     this.gradeOverviewDisplaySystem = normalizeGradeDisplaySystem(value);
+    const overrideContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
+    if (overrideContext) {
+      this.activeGradeOverrideContext = {
+        ...overrideContext,
+        draftValue: formatGradeInputForSystem(
+          overrideContext.originalValue,
+          this.getCurrentGradeInputDisplaySystem(),
+          { pedagogical: true }
+        ),
+        dirty: false
+      };
+    }
     this.renderGradesView();
   }
 
@@ -20767,15 +21384,7 @@ class PlannerApp {
     if (subView !== "entry") {
       return false;
     }
-    const modeInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked");
-    if (modeInput) {
-      return normalizeGradeAssessmentMode(modeInput.value) === "test";
-    }
-    const activeAssessment = this.getGradesEntryActiveAssessment(this.selectedCourseId);
-    if (activeAssessment) {
-      return this.isTestAssessment(activeAssessment);
-    }
-    return normalizeGradeAssessmentMode(this.gradesEntryDraft?.mode) === "test";
+    return true;
   }
 
   shouldShowSidebarGradePredicateSuffixToggle() {
@@ -23608,7 +24217,11 @@ class PlannerApp {
       period,
       categoryId,
       subcategoryId,
-      draftValue: String(source.draftValue ?? "")
+      draftValue: String(source.draftValue ?? ""),
+      originalValue: source.originalValue === null || source.originalValue === undefined || source.originalValue === ""
+        ? null
+        : Number(source.originalValue),
+      dirty: source.dirty === true
     };
   }
 
@@ -23888,8 +24501,8 @@ class PlannerApp {
       return;
     }
     const parsed = this.gradePickerState.mode === "override"
-      ? parsePedagogicalGradeValue(activeInput.value, 15)
-      : parseGradeValue(activeInput.value, 15);
+      ? this.parseCurrentGradeInput(activeInput.value, { pedagogical: true })
+      : this.parseCurrentGradeInput(activeInput.value);
     const currentValue = parsed.valid ? parsed.value : null;
     this.gradePickerState.activeIndex = currentValue === null
       ? -1
@@ -24263,6 +24876,18 @@ class PlannerApp {
     return normalizeGradeDisplaySystem(this.gradeOverviewDisplaySystem);
   }
 
+  getCurrentGradeInputDisplaySystem() {
+    return this.getCurrentGradeOverviewDisplaySystem();
+  }
+
+  parseCurrentGradeInput(value, options = {}) {
+    return parseGradeInputForSystem(value, this.getCurrentGradeInputDisplaySystem(), options);
+  }
+
+  formatCurrentGradeInput(value, options = {}) {
+    return formatGradeInputForSystem(value, this.getCurrentGradeInputDisplaySystem(), options);
+  }
+
   getCurrentGradeOverviewPredicateSuffixes() {
     return this.getCurrentGradeOverviewDisplaySystem() !== GRADE_DISPLAY_SYSTEM_SCHOOL
       || this.gradeOverviewPredicateSuffixes !== false;
@@ -24461,16 +25086,18 @@ class PlannerApp {
     if (this.isGradeOverrideEditorActive(studentKey, courseKey, normalizedScope, categoryKey, subcategoryKey, period)) {
       const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
       const draftValue = activeContext ? activeContext.draftValue : "";
-      const invalidClass = draftValue && !parsePedagogicalGradeValue(draftValue, 15).valid ? " invalid" : "";
+      const invalidClass = draftValue && !parseGradeInputForSystem(draftValue, displaySystem, { pedagogical: true }).valid ? " invalid" : "";
+      const schoolInput = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
       return `
           <div class="grade-override-cell-editor${state.overridden ? " is-overridden" : ""}" data-grade-override-editor="1">
             <input
               type="text"
               class="grade-cell-input grade-override-cell-input${invalidClass}"
-              inputmode="decimal"
-              maxlength="4"
+              inputmode="${schoolInput ? "text" : "decimal"}"
+              maxlength="${schoolInput ? "2" : "4"}"
               data-grade-input="1"
               data-grade-override-input="1"
+              data-grade-original-value="${activeContext?.originalValue ?? ""}"
               data-student-id="${studentKey}"
               data-course-id="${courseKey}"
               data-scope="${normalizedScope}"
@@ -24490,6 +25117,7 @@ class PlannerApp {
           <button
             type="button"
             class="grade-total-button${overriddenClass}${lowClass}"
+            data-tutorial-anchor="grades-total-override"
             data-grade-open-override="1"
             data-student-id="${studentKey}"
             data-course-id="${courseKey}"
@@ -24519,7 +25147,7 @@ class PlannerApp {
     const studentName = this.getGradeStudentDisplayName(student);
     const entry = this.store.getGradeEntry(student.id, assessment.id);
     const disabled = Boolean(options.disabled);
-    const displaySystem = normalizeGradeDisplaySystem(options.displaySystem);
+    const displaySystem = normalizeGradeDisplaySystem(options.displaySystem || this.getCurrentGradeInputDisplaySystem());
     const predicateSuffixes = options.predicateSuffixes !== false;
     const isHomework = this.isHomeworkAssessment(assessment);
     const isTest = this.isTestAssessment(assessment);
@@ -24557,7 +25185,7 @@ class PlannerApp {
             type="text"
             name="grade-${assessment.id}-${student.id}"
             class="grade-cell-input${isDeficit ? " is-grade-low" : ""}"
-            inputmode="numeric"
+            inputmode="${displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"}"
             maxlength="2"
             data-grade-input="1"
             data-student-id="${student.id}"
@@ -24565,8 +25193,8 @@ class PlannerApp {
             data-row-index="${rowIndex}"
             data-col-index="${columnIndex}"
             data-subcategory-id="${subcategoryId}"
-            value="${entry && entry.value !== null ? formatGradeInteger(entry.value) : ""}"
-            aria-label="Punkte für ${escapeHtml(studentName)}"
+            value="${entry && entry.value !== null ? formatGradeInputForSystem(entry.value, displaySystem) : ""}"
+            aria-label="Note für ${escapeHtml(studentName)}"
             title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"
             ${disabled ? "disabled" : ""}
           >
@@ -24588,7 +25216,7 @@ class PlannerApp {
             data-row-index="${rowIndex}"
             data-student-id="${student.id}"
             ${disabled ? "disabled" : ""}
-            aria-label="Punkte für ${escapeHtml(studentName)} in ${escapeHtml(assessment.title)} bearbeiten"
+            aria-label="Note für ${escapeHtml(studentName)} in ${escapeHtml(assessment.title)} bearbeiten"
             title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"
           >${displayValue}</button>
         `;
@@ -24634,6 +25262,7 @@ class PlannerApp {
     const draft = assessment ? null : this.getGradesEntryDraft(course.id);
     const draftEntries = draft && typeof draft.entries === "object" ? draft.entries : {};
     const entryMode = normalizeGradeAssessmentMode(assessment?.mode || draft?.mode);
+    const displaySystem = this.getCurrentGradeInputDisplaySystem();
     if (entryMode === "test") {
       return this.buildGradesTestEntryTable(course, students, assessment, draft);
     }
@@ -24659,6 +25288,7 @@ class PlannerApp {
       : null;
     const table = document.createElement("table");
     table.className = "grade-block-table grades-entry-table";
+    table.dataset.tutorialAnchor = "grades-entry-results";
     if (visibleMaxNameLength > 0) {
       table.style.setProperty(
         "--grades-entry-student-col-min-width",
@@ -24708,7 +25338,8 @@ class PlannerApp {
           assessment,
           rowIndex,
           0,
-          Number(assessment.subcategoryId) || 0
+          Number(assessment.subcategoryId) || 0,
+          { displaySystem, predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }
         );
       } else {
         const draftEntry = Object.prototype.hasOwnProperty.call(draftEntries, student.id)
@@ -24722,7 +25353,7 @@ class PlannerApp {
             `name="grade-draft-${student.id}" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}"`,
             { disabled: false }
           )
-          : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="numeric" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInteger(draftEntry.value)}" aria-label="Einzelnote für ${escapeHtml(studentName)}" title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">`;
+          : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="${displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"}" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInputForSystem(draftEntry.value, displaySystem)}" aria-label="Einzelnote für ${escapeHtml(studentName)}" title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">`;
       }
       tr.append(gradeCell);
       tbody.append(tr);
@@ -24741,7 +25372,7 @@ class PlannerApp {
       const averageGradeCell = document.createElement("td");
       averageGradeCell.className = "grade-assessment-col";
       const isAverageDeficit = isGradeValueBelowThreshold(averageValue, this.gradeDeficitThreshold);
-      averageGradeCell.innerHTML = `<div class="grade-total-value grade-entry-average-value${isAverageDeficit ? " is-grade-low" : ""}" data-grade-entry-average="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-draft-average=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${averageValue === null || averageValue === undefined ? "—" : escapeHtml(formatPedagogicalGradeInput(averageValue))}</div>`;
+      averageGradeCell.innerHTML = `<div class="grade-total-value grade-entry-average-value${isAverageDeficit ? " is-grade-low" : ""}" data-grade-entry-average="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-draft-average=\"1\""} title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}">${averageValue === null || averageValue === undefined ? "—" : escapeHtml(formatGradeDisplayForSystem(averageValue, displaySystem, { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }))}</div>`;
       averageRow.append(averageGradeCell);
       tbody.append(averageRow);
     }
@@ -25191,6 +25822,7 @@ class PlannerApp {
     const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
     const table = document.createElement("table");
     table.className = "grade-block-table grades-entry-table grades-test-entry-table";
+    table.dataset.tutorialAnchor = "grades-entry-results";
     if (visibleMaxNameLength > 0) {
       table.style.setProperty(
         "--grades-entry-student-col-min-width",
@@ -26103,7 +26735,7 @@ class PlannerApp {
       applyBoundaryClasses();
       applyNonAssessmentTooltip();
       th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-grade-toggle-period="${escapeHtml(cell.period || "year")}" aria-expanded="${isExpanded ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
+        <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-period="${escapeHtml(cell.period || "year")}" aria-expanded="${isExpanded ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret${isExpanded ? " is-expanded" : ""}" aria-hidden="true">▸</span>
             <span class="grades-master-group-title">${escapeHtml(cell.label || getGradePeriodLabel(cell.period))}</span>
@@ -26141,7 +26773,7 @@ class PlannerApp {
         const tooltip = escapeHtml(cell.category.name);
         applyColumnSelection();
         th.innerHTML = `
-        <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
+        <button type="button" class="grades-master-group-button is-collapsed-header" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret" aria-hidden="true">▸</span>
           </span>
@@ -26150,7 +26782,7 @@ class PlannerApp {
         return th;
       }
       th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="true" title="${escapeHtml(nonAssessmentTooltip)}">
+        <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="true" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret is-expanded" aria-hidden="true">▸</span>
             <span class="grades-master-group-title">${escapeHtml(cell.category.name)}${escapeHtml(formatGradeWeightPercentSuffix(cell.category.weight))}</span>
@@ -26179,7 +26811,7 @@ class PlannerApp {
         const tooltip = escapeHtml(cell.subcategory.name);
         applyColumnSelection();
         th.innerHTML = `
-        <button type="button" class="grades-master-group-button is-collapsed-header" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
+        <button type="button" class="grades-master-group-button is-collapsed-header" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret" aria-hidden="true">▸</span>
           </span>
@@ -26188,7 +26820,7 @@ class PlannerApp {
         return th;
       }
       th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="${cell.type === "subcategory-open" ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
+        <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="${cell.type === "subcategory-open" ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
             <span class="grades-master-group-caret${cell.type === "subcategory-open" ? " is-expanded" : ""}" aria-hidden="true">▸</span>
             <span class="grades-master-group-title">${escapeHtml(cell.subcategory.name)}${escapeHtml(formatGradeWeightPercentSuffix(cell.subcategory.weight))}</span>
@@ -26273,6 +26905,7 @@ class PlannerApp {
     }
     const shell = document.createElement("div");
     shell.className = "grades-master-table-shell";
+    shell.dataset.tutorialAnchor = "grades-overview-table";
     const table = document.createElement("table");
     table.className = "grades-master-table";
     const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
@@ -27080,6 +27713,7 @@ class PlannerApp {
   }
 
   buildGradesEntryGradePrintTable(context) {
+    const displaySystem = this.getCurrentGradeInputDisplaySystem();
     const table = document.createElement("table");
     table.className = "grades-print-table grades-entry-print-table";
     const thead = document.createElement("thead");
@@ -27103,7 +27737,11 @@ class PlannerApp {
       nameCell.className = "student-col";
       nameCell.textContent = this.getGradeStudentDisplayName(student);
       const gradeCell = document.createElement("td");
-      gradeCell.textContent = formatGradeDisplayForSystem(value, GRADE_DISPLAY_SYSTEM_DEFAULT);
+      gradeCell.textContent = formatGradeDisplayForSystem(
+        value,
+        displaySystem,
+        { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }
+      );
       tr.append(nameCell, gradeCell);
       tbody.append(tr);
     });
@@ -27114,7 +27752,13 @@ class PlannerApp {
     averageLabel.className = "student-col";
     averageLabel.textContent = "Durchschnitt";
     const averageValue = document.createElement("td");
-    averageValue.textContent = average === null || average === undefined ? "—" : formatPedagogicalGradeInput(average);
+    averageValue.textContent = average === null || average === undefined
+      ? "—"
+      : formatGradeDisplayForSystem(
+        average,
+        displaySystem,
+        { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }
+      );
     averageRow.append(averageLabel, averageValue);
     tbody.append(averageRow);
     table.append(tbody);
@@ -27354,7 +27998,7 @@ class PlannerApp {
     const courseId = Number(this.selectedCourseId || 0);
     const displaySystem = root === this.refs.gradesTable
       ? this.getCurrentGradeOverviewDisplaySystem()
-      : this.getCurrentGradeDisplaySystem();
+      : this.getCurrentGradeInputDisplaySystem();
     const predicateSuffixes = root === this.refs.gradesTable
       ? this.getCurrentGradeOverviewPredicateSuffixes()
       : true;
@@ -27439,7 +28083,13 @@ class PlannerApp {
     );
     this.activeGradeOverrideContext = {
       ...context,
-      draftValue: formatPedagogicalGradeInput(override ? override.value : null)
+      draftValue: formatGradeInputForSystem(
+        override ? override.value : null,
+        this.getCurrentGradeInputDisplaySystem(),
+        { pedagogical: true }
+      ),
+      originalValue: override ? override.value : null,
+      dirty: false
     };
     this.clearActiveGradeAssessment();
     this.renderGradesViewPreservingOverviewScroll(() => {
@@ -27467,7 +28117,14 @@ class PlannerApp {
       return true;
     }
     const input = options.input instanceof HTMLInputElement ? options.input : this.getActiveGradeOverrideInput();
-    const parsed = parsePedagogicalGradeValue(input ? input.value : context.draftValue, 15);
+    const displaySystem = this.getCurrentGradeInputDisplaySystem();
+    const preserveOriginalValue = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL
+      && context.dirty !== true
+      && context.originalValue !== null
+      && Number.isFinite(context.originalValue);
+    const parsed = preserveOriginalValue
+      ? { valid: true, value: context.originalValue }
+      : parseGradeInputForSystem(input ? input.value : context.draftValue, displaySystem, { pedagogical: true });
     if (!parsed.valid) {
       if (input) {
         input.classList.add("invalid");
@@ -27476,14 +28133,16 @@ class PlannerApp {
       }
       return false;
     }
-    const formattedValue = formatPedagogicalGradeInput(parsed.value);
+    const formattedValue = formatGradeInputForSystem(parsed.value, displaySystem, { pedagogical: true });
     if (input) {
       input.classList.remove("invalid");
       input.value = formattedValue;
     }
     this.activeGradeOverrideContext = {
       ...context,
-      draftValue: formattedValue
+      draftValue: formattedValue,
+      originalValue: parsed.value,
+      dirty: false
     };
     this.store.setGradeOverride(
       context.studentId,
@@ -27608,7 +28267,9 @@ class PlannerApp {
       input.classList.remove("is-invalid-shake");
       input._gradeInvalidShakeTimer = 0;
       if (!persist) {
-        const parsed = parseGradeValue(input.value, 15);
+        const parsed = input.dataset.gradeOverrideInput === "1"
+          ? this.parseCurrentGradeInput(input.value, { pedagogical: true })
+          : this.parseCurrentGradeInput(input.value);
         if (parsed.valid) {
           input.classList.remove("invalid");
         }
@@ -27631,7 +28292,9 @@ class PlannerApp {
     if (!(input instanceof HTMLInputElement)) {
       return;
     }
-    const parsed = parseGradeValue(value, 15);
+    const parsed = typeof value === "number"
+      ? { valid: Number.isFinite(value), value }
+      : this.parseCurrentGradeInput(value);
     const isDeficit = parsed.valid && isGradeValueBelowThreshold(parsed.value, this.gradeDeficitThreshold);
     input.classList.toggle("is-grade-low", isDeficit);
     this.syncGradeDeficitTooltip(input, isDeficit);
@@ -27698,22 +28361,28 @@ class PlannerApp {
     if (gradeInput.dataset.gradeOverrideInput === "1") {
       const rawValue = String(gradeInput.value || "");
       const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 4);
-      const sanitizedValue = sanitizePedagogicalGradeInput(rawValue, maxLength);
-      const removedCharacters = rawValue !== sanitizedValue;
+      const isSchoolInput = this.getCurrentGradeInputDisplaySystem() === GRADE_DISPLAY_SYSTEM_SCHOOL;
+      const sanitizedValue = isSchoolInput
+        ? normalizeSchoolGradeInput(rawValue).slice(0, maxLength)
+        : sanitizePedagogicalGradeInput(rawValue, maxLength);
+      const comparableRawValue = isSchoolInput ? normalizeSchoolGradeInput(rawValue) : rawValue;
+      const removedCharacters = comparableRawValue !== sanitizedValue;
       gradeInput.value = sanitizedValue;
-      const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext) || {
+      const activeContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext) || this.normalizeGradeOverrideEditorContext({
         studentId: gradeInput.dataset.studentId,
         courseId: gradeInput.dataset.courseId,
         scope: gradeInput.dataset.scope,
         period: gradeInput.dataset.period,
         categoryId: gradeInput.dataset.categoryId,
-        subcategoryId: gradeInput.dataset.subcategoryId
-      };
+        subcategoryId: gradeInput.dataset.subcategoryId,
+        originalValue: gradeInput.dataset.gradeOriginalValue
+      });
       this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
         ...activeContext,
-        draftValue: sanitizedValue
+        draftValue: sanitizedValue,
+        dirty: true
       });
-      const parsed = parsePedagogicalGradeValue(sanitizedValue, 15);
+      const parsed = this.parseCurrentGradeInput(sanitizedValue, { pedagogical: true });
       this.syncGradePickerSelectionFromInput(gradeInput);
       if (removedCharacters || (sanitizedValue && !parsed.valid)) {
         this.showGradeInputInvalidFeedback(gradeInput, {
@@ -27726,10 +28395,14 @@ class PlannerApp {
     }
     const rawValue = String(gradeInput.value || "");
     const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 2);
-    const sanitizedValue = rawValue.replace(/[^\d]/g, "").slice(0, maxLength);
-    const removedCharacters = rawValue !== sanitizedValue;
+    const isSchoolInput = this.getCurrentGradeInputDisplaySystem() === GRADE_DISPLAY_SYSTEM_SCHOOL;
+    const sanitizedValue = isSchoolInput
+      ? normalizeSchoolGradeInput(rawValue).slice(0, maxLength)
+      : rawValue.replace(/[^\d]/g, "").slice(0, maxLength);
+    const comparableRawValue = isSchoolInput ? normalizeSchoolGradeInput(rawValue) : rawValue;
+    const removedCharacters = comparableRawValue !== sanitizedValue;
     gradeInput.value = sanitizedValue;
-    const parsed = parseGradeValue(sanitizedValue, 15);
+    const parsed = this.parseCurrentGradeInput(sanitizedValue);
     this.syncGradeInputLowValueClass(gradeInput, sanitizedValue);
     if (removedCharacters || (sanitizedValue && !parsed.valid)) {
       this.showGradeInputInvalidFeedback(gradeInput, {
@@ -27747,14 +28420,18 @@ class PlannerApp {
       return;
     }
     if (gradeInput.dataset.gradeOverrideInput === "1") {
+      const currentContext = this.normalizeGradeOverrideEditorContext(this.activeGradeOverrideContext);
       this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+        ...currentContext,
         studentId: gradeInput.dataset.studentId,
         courseId: gradeInput.dataset.courseId,
         scope: gradeInput.dataset.scope,
         period: gradeInput.dataset.period,
         categoryId: gradeInput.dataset.categoryId,
         subcategoryId: gradeInput.dataset.subcategoryId,
-        draftValue: gradeInput.value
+        draftValue: gradeInput.value,
+        originalValue: currentContext?.originalValue ?? gradeInput.dataset.gradeOriginalValue,
+        dirty: currentContext?.dirty === true
       });
       this.openGradePickerForInput(gradeInput, { mode: "override" });
       return;
@@ -28005,14 +28682,30 @@ class PlannerApp {
     if (event.key === "Enter") {
       event.preventDefault();
       if (this.gradePickerState.open && this.gradePickerState.mode === "override" && this.gradePickerState.activeIndex >= 0) {
-        input.value = formatPedagogicalGradeInput(this.gradePickerState.values[this.gradePickerState.activeIndex]);
+        input.value = this.formatCurrentGradeInput(
+          this.gradePickerState.values[this.gradePickerState.activeIndex],
+          { pedagogical: true }
+        );
+        this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+          ...this.activeGradeOverrideContext,
+          draftValue: input.value,
+          dirty: true
+        });
       }
       this.submitGradeOverrideDialog({ input, close: true });
       return;
     }
     if (event.key === "Tab") {
       if (this.gradePickerState.open && this.gradePickerState.mode === "override" && this.gradePickerState.activeIndex >= 0) {
-        input.value = formatPedagogicalGradeInput(this.gradePickerState.values[this.gradePickerState.activeIndex]);
+        input.value = this.formatCurrentGradeInput(
+          this.gradePickerState.values[this.gradePickerState.activeIndex],
+          { pedagogical: true }
+        );
+        this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+          ...this.activeGradeOverrideContext,
+          draftValue: input.value,
+          dirty: true
+        });
       }
       const valid = this.submitGradeOverrideDialog({ input, close: false });
       if (!valid) {
@@ -28270,7 +28963,11 @@ class PlannerApp {
       const isDeficit = isGradeValueBelowThreshold(averageValue, this.gradeDeficitThreshold);
       averageNode.textContent = averageValue === null || averageValue === undefined
         ? "—"
-        : formatPedagogicalGradeInput(averageValue);
+        : formatGradeDisplayForSystem(
+          averageValue,
+          this.getCurrentGradeInputDisplaySystem(),
+          { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }
+        );
       averageNode.classList.toggle("is-grade-low", isDeficit);
       this.syncGradeDeficitTooltip(averageNode, isDeficit);
     }
@@ -28383,13 +29080,13 @@ class PlannerApp {
       this.renderGradePrivacyOverlay();
       return true;
     }
-    const parsed = parseGradeValue(input.value, 15);
+    const parsed = this.parseCurrentGradeInput(input.value);
     if (!parsed.valid) {
       input.classList.add("invalid");
       return false;
     }
     input.classList.remove("invalid");
-    input.value = parsed.value === null ? "" : formatGradeInteger(parsed.value);
+    input.value = parsed.value === null ? "" : this.formatCurrentGradeInput(parsed.value);
     this.syncGradeInputLowValueClass(input, parsed.value);
     if (isDraftInput) {
       const draft = this.getGradesEntryDraft(this.selectedCourseId);
@@ -28808,7 +29505,15 @@ class PlannerApp {
       return;
     }
     if (this.gradePickerState.open && this.gradePickerState.mode === "override" && this.gradePickerState.activeIndex >= 0) {
-      input.value = formatPedagogicalGradeInput(this.gradePickerState.values[this.gradePickerState.activeIndex]);
+      input.value = this.formatCurrentGradeInput(
+        this.gradePickerState.values[this.gradePickerState.activeIndex],
+        { pedagogical: true }
+      );
+      this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+        ...this.activeGradeOverrideContext,
+        draftValue: input.value,
+        dirty: true
+      });
     }
     const valid = this.submitGradeOverrideDialog({ input, close: false });
     if (!valid) {
@@ -28829,8 +29534,8 @@ class PlannerApp {
       return;
     }
     const parsed = mode === "override"
-      ? parsePedagogicalGradeValue(input.value, 15)
-      : parseGradeValue(input.value, 15);
+      ? this.parseCurrentGradeInput(input.value, { pedagogical: true })
+      : this.parseCurrentGradeInput(input.value);
     const currentValue = parsed.valid ? parsed.value : null;
     this.gradePickerState.open = true;
     this.gradePickerState.mode = mode;
@@ -28881,7 +29586,9 @@ class PlannerApp {
         label.className = "grade-picker-override-label";
         const value = document.createElement("span");
         value.className = `grade-picker-override-value${state.overridden ? " is-overridden" : ""}`;
-        value.textContent = formatGradeTooltipDecimal(state.computedValue);
+        value.textContent = this.getCurrentGradeInputDisplaySystem() === GRADE_DISPLAY_SYSTEM_SCHOOL
+          ? formatGradeDisplayForSystem(state.computedValue, GRADE_DISPLAY_SYSTEM_SCHOOL)
+          : formatGradeTooltipDecimal(state.computedValue);
         label.append("Errechnet: ", value);
         meta.append(label);
         const resetButton = document.createElement("button");
@@ -28907,7 +29614,7 @@ class PlannerApp {
     this.gradePickerState.values.forEach((value, index) => {
       const button = document.createElement("button");
       button.type = "button";
-      button.textContent = formatGradeInteger(value, this.gradePickerState.maxPoints);
+      button.textContent = formatGradeInputForSystem(value, this.getCurrentGradeInputDisplaySystem());
       button.classList.toggle("grade-picker-zero", value === 0);
       button.classList.toggle("active", index === this.gradePickerState.activeIndex);
       button.addEventListener("mousedown", (event) => {
@@ -29013,12 +29720,17 @@ class PlannerApp {
       return;
     }
     if (this.gradePickerState.mode === "override") {
-      input.value = formatPedagogicalGradeInput(value);
+      input.value = this.formatCurrentGradeInput(value, { pedagogical: true });
+      this.activeGradeOverrideContext = this.normalizeGradeOverrideEditorContext({
+        ...this.activeGradeOverrideContext,
+        draftValue: input.value,
+        dirty: true
+      });
       input.classList.remove("invalid");
       this.submitGradeOverrideDialog({ input, close: true });
       return;
     }
-    input.value = formatGradeInteger(value, this.gradePickerState.maxPoints);
+    input.value = this.formatCurrentGradeInput(value);
     const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
     this.commitGradeCellInput(input);
     this.hideGradePicker();
@@ -29121,7 +29833,7 @@ class PlannerApp {
   }
 
   renderSidebarFooterActions() {
-    const isManualMode = this.isManualPersistenceMode();
+    const isManualMode = this.isManualPersistencePresentationMode();
     if (this.refs.sidebarManualSaveBtn) {
       this.refs.sidebarManualSaveBtn.hidden = !isManualMode;
       this.refs.sidebarManualSaveBtn.disabled = !isManualMode;
@@ -30354,7 +31066,7 @@ class PlannerApp {
   renderSettingsTabs() {
     const showPlanningOnlySettings = this.isPlanningTopTabActive();
     const fallbackTab = showPlanningOnlySettings ? "dayoff" : "display";
-    const allowManualDatabaseWhileHolidayLocked = !this.syncState.supported;
+    const allowManualDatabaseWhileHolidayLocked = this.isManualPersistencePresentationMode();
     const isDatabaseLock = this.locked
       && (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired");
     const activeTabAllowedInContext = this.refs.settingsPanels[this.activeSettingsTab] && (
@@ -30512,6 +31224,7 @@ class PlannerApp {
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.courseId = String(course.id);
+      button.dataset.tutorialAnchor = "grades-course";
       button.dataset.noLesson = course.noLesson ? "1" : "0";
       button.disabled = this.locked || Boolean(course.noLesson);
       if (course.noLesson) {
@@ -30542,6 +31255,7 @@ class PlannerApp {
     addButton.type = "button";
     addButton.className = "sidebar-add-btn";
     addButton.dataset.addCourse = "1";
+    addButton.dataset.tutorialAnchor = "grades-course-add";
     const requiresGradeVaultSetup = isGradesView
       && this.isGradeVaultEncryptionEnabled()
       && !this.hasGradeVaultUnlockConfig();
@@ -32351,8 +33065,18 @@ class PlannerApp {
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
-    new PlannerApp();
+    const app = new PlannerApp();
+    window.__teachhelperPlanningTutorial = {
+      activate: () => app.activatePlanningTutorial(),
+      showSurface: (surface) => app.showPlanningTutorialSurface(surface),
+      cleanup: () => app.cleanupPlanningTutorial()
+    };
   });
 } else {
-  new PlannerApp();
+  const app = new PlannerApp();
+  window.__teachhelperPlanningTutorial = {
+    activate: () => app.activatePlanningTutorial(),
+    showSurface: (surface) => app.showPlanningTutorialSurface(surface),
+    cleanup: () => app.cleanupPlanningTutorial()
+  };
 }

@@ -1,5 +1,3 @@
-import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
-
 export function createDuplicateCheckApp({ root = document } = {}) {
   const JSZIP_CDN_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
   const JSZIP_CACHE_KEY = 'teachhelper.jszip.3.10.1.min.js.v1';
@@ -39,17 +37,8 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   let analysisToken = 0;
   let enabledRules = { name: true, size: true, visual: true };
   let lastRecords = [];
-
-  function applyTheme(theme) {
-    root.documentElement?.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
-  }
-
-  function applyShellLayout(detail) {
-    const theme = detail && typeof detail === 'object' ? detail.theme : '';
-    if (theme) {
-      applyTheme(theme);
-    }
-  }
+  let tutorialDemoActive = false;
+  let activePreviewOverlay = null;
 
   function hasJsZipLoaded() {
     return Boolean(window.JSZip && typeof window.JSZip.loadAsync === 'function');
@@ -240,12 +229,67 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   }
 
   function renderResultFromLastRecords() {
+    if (tutorialDemoActive) {
+      renderTutorialDemoResult();
+      return;
+    }
     if (!lastRecords.length) {
       renderInitial();
       return;
     }
     const result = buildDuplicateResult(lastRecords, enabledRules);
     renderResults(result);
+  }
+
+  function renderTutorialDemoResult() {
+    const records = lastRecords.slice();
+    const reasons = {
+      name: Boolean(enabledRules.name),
+      size: Boolean(enabledRules.size),
+      visual: Boolean(enabledRules.visual),
+    };
+    renderResults({
+      summary: {
+        totalFiles: records.length,
+        nameGroupCount: reasons.name ? 1 : 0,
+        sizeGroupCount: reasons.size ? 1 : 0,
+        visualGroupCount: reasons.visual ? 1 : 0,
+        enabledRules: { ...enabledRules },
+      },
+      groups: [{
+        records,
+        reasons,
+        label: 'Beispielabgabe',
+        visualPairs: reasons.visual ? [{ records: records.slice(0, 2), score: 0.94, matchingTiles: 14 }] : [],
+      }],
+    });
+  }
+
+  function activateTutorialDemo() {
+    analysisToken += 1;
+    revokeRecordObjectUrls(lastRecords);
+    tutorialDemoActive = true;
+    const makeSvg = (accent) => new TextEncoder().encode(
+      `<svg xmlns="http://www.w3.org/2000/svg" width="420" height="260"><rect width="100%" height="100%" fill="#f8fafc"/><circle cx="125" cy="130" r="72" fill="${accent}"/><rect x="220" y="72" width="145" height="116" rx="18" fill="#334155"/></svg>`
+    );
+    lastRecords = [
+      { id: 1, path: 'Alex/Plakat.svg', displayPath: 'Alex/Plakat.svg', name: 'Plakat.svg', size: 256, bytes: makeSvg('#38bdf8') },
+      { id: 2, path: 'Sam/Plakat.svg', displayPath: 'Sam/Plakat.svg', name: 'Plakat.svg', size: 256, bytes: makeSvg('#0ea5e9') },
+      { id: 3, path: 'Kim/Entwurf.svg', displayPath: 'Kim/Entwurf.svg', name: 'Entwurf.svg', size: 256, bytes: makeSvg('#38bdf8') },
+    ];
+    setFileSummary({ name: 'Beispielabgaben.zip' });
+    renderTutorialDemoResult();
+  }
+
+  function cleanupTutorialDemo() {
+    if (!tutorialDemoActive) return;
+    tutorialDemoActive = false;
+    activePreviewOverlay?.remove();
+    activePreviewOverlay = null;
+    revokeRecordObjectUrls(lastRecords);
+    lastRecords = [];
+    setFileSummary(null);
+    renderInitial();
   }
 
   function renderGroup(group, index) {
@@ -335,6 +379,8 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 
     let activePairIndex = Math.min(Math.max(0, initialPairIndex), pairs.length - 1);
     const overlay = document.createElement('div');
+    activePreviewOverlay?.remove();
+    activePreviewOverlay = overlay;
     overlay.className = 'preview-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
@@ -366,6 +412,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     const close = () => {
       window.removeEventListener('keydown', handleKeydown);
       overlay.remove();
+      if (activePreviewOverlay === overlay) activePreviewOverlay = null;
     };
     const handleKeydown = (event) => {
       if (event.key === 'Escape') close();
@@ -1024,6 +1071,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   }
 
   function handleFiles(files) {
+    if (tutorialDemoActive) return;
     if (!files.length) return;
     if (files.length > 1) {
       const message = 'Bitte genau eine ZIP-Datei auswählen.';
@@ -1037,6 +1085,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   }
 
   async function openZipPicker() {
+    if (tutorialDemoActive) return;
     if (typeof window.showOpenFilePicker !== 'function') {
       ui.zipInput?.click();
       return;
@@ -1121,11 +1170,6 @@ export function createDuplicateCheckApp({ root = document } = {}) {
       handleFiles(getFilesFromEvent(event));
     });
 
-    window.addEventListener('message', (event) => {
-      if (event.origin !== window.location.origin) return;
-      if (!event.data || event.data.type !== DUPLICATE_CHECK_SHELL_LAYOUT_EVENT) return;
-      applyShellLayout(event.data.detail);
-    });
     window.addEventListener('beforeunload', () => {
       revokeRecordObjectUrls(lastRecords);
     });
@@ -1136,8 +1180,9 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   bindEvents();
 
   return {
-    applyShellLayout,
+    activateTutorialDemo,
+    cleanupTutorialDemo,
   };
 }
 
-createDuplicateCheckApp();
+window.__teachhelperDuplicateCheckApp = createDuplicateCheckApp();

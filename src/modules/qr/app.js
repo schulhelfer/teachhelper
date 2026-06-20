@@ -1,5 +1,3 @@
-import { QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
-
 export function createQrApp({ root = document } = {}) {
   const ui = {
     toolTabs: [...root.querySelectorAll('.tool-tab')],
@@ -49,17 +47,8 @@ export function createQrApp({ root = document } = {}) {
   let cameraDecodeBusy = false;
   let lastCameraDotRepairAt = 0;
   let nativeQrDetectorPromise = null;
-
-  function applyTheme(theme) {
-    root.documentElement?.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
-  }
-
-  function applyShellLayout(detail) {
-    const theme = detail && typeof detail === 'object' ? detail.theme : '';
-    if (theme) {
-      applyTheme(theme);
-    }
-  }
+  let tutorialDemoActive = false;
+  let tutorialPreviousTool = 'generator';
 
   function getQrFactory() {
     return window.QRCode;
@@ -283,6 +272,60 @@ export function createQrApp({ root = document } = {}) {
       ui.decodedText.classList.toggle('hidden', valueIsUrl);
       ui.decodedText.textContent = valueIsUrl ? '' : decodedValue;
     }
+  }
+
+  function activateTutorialDemo() {
+    if (tutorialDemoActive) return;
+    tutorialPreviousTool = ui.toolTabs.find((tab) => tab.getAttribute('aria-selected') === 'true')?.dataset.tool
+      || 'generator';
+    tutorialDemoActive = true;
+    generatedUrl = 'https://example.com/unterricht';
+    ui.generatorResult?.classList.remove('empty');
+    ui.generatorEmpty?.classList.add('hidden');
+    ui.qrPreviewShell?.classList.remove('hidden');
+    if (ui.qrEncodedLink) {
+      ui.qrEncodedLink.href = generatedUrl;
+      ui.qrEncodedLink.textContent = generatedUrl;
+    }
+    void drawQrToCanvas(generatedUrl).then(() => {
+      if (tutorialDemoActive) return;
+      const context = ui.qrCanvas?.getContext?.('2d');
+      context?.clearRect(0, 0, ui.qrCanvas.width, ui.qrCanvas.height);
+    }).catch(() => {});
+    setDecoderFileSummary({ name: 'beispiel-qr-code.png' });
+    renderDecodedValue(generatedUrl);
+  }
+
+  function showTutorialSurface(surface = '') {
+    if (!tutorialDemoActive) return;
+    ui.cameraPanel?.classList.toggle('hidden', surface !== 'camera');
+  }
+
+  function cleanupTutorialDemo() {
+    if (!tutorialDemoActive) return;
+    tutorialDemoActive = false;
+    stopCamera();
+    generatedUrl = '';
+    decodedValue = '';
+    ui.generatorResult?.classList.add('empty');
+    ui.generatorEmpty?.classList.remove('hidden');
+    ui.qrPreviewShell?.classList.add('hidden');
+    if (ui.qrEncodedLink) {
+      ui.qrEncodedLink.removeAttribute('href');
+      ui.qrEncodedLink.textContent = '';
+    }
+    const context = ui.qrCanvas?.getContext?.('2d');
+    context?.clearRect(0, 0, ui.qrCanvas.width, ui.qrCanvas.height);
+    setDecoderFileSummary(null);
+    ui.decoderResult?.classList.add('empty');
+    ui.decoderEmpty?.classList.remove('hidden');
+    ui.decodedValuePanel?.classList.add('hidden');
+    ui.decodedLink?.classList.add('hidden');
+    ui.decodedLink?.removeAttribute('href');
+    if (ui.decodedLink) ui.decodedLink.textContent = '';
+    ui.decodedText?.classList.add('hidden');
+    if (ui.decodedText) ui.decodedText.textContent = '';
+    setActiveTool(tutorialPreviousTool);
   }
 
   function decodeImageData(imageData, width, height) {
@@ -792,10 +835,6 @@ export function createQrApp({ root = document } = {}) {
       event.preventDefault();
       closeMessage();
     });
-    window.addEventListener('message', (event) => {
-      if (event.data?.type !== QR_SHELL_LAYOUT_EVENT) return;
-      applyShellLayout(event.data.detail);
-    });
     window.addEventListener('pagehide', stopCamera);
     window.addEventListener('beforeunload', stopCamera);
     bindDropZone();
@@ -804,9 +843,13 @@ export function createQrApp({ root = document } = {}) {
   bindEvents();
 
   return {
-    applyShellLayout,
     stopCamera,
+    activateTutorialDemo,
+    showTutorialSurface,
+    cleanupTutorialDemo,
   };
 }
 
-createQrApp();
+if (document?.body && !window.__teachhelperQrApp) {
+  window.__teachhelperQrApp = createQrApp();
+}
