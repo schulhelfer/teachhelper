@@ -267,6 +267,7 @@
       --chrome-transition-duration: 420ms;
       --chrome-transition-duration-short: 320ms;
       --chrome-transition-duration-medium: 360ms;
+      --tab-switch-duration: 150ms;
       --chrome-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
       --app-header-max-height: 240px;
       --chrome-overlay-clearance: calc(var(--app-header-padding-x) + var(--chrome-toggle-size) + 10px);
@@ -557,6 +558,7 @@
     .tab-switch-leave,
     .tab-switch-enter {
       pointer-events: none !important;
+      transition-duration: var(--tab-switch-duration) !important;
     }
 
     .tab-switch-leave {
@@ -4729,13 +4731,25 @@
       transition: left 160ms ease, top 160ms ease, width 160ms ease, height 160ms ease, border-radius 160ms ease;
     }
 
+    .app.tutorial-chrome-only>.side,
+    .app.tutorial-chrome-only>.main,
+    .app.tutorial-chrome-only>.merger-shell,
+    .app.tutorial-chrome-only>.duplicate-check-shell,
+    .app.tutorial-chrome-only>.qr-shell,
+    .app.tutorial-chrome-only>.planning-shell,
+    .app.tutorial-chrome-only>.monitor-shell,
+    .app.tutorial-chrome-only>.work-order-shell,
+    .app.tutorial-chrome-only>.timer-shell {
+      display: none !important;
+    }
+
     .tutorial-intro-dialog {
       width: min(390px, calc(100vw - 32px));
       padding: 24px;
-      border: 1px solid rgba(148, 163, 184, 0.32);
+      border: 1px solid rgba(226, 232, 240, 0.42);
       border-radius: 18px;
-      background: rgba(15, 23, 42, 0.98);
-      box-shadow: 0 24px 64px rgba(2, 6, 23, 0.42);
+      background: rgba(71, 85, 105, 0.98);
+      box-shadow: 0 24px 64px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.12);
       color: #e2e8f0;
       text-align: center;
     }
@@ -4799,9 +4813,9 @@
       width: min(310px, calc(100vw - 28px));
       padding: 13px 44px 12px 14px;
       border-radius: 12px;
-      background: rgba(15, 23, 42, 0.97);
-      border: 1px solid rgba(148, 163, 184, 0.32);
-      box-shadow: 0 18px 42px rgba(2, 6, 23, 0.34);
+      background: rgba(71, 85, 105, 0.98);
+      border: 1px solid rgba(226, 232, 240, 0.42);
+      box-shadow: 0 20px 48px rgba(2, 6, 23, 0.46), 0 0 0 1px rgba(148, 163, 184, 0.12);
       color: #e2e8f0;
       font-size: 13px;
       line-height: 1.38;
@@ -4818,8 +4832,8 @@
     .tutorial-bubble::before {
       content: '';
       position: absolute;
-      width: 12px;
-      height: 12px;
+      width: 18px;
+      height: 18px;
       background: inherit;
       border-color: inherit;
       border-style: solid;
@@ -4830,32 +4844,32 @@
 
     .tutorial-bubble[data-placement='bottom']::before {
       left: var(--tutorial-arrow-left, 50%);
-      top: -7px;
-      margin-left: -6px;
+      top: -10px;
+      margin-left: -9px;
       border-left-width: 1px;
       border-top-width: 1px;
     }
 
     .tutorial-bubble[data-placement='top']::before {
       left: var(--tutorial-arrow-left, 50%);
-      bottom: -7px;
-      margin-left: -6px;
+      bottom: -10px;
+      margin-left: -9px;
       border-right-width: 1px;
       border-bottom-width: 1px;
     }
 
     .tutorial-bubble[data-placement='left']::before {
-      right: -7px;
+      right: -10px;
       top: var(--tutorial-arrow-top, 50%);
-      margin-top: -6px;
+      margin-top: -9px;
       border-right-width: 1px;
       border-top-width: 1px;
     }
 
     .tutorial-bubble[data-placement='right']::before {
-      left: -7px;
+      left: -10px;
       top: var(--tutorial-arrow-top, 50%);
-      margin-top: -6px;
+      margin-top: -9px;
       border-left-width: 1px;
       border-bottom-width: 1px;
     }
@@ -4869,6 +4883,19 @@
       color: #f8fafc;
       font-size: 16px;
       line-height: 1.2;
+    }
+
+    .tutorial-content {
+      position: relative;
+    }
+
+    .tutorial-content-ghost {
+      position: absolute;
+      z-index: 2;
+      top: 13px;
+      right: 44px;
+      left: 14px;
+      pointer-events: none;
     }
 
     .tutorial-copy {
@@ -4944,7 +4971,8 @@
       justify-self: stretch;
     }
 
-    .tutorial-prev-button:disabled {
+    .tutorial-prev-button:disabled,
+    .tutorial-next-button:disabled {
       cursor: default;
       opacity: 0.42;
     }

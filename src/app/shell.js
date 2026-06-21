@@ -228,7 +228,8 @@ export function createShellController({
       [els.tabQr, TAB_QR],
     ].forEach(([button, tabKey]) => {
       if (!button) return;
-      const selected = state.activeTab === tabKey;
+      const selected = !els.app.classList.contains('tutorial-no-tab-selection')
+        && state.activeTab === tabKey;
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
@@ -253,20 +254,15 @@ export function createShellController({
 
   function getTabSwitchDuration() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return isIOSDevice ? 180 : 400;
+      return isIOSDevice ? 120 : 150;
     }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return 1;
     }
     const styleHost = els.app || document.documentElement;
     const computed = window.getComputedStyle(styleHost);
-    const durations = [
-      computed.getPropertyValue('--chrome-transition-duration-medium'),
-      computed.getPropertyValue('--chrome-transition-duration-short'),
-      computed.getPropertyValue('--chrome-transition-duration'),
-    ].map(parseCssTimeToMs).filter((duration) => duration > 0);
-    const resolved = Math.min(420, Math.max(...(durations.length ? durations : [360]))) + 30;
-    return isIOSDevice ? Math.min(180, resolved) : resolved;
+    const resolved = parseCssTimeToMs(computed.getPropertyValue('--tab-switch-duration')) || 150;
+    return isIOSDevice ? Math.min(120, resolved) : resolved;
   }
 
   function collectRenderedTabRegions() {

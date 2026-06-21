@@ -6,6 +6,7 @@ const REPOSITION_DELAY_MS = 460;
 const REPOSITION_LONG_DELAY_MS = 1100;
 const TARGET_RESOLVE_ATTEMPTS = 30;
 const TARGET_RESOLVE_INTERVAL_MS = 50;
+const TUTORIAL_MORPH_DURATION_MS = 600;
 
 function readTutorialCompleted() {
   try {
@@ -122,6 +123,7 @@ export function createFirstRunTutorial({
   getContextualSteps = () => [],
   getActiveTab = () => '',
   setActiveTab = () => {},
+  prepareOverviewIntro = () => {},
   isChromeCollapsed = () => false,
   setChromeCollapsed = () => {},
 } = {}) {
@@ -138,6 +140,7 @@ export function createFirstRunTutorial({
   let completedInSession = readTutorialCompleted();
   let bubble = null;
   let highlight = null;
+  let contentNode = null;
   let titleNode = null;
   let copyNode = null;
   let countNode = null;
@@ -148,6 +151,10 @@ export function createFirstRunTutorial({
   let demoChoiceDialog = null;
   let sessionCleanup = null;
   let renderToken = 0;
+  let stepTransitioning = false;
+  let bubbleMotionAnimation = null;
+  let contentAnimations = [];
+  let contentGhost = null;
 
   const clearRepositionTimer = () => {
     if (!repositionTimer) return;
@@ -209,6 +216,40 @@ export function createFirstRunTutorial({
     activeSteps = Array.isArray(nextSteps) && nextSteps.length ? nextSteps : overviewSteps;
   };
 
+  const setChromeOnlyPresentation = (enabled) => {
+    els.app?.classList?.toggle('tutorial-chrome-only', Boolean(enabled));
+  };
+
+  const clearMorphArtifacts = () => {
+    bubbleMotionAnimation?.cancel?.();
+    bubbleMotionAnimation = null;
+    contentAnimations.forEach((animation) => animation?.cancel?.());
+    contentAnimations = [];
+    contentGhost?.remove?.();
+    contentGhost = null;
+    if (contentNode) contentNode.style.opacity = '';
+    if (bubble) {
+      bubble.style.transformOrigin = '';
+      bubble.removeAttribute('aria-busy');
+    }
+  };
+
+  const setStepNavigationBusy = (busy) => {
+    stepTransitioning = busy;
+    if (prevButton) {
+      prevButton.disabled = busy || stepIndex === 0;
+      prevButton.setAttribute('aria-disabled', prevButton.disabled ? 'true' : 'false');
+    }
+    if (nextButton) {
+      nextButton.disabled = busy;
+      nextButton.setAttribute('aria-disabled', busy ? 'true' : 'false');
+    }
+    if (bubble) {
+      if (busy) bubble.setAttribute('aria-busy', 'true');
+      else bubble.removeAttribute('aria-busy');
+    }
+  };
+
   const ensureNodes = () => {
     if (bubble && highlight) return;
 
@@ -230,6 +271,10 @@ export function createFirstRunTutorial({
     copyNode = document.createElement('p');
     copyNode.className = 'tutorial-copy';
 
+    contentNode = document.createElement('div');
+    contentNode.className = 'tutorial-content';
+    contentNode.append(titleNode, copyNode);
+
     const actions = document.createElement('div');
     actions.className = 'tutorial-actions';
 
@@ -240,7 +285,7 @@ export function createFirstRunTutorial({
     nextButton = makeButton('tutorial-next-button', '➡️', 'Nächster Tipp');
 
     actions.append(prevButton, countNode, nextButton);
-    bubble.append(endButton, titleNode, copyNode, actions);
+    bubble.append(endButton, contentNode, actions);
     document.body.append(highlight, bubble);
 
     endButton.addEventListener('click', () => finish({ persist: true, resumePrompt: true }));
@@ -395,10 +440,13 @@ export function createFirstRunTutorial({
     window.visualViewport?.removeEventListener('resize', positionCurrentStep);
     window.visualViewport?.removeEventListener('scroll', positionCurrentStep);
     document.removeEventListener('keydown', handleKeydown);
+    clearMorphArtifacts();
+    stepTransitioning = false;
     bubble?.remove();
     highlight?.remove();
     bubble = null;
     highlight = null;
+    contentNode = null;
     titleNode = null;
     copyNode = null;
     countNode = null;
@@ -536,7 +584,7 @@ export function createFirstRunTutorial({
     }
   }
 
-  function applyTargetPosition(target, preferredPlacement) {
+  function applyTargetPosition(target, preferredPlacement, anchor = 'center', offsetX = 0) {
     if (!bubble || !highlight) return;
     revealTarget(target);
     const rect = getTargetRect(target);
@@ -553,7 +601,9 @@ export function createFirstRunTutorial({
     const minTop = viewport.offsetTop + VIEWPORT_MARGIN;
     const maxTop = viewport.offsetTop + viewport.height - bubbleRect.height - VIEWPORT_MARGIN;
 
-    let left = rect.left + (rect.width - bubbleRect.width) / 2;
+    let left = anchor === 'start'
+      ? rect.left + offsetX
+      : rect.left + (rect.width - bubbleRect.width) / 2 + offsetX;
     let top = rect.bottom + TARGET_GAP;
     if (placement === 'top') {
       top = rect.top - bubbleRect.height - TARGET_GAP;
@@ -568,7 +618,9 @@ export function createFirstRunTutorial({
     left = clamp(left, minLeft, Math.max(minLeft, maxLeft));
     top = clamp(top, minTop, Math.max(minTop, maxTop));
 
-    const targetCenterX = rect.left + rect.width / 2;
+    const targetCenterX = anchor === 'start'
+      ? rect.left + 18
+      : rect.left + rect.width / 2;
     const targetCenterY = rect.top + rect.height / 2;
     const arrowLeft = clamp(targetCenterX - left, 18, bubbleRect.width - 18);
     const arrowTop = clamp(targetCenterY - top, 18, bubbleRect.height - 18);
@@ -591,7 +643,7 @@ export function createFirstRunTutorial({
   function positionCurrentStep() {
     if (!active || !bubble) return;
     const step = activeSteps[stepIndex];
-    applyTargetPosition(resolveTarget(step), step?.placement);
+    applyTargetPosition(resolveTarget(step), step?.placement, step?.anchor, step?.offsetX);
   }
 
   function trackCurrentTarget() {
@@ -693,9 +745,119 @@ export function createFirstRunTutorial({
     renderStep();
   }
 
+  function updateStepContent(step) {
+    titleNode.textContent = step.title || '';
+    copyNode.textContent = step.copy || '';
+    countNode.textContent = `${stepIndex + 1}/${activeSteps.length}`;
+    nextButton.textContent = '➡️';
+    nextButton.setAttribute(
+      'aria-label',
+      stepIndex === activeSteps.length - 1 ? 'Tutorial abschließen' : 'Nächster Tipp'
+    );
+    nextButton.title = nextButton.getAttribute('aria-label');
+  }
+
+  function completeStepTransition(currentRenderToken) {
+    if (!active || currentRenderToken !== renderToken) return;
+    clearMorphArtifacts();
+    setStepNavigationBusy(false);
+    nextButton?.focus({ preventScroll: true });
+  }
+
+  function morphToPreparedStep(previousRect, previousContent, currentRenderToken) {
+    bubble.hidden = false;
+    positionCurrentStep();
+    const nextRect = bubble.getBoundingClientRect();
+    bubble.dataset.rendered = 'true';
+    schedulePositionRefresh();
+
+    const canMorph = previousRect
+      && previousRect.width > 0
+      && previousRect.height > 0
+      && nextRect.width > 0
+      && nextRect.height > 0
+      && typeof bubble.animate === 'function';
+    if (!canMorph) {
+      completeStepTransition(currentRenderToken);
+      return;
+    }
+
+    const scaleX = previousRect.width / nextRect.width;
+    const scaleY = previousRect.height / nextRect.height;
+    const middleLeft = previousRect.left + (nextRect.left - previousRect.left) * 0.55;
+    const middleTop = previousRect.top + (nextRect.top - previousRect.top) * 0.55 - 10;
+    const middleScaleX = scaleX + (1 - scaleX) * 0.55;
+    const middleScaleY = scaleY + (1 - scaleY) * 0.55;
+    bubble.style.transformOrigin = 'top left';
+    bubble.style.animation = 'none';
+    contentNode.style.opacity = '0';
+
+    if (previousContent) {
+      contentGhost = previousContent;
+      contentGhost.classList.add('tutorial-content-ghost');
+      contentGhost.setAttribute('aria-hidden', 'true');
+      bubble.append(contentGhost);
+    }
+
+    const easing = 'cubic-bezier(0.4, 0, 0.2, 1)';
+    bubbleMotionAnimation = bubble.animate([
+      {
+        left: `${previousRect.left}px`,
+        top: `${previousRect.top}px`,
+        transform: `scale(${scaleX}, ${scaleY})`,
+      },
+      {
+        left: `${middleLeft}px`,
+        top: `${middleTop}px`,
+        transform: `scale(${middleScaleX}, ${middleScaleY})`,
+        offset: 0.55,
+      },
+      {
+        left: `${nextRect.left}px`,
+        top: `${nextRect.top}px`,
+        transform: 'scale(1, 1)',
+      },
+    ], {
+      duration: TUTORIAL_MORPH_DURATION_MS,
+      easing,
+      fill: 'both',
+    });
+
+    if (contentGhost?.animate) {
+      contentAnimations.push(contentGhost.animate([
+        { opacity: 1 },
+        { opacity: 0 },
+      ], {
+        duration: 140,
+        easing: 'ease-out',
+        fill: 'forwards',
+      }));
+    }
+    contentAnimations.push(contentNode.animate([
+      { opacity: 0 },
+      { opacity: 1 },
+    ], {
+      duration: 160,
+      delay: 80,
+      easing: 'ease-out',
+      fill: 'forwards',
+    }));
+
+    Promise.allSettled([
+      bubbleMotionAnimation.finished,
+      ...contentAnimations.map((animation) => animation.finished),
+    ]).then(() => completeStepTransition(currentRenderToken));
+  }
+
   function renderStep() {
     if (!active || !bubble || !activeSteps.length) return;
     const step = activeSteps[stepIndex];
+    const hadRenderedStep = bubble.dataset.rendered === 'true' && !bubble.hidden;
+    const previousRect = hadRenderedStep ? bubble.getBoundingClientRect() : null;
+    const previousContent = hadRenderedStep ? contentNode.cloneNode(true) : null;
+    clearMorphArtifacts();
+    setStepNavigationBusy(true);
+    setChromeOnlyPresentation(activeTourKind === 'overview' && step?.chromeOnly === true);
     clearPositionTracking();
     if (step?.tab) {
       setActiveTab(step.tab);
@@ -712,19 +874,8 @@ export function createFirstRunTutorial({
         console.error(error);
       }
     }
-    titleNode.textContent = step.title || '';
-    copyNode.textContent = step.copy || '';
-    countNode.textContent = `${stepIndex + 1}/${activeSteps.length}`;
-    prevButton.disabled = stepIndex === 0;
-    prevButton.setAttribute('aria-disabled', stepIndex === 0 ? 'true' : 'false');
-    nextButton.textContent = '➡️';
-    nextButton.setAttribute(
-      'aria-label',
-      stepIndex === activeSteps.length - 1 ? 'Tutorial abschließen' : 'Nächster Tipp'
-    );
-    nextButton.title = nextButton.getAttribute('aria-label');
     const skipIfMissing = step?.skipIfMissing === true;
-    bubble.hidden = skipIfMissing;
+    if (!hadRenderedStep) bubble.hidden = skipIfMissing;
     highlight.hidden = true;
 
     const showPreparedStep = async () => {
@@ -742,22 +893,21 @@ export function createFirstRunTutorial({
           return;
         }
       }
-      bubble.hidden = false;
-      schedulePositionRefresh();
-      nextButton?.focus({ preventScroll: true });
+      updateStepContent(step);
+      morphToPreparedStep(previousRect, previousContent, currentRenderToken);
     };
 
     void showPreparedStep();
   }
 
   function goPrevious() {
-    if (!active || stepIndex <= 0) return;
+    if (!active || stepTransitioning || stepIndex <= 0) return;
     stepIndex -= 1;
     renderStep();
   }
 
   function goNext() {
-    if (!active) return;
+    if (!active || stepTransitioning) return;
     if (stepIndex >= activeSteps.length - 1) {
       finish({ persist: true });
       return;
@@ -822,6 +972,12 @@ export function createFirstRunTutorial({
     active = true;
     stepIndex = resume ? clamp(resumeIndex ?? getStoredResumeStep(), 0, activeSteps.length - 1) : 0;
     if (activeTourKind === 'overview' && !resume) {
+      setChromeOnlyPresentation(true);
+      try {
+        prepareOverviewIntro(els);
+      } catch (error) {
+        console.error(error);
+      }
       showIntroDialog();
       return true;
     }
@@ -852,6 +1008,7 @@ export function createFirstRunTutorial({
     }
     active = false;
     renderToken += 1;
+    setChromeOnlyPresentation(false);
     removeIntroDialog();
     removeDemoChoiceDialog();
     removeNodes();
