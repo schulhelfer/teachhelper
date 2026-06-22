@@ -7084,7 +7084,7 @@ class PlannerApp {
     this.gradePeriodDefaultInitializedKeys = new Set();
     this.gradeCollapsedCategoryKeys = new Set();
     this.gradeCollapsedSubcategoryKeys = new Set();
-    this.pendingGradeTableMotion = null;
+    this.gradeTableMorphState = null;
     this.pendingGradesEntryCourseAutoSelect = true;
     this.pendingGradesOverviewAutoScroll = null;
     this.pendingGradesOverviewAutoScrollFrame = 0;
@@ -14870,17 +14870,13 @@ class PlannerApp {
       }
       this.activeGradeOverrideContext = null;
       this.clearActiveGradeAssessment();
-      this.queueGradeTableMotion(
-        this.isGradePeriodExpanded(this.selectedCourseId, periodToggle.dataset.gradeTogglePeriod || "year")
-          ? "collapse"
-          : "expand",
-        "period"
-      );
-      this.toggleGradePeriodExpanded(
-        this.selectedCourseId,
-        periodToggle.dataset.gradeTogglePeriod || "year"
-      );
-      this.renderGradesView();
+      this.runGradeTableMorph(() => {
+        this.toggleGradePeriodExpanded(
+          this.selectedCourseId,
+          periodToggle.dataset.gradeTogglePeriod || "year"
+        );
+        this.renderGradesView();
+      });
       return;
     }
     const categoryToggle = event.target.closest("button[data-grade-toggle-category]");
@@ -14891,22 +14887,14 @@ class PlannerApp {
       }
       this.activeGradeOverrideContext = null;
       this.clearActiveGradeAssessment();
-      this.queueGradeTableMotion(
-        this.isGradeCategoryExpanded(
+      this.runGradeTableMorph(() => {
+        this.toggleGradeCategoryExpanded(
           this.selectedCourseId,
           Number(categoryToggle.dataset.gradeToggleCategory || 0),
           categoryToggle.dataset.period || "year"
-        )
-          ? "collapse"
-          : "expand",
-        "category"
-      );
-      this.toggleGradeCategoryExpanded(
-        this.selectedCourseId,
-        Number(categoryToggle.dataset.gradeToggleCategory || 0),
-        categoryToggle.dataset.period || "year"
-      );
-      this.renderGradesView();
+        );
+        this.renderGradesView();
+      });
       return;
     }
     const subcategoryToggle = event.target.closest("button[data-grade-toggle-subcategory]");
@@ -14918,24 +14906,15 @@ class PlannerApp {
       this.activeGradeOverrideContext = null;
       this.clearActiveGradeAssessment();
       const [periodRaw, categoryIdRaw, subcategoryIdRaw] = String(subcategoryToggle.dataset.gradeToggleSubcategory || "").split(":");
-      this.queueGradeTableMotion(
-        this.isGradeSubcategoryExpanded(
+      this.runGradeTableMorph(() => {
+        this.toggleGradeSubcategoryExpanded(
           this.selectedCourseId,
           Number(categoryIdRaw || 0),
           Number(subcategoryIdRaw || 0),
           periodRaw || "year"
-        )
-          ? "collapse"
-          : "expand",
-        "subcategory"
-      );
-      this.toggleGradeSubcategoryExpanded(
-        this.selectedCourseId,
-        Number(categoryIdRaw || 0),
-        Number(subcategoryIdRaw || 0),
-        periodRaw || "year"
-      );
-      this.renderGradesView();
+        );
+        this.renderGradesView();
+      });
     }
   }
 
@@ -19884,11 +19863,147 @@ class PlannerApp {
     }
   }
 
-  queueGradeTableMotion(kind = "expand", scope = "category") {
-    this.pendingGradeTableMotion = {
-      kind: kind === "collapse" ? "collapse" : "expand",
-      scope: String(scope || "category")
+  getGradeTableMorphKey(element) {
+    if (!(element instanceof HTMLElement)) {
+      return "";
+    }
+    if (element.matches("th[data-grade-transfer-column-key]")) {
+      const row = element.closest("tr");
+      const rowIndex = Array.from(row?.parentElement?.children || []).indexOf(row);
+      const key = String(element.dataset.gradeTransferColumnKey || "");
+      return key ? `head:${rowIndex}:${key}` : "";
+    }
+    const key = String(element.dataset.gradeColumnKey || "");
+    return key ? `body:${key}` : "";
+  }
+
+  captureGradeTableMorphLayout() {
+    const shell = this.refs.gradesTable?.querySelector(".grades-master-table-shell");
+    if (!(shell instanceof HTMLElement)) {
+      return null;
+    }
+    const positions = new Map();
+    shell.querySelectorAll("th[data-grade-transfer-column-key], tbody td[data-grade-column-key]").forEach((cell) => {
+      const key = this.getGradeTableMorphKey(cell);
+      if (!key || positions.has(key)) return;
+      const rect = cell.getBoundingClientRect();
+      positions.set(key, { left: rect.left });
+    });
+    const rect = shell.getBoundingClientRect();
+    return { shell, positions, width: rect.width };
+  }
+
+  stopGradeTableMorph({ preserveCurrentFrame = false } = {}) {
+    const state = this.gradeTableMorphState;
+    if (!state) return;
+    this.gradeTableMorphState = null;
+    window.clearTimeout(state.timer);
+    state.animations.forEach((animation) => {
+      if (preserveCurrentFrame) {
+        try { animation.commitStyles?.(); } catch {
+          // The next render still provides a stable final state.
+        }
+      }
+      try { animation.cancel(); } catch {
+        // Ignore animations that already finished.
+      }
+    });
+    state.oldShell?.remove();
+  }
+
+  runGradeTableMorph(update) {
+    if (typeof update !== "function") {
+      return;
+    }
+    const reduceMotion = typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const canAnimate = typeof Element.prototype.animate === "function";
+    if (reduceMotion || !canAnimate) {
+      this.stopGradeTableMorph();
+      update();
+      return;
+    }
+    this.stopGradeTableMorph({ preserveCurrentFrame: true });
+    const previous = this.captureGradeTableMorphLayout();
+    if (!previous) {
+      update();
+      return;
+    }
+    const oldShell = previous.shell.cloneNode(true);
+    oldShell.classList.add("is-grade-table-transition-old");
+    oldShell.setAttribute("aria-hidden", "true");
+    if ("inert" in oldShell) oldShell.inert = true;
+    oldShell.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
+    oldShell.querySelectorAll("button, input, select, textarea, a").forEach((element) => {
+      element.setAttribute("tabindex", "-1");
+    });
+
+    update();
+
+    const host = this.refs.gradesTable;
+    const nextShell = host?.querySelector(".grades-master-table-shell");
+    if (!(host instanceof HTMLElement) || !(nextShell instanceof HTMLElement)) {
+      return;
+    }
+    host.prepend(oldShell);
+    const nextWidth = nextShell.getBoundingClientRect().width;
+    const revealOffset = nextWidth >= previous.width ? -6 : 6;
+    const panelRect = this.refs.gradesBookPanel?.getBoundingClientRect();
+    const isVisible = (element) => {
+      if (!panelRect) return true;
+      const rect = element.getBoundingClientRect();
+      return rect.right >= panelRect.left && rect.left <= panelRect.right
+        && rect.bottom >= panelRect.top && rect.top <= panelRect.bottom;
     };
+    const duration = 360;
+    const easing = "cubic-bezier(0.16, 1, 0.3, 1)";
+    const animations = [];
+    animations.push(oldShell.animate(
+      [{ opacity: 1 }, { opacity: 0 }],
+      { duration: 190, easing: "ease-out", fill: "both" }
+    ));
+
+    nextShell.querySelectorAll("th[data-grade-transfer-column-key], tbody td[data-grade-column-key]").forEach((cell) => {
+      if (!isVisible(cell)) return;
+      const key = this.getGradeTableMorphKey(cell);
+      if (!key) return;
+      const previousRect = previous.positions.get(key);
+      if (previousRect) {
+        const deltaX = previousRect.left - cell.getBoundingClientRect().left;
+        if (Math.abs(deltaX) < 0.5) return;
+        animations.push(cell.animate(
+          [
+            { transform: `translateX(${deltaX}px)`, opacity: 0.9 },
+            { transform: "translateX(0)", opacity: 1 }
+          ],
+          { duration, easing, fill: "both" }
+        ));
+        return;
+      }
+      animations.push(cell.animate(
+        [
+          {
+            transform: `translateX(${revealOffset}px)`,
+            clipPath: "inset(0 100% 0 0)",
+            opacity: 0
+          },
+          {
+            transform: "translateX(0)",
+            clipPath: "inset(0)",
+            opacity: 1
+          }
+        ],
+        { duration: 300, easing, fill: "both" }
+      ));
+    });
+
+    const cleanup = () => {
+      if (this.gradeTableMorphState?.oldShell !== oldShell) return;
+      this.stopGradeTableMorph();
+    };
+    const timer = window.setTimeout(cleanup, duration + 80);
+    this.gradeTableMorphState = { animations, oldShell, timer };
+    Promise.allSettled(animations.map((animation) => animation.finished)).then(cleanup);
   }
 
   commitVisibleGradesEntryMetadataInputs(root = this.refs.gradesEntryContent) {
@@ -26886,7 +27001,7 @@ class PlannerApp {
     return th;
   }
 
-  buildGradesMasterTable(course, students, groupedAssessments, motion = null, options = {}) {
+  buildGradesMasterTable(course, students, groupedAssessments, options = {}) {
     const model = this.buildGradesTableModel(course, groupedAssessments, options);
     const visibleColumnKeys = new Set(
       model.columns
@@ -26911,11 +27026,6 @@ class PlannerApp {
     const spotlightAssessmentId = Number(options.spotlightAssessmentId || 0);
     const gradeDisplaySystem = this.getCurrentGradeOverviewDisplaySystem();
     const predicateSuffixes = this.getCurrentGradeOverviewPredicateSuffixes();
-    if (motion && (motion.kind === "expand" || motion.kind === "collapse")) {
-      table.classList.add("is-toggle-animating");
-      table.dataset.gradeMotionKind = motion.kind;
-      table.dataset.gradeMotionScope = String(motion.scope || "category");
-    }
     const thead = document.createElement("thead");
     const displayStudents = this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder);
     const studentCount = displayStudents.filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0).length;
@@ -27133,6 +27243,7 @@ class PlannerApp {
         if (column.type === "add") {
           td.className = "grade-add-col";
           applyBodyBoundaryClasses();
+          td.dataset.gradeColumnKey = this.getGradesOverviewTransferColumnKey(column);
           td.textContent = "";
           tr.append(td);
           return;
@@ -27411,12 +27522,10 @@ class PlannerApp {
       return;
     }
 
-    const motion = this.pendingGradeTableMotion;
-    this.pendingGradeTableMotion = null;
     const pendingAutoScrollTarget = !spotlightAssessmentId
       ? this.preparePendingGradesOverviewAutoScroll(course, groupedAssessments, options)
       : null;
-    this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, motion, options));
+    this.refs.gradesTable.append(this.buildGradesMasterTable(course, students, groupedAssessments, options));
     this.updateGradesTableStickyScrollbar();
     this.positionGradesOverviewStickyHeader();
     requestAnimationFrame(() => {

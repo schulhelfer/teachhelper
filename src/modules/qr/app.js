@@ -279,7 +279,7 @@ export function createQrApp({ root = document } = {}) {
     tutorialPreviousTool = ui.toolTabs.find((tab) => tab.getAttribute('aria-selected') === 'true')?.dataset.tool
       || 'generator';
     tutorialDemoActive = true;
-    generatedUrl = 'https://example.com/unterricht';
+    generatedUrl = 'https://www.tagesschau.de/';
     ui.generatorResult?.classList.remove('empty');
     ui.generatorEmpty?.classList.add('hidden');
     ui.qrPreviewShell?.classList.remove('hidden');

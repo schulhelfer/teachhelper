@@ -201,10 +201,7 @@ import {
   const setActiveTab = (tab) => shellController?.setActiveTab(tab);
   const setActiveTabForTutorial = (tab) => {
     els.app?.classList.remove('tutorial-no-tab-selection');
-    shellController?.setActiveTab(tab, { skipUnsavedPrompt: true });
-    if (shellController?.getActiveTab() !== tab) {
-      shellController?.setActiveTabImmediate(tab);
-    }
+    shellController?.setActiveTab(tab, { skipUnsavedPrompt: true, skipAnimation: true });
   };
   const clearTabSelectionForTutorial = () => {
     els.app?.classList.add('tutorial-no-tab-selection');
@@ -1817,7 +1814,7 @@ import {
     },
     {
       title: 'Noten',
-      copy: 'Hier verwaltest du Kurse, Leistungen und Noten. Deine Notendaten kannst du mit einem Passwort schützen.',
+      copy: 'Hier verwaltest du Noten. Deine Notendaten kannst du mit einem Passwort schützen.',
       target: (nodes) => nodes.tabGrades,
       tab: TAB_GRADES,
       placement: 'bottom',
@@ -1857,7 +1854,7 @@ import {
     },
     {
       title: 'Picker',
-      copy: 'Hier wählst du zufällig eine Person aus deiner Namensliste aus.',
+      copy: 'Hier wählst du zufällig eine Person aus einer Namensliste aus.',
       target: (nodes) => nodes.tabRandomPicker,
       tab: TAB_RANDOM_PICKER,
       placement: 'bottom',
@@ -1865,7 +1862,7 @@ import {
     },
     {
       title: 'DuplikatCheck',
-      copy: 'Hier prüfst du eine ZIP-Datei mit Abgaben auf mögliche Duplikate.',
+      copy: 'Hier prüfst du Abgaben auf mögliche Duplikate.',
       target: (nodes) => nodes.tabDuplicateCheck,
       tab: TAB_DUPLICATE_CHECK,
       placement: 'bottom',

@@ -457,17 +457,27 @@ export function createFirstRunTutorial({
 
   function hideResumePrompt() {
     els.firstRunTutorialStart?.classList?.remove('has-tutorial-attention');
-    els.firstRunTutorialStart?.setAttribute?.('aria-label', 'Tutorial starten');
-    if (els.firstRunTutorialStart) {
-      els.firstRunTutorialStart.title = 'Tutorial starten';
-    }
+    setSidebarHelpButtonLabel('Tutorial starten');
+  }
+
+  function setSidebarHelpButtonLabel(label) {
+    if (!els.firstRunTutorialStart) return;
+    els.firstRunTutorialStart.setAttribute('aria-label', label);
+    els.firstRunTutorialStart.dataset.tooltip = label;
+    els.firstRunTutorialStart.removeAttribute('title');
   }
 
   function updateSidebarHelpButton(label) {
     if (!els.firstRunTutorialStart) return;
     els.firstRunTutorialStart.classList.add('has-tutorial-attention');
-    els.firstRunTutorialStart.setAttribute('aria-label', label);
-    els.firstRunTutorialStart.title = label;
+    setSidebarHelpButtonLabel(label);
+  }
+
+  function getActiveModuleName() {
+    const activeTab = String(getActiveTab() || '');
+    const tabButton = Array.from(els.tabNav?.querySelectorAll?.('[data-tab-target]') || [])
+      .find((button) => button.dataset.tabTarget === activeTab);
+    return tabButton?.textContent?.trim() || 'dieses Modul';
   }
 
   function showResumePrompt() {
@@ -483,7 +493,7 @@ export function createFirstRunTutorial({
       return;
     }
     hideResumePrompt();
-    updateSidebarHelpButton('Einführung für aktuelles Modul');
+    updateSidebarHelpButton(`Einführung für ${getActiveModuleName()}`);
   }
 
   function choosePlacement(rect, bubbleRect, preferredPlacement) {
@@ -1041,6 +1051,8 @@ export function createFirstRunTutorial({
       contextual: hasTutorialCompleted(),
     });
   });
+  els.firstRunTutorialStart?.addEventListener('pointerenter', showContextHelp);
+  els.firstRunTutorialStart?.addEventListener('focus', showContextHelp);
 
   window.addEventListener('pagehide', runSessionCleanup);
   window.addEventListener('beforeunload', runSessionCleanup);

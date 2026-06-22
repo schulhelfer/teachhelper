@@ -264,11 +264,11 @@
       --app-header-padding-y: 10px;
       --app-header-padding-x: 14px;
       --chrome-toggle-size: 42px;
-      --chrome-transition-duration: 420ms;
-      --chrome-transition-duration-short: 320ms;
-      --chrome-transition-duration-medium: 360ms;
-      --tab-switch-duration: 150ms;
-      --chrome-transition-ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --chrome-transition-duration: 280ms;
+      --chrome-transition-duration-short: 190ms;
+      --chrome-transition-duration-medium: 240ms;
+      --tab-switch-duration: 100ms;
+      --chrome-transition-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
       --app-header-max-height: 240px;
       --chrome-overlay-clearance: calc(var(--app-header-padding-x) + var(--chrome-toggle-size) + 10px);
       --chrome-floating-top: calc(env(safe-area-inset-top, 0px) + var(--app-shell-padding) + var(--app-header-padding-y));
@@ -280,7 +280,7 @@
       padding: var(--app-shell-padding);
       align-items: stretch;
       position: relative;
-      transition: grid-template-columns var(--chrome-transition-duration) var(--chrome-transition-ease), gap var(--chrome-transition-duration) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
+      transition: grid-template-columns var(--chrome-transition-duration) var(--chrome-transition-ease), grid-template-rows var(--chrome-transition-duration) var(--chrome-transition-ease), gap var(--chrome-transition-duration) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
     .app-header {
@@ -305,7 +305,7 @@
       position: relative;
       z-index: 20;
       transform-origin: top left;
-      transition: max-height var(--chrome-transition-duration) var(--chrome-transition-ease), min-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), row-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), column-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), background-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-medium) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), margin var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
+      transition: max-height var(--chrome-transition-duration) var(--chrome-transition-ease), min-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), row-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), column-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), border-width var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), background-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-medium) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), margin var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
     .app-header-title {
@@ -412,7 +412,7 @@
       min-width: var(--chrome-toggle-size);
       min-height: var(--chrome-toggle-size);
       opacity: 0;
-      transform: translateY(-8px) scale(0.92);
+      transform: translateY(-4px);
       pointer-events: none;
       transition: opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-short) var(--chrome-transition-ease);
     }
@@ -666,6 +666,7 @@
     }
 
     .sidebar-help-button {
+      position: relative;
       display: inline-flex;
       align-items: center;
       justify-content: center;
@@ -675,13 +676,36 @@
       min-height: 30px;
       padding: 0;
       border: 0 !important;
-      border-radius: 0;
+      border-radius: 999px;
       background: transparent !important;
       color: #e2e8f0;
       font-size: 17px;
       line-height: 1;
       box-shadow: none !important;
       filter: none !important;
+      transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+    }
+
+    .sidebar-help-button::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      left: 50%;
+      bottom: calc(100% + 8px);
+      z-index: 1;
+      padding: 6px 9px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 7px;
+      background: #172033;
+      color: #f8fafc;
+      font-size: 12px;
+      font-weight: 600;
+      line-height: 1.25;
+      white-space: nowrap;
+      box-shadow: 0 8px 20px rgba(2, 6, 23, 0.28);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 3px);
+      transition: opacity 140ms ease, transform 140ms ease;
     }
 
     .sidebar-help-button.has-tutorial-attention {
@@ -692,10 +716,18 @@
     .sidebar-help-button:active,
     .sidebar-help-button:focus,
     .sidebar-help-button:focus-visible {
-      background: transparent !important;
+      background: rgba(148, 163, 184, 0.16) !important;
       border-color: transparent !important;
       box-shadow: none !important;
       filter: none !important;
+      color: #fff;
+      transform: translateY(-1px);
+    }
+
+    .sidebar-help-button:hover::after,
+    .sidebar-help-button:focus-visible::after {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
 
     .shell-sidebar-header {
@@ -1518,7 +1550,7 @@
       transform-origin: center center;
       opacity: 0.28;
       transform: scale(0.82);
-      transition: transform 180ms ease, opacity 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+      transition: transform 180ms ease, opacity 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease, min-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), font-size var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
       backdrop-filter: blur(10px);
       -webkit-backdrop-filter: blur(10px);
       justify-self: center;
@@ -1603,7 +1635,7 @@
       background: linear-gradient(135deg, #f97316, #ea580c 42%, #fb923c 100%);
       box-shadow: 0 22px 42px rgba(249, 115, 22, 0.34);
       cursor: pointer;
-      transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, opacity 160ms ease;
+      transition: transform 160ms ease, box-shadow 160ms ease, filter 160ms ease, opacity 160ms ease, min-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), font-size var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
     .random-picker-button:hover {
@@ -1908,7 +1940,7 @@
       gap: 0;
       margin: 0;
       opacity: 0;
-      transform: translateY(-14px) scale(0.985);
+      transform: translateY(-6px);
       pointer-events: none;
       box-shadow: none;
     }
@@ -1918,7 +1950,7 @@
       max-width: 0;
       margin: 0;
       opacity: 0;
-      transform: translateX(-12px);
+      transform: translateX(-4px);
       pointer-events: none;
     }
 
@@ -1926,7 +1958,7 @@
     .app.chrome-collapsed:not(.is-expanding) .app-header-actions {
       gap: 0;
       opacity: 0;
-      transform: translateX(10px);
+      transform: translateX(4px);
     }
 
     .app.is-collapsing #toggle-chrome,
@@ -1939,14 +1971,18 @@
     .app.is-expanding .chrome-overlay-toggle,
     .app.chrome-collapsed:not(.is-expanding) .chrome-overlay-toggle {
       opacity: 1;
-      transform: translateY(0) scale(1);
+      transform: translateY(0);
+    }
+
+    .app.is-collapsing .chrome-overlay-toggle {
+      transition-delay: 60ms, 60ms, 0ms;
     }
 
     .app.is-collapsing .manual-header-save-btn,
     .app.is-expanding .manual-header-save-btn {
       opacity: 0 !important;
       pointer-events: none !important;
-      transform: translateX(-8px) scale(0.96) !important;
+      transform: translateX(-4px) !important;
     }
 
     .app.chrome-collapsed:not(.is-expanding) .chrome-overlay-toggle {
@@ -1955,8 +1991,9 @@
 
     .app.is-expanding .chrome-overlay-toggle {
       opacity: 0;
-      transform: translateY(-8px) scale(0.92);
+      transform: translateY(-4px);
       pointer-events: none;
+      transition-delay: 0ms;
     }
 
     .app.is-collapsing .tab-nav,
@@ -1967,7 +2004,7 @@
       margin-left: 0;
       opacity: 0;
       gap: 0;
-      transform: translateY(-10px) scale(0.98);
+      transform: translateY(-5px);
       pointer-events: none;
     }
 
@@ -1979,7 +2016,7 @@
       padding: 0;
       border-color: transparent;
       opacity: 0;
-      transform: translateX(-18px) scaleX(0.96);
+      transform: translateX(-6px);
       pointer-events: none;
       overflow: hidden;
     }
@@ -1987,7 +2024,7 @@
     .app.is-collapsing>.side>*,
     .app.chrome-collapsed:not(.is-expanding)>.side>* {
       opacity: 0;
-      transform: translateX(-16px);
+      transform: translateX(-4px);
     }
 
     .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker {
@@ -2031,19 +2068,19 @@
     .app.is-collapsing.app-tab-groups #groups-main-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-main-host {
       opacity: 1;
-      transform: translateX(0) scale(1);
+      transform: translateX(0);
     }
 
     .app.is-collapsing.app-tab-groups #groups-main-host .groups-grid-wrap,
     .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-main-host .groups-grid-wrap {
-      transform: translateX(0) scale(1);
+      transform: translateX(0);
       filter: none;
     }
 
     .app.is-collapsing.app-tab-seatplan #seatplan-main-host .grid-wrap,
     .app.chrome-collapsed:not(.is-expanding).app-tab-seatplan #seatplan-main-host .grid-wrap {
-      transform: translateX(10px) scale(0.992);
-      filter: saturate(0.97);
+      transform: translateX(4px);
+      filter: none;
     }
 
     .app.is-collapsing.app-tab-random-picker #random-picker-host,
@@ -2056,7 +2093,7 @@
       min-height: 100%;
       overflow: auto;
       opacity: 1;
-      transform: translateX(0) scale(1);
+      transform: translateX(0);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-shell,
@@ -2069,7 +2106,7 @@
       min-height: fit-content;
       padding: calc(18px + var(--chrome-toggle-size) + 14px) 20px 52px;
       overflow: visible;
-      transform: translateX(8px) scale(0.994);
+      transform: translateX(3px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-stage,
@@ -2083,7 +2120,7 @@
       min-width: 0;
       min-height: 0;
       width: min(100%, 700px);
-      transform: translateY(-4px) scale(0.992);
+      transform: translateY(-2px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-machine,
@@ -2093,7 +2130,7 @@
       height: auto;
       padding: 14px;
       justify-self: center;
-      transform: translateY(-6px) scale(0.986);
+      transform: translateY(-3px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-wheel,
@@ -2104,31 +2141,60 @@
       transform: translateY(-2px);
     }
 
+    .app.is-collapsing.app-tab-random-picker .random-picker-card,
     .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-card {
       min-height: 52px;
       padding: 10px 14px;
       font-size: clamp(15px, 1.8vw, 21px);
     }
 
+    .app.is-collapsing.app-tab-random-picker .random-picker-button,
     .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-button {
       min-height: 72px;
       font-size: clamp(22px, 2.4vw, 30px);
     }
 
-    .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-collapsed-start {
+    .app.app-tab-random-picker .random-picker-collapsed-start {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(-4px);
+      transition: opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), visibility 0s linear var(--chrome-transition-duration-short);
     }
 
-    .app.chrome-collapsed:not(.is-expanding).app-tab-groups .groups-collapsed-suggest {
+    .app.app-tab-groups .groups-collapsed-suggest {
       display: inline-flex;
       align-items: center;
       justify-content: center;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(-4px);
+      transition: opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), visibility 0s linear var(--chrome-transition-duration-short);
+    }
+
+    .app.is-collapsing.app-tab-random-picker .random-picker-collapsed-start,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-collapsed-start,
+    .app.is-collapsing.app-tab-groups .groups-collapsed-suggest,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-groups .groups-collapsed-suggest {
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      transition-delay: 60ms, 60ms, 0ms;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-collapsed-start,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-groups .groups-collapsed-suggest {
+      pointer-events: auto;
     }
 
     .work-phase-collapsed-action {
-      display: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
       position: fixed;
       overflow: hidden;
       width: var(--chrome-toggle-size);
@@ -2138,6 +2204,11 @@
       border-radius: 16px;
       font-size: calc(var(--chrome-toggle-size) * 0.52);
       line-height: 1;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transform: translateY(-4px);
+      transition: opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), visibility 0s linear var(--chrome-transition-duration-short);
     }
 
     .work-phase-collapsed-action.work-phase-collapsed-stop {
@@ -2152,10 +2223,16 @@
       top: calc(var(--chrome-floating-top) + (var(--chrome-toggle-size) * 2) + 20px);
     }
 
+    .app.is-collapsing.app-tab-work-phase .work-phase-collapsed-action,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-phase-collapsed-action {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
+      opacity: 1;
+      visibility: visible;
+      transform: translateY(0);
+      transition-delay: 60ms, 60ms, 0ms;
+    }
+
+    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-phase-collapsed-action {
+      pointer-events: auto;
     }
 
     .work-phase-collapsed-action.is-off::after {
@@ -2341,7 +2418,7 @@
 
     .app.is-collapsing.app-tab-work-phase .work-order-shell,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-order-shell {
-      transform: translateY(-4px) scale(0.995);
+      transform: translateY(-2px);
     }
 
     .app.is-collapsing.app-tab-work-phase .monitor-shell,
@@ -4995,7 +5072,8 @@
     .tutorial-next-button:focus-visible,
     .sidebar-help-button:focus,
     .sidebar-help-button:focus-visible {
-      outline: none;
+      outline: 2px solid color-mix(in srgb, var(--accent) 72%, white 28%);
+      outline-offset: 2px;
     }
 
     @keyframes tutorial-bubble-pop {
@@ -5408,7 +5486,30 @@
       }
     }
 
+    @keyframes chrome-mobile-layout-blend {
+      0%,
+      100% {
+        opacity: 0;
+      }
+
+      42% {
+        opacity: 0.12;
+      }
+    }
+
     @media (max-width:980px) {
+      .app.is-collapsing::after,
+      .app.is-expanding::after {
+        content: '';
+        position: fixed;
+        inset: 0;
+        z-index: 19;
+        background: var(--bg);
+        opacity: 0;
+        pointer-events: none;
+        animation: chrome-mobile-layout-blend var(--chrome-transition-duration) var(--chrome-transition-ease);
+      }
+
       .app {
         grid-template-columns: 1fr;
         height: auto;
@@ -5702,6 +5803,11 @@
     }
 
     @media (prefers-reduced-motion: reduce) {
+
+      .app.is-collapsing::after,
+      .app.is-expanding::after {
+        animation: none !important;
+      }
 
       .app,
       .app-header,
@@ -6059,7 +6165,7 @@
 
     <div class="sidebar-footer" aria-label="Hilfe">
       <button id="first-run-tutorial-start" class="ghost sidebar-help-button" type="button"
-        aria-label="Tutorial starten" title="Tutorial starten">ℹ️</button>
+        aria-label="Tutorial starten" data-tooltip="Tutorial starten">ℹ️</button>
     </div>
 
     <main class="main">

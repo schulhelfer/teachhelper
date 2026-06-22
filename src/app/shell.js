@@ -254,15 +254,14 @@ export function createShellController({
 
   function getTabSwitchDuration() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return isIOSDevice ? 120 : 150;
+      return 100;
     }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return 1;
     }
     const styleHost = els.app || document.documentElement;
     const computed = window.getComputedStyle(styleHost);
-    const resolved = parseCssTimeToMs(computed.getPropertyValue('--tab-switch-duration')) || 150;
-    return isIOSDevice ? Math.min(120, resolved) : resolved;
+    return parseCssTimeToMs(computed.getPropertyValue('--tab-switch-duration')) || 100;
   }
 
   function collectRenderedTabRegions() {
@@ -315,7 +314,7 @@ export function createShellController({
 
   function getChromeTransitionDuration() {
     if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return isIOSDevice ? 220 : 460;
+      return 320;
     }
     if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
       return 1;
@@ -327,8 +326,8 @@ export function createShellController({
       computed.getPropertyValue('--chrome-transition-duration-medium'),
       computed.getPropertyValue('--chrome-transition-duration-short'),
     ].map(parseCssTimeToMs).filter((duration) => duration > 0);
-    const resolved = (durations.length ? Math.max(...durations) : 420) + 40;
-    return isIOSDevice ? Math.min(220, resolved) : resolved;
+    const resolved = (durations.length ? Math.max(...durations) : 280) + 40;
+    return resolved;
   }
 
   function setChromeRegionVisibility(hidden) {
@@ -427,6 +426,7 @@ export function createShellController({
       els.app.classList.remove('is-collapsing', 'is-expanding');
       els.app.classList.toggle('chrome-collapsed', collapsed);
     }
+    updateChromeToggleUI();
     applyChromeVisibility(collapsed);
     renderPlanningManualSaveButton();
     refreshLayouts();
@@ -446,7 +446,7 @@ export function createShellController({
     setTimeout(callback, 0);
   }
 
-  function updateChromeToggleUI() {
+  function updateChromeToggleUI({ preserveHeaderIcon = false, preserveOverlayIcon = false } = {}) {
     const label = state.chromeCollapsed
       ? 'Randleiste anzeigen'
       : 'Hauptansicht im Vollbild';
@@ -455,6 +455,12 @@ export function createShellController({
       button.setAttribute('aria-pressed', state.chromeCollapsed ? 'true' : 'false');
       button.setAttribute('aria-label', label);
       button.setAttribute('title', label);
+      if (
+        (button === els.chromeToggle && preserveHeaderIcon)
+        || (button === els.chromeOverlayToggle && preserveOverlayIcon)
+      ) {
+        return;
+      }
       button.innerHTML = state.chromeCollapsed
         ? CHROME_TOGGLE_EXPAND_ICON
         : CHROME_TOGGLE_COLLAPSE_ICON;
@@ -527,13 +533,16 @@ export function createShellController({
       return;
     }
     state.chromeCollapsed = nextCollapsed;
-    updateChromeToggleUI();
     if (!els.app) {
+      updateChromeToggleUI();
       applyChromeVisibility(nextCollapsed);
       renderPlanningManualSaveButton();
       refreshLayouts();
       return;
     }
+    updateChromeToggleUI(nextCollapsed
+      ? { preserveHeaderIcon: true }
+      : { preserveOverlayIcon: true });
     clearChromeTransitionTimer();
     setChromeRegionVisibility(false);
     setChromeHeaderVisibility(false);
@@ -585,11 +594,15 @@ export function createShellController({
       });
       return;
     }
-    const planningTabActive = state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES;
-    const planningTabNext = nextTab === TAB_PLANNING || nextTab === TAB_GRADES;
-    const skipAnimatedTabSwitch = nextTab === TAB_GROUPS
-      || state.activeTab === TAB_GROUPS
-      || (planningTabActive && planningTabNext);
+    if (options.skipAnimation) {
+      state.pendingTabTransitionTarget = null;
+      state.activeTab = nextTab;
+      ensureTabInitialized(state.activeTab);
+      renderTabs();
+      refreshLayouts();
+      finishTabTransition();
+      return;
+    }
     if (state.tabTransitionState !== 'idle') {
       state.pendingTabTransitionTarget = nextTab;
       return;
@@ -602,7 +615,7 @@ export function createShellController({
     }
     const transitionDuration = getTabSwitchDuration();
     const currentRegions = collectRenderedTabRegions();
-    if (skipAnimatedTabSwitch || !currentRegions.length || transitionDuration <= 1) {
+    if (!currentRegions.length || transitionDuration <= 1) {
       state.activeTab = nextTab;
       ensureTabInitialized(state.activeTab);
       renderTabs();

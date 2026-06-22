@@ -1798,6 +1798,7 @@
         }
 
         .header-glass {
+          margin-left: 0;
           padding: calc(var(--app-header-padding-y, 10px) * var(--week-header-scale, 1)) calc(var(--app-header-padding-x, 14px) * var(--week-header-scale, 1));
           min-height: calc((var(--chrome-toggle-size, 42px) + (var(--app-header-padding-y, 10px) * 2)) * var(--week-header-scale, 1));
           display: flex;
@@ -1809,6 +1810,11 @@
           box-shadow: none;
           backdrop-filter: none;
           -webkit-backdrop-filter: none;
+          transition: margin-left 360ms cubic-bezier(0.22, 1, 0.36, 1);
+        }
+
+        html[data-shell-collapsed="true"] .header-glass {
+          margin-left: calc(env(safe-area-inset-left, 0px) + var(--app-header-padding-x, 14px) + var(--chrome-toggle-size, 42px) + 10px);
         }
 
         .round-btn {
@@ -5556,18 +5562,19 @@
         }
 
         .grades-book-panel {
+          --grades-course-scrollbar-size: 17px;
           position: relative;
           min-height: 0;
           overflow-x: visible;
           overflow-y: auto;
-          scrollbar-width: thin;
+          scrollbar-width: auto;
           scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
           -ms-overflow-style: auto;
         }
 
         .grades-book-panel::-webkit-scrollbar {
-          width: var(--scrollbar-size);
-          height: var(--scrollbar-size);
+          width: var(--grades-course-scrollbar-size);
+          height: var(--grades-course-scrollbar-size);
           display: block;
         }
 
@@ -5761,10 +5768,10 @@
           z-index: 12;
           width: 100%;
           max-width: 100%;
-          height: var(--scrollbar-size);
+          height: var(--grades-course-scrollbar-size);
           overflow-x: auto;
           overflow-y: hidden;
-          scrollbar-width: thin;
+          scrollbar-width: auto;
           scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
           -ms-overflow-style: auto;
           background: rgba(24, 31, 43, 0.96);
@@ -5781,8 +5788,8 @@
         }
 
         .grades-table-sticky-scrollbar::-webkit-scrollbar {
-          width: var(--scrollbar-size);
-          height: var(--scrollbar-size);
+          width: var(--grades-course-scrollbar-size);
+          height: var(--grades-course-scrollbar-size);
           display: block;
         }
 
@@ -5803,10 +5810,21 @@
         }
 
         .grades-table {
+          position: relative;
           display: grid;
           gap: 0.75rem;
           min-width: 100%;
           width: max-content;
+        }
+
+        .grades-master-table-shell.is-grade-table-transition-old {
+          position: absolute;
+          top: 0;
+          left: 0;
+          z-index: 20;
+          margin: 0;
+          pointer-events: none;
+          user-select: none;
         }
 
         .grades-total-table,
@@ -5925,7 +5943,7 @@
           max-width: fit-content;
           z-index: 6;
           background: var(--grades-master-sticky-student-bg);
-          background-clip: padding-box;
+          background-clip: border-box;
           box-shadow:
             var(--grade-cell-shadow),
             var(--grades-master-sticky-student-shadow);
@@ -6057,6 +6075,7 @@
         .grades-master-table thead {
           position: relative;
           z-index: 10;
+          clip-path: inset(0);
           transform: translateY(var(--grades-overview-header-offset, 0px));
           will-change: transform;
         }
@@ -6064,8 +6083,8 @@
         .grades-master-table thead th {
           position: relative;
           z-index: 10;
-          background: rgba(24, 31, 43, 0.99);
-          background-clip: padding-box;
+          background: rgb(24, 31, 43);
+          background-clip: border-box;
         }
 
         .grades-master-table thead th.student-col {
@@ -6094,7 +6113,7 @@
         .grades-master-table th.grade-subcategory-head,
         .grades-master-table th.grade-category-collapsed-head,
         .grades-master-table th.grade-subcategory-collapsed-head {
-          background: rgba(24, 31, 43, 0.99);
+          background: rgb(24, 31, 43);
         }
 
         .grades-master-table th.grade-category-head,
@@ -6103,7 +6122,7 @@
         }
 
         .grades-master-table th.grade-period-head {
-          background: rgba(24, 31, 43, 0.99);
+          background: rgb(24, 31, 43);
           font-weight: 800;
           letter-spacing: 0.02em;
           text-align: left;
@@ -6264,7 +6283,7 @@
         .grades-master-table thead th.grade-assessment-col.is-lesson-spotlight {
           background:
             linear-gradient(180deg, rgba(82, 150, 255, 0.22), rgba(82, 150, 255, 0.12)),
-            rgba(24, 31, 43, 0.96);
+            rgb(24, 31, 43);
         }
 
         .grades-master-table th.grade-assessment-col.is-lesson-spotlight .grade-assessment-label,
@@ -6348,17 +6367,17 @@
         }
 
         .grades-master-table th.grade-category-partial-col.is-merged-head {
-          background: rgba(24, 31, 43, 0.99);
+          background: rgb(24, 31, 43);
           padding: 0.18rem 0.18rem;
         }
 
         .grades-master-table th.grade-subcategory-partial-col.is-merged-head {
-          background: rgba(24, 31, 43, 0.99);
+          background: rgb(24, 31, 43);
           padding: 0.18rem 0.18rem;
         }
 
         .grades-master-table th.grade-homework-col.is-merged-head {
-          background: rgba(19, 45, 34, 0.98);
+          background: rgb(19, 45, 34);
           color: rgba(220, 252, 231, 0.95);
           padding: 0.18rem 0.28rem;
           letter-spacing: 0.04em;
@@ -6373,7 +6392,11 @@
           padding-inline: 0.12rem;
           max-width: none;
           text-align: center;
-          background: rgba(24, 31, 43, 0.99);
+          background: rgb(24, 31, 43);
+        }
+
+        .grades-master-table thead th.grade-total-col {
+          background: rgb(24, 31, 43);
         }
 
         .grades-master-table td.grade-category-collapsed-col,
@@ -7003,7 +7026,7 @@
         }
 
         .grades-master-group-button:active {
-          transform: translateY(0.5px) scale(0.996);
+          transform: translateY(0.5px);
         }
 
         .grades-master-group-label {
@@ -7041,69 +7064,6 @@
           white-space: nowrap;
         }
 
-        @keyframes gradeTableExpandReveal {
-          from {
-            opacity: 0.48;
-            filter: blur(1.4px) saturate(0.95);
-            transform: translateY(-7px) scale(0.992);
-          }
-
-          62% {
-            opacity: 0.96;
-            filter: blur(0.2px) saturate(0.99);
-            transform: translateY(0.5px) scale(1.001);
-          }
-
-          to {
-            opacity: 1;
-            filter: blur(0) saturate(1);
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        @keyframes gradeTableCollapseReveal {
-          from {
-            opacity: 0.58;
-            filter: blur(1px) saturate(0.965);
-            transform: translateY(5px) scale(0.994);
-          }
-
-          58% {
-            opacity: 0.94;
-            filter: blur(0.15px) saturate(0.992);
-            transform: translateY(0.4px) scale(1.001);
-          }
-
-          to {
-            opacity: 1;
-            filter: blur(0) saturate(1);
-            transform: translateY(0) scale(1);
-          }
-        }
-
-        .grades-master-table.is-toggle-animating {
-          will-change: transform, opacity, filter;
-          transform-origin: left top;
-          backface-visibility: hidden;
-        }
-
-        .grades-master-table.is-toggle-animating[data-grade-motion-kind="expand"] {
-          animation: gradeTableExpandReveal 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
-
-        .grades-master-table.is-toggle-animating[data-grade-motion-kind="collapse"] {
-          animation: gradeTableCollapseReveal 360ms cubic-bezier(0.16, 1, 0.3, 1) both;
-        }
-
-        .grades-master-table.is-toggle-animating[data-grade-motion-scope="period"] {
-          transform-origin: left top;
-        }
-
-        .grades-master-table.is-toggle-animating[data-grade-motion-scope="category"],
-        .grades-master-table.is-toggle-animating[data-grade-motion-scope="subcategory"] {
-          transform-origin: left center;
-        }
-
         .grades-master-group-meta {
           font-size: 0.75rem;
           color: rgba(226, 232, 240, 0.72);
@@ -7135,7 +7095,7 @@
           --grades-master-assessment-col-min-width: var(--grade-cell-control-box-width);
           --grades-master-homework-col-min-width: var(--grade-cell-control-box-width);
           --grades-master-override-col-min-width: var(--grade-cell-control-box-width);
-          --grades-master-sticky-student-bg: rgba(24, 31, 43, 0.995);
+          --grades-master-sticky-student-bg: rgb(24, 31, 43);
           --grades-master-sticky-student-shadow:
             10px 0 18px rgba(15, 23, 42, 0.22),
             inset -1px 0 0 rgba(148, 163, 184, 0.18);
