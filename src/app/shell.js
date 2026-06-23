@@ -304,6 +304,7 @@ export function createShellController({
       return;
     }
     state.pendingTabTransitionTarget = null;
+    renderPlanningGradeVaultUnlockButton();
   }
 
   function clearChromeTransitionTimer() {
@@ -373,6 +374,25 @@ export function createShellController({
     els.chromeOverlayToggle.setAttribute('aria-hidden', 'true');
   }
 
+  function setTutorialEntryVisibility(visible) {
+    const isVisible = Boolean(visible);
+    if (els.sidebarFooter) {
+      els.sidebarFooter.hidden = !isVisible;
+      els.sidebarFooter.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+      if ('inert' in els.sidebarFooter) {
+        els.sidebarFooter.inert = !isVisible;
+      }
+    }
+    if (!els.firstRunTutorialStart) return;
+    els.firstRunTutorialStart.disabled = !isVisible;
+    els.firstRunTutorialStart.setAttribute('aria-hidden', isVisible ? 'false' : 'true');
+    if (isVisible) {
+      els.firstRunTutorialStart.removeAttribute('tabindex');
+    } else {
+      els.firstRunTutorialStart.setAttribute('tabindex', '-1');
+    }
+  }
+
   function focusChromeControl(target) {
     if (!target || target.hidden || target.disabled) return false;
     try {
@@ -391,7 +411,9 @@ export function createShellController({
     const active = document.activeElement;
     if (!(active instanceof Element)) return;
     const hiddenContainers = [els.appHeader, els.tabNav, els.sidePanel].filter(Boolean);
-    const shouldMoveFocus = hiddenContainers.some((container) => container.contains(active));
+    const shouldMoveFocus = hiddenContainers.some((container) => container.contains(active))
+      || active === els.firstRunTutorialStart
+      || Boolean(els.sidebarFooter?.contains(active));
     if (!shouldMoveFocus) return;
     if (focusChromeControl(els.chromeOverlayToggle)) return;
     active.blur?.();
@@ -409,12 +431,14 @@ export function createShellController({
     if (collapsed) {
       setChromeOverlayVisibility(true, true);
       moveFocusOutOfChromeBeforeHide();
+      setTutorialEntryVisibility(false);
       setChromeRegionVisibility(true);
       setChromeHeaderVisibility(true);
       return;
     }
     setChromeRegionVisibility(false);
     setChromeHeaderVisibility(false);
+    setTutorialEntryVisibility(true);
     moveFocusOutOfChromeOverlayBeforeHide();
     setChromeOverlayVisibility(false, false);
   }
@@ -428,6 +452,7 @@ export function createShellController({
     }
     updateChromeToggleUI();
     applyChromeVisibility(collapsed);
+    renderPlanningGradeVaultUnlockButton();
     renderPlanningManualSaveButton();
     refreshLayouts();
   }
@@ -547,6 +572,7 @@ export function createShellController({
     setChromeRegionVisibility(false);
     setChromeHeaderVisibility(false);
     setChromeOverlayVisibility(true, nextCollapsed);
+    setTutorialEntryVisibility(false);
     renderPlanningManualSaveButton();
     if (nextCollapsed) {
       state.chromeTransitionState = 'collapsing';

@@ -2,6 +2,11 @@
   --canvas: #0f172a;
   --glass: rgba(17, 24, 39, 0.74);
   --glass-strong: rgba(30, 41, 59, 0.86);
+  --module-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.76), rgba(15, 23, 42, 0.68));
+  --module-surface-strong: linear-gradient(180deg, rgba(20, 28, 40, 0.84), rgba(15, 23, 42, 0.76));
+  --module-surface-border: rgba(148, 163, 184, 0.16);
+  --module-surface-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
+  --module-surface-radius: 20px;
   --sidebar-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.78), rgba(15, 23, 42, 0.7));
   --sidebar-border: rgba(148, 163, 184, 0.16);
   --sidebar-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
@@ -19,6 +24,20 @@
   --scrollbar-track: rgba(15, 23, 42, 0.14);
   --scrollbar-thumb: rgba(148, 163, 184, 0.55);
   --scrollbar-thumb-hover: rgba(148, 163, 184, 0.78);
+  --control-bg: rgba(28, 36, 48, 0.85);
+  --control-bg-focus: rgba(34, 42, 54, 0.95);
+  --control-border: rgba(148, 163, 184, 0.32);
+  --control-radius: 12px;
+  --control-height: 42px;
+  --button-bg: linear-gradient(180deg, rgba(71, 85, 105, 0.96), rgba(51, 65, 85, 0.96));
+  --button-bg-hover: linear-gradient(180deg, rgba(82, 96, 116, 0.98), rgba(59, 73, 94, 0.98));
+  --button-border: rgba(148, 163, 184, 0.35);
+  --button-shadow: 0 8px 20px rgba(15, 23, 42, 0.34);
+  --focus-border: rgba(226, 232, 240, 0.54);
+  --focus-outline: rgba(226, 232, 240, 0.62);
+  --focus-ring: 0 0 0 3px rgba(226, 232, 240, 0.18);
+  --highlight-neutral: rgba(226, 232, 240, 0.62);
+  --highlight-neutral-soft: rgba(226, 232, 240, 0.12);
   color-scheme: dark;
 }
 
@@ -71,7 +90,9 @@ body {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
@@ -80,6 +101,24 @@ input {
   -moz-user-select: text;
   -ms-user-select: text;
   user-select: text;
+}
+
+button:disabled {
+  cursor: default;
+  opacity: 0.55;
+  filter: grayscale(18%);
+}
+
+button:focus-visible,
+input:focus,
+input:focus-visible,
+select:focus,
+select:focus-visible,
+textarea:focus,
+textarea:focus-visible {
+  outline: none;
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
 }
 
 .duplicate-check-runtime-root {
@@ -107,7 +146,7 @@ input {
   padding: 14px 22px 22px 14px;
   background: var(--sidebar-surface);
   border: 1px solid var(--sidebar-border);
-  border-radius: 20px;
+  border-radius: var(--module-surface-radius);
   box-shadow: var(--sidebar-shadow);
   backdrop-filter: saturate(145%) blur(12px);
   -webkit-backdrop-filter: saturate(145%) blur(12px);
@@ -199,8 +238,8 @@ p {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: center;
   gap: 12px;
-  border: 1px solid color-mix(in srgb, var(--line) 72%, transparent);
-  border-radius: 14px;
+  border: 1px solid var(--button-border);
+  border-radius: var(--control-radius);
   background: color-mix(in srgb, var(--glass) 58%, transparent);
   color: var(--muted);
   font: inherit;
@@ -215,6 +254,7 @@ p {
 .rule-toggle:hover:not(.active) {
   color: var(--text);
   background: color-mix(in srgb, var(--glass) 82%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--button-border));
 }
 
 .rule-toggle.active {
@@ -302,7 +342,13 @@ p {
 }
 
 .drop:hover,
-.drop:focus-visible,
+.drop:focus-visible {
+  border-color: var(--focus-border);
+  background: linear-gradient(180deg, rgba(148, 163, 184, 0.12), var(--drop));
+  box-shadow: 0 0 0 3px var(--highlight-neutral-soft), var(--inner);
+  transform: translateY(-1px) scale(1.003);
+}
+
 .drop.drag-over {
   border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 55%, var(--drop)), var(--drop));
@@ -352,10 +398,12 @@ p {
   overflow: auto;
   display: block;
   padding: clamp(16px, 2vw, 22px);
-  border-radius: 18px;
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  background: color-mix(in srgb, var(--glass) 84%, transparent);
-  box-shadow: var(--inner);
+  border-radius: var(--module-surface-radius);
+  border: 1px solid var(--module-surface-border);
+  background: var(--module-surface);
+  box-shadow: var(--module-surface-shadow);
+  backdrop-filter: saturate(145%) blur(12px);
+  -webkit-backdrop-filter: saturate(145%) blur(12px);
 }
 
 .result-panel[hidden] {
@@ -554,10 +602,12 @@ p {
   max-height: min(920px, 100%);
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  border: 1px solid color-mix(in srgb, var(--line) 88%, transparent);
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--glass-strong) 94%, var(--canvas));
-  box-shadow: 0 24px 80px rgba(2, 6, 23, 0.42), var(--inner);
+  border: 1px solid var(--module-surface-border);
+  border-radius: var(--module-surface-radius);
+  background: var(--module-surface-strong);
+  box-shadow: var(--module-surface-shadow);
+  backdrop-filter: saturate(145%) blur(12px);
+  -webkit-backdrop-filter: saturate(145%) blur(12px);
   overflow: hidden;
 }
 
@@ -613,7 +663,7 @@ p {
 .preview-nav-button:focus-visible,
 .preview-close-button:hover,
 .preview-close-button:focus-visible {
-  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
+  border-color: var(--focus-border);
   outline: none;
 }
 

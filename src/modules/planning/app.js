@@ -7073,6 +7073,10 @@ class PlannerApp {
       portal: null,
       anchor: null
     };
+    this.gradeTooltipState = {
+      portal: null,
+      anchor: null
+    };
     this.gradesTitleDatePickerState = {
       open: false,
       input: null,
@@ -15371,6 +15375,171 @@ class PlannerApp {
     });
   }
 
+  getGradeTooltipAnchor(eventTarget) {
+    const node = eventTarget instanceof HTMLElement
+      ? eventTarget.closest("[data-grade-tooltip]")
+      : null;
+    if (!(node instanceof HTMLElement)) {
+      return null;
+    }
+    if (
+      node.classList.contains("grade-total-button")
+      || node.classList.contains("grade-cell-display-button")
+      || node.classList.contains("grade-test-ratio-value")
+    ) {
+      return node;
+    }
+    return null;
+  }
+
+  ensureGradeTooltipPortal() {
+    if (this.gradeTooltipState.portal?.isConnected) {
+      return this.gradeTooltipState.portal;
+    }
+    const portal = document.createElement("div");
+    portal.className = "grade-tooltip-portal";
+    portal.setAttribute("role", "tooltip");
+    portal.setAttribute("aria-hidden", "true");
+    document.body.append(portal);
+    this.gradeTooltipState.portal = portal;
+    return portal;
+  }
+
+  showGradeTooltip(anchor) {
+    if (!(anchor instanceof HTMLElement) || !anchor.isConnected) {
+      return;
+    }
+    const tooltip = String(anchor.getAttribute("data-grade-tooltip") || "").trim();
+    if (!tooltip) {
+      this.hideGradeTooltip();
+      return;
+    }
+    const portal = this.ensureGradeTooltipPortal();
+    portal.textContent = tooltip;
+    portal.classList.toggle("is-grade-near-better", anchor.classList.contains("is-grade-near-better"));
+    portal.setAttribute("aria-hidden", "false");
+    portal.classList.add("is-visible");
+    this.gradeTooltipState.anchor = anchor;
+    this.positionGradeTooltip();
+  }
+
+  hideGradeTooltip(anchor = null) {
+    if (anchor && this.gradeTooltipState.anchor && anchor !== this.gradeTooltipState.anchor) {
+      return;
+    }
+    const portal = this.gradeTooltipState.portal;
+    this.gradeTooltipState.anchor = null;
+    if (!portal) {
+      return;
+    }
+    portal.classList.remove("is-visible", "is-grade-near-better");
+    portal.setAttribute("aria-hidden", "true");
+  }
+
+  positionGradeTooltip() {
+    const portal = this.gradeTooltipState.portal;
+    const anchor = this.gradeTooltipState.anchor;
+    if (!portal || !(anchor instanceof HTMLElement) || !anchor.isConnected) {
+      this.hideGradeTooltip();
+      return;
+    }
+    const tooltip = String(anchor.getAttribute("data-grade-tooltip") || "").trim();
+    if (!tooltip) {
+      this.hideGradeTooltip();
+      return;
+    }
+    const margin = 8;
+    const gap = 10;
+    const anchorRect = anchor.getBoundingClientRect();
+    if (anchorRect.width <= 0 || anchorRect.height <= 0) {
+      this.hideGradeTooltip();
+      return;
+    }
+    portal.style.left = "0px";
+    portal.style.top = "0px";
+    const tooltipRect = portal.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+    const preferSide = anchor.classList.contains("grade-total-button");
+    const placements = preferSide
+      ? ["right", "left", "below", "above"]
+      : ["below", "above", "right", "left"];
+    const fits = {
+      right: viewportWidth - anchorRect.right >= tooltipRect.width + gap + margin,
+      left: anchorRect.left >= tooltipRect.width + gap + margin,
+      below: viewportHeight - anchorRect.bottom >= tooltipRect.height + gap + margin,
+      above: anchorRect.top >= tooltipRect.height + gap + margin
+    };
+    const placement = placements.find((item) => fits[item]) || placements[0];
+    let left;
+    let top;
+    if (placement === "right") {
+      left = anchorRect.right + gap;
+      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
+    } else if (placement === "left") {
+      left = anchorRect.left - tooltipRect.width - gap;
+      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
+    } else if (placement === "above") {
+      left = anchorRect.left + (anchorRect.width / 2) - (tooltipRect.width / 2);
+      top = anchorRect.top - tooltipRect.height - gap;
+    } else {
+      left = anchorRect.left + (anchorRect.width / 2) - (tooltipRect.width / 2);
+      top = anchorRect.bottom + gap;
+    }
+    left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
+    top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
+    portal.dataset.placement = placement;
+    portal.style.left = `${Math.round(left)}px`;
+    portal.style.top = `${Math.round(top)}px`;
+  }
+
+  bindGradeTooltipEvents() {
+    document.addEventListener("pointerover", (event) => {
+      const anchor = this.getGradeTooltipAnchor(event.target);
+      if (anchor) {
+        this.showGradeTooltip(anchor);
+      }
+    });
+    document.addEventListener("pointerout", (event) => {
+      const anchor = this.getGradeTooltipAnchor(event.target);
+      if (!anchor) {
+        return;
+      }
+      const related = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+      if (related && anchor.contains(related)) {
+        return;
+      }
+      this.hideGradeTooltip(anchor);
+    });
+    document.addEventListener("focusin", (event) => {
+      const anchor = this.getGradeTooltipAnchor(event.target);
+      if (anchor) {
+        this.showGradeTooltip(anchor);
+      }
+    });
+    document.addEventListener("focusout", (event) => {
+      const anchor = this.getGradeTooltipAnchor(event.target);
+      if (!anchor) {
+        return;
+      }
+      const related = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
+      if (related && anchor.contains(related)) {
+        return;
+      }
+      this.hideGradeTooltip(anchor);
+    });
+    window.addEventListener("scroll", () => {
+      if (this.gradeTooltipState.anchor) {
+        this.positionGradeTooltip();
+      }
+    }, true);
+    window.addEventListener("resize", () => {
+      if (this.gradeTooltipState.anchor) {
+        this.positionGradeTooltip();
+      }
+    });
+  }
+
   bindEvents() {
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("contextmenu", (event) => {
@@ -15449,6 +15618,7 @@ class PlannerApp {
       });
     }
     this.bindGradeTestScaleTooltipEvents();
+    this.bindGradeTooltipEvents();
 
     this.refs.viewWeekBtn.addEventListener("click", () => {
       this.switchView("week");
@@ -23884,25 +24054,36 @@ class PlannerApp {
     if (!panelRect.width || !panelRect.height || !rowRect.width || !rowRect.height) {
       return;
     }
+    const header = this.refs.gradesTable?.querySelector(".grades-master-table thead");
+    const headerRect = header instanceof HTMLElement ? header.getBoundingClientRect() : null;
+    const headerBottom = headerRect && headerRect.width && headerRect.height
+      ? Math.min(panelRect.bottom, Math.max(panelRect.top, headerRect.bottom))
+      : panelRect.top;
     const overlayWidth = overlay.offsetWidth || 0;
     const overlayHeight = overlay.offsetHeight || 0;
     const gap = 8;
     const baseLeft = (bookPanel.clientWidth - overlayWidth) / 2;
     const aboveTop = rowRect.top - panelRect.top + bookPanel.scrollTop - overlayHeight - gap;
     const belowTop = rowRect.bottom - panelRect.top + bookPanel.scrollTop + gap;
-    const visibleAbove = rowRect.top - panelRect.top;
+    const visibleAbove = rowRect.top - headerBottom;
     const visibleBelow = panelRect.bottom - rowRect.bottom;
-    const preferAbove = visibleAbove >= overlayHeight + gap || visibleAbove > visibleBelow;
+    const aboveClearsHeader = rowRect.top - overlayHeight - gap >= headerBottom + 4;
+    const preferAbove = aboveClearsHeader && (visibleAbove >= overlayHeight + gap || visibleAbove > visibleBelow);
     const minLeft = 4;
     const maxLeft = Math.max(minLeft, bookPanel.clientWidth - overlayWidth - 4);
-    const minTop = bookPanel.scrollTop + 4;
+    const minTop = bookPanel.scrollTop + Math.max(4, headerBottom - panelRect.top + 4);
     const maxTop = Math.max(minTop, bookPanel.scrollTop + bookPanel.clientHeight - overlayHeight - 4);
+    const detachedMinTop = 4;
+    const detachedMaxTop = Math.max(
+      detachedMinTop,
+      (Number(bookPanel.scrollHeight || 0) || bookPanel.clientHeight) - overlayHeight - 4
+    );
     const anchoredTop = preferAbove ? aboveTop : belowTop;
     const left = dragState.detached
       ? clamp(Number(dragState.freeLeft), minLeft, maxLeft)
       : clamp(baseLeft, minLeft, maxLeft);
     const top = dragState.detached
-      ? clamp(Number(dragState.freeTop), minTop, maxTop)
+      ? clamp(Number(dragState.freeTop), detachedMinTop, detachedMaxTop)
       : clamp(anchoredTop, minTop, maxTop);
     overlay.style.left = `${Math.round(left)}px`;
     overlay.style.top = `${Math.round(top)}px`;

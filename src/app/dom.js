@@ -128,6 +128,7 @@ export function createAppDom(doc = document) {
     timerWorkOrderStop: doc.getElementById('timer-work-order-stop'),
     timerShell: doc.getElementById('timer-shell'),
     timerWarningBanner: doc.getElementById('timer-warning-banner'),
+    sidebarFooter: doc.querySelector('.sidebar-footer'),
     firstRunTutorialStart: doc.getElementById('first-run-tutorial-start'),
   };
 
