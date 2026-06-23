@@ -400,7 +400,7 @@ export function createFirstRunTutorial({
     const icon = document.createElement('div');
     icon.className = 'tutorial-intro-icon';
     icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = 'ℹ️';
+    icon.textContent = 'ⓘ';
 
     const title = document.createElement('h2');
     title.id = 'tutorial-intro-title';
@@ -1040,7 +1040,7 @@ export function createFirstRunTutorial({
     els.firstRunTutorialStart?.focus?.({ preventScroll: true });
   }
 
-  els.firstRunTutorialStart?.addEventListener('click', () => {
+  function startFromEntry() {
     const resumeStep = readResumeStep(overviewSteps.length - 1);
     if (resumeStep !== null) {
       start({ force: true, resume: true, resumeIndex: resumeStep });
@@ -1050,6 +1050,10 @@ export function createFirstRunTutorial({
       force: true,
       contextual: hasTutorialCompleted(),
     });
+  }
+
+  els.firstRunTutorialStart?.addEventListener('click', () => {
+    startFromEntry();
   });
   els.firstRunTutorialStart?.addEventListener('pointerenter', showContextHelp);
   els.firstRunTutorialStart?.addEventListener('focus', showContextHelp);
@@ -1059,6 +1063,7 @@ export function createFirstRunTutorial({
 
   return {
     start,
+    startFromEntry,
     finish,
     showContextHelp,
     isActive: () => active,

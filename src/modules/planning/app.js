@@ -6653,6 +6653,7 @@ class PlannerApp {
 
       viewWeekBtn: document.querySelector("#view-week-btn"),
       viewGradesEntryBtn: document.querySelector("#view-grades-entry-btn"),
+      viewTutorialBtn: document.querySelector("#view-tutorial-btn"),
       viewSettingsBtn: document.querySelector("#view-settings-btn"),
       sidebarManualSaveBtn: document.querySelector("#sidebar-manual-save-btn"),
       sidebarTitle: document.querySelector("#sidebar-title"),
@@ -15680,6 +15681,11 @@ class PlannerApp {
     if (this.refs.viewSettingsBtn) {
       this.refs.viewSettingsBtn.addEventListener("click", () => {
         this.switchView("settings");
+      });
+    }
+    if (this.refs.viewTutorialBtn) {
+      this.refs.viewTutorialBtn.addEventListener("click", () => {
+        this.notifyParentTutorialStartRequest();
       });
     }
     if (this.refs.sidebarGradePrivacyToggleBtn) {
@@ -25207,6 +25213,50 @@ class PlannerApp {
     return total > 0 ? `${checked}/${total}` : "—";
   }
 
+  normalizeHomeworkSummary(summary = null) {
+    return {
+      checked: Math.max(0, Number(summary?.checked || 0)),
+      total: Math.max(0, Number(summary?.total || 0))
+    };
+  }
+
+  syncHomeworkSummaryNode(node, summary = null) {
+    if (!(node instanceof HTMLElement)) {
+      return;
+    }
+    const normalized = this.normalizeHomeworkSummary(summary);
+    node.dataset.homeworkChecked = String(normalized.checked);
+    node.dataset.homeworkTotal = String(normalized.total);
+    node.textContent = this.formatDisplayedHomeworkSummary(normalized);
+  }
+
+  applyVisibleHomeworkSummaryToneClasses(root = this.refs.gradesTable) {
+    if (!root || typeof root.querySelectorAll !== "function") {
+      return;
+    }
+    const nodes = [...root.querySelectorAll("[data-grade-homework-summary='1']")];
+    const maxChecked = nodes.reduce((max, node) => {
+      const checked = Number(node.getAttribute("data-homework-checked") || 0);
+      const total = Number(node.getAttribute("data-homework-total") || 0);
+      return total > 0 && checked > max ? checked : max;
+    }, 0);
+    nodes.forEach((node) => {
+      const checked = Number(node.getAttribute("data-homework-checked") || 0);
+      const total = Number(node.getAttribute("data-homework-total") || 0);
+      node.classList.remove("is-homework-good", "is-homework-warning", "is-homework-danger");
+      if (total <= 0) {
+        return;
+      }
+      if (checked <= 0) {
+        node.classList.add("is-homework-good");
+      } else if (checked === maxChecked) {
+        node.classList.add("is-homework-danger");
+      } else {
+        node.classList.add("is-homework-warning");
+      }
+    });
+  }
+
   getGradeAssessmentMode(value) {
     return normalizeGradeAssessmentMode(value && typeof value === "object" ? value.mode : value);
   }
@@ -27378,7 +27428,7 @@ class PlannerApp {
         if (column.type === "subcategory-homework") {
           td.className = "grade-homework-col";
           applyBodyBoundaryClasses();
-          td.innerHTML = `<div class="grade-homework-summary-value" data-grade-homework-summary="1" data-student-id="${student.id}" data-course-id="${course.id}" data-category-id="${column.categoryId}" data-subcategory-id="${column.subcategoryId}" data-period="${column.period}">${this.formatDisplayedHomeworkSummary(
+          const homeworkSummary = this.normalizeHomeworkSummary(
             this.store.calculateHomeworkSummaryForStudentInSubcategoryPeriod(
               student.id,
               course.id,
@@ -27386,7 +27436,8 @@ class PlannerApp {
               column.subcategoryId,
               column.period
             )
-          )}</div>`;
+          );
+          td.innerHTML = `<div class="grade-homework-summary-value" data-grade-homework-summary="1" data-student-id="${student.id}" data-course-id="${course.id}" data-category-id="${column.categoryId}" data-subcategory-id="${column.subcategoryId}" data-period="${column.period}" data-homework-checked="${homeworkSummary.checked}" data-homework-total="${homeworkSummary.total}">${this.formatDisplayedHomeworkSummary(homeworkSummary)}</div>`;
           tr.append(td);
           return;
         }
@@ -27435,6 +27486,7 @@ class PlannerApp {
       tbody.append(tr);
     });
     table.append(tbody);
+    this.applyVisibleHomeworkSummaryToneClasses(table);
     shell.append(table);
     return shell;
   }
@@ -28335,7 +28387,8 @@ class PlannerApp {
       const categoryId = Number(node.getAttribute("data-category-id") || 0);
       const subcategoryId = Number(node.getAttribute("data-subcategory-id") || 0);
       const period = normalizeGradePeriod(node.getAttribute("data-period") || "year");
-      node.textContent = this.formatDisplayedHomeworkSummary(
+      this.syncHomeworkSummaryNode(
+        node,
         this.store.calculateHomeworkSummaryForStudentInSubcategoryPeriod(
           studentId,
           courseKey,
@@ -28345,6 +28398,7 @@ class PlannerApp {
         )
       );
     });
+    this.applyVisibleHomeworkSummaryToneClasses(root);
   }
 
   openGradeOverrideDialog({ studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year" } = {}) {
@@ -30381,6 +30435,23 @@ class PlannerApp {
     }
   }
 
+  notifyParentTutorialStartRequest() {
+    if (typeof window === "undefined" || !window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:planning-tutorial-start-request",
+        detail: {
+          view: this.shellTabContext === "grades" ? "grades" : "planning",
+          source: "iframe"
+        }
+      }, window.location.origin);
+    } catch (_error) {
+      // Ignore shell sync failures. The button is only meaningful inside the shell.
+    }
+  }
+
   buildCourseSeatplanStudents(courseId) {
     return this.store.listGradeStudents(courseId)
       .map((student) => ({
@@ -30614,6 +30685,7 @@ class PlannerApp {
       weight: normalizeGradeInteger(assessmentPayload?.weight || defaultDraft?.weight, 1),
       categoryId: Number((hasAssessmentSelection ? assessmentCategoryId : defaultDraft?.categoryId) || 0) || null,
       subcategoryId: Number((hasAssessmentSelection ? assessmentSubcategoryId : defaultDraft?.subcategoryId) || 0) || null,
+      displaySystem: this.getCurrentGradeInputDisplaySystem(),
       entries: Array.isArray(assessmentPayload?.entries) ? assessmentPayload.entries : [],
       categories: categoriesForHalfYear.map((category) => ({
         id: Number(category.id) || 0,

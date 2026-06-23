@@ -628,6 +628,9 @@
           const PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:planning-course-seatplan-save-result';
           const PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:planning-course-grade-config-result';
           const PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:planning-course-grade-save-result';
+          const COURSE_GRADE_DISPLAY_POINTS = 'points15';
+          const COURSE_GRADE_DISPLAY_SCHOOL = 'school';
+          const COURSE_GRADE_SCHOOL_LABELS = ['6', '5-', '5', '5+', '4-', '4', '4+', '3-', '3', '3+', '2-', '2', '2+', '1-', '1', '1+'];
           const STUDENTS_SYNC_SOURCE = 'seatplan';
           const TRUSTED_PARENT_ORIGIN = window.location.origin;
           const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
@@ -937,12 +940,26 @@
             return Boolean(state.courseGradeDraft);
           }
 
+          function normalizeCourseGradeDisplaySystem(value) {
+            return String(value || '').trim().toLowerCase() === COURSE_GRADE_DISPLAY_SCHOOL
+              ? COURSE_GRADE_DISPLAY_SCHOOL
+              : COURSE_GRADE_DISPLAY_POINTS;
+          }
+
+          function getCourseGradeDisplaySystem() {
+            return normalizeCourseGradeDisplaySystem(state.courseGradeConfig?.displaySystem);
+          }
+
+          function isCourseGradeSchoolDisplay() {
+            return getCourseGradeDisplaySystem() === COURSE_GRADE_DISPLAY_SCHOOL;
+          }
+
           function formatGradeInteger(value) {
             const numeric = Math.max(0, Math.min(15, Math.round(Number(value) || 0)));
             return String(numeric).padStart(2, '0');
           }
 
-          function parseCourseGradeValue(raw) {
+          function parseCourseGradePointValue(raw) {
             const text = String(raw ?? '').trim();
             if (!text) return { valid: true, value: null };
             if (!/^\d+$/.test(text)) return { valid: false, value: null };
@@ -951,6 +968,57 @@
               return { valid: false, value: null };
             }
             return { valid: true, value };
+          }
+
+          function normalizeCourseGradeSchoolInput(raw) {
+            return String(raw ?? '')
+              .trim()
+              .replace(/[\u2010-\u2015\u2212]/g, '-');
+          }
+
+          function parseCourseGradeSchoolValue(raw) {
+            const text = normalizeCourseGradeSchoolInput(raw);
+            if (!text) return { valid: true, value: null };
+            if (!/^[1-6][+-]?$/.test(text)) return { valid: false, value: null };
+            const value = COURSE_GRADE_SCHOOL_LABELS.indexOf(text);
+            return value >= 0
+              ? { valid: true, value }
+              : { valid: false, value: null };
+          }
+
+          function parseCourseGradeValue(raw) {
+            if (typeof raw === 'number') {
+              return parseCourseGradePointValue(raw);
+            }
+            if (isCourseGradeSchoolDisplay()) {
+              return parseCourseGradeSchoolValue(raw);
+            }
+            const text = String(raw ?? '').trim();
+            if (!text) return { valid: true, value: null };
+            return /^\d{2}$/.test(text) ? parseCourseGradePointValue(text) : { valid: false, value: null };
+          }
+
+          function formatCourseGradeValue(value) {
+            if (value === null || value === undefined || value === '') return '';
+            const numeric = Math.max(0, Math.min(15, Math.round(Number(value) || 0)));
+            return isCourseGradeSchoolDisplay()
+              ? (COURSE_GRADE_SCHOOL_LABELS[numeric] || '')
+              : formatGradeInteger(numeric);
+          }
+
+          function formatCourseGradeDisplayValue(value) {
+            const formatted = formatCourseGradeValue(value);
+            return formatted || '–';
+          }
+
+          function sanitizeCourseGradeInputValue(raw) {
+            const value = String(raw || '');
+            if (isCourseGradeSchoolDisplay()) {
+              return normalizeCourseGradeSchoolInput(value)
+                .replace(/[^1-6+-]/g, '')
+                .slice(0, 2);
+            }
+            return value.replace(/[^\d]/g, '').slice(0, 2);
           }
 
           function normalizeCourseGradeEntries(entries) {
@@ -963,7 +1031,7 @@
               const rawValue = entry?.value && typeof entry.value === 'object'
                 ? entry.value.value
                 : entry?.value;
-              const parsed = parseCourseGradeValue(rawValue);
+              const parsed = parseCourseGradePointValue(rawValue);
               if (studentId && parsed.valid && parsed.value !== null) {
                 result[studentId] = parsed.value;
               }
@@ -1048,6 +1116,10 @@
             const categories = Array.isArray(state.courseGradeConfig?.categories)
               ? state.courseGradeConfig.categories
               : [];
+            state.courseGradeConfig = {
+              ...(state.courseGradeConfig || {}),
+              displaySystem: normalizeCourseGradeDisplaySystem(state.courseGradeConfig?.displaySystem)
+            };
             const category = categories.find(item => Number(item.id) === Number(values.categoryId)) || null;
             const subcategory = (category?.subcategories || []).find(item => Number(item.id) === Number(values.subcategoryId)) || null;
             if (!values.title || !category || !subcategory) {
@@ -1122,8 +1194,18 @@
             document.querySelectorAll("input[data-course-grade-input='1']").forEach(input => {
               if (String(input.dataset.studentId || '') !== sid) return;
               const value = state.courseGradeEntries[sid];
-              input.value = value === undefined ? '' : formatGradeInteger(value);
+              input.value = value === undefined ? '' : formatCourseGradeValue(value);
               input.classList.remove('invalid');
+            });
+          }
+
+          function updateCourseGradeActiveStudentHighlight() {
+            const activeStudentId = isCourseGradeMode() ? String(state.courseGradePickerStudentId || '') : '';
+            document.querySelectorAll('.seat-grade-name').forEach(node => {
+              const content = node.closest('.seat-content');
+              const isActive = Boolean(activeStudentId && content && String(content.dataset.sid || '') === activeStudentId);
+              node.classList.toggle('is-course-grade-active', isActive);
+              content?.classList.toggle('is-course-grade-active', isActive);
             });
           }
 
@@ -1142,7 +1224,10 @@
             const parsed = parseCourseGradeValue(input.value);
             input.classList.toggle('invalid', !parsed.valid);
             if (parsed.valid && parsed.value !== null) {
-              input.value = formatGradeInteger(parsed.value);
+              setCourseGradeEntry(input.dataset.studentId || '', parsed.value);
+              input.value = formatCourseGradeValue(parsed.value);
+            } else if (parsed.valid && parsed.value === null) {
+              setCourseGradeEntry(input.dataset.studentId || '', '');
             }
             if (parsed.valid && options.checkCompletion) {
               checkCourseGradeCompletionPrompt({ allowOpen: true });
@@ -1180,6 +1265,7 @@
             els.courseGradePicker.hidden = true;
             els.courseGradePicker.textContent = '';
             state.courseGradePickerStudentId = '';
+            updateCourseGradeActiveStudentHighlight();
           }
 
           function closeCourseGradeCompleteDialog() {
@@ -1313,6 +1399,7 @@
             markCourseGradeStudentVisited(studentId);
             selectStudentForCourseGrade(studentId);
             state.courseGradePickerStudentId = studentId;
+            updateCourseGradeActiveStudentHighlight();
             els.courseGradePicker.hidden = false;
             els.courseGradePicker.textContent = '';
             const grid = document.createElement('div');
@@ -1320,7 +1407,7 @@
             const appendGradeButton = (value) => {
               const button = document.createElement('button');
               button.type = 'button';
-              button.textContent = formatGradeInteger(value);
+              button.textContent = formatCourseGradeDisplayValue(value);
               button.classList.toggle('grade-picker-zero', value === 0);
               button.classList.toggle('active', Number(state.courseGradeEntries[studentId]) === value);
               button.addEventListener('mousedown', event => event.preventDefault());
@@ -1371,12 +1458,12 @@
             const sid = String(studentId || '');
             const input = document.createElement('input');
             input.type = 'text';
-            input.inputMode = 'numeric';
+            input.inputMode = isCourseGradeSchoolDisplay() ? 'text' : 'numeric';
             input.maxLength = 2;
             input.className = 'course-grade-input';
             input.dataset.courseGradeInput = '1';
             input.dataset.studentId = sid;
-            input.value = state.courseGradeEntries[sid] === undefined ? '' : formatGradeInteger(state.courseGradeEntries[sid]);
+            input.value = state.courseGradeEntries[sid] === undefined ? '' : formatCourseGradeValue(state.courseGradeEntries[sid]);
             input.setAttribute('aria-label', `Bewertung für ${label || sid}`);
             input.addEventListener('mousedown', event => event.stopPropagation());
             input.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
@@ -1387,7 +1474,7 @@
               openCourseGradePicker(input);
             });
             input.addEventListener('input', () => {
-              const sanitized = String(input.value || '').replace(/[^\d]/g, '').slice(0, 2);
+              const sanitized = sanitizeCourseGradeInputValue(input.value);
               input.value = sanitized;
               const parsed = parseCourseGradeValue(sanitized);
               input.classList.toggle('invalid', !parsed.valid);
@@ -1450,7 +1537,7 @@
             button.className = 'course-grade-input course-grade-trigger';
             button.dataset.courseGradeTrigger = '1';
             button.dataset.studentId = sid;
-            button.textContent = state.courseGradeEntries[sid] === undefined ? '–' : formatGradeInteger(state.courseGradeEntries[sid]);
+            button.textContent = state.courseGradeEntries[sid] === undefined ? '–' : formatCourseGradeDisplayValue(state.courseGradeEntries[sid]);
             button.setAttribute('aria-label', `Bewertung für ${label || sid} eingeben`);
             button.title = 'Note eingeben';
             button.addEventListener('mousedown', event => event.stopPropagation());
@@ -1487,7 +1574,7 @@
             });
             if (invalidInput) {
               invalidInput.focus({ preventScroll: false });
-              showMessage('Bitte nur Werte von 0 bis 15 eingeben.', 'warn');
+              showMessage('Bitte gültige Noten eingeben.', 'warn');
               return false;
             }
             const entries = Object.entries(state.courseGradeEntries)
@@ -5208,6 +5295,10 @@
                 if (isCourseSeatplanMode()) {
                   const labelNode = document.createElement('span');
                   labelNode.className = 'seat-grade-name';
+                  if (isCourseGradeMode() && String(state.courseGradePickerStudentId || '') === String(sid)) {
+                    labelNode.classList.add('is-course-grade-active');
+                    content.classList.add('is-course-grade-active');
+                  }
                   labelNode.appendChild(createSeatNameLines(s, label));
                   content.appendChild(labelNode);
                   const gradeControl = createCourseGradeControl(sid, label);
