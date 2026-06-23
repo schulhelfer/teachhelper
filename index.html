@@ -39,7 +39,7 @@
       --sidebar-border: rgba(148, 163, 184, 0.16);
       --sidebar-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
       --sidebar-radius: 20px;
-      --scrollbar-size: 12px;
+      --scrollbar-size: 17px;
       --scrollbar-track: rgba(15, 23, 42, 0.14);
       --scrollbar-thumb: rgba(148, 163, 184, 0.55);
       --scrollbar-thumb-hover: rgba(148, 163, 184, 0.78);
@@ -93,8 +93,8 @@
 
     #planning-host .planning-runtime-root::-webkit-scrollbar,
     #planning-host .planning-runtime-root *::-webkit-scrollbar {
-      width: auto !important;
-      height: auto !important;
+      width: var(--scrollbar-size) !important;
+      height: var(--scrollbar-size) !important;
       display: block !important;
     }
 
@@ -111,7 +111,7 @@
     .app.app-tab-groups>.side::-webkit-scrollbar,
     .app.app-tab-random-picker>.side::-webkit-scrollbar {
       width: var(--scrollbar-size) !important;
-      height: 0 !important;
+      height: var(--scrollbar-size) !important;
       display: block !important;
     }
 

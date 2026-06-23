@@ -27,7 +27,7 @@
           --danger: #ff8a8a;
           --warn: #facc15;
           --dropdown-bg: #1c2430;
-          --scrollbar-size: 12px;
+          --scrollbar-size: 17px;
           --scrollbar-track: rgba(15, 23, 42, 0.14);
           --scrollbar-thumb: rgba(148, 163, 184, 0.55);
           --scrollbar-thumb-hover: rgba(148, 163, 184, 0.78);
@@ -38,7 +38,7 @@
         * {
           box-sizing: border-box;
           -webkit-tap-highlight-color: transparent;
-          scrollbar-width: thin;
+          scrollbar-width: auto;
           scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
         }
 
@@ -5060,7 +5060,7 @@
           height: var(--scrollbar-size);
           overflow-x: auto;
           overflow-y: hidden;
-          scrollbar-width: thin;
+          scrollbar-width: auto;
           scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
           -ms-overflow-style: auto;
           background: rgba(24, 31, 43, 0.96);
