@@ -38,6 +38,12 @@
   --focus-ring: 0 0 0 3px rgba(226, 232, 240, 0.18);
   --highlight-neutral: rgba(226, 232, 240, 0.62);
   --highlight-neutral-soft: rgba(226, 232, 240, 0.12);
+  --dropzone-bg: rgba(15, 23, 42, 0.35);
+  --dropzone-bg-hover: rgba(148, 163, 184, 0.12);
+  --dropzone-bg-active: rgba(148, 163, 184, 0.14);
+  --dropzone-border: rgba(148, 163, 184, 0.75);
+  --dropzone-radius: 12px;
+  --dropzone-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
   color-scheme: dark;
 }
 
@@ -197,13 +203,24 @@ p {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-height: 38px;
   margin-bottom: 10px;
 }
 
 .sidebar-title {
   font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif;
   font-size: 22px;
+  line-height: 1.1;
   margin: 0;
+  min-width: 0;
+}
+
+.sidebar-header-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 3px;
+  flex: 0 0 auto;
 }
 
 .module-tutorial-button {
@@ -344,8 +361,8 @@ p {
 }
 
 .drop {
-  border: 1.5px dashed color-mix(in srgb, var(--accent) 28%, var(--line));
-  border-radius: 18px;
+  border: 2px dashed var(--dropzone-border);
+  border-radius: var(--dropzone-radius);
   min-height: clamp(190px, 30vh, 300px);
   min-width: 0;
   display: grid;
@@ -353,35 +370,32 @@ p {
   margin: 3px;
   padding: 20px;
   text-align: center;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--drop) 82%, transparent), var(--drop));
-  box-shadow: var(--inner);
+  background: var(--dropzone-bg);
+  box-shadow: var(--dropzone-shadow);
   cursor: pointer;
   user-select: none;
   outline: none;
-  transition: border-color 0.2s ease, background 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.12s ease, background 0.12s ease, transform 0.12s ease, box-shadow 0.12s ease;
 }
 
 .drop.awaiting-file {
-  border-color: color-mix(in srgb, var(--accent) 42%, var(--line));
-  box-shadow:
-    0 0 0 2px color-mix(in srgb, var(--accent) 10%, transparent),
-    0 8px 18px color-mix(in srgb, var(--accent) 12%, transparent),
-    var(--inner);
+  border-color: var(--dropzone-border);
+  box-shadow: var(--dropzone-shadow);
 }
 
 .drop:hover,
 .drop:focus-visible {
   border-color: var(--focus-border);
-  background: linear-gradient(180deg, rgba(148, 163, 184, 0.12), var(--drop));
-  box-shadow: 0 0 0 3px var(--highlight-neutral-soft), var(--inner);
-  transform: translateY(-1px) scale(1.003);
+  background: var(--dropzone-bg-hover);
+  box-shadow: var(--dropzone-shadow);
+  transform: translateY(-1px);
 }
 
 .drop.drag-over {
-  border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
-  background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 55%, var(--drop)), var(--drop));
-  box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 18%, transparent), var(--inner);
-  transform: translateY(-1px) scale(1.003);
+  border-color: var(--focus-border);
+  background: var(--dropzone-bg-active);
+  box-shadow: var(--dropzone-shadow), 0 0 0 3px var(--highlight-neutral-soft);
+  transform: translateY(-1px);
 }
 
 .drop strong {
@@ -444,15 +458,56 @@ p {
   place-items: center;
 }
 
-.empty-state {
-  max-width: 520px;
+.empty-state-box {
+  width: min(100%, 520px);
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-inline: auto;
+  padding: 1rem 1.1rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--glass) 68%, transparent);
+  box-shadow: var(--inner);
   text-align: center;
   color: var(--muted);
 }
 
-.empty-state h2 {
+.empty-state-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 54%, transparent);
   color: var(--text);
-  margin: 0 0 6px;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.empty-state-title {
+  color: var(--text);
+  margin: 2px 0 0;
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.empty-state-copy {
+  margin: 0;
+  max-width: 42ch;
+  color: var(--muted);
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.empty-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 .summary-grid {

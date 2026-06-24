@@ -209,10 +209,11 @@
           </div>
           <div id="grades-vault-banner" class="grades-vault-banner" hidden></div>
           <div id="grades-overview-panel" class="grades-subview-panel">
-            <div id="grades-empty-state" class="grades-empty-state" hidden>
-              <h3>Noch keine Teilnehmenden eingetragen</h3>
-              <p></p>
-              <div class="button-row">
+            <div id="grades-empty-state" class="grades-empty-state empty-state-box" hidden>
+              <div class="empty-state-icon" aria-hidden="true">N</div>
+              <h3 class="empty-state-title">Noch keine Teilnehmenden eingetragen</h3>
+              <p class="empty-state-copy"></p>
+              <div class="button-row empty-state-actions">
                 <button id="grades-empty-open-dialog" type="button" class="sidebar-add-btn"
                   aria-label="Teilnehmende verwalten" title="Teilnehmende verwalten">
                   <span class="sidebar-add-plus" aria-hidden="true"></span>
@@ -326,7 +327,7 @@
                   </div>
                   <div class="button-row">
                     <button type="submit">Slot speichern</button>
-                    <button type="button" id="slot-reset" class="ghost">Zurücksetzen</button>
+                    <button type="button" id="slot-reset" class="ghost reset-action">Zurücksetzen</button>
                     <button type="button" id="slot-delete" class="ghost danger-action" hidden>Löschen</button>
                   </div>
                 </form>
@@ -458,7 +459,7 @@
                       class="ghost">Standardvorlage herunterladen</button>
                     <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte
                       Standardvorlage hochladen</button>
-                    <button type="button" id="expectation-horizon-template-settings-reset" class="ghost">Auf eingebaute
+                    <button type="button" id="expectation-horizon-template-settings-reset" class="ghost reset-action">Auf eingebaute
                       Vorlage zurücksetzen</button>
                   </div>
                 </section>
@@ -541,7 +542,7 @@
               </div>
             </div>
             <div class="settings-actions-row">
-              <button id="settings-reset-all" type="button" class="ghost">Standardwerte</button>
+              <button id="settings-reset-all" type="button" class="ghost reset-action">Standardwerte</button>
               <button id="settings-save-all" type="button">Bestätigen</button>
               <button id="settings-cancel-all" type="button" class="ghost">Abbrechen</button>
             </div>
@@ -555,7 +556,7 @@
   <dialog id="course-dialog" class="app-dialog" aria-label="Kursdialog">
     <form id="course-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="course-dialog-title" class="settings-panel-title">Kurs</h3>
+        <h3 id="course-dialog-title" class="dialog-title">Kurs</h3>
         <div class="dialog-actions-top">
           <button type="button" id="course-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -619,7 +620,7 @@
   <dialog id="course-color-dialog" class="app-dialog" aria-label="Farbe bearbeiten">
     <form id="course-color-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="course-color-dialog-title" class="settings-panel-title">Farbe bearbeiten</h3>
+        <h3 id="course-color-dialog-title" class="dialog-title">Farbe bearbeiten</h3>
         <div class="dialog-actions-top">
           <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -638,7 +639,7 @@
     data-tutorial-anchor="grades-students-dialog">
     <form id="course-students-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="course-students-dialog-title" class="settings-panel-title">Teilnehmende verwalten</h3>
+        <h3 id="course-students-dialog-title" class="dialog-title">Teilnehmende verwalten</h3>
         <div class="dialog-actions-top">
           <button type="button" id="course-students-dialog-cancel" class="ghost dialog-icon-button"
             aria-label="Abbrechen" title="Abbrechen">❌</button>
@@ -673,7 +674,7 @@
     data-tutorial-anchor="grades-structure-dialog">
     <form id="course-structure-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="course-structure-dialog-title" class="settings-panel-title">Notenstruktur</h3>
+        <h3 id="course-structure-dialog-title" class="dialog-title">Notenstruktur</h3>
         <div class="dialog-actions-top course-structure-dialog-actions-top">
           <button type="button" id="course-dialog-copy-h1-to-h2" class="ghost course-dialog-copy-h1-to-h2" hidden>
             Aus HJ1 übernehmen
@@ -720,7 +721,7 @@
   <dialog id="entfall-dialog" class="app-dialog" aria-label="Entfalldialog">
     <form id="entfall-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 class="settings-panel-title">Entfall eintragen</h3>
+        <h3 class="dialog-title">Entfall eintragen</h3>
         <div class="dialog-actions-top">
           <button type="button" id="entfall-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -736,10 +737,10 @@
 
   <dialog id="topic-dialog" class="app-dialog" aria-label="Stundendialog">
     <form id="topic-dialog-form" class="form-grid" method="dialog">
-      <div class="topic-dialog-header">
-        <span class="topic-dialog-header-spacer" aria-hidden="true"></span>
+      <div class="dialog-header topic-dialog-header">
+        <h3 class="dialog-title topic-dialog-title">Stunde planen</h3>
         <p id="topic-dialog-course-pill" class="topic-dialog-course-pill"></p>
-        <div class="topic-dialog-actions-top">
+        <div class="dialog-actions-top topic-dialog-actions-top">
           <button type="button" id="topic-dialog-cancel" class="ghost topic-dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
           <button type="submit" class="topic-dialog-icon-button" aria-label="Speichern" title="Speichern">💾</button>
@@ -762,7 +763,7 @@
   <dialog id="slot-dialog" class="app-dialog" aria-label="Unterrichtsstundendialog">
     <form id="slot-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="slot-dialog-title" class="settings-panel-title">Unterrichtsstunde</h3>
+        <h3 id="slot-dialog-title" class="dialog-title">Unterrichtsstunde</h3>
         <div class="dialog-actions-top">
           <button type="button" id="slot-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -823,7 +824,7 @@
   <dialog id="free-range-dialog" class="app-dialog" aria-label="Ferienzeitraumdialog">
     <form id="free-range-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="free-range-dialog-title" class="settings-panel-title">Ferienzeitraum</h3>
+        <h3 id="free-range-dialog-title" class="dialog-title">Ferienzeitraum</h3>
         <div class="dialog-actions-top">
           <button type="button" id="free-range-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -849,7 +850,7 @@
   <dialog id="special-day-dialog" class="app-dialog" aria-label="Unterrichtsfreier-Tag-Dialog">
     <form id="special-day-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="special-day-dialog-title" class="settings-panel-title">Unterrichtsfreier Tag</h3>
+        <h3 id="special-day-dialog-title" class="dialog-title">Unterrichtsfreier Tag</h3>
         <div class="dialog-actions-top">
           <button type="button" id="special-day-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -875,7 +876,7 @@
   <dialog id="message-dialog" class="app-dialog" aria-label="Meldungsdialog">
     <form id="message-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="message-dialog-title" class="settings-panel-title">Hinweis</h3>
+        <h3 id="message-dialog-title" class="dialog-title">Hinweis</h3>
         <div id="message-dialog-actions-top" class="dialog-actions-top" hidden>
           <button type="button" id="message-dialog-cancel-top" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -900,7 +901,7 @@
     aria-labelledby="schoolmanager-transfer-dialog-title">
     <form id="schoolmanager-transfer-dialog-form" class="form-grid schoolmanager-transfer-form" method="dialog">
       <div class="dialog-header">
-        <h3 id="schoolmanager-transfer-dialog-title" class="settings-panel-title">Noten in Schulmanager übertragen</h3>
+        <h3 id="schoolmanager-transfer-dialog-title" class="dialog-title">Noten in Schulmanager übertragen</h3>
         <div class="dialog-actions-top">
           <button type="button" id="schoolmanager-transfer-dialog-cancel" class="ghost dialog-icon-button"
             aria-label="Schließen" title="Schließen">❌</button>
@@ -999,7 +1000,7 @@
     aria-labelledby="grade-simulation-dialog-title">
     <form id="grade-simulation-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="grade-simulation-dialog-title" class="settings-panel-title">Warnungen (Simulation)</h3>
+        <h3 id="grade-simulation-dialog-title" class="dialog-title">Warnungen (Simulation)</h3>
         <div class="dialog-actions-top">
           <button type="button" id="grade-simulation-dialog-close" class="ghost dialog-icon-button"
             aria-label="Schließen" title="Schließen">❌</button>
@@ -1034,7 +1035,7 @@
     aria-labelledby="expectation-horizon-dialog-title">
     <form id="expectation-horizon-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="expectation-horizon-dialog-title" class="settings-panel-title">Erwartungshorizont erstellen</h3>
+        <h3 id="expectation-horizon-dialog-title" class="dialog-title">Erwartungshorizont erstellen</h3>
         <div class="dialog-actions-top">
           <button type="button" id="expectation-horizon-cancel-top" class="ghost dialog-icon-button"
             aria-label="Abbrechen" title="Abbrechen">❌</button>
@@ -1068,7 +1069,7 @@
   <dialog id="grade-vault-dialog" class="app-dialog grade-vault-dialog" aria-labelledby="grade-vault-dialog-title">
     <form id="grade-vault-dialog-form" class="form-grid" method="post" action="" autocomplete="on" spellcheck="false">
       <div class="dialog-header">
-        <h3 id="grade-vault-dialog-title" class="settings-panel-title">Notenmodul schützen</h3>
+        <h3 id="grade-vault-dialog-title" class="dialog-title">Notenmodul schützen</h3>
         <div class="dialog-actions-top">
           <button type="button" id="grade-vault-dialog-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>
@@ -1112,7 +1113,7 @@
   <dialog id="archive-dialog" class="app-dialog archive-dialog" aria-labelledby="archive-dialog-title">
     <form id="archive-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
-        <h3 id="archive-dialog-title" class="settings-panel-title">Schuljahr archivieren</h3>
+        <h3 id="archive-dialog-title" class="dialog-title">Schuljahr archivieren</h3>
         <div class="dialog-actions-top">
           <button type="button" id="archive-dialog-cancel-top" class="ghost dialog-icon-button" aria-label="Abbrechen"
             title="Abbrechen">❌</button>

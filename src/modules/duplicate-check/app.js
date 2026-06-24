@@ -187,7 +187,14 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     if (!ui.resultPanel) return;
     ui.resultPanel.className = 'result-panel';
     ui.resultPanel.hidden = false;
-    ui.resultPanel.replaceChildren(renderSummaryGrid(summary));
+    const empty = document.createElement('div');
+    empty.className = 'empty-state-box';
+    empty.append(
+      createTextElement('div', 'OK', 'empty-state-icon'),
+      createTextElement('h2', 'Keine Duplikate gefunden', 'empty-state-title'),
+      createTextElement('p', 'Die gewählten Regeln haben keine auffälligen Abgaben gefunden.', 'empty-state-copy')
+    );
+    ui.resultPanel.replaceChildren(renderSummaryGrid(summary), empty);
   }
 
   function renderError(message) {
@@ -195,10 +202,11 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     ui.resultPanel.className = 'result-panel error';
     ui.resultPanel.hidden = false;
     const empty = document.createElement('div');
-    empty.className = 'empty-state';
+    empty.className = 'empty-state-box';
     empty.append(
-      createTextElement('h2', 'Analyse nicht möglich'),
-      createTextElement('p', message)
+      createTextElement('div', '!', 'empty-state-icon'),
+      createTextElement('h2', 'Analyse nicht möglich', 'empty-state-title'),
+      createTextElement('p', message, 'empty-state-copy')
     );
     ui.resultPanel.replaceChildren(empty);
   }

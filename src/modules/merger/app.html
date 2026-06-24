@@ -19,8 +19,10 @@
       <aside class="side" aria-label="PDF-Werkzeuge">
         <div class="sidebar-header">
           <h1 class="sidebar-title">PDF-Tools</h1>
-          <button id="tutorialButton" class="module-tutorial-button" type="button"
-            aria-label="Tutorial starten" title="Tutorial starten">🛟</button>
+          <div class="sidebar-header-actions">
+            <button id="tutorialButton" class="module-tutorial-button" type="button"
+              aria-label="Tutorial starten" title="Tutorial starten">🛟</button>
+          </div>
         </div>
         <div class="tool-tab-bar" role="tablist" aria-label="PDF-Werkzeuge">
           <button id="tool-tab-layout" class="tool-tab active" type="button" role="tab" data-tool="layout"
@@ -83,9 +85,10 @@
             <div id="mergeDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
               aria-label="PDFs zum Zusammenführen auswählen">
               <div class="drop-content">
-                <div id="mergeDropHint">
-                  <strong>PDFs hierhin ziehen</strong>
-                  <div>oder klicken zum Auswählen</div>
+                <div id="mergeDropHint" class="empty-state-box">
+                  <div class="empty-state-icon" aria-hidden="true">PDF</div>
+                  <strong class="empty-state-title">PDFs hierhin ziehen</strong>
+                  <p class="empty-state-copy">oder klicken zum Auswählen</p>
                 </div>
                 <section id="mergeFileListShell" class="merge-drop-files hidden">
                   <div id="mergeAppendFileList" class="file-list reorder-list"></div>
@@ -110,9 +113,10 @@
         <div id="layoutDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
           aria-label="PDF für das Layout auswählen">
           <div class="drop-content">
-            <div id="layoutDropHint">
-              <strong>PDF hierhin ziehen</strong>
-              <div>oder klicken zum Auswählen</div>
+            <div id="layoutDropHint" class="empty-state-box">
+              <div class="empty-state-icon" aria-hidden="true">PDF</div>
+              <strong class="empty-state-title">PDF hierhin ziehen</strong>
+              <p class="empty-state-copy">oder klicken zum Auswählen</p>
             </div>
             <div id="layoutDropSummary" class="drop-summary hidden"></div>
           </div>
@@ -194,9 +198,10 @@
         <div id="rotateDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
           aria-label="PDF zum Drehen auswählen">
           <div class="drop-content">
-            <div id="rotateDropHint">
-              <strong>PDF hierhin ziehen</strong>
-              <div>oder klicken zum Auswählen</div>
+            <div id="rotateDropHint" class="empty-state-box">
+              <div class="empty-state-icon" aria-hidden="true">PDF</div>
+              <strong class="empty-state-title">PDF hierhin ziehen</strong>
+              <p class="empty-state-copy">oder klicken zum Auswählen</p>
             </div>
             <div id="rotateDropSummary" class="drop-summary hidden"></div>
           </div>
@@ -249,9 +254,10 @@
         <div id="splitDropZone" class="drop tool-drop awaiting-file" tabindex="0" role="button"
           aria-label="PDF zum Aufteilen auswählen">
           <div class="drop-content">
-            <div id="splitDropHint">
-              <strong>PDF hierhin ziehen</strong>
-              <div>oder klicken zum Auswählen</div>
+            <div id="splitDropHint" class="empty-state-box">
+              <div class="empty-state-icon" aria-hidden="true">PDF</div>
+              <strong class="empty-state-title">PDF hierhin ziehen</strong>
+              <p class="empty-state-copy">oder klicken zum Auswählen</p>
             </div>
             <div id="splitDropSummary" class="drop-summary hidden"></div>
           </div>
@@ -275,7 +281,9 @@
 
   <dialog id="resultDialog" class="settings-dialog result-dialog hidden" aria-labelledby="resultTitle"
     aria-describedby="resultMessage">
-    <p id="resultTitle" class="settings-title">Hinweis</p>
+    <div class="dialog-header">
+      <p id="resultTitle" class="settings-title dialog-title">Hinweis</p>
+    </div>
     <p id="resultMessage" class="result-message"></p>
     <div class="update-actions">
       <button id="resultOpenButton" class="btn-small hidden" type="button">Öffnen</button>
@@ -285,7 +293,9 @@
 
   <dialog id="busyDialog" class="settings-dialog busy-dialog hidden" aria-labelledby="busyTitle"
     aria-describedby="busyMessage">
-    <p id="busyTitle" class="settings-title">Bitte warten</p>
+    <div class="dialog-header">
+      <p id="busyTitle" class="settings-title dialog-title">Bitte warten</p>
+    </div>
     <p id="busyMessage" class="busy-message">PDF-Engine wird geladen ...</p>
   </dialog>
 

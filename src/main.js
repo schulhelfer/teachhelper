@@ -2766,6 +2766,25 @@ import {
       }
     });
   }
+  function renderRandomPickerCardEmptyState(card, title, copy) {
+    if (!card) return;
+    card.classList.add('is-empty-state');
+    card.replaceChildren();
+    const box = document.createElement('div');
+    box.className = 'empty-state-box';
+    const icon = document.createElement('span');
+    icon.className = 'empty-state-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'N';
+    const titleEl = document.createElement('span');
+    titleEl.className = 'empty-state-title';
+    titleEl.textContent = title;
+    const copyEl = document.createElement('span');
+    copyEl.className = 'empty-state-copy';
+    copyEl.textContent = copy;
+    box.append(icon, titleEl, copyEl);
+    card.appendChild(box);
+  }
   function updateRandomPickerCards(centerIndex = 0, { final = false } = {}) {
     if (!els.randomPickerCards?.length) return;
     const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
@@ -2776,9 +2795,20 @@ import {
       const emptyLabel = allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen importiert';
       cards.forEach((card, slotIndex) => {
         const distance = Math.abs(slotIndex - 3);
-        card.textContent = emptyLabel;
         card.dataset.distance = String(distance);
         card.classList.toggle('is-final', false);
+        if (slotIndex === 3) {
+          renderRandomPickerCardEmptyState(
+            card,
+            allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen',
+            allCandidates.length
+              ? 'Aktiviere mindestens einen Namen für den Picker.'
+              : 'Importiere zuerst eine Namensliste.'
+          );
+        } else {
+          card.classList.remove('is-empty-state');
+          card.textContent = emptyLabel;
+        }
       });
       randomPickerCurrentIndex = 0;
       return;
@@ -2789,6 +2819,7 @@ import {
       const offset = slotIndex - 3;
       const candidateIndex = ((safeIndex + offset) % total + total) % total;
       const distance = Math.abs(offset);
+      card.classList.remove('is-empty-state');
       card.textContent = names[candidateIndex];
       card.dataset.distance = String(Math.min(3, distance));
       card.classList.toggle('is-final', final && offset === 0);
@@ -5435,7 +5466,29 @@ import {
   function updateCsvStatusDisplay() {
     if (!els.csvStatus) return;
     const label = String(state.csvName || '').trim();
-    els.csvStatus.textContent = label || 'Noch keine Datei importiert';
+    renderCsvStatus(label);
+  }
+
+  function renderCsvStatus(label = '') {
+    if (!els.csvStatus) return;
+    const normalizedLabel = String(label || '').trim();
+    els.csvStatus.replaceChildren();
+    els.csvStatus.classList.toggle('empty-state-box', !normalizedLabel);
+    if (normalizedLabel) {
+      els.csvStatus.textContent = normalizedLabel;
+      return;
+    }
+    const icon = document.createElement('span');
+    icon.className = 'empty-state-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = 'CSV';
+    const title = document.createElement('span');
+    title.className = 'empty-state-title';
+    title.textContent = 'Noch keine Datei';
+    const copy = document.createElement('span');
+    copy.className = 'empty-state-copy';
+    copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
+    els.csvStatus.append(icon, title, copy);
   }
 
   async function importCsvFromFile(file) {
@@ -5554,9 +5607,7 @@ import {
     const f = e.target.files && e.target.files[0];
     if (!f) {
       state.csvName = '';
-      if (els.csvStatus) {
-        els.csvStatus.textContent = 'Noch keine Datei importiert';
-      }
+      updateCsvStatusDisplay();
       return;
     }
     try {

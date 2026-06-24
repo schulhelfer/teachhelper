@@ -19,8 +19,10 @@
       <aside class="side" aria-label="QR-Werkzeuge">
         <div class="sidebar-header">
           <h1 class="sidebar-title">QR</h1>
-          <button id="tutorialButton" class="module-tutorial-button" type="button" aria-label="Tutorial starten"
-            title="Tutorial starten">🛟</button>
+          <div class="sidebar-header-actions">
+            <button id="tutorialButton" class="module-tutorial-button" type="button" aria-label="Tutorial starten"
+              title="Tutorial starten">🛟</button>
+          </div>
         </div>
         <div class="tool-tab-bar" role="tablist" aria-label="QR-Werkzeuge">
           <button id="tool-tab-generator" class="tool-tab active" type="button" role="tab" data-tool="generator"
@@ -52,7 +54,11 @@
             </form>
 
             <section id="generatorResult" class="result-panel empty" aria-live="polite">
-              <div id="generatorEmpty" class="empty-state">Noch kein QR-Code erstellt.</div>
+              <div id="generatorEmpty" class="empty-state-box">
+                <div class="empty-state-icon" aria-hidden="true">QR</div>
+                <h3 class="empty-state-title">Noch kein QR-Code</h3>
+                <p class="empty-state-copy">Erstelle einen QR-Code aus einem Link.</p>
+              </div>
               <div id="qrPreviewShell" class="qr-preview-shell hidden">
                 <canvas id="qrCanvas" width="320" height="320" aria-label="Erstellter QR-Code"></canvas>
                 <a id="qrEncodedLink" class="encoded-link" href="#" target="_blank" rel="noopener noreferrer"></a>
@@ -99,7 +105,11 @@
             </section>
 
             <section id="decoderResult" class="result-panel empty" aria-live="polite">
-              <div id="decoderEmpty" class="empty-state">Noch kein QR-Code gelesen.</div>
+              <div id="decoderEmpty" class="empty-state-box">
+                <div class="empty-state-icon" aria-hidden="true">QR</div>
+                <h3 class="empty-state-title">Noch kein QR-Code</h3>
+                <p class="empty-state-copy">Lade ein Bild hoch oder füge eines ein.</p>
+              </div>
               <div id="decodedValuePanel" class="decoded-value-panel hidden">
                 <a id="decodedLink" class="encoded-link hidden" href="#" target="_blank" rel="noopener noreferrer"></a>
                 <pre id="decodedText" class="decoded-text hidden"></pre>
@@ -117,7 +127,9 @@
 
   <dialog id="messageDialog" class="settings-dialog hidden" aria-labelledby="messageTitle"
     aria-describedby="messageText">
-    <p id="messageTitle" class="settings-title">Hinweis</p>
+    <div class="dialog-header">
+      <p id="messageTitle" class="settings-title dialog-title">Hinweis</p>
+    </div>
     <p id="messageText" class="message-text"></p>
     <div class="dialog-actions">
       <button id="messageCloseButton" class="btn-small primary" type="button">OK</button>

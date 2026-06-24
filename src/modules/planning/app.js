@@ -11434,6 +11434,7 @@ class PlannerApp {
     inputLabel = "Eingabe",
     inputListId = "",
     dangerOk = false,
+    warnOk = false,
     warning = false
   } = {}) {
     const normalizedMode = mode === "confirm" || mode === "prompt" ? mode : "alert";
@@ -11468,11 +11469,13 @@ class PlannerApp {
     this.refs.messageDialogText.hidden = !String(message || "").trim();
     this.refs.messageDialogOk.textContent = String(okText || "OK");
     this.refs.messageDialogOk.classList.toggle("danger-action", Boolean(dangerOk));
+    this.refs.messageDialogOk.classList.toggle("warn-action", Boolean(warnOk) && !dangerOk);
     this.refs.messageDialogCancel.textContent = String(cancelText || "Abbrechen");
     const isPrompt = normalizedMode === "prompt";
     this.refs.messageDialogActionsTop.hidden = !isPrompt;
     this.refs.messageDialogActionsBottom.hidden = isPrompt;
     this.refs.messageDialogOkTop.classList.toggle("danger-action", Boolean(dangerOk));
+    this.refs.messageDialogOkTop.classList.toggle("warn-action", Boolean(warnOk) && !dangerOk);
     this.refs.messageDialogInputRow.hidden = !isPrompt;
     this.refs.messageDialogInputLabel.textContent = String(inputLabel || "");
     this.refs.messageDialogInputLabel.hidden = !isPrompt || !String(inputLabel || "").trim();
@@ -11522,6 +11525,7 @@ class PlannerApp {
       okText: options.okText || "Ja",
       cancelText: options.cancelText || "Abbrechen",
       dangerOk: Boolean(options.dangerOk),
+      warnOk: Boolean(options.warnOk),
       warning: Boolean(options.warning)
     });
   }
@@ -12012,7 +12016,7 @@ class PlannerApp {
             <select name="student-performance-flair-${index}" class="course-dialog-student-flair-select${performanceFlair ? " has-flair" : ""}" data-student-field="performanceFlair" data-student-index="${index}" aria-label="Flair für Teilnehmende">
               ${flairOptions}
             </select>
-            <button type="button" class="ghost" data-student-remove="${index}" aria-label="Teilnehmende entfernen" title="Teilnehmende entfernen">🗑️</button>
+            <button type="button" class="ghost danger-action" data-student-remove="${index}" aria-label="Teilnehmende entfernen" title="Teilnehmende entfernen">🗑️</button>
           </div>
         `;
         this.refs.courseDialogStudentsList.append(row);
@@ -12124,7 +12128,7 @@ class PlannerApp {
             <input type="number" name="subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(this.getCourseDialogStructureWeightDisplayValue(subcategory, period, "subcategory", categoryIndex, subcategoryIndex)).replace(/"/g, "&quot;")}" aria-label="Unterkategorie-Gewichtung in Prozent">
             <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
           </label>
-          <button type="button" class="ghost" data-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
+          <button type="button" class="ghost danger-action" data-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
         </div>
       `).join("");
       card.innerHTML = `
@@ -12134,7 +12138,7 @@ class PlannerApp {
             <input type="number" name="category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-structure-field="category-weight" data-category-index="${categoryIndex}" value="${String(this.getCourseDialogStructureWeightDisplayValue(category, period, "category", categoryIndex)).replace(/"/g, "&quot;")}" aria-label="Kategorie-Gewichtung in Prozent">
             <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
           </label>
-          <button type="button" class="ghost" data-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
+          <button type="button" class="ghost danger-action" data-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
         </div>
         <div class="course-dialog-subcategories">${subcategoriesHtml}</div>
         <button type="button" class="sidebar-add-btn course-dialog-subcategory-add" data-structure-add-subcategory="${categoryIndex}" aria-label="Unterkategorie hinzufügen" title="Unterkategorie hinzufügen">
@@ -13275,7 +13279,9 @@ class PlannerApp {
     if (!id) {
       return;
     }
-    if (!await this.showConfirmMessage("Ferienzeitraum löschen?")) {
+    if (!await this.showConfirmMessage("Ferienzeitraum löschen?", {
+      dangerOk: true
+    })) {
       return;
     }
     this.store.deleteFreeRange(id);
@@ -13350,7 +13356,9 @@ class PlannerApp {
     if (!id) {
       return;
     }
-    if (!await this.showConfirmMessage("Unterrichtsfreien Tag löschen?")) {
+    if (!await this.showConfirmMessage("Unterrichtsfreien Tag löschen?", {
+      dangerOk: true
+    })) {
       return;
     }
     this.store.deleteSpecialDay(id);
@@ -13693,7 +13701,9 @@ class PlannerApp {
       await this.showInfoMessage("Der Slot wurde nicht gefunden.");
       return false;
     }
-    if (!await this.showConfirmMessage("Unterrichtsstunde löschen?")) {
+    if (!await this.showConfirmMessage("Unterrichtsstunde löschen?", {
+      dangerOk: true
+    })) {
       return false;
     }
 
@@ -14607,7 +14617,7 @@ class PlannerApp {
         title: "Kerncurriculare AFB-Vorgaben",
         okText: "Trotzdem speichern",
         cancelText: "Abbrechen",
-        dangerOk: true,
+        warnOk: true,
         warning: true
       }
     );
@@ -17003,7 +17013,9 @@ class PlannerApp {
       }
 
       if (action === "delete") {
-        if (!await this.showConfirmMessage("Unterrichtsstunde löschen?")) {
+        if (!await this.showConfirmMessage("Unterrichtsstunde löschen?", {
+          dangerOk: true
+        })) {
           return;
         }
         this.store.deleteSlot(id);
@@ -18865,11 +18877,12 @@ class PlannerApp {
     this.refs.gradesEntryContent.classList.toggle("is-empty-state", showUnlockButton);
     this.refs.gradesEntryContent.classList.toggle("has-offset-empty-state", offsetTopThird);
     this.refs.gradesEntryContent.innerHTML = `
-        <div class="grades-empty-state">
-          <h3>${escapeHtml(title)}</h3>
-          <p>${escapeHtml(text)}</p>
+        <div class="grades-empty-state empty-state-box">
+          <div class="empty-state-icon" aria-hidden="true">N</div>
+          <h3 class="empty-state-title">${escapeHtml(title)}</h3>
+          <p class="empty-state-copy">${escapeHtml(text)}</p>
           ${(showPrimaryButton || showUnlockButton) ? `
-            <div class="button-row">
+            <div class="button-row empty-state-actions">
               ${showPrimaryButton ? `
                 <button type="button" class="sidebar-add-btn" data-grades-entry-primary-action="${escapeHtml(primaryAction)}" aria-label="${escapeHtml(primaryButtonLabel)}" title="${escapeHtml(primaryButtonLabel)}">
                   <span class="sidebar-add-plus" aria-hidden="true"></span>
@@ -26219,7 +26232,7 @@ class PlannerApp {
                     </select>
                   </label>
                   <button type="button" class="ghost grade-test-task-deficit-followup${hasDeficitFollowUp ? " is-active" : ""}" data-grade-test-deficit-followup="1" data-task-id="${escapeHtml(task.id)}" aria-label="Nachbereitung bei Defizitdiagnose fuer ${escapeHtml(taskLabel)}" aria-pressed="${hasDeficitFollowUp ? "true" : "false"}" title="Nachbereitung bei Defizitdiagnose">🛠️</button>
-                  <button type="button" class="ghost grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
+                  <button type="button" class="ghost danger-action grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
                 </div>
               `;
       headRow.append(taskHead);
@@ -27735,13 +27748,19 @@ class PlannerApp {
         this.resetGradesOverviewAutoScrollToLeft(Number(course?.id || 0));
       }
       const empty = document.createElement("div");
-      empty.className = "grades-group-empty";
+      empty.className = "grades-group-empty empty-state-box";
       if (options.includeAddColumns === false) {
-        empty.innerHTML = `<div>Die Übersicht enthält noch keine Leistungen. Wechsle zu Eingabe oder verwalte die Notenstruktur.</div>`;
+        empty.innerHTML = `
+        <div class="empty-state-icon" aria-hidden="true">N</div>
+        <div class="empty-state-title">Noch keine Leistungen</div>
+        <p class="empty-state-copy">Wechsle zu Eingabe oder verwalte die Notenstruktur.</p>
+      `;
       } else {
         empty.innerHTML = `
-        <div>Die Notenstruktur enthält noch keine zugeordneten Leistungen.</div>
-        <div class="button-row">
+        <div class="empty-state-icon" aria-hidden="true">N</div>
+        <div class="empty-state-title">Noch keine Leistungen</div>
+        <p class="empty-state-copy">Die Notenstruktur enthält noch keine zugeordneten Leistungen.</p>
+        <div class="button-row empty-state-actions">
           <button type="button" class="sidebar-add-btn" data-grade-add-assessment="0" data-grade-half-year="${this.getDefaultGradeAssessmentHalfYear()}" aria-label="Erste Leistung anlegen" title="Erste Leistung anlegen">
             <span class="sidebar-add-plus" aria-hidden="true"></span>
           </button>
@@ -28582,7 +28601,9 @@ class PlannerApp {
     if (!id) {
       return false;
     }
-    if (!await this.showConfirmMessage("Leistung und zugehörige Noteneinträge löschen?")) {
+    if (!await this.showConfirmMessage("Leistung und zugehörige Noteneinträge löschen?", {
+      dangerOk: true
+    })) {
       return false;
     }
     this.store.deleteGradeAssessment(id);
@@ -29937,7 +29958,7 @@ class PlannerApp {
         meta.append(label);
         const resetButton = document.createElement("button");
         resetButton.type = "button";
-        resetButton.className = "danger-action grade-picker-override-reset";
+        resetButton.className = "reset-action grade-picker-override-reset";
         resetButton.textContent = "↺";
         resetButton.setAttribute("aria-label", "Auf errechnete Note");
         resetButton.title = "Auf errechnete Note";
@@ -31961,7 +31982,7 @@ class PlannerApp {
 	            <input type="number" name="default-subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-default-grade-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${escapeHtml(String(subcategory.weight ?? ""))}" aria-label="Unterkategorie-Gewichtung in Prozent">
 	            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
 	          </label>
-	          <button type="button" class="ghost" data-default-grade-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
+		          <button type="button" class="ghost danger-action" data-default-grade-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
 	        </div>
 	      `).join("");
       card.innerHTML = `
@@ -31971,7 +31992,7 @@ class PlannerApp {
 	            <input type="number" name="default-category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-default-grade-structure-field="category-weight" data-category-index="${categoryIndex}" value="${escapeHtml(String(category.weight ?? ""))}" aria-label="Kategorie-Gewichtung in Prozent">
 	            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
 	          </label>
-	          <button type="button" class="ghost" data-default-grade-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
+		          <button type="button" class="ghost danger-action" data-default-grade-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
 	        </div>
 	        <div class="course-dialog-subcategories">${subcategoriesHtml}</div>
 	        <button type="button" class="sidebar-add-btn course-dialog-subcategory-add" data-default-grade-structure-add-subcategory="${categoryIndex}" aria-label="Unterkategorie hinzufügen" title="Unterkategorie hinzufügen">

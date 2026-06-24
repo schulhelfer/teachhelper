@@ -25,8 +25,10 @@
           <aside class="side">
             <div class="sidebar-header">
               <h1 class="sidebar-title">Sitzplangenerator<span id="app-version" class="sidebar-version"></span></h1>
-              <button id="tutorial-button" class="module-tutorial-button" type="button"
-                aria-label="Tutorial starten" title="Tutorial starten">🛟</button>
+              <div class="sidebar-header-actions">
+                <button id="tutorial-button" class="module-tutorial-button" type="button"
+                  aria-label="Tutorial starten" title="Tutorial starten">🛟</button>
+              </div>
             </div>
             <div class="steps">
               <ol class="steps-list">
@@ -45,7 +47,11 @@
                   <div id="csv-drop-zone" class="mt-sm file-upload">
                     <input id="csv" type="file" accept=".csv,text/csv" />
                     <label for="csv" class="file-trigger">Namensliste auswählen<br>oder hier ablegen</label>
-                    <span id="csv-status" class="file-status">Noch keine Datei importiert</span>
+                    <div id="csv-status" class="file-status empty-state-box">
+                      <span class="empty-state-icon" aria-hidden="true">CSV</span>
+                      <span class="empty-state-title">Noch keine Datei</span>
+                      <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
+                    </div>
                   </div>
                 </li>
                 <li>
@@ -109,9 +115,9 @@
             </div>
 
             <div id="tutorial-plan-edit-actions" class="row">
-              <button id="reset-learners" class="filled flex-1"
+              <button id="reset-learners" class="filled reset-action flex-1"
                 title="Alle Lernenden von Sitzpläzten lösen">Belegung<br>zurücksetzen</button>
-              <button id="reset-raster" class="filled flex-1"
+              <button id="reset-raster" class="filled reset-action flex-1"
                 title="Alle Sitzplätze deaktivieren">Platzraster<br>zurücksetzen</button>
               <button id="toggle-perspective" class="filled flex-1"
                 title="Sitzplan horizontal spiegeln">Perspektive<br>umdrehen</button>
@@ -158,7 +164,9 @@
 
           <dialog id="grid-dialog" aria-labelledby="grid-dialog-title">
             <form id="grid-dialog-form" class="dialog-form">
-              <h2 id="grid-dialog-title">Raster anpassen</h2>
+              <div class="dialog-header">
+                <h2 id="grid-dialog-title" class="dialog-title">Raster anpassen</h2>
+              </div>
               <label for="grid-dialog-rows">
                 Zeilen:
                 <input id="grid-dialog-rows" type="number" min="1" max="20" step="1" required />
@@ -176,6 +184,9 @@
           </dialog>
           <dialog id="preferences-dialog" aria-labelledby="preferences-dialog-title">
             <form id="preferences-form" class="dialog-form preferences-form">
+              <div class="dialog-header">
+                <h2 id="preferences-dialog-title" class="dialog-title">Sitzbedingungen</h2>
+              </div>
               <div class="preferences-table-wrap">
                 <table class="preferences-table">
                   <thead>
@@ -196,9 +207,9 @@
               </div>
               <div class="dialog-actions">
                 <span id="preferences-guess-hint" class="dialog-inline-hint" aria-live="polite"></span>
-                <button type="button" id="preferences-reset-all" class="ghost">Zurücksetzen</button>
+                <button type="button" id="preferences-reset-all" class="ghost reset-action">Zurücksetzen</button>
                 <button type="button" id="preferences-guess-gender" class="ghost">Geschlecht vermuten</button>
-                <button type="button" id="preferences-reset-gender" class="ghost">Geschlecht zurücksetzen</button>
+                <button type="button" id="preferences-reset-gender" class="ghost reset-action">Geschlecht zurücksetzen</button>
                 <button type="button" id="preferences-cancel" class="ghost">Abbrechen</button>
                 <button type="submit" class="primary">Speichern</button>
               </div>
@@ -206,6 +217,9 @@
           </dialog>
           <dialog id="criteria-dialog" aria-labelledby="criteria-dialog-title">
             <form class="dialog-form criteria-dialog-form">
+              <div class="dialog-header">
+                <h2 id="criteria-dialog-title" class="dialog-title">Kriterien am Sitzplatz</h2>
+              </div>
               <section id="criteria-panel" class="criteria-panel" aria-live="polite">
                 <div class="criteria-header">
                   <div id="criteria-student" class="criteria-student">Kein Platz ausgewählt</div>
@@ -221,7 +235,9 @@
           </dialog>
           <dialog id="summary-dialog" aria-labelledby="summary-dialog-title">
             <form class="dialog-form">
-              <h2 id="summary-dialog-title">Gesamtübersicht der Kriterienerfüllung</h2>
+              <div class="dialog-header">
+                <h2 id="summary-dialog-title" class="dialog-title">Gesamtübersicht der Kriterienerfüllung</h2>
+              </div>
               <div class="summary-table-wrap">
                 <table class="summary-table">
                   <thead>
@@ -239,7 +255,9 @@
           </dialog>
           <dialog id="course-save-dialog" aria-labelledby="course-save-dialog-title">
             <form class="dialog-form">
-              <h2 id="course-save-dialog-title">Sitzplan speichern</h2>
+              <div class="dialog-header">
+                <h2 id="course-save-dialog-title" class="dialog-title">Sitzplan speichern</h2>
+              </div>
               <p class="dialog-copy">Speichern in separater Sitzplan-Datei oder im Notenmodul?</p>
               <div class="dialog-actions">
                 <button type="button" id="course-save-dialog-cancel" class="ghost">Abbrechen</button>
@@ -250,11 +268,15 @@
           </dialog>
           <dialog id="course-grade-complete-dialog" aria-labelledby="course-grade-complete-dialog-title">
             <form class="dialog-form">
-              <h2 id="course-grade-complete-dialog-title">Noten speichern?</h2>
+              <div class="dialog-header">
+                <h2 id="course-grade-complete-dialog-title" class="dialog-title">Noten speichern?</h2>
+              </div>
               <p class="dialog-copy">Du bist alle Lernenden mit Sitzplatz durchgegangen.</p>
               <div class="dialog-actions">
-                <button type="button" id="course-grade-complete-cancel" class="ghost" aria-label="Nicht speichern" title="Nicht speichern">❌</button>
-                <button type="button" id="course-grade-complete-save" class="primary" aria-label="Noten von allen speichern" title="Noten von allen speichern">💾</button>
+                <button type="button" id="course-grade-complete-cancel" class="ghost dialog-icon-button"
+                  aria-label="Nicht speichern" title="Nicht speichern">❌</button>
+                <button type="button" id="course-grade-complete-save" class="primary dialog-icon-button"
+                  aria-label="Noten von allen speichern" title="Noten von allen speichern">💾</button>
               </div>
             </form>
           </dialog>

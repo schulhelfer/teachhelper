@@ -719,15 +719,37 @@
             return cloneStudentsForSync(state.courseContext?.students || []);
           }
 
+          function renderCsvStatus(label = '') {
+            if (!els.csvStatus) return;
+            const normalizedLabel = String(label || '').trim();
+            els.csvStatus.replaceChildren();
+            els.csvStatus.classList.toggle('empty-state-box', !normalizedLabel);
+            if (normalizedLabel) {
+              els.csvStatus.textContent = normalizedLabel;
+              return;
+            }
+            const icon = document.createElement('span');
+            icon.className = 'empty-state-icon';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = 'CSV';
+            const title = document.createElement('span');
+            title.className = 'empty-state-title';
+            title.textContent = 'Noch keine Datei';
+            const copy = document.createElement('span');
+            copy.className = 'empty-state-copy';
+            copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
+            els.csvStatus.append(icon, title, copy);
+          }
+
           function updateCsvStatusDisplay() {
             if (!els.csvStatus) return;
             if (isCourseSeatplanMode()) {
               const count = Array.isArray(state.students) ? state.students.length : 0;
               const courseName = String(state.courseContext?.courseName || 'Kurs').trim() || 'Kurs';
-              els.csvStatus.textContent = `${courseName}: ${count} Kursteilnehmer aus dem Notenmodul`;
+              renderCsvStatus(`${courseName}: ${count} Kursteilnehmer aus dem Notenmodul`);
               return;
             }
-            els.csvStatus.textContent = state.csvName || 'Noch keine Datei importiert';
+            renderCsvStatus(state.csvName);
           }
 
           function updateCourseSeatplanUi() {
@@ -1692,9 +1714,7 @@
             if (typeof detail.csvName === 'string') {
               const label = sanitizeExportFileName(detail.csvName);
               state.csvName = label || state.csvName;
-              if (els.csvStatus) {
-                els.csvStatus.textContent = label || 'Namensliste synchronisiert';
-              }
+              renderCsvStatus(label || 'Namensliste synchronisiert');
             }
             refreshUnseated();
             renderSeats();
@@ -3025,9 +3045,7 @@
               showMessage('Die Namensliste kommt in diesem Kurs-Sitzplan aus dem Notenmodul.', 'info');
               return;
             }
-            if (els.csvStatus) {
-              els.csvStatus.textContent = file.name;
-            }
+            renderCsvStatus(file.name);
             const text = await file.text();
             let rows = parseCSV(text);
             if (!rows.length) {
