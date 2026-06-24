@@ -70,6 +70,10 @@
       box-sizing: border-box
     }
 
+    [hidden] {
+      display: none !important;
+    }
+
     html,
     body {
       height: 100%
@@ -356,8 +360,14 @@
     .app-header-actions {
       display: inline-flex;
       align-items: center;
+      justify-content: flex-end;
       gap: 8px;
       flex: 0 0 auto;
+      grid-column: 2;
+      grid-row: 1;
+      min-width: 0;
+      max-width: 100%;
+      margin-left: auto;
       transition: gap var(--chrome-transition-duration-short) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
@@ -691,20 +701,20 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      width: 30px;
-      min-width: 30px;
-      height: 30px;
-      min-height: 30px;
+      width: 38px;
+      min-width: 38px;
+      height: 38px;
+      min-height: 38px;
       padding: 0;
-      border: 0 !important;
-      border-radius: 999px;
-      background: transparent !important;
+      border: 1px solid var(--button-border);
+      border-radius: 12px;
+      background: rgba(28, 34, 44, 0.75);
       color: #e2e8f0;
-      font-size: 17px;
+      font-size: 1.25rem;
       line-height: 1;
-      box-shadow: none !important;
-      filter: none !important;
-      transition: color 140ms ease, background-color 140ms ease, transform 140ms ease;
+      box-shadow: var(--button-shadow);
+      filter: none;
+      transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
     }
 
     .sidebar-help-button::after {
@@ -730,17 +740,17 @@
     }
 
     .sidebar-help-button.has-tutorial-attention {
-      box-shadow: none !important;
+      box-shadow: var(--button-shadow);
     }
 
     .sidebar-help-button:hover,
     .sidebar-help-button:active,
     .sidebar-help-button:focus,
     .sidebar-help-button:focus-visible {
-      background: rgba(148, 163, 184, 0.16) !important;
-      border-color: transparent !important;
-      box-shadow: none !important;
-      filter: none !important;
+      background: rgba(60, 72, 92, 0.98);
+      border-color: rgba(130, 190, 255, 0.95);
+      box-shadow: var(--button-shadow);
+      filter: none;
       color: #fff;
       transform: translateY(-1px);
     }
@@ -751,8 +761,29 @@
       transform: translate(-50%, 0);
     }
 
+    .side>.sidebar-help-button {
+      position: absolute;
+      top: 10px;
+      right: 14px;
+      z-index: 4;
+    }
+
+    .side>.sidebar-help-button::after {
+      top: calc(100% + 8px);
+      bottom: auto;
+      left: auto;
+      right: 0;
+      transform: translateY(-3px);
+    }
+
+    .side>.sidebar-help-button:hover::after,
+    .side>.sidebar-help-button:focus-visible::after {
+      transform: translateY(0);
+    }
+
     .shell-sidebar-header {
       display: none;
+      padding-right: 48px;
     }
 
     .app.app-tab-groups .shell-sidebar-header-groups,
@@ -5206,13 +5237,19 @@
     .tutorial-prev-button:focus,
     .tutorial-prev-button:focus-visible,
     .tutorial-next-button:focus,
-    .tutorial-next-button:focus-visible,
-    .sidebar-help-button:focus,
-    .sidebar-help-button:focus-visible {
+    .tutorial-next-button:focus-visible {
       outline: 2px solid var(--focus-outline);
       outline-offset: 2px;
       border-color: transparent !important;
       box-shadow: none !important;
+    }
+
+    .sidebar-help-button:focus,
+    .sidebar-help-button:focus-visible {
+      outline: 2px solid var(--focus-outline);
+      outline-offset: 2px;
+      border-color: rgba(130, 190, 255, 0.95);
+      box-shadow: var(--button-shadow);
     }
 
     @keyframes tutorial-bubble-pop {
@@ -5864,7 +5901,11 @@
       }
 
       .app-header-actions {
-        margin-left: auto;
+        grid-column: 1;
+        grid-row: 2;
+        width: 100%;
+        margin-left: 0;
+        align-items: flex-start;
       }
 
       .tab-nav {
@@ -6050,27 +6091,29 @@
       </button>
       <div class="app-header-title"><span class="app-header-title-label">TeachHelper<span id="app-header-version"
             class="app-header-version"></span></span></div>
-      <nav class="tab-nav" aria-label="App-Bereiche">
-        <button id="tab-grades-unlock" class="tab-unlock-button" type="button" aria-label="Notenmodul entsperren"
-          title="Notenmodul entsperren" hidden>🔓</button>
-        <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
-          aria-selected="true">Noten</button>
-        <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"
-          aria-selected="false">Planung</button>
-        <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
-          aria-selected="false">PDF-Tools</button>
-        <button id="tab-seatplan" class="tab-button" type="button" data-tab-target="seatplan"
-          aria-selected="false">Sitzplan</button>
-        <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups"
-          aria-selected="false">Gruppen</button>
-        <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
-          aria-selected="false">Picker</button>
-        <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
-          aria-selected="false">DuplikatCheck</button>
-        <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
-          aria-selected="false">Arbeitsphase</button>
-        <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
-      </nav>
+      <div class="app-header-actions">
+        <nav class="tab-nav" aria-label="App-Bereiche">
+          <button id="tab-grades-unlock" class="tab-unlock-button" type="button" aria-label="Notenmodul entsperren"
+            title="Notenmodul entsperren" hidden>🔓</button>
+          <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
+            aria-selected="true">Noten</button>
+          <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"
+            aria-selected="false">Planung</button>
+          <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
+            aria-selected="false">PDF-Tools</button>
+          <button id="tab-seatplan" class="tab-button" type="button" data-tab-target="seatplan"
+            aria-selected="false">Sitzplan</button>
+          <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups"
+            aria-selected="false">Gruppen</button>
+          <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
+            aria-selected="false">Picker</button>
+          <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
+            aria-selected="false">DuplikatCheck</button>
+          <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
+            aria-selected="false">Arbeitsphase</button>
+          <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
+        </nav>
+      </div>
     </header>
     <button id="sidebar-manual-save-btn" class="ghost header-icon-button manual-header-save-btn" type="button"
       aria-label="Datenbank speichern/neu anlegen" title="Datenbank speichern/neu anlegen" hidden>💾</button>
@@ -6106,6 +6149,8 @@
 
     <aside class="side">
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
+      <button id="first-run-tutorial-start" class="ghost sidebar-help-button" type="button"
+        aria-label="Tutorial starten" data-tooltip="Tutorial starten">🛟</button>
       <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
         <h1 class="sidebar-title">Gruppengenerator</h1>
       </div>
@@ -6304,11 +6349,6 @@
         <div class="list" id="unseated"></div>
       </section>
     </aside>
-
-    <div class="sidebar-footer" aria-label="Hilfe">
-      <button id="first-run-tutorial-start" class="ghost sidebar-help-button" type="button"
-        aria-label="Tutorial starten" data-tooltip="Tutorial starten">ⓘ</button>
-    </div>
 
     <main class="main">
       <div id="groups-main-host">

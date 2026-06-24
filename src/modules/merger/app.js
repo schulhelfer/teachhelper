@@ -54,6 +54,7 @@ export function createMergerApp({
   };
 
   const ui = {
+    tutorialButton: getElementById("tutorialButton"),
     toolTabs: [...querySelectorAll(".tool-tab")],
     toolPanels: {
       [TOOL_MERGE]: getElementById("tool-panel-merge"),
@@ -109,6 +110,24 @@ export function createMergerApp({
 
   let activeTool = TOOL_LAYOUT;
   let pendingPickerTarget = null;
+
+  function notifyParentTutorialStartRequest() {
+    if (typeof window === "undefined" || !window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:tutorial-start-request",
+        detail: {
+          source: "iframe",
+          module: "merger",
+        },
+      }, window.location.origin);
+    } catch (_error) {
+      // The tutorial entry is only available inside the app shell.
+    }
+  }
+
   const mergeState = {
     files: [],
     pageCountByFile: new Map(),
@@ -3958,6 +3977,7 @@ export function createMergerApp({
           ui.toolTabs.forEach((button) => {
             button.addEventListener("click", () => setActiveTool(button.dataset.tool));
           });
+          ui.tutorialButton?.addEventListener("click", notifyParentTutorialStartRequest);
           ui.sharedPdfInput.addEventListener("change", async () => {
             const files = [...(ui.sharedPdfInput.files || [])];
             const target = pendingPickerTarget;

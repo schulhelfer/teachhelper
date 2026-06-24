@@ -46,6 +46,7 @@
             teacherCard: document.getElementById('teacher-card'),
             sidePanel: document.querySelector('.side'),
             sidebarScore: document.getElementById('sidebar-score'),
+            tutorialButton: document.getElementById('tutorial-button'),
             printPlanTitle: document.getElementById('print-plan-title'),
             patternPi: document.getElementById('pattern-pi'),
             patternE: document.getElementById('pattern-e'),
@@ -111,6 +112,23 @@
               }
             });
           }
+          const notifyParentTutorialStartRequest = () => {
+            if (typeof window === 'undefined' || !window.parent || window.parent === window) {
+              return;
+            }
+            try {
+              window.parent.postMessage({
+                type: 'classroom:tutorial-start-request',
+                detail: {
+                  source: 'iframe',
+                  module: 'seatplan',
+                },
+              }, window.location.origin);
+            } catch (_error) {
+              // The tutorial entry is only available inside the app shell.
+            }
+          };
+          els.tutorialButton?.addEventListener('click', notifyParentTutorialStartRequest);
           const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
           const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
           const MALE_GIVEN_NAMES = [

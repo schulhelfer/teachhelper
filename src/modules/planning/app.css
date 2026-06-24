@@ -1106,8 +1106,9 @@
           display: inline-flex;
           align-items: center;
           justify-content: flex-end;
-          gap: 8px;
+          gap: 3px;
           flex: 0 0 auto;
+          margin-right: -20px;
         }
 
         html[data-shell-collapsed="true"] .sidebar-panel {

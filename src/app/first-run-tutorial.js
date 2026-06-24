@@ -400,7 +400,7 @@ export function createFirstRunTutorial({
     const icon = document.createElement('div');
     icon.className = 'tutorial-intro-icon';
     icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = 'ⓘ';
+    icon.textContent = '🛟';
 
     const title = document.createElement('h2');
     title.id = 'tutorial-intro-title';

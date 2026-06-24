@@ -387,7 +387,7 @@ import {
   const addTutorialContinuationHint = (steps, prerequisite) => {
     const lastStep = steps[steps.length - 1];
     if (lastStep && typeof lastStep.copy === 'string') {
-      lastStep.copy = `${lastStep.copy} Sobald du ${prerequisite} hast, kannst du das Tutorial über ⓘ fortsetzen.`;
+      lastStep.copy = `${lastStep.copy} Sobald du ${prerequisite} hast, kannst du das Tutorial über 🛟 fortsetzen.`;
     }
     return steps;
   };
@@ -1794,7 +1794,7 @@ import {
           createModuleTutorialStep({
             tab: TAB_GROUPS,
             title: 'Detailtour wählen',
-            copy: 'Öffne zuerst das gewünschte Modul und klicke dann auf ⓘ. Dann startet die genauere Einführung für genau diesen Bereich.',
+            copy: 'Öffne zuerst das gewünschte Modul und klicke dann auf 🛟. Dann startet die genauere Einführung für genau diesen Bereich.',
             target: (nodes) => nodes.firstRunTutorialStart || nodes.appHeader,
             placement: 'top',
           }),
@@ -1894,7 +1894,7 @@ import {
     },
     {
       title: 'Einführung in die Module',
-      copy: 'Öffne ein Modul und klicke auf ⓘ, um seine Einführung zu starten.',
+      copy: 'Öffne ein Modul und klicke auf 🛟, um seine Einführung zu starten.',
       target: (nodes) => nodes.firstRunTutorialStart,
       tab: TAB_GROUPS,
       placement: 'top',
@@ -1930,6 +1930,16 @@ import {
   }
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('message', (event) => {
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+      const data = event.data;
+      if (!data || typeof data !== 'object' || data.type !== 'classroom:tutorial-start-request') {
+        return;
+      }
+      startTutorialFromEntry();
+    });
     window.addEventListener('classroom:planning-view-request', (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {

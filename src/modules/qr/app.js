@@ -2,6 +2,7 @@ export function createQrApp({ root = document } = {}) {
   const ui = {
     toolTabs: [...root.querySelectorAll('.tool-tab')],
     toolPanels: [...root.querySelectorAll('[data-tool-panel]')],
+    tutorialButton: root.getElementById('tutorialButton'),
     generatorForm: root.getElementById('generatorForm'),
     generatorLinkInput: root.getElementById('generatorLinkInput'),
     generatorResult: root.getElementById('generatorResult'),
@@ -49,6 +50,23 @@ export function createQrApp({ root = document } = {}) {
   let nativeQrDetectorPromise = null;
   let tutorialDemoActive = false;
   let tutorialPreviousTool = 'generator';
+
+  function notifyParentTutorialStartRequest() {
+    if (typeof window === 'undefined' || !window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: 'classroom:tutorial-start-request',
+        detail: {
+          source: 'iframe',
+          module: 'qr',
+        },
+      }, window.location.origin);
+    } catch {
+      // The tutorial entry is only available inside the app shell.
+    }
+  }
 
   function getQrFactory() {
     return window.QRCode;
@@ -820,6 +838,7 @@ export function createQrApp({ root = document } = {}) {
   }
 
   function bindEvents() {
+    ui.tutorialButton?.addEventListener('click', notifyParentTutorialStartRequest);
     ui.toolTabs.forEach((tab) => {
       tab.addEventListener('click', () => setActiveTool(tab.dataset.tool));
     });

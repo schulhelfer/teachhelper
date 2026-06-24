@@ -25,6 +25,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   const MAX_VISUAL_RECORDS = 260;
 
   const ui = {
+    tutorialButton: root.getElementById('tutorialButton'),
     zipInput: root.getElementById('zipInput'),
     zipDropZone: root.getElementById('zipDropZone'),
     dropHint: root.getElementById('dropHint'),
@@ -39,6 +40,23 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   let lastRecords = [];
   let tutorialDemoActive = false;
   let activePreviewOverlay = null;
+
+  function notifyParentTutorialStartRequest() {
+    if (typeof window === 'undefined' || !window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: 'classroom:tutorial-start-request',
+        detail: {
+          source: 'iframe',
+          module: 'duplicate-check',
+        },
+      }, window.location.origin);
+    } catch {
+      // The tutorial entry is only available inside the app shell.
+    }
+  }
 
   function hasJsZipLoaded() {
     return Boolean(window.JSZip && typeof window.JSZip.loadAsync === 'function');
@@ -1135,6 +1153,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   }
 
   function bindEvents() {
+    ui.tutorialButton?.addEventListener('click', notifyParentTutorialStartRequest);
     ui.ruleButtons.forEach((button) => {
       button.addEventListener('click', () => {
         toggleDuplicateRule(button.dataset.duplicateRule);
