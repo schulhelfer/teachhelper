@@ -728,17 +728,13 @@
               els.csvStatus.textContent = normalizedLabel;
               return;
             }
-            const icon = document.createElement('span');
-            icon.className = 'empty-state-icon';
-            icon.setAttribute('aria-hidden', 'true');
-            icon.textContent = 'CSV';
             const title = document.createElement('span');
             title.className = 'empty-state-title';
             title.textContent = 'Noch keine Datei';
             const copy = document.createElement('span');
             copy.className = 'empty-state-copy';
             copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
-            els.csvStatus.append(icon, title, copy);
+            els.csvStatus.append(title, copy);
           }
 
           function updateCsvStatusDisplay() {

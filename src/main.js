@@ -2772,17 +2772,13 @@ import {
     card.replaceChildren();
     const box = document.createElement('div');
     box.className = 'empty-state-box';
-    const icon = document.createElement('span');
-    icon.className = 'empty-state-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = 'N';
     const titleEl = document.createElement('span');
     titleEl.className = 'empty-state-title';
     titleEl.textContent = title;
     const copyEl = document.createElement('span');
     copyEl.className = 'empty-state-copy';
     copyEl.textContent = copy;
-    box.append(icon, titleEl, copyEl);
+    box.append(titleEl, copyEl);
     card.appendChild(box);
   }
   function updateRandomPickerCards(centerIndex = 0, { final = false } = {}) {
@@ -5478,17 +5474,13 @@ import {
       els.csvStatus.textContent = normalizedLabel;
       return;
     }
-    const icon = document.createElement('span');
-    icon.className = 'empty-state-icon';
-    icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = 'CSV';
     const title = document.createElement('span');
     title.className = 'empty-state-title';
     title.textContent = 'Noch keine Datei';
     const copy = document.createElement('span');
     copy.className = 'empty-state-copy';
     copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
-    els.csvStatus.append(icon, title, copy);
+    els.csvStatus.append(title, copy);
   }
 
   async function importCsvFromFile(file) {

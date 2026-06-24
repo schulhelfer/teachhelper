@@ -18878,7 +18878,6 @@ class PlannerApp {
     this.refs.gradesEntryContent.classList.toggle("has-offset-empty-state", offsetTopThird);
     this.refs.gradesEntryContent.innerHTML = `
         <div class="grades-empty-state empty-state-box">
-          <div class="empty-state-icon" aria-hidden="true">N</div>
           <h3 class="empty-state-title">${escapeHtml(title)}</h3>
           <p class="empty-state-copy">${escapeHtml(text)}</p>
           ${(showPrimaryButton || showUnlockButton) ? `
@@ -27751,13 +27750,11 @@ class PlannerApp {
       empty.className = "grades-group-empty empty-state-box";
       if (options.includeAddColumns === false) {
         empty.innerHTML = `
-        <div class="empty-state-icon" aria-hidden="true">N</div>
         <div class="empty-state-title">Noch keine Leistungen</div>
         <p class="empty-state-copy">Wechsle zu Eingabe oder verwalte die Notenstruktur.</p>
       `;
       } else {
         empty.innerHTML = `
-        <div class="empty-state-icon" aria-hidden="true">N</div>
         <div class="empty-state-title">Noch keine Leistungen</div>
         <p class="empty-state-copy">Die Notenstruktur enthält noch keine zugeordneten Leistungen.</p>
         <div class="button-row empty-state-actions">
