@@ -1910,7 +1910,7 @@
       grid-row: 2 / span 2;
     }
 
-    .app.app-tab-work-phase>.side> :not(.shell-sidebar-header-work-phase):not(.side-monitor-settings):not(.side-timer-settings) {
+    .app.app-tab-work-phase>.side> :not(.shell-sidebar-header-work-phase):not(.side-monitor-settings):not(.side-timer-settings):not(.sidebar-help-button) {
       display: none;
     }
 
@@ -3961,6 +3961,34 @@
       color: #f8fafc;
       border-color: var(--button-border);
       box-shadow: var(--button-shadow);
+    }
+
+    .side>.sidebar-help-button,
+    .side>.sidebar-help-button:not(:disabled) {
+      width: 38px;
+      min-width: 38px;
+      height: 38px;
+      min-height: 38px;
+      padding: 0;
+      border: 1px solid var(--button-border);
+      border-radius: 12px;
+      background: rgba(28, 34, 44, 0.75);
+      color: #e2e8f0;
+      font-size: 1.25rem;
+      line-height: 1;
+      box-shadow: var(--button-shadow);
+      filter: none;
+    }
+
+    .side>.sidebar-help-button:hover:not(:disabled),
+    .side>.sidebar-help-button:focus-visible:not(:disabled),
+    .side>.sidebar-help-button:active:not(:disabled) {
+      background: rgba(60, 72, 92, 0.98);
+      border-color: rgba(130, 190, 255, 0.95);
+      color: #ffffff;
+      box-shadow: var(--button-shadow);
+      filter: none;
+      transform: translateY(-1px);
     }
 
     #monitor-mic-start,
@@ -6149,7 +6177,7 @@
 
     <aside class="side">
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
-      <button id="first-run-tutorial-start" class="ghost sidebar-help-button" type="button"
+      <button id="first-run-tutorial-start" class="sidebar-help-button" type="button"
         aria-label="Tutorial starten" data-tooltip="Tutorial starten">🛟</button>
       <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
         <h1 class="sidebar-title">Gruppengenerator</h1>

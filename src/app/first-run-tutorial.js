@@ -594,7 +594,7 @@ export function createFirstRunTutorial({
     }
   }
 
-  function applyTargetPosition(target, preferredPlacement, anchor = 'center', offsetX = 0) {
+  function applyTargetPosition(target, preferredPlacement, anchor = 'center', offsetX = 0, offsetY = 0, highlightPadding = 7) {
     if (!bubble || !highlight) return;
     revealTarget(target);
     const rect = getTargetRect(target);
@@ -614,15 +614,15 @@ export function createFirstRunTutorial({
     let left = anchor === 'start'
       ? rect.left + offsetX
       : rect.left + (rect.width - bubbleRect.width) / 2 + offsetX;
-    let top = rect.bottom + TARGET_GAP;
+    let top = rect.bottom + TARGET_GAP + offsetY;
     if (placement === 'top') {
-      top = rect.top - bubbleRect.height - TARGET_GAP;
+      top = rect.top - bubbleRect.height - TARGET_GAP + offsetY;
     } else if (placement === 'left') {
       left = rect.left - bubbleRect.width - TARGET_GAP;
-      top = rect.top + (rect.height - bubbleRect.height) / 2;
+      top = rect.top + (rect.height - bubbleRect.height) / 2 + offsetY;
     } else if (placement === 'right') {
       left = rect.right + TARGET_GAP;
-      top = rect.top + (rect.height - bubbleRect.height) / 2;
+      top = rect.top + (rect.height - bubbleRect.height) / 2 + offsetY;
     }
 
     left = clamp(left, minLeft, Math.max(minLeft, maxLeft));
@@ -641,7 +641,7 @@ export function createFirstRunTutorial({
     bubble.style.setProperty('--tutorial-arrow-left', `${Math.round(arrowLeft)}px`);
     bubble.style.setProperty('--tutorial-arrow-top', `${Math.round(arrowTop)}px`);
 
-    const padding = 7;
+    const padding = Number.isFinite(Number(highlightPadding)) ? Number(highlightPadding) : 7;
     highlight.hidden = false;
     highlight.style.left = `${Math.round(rect.left - padding)}px`;
     highlight.style.top = `${Math.round(rect.top - padding)}px`;
@@ -653,7 +653,14 @@ export function createFirstRunTutorial({
   function positionCurrentStep() {
     if (!active || !bubble) return;
     const step = activeSteps[stepIndex];
-    applyTargetPosition(resolveTarget(step), step?.placement, step?.anchor, step?.offsetX);
+    applyTargetPosition(
+      resolveTarget(step),
+      step?.placement,
+      step?.anchor,
+      step?.offsetX,
+      step?.offsetY,
+      step?.highlightPadding
+    );
   }
 
   function trackCurrentTarget() {

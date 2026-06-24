@@ -428,14 +428,14 @@ p {
   border-color: var(--focus-border);
   background: linear-gradient(180deg, rgba(148, 163, 184, 0.12), var(--drop));
   box-shadow: 0 0 0 3px var(--highlight-neutral-soft), var(--inner);
-  transform: translateY(-1px) scale(1.003);
+  transform: none;
 }
 
 .drop.dragover {
   border-color: color-mix(in srgb, var(--accent) 70%, var(--line));
   background: linear-gradient(180deg, color-mix(in srgb, var(--accent-soft) 55%, var(--drop)), var(--drop));
   box-shadow: 0 10px 28px color-mix(in srgb, var(--accent) 18%, transparent), var(--inner);
-  transform: translateY(-1px) scale(1.005);
+  transform: none;
 }
 
 .drop strong {
