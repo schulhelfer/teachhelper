@@ -507,11 +507,19 @@ export function createFirstRunTutorial({
     const preferred = ['top', 'bottom', 'left', 'right'].includes(preferredPlacement)
       ? preferredPlacement
       : '';
-    if (preferred && available[preferred] >= (preferred === 'left' || preferred === 'right' ? bubbleRect.width : bubbleRect.height) + TARGET_GAP) {
+    const fitsPlacement = (placement) => {
+      const requiredSize = placement === 'left' || placement === 'right'
+        ? bubbleRect.width
+        : bubbleRect.height;
+      return available[placement] >= requiredSize + TARGET_GAP + VIEWPORT_MARGIN;
+    };
+    if (preferred && fitsPlacement(preferred)) {
       return preferred;
     }
-    return ['bottom', 'top', 'right', 'left']
-      .sort((a, b) => available[b] - available[a])[0];
+    const fallback = ['bottom', 'top', 'right', 'left']
+      .sort((a, b) => available[b] - available[a])
+      .find((placement) => fitsPlacement(placement));
+    return fallback || 'center';
   }
 
   function applyFallbackPosition() {
@@ -615,7 +623,10 @@ export function createFirstRunTutorial({
       ? rect.left + offsetX
       : rect.left + (rect.width - bubbleRect.width) / 2 + offsetX;
     let top = rect.bottom + TARGET_GAP + offsetY;
-    if (placement === 'top') {
+    if (placement === 'center') {
+      left = viewport.offsetLeft + (viewport.width - bubbleRect.width) / 2;
+      top = viewport.offsetTop + (viewport.height - bubbleRect.height) / 2;
+    } else if (placement === 'top') {
       top = rect.top - bubbleRect.height - TARGET_GAP + offsetY;
     } else if (placement === 'left') {
       left = rect.left - bubbleRect.width - TARGET_GAP;

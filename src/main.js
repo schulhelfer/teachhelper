@@ -562,13 +562,15 @@ import {
             'Datenbank verbinden',
             'Wähle eine Datenbank aus oder lege eine neue an. Planung und Noten nutzen dieselbe Datei.',
             ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])'],
-            'gradesDatabase'
+            'gradesDatabase',
+            'right'
           );
           const encryptionStep = gradesStep(
             'Noten verschlüsseln',
             'Schütze sensible Notendaten optional mit einem Passwort. Ohne Passwort lassen sie sich nicht wiederherstellen.',
             '[data-tutorial-anchor="grades-encryption"]',
-            'gradesDatabase'
+            'gradesDatabase',
+            'right'
           );
           const backupStep = gradesStep(
             'Daten sichern',
@@ -576,7 +578,8 @@ import {
               ? 'Lege Backup-Ordner und Intervall fest. Manuelle Sicherungen bleiben jederzeit möglich.'
               : 'Speichere die Datenbank regelmäßig als Datei und lade sie nach einem Neustart wieder ein.',
             shellSupportsExternalFileSync ? '[data-tutorial-anchor="grades-backup"]' : '#db-manual-actions:not([hidden])',
-            'gradesDatabase'
+            'gradesDatabase',
+            'right'
           );
           const databaseSteps = [
             databaseConnectionStep,
@@ -626,13 +629,15 @@ import {
               'Notenstruktur festlegen',
               'Kategorien, Unterkategorien und Gewichtungen steuern die spätere Berechnung.',
               '[data-tutorial-anchor="grades-structure-dialog"]',
-              'gradesStructure'
+              'gradesStructure',
+              'right'
             ),
             gradesStep(
               'Teilnehmende verwalten',
               'Importiere eine CSV-Liste oder füge Personen einzeln hinzu.',
               '[data-tutorial-anchor="grades-students-dialog"]',
-              'gradesStudents'
+              'gradesStudents',
+              'right'
             )
           );
           if (!gradeState.hasGradeStudents) {
@@ -694,7 +699,8 @@ import {
               'Leistung speichern',
               'Die Diskette übernimmt die vollständige Leistung in die Übersicht.',
               '[data-tutorial-anchor="grades-entry-save"]',
-              'gradesEntry'
+              'gradesEntry',
+              'top'
             ),
             gradesStep(
               'Notenübersicht lesen',
@@ -792,7 +798,9 @@ import {
               'Datenbank',
               'Wähle eine Datenbank aus oder lege eine neue an. Planung und Noten teilen sich diese Datei.',
               ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
-              'database'
+              'database',
+              planningFallback,
+              { placement: 'right' }
             ),
             planningStep(
               'Backup',
@@ -800,7 +808,9 @@ import {
                 ? 'Lege Backup-Ordner und Intervall fest; manuelle Sicherungen bleiben möglich.'
                 : 'Speichere die Datenbank als Datei und lade sie nach einem Neustart wieder ein.',
               shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
-              'database'
+              'database',
+              planningFallback,
+              { placement: 'right' }
             ),
           ];
           const planningState = planningTutorialDemoActive ? {
@@ -820,13 +830,17 @@ import {
               'Ferien und freie Tage',
               'Ferien und freie Tage begrenzen den Planungszeitraum.',
               '#settings-tab-dayoff .settings-grid',
-              'dayoff'
+              'dayoff',
+              planningFallback,
+              { placement: 'right' }
             ),
             planningStep(
               'Einstellungen übernehmen',
-              '„Bestätigen“ übernimmt Änderungen, „Abbrechen“ verwirft den Entwurf.',
+              '„Speichern“ übernimmt Änderungen, „Abbrechen“ verwirft den Entwurf.',
               '#settings-save-all',
-              'dayoff'
+              'dayoff',
+              planningFallback,
+              { placement: 'top' }
             ),
           ];
           if (!planningState.planningAccessReady) {
@@ -843,13 +857,15 @@ import {
               "#sidebar-course-list button[data-add-course='1']",
               'week',
               planningFallback,
-              { highlightPadding: 4 }
+              { placement: 'right', highlightPadding: 4 }
             ),
             planningStep(
               'Kursdaten',
               'Fach, Kursname, Farbe und Unterrichtsstatus definieren den Kurs.',
               ["#course-dialog [data-panel='general']", '#course-dialog-form'],
-              'courseCreate'
+              'courseCreate',
+              planningFallback,
+              { placement: 'right' }
             )
           );
           if (!planningState.hasPlanningCourse) {
@@ -864,7 +880,9 @@ import {
               'Kurse bedienen',
               'Linksklick öffnet den Verlauf, Ziehen sortiert, Rechtsklick öffnet Aktionen.',
               '#sidebar-course-list li[data-course-id] button[data-course-id]',
-              'week'
+              'week',
+              planningFallback,
+              { placement: 'right' }
             ),
             planningStep(
               'Kurs per Rechtsklick ändern',
@@ -872,19 +890,23 @@ import {
               ['#app-context-menu:not([hidden])', '#sidebar-course-list li[data-course-id]'],
               'courseMenu',
               planningFallback,
-              { highlightPadding: 4 }
+              { placement: 'right', highlightPadding: 4 }
             ),
             planningStep(
               'Serie per Doppelklick anlegen',
               'Doppelklicke eine freie Zelle für eine wiederkehrende Unterrichtsserie.',
               ['#week-table td.day-cell.empty[data-day][data-hour]', '#week-table'],
-              'week'
+              'week',
+              planningFallback,
+              { placement: 'top' }
             ),
             planningStep(
               'Serie konfigurieren',
               'Lege Kurs, Zeit, Wiederholung und Gültigkeitszeitraum fest.',
               ['#slot-dialog-form', '#slot-dialog'],
-              'slotCreate'
+              'slotCreate',
+              planningFallback,
+              { placement: 'right' }
             )
           );
           if (!planningState.hasPlanningSlot) {
@@ -895,28 +917,30 @@ import {
           }
 
           steps.push(
-            planningStep('Wochenraster', 'Unterricht, Ferien, Entfall, Arbeiten und Themen liegen in einer Wochenansicht.', '#week-table', 'lesson'),
-            planningStep('Woche wechseln', 'Pfeile wechseln Wochen; Kalenderwoche und Kalendersymbol springen gezielt.', '#headerGlass', 'lesson'),
-            planningStep('Thema direkt eintragen', 'Klicke die Themenfläche; Enter oder Tab speichert, Escape verwirft.', ['.lesson-block[data-lesson-id] .topic-zone', '.lesson-block[data-lesson-id]'], 'lesson'),
-            planningStep('Ausführlich planen', 'Hier ergänzt du Ablauf, Material, Lernziele und Notizen.', ['#topic-dialog-notes', '#topic-dialog-form'], 'topicDialog'),
-            planningStep('Sitzplan öffnen', 'Das Stuhlsymbol öffnet den Sitzplan dieses Kurses.', ['.lesson-block-seatplan-trigger', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { highlightPadding: 4 }),
-            planningStep('Noteneingabe verknüpfen', 'Fragezeichen oder Haken führen zur passenden Leistung im Notenmodul.', ['.lesson-block-grade-entry', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { highlightPadding: 4 }),
-            planningStep('Stunde per Rechtsklick steuern', 'Das Menü bietet Kopieren, Entfall, Arbeit und Verschieben weiterer Planung.', ['#app-context-menu:not([hidden])', '.lesson-block[data-lesson-id]'], 'lessonMenu', planningFallback, { highlightPadding: 4 }),
-            planningStep('Serie anpassen', 'Ändere eine Serie ganz oder erst ab einem Datum; Löschen ist hier ebenfalls möglich.', ['#slot-dialog-form', '#slot-dialog'], 'slotEdit'),
-            planningStep('Kursverlauf öffnen', 'Ein Klick auf den Kursnamen zeigt den chronologischen Verlauf.', ['.lesson-block .title.course-link[data-course-id]', '.lesson-block[data-lesson-id]'], 'lesson'),
-            planningStep('Unterrichtsverlauf', 'Jede Zeile bündelt Datum, Noteneingabe, Thema und Detailplanung.', ['#course-table tbody tr[data-lesson-id]', '#course-table'], 'course'),
-            planningStep('Einstellungen öffnen', 'Das Zahnrad führt zu Anzeige, Zeiten, Ferien und Datenbank.', '#view-settings-btn', 'course', planningFallback, { highlightPadding: 4 }),
-            planningStep('Anzeige steuern', 'Lege sichtbare Stunden pro Tag und ausgeblendete Kurse fest.', '#settings-tab-display', 'display'),
-            planningStep('Unterrichtszeiten pflegen', 'Stundenzeiten helfen TeachHelper beim passenden aktuellen Kurs.', ['#lesson-times-list', '#settings-tab-lesson-times'], 'lessonTimes'),
-            planningStep('Archiv vorbereiten', 'Erstelle zum Schuljahresabschluss ein PDF-Archiv.', '#sidebar-archive-btn', 'course', planningFallback, { highlightPadding: 4 }),
-            planningStep('Archivumfang wählen', 'Wähle Kursverläufe, Wochenansichten und verfügbare Noten für das PDF.', ['#archive-planning-options', '#archive-dialog-form'], 'archive'),
+            planningStep('Wochenraster', 'Unterricht, Ferien, Entfall, Arbeiten und Themen liegen in einer Wochenansicht.', '#week-table', 'lesson', planningFallback, { placement: 'top' }),
+            planningStep('Woche wechseln', 'Pfeile wechseln Wochen; Kalenderwoche und Kalendersymbol springen gezielt.', '#headerGlass', 'lesson', planningFallback, { placement: 'bottom' }),
+            planningStep('Thema direkt eintragen', 'Klicke die Themenfläche; Enter oder Tab speichert, Escape verwirft.', ['.lesson-block[data-lesson-id] .topic-zone', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top' }),
+            planningStep('Ausführlich planen', 'Hier ergänzt du Ablauf, Material, Lernziele und Notizen.', ['#topic-dialog-notes', '#topic-dialog-form'], 'topicDialog', planningFallback, { placement: 'right' }),
+            planningStep('Sitzplan öffnen', 'Das Stuhlsymbol öffnet den Sitzplan dieses Kurses.', ['.lesson-block-seatplan-trigger', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top', highlightPadding: 4 }),
+            planningStep('Noteneingabe verknüpfen', 'Fragezeichen oder Haken führen zur passenden Leistung im Notenmodul.', ['.lesson-block-grade-entry', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top', highlightPadding: 4 }),
+            planningStep('Stunde per Rechtsklick steuern', 'Das Menü bietet Kopieren, Entfall, Arbeit und Verschieben weiterer Planung.', ['#app-context-menu:not([hidden])', '.lesson-block[data-lesson-id]'], 'lessonMenu', planningFallback, { placement: 'right', highlightPadding: 4 }),
+            planningStep('Serie anpassen', 'Ändere eine Serie ganz oder erst ab einem Datum; Löschen ist hier ebenfalls möglich.', ['#slot-dialog-form', '#slot-dialog'], 'slotEdit', planningFallback, { placement: 'right' }),
+            planningStep('Kursverlauf öffnen', 'Ein Klick auf den Kursnamen zeigt den chronologischen Verlauf.', ['.lesson-block .title.course-link[data-course-id]', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top' }),
+            planningStep('Unterrichtsverlauf', 'Jede Zeile bündelt Datum, Noteneingabe, Thema und Detailplanung.', ['#course-table tbody tr[data-lesson-id]', '#course-table'], 'course', planningFallback, { placement: 'top' }),
+            planningStep('Einstellungen öffnen', 'Das Zahnrad führt zu Anzeige, Zeiten, Ferien und Datenbank.', '#view-settings-btn', 'course', planningFallback, { placement: 'right', highlightPadding: 4 }),
+            planningStep('Anzeige steuern', 'Lege sichtbare Stunden pro Tag und ausgeblendete Kurse fest.', '#settings-tab-display', 'display', planningFallback, { placement: 'right' }),
+            planningStep('Unterrichtszeiten pflegen', 'Stundenzeiten helfen TeachHelper beim passenden aktuellen Kurs.', ['#lesson-times-list', '#settings-tab-lesson-times'], 'lessonTimes', planningFallback, { placement: 'right' }),
+            planningStep('Archiv vorbereiten', 'Erstelle zum Schuljahresabschluss ein PDF-Archiv.', '#sidebar-archive-btn', 'course', planningFallback, { placement: 'right', highlightPadding: 4 }),
+            planningStep('Archivumfang wählen', 'Wähle Kursverläufe, Wochenansichten und verfügbare Noten für das PDF.', ['#archive-planning-options', '#archive-dialog-form'], 'archive', planningFallback, { placement: 'right' }),
             planningStep(
               'Speichern und weiterarbeiten',
               shellSupportsExternalFileSync
                 ? 'Änderungen landen in der Datenbank; Backups sichern zusätzlich.'
                 : 'Speichere regelmäßig über die Datenbank-Schaltfläche als Datei.',
               ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
-              'database'
+              'database',
+              planningFallback,
+              { placement: 'right' }
             )
           );
           return withPlanningLifecycle(steps);
@@ -928,6 +952,7 @@ import {
             title: 'Werkzeugauswahl',
             copy: 'Wechsle zwischen Layout, Zusammenführen, Drehen und Aufteilen.',
             target: mergerFrameTarget('.tool-tab-bar'),
+            placement: 'bottom',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -935,6 +960,7 @@ import {
             title: 'Seiten auf ein Blatt',
             copy: 'Dieses Werkzeug ordnet mehrere PDF-Seiten gemeinsam auf einem neuen Blatt an.',
             target: mergerFrameTarget(['#tool-panel-layout .panel-head', '#tool-panel-layout']),
+            placement: 'bottom',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -942,6 +968,7 @@ import {
             title: 'PDF auswählen',
             copy: 'Ziehe eine PDF hierher oder klicke zur Dateiauswahl.',
             target: mergerFrameTarget('#layoutDropZone'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -949,6 +976,7 @@ import {
             title: 'Seiten pro Blatt',
             copy: 'Lege fest, ob zwei, vier, sechs oder acht Ausgangsseiten auf einem Blatt angeordnet werden.',
             target: mergerFrameTarget('#pagesButtons'),
+            placement: 'right',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -956,6 +984,7 @@ import {
             title: 'Spezialmodus für drei Seiten',
             copy: 'Bei drei Seiten entsteht eine doppelte Startseite plus ein Blatt für Seite zwei und drei.',
             target: mergerFrameTarget('#specialThreeModeButton'),
+            placement: 'right',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -963,6 +992,7 @@ import {
             title: 'Ausrichtung und Lernendenanzahl',
             copy: 'Automatische Ausrichtung und Lernendenanzahl helfen bei passenden Kopien.',
             target: mergerFrameTarget(['.layout-form-grid', '#optionsPanel']),
+            placement: 'right',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -970,6 +1000,7 @@ import {
             title: 'Restseiten',
             copy: 'Entscheide, ob freie Plätze leer bleiben oder mit vorhandenen Seiten aufgefüllt werden.',
             target: mergerFrameTarget(['#optionsPanel .setting-group', '#optionsPanel']),
+            placement: 'right',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -977,6 +1008,7 @@ import {
             title: 'Layout erstellen',
             copy: 'Mit diesem Button erzeugst du die PDF mit dem gewählten Seitenlayout.',
             target: mergerFrameTarget('#layoutStartButton'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
           createModuleTutorialStep({
@@ -984,6 +1016,7 @@ import {
             title: 'Dateien verbinden',
             copy: 'Lade mehrere PDFs gleichzeitig oder nacheinander, um sie zu einer Datei zusammenzuführen.',
             target: mergerFrameTarget('#mergeDropZone'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('merge'),
           }),
           createModuleTutorialStep({
@@ -991,6 +1024,7 @@ import {
             title: 'Dateireihenfolge',
             copy: 'Sortiere geladene PDFs per Drag-and-drop, ergänze oder entferne sie.',
             target: mergerFrameTarget(['#mergeFileListShell:not(.hidden)', '#mergeAppendFileList:not(:empty)']),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('merge'),
           }),
           createModuleTutorialStep({
@@ -998,6 +1032,7 @@ import {
             title: 'Dateien zusammenführen',
             copy: 'Dieser Button verbindet alle geladenen PDFs in der angezeigten Reihenfolge.',
             target: mergerFrameTarget('#mergeStartButton'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('merge'),
           }),
           createModuleTutorialStep({
@@ -1005,6 +1040,7 @@ import {
             title: 'PDF drehen',
             copy: 'Wähle hier die PDF aus, deren Seiten du drehen möchtest.',
             target: mergerFrameTarget('#rotateDropZone'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('rotate'),
           }),
           createModuleTutorialStep({
@@ -1012,6 +1048,7 @@ import {
             title: 'Ganzes Dokument drehen',
             copy: 'Wende eine Drehung von 90, 180 oder 270 Grad einheitlich auf das gesamte Dokument an.',
             target: mergerFrameTarget('#rotateDocumentDegreesGroup'),
+            placement: 'right',
             beforeRender: () => openMergerToolForTutorial('rotate'),
           }),
           createModuleTutorialStep({
@@ -1019,6 +1056,7 @@ import {
             title: 'Einzelne Seiten drehen',
             copy: 'Nach dem Laden drehst du einzelne Seiten und prüfst die Vorschau.',
             target: mergerFrameTarget(['.rotate-page-card', '#rotatePagesList:not(:empty)']),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('rotate'),
           }),
           createModuleTutorialStep({
@@ -1026,6 +1064,7 @@ import {
             title: 'Gedrehte PDF erstellen',
             copy: 'Mit diesem Button erzeugst du eine neue PDF mit den festgelegten Drehungen.',
             target: mergerFrameTarget('#rotateStartButton'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('rotate'),
           }),
           createModuleTutorialStep({
@@ -1033,6 +1072,7 @@ import {
             title: 'PDF aufteilen',
             copy: 'Lade die PDF, aus der du einzelne Seiten oder Seitengruppen ausgeben möchtest.',
             target: mergerFrameTarget('#splitDropZone'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
           createModuleTutorialStep({
@@ -1044,6 +1084,7 @@ import {
               '#splitPagesList:not(:empty)',
               '.split-toolbar-group-selection',
             ]),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
           createModuleTutorialStep({
@@ -1051,6 +1092,7 @@ import {
             title: 'Seitengruppen',
             copy: 'Bilde Bereiche oder ziehe Seiten direkt in andere Gruppen.',
             target: mergerFrameTarget(['#splitGroupRowsList:not(:empty)', '.split-toolbar-group-config']),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
           createModuleTutorialStep({
@@ -1058,6 +1100,7 @@ import {
             title: 'Ausgabeformat',
             copy: 'Lege fest, ob die ausgewählten Seiten gemeinsam in einer PDF oder als einzelne Dateien ausgegeben werden.',
             target: mergerFrameTarget('#splitOutputModeGroup'),
+            placement: 'right',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
           createModuleTutorialStep({
@@ -1065,6 +1108,7 @@ import {
             title: 'PDF aufteilen',
             copy: 'Dieser Button erstellt die gewählte gemeinsame oder einzelne Ausgabe.',
             target: mergerFrameTarget('#splitStartButton'),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
         ];
@@ -1700,7 +1744,7 @@ import {
               title: 'QR-Werkzeuge auswählen',
               copy: 'Generator erstellt Codes, Decoder liest Bild, Zwischenablage oder Kamera.',
               target: qrFrameTarget('.tool-tab-bar', qrFallback),
-              placement: 'right',
+              placement: 'bottom',
               beforeRender: openGenerator,
             }),
             createModuleTutorialStep({
@@ -1849,10 +1893,10 @@ import {
       expandChrome: true,
     },
     {
-      title: 'Gruppen',
-      copy: 'Hier teilst du Lernende ein und optimierst Gruppen.',
-      target: (nodes) => nodes.tabGroups,
-      tab: TAB_GROUPS,
+      title: 'PDF-Tools',
+      copy: 'Hier legst du PDFs neu aus, verbindest, drehst oder teilst sie.',
+      target: (nodes) => nodes.tabMerger,
+      tab: TAB_MERGER,
       placement: 'bottom',
       expandChrome: true,
     },
@@ -1865,18 +1909,18 @@ import {
       expandChrome: true,
     },
     {
-      title: 'Picker',
-      copy: 'Hier ziehst du zufällig und bei Bedarf gewichtet eine Person.',
-      target: (nodes) => nodes.tabRandomPicker,
-      tab: TAB_RANDOM_PICKER,
+      title: 'Gruppen',
+      copy: 'Hier teilst du Lernende ein und optimierst Gruppen.',
+      target: (nodes) => nodes.tabGroups,
+      tab: TAB_GROUPS,
       placement: 'bottom',
       expandChrome: true,
     },
     {
-      title: 'PDF-Tools',
-      copy: 'Hier legst du PDFs neu aus, verbindest, drehst oder teilst sie.',
-      target: (nodes) => nodes.tabMerger,
-      tab: TAB_MERGER,
+      title: 'Picker',
+      copy: 'Hier ziehst du zufällig und bei Bedarf gewichtet eine Person.',
+      target: (nodes) => nodes.tabRandomPicker,
+      tab: TAB_RANDOM_PICKER,
       placement: 'bottom',
       expandChrome: true,
     },
@@ -3975,7 +4019,8 @@ import {
       ? TIMER_UI_STATE.ALARM
       : (hasWorkOrderTiming() ? TIMER_UI_STATE.RUNNING : TIMER_UI_STATE.READY);
     const active = timerUiState !== TIMER_UI_STATE.READY;
-    appEl.classList.toggle('work-order-timer-inactive', !active);
+    const hasDuration = Boolean(parseWorkOrderDuration(state.workOrderDurationMinutes));
+    appEl.classList.toggle('work-order-timer-inactive', !hasDuration);
     const startButtons = [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean);
     const stopButtons = [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean);
     startButtons.forEach((button) => {
@@ -4859,7 +4904,6 @@ import {
     placeholder.setAttribute('role', 'button');
     placeholder.innerHTML = `
         <div class="seat-placeholder-main">+</div>
-        <div class="seat-placeholder-hint">[Gruppen über den Papierkorb oben rechts löschen]</div>
       `;
     addPlaceholderDropHandlers(placeholder);
     const handlePlaceholderAdd = () => {

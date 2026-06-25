@@ -243,21 +243,31 @@
 
         <section id="view-settings" class="view-panel" hidden>
           <div class="settings-tabs-shell">
-            <div class="settings-tab-bar" role="tablist" aria-label="Einstellungen">
-              <button class="settings-tab active" type="button" role="tab" data-tab="dayoff"
-                aria-controls="settings-tab-dayoff" aria-selected="true">Ferien & Unterrichtsfreie Tage</button>
-              <button class="settings-tab" type="button" role="tab" data-tab="display"
-                aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
-              <button class="settings-tab" type="button" role="tab" data-tab="gradeTestScales"
-                aria-controls="settings-tab-grade-test-scales" aria-selected="false">Prozentgrenzen</button>
-              <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
-                aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
-              <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
-                aria-controls="settings-tab-expectation-horizon" aria-selected="false">Erwartungshorizont</button>
-              <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
-                aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
-              <button class="settings-tab" type="button" role="tab" data-tab="database"
-                aria-controls="settings-tab-database" aria-selected="false">Datenbank</button>
+            <div class="settings-tabs-head">
+              <div class="settings-tab-bar" role="tablist" aria-label="Einstellungen">
+                <button class="settings-tab active" type="button" role="tab" data-tab="dayoff"
+                  aria-controls="settings-tab-dayoff" aria-selected="true">Ferien & Unterrichtsfreie Tage</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="display"
+                  aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="gradeTestScales"
+                  aria-controls="settings-tab-grade-test-scales" aria-selected="false">Prozentgrenzen</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
+                  aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
+                  aria-controls="settings-tab-expectation-horizon" aria-selected="false">Erwartungshorizont</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
+                  aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="database"
+                  aria-controls="settings-tab-database" aria-selected="false">Datenbank</button>
+              </div>
+              <div class="settings-actions-row">
+                <button id="settings-reset-all" type="button" class="ghost dialog-icon-button"
+                  aria-label="Standardwerte" title="Standardwerte">⭮</button>
+                <button id="settings-save-all" type="button" class="dialog-icon-button" aria-label="Speichern"
+                  title="Speichern">💾</button>
+                <button id="settings-cancel-all" type="button" class="ghost dialog-icon-button"
+                  aria-label="Abbrechen" title="Abbrechen">❌</button>
+              </div>
             </div>
             <div class="settings-tab-content">
               <div id="settings-courses-hidden" hidden>
@@ -539,11 +549,6 @@
                   <p id="backup-status" class="muted"></p>
                 </div>
               </div>
-            </div>
-            <div class="settings-actions-row">
-              <button id="settings-reset-all" type="button" class="ghost reset-action">Standardwerte</button>
-              <button id="settings-save-all" type="button">Bestätigen</button>
-              <button id="settings-cancel-all" type="button" class="ghost">Abbrechen</button>
             </div>
           </div>
         </section>
