@@ -317,6 +317,7 @@
       --app-content-top-space: clamp(12px, 1.5vh, 18px);
       --chrome-overlay-clearance: calc(var(--app-header-padding-x) + var(--chrome-toggle-size) + 8px);
       --chrome-floating-top: calc(env(safe-area-inset-top, 0px) + var(--app-shell-padding) + var(--app-header-padding-y));
+      --planning-menu-start-x: 232px;
       display: grid;
       grid-template-columns: 360px minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
@@ -404,15 +405,18 @@
     .app-header-actions {
       display: inline-flex;
       align-items: center;
-      justify-content: flex-end;
+      justify-content: flex-start;
       gap: 8px;
-      flex: 0 0 auto;
-      grid-column: 2;
+      flex: 1 1 auto;
+      grid-column: 1 / -1;
       grid-row: 1;
       min-width: 0;
       max-width: 100%;
-      margin-left: auto;
-      transition: gap var(--chrome-transition-duration-short) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
+      width: 100%;
+      margin-left: 0;
+      padding-left: calc(var(--planning-menu-start-x) - var(--chrome-overlay-clearance));
+      pointer-events: none;
+      transition: gap var(--chrome-transition-duration-short) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding-left var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
     .header-icon-button {
@@ -510,7 +514,7 @@
     .tab-nav {
       display: flex;
       flex-wrap: wrap;
-      justify-content: flex-end;
+      justify-content: flex-start;
       align-items: center;
       align-content: center;
       grid-column: 2;
@@ -521,14 +525,15 @@
       max-width: none;
       min-width: 0;
       max-height: calc(var(--app-header-max-height) - (var(--app-header-padding-y) * 2));
-      margin-left: auto;
+      margin-left: 0;
       padding-left: clamp(3px, 0.6vw, 6px);
       padding-top: 0;
       padding-right: clamp(3px, 0.6vw, 6px);
       padding-bottom: 0;
       overflow-x: visible;
       overflow-y: visible;
-      transform-origin: right center;
+      pointer-events: auto;
+      transform-origin: left center;
       transition: max-width var(--chrome-transition-duration) var(--chrome-transition-ease), max-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), margin-left var(--chrome-transition-duration-medium) var(--chrome-transition-ease), gap var(--chrome-transition-duration-short) var(--chrome-transition-ease);
     }
 
@@ -570,6 +575,11 @@
       cursor: pointer;
       box-shadow: none;
       transition: background var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-short) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-short) var(--chrome-transition-ease), color var(--chrome-transition-duration-short) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease);
+    }
+
+    .tab-unlock-button.is-reserved {
+      visibility: hidden;
+      pointer-events: none;
     }
 
     @media (max-width:1180px) {
@@ -762,6 +772,9 @@
     }
 
     @media (max-width:1232px) {
+      .app {
+        --planning-menu-start-x: 196px;
+      }
 
       .app.app-tab-planning .sidebar-footer,
       .app.app-tab-grades .sidebar-footer {
@@ -6219,6 +6232,7 @@
         --app-shell-padding: 0px;
         --app-header-padding-y: 10px;
         --app-header-padding-x: 10px;
+        --planning-menu-start-x: 0px;
         padding: 0;
       }
 
@@ -6252,6 +6266,7 @@
         grid-row: 2;
         width: 100%;
         margin-left: 0;
+        padding-left: 0;
         align-items: flex-start;
       }
 
@@ -6440,8 +6455,9 @@
             class="app-header-version"></span></span></div>
       <div class="app-header-actions">
         <nav class="tab-nav" aria-label="App-Bereiche">
-          <button id="tab-grades-unlock" class="tab-unlock-button" type="button" aria-label="Notenmodul entsperren"
-            title="Notenmodul entsperren" hidden>🔓</button>
+          <button id="tab-grades-unlock" class="tab-unlock-button is-reserved" type="button"
+            aria-label="Notenmodul entsperren" title="Notenmodul entsperren" aria-hidden="true" tabindex="-1"
+            disabled>🔓</button>
           <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
             aria-selected="true">Noten</button>
           <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"

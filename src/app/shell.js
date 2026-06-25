@@ -533,12 +533,18 @@ export function createShellController({
       && !unlocked
       && !setupRequired
       && mode === 'unlock';
-    els.tabGradesUnlock.hidden = !shouldShow;
-    els.tabGradesUnlock.style.display = shouldShow ? 'inline-flex' : 'none';
+    els.tabGradesUnlock.hidden = false;
+    els.tabGradesUnlock.style.display = 'inline-flex';
+    els.tabGradesUnlock.classList.toggle('is-reserved', !shouldShow);
     els.tabGradesUnlock.disabled = !shouldShow
       || state.tabTransitionState !== 'idle'
       || state.chromeTransitionState !== 'idle';
     els.tabGradesUnlock.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
+    if (shouldShow) {
+      els.tabGradesUnlock.removeAttribute('tabindex');
+    } else {
+      els.tabGradesUnlock.setAttribute('tabindex', '-1');
+    }
   }
 
   function setChromeCollapsed(collapsed) {
