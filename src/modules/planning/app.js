@@ -1,7 +1,11 @@
 import { createDocxFromTemplate, isDocxZipSupported } from "./docx.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
+const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_URL = new URL("./expectation-horizon-template-gAeA.docx", import.meta.url);
 const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
+const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_FILE_NAME = "EWH-gAeA.docx";
+const EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL = "general";
+const EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL = "courseLevel";
 const ARCHIVE_PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
 const ARCHIVE_PDF_LIB_CACHE_KEY = "teachhelper.pdf-lib.min.js.v1";
 const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
@@ -60,6 +64,7 @@ const SYNC_HANDLE_STORE_NAME = "handles";
 const SYNC_HANDLE_FILE_KEY = "sync-file";
 const SYNC_HANDLE_BACKUP_DIR_KEY = "backup-dir";
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
+const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_STORAGE_KEY = "expectation-horizon-template-gAeA";
 const EXPECTATION_HORIZON_TEMP_TEMPLATE_STORAGE_KEY = "expectation-horizon-temp-template";
 const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
@@ -6640,6 +6645,9 @@ class PlannerApp {
     this.expectationHorizonGenerating = false;
     this.expectationHorizonStoredTemplate = null;
     this.expectationHorizonStoredTemplateLoaded = false;
+    this.expectationHorizonCourseLevelStoredTemplate = null;
+    this.expectationHorizonCourseLevelStoredTemplateLoaded = false;
+    this.expectationHorizonDialogTemplateKind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL;
     this.boundGradesEntryTableScroll = null;
     this.syncingGradesEntryTableStickyScrollbar = false;
 
@@ -6806,10 +6814,15 @@ class PlannerApp {
       expectationHorizonLocation: document.querySelector("#expectation-horizon-location"),
       expectationHorizonCommentTemplate: document.querySelector("#expectation-horizon-comment-template"),
       expectationHorizonTemplateSettingsFile: document.querySelector("#expectation-horizon-template-settings-file"),
+      expectationHorizonCourseLevelTemplateSettingsFile: document.querySelector("#expectation-horizon-course-level-template-settings-file"),
       expectationHorizonTemplateSettingsStatus: document.querySelector("#expectation-horizon-template-settings-status"),
+      expectationHorizonCourseLevelTemplateSettingsStatus: document.querySelector("#expectation-horizon-course-level-template-settings-status"),
       expectationHorizonTemplateSettingsDownload: document.querySelector("#expectation-horizon-template-settings-download"),
+      expectationHorizonCourseLevelTemplateSettingsDownload: document.querySelector("#expectation-horizon-course-level-template-settings-download"),
       expectationHorizonTemplateSettingsUpload: document.querySelector("#expectation-horizon-template-settings-upload"),
+      expectationHorizonCourseLevelTemplateSettingsUpload: document.querySelector("#expectation-horizon-course-level-template-settings-upload"),
       expectationHorizonTemplateSettingsReset: document.querySelector("#expectation-horizon-template-settings-reset"),
+      expectationHorizonCourseLevelTemplateSettingsReset: document.querySelector("#expectation-horizon-course-level-template-settings-reset"),
       expectationHorizonDialog: document.querySelector("#expectation-horizon-dialog"),
       expectationHorizonDialogForm: document.querySelector("#expectation-horizon-dialog-form"),
       expectationHorizonCancel: document.querySelector("#expectation-horizon-cancel"),
@@ -16656,20 +16669,36 @@ class PlannerApp {
       this.refreshSettingsDirtyState();
     });
     this.refs.expectationHorizonTemplateSettingsDownload?.addEventListener("click", () => {
-      void this.downloadBuiltInExpectationHorizonTemplate();
+      void this.downloadBuiltInExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL);
+    });
+    this.refs.expectationHorizonCourseLevelTemplateSettingsDownload?.addEventListener("click", () => {
+      void this.downloadBuiltInExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL);
     });
     this.refs.expectationHorizonTemplateSettingsUpload?.addEventListener("click", () => {
       this.refs.expectationHorizonTemplateSettingsFile?.click();
     });
+    this.refs.expectationHorizonCourseLevelTemplateSettingsUpload?.addEventListener("click", () => {
+      this.refs.expectationHorizonCourseLevelTemplateSettingsFile?.click();
+    });
     this.refs.expectationHorizonTemplateSettingsFile?.addEventListener("change", async () => {
       const [file] = this.refs.expectationHorizonTemplateSettingsFile.files || [];
       if (file) {
-        await this.setStoredExpectationHorizonTemplateFile(file);
+        await this.setStoredExpectationHorizonTemplateFile(file, EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL);
       }
       this.refs.expectationHorizonTemplateSettingsFile.value = "";
     });
+    this.refs.expectationHorizonCourseLevelTemplateSettingsFile?.addEventListener("change", async () => {
+      const [file] = this.refs.expectationHorizonCourseLevelTemplateSettingsFile.files || [];
+      if (file) {
+        await this.setStoredExpectationHorizonTemplateFile(file, EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL);
+      }
+      this.refs.expectationHorizonCourseLevelTemplateSettingsFile.value = "";
+    });
     this.refs.expectationHorizonTemplateSettingsReset?.addEventListener("click", () => {
-      void this.resetStoredExpectationHorizonTemplate();
+      void this.resetStoredExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL);
+    });
+    this.refs.expectationHorizonCourseLevelTemplateSettingsReset?.addEventListener("click", () => {
+      void this.resetStoredExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL);
     });
 
     this.refs.settingsGradeStructureCategoryAdd?.addEventListener("click", () => {
@@ -21935,7 +21964,9 @@ class PlannerApp {
   async openExpectationHorizonDialog() {
     this.expectationHorizonTemplateFile = null;
     this.expectationHorizonGenerating = false;
-    await this.ensureStoredExpectationHorizonTemplateLoaded();
+    const context = this.getExpectationHorizonCourseContext();
+    this.expectationHorizonDialogTemplateKind = this.getExpectationHorizonTemplateKindForValues(context.values || {});
+    await this.ensureStoredExpectationHorizonTemplateLoaded(this.expectationHorizonDialogTemplateKind);
     await this.loadTemporaryExpectationHorizonTemplateFile();
     if (this.refs.expectationHorizonFile) {
       this.refs.expectationHorizonFile.value = "";
@@ -22030,17 +22061,53 @@ class PlannerApp {
     }
   }
 
-  getCurrentExpectationHorizonTemplateName() {
-    return this.expectationHorizonTemplateFile?.name
-      || this.expectationHorizonStoredTemplate?.name
-      || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME;
+  normalizeExpectationHorizonTemplateKind(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    return kind === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      : EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL;
   }
 
-  async getCurrentExpectationHorizonTemplateBytes() {
+  getExpectationHorizonTemplateKindForValues(values = {}) {
+    const yearLevel = normalizeGradeAssessmentYearLevel(values.yearLevel);
+    const courseLevel = normalizeGradeAssessmentCourseLevel(values.courseLevel, yearLevel);
+    return courseLevel === "gk" || courseLevel === "lk"
+      ? EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      : EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL;
+  }
+
+  getExpectationHorizonCourseLevelPlaceholderValue(values = {}, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    if (this.normalizeExpectationHorizonTemplateKind(kind) !== EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL) {
+      return "";
+    }
+    const yearLevel = normalizeGradeAssessmentYearLevel(values.yearLevel);
+    const courseLevel = normalizeGradeAssessmentCourseLevel(values.courseLevel, yearLevel);
+    if (courseLevel === "gk") {
+      return "gA";
+    }
+    if (courseLevel === "lk") {
+      return "eA";
+    }
+    return "";
+  }
+
+  getExpectationHorizonTemplateFileName(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    return this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_FILE_NAME
+      : EXPECTATION_HORIZON_TEMPLATE_FILE_NAME;
+  }
+
+  getCurrentExpectationHorizonTemplateName(kind = this.expectationHorizonDialogTemplateKind) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+    return this.expectationHorizonTemplateFile?.name
+      || this.getExpectationHorizonStoredTemplate(templateKind)?.name
+      || this.getExpectationHorizonTemplateFileName(templateKind);
+  }
+
+  async getCurrentExpectationHorizonTemplateBytes(kind = this.expectationHorizonDialogTemplateKind) {
     if (this.expectationHorizonTemplateFile?.bytes?.length) {
       return this.expectationHorizonTemplateFile.bytes;
     }
-    return this.getDefaultExpectationHorizonTemplateBytes();
+    return this.getDefaultExpectationHorizonTemplateBytes(kind);
   }
 
   makeLatexAugmentedExpectationHorizonTemplateName(latexFile) {
@@ -22757,49 +22824,87 @@ class PlannerApp {
     return { runs: this.trimExpectationHorizonLatexTaskRuns(runs) };
   }
 
-  async loadBuiltInExpectationHorizonTemplateBytes() {
-    const response = await fetch(EXPECTATION_HORIZON_TEMPLATE_URL);
+  getExpectationHorizonTemplateUrl(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    return this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_URL
+      : EXPECTATION_HORIZON_TEMPLATE_URL;
+  }
+
+  getExpectationHorizonTemplateStorageKey(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    return this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_STORAGE_KEY
+      : EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY;
+  }
+
+  getExpectationHorizonStoredTemplate(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    return this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? this.expectationHorizonCourseLevelStoredTemplate
+      : this.expectationHorizonStoredTemplate;
+  }
+
+  isExpectationHorizonStoredTemplateLoaded(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    return this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? this.expectationHorizonCourseLevelStoredTemplateLoaded
+      : this.expectationHorizonStoredTemplateLoaded;
+  }
+
+  setExpectationHorizonStoredTemplateState(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL, template = null, loaded = true) {
+    if (this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL) {
+      this.expectationHorizonCourseLevelStoredTemplate = template;
+      this.expectationHorizonCourseLevelStoredTemplateLoaded = loaded;
+      return;
+    }
+    this.expectationHorizonStoredTemplate = template;
+    this.expectationHorizonStoredTemplateLoaded = loaded;
+  }
+
+  async loadBuiltInExpectationHorizonTemplateBytes(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const response = await fetch(this.getExpectationHorizonTemplateUrl(kind));
     if (!response || !response.ok) {
       throw new Error("Die eingebaute Erwartungshorizont-Vorlage konnte nicht geladen werden.");
     }
     return new Uint8Array(await response.arrayBuffer());
   }
 
-  async ensureStoredExpectationHorizonTemplateLoaded() {
-    if (this.expectationHorizonStoredTemplateLoaded) {
-      return this.expectationHorizonStoredTemplate;
+  async ensureStoredExpectationHorizonTemplateLoaded(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+    if (this.isExpectationHorizonStoredTemplateLoaded(templateKind)) {
+      return this.getExpectationHorizonStoredTemplate(templateKind);
     }
-    const stored = await getStoredLocalValue(EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY);
+    const stored = await getStoredLocalValue(this.getExpectationHorizonTemplateStorageKey(templateKind));
+    let template = null;
     if (stored && stored.bytes) {
-      this.expectationHorizonStoredTemplate = {
-        name: String(stored.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
+      template = {
+        name: String(stored.name || this.getExpectationHorizonTemplateFileName(templateKind)),
         bytes: stored.bytes instanceof Uint8Array ? stored.bytes : new Uint8Array(stored.bytes || [])
       };
-    } else {
-      this.expectationHorizonStoredTemplate = null;
     }
-    this.expectationHorizonStoredTemplateLoaded = true;
-    return this.expectationHorizonStoredTemplate;
+    this.setExpectationHorizonStoredTemplateState(templateKind, template, true);
+    return template;
   }
 
-  async getDefaultExpectationHorizonTemplateBytes() {
-    const stored = await this.ensureStoredExpectationHorizonTemplateLoaded();
+  async getDefaultExpectationHorizonTemplateBytes(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+    const stored = await this.ensureStoredExpectationHorizonTemplateLoaded(templateKind);
     if (stored?.bytes?.length) {
       return stored.bytes;
     }
-    return this.loadBuiltInExpectationHorizonTemplateBytes();
+    return this.loadBuiltInExpectationHorizonTemplateBytes(templateKind);
   }
 
-  getExpectationHorizonDefaultTemplateLabel() {
-    return this.expectationHorizonStoredTemplate
-      ? `Eigene Standardvorlage: ${this.expectationHorizonStoredTemplate.name}`
-      : `Standardvorlage: ${EXPECTATION_HORIZON_TEMPLATE_FILE_NAME}`;
+  getExpectationHorizonDefaultTemplateLabel(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+    const stored = this.getExpectationHorizonStoredTemplate(templateKind);
+    const prefix = templateKind === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL ? "GK/LK-Standardvorlage" : "Standardvorlage";
+    return stored
+      ? `Eigene ${prefix}: ${stored.name}`
+      : `${prefix}: ${this.getExpectationHorizonTemplateFileName(templateKind)}`;
   }
 
   getCurrentExpectationHorizonDialogTemplateLabel() {
     return this.expectationHorizonTemplateFile
       ? `Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`
-      : this.getExpectationHorizonDefaultTemplateLabel();
+      : this.getExpectationHorizonDefaultTemplateLabel(this.expectationHorizonDialogTemplateKind);
   }
 
   normalizeExpectationHorizonTemplateFile(value = null) {
@@ -22834,38 +22939,40 @@ class PlannerApp {
     return saved;
   }
 
-  async setStoredExpectationHorizonTemplateFile(file) {
+  async setStoredExpectationHorizonTemplateFile(file, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
     if (!this.isExpectationHorizonDocxFile(file)) {
-      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
+      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true, templateKind);
       return false;
     }
     const bytes = new Uint8Array(await file.arrayBuffer());
     const template = {
-      name: String(file.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
+      name: String(file.name || this.getExpectationHorizonTemplateFileName(templateKind)),
       bytes
     };
-    const saved = await storeLocalValue(EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY, template);
+    const saved = await storeLocalValue(this.getExpectationHorizonTemplateStorageKey(templateKind), template);
     if (!saved) {
-      this.setExpectationHorizonTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true);
+      this.setExpectationHorizonTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true, templateKind);
       return false;
     }
-    this.expectationHorizonStoredTemplate = template;
-    this.expectationHorizonStoredTemplateLoaded = true;
+    this.setExpectationHorizonStoredTemplateState(templateKind, template, true);
     this.renderExpectationHorizonSettingsSection();
-    this.setExpectationHorizonTemplateSettingsStatus("Eigene Standardvorlage gespeichert.");
+    this.setExpectationHorizonTemplateSettingsStatus("Eigene Standardvorlage gespeichert.", false, templateKind);
     return true;
   }
 
-  async resetStoredExpectationHorizonTemplate() {
-    await clearStoredLocalValue(EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY);
-    this.expectationHorizonStoredTemplate = null;
-    this.expectationHorizonStoredTemplateLoaded = true;
+  async resetStoredExpectationHorizonTemplate(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+    await clearStoredLocalValue(this.getExpectationHorizonTemplateStorageKey(templateKind));
+    this.setExpectationHorizonStoredTemplateState(templateKind, null, true);
     this.renderExpectationHorizonSettingsSection();
-    this.setExpectationHorizonTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.");
+    this.setExpectationHorizonTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.", false, templateKind);
   }
 
-  setExpectationHorizonTemplateSettingsStatus(message = "", isError = false) {
-    const node = this.refs.expectationHorizonTemplateSettingsStatus;
+  setExpectationHorizonTemplateSettingsStatus(message = "", isError = false, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const node = this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
+      ? this.refs.expectationHorizonCourseLevelTemplateSettingsStatus
+      : this.refs.expectationHorizonTemplateSettingsStatus;
     if (!node) {
       return;
     }
@@ -22887,19 +22994,21 @@ class PlannerApp {
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
 
-  async downloadBuiltInExpectationHorizonTemplate() {
+  async downloadBuiltInExpectationHorizonTemplate(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
     try {
-      const bytes = await this.getDefaultExpectationHorizonTemplateBytes();
+      const stored = await this.ensureStoredExpectationHorizonTemplateLoaded(templateKind);
+      const bytes = await this.getDefaultExpectationHorizonTemplateBytes(templateKind);
       this.downloadExpectationHorizonTemplateBytes(
         bytes,
-        this.expectationHorizonStoredTemplate?.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME
+        stored?.name || this.getExpectationHorizonTemplateFileName(templateKind)
       );
       this.setExpectationHorizonStatus("Vorlage wurde als Download gestartet.", "success");
-      this.setExpectationHorizonTemplateSettingsStatus("Standardvorlage wurde als Download gestartet.");
+      this.setExpectationHorizonTemplateSettingsStatus("Standardvorlage wurde als Download gestartet.", false, templateKind);
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
       this.setExpectationHorizonStatus(message, "error");
-      this.setExpectationHorizonTemplateSettingsStatus(message, true);
+      this.setExpectationHorizonTemplateSettingsStatus(message, true, templateKind);
     }
   }
 
@@ -22913,7 +23022,7 @@ class PlannerApp {
         this.setExpectationHorizonStatus("Temporäre Vorlage wurde als Download gestartet.", "success");
         return;
       }
-      await this.downloadBuiltInExpectationHorizonTemplate();
+      await this.downloadBuiltInExpectationHorizonTemplate(this.expectationHorizonDialogTemplateKind);
     } catch (error) {
       const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
       this.setExpectationHorizonStatus(message, "error");
@@ -23079,8 +23188,9 @@ class PlannerApp {
     return replaceExpectationHorizonCommentPlaceholder(comment, "<< Aufgabenliste >>", taskList);
   }
 
-  buildExpectationHorizonStudentRecords(context) {
+  buildExpectationHorizonStudentRecords(context, options = {}) {
     const values = context.values || {};
+    const courseLevelPlaceholder = String(options.courseLevelPlaceholder || "");
     const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
     const scale = normalizeGradeTestScale(values.testScale);
     const scaleSnapshot = values.testScaleSnapshot
@@ -23126,24 +23236,29 @@ class PlannerApp {
       ));
       const ratioState = calculateGradeTestRatio(tasks, scores);
       const gradeValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes);
+      const replacements = {
+        "<<JG>>": jg || "—",
+        "<<Name>>": name || "—",
+        "<<Fach>>": subject || "—",
+        "<<Datum>>": dateLabel,
+        "<<Ort>>": location || "—",
+        "<<Thema>>": topic,
+        "<<Note>>": this.formatExpectationHorizonNote(gradeValue, scale),
+        "<<Notentext>>": this.formatExpectationHorizonGradeNarrative(gradeValue, scale),
+        "<<BE1>>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
+        "<< BE1 >>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
+        "<<BE2>>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
+        "<< BE2 >>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
+        "<<Kommentar>>": expectationHorizonComment,
+        "<< Kommentar >>": expectationHorizonComment
+      };
+      if (courseLevelPlaceholder) {
+        replacements["<<gAeA>>"] = courseLevelPlaceholder;
+        replacements["<< gAeA >>"] = courseLevelPlaceholder;
+      }
       return {
         name,
-        replacements: {
-          "<<JG>>": jg || "—",
-          "<<Name>>": name || "—",
-          "<<Fach>>": subject || "—",
-          "<<Datum>>": dateLabel,
-          "<<Ort>>": location || "—",
-          "<<Thema>>": topic,
-          "<<Note>>": this.formatExpectationHorizonNote(gradeValue, scale),
-          "<<Notentext>>": this.formatExpectationHorizonGradeNarrative(gradeValue, scale),
-          "<<BE1>>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
-          "<< BE1 >>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
-          "<<BE2>>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
-          "<< BE2 >>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
-          "<<Kommentar>>": expectationHorizonComment,
-          "<< Kommentar >>": expectationHorizonComment
-        },
+        replacements,
         tableColumnReplacements: [
           {
             header: "AFB",
@@ -23202,8 +23317,13 @@ class PlannerApp {
     this.syncExpectationHorizonGenerateState();
     this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
     try {
-      const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
-      const records = this.buildExpectationHorizonStudentRecords(context);
+      const templateKind = this.getExpectationHorizonTemplateKindForValues(context.values || {});
+      this.expectationHorizonDialogTemplateKind = templateKind;
+      const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes(templateKind);
+      const courseLevelPlaceholder = this.expectationHorizonTemplateFile
+        ? ""
+        : this.getExpectationHorizonCourseLevelPlaceholderValue(context.values || {}, templateKind);
+      const records = this.buildExpectationHorizonStudentRecords(context, { courseLevelPlaceholder });
       if (!records.length) {
         this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");
         return;
@@ -32165,7 +32285,7 @@ class PlannerApp {
     }
     if (this.refs.expectationHorizonTemplateSettingsStatus) {
       if (!this.expectationHorizonStoredTemplateLoaded) {
-        void this.ensureStoredExpectationHorizonTemplateLoaded().then(() => {
+        void this.ensureStoredExpectationHorizonTemplateLoaded(EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL).then(() => {
           this.renderExpectationHorizonSettingsSection();
         });
       } else {
@@ -32175,8 +32295,23 @@ class PlannerApp {
         this.refs.expectationHorizonTemplateSettingsStatus.style.color = "";
       }
     }
+    if (this.refs.expectationHorizonCourseLevelTemplateSettingsStatus) {
+      if (!this.expectationHorizonCourseLevelStoredTemplateLoaded) {
+        void this.ensureStoredExpectationHorizonTemplateLoaded(EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL).then(() => {
+          this.renderExpectationHorizonSettingsSection();
+        });
+      } else {
+        this.refs.expectationHorizonCourseLevelTemplateSettingsStatus.textContent = this.expectationHorizonCourseLevelStoredTemplate
+          ? `Aktiv: eigene GK/LK-Standardvorlage (${this.expectationHorizonCourseLevelStoredTemplate.name})`
+          : `Aktiv: eingebaute GK/LK-Standardvorlage (${EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_FILE_NAME})`;
+        this.refs.expectationHorizonCourseLevelTemplateSettingsStatus.style.color = "";
+      }
+    }
     if (this.refs.expectationHorizonTemplateSettingsReset) {
       this.refs.expectationHorizonTemplateSettingsReset.disabled = !this.expectationHorizonStoredTemplate;
+    }
+    if (this.refs.expectationHorizonCourseLevelTemplateSettingsReset) {
+      this.refs.expectationHorizonCourseLevelTemplateSettingsReset.disabled = !this.expectationHorizonCourseLevelStoredTemplate;
     }
     this.updateSettingsActionButtons();
   }

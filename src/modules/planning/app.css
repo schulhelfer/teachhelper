@@ -3689,6 +3689,17 @@
           margin-bottom: 0;
         }
 
+        .expectation-horizon-template-settings-group {
+          display: grid;
+          gap: 0.45rem;
+        }
+
+        .expectation-horizon-template-settings-group h4 {
+          margin: 0;
+          font-size: 0.92rem;
+          font-weight: 800;
+        }
+
         #settings-tab-expectation-horizon .settings-form-row {
           grid-template-columns: minmax(220px, 320px);
           justify-content: start;

@@ -27,6 +27,7 @@ const APP_SHELL = [
   './src/modules/planning/app.js',
   './src/modules/planning/docx.js',
   './src/modules/planning/expectation-horizon-template.docx',
+  './src/modules/planning/expectation-horizon-template-gAeA.docx',
   './src/modules/planning/bridge.js',
   './src/modules/merger/index.js',
   './src/modules/merger/app.html',

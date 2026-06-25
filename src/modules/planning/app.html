@@ -458,18 +458,36 @@
                 </section>
                 <section class="expectation-horizon-settings-section">
                   <h3 class="settings-panel-title">Standardvorlage</h3>
-                  <p class="muted">Die Standardvorlage wird verwendet, wenn im Generieren-Dialog keine Vorlage nur für
+                  <p class="muted">Die Standardvorlagen werden verwendet, wenn im Generieren-Dialog keine Vorlage nur für
                     diese Arbeit hochgeladen wird.</p>
                   <input id="expectation-horizon-template-settings-file" class="visually-hidden" type="file"
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                  <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
-                  <div class="button-row">
-                    <button type="button" id="expectation-horizon-template-settings-download"
-                      class="ghost">Standardvorlage herunterladen</button>
-                    <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte
-                      Standardvorlage hochladen</button>
-                    <button type="button" id="expectation-horizon-template-settings-reset" class="ghost reset-action">Auf eingebaute
-                      Vorlage zurücksetzen</button>
+                  <input id="expectation-horizon-course-level-template-settings-file" class="visually-hidden" type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <div class="expectation-horizon-template-settings-group">
+                    <h4>Allgemeine Standardvorlage</h4>
+                    <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
+                    <div class="button-row">
+                      <button type="button" id="expectation-horizon-template-settings-download"
+                        class="ghost">Allgemeine Vorlage herunterladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte
+                        allgemeine Vorlage hochladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-reset" class="ghost reset-action">Auf eingebaute
+                        Vorlage zurücksetzen</button>
+                    </div>
+                  </div>
+                  <div class="expectation-horizon-template-settings-group">
+                    <h4>Standardvorlage mit Anforderungsniveau (GK/LK)</h4>
+                    <p id="expectation-horizon-course-level-template-settings-status" class="muted"
+                      aria-live="polite"></p>
+                    <div class="button-row">
+                      <button type="button" id="expectation-horizon-course-level-template-settings-download"
+                        class="ghost">GK/LK-Vorlage herunterladen</button>
+                      <button type="button" id="expectation-horizon-course-level-template-settings-upload"
+                        class="ghost">Geänderte GK/LK-Vorlage hochladen</button>
+                      <button type="button" id="expectation-horizon-course-level-template-settings-reset"
+                        class="ghost reset-action">Auf eingebaute Vorlage zurücksetzen</button>
+                    </div>
                   </div>
                 </section>
               </div>
