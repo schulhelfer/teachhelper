@@ -167,12 +167,7 @@ async function staleWhileRevalidate(request, event = null) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
-    await preCacheAppShell();
-    if (isLocalDevelopmentHost(self.location.hostname)) {
-      await self.skipWaiting();
-    }
-  })());
+  event.waitUntil(preCacheAppShell());
 });
 
 self.addEventListener('activate', (event) => {

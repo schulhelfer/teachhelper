@@ -5463,7 +5463,7 @@
       content: attr(data-update-hint);
       position: absolute;
       left: 50%;
-      bottom: calc(100% + 10px);
+      top: calc(100% + 10px);
       transform: translateX(-50%);
       padding: 6px 9px;
       border-radius: 12px;
@@ -5484,13 +5484,13 @@
       content: '';
       position: absolute;
       left: 50%;
-      bottom: calc(100% + 4px);
+      top: calc(100% + 4px);
       width: 10px;
       height: 10px;
       transform: translateX(-50%) rotate(45deg);
       background: rgba(15, 23, 42, 0.96);
-      border-right: 1px solid rgba(148, 163, 184, 0.3);
-      border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+      border-left: 1px solid rgba(148, 163, 184, 0.3);
+      border-top: 1px solid rgba(148, 163, 184, 0.3);
       pointer-events: none;
       z-index: 19;
     }

@@ -1,3 +1,5 @@
+import { APP_VERSION } from '../shared/app-version.js';
+
 const isLocalDevelopmentHost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
 if (isLocalDevelopmentHost) {
   if ('serviceWorker' in navigator) {
@@ -9,5 +11,5 @@ if (isLocalDevelopmentHost) {
     await Promise.all(cacheKeys.map((cacheKey) => caches.delete(cacheKey)));
   }
 }
-const entryVersion = isLocalDevelopmentHost ? String(Date.now()) : '5.1';
+const entryVersion = isLocalDevelopmentHost ? String(Date.now()) : APP_VERSION;
 await import(`../main.js?v=${encodeURIComponent(entryVersion)}`);

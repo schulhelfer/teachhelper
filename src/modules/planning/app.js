@@ -4,7 +4,7 @@ import {
   isDocxZipSupported,
   prepareDocxTemplate
 } from "./docx.js";
-import { ensurePdfLibLoaded as ensureArchivePdfLibLoaded } from "../../shared/pdf-vendor.js";
+import { ensurePdfLibLoaded } from "../../shared/pdf-vendor.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_URL = new URL("./expectation-horizon-template-gAeA.docx", import.meta.url);
@@ -21840,7 +21840,7 @@ class PlannerApp {
   }
 
   async buildArchivePdfBytes(year, sections = []) {
-    const PDFLib = await ensureArchivePdfLibLoaded();
+    const PDFLib = await ensurePdfLibLoaded();
     const { PDFDocument, StandardFonts, rgb } = PDFLib;
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
