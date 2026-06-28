@@ -2993,12 +2993,12 @@ import {
     els.preferencesTableHead.innerHTML = `
           <tr>
             <th colspan="3" class="group-header">
-              Gute Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
+              Gute Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
             </th>
             <th class="group-header name-header"></th>
             <th class="group-header performance-flair-header">Leistungsklasse</th>
             <th colspan="3" class="group-header">
-              Schlechte Gruppenpartner für <span style="color: orange;">Schüler in der Tabellenmitte</span>
+              Schlechte Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
             </th>
           </tr>
         `;

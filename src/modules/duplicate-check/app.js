@@ -1,6 +1,5 @@
 export function createDuplicateCheckApp({ root = document } = {}) {
-  const JSZIP_CDN_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js';
-  const JSZIP_CACHE_KEY = 'teachhelper.jszip.3.10.1.min.js.v1';
+  const JSZIP_URL = new URL('../../vendor/jszip/3.10.1/jszip.min.js', import.meta.url);
   const HASH_WIDTH = 17;
   const HASH_HEIGHT = 16;
   const IMAGE_HASH_SIZE = (HASH_WIDTH - 1) * HASH_HEIGHT;
@@ -62,67 +61,39 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     return Boolean(window.JSZip && typeof window.JSZip.loadAsync === 'function');
   }
 
-  function injectScriptSource(source) {
-    if (!source) return false;
-    const script = document.createElement('script');
-    script.textContent = source;
-    document.head.appendChild(script);
-    script.remove();
-    return hasJsZipLoaded();
-  }
+  function loadJsZipScript() {
+    return new Promise((resolve, reject) => {
+      if (typeof document === 'undefined' || !document.head) {
+        reject(new Error('ZIP-Library kann in dieser Umgebung nicht geladen werden.'));
+        return;
+      }
 
-  function getCachedJsZipSource() {
-    try {
-      return window.localStorage?.getItem(JSZIP_CACHE_KEY) || '';
-    } catch (error) {
-      console.warn('Lokaler ZIP-Library-Cache konnte nicht gelesen werden.', error);
-      return '';
-    }
-  }
-
-  function cacheJsZipSource(source) {
-    if (!source) return;
-    try {
-      window.localStorage?.setItem(JSZIP_CACHE_KEY, source);
-    } catch (error) {
-      console.warn('ZIP-Library konnte nicht lokal zwischengespeichert werden.', error);
-    }
-  }
-
-  async function fetchJsZipSource() {
-    const response = await fetch(JSZIP_CDN_URL, { cache: 'force-cache' });
-    if (!response.ok) {
-      throw new Error(`ZIP-Library konnte nicht geladen werden (${response.status}).`);
-    }
-    return response.text();
+      const script = document.createElement('script');
+      script.src = JSZIP_URL.href;
+      script.async = true;
+      script.onload = () => resolve();
+      script.onerror = () => {
+        script.remove();
+        reject(new Error(`ZIP-Library konnte nicht geladen werden: ${JSZIP_URL.pathname}`));
+      };
+      document.head.append(script);
+    });
   }
 
   async function ensureJsZipLoaded() {
     if (hasJsZipLoaded()) return window.JSZip;
     if (!jsZipLoadPromise) {
-      jsZipLoadPromise = (async () => {
-        const cachedSource = getCachedJsZipSource();
-        if (cachedSource) {
-          const loadedFromCache = injectScriptSource(cachedSource);
-          if (loadedFromCache) return window.JSZip;
-          try {
-            window.localStorage?.removeItem(JSZIP_CACHE_KEY);
-          } catch (error) {
-            console.warn('Defekter ZIP-Library-Cache konnte nicht entfernt werden.', error);
+      jsZipLoadPromise = loadJsZipScript()
+        .then(() => {
+          if (!hasJsZipLoaded()) {
+            throw new Error('ZIP-Library wurde geladen, ist aber unvollständig.');
           }
-        }
-
-        const source = await fetchJsZipSource();
-        const loaded = injectScriptSource(source);
-        if (!loaded) {
-          throw new Error('ZIP-Library wurde geladen, ist aber unvollständig.');
-        }
-        cacheJsZipSource(source);
-        return window.JSZip;
-      })().catch((error) => {
-        jsZipLoadPromise = null;
-        throw error;
-      });
+          return window.JSZip;
+        })
+        .catch((error) => {
+          jsZipLoadPromise = null;
+          throw error;
+        });
     }
     return jsZipLoadPromise;
   }

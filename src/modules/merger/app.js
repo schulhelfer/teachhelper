@@ -1,4 +1,5 @@
 import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
+import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
 
 export function createMergerApp({
   sideRoot = null,
@@ -185,18 +186,9 @@ export function createMergerApp({
     dragPreviewX: 0,
     dragPreviewY: 0,
   };
-  let pdfLibLoadPromise = null;
-  let pdfJsLoadPromise = null;
-  let pdfJsWorkerBlobUrl = null;
   let resultOpenUrl = null;
   let messageListener = null;
   let splitDragPreviewElement = null;
-  const PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
-  const PDF_LIB_CACHE_KEY = "teachhelper.pdf-lib.min.js.v1";
-  const PDF_JS_CDN_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js";
-  const PDF_JS_WORKER_CDN_URL = "https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
-  const PDF_JS_CACHE_KEY = "teachhelper.pdfjs.min.js.v1";
-  const PDF_JS_WORKER_CACHE_KEY = "teachhelper.pdfjs.worker.min.js.v1";
   const MACOS_PERMISSION_HINT_MESSAGE = [
     "macOS blockiert manchmal den Zugriff auf Dateien.",
     "",
@@ -500,158 +492,6 @@ export function createMergerApp({
             }
             ui.busyDialog.classList.add("hidden");
             syncDialogUiState();
-          }
-
-          function hasPdfLibLoaded() {
-            return Boolean(window.PDFLib && window.PDFLib.PDFDocument);
-          }
-
-          function cachePdfLibSource(source) {
-            if (!source) return;
-            try {
-              window.localStorage?.setItem(PDF_LIB_CACHE_KEY, source);
-            } catch (error) {
-              console.warn("PDF-Library konnte nicht lokal zwischengespeichert werden.", error);
-            }
-          }
-
-          function getCachedPdfLibSource() {
-            try {
-              return window.localStorage?.getItem(PDF_LIB_CACHE_KEY) || "";
-            } catch (error) {
-              console.warn("Lokaler PDF-Library-Cache konnte nicht gelesen werden.", error);
-              return "";
-            }
-          }
-
-          function cacheSource(key, source, label) {
-            if (!source) return;
-            try {
-              window.localStorage?.setItem(key, source);
-            } catch (error) {
-              console.warn(`${label} konnte nicht lokal zwischengespeichert werden.`, error);
-            }
-          }
-
-          function getCachedSource(key, label) {
-            try {
-              return window.localStorage?.getItem(key) || "";
-            } catch (error) {
-              console.warn(`${label} konnte nicht lokal gelesen werden.`, error);
-              return "";
-            }
-          }
-
-          function injectPdfLibSource(source) {
-            if (!source) return false;
-            const script = document.createElement("script");
-            script.textContent = source;
-            document.head.appendChild(script);
-            script.remove();
-            return hasPdfLibLoaded();
-          }
-
-          async function fetchPdfLibSource() {
-            const response = await fetch(PDF_LIB_CDN_URL, { cache: "force-cache" });
-            if (!response.ok) {
-              throw new Error(`PDF-Library konnte nicht geladen werden (${response.status}).`);
-            }
-            return response.text();
-          }
-
-          async function ensurePdfLibLoaded() {
-            if (hasPdfLibLoaded()) return;
-            if (!pdfLibLoadPromise) {
-              pdfLibLoadPromise = (async () => {
-                const cachedSource = getCachedPdfLibSource();
-                if (cachedSource) {
-                  const loadedFromCache = injectPdfLibSource(cachedSource);
-                  if (loadedFromCache) return;
-                  try {
-                    window.localStorage?.removeItem(PDF_LIB_CACHE_KEY);
-                  } catch (error) {
-                    console.warn("Defekter PDF-Library-Cache konnte nicht entfernt werden.", error);
-                  }
-                }
-
-                const source = await fetchPdfLibSource();
-                const loaded = injectPdfLibSource(source);
-                if (!loaded) {
-                  throw new Error("PDF-Library wurde geladen, ist aber unvollstaendig.");
-                }
-                cachePdfLibSource(source);
-              })().catch((error) => {
-                pdfLibLoadPromise = null;
-                throw error;
-              });
-            }
-            return pdfLibLoadPromise;
-          }
-
-          function hasPdfJsLoaded() {
-            return Boolean(window.pdfjsLib && typeof window.pdfjsLib.getDocument === "function");
-          }
-
-          function injectScriptSource(source) {
-            if (!source) return false;
-            const script = document.createElement("script");
-            script.textContent = source;
-            document.head.appendChild(script);
-            script.remove();
-            return true;
-          }
-
-          async function fetchTextSource(url, label) {
-            const response = await fetch(url, { cache: "force-cache" });
-            if (!response.ok) {
-              throw new Error(`${label} konnte nicht geladen werden (${response.status}).`);
-            }
-            return response.text();
-          }
-
-          function configurePdfJsWorker(workerSource) {
-            if (!(window.pdfjsLib && window.pdfjsLib.GlobalWorkerOptions)) return;
-            if (pdfJsWorkerBlobUrl) {
-              URL.revokeObjectURL(pdfJsWorkerBlobUrl);
-              pdfJsWorkerBlobUrl = null;
-            }
-            pdfJsWorkerBlobUrl = URL.createObjectURL(new Blob([workerSource], { type: "text/javascript" }));
-            window.pdfjsLib.GlobalWorkerOptions.workerSrc = pdfJsWorkerBlobUrl;
-          }
-
-          async function ensurePdfJsLoaded() {
-            if (hasPdfJsLoaded()) return window.pdfjsLib;
-            if (!pdfJsLoadPromise) {
-              pdfJsLoadPromise = (async () => {
-                let source = getCachedSource(PDF_JS_CACHE_KEY, "PDF-Vorschau-Library");
-                let workerSource = getCachedSource(PDF_JS_WORKER_CACHE_KEY, "PDF-Vorschau-Worker");
-
-                if (source) {
-                  injectScriptSource(source);
-                }
-
-                if (!hasPdfJsLoaded()) {
-                  source = await fetchTextSource(PDF_JS_CDN_URL, "PDF-Vorschau-Library");
-                  injectScriptSource(source);
-                  if (!hasPdfJsLoaded()) {
-                    throw new Error("PDF-Vorschau-Library wurde geladen, ist aber unvollständig.");
-                  }
-                  cacheSource(PDF_JS_CACHE_KEY, source, "PDF-Vorschau-Library");
-                }
-
-                if (!workerSource) {
-                  workerSource = await fetchTextSource(PDF_JS_WORKER_CDN_URL, "PDF-Vorschau-Worker");
-                  cacheSource(PDF_JS_WORKER_CACHE_KEY, workerSource, "PDF-Vorschau-Worker");
-                }
-
-                configurePdfJsWorker(workerSource);
-                return window.pdfjsLib;
-              })().catch((error) => {
-                pdfJsLoadPromise = null;
-                throw error;
-              });
-            }
-            return pdfJsLoadPromise;
           }
 
           function fmtNumber(n) {
@@ -1798,7 +1638,7 @@ export function createMergerApp({
               throw new Error(
                 "Lokale PDF-Library fehlt und diese PDF verwendet nicht unterstuetzte Strukturen: " +
                 detected.join(", ") +
-                ". Bitte Internetverbindung pruefen, damit pdf-lib geladen werden kann."
+                ". Bitte App neu laden oder Installation pruefen, damit pdf-lib lokal geladen werden kann."
               );
             }
 
@@ -1808,7 +1648,7 @@ export function createMergerApp({
             } catch (error) {
               throw new Error(
                 "PDF-Library fehlt und die eingebaute Fallback-Verarbeitung konnte die PDF nicht sicher lesen. " +
-                "Bitte Internetverbindung pruefen, damit pdf-lib geladen werden kann."
+                "Bitte App neu laden oder Installation pruefen, damit pdf-lib lokal geladen werden kann."
               );
             }
           }
@@ -3190,6 +3030,8 @@ export function createMergerApp({
 
               const loadingTask = pdfjsLib.getDocument({
                 data: await file.arrayBuffer(),
+                isEvalSupported: false,
+                useWasm: false,
               });
               const pdfDocument = await loadingTask.promise;
               if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
@@ -3280,6 +3122,8 @@ export function createMergerApp({
 
               const loadingTask = pdfjsLib.getDocument({
                 data: await file.arrayBuffer(),
+                isEvalSupported: false,
+                useWasm: false,
               });
               const pdfDocument = await loadingTask.promise;
               if (token !== splitState.previewSetupToken || splitState.file !== file) {
@@ -3634,7 +3478,7 @@ export function createMergerApp({
               try {
                 await ensurePdfLibLoaded();
               } catch (_error) {
-                throw new Error(`${operationLabel} benötigt die PDF-Library. Bitte Internetverbindung prüfen und erneut versuchen.`);
+                throw new Error(`${operationLabel} benötigt die PDF-Library. Bitte App neu laden und erneut versuchen.`);
               } finally {
                 hideBusyDialog();
               }
@@ -4299,10 +4143,6 @@ export function createMergerApp({
               if (messageListener) {
                 window.removeEventListener("message", messageListener);
                 messageListener = null;
-              }
-              if (pdfJsWorkerBlobUrl) {
-                URL.revokeObjectURL(pdfJsWorkerBlobUrl);
-                pdfJsWorkerBlobUrl = null;
               }
               resultOpenUrl = null;
               if (runtimeChrome) {

@@ -4,6 +4,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <meta name="theme-color" content="#0f172a">
   <title>Planung</title>
   <link rel="manifest" href="../../../manifest.webmanifest">
@@ -261,7 +262,7 @@
                 <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
                   aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
-                  aria-controls="settings-tab-expectation-horizon" aria-selected="false">Erwartungshorizont</button>
+                  aria-controls="settings-tab-expectation-horizon" aria-selected="false">Vorlagen</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
                   aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="database"
@@ -471,6 +472,8 @@
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                   <input id="expectation-horizon-course-level-template-settings-file" class="visually-hidden" type="file"
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <input id="competence-expectations-template-settings-file" class="visually-hidden" type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                   <div class="expectation-horizon-template-settings-group">
                     <h4>Allgemeine Standardvorlage</h4>
                     <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
@@ -496,6 +499,18 @@
                         class="ghost reset-action">Auf eingebaute Vorlage zurücksetzen</button>
                     </div>
                   </div>
+                  <div class="expectation-horizon-template-settings-group">
+                    <h4>Kompetenzerwartungs-Vorlage</h4>
+                    <p id="competence-expectations-template-settings-status" class="muted" aria-live="polite"></p>
+                    <div class="button-row">
+                      <button type="button" id="competence-expectations-template-settings-download"
+                        class="ghost">Kompetenzerwartungs-Vorlage herunterladen</button>
+                      <button type="button" id="competence-expectations-template-settings-upload"
+                        class="ghost">Geänderte Kompetenzerwartungs-Vorlage hochladen</button>
+                      <button type="button" id="competence-expectations-template-settings-reset"
+                        class="ghost reset-action">Auf eingebaute Vorlage zurücksetzen</button>
+                    </div>
+                  </div>
                 </section>
               </div>
 
@@ -513,13 +528,13 @@
                   <p id="sync-file-name" class="muted"></p>
                   <p id="sync-file-status" class="muted"></p>
                 </div>
-                <div id="db-auto-actions" class="button-row" style="margin-top: 0.6rem;">
+                <div id="db-auto-actions" class="button-row settings-db-auto-actions">
                   <button id="db-select-existing-btn" type="button">Bestehende Datenbank auswählen</button>
                   <button id="db-create-new-btn" type="button">Neue Datenbankdatei leer anlegen</button>
                   <button id="db-create-from-current-btn" type="button">Neue Datenbankdatei mit aktuellen Daten
                     anlegen</button>
                 </div>
-                <div id="db-manual-actions" class="button-row" style="margin-top: 0.6rem;" hidden>
+                <div id="db-manual-actions" class="button-row settings-db-manual-actions" hidden>
                   <button id="db-manual-load-btn" type="button">Datenbank laden</button>
                   <button id="db-manual-save-btn" type="button">Datenbank speichern/neu anlegen</button>
                   <input id="db-manual-file" type="file" accept="application/json,.json" hidden>
@@ -542,14 +557,14 @@
                   </div>
                   <p id="grade-vault-settings-status" class="muted"></p>
                   <p id="grade-vault-settings-hint" class="muted"></p>
-                  <div class="button-row" style="margin-top: 0.45rem;">
+                  <div class="button-row settings-grade-vault-actions">
                     <button id="grade-vault-settings-action-btn" type="button">Passwort ändern</button>
                   </div>
                 </div>
                 <div id="db-backup-section" class="settings-extra-section" data-tutorial-anchor="grades-backup">
                   <h3 class="settings-panel-title">Backups</h3>
                   <p id="backup-dir-name" class="muted"></p>
-                  <div class="button-row" style="margin-top: 0.45rem; margin-bottom: 1rem;">
+                  <div class="button-row settings-backup-folder-actions">
                     <button id="backup-dir-change-btn" type="button">Backup-Ordner auswählen</button>
                   </div>
                   <div class="settings-form-table">
@@ -566,7 +581,7 @@
                         value="7">
                     </div>
                   </div>
-                  <div class="button-row" style="margin-top: 0.5rem;">
+                  <div class="button-row settings-backup-actions">
                     <button id="db-backup-now-btn" type="button">Backup erstellen</button>
                     <button id="db-backup-import-btn" type="button">Backup importieren</button>
                     <input id="db-backup-import-file" type="file" accept="application/json,.json" hidden>
@@ -995,7 +1010,7 @@
               <br>
               <span class="schoolmanager-transfer-bookmarklet-link-row">
                 <a id="schoolmanager-transfer-bookmarklet-link" class="schoolmanager-transfer-bookmarklet-link"
-                  href="javascript:(async()=&gt;{let v=(await navigator.clipboard.readText()).split(';');[...document.querySelectorAll('input,textarea')].filter(e=&gt;e.offsetParent&amp;&amp;!e.disabled&amp;&amp;!e.readOnly&amp;&amp;!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(6).map((e,i)=&gt;v[i]!=null&amp;&amp;(e.value=v[i],e.dispatchEvent(new Event('input',{bubbles:1})),e.dispatchEvent(new Event('change',{bubbles:1}))))})()"
+                  href="#schoolmanager-transfer-bookmarklet-link"
                   draggable="true" aria-label="Schulmanager-Import in die Lesezeichenleiste ziehen"><span
                     class="visually-hidden">Schulmanager-Import</span></a>
               </span>

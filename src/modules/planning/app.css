@@ -66,7 +66,25 @@
           --scrollbar-thumb-hover: rgba(148, 163, 184, 0.78);
           --week-header-scale: 1;
           --week-table-scale: 1;
-        }
+}
+
+.settings-db-auto-actions,
+.settings-db-manual-actions {
+  margin-top: 0.6rem;
+}
+
+.settings-grade-vault-actions {
+  margin-top: 0.45rem;
+}
+
+.settings-backup-folder-actions {
+  margin-top: 0.45rem;
+  margin-bottom: 1rem;
+}
+
+.settings-backup-actions {
+  margin-top: 0.5rem;
+}
 
         * {
           box-sizing: border-box;

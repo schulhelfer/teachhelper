@@ -62,7 +62,11 @@
           --motion-medium: 220ms;
           --motion-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
           --print-scale: 1;
-        }
+}
+
+.step-actions-centered {
+  justify-content: center;
+}
 
         * {
           box-sizing: border-box;

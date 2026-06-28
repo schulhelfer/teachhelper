@@ -7,19 +7,30 @@ const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
+  './THIRD_PARTY_NOTICES.md',
   './icon-192.png',
   './icon-512.png',
   './src/main.js',
+  './src/app/bootstrap.js',
   './src/app/dom.js',
   './src/app/first-run-tutorial.js',
   './src/app/planning-seatplan-bridge.js',
   './src/app/pwa-updates.js',
+  './src/app/shell.css',
   './src/app/shell.js',
   './src/shared/app-version.js',
   './src/shared/error-reporting.js',
   './src/shared/messages.js',
+  './src/shared/pdf-vendor.js',
   './src/shared/student-sync-bus.js',
   './src/shared/timer-store.js',
+  './src/vendor/jszip/3.10.1/jszip.min.js',
+  './src/vendor/jszip/3.10.1/LICENSE.markdown',
+  './src/vendor/pdf-lib/1.17.1/pdf-lib.min.js',
+  './src/vendor/pdf-lib/1.17.1/LICENSE.md',
+  './src/vendor/pdfjs-dist/6.1.200/build/pdf.mjs',
+  './src/vendor/pdfjs-dist/6.1.200/build/pdf.worker.mjs',
+  './src/vendor/pdfjs-dist/6.1.200/LICENSE',
   './src/shell/tabs.js',
   './src/modules/planning/index.js',
   './src/modules/planning/app.html',
@@ -55,6 +66,18 @@ function shouldCacheResponse(response) {
   if (response.type !== 'basic') return false;
   const cacheControl = String(response.headers.get('Cache-Control') || '').toLowerCase();
   return !cacheControl.includes('no-store');
+}
+
+function isLocalDevelopmentHost(hostname) {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
+}
+
+function withoutBrowserCache(request) {
+  try {
+    return new Request(request, { cache: 'no-store' });
+  } catch {
+    return request;
+  }
 }
 
 function isStaticAssetRequest(request, url) {
@@ -144,7 +167,12 @@ async function staleWhileRevalidate(request, event = null) {
 }
 
 self.addEventListener('install', (event) => {
-  event.waitUntil(preCacheAppShell());
+  event.waitUntil((async () => {
+    await preCacheAppShell();
+    if (isLocalDevelopmentHost(self.location.hostname)) {
+      await self.skipWaiting();
+    }
+  })());
 });
 
 self.addEventListener('activate', (event) => {
@@ -179,6 +207,11 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(request.url);
+
+  if (isLocalDevelopmentHost(url.hostname) && (request.mode === 'navigate' || request.destination === 'document')) {
+    event.respondWith(fetch(withoutBrowserCache(request)));
+    return;
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request, {

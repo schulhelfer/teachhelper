@@ -4,6 +4,7 @@
     <head>
       <meta charset="UTF-8" />
       <meta name="viewport" content="width=device-width, initial-scale=1" />
+      <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
       <title>Sitzplangenerator</title>
       <meta name="theme-color" content="#0f172a" />
       <meta name="mobile-web-app-capable" content="yes" />
@@ -85,7 +86,7 @@
                 </li>
                 <li>
                   <strong>Platziere Lehrkraft</strong>
-                  <div class="step-actions dashed" style="justify-content:center">
+                  <div class="step-actions dashed step-actions-centered">
                     <div id="teacher-card" class="teacher teacher-card" draggable="true" title="Auf Sitzplatz ziehen"
                       aria-label="Lehrkraft">
                       <div class="icon teacher-emoji" aria-hidden="true">

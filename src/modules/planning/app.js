@@ -4,6 +4,7 @@ import {
   isDocxZipSupported,
   prepareDocxTemplate
 } from "./docx.js";
+import { ensurePdfLibLoaded as ensureArchivePdfLibLoaded } from "../../shared/pdf-vendor.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_URL = new URL("./expectation-horizon-template-gAeA.docx", import.meta.url);
@@ -13,8 +14,6 @@ const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_FILE_NAME = "EWH-gAeA.docx";
 const COMPETENCE_EXPECTATIONS_FILE_NAME = "Kompetenzerwartung.docx";
 const EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL = "general";
 const EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL = "courseLevel";
-const ARCHIVE_PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
-const ARCHIVE_PDF_LIB_CACHE_KEY = "teachhelper.pdf-lib.min.js.v1";
 const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
   "Schriftliche Arbeiten dienen nicht nur der Leistungsfeststellung, sondern auch der Diagnose. Sie sind ein Zwischenschritt und nicht der Endpunkt Deines Lernprozesses. Entscheidend ist, dass Du etwaige Defizite gezielt aufarbeitest. Dabei unterstütze ich Dich gerne, doch der Wille dazu muss von Dir selbst kommen!",
   "Im IServ-Aufgabenmodul findest Du zu genau den grundlegenden Kompetenzen, bei denen sich in Deiner schriftlichen Arbeit noch Unsicherheiten gezeigt haben (<<Aufgabenlabel>> <<Aufgabenliste>>), passendes Übungsmaterial:",
@@ -72,6 +71,7 @@ const SYNC_HANDLE_FILE_KEY = "sync-file";
 const SYNC_HANDLE_BACKUP_DIR_KEY = "backup-dir";
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_STORAGE_KEY = "expectation-horizon-template-gAeA";
+const COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY = "competence-expectations-template";
 const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
   "#60A5FA",
@@ -193,76 +193,6 @@ function utf8ToBytes(value) {
 
 function bytesToUtf8(bytes) {
   return new TextDecoder().decode(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []));
-}
-
-function hasArchivePdfLibLoaded() {
-  return Boolean(
-    typeof window !== "undefined"
-    && window.PDFLib
-    && typeof window.PDFLib.PDFDocument?.create === "function"
-  );
-}
-
-function injectArchiveScriptSource(source) {
-  if (!source || typeof document === "undefined" || !document.head) {
-    return false;
-  }
-  const script = document.createElement("script");
-  script.textContent = source;
-  document.head.append(script);
-  script.remove();
-  return hasArchivePdfLibLoaded();
-}
-
-function getCachedArchivePdfLibSource() {
-  try {
-    return window.localStorage?.getItem(ARCHIVE_PDF_LIB_CACHE_KEY) || "";
-  } catch (_error) {
-    return "";
-  }
-}
-
-function cacheArchivePdfLibSource(source) {
-  try {
-    window.localStorage?.setItem(ARCHIVE_PDF_LIB_CACHE_KEY, source);
-  } catch (_error) {
-    // A full localStorage cache must not block PDF export.
-  }
-}
-
-let archivePdfLibLoadPromise = null;
-async function ensureArchivePdfLibLoaded() {
-  if (hasArchivePdfLibLoaded()) {
-    return window.PDFLib;
-  }
-  if (!archivePdfLibLoadPromise) {
-    archivePdfLibLoadPromise = (async () => {
-      const cachedSource = getCachedArchivePdfLibSource();
-      if (cachedSource && injectArchiveScriptSource(cachedSource)) {
-        return window.PDFLib;
-      }
-      if (cachedSource) {
-        try {
-          window.localStorage?.removeItem(ARCHIVE_PDF_LIB_CACHE_KEY);
-        } catch (_error) {
-        }
-      }
-      const response = await fetch(ARCHIVE_PDF_LIB_CDN_URL, { cache: "force-cache" });
-      if (!response.ok) {
-        throw new Error(`PDF-Library konnte nicht geladen werden (${response.status}).`);
-      }
-      const source = await response.text();
-      if (!injectArchiveScriptSource(source)) {
-        throw new Error("PDF-Library wurde geladen, ist aber unvollständig.");
-      }
-      cacheArchivePdfLibSource(source);
-      return window.PDFLib;
-    })().catch((error) => {
-      archivePdfLibLoadPromise = null;
-      throw error;
-    });
-  }
-  return archivePdfLibLoadPromise;
 }
 
 function sanitizePdfText(value) {
@@ -3109,6 +3039,12 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function escapeHtmlAttribute(value) {
+  return escapeHtml(value)
+    .replace(/'/g, "&#39;")
+    .replace(/`/g, "&#96;");
 }
 
 function buildGradeStudentPerformanceFlairBadgeMarkup(student) {
@@ -6787,6 +6723,8 @@ class PlannerApp {
     this.expectationHorizonStoredTemplateLoaded = false;
     this.expectationHorizonCourseLevelStoredTemplate = null;
     this.expectationHorizonCourseLevelStoredTemplateLoaded = false;
+    this.competenceExpectationsStoredTemplate = null;
+    this.competenceExpectationsStoredTemplateLoaded = false;
     this.builtInExpectationHorizonTemplateBytes = new Map();
     this.builtInCompetenceExpectationsTemplateBytes = null;
     this.expectationHorizonDialogTemplateKind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL;
@@ -6965,14 +6903,19 @@ class PlannerApp {
       expectationHorizonCommentTemplate: document.querySelector("#expectation-horizon-comment-template"),
       expectationHorizonTemplateSettingsFile: document.querySelector("#expectation-horizon-template-settings-file"),
       expectationHorizonCourseLevelTemplateSettingsFile: document.querySelector("#expectation-horizon-course-level-template-settings-file"),
+      competenceExpectationsTemplateSettingsFile: document.querySelector("#competence-expectations-template-settings-file"),
       expectationHorizonTemplateSettingsStatus: document.querySelector("#expectation-horizon-template-settings-status"),
       expectationHorizonCourseLevelTemplateSettingsStatus: document.querySelector("#expectation-horizon-course-level-template-settings-status"),
+      competenceExpectationsTemplateSettingsStatus: document.querySelector("#competence-expectations-template-settings-status"),
       expectationHorizonTemplateSettingsDownload: document.querySelector("#expectation-horizon-template-settings-download"),
       expectationHorizonCourseLevelTemplateSettingsDownload: document.querySelector("#expectation-horizon-course-level-template-settings-download"),
+      competenceExpectationsTemplateSettingsDownload: document.querySelector("#competence-expectations-template-settings-download"),
       expectationHorizonTemplateSettingsUpload: document.querySelector("#expectation-horizon-template-settings-upload"),
       expectationHorizonCourseLevelTemplateSettingsUpload: document.querySelector("#expectation-horizon-course-level-template-settings-upload"),
+      competenceExpectationsTemplateSettingsUpload: document.querySelector("#competence-expectations-template-settings-upload"),
       expectationHorizonTemplateSettingsReset: document.querySelector("#expectation-horizon-template-settings-reset"),
       expectationHorizonCourseLevelTemplateSettingsReset: document.querySelector("#expectation-horizon-course-level-template-settings-reset"),
+      competenceExpectationsTemplateSettingsReset: document.querySelector("#competence-expectations-template-settings-reset"),
       expectationHorizonDialog: document.querySelector("#expectation-horizon-dialog"),
       expectationHorizonDialogForm: document.querySelector("#expectation-horizon-dialog-form"),
       expectationHorizonCancelTop: document.querySelector("#expectation-horizon-cancel-top"),
@@ -7346,6 +7289,7 @@ class PlannerApp {
     this.ensureStandaloneSettingsView();
     this.initNumberSteppers();
     this.bindEvents();
+    this.bindWindowFocusGuards();
     this.bindPlanningTutorialPreviewGuards();
     if (this.tutorialDemoMode) {
       this.bindTutorialDemoGuards();
@@ -7378,6 +7322,7 @@ class PlannerApp {
       "#db-manual-save-btn",
       "#sidebar-archive-btn",
       "#sidebar-grade-print-btn",
+      "#competence-expectations-template-settings-download",
       "#expectation-horizon-template-download",
       "#expectation-horizon-generate",
       "input[type='file']"
@@ -11877,15 +11822,50 @@ class PlannerApp {
       99
     );
     const startIndex = Math.max(0, firstFieldIndex - 1);
-    return `javascript:(async()=>{let v=(await navigator.clipboard.readText()).split(';');[...document.querySelectorAll('input,textarea')].filter(e=>e.offsetParent&&!e.disabled&&!e.readOnly&&!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(${startIndex}).map((e,i)=>v[i]!=null&&(e.value=v[i],e.dispatchEvent(new Event('input',{bubbles:1})),e.dispatchEvent(new Event('change',{bubbles:1}))))})()`;
+    return `javascript:(async()=>{try{let v=(await navigator.clipboard.readText()).split(';'),n=0;[...document.querySelectorAll('input,textarea')].filter(e=>e.offsetParent&&!e.disabled&&!e.readOnly&&!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(${startIndex}).forEach((e,i)=>{if(v[i]!=null){e.value=v[i];e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}));n++}});if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}catch(e){alert('Fehler: '+e.message)}})()`;
   }
 
   updateSchoolmanagerTransferBookmarkletCode() {
     const code = this.buildSchoolmanagerTransferBookmarkletCode();
     const link = this.refs.schoolmanagerTransferBookmarkletLink;
     if (link) {
-      link.href = code;
+      link.dataset.bookmarkletCode = code;
       link.setAttribute("aria-label", `${SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
+      link.title = `${SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`;
+    }
+  }
+
+  getSchoolmanagerTransferBookmarkletCode() {
+    return this.refs.schoolmanagerTransferBookmarkletLink?.dataset.bookmarkletCode
+      || this.buildSchoolmanagerTransferBookmarkletCode();
+  }
+
+  setSchoolmanagerTransferBookmarkletDragData(event) {
+    const code = this.getSchoolmanagerTransferBookmarkletCode();
+    if (!code || !event?.dataTransfer) {
+      return;
+    }
+
+    event.dataTransfer.effectAllowed = "copyLink";
+    event.dataTransfer.setData("text/uri-list", code);
+    event.dataTransfer.setData("text/plain", code);
+    event.dataTransfer.setData(
+      "text/html",
+      `<a href="${escapeHtmlAttribute(code)}">${escapeHtml(SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME)}</a>`
+    );
+  }
+
+  async copySchoolmanagerTransferBookmarkletCode() {
+    const code = this.getSchoolmanagerTransferBookmarkletCode();
+    if (!code) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(code);
+      await this.showInfoMessage("Bookmarklet-Code wurde in die Zwischenablage kopiert.", SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME);
+    } catch (_error) {
+      await this.showInfoMessage("Bookmarklet-Code konnte nicht automatisch kopiert werden.", SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME);
     }
   }
 
@@ -15835,6 +15815,23 @@ class PlannerApp {
     });
   }
 
+  bindWindowFocusGuards() {
+    window.addEventListener("blur", () => {
+      this.clearFocusedSegmentControl();
+    });
+  }
+
+  clearFocusedSegmentControl() {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLInputElement) || active.type !== "radio") {
+      return;
+    }
+    if (!active.closest(this.getSegmentControlSelector())) {
+      return;
+    }
+    active.blur();
+  }
+
   bindEvents() {
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("contextmenu", (event) => {
@@ -16436,6 +16433,10 @@ class PlannerApp {
     });
     this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("click", (event) => {
       event.preventDefault();
+      this.copySchoolmanagerTransferBookmarkletCode();
+    });
+    this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("dragstart", (event) => {
+      this.setSchoolmanagerTransferBookmarkletDragData(event);
     });
 
     this.refs.slotDialogCancel.addEventListener("click", () => {
@@ -16959,11 +16960,17 @@ class PlannerApp {
     this.refs.expectationHorizonCourseLevelTemplateSettingsDownload?.addEventListener("click", () => {
       void this.downloadBuiltInExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL);
     });
+    this.refs.competenceExpectationsTemplateSettingsDownload?.addEventListener("click", () => {
+      void this.downloadDefaultCompetenceExpectationsTemplate();
+    });
     this.refs.expectationHorizonTemplateSettingsUpload?.addEventListener("click", () => {
       this.refs.expectationHorizonTemplateSettingsFile?.click();
     });
     this.refs.expectationHorizonCourseLevelTemplateSettingsUpload?.addEventListener("click", () => {
       this.refs.expectationHorizonCourseLevelTemplateSettingsFile?.click();
+    });
+    this.refs.competenceExpectationsTemplateSettingsUpload?.addEventListener("click", () => {
+      this.refs.competenceExpectationsTemplateSettingsFile?.click();
     });
     this.refs.expectationHorizonTemplateSettingsFile?.addEventListener("change", async () => {
       const [file] = this.refs.expectationHorizonTemplateSettingsFile.files || [];
@@ -16979,11 +16986,21 @@ class PlannerApp {
       }
       this.refs.expectationHorizonCourseLevelTemplateSettingsFile.value = "";
     });
+    this.refs.competenceExpectationsTemplateSettingsFile?.addEventListener("change", async () => {
+      const [file] = this.refs.competenceExpectationsTemplateSettingsFile.files || [];
+      if (file) {
+        await this.setStoredCompetenceExpectationsTemplateFile(file);
+      }
+      this.refs.competenceExpectationsTemplateSettingsFile.value = "";
+    });
     this.refs.expectationHorizonTemplateSettingsReset?.addEventListener("click", () => {
       void this.resetStoredExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL);
     });
     this.refs.expectationHorizonCourseLevelTemplateSettingsReset?.addEventListener("click", () => {
       void this.resetStoredExpectationHorizonTemplate(EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL);
+    });
+    this.refs.competenceExpectationsTemplateSettingsReset?.addEventListener("click", () => {
+      void this.resetStoredCompetenceExpectationsTemplate();
     });
 
     this.refs.settingsGradeStructureCategoryAdd?.addEventListener("click", () => {
@@ -19650,7 +19667,21 @@ class PlannerApp {
       ? (((rows.length - lastDeficitIndex - 1) / rows.length) * 100).toFixed(4)
       : "0";
     const tableCaption = isLevelView ? "Notenstufen" : "Notenpunkte";
-    const chartStyle = `--grade-distribution-column-count: ${rows.length};${showDeficitRange ? ` --grade-deficit-left: calc(0.52rem + ${deficitLeftPercent}%); --grade-deficit-right: calc(0.52rem + ${deficitRightPercent}%);` : ""}`;
+    const applyDistributionChartStyles = (root) => {
+      root.querySelectorAll(".grades-entry-distribution-chart").forEach((chart) => {
+        chart.style.setProperty("--grade-distribution-column-count", String(rows.length));
+        if (showDeficitRange) {
+          chart.style.setProperty("--grade-deficit-left", `calc(0.52rem + ${deficitLeftPercent}%)`);
+          chart.style.setProperty("--grade-deficit-right", `calc(0.52rem + ${deficitRightPercent}%)`);
+        } else {
+          chart.style.removeProperty("--grade-deficit-left");
+          chart.style.removeProperty("--grade-deficit-right");
+        }
+      });
+      root.querySelectorAll("[data-grade-distribution-bar-height]").forEach((bar) => {
+        bar.style.setProperty("--grade-distribution-bar-height", `${bar.dataset.gradeDistributionBarHeight}%`);
+      });
+    };
     const buildDistributionToggleMarkup = (inputName) => `
                 <div class="grades-entry-distribution-toggle" role="radiogroup" aria-label="Verteilungsanzeige">
                   <label class="grades-entry-distribution-option">
@@ -19670,7 +19701,7 @@ class PlannerApp {
         ? `role="button" tabindex="0" data-grades-entry-distribution-close="1" aria-label="Verteilung verkleinern" title="Verteilung verkleinern"`
         : `role="button" tabindex="0" data-grades-entry-distribution-open="1" aria-label="Verteilung vergrößern" title="Verteilung vergrößern"`;
       return `
-              <div class="${chartClass}" style="${chartStyle}" ${actionAttrs} aria-description="Säulendiagramm ${escapeHtml(tableCaption)}; Defizitanteil ${escapeHtml(formatGradeDeficitShare(deficitShare))}">
+              <div class="${chartClass}" ${actionAttrs} aria-description="Säulendiagramm ${escapeHtml(tableCaption)}; Defizitanteil ${escapeHtml(formatGradeDeficitShare(deficitShare))}">
                 ${rows.map((row, index) => {
         const deficitClass = showDeficitRange && row.isDeficitRange
           ? ` is-deficit-range${index === firstDeficitIndex ? " is-deficit-start" : ""}${index === lastDeficitIndex ? " is-deficit-end" : ""}`
@@ -19679,7 +19710,7 @@ class PlannerApp {
                     <div class="grades-entry-distribution-chart-item${deficitClass}" title="${escapeHtml(`${row.label}: ${row.count}`)}">
                       <strong>${row.count}</strong>
                       <div class="grades-entry-distribution-bar-wrap" aria-hidden="true">
-                        <div class="grades-entry-distribution-bar${row.count ? "" : " is-empty"}" style="--grade-distribution-bar-height: ${row.height}%"></div>
+                        <div class="grades-entry-distribution-bar${row.count ? "" : " is-empty"}" data-grade-distribution-bar-height="${row.height}"></div>
                       </div>
                       <span>${escapeHtml(row.label)}</span>
                     </div>
@@ -19733,6 +19764,7 @@ class PlannerApp {
                   </div>
                 </div>
               `;
+      applyDistributionChartStyles(overlay);
       return overlay;
     }
     const panelGroup = document.createElement("aside");
@@ -19749,6 +19781,7 @@ class PlannerApp {
               </div>
               ${buildDistributionChartMarkup()}
             `;
+    applyDistributionChartStyles(distributionPanel);
     panelGroup.append(distributionPanel);
     if (afbShareState) {
       const afbPanel = document.createElement("section");
@@ -24067,6 +24100,31 @@ class PlannerApp {
     return this.builtInCompetenceExpectationsTemplateBytes;
   }
 
+  async ensureStoredCompetenceExpectationsTemplateLoaded() {
+    if (this.competenceExpectationsStoredTemplateLoaded) {
+      return this.competenceExpectationsStoredTemplate;
+    }
+    const stored = await getStoredLocalValue(COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY);
+    let template = null;
+    if (stored && stored.bytes) {
+      template = {
+        name: String(stored.name || COMPETENCE_EXPECTATIONS_FILE_NAME),
+        bytes: stored.bytes instanceof Uint8Array ? stored.bytes : new Uint8Array(stored.bytes || [])
+      };
+    }
+    this.competenceExpectationsStoredTemplate = template;
+    this.competenceExpectationsStoredTemplateLoaded = true;
+    return template;
+  }
+
+  async getDefaultCompetenceExpectationsTemplateBytes() {
+    const stored = await this.ensureStoredCompetenceExpectationsTemplateLoaded();
+    if (stored?.bytes?.length) {
+      return stored.bytes;
+    }
+    return this.loadBuiltInCompetenceExpectationsTemplateBytes();
+  }
+
   async ensureStoredExpectationHorizonTemplateLoaded(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
     const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
     if (this.isExpectationHorizonStoredTemplateLoaded(templateKind)) {
@@ -24196,10 +24254,49 @@ class PlannerApp {
     this.setExpectationHorizonTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.", false, templateKind);
   }
 
+  async setStoredCompetenceExpectationsTemplateFile(file) {
+    if (!this.isExpectationHorizonDocxFile(file)) {
+      this.setCompetenceExpectationsTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
+      return false;
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const template = {
+      name: String(file.name || COMPETENCE_EXPECTATIONS_FILE_NAME),
+      bytes
+    };
+    const saved = await storeLocalValue(COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY, template);
+    if (!saved) {
+      this.setCompetenceExpectationsTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true);
+      return false;
+    }
+    this.competenceExpectationsStoredTemplate = template;
+    this.competenceExpectationsStoredTemplateLoaded = true;
+    this.renderExpectationHorizonSettingsSection();
+    this.setCompetenceExpectationsTemplateSettingsStatus("Eigene Standardvorlage gespeichert.", false);
+    return true;
+  }
+
+  async resetStoredCompetenceExpectationsTemplate() {
+    await clearStoredLocalValue(COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY);
+    this.competenceExpectationsStoredTemplate = null;
+    this.competenceExpectationsStoredTemplateLoaded = true;
+    this.renderExpectationHorizonSettingsSection();
+    this.setCompetenceExpectationsTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.", false);
+  }
+
   setExpectationHorizonTemplateSettingsStatus(message = "", isError = false, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
     const node = this.normalizeExpectationHorizonTemplateKind(kind) === EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL
       ? this.refs.expectationHorizonCourseLevelTemplateSettingsStatus
       : this.refs.expectationHorizonTemplateSettingsStatus;
+    if (!node) {
+      return;
+    }
+    node.textContent = String(message || "");
+    node.style.color = isError ? "#ff8a8a" : "";
+  }
+
+  setCompetenceExpectationsTemplateSettingsStatus(message = "", isError = false) {
+    const node = this.refs.competenceExpectationsTemplateSettingsStatus;
     if (!node) {
       return;
     }
@@ -24283,6 +24380,21 @@ class PlannerApp {
       const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
       this.setExpectationHorizonStatus(message, "error");
       this.setExpectationHorizonTemplateSettingsStatus(message, true, templateKind);
+    }
+  }
+
+  async downloadDefaultCompetenceExpectationsTemplate() {
+    try {
+      const stored = await this.ensureStoredCompetenceExpectationsTemplateLoaded();
+      const bytes = await this.getDefaultCompetenceExpectationsTemplateBytes();
+      this.downloadExpectationHorizonTemplateBytes(
+        bytes,
+        stored?.name || COMPETENCE_EXPECTATIONS_FILE_NAME
+      );
+      this.setCompetenceExpectationsTemplateSettingsStatus("Standardvorlage wurde als Download gestartet.", false);
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "Die Vorlage konnte nicht heruntergeladen werden.";
+      this.setCompetenceExpectationsTemplateSettingsStatus(message, true);
     }
   }
 
@@ -24863,7 +24975,7 @@ class PlannerApp {
     this.setCompetenceExpectationsStatus("Erzeuge DOCX-Datei...");
     try {
       await this.yieldToBrowser();
-      const templateBytes = await this.loadBuiltInCompetenceExpectationsTemplateBytes();
+      const templateBytes = await this.getDefaultCompetenceExpectationsTemplateBytes();
       const preparedTemplate = await prepareDocxTemplate(templateBytes);
       const data = await createDocxFromPreparedTemplate(
         preparedTemplate,
@@ -33994,11 +34106,26 @@ class PlannerApp {
         this.refs.expectationHorizonCourseLevelTemplateSettingsStatus.style.color = "";
       }
     }
+    if (this.refs.competenceExpectationsTemplateSettingsStatus) {
+      if (!this.competenceExpectationsStoredTemplateLoaded) {
+        void this.ensureStoredCompetenceExpectationsTemplateLoaded().then(() => {
+          this.renderExpectationHorizonSettingsSection();
+        });
+      } else {
+        this.refs.competenceExpectationsTemplateSettingsStatus.textContent = this.competenceExpectationsStoredTemplate
+          ? `Aktiv: eigene Standardvorlage (${this.competenceExpectationsStoredTemplate.name})`
+          : `Aktiv: eingebaute Standardvorlage (${COMPETENCE_EXPECTATIONS_FILE_NAME})`;
+        this.refs.competenceExpectationsTemplateSettingsStatus.style.color = "";
+      }
+    }
     if (this.refs.expectationHorizonTemplateSettingsReset) {
       this.refs.expectationHorizonTemplateSettingsReset.disabled = !this.expectationHorizonStoredTemplate;
     }
     if (this.refs.expectationHorizonCourseLevelTemplateSettingsReset) {
       this.refs.expectationHorizonCourseLevelTemplateSettingsReset.disabled = !this.expectationHorizonCourseLevelStoredTemplate;
+    }
+    if (this.refs.competenceExpectationsTemplateSettingsReset) {
+      this.refs.competenceExpectationsTemplateSettingsReset.disabled = !this.competenceExpectationsStoredTemplate;
     }
     this.updateSettingsActionButtons();
   }
