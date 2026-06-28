@@ -1,4 +1,7 @@
 export function createQrApp({ root = document } = {}) {
+  const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
+  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([TUTORIAL_COMMAND_EVENT]);
   const ui = {
     toolTabs: [...root.querySelectorAll('.tool-tab')],
     toolPanels: [...root.querySelectorAll('[data-tool-panel]')],
@@ -62,7 +65,7 @@ export function createQrApp({ root = document } = {}) {
           source: 'iframe',
           module: 'qr',
         },
-      }, window.location.origin);
+      }, TRUSTED_PARENT_ORIGIN);
     } catch {
       // The tutorial entry is only available inside the app shell.
     }
@@ -344,6 +347,34 @@ export function createQrApp({ root = document } = {}) {
     ui.decodedText?.classList.add('hidden');
     if (ui.decodedText) ui.decodedText.textContent = '';
     setActiveTool(tutorialPreviousTool);
+  }
+
+  function handleParentMessage(event) {
+    if (!window.parent || event.source !== window.parent) return;
+    if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
+    const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+    const command = String(detail.command || '');
+    const commandDetail = detail.detail && typeof detail.detail === 'object' ? detail.detail : {};
+    if (command === 'activateDemo') {
+      activateTutorialDemo();
+      return;
+    }
+    if (command === 'cleanupDemo') {
+      cleanupTutorialDemo();
+      return;
+    }
+    if (command === 'selectTool') {
+      const tool = commandDetail.tool === 'decoder' ? 'decoder' : 'generator';
+      setActiveTool(tool);
+      showTutorialSurface(String(commandDetail.surface || ''));
+      return;
+    }
+    if (command === 'showSurface') {
+      showTutorialSurface(String(commandDetail.surface || ''));
+    }
   }
 
   function decodeImageData(imageData, width, height) {
@@ -856,6 +887,7 @@ export function createQrApp({ root = document } = {}) {
     });
     window.addEventListener('pagehide', stopCamera);
     window.addEventListener('beforeunload', stopCamera);
+    window.addEventListener('message', handleParentMessage);
     bindDropZone();
   }
 

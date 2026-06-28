@@ -16,19 +16,23 @@ import {
   PLANNING_UNSAVED_STATE_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
 } from '../../shell/tabs.js';
+import {
+  createModuleFrame,
+  isTrustedModuleMessage,
+  postToModule,
+} from '../../shared/module-frame-bridge.js';
 
 const PLANNING_URL = new URL('./app.html', import.meta.url);
 
 export function mountPlanning({ host }) {
   if (!host || host.dataset.initialized === '1') return host?._planningController || null;
 
-  const targetOrigin = PLANNING_URL.origin;
   host.textContent = '';
-  const frame = document.createElement('iframe');
-  frame.className = 'planning-frame';
-  frame.loading = 'lazy';
-  frame.referrerPolicy = 'no-referrer';
-  frame.src = PLANNING_URL.href;
+  const frame = createModuleFrame({
+    className: 'planning-frame',
+    loading: 'lazy',
+    src: PLANNING_URL,
+  });
 
   const pending = [];
   let ready = false;
@@ -42,7 +46,7 @@ export function mountPlanning({ host }) {
       pending.push(payload);
       return;
     }
-    frame.contentWindow.postMessage(payload, targetOrigin);
+    postToModule(frame, payload);
   };
 
   const applyShellLayout = (detail) => {
@@ -52,21 +56,20 @@ export function mountPlanning({ host }) {
       pendingShellLayout = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: PLANNING_SHELL_LAYOUT_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: PLANNING_SHELL_LAYOUT_EVENT, detail });
   };
 
   const flush = () => {
     if (disposed) return;
     while (pending.length) {
       const next = pending.shift();
-      frame.contentWindow?.postMessage(next, targetOrigin);
+      postToModule(frame, next);
     }
   };
 
   const onWindowMessage = (event) => {
     if (disposed) return;
-    if (event.source !== frame.contentWindow) return;
-    if (event.origin !== targetOrigin) return;
+    if (!isTrustedModuleMessage(event, frame)) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type === PLANNING_MANUAL_SAVE_STATE_EVENT) {

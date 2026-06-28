@@ -1,5 +1,10 @@
 import { STUDENTS_UPDATED_EVENT } from '../../shared/student-sync-bus.js';
 import {
+  createModuleFrame,
+  isTrustedModuleMessage,
+  postToModule,
+} from '../../shared/module-frame-bridge.js';
+import {
   PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
   PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
   PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
@@ -15,7 +20,6 @@ const SEATPLAN_SHELL_LAYOUT_EVENT = 'classroom:seatplan-shell-layout';
 export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }) {
   if (!mainHost || mainHost.dataset.initialized === '1') return mainHost?._seatplanController || null;
 
-  const targetOrigin = SEATPLAN_URL.origin;
   if (sideHost) sideHost.textContent = '';
   mainHost.textContent = '';
   if (dialogHost) {
@@ -24,11 +28,11 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     dialogHost.setAttribute('aria-hidden', 'true');
   }
 
-  const frame = document.createElement('iframe');
-  frame.className = 'seatplan-frame';
-  frame.loading = 'lazy';
-  frame.referrerPolicy = 'no-referrer';
-  frame.src = SEATPLAN_URL.href;
+  const frame = createModuleFrame({
+    className: 'seatplan-frame',
+    loading: 'lazy',
+    src: SEATPLAN_URL,
+  });
 
   let ready = false;
   let pendingDetail = null;
@@ -46,7 +50,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingDetail = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: STUDENTS_UPDATED_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: STUDENTS_UPDATED_EVENT, detail });
   };
 
   const applyShellLayout = (detail) => {
@@ -56,7 +60,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingShellLayout = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: SEATPLAN_SHELL_LAYOUT_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: SEATPLAN_SHELL_LAYOUT_EVENT, detail });
   };
 
   const sendCourseContext = (detail) => {
@@ -66,7 +70,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseContext = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: SEATPLAN_COURSE_CONTEXT_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: SEATPLAN_COURSE_CONTEXT_EVENT, detail });
   };
 
   const sendCourseSaveResult = (detail) => {
@@ -76,7 +80,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseSaveResult = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail });
   };
 
   const sendCourseGradeConfigResult = (detail) => {
@@ -86,7 +90,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseGradeConfigResult = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT, detail });
   };
 
   const sendCourseGradeSaveResult = (detail) => {
@@ -96,13 +100,12 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseGradeSaveResult = detail;
       return;
     }
-    frame.contentWindow.postMessage({ type: PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, detail }, targetOrigin);
+    postToModule(frame, { type: PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, detail });
   };
 
   const onWindowMessage = (event) => {
     if (disposed) return;
-    if (event.source !== frame.contentWindow) return;
-    if (event.origin !== targetOrigin) return;
+    if (!isTrustedModuleMessage(event, frame)) return;
     const data = event.data;
     if (!data || typeof data !== 'object') return;
     if (data.type === SEATPLAN_COURSE_SAVE_REQUEST_EVENT) {

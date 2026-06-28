@@ -6,6 +6,11 @@ import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createShellController } from './app/shell.js';
 import { reportError } from './shared/error-reporting.js';
 import { createMessageApi } from './shared/messages.js';
+import {
+  createModuleFrame,
+  isTrustedModuleMessage,
+  postToModule,
+} from './shared/module-frame-bridge.js';
 import { createSharedRosterStore } from './shared/roster-store.js';
 import { STUDENTS_SYNC_SOURCE_GROUPS } from './shared/student-sync-bus.js';
 import { createSharedTimerStore } from './shared/timer-store.js';
@@ -221,11 +226,25 @@ import {
   let planningTutorialDemoActive = false;
   let planningTutorialDemoFrameReady = false;
   let pendingPlanningTutorialDemoView = null;
+  const PLANNING_TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command';
+  const QR_TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
+  const DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
   const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
   const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
   const getQrFrame = () => els.qrHost?.querySelector('iframe') || null;
   const getSeatplanFrame = () => els.seatplanMainHost?.querySelector('iframe') || null;
+  const getDuplicateCheckController = () => els.duplicateCheckHost?._duplicateCheckController || null;
+  const getQrController = () => els.qrHost?._qrController || null;
+  const isKnownModuleMessageSource = (event) => {
+    return [
+      getPlanningFrame(),
+      getMergerFrame(),
+      getDuplicateCheckFrame(),
+      getQrFrame(),
+      getSeatplanFrame(),
+    ].some((frame) => isTrustedModuleMessage(event, frame));
+  };
   const openMergerToolForTutorial = (tool = 'layout') => {
     bridgeController?.ensureTabInitialized(TAB_MERGER);
     bridgeController?.dispatchMergerToolRequest?.(tool);
@@ -234,47 +253,29 @@ import {
     const frame = planningTutorialDemoFrame;
     pendingPlanningTutorialDemoView = detail;
     if (!planningTutorialDemoFrameReady || !frame?.contentWindow) return false;
-    frame.contentWindow.postMessage({
+    postToModule(frame, {
       type: 'classroom:planning-view-request',
       detail,
-    }, new URL(frame.src, window.location.href).origin);
+    });
     return true;
   };
-  const getPlanningTutorialApi = (frame = getPlanningFrame()) => {
-    try {
-      return frame?.contentWindow?.__teachhelperPlanningTutorial || null;
-    } catch {
-      return null;
-    }
+  const postPlanningTutorialCommand = (command, detail = null, frame = getPlanningFrame()) => {
+    if (!frame) return false;
+    return postToModule(frame, {
+      type: PLANNING_TUTORIAL_COMMAND_EVENT,
+      detail: { command, detail },
+    });
   };
-  const waitForPlanningTutorialApi = async (frame = getPlanningFrame()) => {
-    for (let attempt = 0; attempt < 40; attempt += 1) {
-      const api = getPlanningTutorialApi(frame);
-      if (api) return api;
-      await new Promise((resolve) => window.setTimeout(resolve, 50));
-    }
-    return null;
-  };
-  const preparePlanningTutorialSurface = async (surface) => {
-    const frame = getPlanningFrame();
-    const api = await waitForPlanningTutorialApi(frame);
-    await api?.showSurface?.(surface);
+  const preparePlanningTutorialSurface = (surface) => {
+    postPlanningTutorialCommand('showSurface', { surface });
   };
   const prepareGradesTutorialSurface = (surface) => preparePlanningTutorialSurface(surface);
   const activatePlanningTutorialPresentation = () => {
     const frame = getPlanningFrame();
-    let activeApi = null;
-    let cancelled = false;
-    void waitForPlanningTutorialApi(frame).then((api) => {
-      if (cancelled) return null;
-      activeApi = api;
-      return api?.activate?.();
-    });
+    postPlanningTutorialCommand('activate', null, frame);
     return {
       cleanup: () => {
-        cancelled = true;
-        if (activeApi) activeApi.cleanup?.();
-        else getPlanningTutorialApi(frame)?.cleanup?.();
+        postPlanningTutorialCommand('cleanup', null, frame);
       },
     };
   };
@@ -404,26 +405,27 @@ import {
   let requestedQrTutorialTool = 'generator';
   let requestedQrTutorialSurface = '';
   let qrTutorialLoadFrame = null;
+  const postQrTutorialCommand = (command, detail = null) => {
+    const controller = getQrController();
+    if (controller?.post?.({
+      type: QR_TUTORIAL_COMMAND_EVENT,
+      detail: { command, detail },
+    })) {
+      return true;
+    }
+    const frame = getQrFrame();
+    return postToModule(frame, {
+      type: QR_TUTORIAL_COMMAND_EVENT,
+      detail: { command, detail },
+    });
+  };
   const applyRequestedQrTutorialTool = () => {
     const frame = getQrFrame();
     if (!frame) return false;
-    let frameDocument = null;
-    try {
-      frameDocument = frame.contentDocument;
-    } catch {
-      frameDocument = null;
-    }
-    const tab = frameDocument?.getElementById(`tool-tab-${requestedQrTutorialTool}`) || null;
-    if (!tab) return false;
-    if (tab.getAttribute('aria-selected') !== 'true') {
-      tab.click();
-    }
-    try {
-      frame.contentWindow?.__teachhelperQrApp?.showTutorialSurface?.(requestedQrTutorialSurface);
-    } catch {
-      // The tutorial can continue without an optional preview surface.
-    }
-    return true;
+    return postQrTutorialCommand('selectTool', {
+      tool: requestedQrTutorialTool,
+      surface: requestedQrTutorialSurface,
+    });
   };
   const openQrToolForTutorial = (tool = 'generator', surface = '') => {
     requestedQrTutorialTool = tool === 'decoder' ? 'decoder' : 'generator';
@@ -441,18 +443,9 @@ import {
     }, { once: true });
   };
   function activateQrTutorialDemo() {
-    const frame = getQrFrame();
-    let api = null;
-    try {
-      api = frame?.contentWindow?.__teachhelperQrApp || null;
-    } catch {
-      api = null;
-    }
-    if (!api?.activateTutorialDemo) {
-      throw new Error('QR-Tutorial-Demo ist noch nicht bereit.');
-    }
-    api.activateTutorialDemo();
-    const cleanup = () => api.cleanupTutorialDemo?.();
+    bridgeController?.ensureTabInitialized(TAB_QR);
+    postQrTutorialCommand('activateDemo');
+    const cleanup = () => postQrTutorialCommand('cleanupDemo');
     try {
       const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_QR });
       return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
@@ -478,12 +471,14 @@ import {
       els.sidebarManualSaveBtn.disabled = true;
       els.sidebarManualSaveBtn.title = 'Im Demomodus nicht verfügbar';
     }
-    const frame = document.createElement('iframe');
-    frame.className = 'planning-frame tutorial-demo-frame';
-    frame.setAttribute('title', 'Interaktive Tutorial-Beispieldaten');
     const demoUrl = new URL('./modules/planning/app.html', import.meta.url);
     demoUrl.searchParams.set('tutorial-demo', mode === TAB_GRADES ? 'grades' : 'planning');
-    frame.src = demoUrl.href;
+    const frame = createModuleFrame({
+      className: 'planning-frame tutorial-demo-frame',
+      title: 'Interaktive Tutorial-Beispieldaten',
+      loading: 'eager',
+      src: demoUrl,
+    });
     host.appendChild(frame);
     planningTutorialDemoFrame = frame;
     planningTutorialDemoFrameReady = false;
@@ -495,7 +490,10 @@ import {
       }
     }, { once: true });
     const cleanup = () => {
-      getPlanningTutorialApi(frame)?.cleanup?.();
+      postToModule(frame, {
+        type: PLANNING_TUTORIAL_COMMAND_EVENT,
+        detail: { command: 'cleanup', detail: null },
+      });
       planningTutorialDemoActive = false;
       planningTutorialDemoFrame?.remove();
       planningTutorialDemoFrame = null;
@@ -519,18 +517,17 @@ import {
     }
   }
   function activateDuplicateCheckTutorialDemo() {
-    const frame = getDuplicateCheckFrame();
-    let api = null;
-    try {
-      api = frame?.contentWindow?.__teachhelperDuplicateCheckApp || null;
-    } catch {
-      api = null;
-    }
-    if (!api?.activateTutorialDemo) {
-      throw new Error('DuplikatCheck-Demo ist noch nicht bereit.');
-    }
-    api.activateTutorialDemo();
-    const cleanup = () => api.cleanupTutorialDemo?.();
+    bridgeController?.ensureTabInitialized(TAB_DUPLICATE_CHECK);
+    const postDuplicateCheckTutorialCommand = (command) => {
+      const payload = {
+        type: DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT,
+        detail: { command },
+      };
+      if (getDuplicateCheckController()?.post?.(payload)) return true;
+      return postToModule(getDuplicateCheckFrame(), payload);
+    };
+    postDuplicateCheckTutorialCommand('activateDemo');
+    const cleanup = () => postDuplicateCheckTutorialCommand('cleanupDemo');
     try {
       const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_DUPLICATE_CHECK });
       return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
@@ -1996,7 +1993,7 @@ import {
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
-      if (event.origin !== window.location.origin) {
+      if (!isKnownModuleMessageSource(event)) {
         return;
       }
       const data = event.data;

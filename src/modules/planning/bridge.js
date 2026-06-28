@@ -14,16 +14,28 @@
   const READY_EVENT = 'classroom:planning-ready';
   const SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
   const VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
+  const TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command';
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     SHELL_LAYOUT_EVENT,
     VIEW_REQUEST_EVENT,
+    TUTORIAL_COMMAND_EVENT,
     MANUAL_SAVE_REQUEST_EVENT,
     GRADE_VAULT_REQUEST_EVENT,
     COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
     COURSE_GRADE_CONFIG_REQUEST_EVENT,
     COURSE_GRADE_SAVE_REQUEST_EVENT,
   ]);
+
+  function withPlanningTutorialApi(callback, attempt = 0) {
+    const api = window.__teachhelperPlanningTutorial || null;
+    if (api) {
+      callback(api);
+      return;
+    }
+    if (attempt >= 40) return;
+    window.setTimeout(() => withPlanningTutorialApi(callback, attempt + 1), 50);
+  }
 
   window.addEventListener('message', (event) => {
     if (!window.parent || event.source !== window.parent) return;
@@ -40,6 +52,23 @@
       window.dispatchEvent(new CustomEvent(VIEW_REQUEST_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
+      return;
+    }
+    if (data.type === TUTORIAL_COMMAND_EVENT) {
+      const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+      const command = String(detail.command || '');
+      const commandDetail = detail.detail && typeof detail.detail === 'object' ? detail.detail : {};
+      if (command === 'activate') {
+        withPlanningTutorialApi((api) => api.activate?.());
+        return;
+      }
+      if (command === 'showSurface') {
+        withPlanningTutorialApi((api) => api.showSurface?.(String(commandDetail.surface || '')));
+        return;
+      }
+      if (command === 'cleanup') {
+        withPlanningTutorialApi((api) => api.cleanup?.());
+      }
       return;
     }
     if (data.type === MANUAL_SAVE_REQUEST_EVENT) {

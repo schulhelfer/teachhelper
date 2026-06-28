@@ -21,6 +21,7 @@ const APP_SHELL = [
   './src/shared/app-version.js',
   './src/shared/error-reporting.js',
   './src/shared/messages.js',
+  './src/shared/module-frame-bridge.js',
   './src/shared/pdf-vendor.js',
   './src/shared/student-sync-bus.js',
   './src/shared/timer-store.js',

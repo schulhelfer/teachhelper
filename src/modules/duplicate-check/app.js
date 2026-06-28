@@ -1,4 +1,7 @@
 export function createDuplicateCheckApp({ root = document } = {}) {
+  const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
+  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([TUTORIAL_COMMAND_EVENT]);
   const JSZIP_URL = new URL('../../vendor/jszip/3.10.1/jszip.min.js', import.meta.url);
   const HASH_WIDTH = 17;
   const HASH_HEIGHT = 16;
@@ -51,7 +54,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
           source: 'iframe',
           module: 'duplicate-check',
         },
-      }, window.location.origin);
+      }, TRUSTED_PARENT_ORIGIN);
     } catch {
       // The tutorial entry is only available inside the app shell.
     }
@@ -287,6 +290,23 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     lastRecords = [];
     setFileSummary(null);
     renderInitial();
+  }
+
+  function handleParentMessage(event) {
+    if (!window.parent || event.source !== window.parent) return;
+    if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
+    const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+    const command = String(detail.command || '');
+    if (command === 'activateDemo') {
+      activateTutorialDemo();
+      return;
+    }
+    if (command === 'cleanupDemo') {
+      cleanupTutorialDemo();
+    }
   }
 
   function renderGroup(group, index) {
@@ -1171,6 +1191,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     window.addEventListener('beforeunload', () => {
       revokeRecordObjectUrls(lastRecords);
     });
+    window.addEventListener('message', handleParentMessage);
   }
 
   syncRuleButtons();

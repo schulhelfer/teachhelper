@@ -951,21 +951,38 @@ function hashStateObject(value) {
 }
 
 function supportsExternalFileSync() {
-  return window.isSecureContext
-    && (
-      typeof window.showSaveFilePicker === "function"
-      || typeof window.showOpenFilePicker === "function"
-    )
-    && typeof window.indexedDB !== "undefined";
+  try {
+    return window.isSecureContext
+      && (
+        typeof window.showSaveFilePicker === "function"
+        || typeof window.showOpenFilePicker === "function"
+      )
+      && typeof window.indexedDB !== "undefined"
+      && Boolean(window.indexedDB);
+  } catch (_error) {
+    return false;
+  }
 }
 
 function openSyncHandleDb() {
   return new Promise((resolve, reject) => {
-    if (typeof window.indexedDB === "undefined") {
+    let indexedDb = null;
+    try {
+      indexedDb = window.indexedDB || null;
+    } catch (_error) {
+      indexedDb = null;
+    }
+    if (!indexedDb) {
       resolve(null);
       return;
     }
-    const request = window.indexedDB.open(SYNC_HANDLE_DB_NAME, 1);
+    let request = null;
+    try {
+      request = indexedDb.open(SYNC_HANDLE_DB_NAME, 1);
+    } catch (_error) {
+      resolve(null);
+      return;
+    }
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(SYNC_HANDLE_STORE_NAME)) {
@@ -12192,6 +12209,190 @@ class PlannerApp {
     };
   }
 
+  createGradeStructureTextInput({
+    name,
+    fieldAttribute,
+    fieldValue,
+    categoryIndex,
+    subcategoryIndex = null,
+    value = "",
+    placeholder = ""
+  }) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.name = name;
+    input.setAttribute(`data-${fieldAttribute}`, fieldValue);
+    input.dataset.categoryIndex = String(categoryIndex);
+    if (subcategoryIndex !== null) {
+      input.dataset.subcategoryIndex = String(subcategoryIndex);
+    }
+    input.value = String(value || "");
+    input.placeholder = placeholder;
+    input.autocomplete = "off";
+    return input;
+  }
+
+  createGradeStructureWeightField({
+    name,
+    fieldAttribute,
+    fieldValue,
+    categoryIndex,
+    subcategoryIndex = null,
+    value = "",
+    ariaLabel
+  }) {
+    const label = document.createElement("label");
+    label.className = "course-dialog-weight-field";
+    label.setAttribute("aria-label", ariaLabel);
+
+    const input = document.createElement("input");
+    input.type = "number";
+    input.name = name;
+    input.min = "0";
+    input.max = "100";
+    input.step = "0.01";
+    input.setAttribute(`data-${fieldAttribute}`, fieldValue);
+    input.dataset.categoryIndex = String(categoryIndex);
+    if (subcategoryIndex !== null) {
+      input.dataset.subcategoryIndex = String(subcategoryIndex);
+    }
+    input.value = String(value ?? "");
+    input.setAttribute("aria-label", ariaLabel);
+
+    const unit = document.createElement("span");
+    unit.className = "course-dialog-weight-unit";
+    unit.setAttribute("aria-hidden", "true");
+    unit.textContent = "%";
+
+    label.append(input, unit);
+    return label;
+  }
+
+  createGradeStructureActionButton({
+    className,
+    dataAttribute,
+    dataValue,
+    ariaLabel,
+    title,
+    text = ""
+  }) {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = className;
+    button.setAttribute(`data-${dataAttribute}`, dataValue);
+    button.setAttribute("aria-label", ariaLabel);
+    button.title = title || ariaLabel;
+    if (text) {
+      button.textContent = text;
+    }
+    return button;
+  }
+
+  createGradeStructureAddSubcategoryButton(dataAttribute, categoryIndex) {
+    const button = this.createGradeStructureActionButton({
+      className: "sidebar-add-btn course-dialog-subcategory-add",
+      dataAttribute,
+      dataValue: String(categoryIndex),
+      ariaLabel: "Unterkategorie hinzufügen",
+      title: "Unterkategorie hinzufügen"
+    });
+    const plus = document.createElement("span");
+    plus.className = "sidebar-add-plus";
+    plus.setAttribute("aria-hidden", "true");
+    button.append(plus);
+    return button;
+  }
+
+  createGradeStructureCard({
+    category,
+    categoryIndex,
+    fieldAttribute,
+    categoryName,
+    categoryWeight,
+    subcategoryName,
+    subcategoryWeight,
+    removeCategoryAttribute,
+    removeSubcategoryAttribute,
+    addSubcategoryAttribute,
+    getCategoryWeightValue,
+    getSubcategoryWeightValue
+  }) {
+    const card = document.createElement("div");
+    card.className = "course-dialog-category-card";
+
+    const head = document.createElement("div");
+    head.className = "course-dialog-category-head";
+    head.append(
+      this.createGradeStructureTextInput({
+        name: categoryName(categoryIndex),
+        fieldAttribute,
+        fieldValue: "category-name",
+        categoryIndex,
+        value: category.name || "",
+        placeholder: "Kategorie"
+      }),
+      this.createGradeStructureWeightField({
+        name: categoryWeight(categoryIndex),
+        fieldAttribute,
+        fieldValue: "category-weight",
+        categoryIndex,
+        value: getCategoryWeightValue(category, categoryIndex),
+        ariaLabel: "Kategorie-Gewichtung in Prozent"
+      }),
+      this.createGradeStructureActionButton({
+        className: "ghost danger-action",
+        dataAttribute: removeCategoryAttribute,
+        dataValue: String(categoryIndex),
+        ariaLabel: "Kategorie löschen",
+        title: "Kategorie löschen",
+        text: "🗑️"
+      })
+    );
+
+    const subcategories = document.createElement("div");
+    subcategories.className = "course-dialog-subcategories";
+    (category.subcategories || []).forEach((subcategory, subcategoryIndex) => {
+      const row = document.createElement("div");
+      row.className = "course-dialog-subcategory-row";
+      row.append(
+        this.createGradeStructureTextInput({
+          name: subcategoryName(categoryIndex, subcategoryIndex),
+          fieldAttribute,
+          fieldValue: "subcategory-name",
+          categoryIndex,
+          subcategoryIndex,
+          value: subcategory.name || "",
+          placeholder: "Unterkategorie"
+        }),
+        this.createGradeStructureWeightField({
+          name: subcategoryWeight(categoryIndex, subcategoryIndex),
+          fieldAttribute,
+          fieldValue: "subcategory-weight",
+          categoryIndex,
+          subcategoryIndex,
+          value: getSubcategoryWeightValue(subcategory, categoryIndex, subcategoryIndex),
+          ariaLabel: "Unterkategorie-Gewichtung in Prozent"
+        }),
+        this.createGradeStructureActionButton({
+          className: "ghost danger-action",
+          dataAttribute: removeSubcategoryAttribute,
+          dataValue: `${categoryIndex}:${subcategoryIndex}`,
+          ariaLabel: "Unterkategorie löschen",
+          title: "Unterkategorie löschen",
+          text: "🗑️"
+        })
+      );
+      subcategories.append(row);
+    });
+
+    card.append(
+      head,
+      subcategories,
+      this.createGradeStructureAddSubcategoryButton(addSubcategoryAttribute, categoryIndex)
+    );
+    return card;
+  }
+
   renderCourseDialogStudents() {
     if (!this.refs.courseDialogStudentsList || !this.courseDialogDraft) {
       return;
@@ -12201,24 +12402,59 @@ class PlannerApp {
     if (students.length > 0) {
       students.forEach((student, index) => {
         const performanceFlair = normalizeGradePerformanceFlair(student.performanceFlair);
-        const flairOptions = [
-          `<option value=""${performanceFlair ? "" : " selected"}>-</option>`,
-          ...GRADE_STUDENT_PERFORMANCE_FLAIRS.map((flair) => (
-            `<option value="${flair}"${performanceFlair === flair ? " selected" : ""}>${flair}</option>`
-          ))
-        ].join("");
         const row = document.createElement("div");
         row.className = "course-dialog-student-row";
-        row.innerHTML = `
-          <div class="course-dialog-student-grid">
-            <input type="text" name="student-last-name-${index}" data-student-field="lastName" data-student-index="${index}" value="${String(student.lastName || "").replace(/"/g, "&quot;")}" placeholder="Nachname" autocomplete="off">
-            <input type="text" name="student-first-name-${index}" data-student-field="firstName" data-student-index="${index}" value="${String(student.firstName || "").replace(/"/g, "&quot;")}" placeholder="Vorname" autocomplete="off">
-            <select name="student-performance-flair-${index}" class="course-dialog-student-flair-select${performanceFlair ? " has-flair" : ""}" data-student-field="performanceFlair" data-student-index="${index}" aria-label="Flair für Teilnehmende">
-              ${flairOptions}
-            </select>
-            <button type="button" class="ghost danger-action" data-student-remove="${index}" aria-label="Teilnehmende entfernen" title="Teilnehmende entfernen">🗑️</button>
-          </div>
-        `;
+        const grid = document.createElement("div");
+        grid.className = "course-dialog-student-grid";
+
+        const lastName = document.createElement("input");
+        lastName.type = "text";
+        lastName.name = `student-last-name-${index}`;
+        lastName.dataset.studentField = "lastName";
+        lastName.dataset.studentIndex = String(index);
+        lastName.value = String(student.lastName || "");
+        lastName.placeholder = "Nachname";
+        lastName.autocomplete = "off";
+
+        const firstName = document.createElement("input");
+        firstName.type = "text";
+        firstName.name = `student-first-name-${index}`;
+        firstName.dataset.studentField = "firstName";
+        firstName.dataset.studentIndex = String(index);
+        firstName.value = String(student.firstName || "");
+        firstName.placeholder = "Vorname";
+        firstName.autocomplete = "off";
+
+        const flairSelect = document.createElement("select");
+        flairSelect.name = `student-performance-flair-${index}`;
+        flairSelect.className = `course-dialog-student-flair-select${performanceFlair ? " has-flair" : ""}`;
+        flairSelect.dataset.studentField = "performanceFlair";
+        flairSelect.dataset.studentIndex = String(index);
+        flairSelect.setAttribute("aria-label", "Flair für Teilnehmende");
+        const emptyOption = document.createElement("option");
+        emptyOption.value = "";
+        emptyOption.textContent = "-";
+        emptyOption.selected = !performanceFlair;
+        flairSelect.append(emptyOption);
+        GRADE_STUDENT_PERFORMANCE_FLAIRS.forEach((flair) => {
+          const option = document.createElement("option");
+          option.value = flair;
+          option.textContent = flair;
+          option.selected = performanceFlair === flair;
+          flairSelect.append(option);
+        });
+
+        const removeButton = this.createGradeStructureActionButton({
+          className: "ghost danger-action",
+          dataAttribute: "student-remove",
+          dataValue: String(index),
+          ariaLabel: "Teilnehmende entfernen",
+          title: "Teilnehmende entfernen",
+          text: "🗑️"
+        });
+
+        grid.append(lastName, firstName, flairSelect, removeButton);
+        row.append(grid);
         this.refs.courseDialogStudentsList.append(row);
       });
     }
@@ -12320,33 +12556,33 @@ class PlannerApp {
       return;
     }
     categories.forEach((category, categoryIndex) => {
-      const card = document.createElement("div");
-      card.className = "course-dialog-category-card";
-      const subcategoriesHtml = (category.subcategories || []).map((subcategory, subcategoryIndex) => `
-        <div class="course-dialog-subcategory-row">
-          <input type="text" name="subcategory-name-${categoryIndex}-${subcategoryIndex}" data-structure-field="subcategory-name" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(subcategory.name || "").replace(/"/g, "&quot;")}" placeholder="Unterkategorie" autocomplete="off">
-          <label class="course-dialog-weight-field" aria-label="Unterkategorie-Gewichtung in Prozent">
-            <input type="number" name="subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${String(this.getCourseDialogStructureWeightDisplayValue(subcategory, period, "subcategory", categoryIndex, subcategoryIndex)).replace(/"/g, "&quot;")}" aria-label="Unterkategorie-Gewichtung in Prozent">
-            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
-          </label>
-          <button type="button" class="ghost danger-action" data-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
-        </div>
-      `).join("");
-      card.innerHTML = `
-        <div class="course-dialog-category-head">
-          <input type="text" name="category-name-${categoryIndex}" data-structure-field="category-name" data-category-index="${categoryIndex}" value="${String(category.name || "").replace(/"/g, "&quot;")}" placeholder="Kategorie" autocomplete="off">
-          <label class="course-dialog-weight-field" aria-label="Kategorie-Gewichtung in Prozent">
-            <input type="number" name="category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-structure-field="category-weight" data-category-index="${categoryIndex}" value="${String(this.getCourseDialogStructureWeightDisplayValue(category, period, "category", categoryIndex)).replace(/"/g, "&quot;")}" aria-label="Kategorie-Gewichtung in Prozent">
-            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
-          </label>
-          <button type="button" class="ghost danger-action" data-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
-        </div>
-        <div class="course-dialog-subcategories">${subcategoriesHtml}</div>
-        <button type="button" class="sidebar-add-btn course-dialog-subcategory-add" data-structure-add-subcategory="${categoryIndex}" aria-label="Unterkategorie hinzufügen" title="Unterkategorie hinzufügen">
-          <span class="sidebar-add-plus" aria-hidden="true"></span>
-        </button>
-      `;
-      this.refs.courseDialogStructureList.append(card);
+      this.refs.courseDialogStructureList.append(
+        this.createGradeStructureCard({
+          category,
+          categoryIndex,
+          fieldAttribute: "structure-field",
+          categoryName: (index) => `category-name-${index}`,
+          categoryWeight: (index) => `category-weight-${index}`,
+          subcategoryName: (categoryKey, subcategoryKey) => `subcategory-name-${categoryKey}-${subcategoryKey}`,
+          subcategoryWeight: (categoryKey, subcategoryKey) => `subcategory-weight-${categoryKey}-${subcategoryKey}`,
+          removeCategoryAttribute: "structure-remove-category",
+          removeSubcategoryAttribute: "structure-remove-subcategory",
+          addSubcategoryAttribute: "structure-add-subcategory",
+          getCategoryWeightValue: (item, index) => this.getCourseDialogStructureWeightDisplayValue(
+            item,
+            period,
+            "category",
+            index
+          ),
+          getSubcategoryWeightValue: (item, categoryKey, subcategoryKey) => this.getCourseDialogStructureWeightDisplayValue(
+            item,
+            period,
+            "subcategory",
+            categoryKey,
+            subcategoryKey
+          )
+        })
+      );
     });
   }
 
@@ -33887,33 +34123,22 @@ class PlannerApp {
     const categories = this.getDefaultGradeStructureSettingsCategories(period);
     root.innerHTML = "";
     categories.forEach((category, categoryIndex) => {
-      const card = document.createElement("div");
-      card.className = "course-dialog-category-card";
-      const subcategoriesHtml = (category.subcategories || []).map((subcategory, subcategoryIndex) => `
-	        <div class="course-dialog-subcategory-row">
-	          <input type="text" name="default-subcategory-name-${categoryIndex}-${subcategoryIndex}" data-default-grade-structure-field="subcategory-name" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${escapeHtml(subcategory.name || "")}" placeholder="Unterkategorie" autocomplete="off">
-	          <label class="course-dialog-weight-field" aria-label="Unterkategorie-Gewichtung in Prozent">
-	            <input type="number" name="default-subcategory-weight-${categoryIndex}-${subcategoryIndex}" min="0" max="100" step="0.01" data-default-grade-structure-field="subcategory-weight" data-category-index="${categoryIndex}" data-subcategory-index="${subcategoryIndex}" value="${escapeHtml(String(subcategory.weight ?? ""))}" aria-label="Unterkategorie-Gewichtung in Prozent">
-	            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
-	          </label>
-		          <button type="button" class="ghost danger-action" data-default-grade-structure-remove-subcategory="${categoryIndex}:${subcategoryIndex}" aria-label="Unterkategorie löschen" title="Unterkategorie löschen">🗑️</button>
-	        </div>
-	      `).join("");
-      card.innerHTML = `
-	        <div class="course-dialog-category-head">
-	          <input type="text" name="default-category-name-${categoryIndex}" data-default-grade-structure-field="category-name" data-category-index="${categoryIndex}" value="${escapeHtml(category.name || "")}" placeholder="Kategorie" autocomplete="off">
-	          <label class="course-dialog-weight-field" aria-label="Kategorie-Gewichtung in Prozent">
-	            <input type="number" name="default-category-weight-${categoryIndex}" min="0" max="100" step="0.01" data-default-grade-structure-field="category-weight" data-category-index="${categoryIndex}" value="${escapeHtml(String(category.weight ?? ""))}" aria-label="Kategorie-Gewichtung in Prozent">
-	            <span class="course-dialog-weight-unit" aria-hidden="true">%</span>
-	          </label>
-		          <button type="button" class="ghost danger-action" data-default-grade-structure-remove-category="${categoryIndex}" aria-label="Kategorie löschen" title="Kategorie löschen">🗑️</button>
-	        </div>
-	        <div class="course-dialog-subcategories">${subcategoriesHtml}</div>
-	        <button type="button" class="sidebar-add-btn course-dialog-subcategory-add" data-default-grade-structure-add-subcategory="${categoryIndex}" aria-label="Unterkategorie hinzufügen" title="Unterkategorie hinzufügen">
-	          <span class="sidebar-add-plus" aria-hidden="true"></span>
-	        </button>
-	      `;
-      root.append(card);
+      root.append(
+        this.createGradeStructureCard({
+          category,
+          categoryIndex,
+          fieldAttribute: "default-grade-structure-field",
+          categoryName: (index) => `default-category-name-${index}`,
+          categoryWeight: (index) => `default-category-weight-${index}`,
+          subcategoryName: (categoryKey, subcategoryKey) => `default-subcategory-name-${categoryKey}-${subcategoryKey}`,
+          subcategoryWeight: (categoryKey, subcategoryKey) => `default-subcategory-weight-${categoryKey}-${subcategoryKey}`,
+          removeCategoryAttribute: "default-grade-structure-remove-category",
+          removeSubcategoryAttribute: "default-grade-structure-remove-subcategory",
+          addSubcategoryAttribute: "default-grade-structure-add-subcategory",
+          getCategoryWeightValue: (item) => item.weight ?? "",
+          getSubcategoryWeightValue: (item) => item.weight ?? ""
+        })
+      );
     });
     this.updateSettingsActionButtons();
   }

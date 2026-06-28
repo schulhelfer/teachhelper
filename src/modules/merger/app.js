@@ -17,6 +17,11 @@ export function createMergerApp({
   const TOOL_LAYOUT = "layout";
   const TOOL_ROTATE = "rotate";
   const TOOL_SPLIT = "split";
+  const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
+    MERGER_TOOL_REQUEST_EVENT,
+    MERGER_SHELL_LAYOUT_EVENT,
+  ]);
   const standalone = !sideRoot || !mainRoot || !sideHost || !mainHost;
   const domRoots = standalone ? [root] : [sideRoot, mainRoot];
 
@@ -123,7 +128,7 @@ export function createMergerApp({
           source: "iframe",
           module: "merger",
         },
-      }, window.location.origin);
+      }, TRUSTED_PARENT_ORIGIN);
     } catch (_error) {
       // The tutorial entry is only available inside the app shell.
     }
@@ -348,8 +353,10 @@ export function createMergerApp({
   if (standalone && typeof window !== "undefined") {
     messageListener = (event) => {
       if (event.source !== window.parent) return;
+      if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
       const data = event.data;
       if (!data || typeof data !== "object") return;
+      if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
       if (data.type === MERGER_TOOL_REQUEST_EVENT) {
         const tool = String(data.detail?.tool || "");
         if ([TOOL_LAYOUT, TOOL_MERGE, TOOL_ROTATE, TOOL_SPLIT].includes(tool)) {

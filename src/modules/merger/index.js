@@ -1,4 +1,8 @@
 import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
+import {
+  createModuleFrame,
+  postToModule,
+} from '../../shared/module-frame-bridge.js';
 
 const MERGER_VERSION = 'merger-r12';
 const MERGER_URL = new URL(`./app.html?v=${MERGER_VERSION}`, import.meta.url);
@@ -6,14 +10,13 @@ const MERGER_URL = new URL(`./app.html?v=${MERGER_VERSION}`, import.meta.url);
 export function mountMerger({ host }) {
   if (!host || host.dataset.initialized === '1') return host?._mergerController || null;
 
-  const targetOrigin = MERGER_URL.origin;
   host.textContent = '';
 
-  const frame = document.createElement('iframe');
-  frame.className = 'merger-frame';
-  frame.loading = 'lazy';
-  frame.referrerPolicy = 'no-referrer';
-  frame.src = MERGER_URL.href;
+  const frame = createModuleFrame({
+    className: 'merger-frame',
+    loading: 'lazy',
+    src: MERGER_URL,
+  });
 
   let ready = false;
   let pendingShellLayout = null;
@@ -28,10 +31,10 @@ export function mountMerger({ host }) {
       pendingTool = normalizedTool;
       return;
     }
-    frame.contentWindow.postMessage({
+    postToModule(frame, {
       type: MERGER_TOOL_REQUEST_EVENT,
       detail: { tool: normalizedTool },
-    }, targetOrigin);
+    });
   };
 
   const applyShellLayout = (detail) => {
@@ -41,12 +44,12 @@ export function mountMerger({ host }) {
       pendingShellLayout = detail;
       return;
     }
-    frame.contentWindow.postMessage({
+    postToModule(frame, {
       type: MERGER_SHELL_LAYOUT_EVENT,
       detail: {
         ...detail,
       },
-    }, targetOrigin);
+    });
   };
 
   const onFrameLoad = () => {
