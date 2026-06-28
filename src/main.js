@@ -190,6 +190,8 @@ import {
   const RANDOM_PICKER_DEFAULT_WEIGHT = 1;
   const RANDOM_PICKER_CERTAIN_WEIGHT = 4;
   const RANDOM_PICKER_SPIN_DURATION_MS = 4000;
+  const TIMER_DURATION_RANGE_DEFAULT = 45;
+  const TIMER_DURATION_RANGE_MAX = 180;
   let bridgeController = null;
   let shellController = null;
   const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
@@ -3935,6 +3937,20 @@ import {
     if (!Number.isFinite(parsed) || parsed <= 0) return null;
     return parsed;
   }
+  function syncTimerDurationRange(durationValue) {
+    const range = els.workOrderDurationRange;
+    if (!range) return;
+    const duration = parseWorkOrderDuration(durationValue);
+    const rangeValue = duration ?? TIMER_DURATION_RANGE_DEFAULT;
+    const nextMax = Math.max(TIMER_DURATION_RANGE_MAX, rangeValue);
+    if (range.max !== String(nextMax)) {
+      range.max = String(nextMax);
+    }
+    if (range.value !== String(rangeValue)) {
+      range.value = String(rangeValue);
+    }
+    range.setAttribute('aria-valuetext', `${rangeValue} Minuten`);
+  }
   function getTimerPlaceholder() {
     return timerShowSeconds ? '--:--:--' : '--:--';
   }
@@ -4423,6 +4439,7 @@ import {
       && els.workOrderDurationInput.value !== durationText) {
       els.workOrderDurationInput.value = durationText;
     }
+    syncTimerDurationRange(durationValue);
     const showTiming = Number.isFinite(durationValue) && durationValue > 0;
     if (els.workOrderMeta) {
       els.workOrderMeta.hidden = false;
@@ -5969,6 +5986,11 @@ import {
   els.workOrderDurationInput?.addEventListener('change', () => {
     saveTimerDurationFromInput();
   });
+  els.workOrderDurationRange?.addEventListener('input', () => {
+    if (!els.workOrderDurationInput || !els.workOrderDurationRange) return;
+    els.workOrderDurationInput.value = els.workOrderDurationRange.value;
+    applyTimerDurationFromInput({ preserveStart: true });
+  });
   els.workOrderDurationStepButtons?.forEach((button) => {
     button.addEventListener('click', () => {
       adjustTimerDuration(button.dataset.durationStep);
@@ -7343,7 +7365,7 @@ import {
             showMessage('Update verfügbar. Aktualisieren-Dialog geöffnet.', 'info');
             break;
           case 'up-to-date':
-            showMessage('TeachHelper ist aktuell.', 'info');
+            showMessage('TeachHelper ist aktuell.', 'info', { presentation: 'toast' });
             break;
           case 'disabled':
             showMessage('Update-Check ist auf localhost deaktiviert.', 'warn');

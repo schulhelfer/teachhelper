@@ -73,6 +73,8 @@ export function createShellController({
     ? onRefreshLayouts
     : (() => {});
   let unsavedTabConfirmPromise = null;
+  let tabIndicatorFrame = 0;
+  let tabNavResizeObserver = null;
 
   function isPlanningTab(tab) {
     return tab === TAB_PLANNING || tab === TAB_GRADES;
@@ -166,6 +168,43 @@ export function createShellController({
     }
   }
 
+  function positionActiveTabIndicator() {
+    if (!els.tabNav || !els.tabIndicator || typeof window === 'undefined') return;
+    const activeButton = els.tabNav.querySelector('.tab-button.active');
+    if (!(activeButton instanceof HTMLElement) || els.tabNav.hidden) {
+      els.tabIndicator.classList.remove('is-ready');
+      return;
+    }
+    const navRect = els.tabNav.getBoundingClientRect();
+    const buttonRect = activeButton.getBoundingClientRect();
+    if (!navRect.width || !navRect.height || !buttonRect.width || !buttonRect.height) {
+      els.tabIndicator.classList.remove('is-ready');
+      return;
+    }
+    const x = buttonRect.left - navRect.left + els.tabNav.scrollLeft;
+    const y = buttonRect.top - navRect.top + els.tabNav.scrollTop;
+    els.tabIndicator.style.setProperty('--tab-indicator-x', `${x.toFixed(2)}px`);
+    els.tabIndicator.style.setProperty('--tab-indicator-y', `${y.toFixed(2)}px`);
+    els.tabIndicator.style.setProperty('--tab-indicator-width', `${buttonRect.width.toFixed(2)}px`);
+    els.tabIndicator.style.setProperty('--tab-indicator-height', `${buttonRect.height.toFixed(2)}px`);
+    els.tabIndicator.classList.add('is-ready');
+  }
+
+  function queueActiveTabIndicatorUpdate() {
+    if (!els.tabIndicator || typeof window === 'undefined') return;
+    if (tabIndicatorFrame) {
+      window.cancelAnimationFrame?.(tabIndicatorFrame);
+    }
+    if (typeof window.requestAnimationFrame !== 'function') {
+      positionActiveTabIndicator();
+      return;
+    }
+    tabIndicatorFrame = window.requestAnimationFrame(() => {
+      tabIndicatorFrame = 0;
+      positionActiveTabIndicator();
+    });
+  }
+
   function renderTabs() {
     if (!els.app) return;
     updateSeatPreferencesTrigger();
@@ -233,6 +272,7 @@ export function createShellController({
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
+    queueActiveTabIndicatorUpdate();
     if (state.activeTab === TAB_RANDOM_PICKER) {
       renderRandomPicker();
     }
@@ -835,6 +875,14 @@ export function createShellController({
       }
       window.dispatchEvent(new CustomEvent(PLANNING_MANUAL_SAVE_REQUEST_EVENT));
     });
+  }
+  if (typeof window !== 'undefined') {
+    window.addEventListener('resize', queueActiveTabIndicatorUpdate);
+    window.visualViewport?.addEventListener?.('resize', queueActiveTabIndicatorUpdate);
+    if (typeof ResizeObserver === 'function' && els.tabNav) {
+      tabNavResizeObserver = new ResizeObserver(queueActiveTabIndicatorUpdate);
+      tabNavResizeObserver.observe(els.tabNav);
+    }
   }
   window.addEventListener('beforeunload', handleBeforeUnload);
 

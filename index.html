@@ -197,17 +197,31 @@
     .message-stack {
       position: fixed;
       inset: 0;
-      display: none;
+      display: flex;
       align-items: center;
       justify-content: center;
       padding: 24px;
       background: rgba(8, 12, 22, 0.78);
       backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       z-index: 3000;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition:
+        opacity var(--motion-medium, 220ms) var(--motion-ease, ease),
+        visibility 0s linear var(--motion-medium, 220ms);
+    }
+
+    .message-stack.active,
+    .message-stack.is-dismissing {
+      visibility: visible;
+      pointer-events: auto;
     }
 
     .message-stack.active {
-      display: flex;
+      opacity: 1;
+      transition-delay: 0s;
     }
 
     .message {
@@ -225,6 +239,16 @@
       font-size: 19px;
       line-height: 1.6;
       text-align: center;
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+      transition:
+        opacity var(--motion-medium, 220ms) var(--motion-ease, ease),
+        transform var(--motion-medium, 220ms) var(--motion-ease, ease);
+    }
+
+    .message.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
     }
 
     .message .message-body {
@@ -270,6 +294,89 @@
       border-color: rgba(16, 185, 129, 0.9)
     }
 
+    .toast-stack {
+      position: fixed;
+      right: max(18px, env(safe-area-inset-right, 0px) + 18px);
+      bottom: max(18px, env(safe-area-inset-bottom, 0px) + 18px);
+      z-index: 3100;
+      display: grid;
+      gap: 10px;
+      width: min(360px, calc(100vw - 32px));
+      pointer-events: none;
+    }
+
+    .toast-message {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr) auto;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 12px 12px 14px;
+      border: 1px solid rgba(148, 163, 184, 0.26);
+      border-radius: 14px;
+      background: rgba(10, 18, 35, 0.94);
+      color: var(--text);
+      box-shadow: 0 16px 38px rgba(2, 6, 23, 0.42);
+      backdrop-filter: blur(12px) saturate(135%);
+      -webkit-backdrop-filter: blur(12px) saturate(135%);
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+      transition:
+        opacity var(--motion-medium, 220ms) var(--motion-ease, ease),
+        transform var(--motion-medium, 220ms) var(--motion-ease, ease),
+        border-color var(--motion-fast, 150ms) var(--motion-ease, ease);
+      pointer-events: auto;
+    }
+
+    .toast-message.show {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+
+    .toast-message.message-success {
+      border-color: rgba(16, 185, 129, 0.52);
+      box-shadow: 0 16px 38px rgba(2, 6, 23, 0.42), 0 0 0 1px rgba(16, 185, 129, 0.1);
+    }
+
+    .toast-message.message-info {
+      border-color: rgba(96, 165, 250, 0.52);
+    }
+
+    .toast-icon {
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    .toast-body {
+      min-width: 0;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+    }
+
+    .toast-close {
+      width: 28px;
+      min-width: 28px;
+      height: 28px;
+      min-height: 28px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      border-radius: 9px;
+      background: rgba(148, 163, 184, 0.08);
+      color: #f8fafc;
+      font-size: 18px;
+      line-height: 1;
+      cursor: pointer;
+      box-shadow: none;
+    }
+
+    .toast-close:hover {
+      border-color: rgba(226, 232, 240, 0.42);
+      background: rgba(148, 163, 184, 0.16);
+    }
+
     .touch-drag-ghost {
       position: fixed;
       top: 0;
@@ -311,8 +418,12 @@
       --chrome-transition-duration: 280ms;
       --chrome-transition-duration-short: 190ms;
       --chrome-transition-duration-medium: 240ms;
-      --tab-switch-duration: 100ms;
+      --motion-fast: 150ms;
+      --motion-medium: 220ms;
+      --motion-slow: 280ms;
+      --tab-switch-duration: 150ms;
       --chrome-transition-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+      --motion-ease: var(--chrome-transition-ease);
       --app-header-max-height: 240px;
       --app-content-top-space: clamp(12px, 1.5vh, 18px);
       --chrome-overlay-clearance: calc(var(--app-header-padding-x) + var(--chrome-toggle-size) + 8px);
@@ -512,6 +623,7 @@
     }
 
     .tab-nav {
+      position: relative;
       display: flex;
       flex-wrap: wrap;
       justify-content: flex-start;
@@ -537,8 +649,35 @@
       transition: max-width var(--chrome-transition-duration) var(--chrome-transition-ease), max-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), margin-left var(--chrome-transition-duration-medium) var(--chrome-transition-ease), gap var(--chrome-transition-duration-short) var(--chrome-transition-ease);
     }
 
+    .tab-indicator {
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 0;
+      width: var(--tab-indicator-width, 0px);
+      height: var(--tab-indicator-height, 0px);
+      border: 1px solid color-mix(in srgb, var(--tab-active) 52%, transparent 48%);
+      border-radius: 7px;
+      background: color-mix(in srgb, var(--tab-active) 24%, transparent 76%);
+      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tab-active) 18%, transparent 82%);
+      opacity: 0;
+      pointer-events: none;
+      transform: translate3d(var(--tab-indicator-x, 0px), var(--tab-indicator-y, 0px), 0);
+      transition:
+        transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease),
+        width var(--chrome-transition-duration-medium) var(--chrome-transition-ease),
+        height var(--chrome-transition-duration-medium) var(--chrome-transition-ease),
+        opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease);
+      will-change: transform, width, height;
+    }
+
+    .tab-indicator.is-ready {
+      opacity: 1;
+    }
+
     .tab-button {
       position: relative;
+      z-index: 1;
       flex: 0 0 auto;
       border: 1px solid transparent;
       border-radius: 7px;
@@ -616,12 +755,17 @@
     }
 
     .tab-button.active {
-      border-color: color-mix(in srgb, var(--tab-active) 52%, transparent 48%);
-      background: color-mix(in srgb, var(--tab-active) 24%, transparent 76%);
+      border-color: transparent;
+      background: transparent;
       color: #f8fafc;
       transform: none;
       filter: none;
-      box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tab-active) 18%, transparent 82%);
+      box-shadow: none;
+    }
+
+    .tab-button.active:hover {
+      border-color: transparent;
+      background: transparent;
     }
 
     .side,
@@ -665,13 +809,15 @@
     }
 
     .tab-switch-leave {
-      transform: translateY(12px) scale(0.992) !important;
-      filter: blur(6px) saturate(0.94) !important;
+      opacity: 0 !important;
+      transform: translateY(8px) scale(0.996) !important;
+      filter: blur(2px) saturate(0.98) !important;
     }
 
     .tab-switch-enter {
-      transform: translateY(14px) scale(0.99) !important;
-      filter: blur(8px) saturate(0.9) !important;
+      opacity: 0 !important;
+      transform: translateY(10px) scale(0.996) !important;
+      filter: blur(2px) saturate(0.98) !important;
     }
 
     .app.app-ios-optimized .tab-switch-leave {
@@ -2125,7 +2271,7 @@
       gap: 0;
       margin: 0;
       opacity: 0;
-      transform: translateY(-6px);
+      transform: translateY(-8px) scale(0.992);
       pointer-events: none;
       box-shadow: none;
     }
@@ -2212,7 +2358,7 @@
       padding: 0;
       border-color: transparent;
       opacity: 0;
-      transform: translateX(-6px);
+      transform: translateX(-10px) scaleX(0.985);
       pointer-events: none;
       overflow: hidden;
     }
@@ -3237,16 +3383,101 @@
     .monitor-threshold-field input[type="range"] {
       width: 100%;
       min-width: 0;
+      height: 28px;
+      appearance: none;
+      -webkit-appearance: none;
+      background: transparent;
       accent-color: #60a5fa;
       cursor: pointer;
+    }
+
+    .monitor-threshold-field input[type="range"]::-webkit-slider-runnable-track,
+    .timer-duration-range::-webkit-slider-runnable-track {
+      height: 8px;
+      border-radius: 999px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.04)),
+        rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.34);
+    }
+
+    .monitor-threshold-field input[type="range"]::-moz-range-track,
+    .timer-duration-range::-moz-range-track {
+      height: 8px;
+      border-radius: 999px;
+      background: rgba(15, 23, 42, 0.72);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      box-shadow: inset 0 1px 2px rgba(2, 6, 23, 0.34);
+    }
+
+    .monitor-threshold-field input[type="range"]::-webkit-slider-thumb,
+    .timer-duration-range::-webkit-slider-thumb {
+      appearance: none;
+      -webkit-appearance: none;
+      width: 20px;
+      height: 20px;
+      margin-top: -7px;
+      border-radius: 50%;
+      border: 2px solid rgba(248, 250, 252, 0.92);
+      background:
+        radial-gradient(circle at 34% 28%, #ffffff 0 22%, #e2e8f0 48%, #60a5fa 100%);
+      box-shadow: 0 5px 14px rgba(2, 6, 23, 0.42);
+      transition: transform var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+    }
+
+    .monitor-threshold-field input[type="range"]::-moz-range-thumb,
+    .timer-duration-range::-moz-range-thumb {
+      width: 18px;
+      height: 18px;
+      border-radius: 50%;
+      border: 2px solid rgba(248, 250, 252, 0.92);
+      background: #60a5fa;
+      box-shadow: 0 5px 14px rgba(2, 6, 23, 0.42);
+      transition: transform var(--motion-fast) var(--motion-ease), box-shadow var(--motion-fast) var(--motion-ease);
+    }
+
+    .monitor-threshold-field input[type="range"]:hover::-webkit-slider-thumb,
+    .timer-duration-range:hover::-webkit-slider-thumb {
+      transform: scale(1.08);
+      box-shadow: 0 7px 18px rgba(2, 6, 23, 0.48);
+    }
+
+    .monitor-threshold-field input[type="range"]:focus-visible,
+    .timer-duration-range:focus-visible {
+      outline: none;
+    }
+
+    .monitor-threshold-field input[type="range"]:focus-visible::-webkit-slider-runnable-track,
+    .timer-duration-range:focus-visible::-webkit-slider-runnable-track {
+      border-color: var(--focus-border);
+      box-shadow: var(--focus-ring), inset 0 1px 2px rgba(2, 6, 23, 0.34);
     }
 
     #monitor-yellow-threshold {
       accent-color: #facc15;
     }
 
+    #monitor-yellow-threshold::-webkit-slider-thumb {
+      background:
+        radial-gradient(circle at 34% 28%, #ffffff 0 22%, #fef3c7 48%, #facc15 100%);
+    }
+
+    #monitor-yellow-threshold::-moz-range-thumb {
+      background: #facc15;
+    }
+
     #monitor-red-threshold {
       accent-color: #ef4444;
+    }
+
+    #monitor-red-threshold::-webkit-slider-thumb {
+      background:
+        radial-gradient(circle at 34% 28%, #ffffff 0 22%, #fecaca 48%, #ef4444 100%);
+    }
+
+    #monitor-red-threshold::-moz-range-thumb {
+      background: #ef4444;
     }
 
     .tone-toggle-button {
@@ -3450,6 +3681,17 @@
       padding: 6px 4px;
       appearance: textfield;
       -moz-appearance: textfield;
+    }
+
+    .side-timer-settings-controls .timer-duration-range {
+      width: 100%;
+      min-width: 0;
+      height: 28px;
+      appearance: none;
+      -webkit-appearance: none;
+      background: transparent;
+      accent-color: #60a5fa;
+      cursor: pointer;
     }
 
     .side-timer-settings-controls .timer-duration-field input[type="number"]::-webkit-outer-spin-button,
@@ -3696,6 +3938,7 @@
 
       .side,
       .message-stack,
+      .toast-stack,
       #scroll-hint,
       .work-order-region,
       #work-order-hint-overlay,
@@ -4357,7 +4600,11 @@
       border-radius: var(--dropzone-radius);
       cursor: pointer;
       box-shadow: var(--dropzone-shadow);
-      transition: transform .12s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+      transition:
+        transform var(--motion-fast) var(--motion-ease),
+        border-color var(--motion-fast) var(--motion-ease),
+        background var(--motion-fast) var(--motion-ease),
+        box-shadow var(--motion-fast) var(--motion-ease);
       white-space: nowrap;
     }
 
@@ -4386,8 +4633,11 @@
     .file-upload.drag-over-file .file-trigger {
       border-color: var(--focus-border);
       background: var(--dropzone-bg-active);
-      box-shadow: var(--dropzone-shadow), 0 0 0 3px var(--highlight-neutral-soft);
-      transform: translateY(-1px);
+      box-shadow:
+        var(--dropzone-shadow),
+        0 0 0 3px var(--highlight-neutral-soft),
+        0 14px 28px rgba(2, 6, 23, 0.32);
+      transform: translateY(-2px) scale(1.01);
     }
 
     .file-upload.drag-over-file .file-status {
@@ -4730,7 +4980,11 @@
       align-items: flex-start;
       justify-content: flex-start;
       position: relative;
-      transition: transform .08s ease, box-shadow .12s ease;
+      transition:
+        transform var(--motion-fast) var(--motion-ease),
+        box-shadow var(--motion-fast) var(--motion-ease),
+        border-color var(--motion-fast) var(--motion-ease),
+        background var(--motion-fast) var(--motion-ease);
       font-size: var(--seat-font-size);
       padding: calc(120px * var(--group-fit-scale)) calc(16px * var(--group-fit-scale)) calc(16px * var(--group-fit-scale)) calc(16px * var(--group-fit-scale));
       box-shadow: 0 12px 26px rgba(0, 0, 0, 0.32);
@@ -4924,8 +5178,13 @@
     #groups-grid .seat .seat-chip.drag-over-target {
       background: rgba(34, 211, 238, 0.28);
       border-color: rgba(34, 211, 238, 0.8);
-      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.3), 0 8px 18px rgba(0, 0, 0, 0.35);
-      transform: scale(1.05);
+      box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.26), 0 10px 22px rgba(0, 0, 0, 0.36);
+      transform: translateY(-1px) scale(1.035) !important;
+      transition:
+        transform var(--motion-fast) var(--motion-ease),
+        box-shadow var(--motion-fast) var(--motion-ease),
+        border-color var(--motion-fast) var(--motion-ease),
+        background var(--motion-fast) var(--motion-ease) !important;
     }
 
     #groups-grid .seat .seat-chip.wiggle,
@@ -5024,8 +5283,19 @@
 
     .seat.drag-over {
       outline: none;
-      background: rgba(96, 165, 250, 0.18);
-      transform: scale(1.02);
+      border-color: rgba(96, 165, 250, 0.72) !important;
+      background:
+        linear-gradient(180deg, rgba(96, 165, 250, 0.22), rgba(34, 211, 238, 0.12)),
+        rgba(15, 23, 42, 0.36);
+      box-shadow:
+        0 0 0 3px rgba(96, 165, 250, 0.2),
+        0 18px 34px rgba(2, 6, 23, 0.36) !important;
+      transform: translateY(-2px) scale(1.015) !important;
+      transition:
+        transform var(--motion-fast) var(--motion-ease),
+        box-shadow var(--motion-fast) var(--motion-ease),
+        border-color var(--motion-fast) var(--motion-ease),
+        background var(--motion-fast) var(--motion-ease) !important;
     }
 
     dialog {
@@ -6354,10 +6624,14 @@
       .app,
       .app-header,
       .tab-nav,
+      .tab-indicator,
       .app-header-title,
       .app-header-actions,
       .tab-unlock-button,
       .header-icon-button,
+      .message-stack,
+      .message,
+      .toast-message,
       .side,
       .side>*,
       .main,
@@ -6458,6 +6732,7 @@
           <button id="tab-grades-unlock" class="tab-unlock-button is-reserved" type="button"
             aria-label="Notenmodul entsperren" title="Notenmodul entsperren" aria-hidden="true" tabindex="-1"
             disabled>🔓</button>
+          <span class="tab-indicator" aria-hidden="true"></span>
           <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
             aria-selected="true">Noten</button>
           <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"
@@ -6670,6 +6945,8 @@
               <button class="duration-stepper-button" type="button" data-duration-step="1"
                 aria-label="Zeitrahmen erhöhen" title="Zeitrahmen erhöhen">+</button>
             </div>
+            <input id="work-order-duration-range" class="timer-duration-range" type="range" min="1" max="180"
+              step="1" value="45" aria-label="Zeitrahmen per Schieberegler">
           </label>
           <div class="timer-tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="half"
@@ -6858,6 +7135,7 @@
     </dialog>
   </div>
   <div id="message-stack" class="message-stack" aria-live="polite" aria-atomic="true"></div>
+  <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
 
   <template id="student-tpl">
     <div class="student" draggable="true" title="In Gruppe ziehen">

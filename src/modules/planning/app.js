@@ -1,9 +1,16 @@
-import { createDocxFromTemplate, isDocxZipSupported } from "./docx.js";
+import {
+  createDocxFromPreparedTemplate,
+  createZipArchive,
+  isDocxZipSupported,
+  prepareDocxTemplate
+} from "./docx.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_URL = new URL("./expectation-horizon-template-gAeA.docx", import.meta.url);
+const COMPETENCE_EXPECTATIONS_TEMPLATE_URL = new URL("./competence-expectations-template.docx", import.meta.url);
 const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
 const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_FILE_NAME = "EWH-gAeA.docx";
+const COMPETENCE_EXPECTATIONS_FILE_NAME = "Kompetenzerwartung.docx";
 const EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL = "general";
 const EXPECTATION_HORIZON_TEMPLATE_KIND_COURSE_LEVEL = "courseLevel";
 const ARCHIVE_PDF_LIB_CDN_URL = "https://cdn.jsdelivr.net/npm/pdf-lib/dist/pdf-lib.min.js";
@@ -65,7 +72,6 @@ const SYNC_HANDLE_FILE_KEY = "sync-file";
 const SYNC_HANDLE_BACKUP_DIR_KEY = "backup-dir";
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_STORAGE_KEY = "expectation-horizon-template-gAeA";
-const EXPECTATION_HORIZON_TEMP_TEMPLATE_STORAGE_KEY = "expectation-horizon-temp-template";
 const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
   "#60A5FA",
@@ -1860,6 +1866,33 @@ function normalizeGradeAssessmentTopic(value) {
   return String(value || "").replace(/\r\n?/g, "\n").trim();
 }
 
+function normalizeGradeAssessmentExamDurationMinutes(value) {
+  const text = String(value ?? "").replace(/\D+/g, "").slice(0, 3);
+  if (!text) {
+    return null;
+  }
+  const parsed = Math.round(Number(text));
+  return parsed >= 1 && parsed <= 999 ? parsed : null;
+}
+
+function normalizeGradeAssessmentExpectationHorizonTemplateFile(value = null) {
+  if (!value || typeof value !== "object" || !value.bytes) {
+    return null;
+  }
+  const sourceBytes = value.bytes instanceof Uint8Array
+    ? value.bytes
+    : (Array.isArray(value.bytes) ? value.bytes : []);
+  const bytes = Array.from(sourceBytes)
+    .map((byte) => clamp(Math.round(Number(byte) || 0), 0, 255));
+  if (!bytes.length) {
+    return null;
+  }
+  return {
+    name: String(value.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
+    bytes
+  };
+}
+
 function normalizeGradeTestScale(value) {
   const normalized = String(value || "").trim().toLowerCase();
   if (normalized === "sek1" || normalized === GRADE_TEST_SCALE_CUSTOM) {
@@ -2122,6 +2155,85 @@ function isGradeTestDeficitFollowUpScore(task, scoreValue) {
   return parsed.valid && parsed.value !== null && Number(parsed.value) < maxBe / 3;
 }
 
+function normalizeCompetenceExpectationId(value, fallback = "") {
+  const text = String(value || fallback || "")
+    .replace(/[^\w-]+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
+    .trim();
+  return text || String(fallback || "").trim();
+}
+
+function normalizeGradeCompetenceExpectations(items = []) {
+  const source = Array.isArray(items) ? items : [];
+  const usedTopicIds = new Set();
+  const usedCompetenceIds = new Set();
+  const makeUnique = (rawId, fallback, used) => {
+    const base = normalizeCompetenceExpectationId(rawId, fallback) || fallback;
+    let id = base;
+    let suffix = 2;
+    while (used.has(id)) {
+      id = `${base}-${suffix}`;
+      suffix += 1;
+    }
+    used.add(id);
+    return id;
+  };
+  return source.reduce((result, rawTopic, topicIndex) => {
+    const item = rawTopic && typeof rawTopic === "object" ? rawTopic : {};
+    const topic = String(item.topic || item.title || "").trim();
+    const competenceSource = Array.isArray(item.competencies) ? item.competencies : [];
+    const competencies = competenceSource.reduce((competenceResult, rawCompetence, competenceIndex) => {
+      const competenceItem = rawCompetence && typeof rawCompetence === "object"
+        ? rawCompetence
+        : { text: rawCompetence };
+      const text = String(competenceItem.text || competenceItem.label || "").trim();
+      if (!text) {
+        return competenceResult;
+      }
+      competenceResult.push({
+        id: makeUnique(competenceItem.id, `k${topicIndex + 1}-${competenceIndex + 1}`, usedCompetenceIds),
+        text
+      });
+      return competenceResult;
+    }, []);
+    if (!topic || !competencies.length) {
+      return result;
+    }
+    result.push({
+      id: makeUnique(item.id, `t${topicIndex + 1}`, usedTopicIds),
+      topic,
+      competencies
+    });
+    return result;
+  }, []);
+}
+
+function getGradeCompetenceExpectationIds(items = []) {
+  const ids = [];
+  normalizeGradeCompetenceExpectations(items).forEach((topic) => {
+    topic.competencies.forEach((competence) => {
+      ids.push(competence.id);
+    });
+  });
+  return ids;
+}
+
+function normalizeGradeTaskCompetenceExpectationIds(ids = [], expectations = null) {
+  const source = Array.isArray(ids) ? ids : [];
+  const validIds = expectations === null ? null : new Set(getGradeCompetenceExpectationIds(expectations));
+  const seen = new Set();
+  return source.reduce((result, rawId) => {
+    const id = normalizeCompetenceExpectationId(rawId);
+    if (!id || seen.has(id) || (validIds && !validIds.has(id))) {
+      return result;
+    }
+    seen.add(id);
+    result.push(id);
+    return result;
+  }, []);
+}
+
 function normalizeGradeTestTasks(tasks = [], options = {}) {
   const source = Array.isArray(tasks) ? tasks : [];
   const usedIds = new Set();
@@ -2142,6 +2254,8 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
       maxBe: parsedMaxBe.valid && parsedMaxBe.value !== null ? parsedMaxBe.value : null,
       afb: normalizeGradeTestAfb(item.afb),
       deficitDiagnosisFollowUp: item.deficitDiagnosisFollowUp === true,
+      competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(item.competenceExpectationIds),
+      customCompetenceText: String(item.customCompetenceText || "").trim(),
       sortOrder: Number(item.sortOrder || index + 1)
     });
     return result;
@@ -2153,6 +2267,8 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
       maxBe: null,
       afb: "",
       deficitDiagnosisFollowUp: false,
+      competenceExpectationIds: [],
+      customCompetenceText: "",
       sortOrder: 1
     });
   }
@@ -4573,10 +4689,13 @@ class PlannerStore {
         : null,
       testPredicateSuffixes,
       testTasks: normalizeGradeTestTasks(payload.testTasks, { ensureDefault: false }),
+      competenceExpectations: mode === "test" ? normalizeGradeCompetenceExpectations(payload.competenceExpectations) : [],
+      expectationHorizonTemplateFile: mode === "test" ? normalizeGradeAssessmentExpectationHorizonTemplateFile(payload.expectationHorizonTemplateFile) : null,
       yearLevel,
       courseLevel: normalizeGradeAssessmentCourseLevel(payload.courseLevel, yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(payload.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(payload.topic),
+      examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(payload.examDurationMinutes) : null,
       halfYear: normalizeGradeHalfYear(payload.halfYear),
       sortOrder: Number(payload.sortOrder || nextSortOrder)
     };
@@ -4625,6 +4744,16 @@ class PlannerStore {
     } else {
       assessment.testTasks = normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false });
     }
+    if (patch.competenceExpectations !== undefined) {
+      assessment.competenceExpectations = normalizeGradeCompetenceExpectations(patch.competenceExpectations);
+    } else if (!Array.isArray(assessment.competenceExpectations)) {
+      assessment.competenceExpectations = normalizeGradeCompetenceExpectations(assessment.competenceExpectations);
+    }
+    if (patch.expectationHorizonTemplateFile !== undefined) {
+      assessment.expectationHorizonTemplateFile = normalizeGradeAssessmentExpectationHorizonTemplateFile(patch.expectationHorizonTemplateFile);
+    } else if (assessment.expectationHorizonTemplateFile !== undefined) {
+      assessment.expectationHorizonTemplateFile = normalizeGradeAssessmentExpectationHorizonTemplateFile(assessment.expectationHorizonTemplateFile);
+    }
     if (patch.yearLevel !== undefined) {
       assessment.yearLevel = normalizeGradeAssessmentYearLevel(patch.yearLevel);
       assessment.courseLevel = normalizeGradeAssessmentCourseLevel(assessment.courseLevel, assessment.yearLevel);
@@ -4646,11 +4775,19 @@ class PlannerStore {
     } else if (assessment.topic === undefined) {
       assessment.topic = normalizeGradeAssessmentTopic(assessment.topic);
     }
+    if (patch.examDurationMinutes !== undefined) {
+      assessment.examDurationMinutes = normalizeGradeAssessmentExamDurationMinutes(patch.examDurationMinutes);
+    } else if (assessment.examDurationMinutes === undefined) {
+      assessment.examDurationMinutes = normalizeGradeAssessmentExamDurationMinutes(assessment.examDurationMinutes);
+    }
     if (normalizeGradeAssessmentMode(assessment.mode) !== "test") {
       assessment.yearLevel = null;
       assessment.courseLevel = "";
       assessment.assessmentNumber = null;
       assessment.topic = "";
+      assessment.examDurationMinutes = null;
+      assessment.competenceExpectations = [];
+      assessment.expectationHorizonTemplateFile = null;
     }
     if (patch.halfYear !== undefined) {
       assessment.halfYear = normalizeGradeHalfYear(patch.halfYear);
@@ -6344,10 +6481,13 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
           ? normalizeGradeTestPredicateSuffixes(item.testPredicateSuffixes, true)
           : true,
         testTasks: normalizeGradeTestTasks(item.testTasks, { ensureDefault: false }),
+        competenceExpectations: mode === "test" ? normalizeGradeCompetenceExpectations(item.competenceExpectations) : [],
+        expectationHorizonTemplateFile: mode === "test" ? normalizeGradeAssessmentExpectationHorizonTemplateFile(item.expectationHorizonTemplateFile) : null,
         yearLevel,
         courseLevel: mode === "test" ? normalizeGradeAssessmentCourseLevel(item.courseLevel, yearLevel) : "",
         assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(item.assessmentNumber) : null,
         topic: mode === "test" ? normalizeGradeAssessmentTopic(item.topic) : "",
+        examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(item.examDurationMinutes) : null,
         halfYear: normalizeGradeHalfYear(item.halfYear),
         sortOrder: Number(item.sortOrder || 0)
       };
@@ -6647,7 +6787,15 @@ class PlannerApp {
     this.expectationHorizonStoredTemplateLoaded = false;
     this.expectationHorizonCourseLevelStoredTemplate = null;
     this.expectationHorizonCourseLevelStoredTemplateLoaded = false;
+    this.builtInExpectationHorizonTemplateBytes = new Map();
+    this.builtInCompetenceExpectationsTemplateBytes = null;
     this.expectationHorizonDialogTemplateKind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL;
+    this.competenceExpectationsGenerating = false;
+    this.gradeTaskCompetenceDialogTaskId = "";
+    this.gradeTaskCompetenceDialogOptionsSignature = "";
+    this.gradeTaskCompetenceDialogOptionButtons = [];
+    this.gradeTaskCompetenceDialogSelectedIds = new Set();
+    this.gradeTaskCompetenceDialogRenderFrame = 0;
     this.boundGradesEntryTableScroll = null;
     this.syncingGradesEntryTableStickyScrollbar = false;
 
@@ -6682,6 +6830,7 @@ class PlannerApp {
       sidebarGradePredicateSection: document.querySelector("#sidebar-grade-predicate-section"),
       sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
       sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
+      sidebarGradeCompetenceExpectationsSection: document.querySelector("#sidebar-grade-competence-expectations-section"),
       sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
       sidebarGradeNameOrderInputs: document.querySelectorAll("[data-grade-name-order]"),
@@ -6689,6 +6838,7 @@ class PlannerApp {
       sidebarGradePredicateSuffixInputs: document.querySelectorAll("[data-grade-predicate-suffixes]"),
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
+      sidebarGradeCompetenceExpectationsBtn: document.querySelector("#sidebar-grade-competence-expectations-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
       sidebarArchiveActions: document.querySelector("#sidebar-archive-actions"),
       sidebarArchiveSection: document.querySelector("#sidebar-archive-section"),
@@ -6825,7 +6975,6 @@ class PlannerApp {
       expectationHorizonCourseLevelTemplateSettingsReset: document.querySelector("#expectation-horizon-course-level-template-settings-reset"),
       expectationHorizonDialog: document.querySelector("#expectation-horizon-dialog"),
       expectationHorizonDialogForm: document.querySelector("#expectation-horizon-dialog-form"),
-      expectationHorizonCancel: document.querySelector("#expectation-horizon-cancel"),
       expectationHorizonCancelTop: document.querySelector("#expectation-horizon-cancel-top"),
       expectationHorizonFile: document.querySelector("#expectation-horizon-file"),
       expectationHorizonLatexFile: document.querySelector("#expectation-horizon-latex-file"),
@@ -6833,8 +6982,26 @@ class PlannerApp {
       expectationHorizonLatexDropzone: document.querySelector("#expectation-horizon-latex-dropzone"),
       expectationHorizonFileName: document.querySelector("#expectation-horizon-file-name"),
       expectationHorizonStatus: document.querySelector("#expectation-horizon-status"),
+      expectationHorizonSave: document.querySelector("#expectation-horizon-save"),
       expectationHorizonTemplateDownload: document.querySelector("#expectation-horizon-template-download"),
       expectationHorizonGenerate: document.querySelector("#expectation-horizon-generate"),
+      competenceExpectationsDialog: document.querySelector("#competence-expectations-dialog"),
+      competenceExpectationsDialogForm: document.querySelector("#competence-expectations-dialog-form"),
+      competenceExpectationsCancelTop: document.querySelector("#competence-expectations-cancel-top"),
+      competenceExpectationsLatexFile: document.querySelector("#competence-expectations-latex-file"),
+      competenceExpectationsLatexDropzone: document.querySelector("#competence-expectations-latex-dropzone"),
+      competenceExpectationsList: document.querySelector("#competence-expectations-list"),
+      competenceExpectationsStatus: document.querySelector("#competence-expectations-status"),
+      competenceExpectationsSave: document.querySelector("#competence-expectations-save"),
+      competenceExpectationsGenerate: document.querySelector("#competence-expectations-generate"),
+      gradeTaskCompetenceDialog: document.querySelector("#grade-task-competence-dialog"),
+      gradeTaskCompetenceDialogForm: document.querySelector("#grade-task-competence-dialog-form"),
+      gradeTaskCompetenceCancel: document.querySelector("#grade-task-competence-cancel"),
+      gradeTaskCompetenceCancelTop: document.querySelector("#grade-task-competence-cancel-top"),
+      gradeTaskCompetenceList: document.querySelector("#grade-task-competence-list"),
+      gradeTaskCompetenceCustom: document.querySelector("#grade-task-competence-custom"),
+      gradeTaskCompetenceStatus: document.querySelector("#grade-task-competence-status"),
+      gradeTaskCompetenceSave: document.querySelector("#grade-task-competence-save"),
 
       courseDialog: document.querySelector("#course-dialog"),
       courseDialogForm: document.querySelector("#course-dialog-form"),
@@ -7037,6 +7204,8 @@ class PlannerApp {
     this.gradesEntryNameOrder = "first";
     this.gradesEntryDistributionView = "points";
     this.gradesEntryDistributionOverlayOpen = false;
+    this.segmentControlSlidePositions = new Map();
+    this.pendingSegmentControlSlidePreviousPositions = new Map();
     this.gradeDeficitThreshold = GRADE_DEFICIT_THRESHOLD_DEFAULT;
     this.gradeDeficitThresholdUserEdited = false;
     this.gradesEntryDraft = null;
@@ -7890,10 +8059,13 @@ class PlannerApp {
             ? normalizeGradeTestPredicateSuffixes(row.testPredicateSuffixes, true)
             : true,
           testTasks: normalizeGradeTestTasks(row.testTasks, { ensureDefault: false }),
+          competenceExpectations: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeCompetenceExpectations(row.competenceExpectations) : [],
+          expectationHorizonTemplateFile: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentExpectationHorizonTemplateFile(row.expectationHorizonTemplateFile) : null,
           yearLevel: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentYearLevel(row.yearLevel) : null,
           courseLevel: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentCourseLevel(row.courseLevel, row.yearLevel) : "",
           assessmentNumber: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentNumber(row.assessmentNumber) : null,
           topic: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentTopic(row.topic) : "",
+          examDurationMinutes: normalizeGradeAssessmentMode(row.mode) === "test" ? normalizeGradeAssessmentExamDurationMinutes(row.examDurationMinutes) : null,
           halfYear: normalizeGradeHalfYear(row.halfYear),
           sortOrder: Number(row.sortOrder || 0)
         })),
@@ -8122,11 +8294,13 @@ class PlannerApp {
 
   markGradesEntryDraftDirty() {
     this.gradesEntryDraftDirty = true;
+    this.updateGradeVaultActionButtons();
     this.dispatchPlanningUnsavedState();
   }
 
   clearGradesEntryDraftDirty(options = {}) {
     this.gradesEntryDraftDirty = false;
+    this.updateGradeVaultActionButtons();
     if (options?.dispatch !== false) {
       this.dispatchPlanningUnsavedState();
     }
@@ -8757,13 +8931,13 @@ class PlannerApp {
       };
     }
     return {
-      title: this.gradeVaultSession.dirty
+      title: this.gradeVaultSession.dirty || this.gradesEntryDraftDirty
         ? "Ungespeicherte Änderungen im Grade-Vault"
         : "Grade-Vault entsperrt",
-      text: this.gradeVaultSession.dirty
+      text: this.gradeVaultSession.dirty || this.gradesEntryDraftDirty
         ? "Geschützte Notenänderungen liegen derzeit nur im Arbeitsspeicher. Speichere sie explizit, um sie in Datei und Backups verschlüsselt zu übernehmen."
         : "Der geschützte Notenbereich ist für diese Sitzung freigeschaltet.",
-      actionLabel: this.gradeVaultSession.dirty ? "Noten speichern" : ""
+      actionLabel: this.gradeVaultSession.dirty || this.gradesEntryDraftDirty ? "Noten speichern" : ""
     };
   }
 
@@ -8786,7 +8960,10 @@ class PlannerApp {
       toggleButton.hidden = mode === "ready" || mode === "off";
     }
     if (saveButton) {
-      saveButton.hidden = !(this.canAccessGradeVault() && this.gradeVaultSession.dirty);
+      const hasEntryDraftChanges = this.currentView === "grades"
+        && this.normalizeGradesSubView(this.gradesSubView) === "entry"
+        && this.gradesEntryDraftDirty;
+      saveButton.hidden = !(this.canAccessGradeVault() && (this.gradeVaultSession.dirty || hasEntryDraftChanges));
       saveButton.disabled = !this.canAccessGradeVault();
     }
   }
@@ -10935,7 +11112,7 @@ class PlannerApp {
     } else if (tab === "expectationHorizon") {
       resetEnabled = Boolean(String(this.settingsDraft.expectationHorizonLocation || "").trim())
         || normalizeExpectationHorizonCommentTemplate(this.settingsDraft.expectationHorizonCommentTemplate)
-          !== EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
+        !== EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
       saveEnabled = this.settingsDirty;
       cancelEnabled = this.settingsDirty;
     } else if (tab === "lessonTimes") {
@@ -11411,6 +11588,36 @@ class PlannerApp {
       return;
     }
     dialog.removeAttribute("open");
+  }
+
+  yieldToBrowser() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(() => resolve());
+        return;
+      }
+      setTimeout(resolve, 0);
+    });
+  }
+
+  bindDialogBackdropClose(dialog, closeHandler) {
+    if (!dialog || typeof closeHandler !== "function") {
+      return;
+    }
+    let pointerStartedOnBackdrop = false;
+    dialog.addEventListener("pointerdown", (event) => {
+      pointerStartedOnBackdrop = event.target === dialog;
+    });
+    dialog.addEventListener("pointercancel", () => {
+      pointerStartedOnBackdrop = false;
+    });
+    dialog.addEventListener("click", (event) => {
+      const shouldClose = event.target === dialog && pointerStartedOnBackdrop;
+      pointerStartedOnBackdrop = false;
+      if (shouldClose) {
+        closeHandler();
+      }
+    });
   }
 
   _resolveMessageDialog(action = "cancel") {
@@ -12123,6 +12330,7 @@ class PlannerApp {
       .forEach((input) => {
         input.checked = input.value === period;
       });
+    this.syncSegmentControlSlideStates(this.refs.courseDialogStructurePeriodToggle, { animateFromPrevious: true });
     if (this.refs.courseDialogCopyH1ToH2) {
       this.refs.courseDialogCopyH1ToH2.hidden = period !== "h2";
     }
@@ -12304,7 +12512,9 @@ class PlannerApp {
       return;
     }
     this.courseDialogDraft.structurePeriod = normalizeGradeHalfYear(input.value);
-    this.renderCourseDialogStructure();
+    this.runAfterSegmentControlSlide(event, () => {
+      this.renderCourseDialogStructure();
+    });
   }
 
   handleCourseDialogStructureFlairChange(event) {
@@ -14510,6 +14720,15 @@ class PlannerApp {
       }
       this.markGradesEntryDraftDirty();
     }
+    const examDurationInput = event.target.closest("input[data-grades-entry-exam-duration]");
+    if (examDurationInput) {
+      const rawValue = String(examDurationInput.value || "");
+      const sanitizedValue = rawValue.replace(/\D+/g, "").slice(0, 3);
+      if (examDurationInput.value !== sanitizedValue) {
+        examDurationInput.value = sanitizedValue;
+      }
+      this.markGradesEntryDraftDirty();
+    }
     const topicInput = event.target.closest("input[data-grades-entry-topic]");
     if (topicInput) {
       this.markGradesEntryDraftDirty();
@@ -14557,7 +14776,10 @@ class PlannerApp {
     if (isDraftSave && !this.commitGradesEntryInputsBeforeRerender({ requireTestTaskValues: true })) {
       return false;
     }
-    if (!isDraftSave && !this.commitVisibleGradeTestTaskInputs(this.getGradeInputRoot(), { requireValue: true })) {
+    const visibleEntryMode = normalizeGradeAssessmentMode(
+      this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked")?.value || ""
+    );
+    if (!isDraftSave && visibleEntryMode === "test" && !this.commitVisibleGradeTestTaskInputs(this.getGradeInputRoot(), { requireValue: true })) {
       return false;
     }
     if (!isDraftSave) {
@@ -14588,6 +14810,7 @@ class PlannerApp {
       this.activeGradeAssessmentId = assessment.id;
       this.captureGradesEntryEditSnapshot(assessment.id);
       this.renderGradesView();
+      this.refreshOpenExpectationHorizonDialogTemplate();
       requestAnimationFrame(() => {
         this.focusGradeAssessmentInput(assessment.id, 0);
       });
@@ -14609,6 +14832,7 @@ class PlannerApp {
     this.activeGradeAssessmentId = assessment.id;
     this.captureGradesEntryEditSnapshot(assessment.id);
     this.renderGradesView();
+    this.refreshOpenExpectationHorizonDialogTemplate();
     requestAnimationFrame(() => {
       this.focusGradeAssessmentInput(assessment.id, 0);
     });
@@ -14678,8 +14902,16 @@ class PlannerApp {
       event.stopPropagation();
       const input = distributionViewOption.querySelector("input[data-grades-entry-distribution-view='1']");
       if (input) {
+        const nextView = input.value === "levels" ? "levels" : "points";
+        if (this.gradesEntryDistributionView === nextView) {
+          return;
+        }
+        input.checked = true;
+        this.handleSegmentControlSlideChange({ target: input });
         this.gradesEntryDistributionView = input.value === "levels" ? "levels" : "points";
-        this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+        this.runAfterSegmentControlSlide({ target: input }, () => {
+          this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+        });
       }
       return;
     }
@@ -14761,6 +14993,16 @@ class PlannerApp {
         this.markGradesEntryDraftDirty();
         this.renderGradesView();
       }
+      return;
+    }
+    const competenceButton = event.target.closest("button[data-grade-test-competence='1']");
+    if (competenceButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.commitVisibleGradeInputs()) {
+        return;
+      }
+      this.openGradeTaskCompetenceDialog(competenceButton.dataset.taskId || "");
       return;
     }
     const removeTestTaskButton = event.target.closest("button[data-grade-test-remove-task='1']");
@@ -14961,8 +15203,16 @@ class PlannerApp {
       event.stopPropagation();
       const input = distributionViewOption.querySelector("input[data-grades-entry-distribution-view='1']");
       if (input) {
+        const nextView = input.value === "levels" ? "levels" : "points";
+        if (this.gradesEntryDistributionView === nextView) {
+          return true;
+        }
+        input.checked = true;
+        this.handleSegmentControlSlideChange({ target: input });
         this.gradesEntryDistributionView = input.value === "levels" ? "levels" : "points";
-        this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+        this.runAfterSegmentControlSlide({ target: input }, () => {
+          this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+        });
       }
       return true;
     }
@@ -15033,7 +15283,9 @@ class PlannerApp {
     const distributionViewInput = event.target.closest("input[data-grades-entry-distribution-view='1']");
     if (distributionViewInput) {
       this.gradesEntryDistributionView = distributionViewInput.value === "levels" ? "levels" : "points";
-      this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+      this.runAfterSegmentControlSlide(event, () => {
+        this.refreshVisibleGradesEntryDistribution(this.selectedGradesEntryAssessmentId || null);
+      });
       return;
     }
     const activeAssessment = this.selectedGradesEntryAssessmentId
@@ -15100,7 +15352,9 @@ class PlannerApp {
           ? normalizeGradeTestPredicateSuffixes(latestDraft.testPredicateSuffixes, true)
           : getDefaultGradeTestPredicateSuffixes(testScale)
       };
-      this.renderGradesView();
+      this.runAfterSegmentControlSlide(event, () => {
+        this.renderGradesView();
+      });
       return;
     }
 
@@ -15115,7 +15369,9 @@ class PlannerApp {
         ...latestDraft,
         testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(testPredicateSuffixesInput.value, true)
       };
-      this.renderGradesView();
+      this.runAfterSegmentControlSlide(event, () => {
+        this.renderGradesView();
+      });
       return;
     }
 
@@ -15140,13 +15396,15 @@ class PlannerApp {
         ...latestDraft,
         halfYear
       };
-      this.renderGradesView();
+      this.runAfterSegmentControlSlide(event, () => {
+        this.renderGradesView();
+      });
       return;
     }
 
     const modeInput = event.target.closest("input[data-grades-entry-mode='1']");
     if (modeInput) {
-      const latestDraft = commitAndGetLatestDraft();
+      const latestDraft = this.readGradesEntryEditorValues();
       if (!latestDraft) {
         return;
       }
@@ -15168,9 +15426,20 @@ class PlannerApp {
               : getDefaultGradeTestPredicateSuffixes(testScale)
           )
           : true,
-        testTasks: normalizeGradeTestTasks(latestDraft.testTasks, { ensureDefault: false })
+        testTasks: normalizeGradeTestTasks(latestDraft.testTasks, { ensureDefault: false }),
+        competenceExpectations: mode === "test"
+          ? normalizeGradeCompetenceExpectations(latestDraft.competenceExpectations)
+          : [],
+        expectationHorizonTemplateFile: mode === "test"
+          ? normalizeGradeAssessmentExpectationHorizonTemplateFile(latestDraft.expectationHorizonTemplateFile)
+          : null,
+        examDurationMinutes: mode === "test"
+          ? normalizeGradeAssessmentExamDurationMinutes(latestDraft.examDurationMinutes)
+          : null
       };
-      this.renderGradesView();
+      this.runAfterSegmentControlSlide(event, () => {
+        this.renderGradesViewWithEntryModeFade();
+      });
       return;
     }
 
@@ -15229,7 +15498,9 @@ class PlannerApp {
         ...latestDraft,
         courseLevel: normalizeGradeAssessmentCourseLevel(courseLevelInput.value, latestDraft.yearLevel)
       };
-      this.renderGradesView();
+      this.runAfterSegmentControlSlide(event, () => {
+        this.renderGradesView();
+      });
       return;
     }
 
@@ -15643,6 +15914,9 @@ class PlannerApp {
     }
     this.bindGradeTestScaleTooltipEvents();
     this.bindGradeTooltipEvents();
+    document.addEventListener("change", (event) => {
+      this.handleSegmentControlSlideChange(event);
+    }, true);
 
     this.refs.viewWeekBtn.addEventListener("click", () => {
       this.switchView("week");
@@ -15660,6 +15934,14 @@ class PlannerApp {
       }
     });
     this.refs.gradeVaultSaveBtn?.addEventListener("click", () => {
+      if (
+        this.currentView === "grades"
+        && this.normalizeGradesSubView(this.gradesSubView) === "entry"
+        && this.gradesEntryDraftDirty
+      ) {
+        void this.saveCurrentGradesEntry();
+        return;
+      }
       void this.saveGradeVaultChanges();
     });
     this.refs.gradeVaultEncryptionEnabled?.addEventListener("change", () => {
@@ -15753,6 +16035,11 @@ class PlannerApp {
         this.handleExpectationHorizonOpenRequest(event);
       });
     }
+    if (this.refs.sidebarGradeCompetenceExpectationsBtn) {
+      this.refs.sidebarGradeCompetenceExpectationsBtn.addEventListener("click", (event) => {
+        this.handleCompetenceExpectationsOpenRequest(event);
+      });
+    }
     if (this.refs.sidebarGradeSimulationBtn) {
       this.refs.sidebarGradeSimulationBtn.addEventListener("click", (event) => {
         this.handleGradeSimulationOpenRequest(event);
@@ -15778,6 +16065,8 @@ class PlannerApp {
       this.handleGradeSimulationControlChange();
     });
     this.bindExpectationHorizonDialogEvents();
+    this.bindCompetenceExpectationsDialogEvents();
+    this.bindGradeTaskCompetenceDialogEvents();
     if (this.refs.contextMenu) {
       this.refs.contextMenu.addEventListener("contextmenu", (event) => {
         event.preventDefault();
@@ -16102,10 +16391,8 @@ class PlannerApp {
         event.preventDefault();
         this._resolveMessageDialog("cancel");
       });
-      this.refs.messageDialog.addEventListener("click", (event) => {
-        if (event.target === this.refs.messageDialog) {
-          this._resolveMessageDialog("cancel");
-        }
+      this.bindDialogBackdropClose(this.refs.messageDialog, () => {
+        this._resolveMessageDialog("cancel");
       });
     }
 
@@ -16448,10 +16735,8 @@ class PlannerApp {
         this.closeWeekCalendarDialog();
       });
 
-      this.refs.weekCalendarDialog.addEventListener("click", (event) => {
-        if (event.target === this.refs.weekCalendarDialog) {
-          this.closeWeekCalendarDialog();
-        }
+      this.bindDialogBackdropClose(this.refs.weekCalendarDialog, () => {
+        this.closeWeekCalendarDialog();
       });
     }
 
@@ -19093,10 +19378,13 @@ class PlannerApp {
         getDefaultGradeTestPredicateSuffixes(draftValues?.testScale)
       ),
       testTasks: normalizeGradeTestTasks(draftValues?.testTasks, { ensureDefault: false }),
+      competenceExpectations: normalizeGradeCompetenceExpectations(draftValues?.competenceExpectations),
+      expectationHorizonTemplateFile: null,
       yearLevel: normalizeGradeAssessmentYearLevel(draftValues?.yearLevel),
       courseLevel: normalizeGradeAssessmentCourseLevel(draftValues?.courseLevel, draftValues?.yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(draftValues?.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(draftValues?.topic),
+      examDurationMinutes: normalizeGradeAssessmentExamDurationMinutes(draftValues?.examDurationMinutes),
       categoryId,
       subcategoryId,
       entries: {}
@@ -19121,10 +19409,13 @@ class PlannerApp {
       testScaleSnapshot: assessment.testScaleSnapshot || null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }),
+      competenceExpectations: normalizeGradeCompetenceExpectations(assessment.competenceExpectations),
+      expectationHorizonTemplateFile: normalizeGradeAssessmentExpectationHorizonTemplateFile(assessment.expectationHorizonTemplateFile),
       yearLevel: normalizeGradeAssessmentYearLevel(assessment.yearLevel),
       courseLevel: normalizeGradeAssessmentCourseLevel(assessment.courseLevel, assessment.yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(assessment.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(assessment.topic),
+      examDurationMinutes: normalizeGradeAssessmentExamDurationMinutes(assessment.examDurationMinutes),
       categoryId: Number(assessment.categoryId) || null,
       subcategoryId: Number(assessment.subcategoryId) || null,
       entries: {}
@@ -19176,6 +19467,12 @@ class PlannerApp {
         ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(base.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(previous.testTasks || base.testTasks, { ensureDefault: false }),
+      competenceExpectations: Object.prototype.hasOwnProperty.call(previous, "competenceExpectations")
+        ? normalizeGradeCompetenceExpectations(previous.competenceExpectations)
+        : normalizeGradeCompetenceExpectations(base.competenceExpectations),
+      expectationHorizonTemplateFile: Object.prototype.hasOwnProperty.call(previous, "expectationHorizonTemplateFile")
+        ? normalizeGradeAssessmentExpectationHorizonTemplateFile(previous.expectationHorizonTemplateFile)
+        : normalizeGradeAssessmentExpectationHorizonTemplateFile(base.expectationHorizonTemplateFile),
       yearLevel: Object.prototype.hasOwnProperty.call(previous, "yearLevel")
         ? normalizeGradeAssessmentYearLevel(previous.yearLevel)
         : normalizeGradeAssessmentYearLevel(base.yearLevel),
@@ -19189,6 +19486,9 @@ class PlannerApp {
       topic: Object.prototype.hasOwnProperty.call(previous, "topic")
         ? normalizeGradeAssessmentTopic(previous.topic)
         : normalizeGradeAssessmentTopic(base.topic),
+      examDurationMinutes: Object.prototype.hasOwnProperty.call(previous, "examDurationMinutes")
+        ? normalizeGradeAssessmentExamDurationMinutes(previous.examDurationMinutes)
+        : normalizeGradeAssessmentExamDurationMinutes(base.examDurationMinutes),
       categoryId: Number(previous.categoryId || base.categoryId || 0) || null,
       subcategoryId: Number(previous.subcategoryId || base.subcategoryId || 0) || null,
       entries: {}
@@ -19213,10 +19513,13 @@ class PlannerApp {
         ? normalizeGradeTestPredicateSuffixes(state.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(state?.testTasks || assessment.testTasks, { ensureDefault: false }),
+      competenceExpectations: normalizeGradeCompetenceExpectations(state?.competenceExpectations || assessment.competenceExpectations),
+      expectationHorizonTemplateFile: normalizeGradeAssessmentExpectationHorizonTemplateFile(state?.expectationHorizonTemplateFile || assessment.expectationHorizonTemplateFile),
       yearLevel: normalizeGradeAssessmentYearLevel(state?.yearLevel ?? assessment.yearLevel),
       courseLevel: normalizeGradeAssessmentCourseLevel(state?.courseLevel ?? assessment.courseLevel, state?.yearLevel ?? assessment.yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(state?.assessmentNumber ?? assessment.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(state?.topic ?? assessment.topic),
+      examDurationMinutes: normalizeGradeAssessmentExamDurationMinutes(state?.examDurationMinutes ?? assessment.examDurationMinutes),
       categoryId: Number(state?.categoryId || assessment.categoryId || 0) || null,
       subcategoryId: Number(state?.subcategoryId || assessment.subcategoryId || 0) || null
     };
@@ -19413,10 +19716,6 @@ class PlannerApp {
               </div>
             `;
     };
-    const panel = document.createElement("aside");
-    panel.className = "table-panel grades-entry-distribution";
-    panel.dataset.tutorialAnchor = "grades-entry-distribution";
-    panel.setAttribute("aria-label", "Notenverteilung");
     if (overlayOnly) {
       const overlay = document.createElement("div");
       overlay.className = "grades-entry-distribution-overlay";
@@ -19429,20 +19728,36 @@ class PlannerApp {
                     ${buildDistributionToggleMarkup("grades-entry-distribution-overlay-view")}
                   </div>
                   ${buildDistributionChartMarkup({ overlay: true })}
-                  ${buildAfbCheckMarkup()}
+                  <div class="grades-entry-afb-check-panel">
+                    ${buildAfbCheckMarkup()}
+                  </div>
                 </div>
               `;
       return overlay;
     }
-    panel.innerHTML = `
+    const panelGroup = document.createElement("aside");
+    panelGroup.className = "grades-entry-analysis-panels";
+    panelGroup.dataset.tutorialAnchor = "grades-entry-distribution";
+    panelGroup.setAttribute("aria-label", "Auswertung");
+    const distributionPanel = document.createElement("section");
+    distributionPanel.className = "table-panel grades-entry-distribution";
+    distributionPanel.setAttribute("aria-label", "Notenverteilung");
+    distributionPanel.innerHTML = `
               <div class="grades-entry-distribution-head">
                 <h3>Verteilung</h3>
                 ${buildDistributionToggleMarkup("grades-entry-distribution-view")}
               </div>
               ${buildDistributionChartMarkup()}
-              ${buildAfbCheckMarkup()}
             `;
-    return panel;
+    panelGroup.append(distributionPanel);
+    if (afbShareState) {
+      const afbPanel = document.createElement("section");
+      afbPanel.className = "table-panel grades-entry-afb-check-panel";
+      afbPanel.setAttribute("aria-label", "Kerncurriculare AFB-Vorgaben");
+      afbPanel.innerHTML = buildAfbCheckMarkup();
+      panelGroup.append(afbPanel);
+    }
+    return panelGroup;
   }
 
   removeGradesEntryDistributionOverlay() {
@@ -19460,11 +19775,12 @@ class PlannerApp {
       return;
     }
     document.body.append(overlay);
+    this.syncSegmentControlSlideStates(overlay, { animateFromPrevious: true });
   }
 
   refreshVisibleGradesEntryDistribution(assessmentId = null) {
     const root = this.refs.gradesEntryContent;
-    const currentPanel = root?.querySelector(".grades-entry-distribution");
+    const currentPanel = root?.querySelector(".grades-entry-analysis-panels, .grades-entry-distribution");
     if (!root || !currentPanel) {
       this.gradesEntryDistributionOverlayOpen = false;
       this.removeGradesEntryDistributionOverlay();
@@ -19500,6 +19816,7 @@ class PlannerApp {
     currentPanel.replaceWith(nextPanel);
     layout?.classList.add("has-grade-distribution");
     this.renderGradesEntryDistributionOverlay(course, students, previewAssessment, assessment ? null : draft);
+    this.syncSegmentControlSlideStates(nextPanel, { animateFromPrevious: true });
   }
 
   async applyGradesEntryAssessmentEditorValues(assessmentId, values = null) {
@@ -19548,10 +19865,13 @@ class PlannerApp {
       testScale: normalizeGradeTestScale(editorValues.testScale),
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(editorValues.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(editorValues.testTasks, { ensureDefault: false }),
+      competenceExpectations: mode === "test" ? normalizeGradeCompetenceExpectations(editorValues.competenceExpectations) : [],
+      expectationHorizonTemplateFile: mode === "test" ? normalizeGradeAssessmentExpectationHorizonTemplateFile(editorValues.expectationHorizonTemplateFile) : null,
       yearLevel: mode === "test" ? normalizeGradeAssessmentYearLevel(editorValues.yearLevel) : null,
       courseLevel: mode === "test" ? normalizeGradeAssessmentCourseLevel(editorValues.courseLevel, editorValues.yearLevel) : "",
       assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(editorValues.assessmentNumber) : null,
       topic: mode === "test" ? normalizeGradeAssessmentTopic(editorValues.topic) : "",
+      examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(editorValues.examDurationMinutes) : null,
       categoryId: editorValues.categoryId,
       subcategoryId: editorValues.subcategoryId
     });
@@ -19719,12 +20039,21 @@ class PlannerApp {
         <div class="grades-entry-layout">
           <div class="table-panel grades-entry-config" data-tutorial-anchor="grades-entry-config">
             <div class="grades-entry-form">
-              <label class="grades-entry-field">
+              <label class="grades-entry-field grades-entry-course-field">
                 <span>Kurs</span>
                 <select name="grades-entry-course" data-grades-entry-course="1">
                   ${availableCourses.map((item) => `<option value="${item.id}"${Number(item.id) === Number(course.id) ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
                 </select>
               </label>
+              <div class="grades-entry-actions" data-tutorial-anchor="grades-entry-save">
+                <div class="grades-entry-actions-main">
+                  <button type="button" class="ghost dialog-icon-button" data-grades-entry-cancel="1" aria-label="Abbrechen" title="Abbrechen">❌</button>
+                  <button type="button" class="dialog-icon-button" data-grades-entry-save="1" aria-label="Speichern" title="Speichern">💾</button>
+                </div>
+                <div class="grades-entry-actions-danger">
+                  <button type="button" class="ghost danger-action dialog-icon-button" data-grades-entry-delete="1" aria-label="Leistung löschen" title="${selectedAssessment ? "Leistung löschen" : "Neue Leistung noch nicht gespeichert"}"${selectedAssessment ? "" : " disabled"}>🗑️</button>
+                </div>
+              </div>
               <label class="grades-entry-field is-wide" data-tutorial-anchor="grades-entry-title">
                 <span>Leistungstitel</span>
                 <input type="text" name="grades-entry-title" data-grades-entry-title="1" value="${escapeHtml(editorState.title || "")}" placeholder="Leistungsname">
@@ -19855,6 +20184,19 @@ class PlannerApp {
                     ${editorMode === "test" ? "" : "disabled"}
                   >
                 </label>
+                <label class="grades-entry-field grades-entry-exam-duration-field">
+                  <span>Prüfungszeit [min]</span>
+                  <input
+                    type="text"
+                    name="grades-entry-exam-duration"
+                    data-grades-entry-exam-duration="1"
+                    inputmode="numeric"
+                    pattern="\\d{0,3}"
+                    maxlength="3"
+                    value="${escapeHtml(normalizeGradeAssessmentExamDurationMinutes(editorState.examDurationMinutes) ?? "")}"
+                    ${editorMode === "test" ? "" : "disabled"}
+                  >
+                </label>
               </div>
               <label class="grades-entry-field is-wide">
                 <span>Kategorie</span>
@@ -19868,17 +20210,6 @@ class PlannerApp {
                   ${subcategories.map((subcategory) => `<option value="${subcategory.id}"${Number(subcategory.id) === Number(editorState.subcategoryId || 0) ? " selected" : ""}>${escapeHtml(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`)}</option>`).join("")}
                 </select>
               </label>
-              <div class="grades-entry-actions" data-tutorial-anchor="grades-entry-save">
-                <div class="grades-entry-actions-main">
-                  <button type="button" class="ghost dialog-icon-button" data-grades-entry-cancel="1" aria-label="Abbrechen" title="Abbrechen">❌</button>
-                  <button type="button" class="dialog-icon-button" data-grades-entry-save="1" aria-label="Speichern" title="Speichern">💾</button>
-                </div>
-                ${selectedAssessment ? `
-                  <div class="grades-entry-actions-danger">
-                    <button type="button" class="ghost danger-action dialog-icon-button" data-grades-entry-delete="1" aria-label="Leistung löschen" title="Leistung löschen">🗑️</button>
-                  </div>
-                ` : ""}
-              </div>
             </div>
           </div>
         </div>
@@ -19914,6 +20245,36 @@ class PlannerApp {
     });
   }
 
+  renderGradesViewWithEntryModeFade() {
+    const content = this.refs.gradesEntryContent;
+    const isEntryView = this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "entry"
+      && content
+      && !content.hidden
+      && !content.classList.contains("is-empty-state");
+    const prefersReducedMotion = typeof window !== "undefined"
+      && typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!isEntryView || prefersReducedMotion) {
+      this.renderGradesView();
+      return;
+    }
+    content.classList.remove("is-mode-transitioning-in");
+    content.classList.add("is-mode-transitioning-out");
+    window.setTimeout(() => {
+      content.classList.remove("is-mode-transitioning-out");
+      this.renderGradesView();
+      const nextContent = this.refs.gradesEntryContent;
+      if (!nextContent || nextContent.hidden || nextContent.classList.contains("is-empty-state")) {
+        return;
+      }
+      nextContent.classList.add("is-mode-transitioning-in");
+      requestAnimationFrame(() => {
+        nextContent.classList.remove("is-mode-transitioning-in");
+      });
+    }, 120);
+  }
+
   renderGradesView() {
     if (!this.refs.viewGrades || !this.refs.gradesTitle || !this.refs.gradesSubtitle) {
       this.hideGradePrivacyOverlay();
@@ -19923,6 +20284,7 @@ class PlannerApp {
       this.updateSidebarGradePredicateSuffixToggleState();
       this.updateSidebarGradePrintButtonState();
       this.updateSidebarExpectationHorizonButtonState();
+      this.updateSidebarCompetenceExpectationsButtonState();
       this.updateSidebarGradeSimulationButtonState();
       return;
     }
@@ -19987,6 +20349,7 @@ class PlannerApp {
         this.updateSidebarGradePredicateSuffixToggleState();
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
+        this.updateSidebarCompetenceExpectationsButtonState();
         this.updateSidebarGradeSimulationButtonState();
         return;
       }
@@ -20009,6 +20372,7 @@ class PlannerApp {
         this.updateSidebarGradePredicateSuffixToggleState();
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
+        this.updateSidebarCompetenceExpectationsButtonState();
         this.updateSidebarGradeSimulationButtonState();
         return;
       }
@@ -20023,7 +20387,10 @@ class PlannerApp {
     this.updateSidebarGradePrintButtonState();
     this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
+    this.updateSidebarCompetenceExpectationsButtonState();
     this.updateSidebarGradeSimulationButtonState();
+    this.syncSegmentControlSlideStates(this.refs.viewGrades, { animateFromPrevious: true });
+    this.syncSegmentControlSlideStates(this.refs.sidebarGradePrivacyActions, { animateFromPrevious: true });
   }
 
   isGradeCategoryExpanded(courseId, categoryId, period = "year") {
@@ -20252,6 +20619,7 @@ class PlannerApp {
     const courseLevelInput = root.querySelector("input[data-grades-entry-course-level='1']:checked");
     const assessmentNumberInput = root.querySelector("input[data-grades-entry-number]");
     const topicInput = root.querySelector("input[data-grades-entry-topic]");
+    const examDurationInput = root.querySelector("input[data-grades-entry-exam-duration]");
     const categorySelect = root.querySelector("select[data-grades-entry-category]");
     const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
     const mode = normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade");
@@ -20271,9 +20639,14 @@ class PlannerApp {
           : getDefaultGradeTestPredicateSuffixes(testScale)
       ),
       yearLevel,
+      competenceExpectations: mode === "test" ? normalizeGradeCompetenceExpectations(draft.competenceExpectations) : [],
+      expectationHorizonTemplateFile: mode === "test" ? normalizeGradeAssessmentExpectationHorizonTemplateFile(draft.expectationHorizonTemplateFile) : null,
       courseLevel: normalizeGradeAssessmentCourseLevel(courseLevelInput?.value ?? draft.courseLevel, yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(assessmentNumberInput?.value ?? draft.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(topicInput?.value ?? draft.topic),
+      examDurationMinutes: mode === "test"
+        ? normalizeGradeAssessmentExamDurationMinutes(examDurationInput?.value ?? draft.examDurationMinutes)
+        : null,
       categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
       subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
     };
@@ -21852,6 +22225,42 @@ class PlannerApp {
       : (context.ready ? "Erwartungshorizont erzeugen" : context.reason || "Nur im BE-Modus verfügbar.");
   }
 
+  updateSidebarCompetenceExpectationsButtonState() {
+    const actions = this.refs.sidebarGradePrivacyActions;
+    const section = this.refs.sidebarGradeCompetenceExpectationsSection;
+    const button = this.refs.sidebarGradeCompetenceExpectationsBtn;
+    if (!actions || !button) {
+      return;
+    }
+    const isGradesEntry = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "entry";
+    let isTestMode = false;
+    if (isGradesEntry) {
+      const modeInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked");
+      if (modeInput) {
+        isTestMode = normalizeGradeAssessmentMode(modeInput.value) === "test";
+      } else {
+        const activeAssessment = this.getGradesEntryActiveAssessment(this.selectedCourseId);
+        const draft = activeAssessment
+          ? this.getGradesEntryAssessmentDraft(activeAssessment)
+          : this.getGradesEntryDraft(this.selectedCourseId);
+        isTestMode = normalizeGradeAssessmentMode(draft?.mode || activeAssessment?.mode) === "test";
+      }
+    }
+    const context = this.getExpectationHorizonCourseContext();
+    actions.hidden = !this.shouldShowSidebarGradeActions();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    if (section) {
+      section.hidden = !isGradesEntry || !isTestMode;
+    }
+    button.disabled = vaultInaccessible || !context.ready;
+    button.setAttribute("aria-label", "Kompetenzerwartung erzeugen");
+    button.title = vaultInaccessible
+      ? "Notenmodul zuerst entsperren"
+      : (context.ready ? "Kompetenzerwartung erzeugen" : context.reason || "Nur im BE-Modus verfügbar.");
+  }
+
   handleExpectationHorizonOpenRequest(event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -21863,10 +22272,18 @@ class PlannerApp {
     void this.openExpectationHorizonDialog();
   }
 
+  handleCompetenceExpectationsOpenRequest(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      this.updateSidebarCompetenceExpectationsButtonState();
+      return;
+    }
+    this.openCompetenceExpectationsDialog(context);
+  }
+
   bindExpectationHorizonDialogEvents() {
-    this.refs.expectationHorizonCancel?.addEventListener("click", () => {
-      this.closeExpectationHorizonDialog();
-    });
     this.refs.expectationHorizonCancelTop?.addEventListener("click", () => {
       this.closeExpectationHorizonDialog();
     });
@@ -21874,14 +22291,18 @@ class PlannerApp {
       event.preventDefault();
       this.closeExpectationHorizonDialog();
     });
-    this.refs.expectationHorizonDialog?.addEventListener("click", (event) => {
-      if (event.target === this.refs.expectationHorizonDialog) {
-        this.closeExpectationHorizonDialog();
-      }
+    this.bindDialogBackdropClose(this.refs.expectationHorizonDialog, () => {
+      this.closeExpectationHorizonDialog();
     });
     this.refs.expectationHorizonDialogForm?.addEventListener("submit", (event) => {
       event.preventDefault();
       void this.generateExpectationHorizons();
+    });
+    this.refs.expectationHorizonGenerate?.addEventListener("click", () => {
+      void this.generateExpectationHorizons();
+    });
+    this.refs.expectationHorizonSave?.addEventListener("click", () => {
+      void this.saveExpectationHorizonDialog();
     });
     this.refs.expectationHorizonTemplateDownload?.addEventListener("click", () => {
       void this.downloadCurrentExpectationHorizonDialogTemplate();
@@ -21910,6 +22331,694 @@ class PlannerApp {
       () => this.refs.expectationHorizonLatexFile?.click(),
       (file) => this.addExpectationHorizonLatexFileToTemplate(file)
     );
+  }
+
+  bindCompetenceExpectationsDialogEvents() {
+    this.refs.competenceExpectationsCancelTop?.addEventListener("click", () => {
+      this.closeCompetenceExpectationsDialog();
+    });
+    this.refs.competenceExpectationsDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeCompetenceExpectationsDialog();
+    });
+    this.bindDialogBackdropClose(this.refs.competenceExpectationsDialog, () => {
+      this.closeCompetenceExpectationsDialog();
+    });
+    this.refs.competenceExpectationsDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.generateCompetenceExpectations();
+    });
+    this.refs.competenceExpectationsGenerate?.addEventListener("click", () => {
+      void this.generateCompetenceExpectations();
+    });
+    this.refs.competenceExpectationsSave?.addEventListener("click", () => {
+      this.saveCompetenceExpectationsDialog();
+    });
+    this.refs.competenceExpectationsLatexFile?.addEventListener("change", async (event) => {
+      const [file] = event.target.files || [];
+      if (file) {
+        await this.importCompetenceExpectationsLatexFile(file);
+      }
+      event.target.value = "";
+    });
+    this.bindExpectationHorizonFileDropzone(
+      this.refs.competenceExpectationsLatexDropzone,
+      () => this.refs.competenceExpectationsLatexFile?.click(),
+      (file) => this.importCompetenceExpectationsLatexFile(file)
+    );
+    this.refs.competenceExpectationsList?.addEventListener("click", (event) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const addTopic = target?.closest("[data-competence-expectations-add-topic]");
+      if (addTopic) {
+        event.preventDefault();
+        const currentTopic = addTopic.closest(".competence-expectations-topic");
+        const nextTopic = this.addCompetenceExpectationsTopic("", [""], "", {
+          after: currentTopic,
+          focus: false
+        });
+        nextTopic
+          ?.querySelector("input[data-competence-expectations-topic]")
+          ?.focus({ preventScroll: true });
+        return;
+      }
+      const addCompetence = target?.closest("[data-competence-expectations-add-competence]");
+      if (addCompetence) {
+        event.preventDefault();
+        const row = addCompetence.closest(".competence-expectations-competence-row");
+        const topic = row?.closest(".competence-expectations-topic");
+        const nextRow = this.addCompetenceExpectationsCompetence(topic, "", "", {
+          after: row,
+          focus: false
+        });
+        nextRow
+          ?.querySelector("input[data-competence-expectations-competence]")
+          ?.focus({ preventScroll: true });
+        return;
+      }
+      const removeCompetence = target?.closest("[data-competence-expectations-remove-competence]");
+      if (removeCompetence) {
+        event.preventDefault();
+        const row = removeCompetence.closest(".competence-expectations-competence-row");
+        const list = row?.closest(".competence-expectations-competences");
+        row?.remove();
+        if (list && !list.querySelector(".competence-expectations-competence-row")) {
+          this.addCompetenceExpectationsCompetence(list.closest(".competence-expectations-topic"), "");
+        }
+        return;
+      }
+      const removeTopic = target?.closest("[data-competence-expectations-remove-topic]");
+      if (removeTopic) {
+        event.preventDefault();
+        const topic = removeTopic.closest(".competence-expectations-topic");
+        topic?.remove();
+        if (!this.refs.competenceExpectationsList?.querySelector(".competence-expectations-topic")) {
+          this.addCompetenceExpectationsTopic("", [""]);
+        }
+      }
+    });
+  }
+
+  openCompetenceExpectationsDialog(context = this.getExpectationHorizonCourseContext()) {
+    if (!context?.ready) {
+      return;
+    }
+    this.competenceExpectationsGenerating = false;
+    if (this.refs.competenceExpectationsLatexFile) {
+      this.refs.competenceExpectationsLatexFile.value = "";
+    }
+    const storedExpectations = normalizeGradeCompetenceExpectations(context.values?.competenceExpectations);
+    if (this.refs.competenceExpectationsList) {
+      this.refs.competenceExpectationsList.innerHTML = "";
+      if (storedExpectations.length) {
+        storedExpectations.forEach((item) => {
+          this.addCompetenceExpectationsTopic(item.topic, item.competencies, item.id, { focus: false });
+        });
+      } else {
+        this.addCompetenceExpectationsTopic("", [""], "", { focus: false });
+      }
+      this.ensureCompetenceExpectationsTrailingInputs();
+    }
+    this.setCompetenceExpectationsStatus("");
+    this.syncCompetenceExpectationsGenerateState();
+    this.openDialog(this.refs.competenceExpectationsDialog);
+    requestAnimationFrame(() => {
+      this.refs.competenceExpectationsList
+        ?.querySelector("input[data-competence-expectations-topic]")
+        ?.focus({ preventScroll: true });
+    });
+  }
+
+  closeCompetenceExpectationsDialog() {
+    if (this.competenceExpectationsGenerating) {
+      return;
+    }
+    this.closeDialog(this.refs.competenceExpectationsDialog);
+  }
+
+  setCompetenceExpectationsStatus(message = "", type = "") {
+    const node = this.refs.competenceExpectationsStatus;
+    if (!node) {
+      return;
+    }
+    node.textContent = String(message || "");
+    node.classList.toggle("is-error", type === "error");
+    node.classList.toggle("is-success", type === "success");
+    this.refs.competenceExpectationsLatexDropzone?.classList.toggle("has-error", type === "error");
+  }
+
+  syncCompetenceExpectationsGenerateState() {
+    if (this.refs.competenceExpectationsSave) {
+      this.refs.competenceExpectationsSave.disabled = this.competenceExpectationsGenerating;
+    }
+    if (this.refs.competenceExpectationsLatexDropzone) {
+      this.refs.competenceExpectationsLatexDropzone.disabled = this.competenceExpectationsGenerating;
+    }
+    if (this.refs.competenceExpectationsGenerate) {
+      this.refs.competenceExpectationsGenerate.disabled = this.competenceExpectationsGenerating;
+      this.refs.competenceExpectationsGenerate.setAttribute(
+        "aria-label",
+        this.competenceExpectationsGenerating ? "Generiert..." : "Generieren"
+      );
+      this.refs.competenceExpectationsGenerate.title = this.competenceExpectationsGenerating ? "Generiert..." : "Generieren";
+    }
+  }
+
+  extractCompetenceExpectationsLatexPreamble(text) {
+    const source = String(text || "").replace(/\r\n?/g, "\n");
+    const documentIndex = source.indexOf("\\begin{document}");
+    return documentIndex >= 0 ? source.slice(0, documentIndex) : source;
+  }
+
+  parseCompetenceExpectationsLatexBlock(text) {
+    const marker = "%KOMPETENZERWARTUNG";
+    const preamble = this.extractCompetenceExpectationsLatexPreamble(text);
+    const lines = preamble.split("\n");
+    const startIndex = lines.findIndex((line) => String(line || "").trim() === marker);
+    if (startIndex < 0) {
+      return { ok: false, message: "In der LaTeX-Präambel wurde kein Kompetenzerwartungs-Block gefunden.", items: [] };
+    }
+    const endOffset = lines.slice(startIndex + 1).findIndex((line) => String(line || "").trim() === marker);
+    if (endOffset < 0) {
+      return { ok: false, message: "Der Kompetenzerwartungs-Block in der LaTeX-Präambel ist unvollständig.", items: [] };
+    }
+    const blockLines = lines.slice(startIndex + 1, startIndex + 1 + endOffset);
+    const items = [];
+    let currentTopic = null;
+    for (const rawLine of blockLines) {
+      const line = String(rawLine || "").trim();
+      if (!line) {
+        continue;
+      }
+      if (line.startsWith("%--")) {
+        const textValue = line.slice(3).trim();
+        if (!textValue) {
+          continue;
+        }
+        if (!currentTopic) {
+          return { ok: false, message: "Im Kompetenzerwartungs-Block steht eine Kompetenz ohne vorheriges Thema.", items: [] };
+        }
+        currentTopic.competencies.push({ text: textValue });
+        continue;
+      }
+      if (line.startsWith("%-")) {
+        const topic = line.slice(2).trim();
+        if (!topic) {
+          continue;
+        }
+        if (currentTopic && !currentTopic.competencies.length) {
+          return { ok: false, message: "Im Kompetenzerwartungs-Block steht ein Thema ohne Kompetenz.", items: [] };
+        }
+        currentTopic = { topic, competencies: [] };
+        items.push(currentTopic);
+      }
+    }
+    if (currentTopic && !currentTopic.competencies.length) {
+      return { ok: false, message: "Im Kompetenzerwartungs-Block steht ein Thema ohne Kompetenz.", items: [] };
+    }
+    const normalizedItems = normalizeGradeCompetenceExpectations(items);
+    if (!normalizedItems.length) {
+      return { ok: false, message: "Im Kompetenzerwartungs-Block wurden keine gültigen Themen mit Kompetenzen gefunden.", items: [] };
+    }
+    return { ok: true, message: "", items: normalizedItems };
+  }
+
+  getCompetenceExpectationsDialogHasContent() {
+    return [...(this.refs.competenceExpectationsList?.querySelectorAll("input") || [])]
+      .some((input) => String(input?.value || "").trim());
+  }
+
+  renderCompetenceExpectationsDialogItems(items = []) {
+    const list = this.refs.competenceExpectationsList;
+    if (!list) {
+      return;
+    }
+    list.innerHTML = "";
+    const normalizedItems = normalizeGradeCompetenceExpectations(items);
+    if (normalizedItems.length) {
+      normalizedItems.forEach((item) => {
+        this.addCompetenceExpectationsTopic(item.topic, item.competencies, item.id, { focus: false });
+      });
+    } else {
+      this.addCompetenceExpectationsTopic("", [""], "", { focus: false });
+    }
+    this.ensureCompetenceExpectationsTrailingInputs();
+  }
+
+  formatCompetenceExpectationsImportStatus(items = [], mode = "replace") {
+    const normalizedItems = normalizeGradeCompetenceExpectations(items);
+    const topicCount = normalizedItems.length;
+    const competenceCount = normalizedItems.reduce((sum, item) => sum + item.competencies.length, 0);
+    const modeText = mode === "append" ? "angehängt" : "übernommen";
+    return `${topicCount} Them${topicCount === 1 ? "a" : "en"} mit ${competenceCount} Kompetenz${competenceCount === 1 ? "" : "en"} aus LaTeX ${modeText}.`;
+  }
+
+  async importCompetenceExpectationsLatexFile(file) {
+    if (!this.isExpectationHorizonLatexFile(file)) {
+      this.setCompetenceExpectationsStatus("Bitte eine LaTeX-Datei auswählen. Die Kompetenzerwartungen bleiben unverändert.", "error");
+      return false;
+    }
+    try {
+      this.setCompetenceExpectationsStatus("Lese LaTeX-Datei...");
+      const parsed = this.parseCompetenceExpectationsLatexBlock(await file.text());
+      if (!parsed.ok) {
+        this.setCompetenceExpectationsStatus(parsed.message, "error");
+        return false;
+      }
+      let mode = "replace";
+      if (this.getCompetenceExpectationsDialogHasContent()) {
+        const replaceExisting = await this.showConfirmMessage(
+          "Im Dialog stehen bereits Kompetenzerwartungen. Sollen sie durch den LaTeX-Import ersetzt werden?",
+          {
+            title: "Kompetenzerwartung importieren",
+            okText: "Ersetzen",
+            cancelText: "Anhängen"
+          }
+        );
+        mode = replaceExisting ? "replace" : "append";
+      }
+      const currentItems = mode === "append" ? this.readCompetenceExpectationsDialogItems() : { ok: true, items: [] };
+      if (!currentItems.ok) {
+        this.setCompetenceExpectationsStatus(`Zum Anhängen bitte zuerst die vorhandenen Eingaben korrigieren: ${currentItems.message}`, "error");
+        return false;
+      }
+      const nextItems = normalizeGradeCompetenceExpectations([
+        ...currentItems.items,
+        ...parsed.items
+      ]);
+      this.renderCompetenceExpectationsDialogItems(nextItems);
+      this.setCompetenceExpectationsStatus(this.formatCompetenceExpectationsImportStatus(parsed.items, mode), "success");
+      return true;
+    } catch (error) {
+      this.setCompetenceExpectationsStatus(
+        error instanceof Error && error.message ? error.message : "Die Kompetenzerwartungen konnten nicht aus der LaTeX-Datei übernommen werden.",
+        "error"
+      );
+      return false;
+    }
+  }
+
+  addCompetenceExpectationsTopic(topic = "", competencies = [""], topicId = "", options = {}) {
+    const list = this.refs.competenceExpectationsList;
+    if (!list) {
+      return null;
+    }
+    const node = document.createElement("section");
+    node.className = "competence-expectations-topic";
+    node.dataset.competenceTopicId = normalizeCompetenceExpectationId(topicId);
+    node.innerHTML = `
+      <div class="competence-expectations-topic-head">
+        <span class="competence-expectations-bullet" aria-hidden="true">•</span>
+        <input type="text" data-competence-expectations-topic="1" placeholder="Thema" value="${escapeHtml(String(topic || ""))}" autocomplete="off">
+        <div class="competence-expectations-row-actions">
+          <button type="button" class="ghost competence-expectations-topic-add" data-competence-expectations-add-topic="1" aria-label="Thema hinzufügen" title="Thema hinzufügen">➕</button>
+          <button type="button" class="ghost competence-expectations-topic-remove" data-competence-expectations-remove-topic="1" aria-label="Thema entfernen" title="Thema entfernen">❌</button>
+        </div>
+      </div>
+      <div class="competence-expectations-competences"></div>
+    `;
+    if (options.after instanceof Element && options.after.parentElement === list) {
+      options.after.insertAdjacentElement("afterend", node);
+    } else {
+      list.append(node);
+    }
+    (Array.isArray(competencies) && competencies.length ? competencies : [""]).forEach((competence) => {
+      const item = competence && typeof competence === "object" ? competence : { text: competence };
+      this.addCompetenceExpectationsCompetence(node, item.text, item.id, options);
+    });
+    return node;
+  }
+
+  addCompetenceExpectationsCompetence(topicNode, competence = "", competenceId = "", options = {}) {
+    const list = topicNode?.querySelector(".competence-expectations-competences");
+    if (!list) {
+      return null;
+    }
+    const competenceText = competence && typeof competence === "object"
+      ? competence.text
+      : competence;
+    const row = document.createElement("div");
+    row.className = "competence-expectations-competence-row";
+    row.dataset.competenceId = normalizeCompetenceExpectationId(competenceId);
+    row.innerHTML = `
+      <span class="competence-expectations-bullet" aria-hidden="true">-</span>
+      <input type="text" data-competence-expectations-competence="1" placeholder="Kompetenz" value="${escapeHtml(String(competenceText || ""))}" autocomplete="off">
+      <div class="competence-expectations-row-actions">
+        <button type="button" class="ghost competence-expectations-competence-add" data-competence-expectations-add-competence="1" aria-label="Kompetenz hinzufügen" title="Kompetenz hinzufügen">➕</button>
+        <button type="button" class="ghost competence-expectations-competence-remove" data-competence-expectations-remove-competence="1" aria-label="Kompetenz entfernen" title="Kompetenz entfernen">❌</button>
+      </div>
+    `;
+    if (options.after instanceof Element && options.after.parentElement === list) {
+      options.after.insertAdjacentElement("afterend", row);
+    } else {
+      list.append(row);
+    }
+    if (options.focus !== false) {
+      row.querySelector("input")?.focus({ preventScroll: true });
+    }
+    return row;
+  }
+
+  ensureCompetenceExpectationsTrailingInputs() {
+    const list = this.refs.competenceExpectationsList;
+    if (!list) {
+      return;
+    }
+    const topics = [...list.querySelectorAll(".competence-expectations-topic")];
+    if (!topics.length) {
+      this.addCompetenceExpectationsTopic("", [""], "", { focus: false });
+    }
+  }
+
+  readCompetenceExpectationsDialogItems() {
+    const topics = [...(this.refs.competenceExpectationsList?.querySelectorAll(".competence-expectations-topic") || [])];
+    const items = [];
+    topics.forEach((topicNode, topicIndex) => {
+      const topic = String(topicNode.querySelector("input[data-competence-expectations-topic]")?.value || "").trim();
+      const competencies = [...topicNode.querySelectorAll(".competence-expectations-competence-row")]
+        .map((row, competenceIndex) => ({
+          id: normalizeCompetenceExpectationId(row.dataset.competenceId, `k${topicIndex + 1}-${competenceIndex + 1}`),
+          text: String(row.querySelector("input[data-competence-expectations-competence]")?.value || "").trim()
+        }))
+        .filter((item) => item.text)
+        .map((item) => ({ id: item.id, text: item.text }))
+        .filter(Boolean);
+      if (!topic && !competencies.length) {
+        return;
+      }
+      if (!topic) {
+        items.push({ error: "Bitte zu jeder Kompetenz ein Thema eintragen." });
+        return;
+      }
+      if (!competencies.length) {
+        items.push({ error: "Bitte zu jedem Thema mindestens eine Kompetenz eintragen." });
+        return;
+      }
+      items.push({
+        id: normalizeCompetenceExpectationId(topicNode.dataset.competenceTopicId, `t${topicIndex + 1}`),
+        topic,
+        competencies
+      });
+    });
+    const firstError = items.find((item) => item.error);
+    if (firstError) {
+      return { ok: false, message: firstError.error, items: [] };
+    }
+    const normalizedItems = normalizeGradeCompetenceExpectations(items);
+    if (!normalizedItems.length) {
+      return { ok: false, message: "Bitte mindestens ein Thema mit Kompetenz eintragen.", items: [] };
+    }
+    return { ok: true, message: "", items: normalizedItems };
+  }
+
+  saveCompetenceExpectationsForCurrentGradeTest(items = []) {
+    const expectations = normalizeGradeCompetenceExpectations(items);
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    this.gradeTaskCompetenceDialogOptionsSignature = "";
+    this.gradeTaskCompetenceDialogOptionButtons = [];
+    if (assessment && draft) {
+      this.gradesEntryDraft = {
+        ...draft,
+        competenceExpectations: expectations
+      };
+      this.markGradesEntryDraftDirty();
+      return true;
+    }
+    if (draft) {
+      this.gradesEntryDraft = {
+        ...draft,
+        competenceExpectations: expectations
+      };
+      this.markGradesEntryDraftDirty();
+      return true;
+    }
+    return false;
+  }
+
+  saveCompetenceExpectationsDialog() {
+    const dialogItems = this.readCompetenceExpectationsDialogItems();
+    if (!dialogItems.ok) {
+      this.setCompetenceExpectationsStatus(dialogItems.message, "error");
+      return false;
+    }
+    if (!this.saveCompetenceExpectationsForCurrentGradeTest(dialogItems.items)) {
+      this.setCompetenceExpectationsStatus("Die Kompetenzerwartungen konnten nicht gespeichert werden.", "error");
+      return false;
+    }
+    this.setCompetenceExpectationsStatus("Kompetenzerwartungen gespeichert.", "success");
+    return true;
+  }
+
+  bindGradeTaskCompetenceDialogEvents() {
+    this.refs.gradeTaskCompetenceCancel?.addEventListener("click", () => {
+      this.closeGradeTaskCompetenceDialog();
+    });
+    this.refs.gradeTaskCompetenceCancelTop?.addEventListener("click", () => {
+      this.closeGradeTaskCompetenceDialog();
+    });
+    this.refs.gradeTaskCompetenceDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeGradeTaskCompetenceDialog();
+    });
+    this.bindDialogBackdropClose(this.refs.gradeTaskCompetenceDialog, () => {
+      this.closeGradeTaskCompetenceDialog();
+    });
+    this.refs.gradeTaskCompetenceDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.saveGradeTaskCompetenceDialog();
+    });
+    this.refs.gradeTaskCompetenceList?.addEventListener("click", (event) => {
+      const option = event.target.closest("button[data-grade-task-competence-option='1']");
+      if (!option) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleGradeTaskCompetenceDialogOption(option);
+    });
+  }
+
+  getCurrentGradeTestCompetenceExpectations() {
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    return normalizeGradeCompetenceExpectations(draft?.competenceExpectations || assessment?.competenceExpectations);
+  }
+
+  getGradeTaskCompetenceDialogTask(taskId = "") {
+    const normalizedTaskId = String(taskId || "").trim();
+    if (!normalizedTaskId) {
+      return null;
+    }
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const sourceTasks = Array.isArray(draft?.testTasks)
+      ? draft.testTasks
+      : (Array.isArray(assessment?.testTasks) ? assessment.testTasks : []);
+    const directTask = sourceTasks.find((task) => String(task?.id || "").trim() === normalizedTaskId);
+    if (directTask) {
+      return {
+        id: normalizedTaskId,
+        competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(directTask.competenceExpectationIds),
+        customCompetenceText: String(directTask.customCompetenceText || "").trim()
+      };
+    }
+    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
+    return tasks.find((task) => task.id === normalizedTaskId) || null;
+  }
+
+  getGradeTaskCompetenceDialogOptionsSignature(expectations = []) {
+    return JSON.stringify((Array.isArray(expectations) ? expectations : []).map((topic) => [
+      topic.id,
+      topic.topic,
+      (Array.isArray(topic.competencies) ? topic.competencies : []).map((competence) => [
+        competence.id,
+        competence.text
+      ])
+    ]));
+  }
+
+  renderGradeTaskCompetenceDialogOptions(expectations = []) {
+    const list = this.refs.gradeTaskCompetenceList;
+    if (!list) {
+      return;
+    }
+    const signature = this.getGradeTaskCompetenceDialogOptionsSignature(expectations);
+    if (this.gradeTaskCompetenceDialogOptionsSignature === signature && list.childElementCount > 0) {
+      return;
+    }
+    if (!expectations.length) {
+      list.innerHTML = '<div class="grade-task-competence-empty">Noch keine Kompetenzerwartungen gespeichert. Eigene Kompetenz kann trotzdem eingetragen werden.</div>';
+      this.gradeTaskCompetenceDialogOptionButtons = [];
+      this.gradeTaskCompetenceDialogOptionsSignature = signature;
+      return;
+    }
+    list.innerHTML = expectations.map((topic) => {
+      const competencies = Array.isArray(topic.competencies) ? topic.competencies : [];
+      return `
+        <section class="grade-task-competence-topic">
+          <h4>${escapeHtml(topic.topic || "Ohne Thema")}</h4>
+          ${competencies.map((competence) => `
+            <button type="button" class="grade-task-competence-option" role="checkbox" aria-checked="false" data-grade-task-competence-option="1" data-competence-id="${escapeHtml(competence.id)}">
+              <span class="grade-task-competence-check" aria-hidden="true"></span>
+              <span class="grade-task-competence-option-text">${escapeHtml(competence.text)}</span>
+            </button>
+          `).join("")}
+        </section>
+      `;
+    }).join("");
+    this.gradeTaskCompetenceDialogOptionButtons = [...list.querySelectorAll("button[data-grade-task-competence-option='1']")];
+    this.gradeTaskCompetenceDialogOptionsSignature = signature;
+  }
+
+  syncGradeTaskCompetenceDialogSelection(task, expectations = null) {
+    const selectedIds = new Set(normalizeGradeTaskCompetenceExpectationIds(task?.competenceExpectationIds, expectations));
+    this.gradeTaskCompetenceDialogSelectedIds = selectedIds;
+    const buttons = this.gradeTaskCompetenceDialogOptionButtons.length
+      ? this.gradeTaskCompetenceDialogOptionButtons
+      : [...(this.refs.gradeTaskCompetenceList?.querySelectorAll("button[data-grade-task-competence-option='1']") || [])];
+    buttons.forEach((button) => {
+      this.setGradeTaskCompetenceDialogOptionState(button, selectedIds.has(String(button.dataset.competenceId || "")));
+    });
+    if (this.refs.gradeTaskCompetenceCustom) {
+      this.refs.gradeTaskCompetenceCustom.value = String(task?.customCompetenceText || "");
+    }
+  }
+
+  setGradeTaskCompetenceDialogOptionState(option, selected) {
+    if (!option) {
+      return;
+    }
+    option.setAttribute("aria-checked", selected ? "true" : "false");
+    option.classList.toggle("is-selected", selected);
+  }
+
+  toggleGradeTaskCompetenceDialogOption(option) {
+    const id = String(option?.dataset?.competenceId || "").trim();
+    if (!id || this.gradeTaskCompetenceDialogRenderFrame) {
+      return;
+    }
+    const selectedIds = this.gradeTaskCompetenceDialogSelectedIds instanceof Set
+      ? this.gradeTaskCompetenceDialogSelectedIds
+      : new Set();
+    const selected = !selectedIds.has(id);
+    if (selected) {
+      selectedIds.add(id);
+    } else {
+      selectedIds.delete(id);
+    }
+    this.gradeTaskCompetenceDialogSelectedIds = selectedIds;
+    this.setGradeTaskCompetenceDialogOptionState(option, selected);
+  }
+
+  openGradeTaskCompetenceDialog(taskId = "") {
+    const task = this.getGradeTaskCompetenceDialogTask(taskId);
+    if (!task) {
+      return;
+    }
+    this.gradeTaskCompetenceDialogTaskId = task.id;
+    const list = this.refs.gradeTaskCompetenceList;
+    this.setGradeTaskCompetenceStatus("");
+    if (this.refs.gradeTaskCompetenceCustom) {
+      this.refs.gradeTaskCompetenceCustom.value = String(task.customCompetenceText || "");
+    }
+    const hasCachedOptions = Boolean(list?.childElementCount && this.gradeTaskCompetenceDialogOptionsSignature);
+    if (hasCachedOptions) {
+      this.syncGradeTaskCompetenceDialogSelection(task, null);
+      list?.removeAttribute("aria-busy");
+    } else if (list) {
+      list.setAttribute("aria-busy", "true");
+      list.innerHTML = '<div class="grade-task-competence-empty">Kompetenzen werden geladen...</div>';
+      this.gradeTaskCompetenceDialogOptionButtons = [];
+    }
+    if (this.refs.gradeTaskCompetenceSave) {
+      this.refs.gradeTaskCompetenceSave.disabled = true;
+    }
+    this.openDialog(this.refs.gradeTaskCompetenceDialog);
+    if (this.gradeTaskCompetenceDialogRenderFrame) {
+      cancelAnimationFrame(this.gradeTaskCompetenceDialogRenderFrame);
+    }
+    this.gradeTaskCompetenceDialogRenderFrame = requestAnimationFrame(() => {
+      const expectations = this.getCurrentGradeTestCompetenceExpectations();
+      this.gradeTaskCompetenceDialogRenderFrame = 0;
+      this.renderGradeTaskCompetenceDialogOptions(expectations);
+      this.syncGradeTaskCompetenceDialogSelection(task, expectations);
+      list?.removeAttribute("aria-busy");
+      if (this.refs.gradeTaskCompetenceSave) {
+        this.refs.gradeTaskCompetenceSave.disabled = false;
+      }
+    });
+  }
+
+  closeGradeTaskCompetenceDialog() {
+    this.gradeTaskCompetenceDialogTaskId = "";
+    if (this.gradeTaskCompetenceDialogRenderFrame) {
+      cancelAnimationFrame(this.gradeTaskCompetenceDialogRenderFrame);
+      this.gradeTaskCompetenceDialogRenderFrame = 0;
+    }
+    if (this.refs.gradeTaskCompetenceSave) {
+      this.refs.gradeTaskCompetenceSave.disabled = false;
+    }
+    this.gradeTaskCompetenceDialogSelectedIds = new Set();
+    this.closeDialog(this.refs.gradeTaskCompetenceDialog);
+  }
+
+  setGradeTaskCompetenceStatus(message = "", type = "") {
+    const node = this.refs.gradeTaskCompetenceStatus;
+    if (!node) {
+      return;
+    }
+    node.textContent = String(message || "");
+    node.classList.toggle("is-error", type === "error");
+    node.classList.toggle("is-success", type === "success");
+  }
+
+  saveGradeTaskCompetenceDialog() {
+    if (this.gradeTaskCompetenceDialogRenderFrame) {
+      this.setGradeTaskCompetenceStatus("Die Kompetenzliste wird noch geladen.", "error");
+      return false;
+    }
+    const taskId = String(this.gradeTaskCompetenceDialogTaskId || "").trim();
+    if (!taskId) {
+      this.closeGradeTaskCompetenceDialog();
+      return false;
+    }
+    const expectations = this.getCurrentGradeTestCompetenceExpectations();
+    const selectedIds = [...(this.gradeTaskCompetenceDialogSelectedIds instanceof Set
+      ? this.gradeTaskCompetenceDialogSelectedIds
+      : new Set())];
+    const customCompetenceText = String(this.refs.gradeTaskCompetenceCustom?.value || "").trim();
+    const updated = this.updateGradeTestTaskCompetenceAssignment(taskId, {
+      competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(selectedIds, expectations),
+      customCompetenceText
+    });
+    if (!updated) {
+      this.setGradeTaskCompetenceStatus("Die Aufgabe konnte nicht aktualisiert werden.", "error");
+      return false;
+    }
+    this.markGradesEntryDraftDirty();
+    this.closeGradeTaskCompetenceDialog();
+    this.renderGradesView();
+    return true;
+  }
+
+  updateGradeTestTaskCompetenceAssignment(taskId, assignment = {}) {
+    const normalizedTaskId = String(taskId || "").trim();
+    if (!normalizedTaskId) {
+      return false;
+    }
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const sourceTasks = draft?.testTasks || assessment?.testTasks;
+    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
+    let changed = false;
+    const nextTasks = tasks.map((task) => {
+      if (task.id !== normalizedTaskId) {
+        return task;
+      }
+      changed = true;
+      return {
+        ...task,
+        competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(assignment.competenceExpectationIds),
+        customCompetenceText: String(assignment.customCompetenceText || "").trim()
+      };
+    });
+    return changed ? this.updateGradeTestContextTasks(nextTasks) : false;
   }
 
   bindExpectationHorizonFileDropzone(dropzone, openPicker, handleFile) {
@@ -21967,7 +23076,7 @@ class PlannerApp {
     const context = this.getExpectationHorizonCourseContext();
     this.expectationHorizonDialogTemplateKind = this.getExpectationHorizonTemplateKindForValues(context.values || {});
     await this.ensureStoredExpectationHorizonTemplateLoaded(this.expectationHorizonDialogTemplateKind);
-    await this.loadTemporaryExpectationHorizonTemplateFile();
+    this.loadTemporaryExpectationHorizonTemplateFile(context);
     if (this.refs.expectationHorizonFile) {
       this.refs.expectationHorizonFile.value = "";
     }
@@ -21990,6 +23099,39 @@ class PlannerApp {
     this.closeDialog(this.refs.expectationHorizonDialog);
   }
 
+  refreshOpenExpectationHorizonDialogTemplate() {
+    if (!this.refs.expectationHorizonDialog?.open || this.expectationHorizonGenerating) {
+      return false;
+    }
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      return false;
+    }
+    this.expectationHorizonDialogTemplateKind = this.getExpectationHorizonTemplateKindForValues(context.values || {});
+    this.loadTemporaryExpectationHorizonTemplateFile(context, { preserveCurrent: true });
+    this.setExpectationHorizonFileName(this.getCurrentExpectationHorizonDialogTemplateLabel());
+    this.syncExpectationHorizonGenerateState();
+    return true;
+  }
+
+  async saveExpectationHorizonDialog() {
+    if (this.expectationHorizonGenerating) {
+      return false;
+    }
+    if (!this.expectationHorizonTemplateFile) {
+      this.setExpectationHorizonStatus("Keine geänderte temporäre Vorlage zum Speichern vorhanden.", "error");
+      return false;
+    }
+    const saved = this.storeTemporaryExpectationHorizonTemplateFile(this.expectationHorizonTemplateFile);
+    if (!saved) {
+      this.setExpectationHorizonStatus("Temporäre Vorlage konnte nicht gespeichert werden.", "error");
+      return false;
+    }
+    this.setExpectationHorizonFileName(`Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`);
+    this.setExpectationHorizonStatus("Temporäre Vorlage für diese BE-Leistung gespeichert.", "success");
+    return true;
+  }
+
   setExpectationHorizonStatus(message = "", type = "") {
     const node = this.refs.expectationHorizonStatus;
     if (!node) {
@@ -22009,9 +23151,16 @@ class PlannerApp {
   }
 
   syncExpectationHorizonGenerateState() {
+    if (this.refs.expectationHorizonSave) {
+      this.refs.expectationHorizonSave.disabled = this.expectationHorizonGenerating;
+    }
     if (this.refs.expectationHorizonGenerate) {
       this.refs.expectationHorizonGenerate.disabled = this.expectationHorizonGenerating;
-      this.refs.expectationHorizonGenerate.textContent = this.expectationHorizonGenerating ? "Generiere..." : "Generieren";
+      this.refs.expectationHorizonGenerate.setAttribute(
+        "aria-label",
+        this.expectationHorizonGenerating ? "Generiert..." : "Generieren"
+      );
+      this.refs.expectationHorizonGenerate.title = this.expectationHorizonGenerating ? "Generiert..." : "Generieren";
     }
   }
 
@@ -22049,9 +23198,9 @@ class PlannerApp {
         name: String(file.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
         bytes
       };
-      const saved = await this.storeTemporaryExpectationHorizonTemplateFile(this.expectationHorizonTemplateFile);
+      const saved = this.storeTemporaryExpectationHorizonTemplateFile(this.expectationHorizonTemplateFile);
       this.setExpectationHorizonFileName(`Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`);
-      this.setExpectationHorizonStatus(saved ? "Temporäre Vorlage lokal gespeichert." : "Temporäre Vorlage geladen, konnte aber lokal nicht gespeichert werden.", saved ? "success" : "error");
+      this.setExpectationHorizonStatus(saved ? "Temporäre Vorlage für diese BE-Leistung gespeichert." : "Temporäre Vorlage geladen, konnte aber nicht für diese BE-Leistung gespeichert werden.", saved ? "success" : "error");
       this.syncExpectationHorizonGenerateState();
       return true;
     } catch (error) {
@@ -22136,21 +23285,29 @@ class PlannerApp {
         return false;
       }
       const shouldUpdateTable = await this.showConfirmMessage(
-        `Die LaTeX-Datei enthält ${taskEntries.length} Aufgabe${taskEntries.length === 1 ? "" : "n"}. Soll die BE-Tabelle entsprechend ergänzt und erkannte BE1-Werte übernommen werden?`,
+        `Die LaTeX-Datei enthält ${taskEntries.length} Aufgabe${taskEntries.length === 1 ? "" : "n"}. Soll die BE-Tabelle entsprechend (mit BE1-Werten) ergänzt werden?`,
         {
-          title: "BE-Tabelle anpassen?",
-          okText: "Tabelle anpassen",
-          cancelText: "Nur EWH ergänzen"
+          title: "BE-Tabelle in der App anpassen?",
+          okText: "Auch BE-Tabelle ergänzen",
+          cancelText: "Nur Erwartungshorizont ausfüllen"
         }
       );
       const tableUpdateResult = shouldUpdateTable
         ? this.applyExpectationHorizonLatexTasksToGradeTest(taskEntries)
         : null;
       this.setExpectationHorizonStatus("Ergänze EWH-Vorlage...");
-      const tasks = taskEntries.map((entry) => entry.content);
+      await this.yieldToBrowser();
+      const { assessment, draft } = this.getActiveGradeTestContext();
+      const gradeTasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
+      const competenceExpectations = normalizeGradeCompetenceExpectations(draft?.competenceExpectations || assessment?.competenceExpectations);
+      const tasks = taskEntries.map((entry, index) => this.buildExpectationHorizonTaskPerformanceValue(
+        entry.content,
+        this.getGradeTestTaskAssignedCompetenceTexts(gradeTasks[index], competenceExpectations)
+      ));
       const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
-      const bytes = await createDocxFromTemplate(templateBytes, {}, {
-        tableColumnReplacements: [
+      const preparedTemplate = await prepareDocxTemplate(templateBytes);
+      const bytes = await createDocxFromPreparedTemplate(preparedTemplate, {}, {
+        tableColumnReplacements: this.buildExpectationHorizonTaskTemplateColumnReplacements(gradeTasks).concat([
           {
             header: "Erwartete Prüfungsleistungen",
             values: tasks,
@@ -22160,13 +23317,13 @@ class PlannerApp {
             numberTargetRows: true,
             removeUnusedTargetRows: true
           }
-        ]
+        ])
       });
       this.expectationHorizonTemplateFile = {
         name: this.makeLatexAugmentedExpectationHorizonTemplateName(file),
         bytes
       };
-      const temporaryTemplateSaved = await this.storeTemporaryExpectationHorizonTemplateFile(this.expectationHorizonTemplateFile);
+      const temporaryTemplateSaved = this.storeTemporaryExpectationHorizonTemplateFile(this.expectationHorizonTemplateFile);
       this.setExpectationHorizonFileName(`Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`);
       this.setExpectationHorizonStatus(
         this.formatExpectationHorizonLatexImportStatus(tasks.length, tableUpdateResult, temporaryTemplateSaved),
@@ -22332,8 +23489,8 @@ class PlannerApp {
   formatExpectationHorizonLatexImportStatus(taskCount, tableUpdateResult = null, temporaryTemplateSaved = true) {
     const base = `${taskCount} Aufgabeninhalt${taskCount === 1 ? "" : "e"} aus LaTeX ergänzt.`;
     const storageText = temporaryTemplateSaved
-      ? " Temporäre Vorlage lokal gespeichert."
-      : " Temporäre Vorlage konnte nicht lokal gespeichert werden.";
+      ? " Temporäre Vorlage für diese BE-Leistung gespeichert."
+      : " Temporäre Vorlage konnte nicht für diese BE-Leistung gespeichert werden.";
     if (!tableUpdateResult) {
       return `${base}${storageText}`;
     }
@@ -22694,7 +23851,7 @@ class PlannerApp {
   appendExpectationHorizonLatexTaskRun(runs, text, options = {}) {
     const rawValue = String(text || "");
     const normalized = this.normalizeExpectationHorizonLatexCellText(rawValue);
-    const value = options.preserveOuterSpaces === true && normalized
+    let value = options.preserveOuterSpaces === true && normalized
       ? `${/^\s/.test(rawValue) ? " " : ""}${normalized}${/\s$/.test(rawValue) ? " " : ""}`
       : normalized;
     if (!value) {
@@ -22708,6 +23865,31 @@ class PlannerApp {
       paragraphBreak: options.paragraphBreak === true,
       list: options.list || ""
     };
+    if (previous && !nextRun.list) {
+      const previousText = String(previous.text || "");
+      const nextText = String(nextRun.text || "");
+      const previousEnd = previousText.match(/\S(?=\s*$)/u)?.[0] || "";
+      const nextStart = nextText.match(/^\s*(\S)/u)?.[1] || "";
+      const shouldInsertSpace = Boolean(
+        previousEnd
+        && nextStart
+        && !/\s$/.test(previousText)
+        && !/^\s/.test(nextText)
+        && !/[\[({/]/u.test(previousEnd)
+        && previousEnd !== "-"
+        && nextStart !== "-"
+        && !/[.,;:!?)]/u.test(nextStart)
+        && !(previous.math && nextRun.math)
+      );
+      if (shouldInsertSpace) {
+        if (previous.math && !nextRun.math) {
+          value = ` ${value}`;
+          nextRun.text = value;
+        } else {
+          previous.text += " ";
+        }
+      }
+    }
     if (
       previous
       && previous.italic === nextRun.italic
@@ -22811,7 +23993,7 @@ class PlannerApp {
             textValue,
             {
               italic: segment.italic,
-              paragraphBreak: (segment.leadingBreak && !segmentHasContent && runs.length > 0) || lineIndex > 0 || (Boolean(pendingList) && runs.length > 0),
+              paragraphBreak: (segment.leadingBreak && !segmentHasContent && runs.length > 0) || (Boolean(pendingList) && runs.length > 0),
               preserveOuterSpaces: preserveMathSpacing,
               list
             }
@@ -22859,11 +24041,30 @@ class PlannerApp {
   }
 
   async loadBuiltInExpectationHorizonTemplateBytes(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
-    const response = await fetch(this.getExpectationHorizonTemplateUrl(kind));
+    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+    const cached = this.builtInExpectationHorizonTemplateBytes?.get(templateKind);
+    if (cached?.length) {
+      return cached;
+    }
+    const response = await fetch(this.getExpectationHorizonTemplateUrl(templateKind));
     if (!response || !response.ok) {
       throw new Error("Die eingebaute Erwartungshorizont-Vorlage konnte nicht geladen werden.");
     }
-    return new Uint8Array(await response.arrayBuffer());
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    this.builtInExpectationHorizonTemplateBytes?.set(templateKind, bytes);
+    return bytes;
+  }
+
+  async loadBuiltInCompetenceExpectationsTemplateBytes() {
+    if (this.builtInCompetenceExpectationsTemplateBytes?.length) {
+      return this.builtInCompetenceExpectationsTemplateBytes;
+    }
+    const response = await fetch(COMPETENCE_EXPECTATIONS_TEMPLATE_URL);
+    if (!response || !response.ok) {
+      throw new Error("Die eingebaute Kompetenzerwartungs-Vorlage konnte nicht geladen werden.");
+    }
+    this.builtInCompetenceExpectationsTemplateBytes = new Uint8Array(await response.arrayBuffer());
+    return this.builtInCompetenceExpectationsTemplateBytes;
   }
 
   async ensureStoredExpectationHorizonTemplateLoaded(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
@@ -22921,22 +24122,48 @@ class PlannerApp {
     };
   }
 
-  async loadTemporaryExpectationHorizonTemplateFile() {
-    const stored = await getStoredLocalValue(EXPECTATION_HORIZON_TEMP_TEMPLATE_STORAGE_KEY);
-    this.expectationHorizonTemplateFile = this.normalizeExpectationHorizonTemplateFile(stored);
+  loadTemporaryExpectationHorizonTemplateFile(context = null, options = {}) {
+    const source = context?.draft?.expectationHorizonTemplateFile
+      || context?.assessment?.expectationHorizonTemplateFile
+      || context?.values?.expectationHorizonTemplateFile
+      || null;
+    const template = this.normalizeExpectationHorizonTemplateFile(source);
+    if (!template && options.preserveCurrent && this.expectationHorizonTemplateFile?.bytes?.length) {
+      return this.expectationHorizonTemplateFile;
+    }
+    this.expectationHorizonTemplateFile = template;
     return this.expectationHorizonTemplateFile;
   }
 
-  async storeTemporaryExpectationHorizonTemplateFile(template = null) {
-    const normalized = this.normalizeExpectationHorizonTemplateFile(template);
-    if (!normalized) {
+  storeTemporaryExpectationHorizonTemplateFile(template = null) {
+    const storedTemplate = normalizeGradeAssessmentExpectationHorizonTemplateFile(template);
+    const runtimeTemplate = this.normalizeExpectationHorizonTemplateFile(storedTemplate);
+    if (!storedTemplate || !runtimeTemplate) {
       return false;
     }
-    const saved = await storeLocalValue(EXPECTATION_HORIZON_TEMP_TEMPLATE_STORAGE_KEY, normalized);
-    if (saved) {
-      this.expectationHorizonTemplateFile = normalized;
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    if (assessment && draft) {
+      this.gradesEntryDraft = {
+        ...draft,
+        expectationHorizonTemplateFile: storedTemplate
+      };
+      this.expectationHorizonTemplateFile = runtimeTemplate;
+      this.store.updateGradeAssessment(assessment.id, {
+        expectationHorizonTemplateFile: storedTemplate
+      });
+      this.markGradesEntryDraftDirty();
+      return true;
     }
-    return saved;
+    if (draft) {
+      this.gradesEntryDraft = {
+        ...draft,
+        expectationHorizonTemplateFile: storedTemplate
+      };
+      this.expectationHorizonTemplateFile = runtimeTemplate;
+      this.markGradesEntryDraftDirty();
+      return true;
+    }
+    return false;
   }
 
   async setStoredExpectationHorizonTemplateFile(file, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
@@ -22981,17 +24208,64 @@ class PlannerApp {
   }
 
   downloadExpectationHorizonTemplateBytes(bytes, fileName = EXPECTATION_HORIZON_TEMPLATE_FILE_NAME) {
+    this.downloadBytes(
+      bytes,
+      fileName,
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    );
+  }
+
+  downloadBytes(bytes, fileName, type = "application/octet-stream") {
     const blob = new Blob([bytes], {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      type
     });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = String(fileName || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME);
+    anchor.download = String(fileName || "Download");
     document.body.append(anchor);
     anchor.click();
     anchor.remove();
     setTimeout(() => URL.revokeObjectURL(url), 3000);
+  }
+
+  buildExpectationHorizonTaskTemplateColumnReplacements(tasks = []) {
+    const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+    if (!normalizedTasks.length) {
+      return [];
+    }
+    return [
+      {
+        header: "AFB",
+        values: normalizedTasks.map((task) => task.afb || "")
+      },
+      {
+        header: "BE1",
+        values: normalizedTasks.map((task) => (
+          task.maxBe !== null && task.maxBe !== undefined ? formatGradeBeValue(task.maxBe) : ""
+        ))
+      }
+    ];
+  }
+
+  async buildCurrentExpectationHorizonDialogTemplateDownload() {
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      return null;
+    }
+    const values = context.values || {};
+    const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
+    const tableColumnReplacements = this.buildExpectationHorizonTaskTemplateColumnReplacements(tasks);
+    if (!tableColumnReplacements.length) {
+      return null;
+    }
+    const templateKind = this.getExpectationHorizonTemplateKindForValues(values);
+    const bytes = await this.getCurrentExpectationHorizonTemplateBytes(templateKind);
+    const preparedTemplate = await prepareDocxTemplate(bytes);
+    return {
+      bytes: await createDocxFromPreparedTemplate(preparedTemplate, {}, { tableColumnReplacements }),
+      fileName: this.getCurrentExpectationHorizonTemplateName(templateKind)
+    };
   }
 
   async downloadBuiltInExpectationHorizonTemplate(kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
@@ -23014,6 +24288,12 @@ class PlannerApp {
 
   async downloadCurrentExpectationHorizonDialogTemplate() {
     try {
+      const enrichedDownload = await this.buildCurrentExpectationHorizonDialogTemplateDownload();
+      if (enrichedDownload) {
+        this.downloadExpectationHorizonTemplateBytes(enrichedDownload.bytes, enrichedDownload.fileName);
+        this.setExpectationHorizonStatus("Vorlage mit AFB und BE1 wurde als Download gestartet.", "success");
+        return;
+      }
       if (this.expectationHorizonTemplateFile) {
         this.downloadExpectationHorizonTemplateBytes(
           this.expectationHorizonTemplateFile.bytes,
@@ -23134,6 +24414,175 @@ class PlannerApp {
     return `${yearLevel}-${halfYearNumber}${assessmentNumber === null ? "" : `-${assessmentNumber}`}`;
   }
 
+  formatCompetenceExpectationsExamDuration(value) {
+    const minutes = normalizeGradeAssessmentExamDurationMinutes(value);
+    return minutes === null ? "—" : `${minutes} Minuten`;
+  }
+
+  buildCompetenceExpectationsRichText(items = []) {
+    const runs = [];
+    (Array.isArray(items) ? items : []).forEach((item) => {
+      const topic = String(item?.topic || "").trim();
+      if (topic) {
+        runs.push({
+          text: topic,
+          bold: true,
+          list: "hyphenBullet",
+          listLevel: 0
+        });
+      }
+      (Array.isArray(item?.competencies) ? item.competencies : []).forEach((competence) => {
+        const text = String(
+          competence && typeof competence === "object"
+            ? competence.text
+            : competence
+        ).trim();
+        if (text) {
+          runs.push({
+            text,
+            list: "hyphenBullet",
+            listLevel: 1
+          });
+        }
+      });
+    });
+    return { runs };
+  }
+
+  buildCompetenceExpectationsFileName(context) {
+    const topic = this.sanitizeExpectationHorizonFileName(
+      normalizeGradeAssessmentTopic(context?.values?.topic) || "Thema",
+      "Thema"
+    );
+    return this.sanitizeExpectationHorizonFileName(
+      `Kompetenzerwartungen - ${topic}`,
+      "Kompetenzerwartungen"
+    ) + ".docx";
+  }
+
+  buildCompetenceExpectationsReplacements(context, items = []) {
+    const values = context.values || {};
+    const duration = this.formatCompetenceExpectationsExamDuration(values.examDurationMinutes);
+    return {
+      "<<JG>>": this.formatExpectationHorizonJg(values) || "—",
+      "<<Fach>>": String(context.course?.subject || "").trim() || "—",
+      "<<Thema>>": normalizeGradeAssessmentTopic(values.topic) || "—",
+      "<<Ort>>": this.store.getExpectationHorizonLocation() || "—",
+      "<<Datum>>": formatLongDateLabel(new Date()) || "—",
+      "<<Zeit>> min": duration,
+      "<<Zeit>>": duration,
+      "<<Kompetenzen>>": this.buildCompetenceExpectationsRichText(items)
+    };
+  }
+
+  getGradeCompetenceTextById(expectations = []) {
+    const map = new Map();
+    normalizeGradeCompetenceExpectations(expectations).forEach((topic) => {
+      topic.competencies.forEach((competence) => {
+        map.set(competence.id, competence.text);
+      });
+    });
+    return map;
+  }
+
+  normalizeExpectationHorizonInsertedText(text, options = {}) {
+    const normalized = String(text ?? "").replace(/[ \t]*(?:\r\n?|\n)[ \t]*/g, " ").replace(/\s+/g, " ");
+    return options.trim === false ? normalized : normalized.trim();
+  }
+
+  flattenExpectationHorizonTaskPerformanceRuns(runs = []) {
+    const result = [];
+    (Array.isArray(runs) ? runs : []).forEach((run) => {
+      const item = run && typeof run === "object" ? run : {};
+      let text = this.normalizeExpectationHorizonInsertedText(item.text, { trim: false });
+      if (!text.trim()) {
+        return;
+      }
+      const previous = result[result.length - 1];
+      const needsInsertedSpace = Boolean(
+        previous
+        && item.paragraphBreak === true
+        && !previous.list
+        && !item.list
+        && !/\s$/.test(previous.text)
+        && !/^\s/.test(text)
+        && !/[\[({/]$/.test(previous.text)
+        && !/^[,.;:!?)]/.test(text)
+      );
+      if (needsInsertedSpace && previous.math && !item.math) {
+        text = ` ${text}`;
+      } else if (needsInsertedSpace) {
+        previous.text += " ";
+      }
+      result.push({
+        ...item,
+        text,
+        paragraphBreak: false
+      });
+    });
+    while (result.length && !String(result[0]?.text || "").trim()) {
+      result.shift();
+    }
+    if (result.length && !result[0].math) {
+      result[0].text = String(result[0].text || "").replace(/^\s+/, "");
+    }
+    while (result.length && !String(result[result.length - 1]?.text || "").trim()) {
+      result.pop();
+    }
+    if (result.length && !result[result.length - 1].math) {
+      const last = result[result.length - 1];
+      last.text = String(last.text || "").replace(/\s+$/, "");
+    }
+    return result;
+  }
+
+  getGradeTestTaskAssignedCompetenceTexts(task, expectations = []) {
+    const textById = this.getGradeCompetenceTextById(expectations);
+    const selected = normalizeGradeTaskCompetenceExpectationIds(task?.competenceExpectationIds, expectations)
+      .map((id) => textById.get(id))
+      .filter(Boolean);
+    const custom = String(task?.customCompetenceText || "").trim();
+    if (custom) {
+      selected.push(custom);
+    }
+    return selected;
+  }
+
+  buildExpectationHorizonTaskPerformanceValue(baseValue, competenceTexts = []) {
+    const texts = (Array.isArray(competenceTexts) ? competenceTexts : [])
+      .map((text) => this.normalizeExpectationHorizonInsertedText(text))
+      .filter(Boolean);
+    const baseIsRichText = baseValue && typeof baseValue === "object" && Array.isArray(baseValue.runs);
+    const runs = [];
+    if (baseIsRichText) {
+      runs.push(...this.flattenExpectationHorizonTaskPerformanceRuns(baseValue.runs));
+    } else {
+      const text = this.normalizeExpectationHorizonInsertedText(baseValue);
+      if (text) {
+        runs.push({ text });
+      }
+    }
+    if (!texts.length) {
+      if (baseIsRichText) {
+        return { runs };
+      }
+      return runs[0]?.text || "";
+    }
+    runs.push({
+      text: "Kompetenzen:",
+      bold: true,
+      paragraphBreak: runs.length > 0
+    });
+    texts.forEach((text) => {
+      runs.push({
+        text,
+        list: "hyphenBullet",
+        listLevel: 0
+      });
+    });
+    return { runs };
+  }
+
   sanitizeExpectationHorizonFileName(name, fallback = "Schueler") {
     const normalized = String(name || "")
       .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
@@ -23191,6 +24640,7 @@ class PlannerApp {
   buildExpectationHorizonStudentRecords(context, options = {}) {
     const values = context.values || {};
     const courseLevelPlaceholder = String(options.courseLevelPlaceholder || "");
+    const includeExpectedPerformanceCompetences = options.includeExpectedPerformanceCompetences !== false;
     const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
     const scale = normalizeGradeTestScale(values.testScale);
     const scaleSnapshot = values.testScaleSnapshot
@@ -23209,6 +24659,13 @@ class PlannerApp {
     const be1ColumnValues = tasks.map((task) => (
       task.maxBe !== null && task.maxBe !== undefined ? formatGradeBeValue(task.maxBe) : ""
     ));
+    const competenceExpectations = normalizeGradeCompetenceExpectations(values.competenceExpectations);
+    const expectedPerformanceColumnValues = includeExpectedPerformanceCompetences
+      ? tasks.map((task) => this.buildExpectationHorizonTaskPerformanceValue(
+        "",
+        this.getGradeTestTaskAssignedCompetenceTexts(task, competenceExpectations)
+      ))
+      : [];
     const maxBeSum = tasks
       .filter((task) => Number(task.maxBe || 0) > 0)
       .reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
@@ -23218,8 +24675,8 @@ class PlannerApp {
         ? this.store.getGradeEntry(student.id, context.assessment.id)
         : (
           context.draft
-          && typeof context.draft.entries === "object"
-          && Object.prototype.hasOwnProperty.call(context.draft.entries, student.id)
+            && typeof context.draft.entries === "object"
+            && Object.prototype.hasOwnProperty.call(context.draft.entries, student.id)
             ? normalizeGradeDraftEntry(context.draft.entries[student.id])
             : null
         );
@@ -23272,27 +24729,33 @@ class PlannerApp {
             header: "BE2",
             values: be2ColumnValues
           }
-        ]
+        ].concat(includeExpectedPerformanceCompetences ? [{
+          header: "Erwartete Prüfungsleistungen",
+          values: expectedPerformanceColumnValues
+        }] : [])
       };
     });
     return this.makeUniqueExpectationHorizonFileNames(records);
   }
 
-  async downloadExpectationHorizonFiles(files) {
-    for (const file of files) {
-      const blob = new Blob([file.data], {
-        type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      });
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = url;
-      anchor.download = file.name;
-      document.body.append(anchor);
-      anchor.click();
-      anchor.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 3000);
-      await new Promise((resolve) => window.setTimeout(resolve, 180));
-    }
+  buildExpectationHorizonZipFileName(context) {
+    const courseName = this.sanitizeExpectationHorizonFileName(context?.course?.name || "Kurs", "Kurs");
+    const topic = this.sanitizeExpectationHorizonFileName(
+      normalizeGradeAssessmentTopic(context?.values?.topic) || "Thema",
+      "Thema"
+    );
+    return this.sanitizeExpectationHorizonFileName(
+      `Erwartungshorizonte - ${courseName} - ${topic}`,
+      "Erwartungshorizonte"
+    ) + ".zip";
+  }
+
+  downloadExpectationHorizonZip(files, fileName = "Erwartungshorizonte.zip") {
+    const archive = createZipArchive(files.map((file) => ({
+      name: file.name,
+      data: file.data
+    })));
+    this.downloadBytes(archive, fileName, "application/zip");
   }
 
   async generateExpectationHorizons() {
@@ -23317,26 +24780,40 @@ class PlannerApp {
     this.syncExpectationHorizonGenerateState();
     this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
     try {
+      await this.yieldToBrowser();
       const templateKind = this.getExpectationHorizonTemplateKindForValues(context.values || {});
       this.expectationHorizonDialogTemplateKind = templateKind;
       const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes(templateKind);
+      const preparedTemplate = await prepareDocxTemplate(templateBytes);
       const courseLevelPlaceholder = this.expectationHorizonTemplateFile
         ? ""
         : this.getExpectationHorizonCourseLevelPlaceholderValue(context.values || {}, templateKind);
-      const records = this.buildExpectationHorizonStudentRecords(context, { courseLevelPlaceholder });
+      const records = this.buildExpectationHorizonStudentRecords(context, {
+        courseLevelPlaceholder,
+        includeExpectedPerformanceCompetences: !this.expectationHorizonTemplateFile
+      });
       if (!records.length) {
         this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");
         return;
       }
       const files = [];
-      for (const record of records) {
-        const data = await createDocxFromTemplate(templateBytes, record.replacements, {
-          tableColumnReplacements: record.tableColumnReplacements
-        });
-        files.push({ name: record.fileName, data });
+      const batchSize = 2;
+      for (let index = 0; index < records.length; index += batchSize) {
+        const batch = records.slice(index, index + batchSize);
+        const batchFiles = await Promise.all(batch.map(async (record) => ({
+          name: record.fileName,
+          data: await createDocxFromPreparedTemplate(preparedTemplate, record.replacements, {
+            tableColumnReplacements: record.tableColumnReplacements
+          })
+        })));
+        files.push(...batchFiles);
+        this.setExpectationHorizonStatus(`Erzeuge DOCX-Dateien... ${files.length}/${records.length}`);
+        await this.yieldToBrowser();
       }
-      await this.downloadExpectationHorizonFiles(files);
-      this.setExpectationHorizonStatus(`${files.length} DOCX-Dateien als Downloads gestartet.`, "success");
+      this.setExpectationHorizonStatus("Packe ZIP-Datei...");
+      await this.yieldToBrowser();
+      this.downloadExpectationHorizonZip(files, this.buildExpectationHorizonZipFileName(context));
+      this.setExpectationHorizonStatus(`${files.length} DOCX-Dateien als ZIP-Download gestartet.`, "success");
       this.expectationHorizonGenerating = false;
       this.syncExpectationHorizonGenerateState();
       this.closeExpectationHorizonDialog();
@@ -23349,6 +24826,66 @@ class PlannerApp {
       if (this.expectationHorizonGenerating) {
         this.expectationHorizonGenerating = false;
         this.syncExpectationHorizonGenerateState();
+      }
+    }
+  }
+
+  async generateCompetenceExpectations() {
+    if (this.competenceExpectationsGenerating) {
+      return;
+    }
+    if (!isDocxZipSupported()) {
+      this.setCompetenceExpectationsStatus("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.", "error");
+      return;
+    }
+    if (!this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+      this.setCompetenceExpectationsStatus("Bitte zuerst die markierten BE-Eingaben korrigieren.", "error");
+      return;
+    }
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      this.setCompetenceExpectationsStatus(context.reason || "Kompetenzerwartung kann hier nicht erzeugt werden.", "error");
+      this.updateSidebarCompetenceExpectationsButtonState();
+      return;
+    }
+    const dialogItems = this.readCompetenceExpectationsDialogItems();
+    if (!dialogItems.ok) {
+      this.setCompetenceExpectationsStatus(dialogItems.message, "error");
+      return;
+    }
+    this.saveCompetenceExpectationsForCurrentGradeTest(dialogItems.items);
+    context.values = {
+      ...(context.values || {}),
+      competenceExpectations: dialogItems.items
+    };
+    this.competenceExpectationsGenerating = true;
+    this.syncCompetenceExpectationsGenerateState();
+    this.setCompetenceExpectationsStatus("Erzeuge DOCX-Datei...");
+    try {
+      await this.yieldToBrowser();
+      const templateBytes = await this.loadBuiltInCompetenceExpectationsTemplateBytes();
+      const preparedTemplate = await prepareDocxTemplate(templateBytes);
+      const data = await createDocxFromPreparedTemplate(
+        preparedTemplate,
+        this.buildCompetenceExpectationsReplacements(context, dialogItems.items)
+      );
+      this.downloadExpectationHorizonTemplateBytes(
+        data,
+        this.buildCompetenceExpectationsFileName(context) || COMPETENCE_EXPECTATIONS_FILE_NAME
+      );
+      this.setCompetenceExpectationsStatus("DOCX-Datei als Download gestartet.", "success");
+      this.competenceExpectationsGenerating = false;
+      this.syncCompetenceExpectationsGenerateState();
+      this.closeCompetenceExpectationsDialog();
+    } catch (error) {
+      this.setCompetenceExpectationsStatus(
+        error instanceof Error && error.message ? error.message : "Kompetenzerwartung konnte nicht erzeugt werden.",
+        "error"
+      );
+    } finally {
+      if (this.competenceExpectationsGenerating) {
+        this.competenceExpectationsGenerating = false;
+        this.syncCompetenceExpectationsGenerateState();
       }
     }
   }
@@ -24509,7 +26046,7 @@ class PlannerApp {
       this.focusGradeAssessmentInput(activeAssessmentId, 0, activeStudentId);
       return;
     }
-    const input = this.refs.gradesEntryContent?.querySelector("input[data-grade-input='1']:not(:disabled)");
+    const input = this.refs.gradesEntryContent?.querySelector("input[data-grade-input='1']:not([data-grade-test-score='1']):not(:disabled)");
     if (!(input instanceof HTMLInputElement)) {
       return;
     }
@@ -24517,6 +26054,10 @@ class PlannerApp {
   }
 
   shouldSuppressGradesEntryInitialFocus(assessmentId = null) {
+    const visibleModeInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked");
+    if (visibleModeInput && normalizeGradeAssessmentMode(visibleModeInput.value) === "test") {
+      return true;
+    }
     const explicitAssessmentId = Number(assessmentId || 0);
     if (explicitAssessmentId) {
       const assessment = this.store.getGradeAssessment(explicitAssessmentId);
@@ -26335,6 +27876,10 @@ class PlannerApp {
       const taskLabel = `Aufgabe ${index + 1}`;
       const hasTaskMaxBe = Number(task.maxBe || 0) > 0;
       const hasDeficitFollowUp = task.deficitDiagnosisFollowUp === true;
+      const hasTaskCompetences = (
+        normalizeGradeTaskCompetenceExpectationIds(task.competenceExpectationIds).length > 0
+        || String(task.customCompetenceText || "").trim()
+      );
       const taskHead = document.createElement("th");
       taskHead.className = "grade-test-task-col";
       taskHead.innerHTML = `
@@ -26351,6 +27896,7 @@ class PlannerApp {
                     </select>
                   </label>
                   <button type="button" class="ghost grade-test-task-deficit-followup${hasDeficitFollowUp ? " is-active" : ""}" data-grade-test-deficit-followup="1" data-task-id="${escapeHtml(task.id)}" aria-label="Nachbereitung bei Defizitdiagnose fuer ${escapeHtml(taskLabel)}" aria-pressed="${hasDeficitFollowUp ? "true" : "false"}" title="Nachbereitung bei Defizitdiagnose">🛠️</button>
+                  <button type="button" class="ghost grade-test-task-competence${hasTaskCompetences ? " has-competences" : ""}" data-grade-test-competence="1" data-task-id="${escapeHtml(task.id)}" aria-label="Kompetenzen zuordnen fuer ${escapeHtml(taskLabel)}" title="Kompetenzen zuordnen">💪</button>
                   <button type="button" class="ghost danger-action grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
                 </div>
               `;
@@ -26596,10 +28142,19 @@ class PlannerApp {
         ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(testScale))
         : getDefaultGradeTestPredicateSuffixes(testScale),
       testTasks: normalizeGradeTestTasks(previous.testTasks, { ensureDefault: false }),
+      competenceExpectations: normalizeGradeAssessmentMode(previous.mode) === "test"
+        ? normalizeGradeCompetenceExpectations(previous.competenceExpectations)
+        : [],
+      expectationHorizonTemplateFile: normalizeGradeAssessmentMode(previous.mode) === "test"
+        ? normalizeGradeAssessmentExpectationHorizonTemplateFile(previous.expectationHorizonTemplateFile)
+        : null,
       yearLevel: normalizeGradeAssessmentYearLevel(previous.yearLevel),
       courseLevel: normalizeGradeAssessmentCourseLevel(previous.courseLevel, previous.yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(previous.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(previous.topic),
+      examDurationMinutes: normalizeGradeAssessmentMode(previous.mode) === "test"
+        ? normalizeGradeAssessmentExamDurationMinutes(previous.examDurationMinutes)
+        : null,
       categoryId,
       subcategoryId,
       entries
@@ -26690,10 +28245,13 @@ class PlannerApp {
         getDefaultGradeTestPredicateSuffixes(values?.testScale)
       ),
       testTasks: normalizeGradeTestTasks(values?.testTasks, { ensureDefault: false }),
+      competenceExpectations: mode === "test" ? normalizeGradeCompetenceExpectations(values?.competenceExpectations) : [],
+      expectationHorizonTemplateFile: mode === "test" ? normalizeGradeAssessmentExpectationHorizonTemplateFile(values?.expectationHorizonTemplateFile) : null,
       yearLevel,
       courseLevel: mode === "test" ? normalizeGradeAssessmentCourseLevel(values?.courseLevel, yearLevel) : "",
       assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(values?.assessmentNumber) : null,
       topic: mode === "test" ? normalizeGradeAssessmentTopic(values?.topic) : "",
+      examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(values?.examDurationMinutes) : null,
       categoryId,
       subcategoryId,
       maxPoints: 15
@@ -26721,6 +28279,7 @@ class PlannerApp {
     const courseLevelInput = root.querySelector("input[data-grades-entry-course-level='1']:checked");
     const assessmentNumberInput = root.querySelector("input[data-grades-entry-number]");
     const topicInput = root.querySelector("input[data-grades-entry-topic]");
+    const examDurationInput = root.querySelector("input[data-grades-entry-exam-duration]");
     const categorySelect = root.querySelector("select[data-grades-entry-category]");
     const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
     const taskInputById = new Map(
@@ -26743,10 +28302,10 @@ class PlannerApp {
     const testTasks = normalizeGradeTestTasks(draft.testTasks, { ensureDefault: false }).map((task) => (
       taskInputById.has(task.id) || taskAfbById.has(task.id)
         ? {
-            ...task,
-            maxBe: taskInputById.has(task.id) ? taskInputById.get(task.id) : task.maxBe,
-            afb: taskAfbById.has(task.id) ? taskAfbById.get(task.id) : task.afb
-          }
+          ...task,
+          maxBe: taskInputById.has(task.id) ? taskInputById.get(task.id) : task.maxBe,
+          afb: taskAfbById.has(task.id) ? taskAfbById.get(task.id) : task.afb
+        }
         : task
     ));
     const yearLevel = normalizeGradeAssessmentYearLevel(yearLevelSelect?.value ?? draft.yearLevel);
@@ -26764,10 +28323,19 @@ class PlannerApp {
           : getDefaultGradeTestPredicateSuffixes(testScaleInput?.value || draft.testScale)
       ),
       testTasks,
+      competenceExpectations: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade") === "test"
+        ? normalizeGradeCompetenceExpectations(draft.competenceExpectations)
+        : [],
+      expectationHorizonTemplateFile: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade") === "test"
+        ? normalizeGradeAssessmentExpectationHorizonTemplateFile(draft.expectationHorizonTemplateFile)
+        : null,
       yearLevel,
       courseLevel: normalizeGradeAssessmentCourseLevel(courseLevelInput?.value ?? draft.courseLevel, yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(assessmentNumberInput?.value ?? draft.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(topicInput?.value ?? draft.topic),
+      examDurationMinutes: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade") === "test"
+        ? normalizeGradeAssessmentExamDurationMinutes(examDurationInput?.value ?? draft.examDurationMinutes)
+        : null,
       categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
       subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
     };
@@ -30219,6 +31787,120 @@ class PlannerApp {
     this.focusVerticalGradeInput(input, 1, navigationSnapshot);
   }
 
+  getSegmentControlSelector() {
+    return [
+      ".schoolmanager-transfer-segment-control",
+      ".sidebar-grade-segment-control",
+      ".assessment-mode-toggle",
+      ".grades-entry-distribution-toggle",
+      ".course-dialog-structure-period-toggle"
+    ].join(",");
+  }
+
+  getSegmentControlKey(control, fallbackIndex = 0) {
+    const checkedInput = control?.querySelector("input[type='radio']:checked");
+    const firstInput = control?.querySelector("input[type='radio']");
+    const name = checkedInput?.name || firstInput?.name || "";
+    if (name) {
+      return `name:${name}`;
+    }
+    if (control?.id) {
+      return `id:${control.id}`;
+    }
+    const label = control?.getAttribute("aria-label") || "";
+    return `control:${label}:${fallbackIndex}`;
+  }
+
+  applySegmentControlIndexClass(control, index) {
+    if (!control) {
+      return;
+    }
+    control.classList.remove("is-segment-index-0", "is-segment-index-1", "is-segment-index-2");
+    if (index >= 0) {
+      control.classList.add(`is-segment-index-${Math.min(index, 2)}`);
+    }
+  }
+
+  applySegmentControlIndexClassSilently(control, index) {
+    if (!control) {
+      return;
+    }
+    control.classList.add("is-segment-syncing");
+    this.applySegmentControlIndexClass(control, index);
+    control.getBoundingClientRect();
+    requestAnimationFrame(() => {
+      control.classList.remove("is-segment-syncing");
+    });
+  }
+
+  getSegmentControlCheckedIndex(control) {
+    const inputs = [...(control?.querySelectorAll("input[type='radio']") || [])];
+    const index = inputs.findIndex((input) => input.checked);
+    return index >= 0 ? index : 0;
+  }
+
+  syncSegmentControlSlideStates(root = document, { animateFromPrevious = false } = {}) {
+    if (!root || !this.segmentControlSlidePositions) {
+      return;
+    }
+    const selector = this.getSegmentControlSelector();
+    const controls = root.matches?.(selector) ? [root] : [...root.querySelectorAll(selector)];
+    controls.forEach((control, fallbackIndex) => {
+      const nextIndex = this.getSegmentControlCheckedIndex(control);
+      const key = this.getSegmentControlKey(control, fallbackIndex);
+      const pendingPreviousIndex = this.pendingSegmentControlSlidePreviousPositions?.get(key);
+      const hasPendingAnimation = Number.isInteger(pendingPreviousIndex);
+      const previousIndex = hasPendingAnimation ? pendingPreviousIndex : null;
+      this.pendingSegmentControlSlidePreviousPositions?.delete(key);
+      if (animateFromPrevious && hasPendingAnimation && previousIndex !== nextIndex) {
+        this.applySegmentControlIndexClass(control, previousIndex);
+        control.getBoundingClientRect();
+        requestAnimationFrame(() => {
+          this.applySegmentControlIndexClass(control, nextIndex);
+        });
+      } else {
+        this.applySegmentControlIndexClassSilently(control, nextIndex);
+      }
+      this.segmentControlSlidePositions.set(key, nextIndex);
+    });
+  }
+
+  handleSegmentControlSlideChange(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    const selector = this.getSegmentControlSelector();
+    const control = target?.closest(selector);
+    if (!control) {
+      return;
+    }
+    const index = this.getSegmentControlCheckedIndex(control);
+    const key = this.getSegmentControlKey(control);
+    const previousIndex = this.segmentControlSlidePositions.get(key);
+    if (Number.isInteger(previousIndex) && previousIndex !== index) {
+      this.pendingSegmentControlSlidePreviousPositions?.set(key, previousIndex);
+    }
+    this.applySegmentControlIndexClass(control, index);
+    this.segmentControlSlidePositions.set(key, index);
+  }
+
+  runAfterSegmentControlSlide(event, callback) {
+    const target = event?.target instanceof Element ? event.target : null;
+    const control = target?.closest(this.getSegmentControlSelector());
+    const prefersReducedMotion = typeof window !== "undefined"
+      && typeof window.matchMedia === "function"
+      && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!control || prefersReducedMotion) {
+      callback();
+      return;
+    }
+    const key = this.getSegmentControlKey(control);
+    const index = this.getSegmentControlCheckedIndex(control);
+    window.setTimeout(() => {
+      this.pendingSegmentControlSlidePreviousPositions?.delete(key);
+      this.segmentControlSlidePositions?.set(key, index);
+      callback();
+    }, 330);
+  }
+
   renderAll({ visibleOnly = false } = {}) {
     this.hideContextMenu();
     this.renderSchoolYearSelect();
@@ -30267,6 +31949,7 @@ class PlannerApp {
     this.syncSlotEditTools();
     this.updateWeekNavigation();
     this.syncAllNumberSteppers();
+    this.syncSegmentControlSlideStates(document, { animateFromPrevious: true });
     this.queuePlanningReadySignal();
   }
 
@@ -31539,6 +33222,7 @@ class PlannerApp {
     this.updateSidebarGradePrintButtonState();
     this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
+    this.updateSidebarCompetenceExpectationsButtonState();
     this.updateSidebarGradeSimulationButtonState();
     this.renderSidebarFooterActions();
     if (this.refs.mainPane) {
@@ -32084,6 +33768,7 @@ class PlannerApp {
       .forEach((input) => {
         input.checked = input.value === period;
       });
+    this.syncSegmentControlSlideStates(this.refs.settingsGradeStructurePeriodToggle, { animateFromPrevious: true });
     if (this.refs.settingsGradeStructureCopyH1ToH2) {
       this.refs.settingsGradeStructureCopyH1ToH2.hidden = period !== "h2";
     }
@@ -32177,7 +33862,9 @@ class PlannerApp {
       return;
     }
     this.settingsDefaultGradeStructurePeriod = normalizeGradeHalfYear(input.value);
-    this.renderDefaultGradeStructureSettingsSection();
+    this.runAfterSegmentControlSlide(event, () => {
+      this.renderDefaultGradeStructureSettingsSection();
+    });
   }
 
   copyDefaultGradeStructureH1ToH2() {

@@ -16,6 +16,7 @@ const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8");
 
 let crcTable = null;
+const preparedTemplateCache = new WeakMap();
 
 function getCrcTable() {
   if (crcTable) {
@@ -214,6 +215,17 @@ function getChildElementsByLocalName(element, localName) {
     .filter((child) => child.localName === localName);
 }
 
+function getAncestorByLocalName(element, localName) {
+  let node = element?.parentNode || null;
+  while (node) {
+    if (node.localName === localName) {
+      return node;
+    }
+    node = node.parentNode;
+  }
+  return null;
+}
+
 function getWordElementText(element) {
   return getWordTextElements(element)
     .map((textElement) => textElement.textContent || "")
@@ -277,31 +289,34 @@ function appendHyphenBulletNumberingDefinition(doc) {
   abstractNum.setAttributeNS(namespace, "w:abstractNumId", String(Math.max(0, abstractNumId)));
 
   const multiLevelType = doc.createElementNS(namespace, "w:multiLevelType");
-  multiLevelType.setAttributeNS(namespace, "w:val", "singleLevel");
+  multiLevelType.setAttributeNS(namespace, "w:val", "multilevel");
   abstractNum.append(multiLevelType);
 
-  const level = doc.createElementNS(namespace, "w:lvl");
-  level.setAttributeNS(namespace, "w:ilvl", "0");
-  const start = doc.createElementNS(namespace, "w:start");
-  start.setAttributeNS(namespace, "w:val", "1");
-  const numFmt = doc.createElementNS(namespace, "w:numFmt");
-  numFmt.setAttributeNS(namespace, "w:val", "bullet");
-  const lvlText = doc.createElementNS(namespace, "w:lvlText");
-  lvlText.setAttributeNS(namespace, "w:val", "-");
-  const suffix = doc.createElementNS(namespace, "w:suff");
-  suffix.setAttributeNS(namespace, "w:val", "tab");
-  const pPr = doc.createElementNS(namespace, "w:pPr");
-  const tabs = doc.createElementNS(namespace, "w:tabs");
-  const tab = doc.createElementNS(namespace, "w:tab");
-  tab.setAttributeNS(namespace, "w:val", "num");
-  tab.setAttributeNS(namespace, "w:pos", "340");
-  tabs.append(tab);
-  const indent = doc.createElementNS(namespace, "w:ind");
-  indent.setAttributeNS(namespace, "w:left", "340");
-  indent.setAttributeNS(namespace, "w:hanging", "283");
-  pPr.append(tabs, indent);
-  level.append(start, numFmt, lvlText, suffix, pPr);
-  abstractNum.append(level);
+  [0, 1].forEach((listLevel) => {
+    const left = listLevel === 0 ? 340 : 750;
+    const level = doc.createElementNS(namespace, "w:lvl");
+    level.setAttributeNS(namespace, "w:ilvl", String(listLevel));
+    const start = doc.createElementNS(namespace, "w:start");
+    start.setAttributeNS(namespace, "w:val", "1");
+    const numFmt = doc.createElementNS(namespace, "w:numFmt");
+    numFmt.setAttributeNS(namespace, "w:val", "bullet");
+    const lvlText = doc.createElementNS(namespace, "w:lvlText");
+    lvlText.setAttributeNS(namespace, "w:val", "-");
+    const suffix = doc.createElementNS(namespace, "w:suff");
+    suffix.setAttributeNS(namespace, "w:val", "tab");
+    const pPr = doc.createElementNS(namespace, "w:pPr");
+    const tabs = doc.createElementNS(namespace, "w:tabs");
+    const tab = doc.createElementNS(namespace, "w:tab");
+    tab.setAttributeNS(namespace, "w:val", "num");
+    tab.setAttributeNS(namespace, "w:pos", String(left));
+    tabs.append(tab);
+    const indent = doc.createElementNS(namespace, "w:ind");
+    indent.setAttributeNS(namespace, "w:left", String(left));
+    indent.setAttributeNS(namespace, "w:hanging", "283");
+    pPr.append(tabs, indent);
+    level.append(start, numFmt, lvlText, suffix, pPr);
+    abstractNum.append(level);
+  });
 
   const num = doc.createElementNS(namespace, "w:num");
   num.setAttributeNS(namespace, "w:numId", String(Math.max(1, numId)));
@@ -370,11 +385,15 @@ function ensureNumberingDocumentRelationship(entries) {
 
 function richTextReplacementsNeedHyphenBulletNumbering(replacements) {
   return replacements.some((replacement) => (
-    replacement.values.some((value) => (
-      isWordRichTextValue(value)
-      && value.runs.some((run) => run.list === "hyphenBullet")
-    ))
+    replacement.values.some(wordRichTextValueNeedsHyphenBulletNumbering)
   ));
+}
+
+function wordRichTextValueNeedsHyphenBulletNumbering(value) {
+  return Boolean(
+    isWordRichTextValue(value)
+    && value.runs.some((run) => run.list === "hyphenBullet")
+  );
 }
 
 function ensureHyphenBulletNumbering(entries) {
@@ -418,6 +437,10 @@ function isWordRichTextValue(value) {
   return value && typeof value === "object" && Array.isArray(value.runs);
 }
 
+function normalizeWordRichTextText(value) {
+  return String(value ?? "").replace(/[ \t]*(?:\r\n?|\n)[ \t]*/g, " ");
+}
+
 function normalizeWordRichTextRuns(value) {
   if (!isWordRichTextValue(value)) {
     return null;
@@ -426,14 +449,21 @@ function normalizeWordRichTextRuns(value) {
     .map((run) => {
       const item = run && typeof run === "object" ? run : {};
       return {
-        text: String(item.text ?? ""),
+        text: normalizeWordRichTextText(item.text),
+        bold: item.bold === true,
         italic: item.italic === true,
         math: item.math === true,
         paragraphBreak: item.paragraphBreak === true,
-        list: item.list === "hyphenBullet" ? "hyphenBullet" : ""
+        list: item.list === "hyphenBullet" ? "hyphenBullet" : "",
+        listLevel: clampWordListLevel(item.listLevel)
       };
     })
     .filter((run) => run.text.length > 0);
+}
+
+function clampWordListLevel(value) {
+  const number = Math.round(Number(value || 0));
+  return Number.isFinite(number) ? Math.max(0, Math.min(8, number)) : 0;
 }
 
 function setWordTextPreserveSpace(textElement, text) {
@@ -447,11 +477,16 @@ function createMathElement(doc, localName) {
   return doc.createElementNS(MATH_NAMESPACE, `m:${localName}`);
 }
 
-function appendMathText(doc, parent, text) {
+function appendMathText(doc, parent, text, options = {}) {
   if (String(text ?? "") === "") {
     return;
   }
   const run = createMathElement(doc, "r");
+  if (options.normal === true) {
+    const properties = createMathElement(doc, "rPr");
+    properties.append(createMathElement(doc, "nor"));
+    run.append(properties);
+  }
   const textElement = createMathElement(doc, "t");
   setWordTextPreserveSpace(textElement, text);
   run.append(textElement);
@@ -485,10 +520,47 @@ function normalizeLatexMathCommand(command) {
     degree: "°",
     cdots: "⋯",
     ldots: "…",
+    quad: " ",
+    qquad: "  ",
     left: "",
     right: ""
   };
-  return Object.prototype.hasOwnProperty.call(symbols, command) ? symbols[command] : command;
+  const operators = new Set(["sin", "cos", "tan", "ln", "log", "lim", "max", "min", "exp"]);
+  if (Object.prototype.hasOwnProperty.call(symbols, command)) {
+    return symbols[command];
+  }
+  if (operators.has(command)) {
+    return command;
+  }
+  return command ? `\\${command}` : "";
+}
+
+function normalizeLatexMathEscapedCharacter(char) {
+  if (char === "," || char === ":" || char === ";") {
+    return " ";
+  }
+  if (char === "!") {
+    return "";
+  }
+  const escapedSymbols = {
+    "%": "%",
+    "$": "$",
+    "#": "#",
+    "&": "&",
+    "_": "_",
+    "{": "{",
+    "}": "}",
+    "\\": "\\"
+  };
+  return Object.prototype.hasOwnProperty.call(escapedSymbols, char) ? escapedSymbols[char] : char;
+}
+
+function normalizeLatexMathTextGroup(value) {
+  return String(value ?? "")
+    .replace(/\\([,;:])/g, " ")
+    .replace(/\\!/g, "")
+    .replace(/\\([%$#&_{}\\])/g, (_match, char) => normalizeLatexMathEscapedCharacter(char))
+    .replace(/\s+/g, " ");
 }
 
 function createLatexMathParser(source) {
@@ -533,6 +605,40 @@ function createLatexMathParser(source) {
       this.index += 1;
       return this.parseSequence("]");
     },
+    readRequiredGroupText() {
+      this.skipSpaces();
+      if (text[this.index] !== "{") {
+        return "";
+      }
+      this.index += 1;
+      let depth = 1;
+      let result = "";
+      while (this.index < text.length && depth > 0) {
+        const char = text[this.index];
+        if (char === "\\" && this.index + 1 < text.length) {
+          result += text.slice(this.index, this.index + 2);
+          this.index += 2;
+          continue;
+        }
+        if (char === "{") {
+          depth += 1;
+          result += char;
+          this.index += 1;
+          continue;
+        }
+        if (char === "}") {
+          depth -= 1;
+          if (depth > 0) {
+            result += char;
+          }
+          this.index += 1;
+          continue;
+        }
+        result += char;
+        this.index += 1;
+      }
+      return normalizeLatexMathTextGroup(result);
+    },
     parseCommand() {
       this.index += 1;
       const start = this.index;
@@ -542,7 +648,7 @@ function createLatexMathParser(source) {
       if (start === this.index && this.index < text.length) {
         const char = text[this.index];
         this.index += 1;
-        return { type: "text", text: char };
+        return { type: "text", text: normalizeLatexMathEscapedCharacter(char) };
       }
       const command = text.slice(start, this.index);
       if (command === "frac") {
@@ -551,6 +657,9 @@ function createLatexMathParser(source) {
       if (command === "sqrt") {
         const degree = this.parseOptionalGroup();
         return { type: "sqrt", degree, value: this.parseGroup() };
+      }
+      if (command === "text" || command === "mathrm" || command === "operatorname") {
+        return { type: "text", text: this.readRequiredGroupText(), normal: true };
       }
       return { type: "text", text: normalizeLatexMathCommand(command) };
     },
@@ -629,7 +738,7 @@ function appendMathNode(doc, parent, node) {
     return;
   }
   if (node.type === "text") {
-    appendMathText(doc, parent, node.text);
+    appendMathText(doc, parent, node.text, { normal: node.normal === true });
     return;
   }
   if (node.type === "group") {
@@ -697,9 +806,14 @@ function appendWordRichTextRun(doc, paragraph, run) {
   }
   const namespace = getWordNamespace(doc);
   const runElement = doc.createElementNS(namespace, "w:r");
-  if (run.italic) {
+  if (run.bold || run.italic) {
     const runProperties = doc.createElementNS(namespace, "w:rPr");
-    runProperties.append(doc.createElementNS(namespace, "w:i"));
+    if (run.bold) {
+      runProperties.append(doc.createElementNS(namespace, "w:b"));
+    }
+    if (run.italic) {
+      runProperties.append(doc.createElementNS(namespace, "w:i"));
+    }
     runElement.append(runProperties);
   }
   const lines = String(run.text ?? "").replace(/\r\n?/g, "\n").split("\n");
@@ -714,12 +828,27 @@ function appendWordRichTextRun(doc, paragraph, run) {
   paragraph.append(runElement);
 }
 
-function createWordParagraph(doc, baseParagraphProperties = null, list = "", richTextContext = null) {
+function applyWordRichTextParagraphSpacing(doc, properties) {
+  if (!properties) {
+    return;
+  }
+  const namespace = getWordNamespace(doc);
+  let spacing = getChildElementsByLocalName(properties, "spacing")[0] || null;
+  if (!spacing) {
+    spacing = doc.createElementNS(namespace, "w:spacing");
+    properties.append(spacing);
+  }
+  spacing.setAttributeNS(namespace, "w:line", "240");
+  spacing.setAttributeNS(namespace, "w:lineRule", "auto");
+}
+
+function createWordParagraph(doc, baseParagraphProperties = null, list = "", richTextContext = null, listLevel = 0) {
   const namespace = getWordNamespace(doc);
   const paragraph = doc.createElementNS(namespace, "w:p");
   const properties = baseParagraphProperties
     ? baseParagraphProperties.cloneNode(true)
     : doc.createElementNS(namespace, "w:pPr");
+  applyWordRichTextParagraphSpacing(doc, properties);
   if (list === "hyphenBullet") {
     Array.from(properties.children || []).forEach((child) => {
       if (child.localName === "numPr") {
@@ -728,7 +857,7 @@ function createWordParagraph(doc, baseParagraphProperties = null, list = "", ric
     });
     const numPr = doc.createElementNS(namespace, "w:numPr");
     const ilvl = doc.createElementNS(namespace, "w:ilvl");
-    ilvl.setAttributeNS(namespace, "w:val", "0");
+    ilvl.setAttributeNS(namespace, "w:val", String(clampWordListLevel(listLevel)));
     const numId = doc.createElementNS(namespace, "w:numId");
     numId.setAttributeNS(namespace, "w:val", String(richTextContext?.hyphenBulletNumId || 1));
     numPr.append(ilvl, numId);
@@ -754,27 +883,23 @@ function pushWordRichTextParagraph(paragraphs, paragraph) {
 
 function buildWordRichTextParagraphs(doc, runs, baseParagraphProperties, richTextContext) {
   const paragraphs = [];
-  let paragraph = createWordParagraph(doc, baseParagraphProperties, "", richTextContext);
+  let paragraph = createWordParagraph(doc, baseParagraphProperties, "", richTextContext, 0);
   const hasParagraphContent = () => getWordElementText(paragraph).length > 0;
-  const startParagraph = (list = "") => {
+  const startParagraph = (list = "", listLevel = 0) => {
     pushWordRichTextParagraph(paragraphs, paragraph);
-    paragraph = createWordParagraph(doc, baseParagraphProperties, list, richTextContext);
+    paragraph = createWordParagraph(doc, baseParagraphProperties, list, richTextContext, listLevel);
   };
   runs.forEach((run) => {
-    const lines = String(run.text ?? "").replace(/\r\n?/g, "\n").split("\n");
-    lines.forEach((line, lineIndex) => {
-      const wantsNewParagraph = run.paragraphBreak || lineIndex > 0;
-      if (wantsNewParagraph && hasParagraphContent()) {
-        startParagraph(run.list || "");
-      } else if (run.list === "hyphenBullet" && hasParagraphContent()) {
-        startParagraph(run.list);
-      } else if (run.list === "hyphenBullet") {
-        paragraph = createWordParagraph(doc, baseParagraphProperties, run.list, richTextContext);
-      }
-      appendWordRichTextRun(doc, paragraph, {
-        ...run,
-        text: line
-      });
+    if (run.paragraphBreak && hasParagraphContent()) {
+      startParagraph(run.list || "", run.listLevel);
+    } else if (run.list === "hyphenBullet" && hasParagraphContent()) {
+      startParagraph(run.list, run.listLevel);
+    } else if (run.list === "hyphenBullet") {
+      paragraph = createWordParagraph(doc, baseParagraphProperties, run.list, richTextContext, run.listLevel);
+    }
+    appendWordRichTextRun(doc, paragraph, {
+      ...run,
+      text: normalizeWordRichTextText(run.text)
     });
   });
   pushWordRichTextParagraph(paragraphs, paragraph);
@@ -783,6 +908,33 @@ function buildWordRichTextParagraphs(doc, runs, baseParagraphProperties, richTex
 
 function wordRichTextNeedsParagraphs(runs) {
   return runs.some((run) => run.paragraphBreak || run.list);
+}
+
+function getWordRichTextPlainText(runs) {
+  return (Array.isArray(runs) ? runs : [])
+    .map((run) => String(run?.text ?? ""))
+    .join("");
+}
+
+function replacePlaceholderParagraphWithRichText(doc, textElement, value, richTextContext = null) {
+  const runs = normalizeWordRichTextRuns(value);
+  if (!runs || !runs.length) {
+    setWordTextElementText(doc, textElement, "");
+    return false;
+  }
+  const paragraph = getAncestorByLocalName(textElement, "p");
+  const parent = paragraph?.parentNode || null;
+  if (!paragraph || !parent || !wordRichTextNeedsParagraphs(runs)) {
+    setWordTextElementText(doc, textElement, getWordRichTextPlainText(runs));
+    return false;
+  }
+  const baseParagraphProperties = getChildElementsByLocalName(paragraph, "pPr")[0]?.cloneNode(true) || null;
+  const nextParagraphs = buildWordRichTextParagraphs(doc, runs, baseParagraphProperties, richTextContext);
+  nextParagraphs.forEach((nextParagraph) => {
+    parent.insertBefore(nextParagraph, paragraph);
+  });
+  parent.removeChild(paragraph);
+  return true;
 }
 
 function setWordCellRichText(doc, cell, value, richTextContext = null) {
@@ -1147,15 +1299,22 @@ function assertRequiredTableReplacementsApplied(stats) {
     });
 }
 
-function replacePlaceholderInTextElements(doc, textElements, placeholder, replacement) {
+function standardReplacementsNeedHyphenBulletNumbering(replacements = {}) {
+  return Object.values(replacements || {}).some(wordRichTextValueNeedsHyphenBulletNumbering);
+}
+
+function replacePlaceholderInTextElements(doc, textElements, placeholder, replacement, richTextContext = null) {
   const needle = String(placeholder || "");
   if (!needle) {
     return;
   }
-  const value = String(replacement ?? "");
+  const richTextReplacement = isWordRichTextValue(replacement);
+  const richTextRuns = richTextReplacement ? normalizeWordRichTextRuns(replacement) : null;
+  const value = richTextReplacement ? getWordRichTextPlainText(richTextRuns) : String(replacement ?? "");
+  let currentTextElements = textElements;
   while (true) {
     let combined = "";
-    const records = textElements.map((element) => {
+    const records = currentTextElements.map((element) => {
       const text = element.textContent || "";
       const start = combined.length;
       combined += text;
@@ -1170,6 +1329,10 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
     const last = records.find((record) => record.start < matchEnd && record.end >= matchEnd);
     if (!first || !last) {
       break;
+    }
+    if (richTextReplacement && replacePlaceholderParagraphWithRichText(doc, first.element, replacement, richTextContext)) {
+      currentTextElements = getWordTextElements(doc);
+      continue;
     }
     if (first === last) {
       const localStart = matchStart - first.start;
@@ -1203,7 +1366,13 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
 function replaceXmlPlaceholders(xml, replacements, options = {}) {
   const doc = parseXmlDocument(xml);
   Object.entries(replacements || {}).forEach(([placeholder, replacement]) => {
-    replacePlaceholderInTextElements(doc, getWordTextElements(doc), placeholder, replacement);
+    replacePlaceholderInTextElements(
+      doc,
+      getWordTextElements(doc),
+      placeholder,
+      replacement,
+      options.richTextContext || null
+    );
   });
   applyTableColumnReplacements(
     doc,
@@ -1224,12 +1393,31 @@ export function isDocxZipSupported() {
     && typeof DecompressionStream === "function";
 }
 
-export async function createDocxFromTemplate(templateBytes, replacements = {}, options = {}) {
-  const entries = await readZipEntries(templateBytes);
+export async function prepareDocxTemplate(templateBytes) {
+  const bytes = templateBytes instanceof Uint8Array ? templateBytes : new Uint8Array(templateBytes || []);
+  const cached = preparedTemplateCache.get(bytes);
+  if (cached) {
+    return cached;
+  }
+  const prepared = {
+    entries: await readZipEntries(bytes)
+  };
+  preparedTemplateCache.set(bytes, prepared);
+  return prepared;
+}
+
+export async function createDocxFromPreparedTemplate(preparedTemplate, replacements = {}, options = {}) {
+  const entries = (preparedTemplate?.entries || []).map((entry) => ({
+    ...entry,
+    data: entry.data instanceof Uint8Array ? entry.data : new Uint8Array(entry.data || [])
+  }));
   const tableColumnReplacements = normalizeTableColumnReplacements(options.tableColumnReplacements);
   const tableColumnReplacementStats = createTableReplacementStats(tableColumnReplacements);
   const richTextContext = {};
-  const sourceEntries = richTextReplacementsNeedHyphenBulletNumbering(tableColumnReplacements)
+  const sourceEntries = (
+    standardReplacementsNeedHyphenBulletNumbering(replacements)
+    || richTextReplacementsNeedHyphenBulletNumbering(tableColumnReplacements)
+  )
     ? (() => {
       const result = ensureHyphenBulletNumbering(entries);
       richTextContext.hyphenBulletNumId = result.numId;
@@ -1254,6 +1442,14 @@ export async function createDocxFromTemplate(templateBytes, replacements = {}, o
   });
   assertRequiredTableReplacementsApplied(tableColumnReplacementStats);
   return buildZip(nextEntries);
+}
+
+export async function createDocxFromTemplate(templateBytes, replacements = {}, options = {}) {
+  return createDocxFromPreparedTemplate(
+    await prepareDocxTemplate(templateBytes),
+    replacements,
+    options
+  );
 }
 
 export function createZipArchive(files = []) {

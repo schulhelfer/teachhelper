@@ -12,6 +12,7 @@ export function resolveWorkPhaseDom(doc = document) {
     workOrderHintOverlay: doc.getElementById('work-order-hint-overlay'),
     workOrderTextarea: doc.getElementById('work-order-text'),
     workOrderDurationInput: doc.getElementById('work-order-duration'),
+    workOrderDurationRange: doc.getElementById('work-order-duration-range'),
     workOrderDurationStepButtons: doc.querySelectorAll('[data-duration-step]'),
     timerPanel: doc.getElementById('timer-panel'),
     timerShell: doc.getElementById('timer-shell'),

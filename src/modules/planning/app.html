@@ -95,6 +95,20 @@
               </label>
             </div>
           </div>
+          <div id="sidebar-grade-competence-expectations-section" data-tutorial-anchor="grades-competence-expectations"
+            class="sidebar-grade-action-section sidebar-grade-action-section-competence-expectations">
+            <div class="sidebar-grade-action-title">Kompetenzerwartung</div>
+            <button id="sidebar-grade-competence-expectations-btn" class="sidebar-grade-expectation-btn" type="button"
+              aria-label="Kompetenzerwartung erzeugen" title="Kompetenzerwartung erzeugen" disabled><span
+                class="sidebar-grade-print-icon" aria-hidden="true">💪</span></button>
+          </div>
+          <div id="sidebar-grade-expectation-section" data-tutorial-anchor="grades-expectation"
+            class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
+            <div class="sidebar-grade-action-title">Erwartungshorizont</div>
+            <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
+              aria-label="Erwartungshorizont erzeugen" title="Erwartungshorizont erzeugen" disabled><span
+                class="sidebar-grade-print-icon" aria-hidden="true">🎯</span></button>
+          </div>
           <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print"
             data-tutorial-anchor="grades-print">
             <div class="sidebar-grade-action-title">Drucken</div>
@@ -103,13 +117,6 @@
               title="Spalten einklappen, um ihren Druck zu unterbinden" disabled>
               <span class="sidebar-grade-print-icon" aria-hidden="true">🖨️</span>
             </button>
-          </div>
-          <div id="sidebar-grade-expectation-section" data-tutorial-anchor="grades-expectation"
-            class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
-            <div class="sidebar-grade-action-title">Erwartungshorizont</div>
-            <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
-              aria-label="Erwartungshorizont erzeugen" title="Erwartungshorizont erzeugen" disabled><span
-                class="sidebar-grade-print-icon" aria-hidden="true">✨</span></button>
           </div>
           <div id="sidebar-grade-simulation-section" data-tutorial-anchor="grades-simulation"
             class="sidebar-grade-action-section sidebar-grade-action-section-simulation">
@@ -1059,6 +1066,12 @@
       <div class="dialog-header">
         <h3 id="expectation-horizon-dialog-title" class="dialog-title">Erwartungshorizont erstellen</h3>
         <div class="dialog-actions-top">
+          <button type="button" id="expectation-horizon-save" class="ghost dialog-icon-button"
+            aria-label="Speichern" title="Speichern">💾</button>
+          <button type="button" id="expectation-horizon-generate" class="ghost dialog-icon-button"
+            aria-label="Generieren" title="Generieren">✨</button>
+          <button type="button" id="expectation-horizon-template-download" class="ghost dialog-icon-button"
+            aria-label="Vorlage herunterladen" title="Vorlage herunterladen">📥</button>
           <button type="button" id="expectation-horizon-cancel-top" class="ghost dialog-icon-button"
             aria-label="Abbrechen" title="Abbrechen">❌</button>
         </div>
@@ -1079,11 +1092,56 @@
       </div>
       <div id="expectation-horizon-file-name" class="expectation-horizon-file-name" aria-live="polite"></div>
       <div id="expectation-horizon-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="competence-expectations-dialog" class="app-dialog competence-expectations-dialog"
+    aria-labelledby="competence-expectations-dialog-title">
+    <form id="competence-expectations-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="competence-expectations-dialog-title" class="dialog-title">Kompetenzerwartung erstellen</h3>
+        <div class="dialog-actions-top">
+          <button type="button" id="competence-expectations-save" class="ghost dialog-icon-button"
+            aria-label="Speichern" title="Speichern">💾</button>
+          <button type="button" id="competence-expectations-generate" class="ghost dialog-icon-button"
+            aria-label="Generieren" title="Generieren">✨</button>
+          <button type="button" id="competence-expectations-cancel-top" class="ghost dialog-icon-button"
+            aria-label="Abbrechen" title="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="competence-expectations-latex-file" class="visually-hidden" type="file"
+        accept=".tex,.ltx,.latex,text/plain,text/x-tex,application/x-tex">
+      <div class="expectation-horizon-dropzone-grid competence-expectations-import-grid">
+        <button id="competence-expectations-latex-dropzone" class="expectation-horizon-dropzone" type="button">
+          <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+          <span>Aus LaTeX-Datei Kompetenzerwartung übernehmen</span>
+        </button>
+      </div>
+      <div id="competence-expectations-list" class="competence-expectations-list"></div>
+      <div id="competence-expectations-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-task-competence-dialog" class="app-dialog grade-task-competence-dialog"
+    aria-labelledby="grade-task-competence-dialog-title">
+    <form id="grade-task-competence-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-task-competence-dialog-title" class="dialog-title">Kompetenzen zuordnen</h3>
+        <div class="dialog-actions-top">
+          <button type="button" id="grade-task-competence-cancel-top" class="ghost dialog-icon-button"
+            aria-label="Abbrechen" title="Abbrechen">❌</button>
+        </div>
+      </div>
+      <div id="grade-task-competence-list" class="grade-task-competence-list"></div>
+      <label class="grade-task-competence-custom">
+        <span>Eigene Kompetenz</span>
+        <input id="grade-task-competence-custom" type="text" autocomplete="off">
+      </label>
+      <div id="grade-task-competence-status" class="expectation-horizon-status" aria-live="polite"></div>
       <div class="button-row dialog-actions">
-        <button type="button" id="expectation-horizon-cancel" class="ghost">Abbrechen</button>
-        <button type="button" id="expectation-horizon-template-download" class="ghost">Vorlage herunterladen</button>
+        <button type="button" id="grade-task-competence-cancel" class="ghost">Abbrechen</button>
         <span class="dialog-grow"></span>
-        <button type="submit" id="expectation-horizon-generate">Generieren</button>
+        <button type="submit" id="grade-task-competence-save">Speichern</button>
       </div>
     </form>
   </dialog>
