@@ -1,5 +1,6 @@
 export function createDuplicateCheckApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([TUTORIAL_COMMAND_EVENT]);
   const JSZIP_URL = new URL('../../vendor/jszip/3.10.1/jszip.min.js', import.meta.url);
@@ -43,18 +44,51 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   let tutorialDemoActive = false;
   let activePreviewOverlay = null;
 
+  function blockBrowserContextMenu(event) {
+    event.preventDefault();
+  }
+
+  function blockSecondaryPointerDefault(event) {
+    if (event.button === 2) {
+      event.preventDefault();
+    }
+  }
+
+  function bindBrowserContextMenuBlocker() {
+    const options = { capture: true, passive: false };
+    [window, root].filter(Boolean).forEach((target) => {
+      target.addEventListener('contextmenu', blockBrowserContextMenu, options);
+      target.addEventListener('mousedown', blockSecondaryPointerDefault, options);
+      target.addEventListener('pointerdown', blockSecondaryPointerDefault, options);
+      target.addEventListener('auxclick', blockSecondaryPointerDefault, options);
+    });
+  }
+
+  function withModuleFrameNonce(payload) {
+    return MODULE_FRAME_NONCE ? { ...payload, frameNonce: MODULE_FRAME_NONCE } : payload;
+  }
+
+  function isTrustedParentMessage(event) {
+    if (!window.parent || event.source !== window.parent) return false;
+    if (event.origin !== TRUSTED_PARENT_ORIGIN) return false;
+    const data = event.data;
+    if (!data || typeof data !== 'object') return false;
+    if (MODULE_FRAME_NONCE && data.frameNonce !== MODULE_FRAME_NONCE) return false;
+    return ALLOWED_PARENT_MESSAGE_TYPES.has(data.type);
+  }
+
   function notifyParentTutorialStartRequest() {
     if (typeof window === 'undefined' || !window.parent || window.parent === window) {
       return;
     }
     try {
-      window.parent.postMessage({
+      window.parent.postMessage(withModuleFrameNonce({
         type: 'classroom:tutorial-start-request',
         detail: {
           source: 'iframe',
           module: 'duplicate-check',
         },
-      }, TRUSTED_PARENT_ORIGIN);
+      }), TRUSTED_PARENT_ORIGIN);
     } catch {
       // The tutorial entry is only available inside the app shell.
     }
@@ -293,11 +327,8 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   }
 
   function handleParentMessage(event) {
-    if (!window.parent || event.source !== window.parent) return;
-    if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
+    if (!isTrustedParentMessage(event)) return;
     const data = event.data;
-    if (!data || typeof data !== 'object') return;
-    if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
     const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
     const command = String(detail.command || '');
     if (command === 'activateDemo') {
@@ -356,10 +387,9 @@ export function createDuplicateCheckApp({ root = document } = {}) {
         row.className = 'file-row';
         const link = document.createElement('a');
         link.className = 'file-path file-link';
-        link.href = getRecordObjectUrl(record);
-        link.target = '_blank';
-        link.rel = 'noopener';
-        link.title = 'Datei im Browser öffnen';
+        link.href = getRecordDownloadObjectUrl(record);
+        link.download = getSafeDownloadName(record.name);
+        link.title = 'Datei herunterladen';
         link.textContent = record.displayPath || record.path;
         row.append(link);
         fileList.appendChild(row);
@@ -490,11 +520,30 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     return record.objectUrl;
   }
 
+  function getSafeDownloadName(name) {
+    const fallback = 'download';
+    const value = String(name || '').replace(/[\\/\u0000-\u001f\u007f]+/g, '_').trim();
+    return value || fallback;
+  }
+
+  function getRecordDownloadObjectUrl(record) {
+    if (!record) return '';
+    if (!record.downloadObjectUrl) {
+      record.downloadObjectUrl = URL.createObjectURL(new Blob([record.bytes], { type: 'application/octet-stream' }));
+    }
+    return record.downloadObjectUrl;
+  }
+
   function revokeRecordObjectUrls(records) {
     records.forEach((record) => {
-      if (!record.objectUrl) return;
-      URL.revokeObjectURL(record.objectUrl);
-      delete record.objectUrl;
+      if (record.objectUrl) {
+        URL.revokeObjectURL(record.objectUrl);
+        delete record.objectUrl;
+      }
+      if (record.downloadObjectUrl) {
+        URL.revokeObjectURL(record.downloadObjectUrl);
+        delete record.downloadObjectUrl;
+      }
     });
   }
 
@@ -1196,6 +1245,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 
   syncRuleButtons();
   renderInitial();
+  bindBrowserContextMenuBlocker();
   bindEvents();
 
   return {

@@ -1,5 +1,6 @@
 export function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([TUTORIAL_COMMAND_EVENT]);
   const ui = {
@@ -33,6 +34,7 @@ export function createQrApp({ root = document } = {}) {
     messageDialog: root.getElementById('messageDialog'),
     messageTitle: root.getElementById('messageTitle'),
     messageText: root.getElementById('messageText'),
+    externalLinkOpenButton: root.getElementById('externalLinkOpenButton'),
     messageCloseButton: root.getElementById('messageCloseButton'),
   };
 
@@ -53,19 +55,53 @@ export function createQrApp({ root = document } = {}) {
   let nativeQrDetectorPromise = null;
   let tutorialDemoActive = false;
   let tutorialPreviousTool = 'generator';
+  let pendingExternalLink = '';
+
+  function blockBrowserContextMenu(event) {
+    event.preventDefault();
+  }
+
+  function blockSecondaryPointerDefault(event) {
+    if (event.button === 2) {
+      event.preventDefault();
+    }
+  }
+
+  function bindBrowserContextMenuBlocker() {
+    const options = { capture: true, passive: false };
+    [window, root].filter(Boolean).forEach((target) => {
+      target.addEventListener('contextmenu', blockBrowserContextMenu, options);
+      target.addEventListener('mousedown', blockSecondaryPointerDefault, options);
+      target.addEventListener('pointerdown', blockSecondaryPointerDefault, options);
+      target.addEventListener('auxclick', blockSecondaryPointerDefault, options);
+    });
+  }
+
+  function withModuleFrameNonce(payload) {
+    return MODULE_FRAME_NONCE ? { ...payload, frameNonce: MODULE_FRAME_NONCE } : payload;
+  }
+
+  function isTrustedParentMessage(event) {
+    if (!window.parent || event.source !== window.parent) return false;
+    if (event.origin !== TRUSTED_PARENT_ORIGIN) return false;
+    const data = event.data;
+    if (!data || typeof data !== 'object') return false;
+    if (MODULE_FRAME_NONCE && data.frameNonce !== MODULE_FRAME_NONCE) return false;
+    return ALLOWED_PARENT_MESSAGE_TYPES.has(data.type);
+  }
 
   function notifyParentTutorialStartRequest() {
     if (typeof window === 'undefined' || !window.parent || window.parent === window) {
       return;
     }
     try {
-      window.parent.postMessage({
+      window.parent.postMessage(withModuleFrameNonce({
         type: 'classroom:tutorial-start-request',
         detail: {
           source: 'iframe',
           module: 'qr',
         },
-      }, TRUSTED_PARENT_ORIGIN);
+      }), TRUSTED_PARENT_ORIGIN);
     } catch {
       // The tutorial entry is only available inside the app shell.
     }
@@ -81,6 +117,11 @@ export function createQrApp({ root = document } = {}) {
 
   function showMessage(message, title = 'Hinweis') {
     if (!ui.messageDialog) return;
+    pendingExternalLink = '';
+    ui.externalLinkOpenButton?.classList.add('hidden');
+    ui.externalLinkOpenButton?.classList.remove('primary');
+    ui.messageCloseButton?.classList.add('primary');
+    if (ui.messageCloseButton) ui.messageCloseButton.textContent = 'OK';
     if (ui.messageTitle) ui.messageTitle.textContent = title;
     if (ui.messageText) ui.messageText.textContent = message;
     ui.messageDialog.classList.remove('hidden');
@@ -99,6 +140,11 @@ export function createQrApp({ root = document } = {}) {
 
   function closeMessage() {
     if (!ui.messageDialog) return;
+    pendingExternalLink = '';
+    ui.externalLinkOpenButton?.classList.add('hidden');
+    ui.externalLinkOpenButton?.classList.remove('primary');
+    ui.messageCloseButton?.classList.add('primary');
+    if (ui.messageCloseButton) ui.messageCloseButton.textContent = 'OK';
     root.body?.classList.remove('dialog-active');
     if (ui.messageDialog.open && typeof ui.messageDialog.close === 'function') {
       ui.messageDialog.close();
@@ -155,6 +201,72 @@ export function createQrApp({ root = document } = {}) {
     } catch {
       return false;
     }
+  }
+
+  function getHttpUrl(value) {
+    try {
+      const url = new URL(String(value || '').trim());
+      if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+      return url;
+    } catch {
+      return null;
+    }
+  }
+
+  function isExternalUrl(value) {
+    const url = getHttpUrl(value);
+    return Boolean(url && url.origin !== TRUSTED_PARENT_ORIGIN);
+  }
+
+  function showExternalLinkWarning(value) {
+    const url = getHttpUrl(value);
+    if (!url) return;
+    pendingExternalLink = url.href;
+    if (ui.messageTitle) ui.messageTitle.textContent = 'Externen Link öffnen?';
+    if (ui.messageText) {
+      ui.messageText.textContent = [
+        `Domain: ${url.host}`,
+        '',
+        url.href,
+        '',
+        'Öffne den Link nur, wenn du der Quelle des QR-Codes vertraust.',
+      ].join('\n');
+    }
+    ui.externalLinkOpenButton?.classList.remove('hidden');
+    ui.externalLinkOpenButton?.classList.add('primary');
+    ui.messageCloseButton?.classList.remove('primary');
+    if (ui.messageCloseButton) ui.messageCloseButton.textContent = 'Abbrechen';
+    ui.messageDialog?.classList.remove('hidden');
+    root.body?.classList.add('dialog-active');
+    try {
+      if (typeof ui.messageDialog?.showModal === 'function' && !ui.messageDialog.open) {
+        ui.messageDialog.showModal();
+      } else {
+        ui.messageDialog?.setAttribute('open', 'open');
+      }
+    } catch {
+      ui.messageDialog?.setAttribute('open', 'open');
+    }
+    ui.externalLinkOpenButton?.focus();
+  }
+
+  function openPendingExternalLink() {
+    const target = pendingExternalLink;
+    closeMessage();
+    if (!target) return;
+    window.open(target, '_blank', 'noopener,noreferrer');
+  }
+
+  function handleDecodedLinkClick(event) {
+    if (!decodedValue) return;
+    event?.preventDefault();
+    const url = getHttpUrl(decodedValue);
+    if (!url) return;
+    if (isExternalUrl(url.href)) {
+      showExternalLinkWarning(url.href);
+      return;
+    }
+    window.open(url.href, '_blank', 'noopener,noreferrer');
   }
 
   async function drawQrToCanvas(value) {
@@ -282,10 +394,12 @@ export function createQrApp({ root = document } = {}) {
     if (ui.decodedLink) {
       ui.decodedLink.classList.toggle('hidden', !valueIsUrl);
       if (valueIsUrl) {
-        ui.decodedLink.href = decodedValue;
+        ui.decodedLink.href = '#external-link-warning';
+        ui.decodedLink.dataset.decodedUrl = decodedValue;
         ui.decodedLink.textContent = decodedValue;
       } else {
         ui.decodedLink.removeAttribute('href');
+        delete ui.decodedLink.dataset.decodedUrl;
         ui.decodedLink.textContent = '';
       }
     }
@@ -350,11 +464,8 @@ export function createQrApp({ root = document } = {}) {
   }
 
   function handleParentMessage(event) {
-    if (!window.parent || event.source !== window.parent) return;
-    if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
+    if (!isTrustedParentMessage(event)) return;
     const data = event.data;
-    if (!data || typeof data !== 'object') return;
-    if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
     const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
     const command = String(detail.command || '');
     const commandDetail = detail.detail && typeof detail.detail === 'object' ? detail.detail : {};
@@ -880,6 +991,8 @@ export function createQrApp({ root = document } = {}) {
     ui.cameraButton?.addEventListener('click', startCamera);
     ui.stopCameraButton?.addEventListener('click', stopCamera);
     ui.copyDecodedButton?.addEventListener('click', copyDecodedValue);
+    ui.decodedLink?.addEventListener('click', handleDecodedLinkClick);
+    ui.externalLinkOpenButton?.addEventListener('click', openPendingExternalLink);
     ui.messageCloseButton?.addEventListener('click', closeMessage);
     ui.messageDialog?.addEventListener('cancel', (event) => {
       event.preventDefault();
@@ -891,6 +1004,7 @@ export function createQrApp({ root = document } = {}) {
     bindDropZone();
   }
 
+  bindBrowserContextMenuBlocker();
   bindEvents();
 
   return {

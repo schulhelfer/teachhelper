@@ -18,6 +18,7 @@ export function createMergerApp({
   const TOOL_ROTATE = "rotate";
   const TOOL_SPLIT = "split";
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("moduleFrameNonce") || "";
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     MERGER_TOOL_REQUEST_EVENT,
     MERGER_SHELL_LAYOUT_EVENT,
@@ -117,18 +118,60 @@ export function createMergerApp({
   let activeTool = TOOL_LAYOUT;
   let pendingPickerTarget = null;
 
+  function blockBrowserContextMenu(event) {
+    event.preventDefault();
+  }
+
+  function blockSecondaryPointerDefault(event) {
+    if (event.button === 2) {
+      event.preventDefault();
+    }
+  }
+
+  function bindBrowserContextMenuBlocker() {
+    const options = { capture: true, passive: false };
+    const targets = [window, root].filter(Boolean);
+    targets.forEach((target) => {
+      target.addEventListener("contextmenu", blockBrowserContextMenu, options);
+      target.addEventListener("mousedown", blockSecondaryPointerDefault, options);
+      target.addEventListener("pointerdown", blockSecondaryPointerDefault, options);
+      target.addEventListener("auxclick", blockSecondaryPointerDefault, options);
+    });
+    return () => {
+      targets.forEach((target) => {
+        target.removeEventListener("contextmenu", blockBrowserContextMenu, options);
+        target.removeEventListener("mousedown", blockSecondaryPointerDefault, options);
+        target.removeEventListener("pointerdown", blockSecondaryPointerDefault, options);
+        target.removeEventListener("auxclick", blockSecondaryPointerDefault, options);
+      });
+    };
+  }
+
+  function withModuleFrameNonce(payload) {
+    return MODULE_FRAME_NONCE ? { ...payload, frameNonce: MODULE_FRAME_NONCE } : payload;
+  }
+
+  function isTrustedParentMessage(event) {
+    if (!window.parent || event.source !== window.parent) return false;
+    if (event.origin !== TRUSTED_PARENT_ORIGIN) return false;
+    const data = event.data;
+    if (!data || typeof data !== "object") return false;
+    if (MODULE_FRAME_NONCE && data.frameNonce !== MODULE_FRAME_NONCE) return false;
+    return ALLOWED_PARENT_MESSAGE_TYPES.has(data.type);
+  }
+
   function notifyParentTutorialStartRequest() {
     if (typeof window === "undefined" || !window.parent || window.parent === window) {
       return;
     }
     try {
-      window.parent.postMessage({
+      window.parent.postMessage(withModuleFrameNonce({
         type: "classroom:tutorial-start-request",
         detail: {
           source: "iframe",
           module: "merger",
         },
-      }, TRUSTED_PARENT_ORIGIN);
+      }), TRUSTED_PARENT_ORIGIN);
     } catch (_error) {
       // The tutorial entry is only available inside the app shell.
     }
@@ -352,11 +395,8 @@ export function createMergerApp({
 
   if (standalone && typeof window !== "undefined") {
     messageListener = (event) => {
-      if (event.source !== window.parent) return;
-      if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
+      if (!isTrustedParentMessage(event)) return;
       const data = event.data;
-      if (!data || typeof data !== "object") return;
-      if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
       if (data.type === MERGER_TOOL_REQUEST_EVENT) {
         const tool = String(data.detail?.tool || "");
         if ([TOOL_LAYOUT, TOOL_MERGE, TOOL_ROTATE, TOOL_SPLIT].includes(tool)) {
@@ -4137,6 +4177,8 @@ export function createMergerApp({
             syncDialogUiState();
           });
 
+          const unbindBrowserContextMenuBlocker = bindBrowserContextMenuBlocker();
+
           renderPagesPerSheetSelection();
           renderMergeFileList();
           renderLayoutSelection();
@@ -4147,6 +4189,7 @@ export function createMergerApp({
           return {
             applyShellLayout,
             dispose() {
+              unbindBrowserContextMenuBlocker();
               if (messageListener) {
                 window.removeEventListener("message", messageListener);
                 messageListener = null;

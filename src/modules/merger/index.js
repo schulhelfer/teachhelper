@@ -1,6 +1,7 @@
 import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
 import {
   createModuleFrame,
+  ISOLATED_MODULE_SANDBOX,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
 
@@ -16,6 +17,7 @@ export function mountMerger({ host }) {
     className: 'merger-frame',
     loading: 'lazy',
     src: MERGER_URL,
+    sandbox: ISOLATED_MODULE_SANDBOX,
   });
 
   let ready = false;

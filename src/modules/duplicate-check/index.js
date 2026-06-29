@@ -1,4 +1,8 @@
-import { createModuleFrame, postToModule } from '../../shared/module-frame-bridge.js';
+import {
+  createModuleFrame,
+  ISOLATED_MODULE_SANDBOX,
+  postToModule,
+} from '../../shared/module-frame-bridge.js';
 
 const DUPLICATE_CHECK_VERSION = 'duplicate-check-r3';
 const DUPLICATE_CHECK_URL = new URL(`./app.html?v=${DUPLICATE_CHECK_VERSION}`, import.meta.url);
@@ -12,6 +16,7 @@ export function mountDuplicateCheck({ host }) {
     className: 'duplicate-check-frame',
     loading: 'eager',
     src: DUPLICATE_CHECK_URL,
+    sandbox: ISOLATED_MODULE_SANDBOX,
   });
 
   let disposed = false;

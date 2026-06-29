@@ -99,6 +99,21 @@
           if (els.courseGradeCompleteDialog && !els.courseGradeCompleteDialog.hasAttribute('tabindex')) {
             els.courseGradeCompleteDialog.setAttribute('tabindex', '-1');
           }
+          const blockBrowserContextMenu = (event) => {
+            event.preventDefault();
+          };
+          const blockSecondaryPointerDefault = (event) => {
+            if (event.button === 2) {
+              event.preventDefault();
+            }
+          };
+          const contextMenuBlockerOptions = { capture: true, passive: false };
+          [window, document].forEach((target) => {
+            target.addEventListener('contextmenu', blockBrowserContextMenu, contextMenuBlockerOptions);
+            target.addEventListener('mousedown', blockSecondaryPointerDefault, contextMenuBlockerOptions);
+            target.addEventListener('pointerdown', blockSecondaryPointerDefault, contextMenuBlockerOptions);
+            target.addEventListener('auxclick', blockSecondaryPointerDefault, contextMenuBlockerOptions);
+          });
           if (els.sidebarScore) {
             els.sidebarScore.setAttribute('role', 'button');
             if (!els.sidebarScore.hasAttribute('tabindex')) {
