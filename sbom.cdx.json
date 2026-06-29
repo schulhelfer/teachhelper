@@ -1,0 +1,152 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.5",
+  "serialNumber": "urn:uuid:7a94d3dc-b29a-4a8d-88a4-03272f2999b5",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-06-29T00:00:00Z",
+    "component": {
+      "type": "application",
+      "bom-ref": "teachhelper",
+      "name": "Teachhelper"
+    }
+  },
+  "components": [
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/jszip@3.10.1",
+      "name": "jszip",
+      "version": "3.10.1",
+      "purl": "pkg:npm/jszip@3.10.1",
+      "licenses": [
+        {
+          "expression": "MIT OR GPL-3.0-or-later"
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://www.npmjs.com/package/jszip/v/3.10.1"
+        }
+      ],
+      "properties": [
+        {
+          "name": "teachhelper:local-file:src/vendor/jszip/3.10.1/jszip.min.js:sha256",
+          "value": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+        },
+        {
+          "name": "teachhelper:local-file:src/vendor/jszip/3.10.1/LICENSE.markdown:sha256",
+          "value": "566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/pdf-lib@1.17.1",
+      "name": "pdf-lib",
+      "version": "1.17.1",
+      "purl": "pkg:npm/pdf-lib@1.17.1",
+      "licenses": [
+        {
+          "license": {
+            "id": "MIT"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://www.npmjs.com/package/pdf-lib/v/1.17.1"
+        }
+      ],
+      "properties": [
+        {
+          "name": "teachhelper:local-file:src/vendor/pdf-lib/1.17.1/pdf-lib.min.js:sha256",
+          "value": "0f9a5cad07941f0826586c94e089d89b918c46e5c17cf2d5a3c6f666e3bc694f"
+        },
+        {
+          "name": "teachhelper:local-file:src/vendor/pdf-lib/1.17.1/LICENSE.md:sha256",
+          "value": "f2c9fc00fdb66eb99ac156ba52d734af66d8d309f65753ae809ad34ee2883bcb"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "pkg:npm/pdfjs-dist@6.1.200",
+      "name": "pdfjs-dist",
+      "version": "6.1.200",
+      "purl": "pkg:npm/pdfjs-dist@6.1.200",
+      "licenses": [
+        {
+          "license": {
+            "id": "Apache-2.0"
+          }
+        }
+      ],
+      "externalReferences": [
+        {
+          "type": "distribution",
+          "url": "https://www.npmjs.com/package/pdfjs-dist/v/6.1.200"
+        },
+        {
+          "type": "website",
+          "url": "https://mozilla.github.io/pdf.js/"
+        }
+      ],
+      "properties": [
+        {
+          "name": "teachhelper:local-file:src/vendor/pdfjs-dist/6.1.200/build/pdf.mjs:sha256",
+          "value": "d7f44e075a8fa47ac165362d404de2dabf61f64f3d98c9180162c5f71f54980a"
+        },
+        {
+          "name": "teachhelper:local-file:src/vendor/pdfjs-dist/6.1.200/build/pdf.worker.mjs:sha256",
+          "value": "f9ed6a050771ad74c228a1cbfc8edb3271249f2e2efa29ed4692468ecb001733"
+        },
+        {
+          "name": "teachhelper:local-file:src/vendor/pdfjs-dist/6.1.200/LICENSE:sha256",
+          "value": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "teachhelper:vendor:qrcode.min.js",
+      "name": "qrcode.min.js",
+      "version": "unknown",
+      "properties": [
+        {
+          "name": "teachhelper:license",
+          "value": "unknown"
+        },
+        {
+          "name": "teachhelper:source",
+          "value": "unknown"
+        },
+        {
+          "name": "teachhelper:local-file:src/modules/qr/vendor/qrcode.min.js:sha256",
+          "value": "0e1769a0feb8c5c87f16bcfc0a2050135d9e9f9e4d5fe46194f19183a2969b9b"
+        }
+      ]
+    },
+    {
+      "type": "library",
+      "bom-ref": "teachhelper:vendor:jsQR",
+      "name": "jsQR",
+      "version": "unknown",
+      "properties": [
+        {
+          "name": "teachhelper:license",
+          "value": "unknown"
+        },
+        {
+          "name": "teachhelper:source",
+          "value": "unknown"
+        },
+        {
+          "name": "teachhelper:local-file:src/modules/qr/vendor/jsQR.js:sha256",
+          "value": "bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859"
+        }
+      ]
+    }
+  ]
+}

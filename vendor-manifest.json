@@ -1,0 +1,112 @@
+{
+  "version": 1,
+  "updated": "2026-06-29",
+  "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
+  "packages": [
+    {
+      "name": "jszip",
+      "version": "3.10.1",
+      "license": "MIT OR GPL-3.0-or-later",
+      "source": "https://www.npmjs.com/package/jszip/v/3.10.1",
+      "registry": "npm",
+      "package": "jszip",
+      "purl": "pkg:npm/jszip@3.10.1",
+      "updateNotes": "Fetch the matching npm package release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py.",
+      "files": [
+        {
+          "path": "src/vendor/jszip/3.10.1/jszip.min.js",
+          "role": "runtime",
+          "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+        },
+        {
+          "path": "src/vendor/jszip/3.10.1/LICENSE.markdown",
+          "role": "license",
+          "sha256": "566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4"
+        }
+      ]
+    },
+    {
+      "name": "pdf-lib",
+      "version": "1.17.1",
+      "license": "MIT",
+      "source": "https://www.npmjs.com/package/pdf-lib/v/1.17.1",
+      "registry": "npm",
+      "package": "pdf-lib",
+      "purl": "pkg:npm/pdf-lib@1.17.1",
+      "updateNotes": "Fetch the matching npm package release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py.",
+      "files": [
+        {
+          "path": "src/vendor/pdf-lib/1.17.1/pdf-lib.min.js",
+          "role": "runtime",
+          "sha256": "0f9a5cad07941f0826586c94e089d89b918c46e5c17cf2d5a3c6f666e3bc694f"
+        },
+        {
+          "path": "src/vendor/pdf-lib/1.17.1/LICENSE.md",
+          "role": "license",
+          "sha256": "f2c9fc00fdb66eb99ac156ba52d734af66d8d309f65753ae809ad34ee2883bcb"
+        }
+      ]
+    },
+    {
+      "name": "pdfjs-dist",
+      "version": "6.1.200",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.1.200",
+      "registry": "npm",
+      "package": "pdfjs-dist",
+      "purl": "pkg:npm/pdfjs-dist@6.1.200",
+      "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows.",
+      "files": [
+        {
+          "path": "src/vendor/pdfjs-dist/6.1.200/build/pdf.mjs",
+          "role": "runtime",
+          "sha256": "d7f44e075a8fa47ac165362d404de2dabf61f64f3d98c9180162c5f71f54980a"
+        },
+        {
+          "path": "src/vendor/pdfjs-dist/6.1.200/build/pdf.worker.mjs",
+          "role": "runtime-worker",
+          "sha256": "f9ed6a050771ad74c228a1cbfc8edb3271249f2e2efa29ed4692468ecb001733"
+        },
+        {
+          "path": "src/vendor/pdfjs-dist/6.1.200/LICENSE",
+          "role": "license",
+          "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
+        }
+      ]
+    },
+    {
+      "name": "qrcode.min.js",
+      "version": "unknown",
+      "license": "unknown",
+      "source": "unknown",
+      "registry": "manual",
+      "package": null,
+      "purl": null,
+      "updateNotes": "Confirm upstream package, version, and license before the next update. Keep this file manifest-covered until it can be replaced from a traceable release.",
+      "files": [
+        {
+          "path": "src/modules/qr/vendor/qrcode.min.js",
+          "role": "runtime",
+          "sha256": "0e1769a0feb8c5c87f16bcfc0a2050135d9e9f9e4d5fe46194f19183a2969b9b"
+        }
+      ]
+    },
+    {
+      "name": "jsQR",
+      "version": "unknown",
+      "license": "unknown",
+      "source": "unknown",
+      "registry": "manual",
+      "package": null,
+      "purl": null,
+      "updateNotes": "Confirm upstream package, version, and license before the next update. Keep this file manifest-covered until it can be replaced from a traceable release.",
+      "files": [
+        {
+          "path": "src/modules/qr/vendor/jsQR.js",
+          "role": "runtime",
+          "sha256": "bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859"
+        }
+      ]
+    }
+  ]
+}
