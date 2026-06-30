@@ -796,7 +796,7 @@ import {
             planningStep(
               'Datenbank',
               'Wähle eine Datenbank aus oder lege eine neue an. Planung und Noten teilen sich diese Datei.',
-              ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
+              ['[data-tutorial-anchor="database-actions"]:not([hidden])', '#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])'],
               'database',
               planningFallback,
               { placement: 'right' }
@@ -806,7 +806,7 @@ import {
               shellSupportsExternalFileSync
                 ? 'Lege Backup-Ordner und Intervall fest; manuelle Sicherungen bleiben möglich.'
                 : 'Speichere die Datenbank als Datei und lade sie nach einem Neustart wieder ein.',
-              shellSupportsExternalFileSync ? '#db-backup-section' : '#db-manual-actions',
+              shellSupportsExternalFileSync ? '#backup-dir-change-btn' : '#db-manual-actions',
               'database',
               planningFallback,
               { placement: 'right' }
@@ -826,9 +826,17 @@ import {
           const steps = [
             ...storageSteps,
             planningStep(
-              'Ferien und freie Tage',
-              'Ferien und freie Tage begrenzen den Planungszeitraum.',
-              '#settings-tab-dayoff .settings-grid',
+              'Ferien eintragen',
+              'Ferien begrenzen den Planungszeitraum und verhindern Unterricht an diesen Tagen.',
+              '[data-tutorial-anchor="planning-holidays"]',
+              'dayoff',
+              planningFallback,
+              { placement: 'right' }
+            ),
+            planningStep(
+              'Unterrichtsfreie Tage',
+              'Zusätzliche freie Tage ergänzt du getrennt von längeren Ferienzeiträumen.',
+              '[data-tutorial-anchor="planning-special-days"]',
               'dayoff',
               planningFallback,
               { placement: 'right' }
@@ -917,7 +925,7 @@ import {
 
           steps.push(
             planningStep('Wochenraster', 'Unterricht, Ferien, Entfall, Arbeiten und Themen liegen in einer Wochenansicht.', '#week-table', 'lesson', planningFallback, { placement: 'top' }),
-            planningStep('Woche wechseln', 'Pfeile wechseln Wochen; Kalenderwoche und Kalendersymbol springen gezielt.', '#headerGlass', 'lesson', planningFallback, { placement: 'bottom' }),
+            planningStep('Woche wechseln', 'Pfeile wechseln Wochen; Kalenderwoche und Kalendersymbol springen gezielt.', '#kw-label', 'lesson', planningFallback, { placement: 'bottom' }),
             planningStep('Thema direkt eintragen', 'Klicke die Themenfläche; Enter oder Tab speichert, Escape verwirft.', ['.lesson-block[data-lesson-id] .topic-zone', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top' }),
             planningStep('Ausführlich planen', 'Hier ergänzt du Ablauf, Material, Lernziele und Notizen.', ['#topic-dialog-notes', '#topic-dialog-form'], 'topicDialog', planningFallback, { placement: 'right' }),
             planningStep('Sitzplan öffnen', 'Das Stuhlsymbol öffnet den Sitzplan dieses Kurses.', ['.lesson-block-seatplan-trigger', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top', highlightPadding: 4 }),
@@ -927,7 +935,8 @@ import {
             planningStep('Kursverlauf öffnen', 'Ein Klick auf den Kursnamen zeigt den chronologischen Verlauf.', ['.lesson-block .title.course-link[data-course-id]', '.lesson-block[data-lesson-id]'], 'lesson', planningFallback, { placement: 'top' }),
             planningStep('Unterrichtsverlauf', 'Jede Zeile bündelt Datum, Noteneingabe, Thema und Detailplanung.', ['#course-table tbody tr[data-lesson-id]', '#course-table'], 'course', planningFallback, { placement: 'top' }),
             planningStep('Einstellungen öffnen', 'Das Zahnrad führt zu Anzeige, Zeiten, Ferien und Datenbank.', '#view-settings-btn', 'course', planningFallback, { placement: 'right', highlightPadding: 4 }),
-            planningStep('Anzeige steuern', 'Lege sichtbare Stunden pro Tag und ausgeblendete Kurse fest.', '#settings-tab-display', 'display', planningFallback, { placement: 'right' }),
+            planningStep('Stunden pro Tag anzeigen', 'Lege fest, wie viele Unterrichtsstunden die Wochenansicht zeigt.', '[data-tutorial-anchor="planning-display-hours"]', 'display', planningFallback, { placement: 'right' }),
+            planningStep('Ausgeblendete Kurse zeigen', 'Blende versteckte Kurse bei Bedarf wieder in der Randleiste ein.', '[data-tutorial-anchor="planning-sidebar-visibility"]', 'display', planningFallback, { placement: 'right' }),
             planningStep('Unterrichtszeiten pflegen', 'Stundenzeiten helfen TeachHelper beim passenden aktuellen Kurs.', ['#lesson-times-list', '#settings-tab-lesson-times'], 'lessonTimes', planningFallback, { placement: 'right' }),
             planningStep('Archiv vorbereiten', 'Erstelle zum Schuljahresabschluss ein PDF-Archiv.', '#sidebar-archive-btn', 'course', planningFallback, { placement: 'right', highlightPadding: 4 }),
             planningStep('Archivumfang wählen', 'Wähle Kursverläufe, Wochenansichten und verfügbare Noten für das PDF.', ['#archive-planning-options', '#archive-dialog-form'], 'archive', planningFallback, { placement: 'right' }),
@@ -936,7 +945,7 @@ import {
               shellSupportsExternalFileSync
                 ? 'Änderungen landen in der Datenbank; Backups sichern zusätzlich.'
                 : 'Speichere regelmäßig über die Datenbank-Schaltfläche als Datei.',
-              ['#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])', '#settings-tab-database'],
+              ['[data-tutorial-anchor="database-actions"]:not([hidden])', '#db-auto-actions:not([hidden])', '#db-manual-actions:not([hidden])'],
               'database',
               planningFallback,
               { placement: 'right' }
@@ -988,9 +997,17 @@ import {
           }),
           createModuleTutorialStep({
             tab: TAB_MERGER,
-            title: 'Ausrichtung und Lernendenanzahl',
-            copy: 'Automatische Ausrichtung und Lernendenanzahl helfen bei passenden Kopien.',
-            target: mergerFrameTarget(['.layout-form-grid', '#optionsPanel']),
+            title: 'Ausrichtung optimieren',
+            copy: 'Diese Option wählt automatisch Hoch- oder Querformat, damit die Seiten gut auf das Blatt passen.',
+            target: mergerFrameTarget('#autoOrientationToggle'),
+            placement: 'right',
+            beforeRender: () => openMergerToolForTutorial('layout'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Kopien passend zur Lerngruppe',
+            copy: 'Die Lernendenanzahl hilft, Restseiten so zu füllen, dass genügend Kopien entstehen.',
+            target: mergerFrameTarget('#studentCount'),
             placement: 'right',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
@@ -998,7 +1015,7 @@ import {
             tab: TAB_MERGER,
             title: 'Restseiten',
             copy: 'Entscheide, ob freie Plätze leer bleiben oder mit vorhandenen Seiten aufgefüllt werden.',
-            target: mergerFrameTarget(['#optionsPanel .setting-group', '#optionsPanel']),
+            target: mergerFrameTarget('#layoutPaddingModeGroup'),
             placement: 'right',
             beforeRender: () => openMergerToolForTutorial('layout'),
           }),
@@ -1088,18 +1105,18 @@ import {
           }),
           createModuleTutorialStep({
             tab: TAB_MERGER,
-            title: 'Seitengruppen',
-            copy: 'Bilde Bereiche oder ziehe Seiten direkt in andere Gruppen.',
-            target: mergerFrameTarget(['#splitGroupRowsList:not(:empty)', '.split-toolbar-group-config']),
-            placement: 'top',
-            beforeRender: () => openMergerToolForTutorial('split'),
-          }),
-          createModuleTutorialStep({
-            tab: TAB_MERGER,
             title: 'Ausgabeformat',
             copy: 'Lege fest, ob die ausgewählten Seiten gemeinsam in einer PDF oder als einzelne Dateien ausgegeben werden.',
             target: mergerFrameTarget('#splitOutputModeGroup'),
             placement: 'right',
+            beforeRender: () => openMergerToolForTutorial('split'),
+          }),
+          createModuleTutorialStep({
+            tab: TAB_MERGER,
+            title: 'Seitengruppen',
+            copy: 'Bilde Bereiche oder ziehe Seiten direkt in andere Gruppen.',
+            target: mergerFrameTarget(['#splitGroupRowsList:not(:empty)', '.split-toolbar-group-config']),
+            placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
           createModuleTutorialStep({
@@ -1198,8 +1215,15 @@ import {
             createModuleTutorialStep({
               tab: TAB_SEATPLAN,
               title: 'Belegung oder Raster zurücksetzen',
-              copy: 'Setze entweder nur Lernende oder das gesamte Platzraster zurück.',
-              target: seatplanFrameTarget('#tutorial-plan-edit-actions', seatplanFallback),
+              copy: 'Dieser Button löst nur die Lernenden von den Plätzen; Raumform und aktive Plätze bleiben erhalten.',
+              target: seatplanFrameTarget('#reset-learners', seatplanFallback),
+              placement: 'right',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_SEATPLAN,
+              title: 'Platzraster zurücksetzen',
+              copy: 'Damit entfernst du die aktive Raumform und beginnst das Raster neu.',
+              target: seatplanFrameTarget('#reset-raster', seatplanFallback),
               placement: 'right',
             }),
             createModuleTutorialStep({
@@ -1225,13 +1249,29 @@ import {
             }));
           }
 
-          steps.push(createModuleTutorialStep({
-            tab: TAB_SEATPLAN,
-            title: 'Laden, speichern und drucken',
-            copy: 'Lade, speichere oder drucke den aktuellen Sitzplan.',
-            target: seatplanFrameTarget('#tutorial-plan-file-actions', seatplanFallback),
-            placement: 'right',
-          }));
+          steps.push(
+            createModuleTutorialStep({
+              tab: TAB_SEATPLAN,
+              title: 'Sitzplan laden',
+              copy: 'Lade einen gespeicherten Sitzplan aus einer JSON-Datei.',
+              target: seatplanFrameTarget('#import-plan', seatplanFallback),
+              placement: 'right',
+            }),
+            ...(!isCourseSeatplan ? [createModuleTutorialStep({
+              tab: TAB_SEATPLAN,
+              title: 'Sitzplan speichern',
+              copy: 'Speichere Raster, Belegung und Kriterien als Datei für später.',
+              target: seatplanFrameTarget('#export-plan', seatplanFallback),
+              placement: 'right',
+            })] : []),
+            createModuleTutorialStep({
+              tab: TAB_SEATPLAN,
+              title: 'Sitzplan drucken',
+              copy: 'Erstelle eine druckbare Ansicht des aktuellen Plans.',
+              target: seatplanFrameTarget('#print-plan', seatplanFallback),
+              placement: 'right',
+            })
+          );
 
           if (isCourseSeatplan) {
             steps.push(createModuleTutorialStep({
@@ -1258,9 +1298,16 @@ import {
             }),
             createModuleTutorialStep({
               tab: TAB_GROUPS,
-              title: 'Gruppengröße festlegen',
-              copy: 'Minimale und maximale Größe bestimmen die Zahl der Gruppen.',
-              target: (nodes) => nodes.groupSizeControls || nodes.minGroupSize,
+              title: 'Minimale Gruppengröße',
+              copy: 'Die Mindestgröße verhindert zu kleine Gruppen.',
+              target: (nodes) => nodes.minGroupSize || nodes.groupSizeControls,
+              placement: 'right',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_GROUPS,
+              title: 'Maximale Gruppengröße',
+              copy: 'Die Maximalgröße begrenzt, wie voll einzelne Gruppen werden dürfen.',
+              target: (nodes) => nodes.maxGroupSize || nodes.groupSizeControls,
               placement: 'right',
             }),
           ];
@@ -1289,15 +1336,8 @@ import {
             }),
             createModuleTutorialStep({
               tab: TAB_GROUPS,
-              title: 'Gute und schlechte Gruppenpartner',
-              copy: 'Partnerwünsche und Ausschlüsse fließen in den Vorschlag ein.',
-              target: (nodes) => nodes.groupSeatPreferences,
-              placement: 'right',
-            }),
-            createModuleTutorialStep({
-              tab: TAB_GROUPS,
-              title: 'Leistungsklassen',
-              copy: 'Leistungsklassen helfen bei möglichst homogenen Gruppen.',
+              title: 'Gruppenkriterien öffnen',
+              copy: 'Hier pflegst du Partnerwünsche, Ausschlüsse und Leistungsklassen für den Vorschlag.',
               target: (nodes) => nodes.groupSeatPreferences,
               placement: 'right',
             }),
@@ -1357,9 +1397,23 @@ import {
             }),
             createModuleTutorialStep({
               tab: TAB_GROUPS,
-              title: 'Laden, speichern und drucken',
-              copy: 'Lade, speichere oder drucke die Gruppeneinteilung.',
-              target: (nodes) => nodes.groupPlanActions || nodes.groupExportPlan,
+              title: 'Gruppeneinteilung laden',
+              copy: 'Lade eine gespeicherte Gruppeneinteilung, wenn du später daran weiterarbeitest.',
+              target: (nodes) => nodes.groupImportPlan || nodes.groupPlanActions,
+              placement: 'right',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_GROUPS,
+              title: 'Gruppeneinteilung speichern',
+              copy: 'Speichere Namen, Gruppen, Themen und Sperren als Datei.',
+              target: (nodes) => nodes.groupExportPlan || nodes.groupPlanActions,
+              placement: 'right',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_GROUPS,
+              title: 'Gruppen drucken',
+              copy: 'Drucke die aktuelle Einteilung mit gespeicherten Themen.',
+              target: (nodes) => nodes.groupPrintPlan || nodes.groupPlanActions,
               placement: 'right',
             }),
           ];
@@ -1390,22 +1444,8 @@ import {
             ...setupSteps,
             createModuleTutorialStep({
               tab: TAB_RANDOM_PICKER,
-              title: 'Bedingungen festlegen',
-              copy: 'Stelle die Auswahlwahrscheinlichkeit pro Person ein.',
-              target: (nodes) => nodes.groupSeatPreferences,
-              placement: 'right',
-            }),
-            createModuleTutorialStep({
-              tab: TAB_RANDOM_PICKER,
-              title: 'Auswahl gewichten oder festlegen',
-              copy: 'Gewichte steuern den Zufallspool; „sicher“ garantiert eine Person.',
-              target: (nodes) => nodes.groupSeatPreferences,
-              placement: 'right',
-            }),
-            createModuleTutorialStep({
-              tab: TAB_RANDOM_PICKER,
-              title: 'Bedingungen zurücksetzen und speichern',
-              copy: '„Speichern“ übernimmt die Bedingungen, „Zurücksetzen“ stellt normal wieder her.',
+              title: 'Auswahlbedingungen öffnen',
+              copy: 'Hier stellst du pro Person normal, sicher oder unmöglich ein; „Speichern“ übernimmt die Bedingungen.',
               target: (nodes) => nodes.groupSeatPreferences,
               placement: 'right',
             }),
@@ -1420,7 +1460,7 @@ import {
               tab: TAB_RANDOM_PICKER,
               title: 'Auswahl starten',
               copy: 'Mit „Start“ beginnt eine gewichtete Zufallsauswahl. Während das Rad läuft, ist der Button vorübergehend gesperrt.',
-              target: (nodes) => nodes.randomPickerStartRow || nodes.randomPickerStart || pickerFallback(nodes),
+              target: (nodes) => nodes.randomPickerStart || nodes.randomPickerStartRow || pickerFallback(nodes),
               placement: 'right',
             }),
             createModuleTutorialStep({
@@ -1434,14 +1474,14 @@ import {
               tab: TAB_RANDOM_PICKER,
               title: 'Erneut auswählen',
               copy: 'Jede Ziehung ist unabhängig; Personen bleiben im Pool.',
-              target: (nodes) => nodes.randomPickerStartRow || nodes.randomPickerStart || pickerFallback(nodes),
+              target: (nodes) => nodes.randomPickerStart || nodes.randomPickerStartRow || pickerFallback(nodes),
               placement: 'right',
             }),
             createModuleTutorialStep({
               tab: TAB_RANDOM_PICKER,
               title: 'Pickerstand speichern',
               copy: 'Speichere Liste und Gewichtungen als JSON und lade sie später wieder.',
-              target: (nodes) => nodes.randomPickerPlanActions || nodes.randomPickerExport,
+              target: (nodes) => nodes.randomPickerExport || nodes.randomPickerPlanActions,
               placement: 'right',
             }),
           ];
@@ -1573,8 +1613,8 @@ import {
             createModuleTutorialStep({
               tab: TAB_DUPLICATE_CHECK,
               title: 'Originale bleiben unverändert',
-              copy: 'DuplikatCheck öffnet nur Kopien aus der ZIP und verändert keine Abgaben.',
-              target: duplicateCheckFrameTarget('#resultPanel', duplicateFallback),
+              copy: 'Dateilinks öffnen nur Kopien aus der ZIP; deine Abgaben werden nicht verändert.',
+              target: duplicateCheckFrameTarget(['#resultPanel .file-link', '#resultPanel .summary-grid'], duplicateFallback),
               placement: 'top',
             })
           );
@@ -1584,13 +1624,18 @@ import {
       case TAB_WORK_PHASE:
         {
           const workPhaseFallback = (nodes) => nodes.workOrderPanel || nodes.monitorShell || nodes.tabWorkPhase;
+          const isVisibleTarget = (node) => {
+            if (!node || node.hidden) return false;
+            const rect = typeof node.getBoundingClientRect === 'function' ? node.getBoundingClientRect() : null;
+            return Boolean(rect && rect.width > 0 && rect.height > 0);
+          };
           const activeTimerButton = (nodes) => (
-            nodes.timerWorkOrderStop && !nodes.timerWorkOrderStop.disabled
+            isVisibleTarget(nodes.timerWorkOrderStop) && !nodes.timerWorkOrderStop.disabled
               ? nodes.timerWorkOrderStop
               : nodes.timerWorkOrderStart
           );
           const activeMonitorButton = (nodes) => (
-            nodes.monitorMicStopButton && !nodes.monitorMicStopButton.disabled
+            isVisibleTarget(nodes.monitorMicStopButton) && !nodes.monitorMicStopButton.disabled
               ? nodes.monitorMicStopButton
               : nodes.monitorMicStartButton
           );
@@ -1660,8 +1705,8 @@ import {
             }),
             createModuleTutorialStep({
               tab: TAB_WORK_PHASE,
-              title: 'Timer oder Endalarm beenden',
-              copy: 'Das aktive Uhrsymbol stoppt Timer oder Endalarm.',
+              title: 'Timer stoppen',
+              copy: 'Wenn der Timer läuft, erscheint hier das aktive Uhrsymbol zum Stoppen.',
               target: (nodes) => activeTimerButton(nodes) || nodes.workOrderRestClock || nodes.timerPanel || workPhaseFallback(nodes),
               placement: 'right',
             }),
@@ -1696,7 +1741,7 @@ import {
             createModuleTutorialStep({
               tab: TAB_WORK_PHASE,
               title: 'Überwachung stoppen',
-              copy: 'Das aktive Ampelsymbol stoppt Messung und Mikrofonstream.',
+              copy: 'Während der Messung erscheint hier das aktive Ampelsymbol zum Stoppen des Mikrofonstreams.',
               target: (nodes) => activeMonitorButton(nodes) || nodes.monitorMicActions || nodes.workPhaseMonitorSettings || workPhaseFallback(nodes),
               placement: 'right',
             }),

@@ -185,11 +185,27 @@ main_path = ROOT / 'src' / 'main.js'
 planning_index_path = ROOT / 'src' / 'modules' / 'planning' / 'index.js'
 qr_index_path = ROOT / 'src' / 'modules' / 'qr' / 'index.js'
 seatplan_index_path = ROOT / 'src' / 'modules' / 'seatplan' / 'index.js'
-isolated_tool_module_indexes = [
-  ROOT / 'src' / 'modules' / 'qr' / 'index.js',
-  ROOT / 'src' / 'modules' / 'merger' / 'index.js',
-  ROOT / 'src' / 'modules' / 'duplicate-check' / 'index.js',
-]
+merger_index_path = ROOT / 'src' / 'modules' / 'merger' / 'index.js'
+duplicate_check_index_path = ROOT / 'src' / 'modules' / 'duplicate-check' / 'index.js'
+isolated_tool_module_sandbox_profiles = {
+  qr_index_path: 'QR_MODULE_SANDBOX',
+  merger_index_path: 'MERGER_MODULE_SANDBOX',
+  duplicate_check_index_path: 'DUPLICATE_CHECK_MODULE_SANDBOX',
+}
+isolated_sandbox_profile_tokens = {
+  'ISOLATED_MODULE_SANDBOX': {'allow-scripts'},
+  'MERGER_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads', 'allow-popups', 'allow-popups-to-escape-sandbox'},
+  'DUPLICATE_CHECK_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
+  'QR_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads', 'allow-popups', 'allow-popups-to-escape-sandbox'},
+}
+isolated_sandbox_profile_names = set(isolated_sandbox_profile_tokens)
+privileged_sandbox_tokens = {
+  'allow-downloads',
+  'allow-forms',
+  'allow-modals',
+  'allow-popups',
+  'allow-popups-to-escape-sandbox',
+}
 
 for path in iter_source_files():
   body = path.read_text(encoding='utf-8', errors='ignore')
@@ -200,24 +216,49 @@ for path in iter_source_files():
 
 if bridge_path.exists():
   bridge_body = bridge_path.read_text(encoding='utf-8', errors='ignore')
-  sandbox_match = re.search(
-    r'ISOLATED_MODULE_SANDBOX\s*=\s*([\'"])(?P<tokens>.*?)\1',
-    bridge_body,
-    flags=re.DOTALL,
-  )
-  if not sandbox_match:
-    errors.append('missing ISOLATED_MODULE_SANDBOX in src/shared/module-frame-bridge.js')
-  elif 'allow-same-origin' in sandbox_match.group('tokens').split():
-    errors.append('ISOLATED_MODULE_SANDBOX must not include allow-same-origin')
+  sandbox_profiles = {
+    match.group('name'): match.group('tokens').split()
+    for match in re.finditer(
+      r'export\s+const\s+(?P<name>[A-Z_]+_MODULE_SANDBOX)\s*=\s*([\'"])(?P<tokens>.*?)\2',
+      bridge_body,
+      flags=re.DOTALL,
+    )
+  }
+  for profile_name, tokens in sorted(sandbox_profiles.items()):
+    if 'allow-same-origin' in tokens:
+      errors.append(f'{profile_name} must not include allow-same-origin')
+    privileged_tokens = sorted(set(tokens) & privileged_sandbox_tokens)
+    if profile_name not in isolated_sandbox_profile_names and privileged_tokens:
+      errors.append(
+        f'{profile_name} grants privileged sandbox tokens without an explicit audit allowlist: {", ".join(privileged_tokens)}'
+      )
+  for profile_name in sorted(isolated_sandbox_profile_names):
+    if profile_name not in sandbox_profiles:
+      errors.append(f'missing {profile_name} in src/shared/module-frame-bridge.js')
+      continue
+    expected_tokens = isolated_sandbox_profile_tokens[profile_name]
+    actual_tokens = set(sandbox_profiles[profile_name])
+    if actual_tokens != expected_tokens:
+      errors.append(
+        f'{profile_name} tokens must be {", ".join(sorted(expected_tokens))}; got {", ".join(sorted(actual_tokens))}'
+      )
+  for profile_name, tokens in sorted(sandbox_profiles.items()):
+    if profile_name not in isolated_sandbox_profile_names:
+      continue
+    if (
+      'allow-popups-to-escape-sandbox' in tokens
+      and 'allow-popups' not in tokens
+    ):
+      errors.append(f'{profile_name} must include allow-popups with allow-popups-to-escape-sandbox')
 
-for path in isolated_tool_module_indexes:
+for path, expected_sandbox_profile in isolated_tool_module_sandbox_profiles.items():
   if not path.exists():
     continue
   body = path.read_text(encoding='utf-8', errors='ignore')
-  if 'ISOLATED_MODULE_SANDBOX' not in body:
-    errors.append(f'missing ISOLATED_MODULE_SANDBOX import/use in {rel(path)}')
-  if not re.search(r'\bsandbox\s*:\s*ISOLATED_MODULE_SANDBOX\b', body):
-    errors.append(f'missing isolated sandbox option in {rel(path)}')
+  if expected_sandbox_profile not in body:
+    errors.append(f'missing {expected_sandbox_profile} import/use in {rel(path)}')
+  if not re.search(rf'\bsandbox\s*:\s*{expected_sandbox_profile}\b', body):
+    errors.append(f'missing {expected_sandbox_profile} sandbox option in {rel(path)}')
   if 'allow-same-origin' in body:
     errors.append(f'isolated tool module must not request allow-same-origin: {rel(path)}')
 
@@ -231,8 +272,9 @@ for path in iter_source_files():
   body = path.read_text(encoding='utf-8', errors='ignore')
   if 'createModuleFrame' not in body or path in unsandboxed_module_frame_allowed_paths:
     continue
-  if not re.search(r'\bsandbox\s*:\s*ISOLATED_MODULE_SANDBOX\b', body):
-    errors.append(f'new module frames must use ISOLATED_MODULE_SANDBOX or be explicitly allowlisted: {rel(path)}')
+  sandbox_profile_pattern = '|'.join(sorted(isolated_sandbox_profile_names))
+  if not re.search(rf'\bsandbox\s*:\s*(?:{sandbox_profile_pattern})\b', body):
+    errors.append(f'new module frames must use a known module sandbox profile or be explicitly allowlisted: {rel(path)}')
 
 camera_allow_allowed_paths = {bridge_path, qr_index_path}
 for path in iter_source_files():

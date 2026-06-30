@@ -61,6 +61,7 @@ const APP_SHELL = [
   './src/modules/seatplan/app.js',
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
+let updateActivationToken = null;
 
 function shouldCacheResponse(response) {
   if (!response || !response.ok) return false;
@@ -186,7 +187,22 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  const { data } = event;
+  if (!data || typeof data !== 'object') return;
+
+  if (data.type === 'SET_UPDATE_TOKEN') {
+    if (typeof data.token === 'string' && data.token.length > 0) {
+      updateActivationToken = data.token;
+    }
+    return;
+  }
+
+  if (
+    data.type === 'SKIP_WAITING'
+    && typeof data.token === 'string'
+    && data.token.length > 0
+    && data.token === updateActivationToken
+  ) {
     self.skipWaiting();
   }
 });

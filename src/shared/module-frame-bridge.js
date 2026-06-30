@@ -1,7 +1,10 @@
 export const DEFAULT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'";
 export const CAMERA_MODULE_ALLOW = "camera; clipboard-read; clipboard-write; microphone 'none'";
-// Keep this profile without allow-same-origin; same-origin + scripts would not provide a strong sandbox boundary.
-export const ISOLATED_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox';
+// Keep these profiles without allow-same-origin; same-origin + scripts would not provide a strong sandbox boundary.
+export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
+export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox';
+export const DUPLICATE_CHECK_MODULE_SANDBOX = 'allow-scripts allow-downloads';
+export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox';
 
 const MODULE_FRAME_NONCE_PARAM = 'moduleFrameNonce';
 

@@ -465,6 +465,14 @@
       transition: max-height var(--chrome-transition-duration) var(--chrome-transition-ease), min-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), row-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), column-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), border-width var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), background-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-medium) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), margin var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
+    .app.is-chrome-layout-settling .app-header,
+    .app.is-chrome-layout-settling .app-header-title,
+    .app.is-chrome-layout-settling .app-header-actions,
+    .app.is-chrome-layout-settling .tab-nav,
+    .app.is-chrome-layout-settling .tab-indicator {
+      transition: none !important;
+    }
+
     .app.app-tab-groups>.app-header,
     .app.app-tab-random-picker>.app-header,
     .app.app-tab-work-phase>.app-header {
@@ -5529,6 +5537,7 @@
     }
 
     .tutorial-intro-dialog {
+      position: relative;
       width: min(390px, calc(100vw - 32px));
       padding: 24px;
       border: 1px solid rgba(226, 232, 240, 0.42);
@@ -5537,6 +5546,12 @@
       box-shadow: 0 24px 64px rgba(2, 6, 23, 0.5), 0 0 0 1px rgba(148, 163, 184, 0.12);
       color: #e2e8f0;
       text-align: center;
+    }
+
+    .tutorial-intro-close-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
     }
 
     .tutorial-intro-dialog::backdrop {

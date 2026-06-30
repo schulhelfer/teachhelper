@@ -1,7 +1,7 @@
 import {
   CAMERA_MODULE_ALLOW,
   createModuleFrame,
-  ISOLATED_MODULE_SANDBOX,
+  QR_MODULE_SANDBOX,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
 
@@ -18,7 +18,7 @@ export function mountQr({ host }) {
     loading: 'lazy',
     src: QR_URL,
     allow: CAMERA_MODULE_ALLOW,
-    sandbox: ISOLATED_MODULE_SANDBOX,
+    sandbox: QR_MODULE_SANDBOX,
   });
 
   let disposed = false;

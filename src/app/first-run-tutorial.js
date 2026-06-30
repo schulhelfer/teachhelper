@@ -397,6 +397,11 @@ export function createFirstRunTutorial({
     introDialog.setAttribute('aria-labelledby', 'tutorial-intro-title');
     introDialog.setAttribute('aria-describedby', 'tutorial-intro-copy');
 
+    const closeButton = makeButton('tutorial-intro-close-button ghost dialog-icon-button', '❌', 'Einführung schließen');
+    closeButton.addEventListener('click', () => {
+      finish({ persist: true });
+    });
+
     const icon = document.createElement('div');
     icon.className = 'tutorial-intro-icon';
     icon.setAttribute('aria-hidden', 'true');
@@ -421,7 +426,7 @@ export function createFirstRunTutorial({
       finish({ persist: true });
     });
 
-    introDialog.append(icon, title, copy, startButton);
+    introDialog.append(closeButton, icon, title, copy, startButton);
     document.body.append(introDialog);
     if (typeof introDialog.showModal === 'function') {
       introDialog.showModal();

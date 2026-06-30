@@ -5561,7 +5561,7 @@
           -webkit-backdrop-filter: saturate(145%) blur(8px);
           opacity: 1;
           pointer-events: auto;
-          transition: opacity 450ms ease, backdrop-filter 450ms ease, -webkit-backdrop-filter 450ms ease;
+          transition: opacity 225ms ease, backdrop-filter 225ms ease, -webkit-backdrop-filter 225ms ease;
         }
 
         .grades-entry-save-overlay.is-fading {
@@ -5589,7 +5589,7 @@
           line-height: 1.35;
           text-align: center;
           transform: translateY(0) scale(1);
-          transition: transform 450ms ease;
+          transition: transform 225ms ease;
         }
 
         .grades-entry-save-overlay.is-fading .grades-entry-save-dialog {
@@ -6952,30 +6952,24 @@
         .grades-master-table td.is-leading-boundary-category::before {
           content: "";
           position: absolute;
-          top: 0;
+          top: -1px;
           bottom: 0;
-          z-index: 3;
+          z-index: 7;
           pointer-events: none;
         }
 
         .grades-master-table th.is-boundary-category::after,
         .grades-master-table td.is-boundary-category::after {
           right: -1px;
-          width: 2px;
-          background: linear-gradient(to right,
-              rgba(24, 31, 43, 0.96) 0,
-              rgba(255, 255, 255, 0.22) 50%,
-              rgba(24, 31, 43, 0.96) 100%);
+          width: 1px;
+          background: rgb(75, 83, 96);
         }
 
         .grades-master-table th.is-leading-boundary-category::before,
         .grades-master-table td.is-leading-boundary-category::before {
           left: -1px;
-          width: 2px;
-          background: linear-gradient(to right,
-              rgba(24, 31, 43, 0.96) 0,
-              rgba(255, 255, 255, 0.22) 50%,
-              rgba(24, 31, 43, 0.96) 100%);
+          width: 1px;
+          background: rgb(75, 83, 96);
         }
 
         .grades-master-table th.grade-category-head {
@@ -7510,6 +7504,10 @@
           overflow-wrap: anywhere;
           overflow: visible;
           text-align: center;
+        }
+
+        .grade-assessment-label.is-be-assessment .grade-assessment-title {
+          font-style: italic;
         }
 
         .grade-assessment-label.is-weightless .grade-assessment-title {
@@ -8627,28 +8625,6 @@
 
         .grade-task-competence-option-text {
           min-width: 0;
-        }
-
-        .grade-task-competence-custom {
-          display: grid;
-          gap: 0.35rem;
-        }
-
-        .grade-task-competence-custom span {
-          font-size: 0.72rem;
-          font-weight: 800;
-          letter-spacing: 0.04em;
-          text-transform: uppercase;
-          color: var(--muted);
-        }
-
-        .grade-task-competence-custom input {
-          min-height: 42px;
-          padding: 0.64rem 0.76rem;
-          border: 1px solid rgba(148, 163, 184, 0.22);
-          border-radius: 8px;
-          background: rgba(15, 23, 42, 0.62);
-          color: var(--text);
         }
 
         .grade-simulation-summary {

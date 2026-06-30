@@ -28,7 +28,7 @@
       <div class="sidebar-controls">
         <button id="view-grades-entry-btn" class="nav-btn grades-entry-nav-btn active" type="button"
           data-tutorial-anchor="grades-entry-nav"
-          aria-label="Eingabe" title="Eingabe">✍️</button>
+          aria-label="Eingabe" title="Eingabe">📝</button>
         <button id="view-week-btn" class="nav-btn week-view-nav-btn" type="button" aria-label="Wochenansicht"
           title="Wochenansicht" hidden>🗓️</button>
       </div>
@@ -362,7 +362,7 @@
                 <div class="settings-grid">
                   <div class="settings-column">
                     <h3 class="settings-panel-title">Ferien</h3>
-                    <ul id="free-range-list" class="list"></ul>
+                    <ul id="free-range-list" class="list" data-tutorial-anchor="planning-holidays"></ul>
                   </div>
 
                   <div class="settings-column">
@@ -378,14 +378,14 @@
                       <option value="Pfingstmontag"></option>
                       <option value="Reformationstag"></option>
                     </datalist>
-                    <ul id="special-day-list" class="list"></ul>
+                    <ul id="special-day-list" class="list" data-tutorial-anchor="planning-special-days"></ul>
                   </div>
                 </div>
               </div>
 
               <div id="settings-tab-display" class="settings-panel" role="tabpanel" hidden>
                 <form class="settings-form-table" autocomplete="off">
-                  <div id="settings-display-hours-row" class="settings-form-row">
+                  <div id="settings-display-hours-row" class="settings-form-row" data-tutorial-anchor="planning-display-hours">
                     <label class="settings-form-label" for="hours-per-day">Maximale Unterrichtsstunden pro
                       Tag</label>
                     <input id="hours-per-day" class="settings-number-input" type="number" min="1" max="12" value="8">
@@ -396,7 +396,7 @@
                     <input id="grades-privacy-graph-threshold" class="settings-number-input" type="number" min="0"
                       max="50" value="5">
                   </div>
-                  <div class="settings-form-row">
+                  <div class="settings-form-row" data-tutorial-anchor="planning-sidebar-visibility">
                     <span class="settings-form-label">Randleiste</span>
                     <label class="checkbox-line settings-inline-checkbox">
                       <input id="show-hidden-sidebar-courses" type="checkbox">
@@ -528,13 +528,13 @@
                   <p id="sync-file-name" class="muted"></p>
                   <p id="sync-file-status" class="muted"></p>
                 </div>
-                <div id="db-auto-actions" class="button-row settings-db-auto-actions">
+                <div id="db-auto-actions" class="button-row settings-db-auto-actions" data-tutorial-anchor="database-actions">
                   <button id="db-select-existing-btn" type="button">Bestehende Datenbank auswählen</button>
                   <button id="db-create-new-btn" type="button">Neue Datenbankdatei leer anlegen</button>
                   <button id="db-create-from-current-btn" type="button">Neue Datenbankdatei mit aktuellen Daten
                     anlegen</button>
                 </div>
-                <div id="db-manual-actions" class="button-row settings-db-manual-actions" hidden>
+                <div id="db-manual-actions" class="button-row settings-db-manual-actions" data-tutorial-anchor="database-actions" hidden>
                   <button id="db-manual-load-btn" type="button">Datenbank laden</button>
                   <button id="db-manual-save-btn" type="button">Datenbank speichern/neu anlegen</button>
                   <input id="db-manual-file" type="file" accept="application/json,.json" hidden>
@@ -1143,21 +1143,14 @@
       <div class="dialog-header">
         <h3 id="grade-task-competence-dialog-title" class="dialog-title">Kompetenzen zuordnen</h3>
         <div class="dialog-actions-top">
+          <button type="submit" id="grade-task-competence-save" class="dialog-icon-button" aria-label="Speichern"
+            title="Speichern">💾</button>
           <button type="button" id="grade-task-competence-cancel-top" class="ghost dialog-icon-button"
             aria-label="Abbrechen" title="Abbrechen">❌</button>
         </div>
       </div>
       <div id="grade-task-competence-list" class="grade-task-competence-list"></div>
-      <label class="grade-task-competence-custom">
-        <span>Eigene Kompetenz</span>
-        <input id="grade-task-competence-custom" type="text" autocomplete="off">
-      </label>
       <div id="grade-task-competence-status" class="expectation-horizon-status" aria-live="polite"></div>
-      <div class="button-row dialog-actions">
-        <button type="button" id="grade-task-competence-cancel" class="ghost">Abbrechen</button>
-        <span class="dialog-grow"></span>
-        <button type="submit" id="grade-task-competence-save">Speichern</button>
-      </div>
     </form>
   </dialog>
 

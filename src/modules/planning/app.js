@@ -33,7 +33,7 @@ const REQUIRED_HOLIDAYS = [
 const HOURS_PER_DAY_DEFAULT = 8;
 const ENTFALL_TOPIC_DEFAULT = "Entfall laut Plan";
 const WRITTEN_EXAM_TOPIC = "Schriftliche Arbeit";
-const DEFAULT_COURSE_COLOR = "#60A5FA";
+const DEFAULT_COURSE_COLOR = "#E6194B";
 const NO_LESSON_COLOR = "#787878";
 const BACKUP_ENABLED_DEFAULT = true;
 const BACKUP_INTERVAL_DEFAULT_DAYS = 7;
@@ -74,21 +74,21 @@ const EXPECTATION_HORIZON_COURSE_LEVEL_TEMPLATE_STORAGE_KEY = "expectation-horiz
 const COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY = "competence-expectations-template";
 const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
-  "#60A5FA",
-  "#22D3EE",
-  "#1E40AF",
-  "#34D399",
-  "#A3E635",
-  "#FACC15",
-  "#8B5E34",
-  "#EA580C",
-  "#F87171",
-  "#B91C1C",
-  "#F472B6",
-  "#DB2777",
-  "#A78BFA",
-  "#7C3AED",
-  "#4A044E"
+  "#E6194B",
+  "#3CB44B",
+  "#FFE119",
+  "#911EB4",
+  "#F58231",
+  "#F032E6",
+  "#BFEF45",
+  "#9A6324",
+  "#808000",
+  "#FABED4",
+  "#800000",
+  "#FF6F61",
+  "#006400",
+  "#D4A017",
+  "#707070"
 ];
 
 const TUTORIAL_DEMO_MODE = (() => {
@@ -6643,11 +6643,11 @@ PlannerStore.prototype.ensureLessonsForYear = function (schoolYearId) {
 function seedTutorialDemoStore(store) {
   const year = store.getActiveSchoolYear();
   if (!year) return null;
-  const courseId = store.createCourse(year.id, "Biologie 8a", "#34D399", false, false, "Biologie");
+  const courseId = store.createCourse(year.id, "Biologie 8a", "#3CB44B", false, false, "Biologie");
   const secondCourseId = store.createCourse(
     year.id,
     "Naturwissenschaften 9b",
-    "#60A5FA",
+    "#E6194B",
     false,
     false,
     "Naturwissenschaften"
@@ -6749,7 +6749,9 @@ class PlannerApp {
     this.gradeTaskCompetenceDialogTaskId = "";
     this.gradeTaskCompetenceDialogOptionsSignature = "";
     this.gradeTaskCompetenceDialogOptionButtons = [];
+    this.gradeTaskCompetenceDialogOptionButtonById = new Map();
     this.gradeTaskCompetenceDialogSelectedIds = new Set();
+    this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
     this.gradeTaskCompetenceDialogRenderFrame = 0;
     this.boundGradesEntryTableScroll = null;
     this.syncingGradesEntryTableStickyScrollbar = false;
@@ -6956,10 +6958,8 @@ class PlannerApp {
       competenceExpectationsGenerate: document.querySelector("#competence-expectations-generate"),
       gradeTaskCompetenceDialog: document.querySelector("#grade-task-competence-dialog"),
       gradeTaskCompetenceDialogForm: document.querySelector("#grade-task-competence-dialog-form"),
-      gradeTaskCompetenceCancel: document.querySelector("#grade-task-competence-cancel"),
       gradeTaskCompetenceCancelTop: document.querySelector("#grade-task-competence-cancel-top"),
       gradeTaskCompetenceList: document.querySelector("#grade-task-competence-list"),
-      gradeTaskCompetenceCustom: document.querySelector("#grade-task-competence-custom"),
       gradeTaskCompetenceStatus: document.querySelector("#grade-task-competence-status"),
       gradeTaskCompetenceSave: document.querySelector("#grade-task-competence-save"),
 
@@ -7171,6 +7171,7 @@ class PlannerApp {
     this.gradesEntryDraft = null;
     this.gradesEntryDraftDirty = false;
     this.gradesEntryEditSnapshot = null;
+    this.confirmedGradesEntryModeChangeKey = "";
     this.gradesEntrySaveNotice = "";
     this.gradesEntrySaveNoticeFading = false;
     this.gradesEntrySaveNoticeTimer = 0;
@@ -9483,6 +9484,22 @@ class PlannerApp {
     this.refs.syncFileStatus.style.color = isError ? "#ff8a8a" : "";
   }
 
+  async showUnencryptedDatabaseNotice() {
+    if (this.isGradeVaultEncryptionEnabled()) {
+      return;
+    }
+    await this.showInfoMessage(
+      [
+        "Diese Datenbank speichert den Notenbereich aktuell unverschlüsselt.",
+        "",
+        "Du solltest die Verschlüsselung aktivieren, damit Notenstruktur, Teilnehmende und Noten nur nach Passworteingabe gespeichert werden.",
+        "",
+        "Du findest die Option in den Einstellungen unter Datenbank > Verschlüsselung > verschlüsseln."
+      ].join("\n"),
+      "Datenbank unverschlüsselt"
+    );
+  }
+
   isManualPersistenceMode() {
     return !this.syncState.supported;
   }
@@ -9888,33 +9905,35 @@ class PlannerApp {
     });
     if (remoteEnvelope && remoteEnvelope.startupShell) {
       if (isStartup) {
-        await this.applyRemoteEnvelopeToApp(remoteEnvelope, "startup", { startupShellOnly: true });
+        return this.applyRemoteEnvelopeToApp(remoteEnvelope, "startup", { startupShellOnly: true });
       } else {
         const remoteHash = String(remoteEnvelope.stateHash || this.getPayloadStateHash(remoteEnvelope));
         const localPayload = await this.buildPersistableDatabasePayload({ explicit: false });
         const localHash = this.getPayloadStateHash(localPayload);
         if (remoteHash !== localHash) {
-          await this.applyRemoteEnvelopeToApp(remoteEnvelope, "manual");
+          return this.applyRemoteEnvelopeToApp(remoteEnvelope, "manual");
         } else {
           this.markKnownRemote(remoteEnvelope);
           this.setSyncStatus("Datenbankdatei verbunden.");
+          return true;
         }
       }
     } else {
       const hasContent = await this.hasNonEmptySyncFile(handle);
       if (hasContent) {
         this.setSyncStatus(`Vorhandene Datei erkannt (nicht unterstütztes Datenbankformat). Erwartet: ${APP_DB_SCHEMA}. Datei wurde nicht überschrieben.`, true);
+        return false;
       } else if (isStartup) {
         this.setSyncStatus("Datenbankdatei verbunden. Datei wird beim nächsten Speichern befüllt.");
+        return true;
       } else {
-        await this.pushLocalStateToSyncFile({
+        return this.pushLocalStateToSyncFile({
           manual: true,
           allowConflictPrompt: false,
           reason: "initial-seed"
         });
       }
     }
-    return true;
   }
 
   async prepareNewSyncFileHandle(handle) {
@@ -10048,9 +10067,13 @@ class PlannerApp {
     if (!await this.ensureSyncFilePermission(storedHandle, true)) {
       return false;
     }
-    await this.connectSyncFileHandle(storedHandle, "manual");
+    const connected = await this.connectSyncFileHandle(storedHandle, "manual");
+    if (!connected) {
+      return false;
+    }
     this.syncState.initialized = true;
     this.renderAll({ visibleOnly: true });
+    await this.showUnencryptedDatabaseNotice();
     return true;
   }
 
@@ -10357,16 +10380,24 @@ class PlannerApp {
       return;
     }
     if (mode === "new-empty") {
-      await this.createFreshDatabaseOnHandle(handle);
+      if (await this.createFreshDatabaseOnHandle(handle)) {
+        await this.showUnencryptedDatabaseNotice();
+      }
       return;
     }
     if (mode === "new-current") {
-      await this.createCurrentDatabaseOnHandle(handle);
+      if (await this.createCurrentDatabaseOnHandle(handle)) {
+        await this.showUnencryptedDatabaseNotice();
+      }
       return;
     }
-    await this.connectSyncFileHandle(handle, "manual");
+    const connected = await this.connectSyncFileHandle(handle, "manual");
+    if (!connected) {
+      return;
+    }
     this.syncState.initialized = true;
     this.renderAll();
+    await this.showUnencryptedDatabaseNotice();
   }
 
   async initializeExternalFileSync() {
@@ -14752,7 +14783,7 @@ class PlannerApp {
       this.handleGradesSurfaceContextMenu(event);
     });
     root.addEventListener("change", (event) => {
-      this.handleGradesSurfaceChange(event);
+      void this.handleGradesSurfaceChange(event);
     });
     root.addEventListener("input", (event) => {
       this.handleGradesSurfaceInput(event);
@@ -15033,25 +15064,38 @@ class PlannerApp {
       return false;
     }
     this.queueGradesEntrySaveNotice("Noten gespeichert");
+    const savedCourseId = Number(this.selectedCourseId || 0);
     if (isDraftSave) {
       this.gradesEntryEditSnapshot = null;
       this.resetGradesEntryDraftAfterSave(draftValues);
-      this.renderGradesView();
-      requestAnimationFrame(() => {
-        const firstDraftInput = this.refs.gradesEntryContent?.querySelector("input[data-grade-draft-input='1']");
-        firstDraftInput?.focus();
-        firstDraftInput?.select();
-      });
+      if (!this.openGradesOverviewForCourse(savedCourseId, { assessmentId: assessment.id, commit: false, preserveSaveNotice: true })) {
+        this.renderGradesView();
+        requestAnimationFrame(() => {
+          const firstDraftInput = this.refs.gradesEntryContent?.querySelector("input[data-grade-draft-input='1']");
+          firstDraftInput?.focus();
+          firstDraftInput?.select();
+        });
+      } else {
+        requestAnimationFrame(() => {
+          this.renderGradesEntrySaveNoticeOverlay();
+        });
+      }
       return true;
     }
     this.clearGradesEntryDraftDirty();
     this.activeGradeAssessmentId = assessment.id;
     this.captureGradesEntryEditSnapshot(assessment.id);
-    this.renderGradesView();
-    this.refreshOpenExpectationHorizonDialogTemplate();
-    requestAnimationFrame(() => {
-      this.focusGradeAssessmentInput(assessment.id, 0);
-    });
+    if (!this.openGradesOverviewForCourse(savedCourseId, { assessmentId: assessment.id, commit: false, preserveSaveNotice: true })) {
+      this.renderGradesView();
+      this.refreshOpenExpectationHorizonDialogTemplate();
+      requestAnimationFrame(() => {
+        this.focusGradeAssessmentInput(assessment.id, 0);
+      });
+    } else {
+      requestAnimationFrame(() => {
+        this.renderGradesEntrySaveNoticeOverlay();
+      });
+    }
     return true;
   }
 
@@ -15142,6 +15186,11 @@ class PlannerApp {
     if (cancelEntryButton) {
       event.stopPropagation();
       const assessmentId = Number(this.selectedGradesEntryAssessmentId || 0);
+      const courseId = Number(
+        (assessmentId ? this.store.getGradeAssessment(assessmentId)?.courseId : 0)
+        || this.selectedCourseId
+        || 0
+      );
       if (assessmentId) {
         this.restoreGradesEntryEditSnapshot(assessmentId);
       } else {
@@ -15151,10 +15200,13 @@ class PlannerApp {
       this.hideGradePicker();
       this.selectedGradesEntryAssessmentId = null;
       this.gradesEntryDraft = null;
+      this.confirmedGradesEntryModeChangeKey = "";
       this.clearGradesEntryDraftDirty();
       this.activeGradeAssessmentId = null;
       this.activeGradeStudentId = null;
-      this.renderGradesView();
+      if (!this.openGradesOverviewForCourse(courseId, { assessmentId, commit: false })) {
+        this.renderGradesView();
+      }
       return;
     }
     const saveEntryButton = event.target.closest("button[data-grades-entry-save]");
@@ -15215,7 +15267,7 @@ class PlannerApp {
     if (competenceButton) {
       event.preventDefault();
       event.stopPropagation();
-      if (!this.commitVisibleGradeInputs()) {
+      if (!this.commitGradeTaskCompetenceDialogPreOpenInputs()) {
         return;
       }
       this.openGradeTaskCompetenceDialog(competenceButton.dataset.taskId || "");
@@ -15273,6 +15325,7 @@ class PlannerApp {
         return;
       }
       this.activeGradeOverrideContext = null;
+      this.clearGradesOverviewFocusState();
       this.togglePrivacyFocusedGradeStudent(studentButton.dataset.gradeStudentName);
       this.renderGradesView();
       this.scheduleGradePrivacyFocusedStudentIntoView();
@@ -15338,6 +15391,7 @@ class PlannerApp {
       if (!this.commitVisibleGradeInputs()) {
         return;
       }
+      this.clearGradesOverviewFocusState();
       this.openGradeOverrideDialog({
         studentId: Number(overrideButton.dataset.studentId || 0),
         courseId: Number(overrideButton.dataset.courseId || 0),
@@ -15355,7 +15409,7 @@ class PlannerApp {
         return;
       }
       this.activeGradeOverrideContext = null;
-      this.clearActiveGradeAssessment();
+      this.clearGradesOverviewFocusState();
       this.runGradeTableMorph(() => {
         this.toggleGradePeriodExpanded(
           this.selectedCourseId,
@@ -15372,7 +15426,7 @@ class PlannerApp {
         return;
       }
       this.activeGradeOverrideContext = null;
-      this.clearActiveGradeAssessment();
+      this.clearGradesOverviewFocusState();
       this.runGradeTableMorph(() => {
         this.toggleGradeCategoryExpanded(
           this.selectedCourseId,
@@ -15390,7 +15444,7 @@ class PlannerApp {
         return;
       }
       this.activeGradeOverrideContext = null;
-      this.clearActiveGradeAssessment();
+      this.clearGradesOverviewFocusState();
       const [periodRaw, categoryIdRaw, subcategoryIdRaw] = String(subcategoryToggle.dataset.gradeToggleSubcategory || "").split(":");
       this.runGradeTableMorph(() => {
         this.toggleGradeSubcategoryExpanded(
@@ -15401,6 +15455,24 @@ class PlannerApp {
         );
         this.renderGradesView();
       });
+      return;
+    }
+    if (
+      this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "overview"
+      && (this.activeGradeAssessmentId || this.selectedGradesOverviewColumnKey)
+      && !event.target.closest("input[data-grade-input='1']:not(:disabled)")
+      && !event.target.closest("[data-grade-test-task-field]:not(:disabled)")
+      && !event.target.closest("button[data-grade-activate-assessment], td[data-grade-activate-assessment-cell='1'], button[data-grade-edit-assessment]")
+      && !event.target.closest(".grade-picker")
+      && !event.target.closest("[data-grade-override-editor='1']")
+    ) {
+      const activeInput = document.activeElement instanceof HTMLElement
+        && document.activeElement.matches("input[data-grade-input='1']")
+        ? document.activeElement
+        : null;
+      this.clearGradesOverviewFocusState(activeInput);
+      this.renderGradesView();
     }
   }
 
@@ -15481,7 +15553,7 @@ class PlannerApp {
     return false;
   }
 
-  handleGradesSurfaceChange(event) {
+  async handleGradesSurfaceChange(event) {
     const gradeCheckbox = event.target.closest("input[data-grade-input='1'][data-grade-checkbox='1']");
     if (gradeCheckbox && !gradeCheckbox.disabled) {
       this.syncHomeworkCheckboxVisualState(gradeCheckbox);
@@ -15525,9 +15597,30 @@ class PlannerApp {
         this.renderGradesView();
         return;
       }
-      this.selectedCourseId = Number(courseSelect.value || 0) || null;
+      const previousEditorValues = this.readGradesEntryEditorValues();
+      const nextCourseId = Number(courseSelect.value || 0) || null;
+      const halfYear = normalizeGradeHalfYear(previousEditorValues?.halfYear || this.getDefaultGradeAssessmentHalfYear());
+      const categories = this.getGradesEntryStructureCategories(nextCourseId, halfYear);
+      const defaultSelection = this.getMostUsedGradeAssessmentSelection(nextCourseId, null, halfYear);
+      const categoryId = categories.some((item) => Number(item.id) === Number(previousEditorValues?.categoryId || 0))
+        ? Number(previousEditorValues.categoryId)
+        : defaultSelection.categoryId;
+      const category = categories.find((item) => Number(item.id) === Number(categoryId || 0)) || null;
+      const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
+      const defaultSubcategorySelection = this.getMostUsedGradeAssessmentSelection(nextCourseId, categoryId, halfYear);
+      const subcategoryId = subcategories.some((item) => Number(item.id) === Number(previousEditorValues?.subcategoryId || 0))
+        ? Number(previousEditorValues.subcategoryId)
+        : defaultSubcategorySelection.subcategoryId;
+      this.selectedCourseId = nextCourseId;
       this.selectedGradesEntryAssessmentId = null;
-      this.gradesEntryDraft = null;
+      this.gradesEntryDraft = {
+        ...previousEditorValues,
+        assessmentId: null,
+        halfYear,
+        categoryId,
+        subcategoryId,
+        entries: {}
+      };
       this.gradesEntryEditSnapshot = null;
       this.clearGradesEntryDraftDirty();
       this.renderGradesView();
@@ -15625,6 +15718,36 @@ class PlannerApp {
         return;
       }
       const mode = normalizeGradeAssessmentMode(modeInput.value || "grade");
+      const previousMode = normalizeGradeAssessmentMode(activeAssessment?.mode || latestDraft.mode || "grade");
+      if (activeAssessment && mode !== previousMode) {
+        const existingEntryCount = (Array.isArray(this.store.gradeVaultState?.gradeEntries)
+          ? this.store.gradeVaultState.gradeEntries
+          : []
+        ).filter((entry) => Number(entry?.assessmentId || 0) === Number(activeAssessment.id || 0)).length;
+        const confirmationKey = `${Number(activeAssessment.id || 0)}:${previousMode}->${mode}`;
+        if (existingEntryCount > 0 && this.confirmedGradesEntryModeChangeKey !== confirmationKey) {
+          const confirmed = await this.showConfirmMessage(
+            "Der Leistungsmodus wird geändert. Bereits eingetragene Noten dieser Leistung passen danach nicht mehr zum neuen Modus und werden gelöscht. Fortfahren?",
+            {
+              title: "Noteneinträge löschen",
+              okText: "Modus ändern",
+              cancelText: "Abbrechen",
+              dangerOk: true
+            }
+          );
+          if (!confirmed) {
+            const control = modeInput.closest(".assessment-mode-toggle");
+            const previousModeInput = control?.querySelector(`input[data-grades-entry-mode='1'][value="${previousMode}"]`);
+            if (previousModeInput instanceof HTMLInputElement) {
+              previousModeInput.checked = true;
+              this.handleSegmentControlSlideChange({ target: previousModeInput });
+            }
+            this.renderGradesView();
+            return;
+          }
+          this.confirmedGradesEntryModeChangeKey = confirmationKey;
+        }
+      }
       const testScale = latestDraft.testScale || GRADE_TEST_SCALE_DEFAULT;
       if (!this.gradeDeficitThresholdUserEdited) {
         this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(mode === "test" ? testScale : GRADE_TEST_SCALE_DEFAULT);
@@ -17836,6 +17959,10 @@ class PlannerApp {
       this.handleGradePrivacyOverlayPointerDown(event);
     });
 
+    document.addEventListener("pointerdown", (event) => {
+      this.handleGradesOverviewExternalPointerDown(event);
+    }, true);
+
     document.addEventListener("click", (event) => {
       if (this.handleGradesEntryDistributionOverlayDocumentClick(event)) {
         return;
@@ -17871,14 +17998,22 @@ class PlannerApp {
         )
       );
       if (
-        this.activeGradeAssessmentId
+        (this.activeGradeAssessmentId || this.selectedGradesOverviewColumnKey)
         && !activeGradeInputTarget
         && !activeGradeTestTaskInputTarget
         && !gradeActivationTarget
         && !insideGradePicker
         && !insideGradesEntryEditor
       ) {
-        this.deactivateGradeAssessment();
+        const activeInput = document.activeElement instanceof HTMLElement
+          && document.activeElement.matches("input[data-grade-input='1']")
+          ? document.activeElement
+          : null;
+        const hadColumnHighlight = this.hasGradesOverviewColumnHighlight();
+        this.clearGradesOverviewFocusState(activeInput);
+        if (hadColumnHighlight) {
+          this.renderGradesView();
+        }
       }
       const insideOverrideEditor = Boolean(
         event.target instanceof Element
@@ -17986,6 +18121,9 @@ class PlannerApp {
     document.addEventListener("keydown", (event) => {
       if (event.key === "Escape") {
         this.tryExitGradePrivacyMode(event);
+        if (this.clearGradesOverviewFocusStateForEscape()) {
+          event.preventDefault();
+        }
         this.hideContextMenu();
         return;
       }
@@ -18059,6 +18197,7 @@ class PlannerApp {
     if (!this.isManualPersistenceMode()) {
       return false;
     }
+    const shouldShowEncryptionNotice = !String(this.manualPersistenceState.lastAction || "").trim();
     try {
       const payload = await this.buildPersistableDatabaseContainer({
         explicit: explicitVault,
@@ -18077,6 +18216,9 @@ class PlannerApp {
         this.setSyncStatus(`Teilen geöffnet. In Dateien sichern wählen und "${fileName}" ersetzen.`);
         this.commitManualPersistenceBaseline({ fileName, lastAction: "saved" });
         this.renderAll();
+        if (shouldShowEncryptionNotice) {
+          await this.showUnencryptedDatabaseNotice();
+        }
         return true;
       }
       const url = URL.createObjectURL(blob);
@@ -18092,6 +18234,9 @@ class PlannerApp {
       this.commitPersistedGradeVaultEnvelope(payload, { clearDirty: explicitVault });
       this.commitManualPersistenceBaseline({ fileName, lastAction: "saved" });
       this.renderAll();
+      if (shouldShowEncryptionNotice) {
+        await this.showUnencryptedDatabaseNotice();
+      }
       return true;
     } catch (_error) {
       this.setSyncStatus("Datenbankdatei konnte nicht gespeichert werden.", true);
@@ -18131,6 +18276,7 @@ class PlannerApp {
         lastAction: "loaded"
       });
       this.renderAll();
+      await this.showUnencryptedDatabaseNotice();
       return true;
     } catch (_error) {
       this.setSyncStatus("Datei konnte nicht gelesen werden.", true);
@@ -19575,7 +19721,7 @@ class PlannerApp {
       this.gradesEntrySaveNotice = "";
       this.gradesEntrySaveNoticeFading = false;
       this.removeGradesEntrySaveNoticeOverlay();
-    }, 450);
+    }, 225);
   }
 
   queueGradesEntrySaveNotice(message = "Noten gespeichert", duration = 1500) {
@@ -20112,7 +20258,8 @@ class PlannerApp {
         ? this.store.gradeVaultState.gradeEntries
         : []
       ).filter((entry) => Number(entry?.assessmentId || 0) === id).length;
-      if (existingEntryCount > 0) {
+      const confirmationKey = `${id}:${previousMode}->${mode}`;
+      if (existingEntryCount > 0 && this.confirmedGradesEntryModeChangeKey !== confirmationKey) {
         const confirmed = await this.showConfirmMessage(
           "Der Leistungsmodus wird geändert. Bereits eingetragene Noten dieser Leistung passen danach nicht mehr zum neuen Modus und werden gelöscht. Fortfahren?",
           {
@@ -20124,6 +20271,7 @@ class PlannerApp {
         if (!confirmed) {
           return false;
         }
+        this.confirmedGradesEntryModeChangeKey = confirmationKey;
       }
     }
     this.store.updateGradeAssessment(id, {
@@ -20144,6 +20292,7 @@ class PlannerApp {
       categoryId: editorValues.categoryId,
       subcategoryId: editorValues.subcategoryId
     });
+    this.confirmedGradesEntryModeChangeKey = "";
     this.gradesEntryDraft = null;
     this.clearGradesEntryDraftDirty();
     return true;
@@ -20436,7 +20585,7 @@ class PlannerApp {
                     name="grades-entry-topic"
                     data-grades-entry-topic="1"
                     value="${escapeHtml(normalizeGradeAssessmentTopic(editorState.topic))}"
-                    placeholder="Thema"
+                    placeholder="Lineare Funktionen"
                     ${editorMode === "test" ? "" : "disabled"}
                   >
                 </label>
@@ -20450,6 +20599,7 @@ class PlannerApp {
                     pattern="\\d{0,2}"
                     maxlength="2"
                     value="${escapeHtml(formatGradeAssessmentNumber(editorState.assessmentNumber))}"
+                    placeholder="1"
                     ${editorMode === "test" ? "" : "disabled"}
                   >
                 </label>
@@ -20463,6 +20613,7 @@ class PlannerApp {
                     pattern="\\d{0,3}"
                     maxlength="3"
                     value="${escapeHtml(normalizeGradeAssessmentExamDurationMinutes(editorState.examDurationMinutes) ?? "")}"
+                    placeholder="45"
                     ${editorMode === "test" ? "" : "disabled"}
                   >
                 </label>
@@ -20957,6 +21108,28 @@ class PlannerApp {
     return true;
   }
 
+  commitGradeTaskCompetenceDialogPreOpenInputs(root = this.getGradeInputRoot()) {
+    if (!root) {
+      return true;
+    }
+    this.commitVisibleGradesEntryMetadataInputs(root);
+    if (!this.commitVisibleGradeTestTaskInputs(root, { requireValue: false })) {
+      return false;
+    }
+    const activeInput = document.activeElement instanceof HTMLInputElement && root.contains(document.activeElement)
+      ? document.activeElement
+      : null;
+    if (!activeInput || !activeInput.matches("input[data-grade-input='1']:not(:disabled)")) {
+      return true;
+    }
+    if (this.commitGradeCellInput(activeInput)) {
+      return true;
+    }
+    activeInput.focus();
+    activeInput.select();
+    return false;
+  }
+
   commitVisibleGradeTestScoreInputs(root = this.getGradeInputRoot()) {
     if (!root) {
       return true;
@@ -21107,6 +21280,94 @@ class PlannerApp {
     this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
     this.updateActiveGradeStudentHighlight();
+  }
+
+  clearGradesOverviewFocusState(input = null) {
+    this.clearActiveGradeAssessment();
+    this.clearGradesOverviewAssessmentSpotlight();
+    this.selectedGradesOverviewColumnKey = "";
+    this.selectedGradesOverviewColumnCourseId = null;
+    if (input instanceof HTMLElement) {
+      input.blur();
+    }
+  }
+
+  isGradesOverviewFocusActive() {
+    return Boolean(
+      this.activeGradeAssessmentId
+      || this.selectedGradesOverviewColumnKey
+      || this.normalizeGradesOverviewAssessmentSpotlightTarget(this.gradesOverviewAssessmentSpotlight)
+    );
+  }
+
+  hasGradesOverviewColumnHighlight() {
+    return Boolean(
+      this.selectedGradesOverviewColumnKey
+      || this.normalizeGradesOverviewAssessmentSpotlightTarget(this.gradesOverviewAssessmentSpotlight)
+    );
+  }
+
+  isGradesOverviewVisible() {
+    return this.currentView === "grades" && this.normalizeGradesSubView(this.gradesSubView) === "overview";
+  }
+
+  scheduleGradesOverviewFocusRender() {
+    window.setTimeout(() => {
+      if (this.currentView === "grades") {
+        this.renderGradesView();
+      }
+    }, 0);
+  }
+
+  getActiveGradesOverviewInput() {
+    return document.activeElement instanceof HTMLElement
+      && document.activeElement.matches("input[data-grade-input='1']")
+      ? document.activeElement
+      : null;
+  }
+
+  shouldClearGradesOverviewFocusForExternalTarget(target) {
+    if (!(target instanceof Element) || !this.isGradesOverviewVisible() || !this.isGradesOverviewFocusActive()) {
+      return false;
+    }
+    if (target.closest(".grades-master-table")) {
+      return false;
+    }
+    if (
+      target.closest("#grade-picker")
+      || target.closest("#grades-title-date-picker")
+      || target.closest("#app-context-menu")
+      || target.closest("[data-grade-override-editor='1']")
+      || target.closest("dialog")
+    ) {
+      return false;
+    }
+    return true;
+  }
+
+  handleGradesOverviewExternalPointerDown(event) {
+    const target = event.target instanceof Element ? event.target : null;
+    if (!this.shouldClearGradesOverviewFocusForExternalTarget(target)) {
+      return false;
+    }
+    const hadColumnHighlight = this.hasGradesOverviewColumnHighlight();
+    this.clearGradesOverviewFocusState(this.getActiveGradesOverviewInput());
+    if (hadColumnHighlight) {
+      this.scheduleGradesOverviewFocusRender();
+    }
+    return true;
+  }
+
+  clearGradesOverviewFocusStateForEscape() {
+    if (!this.isGradesOverviewVisible() || !this.isGradesOverviewFocusActive()) {
+      return false;
+    }
+    const hadColumnHighlight = this.hasGradesOverviewColumnHighlight();
+    this.clearGradesOverviewFocusState(this.getActiveGradesOverviewInput());
+    if (hadColumnHighlight) {
+      this.renderGradesView();
+    }
+    return true;
   }
 
   clearPrivacyFocusedGradeStudent() {
@@ -21776,6 +22037,7 @@ class PlannerApp {
     this.archiveExportInProgress = true;
     this.updateSidebarArchiveButtonState();
     this.syncArchiveDialogState();
+    let archiveCreated = false;
     try {
       const sections = [];
       if (options.exportPlanning && !this.gradeVaultSession.planningPublicLoaded) {
@@ -21796,6 +22058,7 @@ class PlannerApp {
       const bytes = await this.buildArchivePdfBytes(year, sections);
       this.downloadArchivePdfBytes(bytes, year);
       this.setArchiveDialogStatus("PDF wurde erstellt.", "ok");
+      archiveCreated = true;
     } catch (error) {
       this.setArchiveDialogStatus(
         error instanceof Error && error.message ? error.message : "PDF-Export konnte nicht erstellt werden.",
@@ -21805,6 +22068,19 @@ class PlannerApp {
       this.archiveExportInProgress = false;
       this.updateSidebarArchiveButtonState();
       this.syncArchiveDialogState();
+    }
+    if (archiveCreated) {
+      this.closeDialog(this.refs.archiveDialog);
+      await this.showInfoMessage(
+        [
+          "Das PDF-Archiv wurde erstellt.",
+          "",
+          "Nach dem Abschluss eines Schuljahres kannst du Teachhelper auf zwei Arten neu aufsetzen:",
+          "1. Kurse in der Randleiste per Rechtsklick ausblenden.",
+          "2. In den Einstellungen eine neue Datenbankdatei starten und die alte behalten."
+        ].join("\n"),
+        "Archiv erstellt"
+      );
     }
   }
 
@@ -22875,6 +23151,7 @@ class PlannerApp {
         ...parsed.items
       ]);
       this.renderCompetenceExpectationsDialogItems(nextItems);
+      this.invalidateGradeTaskCompetenceDialogOptionsCache();
       this.setCompetenceExpectationsStatus(this.formatCompetenceExpectationsImportStatus(parsed.items, mode), "success");
       return true;
     } catch (error) {
@@ -23002,8 +23279,7 @@ class PlannerApp {
   saveCompetenceExpectationsForCurrentGradeTest(items = []) {
     const expectations = normalizeGradeCompetenceExpectations(items);
     const { assessment, draft } = this.getActiveGradeTestContext();
-    this.gradeTaskCompetenceDialogOptionsSignature = "";
-    this.gradeTaskCompetenceDialogOptionButtons = [];
+    this.invalidateGradeTaskCompetenceDialogOptionsCache();
     if (assessment && draft) {
       this.gradesEntryDraft = {
         ...draft,
@@ -23023,6 +23299,13 @@ class PlannerApp {
     return false;
   }
 
+  invalidateGradeTaskCompetenceDialogOptionsCache() {
+    this.gradeTaskCompetenceDialogOptionsSignature = "";
+    this.gradeTaskCompetenceDialogOptionButtons = [];
+    this.gradeTaskCompetenceDialogOptionButtonById = new Map();
+    this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
+  }
+
   saveCompetenceExpectationsDialog() {
     const dialogItems = this.readCompetenceExpectationsDialogItems();
     if (!dialogItems.ok) {
@@ -23038,9 +23321,6 @@ class PlannerApp {
   }
 
   bindGradeTaskCompetenceDialogEvents() {
-    this.refs.gradeTaskCompetenceCancel?.addEventListener("click", () => {
-      this.closeGradeTaskCompetenceDialog();
-    });
     this.refs.gradeTaskCompetenceCancelTop?.addEventListener("click", () => {
       this.closeGradeTaskCompetenceDialog();
     });
@@ -23113,12 +23393,18 @@ class PlannerApp {
       return;
     }
     if (!expectations.length) {
-      list.innerHTML = '<div class="grade-task-competence-empty">Noch keine Kompetenzerwartungen gespeichert. Eigene Kompetenz kann trotzdem eingetragen werden.</div>';
+      const empty = document.createElement("div");
+      empty.className = "grade-task-competence-empty";
+      empty.textContent = "Noch keine Kompetenzerwartungen gespeichert.";
+      list.replaceChildren(empty);
       this.gradeTaskCompetenceDialogOptionButtons = [];
+      this.gradeTaskCompetenceDialogOptionButtonById = new Map();
       this.gradeTaskCompetenceDialogOptionsSignature = signature;
+      this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
       return;
     }
-    list.innerHTML = expectations.map((topic) => {
+    const template = document.createElement("template");
+    template.innerHTML = expectations.map((topic) => {
       const competencies = Array.isArray(topic.competencies) ? topic.competencies : [];
       return `
         <section class="grade-task-competence-topic">
@@ -23132,30 +23418,60 @@ class PlannerApp {
         </section>
       `;
     }).join("");
-    this.gradeTaskCompetenceDialogOptionButtons = [...list.querySelectorAll("button[data-grade-task-competence-option='1']")];
+    const buttons = [...template.content.querySelectorAll("button[data-grade-task-competence-option='1']")];
+    const buttonById = new Map();
+    buttons.forEach((button) => {
+      const id = String(button.dataset.competenceId || "").trim();
+      if (id) {
+        buttonById.set(id, button);
+      }
+    });
+    list.replaceChildren(template.content);
+    this.gradeTaskCompetenceDialogOptionButtons = buttons;
+    this.gradeTaskCompetenceDialogOptionButtonById = buttonById;
     this.gradeTaskCompetenceDialogOptionsSignature = signature;
+    this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
   }
 
   syncGradeTaskCompetenceDialogSelection(task, expectations = null) {
     const selectedIds = new Set(normalizeGradeTaskCompetenceExpectationIds(task?.competenceExpectationIds, expectations));
     this.gradeTaskCompetenceDialogSelectedIds = selectedIds;
-    const buttons = this.gradeTaskCompetenceDialogOptionButtons.length
-      ? this.gradeTaskCompetenceDialogOptionButtons
-      : [...(this.refs.gradeTaskCompetenceList?.querySelectorAll("button[data-grade-task-competence-option='1']") || [])];
-    buttons.forEach((button) => {
-      this.setGradeTaskCompetenceDialogOptionState(button, selectedIds.has(String(button.dataset.competenceId || "")));
-    });
-    if (this.refs.gradeTaskCompetenceCustom) {
-      this.refs.gradeTaskCompetenceCustom.value = String(task?.customCompetenceText || "");
+    const buttonById = this.gradeTaskCompetenceDialogOptionButtonById instanceof Map
+      ? this.gradeTaskCompetenceDialogOptionButtonById
+      : new Map();
+    if (buttonById.size > 0) {
+      const previousSelectedIds = this.gradeTaskCompetenceDialogSyncedSelectedIds instanceof Set
+        ? this.gradeTaskCompetenceDialogSyncedSelectedIds
+        : new Set();
+      const changedIds = new Set([...previousSelectedIds, ...selectedIds]);
+      changedIds.forEach((id) => {
+        const button = buttonById.get(id);
+        if (button) {
+          this.setGradeTaskCompetenceDialogOptionState(button, selectedIds.has(id));
+        }
+      });
+    } else {
+      const buttons = this.gradeTaskCompetenceDialogOptionButtons.length
+        ? this.gradeTaskCompetenceDialogOptionButtons
+        : [...(this.refs.gradeTaskCompetenceList?.querySelectorAll("button[data-grade-task-competence-option='1']") || [])];
+      buttons.forEach((button) => {
+        this.setGradeTaskCompetenceDialogOptionState(button, selectedIds.has(String(button.dataset.competenceId || "")));
+      });
     }
+    this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set(selectedIds);
   }
 
   setGradeTaskCompetenceDialogOptionState(option, selected) {
     if (!option) {
       return;
     }
-    option.setAttribute("aria-checked", selected ? "true" : "false");
-    option.classList.toggle("is-selected", selected);
+    const nextValue = selected ? "true" : "false";
+    if (option.getAttribute("aria-checked") !== nextValue) {
+      option.setAttribute("aria-checked", nextValue);
+    }
+    if (option.classList.contains("is-selected") !== selected) {
+      option.classList.toggle("is-selected", selected);
+    }
   }
 
   toggleGradeTaskCompetenceDialogOption(option) {
@@ -23174,6 +23490,7 @@ class PlannerApp {
     }
     this.gradeTaskCompetenceDialogSelectedIds = selectedIds;
     this.setGradeTaskCompetenceDialogOptionState(option, selected);
+    this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set(selectedIds);
   }
 
   openGradeTaskCompetenceDialog(taskId = "") {
@@ -23184,9 +23501,6 @@ class PlannerApp {
     this.gradeTaskCompetenceDialogTaskId = task.id;
     const list = this.refs.gradeTaskCompetenceList;
     this.setGradeTaskCompetenceStatus("");
-    if (this.refs.gradeTaskCompetenceCustom) {
-      this.refs.gradeTaskCompetenceCustom.value = String(task.customCompetenceText || "");
-    }
     const hasCachedOptions = Boolean(list?.childElementCount && this.gradeTaskCompetenceDialogOptionsSignature);
     if (hasCachedOptions) {
       this.syncGradeTaskCompetenceDialogSelection(task, null);
@@ -23195,6 +23509,8 @@ class PlannerApp {
       list.setAttribute("aria-busy", "true");
       list.innerHTML = '<div class="grade-task-competence-empty">Kompetenzen werden geladen...</div>';
       this.gradeTaskCompetenceDialogOptionButtons = [];
+      this.gradeTaskCompetenceDialogOptionButtonById = new Map();
+      this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
     }
     if (this.refs.gradeTaskCompetenceSave) {
       this.refs.gradeTaskCompetenceSave.disabled = true;
@@ -23252,10 +23568,9 @@ class PlannerApp {
     const selectedIds = [...(this.gradeTaskCompetenceDialogSelectedIds instanceof Set
       ? this.gradeTaskCompetenceDialogSelectedIds
       : new Set())];
-    const customCompetenceText = String(this.refs.gradeTaskCompetenceCustom?.value || "").trim();
     const updated = this.updateGradeTestTaskCompetenceAssignment(taskId, {
       competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(selectedIds, expectations),
-      customCompetenceText
+      customCompetenceText: ""
     });
     if (!updated) {
       this.setGradeTaskCompetenceStatus("Die Aufgabe konnte nicht aktualisiert werden.", "error");
@@ -26374,6 +26689,7 @@ class PlannerApp {
 
   clearActiveGradeStudentFocus(input = null) {
     this.hideGradePicker();
+    this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
     this.updateActiveGradeStudentHighlight();
     if (input instanceof HTMLElement) {
@@ -26468,6 +26784,8 @@ class PlannerApp {
       return;
     }
     const nextStudentId = Number(studentId || 0) || null;
+    this.selectedGradesOverviewColumnKey = "";
+    this.selectedGradesOverviewColumnCourseId = null;
     if (Number(this.activeGradeAssessmentId || 0) === id) {
       this.activeGradeStudentId = nextStudentId;
       this.renderGradesView();
@@ -28658,6 +28976,7 @@ class PlannerApp {
     ));
     const yearLevel = normalizeGradeAssessmentYearLevel(yearLevelSelect?.value ?? draft.yearLevel);
     return {
+      assessmentId: Number(draft.assessmentId || 0) || null,
       title: String(titleInput?.value || draft.title || "").trim(),
       halfYear: normalizeGradeHalfYear(halfYearInput?.value || draft.halfYear || "h1"),
       weight: normalizeGradeInteger(weightInput?.value, draft.weight || 1),
@@ -28794,8 +29113,8 @@ class PlannerApp {
       categories.forEach((category, categoryIndex) => {
         const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
         const isLastCategory = categoryIndex === categories.length - 1;
-        const categoryRightBoundary = isLastCategory && isLastPeriod ? "" : "category";
-        const categoryLeftBoundary = "";
+        const categoryRightBoundary = isLastCategory && !isLastPeriod ? "category" : "";
+        const categoryLeftBoundary = categoryIndex > 0 ? "category" : "";
         const categoryExpanded = this.isGradeCategoryExpanded(course.id, category.id, periodGroup.period);
         if (!categoryExpanded) {
           periodColSpan += 1;
@@ -28842,7 +29161,7 @@ class PlannerApp {
           const homeworkAssessments = assessments.filter((assessment) => this.isHomeworkAssessment(assessment));
           const hasHomeworkColumn = homeworkAssessments.length > 0;
           const isLastSubcategory = subcategoryIndex === subcategories.length - 1;
-          const subcategoryRightBoundary = isLastSubcategory ? categoryRightBoundary || "subcategory" : "subcategory";
+          const subcategoryRightBoundary = isLastSubcategory ? categoryRightBoundary : "subcategory";
           const subcategoryExpanded = this.isGradeSubcategoryExpanded(
             course.id,
             category.id,
@@ -28905,6 +29224,12 @@ class PlannerApp {
           const addColumnCount = showAssessments && includeAddColumns ? 1 : 0;
           const summaryColumnCount = 1 + (hasHomeworkColumn ? 1 : 0);
           const subcategoryColSpan = showAssessments ? summaryColumnCount + assessments.length + addColumnCount : summaryColumnCount;
+          const partialRightBoundary = showAssessments && !hasHomeworkColumn && assessments.length === 0 && !includeAddColumns
+            ? subcategoryRightBoundary
+            : (!showAssessments && !hasHomeworkColumn ? subcategoryRightBoundary : "");
+          const homeworkRightBoundary = showAssessments && assessments.length === 0 && !includeAddColumns
+            ? subcategoryRightBoundary
+            : (!showAssessments ? subcategoryRightBoundary : "");
           categoryColSpan += subcategoryColSpan;
           headerRows[2].push({
             type: "subcategory-open",
@@ -28920,14 +29245,14 @@ class PlannerApp {
             period: periodGroup.period,
             categoryId: category.id,
             subcategoryId: subcategory.id,
-            rightBoundary: showAssessments || hasHomeworkColumn ? "" : subcategoryRightBoundary
+            rightBoundary: partialRightBoundary
           });
           headerRows[3].push({
             type: "subcategory-partial",
             period: periodGroup.period,
             category,
             subcategory,
-            rightBoundary: showAssessments || hasHomeworkColumn ? "" : subcategoryRightBoundary,
+            rightBoundary: partialRightBoundary,
             rowSpan: 1,
             colSpan: 1
           });
@@ -28938,14 +29263,14 @@ class PlannerApp {
               period: periodGroup.period,
               categoryId: category.id,
               subcategoryId: subcategory.id,
-              rightBoundary: showAssessments ? "" : subcategoryRightBoundary
+              rightBoundary: homeworkRightBoundary
             });
             headerRows[3].push({
               type: "subcategory-homework",
               period: periodGroup.period,
               category,
               subcategory,
-              rightBoundary: showAssessments ? "" : subcategoryRightBoundary,
+              rightBoundary: homeworkRightBoundary,
               rowSpan: 1,
               colSpan: 1
             });
@@ -28955,13 +29280,17 @@ class PlannerApp {
             return;
           }
 
-          assessments.forEach((assessment) => {
+          assessments.forEach((assessment, assessmentIndex) => {
+            const assessmentRightBoundary = assessmentIndex === assessments.length - 1 && !includeAddColumns
+              ? subcategoryRightBoundary
+              : "";
             columns.push({
               type: "assessment",
               period: periodGroup.period,
               categoryId: category.id,
               subcategoryId: subcategory.id,
-              assessment
+              assessment,
+              rightBoundary: assessmentRightBoundary
             });
             headerRows[3].push({
               type: "assessment",
@@ -28969,6 +29298,7 @@ class PlannerApp {
               category,
               subcategory,
               assessment,
+              rightBoundary: assessmentRightBoundary,
               rowSpan: 1,
               colSpan: 1
             });
@@ -29188,6 +29518,7 @@ class PlannerApp {
 
     if (cell.type === "category-partial") {
       th.className = "grade-category-partial-col is-merged-head";
+      applyBoundaryClasses();
       applyColumnSelection();
       applyNonAssessmentTooltip();
       th.innerHTML = "&nbsp;";
@@ -29252,9 +29583,10 @@ class PlannerApp {
       applyBoundaryClasses();
       applyColumnSelection();
       applyAssessmentTooltip();
+      const assessmentModeClass = this.isTestAssessment(cell.assessment) ? " is-be-assessment" : "";
       const assessmentLabelClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
-        ? "grade-assessment-label"
-        : "grade-assessment-label is-weightless";
+        ? `grade-assessment-label${assessmentModeClass}`
+        : `grade-assessment-label is-weightless${assessmentModeClass}`;
       th.innerHTML = `
         <div class="grade-assessment-head">
           <button type="button" class="${assessmentLabelClass}" data-grade-edit-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="${escapeHtml(assessmentTooltip)}">
@@ -32388,9 +32720,9 @@ class PlannerApp {
     return this.getActiveGradeInputRoot();
   }
 
-  switchGradesSubView(subview) {
+  switchGradesSubView(subview, options = {}) {
     const normalized = this.normalizeGradesSubView(subview);
-    if (!this.commitVisibleGradeInputs()) {
+    if (options.commit !== false && !this.commitVisibleGradeInputs()) {
       return false;
     }
     if (normalized !== "overview") {
@@ -32403,7 +32735,9 @@ class PlannerApp {
       this.activeGradeOverrideContext = null;
     }
     if (normalized !== "entry") {
-      this.queueGradesEntrySaveNotice("");
+      if (!options.preserveSaveNotice) {
+        this.queueGradesEntrySaveNotice("");
+      }
       this.gradesEntryDraft = null;
       this.gradesEntryEditSnapshot = null;
       this.clearGradesEntryDraftDirty();
@@ -32455,7 +32789,9 @@ class PlannerApp {
       return false;
     }
     this.hideGradePicker();
-    this.queueGradesEntrySaveNotice("");
+    if (!options.preserveSaveNotice) {
+      this.queueGradesEntrySaveNotice("");
+    }
     this.clearGradesOverviewAssessmentSpotlight();
     this.clearPrivacyFocusedGradeStudent();
     this.activeGradeOverrideContext = null;
@@ -32465,6 +32801,7 @@ class PlannerApp {
     this.shellTabContext = "grades";
     this.gradesSubView = "entry";
     this.selectedGradesEntryAssessmentId = id;
+    this.confirmedGradesEntryModeChangeKey = "";
     this.activeGradeAssessmentId = id;
     this.activeGradeStudentId = targetStudentId;
     this.pendingGradesEntryCourseAutoSelect = false;
@@ -32549,7 +32886,9 @@ class PlannerApp {
       return false;
     }
     this.hideGradePicker();
-    this.queueGradesEntrySaveNotice("");
+    if (!options.preserveSaveNotice) {
+      this.queueGradesEntrySaveNotice("");
+    }
     this.clearPrivacyFocusedGradeStudent();
     this.activeGradeOverrideContext = null;
     if (Number(this.selectedCourseId || 0) !== normalizedCourseId) {
@@ -32559,10 +32898,12 @@ class PlannerApp {
     this.selectedCourseId = normalizedCourseId;
     this.shellTabContext = "grades";
     this.pendingGradesEntryCourseAutoSelect = false;
+    const assessmentId = Number(options?.assessmentId || 0);
     const lessonDate = String(options?.lessonDate || "").trim();
-    if (lessonDate) {
+    if (assessmentId > 0 || lessonDate) {
       this.setGradesOverviewAssessmentSpotlight({
         courseId: normalizedCourseId,
+        assessmentId,
         lessonDate,
         scrolled: false
       });
@@ -32576,7 +32917,10 @@ class PlannerApp {
         attempts: 0
       };
     }
-    const switched = this.switchGradesSubView("overview");
+    const switched = this.switchGradesSubView("overview", {
+      commit: options.commit,
+      preserveSaveNotice: options.preserveSaveNotice
+    });
     if (!switched && Number(this.pendingGradesOverviewAutoScroll?.courseId || 0) === normalizedCourseId) {
       this.clearPendingGradesOverviewAutoScroll();
     }
@@ -33442,9 +33786,9 @@ class PlannerApp {
     return {
       hasExistingAssessment,
       assessmentResolved: true,
-      triggerMode: hasExistingAssessment ? "overview" : "entry",
-      ariaLabel: hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen",
-      title: hasExistingAssessment ? "Kursansicht im Notenmodul öffnen" : "Noten-Eingabe öffnen"
+      triggerMode: hasExistingAssessment ? "assessment" : "entry",
+      ariaLabel: hasExistingAssessment ? "Einzelleistung in der Noten-Eingabe öffnen" : "Noten-Eingabe öffnen",
+      title: hasExistingAssessment ? "Einzelleistung in der Noten-Eingabe öffnen" : "Noten-Eingabe öffnen"
     };
   }
 
@@ -33483,10 +33827,32 @@ class PlannerApp {
     const resolvedTriggerMode = normalizedTriggerMode === "auto"
       ? (this.getGradeEntryTriggerStateForLesson(lesson)?.triggerMode || "entry")
       : normalizedTriggerMode;
-    if (resolvedTriggerMode === "overview") {
-      return this.openGradesOverviewForCourse(lesson.courseId, { lessonDate: lesson.lessonDate });
+    if (resolvedTriggerMode === "assessment" || resolvedTriggerMode === "overview") {
+      const assessment = this.findGradeAssessmentForLessonDate(lesson.courseId, lesson.lessonDate);
+      if (assessment) {
+        return this.openGradesEntryForAssessment(assessment.id, { commit: false });
+      }
+      return this.openGradesEntryFromLesson(lesson);
     }
     return this.openGradesEntryFromLesson(lesson);
+  }
+
+  findGradeAssessmentForLessonDate(courseId, lessonDate) {
+    const normalizedCourseId = Number(courseId || 0);
+    const normalizedLessonDate = String(lessonDate || "").trim();
+    if (!normalizedCourseId || !normalizedLessonDate || !this.canAccessGradeVault()) {
+      return null;
+    }
+    const expectedTitle = normalizeGradeTextPart(formatShortDateLabel(normalizedLessonDate));
+    if (!expectedTitle || !this.isGradeCourseLoaded(normalizedCourseId)) {
+      return null;
+    }
+    const expectedHalfYear = this.getDefaultGradeAssessmentHalfYear(normalizedLessonDate);
+    const assessments = this.store.listGradeAssessments(normalizedCourseId)
+      .filter((assessment) => normalizeGradeTextPart(assessment?.title) === expectedTitle);
+    return assessments.find((assessment) => normalizeGradeHalfYear(assessment?.halfYear) === expectedHalfYear)
+      || assessments[0]
+      || null;
   }
 
   hasExistingGradeAssessmentForLesson(courseId, lessonDate, assessmentLookup = null) {

@@ -6,6 +6,17 @@ export function registerServiceWorkerUpdates({
   onUpdateAvailabilityChange,
   serviceWorkerUrl = './sw.js',
 } = {}) {
+  const createUpdateActivationToken = () => {
+    const cryptoApi = globalThis.crypto;
+    if (typeof cryptoApi?.randomUUID === 'function') {
+      return cryptoApi.randomUUID();
+    }
+
+    const bytes = new Uint8Array(16);
+    cryptoApi.getRandomValues(bytes);
+    return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  };
+
   const unsupportedResult = { status: 'unsupported' };
   const disabledResult = { status: 'disabled' };
   if (!('serviceWorker' in navigator)) {
@@ -24,6 +35,18 @@ export function registerServiceWorkerUpdates({
   let reloadRequestedForUpdate = false;
   let activeRegistration = null;
   let initPromise = null;
+  const updateActivationToken = createUpdateActivationToken();
+
+  const postUpdateActivationToken = (worker) => {
+    if (!worker || worker.state === 'redundant') return;
+    worker.postMessage({ type: 'SET_UPDATE_TOKEN', token: updateActivationToken });
+  };
+
+  const shareUpdateActivationToken = (registration) => {
+    postUpdateActivationToken(registration?.active);
+    postUpdateActivationToken(registration?.waiting);
+    postUpdateActivationToken(registration?.installing);
+  };
 
   const notifyUpdateAvailability = (registration = activeRegistration) => {
     if (typeof onUpdateAvailabilityChange !== 'function') return;
@@ -63,8 +86,10 @@ export function registerServiceWorkerUpdates({
 
   const watchInstallingWorker = (registration, worker) => {
     if (!worker) return;
+    postUpdateActivationToken(worker);
     worker.addEventListener('statechange', () => {
       if (worker.state === 'installed') {
+        postUpdateActivationToken(worker);
         maybePromptForUpdate(registration);
       }
     });
@@ -119,7 +144,7 @@ export function registerServiceWorkerUpdates({
         closeUpdateDialog();
         const waitingWorker = activeRegistration?.waiting;
         if (waitingWorker) {
-          waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+          waitingWorker.postMessage({ type: 'SKIP_WAITING', token: updateActivationToken });
           return;
         }
         window.location.reload();
@@ -131,12 +156,14 @@ export function registerServiceWorkerUpdates({
           type: 'module',
         });
         activeRegistration = registration;
+        shareUpdateActivationToken(registration);
         notifyUpdateAvailability(registration);
         maybePromptForUpdate(registration);
         if (registration.installing) {
           watchInstallingWorker(registration, registration.installing);
         }
         registration.addEventListener('updatefound', () => {
+          shareUpdateActivationToken(registration);
           watchInstallingWorker(registration, registration.installing);
         });
         window.setInterval(() => {

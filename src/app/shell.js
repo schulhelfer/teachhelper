@@ -168,41 +168,87 @@ export function createShellController({
     }
   }
 
-  function positionActiveTabIndicator() {
+  function positionActiveTabIndicator(options = {}) {
     if (!els.tabNav || !els.tabIndicator || typeof window === 'undefined') return;
+    const instant = Boolean(options?.instant);
     const activeButton = els.tabNav.querySelector('.tab-button.active');
     if (!(activeButton instanceof HTMLElement) || els.tabNav.hidden) {
       els.tabIndicator.classList.remove('is-ready');
       return;
     }
-    const navRect = els.tabNav.getBoundingClientRect();
-    const buttonRect = activeButton.getBoundingClientRect();
-    if (!navRect.width || !navRect.height || !buttonRect.width || !buttonRect.height) {
+    const useLocalOffsets = activeButton.offsetParent === els.tabNav;
+    const navRect = useLocalOffsets ? null : els.tabNav.getBoundingClientRect();
+    const buttonRect = useLocalOffsets ? null : activeButton.getBoundingClientRect();
+    const width = useLocalOffsets ? activeButton.offsetWidth : buttonRect.width;
+    const height = useLocalOffsets ? activeButton.offsetHeight : buttonRect.height;
+    if (
+      !width
+      || !height
+      || (!useLocalOffsets && (!navRect.width || !navRect.height))
+    ) {
       els.tabIndicator.classList.remove('is-ready');
       return;
     }
-    const x = buttonRect.left - navRect.left + els.tabNav.scrollLeft;
-    const y = buttonRect.top - navRect.top + els.tabNav.scrollTop;
+    const x = useLocalOffsets
+      ? activeButton.offsetLeft
+      : buttonRect.left - navRect.left + els.tabNav.scrollLeft;
+    const y = useLocalOffsets
+      ? activeButton.offsetTop
+      : buttonRect.top - navRect.top + els.tabNav.scrollTop;
+    if (instant) {
+      els.tabIndicator.style.transition = 'none';
+      els.tabIndicator.getBoundingClientRect();
+    }
     els.tabIndicator.style.setProperty('--tab-indicator-x', `${x.toFixed(2)}px`);
     els.tabIndicator.style.setProperty('--tab-indicator-y', `${y.toFixed(2)}px`);
-    els.tabIndicator.style.setProperty('--tab-indicator-width', `${buttonRect.width.toFixed(2)}px`);
-    els.tabIndicator.style.setProperty('--tab-indicator-height', `${buttonRect.height.toFixed(2)}px`);
+    els.tabIndicator.style.setProperty('--tab-indicator-width', `${width.toFixed(2)}px`);
+    els.tabIndicator.style.setProperty('--tab-indicator-height', `${height.toFixed(2)}px`);
     els.tabIndicator.classList.add('is-ready');
+    if (instant) {
+      els.tabIndicator.getBoundingClientRect();
+      if (typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          els.tabIndicator.style.transition = '';
+        });
+      } else {
+        els.tabIndicator.style.transition = '';
+      }
+    }
   }
 
-  function queueActiveTabIndicatorUpdate() {
+  function queueActiveTabIndicatorUpdate(options = {}) {
     if (!els.tabIndicator || typeof window === 'undefined') return;
+    const instant = Boolean(options?.instant);
     if (tabIndicatorFrame) {
       window.cancelAnimationFrame?.(tabIndicatorFrame);
     }
     if (typeof window.requestAnimationFrame !== 'function') {
-      positionActiveTabIndicator();
+      positionActiveTabIndicator({ instant });
       return;
     }
     tabIndicatorFrame = window.requestAnimationFrame(() => {
       tabIndicatorFrame = 0;
-      positionActiveTabIndicator();
+      positionActiveTabIndicator({ instant });
     });
+  }
+
+  function queueSettledActiveTabIndicatorUpdate() {
+    if (typeof window === 'undefined') return;
+    if (tabIndicatorFrame) {
+      window.cancelAnimationFrame?.(tabIndicatorFrame);
+      tabIndicatorFrame = 0;
+    }
+    positionActiveTabIndicator({ instant: true });
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => {
+          queueActiveTabIndicatorUpdate({ instant: true });
+        });
+      });
+    }
+    window.setTimeout?.(() => {
+      queueActiveTabIndicatorUpdate({ instant: true });
+    }, 120);
   }
 
   function renderTabs() {
@@ -486,6 +532,10 @@ export function createShellController({
   function finalizeChromeTransition(collapsed) {
     clearChromeTransitionTimer();
     state.chromeTransitionState = 'idle';
+    const settleChromeLayout = !collapsed && els.app;
+    if (settleChromeLayout) {
+      els.app.classList.add('is-chrome-layout-settling');
+    }
     if (els.app) {
       els.app.classList.remove('is-collapsing', 'is-expanding');
       els.app.classList.toggle('chrome-collapsed', collapsed);
@@ -495,6 +545,16 @@ export function createShellController({
     renderPlanningGradeVaultUnlockButton();
     renderPlanningManualSaveButton();
     refreshLayouts();
+    queueSettledActiveTabIndicatorUpdate();
+    if (settleChromeLayout) {
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(() => {
+          els.app?.classList.remove('is-chrome-layout-settling');
+        });
+      } else {
+        els.app.classList.remove('is-chrome-layout-settling');
+      }
+    }
   }
 
   function queueChromeTransition(callback) {
@@ -879,6 +939,8 @@ export function createShellController({
   if (typeof window !== 'undefined') {
     window.addEventListener('resize', queueActiveTabIndicatorUpdate);
     window.visualViewport?.addEventListener?.('resize', queueActiveTabIndicatorUpdate);
+    document.addEventListener('fullscreenchange', queueSettledActiveTabIndicatorUpdate);
+    document.addEventListener('webkitfullscreenchange', queueSettledActiveTabIndicatorUpdate);
     if (typeof ResizeObserver === 'function' && els.tabNav) {
       tabNavResizeObserver = new ResizeObserver(queueActiveTabIndicatorUpdate);
       tabNavResizeObserver.observe(els.tabNav);
