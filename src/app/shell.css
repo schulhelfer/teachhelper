@@ -942,28 +942,6 @@
       transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
     }
 
-    .sidebar-help-button::after {
-      content: attr(data-tooltip);
-      position: absolute;
-      left: 50%;
-      bottom: calc(100% + 8px);
-      z-index: 1;
-      padding: 6px 9px;
-      border: 1px solid rgba(148, 163, 184, 0.28);
-      border-radius: 7px;
-      background: #172033;
-      color: #f8fafc;
-      font-size: 12px;
-      font-weight: 600;
-      line-height: 1.25;
-      white-space: nowrap;
-      box-shadow: 0 8px 20px rgba(2, 6, 23, 0.28);
-      opacity: 0;
-      pointer-events: none;
-      transform: translate(-50%, 3px);
-      transition: opacity 140ms ease, transform 140ms ease;
-    }
-
     .sidebar-help-button.has-tutorial-attention {
       box-shadow: var(--button-shadow);
     }
@@ -980,30 +958,11 @@
       transform: translateY(-1px);
     }
 
-    .sidebar-help-button:hover::after,
-    .sidebar-help-button:focus-visible::after {
-      opacity: 1;
-      transform: translate(-50%, 0);
-    }
-
     .side>.sidebar-help-button {
       position: absolute;
       top: 14px;
       right: 22px;
       z-index: 4;
-    }
-
-    .side>.sidebar-help-button::after {
-      top: calc(100% + 8px);
-      bottom: auto;
-      left: auto;
-      right: 0;
-      transform: translateY(-3px);
-    }
-
-    .side>.sidebar-help-button:hover::after,
-    .side>.sidebar-help-button:focus-visible::after {
-      transform: translateY(0);
     }
 
     .shell-sidebar-header {

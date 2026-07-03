@@ -6,6 +6,7 @@ import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createShellController } from './app/shell.js';
 import { reportError } from './shared/error-reporting.js';
 import { createMessageApi } from './shared/messages.js';
+import { installAppTooltips } from './shared/app-tooltips.js';
 import {
   createModuleFrame,
   isTrustedModuleMessage,
@@ -36,6 +37,7 @@ import {
   if (els.preferencesDialog && !els.preferencesDialog.hasAttribute('tabindex')) {
     els.preferencesDialog.setAttribute('tabindex', '-1');
   }
+  installAppTooltips(document);
   appEl.addEventListener('contextmenu', (event) => {
     event.preventDefault();
   }, true);

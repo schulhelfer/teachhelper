@@ -1,4 +1,5 @@
 import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
+import { installAppTooltips } from '../../shared/app-tooltips.js';
 import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
 
 export function createMergerApp({
@@ -4213,6 +4214,7 @@ export function createMergerApp({
 }
 
 if (typeof window !== "undefined" && typeof document !== "undefined") {
+  installAppTooltips(document);
   const autoInitRoot = document;
   if (autoInitRoot?.body && !window.__teachhelperMergerApp) {
     window.__teachhelperMergerApp = createMergerApp({ root: autoInitRoot });

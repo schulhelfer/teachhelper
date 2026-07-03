@@ -6604,10 +6604,15 @@
         .grades-master-table th,
         .grades-master-table td {
           --grade-cell-shadow: inset 0 0 0 0 transparent;
+          --grade-boundary-left-shadow: inset 0 0 0 0 transparent;
+          --grade-boundary-right-shadow: inset 0 0 0 0 transparent;
           border: none;
           border-right: 1px solid rgba(255, 255, 255, 0.05);
           border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-          box-shadow: var(--grade-cell-shadow);
+          box-shadow:
+            var(--grade-cell-shadow),
+            var(--grade-boundary-left-shadow),
+            var(--grade-boundary-right-shadow);
           padding: 0.34rem;
           vertical-align: middle;
         }
@@ -6667,6 +6672,8 @@
           background-clip: border-box;
           box-shadow:
             var(--grade-cell-shadow),
+            var(--grade-boundary-left-shadow),
+            var(--grade-boundary-right-shadow),
             var(--grades-master-sticky-student-shadow);
         }
 
@@ -6932,44 +6939,16 @@
         }
 
         .grades-master-table th.is-boundary-category,
-        .grades-master-table td.is-boundary-category {
+        .grades-master-table td.is-boundary-category,
+        .grades-master-table th.is-boundary-subcategory,
+        .grades-master-table td.is-boundary-subcategory {
+          --grade-boundary-right-shadow: inset -1px 0 0 rgb(75, 83, 96);
           border-right-color: transparent;
-        }
-
-        .grades-master-table th.is-boundary-category,
-        .grades-master-table td.is-boundary-category {
-          overflow: visible;
         }
 
         .grades-master-table th.is-leading-boundary-category,
         .grades-master-table td.is-leading-boundary-category {
-          overflow: visible;
-        }
-
-        .grades-master-table th.is-boundary-category::after,
-        .grades-master-table td.is-boundary-category::after,
-        .grades-master-table th.is-leading-boundary-category::before,
-        .grades-master-table td.is-leading-boundary-category::before {
-          content: "";
-          position: absolute;
-          top: -1px;
-          bottom: 0;
-          z-index: 7;
-          pointer-events: none;
-        }
-
-        .grades-master-table th.is-boundary-category::after,
-        .grades-master-table td.is-boundary-category::after {
-          right: -1px;
-          width: 1px;
-          background: rgb(75, 83, 96);
-        }
-
-        .grades-master-table th.is-leading-boundary-category::before,
-        .grades-master-table td.is-leading-boundary-category::before {
-          left: -1px;
-          width: 1px;
-          background: rgb(75, 83, 96);
+          --grade-boundary-left-shadow: inset 1px 0 0 rgb(75, 83, 96);
         }
 
         .grades-master-table th.grade-category-head {
@@ -7049,6 +7028,8 @@
             linear-gradient(180deg, rgba(82, 150, 255, 0.18), rgba(82, 150, 255, 0.08)),
             rgba(24, 31, 43, 0.58);
           box-shadow:
+            var(--grade-boundary-left-shadow),
+            var(--grade-boundary-right-shadow),
             inset 0 0 0 1px rgba(147, 197, 253, 0.38),
             inset 0 10px 18px rgba(96, 165, 250, 0.08);
         }
@@ -7069,6 +7050,12 @@
           cursor: pointer;
         }
 
+        .grades-master-table th[data-grade-toggle-period],
+        .grades-master-table th[data-grade-toggle-category],
+        .grades-master-table th[data-grade-toggle-subcategory] {
+          cursor: pointer;
+        }
+
         .grades-master-table th.is-selected-grade-column,
         .grades-master-table td.is-selected-grade-column {
           --grade-cell-shadow:
@@ -7079,6 +7066,8 @@
         .grades-master-table th.grade-assessment-col.is-lesson-spotlight.is-selected-grade-column,
         .grades-master-table td.grade-assessment-col.is-lesson-spotlight.is-selected-grade-column {
           box-shadow:
+            var(--grade-boundary-left-shadow),
+            var(--grade-boundary-right-shadow),
             inset 0 0 0 1px rgba(147, 197, 253, 0.38),
             inset 0 0 0 2px rgba(125, 186, 255, 0.58),
             inset 0 999px 0 rgba(59, 130, 246, 0.12),
@@ -7484,12 +7473,13 @@
         .grade-assessment-label:hover,
         .grade-assessment-label:focus-visible,
         .grade-assessment-label:active,
-        .grades-master-group-button:hover,
-        .grades-master-group-button:focus-visible,
-        .grades-master-group-button:active {
+        button.grades-master-group-button:hover:not(:disabled),
+        button.grades-master-group-button:focus-visible,
+        button.grades-master-group-button:active {
           background: transparent;
           border-color: transparent;
           box-shadow: none;
+          color: inherit;
           filter: none;
           transform: none;
         }
@@ -7620,16 +7610,18 @@
         }
 
         .grade-test-scale-tooltip {
+          --app-tooltip-bg: rgba(15, 23, 42, 0.96);
+          --app-tooltip-border-color: rgba(148, 163, 184, 0.7);
           position: absolute;
           z-index: 80;
           left: 0;
           bottom: calc(100% + 0.45rem);
           width: max-content;
           max-width: min(16rem, calc(100vw - 2rem));
-          padding: 0.42rem;
-          border: 1px solid rgba(148, 163, 184, 0.26);
-          border-radius: 10px;
-          background: rgba(15, 23, 42, 0.98);
+          padding: 0.48rem 0.56rem;
+          border: 1px solid var(--app-tooltip-border-color);
+          border-radius: 8px;
+          background: var(--app-tooltip-bg);
           box-shadow: 0 16px 34px rgba(2, 6, 23, 0.38);
           color: rgba(226, 232, 240, 0.94);
           opacity: 0;
@@ -7860,14 +7852,6 @@
           word-break: break-word;
         }
 
-        .grades-master-group-button:hover {
-          color: rgba(125, 186, 255, 1);
-        }
-
-        .grades-master-group-button:active {
-          transform: translateY(0.5px);
-        }
-
         .grades-master-group-label {
           display: inline-flex;
           align-items: center;
@@ -7975,6 +7959,12 @@
           text-align: center;
           font-weight: 700;
           letter-spacing: 0.04em;
+        }
+
+        .grade-cell-input::placeholder {
+          color: rgba(226, 232, 240, 0.58);
+          -webkit-text-fill-color: rgba(226, 232, 240, 0.58);
+          opacity: 1;
         }
 
         .grade-cell-input:disabled {
@@ -8741,244 +8731,6 @@
           text-align: center;
           cursor: pointer;
           font: inherit;
-        }
-
-        .grade-total-button[data-grade-tooltip],
-        .grade-cell-display-button[data-grade-tooltip],
-        .grade-test-ratio-value[data-grade-tooltip] {
-          overflow: visible;
-        }
-
-        .grade-tooltip-portal {
-          position: fixed;
-          left: 0;
-          top: 0;
-          z-index: 2200;
-          min-width: 3.4rem;
-          padding: 0.48rem 0.7rem;
-          border-radius: 0.7rem;
-          border: 1px solid rgba(148, 163, 184, 0.7);
-          background: rgba(15, 23, 42, 0.96);
-          color: #f8fafc;
-          font-size: 0.95rem;
-          font-weight: 800;
-          line-height: 1;
-          text-align: center;
-          letter-spacing: 0.02em;
-          white-space: nowrap;
-          box-shadow: 0 14px 28px rgba(2, 6, 23, 0.34);
-          opacity: 0;
-          pointer-events: none;
-          transform: translateY(-4px);
-          transition: opacity 120ms ease, transform 120ms ease;
-        }
-
-        .grade-tooltip-portal.is-visible {
-          opacity: 1;
-          transform: translateY(0);
-        }
-
-        .grade-tooltip-portal.is-grade-near-better {
-          border-color: rgba(251, 146, 60, 0.72);
-          background: rgba(67, 38, 13, 0.98);
-          color: #fed7aa;
-        }
-
-        .grade-tooltip-portal::before {
-          content: "";
-          position: absolute;
-          width: 0;
-          height: 0;
-          pointer-events: none;
-        }
-
-        .grade-tooltip-portal[data-placement="right"]::before {
-          right: 100%;
-          top: 50%;
-          margin-top: -6px;
-          border-top: 6px solid transparent;
-          border-bottom: 6px solid transparent;
-          border-right: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-tooltip-portal[data-placement="left"]::before {
-          left: 100%;
-          top: 50%;
-          margin-top: -6px;
-          border-top: 6px solid transparent;
-          border-bottom: 6px solid transparent;
-          border-left: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-tooltip-portal[data-placement="below"]::before {
-          left: 50%;
-          bottom: 100%;
-          margin-left: -6px;
-          border-left: 6px solid transparent;
-          border-right: 6px solid transparent;
-          border-bottom: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-tooltip-portal[data-placement="above"]::before {
-          left: 50%;
-          top: 100%;
-          margin-left: -6px;
-          border-left: 6px solid transparent;
-          border-right: 6px solid transparent;
-          border-top: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-tooltip-portal.is-grade-near-better[data-placement="right"]::before {
-          border-right-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-tooltip-portal.is-grade-near-better[data-placement="left"]::before {
-          border-left-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-tooltip-portal.is-grade-near-better[data-placement="below"]::before {
-          border-bottom-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-tooltip-portal.is-grade-near-better[data-placement="above"]::before {
-          border-top-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-total-button[data-grade-tooltip]::after,
-        .grade-total-button[data-grade-tooltip]::before,
-        .grade-cell-display-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::before,
-        .grade-test-ratio-value[data-grade-tooltip]::after,
-        .grade-test-ratio-value[data-grade-tooltip]::before {
-          content: none;
-        }
-
-        .grade-total-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::after,
-        .grade-test-ratio-value[data-grade-tooltip]::after {
-          content: attr(data-grade-tooltip);
-          min-width: 3.4rem;
-          padding: 0.48rem 0.7rem;
-          border-radius: 0.7rem;
-          border: 1px solid rgba(148, 163, 184, 0.7);
-          background: rgba(15, 23, 42, 0.96);
-          color: #f8fafc;
-          font-size: 0.95rem;
-          font-weight: 800;
-          line-height: 1;
-          text-align: center;
-          letter-spacing: 0.02em;
-          white-space: nowrap;
-          box-shadow: 0 14px 28px rgba(2, 6, 23, 0.34);
-        }
-
-        .grade-total-button[data-grade-tooltip]::before,
-        .grade-cell-display-button[data-grade-tooltip]::before,
-        .grade-test-ratio-value[data-grade-tooltip]::before {
-          content: "";
-        }
-
-        .grade-total-button[data-grade-tooltip]::after,
-        .grade-total-button[data-grade-tooltip]::before {
-          top: 50%;
-          left: calc(100% + 12px);
-          transform: translateY(calc(-50% - 4px));
-        }
-
-        .grade-total-button[data-grade-tooltip]::before {
-          left: calc(100% + 6px);
-          border-top: 6px solid transparent;
-          border-bottom: 6px solid transparent;
-          border-right: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-cell-display-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::before,
-        .grade-test-ratio-value[data-grade-tooltip]::after,
-        .grade-test-ratio-value[data-grade-tooltip]::before {
-          left: 50%;
-          transform: translateX(-50%) translateY(-4px);
-        }
-
-        .grade-cell-display-button[data-grade-tooltip]::after {
-          top: calc(100% + 12px);
-        }
-
-        .grade-test-ratio-value[data-grade-tooltip]::after {
-          top: calc(100% + 12px);
-        }
-
-        .grade-cell-display-button[data-grade-tooltip]::before {
-          top: calc(100% + 6px);
-          border-left: 6px solid transparent;
-          border-right: 6px solid transparent;
-          border-bottom: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-test-ratio-value[data-grade-tooltip]::before {
-          top: calc(100% + 6px);
-          border-left: 6px solid transparent;
-          border-right: 6px solid transparent;
-          border-bottom: 6px solid rgba(15, 23, 42, 0.96);
-        }
-
-        .grade-total-button.is-grade-near-better[data-grade-tooltip]::after,
-        .grade-cell-display-button.is-grade-near-better[data-grade-tooltip]::after,
-        .grade-test-ratio-value.is-grade-near-better[data-grade-tooltip]::after {
-          border-color: rgba(251, 146, 60, 0.72);
-          background: rgba(67, 38, 13, 0.98);
-          color: #fed7aa;
-        }
-
-        .grade-total-button.is-grade-near-better[data-grade-tooltip]::before {
-          border-right-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-cell-display-button.is-grade-near-better[data-grade-tooltip]::before {
-          border-bottom-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-test-ratio-value.is-grade-near-better[data-grade-tooltip]::before {
-          border-bottom-color: rgba(67, 38, 13, 0.98);
-        }
-
-        .grade-total-button[data-grade-tooltip]:hover::after,
-        .grade-total-button[data-grade-tooltip]:hover::before,
-        .grade-total-button[data-grade-tooltip]:focus-visible::after,
-        .grade-total-button[data-grade-tooltip]:focus-visible::before,
-        .grade-cell-display-button[data-grade-tooltip]:hover::after,
-        .grade-cell-display-button[data-grade-tooltip]:hover::before,
-        .grade-cell-display-button[data-grade-tooltip]:focus-visible::after,
-        .grade-cell-display-button[data-grade-tooltip]:focus-visible::before,
-        .grade-test-ratio-value[data-grade-tooltip]:hover::after,
-        .grade-test-ratio-value[data-grade-tooltip]:hover::before {
-          opacity: 1;
-        }
-
-        .grade-total-button[data-grade-tooltip]:hover::after,
-        .grade-total-button[data-grade-tooltip]:hover::before,
-        .grade-total-button[data-grade-tooltip]:focus-visible::after,
-        .grade-total-button[data-grade-tooltip]:focus-visible::before {
-          transform: translateY(-50%);
-        }
-
-        .grade-cell-display-button[data-grade-tooltip]:hover::after,
-        .grade-cell-display-button[data-grade-tooltip]:hover::before,
-        .grade-cell-display-button[data-grade-tooltip]:focus-visible::after,
-        .grade-cell-display-button[data-grade-tooltip]:focus-visible::before,
-        .grade-test-ratio-value[data-grade-tooltip]:hover::after,
-        .grade-test-ratio-value[data-grade-tooltip]:hover::before {
-          transform: translateX(-50%) translateY(0);
-        }
-
-        .grade-total-button[data-grade-tooltip]::after,
-        .grade-total-button[data-grade-tooltip]::before,
-        .grade-cell-display-button[data-grade-tooltip]::after,
-        .grade-cell-display-button[data-grade-tooltip]::before,
-        .grade-test-ratio-value[data-grade-tooltip]::after,
-        .grade-test-ratio-value[data-grade-tooltip]::before {
-          content: none !important;
-          display: none !important;
         }
 
         .grade-total-button:hover,
@@ -9874,6 +9626,13 @@
           overflow: hidden;
         }
 
+        .grades-entry-distribution-toggle {
+          --liquid-segment-gap: var(--distribution-segment-gap);
+          --liquid-segment-pad: var(--distribution-segment-pad);
+          --liquid-segment-pad-total: 0.4rem;
+          --liquid-segment-total-gap: var(--distribution-segment-gap);
+        }
+
         .grades-entry-test-scale-field .assessment-mode-toggle,
         .grades-entry-test-predicate-field .assessment-mode-toggle,
         .grades-entry-halfyear-field .assessment-mode-toggle {
@@ -10048,6 +9807,7 @@
           .schoolmanager-transfer-segment-control.is-segment-index-0::before,
           .sidebar-grade-segment-control.is-segment-index-0::before,
           .assessment-mode-toggle.is-segment-index-0::before,
+          .grades-entry-distribution-toggle.is-segment-index-0::before,
           .course-dialog-structure-period-toggle.is-segment-index-0::before {
             transform: translateX(0) !important;
           }
@@ -10055,6 +9815,7 @@
           .schoolmanager-transfer-segment-control.is-segment-index-1::before,
           .sidebar-grade-segment-control.is-segment-index-1::before,
           .assessment-mode-toggle.is-segment-index-1::before,
+          .grades-entry-distribution-toggle.is-segment-index-1::before,
           .course-dialog-structure-period-toggle.is-segment-index-1::before {
             transform: translateX(calc(100% + var(--liquid-segment-gap))) !important;
           }
@@ -10067,6 +9828,22 @@
             opacity: 0.34;
           }
 
+          .schoolmanager-transfer-segment-control.is-segment-index-0::after,
+          .sidebar-grade-segment-control.is-segment-index-0::after,
+          .assessment-mode-toggle.is-segment-index-0::after,
+          .grades-entry-distribution-toggle.is-segment-index-0::after,
+          .course-dialog-structure-period-toggle.is-segment-index-0::after {
+            transform: translateX(0) scaleX(0.72) !important;
+          }
+
+          .schoolmanager-transfer-segment-control.is-segment-index-1::after,
+          .sidebar-grade-segment-control.is-segment-index-1::after,
+          .assessment-mode-toggle.is-segment-index-1::after,
+          .grades-entry-distribution-toggle.is-segment-index-1::after,
+          .course-dialog-structure-period-toggle.is-segment-index-1::after {
+            transform: translateX(calc(100% + var(--liquid-segment-gap))) scaleX(0.92) !important;
+          }
+
           .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(3) input:checked)::before {
             transform: translateX(var(--liquid-segment-step-2));
           }
@@ -10076,8 +9853,14 @@
           }
 
           .schoolmanager-transfer-segment-control.is-segment-syncing::before,
+          .schoolmanager-transfer-segment-control.is-segment-syncing::after,
           .sidebar-grade-segment-control.is-segment-syncing::before,
+          .sidebar-grade-segment-control.is-segment-syncing::after,
           .assessment-mode-toggle.is-segment-syncing::before,
+          .assessment-mode-toggle.is-segment-syncing::after,
+          .grades-entry-distribution-toggle.is-segment-syncing::before,
+          .grades-entry-distribution-toggle.is-segment-syncing::after,
+          .course-dialog-structure-period-toggle.is-segment-syncing::after,
           .course-dialog-structure-period-toggle.is-segment-syncing::before {
             transition: none !important;
           }
@@ -10085,6 +9868,26 @@
           .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(3) input:checked)::after {
             transform: translateX(var(--liquid-segment-step-2)) scaleX(0.92);
             opacity: 0.34;
+          }
+
+          .assessment-mode-toggle.is-segment-index-2::after {
+            transform: translateX(var(--liquid-segment-step-2)) scaleX(0.92) !important;
+          }
+
+          .schoolmanager-transfer-segment-control.is-segment-positioned::before,
+          .sidebar-grade-segment-control.is-segment-positioned::before,
+          .assessment-mode-toggle.is-segment-positioned::before,
+          .grades-entry-distribution-toggle.is-segment-positioned::before,
+          .course-dialog-structure-period-toggle.is-segment-positioned::before {
+            transform: var(--segment-control-indicator-transform) !important;
+          }
+
+          .schoolmanager-transfer-segment-control.is-segment-positioned::after,
+          .sidebar-grade-segment-control.is-segment-positioned::after,
+          .assessment-mode-toggle.is-segment-positioned::after,
+          .grades-entry-distribution-toggle.is-segment-positioned::after,
+          .course-dialog-structure-period-toggle.is-segment-positioned::after {
+            transform: var(--segment-control-glint-transform) !important;
           }
 
           .schoolmanager-transfer-segment-option input:checked+span,

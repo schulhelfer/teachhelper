@@ -18,6 +18,8 @@ const APP_SHELL = [
   './src/app/pwa-updates.js',
   './src/app/shell.css',
   './src/app/shell.js',
+  './src/shared/app-tooltips.css',
+  './src/shared/app-tooltips.js',
   './src/shared/app-version.js',
   './src/shared/error-reporting.js',
   './src/shared/messages.js',

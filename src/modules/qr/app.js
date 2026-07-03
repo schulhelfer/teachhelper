@@ -1,3 +1,5 @@
+import { installAppTooltips } from '../../shared/app-tooltips.js';
+
 export function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
@@ -1016,5 +1018,6 @@ export function createQrApp({ root = document } = {}) {
 }
 
 if (document?.body && !window.__teachhelperQrApp) {
+  installAppTooltips(document);
   window.__teachhelperQrApp = createQrApp();
 }

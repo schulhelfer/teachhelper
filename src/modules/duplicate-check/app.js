@@ -1,3 +1,5 @@
+import { installAppTooltips } from '../../shared/app-tooltips.js';
+
 export function createDuplicateCheckApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
@@ -1254,4 +1256,5 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   };
 }
 
+installAppTooltips(document);
 window.__teachhelperDuplicateCheckApp = createDuplicateCheckApp();

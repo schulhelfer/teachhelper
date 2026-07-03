@@ -4,6 +4,7 @@ import {
   isDocxZipSupported,
   prepareDocxTemplate
 } from "./docx.js";
+import { installAppTooltips } from "../../shared/app-tooltips.js";
 import { ensurePdfLibLoaded } from "../../shared/pdf-vendor.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
@@ -47,6 +48,7 @@ const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+
 const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager-Import";
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
+const GRADE_DEFICIT_FOLLOWUP_TOOLTIP = "Gelb = Nachbereitung bei Defizitdiagnose";
 const GRADE_RATIO_TOOLTIP = "Orange = Kurz vor besserer Note";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
 const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
@@ -1709,7 +1711,7 @@ function formatGradeWeightValue(weight) {
 
 function formatGradeWeightPercentSuffix(weight) {
   return shouldShowGradeWeight(weight)
-    ? ` (${formatGradeWeightValue(weight)} %)`
+    ? ` (${formatGradeWeightValue(weight)}%)`
     : "";
 }
 
@@ -7214,10 +7216,6 @@ class PlannerApp {
       activeIndex: -1
     };
     this.gradeTestScaleTooltipState = {
-      portal: null,
-      anchor: null
-    };
-    this.gradeTooltipState = {
       portal: null,
       anchor: null
     };
@@ -15365,6 +15363,51 @@ class PlannerApp {
       });
       return;
     }
+    const groupToggle = event.target.closest(
+      "button[data-grade-toggle-period], button[data-grade-toggle-category], button[data-grade-toggle-subcategory], .grades-master-table th[data-grade-toggle-period], .grades-master-table th[data-grade-toggle-category], .grades-master-table th[data-grade-toggle-subcategory]"
+    );
+    if (groupToggle) {
+      event.stopPropagation();
+      if (!this.commitVisibleGradeInputs()) {
+        return;
+      }
+      this.activeGradeOverrideContext = null;
+      this.clearGradesOverviewFocusState();
+      if ("gradeTogglePeriod" in groupToggle.dataset) {
+        this.runGradeTableMorph(() => {
+          this.toggleGradePeriodExpanded(
+            this.selectedCourseId,
+            groupToggle.dataset.gradeTogglePeriod || "year"
+          );
+          this.renderGradesView();
+        });
+        return;
+      }
+      if ("gradeToggleCategory" in groupToggle.dataset) {
+        this.runGradeTableMorph(() => {
+          this.toggleGradeCategoryExpanded(
+            this.selectedCourseId,
+            Number(groupToggle.dataset.gradeToggleCategory || 0),
+            groupToggle.dataset.period || "year"
+          );
+          this.renderGradesView();
+        });
+        return;
+      }
+      if ("gradeToggleSubcategory" in groupToggle.dataset) {
+        const [periodRaw, categoryIdRaw, subcategoryIdRaw] = String(groupToggle.dataset.gradeToggleSubcategory || "").split(":");
+        this.runGradeTableMorph(() => {
+          this.toggleGradeSubcategoryExpanded(
+            this.selectedCourseId,
+            Number(categoryIdRaw || 0),
+            Number(subcategoryIdRaw || 0),
+            periodRaw || "year"
+          );
+          this.renderGradesView();
+        });
+        return;
+      }
+    }
     const selectedColumnHeader = event.target.closest(".grades-master-table th[data-grade-column-key]");
     if (
       selectedColumnHeader
@@ -15399,61 +15442,6 @@ class PlannerApp {
         period: overrideButton.dataset.period || "year",
         categoryId: Number(overrideButton.dataset.categoryId || 0) || null,
         subcategoryId: Number(overrideButton.dataset.subcategoryId || 0) || null
-      });
-      return;
-    }
-    const periodToggle = event.target.closest("button[data-grade-toggle-period]");
-    if (periodToggle) {
-      event.stopPropagation();
-      if (!this.commitVisibleGradeInputs()) {
-        return;
-      }
-      this.activeGradeOverrideContext = null;
-      this.clearGradesOverviewFocusState();
-      this.runGradeTableMorph(() => {
-        this.toggleGradePeriodExpanded(
-          this.selectedCourseId,
-          periodToggle.dataset.gradeTogglePeriod || "year"
-        );
-        this.renderGradesView();
-      });
-      return;
-    }
-    const categoryToggle = event.target.closest("button[data-grade-toggle-category]");
-    if (categoryToggle) {
-      event.stopPropagation();
-      if (!this.commitVisibleGradeInputs()) {
-        return;
-      }
-      this.activeGradeOverrideContext = null;
-      this.clearGradesOverviewFocusState();
-      this.runGradeTableMorph(() => {
-        this.toggleGradeCategoryExpanded(
-          this.selectedCourseId,
-          Number(categoryToggle.dataset.gradeToggleCategory || 0),
-          categoryToggle.dataset.period || "year"
-        );
-        this.renderGradesView();
-      });
-      return;
-    }
-    const subcategoryToggle = event.target.closest("button[data-grade-toggle-subcategory]");
-    if (subcategoryToggle) {
-      event.stopPropagation();
-      if (!this.commitVisibleGradeInputs()) {
-        return;
-      }
-      this.activeGradeOverrideContext = null;
-      this.clearGradesOverviewFocusState();
-      const [periodRaw, categoryIdRaw, subcategoryIdRaw] = String(subcategoryToggle.dataset.gradeToggleSubcategory || "").split(":");
-      this.runGradeTableMorph(() => {
-        this.toggleGradeSubcategoryExpanded(
-          this.selectedCourseId,
-          Number(categoryIdRaw || 0),
-          Number(subcategoryIdRaw || 0),
-          periodRaw || "year"
-        );
-        this.renderGradesView();
       });
       return;
     }
@@ -16009,171 +15997,6 @@ class PlannerApp {
     });
   }
 
-  getGradeTooltipAnchor(eventTarget) {
-    const node = eventTarget instanceof HTMLElement
-      ? eventTarget.closest("[data-grade-tooltip]")
-      : null;
-    if (!(node instanceof HTMLElement)) {
-      return null;
-    }
-    if (
-      node.classList.contains("grade-total-button")
-      || node.classList.contains("grade-cell-display-button")
-      || node.classList.contains("grade-test-ratio-value")
-    ) {
-      return node;
-    }
-    return null;
-  }
-
-  ensureGradeTooltipPortal() {
-    if (this.gradeTooltipState.portal?.isConnected) {
-      return this.gradeTooltipState.portal;
-    }
-    const portal = document.createElement("div");
-    portal.className = "grade-tooltip-portal";
-    portal.setAttribute("role", "tooltip");
-    portal.setAttribute("aria-hidden", "true");
-    document.body.append(portal);
-    this.gradeTooltipState.portal = portal;
-    return portal;
-  }
-
-  showGradeTooltip(anchor) {
-    if (!(anchor instanceof HTMLElement) || !anchor.isConnected) {
-      return;
-    }
-    const tooltip = String(anchor.getAttribute("data-grade-tooltip") || "").trim();
-    if (!tooltip) {
-      this.hideGradeTooltip();
-      return;
-    }
-    const portal = this.ensureGradeTooltipPortal();
-    portal.textContent = tooltip;
-    portal.classList.toggle("is-grade-near-better", anchor.classList.contains("is-grade-near-better"));
-    portal.setAttribute("aria-hidden", "false");
-    portal.classList.add("is-visible");
-    this.gradeTooltipState.anchor = anchor;
-    this.positionGradeTooltip();
-  }
-
-  hideGradeTooltip(anchor = null) {
-    if (anchor && this.gradeTooltipState.anchor && anchor !== this.gradeTooltipState.anchor) {
-      return;
-    }
-    const portal = this.gradeTooltipState.portal;
-    this.gradeTooltipState.anchor = null;
-    if (!portal) {
-      return;
-    }
-    portal.classList.remove("is-visible", "is-grade-near-better");
-    portal.setAttribute("aria-hidden", "true");
-  }
-
-  positionGradeTooltip() {
-    const portal = this.gradeTooltipState.portal;
-    const anchor = this.gradeTooltipState.anchor;
-    if (!portal || !(anchor instanceof HTMLElement) || !anchor.isConnected) {
-      this.hideGradeTooltip();
-      return;
-    }
-    const tooltip = String(anchor.getAttribute("data-grade-tooltip") || "").trim();
-    if (!tooltip) {
-      this.hideGradeTooltip();
-      return;
-    }
-    const margin = 8;
-    const gap = 10;
-    const anchorRect = anchor.getBoundingClientRect();
-    if (anchorRect.width <= 0 || anchorRect.height <= 0) {
-      this.hideGradeTooltip();
-      return;
-    }
-    portal.style.left = "0px";
-    portal.style.top = "0px";
-    const tooltipRect = portal.getBoundingClientRect();
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const preferSide = anchor.classList.contains("grade-total-button");
-    const placements = preferSide
-      ? ["right", "left", "below", "above"]
-      : ["below", "above", "right", "left"];
-    const fits = {
-      right: viewportWidth - anchorRect.right >= tooltipRect.width + gap + margin,
-      left: anchorRect.left >= tooltipRect.width + gap + margin,
-      below: viewportHeight - anchorRect.bottom >= tooltipRect.height + gap + margin,
-      above: anchorRect.top >= tooltipRect.height + gap + margin
-    };
-    const placement = placements.find((item) => fits[item]) || placements[0];
-    let left;
-    let top;
-    if (placement === "right") {
-      left = anchorRect.right + gap;
-      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
-    } else if (placement === "left") {
-      left = anchorRect.left - tooltipRect.width - gap;
-      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
-    } else if (placement === "above") {
-      left = anchorRect.left + (anchorRect.width / 2) - (tooltipRect.width / 2);
-      top = anchorRect.top - tooltipRect.height - gap;
-    } else {
-      left = anchorRect.left + (anchorRect.width / 2) - (tooltipRect.width / 2);
-      top = anchorRect.bottom + gap;
-    }
-    left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
-    top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
-    portal.dataset.placement = placement;
-    portal.style.left = `${Math.round(left)}px`;
-    portal.style.top = `${Math.round(top)}px`;
-  }
-
-  bindGradeTooltipEvents() {
-    document.addEventListener("pointerover", (event) => {
-      const anchor = this.getGradeTooltipAnchor(event.target);
-      if (anchor) {
-        this.showGradeTooltip(anchor);
-      }
-    });
-    document.addEventListener("pointerout", (event) => {
-      const anchor = this.getGradeTooltipAnchor(event.target);
-      if (!anchor) {
-        return;
-      }
-      const related = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
-      if (related && anchor.contains(related)) {
-        return;
-      }
-      this.hideGradeTooltip(anchor);
-    });
-    document.addEventListener("focusin", (event) => {
-      const anchor = this.getGradeTooltipAnchor(event.target);
-      if (anchor) {
-        this.showGradeTooltip(anchor);
-      }
-    });
-    document.addEventListener("focusout", (event) => {
-      const anchor = this.getGradeTooltipAnchor(event.target);
-      if (!anchor) {
-        return;
-      }
-      const related = event.relatedTarget instanceof HTMLElement ? event.relatedTarget : null;
-      if (related && anchor.contains(related)) {
-        return;
-      }
-      this.hideGradeTooltip(anchor);
-    });
-    window.addEventListener("scroll", () => {
-      if (this.gradeTooltipState.anchor) {
-        this.positionGradeTooltip();
-      }
-    }, true);
-    window.addEventListener("resize", () => {
-      if (this.gradeTooltipState.anchor) {
-        this.positionGradeTooltip();
-      }
-    });
-  }
-
   bindWindowFocusGuards() {
     window.addEventListener("blur", () => {
       this.clearFocusedSegmentControl();
@@ -16269,7 +16092,6 @@ class PlannerApp {
       });
     }
     this.bindGradeTestScaleTooltipEvents();
-    this.bindGradeTooltipEvents();
     document.addEventListener("change", (event) => {
       this.handleSegmentControlSlideChange(event);
     }, true);
@@ -17967,6 +17789,7 @@ class PlannerApp {
       if (this.handleGradesEntryDistributionOverlayDocumentClick(event)) {
         return;
       }
+      this.handleGradePrivacyOutsideTableDocumentClick(event);
       if (!this.refs.contextMenu || this.refs.contextMenu.hidden) {
         this.hideGradePicker(event);
       } else if (!this.refs.contextMenu.contains(event.target)) {
@@ -21424,6 +21247,31 @@ class PlannerApp {
     return true;
   }
 
+  handleGradePrivacyOutsideTableDocumentClick(event = null) {
+    if (
+      !this.isGradesTopTabActive()
+      || this.currentView !== "grades"
+      || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+      || !this.privacyFocusedGradeStudentId
+    ) {
+      return false;
+    }
+    const target = event?.target instanceof Element ? event.target : null;
+    if (!target) {
+      return false;
+    }
+    if (
+      target.closest(".grades-master-table")
+      || target.closest("[data-grade-privacy-nav]")
+      || target.closest("button[data-grade-privacy-toggle='1']")
+    ) {
+      return false;
+    }
+    this.clearPrivacyFocusedGradeStudent();
+    this.renderGradesView();
+    return true;
+  }
+
   handleGradePrivacyDocumentArrowKeyDown(event) {
     if (
       !event
@@ -21662,8 +21510,10 @@ class PlannerApp {
     } else {
       this.gradesOverviewNameOrder = nameOrder;
     }
-    this.renderGradesView();
-    this.updateSidebarGradeNameOrderToggleState();
+    this.runAfterSegmentControlSlide(event, () => {
+      this.renderGradesView();
+      this.updateSidebarGradeNameOrderToggleState();
+    });
   }
 
   handleGradeDisplaySystemChangeRequest(value, event = null) {
@@ -21697,7 +21547,9 @@ class PlannerApp {
         dirty: false
       };
     }
-    this.renderGradesView();
+    this.runAfterSegmentControlSlide(event, () => {
+      this.renderGradesView();
+    });
   }
 
   handleGradeOverviewPredicateSuffixChangeRequest(value, event = null) {
@@ -21716,7 +21568,9 @@ class PlannerApp {
       return;
     }
     this.gradeOverviewPredicateSuffixes = String(value) !== "false";
-    this.renderGradesView();
+    this.runAfterSegmentControlSlide(event, () => {
+      this.renderGradesView();
+    });
   }
 
   handleGradePrintOverviewRequest(event = null) {
@@ -27773,6 +27627,9 @@ class PlannerApp {
       const draftValue = activeContext ? activeContext.draftValue : "";
       const invalidClass = draftValue && !parseGradeInputForSystem(draftValue, displaySystem, { pedagogical: true }).valid ? " invalid" : "";
       const schoolInput = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
+      const computedPlaceholderValue = state.computedValue === null || state.computedValue === undefined
+        ? ""
+        : formatGradeInputForSystem(state.computedValue, displaySystem);
       return `
           <div class="grade-override-cell-editor${state.overridden ? " is-overridden" : ""}" data-grade-override-editor="1">
             <input
@@ -27787,6 +27644,7 @@ class PlannerApp {
               data-course-id="${courseKey}"
               data-scope="${normalizedScope}"
               data-period="${period}"${categoryAttr}${subcategoryAttr}
+              ${computedPlaceholderValue ? `placeholder="${escapeHtml(computedPlaceholderValue)}"` : ""}
               value="${escapeHtml(draftValue)}"
               aria-label="${scopeLabel} manuell setzen"
               autocomplete="off"
@@ -27864,7 +27722,10 @@ class PlannerApp {
           { disabled }
         );
       }
-      const isDeficit = isGradeValueBelowThreshold(entry?.value, this.gradeDeficitThreshold);
+      const rawValue = entry && entry.value !== null ? entry.value : null;
+      const existingInputValue = rawValue === null ? "" : formatGradeInputForSystem(rawValue, displaySystem);
+      const showExistingValueAsPlaceholder = Boolean(options.existingValueAsPlaceholder && existingInputValue);
+      const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
       return `
           <input
             type="text"
@@ -27878,7 +27739,9 @@ class PlannerApp {
             data-row-index="${rowIndex}"
             data-col-index="${columnIndex}"
             data-subcategory-id="${subcategoryId}"
-            value="${entry && entry.value !== null ? formatGradeInputForSystem(entry.value, displaySystem) : ""}"
+            ${showExistingValueAsPlaceholder ? `data-grade-original-value="${escapeHtml(existingInputValue)}"` : ""}
+            ${showExistingValueAsPlaceholder ? `placeholder="${escapeHtml(existingInputValue)}"` : ""}
+            value="${showExistingValueAsPlaceholder ? "" : escapeHtml(existingInputValue)}"
             aria-label="Note für ${escapeHtml(studentName)}"
             title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"
             ${disabled ? "disabled" : ""}
@@ -28356,7 +28219,17 @@ class PlannerApp {
     }
     const rawValue = scoreValue === undefined ? input.value : scoreValue;
     const invalid = input.classList.contains("invalid") || input.getAttribute("aria-invalid") === "true";
-    input.classList.toggle("is-deficit-followup-low", !invalid && isGradeTestDeficitFollowUpScore(task, rawValue));
+    const isFollowUpLow = !invalid && isGradeTestDeficitFollowUpScore(task, rawValue);
+    input.classList.toggle("is-deficit-followup-low", isFollowUpLow);
+    if (isFollowUpLow) {
+      input.dataset.gradeDeficitFollowupTooltip = "1";
+      input.title = GRADE_DEFICIT_FOLLOWUP_TOOLTIP;
+    } else if (input.dataset.gradeDeficitFollowupTooltip === "1") {
+      delete input.dataset.gradeDeficitFollowupTooltip;
+      if (input.title === GRADE_DEFICIT_FOLLOWUP_TOOLTIP) {
+        input.removeAttribute("title");
+      }
+    }
   }
 
   updateGradeTestTaskFromInput(input, options = {}) {
@@ -28605,7 +28478,7 @@ class PlannerApp {
         testPredicateSuffixes
       );
       const ratioClass = isRatioNearBetterGrade ? " is-grade-near-better" : "";
-      ratioCell.innerHTML = `<div class="grade-test-ratio-value${ratioClass}" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""} data-grade-tooltip="${escapeHtml(GRADE_RATIO_TOOLTIP)}">${escapeHtml(formatGradeTestRatioDisplay(ratioState))}</div>`;
+      ratioCell.innerHTML = `<div class="grade-test-ratio-value${ratioClass}" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""} data-grade-tooltip="${escapeHtml(GRADE_RATIO_TOOLTIP)}"${isRatioNearBetterGrade ? " data-app-tooltip-tone=\"near-better\"" : ""}>${escapeHtml(formatGradeTestRatioDisplay(ratioState))}</div>`;
       tr.append(ratioCell);
       tasks.forEach((task, columnIndex) => {
         const taskLabel = `Aufgabe ${columnIndex + 1}`;
@@ -28636,6 +28509,7 @@ class PlannerApp {
                       value="${escapeHtml(formatGradeBeValue(value))}"
                       aria-label="BE 2 fuer ${escapeHtml(studentName)} in ${escapeHtml(taskLabel)}"
                       aria-invalid="${isInvalidScore ? "true" : "false"}"
+                      ${isDeficitFollowUpLow ? `data-grade-deficit-followup-tooltip="1" title="${escapeHtml(GRADE_DEFICIT_FOLLOWUP_TOOLTIP)}"` : ""}
                       ${hasTaskMaxBe ? "" : `disabled title="BE1 zuerst eintragen"`}
                     >
                   `;
@@ -29113,8 +28987,13 @@ class PlannerApp {
       categories.forEach((category, categoryIndex) => {
         const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
         const isLastCategory = categoryIndex === categories.length - 1;
+        const previousCategory = categoryIndex > 0 ? categories[categoryIndex - 1] : null;
+        const previousCategoryCollapsed = previousCategory
+          ? !this.isGradeCategoryExpanded(course.id, previousCategory.id, periodGroup.period)
+          : false;
         const categoryRightBoundary = isLastCategory && !isLastPeriod ? "category" : "";
-        const categoryLeftBoundary = categoryIndex > 0 ? "category" : "";
+        const categoryCollapsedRightBoundary = !isLastCategory ? "category" : categoryRightBoundary;
+        const categoryLeftBoundary = categoryIndex > 0 && !previousCategoryCollapsed ? "category" : "";
         const categoryExpanded = this.isGradeCategoryExpanded(course.id, category.id, periodGroup.period);
         if (!categoryExpanded) {
           periodColSpan += 1;
@@ -29123,14 +29002,14 @@ class PlannerApp {
             period: periodGroup.period,
             categoryId: category.id,
             leftBoundary: categoryLeftBoundary,
-            rightBoundary: categoryRightBoundary
+            rightBoundary: categoryCollapsedRightBoundary
           });
           headerRows[1].push({
             type: "category-collapsed",
             period: periodGroup.period,
             category,
             leftBoundary: categoryLeftBoundary,
-            rightBoundary: categoryRightBoundary,
+            rightBoundary: categoryCollapsedRightBoundary,
             rowSpan: 3,
             colSpan: 1
           });
@@ -29458,6 +29337,7 @@ class PlannerApp {
       th.className = `grade-period-head${isExpanded ? "" : " grade-period-collapsed-head"}`;
       applyBoundaryClasses();
       applyNonAssessmentTooltip();
+      th.dataset.gradeTogglePeriod = cell.period || "year";
       th.innerHTML = `
         <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-period="${escapeHtml(cell.period || "year")}" aria-expanded="${isExpanded ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
           <span class="grades-master-group-label">
@@ -29493,6 +29373,8 @@ class PlannerApp {
         : "grade-category-head";
       applyBoundaryClasses();
       applyNonAssessmentTooltip();
+      th.dataset.gradeToggleCategory = String(cell.category.id);
+      th.dataset.period = cell.period || "year";
       if (cell.type === "category-collapsed") {
         const tooltip = escapeHtml(cell.category.name);
         applyColumnSelection();
@@ -29532,6 +29414,7 @@ class PlannerApp {
         : "grade-subcategory-head";
       applyBoundaryClasses();
       applyNonAssessmentTooltip();
+      th.dataset.gradeToggleSubcategory = `${cell.period}:${cell.category.id}:${cell.subcategory.id}`;
       if (cell.type === "subcategory-collapsed") {
         const tooltip = escapeHtml(cell.subcategory.name);
         applyColumnSelection();
@@ -29557,6 +29440,7 @@ class PlannerApp {
 
     if (cell.type === "subcategory-partial") {
       th.className = "grade-subcategory-partial-col is-merged-head";
+      applyBoundaryClasses();
       applyColumnSelection();
       applyNonAssessmentTooltip();
       th.innerHTML = "&nbsp;";
@@ -29846,7 +29730,7 @@ class PlannerApp {
             rowIndex,
             columnIndex,
             column.subcategoryId,
-            { disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
+            { disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes, existingValueAsPlaceholder: true }
           );
           tr.append(td);
           return;
@@ -31037,11 +30921,16 @@ class PlannerApp {
     node.setAttribute("title", GRADE_DEFICIT_TOOLTIP);
   }
 
-  syncGradeRatioTooltip(node) {
+  syncGradeRatioTooltip(node, isNearBetterGrade = false) {
     if (!(node instanceof Element)) {
       return;
     }
     node.setAttribute("data-grade-tooltip", GRADE_RATIO_TOOLTIP);
+    if (isNearBetterGrade || node.classList.contains("is-grade-near-better")) {
+      node.setAttribute("data-app-tooltip-tone", "near-better");
+    } else {
+      node.removeAttribute("data-app-tooltip-tone");
+    }
     node.removeAttribute("title");
   }
 
@@ -31122,6 +31011,9 @@ class PlannerApp {
       }
       this.clearGradeInputInvalidFeedback(gradeInput);
       return;
+    }
+    if (Object.prototype.hasOwnProperty.call(gradeInput.dataset, "gradeOriginalValue")) {
+      gradeInput.dataset.gradeDirty = "1";
     }
     const rawValue = String(gradeInput.value || "");
     const maxLength = Math.max(1, Number(gradeInput.getAttribute("maxlength")) || 2);
@@ -31815,6 +31707,14 @@ class PlannerApp {
       input.classList.add("invalid");
       return false;
     }
+    if (
+      Object.prototype.hasOwnProperty.call(input.dataset, "gradeOriginalValue")
+      && input.dataset.gradeDirty !== "1"
+      && String(input.value || "") === ""
+    ) {
+      input.classList.remove("invalid");
+      return true;
+    }
     input.classList.remove("invalid");
     input.value = parsed.value === null ? "" : this.formatCurrentGradeInput(parsed.value);
     this.syncGradeInputLowValueClass(input, parsed.value);
@@ -32507,6 +32407,7 @@ class PlannerApp {
     }
     control.classList.add("is-segment-syncing");
     this.applySegmentControlIndexClass(control, index);
+    this.applySegmentControlTransform(control, index);
     control.getBoundingClientRect();
     requestAnimationFrame(() => {
       control.classList.remove("is-segment-syncing");
@@ -32517,6 +32418,48 @@ class PlannerApp {
     const inputs = [...(control?.querySelectorAll("input[type='radio']") || [])];
     const index = inputs.findIndex((input) => input.checked);
     return index >= 0 ? index : 0;
+  }
+
+  getSegmentControlAppliedIndex(control) {
+    if (!control) {
+      return null;
+    }
+    for (let index = 0; index <= 2; index += 1) {
+      if (control.classList.contains(`is-segment-index-${index}`)) {
+        return index;
+      }
+    }
+    return null;
+  }
+
+  getSegmentControlTransform(index) {
+    const normalizedIndex = Math.max(0, Math.min(2, Number(index) || 0));
+    if (normalizedIndex === 2) {
+      return {
+        indicator: "translateX(var(--liquid-segment-step-2))",
+        glint: "translateX(var(--liquid-segment-step-2)) scaleX(0.92)"
+      };
+    }
+    if (normalizedIndex === 1) {
+      return {
+        indicator: "translateX(calc(100% + var(--liquid-segment-gap)))",
+        glint: "translateX(calc(100% + var(--liquid-segment-gap))) scaleX(0.92)"
+      };
+    }
+    return {
+      indicator: "translateX(0)",
+      glint: "translateX(0) scaleX(0.72)"
+    };
+  }
+
+  applySegmentControlTransform(control, index) {
+    if (!control) {
+      return;
+    }
+    const transform = this.getSegmentControlTransform(index);
+    control.style.setProperty("--segment-control-indicator-transform", transform.indicator);
+    control.style.setProperty("--segment-control-glint-transform", transform.glint);
+    control.classList.add("is-segment-positioned");
   }
 
   syncSegmentControlSlideStates(root = document, { animateFromPrevious = false } = {}) {
@@ -32534,9 +32477,11 @@ class PlannerApp {
       this.pendingSegmentControlSlidePreviousPositions?.delete(key);
       if (animateFromPrevious && hasPendingAnimation && previousIndex !== nextIndex) {
         this.applySegmentControlIndexClass(control, previousIndex);
+        this.applySegmentControlTransform(control, previousIndex);
         control.getBoundingClientRect();
         requestAnimationFrame(() => {
           this.applySegmentControlIndexClass(control, nextIndex);
+          this.applySegmentControlTransform(control, nextIndex);
         });
       } else {
         this.applySegmentControlIndexClassSilently(control, nextIndex);
@@ -32554,11 +32499,14 @@ class PlannerApp {
     }
     const index = this.getSegmentControlCheckedIndex(control);
     const key = this.getSegmentControlKey(control);
-    const previousIndex = this.segmentControlSlidePositions.get(key);
+    const previousIndex = this.segmentControlSlidePositions.get(key) ?? this.getSegmentControlAppliedIndex(control);
     if (Number.isInteger(previousIndex) && previousIndex !== index) {
       this.pendingSegmentControlSlidePreviousPositions?.set(key, previousIndex);
+      this.applySegmentControlTransform(control, previousIndex);
+      control.getBoundingClientRect();
     }
     this.applySegmentControlIndexClass(control, index);
+    this.applySegmentControlTransform(control, index);
     this.segmentControlSlidePositions.set(key, index);
   }
 
@@ -35982,6 +35930,8 @@ class PlannerApp {
   }
 
 }
+
+installAppTooltips(document);
 
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", () => {
