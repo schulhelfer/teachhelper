@@ -82,7 +82,46 @@ export function installAppTooltips(root = document, options = {}) {
   portal.className = "app-tooltip-portal";
   portal.setAttribute("role", "tooltip");
   portal.setAttribute("aria-hidden", "true");
+  const supportsPopover = typeof portal.showPopover === "function" && typeof portal.hidePopover === "function";
+  if (supportsPopover) {
+    portal.setAttribute("popover", "manual");
+  }
   doc.body.append(portal);
+
+  function releasePortalHost() {
+    if (portal.parentElement !== doc.body) {
+      doc.body.append(portal);
+    }
+    portal.style.left = "0px";
+    portal.style.top = "0px";
+  }
+
+  function isPortalPopoverOpen() {
+    if (!supportsPopover) return false;
+    try {
+      return portal.matches(":popover-open");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  function showPortalLayer() {
+    if (!supportsPopover || isPortalPopoverOpen()) return;
+    try {
+      portal.showPopover();
+    } catch (error) {
+      // Keep the fixed body portal as a graceful fallback.
+    }
+  }
+
+  function hidePortalLayer() {
+    if (!supportsPopover || !isPortalPopoverOpen()) return;
+    try {
+      portal.hidePopover();
+    } catch (error) {
+      // The aria/class state below is still authoritative for hiding.
+    }
+  }
 
   function findAnchor(eventTarget) {
     const target = eventTarget instanceof ElementCtor ? eventTarget : null;
@@ -158,6 +197,7 @@ export function installAppTooltips(root = document, options = {}) {
     portal.dataset.tone = getTooltipTone(anchor);
     portal.setAttribute("aria-hidden", "false");
     portal.classList.add("is-visible");
+    showPortalLayer();
     if (!isSameAnchor) {
       suppressNativeTitle(anchor);
       syncAriaDescription(anchor);
@@ -172,8 +212,10 @@ export function installAppTooltips(root = document, options = {}) {
     portal.classList.remove("is-visible");
     portal.setAttribute("aria-hidden", "true");
     delete portal.dataset.placement;
+    hidePortalLayer();
     restoreAriaDescription(previousAnchor);
     restoreNativeTitle(previousAnchor);
+    releasePortalHost();
   }
 
   function positionTooltip() {

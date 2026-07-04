@@ -5,7 +5,10 @@
   position: fixed;
   left: 0;
   top: 0;
-  z-index: 10000;
+  right: auto;
+  bottom: auto;
+  margin: 0;
+  z-index: 2147483647;
   max-width: min(24rem, calc(100vw - 1rem));
   min-width: 3.4rem;
   padding: 0.48rem 0.7rem;
@@ -33,7 +36,12 @@
   --app-tooltip-text-color: #fed7aa;
 }
 
+.app-tooltip-portal[aria-hidden="true"] {
+  display: none;
+}
+
 .app-tooltip-portal.is-visible {
+  display: block;
   opacity: 1;
   transform: translateY(0);
 }

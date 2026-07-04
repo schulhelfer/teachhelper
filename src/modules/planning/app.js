@@ -50,7 +50,9 @@ const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_DEFICIT_FOLLOWUP_TOOLTIP = "Gelb = Nachbereitung bei Defizitdiagnose";
 const GRADE_RATIO_TOOLTIP = "Orange = Kurz vor besserer Note";
+const GRADE_SIDEBAR_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
+const GRADE_ACCOMMODATION_TEXT_MAX_LENGTH = 500;
 const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
 const SYNC_META_KEY = "teachhelper-sync-meta-v1";
 const APP_DB_SCHEMA_LEGACY = "teachhelper-db-v1";
@@ -237,7 +239,8 @@ function createInitialGradeVaultState() {
     gradeEntries: [],
     gradeOverrides: [],
     gradeImports: [],
-    gradeSeatPlans: []
+    gradeSeatPlans: [],
+    gradeAccommodations: []
   };
 }
 
@@ -276,6 +279,7 @@ function gradeVaultHasSensitiveData(vaultState) {
     || (Array.isArray(state.gradeOverrides) && state.gradeOverrides.length > 0)
     || (Array.isArray(state.gradeImports) && state.gradeImports.length > 0)
     || (Array.isArray(state.gradeSeatPlans) && state.gradeSeatPlans.length > 0)
+    || (Array.isArray(state.gradeAccommodations) && state.gradeAccommodations.length > 0)
   );
 }
 
@@ -4186,6 +4190,7 @@ class PlannerStore {
     ));
     this.gradeVaultState.gradeImports = this.gradeVaultState.gradeImports.filter((row) => Number(row.courseId) !== id);
     this.gradeVaultState.gradeSeatPlans = this.gradeVaultState.gradeSeatPlans.filter((row) => Number(row.courseId) !== id);
+    this.gradeVaultState.gradeAccommodations = this.gradeVaultState.gradeAccommodations.filter((row) => Number(row.courseId) !== id);
     this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries.filter((entry) => (
       !removedStudentIds.has(Number(entry.studentId))
       && !removedAssessmentIds.has(Number(entry.assessmentId))
@@ -4488,6 +4493,9 @@ class PlannerStore {
       this.gradeVaultState.gradeOverrides = this.gradeVaultState.gradeOverrides.filter(
         (entry) => !removedStudentIds.has(Number(entry.studentId))
       );
+      this.gradeVaultState.gradeAccommodations = this.gradeVaultState.gradeAccommodations.filter(
+        (entry) => !removedStudentIds.has(Number(entry.studentId))
+      );
     }
     if (importMeta && typeof importMeta === "object") {
       const normalizedImport = {
@@ -4507,6 +4515,67 @@ class PlannerStore {
     this._save();
     this._saveGradeVault();
     return this.listGradeStudents(id);
+  }
+
+  listGradeAccommodations(courseId) {
+    const id = Number(courseId);
+    return this.gradeVaultState.gradeAccommodations
+      .filter((entry) => Number(entry.courseId) === id)
+      .slice()
+      .sort((a, b) => {
+        const studentA = Number(a.studentId || 0);
+        const studentB = Number(b.studentId || 0);
+        if (studentA !== studentB) {
+          return studentA - studentB;
+        }
+        return String(a.updatedAt || "").localeCompare(String(b.updatedAt || ""));
+      })
+      .map((entry) => ({
+        courseId: Number(entry.courseId) || 0,
+        studentId: Number(entry.studentId) || 0,
+        text: String(entry.text || ""),
+        updatedAt: String(entry.updatedAt || "")
+      }));
+  }
+
+  saveGradeAccommodationsForCourse(courseId, entries = []) {
+    const id = Number(courseId);
+    if (!id) {
+      return [];
+    }
+    const validStudentIds = new Set(
+      this.listGradeStudents(id)
+        .map((student) => Number(student.id) || 0)
+        .filter((studentId) => studentId > 0)
+    );
+    const previousByStudent = new Map(
+      this.listGradeAccommodations(id).map((entry) => [Number(entry.studentId) || 0, entry])
+    );
+    const seenStudentIds = new Set();
+    const savedAt = new Date().toISOString();
+    const nextEntries = [];
+    for (const rawEntry of Array.isArray(entries) ? entries : []) {
+      const studentId = Number(rawEntry?.studentId || 0);
+      const text = String(rawEntry?.text || "")
+        .trim()
+        .slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH);
+      if (!studentId || !validStudentIds.has(studentId) || seenStudentIds.has(studentId) || !text) {
+        continue;
+      }
+      const previous = previousByStudent.get(studentId) || null;
+      seenStudentIds.add(studentId);
+      nextEntries.push({
+        courseId: id,
+        studentId,
+        text,
+        updatedAt: String(previous && previous.text === text ? previous.updatedAt : savedAt)
+      });
+    }
+    this.gradeVaultState.gradeAccommodations = this.gradeVaultState.gradeAccommodations
+      .filter((entry) => Number(entry.courseId) !== id)
+      .concat(nextEntries);
+    this._saveGradeVault();
+    return this.listGradeAccommodations(id);
   }
 
   getGradeSeatPlan(courseId) {
@@ -6506,6 +6575,15 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
         plan,
         updatedAt: String(item.updatedAt || "")
       };
+    }) : [],
+    gradeAccommodations: Array.isArray(source.gradeAccommodations) ? source.gradeAccommodations.map((raw) => {
+      const item = asObject(raw);
+      return {
+        courseId: Number(item.courseId),
+        studentId: Number(item.studentId),
+        text: String(item.text || "").trim().slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH),
+        updatedAt: String(item.updatedAt || "")
+      };
     }) : []
   };
 
@@ -6529,6 +6607,25 @@ PlannerStore.prototype.normalizeGradeVaultState = function (rawVaultState = null
     .filter((item) => item.courseId > 0);
   normalized.gradeSeatPlans = normalized.gradeSeatPlans
     .filter((item) => item.courseId > 0 && item.plan && typeof item.plan === "object");
+  const validGradeStudentKeys = new Set(
+    normalized.gradeStudents.map((student) => `${Number(student.courseId) || 0}:${Number(student.id) || 0}`)
+  );
+  const seenAccommodationKeys = new Set();
+  normalized.gradeAccommodations = normalized.gradeAccommodations
+    .filter((item) => {
+      const key = `${Number(item.courseId) || 0}:${Number(item.studentId) || 0}`;
+      if (
+        item.courseId <= 0
+        || item.studentId <= 0
+        || !item.text
+        || !validGradeStudentKeys.has(key)
+        || seenAccommodationKeys.has(key)
+      ) {
+        return false;
+      }
+      seenAccommodationKeys.add(key);
+      return true;
+    });
   normalized.counters.gradeStudent = Math.max(
     Number(normalized.counters.gradeStudent) || 1,
     maxBy(normalized.gradeStudents) + 1
@@ -6755,6 +6852,7 @@ class PlannerApp {
     this.gradeTaskCompetenceDialogSelectedIds = new Set();
     this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
     this.gradeTaskCompetenceDialogRenderFrame = 0;
+    this.gradeAccommodationDialogDraft = null;
     this.boundGradesEntryTableScroll = null;
     this.syncingGradesEntryTableStickyScrollbar = false;
 
@@ -6791,6 +6889,7 @@ class PlannerApp {
       sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
       sidebarGradeCompetenceExpectationsSection: document.querySelector("#sidebar-grade-competence-expectations-section"),
       sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
+      sidebarGradeAccommodationSection: document.querySelector("#sidebar-grade-accommodation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
       sidebarGradeNameOrderInputs: document.querySelectorAll("[data-grade-name-order]"),
       sidebarGradeDisplaySystemInputs: document.querySelectorAll("[data-grade-display-system]"),
@@ -6799,6 +6898,7 @@ class PlannerApp {
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeCompetenceExpectationsBtn: document.querySelector("#sidebar-grade-competence-expectations-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
+      sidebarGradeAccommodationBtn: document.querySelector("#sidebar-grade-accommodation-btn"),
       sidebarArchiveActions: document.querySelector("#sidebar-archive-actions"),
       sidebarArchiveSection: document.querySelector("#sidebar-archive-section"),
       sidebarArchiveBtn: document.querySelector("#sidebar-archive-btn"),
@@ -6920,6 +7020,15 @@ class PlannerApp {
       gradeSimulationCategory: document.querySelector("#grade-simulation-category"),
       gradeSimulationSubcategory: document.querySelector("#grade-simulation-subcategory"),
       gradeSimulationResult: document.querySelector("#grade-simulation-result"),
+      gradeAccommodationDialog: document.querySelector("#grade-accommodation-dialog"),
+      gradeAccommodationDialogForm: document.querySelector("#grade-accommodation-dialog-form"),
+      gradeAccommodationDialogTitle: document.querySelector("#grade-accommodation-dialog-title"),
+      gradeAccommodationCourseId: document.querySelector("#grade-accommodation-course-id"),
+      gradeAccommodationAdd: document.querySelector("#grade-accommodation-add"),
+      gradeAccommodationSave: document.querySelector("#grade-accommodation-save"),
+      gradeAccommodationCancel: document.querySelector("#grade-accommodation-cancel"),
+      gradeAccommodationList: document.querySelector("#grade-accommodation-list"),
+      gradeAccommodationStatus: document.querySelector("#grade-accommodation-status"),
       expectationHorizonLocation: document.querySelector("#expectation-horizon-location"),
       expectationHorizonCommentTemplate: document.querySelector("#expectation-horizon-comment-template"),
       expectationHorizonTemplateSettingsFile: document.querySelector("#expectation-horizon-template-settings-file"),
@@ -8066,7 +8175,14 @@ class PlannerApp {
             plan,
             updatedAt: String(row.updatedAt || "")
           };
-        })
+        }),
+      gradeAccommodations: state.gradeAccommodations
+        .filter((row) => Number(row.courseId) === courseKey)
+        .map((row) => ({
+          studentId: Number(row.studentId) || 0,
+          text: String(row.text || "").slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH),
+          updatedAt: String(row.updatedAt || "")
+        }))
     };
   }
 
@@ -8118,6 +8234,12 @@ class PlannerApp {
       : [];
     runtimeState.gradeSeatPlans = Array.isArray(source.gradeSeatPlans)
       ? source.gradeSeatPlans.map((row) => ({
+        ...cloneJsonValue(row, {}),
+        courseId: courseKey
+      }))
+      : [];
+    runtimeState.gradeAccommodations = Array.isArray(source.gradeAccommodations)
+      ? source.gradeAccommodations.map((row) => ({
         ...cloneJsonValue(row, {}),
         courseId: courseKey
       }))
@@ -15706,14 +15828,11 @@ class PlannerApp {
         return;
       }
       const mode = normalizeGradeAssessmentMode(modeInput.value || "grade");
-      const previousMode = normalizeGradeAssessmentMode(activeAssessment?.mode || latestDraft.mode || "grade");
+      const modeChangeGuard = this.getGradesEntryModeChangeGuardState(modeInput, activeAssessment);
+      const previousMode = modeChangeGuard?.previousMode || normalizeGradeAssessmentMode(activeAssessment?.mode || latestDraft.mode || "grade");
       if (activeAssessment && mode !== previousMode) {
-        const existingEntryCount = (Array.isArray(this.store.gradeVaultState?.gradeEntries)
-          ? this.store.gradeVaultState.gradeEntries
-          : []
-        ).filter((entry) => Number(entry?.assessmentId || 0) === Number(activeAssessment.id || 0)).length;
-        const confirmationKey = `${Number(activeAssessment.id || 0)}:${previousMode}->${mode}`;
-        if (existingEntryCount > 0 && this.confirmedGradesEntryModeChangeKey !== confirmationKey) {
+        const confirmationKey = modeChangeGuard?.confirmationKey || `${Number(activeAssessment.id || 0)}:${previousMode}->${mode}`;
+        if (modeChangeGuard?.needsConfirmation) {
           const confirmed = await this.showConfirmMessage(
             "Der Leistungsmodus wird geändert. Bereits eingetragene Noten dieser Leistung passen danach nicht mehr zum neuen Modus und werden gelöscht. Fortfahren?",
             {
@@ -15734,6 +15853,7 @@ class PlannerApp {
             return;
           }
           this.confirmedGradesEntryModeChangeKey = confirmationKey;
+          this.handleSegmentControlSlideChange(event);
         }
       }
       const testScale = latestDraft.testScale || GRADE_TEST_SCALE_DEFAULT;
@@ -15870,15 +15990,59 @@ class PlannerApp {
 
   ensureGradeTestScaleTooltipPortal() {
     if (this.gradeTestScaleTooltipState.portal?.isConnected) {
+      if (this.gradeTestScaleTooltipState.portal.parentElement !== document.body) {
+        document.body.append(this.gradeTestScaleTooltipState.portal);
+      }
       return this.gradeTestScaleTooltipState.portal;
     }
     const portal = document.createElement("div");
     portal.className = "grade-test-scale-tooltip grade-test-scale-tooltip-portal";
     portal.setAttribute("role", "tooltip");
     portal.setAttribute("aria-hidden", "true");
+    if (typeof portal.showPopover === "function" && typeof portal.hidePopover === "function") {
+      portal.setAttribute("popover", "manual");
+    }
     document.body.append(portal);
     this.gradeTestScaleTooltipState.portal = portal;
     return portal;
+  }
+
+  syncGradeTestScaleTooltipPortalHost() {
+    const portal = this.ensureGradeTestScaleTooltipPortal();
+    return portal;
+  }
+
+  isGradeTestScaleTooltipPopoverOpen(portal) {
+    if (!portal || typeof portal.matches !== "function" || typeof portal.showPopover !== "function") {
+      return false;
+    }
+    try {
+      return portal.matches(":popover-open");
+    } catch (error) {
+      return false;
+    }
+  }
+
+  showGradeTestScaleTooltipLayer(portal) {
+    if (!portal || typeof portal.showPopover !== "function" || this.isGradeTestScaleTooltipPopoverOpen(portal)) {
+      return;
+    }
+    try {
+      portal.showPopover();
+    } catch (error) {
+      // Keep the fixed body portal as fallback.
+    }
+  }
+
+  hideGradeTestScaleTooltipLayer(portal) {
+    if (!this.isGradeTestScaleTooltipPopoverOpen(portal) || typeof portal.hidePopover !== "function") {
+      return;
+    }
+    try {
+      portal.hidePopover();
+    } catch (error) {
+      // The tooltip is hidden by aria/class state even if the popover state is already stale.
+    }
   }
 
   showGradeTestScaleTooltip(option) {
@@ -15889,10 +16053,11 @@ class PlannerApp {
     if (!source) {
       return;
     }
-    const portal = this.ensureGradeTestScaleTooltipPortal();
+    const portal = this.syncGradeTestScaleTooltipPortalHost(option);
     portal.innerHTML = source.innerHTML;
     portal.setAttribute("aria-hidden", "false");
     portal.classList.add("is-visible");
+    this.showGradeTestScaleTooltipLayer(portal);
     this.gradeTestScaleTooltipState.anchor = option;
     this.positionGradeTestScaleTooltip();
   }
@@ -15905,6 +16070,12 @@ class PlannerApp {
     }
     portal.classList.remove("is-visible");
     portal.setAttribute("aria-hidden", "true");
+    this.hideGradeTestScaleTooltipLayer(portal);
+    if (portal.parentElement !== document.body) {
+      document.body.append(portal);
+    }
+    portal.style.left = "0px";
+    portal.style.top = "0px";
   }
 
   positionGradeTestScaleTooltip() {
@@ -16223,6 +16394,34 @@ class PlannerApp {
         this.handleGradeSimulationOpenRequest(event);
       });
     }
+    if (this.refs.sidebarGradeAccommodationBtn) {
+      this.refs.sidebarGradeAccommodationBtn.addEventListener("click", (event) => {
+        this.handleGradeAccommodationOpenRequest(event);
+      });
+    }
+    this.refs.gradeAccommodationCancel?.addEventListener("click", () => {
+      this.closeGradeAccommodationDialog();
+    });
+    this.refs.gradeAccommodationDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeGradeAccommodationDialog();
+    });
+    this.refs.gradeAccommodationDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.submitGradeAccommodationDialog();
+    });
+    this.refs.gradeAccommodationAdd?.addEventListener("click", () => {
+      this.addGradeAccommodationDialogCard();
+    });
+    this.refs.gradeAccommodationList?.addEventListener("change", (event) => {
+      this.handleGradeAccommodationDialogChange(event);
+    });
+    this.refs.gradeAccommodationList?.addEventListener("input", (event) => {
+      this.handleGradeAccommodationDialogInput(event);
+    });
+    this.refs.gradeAccommodationList?.addEventListener("click", (event) => {
+      this.handleGradeAccommodationDialogClick(event);
+    });
     this.refs.gradeSimulationDialogClose?.addEventListener("click", () => {
       this.closeGradeSimulationDialog();
     });
@@ -20529,6 +20728,7 @@ class PlannerApp {
       this.updateSidebarExpectationHorizonButtonState();
       this.updateSidebarCompetenceExpectationsButtonState();
       this.updateSidebarGradeSimulationButtonState();
+      this.updateSidebarGradeAccommodationButtonState();
       return;
     }
     const normalizedSubview = this.normalizeGradesSubView(this.gradesSubView);
@@ -20594,6 +20794,7 @@ class PlannerApp {
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarCompetenceExpectationsButtonState();
         this.updateSidebarGradeSimulationButtonState();
+        this.updateSidebarGradeAccommodationButtonState();
         return;
       }
       this.renderGradesEntryView(course, students, groupedAssessments);
@@ -20617,6 +20818,7 @@ class PlannerApp {
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarCompetenceExpectationsButtonState();
         this.updateSidebarGradeSimulationButtonState();
+        this.updateSidebarGradeAccommodationButtonState();
         return;
       }
       this.renderGradesOverview(course, students, groupedAssessments);
@@ -20632,6 +20834,7 @@ class PlannerApp {
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarCompetenceExpectationsButtonState();
     this.updateSidebarGradeSimulationButtonState();
+    this.updateSidebarGradeAccommodationButtonState();
     this.syncSegmentControlSlideStates(this.refs.viewGrades, { animateFromPrevious: true });
     this.syncSegmentControlSlideStates(this.refs.sidebarGradePrivacyActions, { animateFromPrevious: true });
   }
@@ -21615,12 +21818,16 @@ class PlannerApp {
       && !this.canAccessGradeVault();
     actions.hidden = !isArchiveContext;
     button.disabled = this.archiveExportInProgress || (isGradesArchiveContext && (!hasYear || this.locked || gradesEncryptedLocked));
-    button.title = gradesEncryptedLocked
-      ? "Archivieren erst nach Entsperren des verschlüsselten Notenmoduls verfügbar"
+    button.title = this.locked && isGradesArchiveContext
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
       : (
-        this.archiveExportInProgress
-          ? "PDF-Export wird erstellt"
-          : "PDF-Export des gesamten Schuljahres"
+        gradesEncryptedLocked
+          ? "Archivieren erst nach Entsperren des verschlüsselten Notenmoduls verfügbar"
+          : (
+            this.archiveExportInProgress
+              ? "PDF-Export wird erstellt"
+              : "PDF-Export des gesamten Schuljahres"
+          )
       );
     button.setAttribute("aria-label", "Archivieren");
   }
@@ -22516,7 +22723,7 @@ class PlannerApp {
     }
     button.disabled = vaultInaccessible || !context.ready;
     button.title = this.locked
-      ? "Simulation gesperrt"
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
       : (
         vaultInaccessible
           ? "Notenmodul zuerst entsperren"
@@ -22540,6 +22747,317 @@ class PlannerApp {
       return;
     }
     this.openGradeSimulationDialog();
+  }
+
+  getGradeAccommodationCourseContext() {
+    const subView = this.normalizeGradesSubView(this.gradesSubView);
+    const isGradesCourseView = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && (subView === "overview" || subView === "entry");
+    if (!isGradesCourseView) {
+      return { ready: false, reason: "Nachteilsausgleich ist in Kursansicht und Eingabemaske verfügbar." };
+    }
+    if (this.locked) {
+      return { ready: false, reason: "Nachteilsausgleich gesperrt." };
+    }
+    if (!this.canAccessGradeVault()) {
+      return { ready: false, reason: "Notenmodul zuerst entsperren." };
+    }
+    const year = this.activeSchoolYear;
+    const course = year
+      ? this.store.listCourses(year.id).find((item) => item.id === this.selectedCourseId && this.courseAllowsGrades(item))
+      : null;
+    if (!course) {
+      return { ready: false, reason: "Bitte zuerst einen Notenkurs wählen." };
+    }
+    if (!this.isGradeCourseLoaded(course.id)) {
+      return { ready: false, reason: "Notenkurs wird geladen." };
+    }
+    const nameOrder = subView === "entry" ? this.gradesEntryNameOrder : this.gradesOverviewNameOrder;
+    const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id), nameOrder)
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+    if (!students.length) {
+      return { ready: false, reason: "Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden." };
+    }
+    return {
+      ready: true,
+      course,
+      students,
+      nameOrder
+    };
+  }
+
+  updateSidebarGradeAccommodationButtonState() {
+    const actions = this.refs.sidebarGradePrivacyActions;
+    const section = this.refs.sidebarGradeAccommodationSection;
+    const button = this.refs.sidebarGradeAccommodationBtn;
+    if (!actions || !button) {
+      return;
+    }
+    const subView = this.normalizeGradesSubView(this.gradesSubView);
+    const isAvailable = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && (subView === "overview" || subView === "entry");
+    const context = this.getGradeAccommodationCourseContext();
+    actions.hidden = !this.shouldShowSidebarGradeActions();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    if (section) {
+      section.hidden = !isAvailable;
+    }
+    button.disabled = this.locked || vaultInaccessible || !context.ready;
+    button.setAttribute("aria-label", "Nachteilsausgleich");
+    button.title = this.locked
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
+      : (
+        vaultInaccessible
+          ? "Notenmodul zuerst entsperren"
+          : (context.ready ? "Nachteilsausgleich" : context.reason || "Nachteilsausgleich in Kursansicht und Eingabemaske verfügbar")
+      );
+  }
+
+  createGradeAccommodationDialogRow(entry = {}) {
+    return {
+      uid: `accommodation-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      studentId: Number(entry.studentId || 0),
+      text: String(entry.text || "").slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH),
+      updatedAt: String(entry.updatedAt || "")
+    };
+  }
+
+  openGradeAccommodationDialog(context) {
+    if (!this.refs.gradeAccommodationDialog || !this.refs.gradeAccommodationList) {
+      return;
+    }
+    const course = context.course;
+    const entries = this.store.listGradeAccommodations(course.id);
+    const rows = entries.map((entry) => this.createGradeAccommodationDialogRow(entry));
+    this.gradeAccommodationDialogDraft = {
+      courseId: Number(course.id) || 0,
+      students: context.students,
+      nameOrder: context.nameOrder,
+      rows: rows.length > 0 ? rows : [this.createGradeAccommodationDialogRow()]
+    };
+    if (this.refs.gradeAccommodationCourseId) {
+      this.refs.gradeAccommodationCourseId.value = String(course.id);
+    }
+    if (this.refs.gradeAccommodationDialogTitle) {
+      this.refs.gradeAccommodationDialogTitle.textContent = `Nachteilsausgleich · ${course.name}`;
+    }
+    this.renderGradeAccommodationDialog();
+    this.openDialog(this.refs.gradeAccommodationDialog);
+    requestAnimationFrame(() => {
+      this.refs.gradeAccommodationList
+        ?.querySelector("select, textarea, button")
+        ?.focus({ preventScroll: true });
+    });
+  }
+
+  handleGradeAccommodationOpenRequest(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    const context = this.getGradeAccommodationCourseContext();
+    if (!context.ready) {
+      this.updateSidebarGradeAccommodationButtonState();
+      return;
+    }
+    this.openGradeAccommodationDialog(context);
+  }
+
+  closeGradeAccommodationDialog() {
+    this.gradeAccommodationDialogDraft = null;
+    this.closeDialog(this.refs.gradeAccommodationDialog);
+  }
+
+  setGradeAccommodationDialogStatus(message = "", type = "") {
+    if (!this.refs.gradeAccommodationStatus) {
+      return;
+    }
+    this.refs.gradeAccommodationStatus.textContent = message;
+    this.refs.gradeAccommodationStatus.classList.toggle("is-error", type === "error");
+    this.refs.gradeAccommodationStatus.classList.toggle("is-success", type === "success");
+  }
+
+  getGradeAccommodationDialogUsedStudentIds(exceptUid = "") {
+    const draft = this.gradeAccommodationDialogDraft;
+    const used = new Set();
+    (draft?.rows || []).forEach((row) => {
+      if (row.uid !== exceptUid && Number(row.studentId || 0) > 0) {
+        used.add(Number(row.studentId));
+      }
+    });
+    return used;
+  }
+
+  syncGradeAccommodationDialogAddState() {
+    const draft = this.gradeAccommodationDialogDraft;
+    const addButton = this.refs.gradeAccommodationAdd;
+    if (!draft || !addButton) {
+      return;
+    }
+    const usedStudentIds = this.getGradeAccommodationDialogUsedStudentIds();
+    const hasEmptyStudentCard = draft.rows.some((row) => !Number(row.studentId || 0));
+    const canAdd = usedStudentIds.size < draft.students.length && !hasEmptyStudentCard;
+    addButton.disabled = !canAdd;
+    addButton.title = canAdd ? "Kachel hinzufügen" : "Für alle verfügbaren Namen gibt es bereits eine Kachel";
+  }
+
+  renderGradeAccommodationDialog() {
+    const draft = this.gradeAccommodationDialogDraft;
+    const list = this.refs.gradeAccommodationList;
+    if (!draft || !list) {
+      return;
+    }
+    list.innerHTML = "";
+    const students = Array.isArray(draft.students) ? draft.students : [];
+    if (!students.length) {
+      list.innerHTML = `<p class="grade-accommodation-empty">Keine Teilnehmenden verfügbar.</p>`;
+      this.syncGradeAccommodationDialogAddState();
+      return;
+    }
+    draft.rows.forEach((row) => {
+      const usedStudentIds = this.getGradeAccommodationDialogUsedStudentIds(row.uid);
+      const card = document.createElement("section");
+      card.className = "grade-accommodation-card";
+      card.dataset.accommodationUid = row.uid;
+      const options = [
+        `<option value="">Name auswählen</option>`,
+        ...students.map((student) => {
+          const studentId = Number(student.id) || 0;
+          const selected = Number(row.studentId || 0) === studentId;
+          const disabled = !selected && usedStudentIds.has(studentId);
+          const label = formatGradeStudentName(student, draft.nameOrder);
+          return `<option value="${studentId}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}>${escapeHtml(label)}</option>`;
+        })
+      ].join("");
+      card.innerHTML = `
+        <div class="grade-accommodation-card-head">
+          <label class="grade-accommodation-student-field">
+            Name
+            <select data-grade-accommodation-student="1" autocomplete="off">
+              ${options}
+            </select>
+          </label>
+          <button type="button" class="ghost danger-action dialog-icon-button grade-accommodation-delete"
+            data-grade-accommodation-delete="1" aria-label="Kachel löschen" title="Kachel löschen">🗑️</button>
+        </div>
+        <label class="grade-accommodation-text-field">
+          NTA
+          <textarea data-grade-accommodation-text="1" maxlength="${GRADE_ACCOMMODATION_TEXT_MAX_LENGTH}" rows="4"
+            placeholder="Kurzer Hinweis zum Nachteilsausgleich">${escapeHtml(row.text || "")}</textarea>
+        </label>
+      `;
+      list.append(card);
+    });
+    this.syncGradeAccommodationDialogAddState();
+  }
+
+  addGradeAccommodationDialogCard() {
+    const draft = this.gradeAccommodationDialogDraft;
+    if (!draft) {
+      return;
+    }
+    const usedStudentIds = this.getGradeAccommodationDialogUsedStudentIds();
+    if (usedStudentIds.size >= draft.students.length || draft.rows.some((row) => !Number(row.studentId || 0))) {
+      this.setGradeAccommodationDialogStatus("Bitte erst die offene Kachel einem Namen zuordnen.", "error");
+      this.syncGradeAccommodationDialogAddState();
+      return;
+    }
+    draft.rows.push(this.createGradeAccommodationDialogRow());
+    this.setGradeAccommodationDialogStatus("");
+    this.renderGradeAccommodationDialog();
+    requestAnimationFrame(() => {
+      this.refs.gradeAccommodationList
+        ?.querySelector(".grade-accommodation-card:last-child select")
+        ?.focus({ preventScroll: true });
+    });
+  }
+
+  handleGradeAccommodationDialogChange(event) {
+    const select = event.target.closest("select[data-grade-accommodation-student='1']");
+    if (!select || !this.gradeAccommodationDialogDraft) {
+      return;
+    }
+    const card = select.closest("[data-accommodation-uid]");
+    const uid = String(card?.dataset.accommodationUid || "");
+    const row = this.gradeAccommodationDialogDraft.rows.find((item) => item.uid === uid);
+    if (!row) {
+      return;
+    }
+    const studentId = Number(select.value || 0);
+    if (studentId && this.getGradeAccommodationDialogUsedStudentIds(uid).has(studentId)) {
+      this.setGradeAccommodationDialogStatus("Für diesen Namen gibt es bereits eine Kachel.", "error");
+      this.renderGradeAccommodationDialog();
+      return;
+    }
+    row.studentId = studentId;
+    this.setGradeAccommodationDialogStatus("");
+    this.renderGradeAccommodationDialog();
+  }
+
+  handleGradeAccommodationDialogInput(event) {
+    const textarea = event.target.closest("textarea[data-grade-accommodation-text='1']");
+    if (!textarea || !this.gradeAccommodationDialogDraft) {
+      return;
+    }
+    const card = textarea.closest("[data-accommodation-uid]");
+    const uid = String(card?.dataset.accommodationUid || "");
+    const row = this.gradeAccommodationDialogDraft.rows.find((item) => item.uid === uid);
+    if (!row) {
+      return;
+    }
+    row.text = String(textarea.value || "").slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH);
+    this.syncGradeAccommodationDialogAddState();
+  }
+
+  handleGradeAccommodationDialogClick(event) {
+    const button = event.target.closest("button[data-grade-accommodation-delete='1']");
+    if (!button || !this.gradeAccommodationDialogDraft) {
+      return;
+    }
+    const uid = String(button.closest("[data-accommodation-uid]")?.dataset.accommodationUid || "");
+    this.gradeAccommodationDialogDraft.rows = this.gradeAccommodationDialogDraft.rows.filter((row) => row.uid !== uid);
+    if (this.gradeAccommodationDialogDraft.rows.length === 0) {
+      this.gradeAccommodationDialogDraft.rows.push(this.createGradeAccommodationDialogRow());
+    }
+    this.setGradeAccommodationDialogStatus("");
+    this.renderGradeAccommodationDialog();
+  }
+
+  submitGradeAccommodationDialog() {
+    const draft = this.gradeAccommodationDialogDraft;
+    if (!draft || !draft.courseId) {
+      return;
+    }
+    const validStudentIds = new Set(draft.students.map((student) => Number(student.id) || 0));
+    const seenStudentIds = new Set();
+    const entries = [];
+    for (const row of draft.rows) {
+      const studentId = Number(row.studentId || 0);
+      const text = String(row.text || "").trim().slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH);
+      if (!studentId && !text) {
+        continue;
+      }
+      if (!studentId || !validStudentIds.has(studentId)) {
+        this.setGradeAccommodationDialogStatus("Bitte in jeder ausgefüllten Kachel einen Namen auswählen.", "error");
+        return;
+      }
+      if (seenStudentIds.has(studentId)) {
+        this.setGradeAccommodationDialogStatus("Pro Name ist nur eine Kachel möglich.", "error");
+        return;
+      }
+      if (!text) {
+        continue;
+      }
+      seenStudentIds.add(studentId);
+      entries.push({
+        studentId,
+        text,
+        updatedAt: row.updatedAt
+      });
+    }
+    this.store.saveGradeAccommodationsForCourse(draft.courseId, entries);
+    this.closeGradeAccommodationDialog();
+    this.renderAll();
   }
 
   getExpectationHorizonCourseContext() {
@@ -22619,9 +23137,13 @@ class PlannerApp {
     }
     button.disabled = vaultInaccessible || !context.ready;
     button.setAttribute("aria-label", "Erwartungshorizont erzeugen");
-    button.title = vaultInaccessible
-      ? "Notenmodul zuerst entsperren"
-      : (context.ready ? "Erwartungshorizont erzeugen" : context.reason || "Nur im BE-Modus verfügbar.");
+    button.title = this.locked
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
+      : (
+        vaultInaccessible
+          ? "Notenmodul zuerst entsperren"
+          : (context.ready ? "Erwartungshorizont erzeugen" : context.reason || "Nur im BE-Modus verfügbar.")
+      );
   }
 
   updateSidebarCompetenceExpectationsButtonState() {
@@ -22655,9 +23177,13 @@ class PlannerApp {
     }
     button.disabled = vaultInaccessible || !context.ready;
     button.setAttribute("aria-label", "Kompetenzerwartung erzeugen");
-    button.title = vaultInaccessible
-      ? "Notenmodul zuerst entsperren"
-      : (context.ready ? "Kompetenzerwartung erzeugen" : context.reason || "Nur im BE-Modus verfügbar.");
+    button.title = this.locked
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
+      : (
+        vaultInaccessible
+          ? "Notenmodul zuerst entsperren"
+          : (context.ready ? "Kompetenzerwartung erzeugen" : context.reason || "Nur im BE-Modus verfügbar.")
+      );
   }
 
   handleExpectationHorizonOpenRequest(event = null) {
@@ -25908,12 +26434,16 @@ class PlannerApp {
       : (
         canToggle
           ? "Datenschutzmodus inaktiv"
-          : (this.locked || vaultInaccessible
-            ? "Datenschutzmodus gesperrt"
+          : (this.locked
+            ? GRADE_SIDEBAR_LOCKED_TOOLTIP
             : (
-              isGradesOverview
-                ? "Kein Schüler für den Datenschutzmodus verfügbar"
-                : "Datenschutzmodus in der Kursübersicht verfügbar"
+              vaultInaccessible
+                ? "Notenmodul zuerst entsperren"
+                : (
+                  isGradesOverview
+                    ? "Kein Schüler für den Datenschutzmodus verfügbar"
+                    : "Datenschutzmodus in der Kursübersicht verfügbar"
+                )
             ))
       );
   }
@@ -26020,18 +26550,22 @@ class PlannerApp {
     }
     button.disabled = this.locked || vaultInaccessible || !(hasPrintableOverview || hasPrintableEntry);
     button.setAttribute("aria-label", isGradesEntry ? "Noteneingabe drucken" : "Kursnoten drucken");
-    button.title = this.locked || vaultInaccessible
-      ? "Drucken gesperrt"
+    button.title = this.locked
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
       : (
-        hasPrintableOverview
-          ? "Spalten einklappen, um ihren Druck zu unterbinden"
+        vaultInaccessible
+          ? "Notenmodul zuerst entsperren"
           : (
-            hasPrintableEntry
-              ? "Noteneingabe drucken"
+            hasPrintableOverview
+              ? "Spalten einklappen, um ihren Druck zu unterbinden"
               : (
-                isGradesEntry && entryMode === "homework"
-                  ? "Drucken in der Eingabeansicht nur für Note und BE verfügbar"
-                  : (isGradesEntry ? "Drucken in einer geladenen Noteneingabe verfügbar" : "Drucken in der Kursübersicht verfügbar")
+                hasPrintableEntry
+                  ? "Noteneingabe drucken"
+                  : (
+                    isGradesEntry && entryMode === "homework"
+                      ? "Drucken in der Eingabeansicht nur für Note und BE verfügbar"
+                      : (isGradesEntry ? "Drucken in einer geladenen Noteneingabe verfügbar" : "Drucken in der Kursübersicht verfügbar")
+                  )
               )
           )
       );
@@ -32377,6 +32911,45 @@ class PlannerApp {
     ].join(",");
   }
 
+  getGradesEntryModeChangeGuardState(input, activeAssessment = null) {
+    if (!(input instanceof HTMLInputElement) || !input.matches("input[data-grades-entry-mode='1']")) {
+      return null;
+    }
+    const assessment = activeAssessment || (
+      this.selectedGradesEntryAssessmentId
+        ? this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId)
+        : null
+    );
+    if (!assessment) {
+      return null;
+    }
+    const mode = normalizeGradeAssessmentMode(input.value || "grade");
+    const previousMode = normalizeGradeAssessmentMode(assessment.mode || "grade");
+    if (mode === previousMode) {
+      return null;
+    }
+    const assessmentId = Number(assessment.id || 0);
+    const existingEntryCount = (Array.isArray(this.store.gradeVaultState?.gradeEntries)
+      ? this.store.gradeVaultState.gradeEntries
+      : []
+    ).filter((entry) => Number(entry?.assessmentId || 0) === assessmentId).length;
+    const confirmationKey = `${assessmentId}:${previousMode}->${mode}`;
+    return {
+      mode,
+      previousMode,
+      existingEntryCount,
+      confirmationKey,
+      needsConfirmation: existingEntryCount > 0 && this.confirmedGradesEntryModeChangeKey !== confirmationKey
+    };
+  }
+
+  shouldDeferSegmentControlSlideChange(target) {
+    const input = target instanceof Element
+      ? target.closest("input[data-grades-entry-mode='1']")
+      : null;
+    return Boolean(this.getGradesEntryModeChangeGuardState(input)?.needsConfirmation);
+  }
+
   getSegmentControlKey(control, fallbackIndex = 0) {
     const checkedInput = control?.querySelector("input[type='radio']:checked");
     const firstInput = control?.querySelector("input[type='radio']");
@@ -32492,6 +33065,9 @@ class PlannerApp {
 
   handleSegmentControlSlideChange(event) {
     const target = event.target instanceof Element ? event.target : null;
+    if (this.shouldDeferSegmentControlSlideChange(target)) {
+      return;
+    }
     const selector = this.getSegmentControlSelector();
     const control = target?.closest(selector);
     if (!control) {
@@ -33886,6 +34462,7 @@ class PlannerApp {
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarCompetenceExpectationsButtonState();
     this.updateSidebarGradeSimulationButtonState();
+    this.updateSidebarGradeAccommodationButtonState();
     this.renderSidebarFooterActions();
     if (this.refs.mainPane) {
       const showHeader = !this.locked && isWeek;

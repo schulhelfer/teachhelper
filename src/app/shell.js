@@ -80,6 +80,10 @@ export function createShellController({
     return tab === TAB_PLANNING || tab === TAB_GRADES;
   }
 
+  function isGradeVaultStatusTab(tab) {
+    return tab === TAB_PLANNING || tab === TAB_GRADES || tab === TAB_SEATPLAN;
+  }
+
   function getUnsavedAreaLabel() {
     const unsaved = state.planningUnsavedState || {};
     if (unsaved.planningDirty && unsaved.gradesDirty) {
@@ -626,19 +630,30 @@ export function createShellController({
     const configured = Boolean(planningGradeVaultState.configured);
     const unlocked = Boolean(planningGradeVaultState.unlocked);
     const setupRequired = Boolean(planningGradeVaultState.setupRequired);
-    const shouldShow = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
+    const statusAvailable = isGradeVaultStatusTab(state.activeTab)
       && Boolean(planningGradeVaultState.ready)
-      && Boolean(planningGradeVaultState.dbConnected)
-      && configured
+      && Boolean(planningGradeVaultState.dbConnected);
+    const locked = configured
       && !unlocked
       && !setupRequired
       && mode === 'unlock';
+    const shouldShow = statusAvailable
+      && (configured || unlocked || mode === 'off' || mode === 'ready' || mode === 'unlock');
+    const canRequestUnlock = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
+      && Boolean(planningGradeVaultState.ready)
+      && Boolean(planningGradeVaultState.dbConnected)
+      && configured
+      && locked
+      && state.tabTransitionState === 'idle'
+      && state.chromeTransitionState === 'idle';
+    const label = locked ? 'Notenmodul gesperrt' : 'Notenmodul entsperrt';
+    els.tabGradesUnlock.textContent = locked ? '🔒' : '🔓';
+    els.tabGradesUnlock.title = canRequestUnlock ? 'Notenmodul entsperren' : label;
+    els.tabGradesUnlock.setAttribute('aria-label', canRequestUnlock ? 'Notenmodul entsperren' : label);
     els.tabGradesUnlock.hidden = false;
     els.tabGradesUnlock.style.display = 'inline-flex';
     els.tabGradesUnlock.classList.toggle('is-reserved', !shouldShow);
-    els.tabGradesUnlock.disabled = !shouldShow
-      || state.tabTransitionState !== 'idle'
-      || state.chromeTransitionState !== 'idle';
+    els.tabGradesUnlock.disabled = !canRequestUnlock;
     els.tabGradesUnlock.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     if (shouldShow) {
       els.tabGradesUnlock.removeAttribute('tabindex');

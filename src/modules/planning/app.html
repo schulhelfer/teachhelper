@@ -131,6 +131,14 @@
               <span class="sidebar-grade-print-icon" aria-hidden="true">✉️</span>
             </button>
           </div>
+          <div id="sidebar-grade-accommodation-section"
+            class="sidebar-grade-action-section sidebar-grade-action-section-accommodation">
+            <div class="sidebar-grade-action-title">Nachteilsausgleich</div>
+            <button id="sidebar-grade-accommodation-btn" class="sidebar-grade-print-btn" type="button"
+              aria-label="Nachteilsausgleich" title="Nachteilsausgleich" disabled>
+              <span class="sidebar-grade-print-icon" aria-hidden="true">♿</span>
+            </button>
+          </div>
         </div>
         <div id="sidebar-archive-actions" class="sidebar-archive-actions" hidden>
           <div id="sidebar-archive-section" class="sidebar-grade-action-section sidebar-grade-action-section-archive"
@@ -1073,6 +1081,26 @@
         </label>
       </div>
       <div id="grade-simulation-result" class="grade-simulation-result" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-accommodation-dialog" class="app-dialog grade-accommodation-dialog"
+    aria-labelledby="grade-accommodation-dialog-title">
+    <form id="grade-accommodation-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-accommodation-dialog-title" class="dialog-title">Nachteilsausgleich</h3>
+        <div class="dialog-actions-top">
+          <button type="button" id="grade-accommodation-add" class="ghost dialog-icon-button"
+            aria-label="Kachel hinzufügen" title="Kachel hinzufügen">➕</button>
+          <button type="submit" id="grade-accommodation-save" class="dialog-icon-button" aria-label="Speichern"
+            title="Speichern">💾</button>
+          <button type="button" id="grade-accommodation-cancel" class="ghost dialog-icon-button"
+            aria-label="Abbrechen" title="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="grade-accommodation-course-id" type="hidden">
+      <div id="grade-accommodation-list" class="grade-accommodation-list"></div>
+      <div id="grade-accommodation-status" class="expectation-horizon-status" aria-live="polite"></div>
     </form>
   </dialog>
 

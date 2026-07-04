@@ -4485,6 +4485,11 @@
       text-decoration-thickness: 3px;
     }
 
+    .app.app-tab-groups .steps-list a {
+      color: currentColor;
+      text-decoration-color: currentColor;
+    }
+
     .steps-list a:focus-visible {
       outline: 2px solid var(--focus-outline);
       outline-offset: 2px;
