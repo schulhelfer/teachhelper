@@ -9206,6 +9206,32 @@ class PlannerApp {
     this.closeDialog(this.refs.gradeVaultDialog);
   }
 
+  async lockGradeVaultSession() {
+    if (!this.isGradeVaultEncryptionEnabled() || !this.hasGradeVaultUnlockConfig() || !this.isGradeVaultUnlocked()) {
+      return false;
+    }
+    const hasDirtyGradeCourses = Object.keys(this.gradeVaultSession.dirtyGradeCourseIds || {}).length > 0;
+    if (this.gradeVaultSession.dirty || hasDirtyGradeCourses || this.gradesEntryDraftDirty) {
+      await this.showInfoMessage(
+        "Bitte speichere die Noten zuerst, bevor du das Notenmodul sperrst.",
+        "Notenmodul sperren"
+      );
+      return false;
+    }
+    this.gradeVaultSession.unlocked = false;
+    this.gradeVaultSession.cryptoKey = null;
+    this.gradeVaultSession.kdf = null;
+    this.gradeVaultSession.unlockedAt = "";
+    this.gradeVaultSession.promptPending = false;
+    this.gradeVaultSession.lastPromptMode = "";
+    this.pendingGradeVaultDialogMode = "";
+    this.pendingGradeVaultContinuation = null;
+    this.pendingGradeVaultEncryptionDisable = false;
+    this.closeDialog(this.refs.gradeVaultDialog);
+    this.renderAll();
+    return true;
+  }
+
   async ensureGradeVaultReadyForProtectedAction() {
     if (this.canAccessGradeVault()) {
       return true;
@@ -16070,12 +16096,15 @@ class PlannerApp {
     }
     portal.classList.remove("is-visible");
     portal.setAttribute("aria-hidden", "true");
+    delete portal.dataset.placement;
     this.hideGradeTestScaleTooltipLayer(portal);
     if (portal.parentElement !== document.body) {
       document.body.append(portal);
     }
     portal.style.left = "0px";
     portal.style.top = "0px";
+    portal.style.removeProperty("--grade-test-scale-tooltip-arrow-x");
+    portal.style.removeProperty("--grade-test-scale-tooltip-arrow-y");
   }
 
   positionGradeTestScaleTooltip() {
@@ -16095,23 +16124,42 @@ class PlannerApp {
     const spaceLeft = anchorRect.left;
     const spaceRight = viewportWidth - anchorRect.right;
     const spaceTop = anchorRect.top;
+    let placement;
     let left;
     let top;
     if (spaceLeft >= tooltipRect.width + margin) {
+      placement = "left";
       left = anchorRect.left - tooltipRect.width - margin;
       top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
     } else if (spaceRight >= tooltipRect.width + margin) {
+      placement = "right";
       left = anchorRect.right + margin;
       top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
     } else if (spaceTop >= tooltipRect.height + margin) {
+      placement = "above";
       left = anchorRect.right - tooltipRect.width;
       top = anchorRect.top - tooltipRect.height - margin;
     } else {
+      placement = "below";
       left = anchorRect.right - tooltipRect.width;
       top = anchorRect.bottom + margin;
     }
     left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
     top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
+    const arrowMargin = 10;
+    const arrowX = clamp(
+      anchorRect.left + (anchorRect.width / 2) - left,
+      arrowMargin,
+      Math.max(arrowMargin, tooltipRect.width - arrowMargin)
+    );
+    const arrowY = clamp(
+      anchorRect.top + (anchorRect.height / 2) - top,
+      arrowMargin,
+      Math.max(arrowMargin, tooltipRect.height - arrowMargin)
+    );
+    portal.dataset.placement = placement;
+    portal.style.setProperty("--grade-test-scale-tooltip-arrow-x", `${Math.round(arrowX)}px`);
+    portal.style.setProperty("--grade-test-scale-tooltip-arrow-y", `${Math.round(arrowY)}px`);
     portal.style.left = `${Math.round(left)}px`;
     portal.style.top = `${Math.round(top)}px`;
   }
@@ -16241,6 +16289,10 @@ class PlannerApp {
       window.addEventListener("classroom:planning-grade-vault-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
         const action = String(detail?.action || "").trim().toLowerCase();
+        if (action === "lock") {
+          void this.lockGradeVaultSession();
+          return;
+        }
         if (action !== "unlock") {
           return;
         }

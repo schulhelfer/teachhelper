@@ -73,6 +73,7 @@ export function installAppTooltips(root = document, options = {}) {
 
   let activeAnchor = null;
   let activeNativeTitle = "";
+  let activeSuppressedTitles = new Map();
   let activeAriaDescribedBy = null;
   let suppressTitleObserver = false;
   let rafId = 0;
@@ -94,6 +95,8 @@ export function installAppTooltips(root = document, options = {}) {
     }
     portal.style.left = "0px";
     portal.style.top = "0px";
+    portal.style.removeProperty("--app-tooltip-arrow-x");
+    portal.style.removeProperty("--app-tooltip-arrow-y");
   }
 
   function isPortalPopoverOpen() {
@@ -133,22 +136,39 @@ export function installAppTooltips(root = document, options = {}) {
     return anchor;
   }
 
-  function suppressNativeTitle(anchor) {
+  function suppressNativeTitleElement(element, anchor) {
+    if (!element?.hasAttribute?.("title")) return;
+    const title = String(element.getAttribute("title") || "");
+    activeSuppressedTitles.set(element, title);
+    if (element === anchor) {
+      activeNativeTitle = title;
+    }
+    element.removeAttribute("title");
+  }
+
+  function suppressNativeTitles(anchor) {
     activeNativeTitle = "";
-    if (!anchor?.hasAttribute?.("title")) return;
-    activeNativeTitle = String(anchor.getAttribute("title") || "");
+    if (!(anchor instanceof HTMLElementCtor)) return;
     suppressTitleObserver = true;
-    anchor.removeAttribute("title");
+    for (let element = anchor; element && element !== doc.body && element !== doc.documentElement; element = element.parentElement) {
+      suppressNativeTitleElement(element, anchor);
+    }
     suppressTitleObserver = false;
   }
 
-  function restoreNativeTitle(anchor = activeAnchor) {
-    if (!anchor || !activeNativeTitle) return;
-    if (!anchor.hasAttribute("title")) {
-      suppressTitleObserver = true;
-      anchor.setAttribute("title", activeNativeTitle);
-      suppressTitleObserver = false;
+  function restoreNativeTitles() {
+    if (!activeSuppressedTitles.size) {
+      activeNativeTitle = "";
+      return;
     }
+    suppressTitleObserver = true;
+    for (const [element, title] of activeSuppressedTitles) {
+      if (element?.isConnected && !element.hasAttribute("title")) {
+        element.setAttribute("title", title);
+      }
+    }
+    suppressTitleObserver = false;
+    activeSuppressedTitles.clear();
     activeNativeTitle = "";
   }
 
@@ -185,7 +205,7 @@ export function installAppTooltips(root = document, options = {}) {
     const isSameAnchor = activeAnchor === anchor;
     if (activeAnchor && activeAnchor !== anchor) {
       restoreAriaDescription(activeAnchor);
-      restoreNativeTitle(activeAnchor);
+      restoreNativeTitles();
     }
     activeAnchor = anchor;
     const text = getTooltipText(anchor, isSameAnchor ? activeNativeTitle : "");
@@ -199,7 +219,7 @@ export function installAppTooltips(root = document, options = {}) {
     portal.classList.add("is-visible");
     showPortalLayer();
     if (!isSameAnchor) {
-      suppressNativeTitle(anchor);
+      suppressNativeTitles(anchor);
       syncAriaDescription(anchor);
     }
     schedulePosition();
@@ -214,7 +234,7 @@ export function installAppTooltips(root = document, options = {}) {
     delete portal.dataset.placement;
     hidePortalLayer();
     restoreAriaDescription(previousAnchor);
-    restoreNativeTitle(previousAnchor);
+    restoreNativeTitles();
     releasePortalHost();
   }
 
@@ -265,7 +285,20 @@ export function installAppTooltips(root = document, options = {}) {
 
     left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
     top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
+    const arrowMargin = 10;
+    const arrowX = clamp(
+      anchorRect.left + (anchorRect.width / 2) - left,
+      arrowMargin,
+      Math.max(arrowMargin, tooltipRect.width - arrowMargin)
+    );
+    const arrowY = clamp(
+      anchorRect.top + (anchorRect.height / 2) - top,
+      arrowMargin,
+      Math.max(arrowMargin, tooltipRect.height - arrowMargin)
+    );
     portal.dataset.placement = placement;
+    portal.style.setProperty("--app-tooltip-arrow-x", `${Math.round(arrowX)}px`);
+    portal.style.setProperty("--app-tooltip-arrow-y", `${Math.round(arrowY)}px`);
     portal.style.left = `${Math.round(left)}px`;
     portal.style.top = `${Math.round(top)}px`;
   }
@@ -326,7 +359,7 @@ export function installAppTooltips(root = document, options = {}) {
       if (mutation.target !== activeAnchor) continue;
       if (mutation.attributeName === "title" && activeAnchor.hasAttribute("title")) {
         activeNativeTitle = String(activeAnchor.getAttribute("title") || "");
-        suppressNativeTitle(activeAnchor);
+        suppressNativeTitles(activeAnchor);
       }
       refreshActiveTooltip();
       return;

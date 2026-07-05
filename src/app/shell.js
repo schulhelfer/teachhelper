@@ -638,22 +638,26 @@ export function createShellController({
       && !setupRequired
       && mode === 'unlock';
     const shouldShow = statusAvailable
-      && (configured || unlocked || mode === 'off' || mode === 'ready' || mode === 'unlock');
-    const canRequestUnlock = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
+      && configured
+      && !setupRequired
+      && (locked || unlocked);
+    const canRequestToggle = isGradeVaultStatusTab(state.activeTab)
       && Boolean(planningGradeVaultState.ready)
       && Boolean(planningGradeVaultState.dbConnected)
       && configured
-      && locked
+      && !setupRequired
+      && (locked || unlocked)
       && state.tabTransitionState === 'idle'
       && state.chromeTransitionState === 'idle';
+    const actionLabel = locked ? 'Notenmodul entsperren' : 'Notenmodul sperren';
     const label = locked ? 'Notenmodul gesperrt' : 'Notenmodul entsperrt';
     els.tabGradesUnlock.textContent = locked ? '🔒' : '🔓';
-    els.tabGradesUnlock.title = canRequestUnlock ? 'Notenmodul entsperren' : label;
-    els.tabGradesUnlock.setAttribute('aria-label', canRequestUnlock ? 'Notenmodul entsperren' : label);
+    els.tabGradesUnlock.title = canRequestToggle ? actionLabel : label;
+    els.tabGradesUnlock.setAttribute('aria-label', canRequestToggle ? actionLabel : label);
     els.tabGradesUnlock.hidden = false;
     els.tabGradesUnlock.style.display = 'inline-flex';
     els.tabGradesUnlock.classList.toggle('is-reserved', !shouldShow);
-    els.tabGradesUnlock.disabled = !canRequestUnlock;
+    els.tabGradesUnlock.disabled = !canRequestToggle;
     els.tabGradesUnlock.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     if (shouldShow) {
       els.tabGradesUnlock.removeAttribute('tabindex');
@@ -927,10 +931,19 @@ export function createShellController({
     els.tabGradesUnlock.addEventListener('click', () => {
       const planningGradeVaultState = state.planningGradeVaultState || {};
       const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'off';
-      const shouldAllowRequest = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
+      const configured = Boolean(planningGradeVaultState.configured);
+      const unlocked = Boolean(planningGradeVaultState.unlocked);
+      const setupRequired = Boolean(planningGradeVaultState.setupRequired);
+      const locked = configured
+        && !unlocked
+        && !setupRequired
+        && mode === 'unlock';
+      const shouldAllowRequest = isGradeVaultStatusTab(state.activeTab)
         && Boolean(planningGradeVaultState.ready)
         && Boolean(planningGradeVaultState.dbConnected)
-        && mode === 'unlock'
+        && configured
+        && !setupRequired
+        && (locked || unlocked)
         && state.tabTransitionState === 'idle'
         && state.chromeTransitionState === 'idle';
       if (!shouldAllowRequest) {
@@ -938,7 +951,7 @@ export function createShellController({
       }
       window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_REQUEST_EVENT, {
         detail: {
-          action: 'unlock',
+          action: locked ? 'unlock' : 'lock',
         },
       }));
     });

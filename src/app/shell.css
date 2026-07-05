@@ -4485,7 +4485,8 @@
       text-decoration-thickness: 3px;
     }
 
-    .app.app-tab-groups .steps-list a {
+    .app.app-tab-groups .steps-list a,
+    .app.app-tab-random-picker .steps-list a {
       color: currentColor;
       text-decoration-color: currentColor;
     }
