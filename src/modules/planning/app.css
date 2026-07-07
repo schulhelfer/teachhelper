@@ -1257,12 +1257,13 @@
 
         .nav-btn.active {
           background: rgba(60, 72, 92, 0.98);
-          border-color: rgba(148, 163, 184, 0.58);
+          border-color: rgba(255, 255, 255, 0.98);
           color: #ffffff;
           font-weight: 500;
           box-shadow:
-            inset 0 0 0 1px rgba(255, 255, 255, 0.1),
-            0 10px 22px rgba(15, 23, 42, 0.24);
+            inset 0 0 0 2px rgba(255, 255, 255, 0.7),
+            0 8px 18px rgba(0, 0, 0, 0.34);
+          filter: saturate(1.15) brightness(1.06);
           text-shadow: none;
         }
 
@@ -8608,6 +8609,97 @@
         .expectation-horizon-dropzone-icon {
           font-size: 1.7rem;
           line-height: 1;
+        }
+
+        .expectation-horizon-percentile-toggle {
+          width: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 0.75rem;
+          min-height: 3rem;
+          padding: 0.72rem 0.88rem;
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          background: rgba(15, 23, 42, 0.44);
+          color: var(--text);
+          font-size: 0.86rem;
+          font-weight: 800;
+          line-height: 1.2;
+          cursor: pointer;
+          transition: border-color 0.12s ease, background-color 0.12s ease, transform 0.12s ease;
+        }
+
+        .expectation-horizon-percentile-toggle:hover,
+        .expectation-horizon-percentile-toggle:focus-visible {
+          border-color: var(--focus-border);
+          background: rgba(30, 41, 59, 0.62);
+          transform: translateY(-1px);
+        }
+
+        .expectation-horizon-percentile-toggle:disabled {
+          cursor: default;
+          opacity: 0.62;
+          transform: none;
+        }
+
+        .expectation-horizon-percentile-switch {
+          position: relative;
+          flex: 0 0 auto;
+          width: 2.85rem;
+          height: 1.5rem;
+          border-radius: 999px;
+          background: rgba(148, 163, 184, 0.32);
+          box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.34);
+          transition: background-color 0.12s ease, box-shadow 0.12s ease;
+        }
+
+        .expectation-horizon-percentile-switch::after {
+          content: "";
+          position: absolute;
+          top: 0.22rem;
+          left: 0.24rem;
+          width: 1.06rem;
+          height: 1.06rem;
+          border-radius: 50%;
+          background: #e2e8f0;
+          box-shadow: 0 0.16rem 0.4rem rgba(15, 23, 42, 0.24);
+          transition: transform 0.12s ease, background-color 0.12s ease;
+        }
+
+        .expectation-horizon-percentile-toggle[aria-checked="true"] .expectation-horizon-percentile-switch {
+          background: rgba(37, 99, 235, 0.72);
+          box-shadow: inset 0 0 0 1px rgba(147, 197, 253, 0.58);
+        }
+
+        .expectation-horizon-percentile-toggle[aria-checked="true"] .expectation-horizon-percentile-switch::after {
+          transform: translateX(1.3rem);
+          background: #ffffff;
+        }
+
+        .expectation-horizon-template-reset {
+          justify-self: start;
+          min-height: 2.25rem;
+          padding: 0.48rem 0.7rem;
+          border-radius: 8px;
+          font-size: 0.82rem;
+          font-weight: 800;
+        }
+
+        .expectation-horizon-template-reset:disabled {
+          cursor: default;
+          opacity: 0.48;
+        }
+
+        .expectation-horizon-percentile-comparison {
+          width: 100%;
+          margin: 0;
+        }
+
+        .expectation-horizon-percentile-comparison svg {
+          display: block;
+          width: 100%;
+          height: auto;
         }
 
         @media (max-width: 680px) {

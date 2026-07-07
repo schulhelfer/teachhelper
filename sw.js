@@ -40,6 +40,7 @@ const APP_SHELL = [
   './src/modules/planning/app.css',
   './src/modules/planning/app.js',
   './src/modules/planning/docx.js',
+  './src/modules/planning/percentile-rank.js',
   './src/modules/planning/expectation-horizon-template.docx',
   './src/modules/planning/expectation-horizon-template-gAeA.docx',
   './src/modules/planning/bridge.js',

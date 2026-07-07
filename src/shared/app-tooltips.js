@@ -46,6 +46,7 @@ function getTooltipTone(element) {
   const explicitTone = getAttributeText(element, "data-app-tooltip-tone");
   if (explicitTone) return explicitTone;
   if (element?.classList?.contains("is-grade-near-better")) return "near-better";
+  if (element?.classList?.contains("is-grade-low")) return "deficit";
   return "default";
 }
 

@@ -9,10 +9,98 @@ ROOT = Path(__file__).resolve().parents[1]
 
 errors = []
 HTML_FILES = sorted(ROOT.rglob('*.html'))
+EXPECTED_CSP_POLICY = (
+  "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; "
+  "script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; "
+  "img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; "
+  "worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; "
+  "manifest-src 'self'; form-action 'self'"
+)
 
 
 def collect_ids(body):
   return set(re.findall(r'<[^>]+\bid="([^"]+)"', body))
+
+
+def rel(path):
+  return path.relative_to(ROOT).as_posix()
+
+
+def parse_html_attrs(tag):
+  attrs = {}
+  for match in re.finditer(
+    r'([^\s/<>=]+)\s*=\s*(?:"([^"]*)"|\'([^\']*)\'|([^\s"\'=<>`]+))',
+    tag,
+    flags=re.IGNORECASE,
+  ):
+    value = next(group for group in match.groups()[1:] if group is not None)
+    attrs[match.group(1).lower()] = value
+  return attrs
+
+
+def parse_csp_policy(policy):
+  directives = {}
+  for directive in policy.split(';'):
+    parts = directive.strip().split()
+    if parts:
+      directives[parts[0].lower()] = parts[1:]
+  return directives
+
+
+def check_csp_meta(path, body):
+  relative_path = rel(path)
+  csp_meta_tags = []
+  for match in re.finditer(r'<meta\b[^>]*>', body, flags=re.IGNORECASE):
+    attrs = parse_html_attrs(match.group(0))
+    if attrs.get('http-equiv', '').lower() == 'content-security-policy':
+      csp_meta_tags.append((match, attrs))
+
+  if len(csp_meta_tags) != 1:
+    errors.append(f'{relative_path} must contain exactly one Content-Security-Policy meta tag')
+    return
+
+  csp_match, csp_attrs = csp_meta_tags[0]
+  policy = csp_attrs.get('content')
+  if policy != EXPECTED_CSP_POLICY:
+    errors.append(f'weak CSP in {relative_path}: policy must match EXPECTED_CSP_POLICY')
+
+  head_open = re.search(r'<head\b[^>]*>', body, flags=re.IGNORECASE)
+  head_close = re.search(r'</head\s*>', body, flags=re.IGNORECASE)
+  if not head_open or not head_close or csp_match.start() < head_open.end() or csp_match.end() > head_close.start():
+    errors.append(f'weak CSP in {relative_path}: CSP meta must be inside head')
+
+  first_script = re.search(r'<script\b', body, flags=re.IGNORECASE)
+  if first_script and csp_match.start() > first_script.start():
+    errors.append(f'weak CSP in {relative_path}: CSP meta must appear before the first script')
+
+  if not policy:
+    errors.append(f'weak CSP in {relative_path}: CSP meta content is missing')
+    return
+
+  directives = parse_csp_policy(policy)
+  required_directives = {
+    'default-src': ["'self'"],
+    'script-src': ["'self'"],
+    'object-src': ["'none'"],
+    'base-uri': ["'none'"],
+    'script-src-attr': ["'none'"],
+  }
+  for directive, expected_tokens in required_directives.items():
+    if directives.get(directive) != expected_tokens:
+      errors.append(
+        f'weak CSP in {relative_path}: {directive} must be {" ".join(expected_tokens)} only'
+      )
+
+  all_tokens = [token for tokens in directives.values() for token in tokens]
+  if "'unsafe-inline'" in all_tokens:
+    errors.append(f"weak CSP in {relative_path}: 'unsafe-inline' is not allowed")
+  if "'unsafe-eval'" in all_tokens:
+    errors.append(f"weak CSP in {relative_path}: 'unsafe-eval' is not allowed")
+
+  for directive in ['script-src', 'connect-src']:
+    for token in directives.get(directive, []):
+      if token.startswith(('http:', 'https:')):
+        errors.append(f'weak CSP in {relative_path}: {directive} must not allow external HTTP(S) sources')
 
 
 def is_local_asset_ref(ref):
@@ -43,6 +131,7 @@ def check_local_asset_ref(base_path, ref):
 html_ids = {}
 for path in HTML_FILES:
   body = path.read_text(encoding='utf-8', errors='ignore')
+  check_csp_meta(path, body)
   html_ids[path] = collect_ids(body)
   for ref in sorted(set(re.findall(r'getElementById\([\'"]([^\'"]+)[\'"]\)', body))):
     if ref not in html_ids[path]:
@@ -92,10 +181,6 @@ def iter_source_files():
   for path in ROOT.rglob('*'):
     if path.suffix in {'.html', '.js'}:
       yield path
-
-
-def rel(path):
-  return path.relative_to(ROOT).as_posix()
 
 
 def sha256_file(path):

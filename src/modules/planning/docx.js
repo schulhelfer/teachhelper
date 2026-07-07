@@ -11,6 +11,12 @@ const PACKAGE_RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/packa
 const OFFICE_RELATIONSHIPS_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 const WORD_NUMBERING_CONTENT_TYPE = "application/vnd.openxmlformats-officedocument.wordprocessingml.numbering+xml";
 const WORD_NUMBERING_RELATIONSHIP_TYPE = `${OFFICE_RELATIONSHIPS_NAMESPACE}/numbering`;
+const WORD_IMAGE_RELATIONSHIP_TYPE = `${OFFICE_RELATIONSHIPS_NAMESPACE}/image`;
+const DRAWING_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/main";
+const DRAWING_PICTURE_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/picture";
+const WORDPROCESSING_DRAWING_NAMESPACE = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing";
+const RELATIONSHIPS_DOC_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+const PNG_CONTENT_TYPE = "image/png";
 
 const textEncoder = new TextEncoder();
 const textDecoder = new TextDecoder("utf-8");
@@ -265,6 +271,100 @@ function upsertZipEntry(entries, name, xml) {
   return [...entries, { name, data, flags: ZIP_UTF8_FLAG }];
 }
 
+function getWordPartRelationshipsPath(partName) {
+  const normalized = String(partName || "");
+  const slashIndex = normalized.lastIndexOf("/");
+  if (slashIndex < 0) {
+    return `_rels/${normalized}.rels`;
+  }
+  return `${normalized.slice(0, slashIndex)}/_rels/${normalized.slice(slashIndex + 1)}.rels`;
+}
+
+function getRelationshipMaxId(entries, relsPath) {
+  const existing = entries.find((entry) => entry.name === relsPath);
+  if (!existing) {
+    return 0;
+  }
+  const doc = parseXmlDocument(textDecoder.decode(existing.data), "Die Relationship-Definition der DOCX-Datei konnte nicht gelesen werden.");
+  return Array.from(doc.getElementsByTagName("*"))
+    .filter((element) => element.localName === "Relationship")
+    .reduce((max, element) => {
+      const match = String(element.getAttribute("Id") || "").match(/^rId(\d+)$/);
+      return match ? Math.max(max, Number(match[1])) : max;
+    }, 0);
+}
+
+function normalizeWordImageReplacement(value) {
+  if (!value || typeof value !== "object" || !value.image || typeof value.image !== "object") {
+    return null;
+  }
+  const image = value.image;
+  const data = image.data instanceof Uint8Array ? image.data : new Uint8Array(image.data || []);
+  if (!data.length) {
+    return null;
+  }
+  const widthEmu = Math.max(1, Math.round(Number(image.widthEmu || image.width || 0)));
+  const heightEmu = Math.max(1, Math.round(Number(image.heightEmu || image.height || 0)));
+  if (!widthEmu || !heightEmu) {
+    return null;
+  }
+  return {
+    data,
+    widthEmu,
+    heightEmu,
+    description: String(image.description || "Bild")
+  };
+}
+
+function isWordImageReplacement(value) {
+  return Boolean(normalizeWordImageReplacement(value));
+}
+
+function createWordImageContext(entries) {
+  const usedMediaNames = new Set(entries.map((entry) => entry.name));
+  const relationshipMaxByPath = new Map();
+  let imageCounter = 0;
+  const nextMediaName = () => {
+    while (true) {
+      imageCounter += 1;
+      const name = `word/media/image${imageCounter}.png`;
+      if (!usedMediaNames.has(name)) {
+        usedMediaNames.add(name);
+        return name;
+      }
+    }
+  };
+  return {
+    images: [],
+    relationships: [],
+    insertedImageCount: 0,
+    addImage(partName, image) {
+      const normalizedImage = normalizeWordImageReplacement({ image });
+      if (!normalizedImage) {
+        return "";
+      }
+      const relsPath = getWordPartRelationshipsPath(partName);
+      const currentMax = relationshipMaxByPath.has(relsPath)
+        ? relationshipMaxByPath.get(relsPath)
+        : getRelationshipMaxId(entries, relsPath);
+      const nextMax = currentMax + 1;
+      relationshipMaxByPath.set(relsPath, nextMax);
+      const id = `rId${nextMax}`;
+      const mediaName = nextMediaName();
+      this.images.push({
+        name: mediaName,
+        data: normalizedImage.data
+      });
+      this.relationships.push({
+        relsPath,
+        id,
+        target: `media/${mediaName.split("/").pop()}`
+      });
+      return id;
+    }
+  };
+}
+
 function getElementAttributeValue(element, namespace, localName) {
   return element.getAttributeNS(namespace, localName)
     || element.getAttribute(`w:${localName}`)
@@ -381,6 +481,86 @@ function ensureNumberingDocumentRelationship(entries) {
     doc.documentElement.append(relationship);
   }
   return upsertZipEntry(entries, name, serializeXmlDocument(doc));
+}
+
+function ensurePngContentType(entries) {
+  const existing = entries.find((entry) => entry.name === "[Content_Types].xml");
+  const doc = existing
+    ? parseXmlDocument(textDecoder.decode(existing.data), "Die Content-Type-Definition der DOCX-Datei konnte nicht gelesen werden.")
+    : parseXmlDocument(`<Types xmlns="${CONTENT_TYPES_NAMESPACE}"></Types>`);
+  const hasDefault = Array.from(doc.getElementsByTagName("*"))
+    .some((element) => (
+      element.localName === "Default"
+      && String(element.getAttribute("Extension") || "").toLowerCase() === "png"
+    ));
+  if (!hasDefault) {
+    const namespace = doc.documentElement?.namespaceURI || CONTENT_TYPES_NAMESPACE;
+    const item = doc.createElementNS(namespace, "Default");
+    item.setAttribute("Extension", "png");
+    item.setAttribute("ContentType", PNG_CONTENT_TYPE);
+    doc.documentElement.append(item);
+  }
+  return upsertZipEntry(entries, "[Content_Types].xml", serializeXmlDocument(doc));
+}
+
+function addImageRelationships(entries, relationships = []) {
+  let nextEntries = entries.slice();
+  const byPath = new Map();
+  relationships.forEach((relationship) => {
+    const list = byPath.get(relationship.relsPath) || [];
+    list.push(relationship);
+    byPath.set(relationship.relsPath, list);
+  });
+  byPath.forEach((items, relsPath) => {
+    const existing = nextEntries.find((entry) => entry.name === relsPath);
+    const doc = existing
+      ? parseXmlDocument(textDecoder.decode(existing.data), "Die Relationship-Definition der DOCX-Datei konnte nicht gelesen werden.")
+      : parseXmlDocument(`<Relationships xmlns="${PACKAGE_RELATIONSHIPS_NAMESPACE}"></Relationships>`);
+    const namespace = doc.documentElement?.namespaceURI || PACKAGE_RELATIONSHIPS_NAMESPACE;
+    items.forEach((item) => {
+      const relationship = doc.createElementNS(namespace, "Relationship");
+      relationship.setAttribute("Id", item.id);
+      relationship.setAttribute("Type", WORD_IMAGE_RELATIONSHIP_TYPE);
+      relationship.setAttribute("Target", item.target);
+      doc.documentElement.append(relationship);
+    });
+    nextEntries = upsertZipEntry(nextEntries, relsPath, serializeXmlDocument(doc));
+  });
+  return nextEntries;
+}
+
+function applyWordImageContext(entries, imageContext = null) {
+  if (!imageContext || !imageContext.images.length) {
+    return entries;
+  }
+  if (imageContext.relationships.length < imageContext.images.length) {
+    throw new Error("Die Bildreferenzen der DOCX-Datei konnten nicht vollständig erzeugt werden.");
+  }
+  let nextEntries = entries.slice();
+  imageContext.images.forEach((image) => {
+    const index = nextEntries.findIndex((entry) => entry.name === image.name);
+    if (index >= 0) {
+      nextEntries = nextEntries.map((entry, entryIndex) => (
+        entryIndex === index ? { name: image.name, data: image.data, flags: ZIP_UTF8_FLAG } : entry
+      ));
+    } else {
+      nextEntries.push({ name: image.name, data: image.data, flags: ZIP_UTF8_FLAG });
+    }
+  });
+  nextEntries = addImageRelationships(nextEntries, imageContext.relationships);
+  nextEntries = ensurePngContentType(nextEntries);
+  imageContext.images.forEach((image) => {
+    if (!nextEntries.some((entry) => entry.name === image.name && entry.data?.length)) {
+      throw new Error("Die Prozentrang-Grafik wurde nicht in die DOCX-Datei geschrieben.");
+    }
+  });
+  imageContext.relationships.forEach((relationship) => {
+    const relsEntry = nextEntries.find((entry) => entry.name === relationship.relsPath);
+    if (!relsEntry || !textDecoder.decode(relsEntry.data).includes(`Id="${relationship.id}"`)) {
+      throw new Error("Die Bildreferenz der Prozentrang-Grafik wurde nicht in die DOCX-Datei geschrieben.");
+    }
+  });
+  return nextEntries;
 }
 
 function richTextReplacementsNeedHyphenBulletNumbering(replacements) {
@@ -937,6 +1117,107 @@ function replacePlaceholderParagraphWithRichText(doc, textElement, value, richTe
   return true;
 }
 
+function createWordImageElement(doc, relationshipId, image, docPrId = 1) {
+  const drawing = doc.createElementNS(getWordNamespace(doc), "w:drawing");
+  const inline = doc.createElementNS(WORDPROCESSING_DRAWING_NAMESPACE, "wp:inline");
+  inline.setAttribute("distT", "0");
+  inline.setAttribute("distB", "0");
+  inline.setAttribute("distL", "0");
+  inline.setAttribute("distR", "0");
+
+  const extent = doc.createElementNS(WORDPROCESSING_DRAWING_NAMESPACE, "wp:extent");
+  extent.setAttribute("cx", String(image.widthEmu));
+  extent.setAttribute("cy", String(image.heightEmu));
+  const effectExtent = doc.createElementNS(WORDPROCESSING_DRAWING_NAMESPACE, "wp:effectExtent");
+  effectExtent.setAttribute("l", "0");
+  effectExtent.setAttribute("t", "0");
+  effectExtent.setAttribute("r", "0");
+  effectExtent.setAttribute("b", "0");
+  const docPr = doc.createElementNS(WORDPROCESSING_DRAWING_NAMESPACE, "wp:docPr");
+  docPr.setAttribute("id", String(docPrId));
+  docPr.setAttribute("name", image.description || "Bild");
+  docPr.setAttribute("descr", image.description || "Bild");
+  const cNvGraphicFramePr = doc.createElementNS(WORDPROCESSING_DRAWING_NAMESPACE, "wp:cNvGraphicFramePr");
+  const graphicFrameLocks = doc.createElementNS(DRAWING_NAMESPACE, "a:graphicFrameLocks");
+  graphicFrameLocks.setAttribute("noChangeAspect", "1");
+  cNvGraphicFramePr.append(graphicFrameLocks);
+
+  const graphic = doc.createElementNS(DRAWING_NAMESPACE, "a:graphic");
+  const graphicData = doc.createElementNS(DRAWING_NAMESPACE, "a:graphicData");
+  graphicData.setAttribute("uri", DRAWING_PICTURE_NAMESPACE);
+  const pic = doc.createElementNS(DRAWING_PICTURE_NAMESPACE, "pic:pic");
+  const nvPicPr = doc.createElementNS(DRAWING_PICTURE_NAMESPACE, "pic:nvPicPr");
+  const cNvPr = doc.createElementNS(DRAWING_PICTURE_NAMESPACE, "pic:cNvPr");
+  cNvPr.setAttribute("id", "0");
+  cNvPr.setAttribute("name", image.description || "Bild");
+  cNvPr.setAttribute("descr", image.description || "Bild");
+  const cNvPicPr = doc.createElementNS(DRAWING_PICTURE_NAMESPACE, "pic:cNvPicPr");
+  nvPicPr.append(cNvPr, cNvPicPr);
+
+  const blipFill = doc.createElementNS(DRAWING_PICTURE_NAMESPACE, "pic:blipFill");
+  const blip = doc.createElementNS(DRAWING_NAMESPACE, "a:blip");
+  blip.setAttributeNS(RELATIONSHIPS_DOC_NAMESPACE, "r:embed", relationshipId);
+  const stretch = doc.createElementNS(DRAWING_NAMESPACE, "a:stretch");
+  stretch.append(doc.createElementNS(DRAWING_NAMESPACE, "a:fillRect"));
+  blipFill.append(blip, stretch);
+
+  const spPr = doc.createElementNS(DRAWING_PICTURE_NAMESPACE, "pic:spPr");
+  const xfrm = doc.createElementNS(DRAWING_NAMESPACE, "a:xfrm");
+  const off = doc.createElementNS(DRAWING_NAMESPACE, "a:off");
+  off.setAttribute("x", "0");
+  off.setAttribute("y", "0");
+  const ext = doc.createElementNS(DRAWING_NAMESPACE, "a:ext");
+  ext.setAttribute("cx", String(image.widthEmu));
+  ext.setAttribute("cy", String(image.heightEmu));
+  xfrm.append(off, ext);
+  const prstGeom = doc.createElementNS(DRAWING_NAMESPACE, "a:prstGeom");
+  prstGeom.setAttribute("prst", "rect");
+  prstGeom.append(doc.createElementNS(DRAWING_NAMESPACE, "a:avLst"));
+  spPr.append(xfrm, prstGeom);
+
+  pic.append(nvPicPr, blipFill, spPr);
+  graphicData.append(pic);
+  graphic.append(graphicData);
+  inline.append(extent, effectExtent, docPr, cNvGraphicFramePr, graphic);
+  drawing.append(inline);
+  return drawing;
+}
+
+function replacePlaceholderParagraphWithImage(doc, textElement, value, imageContext = null) {
+  const image = normalizeWordImageReplacement(value);
+  const partName = imageContext?.partName || "";
+  if (!image || !imageContext || !partName || typeof imageContext.addImage !== "function") {
+    throw new Error("Die Prozentrang-Grafik konnte nicht in die DOCX-Datei eingebettet werden.");
+  }
+  const paragraph = getAncestorByLocalName(textElement, "p");
+  const parent = paragraph?.parentNode || null;
+  if (!paragraph || !parent) {
+    throw new Error("Die Position für die Prozentrang-Grafik konnte in der DOCX-Datei nicht gefunden werden.");
+  }
+  const relationshipId = imageContext.addImage(partName, image);
+  if (!relationshipId) {
+    throw new Error("Die Bildreferenz für die Prozentrang-Grafik konnte nicht erzeugt werden.");
+  }
+  const namespace = getWordNamespace(doc);
+  const nextParagraph = doc.createElementNS(namespace, "w:p");
+  const baseParagraphProperties = getChildElementsByLocalName(paragraph, "pPr")[0]?.cloneNode(true) || null;
+  if (baseParagraphProperties) {
+    Array.from(baseParagraphProperties.children || []).forEach((child) => {
+      if (child.localName === "ind") {
+        baseParagraphProperties.removeChild(child);
+      }
+    });
+    nextParagraph.append(baseParagraphProperties);
+  }
+  const run = doc.createElementNS(namespace, "w:r");
+  run.append(createWordImageElement(doc, relationshipId, image, Math.max(1, imageContext.images.length)));
+  nextParagraph.append(run);
+  parent.insertBefore(nextParagraph, paragraph);
+  parent.removeChild(paragraph);
+  imageContext.insertedImageCount = Number(imageContext.insertedImageCount || 0) + 1;
+  return true;
+}
+
 function setWordCellRichText(doc, cell, value, richTextContext = null) {
   const runs = normalizeWordRichTextRuns(value);
   if (!runs || !runs.length) {
@@ -1303,15 +1584,41 @@ function standardReplacementsNeedHyphenBulletNumbering(replacements = {}) {
   return Object.values(replacements || {}).some(wordRichTextValueNeedsHyphenBulletNumbering);
 }
 
+function replaceFirstShortParagraphContainingTextWithImage(doc, textElements, text, replacement, richTextContext = null) {
+  const needle = String(text || "");
+  const imageContext = richTextContext?.imageContext || null;
+  if (!needle || !isWordImageReplacement(replacement) || !imageContext) {
+    return false;
+  }
+  const candidates = textElements
+    .map((element) => {
+      const paragraph = getAncestorByLocalName(element, "p");
+      return paragraph ? { element, paragraph, text: getWordElementText(paragraph) } : null;
+    })
+    .filter((candidate, index, list) => (
+      candidate
+      && candidate.text.includes(needle)
+      && candidate.text.trim().length <= 80
+      && list.findIndex((item) => item?.paragraph === candidate.paragraph) === index
+    ));
+  const candidate = candidates[0] || null;
+  if (!candidate) {
+    return false;
+  }
+  return replacePlaceholderParagraphWithImage(doc, candidate.element, replacement, imageContext);
+}
+
 function replacePlaceholderInTextElements(doc, textElements, placeholder, replacement, richTextContext = null) {
   const needle = String(placeholder || "");
   if (!needle) {
-    return;
+    return 0;
   }
   const richTextReplacement = isWordRichTextValue(replacement);
+  const imageReplacement = isWordImageReplacement(replacement);
   const richTextRuns = richTextReplacement ? normalizeWordRichTextRuns(replacement) : null;
-  const value = richTextReplacement ? getWordRichTextPlainText(richTextRuns) : String(replacement ?? "");
+  const value = richTextReplacement ? getWordRichTextPlainText(richTextRuns) : (imageReplacement ? "" : String(replacement ?? ""));
   let currentTextElements = textElements;
+  let replacementCount = 0;
   while (true) {
     let combined = "";
     const records = currentTextElements.map((element) => {
@@ -1330,7 +1637,16 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
     if (!first || !last) {
       break;
     }
+    if (imageReplacement && replacePlaceholderParagraphWithImage(doc, first.element, replacement, richTextContext?.imageContext || null)) {
+      replacementCount += 1;
+      currentTextElements = getWordTextElements(doc);
+      continue;
+    }
+    if (imageReplacement) {
+      throw new Error("Die Prozentrang-Grafik konnte nicht an der Platzhalterposition eingefügt werden.");
+    }
     if (richTextReplacement && replacePlaceholderParagraphWithRichText(doc, first.element, replacement, richTextContext)) {
+      replacementCount += 1;
       currentTextElements = getWordTextElements(doc);
       continue;
     }
@@ -1342,6 +1658,7 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
         first.element,
         `${first.text.slice(0, localStart)}${value}${first.text.slice(localEnd)}`
       );
+      replacementCount += 1;
       continue;
     }
     setWordTextElementText(doc, first.element, `${first.text.slice(0, matchStart - first.start)}${value}`);
@@ -1360,25 +1677,48 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
         setWordTextElementText(doc, record.element, "");
       }
     });
+    replacementCount += 1;
   }
+  return replacementCount;
 }
 
 function replaceXmlPlaceholders(xml, replacements, options = {}) {
   const doc = parseXmlDocument(xml);
-  Object.entries(replacements || {}).forEach(([placeholder, replacement]) => {
+  const richTextContext = options.richTextContext || {};
+  if (richTextContext.imageContext) {
+    richTextContext.imageContext.partName = options.partName || "";
+  }
+  const imageContext = richTextContext.imageContext || null;
+  const entries = Object.entries(replacements || {});
+  entries.forEach(([placeholder, replacement]) => {
     replacePlaceholderInTextElements(
       doc,
       getWordTextElements(doc),
       placeholder,
       replacement,
-      options.richTextContext || null
+      richTextContext
     );
   });
+  if (imageContext && !Number(imageContext.insertedImageCount || 0)) {
+    const fallbackEntry = entries.find(([placeholder, replacement]) => (
+      String(placeholder || "").includes("Prozentrang")
+      && isWordImageReplacement(replacement)
+    ));
+    if (fallbackEntry) {
+      replaceFirstShortParagraphContainingTextWithImage(
+        doc,
+        getWordTextElements(doc),
+        "Prozentrang",
+        fallbackEntry[1],
+        richTextContext
+      );
+    }
+  }
   applyTableColumnReplacements(
     doc,
     options.tableColumnReplacements || [],
     options.tableColumnReplacementStats || null,
-    options.richTextContext || null
+    richTextContext
   );
   return new XMLSerializer().serializeToString(doc);
 }
@@ -1406,6 +1746,28 @@ export async function prepareDocxTemplate(templateBytes) {
   return prepared;
 }
 
+export function preparedDocxTemplateContainsText(preparedTemplate, text = "") {
+  const needle = String(text || "");
+  if (!needle) {
+    return false;
+  }
+  return (preparedTemplate?.entries || []).some((entry) => (
+    isWordXmlPart(entry.name)
+    && (() => {
+      const xml = textDecoder.decode(entry.data instanceof Uint8Array ? entry.data : new Uint8Array(entry.data || []));
+      if (xml.includes(needle)) {
+        return true;
+      }
+      try {
+        const doc = parseXmlDocument(xml);
+        return getWordTextElements(doc).map((element) => element.textContent || "").join("").includes(needle);
+      } catch (_error) {
+        return false;
+      }
+    })()
+  ));
+}
+
 export async function createDocxFromPreparedTemplate(preparedTemplate, replacements = {}, options = {}) {
   const entries = (preparedTemplate?.entries || []).map((entry) => ({
     ...entry,
@@ -1424,6 +1786,9 @@ export async function createDocxFromPreparedTemplate(preparedTemplate, replaceme
       return result.entries;
     })()
     : entries;
+  const imageContext = createWordImageContext(sourceEntries);
+  richTextContext.imageContext = imageContext;
+  const expectsImageReplacement = Object.values(replacements || {}).some(isWordImageReplacement);
   const nextEntries = sourceEntries.map((entry) => {
     if (!isWordXmlPart(entry.name)) {
       return entry;
@@ -1431,6 +1796,7 @@ export async function createDocxFromPreparedTemplate(preparedTemplate, replaceme
     const xml = textDecoder.decode(entry.data);
     const replaced = replaceXmlPlaceholders(xml, replacements, {
       ...options,
+      partName: entry.name,
       tableColumnReplacements,
       tableColumnReplacementStats,
       richTextContext
@@ -1440,8 +1806,11 @@ export async function createDocxFromPreparedTemplate(preparedTemplate, replaceme
       data: textEncoder.encode(replaced)
     };
   });
+  if (expectsImageReplacement && !Number(imageContext.insertedImageCount || 0)) {
+    throw new Error("Die Prozentrang-Grafik wurde erzeugt, aber in der aktiven DOCX-Vorlage wurde kein Platzhalter <<Prozentrang>> gefunden.");
+  }
   assertRequiredTableReplacementsApplied(tableColumnReplacementStats);
-  return buildZip(nextEntries);
+  return buildZip(applyWordImageContext(nextEntries, imageContext));
 }
 
 export async function createDocxFromTemplate(templateBytes, replacements = {}, options = {}) {

@@ -37,6 +37,12 @@
   --app-tooltip-text-color: #fed7aa;
 }
 
+.app-tooltip-portal[data-tone="deficit"] {
+  --app-tooltip-bg: rgba(69, 10, 10, 0.98);
+  --app-tooltip-border-color: rgba(248, 113, 113, 0.74);
+  --app-tooltip-text-color: #fecaca;
+}
+
 .app-tooltip-portal[aria-hidden="true"] {
   display: none;
 }
