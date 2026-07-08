@@ -1,3 +1,10 @@
+import {
+  FILE_LIMITS,
+  FILE_TIMEOUTS,
+  formatFileSize,
+  withTimeout,
+} from "../../shared/file-guards.js";
+
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
 const ZIP_CENTRAL_FILE_HEADER = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY = 0x06054b50;
@@ -23,6 +30,14 @@ const textDecoder = new TextDecoder("utf-8");
 
 let crcTable = null;
 const preparedTemplateCache = new WeakMap();
+
+const DEFAULT_DOCX_READ_LIMITS = Object.freeze({
+  maxEntries: FILE_LIMITS.ZIP_MAX_ENTRIES,
+  maxCompressedBytes: FILE_LIMITS.DOCX_TEMPLATE_BYTES,
+  maxUncompressedEntryBytes: FILE_LIMITS.ZIP_ENTRY_BYTES,
+  maxTotalUncompressedBytes: FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES,
+  inflateTimeoutMs: FILE_TIMEOUTS.ZIP_LOAD_MS,
+});
 
 function getCrcTable() {
   if (crcTable) {
@@ -90,7 +105,7 @@ function findEndOfCentralDirectory(bytes) {
   throw new Error("Die DOCX-Datei konnte nicht gelesen werden.");
 }
 
-async function inflateRaw(bytes) {
+async function inflateRaw(bytes, options = {}) {
   if (typeof DecompressionStream !== "function") {
     throw new Error("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.");
   }
@@ -100,17 +115,32 @@ async function inflateRaw(bytes) {
   } catch (_error) {
     throw new Error("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.");
   }
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  return new Uint8Array(await withTimeout(
+    () => new Response(stream).arrayBuffer(),
+    options.timeoutMs ?? FILE_TIMEOUTS.ZIP_LOAD_MS,
+    "Die DOCX-ZIP-Dekompression hat zu lange gedauert."
+  ));
 }
 
-async function readZipEntries(input) {
+async function readZipEntries(input, options = {}) {
+  const limits = { ...DEFAULT_DOCX_READ_LIMITS, ...(options.limits || {}) };
   const sourceBytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (sourceBytes.length > limits.maxCompressedBytes) {
+    throw new Error(`Die DOCX-Datei ist zu groß. Maximal erlaubt: ${formatFileSize(limits.maxCompressedBytes)}.`);
+  }
   const view = new DataView(sourceBytes.buffer, sourceBytes.byteOffset, sourceBytes.byteLength);
   const eocdOffset = findEndOfCentralDirectory(sourceBytes);
   const entryCount = getUint16(view, eocdOffset + 10);
+  if (entryCount > limits.maxEntries) {
+    throw new Error(`Die DOCX-Datei enthält zu viele ZIP-Einträge. Maximal erlaubt: ${limits.maxEntries}.`);
+  }
   let centralOffset = getUint32(view, eocdOffset + 16);
   const entries = [];
+  let totalUncompressedBytes = 0;
   for (let index = 0; index < entryCount; index += 1) {
+    if (centralOffset + 46 > sourceBytes.length) {
+      throw new Error("Die DOCX-ZIP-Struktur ist ungültig.");
+    }
     if (getUint32(view, centralOffset) !== ZIP_CENTRAL_FILE_HEADER) {
       throw new Error("Die DOCX-ZIP-Struktur ist ungültig.");
     }
@@ -122,6 +152,22 @@ async function readZipEntries(input) {
     const extraLength = getUint16(view, centralOffset + 30);
     const commentLength = getUint16(view, centralOffset + 32);
     const localOffset = getUint32(view, centralOffset + 42);
+    if (compressedSize > limits.maxCompressedBytes) {
+      throw new Error("Ein DOCX-ZIP-Eintrag ist komprimiert zu groß.");
+    }
+    if (uncompressedSize > limits.maxUncompressedEntryBytes) {
+      throw new Error(`Ein DOCX-ZIP-Eintrag ist entpackt zu groß. Maximal erlaubt: ${formatFileSize(limits.maxUncompressedEntryBytes)}.`);
+    }
+    totalUncompressedBytes += uncompressedSize;
+    if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
+      throw new Error(`Die DOCX-Datei ist entpackt zu groß. Maximal erlaubt: ${formatFileSize(limits.maxTotalUncompressedBytes)}.`);
+    }
+    if (centralOffset + 46 + nameLength + extraLength + commentLength > sourceBytes.length) {
+      throw new Error("Die DOCX-ZIP-Struktur ist ungültig.");
+    }
+    if (localOffset + 30 > sourceBytes.length) {
+      throw new Error("Die DOCX-ZIP-Struktur ist ungültig.");
+    }
     const nameBytes = sourceBytes.slice(centralOffset + 46, centralOffset + 46 + nameLength);
     const name = textDecoder.decode(nameBytes);
     if (getUint32(view, localOffset) !== ZIP_LOCAL_FILE_HEADER) {
@@ -130,12 +176,15 @@ async function readZipEntries(input) {
     const localNameLength = getUint16(view, localOffset + 26);
     const localExtraLength = getUint16(view, localOffset + 28);
     const dataOffset = localOffset + 30 + localNameLength + localExtraLength;
+    if (dataOffset + compressedSize > sourceBytes.length) {
+      throw new Error("Die DOCX-ZIP-Struktur ist ungültig.");
+    }
     const compressedData = sourceBytes.slice(dataOffset, dataOffset + compressedSize);
     let data;
     if (method === ZIP_STORE) {
       data = compressedData;
     } else if (method === ZIP_DEFLATE) {
-      data = await inflateRaw(compressedData);
+      data = await inflateRaw(compressedData, { timeoutMs: limits.inflateTimeoutMs });
     } else {
       throw new Error("Diese DOCX-Komprimierung wird nicht unterstützt.");
     }
@@ -149,6 +198,7 @@ async function readZipEntries(input) {
 }
 
 function buildZip(entries) {
+  assertBuildZipLimits(entries);
   const localParts = [];
   const centralParts = [];
   let offset = 0;
@@ -204,6 +254,30 @@ function buildZip(entries) {
   writeUint32(end, 16, localBytes.length);
   writeUint16(end, 20, 0);
   return concatBytes([localBytes, centralBytes, end]);
+}
+
+function assertBuildZipLimits(entries) {
+  if (entries.length > 0xffff) {
+    throw new Error("ZIP-Datei enthält zu viele Einträge für dieses Offline-Format.");
+  }
+  let estimatedLocalBytes = 0;
+  let estimatedCentralBytes = 0;
+  entries.forEach((entry) => {
+    const name = String(entry.name || "");
+    const nameBytes = textEncoder.encode(name);
+    const data = entry.data instanceof Uint8Array ? entry.data : new Uint8Array(entry.data || []);
+    if (nameBytes.length > 0xffff) {
+      throw new Error("ZIP-Dateiname ist zu lang.");
+    }
+    if (data.length > 0xffffffff) {
+      throw new Error("ZIP-Eintrag ist zu groß für dieses Offline-Format.");
+    }
+    estimatedLocalBytes += 30 + nameBytes.length + data.length;
+    estimatedCentralBytes += 46 + nameBytes.length;
+  });
+  if (estimatedLocalBytes > 0xffffffff || estimatedCentralBytes > 0xffffffff) {
+    throw new Error("ZIP-Datei ist zu groß für dieses Offline-Format.");
+  }
 }
 
 function isWordXmlPart(name) {
@@ -1733,16 +1807,19 @@ export function isDocxZipSupported() {
     && typeof DecompressionStream === "function";
 }
 
-export async function prepareDocxTemplate(templateBytes) {
+export async function prepareDocxTemplate(templateBytes, options = {}) {
   const bytes = templateBytes instanceof Uint8Array ? templateBytes : new Uint8Array(templateBytes || []);
-  const cached = preparedTemplateCache.get(bytes);
+  const canUseCache = !options.limits;
+  const cached = canUseCache ? preparedTemplateCache.get(bytes) : null;
   if (cached) {
     return cached;
   }
   const prepared = {
-    entries: await readZipEntries(bytes)
+    entries: await readZipEntries(bytes, options)
   };
-  preparedTemplateCache.set(bytes, prepared);
+  if (canUseCache) {
+    preparedTemplateCache.set(bytes, prepared);
+  }
   return prepared;
 }
 

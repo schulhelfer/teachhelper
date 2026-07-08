@@ -265,6 +265,40 @@ def check_vendor_manifest():
 check_vendor_manifest()
 
 
+def check_service_worker_update_activation():
+  sw_path = ROOT / 'sw.js'
+  if not sw_path.exists():
+    errors.append('missing service worker: sw.js')
+    return
+
+  body = sw_path.read_text(encoding='utf-8', errors='ignore')
+  required_tokens = [
+    'SET_UPDATE_TOKEN',
+    'SKIP_WAITING',
+    'updateActivationToken',
+    'self.skipWaiting()',
+  ]
+  for token in required_tokens:
+    if token not in body:
+      errors.append(f'service worker update activation missing {token}')
+
+  skip_waiting_index = body.find('self.skipWaiting()')
+  if skip_waiting_index < 0:
+    return
+
+  guard = body[max(0, skip_waiting_index - 800):skip_waiting_index]
+  if not re.search(r'data\.type\s*===\s*[\'"]SKIP_WAITING[\'"]', guard):
+    errors.append('service worker skipWaiting must be guarded by SKIP_WAITING message type')
+  if not re.search(
+    r'(?:data\.token\s*={2,3}\s*updateActivationToken|updateActivationToken\s*={2,3}\s*data\.token)',
+    guard,
+  ):
+    errors.append('service worker SKIP_WAITING must require updateActivationToken')
+
+
+check_service_worker_update_activation()
+
+
 bridge_path = ROOT / 'src' / 'shared' / 'module-frame-bridge.js'
 main_path = ROOT / 'src' / 'main.js'
 planning_index_path = ROOT / 'src' / 'modules' / 'planning' / 'index.js'

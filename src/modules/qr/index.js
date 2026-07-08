@@ -5,7 +5,7 @@ import {
   postToModule,
 } from '../../shared/module-frame-bridge.js';
 
-const QR_VERSION = 'qr-r4';
+const QR_VERSION = 'qr-r5';
 const QR_URL = new URL(`./app.html?v=${QR_VERSION}`, import.meta.url);
 
 export function mountQr({ host }) {

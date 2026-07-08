@@ -1,4 +1,10 @@
 import { installAppTooltips } from '../../shared/app-tooltips.js';
+import {
+  FILE_LIMITS,
+  FILE_TIMEOUTS,
+  validateZipFile,
+  withTimeout,
+} from '../../shared/file-guards.js';
 
 export function createDuplicateCheckApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
@@ -383,19 +389,24 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     fileList.className = 'file-list';
     group.records
       .slice()
-      .sort((a, b) => a.path.localeCompare(b.path, 'de'))
-      .forEach((record) => {
-        const row = document.createElement('div');
-        row.className = 'file-row';
-        const link = document.createElement('a');
-        link.className = 'file-path file-link';
-        link.href = getRecordDownloadObjectUrl(record);
-        link.download = getSafeDownloadName(record.name);
-        link.title = 'Datei herunterladen';
-        link.textContent = record.displayPath || record.path;
-        row.append(link);
-        fileList.appendChild(row);
-      });
+	      .sort((a, b) => a.path.localeCompare(b.path, 'de'))
+	      .forEach((record) => {
+	        const row = document.createElement('div');
+	        row.className = 'file-row';
+	        const objectUrl = getRecordDownloadObjectUrl(record);
+	        if (objectUrl) {
+	          const link = document.createElement('a');
+	          link.className = 'file-path file-link';
+	          link.href = objectUrl;
+	          link.download = getSafeDownloadName(record.name);
+	          link.title = 'Datei herunterladen';
+	          link.textContent = record.displayPath || record.path;
+	          row.append(link);
+	        } else {
+	          row.append(createTextElement('span', record.displayPath || record.path, 'file-path'));
+	        }
+	        fileList.appendChild(row);
+	      });
 
     section.append(head, fileList);
     return section;
@@ -513,11 +524,12 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     return pane;
   }
 
-  function getRecordObjectUrl(record) {
-    if (!record) return '';
-    if (!record.objectUrl) {
-      const mimeType = getFileMimeType(record.name);
-      record.objectUrl = URL.createObjectURL(new Blob([record.bytes], { type: mimeType }));
+	  function getRecordObjectUrl(record) {
+	    if (!record) return '';
+	    if (!record.bytes?.length) return '';
+	    if (!record.objectUrl) {
+	      const mimeType = getFileMimeType(record.name);
+	      record.objectUrl = URL.createObjectURL(new Blob([record.bytes], { type: mimeType }));
     }
     return record.objectUrl;
   }
@@ -528,11 +540,12 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     return value || fallback;
   }
 
-  function getRecordDownloadObjectUrl(record) {
-    if (!record) return '';
-    if (!record.downloadObjectUrl) {
-      record.downloadObjectUrl = URL.createObjectURL(new Blob([record.bytes], { type: 'application/octet-stream' }));
-    }
+	  function getRecordDownloadObjectUrl(record) {
+	    if (!record) return '';
+	    if (!record.bytes?.length) return '';
+	    if (!record.downloadObjectUrl) {
+	      record.downloadObjectUrl = URL.createObjectURL(new Blob([record.bytes], { type: 'application/octet-stream' }));
+	    }
     return record.downloadObjectUrl;
   }
 
@@ -771,11 +784,41 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     }
   }
 
-  function isZipFile(file) {
-    if (!file) return false;
-    if (/\.zip$/i.test(file.name || '')) return true;
-    return /(?:^|\/)(?:zip|x-zip-compressed)$/i.test(file.type || '');
-  }
+	  function getZipEntrySize(entry, key) {
+	    const value = entry?._data?.[key];
+	    return Number.isFinite(value) && value >= 0 ? value : null;
+	  }
+
+	  function ensureZipAnalysisWithinDeadline(deadlineMs) {
+	    if (Date.now() > deadlineMs) {
+	      throw new Error('Die ZIP-Analyse hat zu lange gedauert. Bitte mit einem kleineren ZIP erneut versuchen.');
+	    }
+	  }
+
+	  function assertZipEntryLimits(entries) {
+	    if (entries.length > FILE_LIMITS.ZIP_MAX_ENTRIES) {
+	      throw new Error(`Das ZIP enthält zu viele Dateien. Maximal erlaubt: ${FILE_LIMITS.ZIP_MAX_ENTRIES}.`);
+	    }
+
+	    let knownUncompressedTotal = 0;
+	    entries.forEach((entry) => {
+	      const compressedSize = getZipEntrySize(entry, 'compressedSize');
+	      const uncompressedSize = getZipEntrySize(entry, 'uncompressedSize');
+	      if (compressedSize != null && compressedSize > FILE_LIMITS.ZIP_BYTES) {
+	        throw new Error(`"${entry.name}" ist im ZIP ungewöhnlich groß.`);
+	      }
+	      if (uncompressedSize != null) {
+	        if (uncompressedSize > FILE_LIMITS.ZIP_ENTRY_BYTES) {
+	          throw new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_ENTRY_BYTES)}.`);
+	        }
+	        knownUncompressedTotal += uncompressedSize;
+	      }
+	    });
+
+	    if (knownUncompressedTotal > FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES) {
+	      throw new Error(`Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`);
+	    }
+	  }
 
   function getBasename(path) {
     return String(path || '').split(/[\\/]/).filter(Boolean).pop() || String(path || '');
@@ -1060,47 +1103,68 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     };
   }
 
-  async function collectZipRecords(file, token) {
-    let JSZip;
-    try {
-      JSZip = await ensureJsZipLoaded();
+	  async function collectZipRecords(file, token) {
+	    const deadlineMs = Date.now() + FILE_TIMEOUTS.ZIP_ANALYSIS_MS;
+	    let JSZip;
+	    try {
+	      JSZip = await ensureJsZipLoaded();
     } catch (error) {
       throw new Error('ZIP-Library konnte nicht geladen werden. Bitte Internetverbindung prüfen oder später erneut versuchen.');
     }
     if (token !== analysisToken) return null;
 
-    let zip;
-    try {
-      zip = await JSZip.loadAsync(file);
-    } catch (error) {
-      throw new Error('Die Datei konnte nicht als ZIP gelesen werden.');
-    }
-    if (token !== analysisToken) return null;
+	    let zip;
+	    try {
+	      zip = await withTimeout(
+	        () => JSZip.loadAsync(file),
+	        FILE_TIMEOUTS.ZIP_LOAD_MS,
+	        'ZIP konnte nicht rechtzeitig gelesen werden.'
+	      );
+	    } catch (error) {
+	      throw new Error(error?.message || 'Die Datei konnte nicht als ZIP gelesen werden.');
+	    }
+	    if (token !== analysisToken) return null;
 
-    const entries = Object.values(zip.files || {}).filter((entry) => entry && !entry.dir);
-    if (!entries.length) {
-      throw new Error('Das ZIP enthält keine Dateien.');
-    }
+	    const entries = Object.values(zip.files || {}).filter((entry) => entry && !entry.dir);
+	    if (!entries.length) {
+	      throw new Error('Das ZIP enthält keine Dateien.');
+	    }
+	    assertZipEntryLimits(entries);
 
-    const rootPrefix = getCommonRootPrefix(entries);
-    const records = [];
-    for (let index = 0; index < entries.length; index += 1) {
-      if (token !== analysisToken) return null;
-      const entry = entries[index];
-      const bytes = await entry.async('uint8array');
-      const name = getBasename(entry.name);
-      const visualSignature = await createVisualSignature(bytes, name);
-      records.push({
-        id: index,
-        path: entry.name,
-        displayPath: stripRootPrefix(entry.name, rootPrefix),
-        name,
-        nameKey: normalizeNameKey(name),
-        size: bytes.byteLength,
-        bytes,
-        visualSignature,
-      });
-    }
+	    const rootPrefix = getCommonRootPrefix(entries);
+	    const records = [];
+	    for (let index = 0; index < entries.length; index += 1) {
+	      if (token !== analysisToken) return null;
+	      ensureZipAnalysisWithinDeadline(deadlineMs);
+	      const entry = entries[index];
+	      const name = getBasename(entry.name);
+	      const shouldReadBytes = Boolean(enabledRules.visual && getImageMimeType(name));
+	      let bytes = null;
+	      let visualSignature = null;
+	      const knownSize = getZipEntrySize(entry, 'uncompressedSize');
+	      if (shouldReadBytes) {
+	        const remainingMs = Math.max(1, deadlineMs - Date.now());
+	        bytes = await withTimeout(
+	          () => entry.async('uint8array'),
+	          remainingMs,
+	          'ZIP-Eintrag konnte nicht rechtzeitig entpackt werden.'
+	        );
+	        if (bytes.byteLength > FILE_LIMITS.ZIP_ENTRY_BYTES) {
+	          throw new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_ENTRY_BYTES)}.`);
+	        }
+	        visualSignature = await createVisualSignature(bytes, name);
+	      }
+	      records.push({
+	        id: index,
+	        path: entry.name,
+	        displayPath: stripRootPrefix(entry.name, rootPrefix),
+	        name,
+	        nameKey: normalizeNameKey(name),
+	        size: knownSize ?? bytes?.byteLength ?? 0,
+	        bytes,
+	        visualSignature,
+	      });
+	    }
 
     return records;
   }
@@ -1113,14 +1177,10 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     renderInitial();
     setFileSummary(file);
 
-    if (!isZipFile(file)) {
-      const message = 'Bitte eine gültige .zip-Datei auswählen.';
-      renderError(message);
-      return;
-    }
-
-    try {
-      const records = await collectZipRecords(file, token);
+	    try {
+	      await validateZipFile(file);
+	      if (token !== analysisToken) return;
+	      const records = await collectZipRecords(file, token);
       if (!records || token !== analysisToken) return;
       lastRecords = records;
       renderResultFromLastRecords();

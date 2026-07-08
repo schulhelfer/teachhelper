@@ -693,11 +693,24 @@ export function createQrApp({ root = document } = {}) {
       } else if (options.mode === 'threshold-high') {
         applyThreshold(imageData, 160);
       } else if (options.mode === 'dot-grow') {
-        applyDotRepair(imageData, { growRadius: 1, threshold: options.threshold });
+        applyDotRepair(imageData, {
+          growRadius: options.growRadius || 1,
+          growIterations: options.growIterations || 1,
+          threshold: options.threshold,
+        });
       } else if (options.mode === 'dot-grow-strong') {
-        applyDotRepair(imageData, { growRadius: 1, growIterations: 2, threshold: options.threshold });
+        applyDotRepair(imageData, {
+          growRadius: options.growRadius || 1,
+          growIterations: options.growIterations || 2,
+          threshold: options.threshold,
+        });
       } else if (options.mode === 'dot-contrast-grow') {
-        applyDotRepair(imageData, { contrast: true, growRadius: 1, threshold: options.threshold });
+        applyDotRepair(imageData, {
+          contrast: true,
+          growRadius: options.growRadius || 1,
+          growIterations: options.growIterations || 1,
+          threshold: options.threshold,
+        });
       }
       variantContext.putImageData(imageData, 0, 0);
     }
@@ -730,9 +743,15 @@ export function createQrApp({ root = document } = {}) {
       { minDecodeSide: 1200, targetMaxSide: 1500, paddingRatio: 0.1, mode: 'dot-grow-strong', smoothing: false },
       { minDecodeSide: 1000, targetMaxSide: 1400, paddingRatio: 0.08, mode: 'dot-grow', threshold: 112, smoothing: false },
       { minDecodeSide: 1000, targetMaxSide: 1400, paddingRatio: 0.08, mode: 'dot-grow', threshold: 144, smoothing: false },
+      { minDecodeSide: 1200, targetMaxSide: 1600, paddingRatio: 0.12, mode: 'dot-grow-strong', growRadius: 2, growIterations: 2, smoothing: false },
+      { minDecodeSide: 1300, targetMaxSide: 1600, paddingRatio: 0.12, mode: 'dot-contrast-grow', growRadius: 2, growIterations: 2, smoothing: false },
+      { minDecodeSide: 1300, targetMaxSide: 1600, paddingRatio: 0.12, mode: 'dot-grow-strong', growRadius: 2, growIterations: 2, threshold: 112, smoothing: false },
+      { minDecodeSide: 1300, targetMaxSide: 1600, paddingRatio: 0.12, mode: 'dot-grow-strong', growRadius: 2, growIterations: 2, threshold: 144, smoothing: false },
+      { minDecodeSide: 1400, targetMaxSide: 1600, paddingRatio: 0.12, mode: 'dot-grow-strong', growRadius: 3, growIterations: 2, smoothing: false },
     ] : [
       { targetMaxSide: 900, paddingRatio: 0.08, mode: 'dot-grow', smoothing: false },
       { targetMaxSide: 900, paddingRatio: 0.08, mode: 'dot-contrast-grow', smoothing: false },
+      { targetMaxSide: 900, paddingRatio: 0.1, mode: 'dot-grow-strong', growRadius: 2, growIterations: 2, smoothing: false },
     ];
     const variants = dotRepair || thorough ? [
       ...standardVariants,

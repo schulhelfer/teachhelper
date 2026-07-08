@@ -46,7 +46,7 @@ export function getPercentileRankDescription(value) {
   const percentile = clampPercentileRank(value);
   const p = formatPercentileRank(percentile);
   const better = formatPercentileRank(100 - percentile);
-  return `Ein Prozentrang von ${p} bedeutet, dass etwa ${p} % der Lerngruppe ein schlechteres oder gleich gutesErgebnis erzielt haben. Etwa ${better} % der Leistungen waren besser.`;
+  return `Ein Prozentrang von ${p} bedeutet, dass etwa ${p} % der anderen Lernenden ein schlechteres oder gleich gutes Ergebnis erzielt haben. Entsprechend waren etwa ${better} % der anderen Leistungen besser.`;
 }
 
 export function hasPngSignature(bytes) {

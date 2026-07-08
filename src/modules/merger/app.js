@@ -1,5 +1,13 @@
 import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
 import { installAppTooltips } from '../../shared/app-tooltips.js';
+import {
+  FILE_LIMITS,
+  FILE_TIMEOUTS,
+  assertTotalSizeAtMost,
+  readFileArrayBufferWithTimeout,
+  validatePdfFile,
+  withTimeout,
+} from '../../shared/file-guards.js';
 import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
 
 export function createMergerApp({
@@ -208,6 +216,8 @@ export function createMergerApp({
     loadingPages: false,
     pageLoadError: "",
     pageSetupToken: 0,
+    activePreviewLoadingTask: null,
+    activePreviewRenderTask: null,
   };
   const splitState = {
     file: null,
@@ -219,6 +229,8 @@ export function createMergerApp({
     previewLoading: false,
     previewLoadError: "",
     previewSetupToken: 0,
+    activePreviewLoadingTask: null,
+    activePreviewRenderTask: null,
     activePages: new Set(),
     pageGroups: [],
     outputMode: "combined",
@@ -1853,8 +1865,22 @@ export function createMergerApp({
             return filename.replace(/\.pdf$/i, "");
           }
 
-          function isPdfFile(file) {
-            return Boolean(file && /\.pdf$/i.test(file.name));
+          async function readPdfFileBytes(file, options = {}) {
+            await validatePdfFile(file, {
+              timeoutMs: options.timeoutMs ?? FILE_TIMEOUTS.READ_MS,
+            });
+            return new Uint8Array(await readFileArrayBufferWithTimeout(file, {
+              timeoutMs: options.timeoutMs ?? FILE_TIMEOUTS.READ_MS,
+              timeoutMessage: `"${file.name}" konnte nicht rechtzeitig gelesen werden.`,
+            }));
+          }
+
+          async function runPdfOperation(task, operationLabel) {
+            return withTimeout(
+              task,
+              FILE_TIMEOUTS.PDF_OPERATION_MS,
+              `${operationLabel} hat zu lange gedauert. Bitte mit kleineren PDFs erneut versuchen.`
+            );
           }
 
           function buildAppendOutputName(files) {
@@ -1967,6 +1993,7 @@ export function createMergerApp({
               return;
             }
             if (tool === TOOL_ROTATE) {
+              cancelActivePdfPreview(rotateState);
               rotateState.pageSetupToken += 1;
               rotateState.previewSetupToken += 1;
               rotateState.loadingPages = false;
@@ -1982,6 +2009,7 @@ export function createMergerApp({
               return;
             }
             if (tool === TOOL_SPLIT) {
+              cancelActivePdfPreview(splitState);
               splitState.pageSetupToken += 1;
               splitState.previewSetupToken += 1;
               splitState.pageCount = 0;
@@ -2184,9 +2212,13 @@ export function createMergerApp({
             if (mergeState.pageCountByFile.has(file)) {
               return mergeState.pageCountByFile.get(file);
             }
-            const inputBytes = new Uint8Array(await file.arrayBuffer());
-            try {
-              const loaded = await loadSourceDocument(inputBytes);
+	            const inputBytes = await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS });
+	            try {
+	              const loaded = await withTimeout(
+	                () => loadSourceDocument(inputBytes),
+	                FILE_TIMEOUTS.PDF_PROBE_MS,
+	                `"${file.name}" konnte nicht rechtzeitig geprüft werden.`
+	              );
               const pageCount = loaded.source.getPageCount();
               if (!Number.isInteger(pageCount) || pageCount < 0) {
                 throw new Error("Ungueltige Seitenzahl.");
@@ -2197,7 +2229,11 @@ export function createMergerApp({
               if (!(window.PDFLib && window.PDFLib.PDFDocument)) {
                 try {
                   await ensurePdfLibLoaded();
-                  const loaded = await loadSourceDocument(inputBytes);
+	                  const loaded = await withTimeout(
+	                    () => loadSourceDocument(inputBytes),
+	                    FILE_TIMEOUTS.PDF_PROBE_MS,
+	                    `"${file.name}" konnte nicht rechtzeitig geprüft werden.`
+	                  );
                   const pageCount = loaded.source.getPageCount();
                   if (!Number.isInteger(pageCount) || pageCount < 0) {
                     throw new Error("Ungueltige Seitenzahl.");
@@ -3065,10 +3101,49 @@ export function createMergerApp({
             });
           }
 
-          async function loadRotatePagePreviews(file) {
-            const token = ++rotateState.previewSetupToken;
-            rotateState.previewLoading = true;
-            rotateState.previewLoadError = "";
+	          function cancelActivePdfPreview(state) {
+	            try {
+	              state.activePreviewRenderTask?.cancel?.();
+	            } catch (_error) {
+	              // Best effort cleanup for stale PDF.js render tasks.
+	            }
+	            try {
+	              void state.activePreviewLoadingTask?.destroy?.();
+	            } catch (_error) {
+	              // Best effort cleanup for stale PDF.js loading tasks.
+	            }
+	            state.activePreviewRenderTask = null;
+	            state.activePreviewLoadingTask = null;
+	          }
+
+	          async function renderPdfPreviewPage(page, canvas, context, viewport, state) {
+	            const renderTask = page.render({ canvasContext: context, viewport });
+	            state.activePreviewRenderTask = renderTask;
+	            try {
+	              await withTimeout(
+	                () => renderTask.promise,
+	                FILE_TIMEOUTS.PDF_OPERATION_MS,
+	                "PDF-Vorschau hat zu lange gedauert."
+	              );
+	            } catch (error) {
+	              try {
+	                renderTask.cancel?.();
+	              } catch (_cancelError) {
+	                // Best effort cleanup after preview timeout.
+	              }
+	              throw error;
+	            } finally {
+	              if (state.activePreviewRenderTask === renderTask) {
+	                state.activePreviewRenderTask = null;
+	              }
+	            }
+	          }
+
+	          async function loadRotatePagePreviews(file) {
+	            cancelActivePdfPreview(rotateState);
+	            const token = ++rotateState.previewSetupToken;
+	            rotateState.previewLoading = true;
+	            rotateState.previewLoadError = "";
             rotateState.previewUrls = [];
             renderRotatePagesList();
 
@@ -3076,15 +3151,20 @@ export function createMergerApp({
               const pdfjsLib = await ensurePdfJsLoaded();
               if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
 
-              const loadingTask = pdfjsLib.getDocument({
-                data: await file.arrayBuffer(),
-                isEvalSupported: false,
-                useWasm: false,
-              });
-              const pdfDocument = await loadingTask.promise;
-              if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-                await pdfDocument.destroy();
-                return;
+	              const loadingTask = pdfjsLib.getDocument({
+	                data: await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS }),
+	                isEvalSupported: false,
+	                useWasm: false,
+	              });
+	              rotateState.activePreviewLoadingTask = loadingTask;
+	              const pdfDocument = await withTimeout(
+	                () => loadingTask.promise,
+	                FILE_TIMEOUTS.PDF_PROBE_MS,
+	                "PDF-Vorschau konnte nicht rechtzeitig geladen werden."
+	              );
+	              if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
+	                await pdfDocument.destroy();
+	                return;
               }
 
               const previews = Array.from({ length: pdfDocument.numPages }, () => "");
@@ -3102,9 +3182,9 @@ export function createMergerApp({
                 }
                 canvas.width = Math.max(1, Math.round(viewport.width));
                 canvas.height = Math.max(1, Math.round(viewport.height));
-                await page.render({ canvasContext: context, viewport }).promise;
-                previews[pageIndex] = canvas.toDataURL("image/png");
-              }
+	                await renderPdfPreviewPage(page, canvas, context, viewport, rotateState);
+	                previews[pageIndex] = canvas.toDataURL("image/png");
+	              }
 
               if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
                 await pdfDocument.destroy();
@@ -3112,16 +3192,17 @@ export function createMergerApp({
               }
               rotateState.previewUrls = previews;
               await pdfDocument.destroy();
-            } catch (error) {
-              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
+	            } catch (error) {
+	              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
               if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
               rotateState.previewLoadError = error && error.message ? error.message : "Vorschau konnte nicht geladen werden.";
-            } finally {
-              if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
-              rotateState.previewLoading = false;
-              renderRotatePagesList();
-            }
-          }
+	            } finally {
+	              cancelActivePdfPreview(rotateState);
+	              if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
+	              rotateState.previewLoading = false;
+	              renderRotatePagesList();
+	            }
+	          }
 
           async function initializeSplitPageSelections(file) {
             const token = ++splitState.pageSetupToken;
@@ -3157,10 +3238,11 @@ export function createMergerApp({
             }
           }
 
-          async function loadSplitPagePreviews(file) {
-            const token = ++splitState.previewSetupToken;
-            splitState.previewLoading = true;
-            splitState.previewLoadError = "";
+	          async function loadSplitPagePreviews(file) {
+	            cancelActivePdfPreview(splitState);
+	            const token = ++splitState.previewSetupToken;
+	            splitState.previewLoading = true;
+	            splitState.previewLoadError = "";
             splitState.previewUrls = [];
             renderSplitPagesList();
 
@@ -3168,12 +3250,17 @@ export function createMergerApp({
               const pdfjsLib = await ensurePdfJsLoaded();
               if (token !== splitState.previewSetupToken || splitState.file !== file) return;
 
-              const loadingTask = pdfjsLib.getDocument({
-                data: await file.arrayBuffer(),
-                isEvalSupported: false,
-                useWasm: false,
-              });
-              const pdfDocument = await loadingTask.promise;
+	              const loadingTask = pdfjsLib.getDocument({
+	                data: await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS }),
+	                isEvalSupported: false,
+	                useWasm: false,
+	              });
+	              splitState.activePreviewLoadingTask = loadingTask;
+	              const pdfDocument = await withTimeout(
+	                () => loadingTask.promise,
+	                FILE_TIMEOUTS.PDF_PROBE_MS,
+	                "PDF-Vorschau konnte nicht rechtzeitig geladen werden."
+	              );
               if (token !== splitState.previewSetupToken || splitState.file !== file) {
                 await pdfDocument.destroy();
                 return;
@@ -3194,9 +3281,9 @@ export function createMergerApp({
                 }
                 canvas.width = Math.max(1, Math.round(viewport.width));
                 canvas.height = Math.max(1, Math.round(viewport.height));
-                await page.render({ canvasContext: context, viewport }).promise;
-                previews[pageIndex] = canvas.toDataURL("image/png");
-              }
+	                await renderPdfPreviewPage(page, canvas, context, viewport, splitState);
+	                previews[pageIndex] = canvas.toDataURL("image/png");
+	              }
 
               if (token !== splitState.previewSetupToken || splitState.file !== file) {
                 await pdfDocument.destroy();
@@ -3204,14 +3291,15 @@ export function createMergerApp({
               }
               splitState.previewUrls = previews;
               await pdfDocument.destroy();
-            } catch (error) {
-              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
+	            } catch (error) {
+	              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
               if (token !== splitState.previewSetupToken || splitState.file !== file) return;
               splitState.previewLoadError = error && error.message ? error.message : "Vorschau konnte nicht geladen werden.";
-            } finally {
-              if (token !== splitState.previewSetupToken || splitState.file !== file) return;
-              splitState.previewLoading = false;
-              renderSplitPagesList();
+	            } finally {
+	              cancelActivePdfPreview(splitState);
+	              if (token !== splitState.previewSetupToken || splitState.file !== file) return;
+	              splitState.previewLoading = false;
+	              renderSplitPagesList();
             }
           }
 
@@ -3249,28 +3337,35 @@ export function createMergerApp({
             }
           }
 
-          function partitionPdfFiles(fileList) {
-            const accepted = [];
-            let rejectedCount = 0;
-            for (const file of fileList || []) {
-              if (isPdfFile(file)) accepted.push(file);
-              else rejectedCount += 1;
-            }
-            return { accepted, rejectedCount };
-          }
+	          async function partitionPdfFiles(fileList) {
+	            const accepted = [];
+	            const rejectedMessages = [];
+	            for (const file of fileList || []) {
+	              try {
+	                await validatePdfFile(file);
+	                accepted.push(file);
+	              } catch (error) {
+	                const name = String(file?.name || "Datei");
+	                const message = error && error.message ? error.message : "Bitte eine gültige PDF-Datei auswählen.";
+	                rejectedMessages.push(`${name}: ${message}`);
+	              }
+	            }
+	            return { accepted, rejectedMessages };
+	          }
 
-          function maybeShowFileSelectionWarning({ rejectedCount = 0, ignoredExtraCount = 0 } = {}) {
-            const messages = [];
-            if (rejectedCount > 0) {
-              messages.push(
-                rejectedCount === 1
-                  ? "1 Datei wurde ignoriert, weil sie keine .pdf-Endung hat."
-                  : `${rejectedCount} Dateien wurden ignoriert, weil sie keine .pdf-Endung haben.`
-              );
-            }
-            if (ignoredExtraCount > 0) {
-              messages.push(
-                ignoredExtraCount === 1
+	          function maybeShowFileSelectionWarning({ rejectedMessages = [], ignoredExtraCount = 0, totalSizeMessage = "" } = {}) {
+	            const messages = [];
+	            if (rejectedMessages.length > 0) {
+	              const visibleMessages = rejectedMessages.slice(0, 4);
+	              messages.push(...visibleMessages);
+	              if (rejectedMessages.length > visibleMessages.length) {
+	                messages.push(`${rejectedMessages.length - visibleMessages.length} weitere Dateien wurden ignoriert.`);
+	              }
+	            }
+	            if (totalSizeMessage) messages.push(totalSizeMessage);
+	            if (ignoredExtraCount > 0) {
+	              messages.push(
+	                ignoredExtraCount === 1
                   ? "Es wurde nur die erste ausgewählte PDF übernommen."
                   : `Es wurde nur die erste PDF übernommen. ${ignoredExtraCount} weitere PDFs wurden ignoriert.`
               );
@@ -3279,21 +3374,36 @@ export function createMergerApp({
             showResultDialog(messages.join("\n"), "warn", "Hinweis");
           }
 
-          async function addMergeFiles(fileList) {
-            if (!fileList || !fileList.length) return;
-            const { accepted, rejectedCount } = partitionPdfFiles(fileList);
-            maybeShowFileSelectionWarning({ rejectedCount });
-            if (!accepted.length) return;
-            mergeState.files = mergeState.files.concat(accepted);
-            renderMergeFileList();
-          }
+	          async function addMergeFiles(fileList) {
+	            if (!fileList || !fileList.length) return;
+	            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
+	            let totalSizeMessage = "";
+	            if (accepted.length) {
+	              try {
+	                assertTotalSizeAtMost(
+	                  mergeState.files.concat(accepted),
+	                  FILE_LIMITS.PDF_MERGE_TOTAL_BYTES,
+	                  "PDF-Auswahl"
+	                );
+	              } catch (error) {
+	                totalSizeMessage = error && error.message ? error.message : "Die ausgewählten PDFs sind zu groß.";
+	                accepted.length = 0;
+	              }
+	            }
+	            maybeShowFileSelectionWarning({ rejectedMessages, totalSizeMessage });
+	            if (!accepted.length) return;
+	            mergeState.files = mergeState.files.concat(accepted);
+	            renderMergeFileList();
+	          }
 
-          async function setSingleToolFile(tool, file) {
-            if (!file) return;
-            if (!isPdfFile(file)) {
-              showResultDialog("Bitte eine Datei mit .pdf-Endung wählen.", "warn", "Hinweis");
-              return;
-            }
+	          async function setSingleToolFile(tool, file) {
+	            if (!file) return;
+	            try {
+	              await validatePdfFile(file);
+	            } catch (error) {
+	              showResultDialog(error && error.message ? error.message : "Bitte eine gültige PDF-Datei auswählen.", "warn", "Hinweis");
+	              return;
+	            }
 
             const state = getToolFileState(tool);
             if (!state) return;
@@ -3317,13 +3427,13 @@ export function createMergerApp({
             }
           }
 
-          async function setSingleToolFileFromSelection(tool, fileList) {
-            const { accepted, rejectedCount } = partitionPdfFiles(fileList);
-            const ignoredExtraCount = Math.max(0, accepted.length - 1);
-            maybeShowFileSelectionWarning({ rejectedCount, ignoredExtraCount });
-            if (!accepted.length) return;
-            await setSingleToolFile(tool, accepted[0]);
-          }
+	          async function setSingleToolFileFromSelection(tool, fileList) {
+	            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
+	            const ignoredExtraCount = Math.max(0, accepted.length - 1);
+	            maybeShowFileSelectionWarning({ rejectedMessages, ignoredExtraCount });
+	            if (!accepted.length) return;
+	            await setSingleToolFile(tool, accepted[0]);
+	          }
 
           function openSharedPdfPicker(target) {
             pendingPickerTarget = target;
@@ -3452,10 +3562,13 @@ export function createMergerApp({
                   // Fallback auf lokale Parser-Logik in loadSourceDocument.
                 }
               }
-              const arrayBuffer = await file.arrayBuffer();
-              if (token !== layoutState.specialModeProbeToken || file !== layoutState.file) return;
-              const inputBytes = new Uint8Array(arrayBuffer);
-              const loaded = await loadSourceDocument(inputBytes);
+	              const inputBytes = await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS });
+	              if (token !== layoutState.specialModeProbeToken || file !== layoutState.file) return;
+	              const loaded = await withTimeout(
+	                () => loadSourceDocument(inputBytes),
+	                FILE_TIMEOUTS.PDF_PROBE_MS,
+	                `"${file.name}" konnte nicht rechtzeitig geprüft werden.`
+	              );
               if (token !== layoutState.specialModeProbeToken || file !== layoutState.file) return;
               const pageCount = loaded.source.getPageCount();
               setSpecialThreeModeAvailability(pageCount === 3);
@@ -3539,28 +3652,34 @@ export function createMergerApp({
             return PDFLib;
           }
 
-          async function loadPdfLibDocumentFromFile(file, operationLabel) {
-            const PDFLib = await ensurePdfLibForTool(operationLabel);
-            const bytes = new Uint8Array(await file.arrayBuffer());
-            try {
-              const sourceDoc = await PDFLib.PDFDocument.load(bytes);
-              return { PDFLib, sourceDoc };
+	          async function loadPdfLibDocumentFromFile(file, operationLabel) {
+	            const PDFLib = await ensurePdfLibForTool(operationLabel);
+	            const bytes = await readPdfFileBytes(file);
+	            try {
+	              const sourceDoc = await runPdfOperation(
+	                () => PDFLib.PDFDocument.load(bytes),
+	                operationLabel
+	              );
+	              return { PDFLib, sourceDoc };
             } catch (_error) {
               throw new Error(`"${file.name}" konnte nicht gelesen werden (evtl. beschädigt oder verschlüsselt).`);
             }
           }
 
-          async function createPdfFromPageIndexes(PDFLib, sourceDoc, pageIndexes) {
-            const outputDoc = await PDFLib.PDFDocument.create();
-            for (const pageIndex of pageIndexes) {
+	          async function createPdfFromPageIndexes(PDFLib, sourceDoc, pageIndexes) {
+	            const outputDoc = await PDFLib.PDFDocument.create();
+	            for (const pageIndex of pageIndexes) {
               const [copiedPage] = await outputDoc.copyPages(sourceDoc, [pageIndex]);
               outputDoc.addPage(copiedPage);
             }
-            if (!outputDoc.getPageCount()) {
-              throw new Error("Die Auswahl enthält keine Seiten.");
-            }
-            return outputDoc.save({ useObjectStreams: false });
-          }
+	            if (!outputDoc.getPageCount()) {
+	              throw new Error("Die Auswahl enthält keine Seiten.");
+	            }
+	            return runPdfOperation(
+	              () => outputDoc.save({ useObjectStreams: false }),
+	              "Aufteilen"
+	            );
+	          }
 
           async function handleLayoutStart() {
             if (!layoutState.file) {
@@ -3589,9 +3708,11 @@ export function createMergerApp({
                 }
               }
 
-              const arrayBuffer = await layoutState.file.arrayBuffer();
-              const inputBytes = new Uint8Array(arrayBuffer);
-              const loaded = await loadSourceDocument(inputBytes);
+	              const inputBytes = await readPdfFileBytes(layoutState.file);
+	              const loaded = await runPdfOperation(
+	                () => loadSourceDocument(inputBytes),
+	                "PDF-Layout"
+	              );
               const source = loaded.source;
               const engine = loaded.engine;
 
@@ -3613,24 +3734,30 @@ export function createMergerApp({
 
               let outBytes;
               if (engine === "pdf-lib") {
-                outBytes = await imposeWithPdfLib(
-                  source,
-                  layoutState.pagesPerSheet,
-                  effectivePaddingMode,
-                  layoutState.specialThreeModeEnabled,
-                  studentCount,
-                  autoOrientationEnabled
-                );
-              } else {
-                const imposer = new OfflineImposer(source);
-                outBytes = imposer.impose(
-                  layoutState.pagesPerSheet,
-                  effectivePaddingMode,
-                  layoutState.specialThreeModeEnabled,
-                  studentCount,
-                  autoOrientationEnabled
-                );
-              }
+	                outBytes = await runPdfOperation(
+	                  () => imposeWithPdfLib(
+	                    source,
+	                    layoutState.pagesPerSheet,
+	                    effectivePaddingMode,
+	                    layoutState.specialThreeModeEnabled,
+	                    studentCount,
+	                    autoOrientationEnabled
+	                  ),
+	                  "PDF-Layout"
+	                );
+	              } else {
+	                const imposer = new OfflineImposer(source);
+	                outBytes = await runPdfOperation(
+	                  () => imposer.impose(
+	                    layoutState.pagesPerSheet,
+	                    effectivePaddingMode,
+	                    layoutState.specialThreeModeEnabled,
+	                    studentCount,
+	                    autoOrientationEnabled
+	                  ),
+	                  "PDF-Layout"
+	                );
+	              }
 
               const copyCount = deriveCopyCount(
                 pageCount,
@@ -3663,11 +3790,14 @@ export function createMergerApp({
               const PDFLib = await ensurePdfLibForTool("Zusammenführen");
               const outputDoc = await PDFLib.PDFDocument.create();
 
-              for (const file of mergeState.files) {
-                const bytes = new Uint8Array(await file.arrayBuffer());
-                let sourceDoc;
-                try {
-                  sourceDoc = await PDFLib.PDFDocument.load(bytes);
+	              for (const file of mergeState.files) {
+	                const bytes = await readPdfFileBytes(file);
+	                let sourceDoc;
+	                try {
+	                  sourceDoc = await runPdfOperation(
+	                    () => PDFLib.PDFDocument.load(bytes),
+	                    "Zusammenführen"
+	                  );
                 } catch (_error) {
                   throw new Error(`"${file.name}" konnte nicht gelesen werden (evtl. beschädigt oder verschlüsselt).`);
                 }
@@ -3682,7 +3812,10 @@ export function createMergerApp({
                 throw new Error("Die ausgewählten PDFs enthalten keine Seiten.");
               }
 
-              const outBytes = await outputDoc.save({ useObjectStreams: false });
+	              const outBytes = await runPdfOperation(
+	                () => outputDoc.save({ useObjectStreams: false }),
+	                "Zusammenführen"
+	              );
               const outputName = buildAppendOutputName(mergeState.files);
               await deliverSinglePdf(outBytes, outputName, "PDFs zusammengeführt.");
             } catch (error) {
@@ -3720,7 +3853,10 @@ export function createMergerApp({
                 page.setRotation(PDFLib.degrees(nextAngle));
               });
 
-              const outBytes = await sourceDoc.save({ useObjectStreams: false });
+	              const outBytes = await runPdfOperation(
+	                () => sourceDoc.save({ useObjectStreams: false }),
+	                "Drehen"
+	              );
               await deliverSinglePdf(outBytes, buildRotatedOutputName(rotateState.file.name), "PDF gedreht.");
             } catch (error) {
               console.error(error);

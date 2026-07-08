@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-06-29",
+  "updated": "2026-07-08",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -75,14 +75,14 @@
       ]
     },
     {
-      "name": "qrcode.min.js",
-      "version": "unknown",
-      "license": "unknown",
-      "source": "unknown",
-      "registry": "manual",
-      "package": null,
-      "purl": null,
-      "updateNotes": "Confirm upstream package, version, and license before the next update. Keep this file manifest-covered until it can be replaced from a traceable release.",
+      "name": "qrcode",
+      "version": "1.4.4",
+      "license": "MIT",
+      "source": "https://www.npmjs.com/package/qrcode/v/1.4.4",
+      "registry": "npm",
+      "package": "qrcode",
+      "purl": "pkg:npm/qrcode@1.4.4",
+      "updateNotes": "Fetch the matching npm package release, replace src/modules/qr/vendor/qrcode.min.js with build/qrcode.min.js, refresh SHA-256 hashes, then run scripts/audit.py and QR workflows.",
       "files": [
         {
           "path": "src/modules/qr/vendor/qrcode.min.js",
@@ -92,14 +92,14 @@
       ]
     },
     {
-      "name": "jsQR",
-      "version": "unknown",
-      "license": "unknown",
-      "source": "unknown",
-      "registry": "manual",
-      "package": null,
-      "purl": null,
-      "updateNotes": "Confirm upstream package, version, and license before the next update. Keep this file manifest-covered until it can be replaced from a traceable release.",
+      "name": "jsqr",
+      "version": "1.4.0",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/jsqr/v/1.4.0",
+      "registry": "npm",
+      "package": "jsqr",
+      "purl": "pkg:npm/jsqr@1.4.0",
+      "updateNotes": "Fetch the matching npm package release, replace src/modules/qr/vendor/jsQR.js with dist/jsQR.js, refresh SHA-256 hashes, then run scripts/audit.py and QR scan workflows.",
       "files": [
         {
           "path": "src/modules/qr/vendor/jsQR.js",

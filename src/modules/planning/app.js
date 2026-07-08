@@ -13,6 +13,11 @@ import {
   renderPercentileRankPng
 } from "./percentile-rank.js";
 import { installAppTooltips } from "../../shared/app-tooltips.js";
+import {
+  FILE_TIMEOUTS,
+  readFileArrayBufferWithTimeout,
+  validateDocxTemplateFile
+} from "../../shared/file-guards.js";
 import { ensurePdfLibLoaded } from "../../shared/pdf-vendor.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
@@ -41,6 +46,15 @@ const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
   "3. Übe mit den Aufgaben im Applet.",
   "4. Lade einen Screenshot Deiner Bearbeitung im Aufgabenmodul hoch."
 ].join("\n");
+
+async function readValidatedDocxTemplateFile(file) {
+  await validateDocxTemplateFile(file, { timeoutMs: FILE_TIMEOUTS.READ_MS });
+  return new Uint8Array(await readFileArrayBufferWithTimeout(file, {
+    timeoutMs: FILE_TIMEOUTS.READ_MS,
+    timeoutMessage: "DOCX-Vorlage konnte nicht rechtzeitig gelesen werden."
+  }));
+}
+
 const DAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr"];
 const REQUIRED_HOLIDAYS = [
   "Herbstferien",
@@ -9744,20 +9758,29 @@ class PlannerApp {
     this.refs.syncFileStatus.style.color = isError ? "#ff8a8a" : "";
   }
 
-  async showUnencryptedDatabaseNotice() {
+  async promptForGradeVaultEncryptionIfNeeded() {
     if (this.isGradeVaultEncryptionEnabled()) {
-      return;
+      return false;
     }
-    await this.showInfoMessage(
+    const shouldEncrypt = await this.showConfirmMessage(
       [
         "Diese Datenbank speichert den Notenbereich aktuell unverschlüsselt.",
         "",
-        "Du solltest die Verschlüsselung aktivieren, damit Notenstruktur, Teilnehmende und Noten nur nach Passworteingabe gespeichert werden.",
-        "",
-        "Du findest die Option in den Einstellungen unter Datenbank > Verschlüsselung > verschlüsseln."
+        "Möchtest du die Verschlüsselung jetzt einrichten, damit Notenstruktur, Teilnehmende und Noten nur nach Passworteingabe gespeichert werden?"
       ].join("\n"),
-      "Datenbank unverschlüsselt"
+      {
+        title: "Notenmodul verschlüsseln?",
+        okText: "Jetzt verschlüsseln",
+        cancelText: "Unverschlüsselt lassen",
+        warnOk: true,
+        warning: true
+      }
     );
+    if (!shouldEncrypt || this.isGradeVaultEncryptionEnabled()) {
+      return false;
+    }
+    this.openGradeVaultDialog("setup");
+    return true;
   }
 
   isManualPersistenceMode() {
@@ -10333,7 +10356,7 @@ class PlannerApp {
     }
     this.syncState.initialized = true;
     this.renderAll({ visibleOnly: true });
-    await this.showUnencryptedDatabaseNotice();
+    await this.promptForGradeVaultEncryptionIfNeeded();
     return true;
   }
 
@@ -10641,13 +10664,13 @@ class PlannerApp {
     }
     if (mode === "new-empty") {
       if (await this.createFreshDatabaseOnHandle(handle)) {
-        await this.showUnencryptedDatabaseNotice();
+        await this.promptForGradeVaultEncryptionIfNeeded();
       }
       return;
     }
     if (mode === "new-current") {
       if (await this.createCurrentDatabaseOnHandle(handle)) {
-        await this.showUnencryptedDatabaseNotice();
+        await this.promptForGradeVaultEncryptionIfNeeded();
       }
       return;
     }
@@ -10657,7 +10680,7 @@ class PlannerApp {
     }
     this.syncState.initialized = true;
     this.renderAll();
-    await this.showUnencryptedDatabaseNotice();
+    await this.promptForGradeVaultEncryptionIfNeeded();
   }
 
   async initializeExternalFileSync() {
@@ -16355,14 +16378,9 @@ class PlannerApp {
       window.addEventListener(eventName, markActivity, { capture: true, passive: true });
     }
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") {
-        void this.lockGradeVaultSession({ silent: true, reason: "page-hidden" });
-      } else {
+      if (document.visibilityState === "visible") {
         this.recordGradeVaultActivity();
       }
-    });
-    window.addEventListener("pagehide", () => {
-      void this.lockGradeVaultSession({ silent: true, reason: "pagehide" });
     });
   }
 
@@ -18491,7 +18509,7 @@ class PlannerApp {
         this.commitManualPersistenceBaseline({ fileName, lastAction: "saved" });
         this.renderAll();
         if (shouldShowEncryptionNotice) {
-          await this.showUnencryptedDatabaseNotice();
+          await this.promptForGradeVaultEncryptionIfNeeded();
         }
         return true;
       }
@@ -18509,7 +18527,7 @@ class PlannerApp {
       this.commitManualPersistenceBaseline({ fileName, lastAction: "saved" });
       this.renderAll();
       if (shouldShowEncryptionNotice) {
-        await this.showUnencryptedDatabaseNotice();
+        await this.promptForGradeVaultEncryptionIfNeeded();
       }
       return true;
     } catch (_error) {
@@ -18550,7 +18568,7 @@ class PlannerApp {
         lastAction: "loaded"
       });
       this.renderAll();
-      await this.showUnencryptedDatabaseNotice();
+      await this.promptForGradeVaultEncryptionIfNeeded();
       return true;
     } catch (_error) {
       this.setSyncStatus("Datei konnte nicht gelesen werden.", true);
@@ -20368,7 +20386,7 @@ class PlannerApp {
           ? ` is-deficit-range${index === firstDeficitIndex ? " is-deficit-start" : ""}${index === lastDeficitIndex ? " is-deficit-end" : ""}`
           : "";
         return `
-                    <div class="grades-entry-distribution-chart-item${deficitClass}" title="${escapeHtml(`${row.label}: ${row.count}`)}">
+                    <div class="grades-entry-distribution-chart-item${deficitClass}">
                       <strong>${row.count}</strong>
                       <div class="grades-entry-distribution-bar-wrap" aria-hidden="true">
                         <div class="grades-entry-distribution-bar${row.count ? "" : " is-empty"}" data-grade-distribution-bar-height="${row.height}"></div>
@@ -24466,7 +24484,7 @@ class PlannerApp {
     }
     try {
       this.setExpectationHorizonStatus("Lade temporäre Vorlage...");
-      const bytes = new Uint8Array(await file.arrayBuffer());
+	      const bytes = await readValidatedDocxTemplateFile(file);
       this.expectationHorizonTemplateFile = {
         name: String(file.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
         bytes
@@ -24476,8 +24494,13 @@ class PlannerApp {
       this.setExpectationHorizonStatus(saved ? "Temporäre Vorlage für diese BE-Leistung gespeichert." : "Temporäre Vorlage geladen, konnte aber nicht für diese BE-Leistung gespeichert werden.", saved ? "success" : "error");
       this.syncExpectationHorizonGenerateState();
       return true;
-    } catch (error) {
-      this.setExpectationHorizonStatus("Die Vorlage konnte nicht in die PWA geladen werden. Die aktuelle Vorlage bleibt aktiv.", "error");
+	    } catch (error) {
+	      this.setExpectationHorizonStatus(
+	        error instanceof Error && error.message
+	          ? `${error.message} Die aktuelle Vorlage bleibt aktiv.`
+	          : "Die Vorlage konnte nicht in die PWA geladen werden. Die aktuelle Vorlage bleibt aktiv.",
+	        "error"
+	      );
       this.syncExpectationHorizonGenerateState();
       return false;
     }
@@ -25495,18 +25518,28 @@ class PlannerApp {
     return false;
   }
 
-  async setStoredExpectationHorizonTemplateFile(file, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
-    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
-    if (!this.isExpectationHorizonDocxFile(file)) {
-      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true, templateKind);
-      return false;
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const template = {
-      name: String(file.name || this.getExpectationHorizonTemplateFileName(templateKind)),
-      bytes
-    };
-    const saved = await storeLocalValue(this.getExpectationHorizonTemplateStorageKey(templateKind), template);
+	  async setStoredExpectationHorizonTemplateFile(file, kind = EXPECTATION_HORIZON_TEMPLATE_KIND_GENERAL) {
+	    const templateKind = this.normalizeExpectationHorizonTemplateKind(kind);
+	    if (!this.isExpectationHorizonDocxFile(file)) {
+	      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true, templateKind);
+	      return false;
+	    }
+	    let template;
+	    try {
+	      const bytes = await readValidatedDocxTemplateFile(file);
+	      template = {
+	        name: String(file.name || this.getExpectationHorizonTemplateFileName(templateKind)),
+	        bytes
+	      };
+	    } catch (error) {
+	      this.setExpectationHorizonTemplateSettingsStatus(
+	        error instanceof Error && error.message ? error.message : "Die Standardvorlage konnte nicht gelesen werden.",
+	        true,
+	        templateKind
+	      );
+	      return false;
+	    }
+	    const saved = await storeLocalValue(this.getExpectationHorizonTemplateStorageKey(templateKind), template);
     if (!saved) {
       this.setExpectationHorizonTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true, templateKind);
       return false;
@@ -25525,17 +25558,26 @@ class PlannerApp {
     this.setExpectationHorizonTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.", false, templateKind);
   }
 
-  async setStoredCompetenceExpectationsTemplateFile(file) {
-    if (!this.isExpectationHorizonDocxFile(file)) {
-      this.setCompetenceExpectationsTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
-      return false;
-    }
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const template = {
-      name: String(file.name || COMPETENCE_EXPECTATIONS_FILE_NAME),
-      bytes
-    };
-    const saved = await storeLocalValue(COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY, template);
+	  async setStoredCompetenceExpectationsTemplateFile(file) {
+	    if (!this.isExpectationHorizonDocxFile(file)) {
+	      this.setCompetenceExpectationsTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
+	      return false;
+	    }
+	    let template;
+	    try {
+	      const bytes = await readValidatedDocxTemplateFile(file);
+	      template = {
+	        name: String(file.name || COMPETENCE_EXPECTATIONS_FILE_NAME),
+	        bytes
+	      };
+	    } catch (error) {
+	      this.setCompetenceExpectationsTemplateSettingsStatus(
+	        error instanceof Error && error.message ? error.message : "Die Standardvorlage konnte nicht gelesen werden.",
+	        true
+	      );
+	      return false;
+	    }
+	    const saved = await storeLocalValue(COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY, template);
     if (!saved) {
       this.setCompetenceExpectationsTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true);
       return false;
