@@ -36,6 +36,8 @@ const EXPECTATION_HORIZON_PERCENTILE_PLACEHOLDERS = [
   "‹‹Prozentrang››",
   "‹‹ Prozentrang ››"
 ];
+const EXPECTATION_HORIZON_PERCENT_BOUNDARY_PLACEHOLDER = "<<Prozentgrenzen>>";
+const EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT = "both";
 const EXPECTATION_HORIZON_PERCENTILE_IMAGE_WIDTH_EMU = PERCENTILE_RANK_IMAGE_WIDTH_EMU;
 const EXPECTATION_HORIZON_PERCENTILE_IMAGE_HEIGHT_EMU = PERCENTILE_RANK_IMAGE_HEIGHT_EMU;
 const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
@@ -155,6 +157,13 @@ function normalizeExpectationHorizonCommentTemplate(value = EXPECTATION_HORIZON_
 
 function replaceExpectationHorizonCommentPlaceholder(text, placeholder, value) {
   return String(text || "").split(placeholder).join(value);
+}
+
+function normalizeExpectationHorizonPercentBoundaryMode(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return normalized === "percent" || normalized === "be"
+    ? normalized
+    : EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
 }
 
 function getGradeVaultAutofillMetadata() {
@@ -6871,6 +6880,8 @@ class PlannerApp {
     this.expectationHorizonTemplateFile = null;
     this.expectationHorizonGenerating = false;
     this.expectationHorizonIncludePercentile = true;
+    this.expectationHorizonIncludePercentBoundaries = true;
+    this.expectationHorizonPercentBoundaryMode = EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
     this.expectationHorizonStoredTemplate = null;
     this.expectationHorizonStoredTemplateLoaded = false;
     this.expectationHorizonCourseLevelStoredTemplate = null;
@@ -7090,6 +7101,9 @@ class PlannerApp {
       expectationHorizonDropzone: document.querySelector("#expectation-horizon-dropzone"),
       expectationHorizonLatexDropzone: document.querySelector("#expectation-horizon-latex-dropzone"),
       expectationHorizonPercentileToggle: document.querySelector("#expectation-horizon-percentile-toggle"),
+      expectationHorizonPercentBoundariesToggle: document.querySelector("#expectation-horizon-percent-boundaries-toggle"),
+      expectationHorizonPercentBoundaryModeField: document.querySelector("#expectation-horizon-percent-boundary-mode-field"),
+      expectationHorizonPercentBoundaryModeInputs: [...document.querySelectorAll("input[data-expectation-horizon-percent-boundary-mode='1']")],
       expectationHorizonFileName: document.querySelector("#expectation-horizon-file-name"),
       expectationHorizonStatus: document.querySelector("#expectation-horizon-status"),
       expectationHorizonSave: document.querySelector("#expectation-horizon-save"),
@@ -23516,6 +23530,22 @@ class PlannerApp {
       this.expectationHorizonIncludePercentile = !this.expectationHorizonIncludePercentile;
       this.syncExpectationHorizonGenerateState();
     });
+    this.refs.expectationHorizonPercentBoundariesToggle?.addEventListener("click", () => {
+      if (this.expectationHorizonGenerating) {
+        return;
+      }
+      this.expectationHorizonIncludePercentBoundaries = !this.expectationHorizonIncludePercentBoundaries;
+      this.syncExpectationHorizonGenerateState();
+    });
+    this.refs.expectationHorizonPercentBoundaryModeInputs?.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (this.expectationHorizonGenerating || !input.checked) {
+          return;
+        }
+        this.expectationHorizonPercentBoundaryMode = normalizeExpectationHorizonPercentBoundaryMode(input.value);
+        this.syncExpectationHorizonGenerateState();
+      });
+    });
     this.refs.expectationHorizonFile?.addEventListener("change", async (event) => {
       const [file] = event.target.files || [];
       if (file) {
@@ -24322,6 +24352,8 @@ class PlannerApp {
     this.expectationHorizonTemplateFile = null;
     this.expectationHorizonGenerating = false;
     this.expectationHorizonIncludePercentile = true;
+    this.expectationHorizonIncludePercentBoundaries = true;
+    this.expectationHorizonPercentBoundaryMode = EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
     const context = this.getExpectationHorizonCourseContext();
     this.expectationHorizonDialogTemplateKind = this.getExpectationHorizonTemplateKindForValues(context.values || {});
     await this.ensureStoredExpectationHorizonTemplateLoaded(this.expectationHorizonDialogTemplateKind);
@@ -24453,6 +24485,25 @@ class PlannerApp {
         this.expectationHorizonIncludePercentile ? "true" : "false"
       );
     }
+    if (this.refs.expectationHorizonPercentBoundariesToggle) {
+      this.refs.expectationHorizonPercentBoundariesToggle.disabled = this.expectationHorizonGenerating;
+      this.refs.expectationHorizonPercentBoundariesToggle.setAttribute(
+        "aria-checked",
+        this.expectationHorizonIncludePercentBoundaries ? "true" : "false"
+      );
+    }
+    if (this.refs.expectationHorizonPercentBoundaryModeField) {
+      this.refs.expectationHorizonPercentBoundaryModeField.disabled = this.expectationHorizonGenerating
+        || !this.expectationHorizonIncludePercentBoundaries;
+    }
+    this.refs.expectationHorizonPercentBoundaryModeInputs?.forEach((input) => {
+      const mode = normalizeExpectationHorizonPercentBoundaryMode(this.expectationHorizonPercentBoundaryMode);
+      input.checked = normalizeExpectationHorizonPercentBoundaryMode(input.value) === mode;
+      input.disabled = this.expectationHorizonGenerating || !this.expectationHorizonIncludePercentBoundaries;
+    });
+    this.syncSegmentControlSlideStates(this.refs.expectationHorizonPercentBoundaryModeField, {
+      animateFromPrevious: true
+    });
   }
 
   isExpectationHorizonDocxFile(file) {
@@ -26113,12 +26164,66 @@ class PlannerApp {
     return formatPercentileRank(value);
   }
 
+  formatExpectationHorizonPercentBoundaryGradeLabel(row, displaySystem, predicateSuffixes) {
+    if (
+      normalizeGradeDisplaySystem(displaySystem) === GRADE_DISPLAY_SYSTEM_SCHOOL
+      && normalizeGradeTestPredicateSuffixes(predicateSuffixes, true) === false
+      && row?.label
+    ) {
+      return String(row.label);
+    }
+    return formatGradeDisplayForSystem(row?.grade, displaySystem, { predicateSuffixes });
+  }
+
   getExpectationHorizonPercentileValue(percentile) {
     return clampPercentileRank(percentile);
   }
 
   async createExpectationHorizonPercentileImage(percentile) {
     return renderPercentileRankPng(this.getExpectationHorizonPercentileValue(percentile));
+  }
+
+  buildExpectationHorizonPercentBoundaryReplacement(options = {}) {
+    if (options.include === false) {
+      return "";
+    }
+    const mode = normalizeExpectationHorizonPercentBoundaryMode(options.mode);
+    const scaleSnapshot = options.scaleSnapshot && typeof options.scaleSnapshot === "object"
+      ? options.scaleSnapshot
+      : this.store.buildGradeTestScaleSnapshot(GRADE_TEST_SCALE_DEFAULT);
+    const predicateSuffixes = normalizeGradeTestPredicateSuffixes(options.predicateSuffixes, true);
+    const displaySystem = normalizeGradeDisplaySystem(options.displaySystem || this.getCurrentGradeOverviewDisplaySystem());
+    const maxBeSum = Number(options.maxBeSum || 0);
+    const thresholdRows = getGradeTestScaleTooltipRows(scaleSnapshot.thresholds, predicateSuffixes);
+    if (!thresholdRows.length) {
+      return "";
+    }
+    const rows = [
+      [
+        "Note",
+        ...thresholdRows.map((row) => (
+          this.formatExpectationHorizonPercentBoundaryGradeLabel(row, displaySystem, predicateSuffixes)
+        ))
+      ]
+    ];
+    if (mode === "percent" || mode === "both") {
+      rows.push([
+        "Prozentgrenze",
+        ...thresholdRows.map((row) => `${Math.round(Number(row.threshold || 0) * 100)}%`)
+      ]);
+    }
+    if (mode === "be" || mode === "both") {
+      rows.push([
+        "BE-Grenze",
+        ...thresholdRows.map((row) => formatGradeTestRequiredBeForThreshold(row.threshold, row.grade, maxBeSum))
+      ]);
+    }
+    return {
+      table: {
+        rows,
+        firstColumnFill: "D9D9D9"
+      }
+    };
   }
 
   async buildExpectationHorizonStudentRecords(context, options = {}) {
@@ -26153,6 +26258,14 @@ class PlannerApp {
     const maxBeSum = tasks
       .filter((task) => Number(task.maxBe || 0) > 0)
       .reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+    const percentBoundaryReplacement = this.buildExpectationHorizonPercentBoundaryReplacement({
+      include: options.includePercentBoundaries,
+      mode: options.percentBoundaryMode,
+      scaleSnapshot,
+      predicateSuffixes: testPredicateSuffixes,
+      maxBeSum,
+      displaySystem: this.getCurrentGradeOverviewDisplaySystem()
+    });
     const includePercentile = options.includePercentile !== false;
     const percentileByStudentId = includePercentile
       ? this.buildExpectationHorizonPercentileByStudentId(context, tasks)
@@ -26217,6 +26330,7 @@ class PlannerApp {
         "<< BE1 >>": ratioState ? formatGradeBeValue(ratioState.maxSum) : (maxBeSum > 0 ? formatGradeBeValue(maxBeSum) : "—"),
         "<<BE2>>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
         "<< BE2 >>": ratioState ? formatGradeBeValue(ratioState.earnedSum) : "—",
+        [EXPECTATION_HORIZON_PERCENT_BOUNDARY_PLACEHOLDER]: percentBoundaryReplacement,
         "<<Kommentar>>": expectationHorizonComment,
         "<< Kommentar >>": expectationHorizonComment
       };
@@ -26308,7 +26422,9 @@ class PlannerApp {
       const records = await this.buildExpectationHorizonStudentRecords(context, {
         courseLevelPlaceholder,
         includeExpectedPerformanceCompetences: !this.expectationHorizonTemplateFile,
-        includePercentile: this.expectationHorizonIncludePercentile
+        includePercentile: this.expectationHorizonIncludePercentile,
+        includePercentBoundaries: this.expectationHorizonIncludePercentBoundaries,
+        percentBoundaryMode: this.expectationHorizonPercentBoundaryMode
       });
       if (!records.length) {
         this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");

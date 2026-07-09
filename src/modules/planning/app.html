@@ -1136,9 +1136,35 @@
       </div>
       <button id="expectation-horizon-percentile-toggle" class="expectation-horizon-percentile-toggle" type="button"
         role="switch" aria-checked="true">
-        <span>Vergleich zur Lerngruppe einfügen</span>
+        <span>Prozentrang in der Lerngruppe einfügen</span>
         <span class="expectation-horizon-percentile-switch" aria-hidden="true"></span>
       </button>
+      <button id="expectation-horizon-percent-boundaries-toggle" class="expectation-horizon-percentile-toggle"
+        type="button" role="switch" aria-checked="true">
+        <span>Prozentgrenzen einfügen</span>
+        <span class="expectation-horizon-percentile-switch" aria-hidden="true"></span>
+      </button>
+      <fieldset id="expectation-horizon-percent-boundary-mode-field" class="expectation-horizon-boundary-mode-field"
+        aria-label="Tabelleninhalt">
+        <div class="assessment-mode-toggle expectation-horizon-boundary-mode-toggle" role="radiogroup"
+          aria-label="Tabelleninhalt">
+          <label class="assessment-mode-option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-percent-boundary-mode"
+              data-expectation-horizon-percent-boundary-mode="1" value="percent">
+            <span>Prozent</span>
+          </label>
+          <label class="assessment-mode-option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-percent-boundary-mode"
+              data-expectation-horizon-percent-boundary-mode="1" value="be">
+            <span>BE</span>
+          </label>
+          <label class="assessment-mode-option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-percent-boundary-mode"
+              data-expectation-horizon-percent-boundary-mode="1" value="both" checked>
+            <span>Prozent + BE</span>
+          </label>
+        </div>
+      </fieldset>
       <div id="expectation-horizon-file-name" class="expectation-horizon-file-name" aria-live="polite"></div>
       <button id="expectation-horizon-template-reset" class="ghost expectation-horizon-template-reset" type="button">
         Temporäre Vorlage verwerfen

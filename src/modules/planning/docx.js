@@ -394,6 +394,28 @@ function isWordImageReplacement(value) {
   return Boolean(normalizeWordImageReplacement(value));
 }
 
+function normalizeWordTableReplacement(value) {
+  if (!value || typeof value !== "object" || !value.table || typeof value.table !== "object") {
+    return null;
+  }
+  const rows = Array.isArray(value.table.rows)
+    ? value.table.rows
+      .map((row) => (Array.isArray(row) ? row.map((cell) => String(cell ?? "")) : null))
+      .filter((row) => row && row.length)
+    : [];
+  if (!rows.length) {
+    return null;
+  }
+  return {
+    rows,
+    firstColumnFill: String(value.table.firstColumnFill || "D9D9D9")
+  };
+}
+
+function isWordTableReplacement(value) {
+  return Boolean(normalizeWordTableReplacement(value));
+}
+
 function createWordImageContext(entries) {
   const usedMediaNames = new Set(entries.map((entry) => entry.name));
   const relationshipMaxByPath = new Map();
@@ -1292,6 +1314,220 @@ function replacePlaceholderParagraphWithImage(doc, textElement, value, imageCont
   return true;
 }
 
+function appendWordTableBorder(doc, parent, name) {
+  const namespace = getWordNamespace(doc);
+  const border = doc.createElementNS(namespace, `w:${name}`);
+  border.setAttributeNS(namespace, "w:val", "single");
+  border.setAttributeNS(namespace, "w:sz", "4");
+  border.setAttributeNS(namespace, "w:space", "0");
+  border.setAttributeNS(namespace, "w:color", "B7C0CC");
+  parent.append(border);
+}
+
+function appendWordNilTableBorder(doc, parent, name) {
+  const namespace = getWordNamespace(doc);
+  const border = doc.createElementNS(namespace, `w:${name}`);
+  border.setAttributeNS(namespace, "w:val", "nil");
+  parent.append(border);
+}
+
+function estimateWordTableCellContentWidthTwips(text) {
+  let width = 0;
+  const normalizedText = String(text ?? "").replace(/\s+/g, " ").trim();
+  normalizedText.split("").forEach((char) => {
+    if (char === "\t") {
+      width = Math.ceil((width + 1) / 720) * 720;
+    } else if (char === " ") {
+      width += 80;
+    } else if ("ilI.,:;!|'`".includes(char)) {
+      width += 55;
+    } else if ("mwMW@#".includes(char)) {
+      width += 150;
+    } else if (char === "%") {
+      width += 120;
+    } else if ("+/\\-".includes(char)) {
+      width += 80;
+    } else if (/\d/.test(char)) {
+      width += 105;
+    } else if (/[A-ZÄÖÜ]/.test(char)) {
+      width += 120;
+    } else {
+      width += 105;
+    }
+  });
+  if (/^\d+(?:[,.]\d+)?%$/.test(normalizedText)) {
+    width += 90;
+  }
+  return width;
+}
+
+function appendWordTableCellText(doc, run, text, { noWrap = false } = {}) {
+  const namespace = getWordNamespace(doc);
+  const source = String(text ?? "");
+  if (!noWrap) {
+    const textElement = doc.createElementNS(namespace, "w:t");
+    setWordTextPreserveSpace(textElement, source);
+    run.append(textElement);
+    return;
+  }
+  const parts = source.replace(/\s+/g, "\u00A0").split("-");
+  parts.forEach((part, index) => {
+    if (part) {
+      const textElement = doc.createElementNS(namespace, "w:t");
+      setWordTextPreserveSpace(textElement, part);
+      run.append(textElement);
+    }
+    if (index < parts.length - 1) {
+      run.append(doc.createElementNS(namespace, "w:noBreakHyphen"));
+    }
+  });
+}
+
+function createWordTableCell(doc, text, options = {}) {
+  const namespace = getWordNamespace(doc);
+  const cell = doc.createElementNS(namespace, "w:tc");
+  const properties = doc.createElementNS(namespace, "w:tcPr");
+  const width = doc.createElementNS(namespace, "w:tcW");
+  const widthTwips = Math.max(0, Math.round(Number(options.widthTwips || 0)));
+  width.setAttributeNS(namespace, "w:type", widthTwips > 0 ? "dxa" : "auto");
+  width.setAttributeNS(namespace, "w:w", widthTwips > 0 ? String(widthTwips) : "0");
+  properties.append(width);
+  if (options.noWrap) {
+    properties.append(doc.createElementNS(namespace, "w:noWrap"));
+  }
+  const margins = doc.createElementNS(namespace, "w:tcMar");
+  ["top", "start", "bottom", "end"].forEach((name) => {
+    const margin = doc.createElementNS(namespace, `w:${name}`);
+    margin.setAttributeNS(namespace, "w:w", name === "top" || name === "bottom" ? "45" : "60");
+    margin.setAttributeNS(namespace, "w:type", "dxa");
+    margins.append(margin);
+  });
+  properties.append(margins);
+  const verticalAlign = doc.createElementNS(namespace, "w:vAlign");
+  verticalAlign.setAttributeNS(namespace, "w:val", "center");
+  properties.append(verticalAlign);
+  if (options.fill) {
+    const shading = doc.createElementNS(namespace, "w:shd");
+    shading.setAttributeNS(namespace, "w:val", "clear");
+    shading.setAttributeNS(namespace, "w:color", "auto");
+    shading.setAttributeNS(namespace, "w:fill", String(options.fill));
+    properties.append(shading);
+  }
+  cell.append(properties);
+  const paragraph = doc.createElementNS(namespace, "w:p");
+  const paragraphProperties = doc.createElementNS(namespace, "w:pPr");
+  const justification = doc.createElementNS(namespace, "w:jc");
+  justification.setAttributeNS(namespace, "w:val", options.align === "left" ? "left" : "center");
+  const spacing = doc.createElementNS(namespace, "w:spacing");
+  spacing.setAttributeNS(namespace, "w:before", "0");
+  spacing.setAttributeNS(namespace, "w:after", "0");
+  spacing.setAttributeNS(namespace, "w:line", "240");
+  spacing.setAttributeNS(namespace, "w:lineRule", "auto");
+  paragraphProperties.append(justification, spacing);
+  paragraph.append(paragraphProperties);
+  const run = doc.createElementNS(namespace, "w:r");
+  if (options.bold) {
+    const runProperties = doc.createElementNS(namespace, "w:rPr");
+    runProperties.append(doc.createElementNS(namespace, "w:b"));
+    run.append(runProperties);
+  }
+  appendWordTableCellText(doc, run, text, { noWrap: Boolean(options.noWrap) });
+  paragraph.append(run);
+  cell.append(paragraph);
+  return cell;
+}
+
+function getWordTableReplacementColumnWidths(tableReplacement) {
+  const columnCount = Math.max(
+    1,
+    ...tableReplacement.rows.map((row) => row.length)
+  );
+  const horizontalCellMargins = 100;
+  const headerWidthSafety = 40;
+  const dataWidthSafety = 20;
+  const headerContentWidth = tableReplacement.rows.reduce((maxWidth, row) => (
+    Math.max(maxWidth, estimateWordTableCellContentWidthTwips(row[0] ?? ""))
+  ), 0);
+  const dataContentWidth = tableReplacement.rows.reduce((maxWidth, row) => {
+    const rowDataWidth = row.slice(1).reduce((rowMaxWidth, cell) => (
+      Math.max(rowMaxWidth, estimateWordTableCellContentWidthTwips(cell ?? ""))
+    ), 0);
+    return Math.max(maxWidth, rowDataWidth);
+  }, 0);
+  const headerWidth = Math.ceil((headerContentWidth + horizontalCellMargins + headerWidthSafety) / 10) * 10;
+  const dataWidth = Math.ceil((dataContentWidth + horizontalCellMargins + dataWidthSafety) / 10) * 10;
+  return Array.from({ length: columnCount }, (_item, columnIndex) => (
+    columnIndex === 0 ? headerWidth : dataWidth
+  ));
+}
+
+function createWordTableReplacementElement(doc, value) {
+  const tableReplacement = normalizeWordTableReplacement(value);
+  if (!tableReplacement) {
+    return null;
+  }
+  const namespace = getWordNamespace(doc);
+  const table = doc.createElementNS(namespace, "w:tbl");
+  const properties = doc.createElementNS(namespace, "w:tblPr");
+  const columnWidths = getWordTableReplacementColumnWidths(tableReplacement);
+  const totalWidth = columnWidths.reduce((sum, widthValue) => sum + widthValue, 0);
+  const width = doc.createElementNS(namespace, "w:tblW");
+  width.setAttributeNS(namespace, "w:type", "dxa");
+  width.setAttributeNS(namespace, "w:w", String(totalWidth));
+  properties.append(width);
+  const justification = doc.createElementNS(namespace, "w:jc");
+  justification.setAttributeNS(namespace, "w:val", "center");
+  properties.append(justification);
+  const layout = doc.createElementNS(namespace, "w:tblLayout");
+  layout.setAttributeNS(namespace, "w:type", "fixed");
+  properties.append(layout);
+  const borders = doc.createElementNS(namespace, "w:tblBorders");
+  ["top", "start", "bottom", "end"].forEach((name) => {
+    appendWordNilTableBorder(doc, borders, name);
+  });
+  ["insideH", "insideV"].forEach((name) => {
+    appendWordTableBorder(doc, borders, name);
+  });
+  properties.append(borders);
+  table.append(properties);
+  const tableGrid = doc.createElementNS(namespace, "w:tblGrid");
+  columnWidths.forEach((widthValue) => {
+    const gridColumn = doc.createElementNS(namespace, "w:gridCol");
+    gridColumn.setAttributeNS(namespace, "w:w", String(widthValue));
+    tableGrid.append(gridColumn);
+  });
+  table.append(tableGrid);
+  tableReplacement.rows.forEach((row) => {
+    const tr = doc.createElementNS(namespace, "w:tr");
+    row.forEach((cellText, cellIndex) => {
+      tr.append(createWordTableCell(doc, cellText, {
+        bold: cellIndex === 0,
+        fill: cellIndex === 0 ? tableReplacement.firstColumnFill : "",
+        align: cellIndex === 0 ? "left" : "center",
+        noWrap: true,
+        widthTwips: columnWidths[cellIndex] || columnWidths[columnWidths.length - 1]
+      }));
+    });
+    table.append(tr);
+  });
+  return table;
+}
+
+function replacePlaceholderParagraphWithTable(doc, textElement, value, placeholder = "") {
+  const paragraph = getAncestorByLocalName(textElement, "p");
+  const parent = paragraph?.parentNode || null;
+  if (!paragraph || !parent) {
+    throw new Error("Die Prozentgrenzen-Tabelle konnte nicht an der Platzhalterposition eingefügt werden.");
+  }
+  const table = createWordTableReplacementElement(doc, value);
+  if (!table) {
+    return false;
+  }
+  parent.insertBefore(table, paragraph);
+  parent.removeChild(paragraph);
+  return true;
+}
+
 function setWordCellRichText(doc, cell, value, richTextContext = null) {
   const runs = normalizeWordRichTextRuns(value);
   if (!runs || !runs.length) {
@@ -1689,8 +1925,11 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
   }
   const richTextReplacement = isWordRichTextValue(replacement);
   const imageReplacement = isWordImageReplacement(replacement);
+  const tableReplacement = isWordTableReplacement(replacement);
   const richTextRuns = richTextReplacement ? normalizeWordRichTextRuns(replacement) : null;
-  const value = richTextReplacement ? getWordRichTextPlainText(richTextRuns) : (imageReplacement ? "" : String(replacement ?? ""));
+  const value = richTextReplacement
+    ? getWordRichTextPlainText(richTextRuns)
+    : (imageReplacement || tableReplacement ? "" : String(replacement ?? ""));
   let currentTextElements = textElements;
   let replacementCount = 0;
   while (true) {
@@ -1718,6 +1957,14 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
     }
     if (imageReplacement) {
       throw new Error("Die Prozentrang-Grafik konnte nicht an der Platzhalterposition eingefügt werden.");
+    }
+    if (tableReplacement && replacePlaceholderParagraphWithTable(doc, first.element, replacement, needle)) {
+      replacementCount += 1;
+      currentTextElements = getWordTextElements(doc);
+      continue;
+    }
+    if (tableReplacement) {
+      throw new Error("Die Prozentgrenzen-Tabelle konnte nicht an der Platzhalterposition eingefügt werden.");
     }
     if (richTextReplacement && replacePlaceholderParagraphWithRichText(doc, first.element, replacement, richTextContext)) {
       replacementCount += 1;
