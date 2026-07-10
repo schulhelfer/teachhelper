@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-07-08",
+  "updated": "2026-07-10",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -76,18 +76,18 @@
     },
     {
       "name": "qrcode",
-      "version": "1.4.4",
+      "version": "1.5.4",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/qrcode/v/1.4.4",
+      "source": "https://www.npmjs.com/package/qrcode/v/1.5.4",
       "registry": "npm",
       "package": "qrcode",
-      "purl": "pkg:npm/qrcode@1.4.4",
-      "updateNotes": "Fetch the matching npm package release, replace src/modules/qr/vendor/qrcode.min.js with build/qrcode.min.js, refresh SHA-256 hashes, then run scripts/audit.py and QR workflows.",
+      "purl": "pkg:npm/qrcode@1.5.4",
+      "updateNotes": "Fetch the matching npm package release, rebuild src/modules/qr/vendor/qrcode.min.js from the tagged source with npm run build, refresh SHA-256 hashes, then run scripts/audit.py and QR workflows.",
       "files": [
         {
           "path": "src/modules/qr/vendor/qrcode.min.js",
           "role": "runtime",
-          "sha256": "0e1769a0feb8c5c87f16bcfc0a2050135d9e9f9e4d5fe46194f19183a2969b9b"
+          "sha256": "7706f84597d8466955504c52eab2e9dd9c345626509ea13476863649d01f81dd"
         }
       ]
     },

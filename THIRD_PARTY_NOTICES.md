@@ -45,9 +45,9 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 
 ## qrcode.min.js
 
-- Version: 1.4.4
+- Version: 1.5.4
 - License: MIT
-- Source: https://www.npmjs.com/package/qrcode/v/1.4.4
+- Source: https://www.npmjs.com/package/qrcode/v/1.5.4
 - Local files:
   - `src/modules/qr/vendor/qrcode.min.js`
 - Upstream NOTICE: none published in the npm package.
