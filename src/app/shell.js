@@ -75,9 +75,17 @@ export function createShellController({
   let unsavedTabConfirmPromise = null;
   let tabIndicatorFrame = 0;
   let tabNavResizeObserver = null;
-
+  let moreToolsSyncFrame = 0;
   function isPlanningTab(tab) {
     return tab === TAB_PLANNING || tab === TAB_GRADES;
+  }
+
+  function isMoreToolsTab(tab) {
+    return tab === TAB_GROUPS
+      || tab === TAB_RANDOM_PICKER
+      || tab === TAB_DUPLICATE_CHECK
+      || tab === TAB_WORK_PHASE
+      || tab === TAB_QR;
   }
 
   function isGradeVaultStatusTab(tab) {
@@ -172,10 +180,92 @@ export function createShellController({
     }
   }
 
+  function getMoreToolsMenuItems() {
+    if (!els.moreToolsMenu) return [];
+    return Array.from(els.moreToolsMenu.querySelectorAll('[data-more-tools-target]'));
+  }
+
+  function setMoreToolsMenuOpen(open, options = {}) {
+    const canOpen = Boolean(
+      open
+      && els.tabNav?.classList.contains('is-tools-condensed')
+      && els.moreToolsTrigger
+      && els.moreToolsMenu
+    );
+    if (els.moreToolsMenu) {
+      els.moreToolsMenu.hidden = !canOpen;
+    }
+    if (els.moreToolsTrigger) {
+      els.moreToolsTrigger.setAttribute('aria-expanded', canOpen ? 'true' : 'false');
+    }
+    if (canOpen && options.focusFirst) {
+      const focusFirst = () => getMoreToolsMenuItems()[0]?.focus();
+      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+        window.requestAnimationFrame(focusFirst);
+      } else {
+        setTimeout(focusFirst, 0);
+      }
+    }
+  }
+
+  function updateMoreToolsNavigationState() {
+    const isCondensed = Boolean(els.tabNav?.classList.contains('is-tools-condensed'));
+    const hasTabSelection = !els.app?.classList.contains('tutorial-no-tab-selection');
+    const hasActiveTool = hasTabSelection && isMoreToolsTab(state.activeTab);
+    if (els.moreToolsTrigger) {
+      const isActive = isCondensed && hasActiveTool;
+      els.moreToolsTrigger.classList.toggle('active', isActive);
+      els.moreToolsTrigger.setAttribute('aria-selected', isActive ? 'true' : 'false');
+    }
+    getMoreToolsMenuItems().forEach((item) => {
+      const isActive = hasTabSelection && item.dataset.moreToolsTarget === state.activeTab;
+      item.classList.toggle('is-active', isActive);
+      item.setAttribute('aria-checked', isActive ? 'true' : 'false');
+      if (isActive) {
+        item.setAttribute('aria-current', 'page');
+      } else {
+        item.removeAttribute('aria-current');
+      }
+    });
+    if (!isCondensed) {
+      setMoreToolsMenuOpen(false);
+    }
+  }
+
+  function syncMoreToolsNavigation() {
+    if (!els.tabNav || els.tabNav.hidden) return;
+    setMoreToolsMenuOpen(false);
+    els.tabNav.classList.remove('is-tools-condensed');
+    els.tabNav.classList.add('is-measuring-full-tabs');
+    els.tabNav.getBoundingClientRect();
+    const needsCondensing = els.tabNav.scrollWidth > els.tabNav.clientWidth + 1;
+    els.tabNav.classList.remove('is-measuring-full-tabs');
+    els.tabNav.classList.toggle('is-tools-condensed', needsCondensing);
+    updateMoreToolsNavigationState();
+  }
+
+  function queueMoreToolsNavigationSync() {
+    if (!els.tabNav || typeof window === 'undefined') return;
+    if (moreToolsSyncFrame) {
+      window.cancelAnimationFrame?.(moreToolsSyncFrame);
+    }
+    const sync = () => {
+      moreToolsSyncFrame = 0;
+      syncMoreToolsNavigation();
+      queueActiveTabIndicatorUpdate();
+    };
+    if (typeof window.requestAnimationFrame !== 'function') {
+      sync();
+      return;
+    }
+    moreToolsSyncFrame = window.requestAnimationFrame(sync);
+  }
+
   function positionActiveTabIndicator(options = {}) {
     if (!els.tabNav || !els.tabIndicator || typeof window === 'undefined') return;
     const instant = Boolean(options?.instant);
-    const activeButton = els.tabNav.querySelector('.tab-button.active');
+    const activeButton = Array.from(els.tabNav.querySelectorAll('.tab-button.active'))
+      .find((button) => button instanceof HTMLElement && button.offsetParent !== null);
     if (!(activeButton instanceof HTMLElement) || els.tabNav.hidden) {
       els.tabIndicator.classList.remove('is-ready');
       return;
@@ -322,6 +412,7 @@ export function createShellController({
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
+    syncMoreToolsNavigation();
     queueActiveTabIndicatorUpdate();
     if (state.activeTab === TAB_RANDOM_PICKER) {
       renderRandomPicker();
@@ -435,6 +526,11 @@ export function createShellController({
         region.inert = Boolean(hidden);
       }
     });
+    if (hidden) {
+      setMoreToolsMenuOpen(false);
+    } else {
+      queueMoreToolsNavigationSync();
+    }
   }
 
   function setChromeHeaderVisibility(hidden) {
@@ -964,15 +1060,75 @@ export function createShellController({
       window.dispatchEvent(new CustomEvent(PLANNING_MANUAL_SAVE_REQUEST_EVENT));
     });
   }
+  if (els.moreToolsTrigger) {
+    els.moreToolsTrigger.addEventListener('click', () => {
+      setMoreToolsMenuOpen(els.moreToolsMenu?.hidden !== false);
+    });
+    els.moreToolsTrigger.addEventListener('keydown', (event) => {
+      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+      event.preventDefault();
+      setMoreToolsMenuOpen(true, { focusFirst: true });
+    });
+  }
+  if (els.moreToolsMenu) {
+    els.moreToolsMenu.addEventListener('click', (event) => {
+      const target = event.target instanceof Element
+        ? event.target.closest('[data-more-tools-target]')
+        : null;
+      if (!(target instanceof HTMLElement)) return;
+      const tabTarget = target.dataset.moreToolsTarget;
+      const originalTabButton = Array.from(els.tabNav?.querySelectorAll('[data-tab-target]') || [])
+        .find((button) => button.dataset.tabTarget === tabTarget);
+      setMoreToolsMenuOpen(false);
+      originalTabButton?.click();
+    });
+    els.moreToolsMenu.addEventListener('keydown', (event) => {
+      const items = getMoreToolsMenuItems();
+      const currentIndex = items.indexOf(document.activeElement);
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        setMoreToolsMenuOpen(false);
+        els.moreToolsTrigger?.focus();
+        return;
+      }
+      if (!items.length || currentIndex < 0) return;
+      let nextIndex = currentIndex;
+      if (event.key === 'ArrowDown') {
+        nextIndex = (currentIndex + 1) % items.length;
+      } else if (event.key === 'ArrowUp') {
+        nextIndex = (currentIndex - 1 + items.length) % items.length;
+      } else if (event.key === 'Home') {
+        nextIndex = 0;
+      } else if (event.key === 'End') {
+        nextIndex = items.length - 1;
+      } else {
+        return;
+      }
+      event.preventDefault();
+      items[nextIndex]?.focus();
+    });
+  }
+  document.addEventListener('pointerdown', (event) => {
+    if (!els.moreToolsMenu || els.moreToolsMenu.hidden) return;
+    if (!(event.target instanceof Node) || !els.moreTools?.contains(event.target)) {
+      setMoreToolsMenuOpen(false);
+    }
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || els.moreToolsMenu?.hidden) return;
+    setMoreToolsMenuOpen(false);
+    els.moreToolsTrigger?.focus();
+  });
   if (typeof window !== 'undefined') {
-    window.addEventListener('resize', queueActiveTabIndicatorUpdate);
-    window.visualViewport?.addEventListener?.('resize', queueActiveTabIndicatorUpdate);
-    document.addEventListener('fullscreenchange', queueSettledActiveTabIndicatorUpdate);
-    document.addEventListener('webkitfullscreenchange', queueSettledActiveTabIndicatorUpdate);
+    window.addEventListener('resize', queueMoreToolsNavigationSync);
+    window.visualViewport?.addEventListener?.('resize', queueMoreToolsNavigationSync);
+    document.addEventListener('fullscreenchange', queueMoreToolsNavigationSync);
+    document.addEventListener('webkitfullscreenchange', queueMoreToolsNavigationSync);
     if (typeof ResizeObserver === 'function' && els.tabNav) {
-      tabNavResizeObserver = new ResizeObserver(queueActiveTabIndicatorUpdate);
+      tabNavResizeObserver = new ResizeObserver(queueMoreToolsNavigationSync);
       tabNavResizeObserver.observe(els.tabNav);
     }
+    queueMoreToolsNavigationSync();
   }
   window.addEventListener('beforeunload', handleBeforeUnload);
 

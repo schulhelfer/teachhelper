@@ -583,19 +583,26 @@
         }
 
         .file-upload .file-status {
+          width: 100%;
+          min-width: 0;
+          padding-top: 6px;
+          border-top: 1px solid rgba(148, 163, 184, 0.24);
           font-size: 12px;
           opacity: 0.8;
+          overflow-wrap: anywhere;
+          text-align: center;
         }
 
         .file-upload .file-status.empty-state-box {
-          width: fit-content;
+          width: 100%;
           max-width: 100%;
-          align-self: center;
+          align-self: stretch;
           display: grid;
           justify-items: center;
           gap: 0;
-          padding: 0;
+          padding: 6px 0 0;
           border: 0;
+          border-top: 1px solid rgba(148, 163, 184, 0.24);
           border-radius: 0;
           background: transparent;
           box-shadow: none;
@@ -981,6 +988,8 @@
           display: inline-flex;
           align-items: center;
           justify-content: center;
+          flex-direction: column;
+          gap: 4px;
           padding: 10px 14px;
           font-size: 17px;
           font-weight: 600;
@@ -995,10 +1004,12 @@
             border-color var(--motion-fast) var(--motion-ease),
             background var(--motion-fast) var(--motion-ease),
             box-shadow var(--motion-fast) var(--motion-ease);
-          white-space: nowrap;
+          white-space: normal;
         }
 
         #csv-drop-zone .file-trigger {
+          width: 100%;
+          max-width: 100%;
           font-size: 14px;
           text-align: center;
           align-self: center;

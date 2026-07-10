@@ -48,11 +48,13 @@
                   <strong>Importiere die Namensliste</strong>
                   <div id="csv-drop-zone" class="mt-sm file-upload">
                     <input id="csv" type="file" accept=".csv,text/csv" />
-                    <label for="csv" class="file-trigger">Namensliste auswählen<br>oder hier ablegen</label>
-                    <div id="csv-status" class="file-status empty-state-box">
-                      <span class="empty-state-title">Noch keine Datei</span>
-                      <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
-                    </div>
+                    <label for="csv" class="file-trigger">
+                      <span class="file-trigger-copy">Namensliste auswählen<br>oder hier ablegen</span>
+                      <span id="csv-status" class="file-status empty-state-box">
+                        <span class="empty-state-title">Noch keine Datei</span>
+                        <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
+                      </span>
+                    </label>
                   </div>
                 </li>
                 <li>
@@ -294,10 +296,7 @@
         </template>
       </template>
 
-      <script type="module">
-        import { installAppTooltips } from '../../shared/app-tooltips.js';
-        installAppTooltips(document);
-      </script>
+      <script type="module" src="./tooltips.js"></script>
       <script src="./app.js"></script>
     </body>
 

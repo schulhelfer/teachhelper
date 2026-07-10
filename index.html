@@ -49,14 +49,38 @@
           <button id="tab-seatplan" class="tab-button" type="button" data-tab-target="seatplan"
             aria-selected="false">Sitzplan</button>
           <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups"
-            aria-selected="false">Gruppen</button>
+            data-more-tools-tab="1" aria-selected="false">Gruppen</button>
           <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
-            aria-selected="false">Picker</button>
+            data-more-tools-tab="1" aria-selected="false">Picker</button>
           <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
-            aria-selected="false">DuplikatCheck</button>
+            data-more-tools-tab="1" aria-selected="false">DuplikatCheck</button>
           <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
-            aria-selected="false">Arbeitsphase</button>
-          <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
+            data-more-tools-tab="1" aria-selected="false">Arbeitsphase</button>
+          <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" data-more-tools-tab="1"
+            aria-selected="false">QR</button>
+          <div id="more-tools" class="more-tools">
+            <button id="more-tools-trigger" class="tab-button more-tools-trigger" type="button" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false">
+              Weitere Tools <span class="more-tools-trigger-caret" aria-hidden="true">▾</span>
+            </button>
+            <div id="more-tools-menu" class="more-tools-menu" role="menu" aria-label="Weitere Tools" hidden>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="groups">
+                Gruppen <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="random-picker">
+                Picker <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="duplicate-check">
+                DuplikatCheck <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="work-phase">
+                Arbeitsphase <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="qr">
+                QR <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+            </div>
+          </div>
         </nav>
       </div>
     </header>
@@ -119,11 +143,13 @@
             <strong>Importiere die Namensliste</strong>
             <div id="csv-drop-zone" class="mt-sm file-upload">
               <input id="csv" type="file" accept=".csv,text/csv" />
-              <label for="csv" class="file-trigger">Namensliste auswählen<br>oder hier ablegen</label>
-              <div id="csv-status" class="file-status empty-state-box">
-                <span class="empty-state-title">Noch keine Datei</span>
-                <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
-              </div>
+              <label for="csv" class="file-trigger">
+                <span class="file-trigger-copy">Namensliste auswählen<br>oder hier ablegen</span>
+                <span id="csv-status" class="file-status empty-state-box">
+                  <span class="empty-state-title">Noch keine Datei</span>
+                  <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
+                </span>
+              </label>
             </div>
           </li>
           <li class="groups-sidebar-group-size">

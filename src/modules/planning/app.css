@@ -263,33 +263,43 @@
         }
 
         .number-stepper {
-          position: relative;
-          display: inline-flex;
+          display: inline-grid;
+          grid-template-columns: 36px minmax(0, 1fr) 36px;
+          grid-template-rows: 42px;
           align-items: center;
           width: 112px;
+          height: 44px;
           max-width: 100%;
+          border: 1px solid var(--control-border);
+          border-radius: var(--control-radius);
+          background: var(--control-bg);
+          overflow: hidden;
         }
 
         .number-stepper>input[type="number"] {
+          grid-column: 2;
+          grid-row: 1;
           width: 100%;
           min-width: 0;
-          min-height: 44px;
-          padding-left: 3rem;
-          padding-right: 3rem;
-          border-radius: var(--control-radius);
+          min-height: 0;
+          height: 42px;
+          padding: 0 0.35rem;
+          border: 0;
+          border-radius: 0;
+          background: transparent;
           text-align: center;
           font-weight: 700;
           line-height: 1;
         }
 
         .number-stepper-btn {
-          position: absolute;
-          top: 50%;
+          grid-row: 1;
           width: 36px;
-          height: 36px;
-          transform: translateY(-50%);
-          border-radius: var(--control-radius);
-          border: 1px solid var(--button-border);
+          height: 42px;
+          min-height: 42px;
+          transform: none;
+          border: 0;
+          border-radius: 0;
           background: var(--button-bg);
           color: #f8fafc;
           font-size: 18px;
@@ -303,20 +313,42 @@
         }
 
         .number-stepper-btn.minus {
-          left: 4px;
+          grid-column: 1;
+          border-right: 1px solid var(--control-border);
         }
 
         .number-stepper-btn.plus {
-          right: 4px;
+          grid-column: 3;
+          border-left: 1px solid var(--control-border);
         }
 
         .number-stepper-btn:hover:not(:disabled) {
           background: var(--button-bg-hover);
           filter: brightness(1.04);
+          transform: none;
         }
 
         .number-stepper-btn:active:not(:disabled) {
           filter: brightness(0.98);
+          transform: none;
+        }
+
+        .number-stepper:focus-within {
+          border-color: var(--focus-border);
+          box-shadow: var(--focus-ring);
+        }
+
+        .number-stepper>input[type="number"]:focus,
+        .number-stepper>input[type="number"]:focus-visible {
+          background: transparent;
+          border-color: transparent;
+          box-shadow: none;
+        }
+
+        .number-stepper-btn:focus-visible {
+          position: relative;
+          z-index: 1;
+          box-shadow: inset 0 0 0 2px var(--focus-outline);
         }
 
         .number-stepper-btn:disabled {

@@ -354,6 +354,12 @@ export function installAppTooltips(root = document, options = {}) {
     }
   }
 
+  function handleContextMenu() {
+    // Tooltips can use the browser's top layer via the Popover API, which
+    // would otherwise render above an app-owned context menu regardless of z-index.
+    hideTooltip();
+  }
+
   function handleMutation(mutations) {
     if (!activeAnchor || suppressTitleObserver) return;
     for (const mutation of mutations) {
@@ -379,6 +385,7 @@ export function installAppTooltips(root = document, options = {}) {
   doc.addEventListener("focusin", handleFocusIn);
   doc.addEventListener("focusout", handleFocusOut);
   doc.addEventListener("keydown", handleKeyDown);
+  doc.addEventListener("contextmenu", handleContextMenu, true);
   doc.defaultView.addEventListener("scroll", schedulePosition, true);
   doc.defaultView.addEventListener("resize", schedulePosition);
 
@@ -393,6 +400,7 @@ export function installAppTooltips(root = document, options = {}) {
       doc.removeEventListener("focusin", handleFocusIn);
       doc.removeEventListener("focusout", handleFocusOut);
       doc.removeEventListener("keydown", handleKeyDown);
+      doc.removeEventListener("contextmenu", handleContextMenu, true);
       doc.defaultView.removeEventListener("scroll", schedulePosition, true);
       doc.defaultView.removeEventListener("resize", schedulePosition);
       if (rafId) {
