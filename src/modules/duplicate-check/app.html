@@ -17,8 +17,9 @@
 
 <body>
   <div class="duplicate-check-runtime-root">
-    <div class="app">
+    <div class="app" data-sidebar-width-scope="other">
       <aside class="side" aria-label="DuplikatCheck">
+        <div class="sidebar-resize-handle" aria-hidden="true"></div>
         <div class="sidebar-header">
           <h1 class="sidebar-title">DuplikatCheck</h1>
           <div class="sidebar-header-actions">
@@ -75,6 +76,7 @@
     </div>
   </div>
   <script type="module" src="./app.js?v=duplicate-check-r3"></script>
+  <script src="../../shared/sidebar-resize.js"></script>
 </body>
 
 </html>

@@ -231,6 +231,12 @@ import {
   const PLANNING_TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command';
   const QR_TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
   const DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
+  const SIDEBAR_WIDTH_SCOPE_PLANNING = 'planning';
+  const SIDEBAR_WIDTH_SCOPE_OTHER = 'other';
+  const SIDEBAR_WIDTH_REQUEST_EVENT = 'classroom:sidebar-width-request';
+  const SIDEBAR_WIDTH_SYNC_EVENT = 'classroom:sidebar-width-sync';
+  const SIDEBAR_WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
+  const SIDEBAR_COLLAPSE_REQUEST_EVENT = 'classroom:sidebar-collapse-request';
   const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
   const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
@@ -238,14 +244,35 @@ import {
   const getSeatplanFrame = () => els.seatplanMainHost?.querySelector('iframe') || null;
   const getDuplicateCheckController = () => els.duplicateCheckHost?._duplicateCheckController || null;
   const getQrController = () => els.qrHost?._qrController || null;
-  const isKnownModuleMessageSource = (event) => {
-    return [
+  const getModuleFrameForMessage = (event) => (
+    [
       getPlanningFrame(),
       getMergerFrame(),
       getDuplicateCheckFrame(),
       getQrFrame(),
       getSeatplanFrame(),
-    ].some((frame) => isTrustedModuleMessage(event, frame));
+    ].find((frame) => isTrustedModuleMessage(event, frame)) || null
+  );
+  const getSidebarWidthScopeForTab = (tab) => (
+    tab === TAB_PLANNING || tab === TAB_GRADES
+      ? SIDEBAR_WIDTH_SCOPE_PLANNING
+      : SIDEBAR_WIDTH_SCOPE_OTHER
+  );
+  const getFramesForSidebarWidthScope = (scope) => (
+    scope === SIDEBAR_WIDTH_SCOPE_PLANNING
+      ? [getPlanningFrame()]
+      : [getMergerFrame(), getDuplicateCheckFrame(), getQrFrame(), getSeatplanFrame()]
+  );
+  const syncSidebarWidthToModules = (scope, width) => {
+    const normalizedScope = scope === SIDEBAR_WIDTH_SCOPE_PLANNING
+      ? SIDEBAR_WIDTH_SCOPE_PLANNING
+      : SIDEBAR_WIDTH_SCOPE_OTHER;
+    getFramesForSidebarWidthScope(normalizedScope).forEach((frame) => {
+      postToModule(frame, {
+        type: SIDEBAR_WIDTH_SYNC_EVENT,
+        detail: { scope: normalizedScope, width },
+      });
+    });
   };
   const openMergerToolForTutorial = (tool = 'layout') => {
     bridgeController?.ensureTabInitialized(TAB_MERGER);
@@ -2040,13 +2067,52 @@ import {
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
-      if (!isKnownModuleMessageSource(event)) {
+      const frame = getModuleFrameForMessage(event);
+      if (!frame) {
         return;
       }
       const data = event.data;
-      if (!data || typeof data !== 'object' || data.type !== 'classroom:tutorial-start-request') {
+      if (!data || typeof data !== 'object') {
         return;
       }
+      if (data.type === SIDEBAR_WIDTH_REQUEST_EVENT) {
+        const requestedScope = data.detail?.scope === SIDEBAR_WIDTH_SCOPE_PLANNING
+          ? SIDEBAR_WIDTH_SCOPE_PLANNING
+          : SIDEBAR_WIDTH_SCOPE_OTHER;
+        const expectedScope = frame === getPlanningFrame()
+          ? SIDEBAR_WIDTH_SCOPE_PLANNING
+          : SIDEBAR_WIDTH_SCOPE_OTHER;
+        if (requestedScope !== expectedScope) return;
+        postToModule(frame, {
+          type: SIDEBAR_WIDTH_SYNC_EVENT,
+          detail: {
+            scope: requestedScope,
+            width: shellController?.getSidebarWidth(requestedScope)
+              ?? (requestedScope === SIDEBAR_WIDTH_SCOPE_PLANNING ? 220 : 360),
+          },
+        });
+        return;
+      }
+      if (data.type === SIDEBAR_WIDTH_COMMIT_EVENT) {
+        const requestedScope = data.detail?.scope === SIDEBAR_WIDTH_SCOPE_PLANNING
+          ? SIDEBAR_WIDTH_SCOPE_PLANNING
+          : SIDEBAR_WIDTH_SCOPE_OTHER;
+        const expectedScope = frame === getPlanningFrame()
+          ? SIDEBAR_WIDTH_SCOPE_PLANNING
+          : SIDEBAR_WIDTH_SCOPE_OTHER;
+        if (requestedScope !== expectedScope) return;
+        shellController?.setSidebarWidth(requestedScope, data.detail?.width);
+        return;
+      }
+      if (data.type === SIDEBAR_COLLAPSE_REQUEST_EVENT) {
+        const requestedScope = data.detail?.scope === SIDEBAR_WIDTH_SCOPE_PLANNING
+          ? SIDEBAR_WIDTH_SCOPE_PLANNING
+          : SIDEBAR_WIDTH_SCOPE_OTHER;
+        if (requestedScope !== getSidebarWidthScopeForTab(getActiveTab())) return;
+        setChromeCollapsed(true);
+        return;
+      }
+      if (data.type !== 'classroom:tutorial-start-request') return;
       startTutorialFromEntry();
     });
     window.addEventListener('classroom:planning-view-request', (event) => {
@@ -2344,6 +2410,7 @@ import {
     onRenderRandomPicker: () => renderRandomPicker(),
     onPositionWorkOrderHintOverlay: () => positionWorkOrderHintOverlay(),
     onRefreshLayouts: () => refreshChromeDependentLayouts(),
+    onSidebarWidthChange: (scope, width) => syncSidebarWidthToModules(scope, width),
   });
   bindTabNavigation();
   const PREFERENCE_SLOT_COUNT = 3;

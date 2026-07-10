@@ -33,6 +33,20 @@ const CHROME_TOGGLE_COLLAPSE_ICON = `
     <path d="M14 14L10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
   </svg>`;
 
+const SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING = 'planning';
+const SHELL_SIDEBAR_WIDTH_SCOPE_OTHER = 'other';
+const SHELL_SIDEBAR_WIDTH_STORAGE_KEYS = Object.freeze({
+  [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: 'teachhelper:sidebar-width:planning',
+  [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: 'teachhelper:sidebar-width:other',
+});
+const LEGACY_SHELL_SIDEBAR_WIDTH_STORAGE_KEY = 'teachhelper:shell-sidebar-width';
+const SHELL_SIDEBAR_DEFAULT_WIDTHS = Object.freeze({
+  [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: 220,
+  [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: 360,
+});
+const SHELL_SIDEBAR_FULLSCREEN_THRESHOLD = 160;
+const SHELL_SIDEBAR_DESKTOP_BREAKPOINT = 981;
+
 function parseCssTimeToMs(value) {
   if (!value) return 0;
   const normalized = String(value).trim();
@@ -56,6 +70,7 @@ export function createShellController({
   onRenderRandomPicker,
   onPositionWorkOrderHintOverlay,
   onRefreshLayouts,
+  onSidebarWidthChange,
 } = {}) {
   const ensureTabInitialized = typeof onEnsureTabInitialized === 'function'
     ? onEnsureTabInitialized
@@ -72,10 +87,200 @@ export function createShellController({
   const refreshLayouts = typeof onRefreshLayouts === 'function'
     ? onRefreshLayouts
     : (() => {});
+  const notifySidebarWidthChange = typeof onSidebarWidthChange === 'function'
+    ? onSidebarWidthChange
+    : (() => {});
   let unsavedTabConfirmPromise = null;
   let tabIndicatorFrame = 0;
   let tabNavResizeObserver = null;
   let moreToolsSyncFrame = 0;
+  const shellSidebarWidths = {
+    [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: readStoredSidebarWidth(SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING),
+    [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: readStoredSidebarWidth(SHELL_SIDEBAR_WIDTH_SCOPE_OTHER),
+  };
+  let sidebarResizeState = null;
+
+  function getSidebarWidthScope(tab = state.activeTab) {
+    return tab === TAB_PLANNING || tab === TAB_GRADES
+      ? SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING
+      : SHELL_SIDEBAR_WIDTH_SCOPE_OTHER;
+  }
+
+  function isShellSidebarResizableTab(tab = state.activeTab) {
+    return tab === TAB_GROUPS || tab === TAB_RANDOM_PICKER || tab === TAB_WORK_PHASE;
+  }
+
+  function isSidebarResizeDesktop() {
+    return typeof window !== 'undefined' && window.innerWidth >= SHELL_SIDEBAR_DESKTOP_BREAKPOINT;
+  }
+
+  function normalizeSidebarWidthScope(scope) {
+    return scope === SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING
+      ? SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING
+      : SHELL_SIDEBAR_WIDTH_SCOPE_OTHER;
+  }
+
+  function getDefaultShellSidebarWidth(scope) {
+    return SHELL_SIDEBAR_DEFAULT_WIDTHS[normalizeSidebarWidthScope(scope)];
+  }
+
+  function getMinimumShellSidebarWidth(scope) {
+    return SHELL_SIDEBAR_FULLSCREEN_THRESHOLD;
+  }
+
+  function readStoredSidebarWidth(scope) {
+    const normalizedScope = normalizeSidebarWidthScope(scope);
+    if (typeof window === 'undefined') return getDefaultShellSidebarWidth(normalizedScope);
+    try {
+      const storageKey = SHELL_SIDEBAR_WIDTH_STORAGE_KEYS[normalizedScope];
+      const storedValue = window.localStorage?.getItem(storageKey)
+        ?? (normalizedScope === SHELL_SIDEBAR_WIDTH_SCOPE_OTHER
+          ? window.localStorage?.getItem(LEGACY_SHELL_SIDEBAR_WIDTH_STORAGE_KEY)
+          : null);
+      const stored = Number.parseFloat(storedValue);
+      if (!Number.isFinite(stored) || stored < getMinimumShellSidebarWidth(normalizedScope)) {
+        return getDefaultShellSidebarWidth(normalizedScope);
+      }
+      return Math.round(stored);
+    } catch {
+      return getDefaultShellSidebarWidth(normalizedScope);
+    }
+  }
+
+  function updateShellSidebarWidth(width) {
+    if (!els.app || !Number.isFinite(width)) return;
+    els.app.style.setProperty('--shell-sidebar-width', `${Math.round(width)}px`);
+  }
+
+  function applyActiveShellSidebarWidth() {
+    updateShellSidebarWidth(shellSidebarWidths[getSidebarWidthScope()]);
+  }
+
+  function persistShellSidebarWidth(scope, width) {
+    try {
+      window.localStorage?.setItem(
+        SHELL_SIDEBAR_WIDTH_STORAGE_KEYS[normalizeSidebarWidthScope(scope)],
+        String(Math.round(width))
+      );
+    } catch {
+      // The resized shell remains usable when storage is unavailable.
+    }
+  }
+
+  function setShellSidebarWidth(scope, width, { persist = false, notify = persist } = {}) {
+    const normalizedWidth = Math.round(width);
+    if (!Number.isFinite(normalizedWidth)) return;
+    const normalizedScope = normalizeSidebarWidthScope(scope);
+    shellSidebarWidths[normalizedScope] = normalizedWidth;
+    if (getSidebarWidthScope() === normalizedScope) {
+      updateShellSidebarWidth(normalizedWidth);
+    }
+    if (persist) {
+      persistShellSidebarWidth(normalizedScope, normalizedWidth);
+    }
+    if (notify) {
+      notifySidebarWidthChange(normalizedScope, normalizedWidth);
+    }
+    return normalizedWidth;
+  }
+
+  function getMaximumShellSidebarWidth() {
+    if (typeof window === 'undefined') return SHELL_SIDEBAR_DEFAULT_WIDTHS[SHELL_SIDEBAR_WIDTH_SCOPE_OTHER];
+    return Math.floor(window.innerWidth * 0.5);
+  }
+
+  function finishSidebarResize(event, { cancelled = false } = {}) {
+    const resizeState = sidebarResizeState;
+    if (!resizeState) return;
+    sidebarResizeState = null;
+    els.app?.classList.remove('is-sidebar-resizing');
+    if (event?.pointerId != null && els.sidebarResizeHandle?.hasPointerCapture?.(event.pointerId)) {
+      els.sidebarResizeHandle.releasePointerCapture(event.pointerId);
+    }
+    if (cancelled) {
+      setShellSidebarWidth(resizeState.scope, resizeState.startWidth, { notify: false });
+      return;
+    }
+    if (!resizeState.hasMoved) {
+      setShellSidebarWidth(resizeState.scope, resizeState.startWidth, { notify: false });
+      return;
+    }
+    if (resizeState.lastRawWidth < SHELL_SIDEBAR_FULLSCREEN_THRESHOLD) {
+      setChromeCollapsed(true);
+      return;
+    }
+    const maximumWidth = getMaximumShellSidebarWidth();
+    const committedWidth = Math.min(
+      maximumWidth,
+      Math.max(SHELL_SIDEBAR_FULLSCREEN_THRESHOLD, resizeState.lastRawWidth)
+    );
+    setShellSidebarWidth(resizeState.scope, committedWidth, { persist: true });
+  }
+
+  function initializeSidebarResize() {
+    applyActiveShellSidebarWidth();
+    const handle = els.sidebarResizeHandle;
+    if (!handle) return;
+    handle.addEventListener('pointerdown', (event) => {
+      if (
+        event.button !== 0
+        || !isSidebarResizeDesktop()
+        || !isShellSidebarResizableTab()
+        || state.chromeCollapsed
+        || state.chromeTransitionState !== 'idle'
+        || !els.app
+      ) {
+        return;
+      }
+      event.preventDefault();
+      const appBounds = els.app.getBoundingClientRect();
+      const scope = getSidebarWidthScope();
+      sidebarResizeState = {
+        pointerId: event.pointerId,
+        appLeft: appBounds.left,
+        scope,
+        startWidth: shellSidebarWidths[scope],
+        lastRawWidth: Math.round(event.clientX - appBounds.left),
+        hasMoved: false,
+      };
+      els.app.classList.add('is-sidebar-resizing');
+      handle.setPointerCapture?.(event.pointerId);
+    });
+    handle.addEventListener('pointermove', (event) => {
+      if (!sidebarResizeState || sidebarResizeState.pointerId !== event.pointerId || !els.app) return;
+      event.preventDefault();
+      const rawWidth = Math.round(event.clientX - sidebarResizeState.appLeft);
+      sidebarResizeState.hasMoved = sidebarResizeState.hasMoved || rawWidth !== sidebarResizeState.lastRawWidth;
+      const visualWidth = Math.min(getMaximumShellSidebarWidth(), Math.max(0, rawWidth));
+      sidebarResizeState.lastRawWidth = rawWidth;
+      updateShellSidebarWidth(visualWidth);
+    });
+    handle.addEventListener('pointerup', (event) => {
+      if (sidebarResizeState?.pointerId !== event.pointerId) return;
+      finishSidebarResize(event);
+    });
+    handle.addEventListener('pointercancel', (event) => {
+      if (sidebarResizeState?.pointerId !== event.pointerId) return;
+      finishSidebarResize(event, { cancelled: true });
+    });
+    handle.addEventListener('lostpointercapture', (event) => {
+      if (sidebarResizeState?.pointerId !== event.pointerId) return;
+      finishSidebarResize(event, { cancelled: true });
+    });
+    handle.addEventListener('dblclick', (event) => {
+      if (!isSidebarResizeDesktop() || !isShellSidebarResizableTab()) return;
+      event.preventDefault();
+      setShellSidebarWidth(getSidebarWidthScope(), getDefaultShellSidebarWidth(getSidebarWidthScope()), { persist: true });
+    });
+    window.addEventListener('storage', (event) => {
+      const scope = Object.entries(SHELL_SIDEBAR_WIDTH_STORAGE_KEYS)
+        .find(([, storageKey]) => storageKey === event.key)?.[0];
+      if (!scope) return;
+      const nextWidth = Number.parseFloat(event.newValue);
+      if (!Number.isFinite(nextWidth) || nextWidth < getMinimumShellSidebarWidth(scope)) return;
+      setShellSidebarWidth(scope, nextWidth, { notify: false });
+    });
+  }
   function isPlanningTab(tab) {
     return tab === TAB_PLANNING || tab === TAB_GRADES;
   }
@@ -347,6 +552,7 @@ export function createShellController({
 
   function renderTabs() {
     if (!els.app) return;
+    applyActiveShellSidebarWidth();
     updateSeatPreferencesTrigger();
     els.app.classList.toggle('app-tab-merger', state.activeTab === TAB_MERGER);
     els.app.classList.toggle('app-tab-duplicate-check', state.activeTab === TAB_DUPLICATE_CHECK);
@@ -767,6 +973,9 @@ export function createShellController({
     if (state.chromeTransitionState !== 'idle') {
       return;
     }
+    if (!nextCollapsed && state.chromeCollapsed) {
+      setShellSidebarWidth(getSidebarWidthScope(), getDefaultShellSidebarWidth(getSidebarWidthScope()), { persist: true });
+    }
     if (
       state.chromeCollapsed === nextCollapsed
       && !els.app?.classList.contains('is-collapsing')
@@ -999,6 +1208,8 @@ export function createShellController({
     renderPlanningManualSaveButton();
   }
 
+  initializeSidebarResize();
+
   function handleBeforeUnload(event) {
     if (!state.planningUnsavedState?.dirty) {
       return;
@@ -1134,12 +1345,22 @@ export function createShellController({
 
   return {
     getActiveTab: () => state.activeTab,
+    getSidebarWidth: (scope) => shellSidebarWidths[normalizeSidebarWidthScope(scope)],
     isChromeCollapsed: () => state.chromeCollapsed,
     getChromeTransitionState: () => state.chromeTransitionState,
     renderTabs,
     renderPlanningGradeVaultUnlockButton,
     renderPlanningManualSaveButton,
     setChromeCollapsed,
+    setSidebarWidth: (scope, width) => {
+      const maximumWidth = getMaximumShellSidebarWidth();
+      const normalizedWidth = Math.min(
+        maximumWidth,
+        Math.max(SHELL_SIDEBAR_FULLSCREEN_THRESHOLD, Math.round(Number(width)))
+      );
+      if (!Number.isFinite(normalizedWidth)) return null;
+      return setShellSidebarWidth(scope, normalizedWidth, { persist: true });
+    },
     setActiveTab,
     setActiveTabImmediate,
     toggleChromeCollapsed,

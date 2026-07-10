@@ -23,8 +23,9 @@
 
     <body>
       <template id="app-shell">
-        <div class="app" id="app" hidden>
+        <div class="app" id="app" hidden data-sidebar-width-scope="other">
           <aside class="side">
+            <div class="sidebar-resize-handle" aria-hidden="true"></div>
             <div class="sidebar-header">
               <h1 class="sidebar-title">Sitzplangenerator<span id="app-version" class="sidebar-version"></span></h1>
               <div class="sidebar-header-actions">
@@ -298,6 +299,7 @@
 
       <script type="module" src="./tooltips.js"></script>
       <script src="./app.js"></script>
+      <script src="../../shared/sidebar-resize.js"></script>
     </body>
 
     </html>

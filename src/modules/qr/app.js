@@ -1,10 +1,14 @@
 import { installAppTooltips } from '../../shared/app-tooltips.js';
+import { QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 
 export function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
-  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([TUTORIAL_COMMAND_EVENT]);
+  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
+    TUTORIAL_COMMAND_EVENT,
+    QR_SHELL_LAYOUT_EVENT,
+  ]);
   const ui = {
     toolTabs: [...root.querySelectorAll('.tool-tab')],
     toolPanels: [...root.querySelectorAll('[data-tool-panel]')],
@@ -469,6 +473,10 @@ export function createQrApp({ root = document } = {}) {
     if (!isTrustedParentMessage(event)) return;
     const data = event.data;
     const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+    if (data.type === QR_SHELL_LAYOUT_EVENT) {
+      document.documentElement.dataset.shellCollapsed = detail.collapsed ? 'true' : 'false';
+      return;
+    }
     const command = String(detail.command || '');
     const commandDetail = detail.detail && typeof detail.detail === 'object' ? detail.detail : {};
     if (command === 'activateDemo') {

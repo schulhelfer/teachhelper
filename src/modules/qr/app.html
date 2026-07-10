@@ -17,8 +17,9 @@
 
 <body>
   <div class="qr-runtime-root">
-    <div class="app">
+    <div class="app" data-sidebar-width-scope="other">
       <aside class="side" aria-label="QR-Werkzeuge">
+        <div class="sidebar-resize-handle" aria-hidden="true"></div>
         <div class="sidebar-header">
           <h1 class="sidebar-title">QR</h1>
           <div class="sidebar-header-actions">
@@ -140,6 +141,7 @@
   <script src="./vendor/qrcode.min.js?v=qr-r5"></script>
   <script src="./vendor/jsQR.js?v=qr-r5"></script>
   <script type="module" src="./app.js?v=qr-r5"></script>
+  <script src="../../shared/sidebar-resize.js"></script>
 </body>
 
 </html>

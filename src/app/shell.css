@@ -429,12 +429,17 @@
     .app.app-tab-random-picker,
     .app.app-tab-work-phase {
       --app-shell-padding: 0px;
-      grid-template-columns: 360px minmax(0, 1fr);
+      --shell-sidebar-width: 360px;
+      grid-template-columns: minmax(0, min(var(--shell-sidebar-width), 50vw)) minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
       gap: 0;
       height: 100vh;
       height: 100dvh;
       padding: 0;
+    }
+
+    .app.is-sidebar-resizing {
+      transition: none;
     }
 
     .app-header {
@@ -961,6 +966,27 @@
     .app.app-tab-work-phase>.side {
       grid-column: 1;
       grid-row: 2 / -1;
+      border-right-color: var(--sidebar-border);
+    }
+
+    .sidebar-resize-handle {
+      display: none;
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      width: 14px;
+      cursor: col-resize;
+      touch-action: none;
+      user-select: none;
+      background: transparent;
+      z-index: 6;
+    }
+
+    .app.app-tab-groups .sidebar-resize-handle,
+    .app.app-tab-random-picker .sidebar-resize-handle,
+    .app.app-tab-work-phase .sidebar-resize-handle {
+      display: block;
     }
 
     .side>* {
@@ -2196,7 +2222,7 @@
     }
 
     .app.app-tab-work-phase {
-      grid-template-columns: 360px minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, min(var(--shell-sidebar-width), 50vw)) minmax(0, 1fr) minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
       gap: 0;
       padding: 0;
@@ -6371,11 +6397,11 @@
 
       .app.app-tab-groups,
       .app.app-tab-random-picker {
-        grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+        grid-template-columns: minmax(0, min(var(--shell-sidebar-width), 50vw)) minmax(0, 1fr);
       }
 
       .app.app-tab-work-phase {
-        grid-template-columns: minmax(260px, 320px) minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, min(var(--shell-sidebar-width), 50vw)) minmax(0, 1fr) minmax(0, 1fr);
       }
 
       .sidebar-footer {
@@ -6403,6 +6429,11 @@
     }
 
     @media (max-width:980px) {
+      .sidebar-resize-handle {
+        display: none !important;
+        pointer-events: none;
+      }
+
       .app.is-collapsing::after,
       .app.is-expanding::after {
         content: '';

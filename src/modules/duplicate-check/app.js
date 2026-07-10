@@ -1,4 +1,5 @@
 import { installAppTooltips } from '../../shared/app-tooltips.js';
+import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 import {
   FILE_LIMITS,
   FILE_TIMEOUTS,
@@ -10,7 +11,10 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
-  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([TUTORIAL_COMMAND_EVENT]);
+  const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
+    TUTORIAL_COMMAND_EVENT,
+    DUPLICATE_CHECK_SHELL_LAYOUT_EVENT,
+  ]);
   const JSZIP_URL = new URL('../../vendor/jszip/3.10.1/jszip.min.js', import.meta.url);
   const HASH_WIDTH = 17;
   const HASH_HEIGHT = 16;
@@ -338,6 +342,10 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     if (!isTrustedParentMessage(event)) return;
     const data = event.data;
     const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+    if (data.type === DUPLICATE_CHECK_SHELL_LAYOUT_EVENT) {
+      document.documentElement.dataset.shellCollapsed = detail.collapsed ? 'true' : 'false';
+      return;
+    }
     const command = String(detail.command || '');
     if (command === 'activateDemo') {
       activateTutorialDemo();

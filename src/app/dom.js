@@ -31,6 +31,7 @@ export function createAppDom(doc = document) {
     groupsGrid: doc.getElementById('groups-grid'),
     groupsGridWrap: doc.querySelector('.groups-grid-wrap'),
     sidePanel: doc.querySelector('.side'),
+    sidebarResizeHandle: doc.getElementById('sidebar-resize-handle'),
     mainPanel: doc.querySelector('.main'),
     groupsMainHost: doc.getElementById('groups-main-host'),
     randomPickerHost: doc.getElementById('random-picker-host'),

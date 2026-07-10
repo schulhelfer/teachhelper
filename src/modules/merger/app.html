@@ -17,8 +17,9 @@
 
 <body>
   <div class="merger-runtime-root">
-    <div class="app">
+    <div class="app" data-sidebar-width-scope="other">
       <aside class="side" aria-label="PDF-Werkzeuge">
+        <div class="sidebar-resize-handle" aria-hidden="true"></div>
         <div class="sidebar-header">
           <h1 class="sidebar-title">PDF-Tools</h1>
           <div class="sidebar-header-actions">
@@ -298,6 +299,7 @@
   </dialog>
 
   <script type="module" src="./app.js?v=merger-r12"></script>
+  <script src="../../shared/sidebar-resize.js"></script>
 </body>
 
 </html>

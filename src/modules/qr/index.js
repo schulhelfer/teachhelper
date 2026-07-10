@@ -4,6 +4,7 @@ import {
   QR_MODULE_SANDBOX,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
+import { QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 
 const QR_VERSION = 'qr-r5';
 const QR_URL = new URL(`./app.html?v=${QR_VERSION}`, import.meta.url);
@@ -24,6 +25,7 @@ export function mountQr({ host }) {
   let disposed = false;
   let ready = false;
   const pending = [];
+  let pendingShellLayout = null;
 
   const flush = () => {
     if (disposed || !ready) return;
@@ -36,6 +38,20 @@ export function mountQr({ host }) {
     if (disposed) return;
     ready = true;
     flush();
+    applyShellLayout(pendingShellLayout || { collapsed: false });
+    pendingShellLayout = null;
+  };
+
+  const applyShellLayout = (detail) => {
+    if (disposed || !detail || typeof detail !== 'object') return;
+    if (!ready || !frame.contentWindow) {
+      pendingShellLayout = detail;
+      return;
+    }
+    postToModule(frame, {
+      type: QR_SHELL_LAYOUT_EVENT,
+      detail: { ...detail },
+    });
   };
 
   const dispose = () => {
@@ -43,6 +59,7 @@ export function mountQr({ host }) {
     disposed = true;
     ready = false;
     pending.length = 0;
+    pendingShellLayout = null;
     frame.removeEventListener('load', onFrameLoad);
     if (frame.isConnected) {
       frame.remove();
@@ -62,7 +79,7 @@ export function mountQr({ host }) {
     return postToModule(frame, payload);
   };
 
-  const controller = { frame, post, dispose };
+  const controller = { frame, post, applyShellLayout, dispose };
 
   frame.addEventListener('load', onFrameLoad);
   host.appendChild(frame);
