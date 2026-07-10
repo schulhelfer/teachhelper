@@ -6883,9 +6883,32 @@
 }
 
 @media (display-mode: window-controls-overlay) {
+  .app {
+    /*
+     * The titlebar area is the free space next to the native controls. On
+     * macOS it starts after the traffic lights; on Windows it ends before
+     * the controls. Reserving the complementary edges keeps either layout
+     * clear without platform sniffing.
+     */
+    --window-controls-left: env(titlebar-area-x, 0px);
+    --window-controls-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+  }
+
   .app-header {
-    padding-top: calc(env(titlebar-area-height, 0px) + var(--app-header-padding-y));
-    padding-right: calc(env(titlebar-area-width, 0px) + var(--app-header-padding-x));
+    padding-left: max(var(--chrome-overlay-clearance), calc(var(--window-controls-left) + var(--app-header-padding-x)));
+    padding-right: max(var(--app-header-padding-x), calc(var(--window-controls-right) + var(--app-header-padding-x)));
     background: var(--bg);
+    -webkit-app-region: drag;
+    app-region: drag;
+  }
+
+  #toggle-chrome {
+    left: calc(var(--window-controls-left) + var(--app-header-padding-x));
+  }
+
+  .app-header button,
+  .app-header [role='button'] {
+    -webkit-app-region: no-drag;
+    app-region: no-drag;
   }
 }
