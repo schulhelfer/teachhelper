@@ -665,6 +665,17 @@
       flex: 0 0 auto;
     }
 
+    .tab-nav.is-tabs-compact {
+      gap: clamp(2px, 0.35vw, 4px);
+    }
+
+    .tab-nav.is-tabs-compact .tab-button {
+      min-width: clamp(62px, 6vw, 96px);
+      padding-right: clamp(5px, 0.55vw, 8px);
+      padding-left: clamp(5px, 0.55vw, 8px);
+      font-size: clamp(11px, 1.05vw, 13px);
+    }
+
     .tab-nav .more-tools-trigger {
       display: inline-flex;
       align-items: center;
@@ -6892,10 +6903,13 @@
      */
     --window-controls-left: env(titlebar-area-x, 0px);
     --window-controls-right: max(0px, calc(100vw - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100vw)));
+    --window-controls-height: env(titlebar-area-height, 0px);
+    /* A left inset identifies macOS geometry; Windows therefore keeps a zero top offset. */
+    --macos-window-controls-top-clearance: min(var(--window-controls-left), var(--window-controls-height));
   }
 
   .app-header {
-    padding-left: max(var(--chrome-overlay-clearance), calc(var(--window-controls-left) + var(--app-header-padding-x)));
+    padding-left: calc(var(--window-controls-left) + var(--chrome-overlay-clearance));
     padding-right: max(var(--app-header-padding-x), calc(var(--window-controls-right) + var(--app-header-padding-x)));
     background: var(--bg);
     -webkit-app-region: drag;
@@ -6904,6 +6918,12 @@
 
   #toggle-chrome {
     left: calc(var(--window-controls-left) + var(--app-header-padding-x));
+  }
+
+  .app.is-collapsing,
+  .app.is-expanding,
+  .app.chrome-collapsed {
+    --chrome-floating-top: calc(env(safe-area-inset-top, 0px) + var(--app-shell-padding) + var(--app-header-padding-y) + var(--macos-window-controls-top-clearance));
   }
 
   .app-header button,

@@ -237,6 +237,7 @@ import {
   const SIDEBAR_WIDTH_SYNC_EVENT = 'classroom:sidebar-width-sync';
   const SIDEBAR_WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
   const SIDEBAR_COLLAPSE_REQUEST_EVENT = 'classroom:sidebar-collapse-request';
+  const MORE_TOOLS_DISMISS_EVENT = 'classroom:more-tools-dismiss';
   const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
   const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
@@ -2073,6 +2074,10 @@ import {
       }
       const data = event.data;
       if (!data || typeof data !== 'object') {
+        return;
+      }
+      if (data.type === MORE_TOOLS_DISMISS_EVENT) {
+        shellController?.closeMoreToolsMenu();
         return;
       }
       if (data.type === SIDEBAR_WIDTH_REQUEST_EVENT) {

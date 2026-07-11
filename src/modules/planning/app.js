@@ -2325,8 +2325,8 @@ function formatGradeTestPercentDisplay(ratioState = null) {
   const rawPercent = Number.isFinite(Number(ratioState?.ratio))
     ? Number(ratioState.ratio) * 100
     : Number(ratioState?.percent || 0);
-  const percent = Math.round(clamp(rawPercent, 0, 100) * 10) / 10;
-  return `${percent.toFixed(1).replace(".", ",")}%`;
+  const percent = Math.floor(clamp(rawPercent, 0, 100));
+  return `${percent}%`;
 }
 
 function formatGradeTestRatioDisplay(ratioState = null) {

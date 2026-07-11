@@ -440,9 +440,14 @@ export function createShellController({
   function syncMoreToolsNavigation() {
     if (!els.tabNav || els.tabNav.hidden) return;
     setMoreToolsMenuOpen(false);
-    els.tabNav.classList.remove('is-tools-condensed');
+    els.tabNav.classList.remove('is-tools-condensed', 'is-tabs-compact');
     els.tabNav.classList.add('is-measuring-full-tabs');
     els.tabNav.getBoundingClientRect();
+    const needsCompactTabs = els.tabNav.scrollWidth > els.tabNav.clientWidth + 1;
+    els.tabNav.classList.toggle('is-tabs-compact', needsCompactTabs);
+    if (needsCompactTabs) {
+      els.tabNav.getBoundingClientRect();
+    }
     const needsCondensing = els.tabNav.scrollWidth > els.tabNav.clientWidth + 1;
     els.tabNav.classList.remove('is-measuring-full-tabs');
     els.tabNav.classList.toggle('is-tools-condensed', needsCondensing);
@@ -1348,6 +1353,7 @@ export function createShellController({
     getSidebarWidth: (scope) => shellSidebarWidths[normalizeSidebarWidthScope(scope)],
     isChromeCollapsed: () => state.chromeCollapsed,
     getChromeTransitionState: () => state.chromeTransitionState,
+    closeMoreToolsMenu: () => setMoreToolsMenuOpen(false),
     renderTabs,
     renderPlanningGradeVaultUnlockButton,
     renderPlanningManualSaveButton,

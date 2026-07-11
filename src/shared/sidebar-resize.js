@@ -6,6 +6,7 @@
   const WIDTH_SYNC_EVENT = 'classroom:sidebar-width-sync';
   const WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
   const COLLAPSE_REQUEST_EVENT = 'classroom:sidebar-collapse-request';
+  const MORE_TOOLS_DISMISS_EVENT = 'classroom:more-tools-dismiss';
   const moduleFrameNonce = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
 
   function getScope(app) {
@@ -93,6 +94,14 @@
     };
 
     setWidth(currentWidth);
+    document.addEventListener('pointerdown', () => {
+      postToShell(MORE_TOOLS_DISMISS_EVENT);
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') {
+        postToShell(MORE_TOOLS_DISMISS_EVENT);
+      }
+    });
     handle.addEventListener('pointerdown', (event) => {
       if (
         event.button !== 0

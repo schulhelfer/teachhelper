@@ -2559,6 +2559,13 @@
           border-bottom-color: transparent;
         }
 
+        .settings-actions-row .settings-reset-icon {
+          width: 20px;
+          height: 20px;
+          display: block;
+          flex: 0 0 auto;
+        }
+
         @media (max-width: 720px) {
           .settings-tabs-head {
             flex-direction: column;
@@ -5857,9 +5864,9 @@
 
         .grades-test-entry-table th.grade-test-ratio-col,
         .grades-test-entry-table td.grade-test-ratio-col {
-          width: 6.9rem;
-          min-width: 6.9rem;
-          max-width: 6.9rem;
+          width: 8rem;
+          min-width: 8rem;
+          max-width: 8rem;
           padding-inline: 0.12rem;
           text-align: center;
         }
@@ -5870,10 +5877,13 @@
           justify-content: center;
           position: relative;
           min-height: var(--grades-entry-assessment-box-height);
+          max-width: 100%;
           color: var(--muted);
           font-size: 0.76rem;
-          font-weight: 800;
+          font-weight: 400;
           line-height: 1.15;
+          overflow: hidden;
+          text-overflow: ellipsis;
           white-space: nowrap;
         }
 
