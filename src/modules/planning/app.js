@@ -20786,16 +20786,16 @@ class PlannerApp {
               </label>
               <fieldset class="grades-entry-field grades-entry-mode-field is-wide" data-tutorial-anchor="grades-entry-mode">
                 <legend>Modus</legend>
-                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Leistungsmodus">
-                  <label class="assessment-mode-option" title="Einzelnote">
+                <div class="assessment-mode-toggle segment-control segment-control--three" role="radiogroup" aria-label="Leistungsmodus">
+                  <label class="assessment-mode-option segment-control__option" title="Einzelnote">
                     <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="grade" aria-label="Einzelnote"${normalizeGradeAssessmentMode(editorState.mode) === "grade" ? " checked" : ""}>
                     <span>Note</span>
                   </label>
-                  <label class="assessment-mode-option" title="Bewertungseinheiten">
+                  <label class="assessment-mode-option segment-control__option" title="Bewertungseinheiten">
                     <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="test" aria-label="Bewertungseinheiten"${normalizeGradeAssessmentMode(editorState.mode) === "test" ? " checked" : ""}>
                     <span>BE</span>
                   </label>
-                  <label class="assessment-mode-option" title="Hausaufgaben">
+                  <label class="assessment-mode-option segment-control__option" title="Hausaufgaben">
                     <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="homework" aria-label="Hausaufgaben"${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? " checked" : ""}>
                     <span>HA</span>
                   </label>

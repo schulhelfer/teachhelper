@@ -873,113 +873,16 @@
           gap: 10px;
         }
 
-        .toggle-pill {
-          position: relative;
-          display: inline-flex;
+        .two-seat-segment-control {
           flex: 1 1 auto;
-          background: rgba(255, 255, 255, 0.05);
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          border-radius: 999px;
-          overflow: hidden;
-          box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04);
-          min-width: 0;
         }
 
-        .toggle-pill::before {
-          content: '';
-          position: absolute;
-          inset: 3px;
-          width: calc((100% - 6px) / 3);
-          border-radius: 999px;
-          background: linear-gradient(180deg, #1fb6ff, #22d3ee);
-          box-shadow: none;
-          transform: translateX(0);
-          transition: transform 180ms ease, box-shadow 180ms ease;
-        }
-
-        .toggle-pill:has(.toggle-option:nth-child(2) input:checked)::before {
-          transform: translateX(100%);
-          box-shadow: none;
-        }
-
-        .toggle-pill:has(.toggle-option:nth-child(3) input:checked)::before {
-          transform: translateX(200%);
-          box-shadow: none;
-        }
-
-        .toggle-pill .toggle-option {
-          position: relative;
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          padding: 8px 14px;
-          gap: 6px;
-          font-weight: 700;
-          letter-spacing: 0.1px;
-          color: #cbd5e1;
-          cursor: pointer;
-          user-select: none;
-          flex: 1 1 33.333%;
-          text-align: center;
-          z-index: 1;
-        }
-
-        .toggle-pill input[type="radio"] {
-          position: absolute;
-          inset: 0;
-          opacity: 0;
-          cursor: pointer;
-          margin: 0;
-        }
-
-        .toggle-pill .toggle-option span {
-          position: relative;
-          z-index: 1;
-          font-size: 18px;
-          font-weight: 800;
-        }
-
-        .toggle-pill .toggle-option:first-child span {
-          color: #22c55e;
-          font-weight: 950;
-          font-size: 20px;
+        .two-seat-segment-control .segment-control__option span {
+          min-height: 2.5rem;
+          padding-inline: 0.3rem;
+          font-size: 1rem;
           line-height: 1;
-          text-shadow: 0 0 1px rgba(34, 197, 94, 0.8);
-        }
-
-        .toggle-pill .toggle-option::before {
-          content: '';
-          position: absolute;
-          inset: 2px;
-          border-radius: 999px;
-          background: linear-gradient(180deg, #0ea5e9, #22d3ee);
-          opacity: 0;
-          transition: opacity 140ms ease, transform 140ms ease;
-          transform: scale(0.96);
-        }
-
-        .toggle-pill .toggle-option:nth-child(2)::after {
-          content: '';
-          position: absolute;
-          left: 14%;
-          right: 14%;
-          height: 2px;
-          background: currentColor;
-          top: 50%;
-          transform: translateY(-50%) rotate(-12deg);
-          border-radius: 999px;
-          opacity: 0.9;
-          pointer-events: none;
-          z-index: 2;
-        }
-
-        .toggle-pill .toggle-option:has(input:checked) span {
-          color: #0b1222;
-        }
-
-        .toggle-pill .toggle-option:has(input:checked)::before {
-          opacity: 1;
-          transform: scale(1);
+          white-space: nowrap;
         }
 
         .step-actions button:hover {

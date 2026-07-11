@@ -17,6 +17,7 @@
       <link rel="icon" type="image/png" sizes="512x512" href="../../../icon-512.png" />
       <link rel="shortcut icon" href="../../../icon-192.png" />
       <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png" />
+      <link rel="stylesheet" href="../../shared/segment-control.css" />
       <link rel="stylesheet" href="./app.css" />
       <link rel="stylesheet" href="../../shared/app-tooltips.css" />
     </head>
@@ -72,16 +73,16 @@
                 <li>
                   <strong>Entscheide, ob es 2er-Tische gibt</strong>
                   <div class="step-actions twoer-row">
-                    <div id="tutorial-two-seat-options" class="toggle-pill" role="group" aria-label="2er-Tische">
-                      <label class="toggle-option" title="Zulässig">
+                    <div id="tutorial-two-seat-options" class="segment-control segment-control--three two-seat-segment-control" role="radiogroup" aria-label="2er-Tische">
+                      <label class="segment-control__option" title="Zulässig">
                         <input type="radio" name="twoer-toggle" value="zulässig" aria-label="Zulässig" checked />
                         <span>✓</span>
                       </label>
-                      <label class="toggle-option" title="Symbole ausgeblendet">
+                      <label class="segment-control__option" title="Symbole ausgeblendet">
                         <input type="radio" name="twoer-toggle" value="both" aria-label="Symbole ausgeblendet" />
                         <span>🔗⛓️‍💥</span>
                       </label>
-                      <label class="toggle-option" title="Unzulässig">
+                      <label class="segment-control__option" title="Unzulässig">
                         <input type="radio" name="twoer-toggle" value="nicht-zulässig" aria-label="Unzulässig" />
                         <span>❌</span>
                       </label>
