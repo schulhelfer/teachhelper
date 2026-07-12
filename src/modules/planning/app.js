@@ -9418,6 +9418,25 @@ class PlannerApp {
     });
   }
 
+  prepareGradesOverviewAutoScrollAfterVaultUnlock() {
+    if (
+      this.currentView !== "grades"
+      || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+    ) {
+      return;
+    }
+    const courseId = Number(this.selectedCourseId || 0);
+    if (!courseId) {
+      return;
+    }
+    this.cancelPendingGradesOverviewAutoScrollFrame();
+    this.pendingGradesOverviewAutoScroll = {
+      courseId,
+      assessmentId: null,
+      attempts: 0
+    };
+  }
+
   async submitGradeVaultDialog() {
     const mode = this.pendingGradeVaultDialogMode || this.getGradeVaultStatusMode();
     const currentPassword = String(this.refs.gradeVaultDialogCurrentPassword?.value || "");
@@ -9468,6 +9487,7 @@ class PlannerApp {
           this.resumeAfterGradeVaultUnlock({ focusDefault: false });
           return;
         }
+        this.prepareGradesOverviewAutoScrollAfterVaultUnlock();
         this.renderAll();
         this.resumeAfterGradeVaultUnlock();
         return;
@@ -16280,29 +16300,20 @@ class PlannerApp {
     const tooltipRect = portal.getBoundingClientRect();
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
     const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
-    const spaceLeft = anchorRect.left;
-    const spaceRight = viewportWidth - anchorRect.right;
-    const spaceTop = anchorRect.top;
-    let placement;
-    let left;
-    let top;
-    if (spaceLeft >= tooltipRect.width + margin) {
-      placement = "left";
-      left = anchorRect.left - tooltipRect.width - margin;
-      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
-    } else if (spaceRight >= tooltipRect.width + margin) {
-      placement = "right";
-      left = anchorRect.right + margin;
-      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
-    } else if (spaceTop >= tooltipRect.height + margin) {
-      placement = "above";
-      left = anchorRect.right - tooltipRect.width;
-      top = anchorRect.top - tooltipRect.height - margin;
-    } else {
-      placement = "below";
-      left = anchorRect.right - tooltipRect.width;
-      top = anchorRect.bottom + margin;
-    }
+    const cornerPlacements = [
+      { placement: "right", corner: "bottom", left: anchorRect.right + margin, top: anchorRect.bottom - tooltipRect.height },
+      { placement: "left", corner: "bottom", left: anchorRect.left - tooltipRect.width - margin, top: anchorRect.bottom - tooltipRect.height },
+      { placement: "right", corner: "top", left: anchorRect.right + margin, top: anchorRect.top },
+      { placement: "left", corner: "top", left: anchorRect.left - tooltipRect.width - margin, top: anchorRect.top }
+    ];
+    const cornerPlacement = cornerPlacements.find(({ left, top }) => (
+      left >= margin
+      && left + tooltipRect.width <= viewportWidth - margin
+      && top >= margin
+      && top + tooltipRect.height <= viewportHeight - margin
+    )) || cornerPlacements[0];
+    const { placement, corner } = cornerPlacement;
+    let { left, top } = cornerPlacement;
     left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
     top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
     const arrowMargin = 10;
@@ -16311,11 +16322,7 @@ class PlannerApp {
       arrowMargin,
       Math.max(arrowMargin, tooltipRect.width - arrowMargin)
     );
-    const arrowY = clamp(
-      anchorRect.top + (anchorRect.height / 2) - top,
-      arrowMargin,
-      Math.max(arrowMargin, tooltipRect.height - arrowMargin)
-    );
+    const arrowY = corner === "bottom" ? tooltipRect.height - arrowMargin : arrowMargin;
     portal.dataset.placement = placement;
     portal.style.setProperty("--grade-test-scale-tooltip-arrow-x", `${Math.round(arrowX)}px`);
     portal.style.setProperty("--grade-test-scale-tooltip-arrow-y", `${Math.round(arrowY)}px`);

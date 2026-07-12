@@ -50,7 +50,7 @@ function getTooltipTone(element) {
   return "default";
 }
 
-function getPreferredPlacements(element) {
+function getExplicitPlacements(element) {
   const explicit = getAttributeText(element, "data-app-tooltip-placement");
   if (explicit) {
     const placements = explicit.split(/\s+/).filter((item) => (
@@ -58,10 +58,46 @@ function getPreferredPlacements(element) {
     ));
     if (placements.length) return placements;
   }
+  return null;
+}
+
+function getPreferredPlacements(element) {
+  const explicitPlacements = getExplicitPlacements(element);
+  if (explicitPlacements) return explicitPlacements;
   if (element?.classList?.contains("grade-total-button")) {
     return ["right", "left", "below", "above"];
   }
   return ["below", "above", "right", "left"];
+}
+
+function getCornerPlacement(anchorRect, tooltipRect, viewportWidth, viewportHeight, margin, gap) {
+  const candidates = [
+    { placement: "right", corner: "bottom", left: anchorRect.right + gap, top: anchorRect.bottom - tooltipRect.height },
+    { placement: "left", corner: "bottom", left: anchorRect.left - tooltipRect.width - gap, top: anchorRect.bottom - tooltipRect.height },
+    { placement: "right", corner: "top", left: anchorRect.right + gap, top: anchorRect.top },
+    { placement: "left", corner: "top", left: anchorRect.left - tooltipRect.width - gap, top: anchorRect.top }
+  ];
+  return candidates.find(({ left, top }) => (
+    left >= margin
+    && left + tooltipRect.width <= viewportWidth - margin
+    && top >= margin
+    && top + tooltipRect.height <= viewportHeight - margin
+  )) || candidates[0];
+}
+
+function getVerticalPlacement(anchorRect, tooltipRect, viewportWidth, margin) {
+  const rightAlignedLeft = anchorRect.right - tooltipRect.width;
+  const leftAlignedLeft = anchorRect.left;
+  const rightAlignedFits = rightAlignedLeft >= margin;
+  const leftAlignedFits = leftAlignedLeft + tooltipRect.width <= viewportWidth - margin;
+
+  if (rightAlignedFits) return { left: rightAlignedLeft, edge: "right" };
+  if (leftAlignedFits) return { left: leftAlignedLeft, edge: "left" };
+  const availableLeft = anchorRect.right - margin;
+  const availableRight = viewportWidth - margin - anchorRect.left;
+  return availableLeft >= availableRight
+    ? { left: rightAlignedLeft, edge: "right" }
+    : { left: leftAlignedLeft, edge: "left" };
 }
 
 export function installAppTooltips(root = document, options = {}) {
@@ -263,6 +299,11 @@ export function installAppTooltips(root = document, options = {}) {
       return;
     }
 
+    const explicitPlacements = getExplicitPlacements(anchor);
+    const verticalPlacement = getVerticalPlacement(anchorRect, tooltipRect, viewportWidth, margin);
+    const cornerPlacement = explicitPlacements
+      ? null
+      : getCornerPlacement(anchorRect, tooltipRect, viewportWidth, viewportHeight, margin, gap);
     const placements = getPreferredPlacements(anchor);
     const fits = {
       right: viewportWidth - anchorRect.right >= tooltipRect.width + gap + margin,
@@ -270,33 +311,39 @@ export function installAppTooltips(root = document, options = {}) {
       below: viewportHeight - anchorRect.bottom >= tooltipRect.height + gap + margin,
       above: anchorRect.top >= tooltipRect.height + gap + margin
     };
-    const placement = placements.find((item) => fits[item]) || placements[0] || "below";
-    let left = anchorRect.left + (anchorRect.width / 2) - (tooltipRect.width / 2);
-    let top = anchorRect.bottom + gap;
+    const placement = cornerPlacement?.placement || placements.find((item) => fits[item]) || placements[0] || "below";
+    let left = cornerPlacement?.left ?? verticalPlacement.left;
+    let top = cornerPlacement?.top ?? (anchorRect.bottom + gap);
 
-    if (placement === "right") {
-      left = anchorRect.right + gap;
-      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
-    } else if (placement === "left") {
-      left = anchorRect.left - tooltipRect.width - gap;
-      top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
-    } else if (placement === "above") {
-      top = anchorRect.top - tooltipRect.height - gap;
+    if (!cornerPlacement) {
+      if (placement === "right") {
+        left = anchorRect.right + gap;
+        top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
+      } else if (placement === "left") {
+        left = anchorRect.left - tooltipRect.width - gap;
+        top = anchorRect.top + (anchorRect.height / 2) - (tooltipRect.height / 2);
+      } else if (placement === "above") {
+        top = anchorRect.top - tooltipRect.height - gap;
+      }
     }
 
     left = clamp(left, margin, Math.max(margin, viewportWidth - tooltipRect.width - margin));
     top = clamp(top, margin, Math.max(margin, viewportHeight - tooltipRect.height - margin));
     const arrowMargin = 10;
-    const arrowX = clamp(
-      anchorRect.left + (anchorRect.width / 2) - left,
-      arrowMargin,
-      Math.max(arrowMargin, tooltipRect.width - arrowMargin)
-    );
-    const arrowY = clamp(
-      anchorRect.top + (anchorRect.height / 2) - top,
-      arrowMargin,
-      Math.max(arrowMargin, tooltipRect.height - arrowMargin)
-    );
+    const arrowX = placement === "below" || placement === "above"
+      ? (verticalPlacement.edge === "right" ? tooltipRect.width - arrowMargin : arrowMargin)
+      : clamp(
+        anchorRect.left + (anchorRect.width / 2) - left,
+        arrowMargin,
+        Math.max(arrowMargin, tooltipRect.width - arrowMargin)
+      );
+    const arrowY = cornerPlacement
+      ? (cornerPlacement.corner === "bottom" ? tooltipRect.height - arrowMargin : arrowMargin)
+      : clamp(
+        anchorRect.top + (anchorRect.height / 2) - top,
+        arrowMargin,
+        Math.max(arrowMargin, tooltipRect.height - arrowMargin)
+      );
     portal.dataset.placement = placement;
     portal.style.setProperty("--app-tooltip-arrow-x", `${Math.round(arrowX)}px`);
     portal.style.setProperty("--app-tooltip-arrow-y", `${Math.round(arrowY)}px`);
