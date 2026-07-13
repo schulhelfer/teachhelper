@@ -146,6 +146,7 @@ textarea:focus-visible {
   margin: 0;
   padding: 0;
   background: var(--canvas);
+  position: relative;
   transition: grid-template-columns 180ms ease;
 }
 
@@ -158,7 +159,7 @@ textarea:focus-visible {
   padding: 14px 22px 22px 14px;
   background: var(--sidebar-surface);
   border: 0;
-  border-right: 1px solid var(--sidebar-border);
+  border-right: 1px solid transparent;
   border-radius: 0;
   box-shadow: none;
   backdrop-filter: saturate(145%) blur(12px);
@@ -182,6 +183,25 @@ textarea:focus-visible {
   user-select: none;
   background: transparent;
   z-index: 6;
+}
+
+.app > .sidebar-resize-handle {
+  top: var(--sidebar-resize-top, 0px);
+  right: auto;
+  bottom: auto;
+  left: var(--sidebar-resize-left, 0px);
+  height: var(--sidebar-resize-height, 0px);
+}
+
+.sidebar-resize-handle::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.5px);
+  width: 1px;
+  background: var(--sidebar-border);
+  pointer-events: none;
 }
 
 .main {

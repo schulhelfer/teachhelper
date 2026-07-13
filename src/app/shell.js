@@ -220,7 +220,24 @@ export function createShellController({
   function initializeSidebarResize() {
     applyActiveShellSidebarWidth();
     const handle = els.sidebarResizeHandle;
-    if (!handle) return;
+    const sidebar = els.sidePanel;
+    if (!handle || !sidebar || !els.app) return;
+    els.app.append(handle);
+    const syncHandlePosition = () => {
+      const appBounds = els.app.getBoundingClientRect();
+      const sidebarBounds = sidebar.getBoundingClientRect();
+      handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left)}px`);
+      handle.style.setProperty('--sidebar-resize-top', `${Math.round(sidebarBounds.top - appBounds.top)}px`);
+      handle.style.setProperty('--sidebar-resize-height', `${Math.round(sidebarBounds.height)}px`);
+    };
+    const scheduleHandlePositionSync = () => {
+      window.requestAnimationFrame(syncHandlePosition);
+    };
+    syncHandlePosition();
+    const handlePositionObserver = new ResizeObserver(scheduleHandlePositionSync);
+    handlePositionObserver.observe(els.app);
+    handlePositionObserver.observe(sidebar);
+    window.addEventListener('resize', scheduleHandlePositionSync);
     handle.addEventListener('pointerdown', (event) => {
       if (
         event.button !== 0
@@ -234,13 +251,15 @@ export function createShellController({
       }
       event.preventDefault();
       const appBounds = els.app.getBoundingClientRect();
+      const sidebarBounds = sidebar.getBoundingClientRect();
       const scope = getSidebarWidthScope();
       sidebarResizeState = {
         pointerId: event.pointerId,
         appLeft: appBounds.left,
         scope,
         startWidth: shellSidebarWidths[scope],
-        lastRawWidth: Math.round(event.clientX - appBounds.left),
+        pointerOffset: event.clientX - sidebarBounds.right,
+        lastRawWidth: Math.round(sidebarBounds.right - appBounds.left),
         hasMoved: false,
       };
       els.app.classList.add('is-sidebar-resizing');
@@ -249,7 +268,9 @@ export function createShellController({
     handle.addEventListener('pointermove', (event) => {
       if (!sidebarResizeState || sidebarResizeState.pointerId !== event.pointerId || !els.app) return;
       event.preventDefault();
-      const rawWidth = Math.round(event.clientX - sidebarResizeState.appLeft);
+      const rawWidth = Math.round(
+        event.clientX - sidebarResizeState.appLeft - sidebarResizeState.pointerOffset
+      );
       sidebarResizeState.hasMoved = sidebarResizeState.hasMoved || rawWidth !== sidebarResizeState.lastRawWidth;
       const visualWidth = Math.min(getMaximumShellSidebarWidth(), Math.max(0, rawWidth));
       sidebarResizeState.lastRawWidth = rawWidth;
@@ -1268,7 +1289,9 @@ export function createShellController({
       window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_REQUEST_EVENT, {
         detail: {
           action: locked ? 'unlock' : 'lock',
-          overlay: state.activeTab === TAB_GROUPS || state.activeTab === TAB_RANDOM_PICKER,
+          overlay: state.activeTab === TAB_GROUPS
+            || state.activeTab === TAB_RANDOM_PICKER
+            || state.activeTab === TAB_SEATPLAN,
         },
       }));
     });

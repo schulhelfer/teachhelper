@@ -19665,6 +19665,9 @@ class PlannerApp {
     if (!element || !this.refs.sidebarPanel || !this.refs.sidebarPanel.contains(element)) {
       return false;
     }
+    if (element.closest("#sidebar-course-list li[data-add-item='1']")) {
+      return true;
+    }
     if (
       element.closest(
         "button, input, textarea, select, a, label, [contenteditable='true'], .sidebar-header, .sidebar-controls"
@@ -19674,9 +19677,6 @@ class PlannerApp {
     }
     const courseRow = element.closest("#sidebar-course-list li[data-course-id]");
     if (courseRow && Number(courseRow.dataset.courseId || 0)) {
-      return false;
-    }
-    if (element.closest("#sidebar-course-list li[data-add-item='1']")) {
       return false;
     }
     return Boolean(element.closest("#sidebarPanel, .sidebar-section, #sidebar-course-list"));
@@ -34161,10 +34161,22 @@ class PlannerApp {
     if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
       return;
     }
-    document.body?.classList.toggle("grade-vault-overlay-only", Boolean(open));
+    const detail = { open: Boolean(open) };
+    document.body?.classList.toggle("grade-vault-overlay-only", detail.open);
     window.dispatchEvent(new CustomEvent("classroom:planning-grade-vault-overlay", {
-      detail: { open: Boolean(open) }
+      detail
     }));
+    if (!window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:planning-grade-vault-overlay",
+        detail
+      }, window.location.origin);
+    } catch (_error) {
+      // The overlay is still functional when the planner runs outside the shell.
+    }
   }
 
   notifyParentTutorialStartRequest() {
@@ -34237,7 +34249,9 @@ class PlannerApp {
         });
         return;
       }
-      const availableCourses = this.store.listCourses(year.id).filter((item) => this.courseAllowsGrades(item));
+      const availableCourses = this.store.listCourses(year.id).filter((item) => (
+        this.courseAllowsGrades(item) && !item.hiddenInSidebar
+      ));
       if (!this.canAccessGradeVault()) {
         this.dispatchGradeRosterCoursesResult({
           requestId,
@@ -34328,6 +34342,7 @@ class PlannerApp {
         courseId: Number(course.id),
         courseName: String(course.name || "Kurs"),
         students,
+        plan: this.store.getGradeSeatPlan(course.id),
         performanceFlairCount: 4,
         csvName: `${String(course.name || "Kurs")} (Notenmodul)`,
         headers: ["Nachname", "Vorname"],

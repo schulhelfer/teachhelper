@@ -56,6 +56,25 @@
     const handle = app?.querySelector('.sidebar-resize-handle');
     if (!app || !handle) return;
 
+    const sidebar = handle.closest('.side, .sidebar-panel');
+    if (!sidebar) return;
+    app.append(handle);
+    const syncHandlePosition = () => {
+      const appBounds = app.getBoundingClientRect();
+      const sidebarBounds = sidebar.getBoundingClientRect();
+      handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left)}px`);
+      handle.style.setProperty('--sidebar-resize-top', `${Math.round(sidebarBounds.top - appBounds.top)}px`);
+      handle.style.setProperty('--sidebar-resize-height', `${Math.round(sidebarBounds.height)}px`);
+    };
+    const scheduleHandlePositionSync = () => {
+      window.requestAnimationFrame(syncHandlePosition);
+    };
+    syncHandlePosition();
+    const handlePositionObserver = new ResizeObserver(scheduleHandlePositionSync);
+    handlePositionObserver.observe(app);
+    handlePositionObserver.observe(sidebar);
+    window.addEventListener('resize', scheduleHandlePositionSync);
+
     const scope = getScope(app);
     const defaultWidth = getDefaultWidth(scope);
     let currentWidth = defaultWidth;
@@ -113,11 +132,13 @@
       }
       event.preventDefault();
       const appBounds = app.getBoundingClientRect();
+      const sidebarBounds = sidebar.getBoundingClientRect();
       resizeState = {
         pointerId: event.pointerId,
         appLeft: appBounds.left,
         startWidth: currentWidth,
-        lastRawWidth: Math.round(event.clientX - appBounds.left),
+        pointerOffset: event.clientX - sidebarBounds.right,
+        lastRawWidth: Math.round(sidebarBounds.right - appBounds.left),
         hasMoved: false,
       };
       app.classList.add('is-sidebar-resizing');
@@ -126,7 +147,7 @@
     handle.addEventListener('pointermove', (event) => {
       if (!resizeState || resizeState.pointerId !== event.pointerId) return;
       event.preventDefault();
-      const rawWidth = Math.round(event.clientX - resizeState.appLeft);
+      const rawWidth = Math.round(event.clientX - resizeState.appLeft - resizeState.pointerOffset);
       resizeState.hasMoved = resizeState.hasMoved || rawWidth !== resizeState.lastRawWidth;
       resizeState.lastRawWidth = rawWidth;
       setWidth(Math.min(getMaximumWidth(), Math.max(0, rawWidth)));

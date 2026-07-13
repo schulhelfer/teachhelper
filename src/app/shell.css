@@ -432,7 +432,8 @@
       --shell-sidebar-width: 360px;
       grid-template-columns: minmax(0, min(var(--shell-sidebar-width), 50vw)) minmax(0, 1fr);
       grid-template-rows: auto minmax(0, 1fr);
-      gap: 0;
+      column-gap: 14px;
+      row-gap: 0;
       height: 100vh;
       height: 100dvh;
       padding: 0;
@@ -977,7 +978,7 @@
     .app.app-tab-work-phase>.side {
       grid-column: 1;
       grid-row: 2 / -1;
-      border-right-color: var(--sidebar-border);
+      border-right-color: transparent;
     }
 
     .sidebar-resize-handle {
@@ -994,10 +995,29 @@
       z-index: 6;
     }
 
+    .app > .sidebar-resize-handle {
+      top: var(--sidebar-resize-top, 0px);
+      right: auto;
+      bottom: auto;
+      left: var(--sidebar-resize-left, 0px);
+      height: var(--sidebar-resize-height, 0px);
+    }
+
     .app.app-tab-groups .sidebar-resize-handle,
     .app.app-tab-random-picker .sidebar-resize-handle,
     .app.app-tab-work-phase .sidebar-resize-handle {
       display: block;
+    }
+
+    .sidebar-resize-handle::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: calc(50% - 0.5px);
+      width: 1px;
+      background: var(--sidebar-border);
+      pointer-events: none;
     }
 
     .side>* {

@@ -1099,6 +1099,13 @@
             }
             gradeRosterSelectedCourseId = Number(detail.courseId || 0);
             gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
+            applyCourseSeatplanContext({
+              courseId: gradeRosterSelectedCourseId,
+              courseName: gradeRosterSelectedCourseName || 'Kurs',
+              students: Array.isArray(detail.students) ? detail.students : [],
+              plan: detail.plan && typeof detail.plan === 'object' ? detail.plan : null,
+              requestedAt: new Date().toISOString(),
+            });
             renderGradeRosterPills();
             closeGradeRosterImportMenu();
             showMessage(`${Number(detail.students?.length || 0)} Lernende aus „${detail.courseName}“ importiert.`, 'success', { presentation: 'toast' });
@@ -1295,7 +1302,7 @@
             state.pendingCourseSaveRequestId = '';
             updateCourseSeatplanUi();
             if (detail.ok) {
-              showMessage(detail.message || 'Sitzplan im Notenmodul gespeichert.', 'success');
+              showMessage(detail.message || 'Sitzplan im Notenmodul gespeichert.', 'success', { presentation: 'toast' });
               markPlanSavedAction();
               return;
             }
@@ -1424,7 +1431,7 @@
           }
 
           function requestCourseGradeConfig(studentId = '') {
-            if (!isCourseSeatplanMode()) return;
+            if (!isCourseSeatplanMode() || !Number(state.courseContext?.lessonId || 0)) return;
             state.pendingCourseGradeStudentId = String(studentId || '');
             if (state.pendingCourseGradeConfigRequestId) return;
             const requestId = createRequestId();
@@ -1459,9 +1466,14 @@
             updateSeatSelectionHighlight(state.seatDiagnosticsBySeat);
           }
 
-          function openFirstCourseGradePicker() {
+          function openFirstCourseGradePicker(attempt = 0) {
             const input = getCourseGradeInputOrder()[0] || null;
             if (!input) return;
+            const inputRect = input.getBoundingClientRect();
+            if ((inputRect.width < 1 || inputRect.height < 1) && attempt < 12) {
+              requestAnimationFrame(() => openFirstCourseGradePicker(attempt + 1));
+              return;
+            }
             input.focus({ preventScroll: false });
             openCourseGradePicker(input);
           }
@@ -1822,6 +1834,16 @@
             grid.appendChild(skipButton);
             els.courseGradePicker.appendChild(grid);
             positionCourseGradePicker(input);
+            requestAnimationFrame(() => {
+              if (
+                els.courseGradePicker?.hidden
+                || String(state.courseGradePickerStudentId || '') !== studentId
+                || !input.isConnected
+              ) {
+                return;
+              }
+              positionCourseGradePicker(input);
+            });
           }
 
           function createCourseGradeInput(studentId, label) {
@@ -1923,7 +1945,7 @@
           }
 
           function createCourseGradeControl(studentId, label) {
-            if (!isCourseSeatplanMode()) return null;
+            if (!isCourseSeatplanMode() || !Number(state.courseContext?.lessonId || 0)) return null;
             if (isCourseGradeMode()) {
               const input = createCourseGradeInput(studentId, label);
               return createCourseGradeHitArea(input, () => {
@@ -1996,7 +2018,7 @@
               updateCourseSeatplanUi();
               renderSeats();
               refreshUnseated();
-              showMessage(detail.message || 'Noten im Notenmodul gespeichert.', 'success');
+              showMessage(detail.message || 'Noten im Notenmodul gespeichert.', 'success', { presentation: 'toast' });
               return;
             }
             showMessage(detail.message || 'Noten konnten nicht gespeichert werden.', 'error');
