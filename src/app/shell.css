@@ -1329,6 +1329,15 @@
       display: none;
     }
 
+    .app.grade-vault-overlay>.planning-shell[hidden] {
+      display: block !important;
+      position: fixed;
+      inset: 0;
+      z-index: 5000;
+      width: 100vw;
+      height: 100vh;
+    }
+
     .app.app-tab-seatplan>.merger-shell,
     .app.app-tab-seatplan>.duplicate-check-shell,
     .app.app-tab-seatplan>.qr-shell,
@@ -4421,6 +4430,157 @@
       gap: 6px;
     }
 
+    .roster-import-row {
+      --grade-roster-csv-column: 1fr;
+      --grade-roster-course-column: 1fr;
+      display: grid;
+      grid-template-columns: minmax(0, var(--grade-roster-csv-column)) minmax(0, var(--grade-roster-course-column));
+      gap: 8px;
+    }
+
+    .roster-import-row.grade-roster-import-unavailable {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .roster-import-row .file-upload,
+    .grade-roster-import {
+      min-width: 0;
+    }
+
+    .grade-roster-import {
+      position: relative;
+      display: flex;
+      box-sizing: border-box;
+      min-height: 58px;
+      max-height: 218px;
+      padding: 10px;
+      border: 2px dashed var(--dropzone-border);
+      border-radius: var(--dropzone-radius);
+      background: var(--dropzone-bg);
+      box-shadow: var(--dropzone-shadow);
+    }
+
+    .grade-roster-pills {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      flex-wrap: wrap;
+      align-content: flex-start;
+      gap: 6px;
+      overflow: visible;
+    }
+
+    .grade-roster-pills-loading {
+      align-self: center;
+      color: var(--muted);
+      font-size: 0.84rem;
+      font-weight: 600;
+      text-align: center;
+      width: 100%;
+    }
+
+    .grade-roster-pill {
+      max-width: 100%;
+      min-height: 34px;
+      padding: 7px 10px;
+      border: 1px solid rgba(15, 23, 42, 0.22);
+      border-radius: 999px;
+      font: inherit;
+      font-size: 0.84rem;
+      font-weight: 700;
+      line-height: 1.15;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
+    .grade-roster-pill:hover:not(:disabled),
+    .grade-roster-pill:focus-visible:not(:disabled) {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .grade-roster-pill:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    .grade-roster-pill.is-imported {
+      border: 3px solid rgba(248, 250, 252, 0.98);
+      box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.52);
+    }
+
+    .grade-roster-import-trigger {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      min-height: 100%;
+      padding: 10px 4px;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      box-shadow: var(--dropzone-shadow);
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    .grade-roster-import-trigger:hover:not(:disabled) {
+      background: var(--dropzone-bg-hover);
+      transform: translateY(-1px);
+    }
+
+    .grade-roster-import-trigger:disabled {
+      cursor: not-allowed;
+      opacity: 0.62;
+    }
+
+    .grade-roster-import-menu {
+      position: absolute;
+      z-index: 40;
+      top: calc(100% + 6px);
+      right: 0;
+      width: min(320px, calc(100vw - 28px));
+      max-height: 260px;
+      overflow: auto;
+      padding: 6px;
+      border: 1px solid var(--control-border);
+      border-radius: var(--control-radius);
+      background: #0c1222;
+      box-shadow: 0 14px 30px rgba(2, 6, 23, 0.42);
+    }
+
+    .grade-roster-import-menu button,
+    .grade-roster-import-menu .grade-roster-import-message {
+      display: block;
+      width: 100%;
+      padding: 8px 10px;
+      text-align: left;
+      font: inherit;
+    }
+
+    .grade-roster-import-menu button {
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+      color: var(--text);
+      cursor: pointer;
+    }
+
+    .grade-roster-import-menu button:hover,
+    .grade-roster-import-menu button:focus-visible {
+      background: rgba(148, 163, 184, 0.18);
+    }
+
+    .grade-roster-import-menu .grade-roster-import-message {
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
     .file-upload .file-status {
       width: 100%;
       min-width: 0;
@@ -4774,9 +4934,23 @@
       white-space: normal;
     }
 
+    #csv-drop-zone {
+      position: relative;
+      border: 2px dashed var(--dropzone-border);
+      border-radius: var(--dropzone-radius);
+      background: var(--dropzone-bg);
+      box-shadow: var(--dropzone-shadow);
+    }
+
     #csv-drop-zone .file-trigger {
       width: 100%;
       max-width: 100%;
+      flex: 1 1 auto;
+      min-height: 0;
+      border: 0;
+      border-radius: inherit;
+      background: transparent;
+      box-shadow: none;
       font-size: 14px;
       text-align: center;
       align-self: center;
@@ -4815,6 +4989,12 @@
 
     .mt-sm {
       margin-top: 12px
+    }
+
+    @media (max-width: 420px) {
+      .roster-import-row {
+        grid-template-columns: 1fr;
+      }
     }
 
     .mt-md {

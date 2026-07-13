@@ -9261,12 +9261,29 @@ class PlannerApp {
   }
 
   closeGradeVaultDialog() {
+    const continuation = this.pendingGradeVaultContinuation;
+    if (continuation?.type === "grade-roster-courses" || continuation?.type === "grade-roster-import") {
+      const detail = continuation.detail && typeof continuation.detail === "object" ? continuation.detail : {};
+      const result = {
+        requestId: String(detail.requestId || ""),
+        returnTab: String(detail.returnTab || ""),
+        restoreTabAfterUnlock: detail.restoreTabAfterUnlock === true,
+        ok: false,
+        unlockCancelled: true
+      };
+      if (continuation.type === "grade-roster-courses") {
+        this.dispatchGradeRosterCoursesResult(result);
+      } else {
+        this.dispatchGradeRosterImportResult(result);
+      }
+    }
     this.gradeVaultSession.lastPromptMode = this.pendingGradeVaultDialogMode || this.gradeVaultSession.lastPromptMode || "";
     this.pendingGradeVaultDialogMode = "";
     this.pendingGradeVaultContinuation = null;
     this.pendingGradeVaultEncryptionDisable = false;
     this.clearGradeVaultDialogSecrets();
     this.closeDialog(this.refs.gradeVaultDialog);
+    this.notifyParentGradeVaultOverlay(false);
   }
 
   clearGradeVaultDialogSecrets() {
@@ -9363,6 +9380,15 @@ class PlannerApp {
       this.pendingGradeVaultContinuation = { type };
       return;
     }
+    if (type === "grade-roster-courses" || type === "grade-roster-import") {
+      const detail = action.detail && typeof action.detail === "object" ? action.detail : null;
+      if (!String(detail?.requestId || "")) {
+        this.pendingGradeVaultContinuation = null;
+        return;
+      }
+      this.pendingGradeVaultContinuation = { type, detail };
+      return;
+    }
     const lessonId = Number(action.lessonId || 0);
     if (!lessonId || (type !== "grade-entry" && type !== "seatplan")) {
       this.pendingGradeVaultContinuation = null;
@@ -9391,6 +9417,14 @@ class PlannerApp {
     }
     if (action.type === "grades-entry-save") {
       void this.saveCurrentGradesEntry();
+      return true;
+    }
+    if (action.type === "grade-roster-courses") {
+      void this.handleGradeRosterCoursesRequest(action.detail);
+      return true;
+    }
+    if (action.type === "grade-roster-import") {
+      void this.handleGradeRosterImportRequest(action.detail);
       return true;
     }
     return false;
@@ -9481,6 +9515,7 @@ class PlannerApp {
           lastPromptMode: ""
         });
         this.closeDialog(this.refs.gradeVaultDialog);
+        this.notifyParentGradeVaultOverlay(false);
         this.clearGradeVaultDialogSecrets();
         this.pendingGradeVaultDialogMode = "";
         if (this.pendingGradeVaultContinuation?.type === "grades-entry-save") {
@@ -9554,6 +9589,7 @@ class PlannerApp {
         source: this.gradeVaultSession.source || "local"
       });
       this.closeDialog(this.refs.gradeVaultDialog);
+      this.notifyParentGradeVaultOverlay(false);
       this.clearGradeVaultDialogSecrets();
       this.pendingGradeVaultDialogMode = "";
       if (this.pendingGradeVaultContinuation?.type === "grades-entry-save") {
@@ -10139,9 +10175,6 @@ class PlannerApp {
       return false;
     }
     try {
-      await this.showInfoMessage(
-        "Für Backups braucht die App Zugriff auf einen Ordner.\n\nBitte wähle am besten denselben Ordner wie bei der Datenbankdatei."
-      );
       const directoryHandle = await window.showDirectoryPicker({
         mode: "readwrite",
         startIn: syncFileHandle
@@ -11500,14 +11533,6 @@ class PlannerApp {
     const year = this.activeSchoolYear;
     if (!year) {
       return { min: null, max: null };
-    }
-    const summer = this._summerBreakBounds();
-    if (summer.start && summer.end) {
-      const min = weekStartFor(summer.end);
-      const max = weekStartFor(summer.start);
-      if (min <= max) {
-        return { min, max };
-      }
     }
     return {
       min: weekStartFor(year.startDate),
@@ -16523,7 +16548,15 @@ class PlannerApp {
         const detail = event instanceof CustomEvent ? event.detail : null;
         const action = String(detail?.action || "").trim().toLowerCase();
         if (action === "lock") {
-          void this.lockGradeVaultSession();
+          const showLockNoticeAsOverlay = detail?.overlay === true && this.hasUnsavedGradeVaultRuntimeChanges();
+          if (showLockNoticeAsOverlay) {
+            this.notifyParentGradeVaultOverlay(true);
+          }
+          void this.lockGradeVaultSession().finally(() => {
+            if (showLockNoticeAsOverlay) {
+              this.notifyParentGradeVaultOverlay(false);
+            }
+          });
           return;
         }
         if (action !== "unlock") {
@@ -16533,6 +16566,9 @@ class PlannerApp {
           return;
         }
         this.openGradeVaultDialog("unlock");
+        if (detail?.overlay === true) {
+          this.notifyParentGradeVaultOverlay(true);
+        }
       });
       window.addEventListener("classroom:planning-course-seatplan-save-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
@@ -16545,6 +16581,14 @@ class PlannerApp {
       window.addEventListener("classroom:planning-course-grade-save-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
         void this.handleCourseSeatplanGradeSaveRequest(detail);
+      });
+      window.addEventListener("classroom:planning-grade-roster-courses-request", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleGradeRosterCoursesRequest(detail);
+      });
+      window.addEventListener("classroom:planning-grade-roster-import-request", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleGradeRosterImportRequest(detail);
       });
     }
     this.bindGradeTestScaleTooltipEvents();
@@ -34113,6 +34157,16 @@ class PlannerApp {
     }
   }
 
+  notifyParentGradeVaultOverlay(open) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+      return;
+    }
+    document.body?.classList.toggle("grade-vault-overlay-only", Boolean(open));
+    window.dispatchEvent(new CustomEvent("classroom:planning-grade-vault-overlay", {
+      detail: { open: Boolean(open) }
+    }));
+  }
+
   notifyParentTutorialStartRequest() {
     if (typeof window === "undefined" || !window.parent || window.parent === window) {
       return;
@@ -34132,6 +34186,7 @@ class PlannerApp {
 
   buildCourseSeatplanStudents(courseId) {
     return this.store.listGradeStudents(courseId)
+      .filter((student) => !student?.isPlaceholder)
       .map((student) => ({
         id: String(Number(student.id) || ""),
         first: String(student.firstName || ""),
@@ -34141,6 +34196,151 @@ class PlannerApp {
         foes: []
       }))
       .filter((student) => student.id);
+  }
+
+  dispatchGradeRosterCoursesResult(detail) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("classroom:planning-grade-roster-courses-result", {
+      detail: detail && typeof detail === "object" ? detail : null
+    }));
+  }
+
+  dispatchGradeRosterImportResult(detail) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("classroom:planning-grade-roster-import-result", {
+      detail: detail && typeof detail === "object" ? detail : null
+    }));
+  }
+
+  async handleGradeRosterCoursesRequest(detail = null) {
+    const requestId = String(detail?.requestId || "");
+    const responseContext = {
+      returnTab: String(detail?.returnTab || ""),
+      restoreTabAfterUnlock: detail?.restoreTabAfterUnlock === true
+    };
+    try {
+      if (!this.gradeVaultSession.planningPublicLoaded) {
+        await this.ensurePlanningPublicLoaded();
+      }
+      const year = this.activeSchoolYear;
+      if (!year) {
+        this.dispatchGradeRosterCoursesResult({
+          requestId,
+          ...responseContext,
+          ok: true,
+          hasCourses: false,
+          courses: []
+        });
+        return;
+      }
+      const availableCourses = this.store.listCourses(year.id).filter((item) => this.courseAllowsGrades(item));
+      if (!this.canAccessGradeVault()) {
+        this.dispatchGradeRosterCoursesResult({
+          requestId,
+          ...responseContext,
+          ok: true,
+          locked: true,
+          hasCourses: availableCourses.length > 0,
+          courses: availableCourses.map((course) => ({
+            id: Number(course.id),
+            name: String(course.name || "Kurs"),
+            color: normalizeCourseColor(course.color, Boolean(course.noLesson))
+          }))
+        });
+        return;
+      }
+      const courses = [];
+      for (const course of availableCourses) {
+        if (!await this.ensureGradeCourseLoaded(course.id)) {
+          continue;
+        }
+        const count = this.buildCourseSeatplanStudents(course.id).length;
+        if (count > 0) {
+          courses.push({
+            id: Number(course.id),
+            name: String(course.name || "Kurs"),
+            color: normalizeCourseColor(course.color, Boolean(course.noLesson)),
+            count
+          });
+        }
+      }
+      this.dispatchGradeRosterCoursesResult({
+        requestId,
+        ...responseContext,
+        ok: true,
+        hasCourses: availableCourses.length > 0,
+        courses
+      });
+    } catch (error) {
+      this.dispatchGradeRosterCoursesResult({
+        requestId,
+        ...responseContext,
+        ok: false,
+        message: error instanceof Error && error.message ? error.message : "Notenkurse konnten nicht geladen werden."
+      });
+    }
+  }
+
+  async handleGradeRosterImportRequest(detail = null) {
+    const requestId = String(detail?.requestId || "");
+    const courseId = Number(detail?.courseId || 0);
+    const responseContext = {
+      returnTab: String(detail?.returnTab || ""),
+      restoreTabAfterUnlock: detail?.restoreTabAfterUnlock === true
+    };
+    if (!this.canAccessGradeVault()) {
+      this.queueGradeVaultContinuation({
+        type: "grade-roster-import",
+        detail: { ...detail, restoreTabAfterUnlock: true }
+      });
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      this.notifyParentGradeVaultOverlay(true);
+      return;
+    }
+    try {
+      if (!this.gradeVaultSession.planningPublicLoaded) {
+        await this.ensurePlanningPublicLoaded();
+      }
+      const year = this.activeSchoolYear;
+      const course = year
+        ? this.store.listCourses(year.id).find((item) => Number(item.id) === courseId && this.courseAllowsGrades(item))
+        : null;
+      if (!course) {
+        this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Notenkurs nicht gefunden." });
+        return;
+      }
+      if (!await this.ensureGradeCourseLoaded(course.id)) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
+      const students = this.buildCourseSeatplanStudents(course.id);
+      if (students.length === 0) {
+        this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Dieser Kurs enthält keine Lernenden." });
+        return;
+      }
+      this.dispatchGradeRosterImportResult({
+        requestId,
+        ...responseContext,
+        ok: true,
+        courseId: Number(course.id),
+        courseName: String(course.name || "Kurs"),
+        students,
+        performanceFlairCount: 4,
+        csvName: `${String(course.name || "Kurs")} (Notenmodul)`,
+        headers: ["Nachname", "Vorname"],
+        delim: ","
+      });
+    } catch (error) {
+      this.dispatchGradeRosterImportResult({
+        requestId,
+        ...responseContext,
+        ok: false,
+        message: error instanceof Error && error.message ? error.message : "Namensliste konnte nicht importiert werden."
+      });
+    }
   }
 
   getCourseForSeatplan(courseId) {

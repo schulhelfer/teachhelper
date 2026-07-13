@@ -4,7 +4,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <meta name="theme-color" content="#0f172a">
   <title>Planung</title>
   <link rel="manifest" href="../../../manifest.webmanifest">
@@ -30,8 +31,7 @@
       </div>
       <div class="sidebar-controls">
         <button id="view-grades-entry-btn" class="nav-btn grades-entry-nav-btn active" type="button"
-          data-tutorial-anchor="grades-entry-nav"
-          aria-label="Eingabe" title="Eingabe">📝</button>
+          data-tutorial-anchor="grades-entry-nav" aria-label="Eingabe" title="Eingabe">📝</button>
         <button id="view-week-btn" class="nav-btn week-view-nav-btn" type="button" aria-label="Wochenansicht"
           title="Wochenansicht" hidden>🗓️</button>
       </div>
@@ -283,16 +283,20 @@
                 <button id="settings-reset-all" type="button" class="ghost dialog-icon-button"
                   aria-label="Standardwerte" title="Standardwerte">
                   <svg class="settings-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                    <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
-                    <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round"></path>
+                    <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round"></path>
                   </svg>
                 </button>
                 <button id="settings-save-all" type="button" class="dialog-icon-button" aria-label="Speichern"
                   title="Speichern">💾</button>
-                <button id="settings-cancel-all" type="button" class="ghost dialog-icon-button"
-                  aria-label="Abbrechen" title="Abbrechen">❌</button>
+                <button id="settings-cancel-all" type="button" class="ghost dialog-icon-button" aria-label="Abbrechen"
+                  title="Abbrechen">❌</button>
               </div>
             </div>
             <div class="settings-tab-content">
@@ -403,7 +407,8 @@
 
               <div id="settings-tab-display" class="settings-panel" role="tabpanel" hidden>
                 <form class="settings-form-table" autocomplete="off">
-                  <div id="settings-display-hours-row" class="settings-form-row" data-tutorial-anchor="planning-display-hours">
+                  <div id="settings-display-hours-row" class="settings-form-row"
+                    data-tutorial-anchor="planning-display-hours">
                     <label class="settings-form-label" for="hours-per-day">Maximale Unterrichtsstunden pro
                       Tag</label>
                     <input id="hours-per-day" class="settings-number-input" type="number" min="1" max="12" value="8">
@@ -484,30 +489,32 @@
                 </section>
                 <section class="expectation-horizon-settings-section">
                   <h3 class="settings-panel-title">Standardvorlage</h3>
-                  <p class="muted">Die Standardvorlagen werden verwendet, wenn im Generieren-Dialog keine Vorlage nur für
+                  <p class="muted">Die Standardvorlagen werden verwendet, wenn im Generieren-Dialog keine Vorlage nur
+                    für
                     diese Arbeit hochgeladen wird.</p>
                   <input id="expectation-horizon-template-settings-file" class="visually-hidden" type="file"
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
-                  <input id="expectation-horizon-course-level-template-settings-file" class="visually-hidden" type="file"
-                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <input id="expectation-horizon-course-level-template-settings-file" class="visually-hidden"
+                    type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                   <input id="competence-expectations-template-settings-file" class="visually-hidden" type="file"
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                   <div class="expectation-horizon-template-settings-group">
                     <h4>Allgemeine Standardvorlage</h4>
                     <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
                     <div class="button-row">
-                      <button type="button" id="expectation-horizon-template-settings-download"
-                        class="ghost">Allgemeine Vorlage herunterladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-download" class="ghost">Allgemeine
+                        Vorlage herunterladen</button>
                       <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte
                         allgemeine Vorlage hochladen</button>
-                      <button type="button" id="expectation-horizon-template-settings-reset" class="ghost reset-action">Auf eingebaute
+                      <button type="button" id="expectation-horizon-template-settings-reset"
+                        class="ghost reset-action">Auf eingebaute
                         Vorlage zurücksetzen</button>
                     </div>
                   </div>
                   <div class="expectation-horizon-template-settings-group">
                     <h4>Standardvorlage mit Anforderungsniveau (GK/LK)</h4>
-                    <p id="expectation-horizon-course-level-template-settings-status" class="muted"
-                      aria-live="polite"></p>
+                    <p id="expectation-horizon-course-level-template-settings-status" class="muted" aria-live="polite">
+                    </p>
                     <div class="button-row">
                       <button type="button" id="expectation-horizon-course-level-template-settings-download"
                         class="ghost">GK/LK-Vorlage herunterladen</button>
@@ -546,13 +553,15 @@
                   <p id="sync-file-name" class="muted"></p>
                   <p id="sync-file-status" class="muted"></p>
                 </div>
-                <div id="db-auto-actions" class="button-row settings-db-auto-actions" data-tutorial-anchor="database-actions">
+                <div id="db-auto-actions" class="button-row settings-db-auto-actions"
+                  data-tutorial-anchor="database-actions">
                   <button id="db-select-existing-btn" type="button">Bestehende Datenbank auswählen</button>
                   <button id="db-create-new-btn" type="button">Neue Datenbankdatei leer anlegen</button>
                   <button id="db-create-from-current-btn" type="button">Neue Datenbankdatei mit aktuellen Daten
                     anlegen</button>
                 </div>
-                <div id="db-manual-actions" class="button-row settings-db-manual-actions" data-tutorial-anchor="database-actions" hidden>
+                <div id="db-manual-actions" class="button-row settings-db-manual-actions"
+                  data-tutorial-anchor="database-actions" hidden>
                   <button id="db-manual-load-btn" type="button">Datenbank laden</button>
                   <button id="db-manual-save-btn" type="button">Datenbank speichern/neu anlegen</button>
                   <input id="db-manual-file" type="file" accept="application/json,.json" hidden>
@@ -581,6 +590,8 @@
                 </div>
                 <div id="db-backup-section" class="settings-extra-section" data-tutorial-anchor="grades-backup">
                   <h3 class="settings-panel-title">Backups</h3>
+                  <p class="muted">Um Backups zu erstellen, benötigt die App Zugriff auf einen Ordner. Es bietet sich
+                    an, dazu den Ordner zu wählen, in dem auch die Datenbankdatei gespeichert ist.</p>
                   <p id="backup-dir-name" class="muted"></p>
                   <div class="button-row settings-backup-folder-actions">
                     <button id="backup-dir-change-btn" type="button">Backup-Ordner auswählen</button>
@@ -717,7 +728,7 @@
         <p><strong>2. Importiere die Namensliste</strong></p>
         <input id="course-dialog-students-file" type="file" accept=".csv,text/csv" hidden>
         <div id="course-dialog-students-dropzone" class="course-dialog-dropzone" tabindex="0">
-          Namensliste auswählen<br>oder hier ablegen
+          Auswählen<br>oder<br>Ablegen
         </div>
         <p><strong>3. Verwalte die Teilnehmenden</strong></p>
         <p id="course-dialog-import-preview-text" class="muted" hidden></p>
@@ -1028,8 +1039,8 @@
               <br>
               <span class="schoolmanager-transfer-bookmarklet-link-row">
                 <a id="schoolmanager-transfer-bookmarklet-link" class="schoolmanager-transfer-bookmarklet-link"
-                  href="#schoolmanager-transfer-bookmarklet-link"
-                  draggable="true" aria-label="Schulmanager-Import in die Lesezeichenleiste ziehen"><span
+                  href="#schoolmanager-transfer-bookmarklet-link" draggable="true"
+                  aria-label="Schulmanager-Import in die Lesezeichenleiste ziehen"><span
                     class="visually-hidden">Schulmanager-Import</span></a>
               </span>
             </li>
@@ -1103,8 +1114,8 @@
             aria-label="Kachel hinzufügen" title="Kachel hinzufügen">➕</button>
           <button type="submit" id="grade-accommodation-save" class="dialog-icon-button" aria-label="Speichern"
             title="Speichern">💾</button>
-          <button type="button" id="grade-accommodation-cancel" class="ghost dialog-icon-button"
-            aria-label="Abbrechen" title="Abbrechen">❌</button>
+          <button type="button" id="grade-accommodation-cancel" class="ghost dialog-icon-button" aria-label="Abbrechen"
+            title="Abbrechen">❌</button>
         </div>
       </div>
       <input id="grade-accommodation-course-id" type="hidden">
@@ -1119,8 +1130,8 @@
       <div class="dialog-header">
         <h3 id="expectation-horizon-dialog-title" class="dialog-title">Erwartungshorizont erstellen</h3>
         <div class="dialog-actions-top">
-          <button type="button" id="expectation-horizon-save" class="ghost dialog-icon-button"
-            aria-label="Speichern" title="Speichern">💾</button>
+          <button type="button" id="expectation-horizon-save" class="ghost dialog-icon-button" aria-label="Speichern"
+            title="Speichern">💾</button>
           <button type="button" id="expectation-horizon-generate" class="ghost dialog-icon-button"
             aria-label="Generieren" title="Generieren">✨</button>
           <button type="button" id="expectation-horizon-template-download" class="ghost dialog-icon-button"

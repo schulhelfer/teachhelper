@@ -4,7 +4,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <title>TeachHelper</title>
   <meta name="theme-color" content="#0f172a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -48,8 +49,8 @@
             aria-selected="false">Sitzplan</button>
           <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
             aria-selected="false">PDF-Tools</button>
-          <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups"
-            data-more-tools-tab="1" aria-selected="false">Gruppen</button>
+          <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups" data-more-tools-tab="1"
+            aria-selected="false">Gruppen</button>
           <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
             data-more-tools-tab="1" aria-selected="false">Picker</button>
           <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
@@ -119,8 +120,8 @@
     <aside class="side">
       <div id="sidebar-resize-handle" class="sidebar-resize-handle" aria-hidden="true"></div>
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
-      <button id="first-run-tutorial-start" class="sidebar-help-button" type="button"
-        aria-label="Tutorial starten" data-tooltip="Tutorial starten">🛟</button>
+      <button id="first-run-tutorial-start" class="sidebar-help-button" type="button" aria-label="Tutorial starten"
+        data-tooltip="Tutorial starten">🛟</button>
       <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
         <h1 class="sidebar-title">Gruppengenerator</h1>
       </div>
@@ -142,15 +143,26 @@
           </li>
           <li>
             <strong>Importiere die Namensliste</strong>
-            <div id="csv-drop-zone" class="mt-sm file-upload">
-              <input id="csv" type="file" accept=".csv,text/csv" />
-              <label for="csv" class="file-trigger">
-                <span class="file-trigger-copy">Namensliste auswählen<br>oder hier ablegen</span>
-                <span id="csv-status" class="file-status empty-state-box">
-                  <span class="empty-state-title">Noch keine Datei</span>
-                  <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
-                </span>
-              </label>
+            <div class="roster-import-row mt-sm">
+              <div id="csv-drop-zone" class="file-upload">
+                <input id="csv" type="file" accept=".csv,text/csv" />
+                <label for="csv" class="file-trigger">
+                  <span class="file-trigger-copy">Auswählen<br>oder<br>Ablegen</span>
+                  <span id="csv-status" class="file-status empty-state-box">
+                    <span class="empty-state-title">Noch keine Datei</span>
+                    <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="grade-roster-import">
+                <div id="grade-roster-pills" class="grade-roster-pills" aria-label="Kurs aus dem Notenmodul importieren"
+                  hidden></div>
+                <button id="grade-roster-import-trigger" class="file-trigger grade-roster-import-trigger" type="button"
+                  hidden aria-haspopup="menu" aria-expanded="false" aria-controls="grade-roster-import-menu">
+                  Aus Notenmodul<br>importieren ▾
+                </button>
+                <div id="grade-roster-import-menu" class="grade-roster-import-menu" role="menu" hidden></div>
+              </div>
             </div>
           </li>
           <li class="groups-sidebar-group-size">
@@ -279,8 +291,8 @@
               <button class="duration-stepper-button" type="button" data-duration-step="1"
                 aria-label="Zeitrahmen erhöhen" title="Zeitrahmen erhöhen">+</button>
             </div>
-            <input id="work-order-duration-range" class="timer-duration-range" type="range" min="1" max="180"
-              step="1" value="45" aria-label="Zeitrahmen per Schieberegler">
+            <input id="work-order-duration-range" class="timer-duration-range" type="range" min="1" max="180" step="1"
+              value="45" aria-label="Zeitrahmen per Schieberegler">
           </label>
           <div class="timer-tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="half"
@@ -423,7 +435,8 @@
                 <th class="group-header name-header"></th>
                 <th class="group-header performance-flair-header">Leistungsklasse</th>
                 <th colspan="3" class="group-header">
-                  Schlechte Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
+                  Schlechte Gruppenpartner für <span class="preference-midpoint-label">Schüler in der
+                    Tabellenmitte</span>
                 </th>
               </tr>
             </thead>

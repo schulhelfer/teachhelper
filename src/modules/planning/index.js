@@ -3,7 +3,10 @@ import {
   PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
   PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT,
   PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   PLANNING_GRADE_VAULT_REQUEST_EVENT,
+  PLANNING_GRADE_VAULT_OVERLAY_EVENT,
   PLANNING_GRADE_VAULT_STATE_EVENT,
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
   PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
@@ -17,6 +20,7 @@ import {
   PLANNING_VIEW_REQUEST_EVENT,
 } from '../../shell/tabs.js';
 import {
+  PLANNING_MODULE_ALLOW,
   createModuleFrame,
   isTrustedModuleMessage,
   postToModule,
@@ -32,6 +36,7 @@ export function mountPlanning({ host }) {
     className: 'planning-frame',
     loading: 'lazy',
     src: PLANNING_URL,
+    allow: PLANNING_MODULE_ALLOW,
   });
 
   const pending = [];
@@ -128,6 +133,24 @@ export function mountPlanning({ host }) {
     }
     if (data.type === PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT) {
       window.dispatchEvent(new CustomEvent(PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_GRADE_VAULT_OVERLAY_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_OVERLAY_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT) {
+      window.dispatchEvent(new CustomEvent(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
     }

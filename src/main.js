@@ -13,10 +13,17 @@ import {
   postToModule,
 } from './shared/module-frame-bridge.js';
 import { createSharedRosterStore } from './shared/roster-store.js';
-import { STUDENTS_SYNC_SOURCE_GROUPS } from './shared/student-sync-bus.js';
+import {
+  STUDENTS_SYNC_SOURCE_GRADES,
+  STUDENTS_SYNC_SOURCE_GROUPS,
+} from './shared/student-sync-bus.js';
 import { createSharedTimerStore } from './shared/timer-store.js';
 import {
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
+  PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  PLANNING_GRADE_VAULT_OVERLAY_EVENT,
+  PLANNING_READY_EVENT,
   PLANNING_TUTORIAL_START_REQUEST_EVENT,
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
@@ -2342,6 +2349,12 @@ import {
   SharedRosterStore.subscribe((detail) => {
     if (classroomTutorialDemoActive) return;
     if (!detail || typeof detail !== 'object') return;
+    gradeRosterSelectedCourseId = detail.source === STUDENTS_SYNC_SOURCE_GRADES
+      ? Number(detail.gradeCourseId || 0)
+      : 0;
+    gradeRosterSelectedCourseName = detail.source === STUDENTS_SYNC_SOURCE_GRADES
+      ? String(detail.gradeCourseName || '').trim()
+      : '';
     const importedAt = Number(detail.importedAt);
     if (Number.isFinite(importedAt) && importedAt <= lastRosterImportedAt) return;
     lastRosterImportedAt = Number.isFinite(importedAt) ? importedAt : Date.now();
@@ -2379,6 +2392,7 @@ import {
     state.scrollHintDismissed = false;
     state._lastImport = true;
     updateScrollHint();
+    renderGradeRosterPills();
   });
   shellController = createShellController({
     els,
@@ -5659,6 +5673,290 @@ import {
     copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
     els.csvStatus.append(title, copy);
   }
+  window.addEventListener(PLANNING_GRADE_VAULT_OVERLAY_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    appEl.classList.toggle('grade-vault-overlay', Boolean(detail?.open));
+  });
+
+  let gradeRosterRequestSequence = 0;
+  let pendingGradeRosterCoursesRequestId = '';
+  let pendingGradeRosterImportRequestId = '';
+  let gradeRosterCourses = [];
+  let gradeRosterCoursesState = 'loading';
+  let gradeRosterHasAvailableCourses = true;
+  let gradeRosterSelectedCourseId = 0;
+  let gradeRosterSelectedCourseName = '';
+  const createGradeRosterRequestId = () => `shell-grade-roster-${Date.now()}-${++gradeRosterRequestSequence}`;
+  const closeGradeRosterImportMenu = () => {
+    if (!els.gradeRosterImportMenu) return;
+    els.gradeRosterImportMenu.hidden = true;
+    els.gradeRosterImportMenu.replaceChildren();
+    els.gradeRosterImportTrigger?.setAttribute('aria-expanded', 'false');
+  };
+  const showGradeRosterImportMessage = (message) => {
+    if (!els.gradeRosterImportMenu) return;
+    els.gradeRosterImportMenu.replaceChildren();
+    const row = document.createElement('div');
+    row.className = 'grade-roster-import-message';
+    row.textContent = message;
+    els.gradeRosterImportMenu.append(row);
+  };
+  const getGradeRosterPillTextColor = (color) => {
+    const hex = String(color || '').trim().replace('#', '');
+    if (!/^[\da-f]{6}$/i.test(hex)) return '#ffffff';
+    const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+    const brightness = (red * 299) + (green * 587) + (blue * 114);
+    return brightness >= 150000 ? '#0f172a' : '#ffffff';
+  };
+  const requestGradeRosterCourses = ({ interactive = false } = {}) => {
+    const requestId = createGradeRosterRequestId();
+    pendingGradeRosterCoursesRequestId = requestId;
+    const keepUnavailableSurfaceHidden = gradeRosterCoursesState === 'ready'
+      && !gradeRosterHasAvailableCourses;
+    if (!keepUnavailableSurfaceHidden) {
+      gradeRosterCoursesState = 'loading';
+      renderGradeRosterPills();
+    }
+    bridgeController?.requestGradeRosterCourses?.({
+      requestId,
+      returnTab: getActiveTab(),
+      interactive,
+    });
+  };
+  const importGradeRosterCourse = (courseId) => {
+    const requestId = createGradeRosterRequestId();
+    pendingGradeRosterImportRequestId = requestId;
+    bridgeController?.requestGradeRosterImport?.({
+      requestId,
+      courseId: Number(courseId || 0),
+      returnTab: getActiveTab(),
+    });
+  };
+  const syncGradeRosterImportHeight = () => {
+    els.gradeRosterPills?.parentElement?.style.removeProperty('height');
+  };
+  const setGradeRosterImportSurfaceVisible = (visible) => {
+    const pills = els.gradeRosterPills;
+    const surface = pills?.parentElement;
+    const row = pills?.closest('.roster-import-row');
+    if (surface) surface.hidden = !visible;
+    row?.classList.toggle('grade-roster-import-unavailable', !visible);
+  };
+  const setGradeRosterImportColumns = (coursePercent = 50) => {
+    const row = els.gradeRosterPills?.closest('.roster-import-row');
+    if (!row) return;
+    const normalizedCoursePercent = Math.max(50, Math.min(200 / 3, Number(coursePercent) || 50));
+    row.style.setProperty('--grade-roster-csv-column', `${100 - normalizedCoursePercent}fr`);
+    row.style.setProperty('--grade-roster-course-column', `${normalizedCoursePercent}fr`);
+  };
+  const getGradeRosterPillRowCount = () => {
+    const pills = els.gradeRosterPills;
+    if (!pills?.children.length) return 0;
+    return new Set([...pills.children].map((pill) => Math.round(pill.offsetTop))).size;
+  };
+  const fitGradeRosterImportColumns = () => {
+    const pills = els.gradeRosterPills;
+    if (!pills || pills.clientWidth < 1 || pills.clientHeight < 1) return;
+    if (window.matchMedia?.('(max-width: 420px)').matches) {
+      setGradeRosterImportColumns(50);
+      return;
+    }
+    const candidates = [...Array.from({ length: 17 }, (_, index) => 50 + index), 200 / 3];
+    let bestPercent = 50;
+    setGradeRosterImportColumns(bestPercent);
+    let bestRows = getGradeRosterPillRowCount();
+    for (const coursePercent of candidates.slice(1)) {
+      setGradeRosterImportColumns(coursePercent);
+      const rows = getGradeRosterPillRowCount();
+      if (rows < bestRows) {
+        bestRows = rows;
+        bestPercent = coursePercent;
+      }
+    }
+    setGradeRosterImportColumns(bestPercent);
+  };
+  const renderGradeRosterPills = () => {
+    const pills = els.gradeRosterPills;
+    const trigger = els.gradeRosterImportTrigger;
+    if (!pills || !trigger) return;
+    const hasNoAvailableCourses = gradeRosterCoursesState === 'ready'
+      && !gradeRosterHasAvailableCourses;
+    setGradeRosterImportSurfaceVisible(!hasNoAvailableCourses);
+    if (hasNoAvailableCourses) {
+      pills.replaceChildren();
+      pills.hidden = true;
+      trigger.hidden = true;
+      closeGradeRosterImportMenu();
+      setGradeRosterImportColumns(50);
+      return;
+    }
+    syncGradeRosterImportHeight();
+    pills.replaceChildren();
+    trigger.hidden = true;
+    if (gradeRosterCoursesState === 'loading') {
+      setGradeRosterImportColumns(50);
+      const loading = document.createElement('span');
+      loading.className = 'grade-roster-pills-loading';
+      loading.textContent = 'Notenkurse werden geladen …';
+      pills.append(loading);
+      pills.hidden = false;
+      return;
+    }
+    if (gradeRosterCoursesState !== 'ready' || !gradeRosterCourses.length) {
+      setGradeRosterImportColumns(50);
+      pills.hidden = true;
+      trigger.hidden = false;
+      return;
+    }
+    gradeRosterCourses.forEach((course) => {
+      const button = document.createElement('button');
+      const color = String(course?.color || '#475569');
+      button.type = 'button';
+      button.className = 'grade-roster-pill';
+      button.textContent = String(course?.name || 'Kurs');
+      button.style.background = color;
+      button.style.color = getGradeRosterPillTextColor(color);
+      const courseName = String(course?.name || '').trim();
+      const isSelected = Number(course?.id || 0) === gradeRosterSelectedCourseId
+        || (gradeRosterSelectedCourseName && courseName === gradeRosterSelectedCourseName)
+        || state.csvName === `${courseName} (Notenmodul)`;
+      button.classList.toggle('is-imported', isSelected);
+      if (isSelected) button.setAttribute('aria-current', 'true');
+      button.addEventListener('click', () => importGradeRosterCourse(course?.id));
+      pills.append(button);
+    });
+    pills.hidden = false;
+    if (pills.clientWidth < 1 || pills.clientHeight < 1) {
+      return;
+    }
+    fitGradeRosterImportColumns();
+    if (pills.scrollHeight > pills.clientHeight + 1 || pills.scrollWidth > pills.clientWidth + 1) {
+      pills.hidden = true;
+      trigger.hidden = false;
+    }
+  };
+  const renderGradeRosterImportCourses = (courses, requestId) => {
+    if (!els.gradeRosterImportMenu) return;
+    els.gradeRosterImportMenu.replaceChildren();
+    if (!Array.isArray(courses) || courses.length === 0) {
+      showGradeRosterImportMessage('Keine Notenkurse mit Lernenden vorhanden.');
+      return;
+    }
+    courses.forEach((course) => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.setAttribute('role', 'menuitem');
+      button.textContent = String(course?.name || 'Kurs');
+      button.addEventListener('click', () => {
+        showGradeRosterImportMessage('Namensliste wird importiert …');
+        importGradeRosterCourse(course?.id);
+      });
+      els.gradeRosterImportMenu.append(button);
+    });
+  };
+
+  els.gradeRosterImportTrigger?.addEventListener('click', () => {
+    if (classroomTutorialDemoActive) {
+      showMessage('Demo: Importe aus dem Notenmodul verändern die Beispieldaten nicht.', 'info');
+      return;
+    }
+    if (!els.gradeRosterImportMenu) return;
+    if (!els.gradeRosterImportMenu.hidden) {
+      closeGradeRosterImportMenu();
+      return;
+    }
+    els.gradeRosterImportMenu.hidden = false;
+    els.gradeRosterImportTrigger.setAttribute('aria-expanded', 'true');
+    if (gradeRosterCoursesState === 'ready' && gradeRosterCourses.length) {
+      renderGradeRosterImportCourses(gradeRosterCourses, 'cached');
+      return;
+    }
+    showGradeRosterImportMessage('Notenkurse werden geladen …');
+    requestGradeRosterCourses({ interactive: true });
+  });
+
+  document.addEventListener(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    if (!detail || String(detail.requestId || '') !== pendingGradeRosterCoursesRequestId) return;
+    pendingGradeRosterCoursesRequestId = '';
+    if (detail.locked) {
+      gradeRosterCourses = Array.isArray(detail.courses) ? detail.courses : [];
+      gradeRosterHasAvailableCourses = detail.hasCourses !== false;
+      gradeRosterCoursesState = 'ready';
+      closeGradeRosterImportMenu();
+      renderGradeRosterPills();
+      return;
+    }
+    if (!detail.ok) {
+      if (detail.unlockRequired || detail.unlockCancelled) {
+        closeGradeRosterImportMenu();
+        return;
+      }
+      showGradeRosterImportMessage(detail.message || 'Notenkurse konnten nicht geladen werden.');
+      gradeRosterCourses = [];
+      gradeRosterCoursesState = 'error';
+      renderGradeRosterPills();
+      return;
+    }
+    gradeRosterCourses = Array.isArray(detail.courses) ? detail.courses : [];
+    gradeRosterHasAvailableCourses = detail.hasCourses !== false;
+    gradeRosterCoursesState = 'ready';
+    closeGradeRosterImportMenu();
+    renderGradeRosterPills();
+  });
+
+  document.addEventListener(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    if (!detail || String(detail.requestId || '') !== pendingGradeRosterImportRequestId) return;
+    pendingGradeRosterImportRequestId = '';
+    if (!detail.ok) {
+      if (detail.unlockRequired || detail.unlockCancelled) {
+        closeGradeRosterImportMenu();
+        return;
+      }
+      const message = detail.message || 'Namensliste konnte nicht importiert werden.';
+      if (els.gradeRosterImportMenu?.hidden) {
+        showMessage(message, 'warn');
+      } else {
+        showGradeRosterImportMessage(message);
+      }
+      requestGradeRosterCourses();
+      return;
+    }
+    gradeRosterSelectedCourseId = Number(detail.courseId || 0);
+    gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
+    renderGradeRosterPills();
+    closeGradeRosterImportMenu();
+    showMessage(`${Number(detail.students?.length || 0)} Lernende aus „${detail.courseName}“ importiert.`, 'success', { presentation: 'toast' });
+    requestGradeRosterCourses();
+  });
+
+  const restoreGradeRosterReturnTab = (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    if (!detail?.restoreTabAfterUnlock) return;
+    const returnTab = String(detail.returnTab || '');
+    if (![TAB_GROUPS, TAB_RANDOM_PICKER, TAB_SEATPLAN].includes(returnTab)) return;
+    setActiveTab(returnTab);
+  };
+  document.addEventListener(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, restoreGradeRosterReturnTab);
+  document.addEventListener(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, restoreGradeRosterReturnTab);
+
+  if (typeof ResizeObserver === 'function' && els.csvDropZone) {
+    const observer = new ResizeObserver(() => renderGradeRosterPills());
+    observer.observe(els.csvDropZone);
+  }
+  window.addEventListener(PLANNING_READY_EVENT, () => {
+    // The public planning store is complete only after this signal. Refreshing here
+    // replaces an early empty response before Groups/Picker is opened.
+    requestGradeRosterCourses();
+  });
+  requestGradeRosterCourses();
+
+  document.addEventListener('click', (event) => {
+    if (event.target instanceof Element && !event.target.closest('.grade-roster-import')) {
+      closeGradeRosterImportMenu();
+    }
+  });
 
   async function importCsvFromFile(file) {
     if (classroomTutorialDemoActive) {
@@ -7381,6 +7679,19 @@ import {
       activeTab: getActiveTab(),
       isIOSDevice,
     });
+    if (getActiveTab() === TAB_GROUPS || getActiveTab() === TAB_RANDOM_PICKER) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (getActiveTab() === TAB_GROUPS || getActiveTab() === TAB_RANDOM_PICKER) {
+            // A first request can complete while the planning store is still hydrating
+            // and legitimately contain no courses. Always refresh when this import
+            // surface becomes visible so Pills, rather than the fallback, are current.
+            requestGradeRosterCourses();
+            renderGradeRosterPills();
+          }
+        });
+      });
+    }
     if (getActiveTab() === TAB_GROUPS) {
       requestGroupGridLayoutRefresh({ resetViewport: true });
     }

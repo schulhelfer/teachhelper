@@ -1,5 +1,6 @@
 import {
   STUDENTS_UPDATED_EVENT,
+  STUDENTS_SYNC_SOURCE_GRADES,
   STUDENTS_SYNC_SOURCE_SEATPLAN,
   normalizeStudentsSyncDetail,
 } from '../shared/student-sync-bus.js';
@@ -8,12 +9,18 @@ import {
   PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
   PLANNING_COURSE_GRADE_SAVE_REQUEST_EVENT,
   PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_COURSES_REQUEST_EVENT,
+  PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+  PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
   PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
   SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_MERGER,
@@ -48,8 +55,9 @@ export function createPlanningSeatplanBridge({
 
   const seatplanBus = documentBus;
 
-  const buildStudentsSyncDetail = (source, importedAt = Date.now()) => normalizeStudentsSyncDetail({
+  const buildStudentsSyncDetail = (source, importedAt = Date.now(), overrides = null) => normalizeStudentsSyncDetail({
     ...rosterStore?.getState?.(),
+    ...(overrides && typeof overrides === 'object' ? overrides : {}),
     source,
     importedAt,
   });
@@ -197,7 +205,7 @@ export function createPlanningSeatplanBridge({
     duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
-    seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed() });
+    seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed(), activeTab });
     scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
   }
 
@@ -248,6 +256,16 @@ export function createPlanningSeatplanBridge({
     seatplanController?.sendCourseContext?.(detail);
   }
 
+  function requestGradeRosterCourses(detail = null) {
+    ensureTabInitialized(TAB_PLANNING);
+    planningController?.post?.(PLANNING_GRADE_ROSTER_COURSES_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
+  }
+
+  function requestGradeRosterImport(detail = null) {
+    ensureTabInitialized(TAB_PLANNING);
+    planningController?.post?.(PLANNING_GRADE_ROSTER_IMPORT_REQUEST_EVENT, detail && typeof detail === 'object' ? detail : null);
+  }
+
   seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
@@ -260,6 +278,14 @@ export function createPlanningSeatplanBridge({
     if (!detail || typeof detail !== 'object') return;
     ensureTabInitialized(TAB_PLANNING);
     planningController?.post?.(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT, (event) => {
+    requestGradeRosterCourses(event.detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT, (event) => {
+    requestGradeRosterImport(event.detail);
   });
 
   seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT, (event) => {
@@ -285,6 +311,22 @@ export function createPlanningSeatplanBridge({
     seatplanController?.sendCourseSaveResult?.(detail);
   });
 
+  saveResultTarget.addEventListener(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendGradeRosterCoursesResult?.(detail);
+    documentBus.dispatchEvent(new CustomEvent(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, { detail }));
+  });
+
+  saveResultTarget.addEventListener(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendGradeRosterImportResult?.(detail);
+    documentBus.dispatchEvent(new CustomEvent(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, { detail }));
+    if (!detail.ok || !Array.isArray(detail.students)) return;
+    rosterStore?.dispatch?.(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GRADES, Date.now(), detail));
+  });
+
   saveResultTarget.addEventListener(PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
@@ -304,5 +346,7 @@ export function createPlanningSeatplanBridge({
     emitStudentsUpdated,
     refreshModuleLayouts,
     sendCourseSeatplanContext,
+    requestGradeRosterCourses,
+    requestGradeRosterImport,
   };
 }

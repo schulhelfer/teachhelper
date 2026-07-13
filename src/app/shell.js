@@ -294,7 +294,11 @@ export function createShellController({
   }
 
   function isGradeVaultStatusTab(tab) {
-    return tab === TAB_PLANNING || tab === TAB_GRADES || tab === TAB_SEATPLAN;
+    return tab === TAB_PLANNING
+      || tab === TAB_GRADES
+      || tab === TAB_SEATPLAN
+      || tab === TAB_GROUPS
+      || tab === TAB_RANDOM_PICKER;
   }
 
   function getUnsavedAreaLabel() {
@@ -1264,6 +1268,7 @@ export function createShellController({
       window.dispatchEvent(new CustomEvent(PLANNING_GRADE_VAULT_REQUEST_EVENT, {
         detail: {
           action: locked ? 'unlock' : 'lock',
+          overlay: state.activeTab === TAB_GROUPS || state.activeTab === TAB_RANDOM_PICKER,
         },
       }));
     });

@@ -119,6 +119,24 @@
           background: transparent;
         }
 
+        /* Beim Import aus Gruppen, Picker oder Sitzplan liegt nur der
+           Entsperrdialog über der dortigen Ansicht. */
+        body.grade-vault-overlay-only #app {
+          visibility: hidden;
+          pointer-events: none;
+        }
+
+        body.grade-vault-overlay-only > dialog:not(#grade-vault-dialog):not(#message-dialog) {
+          visibility: hidden;
+          pointer-events: none;
+        }
+
+        body.grade-vault-overlay-only #grade-vault-dialog::backdrop {
+          background: rgba(5, 10, 18, 0.38);
+          backdrop-filter: blur(6px);
+          -webkit-backdrop-filter: blur(6px);
+        }
+
         body {
           margin: 0;
           font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif;

@@ -8,10 +8,14 @@ import {
   PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
   PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
   PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   SEATPLAN_COURSE_CONTEXT_EVENT,
   SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
   SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
 } from '../../shell/tabs.js';
 
 const SEATPLAN_URL = new URL('./app.html', import.meta.url);
@@ -41,6 +45,8 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
   let pendingCourseSaveResult = null;
   let pendingCourseGradeConfigResult = null;
   let pendingCourseGradeSaveResult = null;
+  let pendingGradeRosterCoursesResult = null;
+  let pendingGradeRosterImportResult = null;
   let disposed = false;
 
   const send = (detail) => {
@@ -103,6 +109,24 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     postToModule(frame, { type: PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, detail });
   };
 
+  const sendGradeRosterCoursesResult = (detail) => {
+    if (disposed || !detail || typeof detail !== 'object') return;
+    if (!ready || !frame.contentWindow) {
+      pendingGradeRosterCoursesResult = detail;
+      return;
+    }
+    postToModule(frame, { type: PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, detail });
+  };
+
+  const sendGradeRosterImportResult = (detail) => {
+    if (disposed || !detail || typeof detail !== 'object') return;
+    if (!ready || !frame.contentWindow) {
+      pendingGradeRosterImportResult = detail;
+      return;
+    }
+    postToModule(frame, { type: PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail });
+  };
+
   const onWindowMessage = (event) => {
     if (disposed) return;
     if (!isTrustedModuleMessage(event, frame)) return;
@@ -122,6 +146,18 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     }
     if (data.type === SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT) {
       bus.dispatchEvent(new CustomEvent(SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT) {
+      bus.dispatchEvent(new CustomEvent(SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT) {
+      bus.dispatchEvent(new CustomEvent(SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
       return;
@@ -159,6 +195,14 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       sendCourseGradeSaveResult(pendingCourseGradeSaveResult);
       pendingCourseGradeSaveResult = null;
     }
+    if (pendingGradeRosterCoursesResult) {
+      sendGradeRosterCoursesResult(pendingGradeRosterCoursesResult);
+      pendingGradeRosterCoursesResult = null;
+    }
+    if (pendingGradeRosterImportResult) {
+      sendGradeRosterImportResult(pendingGradeRosterImportResult);
+      pendingGradeRosterImportResult = null;
+    }
   };
 
   const dispose = () => {
@@ -171,6 +215,8 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     pendingCourseSaveResult = null;
     pendingCourseGradeConfigResult = null;
     pendingCourseGradeSaveResult = null;
+    pendingGradeRosterCoursesResult = null;
+    pendingGradeRosterImportResult = null;
     frame.removeEventListener('load', onFrameLoad);
     window.removeEventListener('message', onWindowMessage);
     if (frame.isConnected) {
@@ -199,6 +245,8 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     sendCourseSaveResult,
     sendCourseGradeConfigResult,
     sendCourseGradeSaveResult,
+    sendGradeRosterCoursesResult,
+    sendGradeRosterImportResult,
     isReady: () => ready,
     dispose
   };

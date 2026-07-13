@@ -15,6 +15,9 @@
           appEl.hidden = false;
           const els = {
             file: document.getElementById('csv'),
+            gradeRosterImportTrigger: document.getElementById('grade-roster-import-trigger'),
+            gradeRosterImportMenu: document.getElementById('grade-roster-import-menu'),
+            gradeRosterPills: document.getElementById('grade-roster-pills'),
             appVersion: document.getElementById('app-version'),
             random: document.getElementById('random'),
             suggest: document.getElementById('suggest'),
@@ -316,6 +319,7 @@
             error: { icon: '✖️', className: 'message-error' },
             success: { icon: '✔️', className: 'message-success' },
           };
+          const TOAST_DURATION_MS = 3200;
           const queuedMessages = [];
 
           function ensureMessageHost() {
@@ -326,6 +330,18 @@
               host.className = 'message-stack';
               host.setAttribute('aria-live', 'polite');
               host.setAttribute('aria-atomic', 'true');
+              document.body.appendChild(host);
+            }
+            return host;
+          }
+          function ensureToastHost() {
+            let host = document.getElementById('toast-stack');
+            if (!host) {
+              host = document.createElement('div');
+              host.id = 'toast-stack';
+              host.className = 'toast-stack';
+              host.setAttribute('aria-live', 'polite');
+              host.setAttribute('aria-atomic', 'false');
               document.body.appendChild(host);
             }
             return host;
@@ -344,8 +360,41 @@
               host.classList.remove('active');
             }
           }
+          function removeToast(node) {
+            if (!node?.isConnected) return;
+            node.classList.remove('show');
+            setTimeout(() => node.remove(), 220);
+          }
+          function showToast(text, variant = 'success', options = {}) {
+            const host = ensureToastHost();
+            const config = MESSAGE_VARIANTS[variant] || MESSAGE_VARIANTS.info;
+            const node = document.createElement('div');
+            node.className = `toast-message ${config.className || ''}`.trim();
+            node.setAttribute('role', variant === 'error' || variant === 'warn' ? 'alert' : 'status');
+            const icon = document.createElement('div');
+            icon.className = 'toast-icon';
+            icon.textContent = config.icon || 'ℹ️';
+            const body = document.createElement('div');
+            body.className = 'toast-body';
+            body.textContent = text;
+            const closeBtn = document.createElement('button');
+            closeBtn.type = 'button';
+            closeBtn.className = 'toast-close';
+            closeBtn.setAttribute('aria-label', 'Hinweis schließen');
+            closeBtn.textContent = '×';
+            closeBtn.addEventListener('click', () => removeToast(node));
+            node.append(icon, body, closeBtn);
+            host.appendChild(node);
+            requestAnimationFrame(() => node.classList.add('show'));
+            const durationMs = Number(options.durationMs);
+            setTimeout(() => removeToast(node), Number.isFinite(durationMs) && durationMs > 0 ? durationMs : TOAST_DURATION_MS);
+            return node;
+          }
           function showMessage(text, variant = 'info', options = {}) {
             if (!text) return;
+            if (options.presentation === 'toast') {
+              return showToast(text, variant, options);
+            }
             const host = ensureMessageHost();
             const shouldEnqueue = !!options.enqueue;
             const messageOptions = { ...options };
@@ -661,6 +710,10 @@
           const PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:planning-course-seatplan-save-result';
           const PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:planning-course-grade-config-result';
           const PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:planning-course-grade-save-result';
+          const PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:planning-grade-roster-courses-result';
+          const PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:planning-grade-roster-import-result';
+          const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
+          const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
           const COURSE_GRADE_DISPLAY_POINTS = 'points15';
           const COURSE_GRADE_DISPLAY_SCHOOL = 'school';
           const COURSE_GRADE_SCHOOL_LABELS = ['6', '5-', '5', '5+', '4-', '4', '4+', '3-', '3', '3+', '2-', '2', '2+', '1-', '1', '1+'];
@@ -673,8 +726,17 @@
             PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
             PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
             PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
+            PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
+            PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
           ]);
           let lastStudentsSyncTimestamp = 0;
+          let pendingGradeRosterCoursesRequestId = '';
+          let pendingGradeRosterImportRequestId = '';
+          let gradeRosterCourses = [];
+          let gradeRosterCoursesState = 'loading';
+          let gradeRosterHasAvailableCourses = true;
+          let gradeRosterSelectedCourseId = 0;
+          let gradeRosterSelectedCourseName = '';
           const PREFERENCE_SLOT_COUNT = 3;
           const ALONE_NEIGHBOR_PENALTY = 0.6;
           const BUDDY_ADJACENT_BONUS_ONE_WAY = 0.4;
@@ -783,7 +845,264 @@
               els.file.disabled = active;
             }
             els.csvDropZone?.classList.toggle('course-seatplan-locked', active);
+            if (els.gradeRosterImportTrigger) {
+              els.gradeRosterImportTrigger.disabled = active;
+              els.gradeRosterImportTrigger.hidden = active;
+              els.gradeRosterImportTrigger.title = active
+                ? 'Dieser Sitzplan ist bereits mit einem Notenkurs verbunden.'
+                : 'Namensliste aus einem Notenkurs importieren';
+            }
+            if (active) {
+              closeGradeRosterImportMenu();
+              if (els.gradeRosterPills) {
+                els.gradeRosterPills.hidden = true;
+              }
+            } else {
+              renderGradeRosterPills();
+            }
             updateCsvStatusDisplay();
+          }
+
+          function closeGradeRosterImportMenu() {
+            if (!els.gradeRosterImportMenu) return;
+            els.gradeRosterImportMenu.hidden = true;
+            els.gradeRosterImportMenu.replaceChildren();
+            els.gradeRosterImportTrigger?.setAttribute('aria-expanded', 'false');
+          }
+
+          function showGradeRosterImportMessage(message) {
+            if (!els.gradeRosterImportMenu) return;
+            els.gradeRosterImportMenu.replaceChildren();
+            const row = document.createElement('div');
+            row.className = 'grade-roster-import-message';
+            row.textContent = String(message || 'Notenkurse konnten nicht geladen werden.');
+            els.gradeRosterImportMenu.append(row);
+          }
+
+          function getGradeRosterPillTextColor(color) {
+            const hex = String(color || '').trim().replace('#', '');
+            if (!/^[\da-f]{6}$/i.test(hex)) return '#ffffff';
+            const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
+            const brightness = (red * 299) + (green * 587) + (blue * 114);
+            return brightness >= 150000 ? '#0f172a' : '#ffffff';
+          }
+
+          function requestGradeRosterCourses({ interactive = false } = {}) {
+            if (isCourseSeatplanMode() || !window.parent || window.parent === window) return;
+            const requestId = `seatplan-grade-roster-${createRequestId()}`;
+            pendingGradeRosterCoursesRequestId = requestId;
+            const keepUnavailableSurfaceHidden = gradeRosterCoursesState === 'ready'
+              && !gradeRosterHasAvailableCourses;
+            if (!keepUnavailableSurfaceHidden) {
+              gradeRosterCoursesState = 'loading';
+              renderGradeRosterPills();
+            }
+            window.parent.postMessage({
+              type: SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
+              detail: { requestId, returnTab: 'seatplan', interactive }
+            }, TRUSTED_PARENT_ORIGIN);
+          }
+
+          function importGradeRosterCourse(courseId) {
+            if (isCourseSeatplanMode() || !window.parent || window.parent === window) return;
+            const requestId = `seatplan-grade-roster-${createRequestId()}`;
+            pendingGradeRosterImportRequestId = requestId;
+            window.parent.postMessage({
+              type: SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+              detail: { requestId, courseId: Number(courseId || 0), returnTab: 'seatplan' }
+            }, TRUSTED_PARENT_ORIGIN);
+          }
+
+          function syncGradeRosterImportHeight() {
+            els.gradeRosterPills?.parentElement?.style.removeProperty('height');
+          }
+
+          function setGradeRosterImportSurfaceVisible(visible) {
+            const pills = els.gradeRosterPills;
+            const surface = pills?.parentElement;
+            const row = pills?.closest('.roster-import-row');
+            if (surface) surface.hidden = !visible;
+            row?.classList.toggle('grade-roster-import-unavailable', !visible);
+          }
+
+          function setGradeRosterImportColumns(coursePercent = 50) {
+            const row = els.gradeRosterPills?.closest('.roster-import-row');
+            if (!row) return;
+            const normalizedCoursePercent = Math.max(50, Math.min(200 / 3, Number(coursePercent) || 50));
+            row.style.setProperty('--grade-roster-csv-column', `${100 - normalizedCoursePercent}fr`);
+            row.style.setProperty('--grade-roster-course-column', `${normalizedCoursePercent}fr`);
+          }
+
+          function getGradeRosterPillRowCount() {
+            const pills = els.gradeRosterPills;
+            if (!pills?.children.length) return 0;
+            return new Set([...pills.children].map((pill) => Math.round(pill.offsetTop))).size;
+          }
+
+          function fitGradeRosterImportColumns() {
+            const pills = els.gradeRosterPills;
+            if (!pills || pills.clientWidth < 1 || pills.clientHeight < 1) return;
+            if (window.matchMedia?.('(max-width: 420px)').matches) {
+              setGradeRosterImportColumns(50);
+              return;
+            }
+            const candidates = [...Array.from({ length: 17 }, (_, index) => 50 + index), 200 / 3];
+            let bestPercent = 50;
+            setGradeRosterImportColumns(bestPercent);
+            let bestRows = getGradeRosterPillRowCount();
+            for (const coursePercent of candidates.slice(1)) {
+              setGradeRosterImportColumns(coursePercent);
+              const rows = getGradeRosterPillRowCount();
+              if (rows < bestRows) {
+                bestRows = rows;
+                bestPercent = coursePercent;
+              }
+            }
+            setGradeRosterImportColumns(bestPercent);
+          }
+
+          function renderGradeRosterPills() {
+            const pills = els.gradeRosterPills;
+            const trigger = els.gradeRosterImportTrigger;
+            if (!pills || !trigger || isCourseSeatplanMode()) return;
+            const hasNoAvailableCourses = gradeRosterCoursesState === 'ready'
+              && !gradeRosterHasAvailableCourses;
+            setGradeRosterImportSurfaceVisible(!hasNoAvailableCourses);
+            if (hasNoAvailableCourses) {
+              pills.replaceChildren();
+              pills.hidden = true;
+              trigger.hidden = true;
+              closeGradeRosterImportMenu();
+              setGradeRosterImportColumns(50);
+              return;
+            }
+            syncGradeRosterImportHeight();
+            pills.replaceChildren();
+            trigger.hidden = true;
+            if (gradeRosterCoursesState === 'loading') {
+              setGradeRosterImportColumns(50);
+              const loading = document.createElement('span');
+              loading.className = 'grade-roster-pills-loading';
+              loading.textContent = 'Notenkurse werden geladen …';
+              pills.append(loading);
+              pills.hidden = false;
+              return;
+            }
+            if (gradeRosterCoursesState !== 'ready' || !gradeRosterCourses.length) {
+              setGradeRosterImportColumns(50);
+              pills.hidden = true;
+              trigger.hidden = false;
+              return;
+            }
+            gradeRosterCourses.forEach((course) => {
+              const button = document.createElement('button');
+              const color = String(course?.color || '#475569');
+              button.type = 'button';
+              button.className = 'grade-roster-pill';
+              button.textContent = String(course?.name || 'Kurs');
+              button.style.background = color;
+              button.style.color = getGradeRosterPillTextColor(color);
+              const courseName = String(course?.name || '').trim();
+              const isSelected = Number(course?.id || 0) === gradeRosterSelectedCourseId
+                || (gradeRosterSelectedCourseName && courseName === gradeRosterSelectedCourseName)
+                || state.csvName === `${courseName} (Notenmodul)`;
+              button.classList.toggle('is-imported', isSelected);
+              if (isSelected) button.setAttribute('aria-current', 'true');
+              button.addEventListener('click', () => importGradeRosterCourse(course?.id));
+              pills.append(button);
+            });
+            pills.hidden = false;
+            if (pills.clientWidth < 1 || pills.clientHeight < 1) {
+              return;
+            }
+            fitGradeRosterImportColumns();
+            if (pills.scrollHeight > pills.clientHeight + 1 || pills.scrollWidth > pills.clientWidth + 1) {
+              pills.hidden = true;
+              trigger.hidden = false;
+            }
+          }
+
+          function renderGradeRosterImportCourses(detail) {
+            if (!els.gradeRosterImportMenu) return;
+            if (String(detail?.requestId || '') !== pendingGradeRosterCoursesRequestId) return;
+            pendingGradeRosterCoursesRequestId = '';
+            if (detail?.locked) {
+              gradeRosterCourses = Array.isArray(detail.courses) ? detail.courses : [];
+              gradeRosterHasAvailableCourses = detail.hasCourses !== false;
+              gradeRosterCoursesState = 'ready';
+              closeGradeRosterImportMenu();
+              renderGradeRosterPills();
+              return;
+            }
+            if (!detail?.ok) {
+              if (detail?.unlockRequired || detail?.unlockCancelled) {
+                closeGradeRosterImportMenu();
+                return;
+              }
+              showGradeRosterImportMessage(detail?.message || 'Notenkurse konnten nicht geladen werden.');
+              gradeRosterCourses = [];
+              gradeRosterCoursesState = 'error';
+              renderGradeRosterPills();
+              return;
+            }
+            gradeRosterCourses = Array.isArray(detail.courses) ? detail.courses : [];
+            gradeRosterHasAvailableCourses = detail.hasCourses !== false;
+            gradeRosterCoursesState = 'ready';
+            closeGradeRosterImportMenu();
+            renderGradeRosterPills();
+          }
+
+          function renderGradeRosterDropdownCourses(courses) {
+            if (!els.gradeRosterImportMenu) return;
+            if (!Array.isArray(courses) || courses.length === 0) {
+              showGradeRosterImportMessage('Keine Notenkurse mit Lernenden vorhanden.');
+              return;
+            }
+            els.gradeRosterImportMenu.replaceChildren();
+            courses.forEach((course) => {
+              const button = document.createElement('button');
+              button.type = 'button';
+              button.setAttribute('role', 'menuitem');
+              button.textContent = String(course?.name || 'Kurs');
+              button.addEventListener('click', () => {
+                showGradeRosterImportMessage('Namensliste wird importiert …');
+                importGradeRosterCourse(course?.id);
+              });
+              els.gradeRosterImportMenu.append(button);
+            });
+          }
+
+          function handleGradeRosterImportResult(detail) {
+            const isOwnRequest = String(detail?.requestId || '') === pendingGradeRosterImportRequestId;
+            if (!isOwnRequest) {
+              if (detail?.ok) {
+                gradeRosterSelectedCourseId = Number(detail.courseId || 0);
+                gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
+                renderGradeRosterPills();
+              }
+              return;
+            }
+            pendingGradeRosterImportRequestId = '';
+            if (!detail?.ok) {
+              if (detail?.unlockRequired || detail?.unlockCancelled) {
+                closeGradeRosterImportMenu();
+                return;
+              }
+              const message = detail?.message || 'Namensliste konnte nicht importiert werden.';
+              if (els.gradeRosterImportMenu?.hidden) {
+                showMessage(message, 'warn');
+              } else {
+                showGradeRosterImportMessage(message);
+              }
+              requestGradeRosterCourses();
+              return;
+            }
+            gradeRosterSelectedCourseId = Number(detail.courseId || 0);
+            gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
+            renderGradeRosterPills();
+            closeGradeRosterImportMenu();
+            showMessage(`${Number(detail.students?.length || 0)} Lernende aus „${detail.courseName}“ importiert.`, 'success', { presentation: 'toast' });
+            requestGradeRosterCourses();
           }
 
           function reconcileCourseSeatAssignments() {
@@ -1727,6 +2046,13 @@
               state.csvName = label || state.csvName;
               renderCsvStatus(label || 'Namensliste synchronisiert');
             }
+            gradeRosterSelectedCourseId = detail.source === 'grades'
+              ? Number(detail.gradeCourseId || 0)
+              : 0;
+            gradeRosterSelectedCourseName = detail.source === 'grades'
+              ? String(detail.gradeCourseName || '').trim()
+              : '';
+            renderGradeRosterPills();
             refreshUnseated();
             renderSeats();
           }
@@ -1740,6 +2066,12 @@
             if (data.type === SEATPLAN_SHELL_LAYOUT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
+              if (detail?.activeTab === 'seatplan') {
+                requestGradeRosterCourses();
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => renderGradeRosterPills());
+                });
+              }
               return;
             }
             if (data.type === SEATPLAN_COURSE_CONTEXT_EVENT) {
@@ -1760,6 +2092,16 @@
             if (data.type === PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseGradeSaveResult(detail);
+              return;
+            }
+            if (data.type === PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT) {
+              const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+              renderGradeRosterImportCourses(detail);
+              return;
+            }
+            if (data.type === PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT) {
+              const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+              handleGradeRosterImportResult(detail);
               return;
             }
             if (data.type !== STUDENTS_UPDATED_EVENT) return;
@@ -8029,6 +8371,37 @@
               applyPerspectiveView();
             });
           }
+
+          if (els.gradeRosterImportTrigger) {
+            els.gradeRosterImportTrigger.addEventListener('click', () => {
+              if (isCourseSeatplanMode() || els.gradeRosterImportTrigger.disabled) return;
+              if (!els.gradeRosterImportMenu) return;
+              if (!els.gradeRosterImportMenu.hidden) {
+                closeGradeRosterImportMenu();
+                return;
+              }
+              els.gradeRosterImportMenu.hidden = false;
+              els.gradeRosterImportTrigger.setAttribute('aria-expanded', 'true');
+              if (gradeRosterCoursesState === 'ready' && gradeRosterCourses.length) {
+                renderGradeRosterDropdownCourses(gradeRosterCourses);
+                return;
+              }
+              showGradeRosterImportMessage('Notenkurse werden geladen …');
+              requestGradeRosterCourses({ interactive: true });
+            });
+          }
+
+          if (typeof ResizeObserver === 'function' && els.csvDropZone) {
+            const observer = new ResizeObserver(() => renderGradeRosterPills());
+            observer.observe(els.csvDropZone);
+          }
+          requestGradeRosterCourses();
+
+          document.addEventListener('click', (event) => {
+            if (event.target instanceof Element && !event.target.closest('.grade-roster-import')) {
+              closeGradeRosterImportMenu();
+            }
+          });
 
           if (els.adjustGrid) {
             els.adjustGrid.addEventListener('click', () => showGridDialog());

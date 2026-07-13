@@ -4,6 +4,7 @@
   const UNSAVED_STATE_EVENT = 'classroom:planning-unsaved-state';
   const GRADE_VAULT_STATE_EVENT = 'classroom:planning-grade-vault-state';
   const GRADE_VAULT_REQUEST_EVENT = 'classroom:planning-grade-vault-request';
+  const GRADE_VAULT_OVERLAY_EVENT = 'classroom:planning-grade-vault-overlay';
   const COURSE_SEATPLAN_OPEN_EVENT = 'classroom:planning-course-seatplan-open';
   const COURSE_SEATPLAN_SAVE_REQUEST_EVENT = 'classroom:planning-course-seatplan-save-request';
   const COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:planning-course-seatplan-save-result';
@@ -11,6 +12,10 @@
   const COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:planning-course-grade-config-result';
   const COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:planning-course-grade-save-request';
   const COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:planning-course-grade-save-result';
+  const GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:planning-grade-roster-courses-request';
+  const GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:planning-grade-roster-courses-result';
+  const GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:planning-grade-roster-import-request';
+  const GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:planning-grade-roster-import-result';
   const READY_EVENT = 'classroom:planning-ready';
   const SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
   const VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
@@ -25,6 +30,8 @@
     COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
     COURSE_GRADE_CONFIG_REQUEST_EVENT,
     COURSE_GRADE_SAVE_REQUEST_EVENT,
+    GRADE_ROSTER_COURSES_REQUEST_EVENT,
+    GRADE_ROSTER_IMPORT_REQUEST_EVENT,
   ]);
 
   function withPlanningTutorialApi(callback, attempt = 0) {
@@ -97,6 +104,18 @@
       window.dispatchEvent(new CustomEvent(COURSE_GRADE_SAVE_REQUEST_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
+      return;
+    }
+    if (data.type === GRADE_ROSTER_COURSES_REQUEST_EVENT) {
+      window.dispatchEvent(new CustomEvent(GRADE_ROSTER_COURSES_REQUEST_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
+    if (data.type === GRADE_ROSTER_IMPORT_REQUEST_EVENT) {
+      window.dispatchEvent(new CustomEvent(GRADE_ROSTER_IMPORT_REQUEST_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
     }
   });
 
@@ -146,5 +165,23 @@
     if (!window.parent || window.parent === window) return;
     const detail = event instanceof CustomEvent ? event.detail : null;
     window.parent.postMessage({ type: COURSE_GRADE_SAVE_RESULT_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
+  });
+
+  window.addEventListener(GRADE_VAULT_OVERLAY_EVENT, (event) => {
+    if (!window.parent || window.parent === window) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    window.parent.postMessage({ type: GRADE_VAULT_OVERLAY_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
+  });
+
+  window.addEventListener(GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
+    if (!window.parent || window.parent === window) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    window.parent.postMessage({ type: GRADE_ROSTER_COURSES_RESULT_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
+  });
+
+  window.addEventListener(GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
+    if (!window.parent || window.parent === window) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    window.parent.postMessage({ type: GRADE_ROSTER_IMPORT_RESULT_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
   });
 })();

@@ -1,5 +1,6 @@
 export const STUDENTS_UPDATED_EVENT = 'classroom:students-updated';
 export const STUDENTS_SYNC_SOURCE_GROUPS = 'groups';
+export const STUDENTS_SYNC_SOURCE_GRADES = 'grades';
 export const STUDENTS_SYNC_SOURCE_SEATPLAN = 'seatplan';
 
 const DEFAULT_PERFORMANCE_FLAIR_COUNT = 4;
@@ -53,6 +54,12 @@ export function normalizeStudentsSyncDetail(detail = null, previous = null) {
     ) || DEFAULT_PERFORMANCE_FLAIR_COUNT)
   );
   const importedAtRaw = Number(detail?.importedAt ?? fallback.importedAt ?? Date.now());
+  const gradeCourseId = source === STUDENTS_SYNC_SOURCE_GRADES
+    ? Number(detail?.gradeCourseId ?? detail?.courseId ?? fallback.gradeCourseId ?? 0)
+    : 0;
+  const gradeCourseName = source === STUDENTS_SYNC_SOURCE_GRADES
+    ? String(detail?.gradeCourseName ?? detail?.courseName ?? fallback.gradeCourseName ?? '').trim()
+    : '';
   return {
     source,
     students: cloneStudentsPayload(detail?.students ?? fallback.students),
@@ -66,6 +73,8 @@ export function normalizeStudentsSyncDetail(detail = null, previous = null) {
     delim: typeof detail?.delim === 'string' && detail.delim
       ? detail.delim
       : (typeof fallback.delim === 'string' && fallback.delim ? fallback.delim : ','),
+    gradeCourseId: Number.isFinite(gradeCourseId) && gradeCourseId > 0 ? gradeCourseId : 0,
+    gradeCourseName,
     importedAt: Number.isFinite(importedAtRaw) ? importedAtRaw : Date.now(),
   };
 }

@@ -1,4 +1,5 @@
 export const DEFAULT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'";
+export const PLANNING_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read; clipboard-write";
 export const CAMERA_MODULE_ALLOW = "camera; clipboard-read; clipboard-write; microphone 'none'";
 // Keep these profiles without allow-same-origin; same-origin + scripts would not provide a strong sandbox boundary.
 export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
