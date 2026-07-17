@@ -8569,6 +8569,43 @@ class PlannerApp {
     }
   }
 
+  captureGradeCourseRuntimeContext() {
+    const loadedCourseId = Number(this.gradeVaultSession.loadedGradeCourseId || 0) || null;
+    if (loadedCourseId) {
+      this.cacheLoadedGradeCourseState();
+    }
+    return {
+      loadedCourseId,
+      gradeVaultState: this.getCurrentGradeVaultSnapshot()
+    };
+  }
+
+  restoreGradeCourseRuntimeContext(context = null) {
+    const loadedCourseId = Number(context?.loadedCourseId || 0) || null;
+    this.cacheLoadedGradeCourseState();
+    const gradeVaultState = loadedCourseId
+      ? (this.gradeVaultSession.gradeCourseCache[loadedCourseId] || context?.gradeVaultState)
+      : context?.gradeVaultState;
+    this.store.replaceGradeVaultState(gradeVaultState || createInitialGradeVaultState());
+    this.gradeVaultSession.loadedGradeCourseId = loadedCourseId;
+  }
+
+  async withTemporaryGradeCourse(courseId, operation) {
+    const courseKey = Number(courseId || 0);
+    const context = this.captureGradeCourseRuntimeContext();
+    const shouldRestore = Number(context.loadedCourseId || 0) !== courseKey;
+    try {
+      if (!await this.ensureGradeCourseLoaded(courseKey)) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
+      return await operation();
+    } finally {
+      if (shouldRestore) {
+        this.restoreGradeCourseRuntimeContext(context);
+      }
+    }
+  }
+
   async ensurePlanningPublicLoaded() {
     if (this.gradeVaultSession.planningPublicLoaded) {
       return true;
@@ -22496,8 +22533,11 @@ class PlannerApp {
     }
     for (const course of courses) {
       this.setArchiveDialogStatus(`Notenkurs wird geladen: ${course.name || "Kurs"} ...`);
-      await this.ensureGradeCourseLoaded(course.id);
-      sections.push(...this.buildArchiveGradeCourseSections(course, options));
+      const courseSections = await this.withTemporaryGradeCourse(
+        course.id,
+        () => this.buildArchiveGradeCourseSections(course, options)
+      );
+      sections.push(...courseSections);
     }
     return sections;
   }
@@ -34269,17 +34309,17 @@ class PlannerApp {
       }
       const courses = [];
       for (const course of availableCourses) {
-        if (!await this.ensureGradeCourseLoaded(course.id)) {
-          continue;
-        }
-        const count = this.buildCourseSeatplanStudents(course.id).length;
-        if (count > 0) {
-          courses.push({
+        const courseSummary = await this.withTemporaryGradeCourse(course.id, () => {
+          const count = this.buildCourseSeatplanStudents(course.id).length;
+          return count > 0 ? {
             id: Number(course.id),
             name: String(course.name || "Kurs"),
             color: normalizeCourseColor(course.color, Boolean(course.noLesson)),
             count
-          });
+          } : null;
+        });
+        if (courseSummary) {
+          courses.push(courseSummary);
         }
       }
       this.dispatchGradeRosterCoursesResult({
@@ -34327,11 +34367,11 @@ class PlannerApp {
         this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Notenkurs nicht gefunden." });
         return;
       }
-      if (!await this.ensureGradeCourseLoaded(course.id)) {
-        throw new Error("Notenkurs konnte nicht geladen werden.");
-      }
-      const students = this.buildCourseSeatplanStudents(course.id);
-      if (students.length === 0) {
+      const importPayload = await this.withTemporaryGradeCourse(course.id, () => ({
+        students: this.buildCourseSeatplanStudents(course.id),
+        plan: this.store.getGradeSeatPlan(course.id)
+      }));
+      if (importPayload.students.length === 0) {
         this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Dieser Kurs enthält keine Lernenden." });
         return;
       }
@@ -34341,8 +34381,8 @@ class PlannerApp {
         ok: true,
         courseId: Number(course.id),
         courseName: String(course.name || "Kurs"),
-        students,
-        plan: this.store.getGradeSeatPlan(course.id),
+        students: importPayload.students,
+        plan: importPayload.plan,
         performanceFlairCount: 4,
         csvName: `${String(course.name || "Kurs")} (Notenmodul)`,
         headers: ["Nachname", "Vorname"],
