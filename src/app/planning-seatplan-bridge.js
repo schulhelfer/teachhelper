@@ -1,0 +1,525 @@
+import {
+  STUDENTS_UPDATED_EVENT,
+  STUDENTS_SYNC_SOURCE_GRADES,
+  STUDENTS_SYNC_SOURCE_SEATPLAN,
+  normalizeStudentsSyncDetail,
+} from '../shared/student-sync-bus.js';
+import {
+  GRADES_COURSE_GRADE_CONFIG_REQUEST_EVENT,
+  GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT,
+  GRADES_COURSE_GRADE_SAVE_REQUEST_EVENT,
+  GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
+  GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT,
+  GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+  GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  GRADES_GRADE_VAULT_REQUEST_EVENT,
+  GRADES_MANUAL_SAVE_REQUEST_EVENT,
+  GRADES_READY_EVENT,
+  PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
+  PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+  PLANNING_VIEW_REQUEST_EVENT,
+  SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
+  SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
+  SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+  TAB_DUPLICATE_CHECK,
+  TAB_GRADES,
+  TAB_MERGER,
+  TAB_PLANNING,
+  TAB_QR,
+  TAB_SEATPLAN,
+} from '../shell/tabs.js';
+import { mountDuplicateCheck } from '../modules/duplicate-check/index.js';
+import { mountGrades } from '../modules/grades/index.js';
+import { mountMerger } from '../modules/merger/index.js';
+import { mountPlanning } from '../modules/planning/index.js';
+import { mountQr } from '../modules/qr/index.js';
+import { mountSeatplan } from '../modules/seatplan/index.js';
+import {
+  WORKSPACE_ERROR_NOT_READY,
+  WORKSPACE_OWNER_READY_EVENT,
+} from '../shared/school-data/messages.js';
+
+export function createPlanningSeatplanBridge({
+  els,
+  getChromeCollapsed,
+  rosterStore,
+  documentBus = document,
+} = {}) {
+  let mergerController = null;
+  let duplicateCheckController = null;
+  let qrController = null;
+  let gradesController = null;
+  let planningController = null;
+  let planningInitPending = false;
+  let pendingPlanningViewRequest = null;
+  let pendingGradesNavigation = null;
+  let seatplanController = null;
+  const tabInitState = {
+    [TAB_MERGER]: false,
+    [TAB_DUPLICATE_CHECK]: false,
+    [TAB_QR]: false,
+    [TAB_PLANNING]: false,
+    [TAB_GRADES]: false,
+    [TAB_SEATPLAN]: false,
+  };
+
+  const seatplanBus = documentBus;
+
+  const getWorkspaceController = () => (
+    typeof window !== 'undefined' ? window.__teachhelperWorkspaceController || null : null
+  );
+
+  const refreshWorkspaceLifecycle = () => {
+    const controller = getWorkspaceController();
+    const owner = controller?.getOwner?.() || null;
+    if (owner) controller?.refreshOwnerStatus?.(owner);
+    return controller?.getLifecycle?.() || {
+      owner: Boolean(owner),
+      hydrated: Boolean(controller?.isHydrated?.()),
+      ready: Boolean(controller?.isReady?.()),
+      revision: Number(controller?.getRevision?.()) || 0,
+    };
+  };
+
+  const isWorkspaceReady = () => Boolean(refreshWorkspaceLifecycle().ready);
+
+  const withWorkspaceRevision = (detail = null) => {
+    const source = detail && typeof detail === 'object' ? detail : {};
+    const lifecycle = refreshWorkspaceLifecycle();
+    return {
+      ...source,
+      baseRevision: source.baseRevision ?? lifecycle.revision,
+      workspaceRevision: lifecycle.revision,
+    };
+  };
+
+  const dispatchBlockedResult = (type, detail = null) => {
+    const source = detail && typeof detail === 'object' ? detail : {};
+    const lifecycle = refreshWorkspaceLifecycle();
+    const result = {
+      requestId: String(source.requestId || ''),
+      courseId: Number(source.courseId || 0) || null,
+      returnTab: String(source.returnTab || ''),
+      ok: false,
+      code: WORKSPACE_ERROR_NOT_READY,
+      message: 'Der gemeinsame Datenstand wird noch geladen. Bitte danach erneut versuchen.',
+      revision: lifecycle.revision,
+      hydrated: lifecycle.hydrated,
+    };
+    const target = typeof window !== 'undefined' && typeof window.dispatchEvent === 'function'
+      ? window
+      : documentBus;
+    target?.dispatchEvent?.(new CustomEvent(type, { detail: result }));
+    return false;
+  };
+
+  const buildStudentsSyncDetail = (source, importedAt = Date.now(), overrides = null) => normalizeStudentsSyncDetail({
+    ...rosterStore?.getState?.(),
+    ...(overrides && typeof overrides === 'object' ? overrides : {}),
+    source,
+    importedAt,
+  });
+
+  const dispatchStudentsUpdateToSeatplan = (detail) => {
+    seatplanController?.send(detail);
+  };
+
+  const initPlanningTab = (root = els.planningHost) => {
+    const host = root;
+    if (!host) return false;
+    if (host.dataset.initialized === '1') return true;
+    if (!isWorkspaceReady()) {
+      planningInitPending = true;
+      return false;
+    }
+    planningController = mountPlanning({ host });
+    planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
+    planningInitPending = false;
+    if (planningController && pendingPlanningViewRequest) {
+      planningController.post?.(
+        PLANNING_VIEW_REQUEST_EVENT,
+        withWorkspaceRevision(pendingPlanningViewRequest),
+      );
+      pendingPlanningViewRequest = null;
+    }
+    return Boolean(planningController);
+  };
+
+  const initGradesTab = (root = els.gradesHost) => {
+    const host = root;
+    if (!host || host.dataset.initialized === '1') return;
+    gradesController = mountGrades({ host });
+    gradesController?.applyShellLayout({ collapsed: getChromeCollapsed() });
+  };
+
+  const initMergerTab = (root = els.mergerHost) => {
+    const host = root;
+    if (!host || host.dataset.initialized === '1') return;
+    mergerController = mountMerger({ host });
+    mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+  };
+
+  const initDuplicateCheckTab = (root = els.duplicateCheckHost) => {
+    const host = root;
+    if (!host || host.dataset.initialized === '1') return;
+    duplicateCheckController = mountDuplicateCheck({ host });
+    duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+  };
+
+  const initQrTab = (root = els.qrHost) => {
+    const host = root;
+    if (!host || host.dataset.initialized === '1') return;
+    qrController = mountQr({ host });
+    qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+  };
+
+  const initSeatplanTabNative = (
+    roots = {
+      sideHost: els.seatplanSideHost,
+      mainHost: els.seatplanMainHost,
+      dialogHost: els.seatplanDialogHost,
+    },
+    bus = documentBus
+  ) => {
+    const sideHost = roots?.sideHost || els.seatplanSideHost;
+    const mainHost = roots?.mainHost || els.seatplanMainHost;
+    const dialogHost = roots?.dialogHost || els.seatplanDialogHost;
+    if (!sideHost || !mainHost || !dialogHost || mainHost.dataset.initialized === '1') return;
+    seatplanController = mountSeatplan({ sideHost, mainHost, dialogHost, bus });
+    seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed() });
+    const rosterState = rosterStore?.getState?.();
+    if (Array.isArray(rosterState?.students) && rosterState.students.length > 0) {
+      dispatchStudentsUpdateToSeatplan(buildStudentsSyncDetail(rosterState.source, Date.now()));
+    }
+  };
+
+  function dispatchPlanningViewRequest(view) {
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
+      return;
+    }
+    const detail = view && typeof view === 'object'
+      ? {
+        ...view,
+        view: view.view === 'settings' ? 'settings' : (view.view === 'course' ? 'course' : 'week'),
+      }
+      : {
+        view: view === 'course' ? 'course' : 'week',
+      };
+    if (!isWorkspaceReady()) {
+      pendingPlanningViewRequest = detail;
+      planningInitPending = true;
+      ensureTabInitialized(TAB_PLANNING);
+      return false;
+    }
+    ensureTabInitialized(TAB_PLANNING);
+    if (!planningController) {
+      pendingPlanningViewRequest = detail;
+      return false;
+    }
+    window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, {
+      detail: withWorkspaceRevision(detail),
+    }));
+    return true;
+  }
+
+  function dispatchGradesNavigation(detail = null) {
+    ensureTabInitialized(TAB_GRADES);
+    const navigation = detail && typeof detail === 'object' ? detail : {};
+    if (!isWorkspaceReady()) {
+      pendingGradesNavigation = navigation;
+      return false;
+    }
+    pendingGradesNavigation = null;
+    gradesController?.navigate?.(withWorkspaceRevision(navigation));
+    return true;
+  }
+
+  function dispatchMergerToolRequest(tool) {
+    const normalizedTool = ['layout', 'merge', 'rotate', 'split'].includes(tool) ? tool : '';
+    if (!normalizedTool) return;
+    ensureTabInitialized(TAB_MERGER);
+    mergerController?.selectTool?.(normalizedTool);
+  }
+
+  function scheduleModuleLayoutRefresh(activeTab, isIOSDevice = false) {
+    if (typeof window === 'undefined') return;
+
+    const trigger = () => {
+      try {
+        window.dispatchEvent(new Event('resize'));
+      } catch {
+        
+      }
+    };
+
+    if (activeTab === TAB_SEATPLAN) {
+      if (isIOSDevice) {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(trigger);
+        } else {
+          setTimeout(trigger, 0);
+        }
+        setTimeout(trigger, 120);
+      } else {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => {
+            trigger();
+            requestAnimationFrame(trigger);
+          });
+        } else {
+          setTimeout(trigger, 0);
+          setTimeout(trigger, 40);
+        }
+        setTimeout(trigger, 140);
+        setTimeout(trigger, 320);
+        setTimeout(trigger, 520);
+      }
+      return;
+    }
+
+    if (activeTab !== TAB_PLANNING && activeTab !== TAB_GRADES) {
+      return;
+    }
+
+    if (isIOSDevice) {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(trigger);
+      } else {
+        setTimeout(trigger, 0);
+      }
+      return;
+    }
+
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        trigger();
+        requestAnimationFrame(trigger);
+      });
+    } else {
+      setTimeout(trigger, 0);
+      setTimeout(trigger, 40);
+    }
+  }
+
+  function refreshModuleLayouts({ activeTab, isIOSDevice = false } = {}) {
+    mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    gradesController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
+    seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed(), activeTab });
+    scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
+  }
+
+  function ensureTabInitialized(tab) {
+    if (tab === TAB_MERGER) {
+      if (tabInitState[TAB_MERGER]) return;
+      initMergerTab(els.mergerHost);
+      tabInitState[TAB_MERGER] = true;
+      return;
+    }
+    if (tab === TAB_DUPLICATE_CHECK) {
+      if (tabInitState[TAB_DUPLICATE_CHECK]) return;
+      initDuplicateCheckTab(els.duplicateCheckHost);
+      tabInitState[TAB_DUPLICATE_CHECK] = true;
+      return;
+    }
+    if (tab === TAB_QR) {
+      if (tabInitState[TAB_QR]) return;
+      initQrTab(els.qrHost);
+      tabInitState[TAB_QR] = true;
+      return;
+    }
+    if (tab === TAB_PLANNING) {
+      if (tabInitState[TAB_PLANNING]) return;
+      if (!tabInitState[TAB_GRADES]) {
+        initGradesTab(els.gradesHost);
+        tabInitState[TAB_GRADES] = true;
+      }
+      if (initPlanningTab(els.planningHost)) {
+        tabInitState[TAB_PLANNING] = true;
+      }
+      return;
+    }
+    if (tab === TAB_GRADES) {
+      if (tabInitState[TAB_GRADES]) return;
+      initGradesTab(els.gradesHost);
+      tabInitState[TAB_GRADES] = true;
+      return;
+    }
+    if (tab === TAB_SEATPLAN) {
+      if (tabInitState[TAB_SEATPLAN]) return;
+      initSeatplanTabNative({
+        sideHost: els.seatplanSideHost,
+        mainHost: els.seatplanMainHost,
+        dialogHost: els.seatplanDialogHost,
+      }, documentBus);
+      tabInitState[TAB_SEATPLAN] = true;
+    }
+  }
+
+  const initializePendingPlanning = () => {
+    if (!planningInitPending || tabInitState[TAB_PLANNING]) return;
+    if (initPlanningTab(els.planningHost)) {
+      tabInitState[TAB_PLANNING] = true;
+      scheduleModuleLayoutRefresh(TAB_PLANNING);
+    }
+  };
+
+  window.addEventListener(GRADES_READY_EVENT, () => {
+    const lifecycle = refreshWorkspaceLifecycle();
+    if (lifecycle.ready && pendingGradesNavigation) {
+      const navigation = pendingGradesNavigation;
+      pendingGradesNavigation = null;
+      gradesController?.navigate?.(withWorkspaceRevision(navigation));
+    }
+    initializePendingPlanning();
+  });
+
+  window.addEventListener(WORKSPACE_OWNER_READY_EVENT, initializePendingPlanning);
+
+  function emitStudentsUpdated(source) {
+    const detail = buildStudentsSyncDetail(source);
+    rosterStore?.dispatch?.(detail);
+  }
+
+  function sendCourseSeatplanContext(detail) {
+    if (!detail || typeof detail !== 'object') return;
+    ensureTabInitialized(TAB_SEATPLAN);
+    seatplanController?.sendCourseContext?.(detail);
+  }
+
+  function requestGradeRosterCourses(detail = null) {
+    if (!isWorkspaceReady()) {
+      return dispatchBlockedResult(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, detail);
+    }
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT, withWorkspaceRevision(detail));
+    return true;
+  }
+
+  function requestGradeRosterImport(detail = null) {
+    if (!isWorkspaceReady()) {
+      return dispatchBlockedResult(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail);
+    }
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT, withWorkspaceRevision(detail));
+    return true;
+  }
+
+  function requestManualSave() {
+    if (!isWorkspaceReady()) return false;
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_MANUAL_SAVE_REQUEST_EVENT, null);
+    return true;
+  }
+
+  function requestGradeVault(detail = null) {
+    if (!isWorkspaceReady()) return false;
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_GRADE_VAULT_REQUEST_EVENT, withWorkspaceRevision(detail));
+    return true;
+  }
+
+  seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    if (detail.source === STUDENTS_SYNC_SOURCE_SEATPLAN) return;
+    dispatchStudentsUpdateToSeatplan(detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_COURSE_SAVE_REQUEST_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    if (!isWorkspaceReady()) {
+      dispatchBlockedResult(PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail);
+      return;
+    }
+    ensureTabInitialized(TAB_PLANNING);
+    planningController?.post?.(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT, (event) => {
+    requestGradeRosterCourses(event.detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT, (event) => {
+    requestGradeRosterImport(event.detail);
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    if (!isWorkspaceReady()) {
+      dispatchBlockedResult(GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, detail);
+      return;
+    }
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_COURSE_GRADE_CONFIG_REQUEST_EVENT, withWorkspaceRevision(detail));
+  });
+
+  seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    if (!isWorkspaceReady()) {
+      dispatchBlockedResult(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, detail);
+      return;
+    }
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_COURSE_GRADE_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
+  });
+
+  const saveResultTarget = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+    ? window
+    : documentBus;
+  saveResultTarget.addEventListener(PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendCourseSaveResult?.(detail);
+  });
+
+  saveResultTarget.addEventListener(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendGradeRosterCoursesResult?.(detail);
+    documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, { detail }));
+  });
+
+  saveResultTarget.addEventListener(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendGradeRosterImportResult?.(detail);
+    documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, { detail }));
+    if (!detail.ok || !Array.isArray(detail.students)) return;
+    rosterStore?.dispatch?.(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GRADES, Date.now(), detail));
+  });
+
+  saveResultTarget.addEventListener(GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendCourseGradeConfigResult?.(detail);
+  });
+
+  saveResultTarget.addEventListener(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    seatplanController?.sendCourseGradeSaveResult?.(detail);
+  });
+
+  return {
+    ensureTabInitialized,
+    dispatchPlanningViewRequest,
+    dispatchGradesNavigation,
+    dispatchMergerToolRequest,
+    emitStudentsUpdated,
+    refreshModuleLayouts,
+    sendCourseSeatplanContext,
+    requestGradeRosterCourses,
+    requestGradeRosterImport,
+    requestManualSave,
+    requestGradeVault,
+  };
+}

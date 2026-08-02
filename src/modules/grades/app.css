@@ -1,0 +1,19 @@
+@import url("../planning/app.css");
+
+.grades-bootstrap {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 2rem;
+  color: #475569;
+  font: 600 0.95rem/1.5 system-ui, sans-serif;
+  text-align: center;
+}
+
+.grades-bootstrap.is-error {
+  color: #b91c1c;
+}
+
+html[data-module-role="grades"] #view-week-btn {
+  display: none !important;
+}

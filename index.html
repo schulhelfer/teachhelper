@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="de">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+  <title>TeachHelper</title>
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="TeachHelper" />
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" sizes="192x192" href="./icon-192.png" />
+  <link rel="icon" href="./icon-192.png" type="image/png" />
+  <link rel="stylesheet" href="./src/app/shell.css" />
+  <link rel="stylesheet" href="./src/shared/app-action-icons.css" />
+  <link rel="stylesheet" href="./src/shared/app-tooltips.css" />
+</head>
+
+<body>
+  <div class="app app-tab-grades" id="app">
+    <header class="app-header">
+      <button id="toggle-chrome" class="ghost header-icon-button" type="button" aria-label="Hauptansicht im Vollbild"
+        title="Hauptansicht im Vollbild" aria-pressed="false">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <path d="M6 2H2V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M2 2L6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+          <path d="M10 14H14V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
+          <path d="M14 14L10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+      </button>
+      <div class="app-header-title"><span class="app-header-title-label">TeachHelper<span id="app-header-version"
+            class="app-header-version"></span></span></div>
+      <div class="app-header-actions">
+        <nav class="tab-nav" aria-label="App-Bereiche">
+          <button id="tab-grades-unlock" class="tab-unlock-button is-reserved" type="button"
+            aria-label="Notenmodul entsperren" title="Notenmodul entsperren" aria-hidden="true" tabindex="-1"
+            disabled>🔒</button>
+          <span class="tab-indicator" aria-hidden="true"></span>
+          <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
+            aria-selected="true">Noten</button>
+          <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"
+            aria-selected="false">Planung</button>
+          <button id="tab-seatplan" class="tab-button" type="button" data-tab-target="seatplan"
+            aria-selected="false">Sitzplan</button>
+          <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
+            aria-selected="false">PDF-Tools</button>
+          <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups" data-more-tools-tab="1"
+            aria-selected="false">Gruppen</button>
+          <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
+            data-more-tools-tab="1" aria-selected="false">Picker</button>
+          <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
+            data-more-tools-tab="1" aria-selected="false">DuplikatCheck</button>
+          <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
+            data-more-tools-tab="1" aria-selected="false">Arbeitsphase</button>
+          <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" data-more-tools-tab="1"
+            aria-selected="false">QR</button>
+          <div id="more-tools" class="more-tools">
+            <button id="more-tools-trigger" class="tab-button more-tools-trigger" type="button" aria-haspopup="menu"
+              aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false">
+              Weitere Tools <span class="more-tools-trigger-caret" aria-hidden="true">▾</span>
+            </button>
+            <div id="more-tools-menu" class="more-tools-menu" role="menu" aria-label="Weitere Tools" hidden>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="groups">
+                Gruppen <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="random-picker">
+                Picker <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="duplicate-check">
+                DuplikatCheck <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="work-phase">
+                Arbeitsphase <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="qr">
+                QR <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+            </div>
+          </div>
+        </nav>
+      </div>
+    </header>
+    <button id="sidebar-manual-save-btn" class="ghost header-icon-button manual-header-save-btn" type="button"
+      aria-label="Datenbank speichern/neu anlegen" title="Datenbank speichern/neu anlegen" hidden>💾</button>
+    <button id="toggle-chrome-overlay" class="ghost header-icon-button chrome-overlay-toggle" type="button"
+      aria-label="Randleiste anzeigen" title="Randleiste anzeigen" aria-pressed="true" hidden>
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+        <path d="M2 6H6V2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M2 2L6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
+        <path d="M14 10H10V14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+          stroke-linejoin="round" />
+        <path d="M14 14L10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+          stroke-linejoin="round" />
+      </svg>
+    </button>
+    <button id="group-suggest-collapsed"
+      class="ghost header-icon-button collapsed-spark-action groups-collapsed-suggest" type="button"
+      aria-label="Gruppenvorschlag starten" title="Gruppenvorschlag starten">✨</button>
+    <button id="random-picker-start-collapsed"
+      class="ghost header-icon-button collapsed-spark-action random-picker-collapsed-start" type="button"
+      data-random-picker-start="1" data-collapsed-icon="1" aria-label="Picker starten" title="Picker starten">✨</button>
+    <button id="work-phase-monitor-start-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-monitor work-phase-collapsed-start"
+      type="button" aria-label="Lautstärkeüberwachung starten" title="Lautstärkeüberwachung starten">🚦</button>
+    <button id="work-phase-monitor-stop-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-monitor work-phase-collapsed-stop is-off"
+      type="button" aria-label="Lautstärkeüberwachung stoppen" title="Lautstärkeüberwachung stoppen">🚦</button>
+    <button id="work-phase-timer-start-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-timer work-phase-collapsed-start"
+      type="button" aria-label="Arbeitszeit starten" title="Arbeitszeit starten">⏰</button>
+    <button id="work-phase-timer-stop-collapsed"
+      class="ghost header-icon-button collapsed-spark-action work-phase-collapsed-action work-phase-collapsed-timer work-phase-collapsed-stop is-off"
+      type="button" aria-label="Arbeitszeit stoppen" title="Arbeitszeit stoppen">⏰</button>
+
+    <aside class="side">
+      <div id="sidebar-resize-handle" class="sidebar-resize-handle" aria-hidden="true"></div>
+      <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
+      <button id="first-run-tutorial-start" class="sidebar-help-button" type="button" aria-label="Tutorial für das Modul Noten"
+        data-tooltip="Tutorial für das Modul Noten">🛟</button>
+      <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
+        <h1 class="sidebar-title">Gruppengenerator</h1>
+      </div>
+      <div class="sidebar-header shell-sidebar-header shell-sidebar-header-random-picker">
+        <h1 class="sidebar-title">Namenspicker</h1>
+      </div>
+      <div class="sidebar-header shell-sidebar-header shell-sidebar-header-work-phase">
+        <h1 class="sidebar-title">Arbeitsphasenorganizer</h1>
+      </div>
+      <div class="steps">
+        <ol class="steps-list">
+          <li>
+            <strong>Lade die Namensliste herunter<br>(oder erstelle sie selbst mit <a href="#" id="template-link">der
+                Vorlage</a>)</strong>
+            <span class="hint">
+              IServ-Randleiste → Alle Module → Gruppenlisten → Lerngruppe eingeben & „Nur Schüler zeigen” aktivieren →
+              Exportieren
+            </span>
+          </li>
+          <li>
+            <strong>Importiere die Namensliste</strong>
+            <div class="roster-import-row mt-sm">
+              <div id="csv-drop-zone" class="file-upload">
+                <input id="csv" type="file" accept=".csv,text/csv" />
+                <label for="csv" class="file-trigger">
+                  <span class="file-trigger-copy">Auswählen<br>oder<br>Ablegen</span>
+                  <span id="csv-status" class="file-status empty-state-box">
+                    <span class="empty-state-title">Noch keine Datei</span>
+                    <span class="empty-state-copy">Importiere eine Namensliste, um loszulegen.</span>
+                  </span>
+                </label>
+              </div>
+              <div class="grade-roster-import">
+                <div id="grade-roster-pills" class="grade-roster-pills" aria-label="Kurs aus dem Notenmodul importieren"
+                  hidden></div>
+                <button id="grade-roster-import-trigger" class="file-trigger grade-roster-import-trigger" type="button"
+                  hidden aria-haspopup="menu" aria-expanded="false" aria-controls="grade-roster-import-menu">
+                  Aus Notenmodul<br>importieren ▾
+                </button>
+                <div id="grade-roster-import-menu" class="grade-roster-import-menu" role="menu" hidden></div>
+              </div>
+            </div>
+          </li>
+          <li class="groups-sidebar-group-size">
+            <strong>Lege Gruppengröße fest</strong>
+            <div class="row counter-wrap two-col-group">
+              <div class="group-size-row header-row">
+                <div class="group-size-col">
+                  <span class="group-label">Minimal</span>
+                </div>
+                <div class="group-size-col">
+                  <span class="group-label">Maximal</span>
+                </div>
+              </div>
+              <div class="group-size-row inputs-row">
+                <div class="counter-group">
+                  <div class="group-size-stepper">
+                    <button type="button" id="min-group-dec" class="group-size-stepper-button"
+                      aria-label="Minimale Gruppengröße verringern">-</button>
+                    <input id="min-group-size" type="number" min="1" value="2" class="group-size-input">
+                    <button type="button" id="min-group-inc" class="group-size-stepper-button"
+                      aria-label="Minimale Gruppengröße erhöhen">+</button>
+                  </div>
+                </div>
+                <div class="counter-group">
+                  <div class="group-size-stepper">
+                    <button type="button" id="max-group-dec" class="group-size-stepper-button"
+                      aria-label="Gruppengröße verringern">-</button>
+                    <input id="max-group-size" type="number" min="1" value="4" class="group-size-input">
+                    <button type="button" id="max-group-inc" class="group-size-stepper-button"
+                      aria-label="Gruppengröße erhöhen">+</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li>
+            <strong id="seat-preferences-label">Gib Gruppenpräferenzen an (optional)</strong>
+            <div class="step-actions dashed">
+              <button type="button" id="group-seat-preferences" class="primary">Gruppenpräferenzen eingeben</button>
+            </div>
+          </li>
+          <li class="random-picker-sidebar-action-label">
+            <strong>Starte Aktion</strong>
+          </li>
+          <li class="groups-sidebar-action-label">
+            <strong>Starte Aktion</strong>
+          </li>
+        </ol>
+      </div>
+
+      <div class="row sitzplan-row random-picker-sidebar-plan-actions">
+        <button id="random-picker-import" class="primary flex-1" type="button"
+          title="Namensliste importieren">Liste<br>wählen</button>
+        <button id="random-picker-export" class="primary flex-1" type="button"
+          title="Aktuellen Picker als Datei speichern">Picker<br>speichern</button>
+      </div>
+
+      <div class="row mt-md random-picker-sidebar-start-row">
+        <button id="random-picker-start" class="random-picker-button" type="button"
+          data-random-picker-start="1">Start</button>
+      </div>
+
+      <div class="row mt-md groups-sidebar-action-row">
+        <button id="group-suggest" class="warn flex-1"
+          title="Vorschlag unter Beachtung der Präferenzen generieren">Vorschlag</button>
+      </div>
+
+      <div class="row groups-sidebar-reset-row">
+        <button id="group-reset-learners" class="filled reset-action flex-1"
+          title="Alle Lernenden aus Gruppen lösen">Belegung<br>zurücksetzen</button>
+      </div>
+      <div class="row sitzplan-row groups-sidebar-plan-actions">
+        <button id="group-import-plan" class="primary flex-1"
+          title="Gespeicherte Gruppeneinteilung laden">Gruppen<br>laden</button>
+        <button id="group-export-plan" class="primary flex-1"
+          title="Aktuelle Gruppeneinteilung als Datei speichern">Gruppen<br>speichern</button>
+        <button id="group-print-plan" class="primary flex-1" title="Gruppen drucken">Gruppen<br>drucken</button>
+        <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
+      </div>
+      <section class="side-monitor-settings" aria-label="Lautstärkeampel-Einstellungen">
+        <h3 class="side-section-title">Lautstärkeampel</h3>
+        <section class="monitor-controls" aria-label="Monitor-Steuerung (Sidebar)">
+          <div class="monitor-thresholds" aria-label="Schwellenwerte einstellen">
+            <label class="monitor-threshold-field" for="monitor-yellow-threshold">
+              <span>Gelb ab <output id="monitor-yellow-threshold-value" for="monitor-yellow-threshold">60
+                  dB</output></span>
+              <input id="monitor-yellow-threshold" type="range" min="30" max="99" step="1" value="60"
+                data-monitor-threshold="yellow" aria-label="Schwellenwert für Gelb">
+            </label>
+            <label class="monitor-threshold-field" for="monitor-red-threshold">
+              <span>Rot ab <output id="monitor-red-threshold-value" for="monitor-red-threshold">70 dB</output></span>
+              <input id="monitor-red-threshold" type="range" min="31" max="100" step="1" value="70"
+                data-monitor-threshold="red" aria-label="Schwellenwert für Rot">
+            </label>
+          </div>
+          <div class="tone-row">
+            <button class="tone-toggle-button" type="button" role="switch" data-monitor-warning-tone-toggle="yellow"
+              aria-checked="true" aria-label="Warnton Gelb" title="Warnton Gelb">
+              <span class="tone-toggle-label" data-monitor-warning-tone-label="yellow">Warnton Gelb</span>
+              <span class="tone-toggle-switch" aria-hidden="true"></span>
+            </button>
+            <button class="tone-toggle-button" type="button" role="switch" data-monitor-warning-tone-toggle="red"
+              aria-checked="true" aria-label="Warnton Rot" title="Warnton Rot">
+              <span class="tone-toggle-label" data-monitor-warning-tone-label="red">Warnton Rot</span>
+              <span class="tone-toggle-switch" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="monitor-mic-actions">
+            <button id="monitor-mic-start" class="primary monitor-mic-button" type="button"
+              aria-label="Lautstärkeüberwachung starten" title="Lautstärkeüberwachung starten">🚦</button>
+            <button id="monitor-mic-stop" class="primary monitor-mic-button is-off" type="button"
+              aria-label="Lautstärkeüberwachung stoppen" title="Lautstärkeüberwachung stoppen">🚦</button>
+          </div>
+        </section>
+      </section>
+      <section class="side-timer-settings" aria-label="Arbeitszeit-Einstellungen">
+        <h3 class="side-section-title">Arbeitszeit</h3>
+        <div class="side-timer-settings-controls">
+          <label for="work-order-duration" class="timer-duration-field">
+            Zeitrahmen (Minuten)
+            <div class="duration-stepper">
+              <button class="duration-stepper-button" type="button" data-duration-step="-1"
+                aria-label="Zeitrahmen verringern" title="Zeitrahmen verringern">-</button>
+              <input id="work-order-duration" name="work-order-duration" type="number" min="1" step="1"
+                inputmode="numeric" placeholder="z. B. 45">
+              <button class="duration-stepper-button" type="button" data-duration-step="1"
+                aria-label="Zeitrahmen erhöhen" title="Zeitrahmen erhöhen">+</button>
+            </div>
+            <input id="work-order-duration-range" class="timer-duration-range" type="range" min="1" max="180" step="1"
+              value="45" aria-label="Zeitrahmen per Schieberegler">
+          </label>
+          <div class="timer-tone-row">
+            <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="half"
+              aria-checked="true" aria-label="Warnton nach 50%" title="Warnton nach 50%">
+              <span class="tone-toggle-label" data-timer-warning-tone-label="half">Warnton nach 50%</span>
+              <span class="tone-toggle-switch" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="timer-tone-row">
+            <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="quarter"
+              aria-checked="true" aria-label="Warnton nach 75%" title="Warnton nach 75%">
+              <span class="tone-toggle-label" data-timer-warning-tone-label="quarter">Warnton nach 75%</span>
+              <span class="tone-toggle-switch" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="timer-tone-row">
+            <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="end"
+              aria-checked="true" aria-label="Warnton bei Ende" title="Warnton bei Ende">
+              <span class="tone-toggle-label" data-timer-warning-tone-label="end">Warnton bei Ende</span>
+              <span class="tone-toggle-switch" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="timer-tone-row">
+            <button class="tone-toggle-button" type="button" role="switch" data-timer-seconds-toggle aria-checked="true"
+              aria-label="Sekunden anzeigen" title="Sekunden anzeigen">
+              <span class="tone-toggle-label" data-timer-seconds-label>Sekunden anzeigen</span>
+              <span class="tone-toggle-switch" aria-hidden="true"></span>
+            </button>
+          </div>
+          <div class="timer-work-order-actions">
+            <button id="timer-work-order-start" class="filled" type="button" aria-label="Arbeitszeit starten"
+              title="Arbeitszeit starten">⏰</button>
+            <button id="timer-work-order-stop" class="filled is-off" type="button" aria-label="Arbeitszeit stoppen"
+              title="Arbeitszeit stoppen">⏰</button>
+          </div>
+        </div>
+      </section>
+      <div id="scroll-hint" class="scroll-hint" role="presentation">
+        <span class="arrow" aria-hidden="true">⬇</span>
+        <span class="text">Namen importiert</span>
+      </div>
+      <section id="roster-panel" class="roster-panel groups-sidebar-roster" aria-label="Freie Lernende">
+        <div class="list" id="unseated"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <div id="groups-main-host">
+        <h1 id="print-plan-title" class="print-plan-title" aria-hidden="true"></h1>
+        <div class="groups-grid-wrap">
+          <div id="groups-grid" class="groups-grid" aria-label="Gruppenübersicht"></div>
+        </div>
+      </div>
+      <section id="random-picker-host" aria-label="Zufallsgenerator" hidden>
+        <div class="random-picker-shell">
+          <div class="random-picker-stage">
+            <div class="random-picker-machine">
+              <div class="random-picker-wheel" id="random-picker-wheel" aria-live="polite" aria-atomic="true">
+                <div class="random-picker-card" data-random-slot="0" data-distance="3">Noch keine Namen importiert</div>
+                <div class="random-picker-card" data-random-slot="1" data-distance="2">Noch keine Namen importiert</div>
+                <div class="random-picker-card" data-random-slot="2" data-distance="1">Noch keine Namen importiert</div>
+                <div class="random-picker-card" data-random-slot="3" data-distance="0">Noch keine Namen importiert</div>
+                <div class="random-picker-card" data-random-slot="4" data-distance="1">Noch keine Namen importiert</div>
+                <div class="random-picker-card" data-random-slot="5" data-distance="2">Noch keine Namen importiert</div>
+                <div class="random-picker-card" data-random-slot="6" data-distance="3">Noch keine Namen importiert</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <div id="seatplan-main-host" hidden aria-label="Sitzplan Hauptansicht"></div>
+    </main>
+    <section id="merger-shell" class="merger-shell" hidden aria-label="PDF-Tools">
+      <div id="merger-host" class="merger-host" aria-label="PDF-Tools"></div>
+    </section>
+    <section id="duplicate-check-shell" class="duplicate-check-shell" hidden aria-label="DuplikatCheck">
+      <div id="duplicate-check-host" class="duplicate-check-host" aria-label="DuplikatCheck"></div>
+    </section>
+    <section id="qr-shell" class="qr-shell" hidden aria-label="QR">
+      <div id="qr-host" class="qr-host" aria-label="QR"></div>
+    </section>
+    <section id="planning-shell" class="planning-shell" hidden aria-label="Planung">
+      <div id="planning-host" class="planning-host" aria-live="polite"></div>
+    </section>
+    <section id="grades-shell" class="grades-shell" hidden aria-label="Noten">
+      <div id="grades-host" class="grades-host" aria-live="polite"></div>
+    </section>
+    <section id="monitor-shell" class="monitor-shell" hidden aria-label="Lautstärkeampel">
+      <div class="monitor-panel">
+        <section class="monitor-status-layout" aria-label="Lautstärkestatus">
+          <section class="monitor-ampel" aria-label="Lautstärkeampel">
+            <div class="monitor-light red" data-monitor-light="red" aria-label="Rot"></div>
+            <div class="monitor-light yellow" data-monitor-light="yellow" aria-label="Gelb"></div>
+            <div class="monitor-light green" data-monitor-light="green" aria-label="Grün"></div>
+          </section>
+        </section>
+      </div>
+    </section>
+    <section id="work-order-shell" class="work-order-shell" hidden aria-label="Arbeitsauftrag">
+      <div id="work-order-panel" class="work-order-panel">
+        <div class="work-order-region">
+          <div id="work-order-display" class="work-order-display" aria-live="polite">
+            <div class="work-order-title">Arbeitsauftrag</div>
+            <textarea id="work-order-text" class="work-order-editor" name="work-order-text"
+              placeholder="Beschreibe hier den Arbeitsauftrag..." rows="10"></textarea>
+          </div>
+        </div>
+      </div>
+    </section>
+    <section id="timer-shell" class="timer-shell" hidden aria-label="Arbeitszeit">
+      <div id="timer-panel" class="timer-panel">
+        <div class="timer-display-region">
+          <div id="work-order-meta" class="work-order-timing timer-timing" hidden aria-live="polite">
+            <div id="work-order-rest-clock" class="work-order-clock timer-main-clock">
+              <div class="clock-label">Verbleibende Zeit</div>
+              <div id="work-order-countdown" class="clock-value">--:--</div>
+            </div>
+            <div class="work-order-clock timer-end-clock">
+              <div class="clock-label">Arbeitsphase bis</div>
+              <div id="work-order-endtime" class="clock-value">--:--</div>
+            </div>
+          </div>
+        </div>
+        <div id="timer-warning-banner" class="timer-warning-banner" role="status" aria-live="assertive"
+          aria-atomic="true" hidden></div>
+        <div id="work-order-hint-overlay" class="work-order-hint-overlay" role="status">Klick mich, um Hinweis zu
+          beenden.</div>
+      </div>
+    </section>
+    <div id="seatplan-dialog-host" hidden aria-hidden="true"></div>
+    <dialog id="preferences-dialog" aria-labelledby="preferences-dialog-title">
+      <form id="preferences-form" class="dialog-form preferences-form">
+        <div class="dialog-header">
+          <h2 id="preferences-dialog-title" class="dialog-title">Auswahlbedingungen</h2>
+          <div class="dialog-actions-top app-action-group">
+            <button type="button" id="preferences-reset" class="ghost dialog-icon-button app-action-icon" aria-label="Zurücksetzen"
+              data-tooltip="Zurücksetzen" hidden>
+              <svg class="preferences-reset-icon app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round"></path>
+                <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"></path>
+                <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                  stroke-linejoin="round"></path>
+              </svg>
+            </button>
+            <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+              data-tooltip="Speichern">💾</button>
+            <button type="button" id="preferences-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+              data-tooltip="Abbrechen">❌</button>
+          </div>
+        </div>
+        <div id="preferences-random-picker-auto-disable" class="random-picker-auto-disable" hidden>
+          <label class="random-picker-auto-disable-control" for="random-picker-auto-disable-selected">
+            <span>Ausgewählten Namen auf „unmöglich“ schalten</span>
+            <input id="random-picker-auto-disable-selected" type="checkbox" role="switch">
+            <span class="random-picker-auto-disable-switch" aria-hidden="true"></span>
+          </label>
+        </div>
+        <div class="preferences-table-wrap">
+          <table class="preferences-table">
+            <thead id="preferences-thead">
+              <tr>
+                <th colspan="3" class="group-header">
+                  Gute Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
+                </th>
+                <th class="group-header name-header"></th>
+                <th class="group-header performance-flair-header">Leistungsklasse</th>
+                <th colspan="3" class="group-header">
+                  Schlechte Gruppenpartner für <span class="preference-midpoint-label">Schüler in der
+                    Tabellenmitte</span>
+                </th>
+              </tr>
+            </thead>
+            <tbody id="preferences-tbody"></tbody>
+          </table>
+        </div>
+        <div class="dialog-actions preferences-dialog-footer">
+          <div id="preferences-performance-summary" class="preferences-performance-summary" role="status"
+            aria-live="polite" aria-atomic="true" hidden></div>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="unsaved-data-dialog" aria-labelledby="unsaved-data-dialog-title">
+      <form method="dialog" class="dialog-form">
+        <div class="dialog-header">
+          <h2 id="unsaved-data-dialog-title" class="dialog-title">Ungespeicherte Änderungen</h2>
+        </div>
+        <p id="unsaved-data-dialog-text" class="dialog-copy">
+          Es gibt ungespeicherte Änderungen.
+        </p>
+        <div class="dialog-actions">
+          <button type="button" id="unsaved-data-dialog-stay" class="ghost">Bleiben</button>
+          <button type="button" id="unsaved-data-dialog-leave" class="primary">Trotzdem wechseln</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="update-dialog" aria-labelledby="update-dialog-title">
+      <form method="dialog" class="dialog-form">
+        <div class="dialog-header">
+          <h2 id="update-dialog-title" class="dialog-title">Neue Version verfügbar</h2>
+        </div>
+        <p class="dialog-copy">
+          Eine neue Version von TeachHelper ist bereit. Lade die App neu, um das Update zu übernehmen.
+        </p>
+        <div class="dialog-actions">
+          <button type="button" id="update-dialog-later" class="ghost">Später</button>
+          <button type="button" id="update-dialog-reload" class="primary">Neu laden</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="pwa-install-dialog" class="pwa-install-dialog" aria-labelledby="pwa-install-dialog-title"
+      aria-describedby="pwa-install-dialog-copy pwa-install-dialog-status">
+      <div class="dialog-form">
+        <div class="dialog-header">
+          <h2 id="pwa-install-dialog-title" class="dialog-title">TeachHelper als App installieren</h2>
+        </div>
+        <p id="pwa-install-dialog-copy" class="dialog-copy"></p>
+        <p id="pwa-install-dialog-status" class="pwa-install-dialog-status" role="status" aria-live="polite"></p>
+        <div class="dialog-actions">
+          <button type="button" id="pwa-install-dialog-later" class="ghost">Später</button>
+          <button type="button" id="pwa-install-dialog-install" class="primary">Als App installieren</button>
+        </div>
+      </div>
+    </dialog>
+  </div>
+  <div id="message-stack" class="message-stack" aria-live="polite" aria-atomic="true"></div>
+  <div id="toast-stack" class="toast-stack" aria-live="polite" aria-atomic="false"></div>
+
+  <template id="student-tpl">
+    <div class="student" draggable="true" title="In Gruppe ziehen">
+      <div class="name"></div>
+      <div class="tag"></div>
+    </div>
+  </template>
+
+  <script type="module" src="./src/app/bootstrap.js"></script>
+</body>
+
+</html>

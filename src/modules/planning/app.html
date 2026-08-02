@@ -1,0 +1,1399 @@
+<!doctype html>
+<html lang="de" data-module-role="planning">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy"
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+  <meta name="theme-color" content="#0f172a">
+  <title>Planung</title>
+  <link rel="manifest" href="../../../manifest.webmanifest">
+  <link rel="icon" href="../../../icon-192.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../../../icon-192.png">
+  <link rel="stylesheet" href="../../shared/segment-control.css">
+  <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="../../shared/app-action-icons.css">
+  <link rel="stylesheet" href="../../shared/app-tooltips.css">
+</head>
+
+<body data-module-role="planning">
+  <div id="app" class="app-window" data-sidebar-width-scope="planning">
+    <aside id="sidebarPanel" class="sidebar-panel">
+      <div class="sidebar-resize-handle" aria-hidden="true"></div>
+      <div class="sidebar-header">
+        <h1 id="sidebar-title" class="sidebar-title">Noten</h1>
+        <div class="sidebar-header-actions">
+          <button id="view-tutorial-btn" class="ghost settings-nav-btn" type="button" aria-label="Tutorial starten"
+            title="Tutorial starten">🛟</button>
+          <button id="view-settings-btn" class="ghost settings-nav-btn" type="button" aria-label="Einstellungen"
+            title="Einstellungen">⚙️</button>
+        </div>
+      </div>
+      <div class="sidebar-controls">
+        <button id="view-grades-entry-btn" class="nav-btn grades-entry-nav-btn active" type="button"
+          data-tutorial-anchor="grades-entry-nav" aria-label="Eingabe" title="Eingabe">📝</button>
+        <button id="view-week-btn" class="nav-btn week-view-nav-btn" type="button" aria-label="Wochenansicht"
+          title="Wochenansicht" hidden>🗓️</button>
+      </div>
+
+      <div class="sidebar-section">
+        <ul id="sidebar-course-list" class="sidebar-list"></ul>
+        <div id="sidebar-grade-privacy-actions" class="sidebar-grade-privacy-actions" hidden>
+          <div class="sidebar-grade-privacy-divider" aria-hidden="true"></div>
+          <div id="sidebar-grade-privacy-section" class="sidebar-grade-action-section"
+            data-tutorial-anchor="grades-privacy">
+            <div class="sidebar-grade-action-title">Datenschutzmodus</div>
+            <button id="sidebar-grade-privacy-toggle-btn" class="sidebar-grade-privacy-toggle is-inactive" type="button"
+              data-grade-privacy-toggle="1" aria-label="Datenschutzmodus aktivieren" aria-pressed="false"
+              title="Datenschutzmodus inaktiv" disabled>
+              <span class="sidebar-grade-privacy-switch" aria-hidden="true">
+                <span class="sidebar-grade-privacy-thumb"></span>
+              </span>
+            </button>
+          </div>
+          <div id="sidebar-grade-sort-section" class="sidebar-grade-action-section" data-tutorial-anchor="grades-sort">
+            <div class="sidebar-grade-action-title">Sortierung</div>
+            <div class="sidebar-grade-segment-control" role="radiogroup" aria-label="Sortierung">
+              <label class="sidebar-grade-segment-option">
+                <input type="radio" name="sidebar-grade-name-order" data-grade-name-order="1" value="first" disabled>
+                <span>Vorname<br>Nachname</span>
+              </label>
+              <label class="sidebar-grade-segment-option">
+                <input type="radio" name="sidebar-grade-name-order" data-grade-name-order="1" value="last" checked
+                  disabled>
+                <span>Nachname,<br>Vorname</span>
+              </label>
+            </div>
+          </div>
+          <div id="sidebar-grade-display-section" class="sidebar-grade-action-section"
+            data-tutorial-anchor="grades-display-system">
+            <div class="sidebar-grade-action-title sidebar-grade-display-title">
+              <span>Notensystem</span>
+            </div>
+            <div class="sidebar-grade-segment-control" role="radiogroup" aria-label="Notensystem">
+              <label class="sidebar-grade-segment-option">
+                <input type="radio" name="sidebar-grade-display-system" data-grade-display-system="1" value="points15"
+                  checked disabled>
+                <span>15-00</span>
+              </label>
+              <label class="sidebar-grade-segment-option">
+                <input type="radio" name="sidebar-grade-display-system" data-grade-display-system="1" value="school"
+                  disabled>
+                <span>1-6</span>
+              </label>
+            </div>
+          </div>
+          <div id="sidebar-grade-predicate-section" class="sidebar-grade-action-section"
+            data-tutorial-anchor="grades-predicate">
+            <div class="sidebar-grade-action-title">Prädikatsanhängsel</div>
+            <div class="sidebar-grade-segment-control" role="radiogroup" aria-label="Prädikatsanhängsel">
+              <label class="sidebar-grade-segment-option">
+                <input type="radio" name="sidebar-grade-predicate-suffixes" data-grade-predicate-suffixes="1"
+                  value="false" disabled>
+                <span>Nein</span>
+              </label>
+              <label class="sidebar-grade-segment-option">
+                <input type="radio" name="sidebar-grade-predicate-suffixes" data-grade-predicate-suffixes="1"
+                  value="true" checked disabled>
+                <span>Ja</span>
+              </label>
+            </div>
+          </div>
+          <div id="sidebar-grade-competence-expectations-section" data-tutorial-anchor="grades-competence-expectations"
+            class="sidebar-grade-action-section sidebar-grade-action-section-competence-expectations">
+            <div class="sidebar-grade-action-title">Kompetenzerwartung</div>
+            <button id="sidebar-grade-competence-expectations-btn" class="sidebar-grade-expectation-btn" type="button"
+              aria-label="Kompetenzerwartung erzeugen" title="Kompetenzerwartung erzeugen" disabled><span
+                class="sidebar-grade-print-icon" aria-hidden="true">💪</span></button>
+          </div>
+          <div id="sidebar-grade-expectation-section" data-tutorial-anchor="grades-expectation"
+            class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
+            <div class="sidebar-grade-action-title">Erwartungshorizont</div>
+            <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
+              aria-label="Erwartungshorizont erzeugen" title="Erwartungshorizont erzeugen" disabled><span
+                class="sidebar-grade-print-icon" aria-hidden="true">🎯</span></button>
+          </div>
+          <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print"
+            data-tutorial-anchor="grades-print">
+            <div class="sidebar-grade-action-title">Drucken</div>
+            <button id="sidebar-grade-print-btn" class="sidebar-grade-print-btn" type="button"
+              data-grade-print-overview="1" aria-label="Kursnoten drucken"
+              title="Spalten einklappen, um ihren Druck zu unterbinden" disabled>
+              <span class="sidebar-grade-print-icon" aria-hidden="true">🖨️</span>
+            </button>
+          </div>
+          <div id="sidebar-grade-simulation-section" data-tutorial-anchor="grades-simulation"
+            class="sidebar-grade-action-section sidebar-grade-action-section-simulation">
+            <div class="sidebar-grade-action-title sidebar-grade-simulation-title">
+              <span>Warnungen</span>
+              <small>(Simulation)</small>
+            </div>
+            <button id="sidebar-grade-simulation-btn" class="sidebar-grade-simulation-btn" type="button"
+              aria-label="Warnungen (Simulation)" title="Warnungen (Simulation)" disabled>
+              <span class="sidebar-grade-print-icon" aria-hidden="true">✉️</span>
+            </button>
+          </div>
+          <div id="sidebar-grade-accommodation-section"
+            class="sidebar-grade-action-section sidebar-grade-action-section-accommodation">
+            <div class="sidebar-grade-action-title">Nachteilsausgleich</div>
+            <button id="sidebar-grade-accommodation-btn" class="sidebar-grade-print-btn" type="button"
+              aria-label="Nachteilsausgleich" title="Nachteilsausgleich" disabled>
+              <span class="sidebar-grade-print-icon" aria-hidden="true">♿</span>
+            </button>
+          </div>
+        </div>
+        <div id="sidebar-archive-actions" class="sidebar-archive-actions" hidden>
+          <div id="sidebar-archive-section" class="sidebar-grade-action-section sidebar-grade-action-section-archive"
+            data-tutorial-anchor="grades-archive">
+            <div class="sidebar-grade-action-title">Archivieren</div>
+            <button id="sidebar-archive-btn" class="sidebar-grade-print-btn sidebar-archive-btn" type="button"
+              aria-label="Archivieren" title="PDF-Export des gesamten Schuljahres" disabled>
+              <span class="sidebar-grade-print-icon" aria-hidden="true">🗄️</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </aside>
+
+    <div id="grades-collapsed-title-shell" aria-hidden="true">
+      <div id="grades-collapsed-title"></div>
+    </div>
+
+    <main class="main-pane">
+      <header id="headerGlass" class="header-glass">
+        <button id="week-prev" class="round-btn week-nav-btn" type="button" aria-label="Vorherige Woche"
+          title="Woche zurück">
+          <svg class="week-nav-icon" viewBox="0 0 54 54" aria-hidden="true">
+            <path d="M33.5 15.2L20.5 27L33.5 38.8"></path>
+          </svg>
+        </button>
+
+        <div class="week-center">
+          <button id="kw-label" class="kw-label" type="button" aria-label="Minikalender öffnen"
+            title="Minikalender öffnen">KW 00</button>
+          <button id="week-picker-btn" class="calendar-btn" type="button" aria-label="Aktuelle Woche"
+            title="Aktuelle Woche">
+            <svg class="current-week-icon" viewBox="0 0 38 28" aria-hidden="true">
+              <rect x="2" y="1" width="26" height="26" rx="3" fill="#ffffff" stroke="#e9eef5" stroke-width="2">
+              </rect>
+              <path d="M2 1H28V6.72H2Z" fill="#d63c2f"></path>
+              <line x1="2" y1="6.72" x2="28" y2="6.72" stroke="#e9eef5" stroke-width="2"></line>
+              <circle cx="15" cy="16.86" r="2" fill="#5f5f5f"></circle>
+              <path d="M36 16.86H20" stroke="#5f5f5f" stroke-width="4" stroke-linecap="round"></path>
+              <path d="M20 16.86L22.65 14.27M20 16.86L22.65 19.45" stroke="#5f5f5f" stroke-width="4"
+                stroke-linecap="round" stroke-linejoin="round"></path>
+            </svg>
+          </button>
+          <input id="week-date" type="date" aria-label="Wochenstart">
+          <select id="school-year-select" hidden aria-hidden="true"></select>
+        </div>
+
+        <button id="week-next" class="round-btn week-nav-btn" type="button" aria-label="Nächste Woche"
+          title="Woche vor">
+          <svg class="week-nav-icon" viewBox="0 0 54 54" aria-hidden="true">
+            <path d="M20.5 15.2L33.5 27L20.5 38.8"></path>
+          </svg>
+        </button>
+      </header>
+
+      <section id="stackGlass" class="stack-glass">
+        <section id="view-week" class="view-panel active">
+          <div class="week-grid">
+            <div class="table-panel">
+              <table id="week-table"></table>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-course" class="view-panel" hidden>
+          <div class="course-head">
+            <h2 id="course-title"></h2>
+          </div>
+          <div class="table-panel">
+            <table id="course-table"></table>
+          </div>
+        </section>
+
+        <section id="view-grades" class="view-panel" hidden>
+          <div class="grades-head">
+            <div class="grades-head-main">
+              <h2 id="grades-title"></h2>
+              <p id="grades-subtitle" class="muted"></p>
+            </div>
+            <div class="grades-head-actions">
+              <button id="grade-vault-toggle-btn" type="button" class="ghost">Notenmodul entsperren</button>
+              <button id="grade-vault-save-btn" type="button" class="ghost" hidden>Noten speichern</button>
+            </div>
+          </div>
+          <div id="grades-vault-banner" class="grades-vault-banner" hidden></div>
+          <div id="grades-overview-panel" class="grades-subview-panel">
+            <div id="grades-empty-state" class="grades-empty-state empty-state-box" hidden>
+              <h3 class="empty-state-title">Noch keine Teilnehmenden eingetragen</h3>
+              <p class="empty-state-copy"></p>
+              <div class="button-row empty-state-actions">
+                <button id="grades-empty-open-dialog" type="button" class="sidebar-add-btn"
+                  aria-label="Teilnehmende verwalten" title="Teilnehmende verwalten">
+                  <span class="sidebar-add-plus" aria-hidden="true"></span>
+                </button>
+                <button id="grades-empty-unlock" type="button" class="ghost grades-vault-unlock-button" hidden
+                  aria-label="Entsperren" title="Entsperren">🔓</button>
+              </div>
+            </div>
+            <div id="grades-book-panel" class="table-panel grades-book-panel" hidden>
+              <div id="grades-privacy-overlay" class="grades-privacy-overlay" aria-live="polite" hidden></div>
+              <div id="grades-table-scroll" class="grades-table-scroll">
+                <div id="grades-table" class="grades-table" data-tutorial-anchor="grades-overview"></div>
+              </div>
+              <div id="grades-table-sticky-scrollbar" class="grades-table-sticky-scrollbar" aria-hidden="true" hidden>
+                <div id="grades-table-sticky-scrollbar-spacer" class="grades-table-sticky-scrollbar-spacer"></div>
+              </div>
+            </div>
+          </div>
+          <div id="grades-entry-panel" class="grades-subview-panel" hidden>
+            <div id="grades-entry-content" class="table-panel grades-entry-content"></div>
+            <div id="grades-entry-table-sticky-scrollbar" class="grades-entry-table-sticky-scrollbar" aria-hidden="true"
+              hidden>
+              <div id="grades-entry-table-sticky-scrollbar-spacer" class="grades-entry-table-sticky-scrollbar-spacer">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-settings" class="view-panel" hidden>
+          <div class="settings-tabs-shell">
+            <div class="settings-tabs-head">
+              <div class="settings-tab-bar" role="tablist" aria-label="Einstellungen">
+                <button class="settings-tab active" type="button" role="tab" data-tab="dayoff"
+                  aria-controls="settings-tab-dayoff" aria-selected="true">Ferien & Unterrichtsfreie Tage</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="display"
+                  aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="gradeTestScales"
+                  aria-controls="settings-tab-grade-test-scales" aria-selected="false">Prozentgrenzen</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
+                  aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
+                  aria-controls="settings-tab-expectation-horizon" aria-selected="false">Vorlagen</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="lessonTimes"
+                  aria-controls="settings-tab-lesson-times" aria-selected="false">Uhrzeiten</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="database"
+                  aria-controls="settings-tab-database" aria-selected="false">Datenbank</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="encryption"
+                  aria-controls="settings-tab-encryption" aria-selected="false">Verschlüsselung</button>
+              </div>
+              <div class="settings-actions-row app-action-group">
+                <button id="settings-reset-all" type="button" class="ghost dialog-icon-button app-action-icon"
+                  aria-label="Standardwerte" data-tooltip="Standardwerte">
+                  <svg class="settings-reset-icon app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round"></path>
+                    <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"></path>
+                    <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round"></path>
+                  </svg>
+                </button>
+                <button id="settings-save-all" type="button" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+                  data-tooltip="Speichern">💾</button>
+                <button id="settings-cancel-all" type="button" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+                  data-tooltip="Abbrechen">❌</button>
+              </div>
+            </div>
+            <div class="settings-tab-content">
+              <div id="settings-courses-hidden" hidden>
+                <h3 class="settings-panel-title">Kurse</h3>
+                <div class="button-row">
+                  <button type="button" id="course-settings-add">Kurs hinzufügen</button>
+                </div>
+                <ul id="course-list" class="list"></ul>
+              </div>
+
+              <div id="settings-slots-hidden" hidden>
+                <div class="app-editor-header">
+                  <h3 class="settings-panel-title">Stundenplan</h3>
+                  <div class="app-action-group">
+                    <button type="button" id="slot-reset" class="ghost dialog-icon-button app-action-icon"
+                      aria-label="Zurücksetzen" data-tooltip="Zurücksetzen">
+                      <svg class="app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                        <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round"></path>
+                        <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                          stroke-linejoin="round"></path>
+                        <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+                          stroke-linecap="round" stroke-linejoin="round"></path>
+                        <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                          stroke-linejoin="round"></path>
+                      </svg>
+                    </button>
+                    <button type="submit" form="slot-form" class="dialog-icon-button app-action-icon"
+                      aria-label="Slot speichern" data-tooltip="Slot speichern">💾</button>
+                  </div>
+                </div>
+                <form id="slot-form" class="form-grid">
+                  <input type="hidden" id="slot-id">
+                  <label>
+                    Kurs
+                    <select id="slot-course" required></select>
+                  </label>
+                  <label>
+                    Wochentag
+                    <select id="slot-day" required>
+                      <option value="1">Montag</option>
+                      <option value="2">Dienstag</option>
+                      <option value="3">Mittwoch</option>
+                      <option value="4">Donnerstag</option>
+                      <option value="5">Freitag</option>
+                    </select>
+                  </label>
+                  <label>
+                    Startstunde
+                    <input id="slot-hour" type="number" min="1" max="12" value="1" required>
+                  </label>
+                  <label>
+                    Dauer
+                    <input id="slot-duration" type="number" min="1" max="4" value="1" required>
+                  </label>
+                  <label>
+                    Von (optional)
+                    <input id="slot-start" type="date">
+                  </label>
+                  <label>
+                    Bis (optional)
+                    <input id="slot-end" type="date">
+                  </label>
+                  <label>
+                    Woche
+                    <select id="slot-parity">
+                      <option value="0">Jede Woche</option>
+                      <option value="-1">Keine</option>
+                      <option value="1">Ungerade KW</option>
+                      <option value="2">Gerade KW</option>
+                    </select>
+                  </label>
+                  <div id="slot-edit-tools" hidden>
+                    <label>
+                      Änderungsumfang
+                      <select id="slot-edit-scope">
+                        <option value="all">Gesamte Serie</option>
+                        <option value="from">Ab Datum</option>
+                      </select>
+                    </label>
+                    <label>
+                      Änderungen ab
+                      <input id="slot-edit-from-date" type="date">
+                    </label>
+                  </div>
+                  <div class="button-row">
+                    <button type="button" id="slot-delete" class="ghost danger-action" hidden>Löschen</button>
+                  </div>
+                </form>
+                <ul id="slot-list" class="list"></ul>
+              </div>
+
+              <div id="settings-tab-dayoff" class="settings-panel active" role="tabpanel">
+                <div id="dayoff-required-hint" class="required-hint" hidden>
+                  <p class="required-hint-title">Pflicht-Ferien sind noch unvollständig.</p>
+                  <p id="dayoff-required-missing" class="required-hint-missing"></p>
+                </div>
+                <p class="settings-link-hint"><em>Überprüfe die Daten anhand der <a
+                      href="https://www.schure.de/theme/sr3131.htm" target="_blank"
+                      rel="noopener noreferrer">Niedersächsischen Ferienordnung</a>.</em></p>
+                <div class="settings-grid">
+                  <div class="settings-column">
+                    <h3 class="settings-panel-title">Ferien</h3>
+                    <ul id="free-range-list" class="list" data-tutorial-anchor="planning-holidays"></ul>
+                  </div>
+
+                  <div class="settings-column">
+                    <h3 class="settings-panel-title">Unterrichtsfreie Tage</h3>
+                    <datalist id="special-day-options">
+                      <option value="Tag der Arbeit"></option>
+                      <option value="Tag der Deutschen Einheit"></option>
+                      <option value="Karfreitag"></option>
+                      <option value="Ostermontag"></option>
+                      <option value="Christi Himmelfahrt"></option>
+                      <option value="Tag nach Himmelfahrt"></option>
+                      <option value="Pfingstdienstag"></option>
+                      <option value="Pfingstmontag"></option>
+                      <option value="Reformationstag"></option>
+                    </datalist>
+                    <ul id="special-day-list" class="list" data-tutorial-anchor="planning-special-days"></ul>
+                  </div>
+                </div>
+              </div>
+
+              <div id="settings-tab-display" class="settings-panel" role="tabpanel" hidden>
+                <form class="settings-form-table" autocomplete="off">
+                  <div id="settings-display-hours-row" class="settings-form-row"
+                    data-tutorial-anchor="planning-display-hours">
+                    <label class="settings-form-label" for="hours-per-day">Maximale Unterrichtsstunden pro
+                      Tag</label>
+                    <input id="hours-per-day" class="settings-number-input" type="number" min="1" max="12" value="8">
+                  </div>
+                  <div id="settings-grades-privacy-graph-threshold-row" class="settings-form-row">
+                    <label class="settings-form-label" for="grades-privacy-graph-threshold">Mindestanzahl an
+                      Leistungen für Entwicklungsgraph</label>
+                    <input id="grades-privacy-graph-threshold" class="settings-number-input" type="number" min="0"
+                      max="50" value="5">
+                  </div>
+                  <div class="settings-form-row" data-tutorial-anchor="planning-sidebar-visibility">
+                    <span class="settings-form-label">Randleiste</span>
+                    <label class="checkbox-line settings-inline-checkbox">
+                      <input id="show-hidden-sidebar-courses" type="checkbox">
+                      Ausgeblendete Kurse in Randleiste anzeigen
+                    </label>
+                  </div>
+                </form>
+              </div>
+
+              <div id="settings-tab-grade-test-scales" class="settings-panel" role="tabpanel" hidden>
+                <div id="grade-test-scale-settings-content" class="grade-test-scale-settings"></div>
+              </div>
+
+              <div id="settings-tab-grade-structure" class="settings-panel" role="tabpanel" hidden>
+                <div class="settings-grade-structure-panel">
+                  <div class="settings-grade-structure-head">
+                    <p class="muted">Änderungen gelten für neu angelegte Kurse. Kurse ohne gespeicherte
+                      Notenstruktur verwenden diese Voreinstellung beim ersten Öffnen.</p>
+                    <div class="settings-grade-structure-actions">
+                      <div id="settings-grade-structure-period-toggle" class="course-dialog-structure-period-toggle"
+                        role="radiogroup" aria-label="Halbjahr">
+                        <label class="course-dialog-structure-period-option">
+                          <input type="radio" name="settings-grade-structure-period"
+                            data-default-grade-structure-period="1" value="h1" checked>
+                          <span>1. HJ</span>
+                        </label>
+                        <label class="course-dialog-structure-period-option">
+                          <input type="radio" name="settings-grade-structure-period"
+                            data-default-grade-structure-period="1" value="h2">
+                          <span>2. HJ</span>
+                        </label>
+                      </div>
+                      <button type="button" id="settings-grade-structure-copy-h1-to-h2"
+                        class="ghost course-dialog-copy-h1-to-h2" hidden>
+                        1. HJ nach 2. HJ übernehmen
+                      </button>
+                    </div>
+                  </div>
+                  <div class="course-dialog-structure-row settings-grade-structure-row">
+                    <div id="settings-grade-structure-list" class="course-dialog-structure-list"></div>
+                    <button type="button" id="settings-grade-structure-category-add" class="sidebar-add-btn"
+                      aria-label="Kategorie hinzufügen" title="Kategorie hinzufügen">
+                      <span class="sidebar-add-plus" aria-hidden="true"></span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div id="settings-tab-expectation-horizon" class="settings-panel" role="tabpanel" hidden>
+                <section class="expectation-horizon-settings-section">
+                  <h3 class="settings-panel-title">Angaben</h3>
+                  <p class="muted">Der Ort ersetzt den Platzhalter &lt;&lt;Ort&gt;&gt; in erzeugten
+                    Erwartungshorizonten.</p>
+                  <form class="settings-form-table" autocomplete="off">
+                    <div class="settings-form-row">
+                      <label class="settings-form-label" for="expectation-horizon-location">Ort</label>
+                      <input id="expectation-horizon-location" type="text" maxlength="120" autocomplete="off">
+                    </div>
+                    <div class="settings-form-row expectation-horizon-comment-row">
+                      <label class="settings-form-label" for="expectation-horizon-comment-template">Kommentar</label>
+                      <textarea id="expectation-horizon-comment-template" rows="8" spellcheck="true"></textarea>
+                    </div>
+                  </form>
+                  <p class="muted">Im Kommentar können &lt;&lt;Aufgabenlabel&gt;&gt; und &lt;&lt;Aufgabenliste&gt;&gt;
+                    verwendet werden.</p>
+                </section>
+                <section class="expectation-horizon-settings-section">
+                  <h3 class="settings-panel-title">Standardvorlage</h3>
+                  <p class="muted">Die Standardvorlagen werden verwendet, wenn im Generieren-Dialog keine Vorlage nur
+                    für
+                    diese Arbeit hochgeladen wird.</p>
+                  <input id="expectation-horizon-template-settings-file" class="visually-hidden" type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <input id="expectation-horizon-course-level-template-settings-file" class="visually-hidden"
+                    type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <input id="competence-expectations-template-settings-file" class="visually-hidden" type="file"
+                    accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <div class="expectation-horizon-template-settings-group">
+                    <h4>Allgemeine Standardvorlage</h4>
+                    <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
+                    <div class="button-row">
+                      <button type="button" id="expectation-horizon-template-settings-download" class="ghost">Allgemeine
+                        Vorlage herunterladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte
+                        allgemeine Vorlage hochladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-reset"
+                        class="ghost reset-action">Auf eingebaute
+                        Vorlage zurücksetzen</button>
+                    </div>
+                  </div>
+                  <div class="expectation-horizon-template-settings-group">
+                    <h4>Standardvorlage mit Anforderungsniveau (GK/LK)</h4>
+                    <p id="expectation-horizon-course-level-template-settings-status" class="muted" aria-live="polite">
+                    </p>
+                    <div class="button-row">
+                      <button type="button" id="expectation-horizon-course-level-template-settings-download"
+                        class="ghost">GK/LK-Vorlage herunterladen</button>
+                      <button type="button" id="expectation-horizon-course-level-template-settings-upload"
+                        class="ghost">Geänderte GK/LK-Vorlage hochladen</button>
+                      <button type="button" id="expectation-horizon-course-level-template-settings-reset"
+                        class="ghost reset-action">Auf eingebaute Vorlage zurücksetzen</button>
+                    </div>
+                  </div>
+                  <div class="expectation-horizon-template-settings-group">
+                    <h4>Kompetenzerwartungs-Vorlage</h4>
+                    <p id="competence-expectations-template-settings-status" class="muted" aria-live="polite"></p>
+                    <div class="button-row">
+                      <button type="button" id="competence-expectations-template-settings-download"
+                        class="ghost">Kompetenzerwartungs-Vorlage herunterladen</button>
+                      <button type="button" id="competence-expectations-template-settings-upload"
+                        class="ghost">Geänderte Kompetenzerwartungs-Vorlage hochladen</button>
+                      <button type="button" id="competence-expectations-template-settings-reset"
+                        class="ghost reset-action">Auf eingebaute Vorlage zurücksetzen</button>
+                    </div>
+                  </div>
+                </section>
+              </div>
+
+              <div id="settings-tab-lesson-times" class="settings-panel" role="tabpanel" hidden>
+                <div class="lesson-times-panel">
+                  <p class="muted">Die Zuordnung von Stunden zu Uhrzeiten dient dem automatischen Öffnen des
+                    passenden Kurses im Notenmodul.</p>
+                  <div id="lesson-times-list" class="lesson-times-list"></div>
+                </div>
+              </div>
+
+              <div id="settings-tab-database" class="settings-panel" role="tabpanel" hidden>
+                <div class="settings-extra-section">
+                  <h3 class="settings-panel-title">Datenbankdatei</h3>
+                  <p id="sync-file-name" class="muted"></p>
+                  <p id="sync-file-status" class="muted"></p>
+                  <div id="db-auto-actions" class="button-row settings-db-auto-actions"
+                    data-tutorial-anchor="database-actions">
+                    <button id="db-select-existing-btn" type="button">Bestehende Datenbankdatei auswählen</button>
+                    <button id="db-create-new-btn" type="button">Leere Datenbankdatei neu anlegen</button>
+                  </div>
+                  <div id="db-manual-actions" class="button-row settings-db-manual-actions"
+                    data-tutorial-anchor="database-actions" hidden>
+                    <button id="db-manual-load-btn" type="button">Datenbank laden</button>
+                    <button id="db-manual-save-btn" type="button">Datenbank speichern/neu anlegen</button>
+                    <input id="db-manual-file" type="file" accept="application/json,.json" hidden>
+                  </div>
+                  <p id="db-manual-hint" class="muted" hidden>Dieser Browser unterstützt keinen dauerhaften Zugriff auf
+                    Datenbankdateien. Bitte installiere den TeachHelper über die Browser Edge oder Chrome.</p>
+                </div>
+                <div id="db-backup-section" class="settings-extra-section" data-tutorial-anchor="grades-backup">
+                  <h3 class="settings-panel-title">Backups</h3>
+                  <p id="backup-dir-name" class="muted"></p>
+                  <div class="button-row settings-backup-folder-actions">
+                    <button id="backup-dir-change-btn" type="button">Backup-Ordner auswählen</button>
+                  </div>
+                  <div class="settings-form-table">
+                    <div class="settings-form-row settings-form-row-compact">
+                      <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
+                        <span class="settings-form-label">Automatisches Backup aktivieren</span>
+                        <input id="db-backup-auto-enabled" type="checkbox">
+                      </label>
+                    </div>
+                    <div class="settings-form-row settings-form-row-compact">
+                      <label class="settings-form-label" for="db-backup-interval-days">Backup-Intervall (Tage)</label>
+                      <input id="db-backup-interval-days" class="settings-number-input" type="number" min="1" max="30"
+                        value="7">
+                    </div>
+                  </div>
+                  <div class="button-row settings-backup-actions">
+                    <button id="db-backup-now-btn" type="button">Backup erstellen</button>
+                    <button id="db-backup-import-btn" type="button">Backup importieren</button>
+                    <input id="db-backup-import-file" type="file" accept="application/json,.json" hidden>
+                  </div>
+                  <p id="backup-status" class="muted"></p>
+                </div>
+              </div>
+
+              <div id="settings-tab-encryption" class="settings-panel" role="tabpanel" hidden>
+                <div id="grade-vault-settings-section" class="settings-extra-section"
+                  data-tutorial-anchor="grades-encryption">
+                  <div class="settings-form-table">
+                    <div class="settings-form-row settings-form-row-compact">
+                      <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
+                        <span class="settings-form-label">Notenbereich verschlüsseln</span>
+                        <input id="grade-vault-encryption-enabled" type="checkbox">
+                      </label>
+                    </div>
+                  </div>
+                  <p id="grade-vault-settings-status" class="muted"></p>
+                  <p id="grade-vault-settings-hint" class="muted"></p>
+                  <div class="button-row settings-grade-vault-actions">
+                    <button id="grade-vault-settings-action-btn" type="button">Passwort ändern</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+      </section>
+    </main>
+  </div>
+  <div id="app-context-menu" class="app-context-menu" hidden></div>
+
+  <dialog id="course-dialog" class="app-dialog" aria-label="Kursdialog">
+    <form id="course-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="course-dialog-title" class="dialog-title">Kurs</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="course-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="course-dialog-id">
+      <section class="course-dialog-panel active" data-panel="general">
+        <label>
+          Fach
+          <input id="course-dialog-subject" maxlength="80" placeholder="z. B. Mathematik" autocomplete="off"
+            list="course-dialog-subject-options">
+          <datalist id="course-dialog-subject-options">
+            <option value="Deutsch"></option>
+            <option value="Mathematik"></option>
+            <option value="Englisch"></option>
+            <option value="Französisch"></option>
+            <option value="Latein"></option>
+            <option value="Griechisch"></option>
+            <option value="Spanisch"></option>
+            <option value="Biologie"></option>
+            <option value="Chemie"></option>
+            <option value="Physik"></option>
+            <option value="Geschichte"></option>
+            <option value="Erdkunde"></option>
+            <option value="Politik-Wirtschaft"></option>
+            <option value="Religion"></option>
+            <option value="Werte und Normen"></option>
+            <option value="Philosophie"></option>
+            <option value="Kunst"></option>
+            <option value="Musik"></option>
+            <option value="Sport"></option>
+            <option value="Informatik"></option>
+            <option value="Wahlpflichtfach"></option>
+            <option value="Darstellendes Spiel"></option>
+            <option value="Seminarfach"></option>
+          </datalist>
+        </label>
+        <label>
+          Kursname
+          <input id="course-dialog-name" required maxlength="80" placeholder="z. B. Ma 8a" autocomplete="off">
+        </label>
+        <label class="checkbox-line">
+          <input id="course-dialog-no-lesson" type="checkbox">
+          Termin ohne Unterricht
+        </label>
+        <div class="field-label">
+          <span id="course-dialog-color-label">Farbe</span>
+          <div id="course-dialog-color-panel" class="course-color-panel">
+            <div id="course-dialog-color-palette" class="course-color-palette" role="group"
+              aria-labelledby="course-dialog-color-label"></div>
+          </div>
+        </div>
+      </section>
+      <div class="button-row dialog-actions">
+        <button type="button" id="course-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="course-color-dialog" class="app-dialog" aria-label="Farbe bearbeiten">
+    <form id="course-color-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="course-color-dialog-title" class="dialog-title">Farbe bearbeiten</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="course-color-dialog-id">
+      <div class="course-color-panel">
+        <div id="course-color-dialog-palette" class="course-color-palette" role="group" aria-label="Farbpalette">
+        </div>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="course-students-dialog" class="app-dialog" aria-label="Teilnehmende verwalten"
+    data-tutorial-anchor="grades-students-dialog">
+    <form id="course-students-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="course-students-dialog-title" class="dialog-title">Teilnehmende verwalten</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="course-students-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="course-students-dialog-id">
+      <section class="course-dialog-panel active" data-panel="students">
+        <p><strong>1. Lade die Namensliste herunter (oder erstelle sie selbst mit <a href="#"
+              id="course-dialog-students-template">der Vorlage</a>)</strong></p>
+        <p class="muted">IServ-Randleiste → Alle Module → Gruppenlisten → Lerngruppe eingeben & „Nur Schüler zeigen”
+          aktivieren → Exportieren</p>
+        <p><strong>2. Importiere die Namensliste</strong></p>
+        <input id="course-dialog-students-file" type="file" accept=".csv,text/csv" hidden>
+        <div id="course-dialog-students-dropzone" class="course-dialog-dropzone" tabindex="0">
+          Auswählen<br>oder<br>Ablegen
+        </div>
+        <p><strong>3. Verwalte die Teilnehmenden</strong></p>
+        <p id="course-dialog-import-preview-text" class="muted" hidden></p>
+        <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
+        <div class="button-row course-dialog-students-manual-row">
+          <button type="button" id="course-dialog-students-add" class="sidebar-add-btn"
+            aria-label="Teilnehmende hinzufügen" title="Teilnehmende hinzufügen">
+            <span class="sidebar-add-plus" aria-hidden="true"></span>
+          </button>
+        </div>
+      </section>
+    </form>
+  </dialog>
+
+  <dialog id="course-structure-dialog" class="app-dialog" aria-label="Notenstruktur bearbeiten"
+    data-tutorial-anchor="grades-structure-dialog">
+    <form id="course-structure-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="course-structure-dialog-title" class="dialog-title">Notenstruktur</h3>
+        <div class="dialog-actions-top course-structure-dialog-actions-top app-action-group">
+          <button type="button" id="course-dialog-copy-h1-to-h2" class="ghost course-dialog-copy-h1-to-h2" hidden>
+            Aus HJ1 übernehmen
+          </button>
+          <div id="course-dialog-structure-period-toggle" class="course-dialog-structure-period-toggle"
+            role="radiogroup" aria-label="Halbjahr für Gewichtungen">
+            <label class="course-dialog-structure-period-option">
+              <input type="radio" name="course-structure-period" data-course-structure-period="1" value="h1" checked>
+              <span>HJ1</span>
+            </label>
+            <label class="course-dialog-structure-period-option">
+              <input type="radio" name="course-structure-period" data-course-structure-period="1" value="h2">
+              <span>HJ2</span>
+            </label>
+          </div>
+          <select id="course-dialog-structure-flair-select" class="course-dialog-structure-flair-select"
+            data-course-structure-flair="1" aria-label="P-Status für Gewichtungen"
+            title="Verschiedene Gewichtungen P1-P5">
+            <option value="">-</option>
+            <option value="P1">P1</option>
+            <option value="P2">P2</option>
+            <option value="P3">P3</option>
+            <option value="P4">P4</option>
+            <option value="P5">P5</option>
+          </select>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="course-structure-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="course-structure-dialog-id">
+      <section class="course-dialog-panel active" data-panel="structure">
+        <div class="course-dialog-structure-row">
+          <div id="course-dialog-structure-list" class="course-dialog-structure-list"></div>
+          <button type="button" id="course-dialog-category-add" class="sidebar-add-btn"
+            aria-label="Kategorie hinzufügen" title="Kategorie hinzufügen">
+            <span class="sidebar-add-plus" aria-hidden="true"></span>
+          </button>
+        </div>
+      </section>
+    </form>
+  </dialog>
+
+  <dialog id="entfall-dialog" class="app-dialog" aria-label="Entfalldialog">
+    <form id="entfall-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 class="dialog-title">Entfall eintragen</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="entfall-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <label>
+        Entfallgrund (optional)
+        <input id="entfall-dialog-reason" maxlength="160" placeholder="z. B. Exkursion">
+      </label>
+    </form>
+  </dialog>
+
+  <dialog id="topic-dialog" class="app-dialog" aria-label="Stundendialog">
+    <form id="topic-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header topic-dialog-header">
+        <h3 class="dialog-title topic-dialog-title">Stunde planen</h3>
+        <p id="topic-dialog-course-pill" class="topic-dialog-course-pill"></p>
+        <div class="dialog-actions-top topic-dialog-actions-top app-action-group">
+          <button type="submit" class="topic-dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="topic-dialog-cancel" class="ghost topic-dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="topic-dialog-lesson" type="hidden">
+      <p id="topic-dialog-context" class="topic-dialog-context"></p>
+      <label>
+        Thema
+        <input id="topic-dialog-input" maxlength="240" placeholder="Thema" aria-label="Thema" autocomplete="off">
+      </label>
+      <section class="topic-dialog-notes-section" aria-labelledby="topic-dialog-notes-label">
+        <span id="topic-dialog-notes-label">Detailplanung / Notizen</span>
+        <div id="topic-dialog-notes" class="topic-dialog-notes" contenteditable="true" role="textbox"
+          aria-multiline="true" aria-labelledby="topic-dialog-notes-label"
+          data-placeholder="Ablauf, Material, Lernziele, Hinweise ..."></div>
+      </section>
+    </form>
+  </dialog>
+
+  <dialog id="slot-dialog" class="app-dialog" aria-label="Unterrichtsstundendialog">
+    <form id="slot-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="slot-dialog-title" class="dialog-title">Unterrichtsstunde</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="slot-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="slot-dialog-id">
+      <label class="slot-dialog-row">
+        <span>Kurs</span>
+        <select id="slot-dialog-course" required></select>
+      </label>
+      <label class="slot-dialog-row">
+        <span>Wochentag</span>
+        <select id="slot-dialog-day" required>
+          <option value="1">Mo</option>
+          <option value="2">Di</option>
+          <option value="3">Mi</option>
+          <option value="4">Do</option>
+          <option value="5">Fr</option>
+        </select>
+      </label>
+      <label class="slot-dialog-row">
+        <span>Startstunde</span>
+        <input id="slot-dialog-hour" type="number" min="1" max="12" value="1" required>
+      </label>
+      <label class="slot-dialog-row">
+        <span>Endstunde</span>
+        <input id="slot-dialog-end-hour" type="number" min="1" max="12" value="2" required>
+      </label>
+      <label class="slot-dialog-row">
+        <span>Wiederholung</span>
+        <select id="slot-dialog-parity">
+          <option value="0">Jede Woche</option>
+          <option value="-1">Keine</option>
+          <option value="1">Nur ungerade Wochen</option>
+          <option value="2">Nur gerade Wochen</option>
+        </select>
+      </label>
+      <label class="slot-dialog-row">
+        <span>Startdatum</span>
+        <input id="slot-dialog-start" type="date" required>
+      </label>
+      <label class="slot-dialog-row">
+        <span>Enddatum</span>
+        <input id="slot-dialog-end" type="date" required>
+      </label>
+      <div id="slot-dialog-edit-info" class="slot-edit-info" hidden></div>
+      <div id="slot-dialog-edit-tools" hidden>
+        <input id="slot-dialog-edit-scope" type="hidden" value="all">
+        <input id="slot-dialog-edit-from-date" type="hidden">
+      </div>
+      <div class="button-row dialog-actions">
+        <button type="button" id="slot-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="free-range-dialog" class="app-dialog" aria-label="Ferienzeitraumdialog">
+    <form id="free-range-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="free-range-dialog-title" class="dialog-title">Ferienzeitraum</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="free-range-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="free-range-dialog-id">
+      <label>
+        Bezeichnung
+        <input id="free-range-dialog-label" required placeholder="z. B. Herbstferien" maxlength="80" autocomplete="off">
+      </label>
+      <label>
+        Von
+        <input id="free-range-dialog-start" type="date" required>
+      </label>
+      <label>
+        Bis
+        <input id="free-range-dialog-end" type="date" required>
+      </label>
+    </form>
+  </dialog>
+
+  <dialog id="special-day-dialog" class="app-dialog" aria-label="Unterrichtsfreier-Tag-Dialog">
+    <form id="special-day-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="special-day-dialog-title" class="dialog-title">Unterrichtsfreier Tag</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="special-day-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input type="hidden" id="special-day-dialog-id">
+      <label>
+        Name
+        <input id="special-day-dialog-name" list="special-day-options" required maxlength="80"
+          placeholder="z. B. Tag der Arbeit" autocomplete="off">
+      </label>
+      <label>
+        Datum
+        <input id="special-day-dialog-date" type="date" required>
+      </label>
+      <div class="button-row dialog-actions">
+        <button type="button" id="special-day-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="message-dialog" class="app-dialog" aria-label="Meldungsdialog">
+    <form id="message-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="message-dialog-title" class="dialog-title">Hinweis</h3>
+        <div id="message-dialog-actions-top" class="dialog-actions-top app-action-group" hidden>
+          <button type="submit" id="message-dialog-ok-top" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
+          <button type="button" id="message-dialog-cancel-top" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <p id="message-dialog-text" class="message-dialog-text"></p>
+      <label id="message-dialog-input-row" class="message-dialog-input-row" hidden>
+        <span id="message-dialog-input-label">Eingabe</span>
+        <input id="message-dialog-input" type="text" maxlength="4000" autocomplete="off">
+      </label>
+      <div id="message-dialog-actions-bottom" class="button-row dialog-actions">
+        <button type="button" id="message-dialog-cancel" class="ghost" hidden>Abbrechen</button>
+        <span class="dialog-grow"></span>
+        <button type="submit" id="message-dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="schoolmanager-transfer-dialog" class="app-dialog schoolmanager-transfer-dialog"
+    aria-labelledby="schoolmanager-transfer-dialog-title">
+    <form id="schoolmanager-transfer-dialog-form" class="form-grid schoolmanager-transfer-form" method="dialog">
+      <div class="dialog-header">
+        <h3 id="schoolmanager-transfer-dialog-title" class="dialog-title">Noten in Schulmanager/AbiWeb übertragen</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="schoolmanager-transfer-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Schließen" data-tooltip="Schließen">❌</button>
+        </div>
+      </div>
+      <div class="schoolmanager-transfer-steps">
+        <section class="schoolmanager-transfer-setup" aria-labelledby="schoolmanager-transfer-setup-title">
+          <h4 id="schoolmanager-transfer-setup-title" class="schoolmanager-transfer-setup-title">Einmalige Vorbereitung
+          </h4>
+          <label class="schoolmanager-transfer-step schoolmanager-transfer-number-row">
+            <span>0a. Gib an, das wievielte Eingabefeld das erste
+              <strong>Notenfeld</strong> im Schulmanager ist:</span>
+            <input id="schoolmanager-transfer-first-grade-field" class="settings-number-input" type="number" min="1"
+              max="99" step="1" value="7" inputmode="numeric">
+          </label>
+          <section class="schoolmanager-transfer-step">
+            <p>0b. Öffne Deinen Browser und lege ein <strong>Lesezeichen</strong> an (erneut bei
+              Änderung des Werts aus 0a.):</p>
+            <ul class="schoolmanager-transfer-bookmarklet-actions">
+              <li>Lesezeichen im Browser anzeigen (PC: Strg + ⇧ Shift + B / Mac: ⌘ + ⇧ Shift + B)</li>
+              <li>Folgende Box in die Lesezeichenzeile des Browsers ziehen:
+                <br>
+                <span class="schoolmanager-transfer-bookmarklet-link-row">
+                  <a id="schoolmanager-transfer-bookmarklet-link" class="schoolmanager-transfer-bookmarklet-link"
+                    href="#schoolmanager-transfer-bookmarklet-link" draggable="true"
+                    aria-label="Schulmanager/AbiWeb-Import in die Lesezeichenleiste ziehen">Schulmanager/AbiWeb-Import</a>
+                </span>
+              </li>
+            </ul>
+          </section>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>1. Wähle die zur Zielplattform passende <strong>Sortierung</strong> aus:</p>
+          <div class="schoolmanager-transfer-segment-control" role="radiogroup" aria-label="Sortierung">
+            <label class="schoolmanager-transfer-segment-option">
+              <input type="radio" name="schoolmanager-transfer-name-order" data-schoolmanager-transfer-name-order="1"
+                value="first">
+              <span>Vorname<br>Nachname</span>
+            </label>
+            <label class="schoolmanager-transfer-segment-option">
+              <input type="radio" name="schoolmanager-transfer-name-order" data-schoolmanager-transfer-name-order="1"
+                value="last" checked>
+              <span>Nachname,<br>Vorname</span>
+            </label>
+          </div>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>2. Wähle das passende <strong>Notensystem</strong> aus:</p>
+          <div class="schoolmanager-transfer-segment-control" role="radiogroup" aria-label="Notensystem">
+            <label class="schoolmanager-transfer-segment-option">
+              <input type="radio" name="schoolmanager-transfer-display-system"
+                data-schoolmanager-transfer-display-system="1" value="points15" checked>
+              <span>15-00</span>
+            </label>
+            <label class="schoolmanager-transfer-segment-option">
+              <input type="radio" name="schoolmanager-transfer-display-system"
+                data-schoolmanager-transfer-display-system="1" value="school">
+              <span>1-6</span>
+            </label>
+          </div>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>3. Wähle aus, ob <strong>Prädikatsanhängsel</strong> zulässig sind:</p>
+          <div class="schoolmanager-transfer-segment-control" role="radiogroup" aria-label="Prädikatsanhängsel">
+            <label class="schoolmanager-transfer-segment-option">
+              <input type="radio" name="schoolmanager-transfer-predicate-suffixes"
+                data-schoolmanager-transfer-predicate-suffixes="1" value="false" disabled>
+              <span>Nein</span>
+            </label>
+            <label class="schoolmanager-transfer-segment-option">
+              <input type="radio" name="schoolmanager-transfer-predicate-suffixes"
+                data-schoolmanager-transfer-predicate-suffixes="1" value="true" checked disabled>
+              <span>Ja</span>
+            </label>
+          </div>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>4. Kopiere die <strong>ausgewählte Notenspalte</strong> über folgenden Button in Deine
+            Zwischenablage/Clipboard:</p>
+          <div class="button-row dialog-actions">
+            <button id="schoolmanager-transfer-submit" type="submit" class="schoolmanager-transfer-submit">Noten in
+              Zwischenablage kopieren</button>
+          </div>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>5. Lege im Schulmanager einen <strong>Sammelnoteneintrag</strong> an oder öffne in AbiWeb die
+            <strong>Halbjahresleistungen</strong>.
+          </p>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>6. Klicke auf das <strong>Lesezeichen</strong> "Schulmanager/AbiWeb-Import" (Safari: anschließend auf
+            "Einsetzen").</p>
+        </section>
+        <p class="schoolmanager-transfer-warning">Kontrolliere das Ergebnis: Die Übernahme erfolgt anhand
+          der Reihenfolge im TeachHelper, die nicht zwingend mit der Reihenfolge in der Zielplattform übereinstimmt.
+        </p>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-simulation-dialog" class="app-dialog grade-simulation-dialog"
+    aria-labelledby="grade-simulation-dialog-title">
+    <form id="grade-simulation-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-simulation-dialog-title" class="dialog-title">Warnungen (Simulation)</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="grade-simulation-dialog-close" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Schließen" data-tooltip="Schließen">❌</button>
+        </div>
+      </div>
+      <div class="grade-simulation-controls">
+        <label>
+          Simulierte Note
+          <select id="grade-simulation-value" autocomplete="off"></select>
+        </label>
+        <label>
+          Halbjahr
+          <select id="grade-simulation-halfyear" autocomplete="off">
+            <option value="h1">HJ1</option>
+            <option value="h2">HJ2</option>
+          </select>
+        </label>
+        <label>
+          Kategorie
+          <select id="grade-simulation-category" autocomplete="off"></select>
+        </label>
+        <label>
+          Unterkategorie
+          <select id="grade-simulation-subcategory" autocomplete="off"></select>
+        </label>
+      </div>
+      <div id="grade-simulation-result" class="grade-simulation-result" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-accommodation-dialog" class="app-dialog grade-accommodation-dialog"
+    aria-labelledby="grade-accommodation-dialog-title">
+    <form id="grade-accommodation-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-accommodation-dialog-title" class="dialog-title">Nachteilsausgleich</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="grade-accommodation-add" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Kachel hinzufügen" data-tooltip="Kachel hinzufügen">➕</button>
+          <button type="submit" id="grade-accommodation-save" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
+          <button type="button" id="grade-accommodation-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="grade-accommodation-course-id" type="hidden">
+      <div id="grade-accommodation-list" class="grade-accommodation-list"></div>
+      <div id="grade-accommodation-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="expectation-horizon-dialog" class="app-dialog expectation-horizon-dialog"
+    aria-labelledby="expectation-horizon-dialog-title">
+    <form id="expectation-horizon-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="expectation-horizon-dialog-title" class="dialog-title">Erwartungshorizont erstellen</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="expectation-horizon-generate" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Generieren" data-tooltip="Generieren">✨</button>
+          <button type="button" id="expectation-horizon-template-download" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Vorlage herunterladen" data-tooltip="Vorlage herunterladen">📥</button>
+          <button type="button" id="expectation-horizon-save" class="ghost dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
+          <button type="button" id="expectation-horizon-cancel-top" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="expectation-horizon-file" class="visually-hidden" type="file"
+        accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+      <input id="expectation-horizon-latex-file" class="visually-hidden" type="file"
+        accept=".tex,.ltx,.latex,text/plain,text/x-tex,application/x-tex">
+      <div class="expectation-horizon-dropzone-grid">
+        <button id="expectation-horizon-dropzone" class="expectation-horizon-dropzone" type="button">
+          <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+          <span>Geänderte Vorlage für diese Arbeit hochladen</span>
+        </button>
+        <button id="expectation-horizon-latex-dropzone" class="expectation-horizon-dropzone" type="button">
+          <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+          <span>Aus LaTeX-Datei Inhalte in EWH hinzufügen</span>
+        </button>
+      </div>
+      <button id="expectation-horizon-percentile-toggle" class="expectation-horizon-percentile-toggle" type="button"
+        role="switch" aria-checked="true">
+        <span>Prozentrang in der Lerngruppe einfügen</span>
+        <span class="expectation-horizon-percentile-switch" aria-hidden="true"></span>
+      </button>
+      <button id="expectation-horizon-percent-boundaries-toggle" class="expectation-horizon-percentile-toggle"
+        type="button" role="switch" aria-checked="true">
+        <span>Prozentgrenzen einfügen</span>
+        <span class="expectation-horizon-percentile-switch" aria-hidden="true"></span>
+      </button>
+      <fieldset id="expectation-horizon-percent-boundary-mode-field" class="expectation-horizon-boundary-mode-field"
+        aria-label="Tabelleninhalt">
+        <div class="assessment-mode-toggle expectation-horizon-boundary-mode-toggle" role="radiogroup"
+          aria-label="Tabelleninhalt">
+          <label class="assessment-mode-option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-percent-boundary-mode"
+              data-expectation-horizon-percent-boundary-mode="1" value="percent">
+            <span>Prozent</span>
+          </label>
+          <label class="assessment-mode-option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-percent-boundary-mode"
+              data-expectation-horizon-percent-boundary-mode="1" value="be">
+            <span>BE</span>
+          </label>
+          <label class="assessment-mode-option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-percent-boundary-mode"
+              data-expectation-horizon-percent-boundary-mode="1" value="both" checked>
+            <span>Prozent + BE</span>
+          </label>
+        </div>
+      </fieldset>
+      <div id="expectation-horizon-file-name" class="expectation-horizon-file-name" aria-live="polite"></div>
+      <button id="expectation-horizon-template-reset" class="ghost expectation-horizon-template-reset" type="button">
+        Temporäre Vorlage verwerfen
+      </button>
+      <div id="expectation-horizon-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="competence-expectations-dialog" class="app-dialog competence-expectations-dialog"
+    aria-labelledby="competence-expectations-dialog-title">
+    <form id="competence-expectations-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="competence-expectations-dialog-title" class="dialog-title">Kompetenzerwartung erstellen</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="competence-expectations-generate" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Generieren" data-tooltip="Generieren">✨</button>
+          <button type="button" id="competence-expectations-save" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="button" id="competence-expectations-cancel-top" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="competence-expectations-latex-file" class="visually-hidden" type="file"
+        accept=".tex,.ltx,.latex,text/plain,text/x-tex,application/x-tex">
+      <div class="expectation-horizon-dropzone-grid competence-expectations-import-grid">
+        <button id="competence-expectations-latex-dropzone" class="expectation-horizon-dropzone" type="button">
+          <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
+          <span>Aus LaTeX-Datei Kompetenzerwartung übernehmen</span>
+        </button>
+      </div>
+      <div id="competence-expectations-list" class="competence-expectations-list"></div>
+      <div id="competence-expectations-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-task-competence-dialog" class="app-dialog grade-task-competence-dialog"
+    aria-labelledby="grade-task-competence-dialog-title">
+    <form id="grade-task-competence-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-task-competence-dialog-title" class="dialog-title">Kompetenzen zuordnen</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" id="grade-task-competence-save" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
+          <button type="button" id="grade-task-competence-cancel-top" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <div id="grade-task-competence-list" class="grade-task-competence-list"></div>
+      <div id="grade-task-competence-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-vault-dialog" class="app-dialog grade-vault-dialog" aria-labelledby="grade-vault-dialog-title">
+    <form id="grade-vault-dialog-form" class="form-grid" method="post" action="" autocomplete="on" spellcheck="false">
+      <div class="dialog-header">
+        <h3 id="grade-vault-dialog-title" class="dialog-title">Notenmodul schützen</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="grade-vault-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <p id="grade-vault-dialog-text" class="message-dialog-text"></p>
+      <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
+        Benutzername
+        <input id="grade-vault-dialog-username" name="username" type="text"
+          autocomplete="section-teachhelper-vault username" tabindex="-1">
+      </label>
+      <div class="grade-vault-dialog-fields">
+        <label id="grade-vault-dialog-current-row" hidden>
+          <span id="grade-vault-dialog-current-label">Aktuelles Passwort</span>
+          <input id="grade-vault-dialog-current-password" name="current-password" type="password" minlength="10"
+            autocomplete="section-teachhelper-vault current-password" autocapitalize="off" autocorrect="off"
+            spellcheck="false">
+        </label>
+        <label id="grade-vault-dialog-password-row">
+          Passwort
+          <input id="grade-vault-dialog-password" name="new-password" type="password" minlength="10"
+            autocomplete="section-teachhelper-vault new-password" autocapitalize="off" autocorrect="off"
+            spellcheck="false">
+        </label>
+        <label id="grade-vault-dialog-confirm-row" hidden>
+          Passwort wiederholen
+          <input id="grade-vault-dialog-confirm-password" name="confirm-password" type="password" minlength="10"
+            autocomplete="section-teachhelper-vault new-password" autocapitalize="off" autocorrect="off"
+            spellcheck="false">
+        </label>
+      </div>
+      <p id="grade-vault-dialog-hint" class="grade-vault-dialog-hint"></p>
+      <p id="grade-vault-dialog-error" class="grade-vault-dialog-error" aria-live="polite"></p>
+      <div class="grade-vault-dialog-submit-row">
+        <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
+          title="Bestätigen">🔓</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="archive-dialog" class="app-dialog archive-dialog" aria-labelledby="archive-dialog-title">
+    <form id="archive-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="archive-dialog-title" class="dialog-title">Schuljahr archivieren</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="archive-dialog-cancel-top" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <p class="archive-dialog-copy">PDF-Export des gesamten Schuljahres</p>
+      <section class="archive-dialog-section">
+        <label class="checkbox-line archive-dialog-toggle">
+          <input id="archive-export-grades" type="checkbox">
+          <span class="archive-dialog-toggle-text">Noten exportieren
+            <span id="archive-grades-locked-hint" class="archive-dialog-info" role="note" hidden>
+              Notenexport erst nach Entsperren des Notenmoduls.
+            </span>
+          </span>
+        </label>
+        <div id="archive-grades-options" class="archive-dialog-nested">
+          <div class="archive-dialog-choice-group" role="radiogroup" aria-label="Noten-Umfang">
+            <label class="archive-dialog-radio">
+              <input type="radio" name="archive-grade-scope" value="categories" checked>
+              <span>nur Kategorie-Noten</span>
+            </label>
+            <label class="archive-dialog-radio">
+              <input type="radio" name="archive-grade-scope" value="details">
+              <span>Kategorie- und Einzelnoten</span>
+            </label>
+          </div>
+          <label class="checkbox-line archive-dialog-be-mask">
+            <input id="archive-grade-be-mask" type="checkbox">
+            <span>BE-Eingabemaske mit BE2, BE1, AFB usw.</span>
+          </label>
+        </div>
+      </section>
+      <section class="archive-dialog-section">
+        <label class="checkbox-line archive-dialog-toggle">
+          <input id="archive-export-planning" type="checkbox">
+          <span>Planung exportieren</span>
+        </label>
+        <div id="archive-planning-options" class="archive-dialog-nested archive-dialog-choice-group">
+          <label class="checkbox-line">
+            <input id="archive-planning-courses" type="checkbox">
+            <span>Kursansichten</span>
+          </label>
+          <label class="checkbox-line">
+            <input id="archive-planning-weeks" type="checkbox">
+            <span>Wochenansichten</span>
+          </label>
+        </div>
+      </section>
+      <p id="archive-dialog-status" class="archive-dialog-status" aria-live="polite"></p>
+      <div class="button-row dialog-actions">
+        <button type="button" id="archive-dialog-cancel" class="ghost">Abbrechen</button>
+        <span class="dialog-grow"></span>
+        <button type="submit" id="archive-dialog-generate">PDF erstellen</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="week-calendar-dialog" class="app-dialog week-calendar-dialog" aria-label="Wochenkalender">
+    <div class="week-calendar-shell">
+      <div class="week-calendar-header">
+        <button id="week-calendar-prev" type="button" class="ghost small" aria-label="Vorheriger Monat"
+          title="Monat zurück">‹</button>
+        <select id="week-calendar-month"></select>
+        <button id="week-calendar-next" type="button" class="ghost small" aria-label="Nächster Monat"
+          title="Monat vor">›</button>
+      </div>
+      <table class="week-calendar-table">
+        <thead>
+          <tr>
+            <th>KW</th>
+            <th>Mo</th>
+            <th>Di</th>
+            <th>Mi</th>
+            <th>Do</th>
+            <th>Fr</th>
+          </tr>
+        </thead>
+        <tbody id="week-calendar-grid"></tbody>
+      </table>
+    </div>
+  </dialog>
+  <div id="grade-picker" class="grade-picker" hidden></div>
+  <div id="grades-title-date-picker" class="grades-title-date-picker" hidden></div>
+  <div id="grades-print-area" class="grades-print-area" aria-hidden="true"></div>
+
+  <script type="module" src="./app.js"></script>
+  <script src="./bridge.js"></script>
+  <script src="../../shared/sidebar-resize.js"></script>
+
+</body>
+
+</html>

@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="de">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+  <meta name="theme-color" content="#0b1220">
+  <meta name="color-scheme" content="dark">
+  <title>QR</title>
+  <link rel="manifest" href="../../../manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png">
+  <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png">
+  <link rel="stylesheet" href="./app.css?v=qr-r5">
+  <link rel="stylesheet" href="../../shared/app-tooltips.css">
+</head>
+
+<body>
+  <div class="qr-runtime-root">
+    <div class="app" data-sidebar-width-scope="other">
+      <aside class="side" aria-label="QR-Werkzeuge">
+        <div class="sidebar-resize-handle" aria-hidden="true"></div>
+        <div class="sidebar-header">
+          <h1 class="sidebar-title">QR</h1>
+          <div class="sidebar-header-actions">
+            <button id="tutorialButton" class="module-tutorial-button" type="button" aria-label="Tutorial starten"
+              title="Tutorial starten">🛟</button>
+          </div>
+        </div>
+        <div class="tool-tab-bar" role="tablist" aria-label="QR-Werkzeuge">
+          <button id="tool-tab-generator" class="tool-tab active" type="button" role="tab" data-tool="generator"
+            aria-controls="tool-panel-generator" aria-selected="true">QR-Generator</button>
+          <button id="tool-tab-decoder" class="tool-tab" type="button" role="tab" data-tool="decoder"
+            aria-controls="tool-panel-decoder" aria-selected="false">QR-Decoder</button>
+        </div>
+      </aside>
+
+      <main class="main" aria-live="polite">
+        <section id="tool-panel-generator" class="tool-panel" data-tool-panel="generator" role="tabpanel"
+          aria-labelledby="tool-tab-generator">
+          <div class="panel-head">
+            <div>
+              <h2 class="card-title">QR-Code aus Link erstellen</h2>
+            </div>
+          </div>
+
+          <div class="stack-layout">
+            <form id="generatorForm" class="options-panel generator-form">
+              <label class="field" for="generatorLinkInput">
+                <span>Link</span>
+                <input id="generatorLinkInput" type="text" inputmode="url" autocomplete="url"
+                  placeholder="https://www.tagesschau.de/">
+              </label>
+              <div class="controls">
+                <button id="generateButton" class="start" type="submit">QR-Code erstellen</button>
+              </div>
+            </form>
+
+            <section id="generatorResult" class="result-panel empty" aria-live="polite">
+              <div id="generatorEmpty" class="empty-state-box">
+                <h3 class="empty-state-title">Noch kein QR-Code</h3>
+                <p class="empty-state-copy">Erstelle einen QR-Code aus einem Link.</p>
+              </div>
+              <div id="qrPreviewShell" class="qr-preview-shell hidden">
+                <canvas id="qrCanvas" width="320" height="320" aria-label="Erstellter QR-Code"></canvas>
+                <a id="qrEncodedLink" class="encoded-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+                <div class="result-actions">
+                  <button id="downloadQrButton" class="btn-small primary" type="button">Download</button>
+                  <button id="copyQrImageButton" class="btn-small" type="button">In Zwischenablage kopieren</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section id="tool-panel-decoder" class="tool-panel" data-tool-panel="decoder" role="tabpanel"
+          aria-labelledby="tool-tab-decoder" hidden>
+          <div class="panel-head">
+            <div>
+              <h2 class="card-title">QR-Code lesen</h2>
+            </div>
+          </div>
+
+          <div class="stack-layout">
+            <div id="decoderDropZone" class="drop awaiting-file" tabindex="0" role="button"
+              aria-label="QR-Code-Bild auswählen">
+              <input id="decoderFileInput" type="file" accept="image/*" hidden>
+              <div class="drop-content">
+                <div id="decoderDropHint">
+                  <strong>Bild hier ablegen</strong>
+                  <div>oder klicken zum Auswählen</div>
+                </div>
+                <div id="decoderFileSummary" class="drop-summary hidden"></div>
+              </div>
+            </div>
+
+            <div class="decoder-actions">
+              <button id="pasteImageButton" class="btn-small primary" type="button">Aus Zwischenablage einfügen</button>
+              <button id="cameraButton" class="btn-small" type="button">Kamera</button>
+            </div>
+
+            <section id="cameraPanel" class="camera-panel hidden" aria-label="Kamera-Scan">
+              <video id="cameraVideo" playsinline muted></video>
+              <div class="camera-actions">
+                <button id="stopCameraButton" class="btn-small" type="button">Kamera stoppen</button>
+              </div>
+            </section>
+
+            <section id="decoderResult" class="result-panel empty" aria-live="polite">
+              <div id="decoderEmpty" class="empty-state-box">
+                <h3 class="empty-state-title">Noch kein QR-Code</h3>
+                <p class="empty-state-copy">Lade ein Bild hoch oder füge eines ein.</p>
+              </div>
+              <div id="decodedValuePanel" class="decoded-value-panel hidden">
+                <a id="decodedLink" class="encoded-link hidden" href="#" target="_blank" rel="noopener noreferrer"></a>
+                <pre id="decodedText" class="decoded-text hidden"></pre>
+                <div class="result-actions">
+                  <button id="copyDecodedButton" class="btn-small primary" type="button">In Zwischenablage
+                    kopieren</button>
+                </div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <dialog id="messageDialog" class="settings-dialog hidden" aria-labelledby="messageTitle"
+    aria-describedby="messageText">
+    <div class="dialog-header">
+      <p id="messageTitle" class="settings-title dialog-title">Hinweis</p>
+    </div>
+    <p id="messageText" class="message-text"></p>
+    <div class="dialog-actions">
+      <button id="externalLinkOpenButton" class="btn-small hidden" type="button">Link öffnen</button>
+      <button id="messageCloseButton" class="btn-small primary" type="button">OK</button>
+    </div>
+  </dialog>
+
+  <script src="./vendor/qrcode.min.js?v=qr-r5"></script>
+  <script src="./vendor/jsQR.js?v=qr-r5"></script>
+  <script type="module" src="./app.js?v=qr-r5"></script>
+  <script src="../../shared/sidebar-resize.js"></script>
+</body>
+
+</html>

@@ -1,0 +1,129 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+
+const [
+  tutorialSource,
+  mainSource,
+  planningSource,
+  seatplanSource,
+  duplicateSource,
+  qrSource,
+  frameBridgeSource,
+] = await Promise.all([
+  readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/duplicate-check/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/shared/module-frame-bridge.js', import.meta.url), 'utf8'),
+]);
+
+test('automatic tutorial demos replace the step set and retain their cleanup', () => {
+  assert.match(tutorialSource, /const activateDemoDefinition = \(definition\) => \{/);
+  assert.match(tutorialSource, /setStepSet\(result\.steps \|\| definition\.demo\.steps \|\| definition\.steps\)/);
+  assert.match(tutorialSource, /if \(contextualDefinition\.demo\.auto\) \{\s+activateDemoDefinition\(contextualDefinition\)/);
+});
+
+test('data-bearing module tutorials use automatic isolated examples', () => {
+  [
+    'activateGradesTutorialDemo',
+    'activatePlanningTutorialDemo',
+    'activateSeatplanTutorialDemo',
+    'activateClassroomTutorialDemo\\(TAB_GROUPS\\)',
+    'activateClassroomTutorialDemo\\(TAB_RANDOM_PICKER\\)',
+    'activateWorkPhaseTutorialDemo',
+  ].forEach((activation) => {
+    assert.match(
+      mainSource,
+      new RegExp(`activate:\\s*(?:\\(\\) => )?${activation}[\\s\\S]{0,80}?auto:\\s*true`)
+    );
+  });
+});
+
+test('isolated frames restore the original module frames on cleanup', () => {
+  assert.match(mainSource, /demoUrl\.searchParams\.set\('tutorial-demo', 'planning'\)/);
+  assert.match(mainSource, /demoUrl\.searchParams\.set\('tutorial-demo', 'grades'\)/);
+  assert.match(mainSource, /demoUrl\.searchParams\.set\('tutorial-demo', 'seatplan'\)/);
+  assert.match(mainSource, /seatplanTutorialDemoFrame\?\.remove\(\)/);
+  assert.match(mainSource, /realFrame\.hidden = realFrameWasHidden/);
+  assert.match(mainSource, /realFrame\.style\.display = realFrameDisplay/);
+});
+
+test('seatplan tutorial data cannot sync back to the real roster', () => {
+  assert.match(seatplanSource, /const TUTORIAL_DEMO_MODE = new URLSearchParams\(window\.location\.search\)/);
+  assert.match(seatplanSource, /state\.csvName = 'Tutorial-Beispielklasse'/);
+  assert.match(
+    seatplanSource,
+    /function publishStudentsUpdatedFromSeatplan\(\) \{\s+if \(TUTORIAL_DEMO_MODE \|\|/
+  );
+  assert.match(
+    seatplanSource,
+    /function requestGradeRosterCourses\([^)]*\) \{\s+if \(TUTORIAL_DEMO_MODE \|\|/
+  );
+});
+
+test('planning and grades demos cannot overwrite real sync metadata', () => {
+  assert.match(
+    planningSource,
+    /saveSyncMeta\(\) \{\s+if \(this\.tutorialDemoMode\) \{\s+return true;/
+  );
+});
+
+test('grades demo seeds learners, a persisted structure, and an assigned assessment', () => {
+  assert.match(planningSource, /store\.replaceGradeStudentsForCourse\(courseId, \[/);
+  assert.match(
+    planningSource,
+    /store\.saveGradeStructure\(\s*courseId,\s*store\.getDefaultGradeStructure\(\)\.periodCategories\s*\)/
+  );
+  assert.match(planningSource, /categoryId: category\?\.id,\s+subcategoryId: subcategory\?\.id/);
+});
+
+test('work phase tutorial restores the complete previous timer snapshot', () => {
+  assert.match(mainSource, /const previousTimerState = SharedTimerStore\.getState\(\)/);
+  assert.match(mainSource, /replaceTimerState\(previousTimerState\)/);
+  assert.match(mainSource, /if \(previousTimerState\.alarmState\) \{\s+updateWorkOrderAlert\(true\)/);
+});
+
+test('groups and picker restore both the visible roster and the shared roster store', () => {
+  assert.match(mainSource, /const previousRosterState = SharedRosterStore\.getState\(\)/);
+  assert.match(
+    mainSource,
+    /SharedRosterStore\.replace\(previousRosterState\);\s+classroomTutorialDemoActive = false;\s+state = realClassroomState;/
+  );
+  assert.match(mainSource, /if \(classroomTutorialDemoActive\) return SharedRosterStore\.getState\(\)/);
+});
+
+test('duplicate check demo restores records, rules, and file summary', () => {
+  assert.match(duplicateSource, /tutorialPreviousState = \{\s+records: lastRecords,/);
+  assert.match(duplicateSource, /enabledRules: \{ \.\.\.enabledRules \}/);
+  assert.match(duplicateSource, /lastRecords = previousState\?\.records \|\| \[\];/);
+  assert.match(duplicateSource, /syncRuleButtons\(\);\s+setFileSummary\(/);
+  assert.match(duplicateSource, /renderResultFromLastRecords\(\);/);
+  assert.doesNotMatch(
+    duplicateSource.slice(
+      duplicateSource.indexOf('function activateTutorialDemo()'),
+      duplicateSource.indexOf('function cleanupTutorialDemo()')
+    ),
+    /revokeRecordObjectUrls\(lastRecords\)/
+  );
+});
+
+test('QR demo restores generated, decoded, and entered values after pending rendering', () => {
+  assert.match(qrSource, /tutorialPreviousState = \{\s+generatedUrl,\s+decodedValue,/);
+  assert.match(qrSource, /generatorInputValue: ui\.generatorLinkInput\?\.value \|\| ''/);
+  assert.match(qrSource, /decoderFileSummaryName: ui\.decoderFileSummary\?\.textContent \|\| ''/);
+  assert.match(qrSource, /generatedUrl = previousState\?\.generatedUrl \|\| '';/);
+  assert.match(qrSource, /renderDecodedValue\(previousState\.decodedValue\);/);
+  assert.match(qrSource, /Promise\.resolve\(pendingDemoRender\)[\s\S]*?drawQrToCanvas\(restoredGeneratedUrl\)/);
+});
+
+test('opaque tutorial module sandboxes stay isolated from the shell origin', () => {
+  const duplicateSandbox = frameBridgeSource.match(/DUPLICATE_CHECK_MODULE_SANDBOX = '([^']+)'/)?.[1] || '';
+  const qrSandbox = frameBridgeSource.match(/QR_MODULE_SANDBOX = '([^']+)'/)?.[1] || '';
+  assert.ok(duplicateSandbox.includes('allow-scripts'));
+  assert.ok(qrSandbox.includes('allow-scripts'));
+  assert.ok(!duplicateSandbox.includes('allow-same-origin'));
+  assert.ok(!qrSandbox.includes('allow-same-origin'));
+});
