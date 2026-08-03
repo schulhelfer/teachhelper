@@ -98,6 +98,11 @@ test('detects standalone mode, desktop devices, and Chrome or Edge in the requir
     documentRef: {},
   }), true);
   assert.equal(isStandalonePwa({
+    windowRef: { matchMedia: (query) => ({ matches: query === '(display-mode: window-controls-overlay)' }) },
+    navigatorRef: {},
+    documentRef: {},
+  }), true);
+  assert.equal(isStandalonePwa({
     windowRef: { matchMedia: () => ({ matches: false }) },
     navigatorRef: {},
     documentRef: { referrer: 'android-app://org.chromium.chrome' },

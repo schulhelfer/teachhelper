@@ -14,6 +14,7 @@ function getBrandNames(navigatorRef) {
 export function isStandalonePwa({ windowRef = window, navigatorRef = windowRef?.navigator, documentRef = windowRef?.document } = {}) {
   return Boolean(
     windowRef?.matchMedia?.('(display-mode: standalone)')?.matches
+    || windowRef?.matchMedia?.('(display-mode: window-controls-overlay)')?.matches
     || navigatorRef?.standalone === true
     || String(documentRef?.referrer || '').startsWith('android-app://')
   );
