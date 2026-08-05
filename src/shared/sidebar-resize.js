@@ -10,7 +10,10 @@
   const moduleFrameNonce = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
 
   function getScope(app) {
-    return app?.dataset.sidebarWidthScope === 'planning' ? 'planning' : 'other';
+    const declaredScope = app?.dataset.sidebarWidthScope;
+    return declaredScope === 'planning' || declaredScope === 'grades'
+      ? 'planning'
+      : 'other';
   }
 
   function getDefaultWidth(scope) {

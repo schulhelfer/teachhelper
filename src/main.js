@@ -21,13 +21,14 @@ import {
 import { createSharedTimerStore } from './shared/timer-store.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
+  GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  GRADES_COURSE_SEATPLAN_OPEN_EVENT,
   GRADES_NAVIGATE_EVENT,
   GRADES_READY_EVENT,
   GRADES_TUTORIAL_START_REQUEST_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
-  PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
-  PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   PLANNING_TUTORIAL_START_REQUEST_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
   TAB_DUPLICATE_CHECK,
@@ -176,7 +177,7 @@ import {
     && typeof window.showOpenFilePicker === 'function'
     && typeof window.showSaveFilePicker === 'function';
   const shellState = {
-    activeTab: TAB_GRADES,
+    activeTab: TAB_PLANNING,
     planningInitialPaintPending: true,
     gradesInitialPaintPending: true,
     planningManualSaveState: {
@@ -254,6 +255,7 @@ import {
   let seatplanTutorialDemoFrame = null;
   let seatplanTutorialDemoActive = false;
   const PLANNING_TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command';
+  const GRADES_TUTORIAL_COMMAND_EVENT = 'classroom:grades-tutorial-command';
   const QR_TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
   const DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
   const SIDEBAR_WIDTH_SCOPE_PLANNING = 'planning';
@@ -325,7 +327,7 @@ import {
     pendingGradesTutorialDemoView = detail;
     if (!gradesTutorialDemoFrameReady || !frame?.contentWindow) return false;
     postToModule(frame, {
-      type: PLANNING_VIEW_REQUEST_EVENT,
+      type: GRADES_VIEW_REQUEST_EVENT,
       detail,
     });
     return true;
@@ -340,7 +342,7 @@ import {
   const postGradesTutorialCommand = (command, detail = null, frame = getGradesFrame()) => {
     if (!frame) return false;
     return postToModule(frame, {
-      type: PLANNING_TUTORIAL_COMMAND_EVENT,
+      type: GRADES_TUTORIAL_COMMAND_EVENT,
       detail: { command, detail },
     });
   };
@@ -825,7 +827,7 @@ import {
     }, { once: true });
     const cleanup = () => {
       postToModule(frame, {
-        type: PLANNING_TUTORIAL_COMMAND_EVENT,
+        type: GRADES_TUTORIAL_COMMAND_EVENT,
         detail: { command: 'cleanup', detail: null },
       });
       gradesTutorialDemoActive = false;
@@ -922,6 +924,8 @@ import {
               copy,
               target: gradesTarget(selector),
               placement,
+              // Do not remove a demo step while its iframe is switching views.
+              skipIfMissing: false,
               ...options,
               beforeRender: () => prepareGradesTutorialSurface(surface),
             })
@@ -1134,6 +1138,9 @@ import {
               title,
               copy,
               target: planningFrameTarget(selector, fallback),
+              // The demo iframe can still be rendering when a surface changes.
+              // Keep its step instead of shortening the tutorial in that brief gap.
+              skipIfMissing: false,
               ...options,
               beforeRender: () => preparePlanningTutorialSurface(surface),
             })
@@ -2304,7 +2311,28 @@ import {
   }
 
   function startTutorialFromEntry() {
-    firstRunTutorial?.startFromEntry?.();
+    void firstRunTutorial?.startFromEntry?.();
+  }
+
+  async function createBackupBeforeTutorialStart() {
+    const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
+    const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
+    const backupDirectoryConnected = Boolean(workspaceOwner?.backupState?.directoryHandle);
+    // Tutorials remain available with isolated example data before persistence
+    // has been set up. Once it is set up, protect the current workspace first.
+    if (!databaseConnected || !backupDirectoryConnected) return true;
+    try {
+      const created = await workspaceOwner.createLatestWebBackup?.('tutorial', true);
+      if (created) return true;
+      showMessage('Vor dem Tutorial konnte kein Backup erstellt werden.', 'error');
+      return false;
+    } catch (error) {
+      const detail = error instanceof Error && error.message
+        ? ` ${error.message}`
+        : '';
+      showMessage(`Vor dem Tutorial konnte kein Backup erstellt werden.${detail}`, 'error');
+      return false;
+    }
   }
 
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -2325,6 +2353,12 @@ import {
         if (frame !== getPlanningFrame()) return;
         const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
         bridgeController?.dispatchGradesNavigation?.(detail);
+        // A course seatplan is prepared by the grades module, but its actual
+        // destination is the seatplan tab. Keeping the planning tab visible
+        // avoids exposing the grades tab as an incorrect intermediate target.
+        // If the grade vault is locked, its overlay brings the grades dialog
+        // to the foreground until the pending navigation can continue.
+        if (detail.action === 'seatplan') return;
         setActiveTab(TAB_GRADES);
         return;
       }
@@ -2389,7 +2423,7 @@ import {
     });
     window.addEventListener(PLANNING_TUTORIAL_START_REQUEST_EVENT, startTutorialFromEntry);
     window.addEventListener(GRADES_TUTORIAL_START_REQUEST_EVENT, startTutorialFromEntry);
-    window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, (event) => {
+    const openCourseSeatplan = (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (!detail || typeof detail !== 'object') {
         return;
@@ -2397,7 +2431,9 @@ import {
       bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
       bridgeController?.sendCourseSeatplanContext(detail);
       setActiveTab(TAB_SEATPLAN);
-    });
+    };
+    window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, openCourseSeatplan);
+    window.addEventListener(GRADES_COURSE_SEATPLAN_OPEN_EVENT, openCourseSeatplan);
   }
 
   function stripJsonWarning(text) {
@@ -2728,6 +2764,8 @@ import {
     onRefreshLayouts: () => refreshChromeDependentLayouts(),
     onRequestGradeVault: (detail) => bridgeController?.requestGradeVault?.(detail),
     onRequestManualSave: () => bridgeController?.requestManualSave?.(),
+    onResolveGradesTabLeave: () => bridgeController?.requestGradesTabLeaveConfirmation?.() || Promise.resolve(false),
+    onResolvePlanningTabLeave: () => bridgeController?.requestPlanningTabLeaveConfirmation?.() || Promise.resolve(false),
     onSidebarWidthChange: (scope, width) => syncSidebarWidthToModules(scope, width),
     onActiveTabChange: () => firstRunTutorial?.showContextHelp?.({ prompt: true }),
   });
@@ -5415,7 +5453,12 @@ import {
       const id = seat.dataset.seat;
       const occupants = getSeatList(id);
       const nameEl = seat.querySelector('.name');
-      syncSeatTopicState(seat, state.seatTopics[id]);
+      const topicValue = typeof state.seatTopics[id] === 'string' ? state.seatTopics[id] : '';
+      const topicInput = seat.querySelector('.seat-topic');
+      if (topicInput && topicInput.value !== topicValue) {
+        topicInput.value = topicValue;
+      }
+      syncSeatTopicState(seat, topicValue);
       nameEl.innerHTML = '';
       seat.classList.toggle('locked', state.lockedSeats.has(id));
       if (!occupants.length) {
@@ -6015,9 +6058,23 @@ import {
     copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
     els.csvStatus.append(title, copy);
   }
+  let gradeVaultOverlayRevealedGradesShell = false;
   window.addEventListener(GRADES_GRADE_VAULT_OVERLAY_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
-    appEl.classList.toggle('grade-vault-overlay', Boolean(detail?.open));
+    const isOpen = Boolean(detail?.open);
+    const gradesTabIsActive = appEl.classList.contains('app-tab-grades');
+
+    // The grades shell never carries a hidden attribute. That keeps the vault
+    // form semantically available to password managers even when another tool
+    // is active; CSS alone controls whether the shell or only its modal overlay
+    // is painted.
+    gradeVaultOverlayRevealedGradesShell = isOpen && !gradesTabIsActive;
+
+    appEl.classList.toggle('grade-vault-overlay', isOpen);
+    appEl.classList.toggle(
+      'grade-vault-overlay-revealed-grades',
+      isOpen && gradeVaultOverlayRevealedGradesShell
+    );
   });
 
   let gradeRosterRequestSequence = 0;
@@ -6221,7 +6278,7 @@ import {
     requestGradeRosterCourses({ interactive: true });
   });
 
-  document.addEventListener(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
+  document.addEventListener(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     if (!detail || String(detail.requestId || '') !== pendingGradeRosterCoursesRequestId) return;
     pendingGradeRosterCoursesRequestId = '';
@@ -6251,7 +6308,7 @@ import {
     renderGradeRosterPills();
   });
 
-  document.addEventListener(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
+  document.addEventListener(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     if (!detail || String(detail.requestId || '') !== pendingGradeRosterImportRequestId) return;
     pendingGradeRosterImportRequestId = '';
@@ -6284,8 +6341,8 @@ import {
     if (![TAB_GROUPS, TAB_RANDOM_PICKER, TAB_SEATPLAN].includes(returnTab)) return;
     setActiveTab(returnTab);
   };
-  document.addEventListener(PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, restoreGradeRosterReturnTab);
-  document.addEventListener(PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, restoreGradeRosterReturnTab);
+  document.addEventListener(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, restoreGradeRosterReturnTab);
+  document.addEventListener(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, restoreGradeRosterReturnTab);
 
   if (typeof ResizeObserver === 'function' && els.csvDropZone) {
     const observer = new ResizeObserver(() => renderGradeRosterPills());
@@ -8069,12 +8126,12 @@ import {
   bindBackgroundDrop(els.groupsGridWrap, { ignoreInsideGrid: true });
 
   try {
-    setActiveTab(TAB_GRADES);
+    setActiveTab(TAB_PLANNING);
   } catch (error) {
-    reportAppError(error, 'Noten konnten beim Start nicht geladen werden. Gruppenansicht als Fallback geöffnet.', {
+    reportAppError(error, 'Planung konnte beim Start nicht geladen werden. Gruppenansicht als Fallback geöffnet.', {
       scope: 'app-init',
       action: 'set-initial-tab',
-      tab: TAB_GRADES,
+      tab: TAB_PLANNING,
     });
     setActiveTabImmediate(TAB_GROUPS);
   }
@@ -8108,6 +8165,7 @@ import {
     isChromeCollapsed,
     setChromeCollapsed,
     tooltipController: appTooltips,
+    beforeStart: createBackupBeforeTutorialStart,
   });
   firstRunTutorial.showContextHelp({ prompt: true });
   window.addEventListener('resize', positionWorkOrderHintOverlay);

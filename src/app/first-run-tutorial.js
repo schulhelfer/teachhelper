@@ -1,3 +1,10 @@
+import {
+  isTrustedModuleMessage,
+  postToModule,
+  TUTORIAL_TARGET_RECT_REQUEST_EVENT,
+  TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
+} from '../shared/module-frame-bridge.js';
+
 const VIEWPORT_MARGIN = 14;
 const TARGET_GAP = 14;
 const REPOSITION_DELAY_MS = 460;
@@ -47,6 +54,16 @@ function resolveFrameTarget(target) {
   return { element, frame };
 }
 
+function getFrameTargetDescriptor(target) {
+  if (!target || typeof target !== 'object') return null;
+  const frame = typeof target.frame === 'function' ? target.frame() : target.frame;
+  if (!(frame instanceof HTMLIFrameElement) || !isElementVisible(frame)) return null;
+  if (frame.dataset.moduleOpaqueOrigin !== '1') return null;
+  const selectors = (Array.isArray(target.selector) ? target.selector : [target.selector])
+    .filter((selector) => typeof selector === 'string' && selector);
+  return selectors.length ? { frame, selectors } : null;
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -80,6 +97,7 @@ export function createFirstRunTutorial({
   isChromeCollapsed = () => false,
   setChromeCollapsed = () => {},
   tooltipController = null,
+  beforeStart = async () => true,
 } = {}) {
   let activeSteps = [];
   let active = false;
@@ -106,6 +124,61 @@ export function createFirstRunTutorial({
   let contentAnimations = [];
   let contentGhost = null;
   let contextHelpPromptTimer = 0;
+  let tutorialStartPending = false;
+  const opaqueTargetRects = new WeakMap();
+  const pendingOpaqueTargetRequests = new Set();
+  let opaqueTargetRequestSequence = 0;
+
+  function opaqueTargetKey(selectors) {
+    return selectors.join('\u0001');
+  }
+
+  function requestOpaqueTargetRect(descriptor) {
+    const key = opaqueTargetKey(descriptor.selectors);
+    const pendingKey = `${descriptor.frame.dataset.moduleFrameNonce || ''}:${key}`;
+    if (pendingOpaqueTargetRequests.has(pendingKey)) return;
+    pendingOpaqueTargetRequests.add(pendingKey);
+    const requestId = `tutorial-target-${++opaqueTargetRequestSequence}`;
+    const requests = descriptor.frame._tutorialTargetRectRequests || new Map();
+    requests.set(requestId, { key, pendingKey });
+    descriptor.frame._tutorialTargetRectRequests = requests;
+    if (!postToModule(descriptor.frame, {
+      type: TUTORIAL_TARGET_RECT_REQUEST_EVENT,
+      detail: { requestId, selectors: descriptor.selectors, reveal: true },
+    })) {
+      requests.delete(requestId);
+      pendingOpaqueTargetRequests.delete(pendingKey);
+    }
+  }
+
+  function resolveOpaqueFrameTarget(target) {
+    const descriptor = getFrameTargetDescriptor(target);
+    if (!descriptor) return null;
+    const key = opaqueTargetKey(descriptor.selectors);
+    requestOpaqueTargetRect(descriptor);
+    const rect = opaqueTargetRects.get(descriptor.frame)?.get(key);
+    return { frame: descriptor.frame, rect: rect || null, opaqueTutorialTarget: true };
+  }
+
+  function handleOpaqueTargetRectResponse(event) {
+    const data = event.data;
+    if (!data || data.type !== TUTORIAL_TARGET_RECT_RESPONSE_EVENT) return;
+    const frame = Array.from(document.querySelectorAll('iframe[data-module-opaque-origin="1"]'))
+      .find((candidate) => isTrustedModuleMessage(event, candidate));
+    if (!frame) return;
+    const requestId = String(data.detail?.requestId || '');
+    const request = frame._tutorialTargetRectRequests?.get(requestId);
+    if (!request) return;
+    frame._tutorialTargetRectRequests.delete(requestId);
+    pendingOpaqueTargetRequests.delete(request.pendingKey);
+    const rect = data.detail?.rect;
+    if (!rect || ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)) return;
+    const bySelector = opaqueTargetRects.get(frame) || new Map();
+    bySelector.set(request.key, rect);
+    opaqueTargetRects.set(frame, bySelector);
+    positionCurrentStep();
+    trackCurrentTarget();
+  }
 
   function clearContextHelpPromptTimer() {
     if (!contextHelpPromptTimer) return;
@@ -166,6 +239,8 @@ export function createFirstRunTutorial({
     if (frameTarget) {
       return frameTarget;
     }
+    const opaqueFrameTarget = resolveOpaqueFrameTarget(target);
+    if (opaqueFrameTarget) return opaqueFrameTarget;
     if (target && typeof target === 'object' && !(target instanceof HTMLElement) && target.fallback) {
       return typeof target.fallback === 'function' ? target.fallback(els) : target.fallback;
     }
@@ -264,6 +339,7 @@ export function createFirstRunTutorial({
     window.visualViewport?.addEventListener('resize', positionCurrentStep);
     window.visualViewport?.addEventListener('scroll', positionCurrentStep);
     document.addEventListener('keydown', handleKeydown);
+    window.addEventListener('message', handleOpaqueTargetRectResponse);
   };
 
   const removeDemoChoiceDialog = () => {
@@ -359,6 +435,7 @@ export function createFirstRunTutorial({
     window.visualViewport?.removeEventListener('resize', positionCurrentStep);
     window.visualViewport?.removeEventListener('scroll', positionCurrentStep);
     document.removeEventListener('keydown', handleKeydown);
+    window.removeEventListener('message', handleOpaqueTargetRectResponse);
     clearMorphArtifacts();
     stepTransitioning = false;
     bubble?.remove();
@@ -456,6 +533,25 @@ export function createFirstRunTutorial({
   }
 
   function getTargetRect(target) {
+    if (target?.opaqueTutorialTarget && target?.rect && target.frame instanceof HTMLIFrameElement) {
+      const frameRect = target.frame.getBoundingClientRect();
+      const viewportWidth = target.rect.viewportWidth || target.frame.clientWidth || 1;
+      const viewportHeight = target.rect.viewportHeight || target.frame.clientHeight || 1;
+      const scaleX = frameRect.width / viewportWidth;
+      const scaleY = frameRect.height / viewportHeight;
+      const contentLeft = frameRect.left + (target.frame.clientLeft || 0) * scaleX;
+      const contentTop = frameRect.top + (target.frame.clientTop || 0) * scaleY;
+      const left = contentLeft + target.rect.left * scaleX;
+      const top = contentTop + target.rect.top * scaleY;
+      return {
+        left,
+        top,
+        right: left + target.rect.width * scaleX,
+        bottom: top + target.rect.height * scaleY,
+        width: target.rect.width * scaleX,
+        height: target.rect.height * scaleY,
+      };
+    }
     if (isHtmlElement(target?.element) && target?.frame instanceof HTMLIFrameElement) {
       const frameRect = target.frame.getBoundingClientRect();
       const elementRect = target.element.getBoundingClientRect();
@@ -485,6 +581,7 @@ export function createFirstRunTutorial({
   }
 
   function revealTarget(target) {
+    if (target?.opaqueTutorialTarget) return;
     if (isHtmlElement(target?.element) && target?.frame instanceof HTMLIFrameElement) {
       const elementRect = target.element.getBoundingClientRect();
       const frameWindow = target.frame.contentWindow;
@@ -591,6 +688,13 @@ export function createFirstRunTutorial({
     const target = resolveTarget(activeSteps[stepIndex]);
     const cleanups = [];
     const reposition = () => positionCurrentStep();
+    if (target?.opaqueTutorialTarget && target.frame instanceof HTMLIFrameElement) {
+      if (typeof ResizeObserver === 'function') {
+        const resizeObserver = new ResizeObserver(reposition);
+        resizeObserver.observe(target.frame);
+        cleanups.push(() => resizeObserver.disconnect());
+      }
+    }
     if (isHtmlElement(target?.element) && target?.frame instanceof HTMLIFrameElement) {
       const frameDocument = target.element.ownerDocument;
       const frameWindow = frameDocument?.defaultView;
@@ -812,6 +916,9 @@ export function createFirstRunTutorial({
       }
     }
     const skipIfMissing = step?.skipIfMissing === true;
+    const waitForOpaqueFrameTarget = Boolean(getFrameTargetDescriptor(
+      typeof step?.target === 'function' ? step.target(els) : step?.target
+    ));
     if (!hadRenderedStep) bubble.hidden = skipIfMissing;
     highlight.hidden = true;
 
@@ -822,7 +929,7 @@ export function createFirstRunTutorial({
         console.error(error);
       }
       if (!active || currentRenderToken !== renderToken) return;
-      if (skipIfMissing) {
+      if (skipIfMissing || waitForOpaqueFrameTarget) {
         const target = await waitForStepTarget(step, currentRenderToken);
         if (!active || currentRenderToken !== renderToken) return;
         if (!target) {
@@ -872,7 +979,7 @@ export function createFirstRunTutorial({
     }
   }
 
-  function start() {
+  function startTutorial() {
     if (active) {
       removeDemoChoiceDialog();
       runSessionCleanup();
@@ -924,13 +1031,28 @@ export function createFirstRunTutorial({
     els.firstRunTutorialStart?.blur?.();
   }
 
+  async function start({ markStarted = false } = {}) {
+    if (tutorialStartPending) return false;
+    tutorialStartPending = true;
+    try {
+      const allowed = await beforeStart();
+      if (allowed === false) return false;
+      if (markStarted) markActiveTabStarted();
+      return startTutorial();
+    } catch (error) {
+      console.error(error);
+      return false;
+    } finally {
+      tutorialStartPending = false;
+    }
+  }
+
   function startFromEntry() {
-    markActiveTabStarted();
-    start();
+    return start({ markStarted: true });
   }
 
   els.firstRunTutorialStart?.addEventListener('click', () => {
-    startFromEntry();
+    void startFromEntry();
   });
   els.firstRunTutorialStart?.addEventListener('pointerenter', showContextHelp);
   els.firstRunTutorialStart?.addEventListener('focus', showContextHelp);

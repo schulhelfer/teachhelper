@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <title>TeachHelper</title>
   <meta name="theme-color" content="#0f172a" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -21,7 +21,7 @@
 </head>
 
 <body>
-  <div class="app app-tab-grades" id="app">
+  <div class="app app-tab-planning" id="app">
     <header class="app-header">
       <button id="toggle-chrome" class="ghost header-icon-button" type="button" aria-label="Hauptansicht im Vollbild"
         title="Hauptansicht im Vollbild" aria-pressed="false">
@@ -42,10 +42,10 @@
             aria-label="Notenmodul entsperren" title="Notenmodul entsperren" aria-hidden="true" tabindex="-1"
             disabled>🔒</button>
           <span class="tab-indicator" aria-hidden="true"></span>
-          <button id="tab-grades" class="tab-button active" type="button" data-tab-target="grades"
-            aria-selected="true">Noten</button>
-          <button id="tab-planning" class="tab-button" type="button" data-tab-target="planning"
-            aria-selected="false">Planung</button>
+          <button id="tab-grades" class="tab-button" type="button" data-tab-target="grades"
+            aria-selected="false">Noten</button>
+          <button id="tab-planning" class="tab-button active" type="button" data-tab-target="planning"
+            aria-selected="true">Planung</button>
           <button id="tab-seatplan" class="tab-button" type="button" data-tab-target="seatplan"
             aria-selected="false">Sitzplan</button>
           <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
@@ -341,7 +341,7 @@
     </aside>
 
     <main class="main">
-      <div id="groups-main-host">
+      <div id="groups-main-host" hidden>
         <h1 id="print-plan-title" class="print-plan-title" aria-hidden="true"></h1>
         <div class="groups-grid-wrap">
           <div id="groups-grid" class="groups-grid" aria-label="Gruppenübersicht"></div>
@@ -378,7 +378,7 @@
     <section id="planning-shell" class="planning-shell" hidden aria-label="Planung">
       <div id="planning-host" class="planning-host" aria-live="polite"></div>
     </section>
-    <section id="grades-shell" class="grades-shell" hidden aria-label="Noten">
+    <section id="grades-shell" class="grades-shell" aria-label="Noten">
       <div id="grades-host" class="grades-host" aria-live="polite"></div>
     </section>
     <section id="monitor-shell" class="monitor-shell" hidden aria-label="Lautstärkeampel">

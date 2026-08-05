@@ -1,0 +1,141 @@
+:root {
+  --panel: rgba(18, 24, 34, 0.72);
+  --module-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.76), rgba(15, 23, 42, 0.68));
+  --module-surface-strong: linear-gradient(180deg, rgba(20, 28, 40, 0.84), rgba(15, 23, 42, 0.76));
+  --module-surface-border: rgba(148, 163, 184, 0.16);
+  --module-surface-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
+  --module-surface-radius: 20px;
+  --line: rgba(255, 255, 255, 0.1);
+  --text: #e5edf7;
+  --muted: #9fb0c7;
+  --control-bg: rgba(28, 36, 48, 0.85);
+  --control-bg-focus: rgba(34, 42, 54, 0.95);
+  --control-border: rgba(148, 163, 184, 0.32);
+  --control-radius: 12px;
+  --control-height: 42px;
+  --button-bg: linear-gradient(180deg, rgba(71, 85, 105, 0.96), rgba(51, 65, 85, 0.96));
+  --button-bg-hover: linear-gradient(180deg, rgba(82, 96, 116, 0.98), rgba(59, 73, 94, 0.98));
+  --button-border: rgba(148, 163, 184, 0.35);
+  --button-shadow: 0 8px 20px rgba(15, 23, 42, 0.34);
+  --focus-border: rgba(226, 232, 240, 0.54);
+  --focus-ring: 0 0 0 3px rgba(226, 232, 240, 0.18);
+  --dropdown-bg: #1c2430;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  background: transparent;
+}
+
+body {
+  margin: 0;
+  height: 100vh;
+  min-height: 100vh;
+  overflow: hidden;
+  color: var(--text);
+  font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+.visually-hidden {
+  position: absolute !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  clip: rect(0 0 0 0) !important;
+  white-space: nowrap !important;
+  clip-path: inset(50%) !important;
+}
+
+button,
+input,
+select,
+textarea {
+  color: inherit;
+  font: inherit;
+}
+
+input,
+select,
+textarea {
+  min-height: var(--control-height);
+  padding: 0.5rem 0.62rem;
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+  background-color: var(--control-bg);
+}
+
+button {
+  min-height: var(--control-height);
+  padding: 0.45rem 0.72rem;
+  border: 1px solid var(--button-border);
+  border-radius: var(--control-radius);
+  background: var(--button-bg);
+  color: #e9eef5;
+  box-shadow: var(--button-shadow);
+  cursor: pointer;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--focus-border);
+  background: var(--button-bg-hover);
+}
+
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  outline: none;
+  border-color: var(--focus-border);
+  box-shadow: var(--focus-ring);
+}
+
+.app-dialog {
+  width: min(520px, calc(100vw - 24px));
+  max-width: 520px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--module-surface-border);
+  border-radius: var(--module-surface-radius);
+  background: var(--module-surface-strong);
+  color: var(--text);
+  box-shadow: var(--module-surface-shadow);
+  backdrop-filter: saturate(145%) blur(12px);
+}
+
+.app-dialog::backdrop {
+  background: rgba(2, 6, 23, 0.58);
+  backdrop-filter: blur(4px);
+}
+
+.dialog-header,
+.dialog-actions-top,
+.dialog-actions,
+.button-row {
+  display: flex;
+  align-items: center;
+}
+
+.dialog-header {
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.dialog-actions,
+.button-row {
+  gap: 0.6rem;
+}
+
+.dialog-grow {
+  flex: 1 1 auto;
+}

@@ -21,7 +21,7 @@
   line-height: 1.18;
   text-align: center;
   letter-spacing: 0.01em;
-  white-space: normal;
+  white-space: pre-line;
   overflow-wrap: anywhere;
   overflow: visible;
   box-shadow: 0 14px 28px rgba(2, 6, 23, 0.34);

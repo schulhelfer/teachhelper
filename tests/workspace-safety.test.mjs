@@ -8,6 +8,19 @@ async function importWorkspaceModules() {
     'utf8',
   );
   const messagesUrl = `data:text/javascript;base64,${Buffer.from(messagesSource).toString('base64')}`;
+  const runtimeUrl = `data:text/javascript;base64,${Buffer.from(`
+export function createWorkspaceRuntime(store) {
+  const clients = new Map();
+  return {
+    store, clients, ready: true,
+    bindController(controller) { this.controller = controller; return this; },
+    registerFeatureClient(scope, client) { clients.set(scope, client); return () => clients.delete(scope); },
+    createWorkspaceSnapshot(scope) { return { scope, status: { ready: this.ready }, ready: this.ready }; },
+    async handleWorkspaceAction() { return { changed: false }; },
+    async handleWorkspaceCommand() { return { changed: false }; },
+  };
+}
+`).toString('base64')}`;
   const workspaceSource = await readFile(
     new URL('../src/modules/workspace/index.js', import.meta.url),
     'utf8',
@@ -15,7 +28,8 @@ async function importWorkspaceModules() {
   const rewrittenWorkspaceSource = workspaceSource.replace(
     '../../shared/school-data/messages.js',
     messagesUrl,
-  );
+  ).replace("import { WorkspaceStore } from './store.js';", 'class WorkspaceStore {}')
+    .replace("from './runtime.js';", `from '${runtimeUrl}';`);
   const workspaceUrl = `data:text/javascript;base64,${Buffer.from(rewrittenWorkspaceSource).toString('base64')}`;
   return {
     messages: await import(messagesUrl),
@@ -55,6 +69,14 @@ function createOwner({ ready = false, handle = async () => ({ changed: false }) 
   return owner;
 }
 
+function installOwnerBehavior(controller, behavior) {
+  const owner = controller.getOwner();
+  owner.createWorkspaceSnapshot = behavior.createWorkspaceSnapshot.bind(behavior);
+  owner.handleWorkspaceCommand = behavior.handleWorkspaceCommand.bind(behavior);
+  controller.setOwnerHydrated(owner, Boolean(behavior.state.ready));
+  return owner;
+}
+
 test('workspace rejects reads and writes until the owner is fully hydrated', async () => {
   let commandCalls = 0;
   const owner = createOwner({
@@ -64,11 +86,11 @@ test('workspace rejects reads and writes until the owner is fully hydrated', asy
     },
   });
   const controller = workspace.createWorkspaceController({ eventTarget: new EventTarget() });
-
-  assert.equal(controller.registerOwner(owner), true);
+  const runtimeOwner = installOwnerBehavior(controller, owner);
   const registeredRevision = controller.getRevision();
   assert.deepEqual(controller.getLifecycle(), {
     owner: true,
+    serviceAttached: true,
     hydrated: false,
     ready: false,
     revision: registeredRevision,
@@ -89,7 +111,7 @@ test('workspace rejects reads and writes until the owner is fully hydrated', asy
   assert.equal(commandCalls, 0, 'an unhydrated owner must never receive a mutating command');
 
   owner.state.ready = true;
-  assert.equal(controller.refreshOwnerStatus(owner), true);
+  assert.equal(controller.refreshOwnerStatus(runtimeOwner), true);
   const hydratedRevision = controller.getRevision();
   assert.equal(controller.isReady(), true);
   assert.ok(hydratedRevision > registeredRevision);
@@ -112,7 +134,7 @@ test('workspace snapshots and command results cannot leak persisted secrets', as
     }),
   });
   const controller = workspace.createWorkspaceController({ eventTarget: new EventTarget() });
-  controller.registerOwner(owner);
+  installOwnerBehavior(controller, owner);
 
   const snapshotResult = await controller.execute(command(
     messages.WORKSPACE_COMMAND_GET_SNAPSHOT,
@@ -143,7 +165,7 @@ test('workspace rejects a stale revision before invoking the owner', async () =>
     },
   });
   const controller = workspace.createWorkspaceController({ eventTarget: new EventTarget() });
-  controller.registerOwner(owner);
+  installOwnerBehavior(controller, owner);
   const baseRevision = controller.getRevision();
 
   const first = await controller.execute({
@@ -181,7 +203,7 @@ test('concurrent commands are serialized and a queued stale write is rejected at
     },
   });
   const controller = workspace.createWorkspaceController({ eventTarget: new EventTarget() });
-  controller.registerOwner(owner);
+  installOwnerBehavior(controller, owner);
   const baseRevision = controller.getRevision();
 
   const firstPromise = controller.execute({
@@ -224,7 +246,8 @@ test('replace-public-state also obeys hydration and revision checks', async () =
     return { imported: true };
   };
   const controller = workspace.createWorkspaceController({ eventTarget: new EventTarget() });
-  controller.registerOwner(owner);
+  const runtimeOwner = installOwnerBehavior(controller, owner);
+  runtimeOwner.applyWorkspacePublicState = owner.applyWorkspacePublicState.bind(owner);
   const baseRevision = controller.getRevision();
 
   const result = await controller.execute(command(

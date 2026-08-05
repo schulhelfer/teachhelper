@@ -5,11 +5,11 @@ import {
   postToModule,
 } from '../../shared/module-frame-bridge.js';
 import {
-  PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
-  PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
-  PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
-  PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
-  PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT,
+  GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
+  GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+  GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
+  GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   SEATPLAN_COURSE_CONTEXT_EVENT,
   SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
@@ -86,7 +86,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseSaveResult = detail;
       return;
     }
-    postToModule(frame, { type: PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail });
+    postToModule(frame, { type: GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail });
   };
 
   const sendCourseGradeConfigResult = (detail) => {
@@ -96,7 +96,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseGradeConfigResult = detail;
       return;
     }
-    postToModule(frame, { type: PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT, detail });
+    postToModule(frame, { type: GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, detail });
   };
 
   const sendCourseGradeSaveResult = (detail) => {
@@ -106,7 +106,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingCourseGradeSaveResult = detail;
       return;
     }
-    postToModule(frame, { type: PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT, detail });
+    postToModule(frame, { type: GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, detail });
   };
 
   const sendGradeRosterCoursesResult = (detail) => {
@@ -115,7 +115,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingGradeRosterCoursesResult = detail;
       return;
     }
-    postToModule(frame, { type: PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT, detail });
+    postToModule(frame, { type: GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, detail });
   };
 
   const sendGradeRosterImportResult = (detail) => {
@@ -124,7 +124,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       pendingGradeRosterImportResult = detail;
       return;
     }
-    postToModule(frame, { type: PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail });
+    postToModule(frame, { type: GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail });
   };
 
   const onWindowMessage = (event) => {

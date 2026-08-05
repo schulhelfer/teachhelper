@@ -6,6 +6,7 @@ const [
   tutorialSource,
   mainSource,
   planningSource,
+  gradesSource,
   seatplanSource,
   duplicateSource,
   qrSource,
@@ -14,6 +15,7 @@ const [
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/duplicate-check/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8'),
@@ -65,19 +67,25 @@ test('seatplan tutorial data cannot sync back to the real roster', () => {
 });
 
 test('planning and grades demos cannot overwrite real sync metadata', () => {
-  assert.match(
-    planningSource,
-    /saveSyncMeta\(\) \{\s+if \(this\.tutorialDemoMode\) \{\s+return true;/
-  );
+  for (const source of [planningSource, gradesSource]) {
+    assert.match(source, /if \(TUTORIAL_DEMO_MODE \|\| typeof window === "undefined"/);
+    assert.match(source, /getParentWorkspaceController\(\)[\s\S]{0,180}?createWorkspaceController\(\{[\s\S]{0,120}?ephemeral: Boolean\(this\.tutorialDemoMode\)/);
+  }
+});
+
+test('tutorial workspaces disable persistent handle hydration', () => {
+  for (const source of [planningSource, gradesSource]) {
+    assert.match(source, /ephemeral: Boolean\(this\.tutorialDemoMode\)/);
+  }
 });
 
 test('grades demo seeds learners, a persisted structure, and an assigned assessment', () => {
-  assert.match(planningSource, /store\.replaceGradeStudentsForCourse\(courseId, \[/);
+  assert.match(gradesSource, /store\.replaceGradeStudentsForCourse\(courseId, \[/);
   assert.match(
-    planningSource,
+    gradesSource,
     /store\.saveGradeStructure\(\s*courseId,\s*store\.getDefaultGradeStructure\(\)\.periodCategories\s*\)/
   );
-  assert.match(planningSource, /categoryId: category\?\.id,\s+subcategoryId: subcategory\?\.id/);
+  assert.match(gradesSource, /categoryId: category\?\.id,\s+subcategoryId: subcategory\?\.id/);
 });
 
 test('work phase tutorial restores the complete previous timer snapshot', () => {

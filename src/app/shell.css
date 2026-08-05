@@ -1384,7 +1384,7 @@
       display: none;
     }
 
-    .app.grade-vault-overlay>.grades-shell[hidden] {
+    .app.grade-vault-overlay.grade-vault-overlay-revealed-grades>.grades-shell {
       display: block !important;
       position: fixed;
       inset: 0;

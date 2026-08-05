@@ -9,6 +9,8 @@ import {
   GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT,
   GRADES_COURSE_GRADE_SAVE_REQUEST_EVENT,
   GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
+  GRADES_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
+  GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
   GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
@@ -16,8 +18,10 @@ import {
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_MANUAL_SAVE_REQUEST_EVENT,
   GRADES_READY_EVENT,
-  PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
-  PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+  GRADES_TAB_LEAVE_REQUEST_EVENT,
+  GRADES_TAB_LEAVE_RESULT_EVENT,
+  PLANNING_TAB_LEAVE_REQUEST_EVENT,
+  PLANNING_TAB_LEAVE_RESULT_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
@@ -56,6 +60,8 @@ export function createPlanningSeatplanBridge({
   let planningInitPending = false;
   let pendingPlanningViewRequest = null;
   let pendingGradesNavigation = null;
+  let gradesTabLeaveRequestSequence = 0;
+  let planningTabLeaveRequestSequence = 0;
   let seatplanController = null;
   const tabInitState = {
     [TAB_MERGER]: false,
@@ -424,6 +430,58 @@ export function createPlanningSeatplanBridge({
     return true;
   }
 
+  function requestGradesTabLeaveConfirmation() {
+    ensureTabInitialized(TAB_GRADES);
+    if (!gradesController?.requestTabLeave) {
+      return Promise.resolve(false);
+    }
+    const requestId = `grades-tab-leave-${Date.now()}-${++gradesTabLeaveRequestSequence}`;
+    const resultTarget = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+      ? window
+      : documentBus;
+    return new Promise((resolve) => {
+      const onResult = (event) => {
+        const detail = event?.detail;
+        if (!detail || String(detail.requestId || '') !== requestId) {
+          return;
+        }
+        resultTarget.removeEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
+        resolve(detail.allowed === true);
+      };
+      resultTarget.addEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
+      if (!gradesController.requestTabLeave({ requestId })) {
+        resultTarget.removeEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
+        resolve(false);
+      }
+    });
+  }
+
+  function requestPlanningTabLeaveConfirmation() {
+    ensureTabInitialized(TAB_PLANNING);
+    if (!planningController?.requestTabLeave) {
+      return Promise.resolve(false);
+    }
+    const requestId = `planning-tab-leave-${Date.now()}-${++planningTabLeaveRequestSequence}`;
+    const resultTarget = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
+      ? window
+      : documentBus;
+    return new Promise((resolve) => {
+      const onResult = (event) => {
+        const detail = event?.detail;
+        if (!detail || String(detail.requestId || '') !== requestId) {
+          return;
+        }
+        resultTarget.removeEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
+        resolve(detail.allowed === true);
+      };
+      resultTarget.addEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
+      if (!planningController.requestTabLeave({ requestId })) {
+        resultTarget.removeEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
+        resolve(false);
+      }
+    });
+  }
+
   seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
@@ -435,11 +493,11 @@ export function createPlanningSeatplanBridge({
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     if (!isWorkspaceReady()) {
-      dispatchBlockedResult(PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail);
+      dispatchBlockedResult(GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail);
       return;
     }
-    ensureTabInitialized(TAB_PLANNING);
-    planningController?.post?.(PLANNING_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
   });
 
   seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT, (event) => {
@@ -475,7 +533,7 @@ export function createPlanningSeatplanBridge({
   const saveResultTarget = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
     ? window
     : documentBus;
-  saveResultTarget.addEventListener(PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT, (event) => {
+  saveResultTarget.addEventListener(GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendCourseSaveResult?.(detail);
@@ -521,5 +579,7 @@ export function createPlanningSeatplanBridge({
     requestGradeRosterImport,
     requestManualSave,
     requestGradeVault,
+    requestGradesTabLeaveConfirmation,
+    requestPlanningTabLeaveConfirmation,
   };
 }

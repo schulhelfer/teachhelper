@@ -2,6 +2,10 @@ import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shel
 import { installAppTooltips } from '../../shared/app-tooltips.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
 import {
+  TUTORIAL_TARGET_RECT_REQUEST_EVENT,
+  TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
+} from '../../shared/module-frame-bridge.js';
+import {
   FILE_LIMITS,
   FILE_TIMEOUTS,
   assertTotalSizeAtMost,
@@ -32,6 +36,7 @@ export function createMergerApp({
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     MERGER_TOOL_REQUEST_EVENT,
     MERGER_SHELL_LAYOUT_EVENT,
+    TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   ]);
   const standalone = !sideRoot || !mainRoot || !sideHost || !mainHost;
   const domRoots = standalone ? [root] : [sideRoot, mainRoot];
@@ -186,6 +191,40 @@ export function createMergerApp({
     } catch (_error) {
       
     }
+  }
+
+  function respondWithTutorialTargetRect(detail) {
+    const requestId = String(detail?.requestId || '');
+    const selectors = Array.isArray(detail?.selectors) ? detail.selectors : [];
+    const element = selectors
+      .map((selector) => typeof selector === 'string' ? root.querySelector(selector) : null)
+      .find((candidate) => {
+        if (!(candidate instanceof HTMLElement) || candidate.hidden) return false;
+        const rect = candidate.getBoundingClientRect();
+        const style = window.getComputedStyle(candidate);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      });
+    if (element && detail?.reveal) {
+      const rect = element.getBoundingClientRect();
+      if (rect.top < 0 || rect.left < 0 || rect.bottom > window.innerHeight || rect.right > window.innerWidth) {
+        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+      }
+    }
+    const rect = element?.getBoundingClientRect();
+    window.parent?.postMessage(withModuleFrameNonce({
+      type: TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
+      detail: {
+        requestId,
+        rect: rect ? {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+        } : null,
+      },
+    }), TRUSTED_PARENT_ORIGIN);
   }
 
   const mergeState = {
@@ -412,6 +451,10 @@ export function createMergerApp({
     messageListener = (event) => {
       if (!isTrustedParentMessage(event)) return;
       const data = event.data;
+      if (data.type === TUTORIAL_TARGET_RECT_REQUEST_EVENT) {
+        respondWithTutorialTargetRect(data.detail && typeof data.detail === "object" ? data.detail : {});
+        return;
+      }
       if (data.type === MERGER_TOOL_REQUEST_EVENT) {
         const tool = String(data.detail?.tool || "");
         if ([TOOL_LAYOUT, TOOL_MERGE, TOOL_ROTATE, TOOL_SPLIT].includes(tool)) {

@@ -4,8 +4,8 @@ import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 
 const [html, source] = await Promise.all([
-  readFile(new URL('../src/modules/planning/app.html', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
 ]);
 
 function getBookmarkletAdapterCode(methodName, replacements = {}) {

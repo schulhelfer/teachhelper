@@ -1,6 +1,10 @@
 import { installAppTooltips } from '../../shared/app-tooltips.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
 import { QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
+import {
+  TUTORIAL_TARGET_RECT_REQUEST_EVENT,
+  TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
+} from '../../shared/module-frame-bridge.js';
 
 export function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
@@ -9,6 +13,7 @@ export function createQrApp({ root = document } = {}) {
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     TUTORIAL_COMMAND_EVENT,
     QR_SHELL_LAYOUT_EVENT,
+    TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   ]);
   const ui = {
     toolTabs: [...root.querySelectorAll('.tool-tab')],
@@ -116,6 +121,40 @@ export function createQrApp({ root = document } = {}) {
     } catch {
       
     }
+  }
+
+  function respondWithTutorialTargetRect(detail) {
+    const requestId = String(detail?.requestId || '');
+    const selectors = Array.isArray(detail?.selectors) ? detail.selectors : [];
+    const element = selectors
+      .map((selector) => typeof selector === 'string' ? root.querySelector(selector) : null)
+      .find((candidate) => {
+        if (!(candidate instanceof HTMLElement) || candidate.hidden) return false;
+        const rect = candidate.getBoundingClientRect();
+        const style = window.getComputedStyle(candidate);
+        return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+      });
+    if (element && detail?.reveal) {
+      const rect = element.getBoundingClientRect();
+      if (rect.top < 0 || rect.left < 0 || rect.bottom > window.innerHeight || rect.right > window.innerWidth) {
+        element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+      }
+    }
+    const rect = element?.getBoundingClientRect();
+    window.parent?.postMessage(withModuleFrameNonce({
+      type: TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
+      detail: {
+        requestId,
+        rect: rect ? {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+          viewportWidth: window.innerWidth,
+          viewportHeight: window.innerHeight,
+        } : null,
+      },
+    }), TRUSTED_PARENT_ORIGIN);
   }
 
   function getQrFactory() {
@@ -522,6 +561,10 @@ export function createQrApp({ root = document } = {}) {
     const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
     if (data.type === QR_SHELL_LAYOUT_EVENT) {
       document.documentElement.dataset.shellCollapsed = detail.collapsed ? 'true' : 'false';
+      return;
+    }
+    if (data.type === TUTORIAL_TARGET_RECT_REQUEST_EVENT) {
+      respondWithTutorialTargetRect(detail);
       return;
     }
     const command = String(detail.command || '');

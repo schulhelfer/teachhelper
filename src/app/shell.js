@@ -2,7 +2,7 @@ import {
   GRADES_MANUAL_SAVE_STATE_EVENT,
   GRADES_READY_EVENT,
   GRADES_UNSAVED_STATE_EVENT,
-  PLANNING_GRADE_VAULT_STATE_EVENT,
+  GRADES_GRADE_VAULT_STATE_EVENT,
   normalizeTab,
   PLANNING_MANUAL_SAVE_STATE_EVENT,
   PLANNING_READY_EVENT,
@@ -74,6 +74,8 @@ export function createShellController({
   onRefreshLayouts,
   onRequestGradeVault,
   onRequestManualSave,
+  onResolveGradesTabLeave,
+  onResolvePlanningTabLeave,
   onSidebarWidthChange,
   onActiveTabChange,
 } = {}) {
@@ -98,6 +100,12 @@ export function createShellController({
   const requestManualSave = typeof onRequestManualSave === 'function'
     ? onRequestManualSave
     : (() => {});
+  const resolveGradesTabLeave = typeof onResolveGradesTabLeave === 'function'
+    ? onResolveGradesTabLeave
+    : (() => Promise.resolve(false));
+  const resolvePlanningTabLeave = typeof onResolvePlanningTabLeave === 'function'
+    ? onResolvePlanningTabLeave
+    : (() => Promise.resolve(false));
   const notifySidebarWidthChange = typeof onSidebarWidthChange === 'function'
     ? onSidebarWidthChange
     : (() => {});
@@ -106,6 +114,7 @@ export function createShellController({
     : (() => {});
   let unsavedTabConfirmPromise = null;
   let tabIndicatorFrame = 0;
+  let lastRenderedActiveTab = null;
   let tabNavResizeObserver = null;
   let moreToolsSyncFrame = 0;
   let pendingTabTransitionOptions = null;
@@ -337,6 +346,17 @@ export function createShellController({
       || tab === TAB_RANDOM_PICKER;
   }
 
+  function shouldPromptGradeVaultUnlockOnGradesNavigation(nextTab) {
+    if (nextTab !== TAB_GRADES || state.activeTab !== TAB_PLANNING) return false;
+    const vault = state.planningGradeVaultState || {};
+    return Boolean(vault.ready)
+      && Boolean(vault.dbConnected)
+      && Boolean(vault.configured)
+      && !Boolean(vault.unlocked)
+      && !Boolean(vault.setupRequired)
+      && vault.mode === 'unlock';
+  }
+
   function getUnsavedAreaLabel() {
     const unsaved = state.planningUnsavedState || {};
     if (unsaved.planningDirty && unsaved.gradesDirty) {
@@ -354,7 +374,14 @@ export function createShellController({
   function shouldConfirmPlanningTabLeave(nextTab, options = {}) {
     if (options.skipUnsavedPrompt) return false;
     if (!isPlanningTab(state.activeTab) || isPlanningTab(nextTab)) return false;
-    return Boolean(state.planningUnsavedState?.dirty);
+    return Boolean(state.planningUnsavedState?.planningSettingsDirty);
+  }
+
+  function shouldResolveGradesTabLeave(nextTab, options = {}) {
+    if (options.skipUnsavedPrompt) return false;
+    if (state.activeTab !== TAB_GRADES || nextTab === TAB_GRADES) return false;
+    const unsaved = state.planningUnsavedState || {};
+    return Boolean(unsaved.gradesDirty || unsaved.gradesSettingsDirty);
   }
 
   function showUnsavedTabLeaveDialog() {
@@ -596,6 +623,9 @@ export function createShellController({
 
   function renderTabs() {
     if (!els.app) return;
+    const enteredPlanningTab = state.activeTab === TAB_PLANNING
+      && lastRenderedActiveTab !== TAB_PLANNING;
+    lastRenderedActiveTab = state.activeTab;
     applyActiveShellSidebarWidth();
     updateSeatPreferencesTrigger();
     els.app.classList.toggle('app-tab-merger', state.activeTab === TAB_MERGER);
@@ -628,9 +658,6 @@ export function createShellController({
     if (els.planningShell) {
       els.planningShell.hidden = state.activeTab !== TAB_PLANNING;
     }
-    if (els.gradesShell) {
-      els.gradesShell.hidden = state.activeTab !== TAB_GRADES;
-    }
     if (els.seatplanSideHost) {
       els.seatplanSideHost.hidden = true;
     }
@@ -638,7 +665,8 @@ export function createShellController({
       els.seatplanMainHost.hidden = state.activeTab !== TAB_SEATPLAN;
     }
     if (els.groupsMainHost) {
-      els.groupsMainHost.hidden = state.activeTab === TAB_SEATPLAN || state.activeTab === TAB_RANDOM_PICKER;
+      const isPlanningBoot = state.activeTab === TAB_PLANNING && !els.app?.classList.contains('app-js-ready');
+      els.groupsMainHost.hidden = isPlanningBoot || state.activeTab === TAB_SEATPLAN || state.activeTab === TAB_RANDOM_PICKER;
     }
     if (els.randomPickerHost) {
       els.randomPickerHost.hidden = state.activeTab !== TAB_RANDOM_PICKER;
@@ -676,8 +704,11 @@ export function createShellController({
     if (state.activeTab === TAB_WORK_PHASE && els.workOrderHintOverlay?.classList.contains('visible')) {
       setTimeout(positionWorkOrderHintOverlay, 0);
     }
-    if (state.activeTab === TAB_PLANNING) {
-      dispatchPlanningViewRequest('week');
+    if (enteredPlanningTab) {
+      dispatchPlanningViewRequest({
+        view: 'week',
+        source: 'shell-tab-entry',
+      });
     }
     renderPlanningGradeVaultUnlockButton();
     renderPlanningManualSaveButton();
@@ -1094,19 +1125,44 @@ export function createShellController({
 
   function setActiveTab(tab, options = {}) {
     const nextTab = normalizeTab(tab);
+    if (shouldResolveGradesTabLeave(nextTab, options)) {
+      if (unsavedTabConfirmPromise) {
+        return;
+      }
+      unsavedTabConfirmPromise = Promise.resolve(resolveGradesTabLeave())
+        .then((confirmed) => {
+          if (confirmed) {
+            setActiveTab(nextTab, {
+              skipUnsavedPrompt: true,
+              showTutorialHint: Boolean(options.showTutorialHint),
+            });
+          }
+        }, () => {})
+        .finally(() => {
+          unsavedTabConfirmPromise = null;
+        });
+      return;
+    }
     if (shouldConfirmPlanningTabLeave(nextTab, options)) {
       if (unsavedTabConfirmPromise) {
         return;
       }
-      showUnsavedTabLeaveDialog().then((confirmed) => {
-        if (confirmed) {
-          setActiveTab(nextTab, {
-            skipUnsavedPrompt: true,
-            showTutorialHint: Boolean(options.showTutorialHint),
-          });
-        }
-      });
+      unsavedTabConfirmPromise = Promise.resolve(resolvePlanningTabLeave())
+        .then((confirmed) => {
+          if (confirmed) {
+            setActiveTab(nextTab, {
+              skipUnsavedPrompt: true,
+              showTutorialHint: Boolean(options.showTutorialHint),
+            });
+          }
+        }, () => {})
+        .finally(() => {
+          unsavedTabConfirmPromise = null;
+        });
       return;
+    }
+    if (shouldPromptGradeVaultUnlockOnGradesNavigation(nextTab)) {
+      requestGradeVault({ action: 'unlock', overlay: true });
     }
     if (options.skipAnimation) {
       state.pendingTabTransitionTarget = null;
@@ -1224,10 +1280,14 @@ export function createShellController({
     const nextDetail = detail && typeof detail === 'object' ? detail : {};
     const planningDirty = Boolean(nextDetail.planningDirty);
     const gradesDirty = Boolean(nextDetail.gradesDirty);
+    const planningSettingsDirty = Boolean(nextDetail.planningSettingsDirty);
+    const gradesSettingsDirty = Boolean(nextDetail.gradesSettingsDirty);
     state.planningUnsavedState = {
-      dirty: Boolean(nextDetail.dirty || planningDirty || gradesDirty),
+      dirty: Boolean(nextDetail.dirty || planningDirty || gradesDirty || planningSettingsDirty || gradesSettingsDirty),
       planningDirty,
+      planningSettingsDirty,
       gradesDirty,
+      gradesSettingsDirty,
       dirtyGradeCourseIds: Array.isArray(nextDetail.dirtyGradeCourseIds)
         ? nextDetail.dirtyGradeCourseIds.map((id) => String(id)).filter(Boolean)
         : [],
@@ -1325,7 +1385,7 @@ export function createShellController({
       });
     }
   });
-  window.addEventListener(PLANNING_GRADE_VAULT_STATE_EVENT, (event) => {
+  window.addEventListener(GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     setPlanningGradeVaultState(detail);
   });

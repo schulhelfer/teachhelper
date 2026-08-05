@@ -12,6 +12,8 @@ import {
   normalizeWorkspaceClient,
   normalizeWorkspaceCommandRequest,
 } from '../../shared/school-data/messages.js';
+import { WorkspaceStore } from './store.js';
+import { createWorkspaceRuntime } from './runtime.js';
 
 export const WORKSPACE_GLOBAL_KEY = '__teachhelperWorkspaceController';
 
@@ -61,25 +63,64 @@ function createResult(request, revision, lifecycle, patch = {}) {
   };
 }
 
-export function createWorkspaceController({ eventTarget = null } = {}) {
+export function createWorkspaceController({ eventTarget = null, ephemeral = false } = {}) {
   const target = eventTarget || (typeof window !== 'undefined' ? window : new EventTarget());
   const clients = new Map();
-  let owner = null;
-  let store = null;
+  let store = new WorkspaceStore();
+  let runtimeService = createWorkspaceRuntime(store, {
+    eventTarget: target,
+    ephemeral: Boolean(ephemeral),
+  });
+  let runtimeOwner = new Proxy(Object.create(null), {
+    get(_target, property) {
+      if (property === 'store') return store;
+      if (property === 'serviceAttached') return Boolean(runtimeService);
+      const value = runtimeService?.[property];
+      return typeof value === 'function' ? value.bind(runtimeService) : value;
+    },
+    set(_target, property, value) {
+      if (!runtimeService) return false;
+      runtimeService[property] = value;
+      return true;
+    },
+    has(_target, property) {
+      return property === 'store' || property === 'serviceAttached' || Boolean(runtimeService && property in runtimeService);
+    },
+  });
   let revision = 0;
-  let ownerHydrated = false;
+  let ownerHydrated = true;
   let queue = Promise.resolve();
   let disposed = false;
 
+  // The shell owns this stable identity. Attached service implementations stay
+  // private and can never become the owner observed by a workspace client.
+  const owner = new Proxy(Object.create(null), {
+    get(_target, property) {
+      if (property === 'store') return store;
+      if (property === 'runtimeAttached') return Boolean(runtimeService);
+      const value = runtimeOwner?.[property];
+      return typeof value === 'function' ? value.bind(runtimeOwner) : value;
+    },
+    set(_target, property, value) {
+      if (!runtimeOwner) return false;
+      runtimeOwner[property] = value;
+      return true;
+    },
+    has(_target, property) {
+      return property === 'store' || property === 'runtimeAttached' || Boolean(runtimeOwner && property in runtimeOwner);
+    },
+  });
+
   const getLifecycle = () => ({
-    owner: Boolean(owner),
-    hydrated: Boolean(owner && ownerHydrated),
-    ready: Boolean(owner && ownerHydrated),
+    owner: Boolean(runtimeOwner),
+    serviceAttached: Boolean(runtimeService),
+    hydrated: Boolean(runtimeService && ownerHydrated),
+    ready: Boolean(runtimeService && ownerHydrated),
     revision,
   });
 
   const readOwnerHydrated = () => {
-    if (!owner) return false;
+    if (!runtimeService) return false;
     try {
       const snapshot = typeof owner.createWorkspaceSnapshot === 'function'
         ? owner.createWorkspaceSnapshot('shell')
@@ -91,7 +132,7 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
   };
 
   const dispatchOwnerReady = () => {
-    if (!ownerHydrated) return;
+    if (!runtimeService || !ownerHydrated) return;
     if (target && typeof target.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
       target.dispatchEvent(new CustomEvent(WORKSPACE_OWNER_READY_EVENT, {
         detail: getLifecycle(),
@@ -101,7 +142,7 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
 
   const getSnapshot = (scope = 'shell') => {
     const normalizedScope = normalizeWorkspaceClient(scope);
-    if (owner && typeof owner.createWorkspaceSnapshot === 'function') {
+    if (runtimeService && typeof owner.createWorkspaceSnapshot === 'function') {
       return cloneSnapshot(owner.createWorkspaceSnapshot(normalizedScope));
     }
     if (normalizedScope === 'planning' && store && typeof store.exportPublicStateSnapshot === 'function') {
@@ -154,7 +195,7 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
     }
 
     if (request.command === WORKSPACE_COMMAND_GET_SNAPSHOT) {
-      if (!owner || !ownerHydrated) {
+      if (!runtimeService || !ownerHydrated) {
         return createResult(request, revision, getLifecycle(), {
           code: WORKSPACE_ERROR_NOT_READY,
           message: 'Der Workspace wird noch vollständig geladen.',
@@ -166,7 +207,7 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
       });
     }
 
-    if (!owner) {
+    if (!runtimeService) {
       return createResult(request, revision, getLifecycle(), {
         code: WORKSPACE_ERROR_NOT_READY,
         message: 'Der Workspace-Owner ist noch nicht bereit.',
@@ -225,26 +266,28 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
     }
   };
 
-  return {
-    registerOwner(nextOwner, nextStore = null) {
-      if (disposed || !nextOwner) return false;
-      if (owner && owner !== nextOwner) return false;
-      owner = nextOwner;
-      store = nextStore || nextOwner.store || null;
-      ownerHydrated = readOwnerHydrated();
-      markChanged('shell');
-      publish('planning');
+  const attachRuntime = (featureClient, nextStore = null) => {
+    if (disposed || !featureClient || (nextStore && nextStore !== store)) return false;
+    const current = runtimeService.clients?.get?.('grades');
+    if (current && current !== featureClient) return false;
+    runtimeService.registerFeatureClient('grades', featureClient);
+    publish('grades');
+    return true;
+  };
+
+  const controller = {
+    attachRuntime,
+    detachRuntime(featureClient) {
+      if (!featureClient) return false;
+      const current = runtimeService.clients?.get?.('grades');
+      if (current !== featureClient) return false;
+      runtimeService.clients.delete('grades');
       publish('grades');
-      dispatchOwnerReady();
       return true;
     },
-    unregisterOwner(nextOwner) {
-      if (owner !== nextOwner) return false;
-      owner = null;
-      store = null;
-      ownerHydrated = false;
-      markChanged('shell', null);
-      return true;
+    registerFeatureClient(scope, featureClient) {
+      if (disposed || !runtimeService) return () => {};
+      return runtimeService.registerFeatureClient(scope, featureClient);
     },
     registerClient(id, { scope = 'shell', onState = null } = {}) {
       const key = String(id || '').trim();
@@ -266,10 +309,10 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
     getStore: () => store,
     getRevision: () => revision,
     getLifecycle,
-    isHydrated: () => Boolean(owner && ownerHydrated),
-    isReady: () => Boolean(owner && ownerHydrated),
+    isHydrated: () => Boolean(runtimeService && ownerHydrated),
+    isReady: () => Boolean(runtimeService && ownerHydrated),
     refreshOwnerStatus(nextOwner = owner) {
-      if (disposed || !owner || nextOwner !== owner) return false;
+      if (disposed || !runtimeService || (nextOwner !== owner && nextOwner !== runtimeService)) return false;
       const nextHydrated = readOwnerHydrated();
       if (!nextHydrated || ownerHydrated) return ownerHydrated;
       ownerHydrated = true;
@@ -280,7 +323,7 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
       return true;
     },
     setOwnerHydrated(nextOwner, hydrated = true) {
-      if (disposed || !owner || nextOwner !== owner) return false;
+      if (disposed || !runtimeService || (nextOwner !== owner && nextOwner !== runtimeService)) return false;
       const nextHydrated = Boolean(hydrated);
       if (nextHydrated === ownerHydrated) return true;
       ownerHydrated = nextHydrated;
@@ -301,12 +344,20 @@ export function createWorkspaceController({ eventTarget = null } = {}) {
     whenIdle: () => queue,
     dispose() {
       disposed = true;
-      owner = null;
+      runtimeService?.lockGradeVaultSession?.();
+      runtimeService = null;
+      runtimeOwner = null;
       store = null;
       ownerHydrated = false;
       clients.clear();
     },
   };
+  runtimeService.bindController(controller);
+  ownerHydrated = readOwnerHydrated();
+  queueMicrotask(() => {
+    void runtimeService?.initialize?.().catch(() => undefined);
+  });
+  return controller;
 }
 
 export function installWorkspaceController(targetWindow = typeof window !== 'undefined' ? window : null) {

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(
-  new URL('../src/modules/planning/note-links.js', import.meta.url),
+  new URL('../src/shared/planning-note-links.js', import.meta.url),
   'utf8',
 );
 const {
@@ -113,7 +113,7 @@ test('bietet ein Rich-Text-Feld für die Detailplanung ohne Ansichtsumschalter',
   assert.match(planningSource, /notesEditButton\.classList\.toggle\("is-empty", !hasNotes\)/);
   assert.match(planningSource, /notesEditButton\.textContent = "🔎"/);
   assert.match(planningSource, /<th>Noten<\/th>\s*<th>Details<\/th>\s*<th>Thema<\/th>/);
-  assert.match(planningSource, /tr\.append\(dateCell, dayCell, durCell, gradeCell, notesCell, topicCell\)/);
+  assert.match(planningSource, /tr\.append\(dateCell, dayCell, durCell, performanceCell, notesCell, topicCell\)/);
   assert.match(planningSource, /notesCell\.className = "course-details-cell"/);
   assert.match(planningSource, /button\.course-notes-edit\[data-lesson-id\]/);
   assert.doesNotMatch(planningSource, /button\.course-notes-preview\[data-lesson-id\]/);

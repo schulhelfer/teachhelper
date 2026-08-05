@@ -3,7 +3,7 @@ import {
   FILE_TIMEOUTS,
   formatFileSize,
   withTimeout,
-} from "../../shared/file-guards.js";
+} from "./file-guards.js";
 
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
 const ZIP_CENTRAL_FILE_HEADER = 0x02014b50;
@@ -2003,6 +2003,57 @@ function replacePlaceholderInTextElements(doc, textElements, placeholder, replac
   return replacementCount;
 }
 
+function normalizeAdjacentBlockPlaceholderGroups(value) {
+  const groups = Array.isArray(value) ? value : [];
+  return groups
+    .map((group) => (Array.isArray(group) ? group : [group])
+      .map((placeholder) => String(placeholder || "").trim())
+      .filter(Boolean))
+    .filter((group) => group.length);
+}
+
+function getAdjacentBlockPlaceholderGroupIndex(paragraph, groups) {
+  const text = normalizeWordCellText(getWordElementText(paragraph));
+  if (!text) return -1;
+  return groups.findIndex((group) => group.includes(text));
+}
+
+function hasAdjacentBlockReplacementContent(group, replacements) {
+  return group.some((placeholder) => {
+    const replacement = replacements?.[placeholder];
+    if (isWordImageReplacement(replacement) || isWordTableReplacement(replacement)) {
+      return true;
+    }
+    if (isWordRichTextValue(replacement)) {
+      return Boolean(getWordRichTextPlainText(normalizeWordRichTextRuns(replacement)).trim());
+    }
+    return Boolean(String(replacement ?? "").trim());
+  });
+}
+
+function insertBlankParagraphsBetweenAdjacentReplacementBlocks(doc, replacements, groupsValue) {
+  const groups = normalizeAdjacentBlockPlaceholderGroups(groupsValue);
+  if (groups.length < 2) return;
+  const paragraphs = Array.from(doc.getElementsByTagName("*"))
+    .filter((element) => element.localName === "p");
+  paragraphs.forEach((paragraph) => {
+    const currentGroupIndex = getAdjacentBlockPlaceholderGroupIndex(paragraph, groups);
+    if (currentGroupIndex < 0 || !hasAdjacentBlockReplacementContent(groups[currentGroupIndex], replacements)) {
+      return;
+    }
+    const nextParagraph = paragraph.nextElementSibling;
+    if (!nextParagraph || nextParagraph.localName !== "p") return;
+    const nextGroupIndex = getAdjacentBlockPlaceholderGroupIndex(nextParagraph, groups);
+    if (nextGroupIndex < 0 || !hasAdjacentBlockReplacementContent(groups[nextGroupIndex], replacements)) {
+      return;
+    }
+    const emptyParagraph = doc.createElementNS(getWordNamespace(doc), "w:p");
+    const paragraphProperties = getChildElementsByLocalName(paragraph, "pPr")[0]?.cloneNode(true) || null;
+    if (paragraphProperties) emptyParagraph.append(paragraphProperties);
+    paragraph.parentNode?.insertBefore(emptyParagraph, nextParagraph);
+  });
+}
+
 function replaceXmlPlaceholders(xml, replacements, options = {}) {
   const doc = parseXmlDocument(xml);
   const richTextContext = options.richTextContext || {};
@@ -2010,6 +2061,11 @@ function replaceXmlPlaceholders(xml, replacements, options = {}) {
     richTextContext.imageContext.partName = options.partName || "";
   }
   const imageContext = richTextContext.imageContext || null;
+  insertBlankParagraphsBetweenAdjacentReplacementBlocks(
+    doc,
+    replacements,
+    options.adjacentBlockPlaceholderGroups
+  );
   const entries = Object.entries(replacements || {});
   entries.forEach(([placeholder, replacement]) => {
     replacePlaceholderInTextElements(

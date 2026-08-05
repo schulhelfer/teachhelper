@@ -10,7 +10,8 @@ ROOT = Path(__file__).resolve().parents[1]
 errors = []
 HTML_FILES = sorted(ROOT.rglob('*.html'))
 EXPECTED_CSP_POLICY = (
-  "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; "
+  "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' "
+  "'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; "
   "script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; "
   "img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; "
   "worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; "
@@ -80,7 +81,7 @@ def check_csp_meta(path, body):
   directives = parse_csp_policy(policy)
   required_directives = {
     'default-src': ["'self'"],
-    'script-src': ["'self'"],
+    'script-src': ["'self'", "'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='"],
     'object-src': ["'none'"],
     'base-uri': ["'none'"],
     'script-src-attr': ["'none'"],
@@ -169,13 +170,20 @@ required_precache_assets = [
   ROOT / 'src' / 'modules' / 'grades' / 'app.css',
   ROOT / 'src' / 'modules' / 'grades' / 'app.js',
   ROOT / 'src' / 'modules' / 'grades' / 'bridge.js',
+  ROOT / 'src' / 'modules' / 'grades' / 'percentile-rank.js',
+  ROOT / 'src' / 'modules' / 'grades' / 'expectation-horizon-template.docx',
+  ROOT / 'src' / 'modules' / 'grades' / 'competence-expectations-template.docx',
   ROOT / 'src' / 'modules' / 'workspace' / 'index.js',
+  ROOT / 'src' / 'modules' / 'workspace' / 'client.js',
+  ROOT / 'src' / 'modules' / 'workspace' / 'components.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'crypto.js',
+  ROOT / 'src' / 'modules' / 'workspace' / 'store.js',
+  ROOT / 'src' / 'shared' / 'docx-template.js',
+  ROOT / 'src' / 'shared' / 'workspace-client.css',
   ROOT / 'src' / 'shared' / 'school-data' / 'messages.js',
   ROOT / 'src' / 'shared' / 'school-data' / 'index.js',
   ROOT / 'src' / 'shared' / 'school-data' / 'grades.js',
   ROOT / 'src' / 'shared' / 'school-data' / 'thdb.js',
-  ROOT / 'src' / 'modules' / 'planning' / 'competence-expectations-template.docx',
 ]
 
 expected = [
@@ -504,11 +512,8 @@ if main_path.exists() and dom_path.exists():
       for path in module_dir.iterdir()
       if path.suffix in {'.html', '.js'}
     )
-    if module_dir.name == 'grades' and 'PLANNING_MARKUP_URL' in module_body:
-
-
-
-      module_body += '\n' + (ROOT / 'src' / 'modules' / 'planning' / 'app.html').read_text(
+    if module_dir.name in {'grades', 'planning'}:
+      module_body += '\n' + (ROOT / 'src' / 'modules' / 'workspace' / 'components.js').read_text(
         encoding='utf-8', errors='ignore'
       )
     declared_ids = set(re.findall(r'\bid=["\'`]([^"\'`$<> ]+)', module_body))

@@ -716,11 +716,11 @@
           const SEATPLAN_COURSE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-save-request';
           const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-course-grade-config-request';
           const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
-          const PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:planning-course-seatplan-save-result';
-          const PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:planning-course-grade-config-result';
-          const PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:planning-course-grade-save-result';
-          const PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:planning-grade-roster-courses-result';
-          const PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:planning-grade-roster-import-result';
+          const GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:grades-course-seatplan-save-result';
+          const GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:grades-course-grade-config-result';
+          const GRADES_COURSE_GRADE_SAVE_RESULT_EVENT = 'classroom:grades-course-grade-save-result';
+          const GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:grades-grade-roster-courses-result';
+          const GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:grades-grade-roster-import-result';
           const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
           const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
           const COURSE_GRADE_DISPLAY_POINTS = 'points15';
@@ -732,11 +732,11 @@
             SEATPLAN_SHELL_LAYOUT_EVENT,
             STUDENTS_UPDATED_EVENT,
             SEATPLAN_COURSE_CONTEXT_EVENT,
-            PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
-            PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT,
-            PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT,
-            PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT,
-            PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+            GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+            GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT,
+            GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
+            GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
+            GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
           ]);
           let lastStudentsSyncTimestamp = 0;
           let pendingGradeRosterCoursesRequestId = '';
@@ -2445,27 +2445,27 @@
               applyCourseSeatplanContext(detail);
               return;
             }
-            if (data.type === PLANNING_COURSE_SEATPLAN_SAVE_RESULT_EVENT) {
+            if (data.type === GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseSeatplanSaveResult(detail);
               return;
             }
-            if (data.type === PLANNING_COURSE_GRADE_CONFIG_RESULT_EVENT) {
+            if (data.type === GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseGradeConfigResult(detail);
               return;
             }
-            if (data.type === PLANNING_COURSE_GRADE_SAVE_RESULT_EVENT) {
+            if (data.type === GRADES_COURSE_GRADE_SAVE_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseGradeSaveResult(detail);
               return;
             }
-            if (data.type === PLANNING_GRADE_ROSTER_COURSES_RESULT_EVENT) {
+            if (data.type === GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               renderGradeRosterImportCourses(detail);
               return;
             }
-            if (data.type === PLANNING_GRADE_ROSTER_IMPORT_RESULT_EVENT) {
+            if (data.type === GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleGradeRosterImportResult(detail);
               return;

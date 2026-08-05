@@ -1,4 +1,5 @@
 export const DEFAULT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'";
+export const WORKSPACE_CLIENT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read; clipboard-write";
 export const PLANNING_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read; clipboard-write";
 export const CAMERA_MODULE_ALLOW = "camera; clipboard-read; clipboard-write; microphone 'none'";
 
@@ -6,6 +7,11 @@ export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
 export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox';
 export const DUPLICATE_CHECK_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox';
+// Opaque-origin module frames cannot be inspected from the shell. These events
+// let the tutorial obtain a target's viewport rectangle without weakening that
+// isolation with `allow-same-origin`.
+export const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
+export const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-response';
 
 const MODULE_FRAME_NONCE_PARAM = 'moduleFrameNonce';
 

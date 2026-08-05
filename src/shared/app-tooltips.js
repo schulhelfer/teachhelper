@@ -114,6 +114,7 @@ export function installAppTooltips(root = document, options = {}) {
   let activeAriaDescribedBy = null;
   let persistentAnchor = null;
   let activeTooltipOnHide = null;
+  let hoverSuppressed = false;
   let suppressTitleObserver = false;
   let rafId = 0;
 
@@ -287,6 +288,11 @@ export function installAppTooltips(root = document, options = {}) {
     try { onHide?.(); } catch (error) { console.error(error); }
   }
 
+  function suppressHoverUntilPointerMove() {
+    hoverSuppressed = true;
+    hideTooltip();
+  }
+
   function positionTooltip() {
     const anchor = activeAnchor;
     if (!portal || !(anchor instanceof HTMLElementCtor) || !anchor.isConnected) {
@@ -417,6 +423,14 @@ export function installAppTooltips(root = document, options = {}) {
 
   function handlePointerOver(event) {
     if (persistentAnchor) return;
+    if (hoverSuppressed) return;
+    const anchor = findAnchor(event.target);
+    if (anchor) showTooltip(anchor);
+  }
+
+  function handlePointerMove(event) {
+    if (!hoverSuppressed) return;
+    hoverSuppressed = false;
     const anchor = findAnchor(event.target);
     if (anchor) showTooltip(anchor);
   }
@@ -461,12 +475,19 @@ export function installAppTooltips(root = document, options = {}) {
   }
 
   function handleContextMenu() {
-    
-    
-    schedulePosition();
+    hideTooltip();
   }
 
   function handleMutation(mutations) {
+    const openedDialog = mutations.some((mutation) => (
+      mutation.type === "attributes"
+      && mutation.attributeName === "open"
+      && mutation.target instanceof HTMLElementCtor
+      && mutation.target.matches("dialog[open]")
+    ));
+    if (openedDialog) {
+      suppressHoverUntilPointerMove();
+    }
     if (!activeAnchor || suppressTitleObserver) return;
     for (const mutation of mutations) {
       if (mutation.target !== activeAnchor) continue;
@@ -483,10 +504,11 @@ export function installAppTooltips(root = document, options = {}) {
   observer.observe(doc.documentElement, {
     subtree: true,
     attributes: true,
-    attributeFilter: ["title", "data-app-tooltip", "data-grade-tooltip", "data-tooltip", "data-app-tooltip-tone", "class"]
+    attributeFilter: ["title", "data-app-tooltip", "data-grade-tooltip", "data-tooltip", "data-app-tooltip-tone", "class", "open"]
   });
 
   doc.addEventListener("pointerover", handlePointerOver);
+  doc.addEventListener("pointermove", handlePointerMove);
   doc.addEventListener("pointerout", handlePointerOut);
   doc.addEventListener("focusin", handleFocusIn);
   doc.addEventListener("focusout", handleFocusOut);
@@ -498,11 +520,13 @@ export function installAppTooltips(root = document, options = {}) {
   const controller = {
     show: (anchor, options) => showTooltip(anchor, options),
     hide: () => hideTooltip(),
+    suppressHoverUntilPointerMove,
     refresh: refreshActiveTooltip,
     dispose() {
       hideTooltip();
       observer.disconnect();
       doc.removeEventListener("pointerover", handlePointerOver);
+      doc.removeEventListener("pointermove", handlePointerMove);
       doc.removeEventListener("pointerout", handlePointerOut);
       doc.removeEventListener("focusin", handleFocusIn);
       doc.removeEventListener("focusout", handleFocusOut);

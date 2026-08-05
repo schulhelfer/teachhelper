@@ -18,12 +18,29 @@ export const WORKSPACE_ERROR_UNSUPPORTED = 'UNSUPPORTED';
 export const WORKSPACE_COMMAND_REPLACE_PUBLIC_STATE = 'replace-public-state';
 export const WORKSPACE_COMMAND_GET_SNAPSHOT = 'get-snapshot';
 export const WORKSPACE_COMMAND_OWNER_ACTION = 'owner-action';
-export const WORKSPACE_COMMAND_GET_GRADE_ASSESSMENT_INDEX = 'get-grade-assessment-index';
+export const WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX = 'get-performance-index';
+export const WORKSPACE_COMMAND_GET_GRADE_ASSESSMENT_INDEX = WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX;
 export const WORKSPACE_COMMAND_CREATE_COURSE = 'create-course';
 export const WORKSPACE_COMMAND_UPDATE_COURSE = 'update-course';
 export const WORKSPACE_COMMAND_DELETE_COURSE = 'delete-course';
 export const WORKSPACE_COMMAND_REORDER_COURSES = 'reorder-courses';
 export const WORKSPACE_COMMAND_APPLY_SETTINGS = 'apply-settings';
+export const WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY = 'delete-occurrence-category';
+
+export const WORKSPACE_OPERATION_GROUPS = Object.freeze({
+  public: Object.freeze([
+    'school-years', 'courses', 'slots', 'lessons', 'holidays', 'public-settings',
+  ]),
+  grades: Object.freeze([
+    'participants', 'structure', 'assessments', 'entries', 'overrides', 'accommodations', 'seatplan-grades',
+  ]),
+  vault: Object.freeze([
+    'setup', 'unlock', 'lock', 'change-password', 'encryption-mode',
+  ]),
+  persistence: Object.freeze([
+    'connect', 'create', 'import', 'save', 'backup',
+  ]),
+});
 
 export function createWorkspaceRequestId(prefix = 'workspace') {
   const randomPart = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
