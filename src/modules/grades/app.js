@@ -5528,7 +5528,7 @@ class GradesApp {
         state
       );
     }
-    if (column.type === "subcategory-homework") {
+    if (column.type === "subcategory-homework" || column.type === "category-homework") {
       const summary = this.store.calculateHomeworkSummaryForStudentInSubcategoryPeriod(
         student.id,
         course.id,
@@ -5911,6 +5911,13 @@ class GradesApp {
       subcategories.append(row);
     });
 
+    if ((category.subcategories || []).length === 0) {
+      const directHint = document.createElement("p");
+      directHint.className = "muted course-dialog-direct-category-hint";
+      directHint.textContent = "Leistungen werden direkt dieser Kategorie zugeordnet.";
+      subcategories.append(directHint);
+    }
+
     card.append(
       head,
       subcategories,
@@ -6138,7 +6145,7 @@ class GradesApp {
       id: 0,
       name: "",
       weight: 0,
-      subcategories: [{ id: 0, name: "", weight: 100 }]
+      subcategories: []
     });
     this.renderCourseDialogStructure();
   }
@@ -6352,17 +6359,15 @@ class GradesApp {
           if (!category.name) {
             return { ok: false, message: `Kategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
           }
-          if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
-            return { ok: false, message: `Jede Kategorie in ${periodLabel} braucht mindestens eine Unterkategorie.`, tab: "structure" };
-          }
           const categoryWeight = normalizeGradeStructureWeight(category.weight, 1);
           if (!(categoryWeight >= 0) || categoryWeight > 100) {
             return { ok: false, message: `Kategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
           }
+          const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
           const subcategoryWeightSum = Number(
-            category.subcategories.reduce((sum, subcategory) => sum + normalizeGradeStructureWeight(subcategory.weight, 1), 0).toFixed(2)
+            subcategories.reduce((sum, subcategory) => sum + normalizeGradeStructureWeight(subcategory.weight, 1), 0).toFixed(2)
           );
-          for (const subcategory of category.subcategories) {
+          for (const subcategory of subcategories) {
             if (!subcategory.name) {
               return { ok: false, message: `Unterkategorien in ${periodLabel} dürfen nicht leer sein.`, tab: "structure" };
             }
@@ -6371,7 +6376,7 @@ class GradesApp {
               return { ok: false, message: `Unterkategorie-Gewichtungen in ${periodLabel} müssen zwischen 0 und 100 liegen.`, tab: "structure" };
             }
           }
-          if (Math.abs(subcategoryWeightSum - 100) > 0.01) {
+          if (subcategories.length > 0 && Math.abs(subcategoryWeightSum - 100) > 0.01) {
             return { ok: false, message: `Die Unterkategorien von "${category.name}" müssen in ${periodLabel} zusammen 100 % ergeben.`, tab: "structure" };
           }
         }
@@ -7620,8 +7625,13 @@ class GradesApp {
       this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-title]")?.focus();
       return false;
     }
-    if (!sessionDraft.categoryId || !sessionDraft.subcategoryId) {
-      await this.showInfoMessage("Bitte Kategorie und Unterkategorie auswählen.");
+    if (!this.isGradeAssessmentAssignmentValid(
+      courseId,
+      sessionDraft.halfYear,
+      sessionDraft.categoryId,
+      sessionDraft.subcategoryId
+    )) {
+      await this.showInfoMessage("Bitte eine gültige Kategoriezuordnung auswählen.");
       return false;
     }
     if (
@@ -7958,7 +7968,8 @@ class GradesApp {
       await this.createGradeAssessmentForSelectedCourse(
         Number(addButton.dataset.gradeAddAssessment || 0) || null,
         addButton.dataset.gradeHalfYear || "",
-        Number(addButton.dataset.courseId || 0)
+        Number(addButton.dataset.courseId || 0),
+        Number(addButton.dataset.gradeCategoryId || 0) || null
       );
       return;
     }
@@ -8533,7 +8544,7 @@ class GradesApp {
       const categoryId = Number(categorySelect.value || 0) || null;
       const category = categories.find((item) => Number(item.id) === Number(categoryId)) || null;
       const nextSubcategoryId = category
-        ? this.getMostUsedGradeAssessmentSelection(courseId, category.id).subcategoryId
+        ? this.getMostUsedGradeAssessmentSelection(courseId, category.id, draft?.halfYear).subcategoryId
         : null;
       this.markGradesEntryDraftDirty();
       this.gradesEntryDraft = {
@@ -11573,8 +11584,13 @@ class GradesApp {
       this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-title]")?.focus();
       return false;
     }
-    if (!editorValues?.categoryId || !editorValues?.subcategoryId) {
-      await this.showInfoMessage("Bitte Kategorie und Unterkategorie auswählen.");
+    if (!this.isGradeAssessmentAssignmentValid(
+      assessment.courseId,
+      editorValues?.halfYear,
+      editorValues?.categoryId,
+      editorValues?.subcategoryId
+    )) {
+      await this.showInfoMessage("Bitte eine gültige Kategoriezuordnung auswählen.");
       return false;
     }
     const mode = normalizeGradeAssessmentMode(editorValues.mode);
@@ -11684,7 +11700,7 @@ class GradesApp {
     let categories = Array.isArray(structure.categories) ? structure.categories : [];
     const hasPersistedStructure = ["h1", "h2"].some((period) => (
       (Array.isArray(structure.periodCategories?.[period]) ? structure.periodCategories[period] : [])
-        .some((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0)
+        .some((category) => Number(category?.id || 0) > 0)
     ));
     if (!hasPersistedStructure) {
       if (!this.gradeVaultSession.workspacePublicLoaded) {
@@ -11723,9 +11739,7 @@ class GradesApp {
       );
       return;
     }
-    const hasStructure = categories.some((category) => (
-      Array.isArray(category?.subcategories) && category.subcategories.length > 0
-    ));
+    const hasStructure = categories.some((category) => Number(category?.id || 0) > 0);
     if (!hasStructure) {
       this.clearActiveGradeAssessment();
       this.renderGradesEntryEmptyState(
@@ -11734,8 +11748,7 @@ class GradesApp {
       );
       return;
     }
-    categories = (Array.isArray(structure.categories) ? structure.categories : [])
-      .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
+    categories = Array.isArray(structure.categories) ? structure.categories : [];
     const selectedAssessment = this.getGradesEntryActiveAssessment(course.id);
     if (
       this.gradesEntryDraftDirty
@@ -11764,9 +11777,7 @@ class GradesApp {
       : Number(categories[0]?.id || 0) || null;
     const selectedCategory = categories.find((item) => Number(item.id) === Number(editorCategoryId || 0)) || null;
     const subcategories = Array.isArray(selectedCategory?.subcategories) ? selectedCategory.subcategories : [];
-    const editorSubcategoryId = subcategories.some((item) => Number(item.id) === Number(rawEditorState.subcategoryId || 0))
-      ? Number(rawEditorState.subcategoryId || 0)
-      : Number(subcategories[0]?.id || 0) || null;
+    const editorSubcategoryId = this.resolveGradeAssessmentSubcategoryId(selectedCategory, rawEditorState.subcategoryId);
     const editorState = {
       ...rawEditorState,
       categoryId: editorCategoryId,
@@ -11991,12 +12002,16 @@ class GradesApp {
                   ${categories.map((category) => `<option value="${category.id}"${Number(category.id) === Number(editorState.categoryId || 0) ? " selected" : ""}>${escapeHtml(`${category.name}${formatGradeWeightPercentSuffix(category.weight)}`)}</option>`).join("")}
                 </select>
               </label>
-              <label class="grades-entry-field is-wide">
-                <span>Unterkategorie</span>
-                <select name="grades-entry-subcategory" data-grades-entry-subcategory="1">
-                  ${subcategories.map((subcategory) => `<option value="${subcategory.id}"${Number(subcategory.id) === Number(editorState.subcategoryId || 0) ? " selected" : ""}>${escapeHtml(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`)}</option>`).join("")}
-                </select>
-              </label>
+              ${subcategories.length > 0 ? `
+                <label class="grades-entry-field is-wide">
+                  <span>Unterkategorie</span>
+                  <select name="grades-entry-subcategory" data-grades-entry-subcategory="1">
+                    ${subcategories.map((subcategory) => `<option value="${subcategory.id}"${Number(subcategory.id) === Number(editorState.subcategoryId || 0) ? " selected" : ""}>${escapeHtml(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`)}</option>`).join("")}
+                  </select>
+                </label>
+              ` : `
+                <p class="grades-entry-field is-wide muted">Leistungen werden direkt der ausgewählten Kategorie zugeordnet.</p>
+              `}
             </div>
           </div>
         </div>
@@ -13544,12 +13559,13 @@ class GradesApp {
       "category-partial",
       "subcategory-partial",
       "subcategory-homework",
+      "category-homework",
       "assessment"
     ]);
     return model.columns.filter((column) => (
       allowedTypes.has(column.type)
       && (includeAssessments || column.type !== "assessment")
-      && (includeAssessments || column.type !== "subcategory-homework")
+      && (includeAssessments || (column.type !== "subcategory-homework" && column.type !== "category-homework"))
     ));
   }
 
@@ -13613,8 +13629,11 @@ class GradesApp {
     const categories = courseId ? this.getGradesEntryStructureCategories(courseId, simulationPeriod) : [];
     const hasCompleteStructure = categories.some((category) => (
       Number(category?.id || 0) > 0
-      && Array.isArray(category?.subcategories)
-      && category.subcategories.some((subcategory) => Number(subcategory?.id || 0) > 0)
+      && (
+        !Array.isArray(category?.subcategories)
+        || category.subcategories.length === 0
+        || category.subcategories.some((subcategory) => Number(subcategory?.id || 0) > 0)
+      )
     ));
     return {
       isGradesOverview,
@@ -17297,7 +17316,7 @@ class GradesApp {
   getGradeSimulationSelectedCategory(categories = []) {
     const categoryId = Number(this.gradeSimulationState?.categoryId || 0);
     return categories.find((category) => Number(category?.id || 0) === categoryId)
-      || categories.find((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0)
+      || categories[0]
       || null;
   }
 
@@ -17318,7 +17337,7 @@ class GradesApp {
       ...this.gradeSimulationState,
       courseId: Number(context.course?.id || this.gradeSimulationState?.courseId || 0) || null,
       categoryId: Number(category?.id || 0) || null,
-      subcategoryId: Number(subcategory?.id || 0) || null,
+      subcategoryId: this.resolveGradeAssessmentSubcategoryId(category, subcategory?.id),
       halfYear: normalizeGradeHalfYear(this.gradeSimulationState?.halfYear),
       value: clamp(Math.round(Number(this.gradeSimulationState?.value || 0)), 0, 15)
     };
@@ -17355,17 +17374,28 @@ class GradesApp {
       });
       this.refs.gradeSimulationSubcategory.replaceChildren(...options);
       this.refs.gradeSimulationSubcategory.value = String(this.gradeSimulationState.subcategoryId || "");
+      this.refs.gradeSimulationSubcategory.disabled = subcategories.length === 0;
+      const field = this.refs.gradeSimulationSubcategory.closest("label");
+      if (field) {
+        field.hidden = subcategories.length === 0;
+      }
     }
   }
 
   readGradeSimulationStateFromControls() {
     const parsedValue = parseGradeValue(this.refs.gradeSimulationValue?.value, 15);
+    const halfYear = normalizeGradeHalfYear(this.refs.gradeSimulationHalfYear?.value || this.gradeSimulationState?.halfYear);
+    const categoryId = Number(this.refs.gradeSimulationCategory?.value || 0) || null;
+    const category = this.getGradesEntryStructureCategories(
+      this.gradeSimulationState?.courseId || this.selectedCourseId,
+      halfYear
+    ).find((item) => Number(item.id) === categoryId);
     return {
       ...this.gradeSimulationState,
       value: parsedValue.valid && parsedValue.value !== null ? parsedValue.value : 0,
-      halfYear: normalizeGradeHalfYear(this.refs.gradeSimulationHalfYear?.value || this.gradeSimulationState?.halfYear),
-      categoryId: Number(this.refs.gradeSimulationCategory?.value || 0) || null,
-      subcategoryId: Number(this.refs.gradeSimulationSubcategory?.value || 0) || null
+      halfYear,
+      categoryId,
+      subcategoryId: this.resolveGradeAssessmentSubcategoryId(category, this.refs.gradeSimulationSubcategory?.value)
     };
   }
 
@@ -17413,7 +17443,7 @@ class GradesApp {
       }
       const categoryId = Number(assessment.categoryId) || 0;
       const subcategoryId = Number(assessment.subcategoryId) || 0;
-      if (!categoryId || !subcategoryId) {
+      if (!categoryId) {
         return;
       }
       assessmentCountsByCategory.set(categoryId, (assessmentCountsByCategory.get(categoryId) || 0) + 1);
@@ -17434,6 +17464,12 @@ class GradesApp {
       });
     }
     const subcategories = Array.isArray(bestCategory?.subcategories) ? bestCategory.subcategories : [];
+    if (subcategories.length === 0) {
+      return {
+        categoryId: Number(bestCategory?.id || 0) || null,
+        subcategoryId: null
+      };
+    }
     let bestSubcategory = subcategories[0] || null;
     subcategories.forEach((subcategory) => {
       const categoryId = Number(bestCategory?.id) || 0;
@@ -17545,6 +17581,16 @@ class GradesApp {
       .find((item) => Number(item.id) === Number(categoryId));
     if (!category) {
       return null;
+    }
+    if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
+      return this.calculateSimulatedGradeForStudentInSubcategoryPeriod(
+        studentId,
+        courseId,
+        category.id,
+        null,
+        normalizedPeriod,
+        simulation
+      );
     }
     let weightedSum = 0;
     let weightSum = 0;
@@ -17688,7 +17734,10 @@ class GradesApp {
         };
     });
     const periodLabel = getGradePeriodLabel(simulation.halfYear);
-    const summary = `Simulierter Einzelnoteneintrag: ${formatGradeInteger(simulation.value)} Punkte · ${periodLabel} · ${category?.name || "Kategorie"} / ${subcategory?.name || "Unterkategorie"} · Anzeige: Jahresnote`;
+    const assignmentLabel = subcategory?.name
+      ? `${category?.name || "Kategorie"} / ${subcategory.name}`
+      : (category?.name || "Kategorie");
+    const summary = `Simulierter Einzelnoteneintrag: ${formatGradeInteger(simulation.value)} Punkte · ${periodLabel} · ${assignmentLabel} · Anzeige: Jahresnote`;
     const summaryNode = document.createElement("div");
     summaryNode.className = "grade-simulation-summary";
     summaryNode.textContent = summary;
@@ -18199,13 +18248,13 @@ class GradesApp {
     const assessmentsBySubcategory = new Map();
     assessments.forEach((assessment, index) => {
       const subcategoryId = Number(assessment.subcategoryId) || 0;
-      if (!subcategoryId) {
-        return;
+      const seriesKey = subcategoryId > 0
+        ? `subcategory:${subcategoryId}`
+        : `category:${Number(assessment.categoryId) || 0}`;
+      if (!assessmentsBySubcategory.has(seriesKey)) {
+        assessmentsBySubcategory.set(seriesKey, []);
       }
-      if (!assessmentsBySubcategory.has(subcategoryId)) {
-        assessmentsBySubcategory.set(subcategoryId, []);
-      }
-      assessmentsBySubcategory.get(subcategoryId).push({
+      assessmentsBySubcategory.get(seriesKey).push({
         assessment,
         orderIndex: index
       });
@@ -18213,7 +18262,7 @@ class GradesApp {
     const qualifiedSubcategoryIds = new Set(
       Array.from(assessmentsBySubcategory.entries())
         .filter(([, subcategoryAssessments]) => subcategoryAssessments.length > threshold)
-        .map(([subcategoryId]) => subcategoryId)
+        .map(([seriesKey]) => seriesKey)
     );
     const series = Array.from(assessmentsBySubcategory.entries()).reduce((result, [subcategoryId, subcategoryAssessments]) => {
       if (!qualifiedSubcategoryIds.has(subcategoryId)) {
@@ -18579,6 +18628,9 @@ class GradesApp {
       return categories.some((category) => {
         if (!this.isGradeCategoryExpanded(course.id, category.id, periodGroup.period)) {
           return false;
+        }
+        if ((category.subcategories || []).length === 0) {
+          return (category.assessments || []).some((assessment) => Number(assessment.id) === id);
         }
         return (category.subcategories || []).some((subcategory) => {
           if (!this.isGradeSubcategoryExpanded(course.id, category.id, subcategory.id, periodGroup.period)) {
@@ -20379,8 +20431,28 @@ class GradesApp {
     const structure = normalizedPeriod === "h1" || normalizedPeriod === "h2"
       ? this.store.getGradeStructureForPeriod(courseId, normalizedPeriod)
       : this.store.getGradeStructure(courseId);
-    return (Array.isArray(structure.categories) ? structure.categories : [])
-      .filter((category) => Array.isArray(category?.subcategories) && category.subcategories.length > 0);
+    return Array.isArray(structure.categories) ? structure.categories : [];
+  }
+
+  resolveGradeAssessmentSubcategoryId(category, value = null) {
+    const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
+    if (subcategories.length === 0) {
+      return null;
+    }
+    const requestedId = Number(value) || 0;
+    return subcategories.some((subcategory) => Number(subcategory.id) === requestedId)
+      ? requestedId
+      : (Number(subcategories[0]?.id) || null);
+  }
+
+  isGradeAssessmentAssignmentValid(courseId, halfYear, categoryId, subcategoryId) {
+    const category = this.getGradesEntryStructureCategories(courseId, halfYear)
+      .find((item) => Number(item.id) === Number(categoryId || 0));
+    if (!category) {
+      return false;
+    }
+    return this.resolveGradeAssessmentSubcategoryId(category, subcategoryId)
+      === (Number(subcategoryId) || null);
   }
 
   getMostUsedGradeAssessmentSelection(courseId = this.selectedCourseId, preferredCategoryId = null, period = "") {
@@ -20408,14 +20480,25 @@ class GradesApp {
     matchingAssessments.forEach((assessment) => {
       const categoryId = Number(assessment.categoryId) || 0;
       const subcategoryId = Number(assessment.subcategoryId) || 0;
-      if (!categoryId || !subcategoryId) {
+      if (!categoryId) {
         return;
       }
       const key = `${categoryId}:${subcategoryId}`;
       counts.set(key, (counts.get(key) || 0) + 1);
     });
     eligibleCategories.forEach((category) => {
-      (category.subcategories || []).forEach((subcategory) => {
+      const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
+      if (subcategories.length === 0) {
+        const key = `${Number(category.id) || 0}:0`;
+        const count = counts.get(key) || 0;
+        if (count > bestCount) {
+          bestCategory = category;
+          bestSubcategory = null;
+          bestCount = count;
+        }
+        return;
+      }
+      subcategories.forEach((subcategory) => {
         const key = `${Number(category.id) || 0}:${Number(subcategory.id) || 0}`;
         const count = counts.get(key) || 0;
         if (count > bestCount) {
@@ -20599,7 +20682,7 @@ class GradesApp {
     }
     const categoryId = Number(values?.categoryId || 0) || null;
     const subcategoryId = Number(values?.subcategoryId || 0) || null;
-    if (!categoryId || !subcategoryId) {
+    if (!this.isGradeAssessmentAssignmentValid(courseKey, values?.halfYear, categoryId, subcategoryId)) {
       return null;
     }
     const mode = normalizeGradeAssessmentMode(values?.mode);
@@ -20833,7 +20916,7 @@ class GradesApp {
           period: periodGroup.period,
           categoryId: category.id,
           leftBoundary: categoryLeftBoundary,
-          rightBoundary: subcategories.length === 0 ? categoryRightBoundary : ""
+          rightBoundary: ""
         };
         columns.push(categoryPartialColumn);
         headerRows[2].push({
@@ -20841,10 +20924,103 @@ class GradesApp {
           period: periodGroup.period,
           category,
           leftBoundary: categoryLeftBoundary,
-          rightBoundary: subcategories.length === 0 ? categoryRightBoundary : "",
+          rightBoundary: "",
           rowSpan: 2,
           colSpan: 1
         });
+
+        if (subcategories.length === 0) {
+          const assessments = Array.isArray(category.assessments) ? category.assessments : [];
+          const homeworkAssessments = assessments.filter((assessment) => this.isHomeworkAssessment(assessment));
+          const occurrenceCategoryIdsInUse = new Set(
+            homeworkAssessments.map((assessment) => this.resolveGradeOccurrenceCategoryId(assessment.occurrenceCategoryId))
+          );
+          const occurrenceCategories = this.getGradeOccurrenceCategories().filter((occurrenceCategory) => (
+            occurrenceCategoryIdsInUse.has(Number(occurrenceCategory.id))
+          ));
+          const showAssessments = periodGroup.period !== "year";
+          const addColumnCount = showAssessments && includeAddColumns ? 1 : 0;
+          if (!showAssessments || (occurrenceCategories.length === 0 && assessments.length === 0 && addColumnCount === 0)) {
+            categoryPartialColumn.rightBoundary = categoryRightBoundary;
+            headerRows[2][headerRows[2].length - 1].rightBoundary = categoryRightBoundary;
+          }
+          occurrenceCategories.forEach((occurrenceCategory, occurrenceIndex) => {
+            const isLast = occurrenceIndex === occurrenceCategories.length - 1 && (!showAssessments || (assessments.length === 0 && !includeAddColumns));
+            const rightBoundary = isLast ? categoryRightBoundary : "";
+            categoryColSpan += 1;
+            columns.push({
+              type: "category-homework",
+              period: periodGroup.period,
+              categoryId: category.id,
+              occurrenceCategoryId: occurrenceCategory.id,
+              rightBoundary
+            });
+            headerRows[3].push({
+              type: "category-homework",
+              period: periodGroup.period,
+              category,
+              occurrenceCategoryId: occurrenceCategory.id,
+              rightBoundary,
+              rowSpan: 1,
+              colSpan: 1
+            });
+          });
+          if (showAssessments) {
+            assessments.forEach((assessment, assessmentIndex) => {
+              const isLast = assessmentIndex === assessments.length - 1 && !includeAddColumns;
+              const rightBoundary = isLast ? categoryRightBoundary : "";
+              categoryColSpan += 1;
+              columns.push({
+                type: "assessment",
+                period: periodGroup.period,
+                categoryId: category.id,
+                subcategoryId: null,
+                assessment,
+                rightBoundary
+              });
+              headerRows[3].push({
+                type: "assessment",
+                period: periodGroup.period,
+                category,
+                subcategory: null,
+                assessment,
+                rightBoundary,
+                rowSpan: 1,
+                colSpan: 1
+              });
+            });
+            if (includeAddColumns) {
+              categoryColSpan += 1;
+              columns.push({
+                type: "add",
+                period: periodGroup.period,
+                categoryId: category.id,
+                subcategoryId: null,
+                rightBoundary: categoryRightBoundary
+              });
+              headerRows[3].push({
+                type: "add",
+                period: periodGroup.period,
+                category,
+                subcategory: null,
+                rightBoundary: categoryRightBoundary,
+                rowSpan: 1,
+                colSpan: 1
+              });
+            }
+          }
+          periodColSpan += categoryColSpan;
+          headerRows[1].push({
+            type: "category-open",
+            period: periodGroup.period,
+            category,
+            leftBoundary: categoryLeftBoundary,
+            rightBoundary: categoryRightBoundary,
+            rowSpan: 1,
+            colSpan: categoryColSpan
+          });
+          return;
+        }
 
         subcategories.forEach((subcategory, subcategoryIndex) => {
           const assessments = Array.isArray(subcategory.assessments) ? subcategory.assessments : [];
@@ -21083,6 +21259,9 @@ class GradesApp {
     if (type === "subcategory-homework" && categoryId > 0 && subcategoryId > 0 && occurrenceCategoryId > 0) {
       return `homework:${period}:${categoryId}:${subcategoryId}:${occurrenceCategoryId}`;
     }
+    if (type === "category-homework" && categoryId > 0 && occurrenceCategoryId > 0) {
+      return `homework:${period}:${categoryId}:0:${occurrenceCategoryId}`;
+    }
     if (type === "assessment") {
       const assessmentId = Number(column?.assessment?.id || column?.assessmentId || 0);
       return assessmentId > 0 ? `assessment:${assessmentId}` : "";
@@ -21104,7 +21283,7 @@ class GradesApp {
     if (type === "subcategory-open" && categoryId > 0 && subcategoryId > 0) {
       return `subcategory:${period}:${categoryId}:${subcategoryId}`;
     }
-    if (type === "add" && categoryId > 0 && subcategoryId > 0) {
+    if (type === "add" && categoryId > 0) {
       return `add:${period}:${categoryId}:${subcategoryId}`;
     }
     return this.getGradesOverviewColumnKey(column);
@@ -21281,7 +21460,7 @@ class GradesApp {
       return th;
     }
 
-    if (cell.type === "subcategory-homework") {
+    if (cell.type === "subcategory-homework" || cell.type === "category-homework") {
       th.className = "grade-homework-col is-merged-head";
       applyBoundaryClasses();
       applyColumnSelection();
@@ -21320,10 +21499,11 @@ class GradesApp {
     }
 
     if (cell.type === "add") {
-      th.className = "grade-add-col is-subcategory-child";
+      th.className = `grade-add-col${cell.subcategory ? " is-subcategory-child" : ""}`;
       applyBoundaryClasses();
+      const targetName = cell.subcategory?.name || cell.category?.name || "Kategorie";
       th.innerHTML = `
-        <button type="button" class="sidebar-add-btn" data-grade-add-assessment="${cell.subcategory.id}" data-grade-half-year="${cell.period}" data-course-id="${Number(options.courseId || 0)}" aria-label="Neue Leistung in ${escapeHtml(cell.subcategory.name)} anlegen" title="Neue Leistung anlegen">
+        <button type="button" class="sidebar-add-btn" data-grade-add-assessment="${Number(cell.subcategory?.id || 0)}" data-grade-category-id="${Number(cell.category?.id || cell.categoryId || 0)}" data-grade-half-year="${cell.period}" data-course-id="${Number(options.courseId || 0)}" aria-label="Neue Leistung in ${escapeHtml(targetName)} anlegen" title="Neue Leistung anlegen">
           <span class="sidebar-add-plus" aria-hidden="true"></span>
         </button>
       `;
@@ -21549,7 +21729,7 @@ class GradesApp {
           return;
         }
 
-        if (column.type === "subcategory-homework") {
+        if (column.type === "subcategory-homework" || column.type === "category-homework") {
           td.className = "grade-homework-col";
           applyBodyBoundaryClasses();
           const homeworkSummary = this.normalizeHomeworkSummary(
@@ -21562,7 +21742,7 @@ class GradesApp {
               column.occurrenceCategoryId
             )
           );
-          td.innerHTML = `<div class="grade-homework-summary-value" data-grade-homework-summary="1" data-student-id="${student.id}" data-course-id="${course.id}" data-category-id="${column.categoryId}" data-subcategory-id="${column.subcategoryId}" data-occurrence-category-id="${column.occurrenceCategoryId}" data-period="${column.period}" data-homework-checked="${homeworkSummary.checked}" data-homework-total="${homeworkSummary.total}">${this.formatDisplayedHomeworkSummary(homeworkSummary)}</div>`;
+          td.innerHTML = `<div class="grade-homework-summary-value" data-grade-homework-summary="1" data-student-id="${student.id}" data-course-id="${course.id}" data-category-id="${column.categoryId}" data-subcategory-id="${column.subcategoryId || ""}" data-occurrence-category-id="${column.occurrenceCategoryId}" data-period="${column.period}" data-homework-checked="${homeworkSummary.checked}" data-homework-total="${homeworkSummary.total}">${this.formatDisplayedHomeworkSummary(homeworkSummary)}</div>`;
           tr.append(td);
           return;
         }
@@ -21651,7 +21831,7 @@ class GradesApp {
       const subcategoryId = Number(column.subcategoryId || 0);
       const period = normalizeGradePeriod(column.period || "");
       const assessmentId = Number(column.assessment.id || 0);
-      if (!categoryId || !subcategoryId || (period !== "h1" && period !== "h2") || !assessmentId) {
+      if (!categoryId || (period !== "h1" && period !== "h2") || !assessmentId) {
         return;
       }
       const key = `${period}:${categoryId}`;
@@ -21688,7 +21868,7 @@ class GradesApp {
         assessmentId: Number(bestTarget.assessmentId || 0),
         period: bestTarget.period,
         categoryId: Number(bestTarget.categoryId || 0),
-        subcategoryId: Number(bestTarget.subcategoryId || 0),
+        subcategoryId: Number(bestTarget.subcategoryId || 0) || null,
         count: Number(bestTarget.count || 0),
         lastColumnIndex: Number(bestTarget.lastColumnIndex || 0)
       }
@@ -21777,7 +21957,7 @@ class GradesApp {
     const categoryId = Number(target?.categoryId || 0);
     const subcategoryId = Number(target?.subcategoryId || 0);
     const period = normalizeGradeHalfYear(target?.period || "h1");
-    if (!courseKey || !categoryId || !subcategoryId) {
+    if (!courseKey || !categoryId) {
       return false;
     }
     let changed = false;
@@ -21787,7 +21967,7 @@ class GradesApp {
     if (this.gradeCollapsedCategoryKeys.delete(buildGradeCategoryKey(courseKey, categoryId, period))) {
       changed = true;
     }
-    if (this.gradeCollapsedSubcategoryKeys.delete(buildGradeSubcategoryKey(courseKey, categoryId, subcategoryId, period))) {
+    if (subcategoryId && this.gradeCollapsedSubcategoryKeys.delete(buildGradeSubcategoryKey(courseKey, categoryId, subcategoryId, period))) {
       changed = true;
     }
     return changed;
@@ -21951,6 +22131,10 @@ class GradesApp {
       );
       return `${periodLabel} · ${subcategory?.name || "Unterkategorie"} · ${this.getGradeOccurrenceCategoryName(column.occurrenceCategoryId)}`;
     }
+    if (column.type === "category-homework") {
+      const category = lookup.categories.get(`${normalizeGradePeriod(column.period || "year")}:${Number(column.categoryId) || 0}`);
+      return `${periodLabel} · ${category?.name || "Kategorie"} · ${this.getGradeOccurrenceCategoryName(column.occurrenceCategoryId)}`;
+    }
     if (column.type === "assessment") {
       return `${periodLabel} · ${formatGradeAssessmentDisplayTitle(column.assessment?.title || "Leistung") || "Leistung"}`;
     }
@@ -21987,7 +22171,7 @@ class GradesApp {
         )
       );
     }
-    if (column.type === "subcategory-homework") {
+    if (column.type === "subcategory-homework" || column.type === "category-homework") {
       return this.formatDisplayedHomeworkSummary(
         this.store.calculateHomeworkSummaryForStudentInSubcategoryPeriod(
           student.id,
@@ -22692,7 +22876,7 @@ class GradesApp {
     return true;
   }
 
-  async createGradeAssessmentForSelectedCourse(subcategoryId = null, halfYear = "", expectedCourseId = null) {
+  async createGradeAssessmentForSelectedCourse(subcategoryId = null, halfYear = "", expectedCourseId = null, categoryId = null) {
     const courseId = Number(this.selectedCourseId || 0);
     const expectedCourseKey = Number(expectedCourseId || 0);
     if (!courseId || !expectedCourseKey || courseId !== expectedCourseKey) {
@@ -22714,7 +22898,7 @@ class GradesApp {
       : this.getDefaultGradeAssessmentHalfYear();
     const categories = this.getGradesEntryStructureCategories(courseId, resolvedHalfYear);
     const defaultSelection = this.getMostUsedGradeAssessmentSelection(courseId, null, resolvedHalfYear);
-    let targetCategory = categories.find((category) => Number(category.id) === Number(defaultSelection.categoryId || 0)) || categories[0] || null;
+    let targetCategory = categories.find((category) => Number(category.id) === Number(categoryId || defaultSelection.categoryId || 0)) || categories[0] || null;
     let targetSubcategory = targetCategory
       ? (targetCategory.subcategories || []).find((subcategory) => Number(subcategory.id) === Number(defaultSelection.subcategoryId || 0))
       || targetCategory.subcategories[0]
@@ -22731,8 +22915,13 @@ class GradesApp {
         return true;
       });
     }
-    if (!targetCategory || !targetSubcategory) {
-      await this.showInfoMessage("Bitte zuerst im Kurs mindestens eine Kategorie mit Unterkategorie anlegen.");
+    if (!targetCategory || !this.isGradeAssessmentAssignmentValid(
+      courseId,
+      resolvedHalfYear,
+      targetCategory.id,
+      targetSubcategory?.id || null
+    )) {
+      await this.showInfoMessage("Bitte zuerst eine gültige Notenkategorie anlegen.");
       return;
     }
 
@@ -22751,7 +22940,7 @@ class GradesApp {
       weight: 1,
       mode: "grade",
       categoryId: Number(targetCategory.id) || null,
-      subcategoryId: Number(targetSubcategory.id) || null,
+      subcategoryId: Number(targetSubcategory?.id) || null,
       entries: {},
       baseCourseRevision: this.getGradeCourseRevision(courseId),
       baseFingerprint: ""
@@ -25817,7 +26006,12 @@ class GradesApp {
     const assessmentSubcategoryId = Number(assessmentPayload?.subcategoryId || 0) || null;
     const hasAssessmentSelection = Boolean(
       assessmentCategory
-      && (assessmentCategory.subcategories || []).some((item) => Number(item.id) === Number(assessmentSubcategoryId || 0))
+      && this.isGradeAssessmentAssignmentValid(
+        courseKey,
+        halfYear,
+        assessmentCategoryId,
+        assessmentSubcategoryId
+      )
     );
     const categoriesForHalfYear = this.getGradesEntryStructureCategories(courseKey, halfYear);
     const rosterRows = Array.isArray(students) ? students : this.buildCourseSeatplanStudents(courseKey);
@@ -26021,10 +26215,8 @@ class GradesApp {
           const subcategoryId = Number(assessment.subcategoryId || currentConfig.subcategoryId || 0);
           const categories = this.getGradesEntryStructureCategories(courseId, halfYear);
           const category = categories.find((item) => Number(item.id) === categoryId) || null;
-          const subcategory = (category?.subcategories || [])
-            .find((item) => Number(item.id) === subcategoryId) || null;
-          if (!category || !subcategory) {
-            throw new Error("Kategorie oder Unterkategorie ist nicht mehr verfügbar.");
+          if (!category || !this.isGradeAssessmentAssignmentValid(courseId, halfYear, categoryId, subcategoryId)) {
+            throw new Error("Kategoriezuordnung ist nicht mehr verfügbar.");
           }
           assessmentId = this.store.createGradeAssessment(courseId, {
             title: assessment.title || currentConfig.title || "",
@@ -26218,6 +26410,23 @@ class GradesApp {
     for (const periodGroup of groupedAssessments) {
       const categories = Array.isArray(periodGroup?.categories) ? periodGroup.categories : [];
       for (const category of categories) {
+        if ((category.subcategories || []).length === 0) {
+          for (const assessment of category.assessments || []) {
+            if (Number(assessment?.courseId || 0) !== courseKey) {
+              continue;
+            }
+            if (normalizeGradeTextPart(assessment?.title) !== expectedTitle) {
+              continue;
+            }
+            if (normalizeGradeHalfYear(assessment?.halfYear) === expectedHalfYear) {
+              return assessment;
+            }
+            if (!fallback) {
+              fallback = assessment;
+            }
+          }
+          continue;
+        }
         const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
         for (const subcategory of subcategories) {
           const assessments = Array.isArray(subcategory?.assessments) ? subcategory.assessments : [];
@@ -26915,7 +27124,7 @@ class GradesApp {
       id: 0,
       name: "",
       weight: 0,
-      subcategories: [{ id: 0, name: "", weight: 100 }]
+      subcategories: []
     });
     this.settingsDirty = true;
     this.renderDefaultGradeStructureSettingsSection();

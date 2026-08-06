@@ -457,6 +457,9 @@ export class WorkspaceRuntime {
     this.publicDirty = true;
     this.manualDirty = true;
     this.controller?.markChanged?.('planning');
+    if (!this.isManualPersistenceMode() && this.fileHandle) {
+      this.queueSyncSave('planning-auto-save');
+    }
   }
 
   onGradeChanged() {
@@ -1219,7 +1222,11 @@ export class WorkspaceRuntime {
   }
 
   queueSyncSave(reason = 'auto-save') {
-    void this.saveToConnectedFile(reason).catch(() => undefined);
+    if (this.isManualPersistenceMode() || !this.fileHandle) return false;
+    const save = () => this.saveToConnectedFile(reason);
+    const operation = this.operationTail.then(save, save);
+    this.operationTail = operation.catch(() => undefined);
+    void operation.catch(() => undefined);
     return true;
   }
 

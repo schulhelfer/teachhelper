@@ -2256,6 +2256,10 @@ export class WorkspaceStore {
       const categories = sourcePeriodCategories[period] || [];
       return [period, {
         categoryIds: new Set(categories.map((category) => Number(category.id) || 0).filter(Boolean)),
+        categoryHasSubcategories: new Map(categories.map((category) => [
+          Number(category.id) || 0,
+          Array.isArray(category.subcategories) && category.subcategories.length > 0
+        ])),
         subcategoryIdsByCategory: new Map(categories.map((category) => [
           Number(category.id) || 0,
           new Set((category.subcategories || [])
@@ -2273,6 +2277,11 @@ export class WorkspaceStore {
       const subcategoryId = Number(assessment.subcategoryId) || 0;
       return (
         (categoryId > 0 && !validIds.categoryIds.has(categoryId))
+        || (
+          categoryId > 0
+          && subcategoryId === 0
+          && validIds.categoryHasSubcategories.get(categoryId) === true
+        )
         || (
           subcategoryId > 0
           && !validIds.subcategoryIdsByCategory.get(categoryId)?.has(subcategoryId)
@@ -3148,6 +3157,13 @@ export class WorkspaceStore {
           const subcategories = Array.isArray(category.subcategories) ? category.subcategories : [];
           return {
             ...category,
+            assessments: period.includeAssessments && subcategories.length === 0
+              ? assessments.filter((assessment) => (
+                Number(assessment.categoryId) === Number(category.id)
+                && !Number(assessment.subcategoryId)
+                && normalizeGradeHalfYear(assessment.halfYear) === period.id
+              ))
+              : [],
             subcategories: subcategories.map((subcategory) => ({
               ...subcategory,
               assessments: period.includeAssessments
@@ -3217,6 +3233,15 @@ export class WorkspaceStore {
     const category = (Array.isArray(structure.categories) ? structure.categories : []).find((item) => Number(item.id) === categoryKey);
     if (!category) {
       return null;
+    }
+    if (!Array.isArray(category.subcategories) || category.subcategories.length === 0) {
+      return this.calculateComputedGradeForStudentInSubcategoryPeriod(
+        studentId,
+        courseId,
+        category.id,
+        null,
+        normalizedPeriod
+      );
     }
     const weightedGrades = [];
     (category.subcategories || []).forEach((subcategory) => {

@@ -90,6 +90,38 @@ test('workspace runtime emits strictly scoped snapshots', () => {
   assert.equal(grades.gradeState.gradeEntries[0].value, 12);
 });
 
+test('public planning changes automatically save to a connected database without touching the grade vault', () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.fileHandle = { name: 'planung.thdb' };
+  runtime.isManualPersistenceMode = () => false;
+  const reasons = [];
+  runtime.queueSyncSave = (reason) => {
+    reasons.push(reason);
+    return true;
+  };
+  let scope = '';
+  runtime.bindController({ markChanged(nextScope) { scope = nextScope; } });
+
+  runtime.onPublicChanged();
+
+  assert.equal(runtime.publicDirty, true);
+  assert.equal(runtime.manualDirty, true);
+  assert.equal(scope, 'planning');
+  assert.deepEqual(reasons, ['planning-auto-save']);
+});
+
+test('public planning changes do not trigger downloads in manual persistence mode', () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.isManualPersistenceMode = () => true;
+  let saveCalls = 0;
+  runtime.queueSyncSave = () => { saveCalls += 1; return true; };
+
+  runtime.onPublicChanged();
+
+  assert.equal(saveCalls, 0);
+  assert.equal(runtime.publicDirty, true);
+});
+
 test('ephemeral tutorial runtimes never reconnect database or backup handles', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), {
     eventTarget: new EventTarget(),

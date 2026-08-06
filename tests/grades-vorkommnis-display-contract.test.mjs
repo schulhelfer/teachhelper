@@ -10,7 +10,7 @@ const [appSource, cssSource] = await Promise.all([
 test('the occurrence mode has a category-aware table marker', () => {
   assert.match(appSource, /entryMode === "homework"[\s\S]*?this\.getGradeOccurrenceCategoryDisplayName\(draft\?\.occurrenceCategoryId \|\| assessment\?\.occurrenceCategoryId\)/);
   assert.match(appSource, /data-grades-entry-occurrence-category="1"/);
-  assert.match(appSource, /if \(cell\.type === "subcategory-homework"\) \{[\s\S]*?th\.textContent = this\.getGradeOccurrenceCategoryMarker\(cell\.occurrenceCategoryId\);[\s\S]*?const occurrenceCategoryName = this\.getGradeOccurrenceCategoryName\(cell\.occurrenceCategoryId\);[\s\S]*?th\.setAttribute\("aria-label", occurrenceCategoryName\);[\s\S]*?th\.title = occurrenceCategoryName;/);
+  assert.match(appSource, /if \(cell\.type === "subcategory-homework" \|\| cell\.type === "category-homework"\) \{[\s\S]*?th\.textContent = this\.getGradeOccurrenceCategoryMarker\(cell\.occurrenceCategoryId\);[\s\S]*?const occurrenceCategoryName = this\.getGradeOccurrenceCategoryName\(cell\.occurrenceCategoryId\);[\s\S]*?th\.setAttribute\("aria-label", occurrenceCategoryName\);[\s\S]*?th\.title = occurrenceCategoryName;/);
   assert.match(appSource, /occurrenceCategoryId: occurrenceCategory\.id/);
   assert.match(appSource, /if \(normalized === "homework"\) \{\s+return "Vorkommnis";/);
 });
