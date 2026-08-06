@@ -28,6 +28,16 @@ test('das Entsperrformular ist semantisch sichtbar und wird nur per Modus-CSS um
   assert.doesNotMatch(appSource, /gradeVaultDialog(?:Current|Password|Confirm)Row\.hidden\s*=/);
 });
 
+test('neue Vault-Passwörter müssen mindestens zwölf Zeichen haben', async () => {
+  const runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
+
+  assert.match(appSource, /const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;/);
+  assert.match(html, /id="grade-vault-dialog-current-password"[^>]*minlength="10"/);
+  assert.match(html, /id="grade-vault-dialog-password"[^>]*minlength="12"/);
+  assert.match(html, /id="grade-vault-dialog-confirm-password"[^>]*minlength="12"/);
+  assert.match(runtimeSource, /String\(password \|\| ''\)\.length < 12/);
+});
+
 test('der Entsperrmodus macht die Grades-Shell vor dem Öffnen des Dialogs technisch sichtbar', () => {
   const methodStart = appSource.indexOf('  openGradeVaultDialog(mode = "unlock")');
   const methodEnd = appSource.indexOf('\n  closeGradeVaultDialog()', methodStart);

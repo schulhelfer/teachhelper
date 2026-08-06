@@ -39,7 +39,7 @@ const HANDLE_DB_NAME = 'teachhelper-sync-handles-v1';
 const HANDLE_STORE_NAME = 'handles';
 const HANDLE_FILE_KEY = 'sync-file';
 const HANDLE_BACKUP_KEY = 'backup-dir';
-const AUTO_LOCK_MS = 60 * 60 * 1000;
+const AUTO_LOCK_MS = 45 * 60 * 1000;
 const AUTO_LOCK_RETRY_MS = 10 * 60 * 1000;
 const PLANNING_SETTING_KEYS = new Set([
   'hoursPerDay',
@@ -403,14 +403,22 @@ export class WorkspaceRuntime {
   }
 
   async handleGradeVaultAutoLockTimeout() {
-    if (!this.isGradeVaultUnlocked()) {
-      this.clearGradeVaultAutoLockTimer();
-      return false;
-    }
     try {
-      const locked = await this.lockGradeVaultSession();
-      if (locked || !this.isGradeVaultUnlocked()) return locked;
-      throw new Error('Die Noten-Datenbank konnte nicht automatisch gesperrt werden.');
+      const autoLock = async () => {
+        if (!this.isGradeVaultUnlocked()) {
+          this.clearGradeVaultAutoLockTimer();
+          return false;
+        }
+        if (this.dirtyCourseIds.size > 0) {
+          await this.saveDirtyGradeVaultChangesForAutoLock();
+        }
+        const locked = await this.lockGradeVaultSession();
+        if (locked || !this.isGradeVaultUnlocked()) return locked;
+        throw new Error('Die Noten-Datenbank konnte nicht automatisch gesperrt werden.');
+      };
+      const promise = this.operationTail.then(autoLock, autoLock);
+      this.operationTail = promise.catch(() => undefined);
+      return await promise;
     } catch (error) {
       if (!this.isGradeVaultUnlocked()) return false;
       const previousWarning = this.vault.autoLockWarning;
@@ -428,6 +436,21 @@ export class WorkspaceRuntime {
       this.scheduleGradeVaultAutoLock(AUTO_LOCK_RETRY_MS);
       return false;
     }
+  }
+
+  async saveDirtyGradeVaultChangesForAutoLock() {
+    if (this.dirtyCourseIds.size === 0) return false;
+    if (this.isManualPersistenceMode()) {
+      throw new Error('Automatisches Speichern ist im manuellen Download-Modus nicht möglich. Bitte speichere die Noten manuell.');
+    }
+    if (!this.fileHandle) {
+      throw new Error('Automatisches Speichern ist nicht möglich, weil keine Datenbankdatei verbunden ist. Bitte verbinde oder speichere die Noten manuell.');
+    }
+    const saved = await this.saveToConnectedFile('grade-vault-auto-lock');
+    if (!saved || this.dirtyCourseIds.size > 0) {
+      throw new Error('Die Noten-Datenbank konnte vor dem automatischen Sperren nicht vollständig gespeichert werden.');
+    }
+    return true;
   }
 
   onPublicChanged() {
@@ -557,7 +580,7 @@ export class WorkspaceRuntime {
   }
 
   async setupGradeVault(password, { coursesLoaded = false } = {}) {
-    if (String(password || '').length < 10) throw new Error('Das Passwort muss mindestens 10 Zeichen lang sein.');
+    if (String(password || '').length < 12) throw new Error('Das Passwort muss mindestens 12 Zeichen lang sein.');
     if (!coursesLoaded && this.segmentTexts.size) {
       await this.loadAllPersistedGradeCoursesForCryptoRewrite();
     }

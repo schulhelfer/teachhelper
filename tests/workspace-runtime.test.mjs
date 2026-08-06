@@ -204,7 +204,7 @@ test('discarding dirty grade changes restores a lockable persisted vault state',
   assert.equal(runtime.vault.persistedCryptoKey, null);
 });
 
-test('auto-lock catches dirty-grade failures, publishes a warning, and retries after ten minutes', async () => {
+test('auto-lock keeps dirty grades unlocked in manual download mode, publishes a warning, and retries after ten minutes', async () => {
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   runtime.vault = {
@@ -218,17 +218,121 @@ test('auto-lock catches dirty-grade failures, publishes a warning, and retries a
   runtime.dirtyCourseIds.add(7);
   let changedScope = '';
   let retryDelay = 0;
+  let saveCalls = 0;
   runtime.bindController({ markChanged(scope) { changedScope = scope; } });
   runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+  runtime.isManualPersistenceMode = () => true;
+  runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
 
   assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
   assert.equal(runtime.isGradeVaultUnlocked(), true);
   assert.equal(changedScope, 'grades');
+  assert.equal(saveCalls, 0);
   assert.equal(retryDelay, 10 * 60 * 1000);
   const warning = runtime.createWorkspaceSnapshot('shell').vault.autoLockWarning;
   assert.equal(warning.active, true);
-  assert.match(warning.message, /Ungespeicherte Notenänderungen/);
+  assert.match(warning.message, /manuellen Download-Modus/);
   assert.ok(warning.retryAt > Date.now());
+});
+
+test('auto-lock saves every dirty grade course to a connected database before locking', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+  runtime.fileHandle = { name: 'noten.thdb' };
+  runtime.isManualPersistenceMode = () => false;
+  runtime.dirtyCourseIds.add(7);
+  runtime.dirtyCourseIds.add(8);
+  const order = [];
+  runtime.saveToConnectedFile = async (reason) => {
+    order.push(`save:${reason}`);
+    runtime.dirtyCourseIds.clear();
+    return true;
+  };
+  const lockGradeVaultSession = runtime.lockGradeVaultSession.bind(runtime);
+  runtime.lockGradeVaultSession = async () => {
+    order.push('lock');
+    return lockGradeVaultSession();
+  };
+
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  assert.deepEqual(order, ['save:grade-vault-auto-lock', 'lock']);
+  assert.equal(runtime.dirtyCourseIds.size, 0);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
+});
+
+test('auto-lock locks a clean vault without saving', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+  let saveCalls = 0;
+  runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
+
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  assert.equal(saveCalls, 0);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
+});
+
+test('auto-lock leaves dirty grades unlocked when automatic saving fails', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+  runtime.fileHandle = { name: 'noten.thdb' };
+  runtime.isManualPersistenceMode = () => false;
+  runtime.dirtyCourseIds.add(7);
+  runtime.saveToConnectedFile = async () => {
+    throw new Error('Dateikonflikt');
+  };
+  let retryDelay = 0;
+  runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
+  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  assert.equal(runtime.dirtyCourseIds.has(7), true);
+  assert.match(runtime.vault.autoLockWarning.message, /Dateikonflikt/);
+  assert.equal(retryDelay, 10 * 60 * 1000);
+});
+
+test('auto-lock leaves dirty grades unlocked when no database file is connected', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+  runtime.isManualPersistenceMode = () => false;
+  runtime.dirtyCourseIds.add(7);
+  let saveCalls = 0;
+  let retryDelay = 0;
+  runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
+  runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
+  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  assert.equal(saveCalls, 0);
+  assert.match(runtime.vault.autoLockWarning.message, /keine Datenbankdatei verbunden/);
+  assert.equal(retryDelay, 10 * 60 * 1000);
 });
 
 test('grade-vault activity postpones a blocked auto-lock retry to the normal idle period', () => {
@@ -247,7 +351,7 @@ test('grade-vault activity postpones a blocked auto-lock retry to the normal idl
 
   runtime.recordGradeVaultActivity();
 
-  assert.equal(scheduledDelay, 60 * 60 * 1000);
+  assert.equal(scheduledDelay, 45 * 60 * 1000);
   assert.equal(runtime.vault.autoLockWarning.active, true);
 });
 
@@ -306,6 +410,20 @@ test('unlocking a legacy PBKDF2 vault upgrades its KDF and stages every course f
   assert.equal(runtime.vault.kdf.iterations, workspaceCrypto.WORKSPACE_VAULT_KDF_ITERATIONS);
   assert.equal(runtime.dirtyCourseIds.has(7), true);
   assert.equal(runtime.courseCache.get(7).gradeStudents[0].firstName, 'Ada');
+  runtime.fileHandle = { name: 'noten.thdb' };
+  runtime.isManualPersistenceMode = () => false;
+  let autoSaveCalls = 0;
+  runtime.saveToConnectedFile = async (reason) => {
+    autoSaveCalls += 1;
+    assert.equal(reason, 'grade-vault-auto-lock');
+    runtime.dirtyCourseIds.clear();
+    return true;
+  };
+
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  assert.equal(autoSaveCalls, 1);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
+  assert.equal(runtime.dirtyCourseIds.size, 0);
   runtime.clearGradeVaultAutoLockTimer();
 });
 

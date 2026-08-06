@@ -117,7 +117,7 @@ const GRADE_VAULT_VALIDATION_TOKEN = "teachhelper-grade-vault-v1";
 const GRADE_VAULT_SCHEMA = "teachhelper-grade-vault-v1";
 const GRADE_COURSE_SCHEMA = "teachhelper-grade-course-v1";
 const GRADE_VAULT_KDF_ITERATIONS = 600000;
-const GRADE_VAULT_PASSWORD_MIN_LENGTH = 10;
+const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;
 const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
 const GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT = false;
 const GRADE_VAULT_AUTO_LOCK_ACTIVITY_EVENTS = ["pointerdown", "keydown", "input", "wheel", "touchstart"];
@@ -1953,7 +1953,8 @@ function escapeHtml(value) {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 
@@ -1967,6 +1968,30 @@ function buildGradeStudentPerformanceFlairBadgeMarkup(student) {
 
 function buildGradeStudentNameInnerMarkup(student, studentName) {
   return `${escapeHtml(studentName)}${buildGradeStudentPerformanceFlairBadgeMarkup(student)}`;
+}
+
+function createGradeStudentNameElement(student, studentName, options = {}) {
+  const node = document.createElement("div");
+  node.className = `grades-student-name${options.active ? " is-active" : ""}${options.placeholder ? " is-placeholder" : ""}`;
+  if (!options.placeholder) {
+    const studentId = Number(student?.id) || 0;
+    if (studentId > 0) {
+      node.dataset.gradeStudentName = String(studentId);
+    }
+    node.dataset.studentLabel = String(studentName || "");
+    node.append(document.createTextNode(String(studentName || "")));
+    const performanceFlair = normalizeGradePerformanceFlair(student?.performanceFlair);
+    if (performanceFlair) {
+      const flair = document.createElement("span");
+      flair.className = "grades-student-flair";
+      flair.setAttribute("aria-label", `Flair ${performanceFlair}`);
+      flair.textContent = performanceFlair;
+      node.append(flair);
+    }
+  } else {
+    node.textContent = "\u00a0";
+  }
+  return node;
 }
 
 function buildGradePeriodKey(courseId, period = "year") {
@@ -8602,7 +8627,7 @@ class GradesApp {
       return;
     }
     const portal = this.syncGradeTestScaleTooltipPortalHost(option);
-    portal.innerHTML = source.innerHTML;
+    portal.replaceChildren(...[...source.childNodes].map((node) => node.cloneNode(true)));
     portal.setAttribute("aria-hidden", "false");
     portal.classList.add("is-visible");
     this.showGradeTestScaleTooltipLayer(portal);
@@ -13872,7 +13897,10 @@ class GradesApp {
     list.innerHTML = "";
     const students = Array.isArray(draft.students) ? draft.students : [];
     if (!students.length) {
-      list.innerHTML = `<p class="grade-accommodation-empty">Keine Teilnehmenden verfügbar.</p>`;
+      const empty = document.createElement("p");
+      empty.className = "grade-accommodation-empty";
+      empty.textContent = "Keine Teilnehmenden verfügbar.";
+      list.append(empty);
       this.syncGradeAccommodationDialogAddState();
       return;
     }
@@ -13881,33 +13909,47 @@ class GradesApp {
       const card = document.createElement("section");
       card.className = "grade-accommodation-card";
       card.dataset.accommodationUid = row.uid;
-      const options = [
-        `<option value="">Name auswählen</option>`,
-        ...students.map((student) => {
-          const studentId = Number(student.id) || 0;
-          const selected = Number(row.studentId || 0) === studentId;
-          const disabled = !selected && usedStudentIds.has(studentId);
-          const label = formatGradeStudentName(student, draft.nameOrder);
-          return `<option value="${studentId}"${selected ? " selected" : ""}${disabled ? " disabled" : ""}>${escapeHtml(label)}</option>`;
-        })
-      ].join("");
-      card.innerHTML = `
-        <div class="grade-accommodation-card-head">
-          <label class="grade-accommodation-student-field">
-            Name
-            <select data-grade-accommodation-student="1" autocomplete="off">
-              ${options}
-            </select>
-          </label>
-          <button type="button" class="ghost danger-action dialog-icon-button grade-accommodation-delete"
-            data-grade-accommodation-delete="1" aria-label="Kachel löschen" title="Kachel löschen">🗑️</button>
-        </div>
-        <label class="grade-accommodation-text-field">
-          NTA
-          <textarea data-grade-accommodation-text="1" maxlength="${GRADE_ACCOMMODATION_TEXT_MAX_LENGTH}" rows="4"
-            placeholder="Kurzer Hinweis zum Nachteilsausgleich">${escapeHtml(row.text || "")}</textarea>
-        </label>
-      `;
+      const head = document.createElement("div");
+      head.className = "grade-accommodation-card-head";
+      const studentField = document.createElement("label");
+      studentField.className = "grade-accommodation-student-field";
+      studentField.append("Name");
+      const select = document.createElement("select");
+      select.dataset.gradeAccommodationStudent = "1";
+      select.autocomplete = "off";
+      const emptyOption = document.createElement("option");
+      emptyOption.value = "";
+      emptyOption.textContent = "Name auswählen";
+      select.append(emptyOption);
+      students.forEach((student) => {
+        const studentId = Number(student.id) || 0;
+        const option = document.createElement("option");
+        option.value = String(studentId);
+        option.selected = Number(row.studentId || 0) === studentId;
+        option.disabled = !option.selected && usedStudentIds.has(studentId);
+        option.textContent = formatGradeStudentName(student, draft.nameOrder);
+        select.append(option);
+      });
+      studentField.append(select);
+      const deleteButton = document.createElement("button");
+      deleteButton.type = "button";
+      deleteButton.className = "ghost danger-action dialog-icon-button grade-accommodation-delete";
+      deleteButton.dataset.gradeAccommodationDelete = "1";
+      deleteButton.setAttribute("aria-label", "Kachel löschen");
+      deleteButton.title = "Kachel löschen";
+      deleteButton.textContent = "🗑️";
+      head.append(studentField, deleteButton);
+      const textField = document.createElement("label");
+      textField.className = "grade-accommodation-text-field";
+      textField.append("NTA");
+      const textarea = document.createElement("textarea");
+      textarea.dataset.gradeAccommodationText = "1";
+      textarea.maxLength = GRADE_ACCOMMODATION_TEXT_MAX_LENGTH;
+      textarea.rows = 4;
+      textarea.placeholder = "Kurzer Hinweis zum Nachteilsausgleich";
+      textarea.value = String(row.text || "");
+      textField.append(textarea);
+      card.append(head, textField);
       list.append(card);
     });
     this.syncGradeAccommodationDialogAddState();
@@ -14566,17 +14608,39 @@ class GradesApp {
     const node = document.createElement("section");
     node.className = "competence-expectations-topic";
     node.dataset.competenceTopicId = normalizeCompetenceExpectationId(topicId);
-    node.innerHTML = `
-      <div class="competence-expectations-topic-head">
-        <span class="competence-expectations-bullet" aria-hidden="true">•</span>
-        <input type="text" data-competence-expectations-topic="1" placeholder="Thema" value="${escapeHtml(String(topic || ""))}" autocomplete="off">
-        <div class="competence-expectations-row-actions">
-          <button type="button" class="ghost competence-expectations-topic-add" data-competence-expectations-add-topic="1" aria-label="Thema hinzufügen" title="Thema hinzufügen">➕</button>
-          <button type="button" class="ghost competence-expectations-topic-remove" data-competence-expectations-remove-topic="1" aria-label="Thema entfernen" title="Thema entfernen">❌</button>
-        </div>
-      </div>
-      <div class="competence-expectations-competences"></div>
-    `;
+    const head = document.createElement("div");
+    head.className = "competence-expectations-topic-head";
+    const bullet = document.createElement("span");
+    bullet.className = "competence-expectations-bullet";
+    bullet.setAttribute("aria-hidden", "true");
+    bullet.textContent = "•";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.dataset.competenceExpectationsTopic = "1";
+    input.placeholder = "Thema";
+    input.value = String(topic || "");
+    input.autocomplete = "off";
+    const actions = document.createElement("div");
+    actions.className = "competence-expectations-row-actions";
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "ghost competence-expectations-topic-add";
+    addButton.dataset.competenceExpectationsAddTopic = "1";
+    addButton.setAttribute("aria-label", "Thema hinzufügen");
+    addButton.title = "Thema hinzufügen";
+    addButton.textContent = "➕";
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost competence-expectations-topic-remove";
+    removeButton.dataset.competenceExpectationsRemoveTopic = "1";
+    removeButton.setAttribute("aria-label", "Thema entfernen");
+    removeButton.title = "Thema entfernen";
+    removeButton.textContent = "❌";
+    actions.append(addButton, removeButton);
+    head.append(bullet, input, actions);
+    const competenceList = document.createElement("div");
+    competenceList.className = "competence-expectations-competences";
+    node.append(head, competenceList);
     if (options.after instanceof Element && options.after.parentElement === list) {
       options.after.insertAdjacentElement("afterend", node);
     } else {
@@ -14600,14 +14664,34 @@ class GradesApp {
     const row = document.createElement("div");
     row.className = "competence-expectations-competence-row";
     row.dataset.competenceId = normalizeCompetenceExpectationId(competenceId);
-    row.innerHTML = `
-      <span class="competence-expectations-bullet" aria-hidden="true">-</span>
-      <input type="text" data-competence-expectations-competence="1" placeholder="Kompetenz" value="${escapeHtml(String(competenceText || ""))}" autocomplete="off">
-      <div class="competence-expectations-row-actions">
-        <button type="button" class="ghost competence-expectations-competence-add" data-competence-expectations-add-competence="1" aria-label="Kompetenz hinzufügen" title="Kompetenz hinzufügen">➕</button>
-        <button type="button" class="ghost competence-expectations-competence-remove" data-competence-expectations-remove-competence="1" aria-label="Kompetenz entfernen" title="Kompetenz entfernen">❌</button>
-      </div>
-    `;
+    const bullet = document.createElement("span");
+    bullet.className = "competence-expectations-bullet";
+    bullet.setAttribute("aria-hidden", "true");
+    bullet.textContent = "-";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.dataset.competenceExpectationsCompetence = "1";
+    input.placeholder = "Kompetenz";
+    input.value = String(competenceText || "");
+    input.autocomplete = "off";
+    const actions = document.createElement("div");
+    actions.className = "competence-expectations-row-actions";
+    const addButton = document.createElement("button");
+    addButton.type = "button";
+    addButton.className = "ghost competence-expectations-competence-add";
+    addButton.dataset.competenceExpectationsAddCompetence = "1";
+    addButton.setAttribute("aria-label", "Kompetenz hinzufügen");
+    addButton.title = "Kompetenz hinzufügen";
+    addButton.textContent = "➕";
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.className = "ghost competence-expectations-competence-remove";
+    removeButton.dataset.competenceExpectationsRemoveCompetence = "1";
+    removeButton.setAttribute("aria-label", "Kompetenz entfernen");
+    removeButton.title = "Kompetenz entfernen";
+    removeButton.textContent = "❌";
+    actions.append(addButton, removeButton);
+    row.append(bullet, input, actions);
     if (options.after instanceof Element && options.after.parentElement === list) {
       options.after.insertAdjacentElement("afterend", row);
     } else {
@@ -14798,22 +14882,35 @@ class GradesApp {
       this.gradeTaskCompetenceDialogSyncedSelectedIds = new Set();
       return;
     }
-    const template = document.createElement("template");
-    template.innerHTML = expectations.map((topic) => {
+    const fragment = document.createDocumentFragment();
+    const buttons = [];
+    expectations.forEach((topic) => {
+      const section = document.createElement("section");
+      section.className = "grade-task-competence-topic";
+      const title = document.createElement("h4");
+      title.textContent = String(topic.topic || "Ohne Thema");
+      section.append(title);
       const competencies = Array.isArray(topic.competencies) ? topic.competencies : [];
-      return `
-        <section class="grade-task-competence-topic">
-          <h4>${escapeHtml(topic.topic || "Ohne Thema")}</h4>
-          ${competencies.map((competence) => `
-            <button type="button" class="grade-task-competence-option" role="checkbox" aria-checked="false" data-grade-task-competence-option="1" data-competence-id="${escapeHtml(competence.id)}">
-              <span class="grade-task-competence-check" aria-hidden="true"></span>
-              <span class="grade-task-competence-option-text">${escapeHtml(competence.text)}</span>
-            </button>
-          `).join("")}
-        </section>
-      `;
-    }).join("");
-    const buttons = [...template.content.querySelectorAll("button[data-grade-task-competence-option='1']")];
+      competencies.forEach((competence) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "grade-task-competence-option";
+        button.setAttribute("role", "checkbox");
+        button.setAttribute("aria-checked", "false");
+        button.dataset.gradeTaskCompetenceOption = "1";
+        button.dataset.competenceId = String(competence.id || "");
+        const check = document.createElement("span");
+        check.className = "grade-task-competence-check";
+        check.setAttribute("aria-hidden", "true");
+        const text = document.createElement("span");
+        text.className = "grade-task-competence-option-text";
+        text.textContent = String(competence.text || "");
+        button.append(check, text);
+        buttons.push(button);
+        section.append(button);
+      });
+      fragment.append(section);
+    });
     const buttonById = new Map();
     buttons.forEach((button) => {
       const id = String(button.dataset.competenceId || "").trim();
@@ -14821,7 +14918,7 @@ class GradesApp {
         buttonById.set(id, button);
       }
     });
-    list.replaceChildren(template.content);
+    list.replaceChildren(fragment);
     this.gradeTaskCompetenceDialogOptionButtons = buttons;
     this.gradeTaskCompetenceDialogOptionButtonById = buttonById;
     this.gradeTaskCompetenceDialogOptionsSignature = signature;
@@ -17226,26 +17323,37 @@ class GradesApp {
       value: clamp(Math.round(Number(this.gradeSimulationState?.value || 0)), 0, 15)
     };
     if (this.refs.gradeSimulationValue) {
-      this.refs.gradeSimulationValue.innerHTML = Array.from({ length: 16 }, (_item, index) => {
-        const value = index;
-        return `<option value="${value}">${formatGradeInteger(value)} Punkte</option>`;
-      }).join("");
+      const options = Array.from({ length: 16 }, (_item, index) => {
+        const option = document.createElement("option");
+        option.value = String(index);
+        option.textContent = `${formatGradeInteger(index)} Punkte`;
+        return option;
+      });
+      this.refs.gradeSimulationValue.replaceChildren(...options);
       this.refs.gradeSimulationValue.value = String(this.gradeSimulationState.value);
     }
     if (this.refs.gradeSimulationHalfYear) {
       this.refs.gradeSimulationHalfYear.value = this.gradeSimulationState.halfYear;
     }
     if (this.refs.gradeSimulationCategory) {
-      this.refs.gradeSimulationCategory.innerHTML = categories.map((item) => (
-        `<option value="${Number(item.id) || 0}">${escapeHtml(item.name || "Kategorie")}</option>`
-      )).join("");
+      const options = categories.map((item) => {
+        const option = document.createElement("option");
+        option.value = String(Number(item.id) || 0);
+        option.textContent = String(item.name || "Kategorie");
+        return option;
+      });
+      this.refs.gradeSimulationCategory.replaceChildren(...options);
       this.refs.gradeSimulationCategory.value = String(this.gradeSimulationState.categoryId || "");
     }
     if (this.refs.gradeSimulationSubcategory) {
       const subcategories = Array.isArray(category?.subcategories) ? category.subcategories : [];
-      this.refs.gradeSimulationSubcategory.innerHTML = subcategories.map((item) => (
-        `<option value="${Number(item.id) || 0}">${escapeHtml(item.name || "Unterkategorie")}</option>`
-      )).join("");
+      const options = subcategories.map((item) => {
+        const option = document.createElement("option");
+        option.value = String(Number(item.id) || 0);
+        option.textContent = String(item.name || "Unterkategorie");
+        return option;
+      });
+      this.refs.gradeSimulationSubcategory.replaceChildren(...options);
       this.refs.gradeSimulationSubcategory.value = String(this.gradeSimulationState.subcategoryId || "");
     }
   }
@@ -17551,7 +17659,10 @@ class GradesApp {
     }
     const context = this.getGradeSimulationCourseContext();
     if (!context.ready || !context.course) {
-      root.innerHTML = `<p class="muted">Simulation in der entsperrten Kursübersicht verfügbar.</p>`;
+      const message = document.createElement("p");
+      message.className = "muted";
+      message.textContent = "Simulation in der entsperrten Kursübersicht verfügbar.";
+      root.replaceChildren(message);
       return;
     }
     const simulation = this.gradeSimulationState || this.buildDefaultGradeSimulationState(context.course.id);
@@ -17575,42 +17686,59 @@ class GradesApp {
           delta,
           blockingOverride
         };
-      });
+    });
     const periodLabel = getGradePeriodLabel(simulation.halfYear);
     const summary = `Simulierter Einzelnoteneintrag: ${formatGradeInteger(simulation.value)} Punkte · ${periodLabel} · ${category?.name || "Kategorie"} / ${subcategory?.name || "Unterkategorie"} · Anzeige: Jahresnote`;
-    root.innerHTML = `
-        <div class="grade-simulation-summary">${escapeHtml(summary)}</div>
-        <div class="grade-simulation-table-wrap">
-          <table class="grade-simulation-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Jahresnote aktuell</th>
-                <th>Jahresnote Simulation</th>
-                <th>Veränderung</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${rows.map((row) => {
-      const studentName = this.getGradeStudentOverviewDisplayName(row.student);
-      const deltaClass = row.delta > 0 ? " is-positive" : row.delta < 0 ? " is-negative" : "";
-      const simulatedLowClass = isGradeValueBelowThreshold(row.simulatedValue, this.gradeDeficitThreshold) ? " is-grade-low" : "";
-      const overrideBadge = row.blockingOverride
-        ? `<span class="grade-simulation-override">manuell gesetzt</span>`
-        : "";
-      return `
-                  <tr>
-                    <td>${escapeHtml(studentName)}</td>
-                    <td><span class="grade-total-value">${this.formatDisplayedGrade(row.currentValue)}</span></td>
-                    <td><span class="grade-total-value${simulatedLowClass}">${this.formatDisplayedGrade(row.simulatedValue)}</span></td>
-                    <td><span class="grade-simulation-delta${deltaClass}">${escapeHtml(this.formatGradeSimulationDelta(row.delta))}</span>${overrideBadge}</td>
-                  </tr>
-                `;
-    }).join("")}
-            </tbody>
-          </table>
-        </div>
-      `;
+    const summaryNode = document.createElement("div");
+    summaryNode.className = "grade-simulation-summary";
+    summaryNode.textContent = summary;
+    const tableWrap = document.createElement("div");
+    tableWrap.className = "grade-simulation-table-wrap";
+    const table = document.createElement("table");
+    table.className = "grade-simulation-table";
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    ["Name", "Jahresnote aktuell", "Jahresnote Simulation", "Veränderung"].forEach((label) => {
+      const cell = document.createElement("th");
+      cell.textContent = label;
+      headRow.append(cell);
+    });
+    head.append(headRow);
+    const body = document.createElement("tbody");
+    rows.forEach((row) => {
+      const tr = document.createElement("tr");
+      const name = document.createElement("td");
+      name.textContent = this.getGradeStudentOverviewDisplayName(row.student);
+      const current = document.createElement("td");
+      const currentValue = document.createElement("span");
+      currentValue.className = "grade-total-value";
+      currentValue.textContent = this.formatDisplayedGrade(row.currentValue);
+      current.append(currentValue);
+      const simulated = document.createElement("td");
+      const simulatedValue = document.createElement("span");
+      simulatedValue.className = "grade-total-value";
+      simulatedValue.classList.toggle("is-grade-low", isGradeValueBelowThreshold(row.simulatedValue, this.gradeDeficitThreshold));
+      simulatedValue.textContent = this.formatDisplayedGrade(row.simulatedValue);
+      simulated.append(simulatedValue);
+      const delta = document.createElement("td");
+      const deltaValue = document.createElement("span");
+      deltaValue.className = "grade-simulation-delta";
+      deltaValue.classList.toggle("is-positive", row.delta > 0);
+      deltaValue.classList.toggle("is-negative", row.delta < 0);
+      deltaValue.textContent = this.formatGradeSimulationDelta(row.delta);
+      delta.append(deltaValue);
+      if (row.blockingOverride) {
+        const override = document.createElement("span");
+        override.className = "grade-simulation-override";
+        override.textContent = "manuell gesetzt";
+        delta.append(override);
+      }
+      tr.append(name, current, simulated, delta);
+      body.append(tr);
+    });
+    table.append(head, body);
+    tableWrap.append(table);
+    root.replaceChildren(summaryNode, tableWrap);
   }
 
   togglePrivacyFocusedGradeStudent(studentId) {
@@ -19578,15 +19706,14 @@ class GradesApp {
     studentHead.className = "student-col";
     studentHead.style.background = courseColor;
     studentHead.style.color = readableTextColor(courseColor);
-    studentHead.innerHTML = `
-              <button
-                type="button"
-                class="grades-entry-course-head-btn"
-                data-grades-entry-course-toggle="1"
-                aria-label="Kurs auswählen"
-                title="Kurs auswählen"
-              >${escapeHtml(String(course?.name || ""))}</button>
-            `;
+    const courseButton = document.createElement("button");
+    courseButton.type = "button";
+    courseButton.className = "grades-entry-course-head-btn";
+    courseButton.dataset.gradesEntryCourseToggle = "1";
+    courseButton.setAttribute("aria-label", "Kurs auswählen");
+    courseButton.title = "Kurs auswählen";
+    courseButton.textContent = String(course?.name || "");
+    studentHead.append(courseButton);
     headRow.append(studentHead);
     const gradeHead = document.createElement("th");
     gradeHead.className = "grade-assessment-col";
@@ -19605,7 +19732,10 @@ class GradesApp {
       const isActive = student.id > 0 && student.id === Number(this.activeGradeStudentId || 0);
       const studentCell = document.createElement("td");
       studentCell.className = "student-col";
-      studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : buildGradeStudentNameInnerMarkup(student, studentName)}</div>`;
+      studentCell.append(createGradeStudentNameElement(student, studentName, {
+        active: isActive,
+        placeholder: isPlaceholderRow
+      }));
       tr.append(studentCell);
       const gradeCell = document.createElement("td");
       gradeCell.className = "grade-assessment-col";
@@ -20054,15 +20184,14 @@ class GradesApp {
     studentHead.className = "student-col";
     studentHead.style.background = courseColor;
     studentHead.style.color = readableTextColor(courseColor);
-    studentHead.innerHTML = `
-              <button
-                type="button"
-                class="grades-entry-course-head-btn"
-                data-grades-entry-course-toggle="1"
-                aria-label="Kurs auswählen"
-                title="Kurs auswählen"
-              >${escapeHtml(String(course?.name || ""))}</button>
-            `;
+    const courseButton = document.createElement("button");
+    courseButton.type = "button";
+    courseButton.className = "grades-entry-course-head-btn";
+    courseButton.dataset.gradesEntryCourseToggle = "1";
+    courseButton.setAttribute("aria-label", "Kurs auswählen");
+    courseButton.title = "Kurs auswählen";
+    courseButton.textContent = String(course?.name || "");
+    studentHead.append(courseButton);
     headRow.append(studentHead);
     const resultHead = document.createElement("th");
     resultHead.className = "grade-test-result-col";
@@ -20117,7 +20246,10 @@ class GradesApp {
       const isActive = student.id > 0 && student.id === Number(this.activeGradeStudentId || 0);
       const studentCell = document.createElement("td");
       studentCell.className = "student-col";
-      studentCell.innerHTML = `<div class="grades-student-name${isActive ? " is-active" : ""}${isPlaceholderRow ? " is-placeholder" : ""}"${isPlaceholderRow ? "" : ` data-grade-student-name="${student.id}"`} data-student-label="${escapeHtml(studentName)}">${isPlaceholderRow ? "&nbsp;" : buildGradeStudentNameInnerMarkup(student, studentName)}</div>`;
+      studentCell.append(createGradeStudentNameElement(student, studentName, {
+        active: isActive,
+        placeholder: isPlaceholderRow
+      }));
       tr.append(studentCell);
       const entry = Object.prototype.hasOwnProperty.call(entries, student.id)
         ? normalizeGradeDraftEntry(entries[student.id])
@@ -21270,8 +21402,27 @@ class GradesApp {
             : "";
           const privacyBlurredClass = isPrivacyBlurred ? " is-privacy-blurred" : "";
           const privacyClass = isPrivacyFocused ? " is-privacy-focused" : "";
-          const nameButtonMarkup = `<button type="button" class="grades-student-name is-clickable${activeClass}" data-grade-student-name="${student.id}" data-student-label="${escapeHtml(studentName)}" aria-pressed="${isPrivacyFocused ? "true" : "false"}" aria-label="Datenschutzmodus für Notenmitteilung bei ${escapeHtml(studentName)}" title="Datenschutzmodus für Notenmitteilung">${escapeHtml(studentName)}</button>`;
-          td.innerHTML = `<div class="grades-student-name-wrap${privacyBlurredClass}${privacyClass}">${nameButtonMarkup}${buildGradeStudentPerformanceFlairBadgeMarkup(student)}</div>`;
+          const nameWrap = document.createElement("div");
+          nameWrap.className = `grades-student-name-wrap${privacyBlurredClass}${privacyClass}`;
+          const nameButton = document.createElement("button");
+          nameButton.type = "button";
+          nameButton.className = `grades-student-name is-clickable${activeClass}`;
+          nameButton.dataset.gradeStudentName = String(Number(student.id) || 0);
+          nameButton.dataset.studentLabel = studentName;
+          nameButton.setAttribute("aria-pressed", isPrivacyFocused ? "true" : "false");
+          nameButton.setAttribute("aria-label", `Datenschutzmodus für Notenmitteilung bei ${studentName}`);
+          nameButton.title = "Datenschutzmodus für Notenmitteilung";
+          nameButton.textContent = studentName;
+          nameWrap.append(nameButton);
+          const performanceFlair = normalizeGradePerformanceFlair(student.performanceFlair);
+          if (performanceFlair) {
+            const flair = document.createElement("span");
+            flair.className = "grades-student-flair";
+            flair.setAttribute("aria-label", `Flair ${performanceFlair}`);
+            flair.textContent = performanceFlair;
+            nameWrap.append(flair);
+          }
+          td.append(nameWrap);
           tr.append(td);
           return;
         }
@@ -26954,16 +27105,26 @@ class GradesApp {
     const root = this.refs.settingsGradeOccurrenceSuggestions;
     if (!root) return;
     const names = new Set(categories.map((category) => String(category.name || "").trim().toLocaleLowerCase("de")));
-    root.innerHTML = GRADE_OCCURRENCE_CATEGORY_SUGGESTIONS.map((suggestion, index) => {
+    const buttons = GRADE_OCCURRENCE_CATEGORY_SUGGESTIONS.map((suggestion, index) => {
       const used = names.has(suggestion.name.toLocaleLowerCase("de"));
       const label = `${suggestion.emoji} ${suggestion.name}`;
-      return `
-        <button type="button" class="ghost settings-grade-occurrence-suggestion${used ? " is-used" : ""}" data-grade-occurrence-suggestion="${index}"${used ? " disabled" : ""} aria-label="${escapeHtml(used ? `${label} bereits verwendet` : `${label} hinzufügen`)}" title="${escapeHtml(used ? "Bereits verwendet" : "Kategorie hinzufügen")}">
-          <span aria-hidden="true">${escapeHtml(suggestion.emoji)}</span>
-          <span>${escapeHtml(suggestion.name)}</span>
-        </button>
-      `;
-    }).join("");
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost settings-grade-occurrence-suggestion";
+      button.classList.toggle("is-used", used);
+      button.dataset.gradeOccurrenceSuggestion = String(index);
+      button.disabled = used;
+      button.setAttribute("aria-label", used ? `${label} bereits verwendet` : `${label} hinzufügen`);
+      button.title = used ? "Bereits verwendet" : "Kategorie hinzufügen";
+      const emoji = document.createElement("span");
+      emoji.setAttribute("aria-hidden", "true");
+      emoji.textContent = suggestion.emoji;
+      const name = document.createElement("span");
+      name.textContent = suggestion.name;
+      button.append(emoji, name);
+      return button;
+    });
+    root.replaceChildren(...buttons);
   }
 
   renderGradeOccurrenceCategoriesSettingsSection() {
@@ -26975,30 +27136,67 @@ class GradesApp {
     categories.forEach((category, index) => {
       const row = document.createElement("div");
       row.className = "settings-grade-occurrence-row";
-      row.innerHTML = `
-        <label class="settings-grade-occurrence-name-field">
-          <span>Vorkommniskategorie</span>
-          <input type="text" maxlength="48" data-grade-occurrence-category-name="1" data-category-index="${index}" value="${escapeHtml(category.name)}" autocomplete="off">
-        </label>
-        <label class="settings-grade-occurrence-emoji-field">
-          <span>Emoji</span>
-          <input type="text" maxlength="16" data-grade-occurrence-category-emoji="1" data-category-index="${index}" value="${escapeHtml(category.emoji || "")}" autocomplete="off" inputmode="text" aria-label="Emoji für ${escapeHtml(category.name || "Vorkommniskategorie")}" placeholder="#">
-        </label>
-        <div class="settings-grade-occurrence-polarity-field" role="group" aria-label="Wertung für ${escapeHtml(category.name || "Vorkommniskategorie")}">
-          <span class="settings-grade-occurrence-field-label">Wertung</span>
-          <div class="settings-grade-occurrence-polarity-control assessment-mode-toggle segment-control" role="radiogroup" aria-label="Wertung für ${escapeHtml(category.name || "Vorkommniskategorie")}">
-            <label class="settings-grade-occurrence-polarity-option assessment-mode-option segment-control__option">
-              <input type="radio" name="settings-grade-occurrence-polarity-${Number(category.id)}" data-grade-occurrence-category-polarity="1" data-category-index="${index}" value="negative"${category.polarity === "negative" ? " checked" : ""}>
-              <span>Negativ</span>
-            </label>
-            <label class="settings-grade-occurrence-polarity-option assessment-mode-option segment-control__option">
-              <input type="radio" name="settings-grade-occurrence-polarity-${Number(category.id)}" data-grade-occurrence-category-polarity="1" data-category-index="${index}" value="positive"${category.polarity === "positive" ? " checked" : ""}>
-              <span>Positiv</span>
-            </label>
-          </div>
-        </div>
-        <button type="button" class="ghost danger-action dialog-icon-button" data-grade-occurrence-category-remove="${index}" aria-label="Vorkommniskategorie löschen" title="${categories.length > 1 ? "Vorkommniskategorie löschen" : "Mindestens eine Vorkommniskategorie muss bestehen bleiben"}"${categories.length > 1 ? "" : " disabled"}>🗑️</button>
-      `;
+      const categoryLabel = String(category.name || "Vorkommniskategorie");
+      const createTextField = (className, label, maxLength, value) => {
+        const field = document.createElement("label");
+        field.className = className;
+        const labelNode = document.createElement("span");
+        labelNode.textContent = label;
+        const input = document.createElement("input");
+        input.type = "text";
+        input.maxLength = maxLength;
+        input.dataset.categoryIndex = String(index);
+        input.value = String(value || "");
+        input.autocomplete = "off";
+        field.append(labelNode, input);
+        return { field, input };
+      };
+      const nameField = createTextField("settings-grade-occurrence-name-field", "Vorkommniskategorie", 48, category.name);
+      nameField.input.dataset.gradeOccurrenceCategoryName = "1";
+      const emojiField = createTextField("settings-grade-occurrence-emoji-field", "Emoji", 16, category.emoji);
+      emojiField.input.dataset.gradeOccurrenceCategoryEmoji = "1";
+      emojiField.input.inputMode = "text";
+      emojiField.input.setAttribute("aria-label", `Emoji für ${categoryLabel}`);
+      emojiField.input.placeholder = "#";
+      const polarityField = document.createElement("div");
+      polarityField.className = "settings-grade-occurrence-polarity-field";
+      polarityField.setAttribute("role", "group");
+      polarityField.setAttribute("aria-label", `Wertung für ${categoryLabel}`);
+      const polarityLabel = document.createElement("span");
+      polarityLabel.className = "settings-grade-occurrence-field-label";
+      polarityLabel.textContent = "Wertung";
+      const polarityControl = document.createElement("div");
+      polarityControl.className = "settings-grade-occurrence-polarity-control assessment-mode-toggle segment-control";
+      polarityControl.setAttribute("role", "radiogroup");
+      polarityControl.setAttribute("aria-label", `Wertung für ${categoryLabel}`);
+      [
+        ["negative", "Negativ"],
+        ["positive", "Positiv"]
+      ].forEach(([value, label]) => {
+        const option = document.createElement("label");
+        option.className = "settings-grade-occurrence-polarity-option assessment-mode-option segment-control__option";
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = `settings-grade-occurrence-polarity-${Number(category.id) || 0}`;
+        input.dataset.gradeOccurrenceCategoryPolarity = "1";
+        input.dataset.categoryIndex = String(index);
+        input.value = value;
+        input.checked = category.polarity === value;
+        const text = document.createElement("span");
+        text.textContent = label;
+        option.append(input, text);
+        polarityControl.append(option);
+      });
+      polarityField.append(polarityLabel, polarityControl);
+      const removeButton = document.createElement("button");
+      removeButton.type = "button";
+      removeButton.className = "ghost danger-action dialog-icon-button";
+      removeButton.dataset.gradeOccurrenceCategoryRemove = String(index);
+      removeButton.setAttribute("aria-label", "Vorkommniskategorie löschen");
+      removeButton.title = categories.length > 1 ? "Vorkommniskategorie löschen" : "Mindestens eine Vorkommniskategorie muss bestehen bleiben";
+      removeButton.disabled = categories.length <= 1;
+      removeButton.textContent = "🗑️";
+      row.append(nameField.field, emojiField.field, polarityField, removeButton);
       root.append(row);
     });
     this.syncSegmentControlSlideStates(root);

@@ -46,8 +46,8 @@ test('suggested occurrence categories add complete optional presets exactly once
 test('settings provide complete category management and protected deletion', () => {
   assert.match(htmlSource, /data-tab="occurrences"[\s\S]*?>Vorkommnisse</);
   assert.match(appSource, /validateGradeOccurrenceCategoriesDraft[\s\S]*?eindeutige Namen/);
-  assert.match(appSource, /data-grade-occurrence-category-emoji="1"/);
-  assert.match(appSource, /data-grade-occurrence-category-polarity="1"/);
+  assert.match(appSource, /dataset\.gradeOccurrenceCategoryEmoji = "1"/);
+  assert.match(appSource, /dataset\.gradeOccurrenceCategoryPolarity = "1"/);
   assert.match(appSource, /settings-grade-occurrence-polarity-control assessment-mode-toggle segment-control/);
   assert.match(appSource, /settings-grade-occurrence-polarity-option assessment-mode-option segment-control__option/);
   assert.match(appSource, /this\.syncSegmentControlSlideStates\(root\);/);

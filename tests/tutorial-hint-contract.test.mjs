@@ -34,7 +34,8 @@ test('merkt gestartete Einführungen dauerhaft pro Tab', () => {
   assert.match(tutorialSource, /TUTORIAL_STARTED_TABS_STORAGE_KEY/);
   assert.match(tutorialSource, /localStorage\?\.getItem\(TUTORIAL_STARTED_TABS_STORAGE_KEY\)/);
   assert.match(tutorialSource, /localStorage\?\.setItem\(TUTORIAL_STARTED_TABS_STORAGE_KEY/);
-  assert.match(tutorialSource, /function startFromEntry\(\) \{\s+markActiveTabStarted\(\);/);
+  assert.match(tutorialSource, /function startFromEntry\(\) \{\s+return start\(\{ markStarted: true \}\);/);
+  assert.match(tutorialSource, /if \(markStarted\) markActiveTabStarted\(\);/);
 });
 
 test('zeigt den Hinweis nur für unbesuchte Tabs und bis zur Interaktion', () => {

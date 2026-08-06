@@ -28,6 +28,7 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
   const calls = {
     renderAll: 0,
     renderViewState: 0,
+    vaultBanner: 0,
     vaultActions: 0,
     settingsActions: 0,
   };
@@ -44,6 +45,7 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
     updateAccessLock() {},
     renderAll() { calls.renderAll += 1; },
     renderViewState() { calls.renderViewState += 1; },
+    renderGradeVaultBanner() { calls.vaultBanner += 1; },
     updateGradeVaultActionButtons() { calls.vaultActions += 1; },
     updateSettingsActionButtons() { calls.settingsActions += 1; },
     renderBackupSection() {},
@@ -61,6 +63,7 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
   assert.deepEqual(calls, {
     renderAll: 0,
     renderViewState: 1,
+    vaultBanner: 1,
     vaultActions: 1,
     settingsActions: 1,
   });
@@ -78,6 +81,7 @@ test('grade workspace changes still rebuild the visible grades data once', () =>
     refs: { sidebarCourseList: {} },
     shouldPreserveActiveGradesEntryControl() { return false; },
     renderAll() { renderCount += 1; },
+    refreshSidebarCourseStudentCounts() { return Promise.resolve(); },
   }, {
     revision: 5,
     hydrated: true,
