@@ -26,9 +26,10 @@ for (const [path, url] of [
   ['./archive-pdf.js', archiveUrl],
 ]) runtimeSource = runtimeSource.replace(path, url);
 
-const [{ WorkspaceRuntime }, messages] = await Promise.all([
+const [{ WorkspaceRuntime }, messages, workspaceCrypto] = await Promise.all([
   import(dataUrl(runtimeSource)),
   import(messagesUrl),
+  import(cryptoUrl),
 ]);
 
 function emptyGrades() {
@@ -124,12 +125,130 @@ test('locking a vault clears every plaintext course cache', async () => {
     unlocked: true,
     cryptoKey: { opaque: true },
     config: { kdf: { salt: 'x' } },
+    autoLockWarning: {
+      active: true,
+      blockedAt: Date.now() - 1000,
+      retryAt: Date.now() + 1000,
+      message: 'Ungespeicherte Notenänderungen müssen vor dem Sperren gespeichert werden.',
+    },
   };
   await runtime.lockGradeVaultSession();
   assert.equal(runtime.courseCache.size, 0);
   assert.equal(runtime.loadedCourseId, null);
   assert.equal(runtime.vault.cryptoKey, null);
+  assert.equal(runtime.vault.autoLockWarning, null);
   assert.deepEqual(store.gradeState.gradeStudents, []);
+});
+
+test('a dirty vault rejects manual locking with a typed error and keeps plaintext state intact', async () => {
+  const store = new FakeStore();
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 1, courseId: 7, firstName: 'Ada' }],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = 7;
+  runtime.courseCache.set(7, structuredClone(store.gradeState));
+  runtime.dirtyCourseIds.add(7);
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+
+  await assert.rejects(
+    runtime.lockGradeVaultSession(),
+    (error) => error?.code === messages.WORKSPACE_ERROR_VAULT_DIRTY,
+  );
+  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  assert.equal(runtime.loadedCourseId, 7);
+  assert.equal(runtime.courseCache.has(7), true);
+  assert.equal(store.gradeState.gradeStudents[0].firstName, 'Ada');
+  runtime.clearGradeVaultAutoLockTimer();
+});
+
+test('discarding dirty grade changes restores a lockable persisted vault state', async () => {
+  const store = new FakeStore();
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 1, courseId: 7, firstName: 'Ungespeichert' }],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const config = { configured: true, kdf: { salt: 'x' }, validation: { ciphertext: 'x' } };
+  runtime.loadedCourseId = 7;
+  runtime.courseCache.set(7, structuredClone(store.gradeState));
+  runtime.performanceIndexCache.set(7, [{ courseId: 7, title: 'Zwischenspeicher' }]);
+  runtime.dirtyCourseIds.add(7);
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config,
+    persistedConfig: structuredClone(config),
+    persistedCryptoKey: { opaque: true },
+  };
+
+  assert.equal(await runtime.discardGradeVaultChanges(), true);
+  assert.equal(runtime.dirtyCourseIds.size, 0);
+  assert.equal(runtime.courseCache.size, 0);
+  assert.equal(runtime.performanceIndexCache.size, 0);
+  assert.equal(runtime.loadedCourseId, null);
+  assert.deepEqual(store.gradeState.gradeStudents, []);
+  assert.equal(await runtime.lockGradeVaultSession(), true);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
+  assert.equal(runtime.vault.persistedCryptoKey, null);
+});
+
+test('auto-lock catches dirty-grade failures, publishes a warning, and retries after ten minutes', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+  runtime.dirtyCourseIds.add(7);
+  let changedScope = '';
+  let retryDelay = 0;
+  runtime.bindController({ markChanged(scope) { changedScope = scope; } });
+  runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
+  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  assert.equal(changedScope, 'grades');
+  assert.equal(retryDelay, 10 * 60 * 1000);
+  const warning = runtime.createWorkspaceSnapshot('shell').vault.autoLockWarning;
+  assert.equal(warning.active, true);
+  assert.match(warning.message, /Ungespeicherte Notenänderungen/);
+  assert.ok(warning.retryAt > Date.now());
+});
+
+test('grade-vault activity postpones a blocked auto-lock retry to the normal idle period', () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+    autoLockWarning: { active: true, blockedAt: Date.now(), retryAt: Date.now() + 600000, message: 'Speichern' },
+  };
+  let scheduledDelay = 0;
+  runtime.scheduleGradeVaultAutoLock = (delay) => { scheduledDelay = delay; };
+
+  runtime.recordGradeVaultActivity();
+
+  assert.equal(scheduledDelay, 60 * 60 * 1000);
+  assert.equal(runtime.vault.autoLockWarning.active, true);
 });
 
 test('disabling an unlocked vault clears its encryption configuration', async () => {
@@ -153,6 +272,41 @@ test('disabling an unlocked vault clears its encryption configuration', async ()
   assert.equal(runtime.vault.cryptoKey, null);
   assert.equal(store.getGradeVaultEncryptionEnabled(), false);
   assert.equal(changedScope, 'grades');
+});
+
+test('unlocking a legacy PBKDF2 vault upgrades its KDF and stages every course for rewrite', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const password = 'ein-ausreichend-langes-passwort';
+  const legacyKdf = workspaceCrypto.createWorkspaceVaultKdf({ iterations: 250000 });
+  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey(password, legacyKdf);
+  const validation = await workspaceCrypto.encryptWorkspaceVaultText(
+    'teachhelper-grade-vault-v1',
+    cryptoKey,
+    legacyKdf,
+    { type: 'validation' },
+  );
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: false,
+    config: { configured: true, kdf: legacyKdf, validation },
+    cryptoKey: null,
+    kdf: legacyKdf,
+  };
+  runtime.loadedCourseId = 7;
+  runtime.courseCache.set(7, {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 70, courseId: 7, firstName: 'Ada' }],
+  });
+
+  assert.equal(await runtime.unlockGradeVault(password), true);
+  assert.equal(runtime.vault.config.kdf.iterations, workspaceCrypto.WORKSPACE_VAULT_KDF_ITERATIONS);
+  assert.equal(runtime.vault.kdf.iterations, workspaceCrypto.WORKSPACE_VAULT_KDF_ITERATIONS);
+  assert.equal(runtime.dirtyCourseIds.has(7), true);
+  assert.equal(runtime.courseCache.get(7).gradeStudents[0].firstName, 'Ada');
+  runtime.clearGradeVaultAutoLockTimer();
 });
 
 test('read-only roster summaries never replace or publish the active grade course', async () => {

@@ -7,6 +7,7 @@ import { createPwaInstallPrompt } from './app/pwa-install-prompt.js';
 import { createShellController } from './app/shell.js';
 import { reportError } from './shared/error-reporting.js';
 import { createMessageApi } from './shared/messages.js';
+import { WORKSPACE_STATE_EVENT } from './shared/school-data/messages.js';
 import { installAppTooltips } from './shared/app-tooltips.js';
 import {
   createModuleFrame,
@@ -21,6 +22,7 @@ import {
 import { createSharedTimerStore } from './shared/timer-store.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
+  GRADES_GRADE_VAULT_ACTIVITY_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
@@ -170,6 +172,28 @@ import {
     appEl.classList.add('app-ios-optimized');
   }
   const { showMessage } = createMessageApi(document);
+  let displayedGradeVaultAutoLockWarningId = '';
+  window.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    if (!detail || detail.scope !== 'shell' || !detail.snapshot) return;
+    const warning = detail.snapshot?.vault?.autoLockWarning;
+    if (warning?.active !== true) {
+      displayedGradeVaultAutoLockWarningId = '';
+      return;
+    }
+    const warningId = String(Number(warning.blockedAt) || 'active');
+    if (warningId === displayedGradeVaultAutoLockWarningId) return;
+    displayedGradeVaultAutoLockWarningId = warningId;
+    const retryAt = Number(warning.retryAt) || 0;
+    const retryLabel = retryAt
+      ? new Date(retryAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+      : 'in zehn Minuten';
+    showMessage(
+      `Die Noten-Datenbank konnte nicht automatisch gesperrt werden, weil ungespeicherte Noten vorhanden sind. Bitte speichere die Noten. Nächster Sperrversuch: ${retryLabel}.`,
+      'warn',
+      { enqueue: true }
+    );
+  });
   const reportAppError = (error, userMessage = '', context = {}) => (
     reportError(error, userMessage, context, { showMessage })
   );
@@ -2353,13 +2377,16 @@ import {
         if (frame !== getPlanningFrame()) return;
         const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
         bridgeController?.dispatchGradesNavigation?.(detail);
-        // A course seatplan is prepared by the grades module, but its actual
-        // destination is the seatplan tab. Keeping the planning tab visible
-        // avoids exposing the grades tab as an incorrect intermediate target.
-        // If the grade vault is locked, its overlay brings the grades dialog
-        // to the foreground until the pending navigation can continue.
-        if (detail.action === 'seatplan') return;
-        setActiveTab(TAB_GRADES);
+        // Let the grades module request its visible destination once it has
+        // actually completed the navigation. This keeps the planning view in
+        // place while a locked vault is being unlocked, but still opens the
+        // grades entry afterwards. Seatplans likewise go straight to their
+        // own tab instead of flashing the grades tab in between.
+        return;
+      }
+      if (data.type === GRADES_GRADE_VAULT_ACTIVITY_EVENT) {
+        if (frame !== getGradesFrame()) return;
+        window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
         return;
       }
       if (data.type === SIDEBAR_WIDTH_REQUEST_EVENT) {
@@ -2417,6 +2444,16 @@ import {
     window.addEventListener(GRADES_VIEW_REQUEST_EVENT, (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
+        return;
+      }
+      if (
+        detail.view !== 'planning'
+        && gradeVaultOverlayNavigationReturnTab
+        && Date.now() < gradeVaultOverlayNavigationSuppressedUntil
+      ) {
+        if (getActiveTab() !== gradeVaultOverlayNavigationReturnTab) {
+          setActiveTab(gradeVaultOverlayNavigationReturnTab);
+        }
         return;
       }
       setActiveTab(detail.view === 'planning' ? TAB_PLANNING : TAB_GRADES);
@@ -2769,6 +2806,13 @@ import {
     onSidebarWidthChange: (scope, width) => syncSidebarWidthToModules(scope, width),
     onActiveTabChange: () => firstRunTutorial?.showContextHelp?.({ prompt: true }),
   });
+  const initialWorkspaceSnapshot = window.__teachhelperWorkspaceController?.getSnapshot?.('shell');
+  if (initialWorkspaceSnapshot?.vault) {
+    shellController.setPlanningGradeVaultState({
+      ...initialWorkspaceSnapshot.vault,
+      ready: Boolean(initialWorkspaceSnapshot.ready),
+    });
+  }
   bindTabNavigation();
   const PREFERENCE_SLOT_COUNT = 3;
   const MAX_GRID_SIZE = 20;
@@ -6059,15 +6103,37 @@ import {
     els.csvStatus.append(title, copy);
   }
   let gradeVaultOverlayRevealedGradesShell = false;
+  let gradeVaultOverlayReturnTab = '';
+  let gradeVaultOverlayRestoreTimer = 0;
+  let gradeVaultOverlayNavigationReturnTab = '';
+  let gradeVaultOverlayNavigationSuppressedUntil = 0;
+  let gradeVaultOverlayPreservesSourceTab = false;
   window.addEventListener(GRADES_GRADE_VAULT_OVERLAY_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     const isOpen = Boolean(detail?.open);
+    const preserveSourceTab = detail?.preserveSourceTab !== false;
     const gradesTabIsActive = appEl.classList.contains('app-tab-grades');
 
     // The grades shell never carries a hidden attribute. That keeps the vault
     // form semantically available to password managers even when another tool
     // is active; CSS alone controls whether the shell or only its modal overlay
     // is painted.
+    if (isOpen) {
+      gradeVaultOverlayPreservesSourceTab = preserveSourceTab;
+      if (preserveSourceTab && !gradesTabIsActive) {
+        gradeVaultOverlayReturnTab = getActiveTab();
+        gradeVaultOverlayNavigationReturnTab = gradeVaultOverlayReturnTab;
+        gradeVaultOverlayNavigationSuppressedUntil = Date.now() + 1500;
+      } else if (!preserveSourceTab) {
+        gradeVaultOverlayReturnTab = '';
+        gradeVaultOverlayNavigationReturnTab = '';
+        gradeVaultOverlayNavigationSuppressedUntil = 0;
+        if (gradeVaultOverlayRestoreTimer) {
+          window.clearTimeout(gradeVaultOverlayRestoreTimer);
+          gradeVaultOverlayRestoreTimer = 0;
+        }
+      }
+    }
     gradeVaultOverlayRevealedGradesShell = isOpen && !gradesTabIsActive;
 
     appEl.classList.toggle('grade-vault-overlay', isOpen);
@@ -6075,6 +6141,28 @@ import {
       'grade-vault-overlay-revealed-grades',
       isOpen && gradeVaultOverlayRevealedGradesShell
     );
+    if (!isOpen && gradeVaultOverlayPreservesSourceTab && gradeVaultOverlayReturnTab) {
+      const returnTab = gradeVaultOverlayReturnTab;
+      gradeVaultOverlayReturnTab = '';
+      gradeVaultOverlayNavigationReturnTab = returnTab;
+      gradeVaultOverlayNavigationSuppressedUntil = Date.now() + 1500;
+      const restoreSourceTab = () => {
+        if (getActiveTab() === TAB_GRADES && returnTab !== TAB_GRADES) {
+          setActiveTab(returnTab);
+        }
+      };
+      restoreSourceTab();
+      if (gradeVaultOverlayRestoreTimer) {
+        window.clearTimeout(gradeVaultOverlayRestoreTimer);
+      }
+      gradeVaultOverlayRestoreTimer = window.setTimeout(() => {
+        gradeVaultOverlayRestoreTimer = 0;
+        restoreSourceTab();
+      }, 360);
+    }
+    if (!isOpen) {
+      gradeVaultOverlayPreservesSourceTab = false;
+    }
   });
 
   let gradeRosterRequestSequence = 0;

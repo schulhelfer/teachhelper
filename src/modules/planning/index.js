@@ -16,6 +16,7 @@ import {
   isTrustedModuleMessage,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
+import { WORKSPACE_GLOBAL_KEY } from '../workspace/index.js';
 
 const PLANNING_URL = new URL('./app.html', import.meta.url);
 const FORWARDED_FRAME_EVENTS = new Set([
@@ -42,6 +43,13 @@ export function mountPlanning({ host }) {
   let pendingShellLayout = null;
   let ready = false;
   let disposed = false;
+  let unregisterWorkspaceMessageSource = null;
+
+  const registerWorkspaceMessageSource = () => {
+    unregisterWorkspaceMessageSource?.();
+    unregisterWorkspaceMessageSource = window[WORKSPACE_GLOBAL_KEY]
+      ?.registerMessageSource?.(frame.contentWindow, 'planning') || null;
+  };
 
   const post = (type, detail = null) => {
     if (disposed) return;
@@ -85,6 +93,7 @@ export function mountPlanning({ host }) {
   const onSaveRequest = () => post(PLANNING_MANUAL_SAVE_REQUEST_EVENT, null);
   const onFrameLoad = () => {
     if (disposed) return;
+    registerWorkspaceMessageSource();
     ready = true;
     while (pending.length) postToModule(frame, pending.shift());
     if (pendingShellLayout) {
@@ -98,6 +107,8 @@ export function mountPlanning({ host }) {
     disposed = true;
     ready = false;
     pending.length = 0;
+    unregisterWorkspaceMessageSource?.();
+    unregisterWorkspaceMessageSource = null;
     frame.removeEventListener('load', onFrameLoad);
     window.removeEventListener('message', onWindowMessage);
     window.removeEventListener(PLANNING_VIEW_REQUEST_EVENT, onViewRequest);
@@ -113,6 +124,7 @@ export function mountPlanning({ host }) {
   window.addEventListener(PLANNING_VIEW_REQUEST_EVENT, onViewRequest);
   window.addEventListener(PLANNING_MANUAL_SAVE_REQUEST_EVENT, onSaveRequest);
   host.appendChild(frame);
+  registerWorkspaceMessageSource();
   host.dataset.initialized = '1';
   host._planningController = controller;
   return controller;

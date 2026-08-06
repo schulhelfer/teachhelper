@@ -155,6 +155,23 @@ test('shows the dialog only for non-installed desktop browsers and remembers SpÃ
   assert.equal(installedController.showIfNeeded(), false);
 });
 
+test('continues without session storage in an opaque-origin sandbox', () => {
+  const windowRef = createWindow();
+  Object.defineProperty(windowRef, 'sessionStorage', {
+    get() {
+      throw new DOMException('Access denied', 'SecurityError');
+    },
+  });
+  const controller = createPwaInstallPrompt({
+    windowRef,
+    navigatorRef: { userAgentData: { mobile: false, brands: [{ brand: 'Google Chrome' }] } },
+    documentRef: {},
+    dialog: new ElementStub(),
+  });
+
+  assert.equal(controller.showIfNeeded(), true);
+});
+
 test('uses the deferred native installation prompt and closes after installation', async () => {
   const windowRef = createWindow();
   const dialog = new ElementStub();

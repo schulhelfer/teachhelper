@@ -233,6 +233,12 @@ export function createPlanningSeatplanBridge({
 
   function dispatchGradesNavigation(detail = null) {
     ensureTabInitialized(TAB_GRADES);
+    // The grades frame can still be lazy while Planning remains visible for
+    // the vault dialog. Start it explicitly so the queued navigation reaches
+    // the unlock dialog without first switching tabs.
+    if (gradesController?.frame?.loading === 'lazy') {
+      gradesController.frame.loading = 'eager';
+    }
     const navigation = detail && typeof detail === 'object' ? detail : {};
     if (!isWorkspaceReady()) {
       pendingGradesNavigation = navigation;
@@ -426,6 +432,9 @@ export function createPlanningSeatplanBridge({
   function requestGradeVault(detail = null) {
     if (!isWorkspaceReady()) return false;
     ensureTabInitialized(TAB_GRADES);
+    if (gradesController?.frame?.loading === 'lazy') {
+      gradesController.frame.loading = 'eager';
+    }
     gradesController?.post?.(GRADES_GRADE_VAULT_REQUEST_EVENT, withWorkspaceRevision(detail));
     return true;
   }

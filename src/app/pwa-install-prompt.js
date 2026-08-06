@@ -61,19 +61,32 @@ function writeSessionFlag(storage, key) {
   }
 }
 
+function getSessionStorage(windowRef) {
+  try {
+    return windowRef?.sessionStorage ?? null;
+  } catch {
+    // Sandboxed iframe documents without allow-same-origin have an opaque
+    // origin and accessing the storage getter itself throws a SecurityError.
+    return null;
+  }
+}
+
 export function createPwaInstallPrompt({
   windowRef = window,
   navigatorRef = windowRef?.navigator,
   documentRef = windowRef?.document,
-  sessionStorageRef = windowRef?.sessionStorage,
+  sessionStorageRef,
   dialog,
   copy,
   installButton,
   status,
   laterButton,
 } = {}) {
+  const safeSessionStorage = sessionStorageRef === undefined
+    ? getSessionStorage(windowRef)
+    : sessionStorageRef;
   let deferredInstallPrompt = null;
-  let dismissed = readSessionFlag(sessionStorageRef, PWA_INSTALL_DISMISSED_SESSION_KEY);
+  let dismissed = readSessionFlag(safeSessionStorage, PWA_INSTALL_DISMISSED_SESSION_KEY);
 
   const browser = getInstallBrowser({ navigatorRef });
   const isEligible = () => isDesktopDevice({ navigatorRef })
@@ -90,7 +103,7 @@ export function createPwaInstallPrompt({
 
   const dismiss = () => {
     dismissed = true;
-    writeSessionFlag(sessionStorageRef, PWA_INSTALL_DISMISSED_SESSION_KEY);
+    writeSessionFlag(safeSessionStorage, PWA_INSTALL_DISMISSED_SESSION_KEY);
     closeDialog();
   };
 
@@ -154,7 +167,7 @@ export function createPwaInstallPrompt({
   windowRef?.addEventListener?.('appinstalled', () => {
     deferredInstallPrompt = null;
     dismissed = true;
-    writeSessionFlag(sessionStorageRef, PWA_INSTALL_DISMISSED_SESSION_KEY);
+    writeSessionFlag(safeSessionStorage, PWA_INSTALL_DISMISSED_SESSION_KEY);
     closeDialog();
   });
   laterButton?.addEventListener?.('click', dismiss);
@@ -163,7 +176,7 @@ export function createPwaInstallPrompt({
   });
   dialog?.addEventListener?.('cancel', () => {
     dismissed = true;
-    writeSessionFlag(sessionStorageRef, PWA_INSTALL_DISMISSED_SESSION_KEY);
+    writeSessionFlag(safeSessionStorage, PWA_INSTALL_DISMISSED_SESSION_KEY);
   });
 
   return {

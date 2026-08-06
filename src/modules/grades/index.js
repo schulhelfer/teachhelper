@@ -6,6 +6,7 @@ import {
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
+  GRADES_GRADE_VAULT_ACTIVITY_EVENT,
   GRADES_GRADE_VAULT_STATE_EVENT,
   GRADES_MANUAL_SAVE_STATE_EVENT,
   GRADES_NAVIGATE_EVENT,
@@ -23,6 +24,7 @@ import {
   isTrustedModuleMessage,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
+import { WORKSPACE_GLOBAL_KEY } from '../workspace/index.js';
 
 const GRADES_URL = new URL('./app.html', import.meta.url);
 
@@ -35,6 +37,7 @@ const CHILD_TO_PARENT_EVENT = new Map([
   [GRADES_READY_EVENT, GRADES_READY_EVENT],
   [GRADES_GRADE_VAULT_STATE_EVENT, GRADES_GRADE_VAULT_STATE_EVENT],
   [GRADES_GRADE_VAULT_OVERLAY_EVENT, GRADES_GRADE_VAULT_OVERLAY_EVENT],
+  [GRADES_GRADE_VAULT_ACTIVITY_EVENT, GRADES_GRADE_VAULT_ACTIVITY_EVENT],
   [GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT],
   [GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, GRADES_COURSE_GRADE_SAVE_RESULT_EVENT],
   [GRADES_COURSE_SEATPLAN_OPEN_EVENT, GRADES_COURSE_SEATPLAN_OPEN_EVENT],
@@ -77,6 +80,13 @@ export function mountGrades({ host } = {}) {
   let ready = false;
   let pendingShellLayout = null;
   let disposed = false;
+  let unregisterWorkspaceMessageSource = null;
+
+  const registerWorkspaceMessageSource = () => {
+    unregisterWorkspaceMessageSource?.();
+    unregisterWorkspaceMessageSource = window[WORKSPACE_GLOBAL_KEY]
+      ?.registerMessageSource?.(frame.contentWindow, 'grades') || null;
+  };
 
   const post = (type, detail = null) => {
     if (disposed || typeof type !== 'string' || !type) return false;
@@ -136,6 +146,7 @@ export function mountGrades({ host } = {}) {
 
   const onFrameLoad = () => {
     if (disposed) return;
+    registerWorkspaceMessageSource();
     ready = true;
     flush();
   };
@@ -147,6 +158,8 @@ export function mountGrades({ host } = {}) {
     ready = false;
     pending.length = 0;
     pendingShellLayout = null;
+    unregisterWorkspaceMessageSource?.();
+    unregisterWorkspaceMessageSource = null;
     frame.removeEventListener('load', onFrameLoad);
     window.removeEventListener('message', onWindowMessage);
     if (frame.isConnected) frame.remove();
@@ -168,6 +181,7 @@ export function mountGrades({ host } = {}) {
   frame.addEventListener('load', onFrameLoad, { once: true });
   window.addEventListener('message', onWindowMessage);
   host.appendChild(frame);
+  registerWorkspaceMessageSource();
   host.dataset.initialized = '1';
   host._gradesController = controller;
   return controller;

@@ -7,6 +7,7 @@
   const GRADE_VAULT_STATE_EVENT = 'classroom:grades-grade-vault-state';
   const GRADE_VAULT_REQUEST_EVENT = 'classroom:grades-grade-vault-request';
   const GRADE_VAULT_OVERLAY_EVENT = 'classroom:grades-grade-vault-overlay';
+  const GRADE_VAULT_ACTIVITY_EVENT = 'classroom:grades-grade-vault-activity';
   const COURSE_SEATPLAN_OPEN_EVENT = 'classroom:grades-course-seatplan-open';
   const COURSE_SEATPLAN_SAVE_REQUEST_EVENT = 'classroom:grades-course-seatplan-save-request';
   const COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:grades-course-seatplan-save-result';
@@ -203,6 +204,7 @@
 
 (() => {
   const NAVIGATE_EVENT = 'classroom:grades-navigate';
+  const GRADE_VAULT_ACTIVITY_EVENT = 'classroom:grades-grade-vault-activity';
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const pendingNavigations = [];
   let navigationFlushTimer = 0;
@@ -236,6 +238,11 @@
     if (!data || typeof data !== 'object' || data.type !== NAVIGATE_EVENT) return;
     pendingNavigations.push(data.detail && typeof data.detail === 'object' ? data.detail : {});
     if (!navigationFlushTimer) flushNavigations();
+  });
+
+  window.addEventListener(GRADE_VAULT_ACTIVITY_EVENT, () => {
+    if (!window.parent || window.parent === window) return;
+    window.parent.postMessage({ type: GRADE_VAULT_ACTIVITY_EVENT, detail: {} }, TRUSTED_PARENT_ORIGIN);
   });
 
   window.addEventListener('classroom:grades-ready', flushNavigations);

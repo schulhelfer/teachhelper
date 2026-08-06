@@ -105,7 +105,7 @@ test('workspace rejects reads and writes until the owner is fully hydrated', asy
   assert.equal(snapshotBeforeHydration.hydrated, false);
   assert.equal(snapshotBeforeHydration.ready, false);
 
-  const mutationBeforeHydration = await controller.execute(command('mutate', registeredRevision));
+  const mutationBeforeHydration = await controller.execute(command('update-course', registeredRevision));
   assert.equal(mutationBeforeHydration.ok, false);
   assert.equal(mutationBeforeHydration.code, messages.WORKSPACE_ERROR_NOT_READY);
   assert.equal(commandCalls, 0, 'an unhydrated owner must never receive a mutating command');
@@ -116,7 +116,7 @@ test('workspace rejects reads and writes until the owner is fully hydrated', asy
   assert.equal(controller.isReady(), true);
   assert.ok(hydratedRevision > registeredRevision);
 
-  const mutation = await controller.execute(command('mutate', hydratedRevision));
+  const mutation = await controller.execute(command('update-course', hydratedRevision));
   assert.equal(mutation.ok, true);
   assert.equal(mutation.hydrated, true);
   assert.equal(mutation.ready, true);
@@ -145,7 +145,7 @@ test('workspace snapshots and command results cannot leak persisted secrets', as
   assert.equal(snapshotResult.data.publicState.nested.vaultKey, undefined);
   assert.equal(snapshotResult.data.publicState.nested.visible, true);
 
-  const commandResult = await controller.execute(command('read-safe-result', controller.getRevision()));
+  const commandResult = await controller.execute(command('get-performance-index', controller.getRevision()));
   assert.equal(commandResult.ok, true);
   assert.equal(commandResult.data.password, undefined);
   assert.equal(commandResult.data.data.cryptoKey, undefined);
@@ -169,14 +169,14 @@ test('workspace rejects a stale revision before invoking the owner', async () =>
   const baseRevision = controller.getRevision();
 
   const first = await controller.execute({
-    ...command('first-change', baseRevision),
+    ...command('update-course', baseRevision),
     requestId: 'first',
   });
   assert.equal(first.ok, true);
   assert.equal(controller.getRevision(), baseRevision + 1);
 
   const stale = await controller.execute({
-    ...command('stale-change', baseRevision),
+    ...command('update-course', baseRevision),
     requestId: 'stale',
   });
   assert.equal(stale.ok, false);
@@ -207,11 +207,11 @@ test('concurrent commands are serialized and a queued stale write is rejected at
   const baseRevision = controller.getRevision();
 
   const firstPromise = controller.execute({
-    ...command('change', baseRevision),
+    ...command('update-course', baseRevision),
     requestId: 'one',
   });
   const stalePromise = controller.execute({
-    ...command('change', baseRevision),
+    ...command('update-course', baseRevision),
     requestId: 'two',
   });
   const [first, stale] = await Promise.all([firstPromise, stalePromise]);
@@ -224,7 +224,7 @@ test('concurrent commands are serialized and a queued stale write is rejected at
 
   const currentRevision = controller.getRevision();
   const unversioned = [1, 2, 3].map((number) => controller.execute({
-    ...command('queued-change', null),
+    ...command('reorder-courses', null),
     requestId: `queue-${number}`,
   }));
   const results = await Promise.all(unversioned);
@@ -236,6 +236,40 @@ test('concurrent commands are serialized and a queued stale write is rejected at
     'start:queue-2', 'end:queue-2',
     'start:queue-3', 'end:queue-3',
   ]);
+});
+
+test('workspace frame identities override payload clients and enforce module capabilities', async () => {
+  const receivedClients = [];
+  const owner = createOwner({
+    ready: true,
+    handle: async (request) => {
+      receivedClients.push(request.client);
+      return { changed: false };
+    },
+  });
+  const controller = workspace.createWorkspaceController({ eventTarget: new EventTarget() });
+  installOwnerBehavior(controller, owner);
+  const gradesFrame = {};
+  controller.registerMessageSource(gradesFrame, messages.WORKSPACE_CLIENT_GRADES);
+
+  const result = await controller.executeFromMessageSource(gradesFrame, {
+    ...command('create-course', controller.getRevision()),
+    client: messages.WORKSPACE_CLIENT_PLANNING,
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(receivedClients, [messages.WORKSPACE_CLIENT_GRADES]);
+
+  const forbidden = await controller.executeFromMessageSource(gradesFrame, {
+    ...command(messages.WORKSPACE_COMMAND_OWNER_ACTION, controller.getRevision(), { action: 'vault-lock' }),
+    client: messages.WORKSPACE_CLIENT_SHELL,
+  });
+  assert.equal(forbidden.ok, false);
+  assert.equal(forbidden.code, messages.WORKSPACE_ERROR_UNSUPPORTED);
+  assert.deepEqual(receivedClients, [messages.WORKSPACE_CLIENT_GRADES]);
+  assert.equal(await controller.executeFromMessageSource({}, command('create-course', null)), null);
+  const shellSource = {};
+  controller.registerMessageSource(shellSource, messages.WORKSPACE_CLIENT_SHELL);
+  assert.equal(await controller.executeFromMessageSource(shellSource, command('create-course', null)), null);
 });
 
 test('replace-public-state also obeys hydration and revision checks', async () => {

@@ -49,7 +49,8 @@ import {
   WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY,
   WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
   WORKSPACE_COMMAND_REORDER_COURSES,
-  WORKSPACE_COMMAND_UPDATE_COURSE
+  WORKSPACE_COMMAND_UPDATE_COURSE,
+  WORKSPACE_ERROR_VAULT_DIRTY
 } from "../../shared/school-data/messages.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
@@ -115,12 +116,10 @@ const GRADE_VAULT_CONFIG_SCHEMA = "teachhelper-grade-vault-config-v1";
 const GRADE_VAULT_VALIDATION_TOKEN = "teachhelper-grade-vault-v1";
 const GRADE_VAULT_SCHEMA = "teachhelper-grade-vault-v1";
 const GRADE_COURSE_SCHEMA = "teachhelper-grade-course-v1";
-const GRADE_VAULT_KDF_ITERATIONS = 250000;
+const GRADE_VAULT_KDF_ITERATIONS = 600000;
 const GRADE_VAULT_PASSWORD_MIN_LENGTH = 10;
 const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
 const GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT = false;
-const GRADE_VAULT_AUTO_LOCK_IDLE_MS = 60 * 60 * 1000;
-const GRADE_VAULT_AUTO_LOCK_RETRY_MS = 60 * 1000;
 const GRADE_VAULT_AUTO_LOCK_ACTIVITY_EVENTS = ["pointerdown", "keydown", "input", "wheel", "touchstart"];
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY = "competence-expectations-template";
@@ -2900,11 +2899,10 @@ class GradesApp {
     this.pendingGradesOverviewAutoScrollFrame = 0;
     this.pendingGradesOverviewAutoScrollFrameType = "";
     this.gradesTableStickyScrollbarPointerActive = false;
-    this.gradeVaultAutoLockTimer = 0;
-    this.gradeVaultAutoLockLastActivityAt = 0;
-    this.gradeVaultAutoLockSkippedAt = "";
     this.gradeVaultStartupUnlockPromptResolved = false;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
+    this.courseStudentCounts = new Map();
+    this.courseStudentCountsRefreshToken = 0;
     this.gradeCourseOperationTail = Promise.resolve();
     this.gradeCourseOperationActive = false;
     this.gradeCourseMutationActiveCourseId = null;
@@ -3030,6 +3028,7 @@ class GradesApp {
         return;
       }
       this.renderAll({ visibleOnly: true });
+      void this.refreshSidebarCourseStudentCounts();
       return;
     }
     if (detail.scope === "shell" && this.refs?.sidebarCourseList) {
@@ -3048,6 +3047,7 @@ class GradesApp {
         return;
       }
       this.renderViewState();
+      this.renderGradeVaultBanner();
       this.updateGradeVaultActionButtons();
       this.updateSettingsActionButtons();
       if (this.currentView === "settings" && this.activeSettingsTab === "database") {
@@ -3059,6 +3059,34 @@ class GradesApp {
 
   getWorkspaceOwnerApp() {
     return this.workspaceController?.getOwner?.() || null;
+  }
+
+  async refreshSidebarCourseStudentCounts() {
+    const refreshToken = ++this.courseStudentCountsRefreshToken;
+    const workspaceOwner = this.getWorkspaceOwnerApp();
+    if (!workspaceOwner?.canAccessGradeVault?.()) {
+      if (this.courseStudentCounts.size) {
+        this.courseStudentCounts.clear();
+        this.renderSidebarCourseList();
+      }
+      return;
+    }
+    const year = this.store.getActiveSchoolYear();
+    const courses = year ? this.store.listCourses(year.id) : [];
+    const summaries = await Promise.all(courses.map(async (course) => {
+      try {
+        const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
+        return [Number(course.id), Number(summary?.studentCount || 0)];
+      } catch {
+        return [Number(course.id), 0];
+      }
+    }));
+    if (refreshToken !== this.courseStudentCountsRefreshToken) return;
+    const nextCounts = new Map(summaries.filter(([, count]) => count > 0));
+    const hasChanged = nextCounts.size !== this.courseStudentCounts.size
+      || [...nextCounts].some(([courseId, count]) => this.courseStudentCounts.get(courseId) !== count);
+    this.courseStudentCounts = nextCounts;
+    if (hasChanged) this.renderSidebarCourseList();
   }
 
   requestGradesNavigation(detail = null) {
@@ -3556,6 +3584,18 @@ class GradesApp {
     return true;
   }
 
+  getGradeVaultAutoLockWarning() {
+    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
+    const warning = snapshot?.vault?.autoLockWarning;
+    if (!warning || warning.active !== true) {
+      return null;
+    }
+    return {
+      message: String(warning.message || "Ungespeicherte Notenänderungen verhindern das automatische Sperren."),
+      retryAt: Math.max(0, Number(warning.retryAt) || 0)
+    };
+  }
+
   async resolveUnsavedSettingsNavigation() {
     if (this.currentView !== "settings" || !this.settingsDirty) {
       return true;
@@ -3844,6 +3884,25 @@ class GradesApp {
     }
     banner.innerHTML = "";
     banner.hidden = true;
+    banner.removeAttribute("role");
+    const warning = this.getGradeVaultAutoLockWarning();
+    if (!warning) {
+      return;
+    }
+    const retryLabel = warning.retryAt
+      ? new Date(warning.retryAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+      : "in zehn Minuten";
+    banner.innerHTML = `
+      <div>
+        <strong>Noten-Datenbank weiterhin entsperrt</strong>
+        <p>${escapeHtml(warning.message)} Bitte speichere die Noten. Nächster Sperrversuch: ${escapeHtml(retryLabel)}.</p>
+      </div>
+      <div class="button-row">
+        <button type="button" class="ghost" data-grade-vault-banner-action="save">Jetzt speichern</button>
+      </div>
+    `;
+    banner.setAttribute("role", "alert");
+    banner.hidden = false;
   }
 
   updateGradeVaultActionButtons() {
@@ -4084,6 +4143,59 @@ class GradesApp {
       this.renderAll({ visibleOnly: true });
     }
     return locked;
+  }
+
+  async discardGradeVaultChanges() {
+    const owner = this.getWorkspaceOwnerApp();
+    if (!owner?.discardGradeVaultChanges) return false;
+    const discarded = await owner.discardGradeVaultChanges();
+    if (discarded) {
+      this.gradeVaultSession.loadedGradeCourseId = null;
+      this.clearGradesEntryDraftDirty({ dispatch: false });
+      this.renderAll({ visibleOnly: true });
+    }
+    return discarded;
+  }
+
+  async resolveDirtyGradeVaultLock() {
+    const choice = await this.showChoiceMessage(
+      "Die Noten-Datenbank enthält ungespeicherte Änderungen.",
+      {
+        title: "Noten speichern",
+        okText: "Speichern & sperren",
+        cancelText: "Abbrechen",
+        alternateText: "Verwerfen & sperren",
+        dangerAlternate: true,
+        warning: true,
+      }
+    );
+    try {
+      if (choice === "ok") {
+        const saved = await this.saveGradeVaultChanges();
+        if (!saved) {
+          await this.showInfoMessage(
+            "Die Noten konnten nicht gespeichert werden. Die Noten-Datenbank bleibt entsperrt.",
+            "Noten speichern"
+          );
+          return false;
+        }
+        return this.lockGradeVaultSession();
+      }
+      if (choice === "discard") {
+        const discarded = await this.discardGradeVaultChanges();
+        if (!discarded) return false;
+        return this.lockGradeVaultSession();
+      }
+      return false;
+    } catch (error) {
+      await this.showInfoMessage(
+        error instanceof Error && error.message
+          ? error.message
+          : "Die Noten-Datenbank konnte nicht gesperrt werden.",
+        "Noten-Datenbank sperren"
+      );
+      return false;
+    }
   }
 
   ensureGradeVaultReadyForGradesEntryMutation(options = {}) {
@@ -8640,57 +8752,13 @@ class GradesApp {
   }
 
   recordGradeVaultActivity() {
+    if (typeof window !== "undefined" && window.parent && window.parent !== window) {
+      window.dispatchEvent(new CustomEvent("classroom:grades-grade-vault-activity"));
+      return;
+    }
     const workspaceOwner = this.getWorkspaceOwnerApp();
     if (workspaceOwner?.recordGradeVaultActivity) {
       workspaceOwner.recordGradeVaultActivity();
-      return;
-    }
-    if (!this.isGradeVaultUnlocked()) {
-      return;
-    }
-    this.gradeVaultAutoLockLastActivityAt = Date.now();
-    this.scheduleGradeVaultAutoLock();
-  }
-
-  clearGradeVaultAutoLockTimer() {
-    if (!this.gradeVaultAutoLockTimer || typeof window === "undefined") {
-      this.gradeVaultAutoLockTimer = 0;
-      return;
-    }
-    window.clearTimeout(this.gradeVaultAutoLockTimer);
-    this.gradeVaultAutoLockTimer = 0;
-  }
-
-  scheduleGradeVaultAutoLock(delayMs = null) {
-    this.clearGradeVaultAutoLockTimer();
-    if (!this.isGradeVaultUnlocked() || typeof window === "undefined") {
-      return;
-    }
-    const lastActivityAt = Number(this.gradeVaultAutoLockLastActivityAt || 0) || Date.now();
-    this.gradeVaultAutoLockLastActivityAt = lastActivityAt;
-    const elapsedMs = Date.now() - lastActivityAt;
-    const timeoutMs = Number.isFinite(delayMs)
-      ? Math.max(0, Number(delayMs) || 0)
-      : Math.max(0, GRADE_VAULT_AUTO_LOCK_IDLE_MS - elapsedMs);
-    this.gradeVaultAutoLockTimer = window.setTimeout(() => {
-      void this.handleGradeVaultAutoLockTimeout();
-    }, timeoutMs);
-  }
-
-  async handleGradeVaultAutoLockTimeout() {
-    if (!this.isGradeVaultUnlocked()) {
-      this.clearGradeVaultAutoLockTimer();
-      return;
-    }
-    const elapsedMs = Date.now() - (Number(this.gradeVaultAutoLockLastActivityAt || 0) || Date.now());
-    if (elapsedMs < GRADE_VAULT_AUTO_LOCK_IDLE_MS) {
-      this.scheduleGradeVaultAutoLock();
-      return;
-    }
-    const locked = await this.lockGradeVaultSession({ silent: true, reason: "idle-timeout" });
-    if (!locked && this.isGradeVaultUnlocked()) {
-      this.gradeVaultAutoLockSkippedAt = new Date().toISOString();
-      this.scheduleGradeVaultAutoLock(GRADE_VAULT_AUTO_LOCK_RETRY_MS);
     }
   }
 
@@ -8777,15 +8845,34 @@ class GradesApp {
         const detail = event instanceof CustomEvent ? event.detail : null;
         const action = String(detail?.action || "").trim().toLowerCase();
         if (action === "lock") {
-          const showLockNoticeAsOverlay = detail?.overlay === true && this.hasUnsavedGradeVaultRuntimeChanges();
+          let showLockNoticeAsOverlay = detail?.overlay === true && this.hasUnsavedGradeVaultRuntimeChanges();
           if (showLockNoticeAsOverlay) {
             this.notifyParentGradeVaultOverlay(true);
           }
-          void this.lockGradeVaultSession().finally(() => {
+          void (async () => {
+            try {
+              await this.lockGradeVaultSession();
+            } catch (error) {
+              if (detail?.overlay === true && !showLockNoticeAsOverlay) {
+                showLockNoticeAsOverlay = true;
+                this.notifyParentGradeVaultOverlay(true);
+              }
+              if (error?.code === WORKSPACE_ERROR_VAULT_DIRTY) {
+                await this.resolveDirtyGradeVaultLock();
+              } else {
+                await this.showInfoMessage(
+                  error instanceof Error && error.message
+                    ? error.message
+                    : "Die Noten-Datenbank konnte nicht gesperrt werden.",
+                  "Noten-Datenbank sperren"
+                );
+              }
+            } finally {
             if (showLockNoticeAsOverlay) {
               this.notifyParentGradeVaultOverlay(false);
             }
-          });
+            }
+          })().catch(() => undefined);
           return;
         }
         if (action !== "unlock") {
@@ -8900,7 +8987,11 @@ class GradesApp {
       }
       const action = String(button.dataset.gradeVaultBannerAction || "");
       if (action === "save") {
-        void this.saveGradeVaultChanges();
+        if (this.gradesEntryDraftDirty) {
+          void this.saveCurrentGradesEntry();
+        } else {
+          void this.saveGradeVaultChanges();
+        }
       } else if (action === "change") {
         this.openGradeVaultDialog("change");
       } else if (action === "setup" || action === "unlock") {
@@ -9864,9 +9955,9 @@ class GradesApp {
           && document.activeElement.matches("input[data-grade-input='1']")
           ? document.activeElement
           : null;
-        const hadColumnHighlight = this.hasGradesOverviewColumnHighlight();
+        const hadOverviewFocus = this.isGradesOverviewFocusActive();
         this.clearGradesOverviewFocusState(activeInput);
-        if (hadColumnHighlight) {
+        if (hadOverviewFocus) {
           this.renderGradesView();
         }
       }
@@ -12599,9 +12690,9 @@ class GradesApp {
     if (!this.shouldClearGradesOverviewFocusForExternalTarget(target)) {
       return false;
     }
-    const hadColumnHighlight = this.hasGradesOverviewColumnHighlight();
+    const hadOverviewFocus = this.isGradesOverviewFocusActive();
     this.clearGradesOverviewFocusState(this.getActiveGradesOverviewInput());
-    if (hadColumnHighlight) {
+    if (hadOverviewFocus) {
       this.scheduleGradesOverviewFocusRender();
     }
     return true;
@@ -12611,9 +12702,9 @@ class GradesApp {
     if (!this.isGradesOverviewVisible() || !this.isGradesOverviewFocusActive()) {
       return false;
     }
-    const hadColumnHighlight = this.hasGradesOverviewColumnHighlight();
+    const hadOverviewFocus = this.isGradesOverviewFocusActive();
     this.clearGradesOverviewFocusState(this.getActiveGradesOverviewInput());
-    if (hadColumnHighlight) {
+    if (hadOverviewFocus) {
       this.renderGradesView();
     }
     return true;
@@ -25080,7 +25171,13 @@ class GradesApp {
     if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
       return;
     }
-    const detail = { open: Boolean(open) };
+    // A navigation explicitly started by another module is meant to continue
+    // into Grades after the vault is unlocked. Standalone unlocks, however,
+    // should leave the currently active module in place.
+    const detail = {
+      open: Boolean(open),
+      preserveSourceTab: this.pendingGradeVaultContinuation?.type !== "grades-navigation"
+    };
     document.body?.classList.toggle("grade-vault-overlay-only", detail.open);
     window.dispatchEvent(new CustomEvent("classroom:grades-grade-vault-overlay", {
       detail
@@ -26406,6 +26503,18 @@ class GradesApp {
       name.className = "course-name";
       name.textContent = course.name;
       button.append(name);
+      const loadedStudentCount = this.store.listGradeStudents(course.id)
+        .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
+        .length;
+      const studentCount = this.courseStudentCounts.get(Number(course.id)) ?? loadedStudentCount;
+      if (studentCount > 0) {
+        const count = document.createElement("span");
+        count.className = "course-student-count";
+        count.textContent = String(studentCount);
+        count.title = "Lernendenanzahl";
+        count.setAttribute("aria-label", "Lernendenanzahl");
+        button.append(count);
+      }
       li.append(button);
       this.refs.sidebarCourseList.append(li);
     });

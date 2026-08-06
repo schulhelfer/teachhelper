@@ -3,6 +3,14 @@ import {
   WORKSPACE_COMMAND_EVENT,
   WORKSPACE_COMMAND_OWNER_ACTION,
   WORKSPACE_COMMAND_REPLACE_PUBLIC_STATE,
+  WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
+  WORKSPACE_COMMAND_CREATE_COURSE,
+  WORKSPACE_COMMAND_UPDATE_COURSE,
+  WORKSPACE_COMMAND_DELETE_COURSE,
+  WORKSPACE_COMMAND_REORDER_COURSES,
+  WORKSPACE_COMMAND_APPLY_SETTINGS,
+  WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY,
+  WORKSPACE_CLIENT_SHELL,
   WORKSPACE_ERROR_NOT_READY,
   WORKSPACE_ERROR_STALE_STATE,
   WORKSPACE_ERROR_UNSUPPORTED,
@@ -16,6 +24,79 @@ import { WorkspaceStore } from './store.js';
 import { createWorkspaceRuntime } from './runtime.js';
 
 export const WORKSPACE_GLOBAL_KEY = '__teachhelperWorkspaceController';
+
+// Workspace requests carry a client field for routing and state updates. That
+// field is never an authority boundary for frame messages: the message bridge
+// derives the client from the registered WindowProxy instead. Keeping the
+// capability lists here additionally limits direct WorkspaceClient calls to
+// the operations their module actually needs.
+const WORKSPACE_COMMAND_CAPABILITIES = Object.freeze({
+  shell: null,
+  planning: new Set([
+    WORKSPACE_COMMAND_GET_SNAPSHOT,
+    WORKSPACE_COMMAND_REPLACE_PUBLIC_STATE,
+    WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
+    WORKSPACE_COMMAND_CREATE_COURSE,
+    WORKSPACE_COMMAND_UPDATE_COURSE,
+    WORKSPACE_COMMAND_DELETE_COURSE,
+    WORKSPACE_COMMAND_REORDER_COURSES,
+    WORKSPACE_COMMAND_APPLY_SETTINGS,
+    WORKSPACE_COMMAND_OWNER_ACTION,
+  ]),
+  grades: new Set([
+    WORKSPACE_COMMAND_GET_SNAPSHOT,
+    WORKSPACE_COMMAND_CREATE_COURSE,
+    WORKSPACE_COMMAND_UPDATE_COURSE,
+    WORKSPACE_COMMAND_DELETE_COURSE,
+    WORKSPACE_COMMAND_REORDER_COURSES,
+    WORKSPACE_COMMAND_APPLY_SETTINGS,
+    WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY,
+    WORKSPACE_COMMAND_OWNER_ACTION,
+  ]),
+  seatplan: new Set([
+    WORKSPACE_COMMAND_GET_SNAPSHOT,
+  ]),
+});
+
+const WORKSPACE_OWNER_ACTION_CAPABILITIES = Object.freeze({
+  shell: null,
+  planning: new Set([
+    'manual-save',
+    'manual-load',
+    'sync-connect',
+    'backup-directory-connect',
+    'sync-save',
+    'backup-create',
+    'backup-auto',
+    'backup-restore',
+    'backup-export',
+    'backup-import',
+    'archive-generate',
+  ]),
+  grades: new Set([
+    'vault-setup',
+    'vault-unlock',
+    'vault-change-password',
+    'archive-generate',
+  ]),
+  seatplan: new Set(),
+});
+
+function getWorkspaceCapabilities(client) {
+  const scope = normalizeWorkspaceClient(client);
+  return {
+    client: scope,
+    commands: WORKSPACE_COMMAND_CAPABILITIES[scope] || new Set(),
+    ownerActions: WORKSPACE_OWNER_ACTION_CAPABILITIES[scope] || new Set(),
+  };
+}
+
+function isWorkspaceRequestAllowed(request, capabilities = getWorkspaceCapabilities(request.client)) {
+  if (capabilities.commands === null) return true;
+  if (!capabilities.commands.has(request.command)) return false;
+  if (request.command !== WORKSPACE_COMMAND_OWNER_ACTION) return true;
+  return capabilities.ownerActions.has(String(request.payload?.action || '').trim().toLowerCase());
+}
 
 function redactWorkspaceSecrets(value, seen = new WeakSet()) {
   if (!value || typeof value !== 'object' || seen.has(value)) return value;
@@ -66,6 +147,7 @@ function createResult(request, revision, lifecycle, patch = {}) {
 export function createWorkspaceController({ eventTarget = null, ephemeral = false } = {}) {
   const target = eventTarget || (typeof window !== 'undefined' ? window : new EventTarget());
   const clients = new Map();
+  const messageSources = new Map();
   let store = new WorkspaceStore();
   let runtimeService = createWorkspaceRuntime(store, {
     eventTarget: target,
@@ -184,13 +266,20 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
     return revision;
   };
 
-  const executeNow = async (rawRequest) => {
+  const executeNow = async (rawRequest, capabilities = null) => {
     const request = normalizeWorkspaceCommandRequest(rawRequest);
     const revisionBeforeCommand = revision;
     if (disposed) {
       return createResult(request, revision, getLifecycle(), {
         code: WORKSPACE_ERROR_UNSUPPORTED,
         message: 'Workspace ist nicht mehr verfügbar.',
+      });
+    }
+
+    if (!isWorkspaceRequestAllowed(request, capabilities || getWorkspaceCapabilities(request.client))) {
+      return createResult(request, revision, getLifecycle(), {
+        code: WORKSPACE_ERROR_UNSUPPORTED,
+        message: 'Dieser Workspace-Befehl ist für das anfragende Modul nicht freigegeben.',
       });
     }
 
@@ -275,6 +364,12 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
     return true;
   };
 
+  const execute = (rawRequest, capabilities = null) => {
+    const run = queue.then(() => executeNow(rawRequest, capabilities));
+    queue = run.catch(() => undefined);
+    return run;
+  };
+
   const controller = {
     attachRuntime,
     detachRuntime(featureClient) {
@@ -304,6 +399,30 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
         
       }
       return () => clients.delete(key);
+    },
+    registerMessageSource(source, scope) {
+      if (disposed || !source || (typeof source !== 'object' && typeof source !== 'function')) {
+        return () => {};
+      }
+      const capabilities = getWorkspaceCapabilities(scope);
+      if (capabilities.client === WORKSPACE_CLIENT_SHELL) return () => {};
+      const identity = {
+        client: capabilities.client,
+        commands: capabilities.commands,
+        ownerActions: capabilities.ownerActions,
+      };
+      messageSources.set(source, identity);
+      return () => {
+        if (messageSources.get(source) === identity) messageSources.delete(source);
+      };
+    },
+    executeFromMessageSource(source, rawRequest) {
+      const identity = messageSources.get(source);
+      if (!identity || disposed) return null;
+      const request = rawRequest && typeof rawRequest === 'object' ? rawRequest : {};
+      // Do not let a same-origin frame select a more privileged client in its
+      // payload. The WindowProxy registration is the sole source of identity.
+      return execute({ ...request, client: identity.client }, identity);
     },
     getOwner: () => owner,
     getStore: () => store,
@@ -336,11 +455,7 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
     getSnapshot,
     markChanged,
     publish,
-    execute(rawRequest) {
-      const run = queue.then(() => executeNow(rawRequest));
-      queue = run.catch(() => undefined);
-      return run;
-    },
+    execute,
     whenIdle: () => queue,
     dispose() {
       disposed = true;
@@ -350,6 +465,7 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
       store = null;
       ownerHydrated = false;
       clients.clear();
+      messageSources.clear();
     },
   };
   runtimeService.bindController(controller);
@@ -374,7 +490,8 @@ export function installWorkspaceController(targetWindow = typeof window !== 'und
     if (event.origin !== targetWindow.location?.origin) return;
     const request = event.data;
     if (!request || request.type !== WORKSPACE_COMMAND_EVENT) return;
-    const result = await controller.execute(request);
+    const result = await controller.executeFromMessageSource(event.source, request);
+    if (!result) return;
     try {
       event.source?.postMessage(result, event.origin);
     } catch {

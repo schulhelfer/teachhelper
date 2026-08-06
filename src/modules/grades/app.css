@@ -1707,6 +1707,22 @@
           text-overflow: ellipsis;
         }
 
+        .sidebar-list li[data-course-id] button {
+          position: relative;
+        }
+
+        .sidebar-list li[data-course-id] button .course-student-count {
+          position: absolute;
+          top: 0.28rem;
+          left: 0.42rem;
+          padding: 0.12rem 0.3rem;
+          border-radius: 999px;
+          background: rgba(255, 255, 255, 0.48);
+          font-size: 0.68rem;
+          font-weight: 400;
+          line-height: 1;
+        }
+
         .sidebar-list li[data-course-id="separator"] {
           margin: 0.2rem 0 0.1rem;
           padding-top: 0.45rem;

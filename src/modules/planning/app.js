@@ -1116,6 +1116,8 @@ class PlanningApp {
     this.workspacePublicLoaded = Boolean(this.tutorialDemoMode || this.workspaceController?.isReady?.());
     this.pendingWeekPerformanceIndexLoadKey = "";
     this.performanceIndex = new Map();
+    this.courseStudentCounts = new Map();
+    this.courseStudentCountsRefreshToken = 0;
     this.appVersion = "";
     this.weekCalendarMonthIso = null;
     this.weekCalendarHoverWeekStart = null;
@@ -1235,6 +1237,7 @@ class PlanningApp {
     }
     if (detail.scope === "planning" && this.refs?.sidebarCourseList) {
       this.renderAll({ visibleOnly: true });
+      void this.refreshSidebarCourseStudentCounts();
       return;
     }
     if (detail.scope === "shell" && this.refs?.sidebarCourseList) {
@@ -1259,6 +1262,38 @@ class PlanningApp {
         this.renderDatabaseSection();
       }
     }
+  }
+
+  getWorkspaceRuntime() {
+    return this.workspaceController?.getOwner?.() || null;
+  }
+
+  async refreshSidebarCourseStudentCounts() {
+    const refreshToken = ++this.courseStudentCountsRefreshToken;
+    const workspaceOwner = this.getWorkspaceRuntime();
+    if (!workspaceOwner?.canAccessGradeVault?.()) {
+      if (this.courseStudentCounts.size) {
+        this.courseStudentCounts.clear();
+        this.renderSidebarCourseList();
+      }
+      return;
+    }
+    const year = this.store.getActiveSchoolYear();
+    const courses = year ? this.store.listCourses(year.id) : [];
+    const summaries = await Promise.all(courses.map(async (course) => {
+      try {
+        const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
+        return [Number(course.id), Number(summary?.studentCount || 0)];
+      } catch {
+        return [Number(course.id), 0];
+      }
+    }));
+    if (refreshToken !== this.courseStudentCountsRefreshToken) return;
+    const nextCounts = new Map(summaries.filter(([, count]) => count > 0));
+    const hasChanged = nextCounts.size !== this.courseStudentCounts.size
+      || [...nextCounts].some(([courseId, count]) => this.courseStudentCounts.get(courseId) !== count);
+    this.courseStudentCounts = nextCounts;
+    if (hasChanged) this.renderSidebarCourseList();
   }
 
   getArchiveVaultStatus() {
@@ -8234,6 +8269,18 @@ class PlanningApp {
       name.className = "course-name";
       name.textContent = course.name;
       button.append(name);
+      const loadedStudentCount = this.store.listGradeStudents(course.id)
+        .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
+        .length;
+      const studentCount = this.courseStudentCounts.get(Number(course.id)) ?? loadedStudentCount;
+      if (studentCount > 0) {
+        const count = document.createElement("span");
+        count.className = "course-student-count";
+        count.textContent = String(studentCount);
+        count.title = "Lernendenanzahl";
+        count.setAttribute("aria-label", "Lernendenanzahl");
+        button.append(count);
+      }
       li.append(button);
       this.refs.sidebarCourseList.append(li);
     });

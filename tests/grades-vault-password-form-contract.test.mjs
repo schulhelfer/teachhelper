@@ -72,6 +72,32 @@ test('das Einrichten der Verschlüsselung speichert die Datenbank direkt danach'
   assert.match(methodSource, /await this\.saveGradeVaultChanges\(\)/);
 });
 
+test('ein manueller Sperrversuch mit ungespeicherten Noten wird abgefangen und erklärt', () => {
+  const listenerStart = appSource.indexOf('window.addEventListener("classroom:grades-grade-vault-request"');
+  const listenerEnd = appSource.indexOf('window.addEventListener("classroom:grades-course-seatplan-save-request"', listenerStart);
+  assert.ok(listenerStart >= 0 && listenerEnd > listenerStart, 'grade-vault request listener must exist');
+  const listenerSource = appSource.slice(listenerStart, listenerEnd);
+
+  assert.match(listenerSource, /await this\.lockGradeVaultSession\(\)/);
+  assert.match(listenerSource, /catch \(error\)/);
+  assert.match(listenerSource, /WORKSPACE_ERROR_VAULT_DIRTY/);
+  assert.match(listenerSource, /resolveDirtyGradeVaultLock\(\)/);
+  assert.match(listenerSource, /notifyParentGradeVaultOverlay\(false\)/);
+  assert.doesNotMatch(listenerSource, /void this\.lockGradeVaultSession\(\)\.finally/);
+
+  const resolutionStart = appSource.indexOf('  async resolveDirtyGradeVaultLock()');
+  const resolutionEnd = appSource.indexOf('\n  ensureGradeVaultReadyForGradesEntryMutation', resolutionStart);
+  assert.ok(resolutionStart >= 0 && resolutionEnd > resolutionStart, 'dirty vault lock resolution must exist');
+  const resolutionSource = appSource.slice(resolutionStart, resolutionEnd);
+  assert.match(resolutionSource, /okText: "Speichern & sperren"/);
+  assert.match(resolutionSource, /cancelText: "Abbrechen"/);
+  assert.match(resolutionSource, /alternateText: "Verwerfen & sperren"/);
+  assert.match(resolutionSource, /dangerAlternate: true/);
+  assert.match(resolutionSource, /saveGradeVaultChanges\(\)/);
+  assert.match(resolutionSource, /discardGradeVaultChanges\(\)/);
+  assert.match(resolutionSource, /lockGradeVaultSession\(\)/);
+});
+
 test('Sitzplan, Gruppen und Picker verwenden keinen hidden-Vorfahren für das Vault-Formular', () => {
   assert.match(shellHtml, /<section id="grades-shell" class="grades-shell" aria-label="Noten">/);
   assert.doesNotMatch(shellHtml, /id="grades-shell"[^>]*\shidden(?:\s|>)/);

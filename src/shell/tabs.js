@@ -36,6 +36,7 @@ export const GRADES_READY_EVENT = 'classroom:grades-ready';
 export const GRADES_GRADE_VAULT_STATE_EVENT = 'classroom:grades-grade-vault-state';
 export const GRADES_GRADE_VAULT_REQUEST_EVENT = 'classroom:grades-grade-vault-request';
 export const GRADES_GRADE_VAULT_OVERLAY_EVENT = 'classroom:grades-grade-vault-overlay';
+export const GRADES_GRADE_VAULT_ACTIVITY_EVENT = 'classroom:grades-grade-vault-activity';
 export const GRADES_COURSE_SEATPLAN_OPEN_EVENT = 'classroom:grades-course-seatplan-open';
 export const GRADES_COURSE_SEATPLAN_SAVE_REQUEST_EVENT = 'classroom:grades-course-seatplan-save-request';
 export const GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:grades-course-seatplan-save-result';

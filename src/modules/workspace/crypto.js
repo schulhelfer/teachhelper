@@ -1,6 +1,6 @@
 export const WORKSPACE_VAULT_SCHEMA = 'teachhelper-grade-vault-v1';
 export const WORKSPACE_VAULT_AAD_SCHEMA = 'teachhelper-db-v1';
-export const WORKSPACE_VAULT_KDF_ITERATIONS = 250000;
+export const WORKSPACE_VAULT_KDF_ITERATIONS = 600000;
 
 function bytesToBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
