@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="./app.css">
   <link rel="stylesheet" href="../../shared/app-action-icons.css">
   <link rel="stylesheet" href="../../shared/app-tooltips.css">
+  <link rel="stylesheet" href="../../shared/theme.css">
 </head>
 
 <body data-module-role="grades">
@@ -215,6 +216,8 @@
                   aria-controls="settings-tab-grade-test-scales" aria-selected="true">Prozentgrenzen</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
                   aria-controls="settings-tab-grade-structure" aria-selected="false">Notenstruktur</button>
+                <button class="settings-tab" type="button" role="tab" data-tab="display"
+                  aria-controls="settings-tab-display" aria-selected="false">Anzeige</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="occurrences"
                   aria-controls="settings-tab-occurrences" aria-selected="false">Vorkommnisse</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
@@ -282,6 +285,36 @@
                     </button>
                   </div>
                 </div>
+              </div>
+
+              <div id="settings-tab-display" class="settings-panel" role="tabpanel" hidden>
+                <form class="settings-form-table" autocomplete="off">
+                  <div class="settings-form-row settings-theme-row">
+                    <span class="settings-form-label" id="theme-preference-label">Erscheinungsbild</span>
+                    <div class="segment-control segment-control--three" role="radiogroup"
+                      aria-labelledby="theme-preference-label">
+                      <label class="segment-control__option">
+                        <input type="radio" name="theme-preference" value="dark" data-theme-preference>
+                        <span>Dunkel</span>
+                      </label>
+                      <label class="segment-control__option">
+                        <input type="radio" name="theme-preference" value="light" data-theme-preference>
+                        <span>Hell</span>
+                      </label>
+                      <label class="segment-control__option">
+                        <input type="radio" name="theme-preference" value="system" data-theme-preference>
+                        <span>System</span>
+                      </label>
+                    </div>
+                  </div>
+                  <div class="settings-form-row" data-tutorial-anchor="grades-sidebar-visibility">
+                    <span class="settings-form-label">Randleiste</span>
+                    <label class="checkbox-line settings-inline-checkbox">
+                      <input id="show-hidden-sidebar-courses" type="checkbox">
+                      Ausgeblendete Kurse in Randleiste anzeigen
+                    </label>
+                  </div>
+                </form>
               </div>
 
               <div id="settings-tab-expectation-horizon" class="settings-panel" role="tabpanel" hidden>
@@ -893,6 +926,7 @@
   <div id="grades-title-date-picker" class="grades-title-date-picker" hidden></div>
   <div id="grades-print-area" class="grades-print-area" aria-hidden="true"></div>
 
+  <script src="../../shared/theme-bridge.js"></script>
   <script type="module" src="./app.js"></script>
   <script src="./bridge.js"></script>
   <script src="../../shared/sidebar-resize.js"></script>

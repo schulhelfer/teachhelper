@@ -13,6 +13,15 @@ import {
   renderPercentileRankPng
 } from "./percentile-rank.js";
 import { installAppTooltips } from "../../shared/app-tooltips.js";
+import {
+  applyDocumentTheme,
+  normalizeThemePreference,
+  readThemePreference,
+  resolveTheme,
+  THEME_APPLY_EVENT,
+  THEME_PREFERENCE_CHANGE_EVENT,
+  writeThemePreference,
+} from "../../shared/theme.js";
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
 import {
   FILE_TIMEOUTS,
@@ -2570,6 +2579,7 @@ class GradesApp {
       settingsPanels: {
         gradeTestScales: document.querySelector("#settings-tab-grade-test-scales"),
         gradeStructure: document.querySelector("#settings-tab-grade-structure"),
+        display: document.querySelector("#settings-tab-display"),
         occurrences: document.querySelector("#settings-tab-occurrences"),
         expectationHorizon: document.querySelector("#settings-tab-expectation-horizon"),
         database: document.querySelector("#settings-tab-database"),
@@ -2579,6 +2589,7 @@ class GradesApp {
       settingsSaveAll: document.querySelector("#settings-save-all"),
       settingsCancelAll: document.querySelector("#settings-cancel-all"),
       settingsActionsRow: document.querySelector(".settings-actions-row"),
+      themePreferenceInputs: [...document.querySelectorAll("[data-theme-preference]")],
       gradeTestScaleSettingsContent: document.querySelector("#grade-test-scale-settings-content"),
       settingsGradeStructurePeriodToggle: document.querySelector("#settings-grade-structure-period-toggle"),
       settingsGradeStructureCopyH1ToH2: document.querySelector("#settings-grade-structure-copy-h1-to-h2"),
@@ -2587,6 +2598,7 @@ class GradesApp {
       settingsGradeOccurrencesList: document.querySelector("#settings-grade-occurrences-list"),
       settingsGradeOccurrenceSuggestions: document.querySelector("#settings-grade-occurrence-suggestions"),
       settingsGradeOccurrencesAdd: document.querySelector("#settings-grade-occurrences-add"),
+      showHiddenSidebarCourses: document.querySelector("#show-hidden-sidebar-courses"),
 
       gradesCollapsedTitleShell: document.querySelector("#grades-collapsed-title-shell"),
       gradesTitle: document.querySelector("#grades-title"),
@@ -2801,6 +2813,11 @@ class GradesApp {
 
 
     };
+    this.themePreference = readThemePreference();
+    window.addEventListener(THEME_APPLY_EVENT, (event) => {
+      this.themePreference = normalizeThemePreference(event.detail?.preference);
+      this.renderDisplaySection();
+    });
     if (
       this.refs.contextMenu
       && typeof document !== "undefined"
@@ -3422,6 +3439,9 @@ class GradesApp {
   buildSettingsDraftFromStore() {
     return {
       gradesPrivacyGraphThreshold: this.store.getGradesPrivacyGraphThreshold(),
+      showHiddenSidebarCourses: Boolean(
+        this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
+      ),
       gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
       gradeOccurrenceCategories: this.store.getGradeOccurrenceCategories(),
       defaultGradeStructure: this.store.getDefaultGradeStructure(),
@@ -4858,6 +4878,9 @@ class GradesApp {
     return (this.gradeVaultEncryptionDraft !== null
       && this.gradeVaultEncryptionDraft !== this.isGradeVaultEncryptionEnabled())
       || Number(draft.gradesPrivacyGraphThreshold) !== Number(this.store.getGradesPrivacyGraphThreshold())
+      || Boolean(draft.showHiddenSidebarCourses) !== Boolean(
+        this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
+      )
       || !gradeTestScaleSettingsEqual(draft.gradeTestScaleSettings, this.store.getGradeTestScaleSettings())
       || JSON.stringify(draft.gradeOccurrenceCategories || []) !== JSON.stringify(this.store.getGradeOccurrenceCategories())
       || !defaultGradeStructureSettingsEqual(draft.defaultGradeStructure, this.store.getDefaultGradeStructure())
@@ -4880,6 +4903,9 @@ class GradesApp {
     const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
     if (this.activeSettingsTab === "gradeTestScales") draft.gradeTestScaleSettings = this.readGradeTestScaleSettingsFromDom();
     if (this.activeSettingsTab === "gradeStructure") draft.defaultGradeStructure = this.readDefaultGradeStructureSettingsFromDom();
+    if (this.activeSettingsTab === "display") {
+      draft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses?.checked);
+    }
     if (this.activeSettingsTab === "occurrences") draft.gradeOccurrenceCategories = this.readGradeOccurrenceCategoriesFromDom();
     const gradeScaleValidation = this.validateGradeTestScaleSettingsDraft(draft.gradeTestScaleSettings);
     if (!gradeScaleValidation.valid) {
@@ -4957,6 +4983,8 @@ class GradesApp {
     } else if (tab === "expectationHorizon") {
       this.settingsDraft.expectationHorizonLocation = "";
       this.settingsDraft.expectationHorizonCommentTemplate = EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
+    } else if (tab === "display") {
+      this.settingsDraft.showHiddenSidebarCourses = SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
     } else if (tab === "database") {
       this.settingsDraft.backupEnabled = BACKUP_ENABLED_DEFAULT;
       this.settingsDraft.backupIntervalDays = BACKUP_INTERVAL_DEFAULT_DAYS;
@@ -7276,7 +7304,7 @@ class GradesApp {
   }
 
   switchSettingsTab(tabName) {
-    const allowed = new Set(["gradeTestScales", "gradeStructure", "occurrences", "expectationHorizon", "database", "encryption"]);
+    const allowed = new Set(["gradeTestScales", "gradeStructure", "display", "occurrences", "expectationHorizon", "database", "encryption"]);
     if (!allowed.has(tabName) || !this.refs.settingsPanels[tabName]) return;
     if (
       (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired")
@@ -7288,6 +7316,7 @@ class GradesApp {
     else if (tabName === "gradeStructure") this.renderDefaultGradeStructureSettingsSection();
     else if (tabName === "occurrences") this.renderGradeOccurrenceCategoriesSettingsSection();
     else if (tabName === "expectationHorizon") this.renderExpectationHorizonSettingsSection();
+    else if (tabName === "display") this.renderDisplaySection();
     else {
       this.renderBackupSection();
       this.renderDatabaseSection();
@@ -9004,7 +9033,7 @@ class GradesApp {
         const requestedGradesSubView = detail?.gradesSubview === "entry"
           ? "entry"
           : (detail?.gradesSubview === "overview" ? "overview" : "");
-        const allowedSettingsTabs = new Set(["gradeTestScales", "gradeStructure", "occurrences", "expectationHorizon", "database", "encryption"]);
+        const allowedSettingsTabs = new Set(["gradeTestScales", "gradeStructure", "display", "occurrences", "expectationHorizon", "database", "encryption"]);
         if (requestedView === "settings" && allowedSettingsTabs.has(requestedSettingsTab)) {
           if (this.currentView !== "settings" && !await this.resolveUnsavedGradesEntryNavigation()) {
             return;
@@ -9761,6 +9790,19 @@ class GradesApp {
     this.refs.settingsTabs.forEach((button) => {
       button.addEventListener("click", () => {
         this.switchSettingsTab(button.dataset.tab);
+      });
+    });
+
+    this.refs.showHiddenSidebarCourses?.addEventListener("change", () => {
+      this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+      this.settingsDraft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses.checked);
+      this.refreshSettingsDirtyState();
+    });
+
+    this.refs.themePreferenceInputs.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        this.setThemePreference(input.value);
       });
     });
 
@@ -25033,6 +25075,9 @@ class GradesApp {
     if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "expectationHorizon")) {
       this.renderExpectationHorizonSettingsSection();
     }
+    if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "display")) {
+      this.renderDisplaySection();
+    }
     if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "database")) {
       this.renderBackupSection();
       this.renderDatabaseSection();
@@ -26905,7 +26950,7 @@ class GradesApp {
   }
 
   renderSettingsTabs() {
-    const allowed = new Set(["gradeTestScales", "gradeStructure", "occurrences", "expectationHorizon", "database", "encryption"]);
+    const allowed = new Set(["gradeTestScales", "gradeStructure", "display", "occurrences", "expectationHorizon", "database", "encryption"]);
     const isDatabaseLock = this.lockReason === "databaseRequired";
     const isBackupDirectoryLock = this.lockReason === "backupDirRequired";
     const isPersistenceSetupLock = isDatabaseLock || isBackupDirectoryLock;
@@ -27663,6 +27708,34 @@ class GradesApp {
       const inputs = this.refs.settingsGradeOccurrencesList?.querySelectorAll("input[data-grade-occurrence-category-name='1']") || [];
       inputs[inputs.length - 1]?.focus();
     });
+  }
+
+
+
+  renderDisplaySection() {
+    const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
+    if (this.refs.showHiddenSidebarCourses) {
+      this.refs.showHiddenSidebarCourses.checked = Boolean(draft.showHiddenSidebarCourses);
+    }
+    this.refs.themePreferenceInputs.forEach((input) => {
+      input.checked = input.value === this.themePreference;
+    });
+    this.updateSettingsActionButtons();
+  }
+
+  setThemePreference(value) {
+    const preference = normalizeThemePreference(value);
+    this.themePreference = preference;
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: THEME_PREFERENCE_CHANGE_EVENT,
+        detail: { preference },
+      }, window.location.origin);
+    } else {
+      writeThemePreference(preference);
+      applyDocumentTheme(resolveTheme(preference, window.matchMedia?.("(prefers-color-scheme: dark)").matches));
+    }
+    this.renderDisplaySection();
   }
 
 

@@ -10,10 +10,19 @@ import { createMessageApi } from './shared/messages.js';
 import { WORKSPACE_STATE_EVENT } from './shared/school-data/messages.js';
 import { installAppTooltips } from './shared/app-tooltips.js';
 import {
+  createThemeController,
+  THEME_APPLY_EVENT,
+  THEME_PREFERENCE_CHANGE_EVENT,
+} from './shared/theme.js';
+import {
   createModuleFrame,
   isTrustedModuleMessage,
   postToModule,
 } from './shared/module-frame-bridge.js';
+import {
+  hasTutorialEntryHintBeenSeen,
+  TUTORIAL_ENTRY_HINT_SYNC_EVENT,
+} from './shared/tutorial-entry-state.js';
 import { createSharedRosterStore } from './shared/roster-store.js';
 import {
   STUDENTS_SYNC_SOURCE_GRADES,
@@ -49,6 +58,23 @@ import {
   if (!appEl) {
     return;
   }
+  const themeController = createThemeController();
+  const applyThemeToFrame = (frame, detail) => {
+    if (!frame?.isConnected) return false;
+    return postToModule(frame, { type: THEME_APPLY_EVENT, detail });
+  };
+  themeController.subscribe((detail) => {
+    document.querySelectorAll('iframe').forEach((frame) => applyThemeToFrame(frame, detail));
+  });
+  document.addEventListener('load', (event) => {
+    const frame = event.target;
+    if (frame instanceof HTMLIFrameElement) {
+      applyThemeToFrame(frame, {
+        preference: themeController.getPreference(),
+        theme: themeController.getTheme(),
+      });
+    }
+  }, true);
   const pwaInstallPrompt = createPwaInstallPrompt({
     dialog: els.pwaInstallDialog,
     copy: els.pwaInstallDialogCopy,
@@ -67,6 +93,13 @@ import {
   const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
   const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
   const UPDATE_APPLIED_HINT_SESSION_KEY = 'teachhelper:update-applied-hint';
+  const getSafeSessionStorage = () => {
+    try {
+      return window.sessionStorage;
+    } catch {
+      return null;
+    }
+  };
   let versionUpdateHintTimer = 0;
   let versionUpdateAvailable = false;
   let versionUpdateAppliedVisible = false;
@@ -118,7 +151,7 @@ import {
 
   const markVersionUpdateHintPending = () => {
     try {
-      window.sessionStorage?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
+      getSafeSessionStorage()?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
     } catch {
       
     }
@@ -126,10 +159,11 @@ import {
 
   const consumePendingVersionUpdateHint = () => {
     try {
-      if (window.sessionStorage?.getItem(UPDATE_APPLIED_HINT_SESSION_KEY) !== '1') {
+      const storage = getSafeSessionStorage();
+      if (storage?.getItem(UPDATE_APPLIED_HINT_SESSION_KEY) !== '1') {
         return;
       }
-      window.sessionStorage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
+      storage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
       showVersionUpdateHint();
     } catch {
       
@@ -311,6 +345,22 @@ import {
       getSeatplanFrame(),
     ].find((frame) => isTrustedModuleMessage(event, frame)) || null
   );
+  const syncTutorialEntryHintToModules = () => {
+    if (!hasTutorialEntryHintBeenSeen()) return;
+    [
+      getPlanningFrame(),
+      getGradesFrame(),
+      getMergerFrame(),
+      getDuplicateCheckFrame(),
+      getQrFrame(),
+      getSeatplanFrame(),
+    ].forEach((frame) => {
+      postToModule(frame, {
+        type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
+        detail: { seen: true },
+      });
+    });
+  };
   const getSidebarWidthScopeForTab = (tab) => (
     tab === TAB_PLANNING || tab === TAB_GRADES
       ? SIDEBAR_WIDTH_SCOPE_PLANNING
@@ -2334,8 +2384,10 @@ import {
     });
   }
 
-  function startTutorialFromEntry() {
-    void firstRunTutorial?.startFromEntry?.();
+  async function startTutorialFromEntry() {
+    const started = await firstRunTutorial?.startFromEntry?.();
+    if (started) syncTutorialEntryHintToModules();
+    return started;
   }
 
   async function createBackupBeforeTutorialStart() {
@@ -2367,6 +2419,11 @@ import {
       }
       const data = event.data;
       if (!data || typeof data !== 'object') {
+        return;
+      }
+      if (data.type === THEME_PREFERENCE_CHANGE_EVENT) {
+        if (frame !== getPlanningFrame() && frame !== getGradesFrame()) return;
+        themeController.setPreference(data.detail?.preference);
         return;
       }
       if (data.type === MORE_TOOLS_DISMISS_EVENT) {
@@ -2424,6 +2481,14 @@ import {
           : SIDEBAR_WIDTH_SCOPE_OTHER;
         if (requestedScope !== getSidebarWidthScopeForTab(getActiveTab())) return;
         setChromeCollapsed(true);
+        return;
+      }
+      if (data.type === TUTORIAL_ENTRY_HINT_SYNC_EVENT) {
+        if (data.detail?.action !== 'request') return;
+        postToModule(frame, {
+          type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
+          detail: { seen: hasTutorialEntryHintBeenSeen() },
+        });
         return;
       }
       if (data.type !== 'classroom:tutorial-start-request') return;

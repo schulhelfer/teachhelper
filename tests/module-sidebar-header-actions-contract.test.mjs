@@ -11,7 +11,7 @@ test('nur wirklich schmale Modul-Sidebars stapeln Tutorial- und Einstellungsbutt
   for (const source of sources) {
     assert.match(
       source,
-      /\.sidebar-panel \{[\s\S]*?container-type: inline-size;[\s\S]*?@container \(max-width: 158px\) \{\s+\.sidebar-header \{[\s\S]*?min-height: 79px;[\s\S]*?padding-right: 44px;[\s\S]*?\.sidebar-header-actions \{[\s\S]*?top: -12px;[\s\S]*?right: -6px;[\s\S]*?flex-direction: column;[\s\S]*?#view-settings-btn \{\s+order: 1;[\s\S]*?#view-tutorial-btn \{\s+order: 2;/,
+      /\.sidebar-panel \{[\s\S]*?container-type: inline-size;[\s\S]*?@container \(max-width: 158px\) \{\s+\.sidebar-header \{[\s\S]*?min-height: 68px;[\s\S]*?margin-bottom: 0;[\s\S]*?padding-right: 44px;[\s\S]*?\.sidebar-header-actions \{[\s\S]*?top: -12px;[\s\S]*?right: -6px;[\s\S]*?flex-direction: column;[\s\S]*?#view-settings-btn \{\s+order: 1;[\s\S]*?#view-tutorial-btn \{\s+order: 2;[\s\S]*?\.sidebar-controls \{\s+margin-top: 4px;/,
     );
   }
 });

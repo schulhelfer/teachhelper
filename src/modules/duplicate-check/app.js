@@ -13,7 +13,9 @@ import {
 } from '../../shared/module-frame-bridge.js';
 
 export function createDuplicateCheckApp({ root = document } = {}) {
-  const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
+    ? new URL(import.meta.url).origin
+    : window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([

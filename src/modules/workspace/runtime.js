@@ -50,6 +50,7 @@ const PLANNING_SETTING_KEYS = new Set([
 ]);
 const GRADES_SETTING_KEYS = new Set([
   'gradesPrivacyGraphThreshold',
+  'showHiddenSidebarCourses',
   'gradeTestScaleSettings',
   'gradeOccurrenceCategories',
   'defaultGradeStructure',

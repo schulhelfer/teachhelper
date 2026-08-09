@@ -1,0 +1,186 @@
+:root {
+  color-scheme: dark;
+}
+
+.settings-theme-row .segment-control {
+  width: min(300px, 100%);
+}
+
+@media (max-width: 1200px) {
+  .settings-theme-row .segment-control {
+    width: 100%;
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f7fb;
+  --bg-start: #f8fafc;
+  --bg-mid: #edf2f7;
+  --bg-end: #e6edf5;
+  --canvas: #f4f7fb;
+  --bg-top: #f8fafc;
+  --bg-bottom: #e6edf5;
+  --panel: rgba(255, 255, 255, 0.9);
+  --panel-strong: rgba(255, 255, 255, 0.98);
+  --card: #ffffff;
+  --seat: #f8fafc;
+  --text: #172033;
+  --muted: #526176;
+  --line: rgba(30, 41, 59, 0.18);
+  --line-soft: rgba(30, 41, 59, 0.1);
+  --accent: #2563eb;
+  --accent-2: #2563eb;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --link: #075bc9;
+  --danger: #b42318;
+  --warn: #9a6700;
+  --error: #b42318;
+  --ok: #087443;
+  --focus: #172033;
+  --focus-border: rgba(37, 99, 235, 0.72);
+  --focus-outline: rgba(37, 99, 235, 0.84);
+  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.24);
+  --highlight-neutral: rgba(30, 41, 59, 0.68);
+  --highlight-neutral-soft: rgba(30, 41, 59, 0.1);
+  --module-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.92));
+  --module-surface-strong: linear-gradient(180deg, #ffffff, #eef3f8);
+  --module-surface-border: rgba(71, 85, 105, 0.2);
+  --module-surface-shadow: 0 18px 34px rgba(30, 41, 59, 0.14);
+  --sidebar-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(241, 245, 249, 0.94));
+  --sidebar-border: rgba(71, 85, 105, 0.2);
+  --sidebar-shadow: 0 18px 34px rgba(30, 41, 59, 0.13);
+  --shell-bg: var(--module-surface);
+  --shell-bg-strong: var(--module-surface-strong);
+  --shell-border: var(--module-surface-border);
+  --shell-shadow: var(--module-surface-shadow);
+  --glass: rgba(255, 255, 255, 0.86);
+  --glass-strong: rgba(255, 255, 255, 0.96);
+  --shell-backdrop: saturate(130%) blur(10px);
+  --control-bg: #ffffff;
+  --control-bg-focus: #f8fafc;
+  --control-border: rgba(71, 85, 105, 0.4);
+  --button-bg: linear-gradient(180deg, #ffffff, #e8eef5);
+  --button-bg-hover: linear-gradient(180deg, #ffffff, #dce6f1);
+  --button-border: rgba(71, 85, 105, 0.38);
+  --button-shadow: 0 6px 14px rgba(30, 41, 59, 0.14);
+  --action-reset-bg: linear-gradient(180deg, #ffffff, #e8eef5);
+  --action-reset-bg-hover: linear-gradient(180deg, #ffffff, #dce6f1);
+  --action-reset-border: rgba(71, 85, 105, 0.4);
+  --action-reset-color: #172033;
+  --action-reset-shadow: 0 6px 14px rgba(30, 41, 59, 0.14);
+  --action-warn-color: #432000;
+  --action-danger-bg: linear-gradient(180deg, #d92d20, #b42318);
+  --action-danger-bg-hover: linear-gradient(180deg, #f04438, #d92d20);
+  --action-danger-color: #ffffff;
+  --action-danger-shadow: 0 8px 18px rgba(180, 35, 24, 0.22);
+  --btn-top: #ffffff;
+  --btn-bottom: #e8eef5;
+  --btn-top-hover: #ffffff;
+  --btn-bottom-hover: #dce6f1;
+  --dropdown-bg: #ffffff;
+  --drop: rgba(255, 255, 255, 0.96);
+  --dropzone-bg: rgba(255, 255, 255, 0.72);
+  --dropzone-bg-hover: rgba(37, 99, 235, 0.1);
+  --dropzone-bg-active: rgba(37, 99, 235, 0.16);
+  --dropzone-border: rgba(37, 99, 235, 0.58);
+  --dropzone-shadow: 0 4px 10px rgba(30, 41, 59, 0.14);
+  --scrollbar-track: rgba(148, 163, 184, 0.2);
+  --scrollbar-thumb: rgba(71, 85, 105, 0.52);
+  --scrollbar-thumb-hover: rgba(51, 65, 85, 0.72);
+  --shadow: 0 20px 54px rgba(30, 41, 59, 0.18);
+  --inner: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+:root[data-theme="light"] .segment-control {
+  border-color: rgba(71, 85, 105, 0.25);
+  background: rgba(226, 232, 240, 0.62);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+:root[data-theme="light"] .segment-control__option span {
+  color: #475569;
+}
+
+:root[data-theme="light"] .segment-control__option:hover input:not(:disabled) + span,
+:root[data-theme="light"] .segment-control__option input:focus-visible + span {
+  color: #172033;
+  background: rgba(37, 99, 235, 0.1);
+  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
+}
+
+:root[data-theme="light"] .segment-control__option input:checked + span {
+  color: #ffffff;
+}
+
+@supports selector(.segment-control:has(input:checked)) {
+  :root[data-theme="light"] .segment-control::before {
+    border-color: rgba(29, 78, 216, 0.78);
+    background: linear-gradient(180deg, #3b82f6, #2563eb);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 5px 12px rgba(37, 99, 235, 0.24);
+  }
+}
+
+:root[data-theme="light"] :is(.app-dialog, dialog, .message, .message-dialog, .context-menu, .app-context-menu) {
+  color: var(--text);
+  border-color: var(--module-surface-border);
+}
+
+:root[data-theme="light"] :is(input, select, textarea, button) {
+  color-scheme: light;
+}
+
+:root[data-theme="light"] :is(input[type="date"], input[type="time"]) {
+  color-scheme: light;
+}
+
+:root[data-theme="light"] button:not(.segment-control__option > input) {
+  color: var(--text);
+}
+
+:root[data-theme="light"] :is(button.ghost, .number-stepper-btn) {
+  color: var(--text);
+  background: var(--button-bg);
+}
+
+:root[data-theme="light"] :is(button.ghost:hover:not(:disabled), .number-stepper-btn:hover:not(:disabled)) {
+  color: var(--text);
+  background: var(--button-bg-hover);
+}
+
+:root[data-theme="light"] :is(.app-context-menu, .context-menu) {
+  background: #ffffff;
+  border-color: rgba(71, 85, 105, 0.24);
+  box-shadow: 0 18px 44px rgba(30, 41, 59, 0.18);
+}
+
+:root[data-theme="light"] :is(.app-context-menu .context-item, .context-menu button) {
+  color: var(--text);
+}
+
+:root[data-theme="light"] :is(.app-dialog, dialog)::backdrop {
+  background: rgba(30, 41, 59, 0.42);
+}
+
+:root[data-theme="light"] .app-tooltip-portal {
+  --app-tooltip-bg: #ffffff;
+  --app-tooltip-border-color: rgba(71, 85, 105, 0.42);
+  --app-tooltip-text-color: #172033;
+  box-shadow: 0 12px 24px rgba(30, 41, 59, 0.18);
+}
+
+:root[data-theme="light"] .app-tooltip-portal[data-tone="near-better"] {
+  --app-tooltip-bg: #fff7e6;
+  --app-tooltip-border-color: #c77a00;
+  --app-tooltip-text-color: #5f3700;
+}
+
+:root[data-theme="light"] .app-tooltip-portal[data-tone="deficit"] {
+  --app-tooltip-bg: #fff1f0;
+  --app-tooltip-border-color: #c43224;
+  --app-tooltip-text-color: #7a271a;
+}
+
+:root[data-theme="light"] :is(input:disabled, select:disabled, textarea:disabled, button:disabled) {
+  color: #64748b;
+}

@@ -31,7 +31,9 @@ export function createMergerApp({
   const TOOL_LAYOUT = "layout";
   const TOOL_ROTATE = "rotate";
   const TOOL_SPLIT = "split";
-  const TRUSTED_PARENT_ORIGIN = window.location.origin;
+  const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
+    ? new URL(import.meta.url).origin
+    : window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("moduleFrameNonce") || "";
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     MERGER_TOOL_REQUEST_EVENT,

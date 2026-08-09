@@ -1119,7 +1119,8 @@
           .sidebar-header {
             position: relative;
             align-items: flex-start;
-            min-height: 79px;
+            min-height: 68px;
+            margin-bottom: 0;
             padding-right: 44px;
           }
 
@@ -1141,6 +1142,10 @@
 
           #view-tutorial-btn {
             order: 2;
+          }
+
+          .sidebar-controls {
+            margin-top: 4px;
           }
         }
 

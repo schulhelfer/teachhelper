@@ -1,4 +1,5 @@
 export const TUTORIAL_ENTRY_HINT_SEEN_STORAGE_KEY = 'teachhelper:tutorial-entry-hint-seen:v1';
+export const TUTORIAL_ENTRY_HINT_SYNC_EVENT = 'classroom:tutorial-entry-hint-sync';
 
 const LEGACY_STORAGE_KEYS = [
   'teachhelper:tutorial-started-tabs:v1',

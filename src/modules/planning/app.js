@@ -1,4 +1,13 @@
 import { installAppTooltips } from "../../shared/app-tooltips.js";
+import {
+  applyDocumentTheme,
+  normalizeThemePreference,
+  readThemePreference,
+  resolveTheme,
+  THEME_APPLY_EVENT,
+  THEME_PREFERENCE_CHANGE_EVENT,
+  writeThemePreference,
+} from "../../shared/theme.js";
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
 import { appendPlanningNoteWithLinks, normalizePlanningNoteText } from "../../shared/planning-note-links.js";
 import {
@@ -928,6 +937,7 @@ class PlanningApp {
       settingsCancelAll: document.querySelector("#settings-cancel-all"),
       settingsActionsRow: document.querySelector(".settings-actions-row"),
       settingsDisplayHoursRow: document.querySelector("#settings-display-hours-row"),
+      themePreferenceInputs: [...document.querySelectorAll("[data-theme-preference]")],
 
       courseTitle: document.querySelector("#course-title"),
       courseTable: document.querySelector("#course-table"),
@@ -1172,6 +1182,11 @@ class PlanningApp {
       storedDirectoryHandle: null,
       automaticBackupPromise: null
     };
+    this.themePreference = readThemePreference();
+    window.addEventListener(THEME_APPLY_EVENT, (event) => {
+      this.themePreference = normalizeThemePreference(event.detail?.preference);
+      this.renderDisplaySection();
+    });
     this.manualPersistenceState = {
       baselineHash: this.getCurrentStateHash(),
       dirty: false,
@@ -5614,6 +5629,13 @@ class PlanningApp {
       });
     }
 
+    this.refs.themePreferenceInputs.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (!input.checked) return;
+        this.setThemePreference(input.value);
+      });
+    });
+
     if (this.refs.backupAutoEnabled) {
       this.refs.backupAutoEnabled.addEventListener("change", () => {
         this.settingsDraft.backupEnabled = Boolean(this.refs.backupAutoEnabled.checked);
@@ -8471,11 +8493,29 @@ class PlanningApp {
     if (this.refs.showHiddenSidebarCourses) {
       this.refs.showHiddenSidebarCourses.checked = draftShowHidden;
     }
+    this.refs.themePreferenceInputs.forEach((input) => {
+      input.checked = input.value === this.themePreference;
+    });
     if (this.refs.appVersion) {
       this.refs.appVersion.textContent = this.appVersion || "unbekannt";
     }
     this.syncAllNumberSteppers();
     this.updateSettingsActionButtons();
+  }
+
+  setThemePreference(value) {
+    const preference = normalizeThemePreference(value);
+    this.themePreference = preference;
+    if (window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: THEME_PREFERENCE_CHANGE_EVENT,
+        detail: { preference },
+      }, window.location.origin);
+    } else {
+      writeThemePreference(preference);
+      applyDocumentTheme(resolveTheme(preference, window.matchMedia?.("(prefers-color-scheme: dark)").matches));
+    }
+    this.renderDisplaySection();
   }
 
   renderLessonTimesSection() {
