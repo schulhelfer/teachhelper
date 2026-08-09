@@ -2852,6 +2852,7 @@ class GradesApp {
     this.pendingTopicLessonId = null;
     this.pendingGradeVaultDialogMode = "";
     this.pendingGradeVaultContinuation = null;
+    this.gradeVaultOverlayPreserveSourceTab = null;
     this.pendingGradeVaultEncryptionDisable = false;
     this.gradeVaultEncryptionDraft = null;
     this.inlineTopicLessonId = null;
@@ -9123,6 +9124,9 @@ class GradesApp {
         if (!this.hasGradeVaultUnlockConfig() || this.isGradeVaultUnlocked()) {
           return;
         }
+        this.gradeVaultOverlayPreserveSourceTab = detail?.preserveSourceTab === true
+          ? true
+          : null;
         this.openGradeVaultDialog("unlock");
         if (detail?.overlay === true) {
           this.notifyParentGradeVaultOverlay(true);
@@ -25741,12 +25745,16 @@ class GradesApp {
     // should leave the currently active module in place.
     const detail = {
       open: Boolean(open),
-      preserveSourceTab: this.pendingGradeVaultContinuation?.type !== "grades-navigation"
+      preserveSourceTab: this.gradeVaultOverlayPreserveSourceTab
+        ?? (this.pendingGradeVaultContinuation?.type !== "grades-navigation")
     };
     document.body?.classList.toggle("grade-vault-overlay-only", detail.open);
     window.dispatchEvent(new CustomEvent("classroom:grades-grade-vault-overlay", {
       detail
     }));
+    if (!detail.open) {
+      this.gradeVaultOverlayPreserveSourceTab = null;
+    }
     if (!window.parent || window.parent === window) {
       return;
     }
@@ -25843,6 +25851,16 @@ class GradesApp {
         this.courseAllowsGrades(item) && !item.hiddenInSidebar
       ));
       if (!this.canAccessGradeVault()) {
+        if (detail?.unlock === true) {
+          this.queueGradeVaultContinuation({
+            type: "grade-roster-courses",
+            detail: { ...detail, restoreTabAfterUnlock: true }
+          });
+          this.gradeVaultOverlayPreserveSourceTab = true;
+          this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+          this.notifyParentGradeVaultOverlay(true);
+          return;
+        }
         this.dispatchGradeRosterCoursesResult({
           requestId,
           ...responseContext,
@@ -25858,12 +25876,14 @@ class GradesApp {
         return;
       }
       const courses = [];
+      const studentCounts = {};
       const workspaceOwner = this.getWorkspaceOwnerApp();
       for (const course of availableCourses) {
         const rosterSummary = typeof workspaceOwner?.getGradeCourseRosterSummary === "function"
           ? await workspaceOwner.getGradeCourseRosterSummary(course.id)
           : null;
         const count = Number(rosterSummary?.studentCount || 0);
+        studentCounts[String(Number(course.id) || 0)] = count;
         const courseSummary = count > 0 ? {
           id: Number(course.id),
           name: String(course.name || "Kurs"),
@@ -25874,6 +25894,7 @@ class GradesApp {
           courses.push(courseSummary);
         }
       }
+      workspaceOwner?.setGradeCourseStudentCounts?.(studentCounts);
       this.dispatchGradeRosterCoursesResult({
         requestId,
         ...responseContext,
@@ -25903,6 +25924,7 @@ class GradesApp {
         type: "grade-roster-import",
         detail: { ...detail, restoreTabAfterUnlock: true }
       });
+      this.gradeVaultOverlayPreserveSourceTab = true;
       this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
       this.notifyParentGradeVaultOverlay(true);
       return;

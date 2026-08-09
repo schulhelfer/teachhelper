@@ -1,5 +1,334 @@
 :root {
   color-scheme: dark;
+  --surface-page: #0f172a;
+  --surface-panel: #111827;
+  --sidebar-surface-opaque: linear-gradient(180deg, #111827, #0f172a);
+  --surface-subtle: #1f2937;
+  --surface-control: rgba(28, 36, 48, 0.85);
+  --surface-control-glass: rgba(28, 34, 44, 0.75);
+  --surface-control-glass-strong: rgba(28, 34, 44, 0.8);
+  --surface-control-glass-subtle: rgba(28, 34, 44, 0.45);
+  --surface-control-hover: rgba(40, 50, 66, 0.96);
+  --surface-control-active: rgba(22, 28, 38, 0.95);
+  --surface-overlay: rgba(15, 23, 42, 0.98);
+  --surface-overlay-strong: rgba(15, 23, 42, 0.96);
+  --surface-overlay-muted: rgba(15, 23, 42, 0.78);
+  --surface-backdrop: rgba(15, 23, 42, 0.72);
+  --backdrop-dialog: rgba(2, 6, 23, 0.58);
+  --backdrop-dialog-module: rgba(5, 10, 18, 0.62);
+  --backdrop-vault: rgba(5, 10, 18, 0.38);
+  --backdrop-tutorial: rgba(2, 6, 23, 0.5);
+  --backdrop-settings: rgba(2, 6, 23, 0.55);
+  --backdrop-settings-subtle: rgba(2, 6, 23, 0.44);
+  --backdrop-save: rgba(5, 10, 18, 0.5);
+  --surface-input-inset: rgba(2, 6, 23, 0.18);
+  --surface-disabled: rgba(51, 65, 85, 0.62);
+  --surface-segment: rgba(15, 23, 42, 0.48);
+  --surface-segment-hover: rgba(148, 163, 184, 0.08);
+  --surface-segment-active: linear-gradient(180deg, rgba(96, 165, 250, 0.24), rgba(37, 99, 235, 0.18)), rgba(59, 130, 246, 0.22);
+  --surface-segment-active-flat: rgba(59, 130, 246, 0.22);
+  --segment-active-fg: #f8fbff;
+  --segment-label-fg: rgba(226, 232, 240, 0.78);
+  --segment-hover-fg: rgba(248, 250, 252, 0.94);
+  --segment-active-border: rgba(96, 165, 250, 0.34);
+  --segment-indicator-border: rgba(96, 165, 250, 0.38);
+  --shadow-segment-hover: none;
+  --shadow-segment-active: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.16);
+  --shadow-segment-indicator: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 18px rgba(2, 6, 23, 0.2);
+  --surface-subtle-transparent: rgba(15, 23, 42, 0.24);
+  --surface-form: rgba(15, 23, 42, 0.16);
+  --surface-panel-subtle: rgba(15, 23, 42, 0.28);
+  --surface-control-muted: rgba(15, 23, 42, 0.5);
+  --surface-control-emphasized: rgba(15, 23, 42, 0.58);
+  --surface-control-subtle: rgba(15, 23, 42, 0.44);
+  --surface-overlay-soft: rgba(15, 23, 42, 0.22);
+  --surface-overlay-subtle: rgba(15, 23, 42, 0.34);
+  --surface-overlay-medium: rgba(15, 23, 42, 0.48);
+  --surface-overlay-medium-strong: rgba(15, 23, 42, 0.62);
+  --surface-overlay-alpha-18: rgba(15, 23, 42, 0.18);
+  --surface-overlay-alpha-30: rgba(15, 23, 42, 0.3);
+  --surface-overlay-alpha-35: rgba(15, 23, 42, 0.35);
+  --surface-overlay-alpha-40: rgba(15, 23, 42, 0.4);
+  --surface-overlay-alpha-42: rgba(15, 23, 42, 0.42);
+  --surface-overlay-alpha-45: rgba(15, 23, 42, 0.45);
+  --surface-overlay-alpha-46: rgba(15, 23, 42, 0.46);
+  --surface-overlay-alpha-60: rgba(15, 23, 42, 0.6);
+  --surface-overlay-alpha-68: rgba(15, 23, 42, 0.68);
+  --surface-overlay-alpha-75: rgba(15, 23, 42, 0.75);
+  --surface-overlay-alpha-85: rgba(15, 23, 42, 0.85);
+  --surface-overlay-alpha-90: rgba(15, 23, 42, 0.9);
+  --surface-overlay-alpha-95: rgba(15, 23, 42, 0.95);
+  --grade-cell-control-bg-token: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.9));
+  --grade-cell-control-border-token: rgba(148, 163, 184, 0.22);
+  --grade-cell-control-shadow-token: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 1px 2px rgba(2, 6, 23, 0.14);
+  --grade-cell-control-active-bg-token: linear-gradient(180deg, rgba(31, 46, 72, 0.98), rgba(18, 30, 48, 0.96));
+  --grade-cell-control-active-border-token: rgba(96, 165, 250, 0.72);
+  --grade-cell-control-active-shadow-token: 0 0 0 2px rgba(82, 150, 255, 0.22), 0 10px 20px rgba(15, 23, 42, 0.22), inset 0 1px 0 rgba(191, 219, 254, 0.1);
+  --grades-table-total-surface: #1f2937;
+  --grades-table-sticky-student-shadow: 10px 0 18px rgba(15, 23, 42, 0.22), inset -1px 0 0 rgba(148, 163, 184, 0.18);
+  --text-primary: #e5e7eb;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --text-disabled: rgba(148, 163, 184, 0.52);
+  --text-on-accent: #f8fbff;
+  --text-on-overlay: #f8fafc;
+  --text-on-overlay-secondary: #e2e8f0;
+  --text-control: #e9eef5;
+  --text-dialog: #dbe4ef;
+  --text-hint: rgba(226, 232, 240, 0.76);
+  --text-error: #fecaca;
+  --text-placeholder: rgba(226, 232, 240, 0.58);
+  --text-metric: #bfdbfe;
+  --surface-duration-stepper: rgba(12, 18, 34, 0.65);
+  --surface-seat: linear-gradient(180deg, #0e172a, #0a1222);
+  --surface-week-header: #1e242e;
+  --text-holiday: #9fceff;
+  --text-special-day: #ffe1a1;
+  --text-strong: rgba(226, 232, 240, 0.88);
+  --text-secondary-contrast: rgba(226, 232, 240, 0.78);
+  --text-muted-contrast: rgba(226, 232, 240, 0.68);
+  --surface-control-knob: #f8fafc;
+  --border-subtle: rgba(148, 163, 184, 0.16);
+  --border-control: rgba(148, 163, 184, 0.38);
+  --border-table-outer: rgba(148, 163, 184, 0.38);
+  --course-active-border: rgba(255, 255, 255, 0.98);
+  --border-focus: rgba(96, 165, 250, 0.48);
+  --accent-primary: #22d3ee;
+  --accent-strong: #60a5fa;
+  --accent-soft: rgba(34, 211, 238, 0.16);
+  --nav-active: #22d3ee;
+  --nav-active-fg: #f8fafc;
+  --nav-fg: #f8fafc;
+  --nav-active-bg: rgba(34, 211, 238, 0.14);
+  --nav-hover: rgba(148, 163, 184, 0.1);
+  --button-primary-bg: linear-gradient(180deg, #3b82f6, #2563eb);
+  --button-primary-fg: #f8fbff;
+  --button-primary-hover: linear-gradient(180deg, #60a5fa, #3b82f6);
+  --button-secondary-bg: rgba(30, 41, 59, 0.82);
+  --button-secondary-fg: #e9eef5;
+  --button-secondary-hover: rgba(51, 65, 85, 0.98);
+  --shadow-panel: 0 20px 54px rgba(2, 6, 23, 0.34);
+  --shadow-overlay: 0 14px 28px rgba(2, 6, 23, 0.34);
+  --shadow-control: 0 6px 14px rgba(2, 6, 23, 0.22);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  --focus-ring: 0 0 0 3px rgba(96, 165, 250, 0.28);
+  --tooltip-warn-bg: rgba(67, 38, 13, 0.98);
+  --tooltip-warn-border: rgba(251, 146, 60, 0.72);
+  --tooltip-warn-text: #fed7aa;
+  --tooltip-error-bg: rgba(69, 10, 10, 0.98);
+  --tooltip-error-border: rgba(248, 113, 113, 0.74);
+  --tooltip-error-text: #fecaca;
+
+}
+
+:root[data-theme="light"] {
+  --shell-bg-strong: var(--surface-panel);
+  color-scheme: light;
+  --surface-page: #f5f5f7;
+  --surface-panel: rgba(255, 255, 255, 0.82);
+  --sidebar-surface-opaque: linear-gradient(180deg, #ffffff, #f2f2f7);
+  --surface-subtle: rgba(235, 235, 245, 0.72);
+  --surface-control: rgba(255, 255, 255, 0.78);
+  --surface-control-glass: rgba(255, 255, 255, 0.68);
+  --surface-control-glass-strong: rgba(255, 255, 255, 0.86);
+  --surface-control-glass-subtle: rgba(255, 255, 255, 0.56);
+  --surface-control-hover: rgba(255, 255, 255, 0.96);
+  --surface-control-active: rgba(229, 229, 234, 0.88);
+  --surface-overlay: rgba(255, 255, 255, 0.9);
+  --surface-overlay-strong: rgba(255, 255, 255, 0.94);
+  --surface-overlay-muted: rgba(255, 255, 255, 0.84);
+  --surface-backdrop: rgba(28, 28, 30, 0.34);
+  --backdrop-dialog: rgba(28, 28, 30, 0.34);
+  --backdrop-dialog-module: rgba(28, 28, 30, 0.34);
+  --backdrop-vault: rgba(28, 28, 30, 0.24);
+  --backdrop-tutorial: rgba(28, 28, 30, 0.3);
+  --backdrop-settings: rgba(28, 28, 30, 0.3);
+  --backdrop-settings-subtle: rgba(28, 28, 30, 0.26);
+  --backdrop-save: rgba(28, 28, 30, 0.3);
+  --surface-input-inset: rgba(255, 255, 255, 0.72);
+  --surface-disabled: rgba(235, 235, 245, 0.82);
+  --surface-segment: rgba(235, 235, 245, 0.72);
+  --surface-segment-hover: rgba(0, 122, 255, 0.1);
+  --surface-segment-active: linear-gradient(180deg, #1693ff, #007aff);
+  --surface-segment-active-flat: #007aff;
+  --segment-active-fg: #1d1d1f;
+  --segment-label-fg: #515154;
+  --segment-hover-fg: #1d1d1f;
+  --segment-active-border: rgba(0, 122, 255, 0.7);
+  --segment-indicator-border: rgba(0, 102, 204, 0.76);
+  --shadow-segment-hover: var(--focus-ring);
+  --shadow-segment-active: 0 5px 14px rgba(0, 122, 255, 0.22);
+  --shadow-segment-indicator: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 5px 14px rgba(0, 122, 255, 0.22);
+  --surface-subtle-transparent: rgba(235, 235, 245, 0.78);
+  --surface-form: rgba(235, 235, 245, 0.62);
+  --surface-panel-subtle: rgba(235, 235, 245, 0.78);
+  --surface-control-muted: rgba(255, 255, 255, 0.72);
+  --surface-control-emphasized: rgba(255, 255, 255, 0.82);
+  --surface-control-subtle: rgba(255, 255, 255, 0.68);
+  --surface-overlay-soft: rgba(255, 255, 255, 0.66);
+  --surface-overlay-subtle: rgba(255, 255, 255, 0.72);
+  --surface-overlay-medium: rgba(255, 255, 255, 0.8);
+  --surface-overlay-medium-strong: rgba(255, 255, 255, 0.86);
+  --surface-overlay-alpha-18: rgba(255, 255, 255, 0.5);
+  --surface-overlay-alpha-30: rgba(255, 255, 255, 0.62);
+  --surface-overlay-alpha-35: rgba(255, 255, 255, 0.66);
+  --surface-overlay-alpha-40: rgba(255, 255, 255, 0.7);
+  --surface-overlay-alpha-42: rgba(255, 255, 255, 0.72);
+  --surface-overlay-alpha-45: rgba(255, 255, 255, 0.74);
+  --surface-overlay-alpha-46: rgba(255, 255, 255, 0.76);
+  --surface-overlay-alpha-60: rgba(255, 255, 255, 0.82);
+  --surface-overlay-alpha-68: rgba(255, 255, 255, 0.86);
+  --surface-overlay-alpha-75: rgba(255, 255, 255, 0.88);
+  --surface-overlay-alpha-85: rgba(255, 255, 255, 0.9);
+  --surface-overlay-alpha-90: rgba(255, 255, 255, 0.92);
+  --surface-overlay-alpha-95: rgba(255, 255, 255, 0.94);
+  --grade-cell-control-bg-token: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(242, 242, 247, 0.82));
+  --grade-cell-control-border-token: rgba(60, 60, 67, 0.24);
+  --grade-cell-control-shadow-token: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 1px 2px rgba(0, 0, 0, 0.08);
+  --grade-cell-control-active-bg-token: linear-gradient(180deg, #e8f4ff, #d7ebff);
+  --grade-cell-control-active-border-token: #007aff;
+  --grade-cell-control-active-shadow-token: 0 0 0 2px rgba(0, 122, 255, 0.16), 0 8px 18px rgba(0, 0, 0, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --grades-table-total-surface: #ebebf5;
+  --grades-table-sticky-student-shadow: inset -1px 0 0 rgba(60, 60, 67, 0.24);
+  --text-primary: #1d1d1f;
+  --text-secondary: #3a3a3c;
+  --text-muted: #515154;
+  --text-disabled: #6e6e73;
+  --text-on-accent: #ffffff;
+  --text-on-overlay: #1d1d1f;
+  --text-on-overlay-secondary: #1d1d1f;
+  --text-control: #1d1d1f;
+  --text-dialog: #3a3a3c;
+  --text-hint: #515154;
+  --text-error: #b42318;
+  --text-placeholder: #6e6e73;
+  --text-metric: #007aff;
+  --surface-duration-stepper: rgba(255, 255, 255, 0.78);
+  --surface-seat: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(242, 242, 247, 0.84));
+  --surface-week-header: #d1d1d6;
+  --text-holiday: #075985;
+  --text-special-day: #7c4a03;
+  --text-strong: #1d1d1f;
+  --text-secondary-contrast: #3a3a3c;
+  --text-muted-contrast: #515154;
+  --surface-control-knob: #ffffff;
+  --border-subtle: rgba(60, 60, 67, 0.14);
+  --border-control: rgba(60, 60, 67, 0.28);
+  --border-table-outer: rgba(60, 60, 67, 0.48);
+  --course-active-border: #3a3a3c;
+  --border-focus: rgba(0, 122, 255, 0.72);
+  --accent-primary: #007aff;
+  --accent-strong: #0a84ff;
+  --accent-soft: rgba(0, 122, 255, 0.16);
+  --nav-active: #007aff;
+  --nav-active-fg: #007aff;
+  --nav-fg: var(--text-primary);
+  --nav-active-bg: rgba(0, 122, 255, 0.13);
+  --nav-hover: rgba(0, 122, 255, 0.1);
+  --button-primary-bg: linear-gradient(180deg, #0878d1, #0066c2);
+  --button-primary-fg: #ffffff;
+  --button-primary-hover: linear-gradient(180deg, #3aa8ff, #0a84ff);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(235, 235, 245, 0.78));
+  --button-secondary-fg: #1d1d1f;
+  --button-secondary-hover: linear-gradient(180deg, #ffffff, rgba(224, 224, 230, 0.9));
+  --shadow-panel: 0 18px 52px rgba(0, 0, 0, 0.12);
+  --shadow-overlay: 0 12px 30px rgba(0, 0, 0, 0.14);
+  --shadow-control: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-inset: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.24);
+  --tooltip-warn-bg: #fff7e6;
+  --tooltip-warn-border: #c77a00;
+  --tooltip-warn-text: #5f3700;
+  --tooltip-error-bg: #fff1f0;
+  --tooltip-error-border: #c43224;
+  --tooltip-error-text: #7a271a;
+
+  /* Compatibility aliases for established module styles in the Light theme. */
+  --bg: var(--surface-page);
+  --canvas: var(--surface-page);
+  --panel: rgba(255, 255, 255, 0.9);
+  --panel-strong: var(--surface-overlay);
+  --card: var(--surface-panel);
+  --seat: rgba(255, 255, 255, 0.72);
+  --text: var(--text-primary);
+  --muted: var(--text-muted);
+  --line: var(--border-control);
+  --line-soft: var(--border-subtle);
+  --accent: var(--accent-primary);
+  --accent-2: var(--accent-strong);
+  --control-bg: var(--surface-control);
+  --control-bg-focus: var(--surface-control-hover);
+  --control-border: var(--border-control);
+  --button-bg: var(--button-secondary-bg);
+  --button-bg-hover: var(--button-secondary-hover);
+  --button-border: var(--border-control);
+  --button-shadow: var(--shadow-control);
+  --dropdown-bg: var(--surface-overlay);
+  --drop: var(--surface-overlay);
+  --shadow: var(--shadow-panel);
+  --inner: var(--shadow-inset);
+  --tab-active: var(--nav-active);
+
+  --bg-start: #fbfbfd;
+  --bg-mid: #f5f5f7;
+  --bg-end: #ececf1;
+  --bg-top: #fbfbfd;
+  --bg-bottom: #ececf1;
+  --link: #007aff;
+  --danger: #d70015;
+  --warn: #b25000;
+  --error: #d70015;
+  --ok: #248a3d;
+  --focus: #1d1d1f;
+  --focus-border: var(--border-focus);
+  --focus-outline: rgba(0, 122, 255, 0.84);
+  --highlight-neutral: rgba(60, 60, 67, 0.66);
+  --highlight-neutral-soft: rgba(60, 60, 67, 0.1);
+  --module-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(242, 242, 247, 0.7));
+  --module-surface-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(242, 242, 247, 0.82));
+  --module-surface-border: rgba(60, 60, 67, 0.32);
+  --module-surface-shadow: var(--shadow-panel);
+  --sidebar-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(242, 242, 247, 0.68));
+  --sidebar-border: rgba(60, 60, 67, 0.32);
+  --sidebar-shadow: 0 18px 34px rgba(0, 0, 0, 0.1);
+  --shell-bg: var(--module-surface);
+  --shell-bg-strong: var(--module-surface-strong);
+  --shell-border: var(--module-surface-border);
+  --shell-shadow: var(--module-surface-shadow);
+  --glass: rgba(255, 255, 255, 0.64);
+  --glass-strong: rgba(255, 255, 255, 0.82);
+  --shell-backdrop: saturate(150%) blur(16px);
+  --action-reset-bg: var(--button-secondary-bg);
+  --action-reset-bg-hover: var(--button-secondary-hover);
+  --action-reset-border: var(--border-control);
+  --action-reset-color: var(--text-primary);
+  --action-reset-shadow: var(--shadow-control);
+  --action-warn-color: #432000;
+  --action-danger-bg: linear-gradient(180deg, #d92d20, #b42318);
+  --action-danger-bg-hover: linear-gradient(180deg, #f04438, #d92d20);
+  --action-danger-color: #ffffff;
+  --action-danger-shadow: 0 8px 18px rgba(180, 35, 24, 0.22);
+  --btn-top: #ffffff;
+  --btn-bottom: #e8eef5;
+  --btn-top-hover: #ffffff;
+  --btn-bottom-hover: #dce6f1;
+  --dropzone-bg: rgba(255, 255, 255, 0.62);
+  --dropzone-bg-hover: rgba(0, 122, 255, 0.1);
+  --dropzone-bg-active: rgba(0, 122, 255, 0.16);
+  --dropzone-border: rgba(0, 122, 255, 0.56);
+  --dropzone-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --scrollbar-track: rgba(120, 120, 128, 0.16);
+  --scrollbar-thumb: rgba(120, 120, 128, 0.48);
+  --scrollbar-thumb-hover: rgba(99, 99, 102, 0.62);
+}
+
+/* Dialog and modal hints share a readable semantic color in every module. */
+:is(dialog, .app-dialog, .message, .message-stack) :is(.muted, .hint, .dialog-inline-hint, [id$="-hint"], [class$="-hint"]) {
+  color: var(--text-hint);
+}
+
+:is(dialog, .app-dialog, .message, .message-stack) :is(.message-dialog-text) {
+  color: var(--text-dialog);
 }
 
 .settings-theme-row .segment-control {
@@ -12,175 +341,6 @@
   }
 }
 
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f4f7fb;
-  --bg-start: #f8fafc;
-  --bg-mid: #edf2f7;
-  --bg-end: #e6edf5;
-  --canvas: #f4f7fb;
-  --bg-top: #f8fafc;
-  --bg-bottom: #e6edf5;
-  --panel: rgba(255, 255, 255, 0.9);
-  --panel-strong: rgba(255, 255, 255, 0.98);
-  --card: #ffffff;
-  --seat: #f8fafc;
-  --text: #172033;
-  --muted: #526176;
-  --line: rgba(30, 41, 59, 0.18);
-  --line-soft: rgba(30, 41, 59, 0.1);
-  --accent: #2563eb;
-  --accent-2: #2563eb;
-  --accent-soft: rgba(37, 99, 235, 0.16);
-  --link: #075bc9;
-  --danger: #b42318;
-  --warn: #9a6700;
-  --error: #b42318;
-  --ok: #087443;
-  --focus: #172033;
-  --focus-border: rgba(37, 99, 235, 0.72);
-  --focus-outline: rgba(37, 99, 235, 0.84);
-  --focus-ring: 0 0 0 3px rgba(37, 99, 235, 0.24);
-  --highlight-neutral: rgba(30, 41, 59, 0.68);
-  --highlight-neutral-soft: rgba(30, 41, 59, 0.1);
-  --module-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(241, 245, 249, 0.92));
-  --module-surface-strong: linear-gradient(180deg, #ffffff, #eef3f8);
-  --module-surface-border: rgba(71, 85, 105, 0.2);
-  --module-surface-shadow: 0 18px 34px rgba(30, 41, 59, 0.14);
-  --sidebar-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(241, 245, 249, 0.94));
-  --sidebar-border: rgba(71, 85, 105, 0.2);
-  --sidebar-shadow: 0 18px 34px rgba(30, 41, 59, 0.13);
-  --shell-bg: var(--module-surface);
-  --shell-bg-strong: var(--module-surface-strong);
-  --shell-border: var(--module-surface-border);
-  --shell-shadow: var(--module-surface-shadow);
-  --glass: rgba(255, 255, 255, 0.86);
-  --glass-strong: rgba(255, 255, 255, 0.96);
-  --shell-backdrop: saturate(130%) blur(10px);
-  --control-bg: #ffffff;
-  --control-bg-focus: #f8fafc;
-  --control-border: rgba(71, 85, 105, 0.4);
-  --button-bg: linear-gradient(180deg, #ffffff, #e8eef5);
-  --button-bg-hover: linear-gradient(180deg, #ffffff, #dce6f1);
-  --button-border: rgba(71, 85, 105, 0.38);
-  --button-shadow: 0 6px 14px rgba(30, 41, 59, 0.14);
-  --action-reset-bg: linear-gradient(180deg, #ffffff, #e8eef5);
-  --action-reset-bg-hover: linear-gradient(180deg, #ffffff, #dce6f1);
-  --action-reset-border: rgba(71, 85, 105, 0.4);
-  --action-reset-color: #172033;
-  --action-reset-shadow: 0 6px 14px rgba(30, 41, 59, 0.14);
-  --action-warn-color: #432000;
-  --action-danger-bg: linear-gradient(180deg, #d92d20, #b42318);
-  --action-danger-bg-hover: linear-gradient(180deg, #f04438, #d92d20);
-  --action-danger-color: #ffffff;
-  --action-danger-shadow: 0 8px 18px rgba(180, 35, 24, 0.22);
-  --btn-top: #ffffff;
-  --btn-bottom: #e8eef5;
-  --btn-top-hover: #ffffff;
-  --btn-bottom-hover: #dce6f1;
-  --dropdown-bg: #ffffff;
-  --drop: rgba(255, 255, 255, 0.96);
-  --dropzone-bg: rgba(255, 255, 255, 0.72);
-  --dropzone-bg-hover: rgba(37, 99, 235, 0.1);
-  --dropzone-bg-active: rgba(37, 99, 235, 0.16);
-  --dropzone-border: rgba(37, 99, 235, 0.58);
-  --dropzone-shadow: 0 4px 10px rgba(30, 41, 59, 0.14);
-  --scrollbar-track: rgba(148, 163, 184, 0.2);
-  --scrollbar-thumb: rgba(71, 85, 105, 0.52);
-  --scrollbar-thumb-hover: rgba(51, 65, 85, 0.72);
-  --shadow: 0 20px 54px rgba(30, 41, 59, 0.18);
-  --inner: inset 0 1px 0 rgba(255, 255, 255, 0.8);
-}
-
-:root[data-theme="light"] .segment-control {
-  border-color: rgba(71, 85, 105, 0.25);
-  background: rgba(226, 232, 240, 0.62);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
-}
-
-:root[data-theme="light"] .segment-control__option span {
-  color: #475569;
-}
-
-:root[data-theme="light"] .segment-control__option:hover input:not(:disabled) + span,
-:root[data-theme="light"] .segment-control__option input:focus-visible + span {
-  color: #172033;
-  background: rgba(37, 99, 235, 0.1);
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.2);
-}
-
-:root[data-theme="light"] .segment-control__option input:checked + span {
-  color: #ffffff;
-}
-
-@supports selector(.segment-control:has(input:checked)) {
-  :root[data-theme="light"] .segment-control::before {
-    border-color: rgba(29, 78, 216, 0.78);
-    background: linear-gradient(180deg, #3b82f6, #2563eb);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 5px 12px rgba(37, 99, 235, 0.24);
-  }
-}
-
-:root[data-theme="light"] :is(.app-dialog, dialog, .message, .message-dialog, .context-menu, .app-context-menu) {
-  color: var(--text);
-  border-color: var(--module-surface-border);
-}
-
-:root[data-theme="light"] :is(input, select, textarea, button) {
-  color-scheme: light;
-}
-
-:root[data-theme="light"] :is(input[type="date"], input[type="time"]) {
-  color-scheme: light;
-}
-
-:root[data-theme="light"] button:not(.segment-control__option > input) {
-  color: var(--text);
-}
-
-:root[data-theme="light"] :is(button.ghost, .number-stepper-btn) {
-  color: var(--text);
-  background: var(--button-bg);
-}
-
-:root[data-theme="light"] :is(button.ghost:hover:not(:disabled), .number-stepper-btn:hover:not(:disabled)) {
-  color: var(--text);
-  background: var(--button-bg-hover);
-}
-
-:root[data-theme="light"] :is(.app-context-menu, .context-menu) {
-  background: #ffffff;
-  border-color: rgba(71, 85, 105, 0.24);
-  box-shadow: 0 18px 44px rgba(30, 41, 59, 0.18);
-}
-
-:root[data-theme="light"] :is(.app-context-menu .context-item, .context-menu button) {
-  color: var(--text);
-}
-
-:root[data-theme="light"] :is(.app-dialog, dialog)::backdrop {
-  background: rgba(30, 41, 59, 0.42);
-}
-
-:root[data-theme="light"] .app-tooltip-portal {
-  --app-tooltip-bg: #ffffff;
-  --app-tooltip-border-color: rgba(71, 85, 105, 0.42);
-  --app-tooltip-text-color: #172033;
-  box-shadow: 0 12px 24px rgba(30, 41, 59, 0.18);
-}
-
-:root[data-theme="light"] .app-tooltip-portal[data-tone="near-better"] {
-  --app-tooltip-bg: #fff7e6;
-  --app-tooltip-border-color: #c77a00;
-  --app-tooltip-text-color: #5f3700;
-}
-
-:root[data-theme="light"] .app-tooltip-portal[data-tone="deficit"] {
-  --app-tooltip-bg: #fff1f0;
-  --app-tooltip-border-color: #c43224;
-  --app-tooltip-text-color: #7a271a;
-}
-
-:root[data-theme="light"] :is(input:disabled, select:disabled, textarea:disabled, button:disabled) {
-  color: #64748b;
+:is(input, select, textarea, button) {
+  color-scheme: inherit;
 }

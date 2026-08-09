@@ -12,8 +12,8 @@
           --sidebar-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.78), rgba(15, 23, 42, 0.7));
           --sidebar-border: rgba(148, 163, 184, 0.16);
           --sidebar-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
-          --line: rgba(255, 255, 255, 0.1);
-          --line-soft: rgba(255, 255, 255, 0.06);
+          --line: var(--border-control);
+          --line-soft: var(--border-subtle);
           --text: #e5edf7;
           --muted: #9fb0c7;
           --accent: #5296ff;
@@ -30,7 +30,7 @@
           --action-reset-bg: var(--button-bg);
           --action-reset-bg-hover: var(--button-bg-hover);
           --action-reset-border: var(--button-border);
-          --action-reset-color: #f8fafc;
+          --action-reset-color: var(--text-on-overlay);
           --action-reset-shadow: var(--button-shadow);
           --action-warn-bg: linear-gradient(180deg, #f97316, #ea580c);
           --action-warn-bg-hover: linear-gradient(180deg, #fb923c, #f97316);
@@ -134,7 +134,7 @@
         }
 
         body.grade-vault-overlay-only #grade-vault-dialog::backdrop {
-          background: rgba(5, 10, 18, 0.38);
+          background: var(--backdrop-vault);
           backdrop-filter: blur(6px);
           -webkit-backdrop-filter: blur(6px);
         }
@@ -200,7 +200,7 @@
         }
 
         select {
-          color-scheme: dark;
+          color-scheme: inherit;
         }
 
         select option,
@@ -234,7 +234,7 @@
           border-radius: var(--control-radius);
           min-height: var(--control-height);
           padding: 0.45rem 0.72rem;
-          color: #e9eef5;
+          color: var(--button-secondary-fg);
           box-shadow: var(--button-shadow);
           transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease, box-shadow 0.14s ease, filter 0.14s ease, transform 0.14s ease;
         }
@@ -242,12 +242,13 @@
         button:hover:not(:disabled) {
           background: var(--button-bg-hover);
           border-color: var(--focus-border);
+          color: var(--button-secondary-fg);
           filter: brightness(1.04);
         }
 
         button:active:not(:disabled) {
           transform: translateY(0) scale(0.99);
-          background: rgba(22, 28, 38, 0.95);
+          background: var(--surface-control-active);
         }
 
         button:disabled {
@@ -273,7 +274,7 @@
         }
 
         input[type="date"] {
-          color-scheme: dark;
+          color-scheme: inherit;
         }
 
         input[type="date"]::-webkit-calendar-picker-indicator {
@@ -322,7 +323,7 @@
           border: 0;
           border-radius: 0;
           background: var(--button-bg);
-          color: #f8fafc;
+          color: var(--button-secondary-fg);
           font-size: 18px;
           font-weight: 700;
           line-height: 1;
@@ -382,7 +383,7 @@
         }
 
         button.ghost {
-          background: rgba(28, 34, 44, 0.75);
+          background: var(--surface-control-glass);
         }
 
         button.ghost:hover:not(:disabled) {
@@ -437,9 +438,9 @@
           gap: 2px;
           padding: 6px;
           border-radius: 10px;
-          background: rgba(18, 24, 34, 0.97);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+          background: var(--surface-overlay-strong);
+          border: 1px solid var(--border-control);
+          box-shadow: var(--shadow-overlay);
           z-index: 2000;
         }
 
@@ -454,18 +455,18 @@
           border: 1px solid transparent;
           background: transparent;
           padding: 0.38rem 0.56rem;
-          color: #e9eef5;
+          color: var(--text-primary);
           box-shadow: none;
           font-size: 0.86rem;
         }
 
         .app-context-menu .context-item:hover {
-          background: rgba(82, 150, 255, 0.24);
-          border-color: rgba(82, 150, 255, 0.5);
+          background: var(--nav-hover);
+          border-color: var(--border-focus);
         }
 
         .app-context-menu .context-item:disabled {
-          color: rgba(210, 220, 235, 0.4);
+          color: var(--text-disabled);
           background: transparent;
           border-color: transparent;
           filter: none;
@@ -475,7 +476,7 @@
         .app-context-menu .context-item.separator-before {
           margin-top: 6px;
           padding-top: 0.62rem;
-          border-top: 1px solid rgba(255, 255, 255, 0.14);
+          border-top: 1px solid var(--border-subtle);
           border-top-left-radius: 0;
           border-top-right-radius: 0;
         }
@@ -597,7 +598,7 @@
         }
 
         .app-dialog::backdrop {
-          background: rgba(5, 10, 18, 0.62);
+          background: var(--backdrop-dialog-module);
         }
 
         .app-dialog form {
@@ -639,15 +640,15 @@
           margin: 0;
           padding: 0.78rem;
           min-width: 0;
-          border: 1px solid rgba(148, 163, 184, 0.2);
+          border: 1px solid var(--border-subtle);
           border-radius: 12px;
-          background: rgba(15, 23, 42, 0.24);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+          background: var(--surface-subtle-transparent);
+          box-shadow: var(--shadow-inset);
         }
 
         .schoolmanager-transfer-setup-title {
           margin: 0;
-          color: rgba(203, 213, 225, 0.78);
+          color: var(--text-secondary);
           font-size: 0.76rem;
           font-weight: 800;
           letter-spacing: 0.06em;
@@ -665,7 +666,7 @@
 
         .schoolmanager-transfer-step p {
           margin: 0;
-          color: rgba(226, 232, 240, 0.88);
+          color: var(--text-strong);
           font-size: 0.92rem;
           line-height: 1.35;
         }
@@ -747,7 +748,7 @@
           min-height: 2.75rem;
           padding: 0.46rem 0.72rem;
           border-radius: 10px;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.88rem;
           font-weight: 500;
           line-height: 1.08;
@@ -847,7 +848,7 @@
         }
 
         .schoolmanager-transfer-number-row>span {
-          color: rgba(226, 232, 240, 0.88);
+          color: var(--text-strong);
           font-size: 0.92rem;
           line-height: 1.35;
         }
@@ -859,7 +860,7 @@
         .schoolmanager-transfer-bookmarklet-actions {
           margin: 0;
           padding-left: 2.2rem;
-          color: rgba(226, 232, 240, 0.88);
+          color: var(--text-strong);
           font-size: 0.92rem;
           line-height: 1.35;
           list-style: disc;
@@ -989,7 +990,7 @@
           margin: 0;
           line-height: 1.45;
           white-space: pre-line;
-          color: #dbe4ef;
+          color: var(--text-dialog);
         }
 
         .message-dialog-input-row {
@@ -1031,7 +1032,7 @@
 
         .sidebar-panel {
           position: relative;
-          background: var(--sidebar-surface);
+          background: var(--sidebar-surface-opaque, var(--sidebar-surface));
           border: 0;
           border-right: 1px solid transparent;
           border-radius: 0;
@@ -1050,6 +1051,14 @@
           overscroll-behavior: contain;
           scrollbar-gutter: auto;
           container-type: inline-size;
+        }
+
+        .sidebar-panel {
+          scrollbar-color: var(--scrollbar-thumb) transparent;
+        }
+
+        .sidebar-panel::-webkit-scrollbar-track {
+          background: var(--sidebar-surface-opaque, var(--sidebar-surface));
         }
 
         .sidebar-resize-handle {
@@ -1173,7 +1182,7 @@
           padding: 0;
           font-size: 1.25rem;
           line-height: 1;
-          background: rgba(28, 34, 44, 0.75);
+          background: var(--surface-control-glass);
         }
 
         .settings-nav-btn.active {
@@ -1192,7 +1201,7 @@
           position: relative;
           width: 100%;
           text-align: center;
-          background: rgba(28, 34, 44, 0.75);
+          background: var(--surface-control-glass);
           white-space: nowrap;
           overflow: hidden;
           text-overflow: ellipsis;
@@ -1209,21 +1218,19 @@
         }
 
         .nav-btn.active {
-          background: rgba(60, 72, 92, 0.98);
-          border-color: rgba(255, 255, 255, 0.98);
-          color: #ffffff;
+          background: var(--surface-segment-active);
+          border-color: var(--segment-active-border);
+          color: var(--text-on-accent);
           font-weight: 500;
-          box-shadow:
-            inset 0 0 0 2px rgba(255, 255, 255, 0.7),
-            0 8px 18px rgba(0, 0, 0, 0.34);
-          filter: saturate(1.15) brightness(1.06);
+          box-shadow: var(--shadow-segment-active);
+          filter: none;
           text-shadow: none;
         }
 
         #sidebarPanel .nav-btn:hover {
-          background: rgba(60, 72, 92, 0.98);
-          border-color: rgba(148, 163, 184, 0.72);
-          color: #ffffff;
+          background: var(--nav-hover);
+          border-color: var(--border-focus);
+          color: var(--text-primary);
         }
 
         .sidebar-section {
@@ -1308,8 +1315,8 @@
           gap: 0.46rem;
           border-radius: 12px;
           padding: 0.5rem 0.62rem;
-          background: rgba(28, 34, 44, 0.75);
-          color: rgba(226, 232, 240, 0.88);
+          background: var(--surface-control-glass);
+          color: var(--text-strong);
           font-weight: 500;
           line-height: 1.1;
           white-space: nowrap;
@@ -1339,11 +1346,11 @@
         .sidebar-grade-privacy-toggle {
           min-height: 40px;
           padding: 0.44rem;
-          background: rgba(28, 34, 44, 0.75);
+          background: var(--surface-control-glass);
         }
 
         .sidebar-grade-privacy-toggle.is-inactive {
-          color: rgba(203, 213, 225, 0.72);
+          color: var(--text-secondary-contrast);
         }
 
         .sidebar-grade-privacy-toggle.is-active {
@@ -1358,7 +1365,7 @@
         }
 
         .sidebar-grade-privacy-toggle.is-active {
-          background: rgba(28, 34, 44, 0.75);
+          background: var(--surface-control-glass);
           box-shadow: none;
         }
 
@@ -1420,8 +1427,8 @@
           width: 44px;
           height: 22px;
           border-radius: 999px;
-          background: rgba(15, 23, 42, 0.78);
-          border: 1px solid rgba(148, 163, 184, 0.45);
+          background: var(--surface-overlay-muted);
+          border: 1px solid var(--border-control);
           box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.34);
         }
 
@@ -1514,7 +1521,7 @@
           min-height: 2.25rem;
           padding: 0.36rem 0.42rem;
           border-radius: 9px;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.72rem;
           font-weight: 500;
           line-height: 1.08;
@@ -1623,7 +1630,7 @@
         .sidebar-grade-action-title {
           width: 100%;
           min-width: 0;
-          color: rgba(226, 232, 240, 0.72);
+          color: var(--text-secondary-contrast);
           font-size: 0.72rem;
           font-weight: 800;
           line-height: 1.1;
@@ -1767,7 +1774,7 @@
         .sidebar-list li[data-course-id="separator"] {
           margin: 0.2rem 0 0.1rem;
           padding-top: 0.45rem;
-          border-top: 1px solid rgba(255, 255, 255, 0.12);
+          border-top: 1px solid var(--sidebar-border);
         }
 
         .sidebar-list li[data-course-id][data-hidden-in-sidebar="1"] button .course-name {
@@ -1775,7 +1782,9 @@
         }
 
         .sidebar-list li[data-course-id] button:hover {
-          filter: brightness(1.03);
+          filter: none;
+          background: var(--nav-hover);
+          box-shadow: var(--focus-ring);
         }
 
         .sidebar-list li[data-course-id] button {
@@ -1814,10 +1823,9 @@
         }
 
         .sidebar-list li button.active {
-          border-color: rgba(255, 255, 255, 0.98) !important;
-          box-shadow:
-            inset 0 0 0 2px rgba(255, 255, 255, 0.7),
-            0 8px 18px rgba(0, 0, 0, 0.34);
+          border-width: 2px !important;
+          border-color: var(--course-active-border) !important;
+          box-shadow: none;
           filter: saturate(1.15) brightness(1.06);
         }
 
@@ -2180,8 +2188,8 @@
           appearance: none;
           border: 1px solid var(--module-surface-border);
           border-radius: 6px 6px 0 0;
-          background: rgba(30, 36, 46, 0.75);
-          color: #cbd5e1;
+          background: var(--surface-segment);
+          color: var(--segment-label-fg);
           font-weight: 700;
           font-size: 0.94rem;
           padding: 0.58rem 0.98rem 0.64rem;
@@ -2191,9 +2199,9 @@
         }
 
         .settings-tab:hover:not(.active) {
-          background: rgba(82, 150, 255, 0.18);
-          border-color: rgba(82, 150, 255, 0.45);
-          color: #f1f5f9;
+          background: var(--surface-segment-hover);
+          border-color: var(--segment-active-border);
+          color: var(--segment-hover-fg);
         }
 
         .settings-tab:disabled {
@@ -2214,10 +2222,10 @@
         }
 
         .settings-tab.active {
-          background: rgba(82, 150, 255, 0.22);
-          border-color: rgba(82, 150, 255, 0.7);
+          background: var(--surface-segment-active);
+          border-color: var(--segment-active-border);
           border-bottom-color: transparent;
-          color: #e8eef6;
+          color: var(--segment-active-fg);
           z-index: 1;
           box-shadow: 0 10px 24px rgba(24, 84, 167, 0.18);
         }
@@ -2301,9 +2309,9 @@
           column-gap: 0.8rem;
           row-gap: 0.6rem;
           padding: 0.8rem;
-          border: 1px solid var(--border);
+          border: 1px solid var(--border-subtle);
           border-radius: 0.65rem;
-          background: var(--surface-raised);
+          background: var(--surface-panel);
         }
 
         .settings-grade-occurrence-row label {
@@ -2490,8 +2498,8 @@
 
         .table-panel {
           background: var(--module-surface);
-          border: 1px solid var(--module-surface-border);
-          border-radius: var(--module-surface-radius);
+          border: none;
+          border-radius: 0;
           padding: 8px;
           overflow: auto;
           box-shadow: var(--module-surface-shadow);
@@ -2504,6 +2512,9 @@
           border: none;
           border-radius: 0;
           padding: 0;
+          box-shadow: none;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
           flex: 1 1 auto;
           min-height: 0;
           max-width: 100%;
@@ -2542,7 +2553,7 @@
 
         .archive-dialog-copy {
           margin: -0.1rem 0 0.2rem;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.9rem;
           line-height: 1.4;
         }
@@ -2557,7 +2568,7 @@
         }
 
         .archive-dialog-toggle {
-          color: rgba(226, 232, 240, 0.95);
+          color: var(--text-strong);
           font-weight: 700;
           min-height: 22px;
         }
@@ -2583,9 +2594,9 @@
           padding: 6px 9px;
           border: 1px solid rgba(148, 163, 184, 0.3);
           border-radius: 12px;
-          background: rgba(15, 23, 42, 0.96);
-          box-shadow: 0 10px 26px rgba(2, 6, 23, 0.28);
-          color: #e2e8f0;
+          background: var(--surface-overlay-strong);
+          box-shadow: var(--shadow-overlay);
+          color: var(--text-on-overlay-secondary);
           font-size: 0.76rem;
           font-weight: 600;
           line-height: 1.35;
@@ -2602,9 +2613,9 @@
           width: 10px;
           height: 10px;
           transform: translateY(-50%) rotate(45deg);
-          background: rgba(15, 23, 42, 0.96);
-          border-left: 1px solid rgba(148, 163, 184, 0.3);
-          border-bottom: 1px solid rgba(148, 163, 184, 0.3);
+          background: var(--surface-overlay-strong);
+          border-left: 1px solid var(--border-control);
+          border-bottom: 1px solid var(--border-control);
         }
 
         .archive-dialog-info[hidden] {
@@ -2699,13 +2710,13 @@
         .archive-dialog-status {
           min-height: 1.25rem;
           margin: 0;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.88rem;
           line-height: 1.4;
         }
 
         .archive-dialog-status.is-error {
-          color: #fecaca;
+          color: var(--text-error);
         }
 
         .archive-dialog-status.is-ok {
@@ -3068,7 +3079,7 @@
           padding: 0.65rem;
           border: 1px solid rgba(148, 163, 184, 0.16);
           border-radius: 12px;
-          background: rgba(15, 23, 42, 0.28);
+          background: var(--surface-panel-subtle);
         }
 
         .grade-test-scale-settings-card-head {
@@ -3096,7 +3107,7 @@
           min-width: 0;
           border-radius: 9px;
           border: 1px solid rgba(148, 163, 184, 0.2);
-          background: rgba(15, 23, 42, 0.5);
+          background: var(--surface-control-muted);
           color: var(--text);
           padding: 0.42rem 0.5rem;
         }
@@ -3352,7 +3363,7 @@
           border-radius: 0;
           border: none;
           background: transparent;
-          color: rgba(226, 232, 240, 0.96);
+          color: var(--text-strong);
           box-shadow: none;
           font-size: 1.3125rem;
           font-weight: 800;
@@ -3574,7 +3585,7 @@
           border: 1px dashed rgba(245, 158, 11, 0.35);
           border-radius: 14px;
           background: rgba(20, 26, 34, 0.45);
-          color: rgba(226, 232, 240, 0.82);
+          color: var(--text-strong);
           text-align: center;
         }
 
@@ -3629,7 +3640,7 @@
           margin: 0;
           font-size: 0.88rem;
           line-height: 1.45;
-          color: rgba(226, 232, 240, 0.76);
+          color: var(--text-hint);
         }
 
         .grade-vault-dialog-hint:empty {
@@ -3638,7 +3649,7 @@
 
         .grade-vault-dialog-error {
           margin: 0;
-          color: #fecaca;
+          color: var(--text-error);
           font-size: 0.88rem;
         }
 
@@ -3765,12 +3776,12 @@
           position: sticky;
           top: 0;
           padding: clamp(1rem, 1.45vw, 1.35rem);
-          border: 1px solid var(--module-surface-border);
+          border: 1px solid var(--control-border);
           border-radius: var(--module-surface-radius);
-          background: var(--module-surface-strong);
-          box-shadow: var(--module-surface-shadow);
-          backdrop-filter: saturate(145%) blur(12px);
-          -webkit-backdrop-filter: saturate(145%) blur(12px);
+          background: transparent;
+          box-shadow: none;
+          backdrop-filter: none;
+          -webkit-backdrop-filter: none;
           overflow: visible;
         }
 
@@ -3791,9 +3802,9 @@
           gap: 0.85rem;
           min-width: 0;
           padding: clamp(0.9rem, 1.25vw, 1.15rem);
-          border: 1px solid var(--module-surface-border);
+          border: 1px solid var(--control-border);
           border-radius: var(--module-surface-radius);
-          background: var(--module-surface-strong);
+          background: var(--surface-panel);
           box-shadow: var(--module-surface-shadow);
           backdrop-filter: saturate(145%) blur(12px);
           -webkit-backdrop-filter: saturate(145%) blur(12px);
@@ -3802,9 +3813,9 @@
         #view-grades .grades-entry-distribution,
         #view-grades .grades-entry-afb-check-panel {
           padding: clamp(0.9rem, 1.25vw, 1.15rem);
-          border: 1px solid var(--module-surface-border);
+          border: 1px solid var(--control-border);
           border-radius: var(--module-surface-radius);
-          background: var(--module-surface-strong);
+          background: var(--surface-panel);
           box-shadow: var(--module-surface-shadow);
           backdrop-filter: saturate(145%) blur(12px);
           -webkit-backdrop-filter: saturate(145%) blur(12px);
@@ -3836,7 +3847,7 @@
           padding: var(--distribution-segment-pad);
           border: 1px solid rgba(148, 163, 184, 0.16);
           border-radius: 12px;
-          background: rgba(15, 23, 42, 0.48);
+          background: var(--surface-segment);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
@@ -3866,7 +3877,7 @@
           padding: 0.34rem 0.42rem;
           border: 1px solid transparent;
           border-radius: 9px;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.76rem;
           font-weight: 800;
           line-height: 1.05;
@@ -3904,13 +3915,9 @@
             left: var(--distribution-segment-pad);
             width: calc((100% - 0.4rem - var(--distribution-segment-gap)) / 2);
             border-radius: 9px;
-            background:
-              linear-gradient(180deg, rgba(82, 150, 255, 0.34), rgba(59, 130, 246, 0.18)),
-              rgba(37, 99, 235, 0.2);
-            border: 1px solid rgba(96, 165, 250, 0.42);
-            box-shadow:
-              inset 0 1px 0 rgba(255, 255, 255, 0.1),
-              0 8px 18px rgba(15, 23, 42, 0.22);
+            background: var(--surface-segment-active);
+            border: 1px solid var(--segment-indicator-border);
+            box-shadow: var(--shadow-segment-indicator);
             transform: translateX(0);
             transition:
               transform 280ms cubic-bezier(0.18, 0.82, 0.24, 1),
@@ -3962,9 +3969,9 @@
           min-width: 0;
           height: 10.9rem;
           padding: 0.65rem 0.52rem 2rem;
-          border: 1px solid rgba(148, 163, 184, 0.14);
+          border: 1px solid var(--control-border);
           border-radius: 16px;
-          background: rgba(15, 23, 42, 0.22);
+          background: var(--surface-overlay-soft);
           overflow: hidden;
         }
 
@@ -4177,7 +4184,7 @@
         }
 
         .grades-entry-afb-check.has-warning .grades-entry-afb-check-head span {
-          color: #fecaca;
+          color: var(--text-error);
           background: rgba(239, 68, 68, 0.16);
         }
 
@@ -4232,7 +4239,7 @@
           position: relative;
           min-width: 0;
           padding-left: 1rem;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.66rem;
           font-weight: 400;
           line-height: 1.25;
@@ -4250,7 +4257,7 @@
         }
 
         .grades-entry-afb-check-rules li.has-warning {
-          color: #fecaca;
+          color: var(--text-error);
         }
 
         .grades-entry-afb-check-rules li.has-warning::before {
@@ -4285,9 +4292,9 @@
           gap: 1rem 0.85rem;
           align-items: start;
           padding: 0.85rem;
-          border: 1px solid rgba(148, 163, 184, 0.14);
+          border: 1px solid var(--control-border);
           border-radius: 20px;
-          background: rgba(15, 23, 42, 0.16);
+          background: transparent;
           position: relative;
         }
 
@@ -4345,7 +4352,7 @@
           min-height: 46px;
           padding: 0.72rem 0.95rem;
           border-radius: 14px;
-          background: rgba(15, 23, 42, 0.62);
+          background: var(--surface-overlay-medium-strong);
           border: 1px solid rgba(148, 163, 184, 0.18);
           color: var(--text);
           line-height: 1.2;
@@ -4416,7 +4423,7 @@
           padding: 0.25rem;
           border-radius: 14px;
           border-color: rgba(148, 163, 184, 0.16);
-          background: rgba(15, 23, 42, 0.48);
+          background: var(--surface-overlay-medium);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
         }
 
@@ -4456,7 +4463,7 @@
           min-height: 2.8rem;
           padding: 0.5rem 0.8rem;
           border-radius: 10px;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.88rem;
           background: transparent;
         }
@@ -4466,8 +4473,10 @@
         .grades-entry-test-predicate-field .assessment-mode-option:hover span,
         .grades-entry-course-level-field .assessment-mode-option:hover span,
         .grades-entry-halfyear-field .assessment-mode-option:hover span {
-          color: rgba(248, 250, 252, 0.94);
-          background: rgba(148, 163, 184, 0.08);
+          color: var(--segment-hover-fg);
+          background: var(--surface-segment-hover);
+          border-color: var(--segment-active-border);
+          box-shadow: var(--shadow-segment-hover);
         }
 
         .grades-entry-mode-field .assessment-mode-option input:checked+span,
@@ -4476,9 +4485,9 @@
         .grades-entry-course-level-field .assessment-mode-option input:checked+span,
         .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
           color: #f8fbff;
-          background: rgba(59, 130, 246, 0.24);
-          border-color: rgba(96, 165, 250, 0.34);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          background: var(--surface-segment-active-flat);
+          border-color: var(--segment-active-border);
+          box-shadow: var(--shadow-segment-active);
         }
 
         @supports selector(.assessment-mode-toggle:has(input:checked)) {
@@ -4497,13 +4506,9 @@
             left: var(--assessment-segment-pad);
             width: calc((100% - 0.5rem - var(--assessment-segment-total-gap)) / var(--assessment-segment-count));
             border-radius: 10px;
-            background:
-              linear-gradient(180deg, rgba(82, 150, 255, 0.34), rgba(59, 130, 246, 0.18)),
-              rgba(37, 99, 235, 0.2);
-            border: 1px solid rgba(96, 165, 250, 0.42);
-            box-shadow:
-              inset 0 1px 0 rgba(255, 255, 255, 0.1),
-              0 8px 18px rgba(15, 23, 42, 0.22);
+            background: var(--surface-segment-active-flat);
+            border: 1px solid var(--segment-indicator-border);
+            box-shadow: var(--shadow-segment-indicator);
             transform: translateX(0);
             transition:
               transform 280ms cubic-bezier(0.18, 0.82, 0.24, 1),
@@ -4517,22 +4522,8 @@
           .grades-entry-test-predicate-field .assessment-mode-toggle::after,
           .grades-entry-course-level-field .assessment-mode-toggle::after,
           .grades-entry-halfyear-field .assessment-mode-toggle::after {
-            content: "";
-            position: absolute;
-            z-index: 0;
-            top: calc(var(--assessment-segment-pad) + 0.1rem);
-            bottom: 56%;
-            left: calc(var(--assessment-segment-pad) + 0.28rem);
-            width: calc(((100% - 0.5rem - var(--assessment-segment-total-gap)) / var(--assessment-segment-count)) - 0.56rem);
-            border-radius: 999px;
-            background: rgba(255, 255, 255, 0.28);
-            filter: blur(5px);
-            opacity: 0.3;
-            transform: translateX(0) scaleX(0.72);
-            transition:
-              transform 310ms cubic-bezier(0.18, 0.82, 0.24, 1),
-              opacity 220ms ease;
-            pointer-events: none;
+            content: none;
+            display: none;
           }
 
           .grades-entry-mode-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
@@ -4599,7 +4590,7 @@
 
         .grades-entry-course-level-field.is-disabled .assessment-mode-toggle {
           border-color: rgba(148, 163, 184, 0.12);
-          background: rgba(15, 23, 42, 0.28);
+          background: var(--surface-panel-subtle);
           cursor: not-allowed;
         }
 
@@ -4665,7 +4656,7 @@
           display: grid;
           place-items: center;
           padding: 24px;
-          background: rgba(5, 10, 18, 0.5);
+          background: var(--backdrop-save);
           backdrop-filter: saturate(145%) blur(8px);
           -webkit-backdrop-filter: saturate(145%) blur(8px);
           opacity: 1;
@@ -4692,7 +4683,7 @@
             linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(10, 18, 35, 0.92)),
             var(--module-surface-strong);
           box-shadow: var(--module-surface-shadow), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-          color: #f8fafc;
+          color: var(--text-on-overlay);
           font-size: 1.16rem;
           font-weight: 700;
           line-height: 1.35;
@@ -4735,7 +4726,7 @@
           box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.08),
             0 8px 20px rgba(2, 6, 23, 0.28);
-          color: #f8fafc;
+          color: var(--text-on-overlay);
           cursor: pointer;
           font: inherit;
           font-size: 0.95rem;
@@ -4801,7 +4792,7 @@
           scrollbar-width: auto;
           scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
           -ms-overflow-style: auto;
-          background: rgba(24, 31, 43, 0.96);
+          background: var(--surface-panel);
           border-radius: 999px;
         }
 
@@ -4844,7 +4835,7 @@
           position: sticky;
           top: 0;
           z-index: 5;
-          background: rgba(30, 36, 46, 0.995);
+          background: var(--surface-week-header);
           background-clip: padding-box;
         }
 
@@ -4853,7 +4844,7 @@
           position: sticky;
           left: 0;
           z-index: 7;
-          background: rgba(24, 31, 43, 0.995);
+          background: var(--surface-panel);
           background-clip: padding-box;
         }
 
@@ -5005,7 +4996,7 @@
           min-width: 0;
           border: 1px solid rgba(148, 163, 184, 0.22);
           border-radius: 9px;
-          background: rgba(15, 23, 42, 0.58);
+          background: var(--surface-control-emphasized);
           color: var(--text);
           font: inherit;
           font-weight: 700;
@@ -5027,7 +5018,7 @@
           padding: 0;
           border: 2px solid rgba(148, 163, 184, 0.42);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.44);
+          background: var(--surface-control-subtle);
           color: var(--text);
           font: inherit;
           font-weight: 800;
@@ -5314,7 +5305,7 @@
         }
 
         .grades-entry-summary {
-          color: rgba(226, 232, 240, 0.72);
+          color: var(--text-secondary-contrast);
           font-size: 0.82rem;
           text-align: right;
         }
@@ -5540,7 +5531,7 @@
           justify-content: space-between;
           align-items: center;
           font-size: 0.7rem;
-          color: rgba(226, 232, 240, 0.62);
+          color: var(--text-muted-contrast);
         }
 
         .grades-privacy-empty {
@@ -5551,7 +5542,7 @@
           border-radius: 12px;
           border: 1px dashed rgba(148, 163, 184, 0.22);
           background: rgba(255, 255, 255, 0.04);
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           text-align: center;
           font-size: 0.8rem;
           font-weight: 600;
@@ -5571,7 +5562,7 @@
           outline: none;
           border-radius: 0;
           background: transparent;
-          color: rgba(226, 232, 240, 0.52);
+          color: var(--text-muted-contrast);
           cursor: nwse-resize;
           touch-action: none;
           box-shadow: none;
@@ -5621,7 +5612,7 @@
           scrollbar-width: auto;
           scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
           -ms-overflow-style: auto;
-          background: rgba(24, 31, 43, 0.96);
+          background: var(--surface-panel);
           border-radius: 999px;
         }
 
@@ -5683,8 +5674,8 @@
           border-spacing: 0;
           border-radius: 12px;
           overflow: hidden;
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          background: transparent;
+          border: 1px solid var(--border-subtle);
+          background: var(--surface-panel);
         }
 
         .grades-master-table-shell {
@@ -5693,8 +5684,8 @@
           max-width: none;
           border-radius: 12px;
           overflow: visible;
-          border: 1px solid rgba(255, 255, 255, 0.12);
-          background: transparent;
+          border: 1px solid var(--border-subtle);
+          background: var(--surface-panel);
         }
 
         .grades-master-table {
@@ -5711,7 +5702,7 @@
         .grades-category-layout td {
           padding: 0.45rem;
           vertical-align: top;
-          border-right: 1px solid rgba(255, 255, 255, 0.05);
+          border-right: 1px solid var(--border-subtle);
         }
 
         .grades-category-layout tr>*:last-child {
@@ -5734,8 +5725,8 @@
           --grade-boundary-left-shadow: inset 0 0 0 0 transparent;
           --grade-boundary-right-shadow: inset 0 0 0 0 transparent;
           border: none;
-          border-right: 1px solid rgba(255, 255, 255, 0.05);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          border-right: 1px solid var(--border-control);
+          border-bottom: 1px solid var(--border-control);
           box-shadow:
             var(--grade-cell-shadow),
             var(--grade-boundary-left-shadow),
@@ -5758,7 +5749,7 @@
 
         .grades-total-table th,
         .grade-block-table th {
-          color: #dbe4ef;
+          color: var(--text-dialog);
           text-align: center;
           position: sticky;
           top: 0;
@@ -5779,7 +5770,7 @@
           min-width: max-content;
           white-space: nowrap;
           overflow: visible;
-          background: rgba(24, 31, 43, 0.96);
+          background: var(--surface-panel);
         }
 
         .grades-total-table thead th.student-col,
@@ -5821,7 +5812,7 @@
           place-items: center;
           width: 100%;
           min-width: 0;
-          color: rgba(226, 232, 240, 0.94);
+          color: var(--text-strong);
           font-size: 0.76rem;
           font-weight: 700;
           line-height: 1.12;
@@ -5840,7 +5831,7 @@
           right: -1px;
           bottom: 0;
           width: 1px;
-          background: rgba(255, 255, 255, 0.08);
+          background: var(--border-control);
           pointer-events: none;
         }
 
@@ -5920,6 +5911,7 @@
           min-width: 2.05rem;
           text-align: center;
           font-weight: 700;
+          background: var(--grades-table-total-surface);
         }
 
         .grades-master-table th.grade-total-col,
@@ -5928,16 +5920,7 @@
         }
 
         .grades-total-table th.grade-total-col {
-          background: rgba(34, 43, 60, 0.96);
-        }
-
-        .grades-master-table th.grade-total-col,
-        .grades-master-table td.grade-total-col {
-          background: rgba(24, 31, 43, 0.92);
-        }
-
-        .grades-total-table td.grade-total-col {
-          background: rgba(34, 43, 60, 0.96);
+          background: var(--surface-week-header);
         }
 
         .grade-block-table th.grade-partial-col,
@@ -5946,7 +5929,7 @@
           min-width: 70px;
           text-align: center;
           font-weight: 700;
-          background: rgba(24, 31, 43, 0.55);
+          background: var(--surface-panel);
         }
 
         .grade-block-table th.grade-add-col,
@@ -5957,9 +5940,9 @@
         }
 
         .grades-master-table th {
-          color: #dbe4ef;
+          color: var(--text-dialog);
           text-align: center;
-          background: rgba(30, 36, 46, 0.96);
+          background: var(--surface-week-header);
           position: static;
         }
 
@@ -5974,7 +5957,7 @@
         .grades-master-table thead th {
           position: relative;
           z-index: 10;
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
           background-clip: border-box;
           padding-block: 0.2rem;
         }
@@ -6005,7 +5988,7 @@
         .grades-master-table th.grade-subcategory-head,
         .grades-master-table th.grade-category-collapsed-head,
         .grades-master-table th.grade-subcategory-collapsed-head {
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
         }
 
         .grades-master-table thead .grades-master-group-button {
@@ -6028,11 +6011,11 @@
 
         .grades-master-table th.grade-category-head,
         .grades-master-table th.grade-category-collapsed-head {
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          border-top: 1px solid var(--border-subtle);
         }
 
         .grades-master-table th.grade-period-head {
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
           font-weight: 800;
           letter-spacing: 0.02em;
           text-align: left;
@@ -6053,7 +6036,7 @@
 
         .grades-master-table th.grade-period-total-head,
         .grades-master-table td.grade-period-total-col {
-          background: rgba(24, 31, 43, 0.99);
+          background: var(--surface-week-header);
         }
 
         .grades-master-table th.is-boundary-category,
@@ -6085,13 +6068,13 @@
           right: 0;
           bottom: -1px;
           width: 1px;
-          background: rgb(75, 83, 96);
+          background: var(--border-control);
           pointer-events: none;
         }
 
         .grades-master-table th.is-leading-boundary-category,
         .grades-master-table td.is-leading-boundary-category {
-          --grade-boundary-left-shadow: inset 1px 0 0 rgb(75, 83, 96);
+          --grade-boundary-left-shadow: inset 1px 0 0 var(--border-control);
         }
 
         .grades-master-table th.is-leading-boundary-subcategory::before,
@@ -6103,7 +6086,7 @@
           bottom: 0;
           left: 0;
           width: 1px;
-          background: rgb(75, 83, 96);
+          background: var(--border-control);
           pointer-events: none;
         }
 
@@ -6129,7 +6112,7 @@
           padding-block: 0.1rem;
           text-align: left;
           border-bottom: none;
-          --grade-cell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          --grade-cell-shadow: inset 0 1px 0 var(--border-control);
         }
 
         .grades-master-table th.grade-category-head .grades-master-group-button:not(.is-collapsed-header),
@@ -6139,7 +6122,7 @@
 
         .grades-master-table th.grade-subcategory-collapsed-head {
           vertical-align: top;
-          --grade-cell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          --grade-cell-shadow: inset 0 1px 0 var(--border-control);
         }
 
         .grades-master-table th.grade-assessment-col,
@@ -6148,7 +6131,7 @@
           min-width: var(--grades-master-assessment-col-min-width);
           padding-inline: 0.14rem;
           text-align: center;
-          --grade-cell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          --grade-cell-shadow: inset 0 1px 0 var(--border-control);
         }
 
         .grades-master-table th.grade-assessment-col {
@@ -6177,16 +6160,20 @@
           font: inherit;
           line-height: 1;
           touch-action: none;
+          opacity: 0;
+          transition: opacity 120ms ease;
         }
 
         .grades-master-table .grade-assessment-drag-handle:hover {
           cursor: grab;
+          opacity: 1;
         }
 
         .grades-master-table .grade-assessment-drag-handle:focus-visible {
-          outline: 1px dashed rgba(125, 186, 255, 0.9);
+          outline: 1px dashed var(--border-focus);
           outline-offset: -2px;
           cursor: grab;
+          opacity: 1;
         }
 
         .grades-master-table .grade-assessment-drag-handle:active {
@@ -6201,7 +6188,7 @@
           box-shadow:
             var(--grade-boundary-left-shadow),
             var(--grade-boundary-right-shadow),
-            inset 4px 0 0 rgba(125, 186, 255, 0.98),
+            inset 4px 0 0 var(--border-focus),
             var(--grade-cell-shadow);
         }
 
@@ -6209,7 +6196,7 @@
           box-shadow:
             var(--grade-boundary-left-shadow),
             var(--grade-boundary-right-shadow),
-            inset -4px 0 0 rgba(125, 186, 255, 0.98),
+            inset -4px 0 0 var(--border-focus),
             var(--grade-cell-shadow);
         }
 
@@ -6236,7 +6223,7 @@
         .grades-master-table td.grade-assessment-col.is-lesson-spotlight {
           background:
             linear-gradient(180deg, rgba(82, 150, 255, 0.18), rgba(82, 150, 255, 0.08)),
-            rgba(24, 31, 43, 0.58);
+            var(--surface-panel);
           box-shadow:
             var(--grade-boundary-left-shadow),
             var(--grade-boundary-right-shadow),
@@ -6247,13 +6234,13 @@
         .grades-master-table thead th.grade-assessment-col.is-lesson-spotlight {
           background:
             linear-gradient(180deg, rgba(82, 150, 255, 0.22), rgba(82, 150, 255, 0.12)),
-            rgb(24, 31, 43);
+            var(--surface-week-header);
         }
 
         .grades-master-table th.grade-assessment-col.is-lesson-spotlight .grade-assessment-label,
         .grades-master-table td.grade-assessment-col.is-lesson-spotlight .grade-cell-display-button,
         .grades-master-table td.grade-assessment-col.is-lesson-spotlight .grade-checkbox-display-button {
-          color: rgba(219, 234, 254, 0.98);
+          color: var(--text-primary);
         }
 
         .grades-master-table th[data-grade-column-key] {
@@ -6321,7 +6308,7 @@
           min-width: 0;
           padding-inline: 0.14rem;
           text-align: center;
-          --grade-cell-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+          --grade-cell-shadow: inset 0 1px 0 var(--border-control);
         }
 
         .grades-master-table th.grade-category-partial-col,
@@ -6335,38 +6322,38 @@
           padding-inline: 0.14rem;
           text-align: center;
           font-weight: 700;
-          background: rgba(24, 31, 43, 0.55);
+          background: var(--surface-subtle);
         }
 
         .grades-master-table th.grade-category-partial-col.is-merged-head {
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
           padding: 0.12rem 0.14rem;
         }
 
         .grades-master-table th.grade-subcategory-partial-col.is-merged-head {
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
           padding: 0.12rem 0.14rem;
         }
 
         .grades-master-table th.grade-homework-col.is-merged-head {
-          --grades-homework-cell-bg: rgb(24, 31, 43);
-          color: #dbe4ef;
+          --grades-homework-cell-bg: var(--surface-week-header);
+          color: var(--text-dialog);
           padding: 0.12rem 0.22rem;
-          border-top: 1px solid rgba(255, 255, 255, 0.05);
+          border-top: 1px solid var(--border-subtle);
           letter-spacing: 0.04em;
         }
 
         .grades-master-table th.grade-homework-col,
         .grades-master-table td.grade-homework-col {
-          --grades-homework-cell-bg: rgba(24, 31, 43, 0.55);
+          --grades-homework-cell-bg: var(--surface-subtle);
           background:
             linear-gradient(to right,
-              rgba(255, 255, 255, 0.05) 0,
-              rgba(255, 255, 255, 0.05) 1px,
+              var(--border-subtle) 0,
+              var(--border-subtle) 1px,
               transparent 1px,
               transparent calc(100% - 1px),
-              rgba(255, 255, 255, 0.05) calc(100% - 1px),
-              rgba(255, 255, 255, 0.05) 100%),
+              var(--border-subtle) calc(100% - 1px),
+              var(--border-subtle) 100%),
             var(--grades-homework-cell-bg);
         }
 
@@ -6379,21 +6366,25 @@
           padding-inline: 0.12rem;
           max-width: none;
           text-align: center;
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
         }
 
         .grades-master-table thead th.grade-total-col {
-          background: rgb(24, 31, 43);
+          background: var(--surface-week-header);
+        }
+
+        .grades-master-table td.grade-total-col {
+          background: var(--surface-week-header);
         }
 
         .grades-master-table td.grade-category-collapsed-col,
         .grades-master-table td.grade-subcategory-collapsed-col {
-          color: rgba(226, 232, 240, 0.35);
+          color: var(--text-muted-contrast);
         }
 
         .grades-master-table td.grade-category-collapsed-col .grade-total-value,
         .grades-master-table td.grade-subcategory-collapsed-col .grade-total-value {
-          color: rgba(226, 232, 240, 0.92);
+          color: var(--text-strong);
         }
 
         .grades-master-table th.grade-add-col,
@@ -6543,7 +6534,7 @@
           padding: 0;
           font-size: 0.68rem;
           line-height: 1;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           background:
             linear-gradient(180deg, rgba(248, 250, 252, 0.08), rgba(100, 116, 139, 0.04)),
             rgba(15, 23, 42, 0.52);
@@ -6596,21 +6587,21 @@
 
         .grades-student-name.is-active {
           font-weight: 700;
-          color: #f8fafc;
-          background: rgba(30, 41, 59, 0.78);
+          color: var(--text-primary);
+          background: var(--accent-soft);
           box-shadow:
-            inset 0 0 0 1px rgba(148, 163, 184, 0.4),
-            0 1px 2px rgba(2, 6, 23, 0.18);
+            inset 0 0 0 1px var(--border-focus),
+            var(--shadow-control);
         }
 
         .grades-student-name.is-clickable.is-active:hover,
         .grades-student-name.is-clickable.is-active:focus-visible,
         .grades-student-name.is-clickable.is-active:active {
-          background: rgba(39, 52, 72, 0.82);
+          background: var(--nav-hover);
           box-shadow:
-            inset 0 0 0 1px rgba(203, 213, 225, 0.42),
-            0 1px 2px rgba(2, 6, 23, 0.18);
-          color: #ffffff;
+            inset 0 0 0 1px var(--border-focus),
+            var(--shadow-control);
+          color: var(--text-primary);
         }
 
         .grades-student-name.is-privacy-focused {
@@ -6727,7 +6718,7 @@
           gap: 0.1rem;
           justify-items: center;
           font-size: 0.78rem;
-          color: rgba(226, 232, 240, 0.8);
+          color: var(--text-strong);
         }
 
         .grade-assessment-label > .grade-assessment-meta {
@@ -6773,7 +6764,7 @@
           padding: 0.28rem;
           border-radius: 14px;
           border: 1px solid rgba(148, 163, 184, 0.14);
-          background: rgba(15, 23, 42, 0.62);
+          background: var(--surface-overlay-medium-strong);
           overflow: visible;
         }
 
@@ -6803,7 +6794,7 @@
           min-height: 2.35rem;
           padding: 0.45rem 0.7rem;
           border-radius: 11px;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-size: 0.9rem;
           font-weight: 700;
           text-align: center;
@@ -6843,8 +6834,8 @@
         }
 
         .grade-test-scale-tooltip {
-          --app-tooltip-bg: rgba(15, 23, 42, 0.96);
-          --app-tooltip-border-color: rgba(148, 163, 184, 0.7);
+          --app-tooltip-bg: var(--surface-overlay-strong);
+          --app-tooltip-border-color: var(--border-control);
           position: absolute;
           z-index: 80;
           left: 0;
@@ -6856,7 +6847,7 @@
           border-radius: 8px;
           background: var(--app-tooltip-bg);
           box-shadow: 0 16px 34px rgba(2, 6, 23, 0.38);
-          color: rgba(226, 232, 240, 0.94);
+          color: var(--text-strong);
           overflow: visible;
           opacity: 0;
           pointer-events: none;
@@ -7077,7 +7068,7 @@
           justify-content: center;
           width: 1.2rem;
           font-size: 0.9rem;
-          color: rgba(226, 232, 240, 0.8);
+          color: var(--text-strong);
         }
 
         .grades-group-label {
@@ -7093,12 +7084,12 @@
 
         .grades-group-meta {
           font-size: 0.78rem;
-          color: rgba(226, 232, 240, 0.74);
+          color: var(--text-secondary-contrast);
         }
 
         .grades-group-summary {
           font-size: 0.84rem;
-          color: rgba(226, 232, 240, 0.8);
+          color: var(--text-strong);
           text-align: right;
           white-space: nowrap;
         }
@@ -7112,7 +7103,7 @@
           padding: 0.95rem 1.05rem;
           border-radius: 16px;
           border: 1px solid rgba(148, 163, 184, 0.22);
-          color: rgba(226, 232, 240, 0.68);
+          color: var(--text-muted-contrast);
           text-align: center;
           background: rgba(20, 26, 34, 0.68);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
@@ -7189,7 +7180,7 @@
           font-size: 1.3rem;
           font-weight: 700;
           line-height: 1;
-          color: rgba(226, 232, 240, 0.88);
+          color: var(--text-strong);
           text-shadow: 0 1px 0 rgba(0, 0, 0, 0.22);
           transform: translateY(-0.02em) rotate(0deg);
           transform-origin: 50% 50%;
@@ -7210,7 +7201,7 @@
 
         .grades-master-group-meta {
           font-size: 0.75rem;
-          color: rgba(226, 232, 240, 0.72);
+          color: var(--text-secondary-contrast);
           line-height: 1.15;
         }
 
@@ -7222,27 +7213,20 @@
           --grade-cell-control-radius: 10px;
           --grade-cell-control-padding-inline: 0.28rem;
           --grade-cell-control-padding-block: 0.5rem;
-          --grade-cell-control-bg: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(15, 23, 42, 0.9));
-          --grade-cell-control-border: rgba(148, 163, 184, 0.22);
-          --grade-cell-control-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.04),
-            0 1px 2px rgba(2, 6, 23, 0.14);
-          --grade-cell-control-active-bg: linear-gradient(180deg, rgba(31, 46, 72, 0.98), rgba(18, 30, 48, 0.96));
-          --grade-cell-control-active-border: rgba(96, 165, 250, 0.72);
-          --grade-cell-control-active-shadow:
-            0 0 0 2px rgba(82, 150, 255, 0.22),
-            0 10px 20px rgba(15, 23, 42, 0.22),
-            inset 0 1px 0 rgba(191, 219, 254, 0.1);
+          --grade-cell-control-bg: var(--grade-cell-control-bg-token);
+          --grade-cell-control-border: var(--grade-cell-control-border-token);
+          --grade-cell-control-shadow: var(--grade-cell-control-shadow-token);
+          --grade-cell-control-active-bg: var(--grade-cell-control-active-bg-token);
+          --grade-cell-control-active-border: var(--grade-cell-control-active-border-token);
+          --grade-cell-control-active-shadow: var(--grade-cell-control-active-shadow-token);
         }
 
         .grades-master-table {
           --grades-master-assessment-col-min-width: var(--grade-cell-control-box-width);
           --grades-master-homework-col-min-width: var(--grade-cell-control-box-width);
           --grades-master-override-col-min-width: var(--grade-cell-control-box-width);
-          --grades-master-sticky-student-bg: rgb(24, 31, 43);
-          --grades-master-sticky-student-shadow:
-            10px 0 18px rgba(15, 23, 42, 0.22),
-            inset -1px 0 0 rgba(148, 163, 184, 0.18);
+          --grades-master-sticky-student-bg: var(--surface-panel);
+          --grades-master-sticky-student-shadow: var(--grades-table-sticky-student-shadow);
         }
 
         .grades-entry-table {
@@ -7283,8 +7267,8 @@
         }
 
         .grade-cell-input::placeholder {
-          color: rgba(226, 232, 240, 0.58);
-          -webkit-text-fill-color: rgba(226, 232, 240, 0.58);
+          color: var(--text-muted);
+          -webkit-text-fill-color: var(--text-muted);
           opacity: 1;
         }
 
@@ -7298,11 +7282,11 @@
         }
 
         .grade-cell-input[data-grade-draft-input="1"]:disabled {
-          background: rgba(15, 23, 42, 0.68);
-          border-color: rgba(148, 163, 184, 0.3);
-          color: rgba(226, 232, 240, 0.72);
-          -webkit-text-fill-color: rgba(226, 232, 240, 0.72);
-          box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18);
+          background: var(--surface-disabled);
+          border-color: var(--border-control);
+          color: var(--text-disabled);
+          -webkit-text-fill-color: var(--text-disabled);
+          box-shadow: inset 0 0 0 1px var(--border-subtle);
           cursor: not-allowed;
         }
 
@@ -7380,7 +7364,7 @@
         }
 
         .grade-cell-display-button.is-empty {
-          color: rgba(226, 232, 240, 0.55);
+          color: var(--text-muted);
         }
 
         .grade-cell-display-button:hover,
@@ -7391,7 +7375,7 @@
           box-shadow: none;
           filter: none;
           transform: none;
-          color: rgba(125, 186, 255, 1);
+          color: var(--accent-primary);
         }
 
         .grade-cell-input.invalid,
@@ -7419,18 +7403,18 @@
         }
 
         .grade-cell-input.is-active-grade-cell {
-          color: rgba(239, 246, 255, 0.98);
+          color: var(--text-primary);
         }
 
         .grade-cell-input:focus,
         .grade-cell-input:focus-visible,
         .grade-cell-input.is-active-grade-cell:focus,
         .grade-cell-input.is-active-grade-cell:focus-visible {
-          border-color: rgba(125, 211, 252, 0.95);
+          border-color: var(--border-focus);
           box-shadow:
-            0 0 0 2px rgba(56, 189, 248, 0.28),
+            var(--focus-ring),
             var(--grade-cell-control-active-shadow);
-          caret-color: #f8fafc;
+          caret-color: var(--text-primary);
           outline: none;
         }
 
@@ -7614,7 +7598,7 @@
           border-radius: 999px;
           font-weight: 800;
           letter-spacing: 0.03em;
-          color: rgba(226, 232, 240, 0.88);
+          color: var(--text-strong);
           background: rgba(148, 163, 184, 0.1);
           box-shadow: inset 0 0 0 1px rgba(203, 213, 225, 0.12);
         }
@@ -7719,7 +7703,7 @@
           padding: 0.82rem;
           border: 1px solid rgba(148, 163, 184, 0.2);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.34);
+          background: var(--surface-overlay-subtle);
           box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.05),
             0 10px 22px rgba(2, 6, 23, 0.16);
@@ -7729,7 +7713,7 @@
         .grade-accommodation-card:hover,
         .grade-accommodation-card:focus-within {
           border-color: rgba(148, 163, 184, 0.38);
-          background: rgba(15, 23, 42, 0.46);
+          background: var(--surface-overlay-alpha-46);
           box-shadow:
             inset 0 1px 0 rgba(255, 255, 255, 0.06),
             0 14px 28px rgba(2, 6, 23, 0.2);
@@ -7745,7 +7729,7 @@
         .grade-accommodation-student-field,
         .grade-accommodation-text-field {
           min-width: 0;
-          color: rgba(226, 232, 240, 0.72);
+          color: var(--text-secondary-contrast);
           font-size: 0.76rem;
           font-weight: 800;
           letter-spacing: 0.02em;
@@ -7771,7 +7755,7 @@
           min-height: 6.2rem;
           resize: vertical;
           line-height: 1.35;
-          background: rgba(2, 6, 23, 0.18);
+          background: var(--surface-input-inset);
         }
 
         .grade-accommodation-delete {
@@ -7784,7 +7768,7 @@
         }
 
         .grade-accommodation-empty {
-          color: rgba(226, 232, 240, 0.68);
+          color: var(--text-muted-contrast);
           font-size: 0.78rem;
           font-weight: 700;
           line-height: 1.25;
@@ -7876,7 +7860,7 @@
           padding: 0.72rem 0.88rem;
           border: 1px solid var(--border);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.44);
+          background: var(--surface-control-subtle);
           color: var(--text);
           font-size: 0.86rem;
           font-weight: 800;
@@ -7958,7 +7942,7 @@
           padding: var(--liquid-segment-pad);
           border-color: rgba(148, 163, 184, 0.3);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.46);
+          background: var(--surface-overlay-alpha-46);
         }
 
         .expectation-horizon-boundary-mode-option {
@@ -8037,7 +8021,7 @@
         .expectation-horizon-file-name,
         .expectation-horizon-status {
           min-height: 1.25rem;
-          color: rgba(226, 232, 240, 0.82);
+          color: var(--text-strong);
           font-size: 0.84rem;
           font-weight: 700;
           line-height: 1.25;
@@ -8091,7 +8075,7 @@
         }
 
         .competence-expectations-bullet {
-          color: rgba(226, 232, 240, 0.8);
+          color: var(--text-strong);
           font-size: 1.2rem;
           font-weight: 800;
           text-align: center;
@@ -8105,7 +8089,7 @@
           padding: 0.64rem 0.76rem;
           border: 1px solid rgba(148, 163, 184, 0.22);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.62);
+          background: var(--surface-overlay-medium-strong);
           color: var(--text);
         }
 
@@ -8151,7 +8135,7 @@
           padding: 0.75rem;
           border: 1px dashed rgba(148, 163, 184, 0.3);
           border-radius: 8px;
-          color: rgba(226, 232, 240, 0.76);
+          color: var(--text-secondary-contrast);
           font-weight: 700;
           line-height: 1.35;
         }
@@ -8162,7 +8146,7 @@
           padding: 0.72rem;
           border: 1px solid rgba(148, 163, 184, 0.22);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.24);
+          background: var(--surface-subtle-transparent);
         }
 
         .grade-task-competence-topic h4 {
@@ -8181,8 +8165,8 @@
           padding: 0.48rem 0.58rem;
           border: 1px solid rgba(148, 163, 184, 0.18);
           border-radius: 8px;
-          background: rgba(15, 23, 42, 0.18);
-          color: rgba(226, 232, 240, 0.88);
+          background: var(--surface-overlay-alpha-18);
+          color: var(--text-strong);
           font-size: 0.9rem;
           line-height: 1.3;
           text-align: left;
@@ -8205,7 +8189,7 @@
         .grade-task-competence-option[aria-checked="true"] {
           border-color: rgba(96, 165, 250, 0.58);
           background: rgba(37, 99, 235, 0.2);
-          color: #f8fafc;
+          color: var(--text-on-overlay);
         }
 
         .grade-task-competence-check {
@@ -8215,7 +8199,7 @@
           height: 1rem;
           border: 1px solid rgba(148, 163, 184, 0.44);
           border-radius: 4px;
-          background: rgba(15, 23, 42, 0.48);
+          background: var(--surface-overlay-medium);
           color: #dbeafe;
           font-size: 0.72rem;
           font-weight: 900;
@@ -8240,8 +8224,8 @@
           padding: 0.55rem 0.7rem;
           border: 1px solid rgba(148, 163, 184, 0.28);
           border-radius: 0.7rem;
-          background: rgba(15, 23, 42, 0.28);
-          color: rgba(226, 232, 240, 0.88);
+          background: var(--surface-panel-subtle);
+          color: var(--text-strong);
           font-size: 0.86rem;
           font-weight: 800;
         }
@@ -8274,7 +8258,7 @@
           top: 0;
           z-index: 1;
           background: rgba(30, 41, 59, 0.98);
-          color: rgba(226, 232, 240, 0.82);
+          color: var(--text-strong);
           font-size: 0.75rem;
           text-transform: uppercase;
           letter-spacing: 0.04em;
@@ -8416,7 +8400,7 @@
 
         .grades-master-table td.is-privacy-blurred .grade-total-button.is-overridden,
         .grades-master-table td.is-privacy-blurred .grade-total-button.is-overridden .grade-total-value {
-          color: #f8fafc;
+          color: var(--text-on-overlay);
         }
 
         .grade-picker {
@@ -8427,9 +8411,9 @@
           overflow: auto;
           padding: 6px;
           border-radius: 12px;
-          background: rgba(18, 24, 34, 0.98);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+          background: var(--surface-overlay-strong);
+          border: 1px solid var(--border-control);
+          box-shadow: var(--shadow-overlay);
         }
 
         .grade-picker.grade-picker-inline {
@@ -8470,8 +8454,8 @@
         }
 
         .grade-picker-grid button.active {
-          background: rgba(82, 150, 255, 0.25);
-          border-color: rgba(82, 150, 255, 0.7);
+          background: var(--nav-hover);
+          border-color: var(--border-focus);
         }
 
         .grade-picker.grade-picker-override {
@@ -8487,7 +8471,7 @@
           font-size: 0.78rem;
           font-weight: 700;
           line-height: 1.2;
-          color: rgba(226, 232, 240, 0.8);
+          color: var(--text-strong);
         }
 
         .grade-picker-override-label {
@@ -8531,7 +8515,7 @@
         .grade-picker-override-reset:disabled {
           background: rgba(51, 65, 85, 0.24);
           border-color: rgba(148, 163, 184, 0.22);
-          color: rgba(148, 163, 184, 0.72);
+          color: var(--text-secondary);
         }
 
         .grades-title-date-picker {
@@ -8540,9 +8524,9 @@
           width: min(292px, calc(100vw - 16px));
           padding: 0.55rem;
           border-radius: 14px;
-          background: rgba(18, 24, 34, 0.98);
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 18px 44px rgba(0, 0, 0, 0.36);
+          background: var(--surface-overlay-strong);
+          border: 1px solid var(--border-control);
+          box-shadow: var(--shadow-overlay);
         }
 
         .grades-title-date-picker-header {
@@ -8559,7 +8543,7 @@
           text-align: center;
           font-size: 0.86rem;
           font-weight: 700;
-          color: rgba(248, 250, 252, 0.94);
+          color: var(--text-primary);
         }
 
         .grades-title-date-picker-nav {
@@ -8581,7 +8565,7 @@
           padding: 0 0 0.3rem;
           font-size: 0.7rem;
           font-weight: 700;
-          color: rgba(226, 232, 240, 0.62);
+          color: var(--text-muted-contrast);
           text-align: center;
         }
 
@@ -8610,7 +8594,7 @@
         .grades-title-date-picker-day.is-last-course-day {
           background: rgba(34, 197, 94, 0.18);
           border-color: rgba(34, 197, 94, 0.58);
-          color: #f8fafc;
+          color: var(--text-on-overlay);
         }
 
         .grades-title-date-picker-day.is-today.is-last-course-day {
@@ -8626,7 +8610,7 @@
         .grades-title-date-picker-day.is-selected {
           background: rgba(82, 150, 255, 0.26);
           border-color: rgba(82, 150, 255, 0.74);
-          color: #f8fafc;
+          color: var(--text-on-overlay);
         }
 
         .course-dialog-tabs {
@@ -8736,9 +8720,9 @@
           min-height: 2.4rem;
           padding: 0 0.68rem;
           border-radius: 999px;
-          background: rgba(15, 23, 42, 0.22);
+          background: var(--surface-overlay-soft);
           border: 1px solid rgba(148, 163, 184, 0.22);
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-weight: 800;
           text-align: center;
           text-align-last: center;
@@ -8761,7 +8745,7 @@
 
         .course-dialog-structure-flair-select:focus,
         .course-dialog-structure-flair-select:focus-visible {
-          background: rgba(15, 23, 42, 0.34);
+          background: var(--surface-overlay-subtle);
           border-color: rgba(244, 114, 182, 0.46);
           box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
         }
@@ -8789,14 +8773,14 @@
           min-height: 2rem;
           padding: 0 0.75rem;
           border-radius: 999px;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-weight: 700;
           transition: color 180ms ease, background 180ms ease, box-shadow 180ms ease;
         }
 
         .course-dialog-structure-period-option input:checked+span {
           background: rgba(14, 165, 233, 0.24);
-          color: #f8fafc;
+          color: var(--text-on-overlay);
           box-shadow: inset 0 0 0 1px rgba(125, 211, 252, 0.28);
         }
 
@@ -8957,9 +8941,9 @@
           min-height: 2rem;
           padding: 0 0.62rem;
           border-radius: 999px;
-          background: rgba(15, 23, 42, 0.22);
+          background: var(--surface-overlay-soft);
           border: 1px solid rgba(148, 163, 184, 0.22);
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--text-secondary-contrast);
           font-weight: 700;
           text-align: center;
           text-align-last: center;
@@ -8991,7 +8975,7 @@
 
         .course-dialog-student-flair-select:focus,
         .course-dialog-student-flair-select:focus-visible {
-          background: rgba(15, 23, 42, 0.34);
+          background: var(--surface-overlay-subtle);
           border-color: rgba(244, 114, 182, 0.46);
           box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
         }
@@ -9151,17 +9135,10 @@
           contain: layout paint;
           gap: var(--liquid-segment-gap);
           padding: var(--liquid-segment-pad);
-          border: 1px solid rgba(148, 163, 184, 0.18);
+          border: 1px solid var(--border-subtle);
           border-radius: 14px;
-          background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.025)),
-            rgba(15, 23, 42, 0.54);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.075),
-            inset 0 -1px 0 rgba(15, 23, 42, 0.32),
-            0 10px 24px rgba(2, 6, 23, 0.12);
-          backdrop-filter: blur(16px) saturate(1.12);
-          -webkit-backdrop-filter: blur(16px) saturate(1.12);
+          background: var(--surface-segment);
+          box-shadow: var(--shadow-inset);
           overflow: hidden;
         }
 
@@ -9228,7 +9205,7 @@
           z-index: 1;
           border: 1px solid transparent;
           background: transparent;
-          color: rgba(226, 232, 240, 0.78);
+          color: var(--segment-label-fg);
           box-shadow: none;
           text-shadow: none;
           transition:
@@ -9265,10 +9242,10 @@
         .grades-entry-distribution-option input:focus-visible+span,
         .course-dialog-structure-period-option:hover input:not(:disabled)+span,
         .course-dialog-structure-period-option input:focus-visible+span {
-          color: rgba(248, 250, 252, 0.94);
-          background: rgba(148, 163, 184, 0.08);
-          border-color: rgba(226, 232, 240, 0.08);
-          box-shadow: none;
+          color: var(--segment-hover-fg);
+          background: var(--surface-segment-hover);
+          border-color: var(--segment-active-border);
+          box-shadow: var(--shadow-segment-hover);
         }
 
         .schoolmanager-transfer-segment-option input:checked+span,
@@ -9276,14 +9253,10 @@
         .assessment-mode-option input:checked+span,
         .grades-entry-distribution-option input:checked+span,
         .course-dialog-structure-period-option input:checked+span {
-          color: #f8fbff;
-          background:
-            linear-gradient(180deg, rgba(96, 165, 250, 0.24), rgba(37, 99, 235, 0.18)),
-            rgba(59, 130, 246, 0.22);
-          border-color: rgba(96, 165, 250, 0.34);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.08),
-            0 8px 18px rgba(15, 23, 42, 0.16);
+          color: var(--text-on-accent);
+          background: var(--surface-segment-active);
+          border-color: var(--segment-active-border);
+          box-shadow: var(--shadow-segment-active);
         }
 
         .schoolmanager-transfer-segment-option input:disabled+span,
@@ -9291,7 +9264,7 @@
         .assessment-mode-option input:disabled+span,
         .grades-entry-distribution-option input:disabled+span,
         .course-dialog-structure-period-option input:disabled+span {
-          color: rgba(148, 163, 184, 0.52);
+          color: var(--text-disabled);
           cursor: not-allowed;
           opacity: 0.7;
         }
@@ -9310,14 +9283,10 @@
             bottom: var(--liquid-segment-pad);
             left: var(--liquid-segment-pad);
             width: calc((100% - var(--liquid-segment-pad-total) - var(--liquid-segment-total-gap)) / var(--liquid-segment-count));
-            border: 1px solid rgba(96, 165, 250, 0.38);
+            border: 1px solid var(--segment-indicator-border);
             border-radius: 10px;
-            background:
-              linear-gradient(180deg, rgba(96, 165, 250, 0.3), rgba(37, 99, 235, 0.2)),
-              rgba(59, 130, 246, 0.22);
-            box-shadow:
-              inset 0 1px 0 rgba(255, 255, 255, 0.12),
-              0 8px 18px rgba(2, 6, 23, 0.2);
+            background: var(--surface-segment-active);
+            box-shadow: var(--shadow-segment-indicator);
             transform: translateX(0);
             transition:
               transform 280ms cubic-bezier(0.18, 0.82, 0.24, 1),
@@ -9448,18 +9417,16 @@
         }
 
         .grades-entry-course-level-field.is-disabled .assessment-mode-toggle {
-          border-color: rgba(148, 163, 184, 0.12);
-          background:
-            linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0.015)),
-            rgba(15, 23, 42, 0.34);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035);
+          border-color: var(--border-subtle);
+          background: var(--surface-disabled);
+          box-shadow: var(--shadow-inset);
           cursor: not-allowed;
         }
 
         .grades-entry-course-level-field.is-disabled .assessment-mode-toggle::before {
-          border-color: rgba(148, 163, 184, 0.18);
-          background: rgba(100, 116, 139, 0.16);
-          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+          border-color: var(--border-subtle);
+          background: var(--surface-disabled);
+          box-shadow: var(--shadow-inset);
           opacity: 0.72;
         }
 
@@ -9470,7 +9437,7 @@
         .grades-entry-course-level-field.is-disabled .assessment-mode-option span,
         .grades-entry-course-level-field.is-disabled .assessment-mode-option:hover span,
         .grades-entry-course-level-field.is-disabled .assessment-mode-option input:checked+span {
-          color: rgba(148, 163, 184, 0.58);
+          color: var(--text-disabled);
           background: transparent;
           border-color: transparent;
           box-shadow: none;
@@ -9751,12 +9718,9 @@
         @media (max-width: 1200px) {
           .app-window {
             grid-template-columns: minmax(160px, min(var(--module-sidebar-width), 50vw)) minmax(0, 1fr);
-            padding: 10px;
-            gap: 10px;
-          }
-
-          .sidebar-panel {
-            min-height: calc(100vh - 20px);
+            /* Keep the sidebar flush with the module edge at browser zoom levels. */
+            padding: 0;
+            column-gap: 0;
           }
 
           .settings-grid {

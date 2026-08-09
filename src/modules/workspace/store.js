@@ -1619,6 +1619,8 @@ function createInitialState() {
       defaultGradeStructure: createDefaultGradeStructureSetting(),
       expectationHorizonLocation: "",
       expectationHorizonCommentTemplate: EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT,
+      gradeCourseStudentCounts: {},
+      gradeCourseStudentCountsComplete: false,
       gradeVaultEncryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
       backupEnabled: BACKUP_ENABLED_DEFAULT,
       backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
@@ -4532,6 +4534,18 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
   );
   normalized.courses = normalized.courses.filter(
     (item) => item.id > 0 && item.schoolYearId > 0 && item.name
+  );
+  const courseIds = new Set(normalized.courses.map((course) => String(course.id)));
+  const rawGradeCourseStudentCounts = isRecord(normalized.settings.gradeCourseStudentCounts)
+    ? normalized.settings.gradeCourseStudentCounts
+    : {};
+  normalized.settings.gradeCourseStudentCounts = Object.fromEntries(
+    Object.entries(rawGradeCourseStudentCounts)
+      .filter(([courseId]) => courseIds.has(String(Number(courseId) || 0)))
+      .map(([courseId, count]) => [String(Number(courseId)), Math.max(0, Number(count) || 0)])
+  );
+  normalized.settings.gradeCourseStudentCountsComplete = Boolean(
+    normalized.settings.gradeCourseStudentCountsComplete
   );
   normalized.slots = normalized.slots.filter(
     (item) => item.id > 0 && item.courseId > 0 && item.dayOfWeek >= 1 && item.dayOfWeek <= 5

@@ -9095,7 +9095,7 @@ class PlanningApp {
       if (dayIso === todayIso) th.classList.add("today");
       const dayOff = dayOffByIso.get(dayIso);
       if (dayOff) th.classList.add("day-off-head", dayOff.kind === "holiday" ? "holiday" : "special");
-      th.innerHTML = `<span class="day-name">${DAYS_SHORT[index]}</span><span class="day-date">${formatDate(dayIso).slice(0, 5)}</span>`;
+      th.innerHTML = `<span class="day-name">${DAYS_SHORT[index]}</span><span class="day-date">${formatDate(dayIso).slice(0, 6)}</span>`;
       headerRow.append(th);
     });
     thead.append(headerRow);

@@ -1,7 +1,7 @@
 .app-tooltip-portal {
-  --app-tooltip-bg: rgba(15, 23, 42, 0.96);
-  --app-tooltip-border-color: rgba(148, 163, 184, 0.7);
-  --app-tooltip-text-color: #f8fafc;
+  --app-tooltip-bg: var(--surface-overlay);
+  --app-tooltip-border-color: var(--border-control);
+  --app-tooltip-text-color: var(--text-on-overlay);
   position: fixed;
   left: 0;
   top: 0;
@@ -24,7 +24,7 @@
   white-space: pre-line;
   overflow-wrap: anywhere;
   overflow: visible;
-  box-shadow: 0 14px 28px rgba(2, 6, 23, 0.34);
+  box-shadow: var(--shadow-overlay);
   opacity: 0;
   pointer-events: none;
   transform: translateY(-4px);
@@ -33,15 +33,15 @@
 }
 
 .app-tooltip-portal[data-tone="near-better"] {
-  --app-tooltip-bg: rgba(67, 38, 13, 0.98);
-  --app-tooltip-border-color: rgba(251, 146, 60, 0.72);
-  --app-tooltip-text-color: #fed7aa;
+  --app-tooltip-bg: var(--tooltip-warn-bg);
+  --app-tooltip-border-color: var(--tooltip-warn-border);
+  --app-tooltip-text-color: var(--tooltip-warn-text);
 }
 
 .app-tooltip-portal[data-tone="deficit"] {
-  --app-tooltip-bg: rgba(69, 10, 10, 0.98);
-  --app-tooltip-border-color: rgba(248, 113, 113, 0.74);
-  --app-tooltip-text-color: #fecaca;
+  --app-tooltip-bg: var(--tooltip-error-bg);
+  --app-tooltip-border-color: var(--tooltip-error-border);
+  --app-tooltip-text-color: var(--tooltip-error-text);
 }
 
 .app-tooltip-portal[aria-hidden="true"] {

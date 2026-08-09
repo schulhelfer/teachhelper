@@ -898,7 +898,7 @@
             return brightness >= 150000 ? '#0f172a' : '#ffffff';
           }
 
-          function requestGradeRosterCourses({ interactive = false } = {}) {
+          function requestGradeRosterCourses({ interactive = false, unlock = false } = {}) {
             if (TUTORIAL_DEMO_MODE || isCourseSeatplanMode() || !window.parent || window.parent === window) return;
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
             pendingGradeRosterCoursesRequestId = requestId;
@@ -910,7 +910,7 @@
             }
             window.parent.postMessage({
               type: SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
-              detail: { requestId, returnTab: 'seatplan', interactive }
+              detail: { requestId, returnTab: 'seatplan', interactive, unlock, restoreTabAfterUnlock: true }
             }, TRUSTED_PARENT_ORIGIN);
           }
 
@@ -2642,7 +2642,8 @@
               const emptyLabel = allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen importiert';
               cards.forEach((card, slotIndex) => {
                 const distance = Math.abs(slotIndex - 3);
-                card.textContent = emptyLabel;
+                card.textContent = slotIndex === 3 ? 'Noch keine Namen' : '';
+                card.setAttribute('aria-hidden', slotIndex === 3 ? 'false' : 'true');
                 card.dataset.distance = String(distance);
                 card.classList.toggle('is-final', false);
               });
@@ -2656,6 +2657,7 @@
               const candidateIndex = ((safeIndex + offset) % total + total) % total;
               const distance = Math.abs(offset);
               card.textContent = names[candidateIndex];
+              card.removeAttribute('aria-hidden');
               card.dataset.distance = String(Math.min(3, distance));
               card.classList.toggle('is-final', final && offset === 0);
             });

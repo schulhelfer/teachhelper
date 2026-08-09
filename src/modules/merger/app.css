@@ -43,7 +43,7 @@
   --action-reset-bg: var(--button-bg);
   --action-reset-bg-hover: var(--button-bg-hover);
   --action-reset-border: var(--button-border);
-  --action-reset-color: #f8fafc;
+  --action-reset-color: var(--text-on-overlay);
   --action-reset-shadow: var(--button-shadow);
   --action-warn-bg: linear-gradient(180deg, #f97316, #ea580c);
   --action-warn-bg-hover: linear-gradient(180deg, #fb923c, #f97316);
@@ -319,8 +319,8 @@ h1 {
   border: 1px solid var(--button-border);
   border-radius: 12px;
   padding: 0;
-  background: rgba(28, 34, 44, 0.75);
-  color: #e2e8f0;
+  background: var(--surface-control-glass);
+  color: var(--text-on-overlay-secondary);
   font-size: 1.25rem;
   line-height: 1;
   box-shadow: var(--button-shadow);
@@ -1029,7 +1029,7 @@ input[type="number"]::-webkit-inner-spin-button {
   border: 0;
   border-radius: 0;
   background: var(--button-bg);
-  color: #f8fafc;
+  color: var(--text-on-overlay);
   font-size: 18px;
   font-weight: 700;
   line-height: 1;
@@ -1278,7 +1278,7 @@ button:focus-visible {
 }
 
 .rotate-pages-status-error {
-  color: #fecaca;
+  color: var(--text-error);
   border-color: rgba(239, 68, 68, 0.32);
   background: rgba(127, 29, 29, 0.18);
 }
@@ -1619,7 +1619,7 @@ html.split-drag-active * {
 }
 
 .split-pages-status-error {
-  color: #fecaca;
+  color: var(--text-error);
   border-color: rgba(239, 68, 68, 0.32);
   background: rgba(127, 29, 29, 0.18);
 }
@@ -2080,7 +2080,7 @@ html.split-drag-active * {
 }
 
 .settings-dialog::backdrop {
-  background: rgba(2, 6, 23, 0.55);
+  background: var(--backdrop-settings);
 }
 
 .dialog-header {

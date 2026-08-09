@@ -47,7 +47,7 @@ export function applyDocumentTheme(theme, documentRef = globalThis?.document) {
   root.dataset.theme = resolved;
   root.style.colorScheme = resolved;
   const meta = documentRef.querySelector?.('meta[name="theme-color"]');
-  if (meta) meta.content = resolved === 'light' ? '#f4f7fb' : '#0f172a';
+  if (meta) meta.content = resolved === 'light' ? '#f5f5f7' : '#0f172a';
   return resolved;
 }
 
@@ -57,6 +57,7 @@ export function createThemeController({ windowRef = globalThis?.window, document
   const listeners = new Set();
   let preference = readThemePreference(storage);
   let resolved = resolveTheme(preference, Boolean(mediaQuery?.matches));
+  let observingSystem = false;
 
   const notify = () => {
     applyDocumentTheme(resolved, documentRef);
@@ -71,8 +72,20 @@ export function createThemeController({ windowRef = globalThis?.window, document
     notify();
   };
 
-  if (mediaQuery?.addEventListener) mediaQuery.addEventListener('change', onSystemChange);
-  else mediaQuery?.addListener?.(onSystemChange);
+  const setSystemObservation = (enabled) => {
+    if (!mediaQuery || observingSystem === enabled) return;
+    if (enabled) {
+      if (mediaQuery.addEventListener) mediaQuery.addEventListener('change', onSystemChange);
+      else mediaQuery.addListener?.(onSystemChange);
+    } else if (mediaQuery.removeEventListener) {
+      mediaQuery.removeEventListener('change', onSystemChange);
+    } else {
+      mediaQuery.removeListener?.(onSystemChange);
+    }
+    observingSystem = enabled;
+  };
+
+  setSystemObservation(preference === 'system');
   notify();
 
   return {
@@ -80,6 +93,7 @@ export function createThemeController({ windowRef = globalThis?.window, document
     getTheme: () => resolved,
     setPreference(nextPreference) {
       preference = writeThemePreference(nextPreference, storage);
+      setSystemObservation(preference === 'system');
       resolved = resolveTheme(preference, Boolean(mediaQuery?.matches));
       notify();
       return { preference, theme: resolved };
@@ -91,8 +105,7 @@ export function createThemeController({ windowRef = globalThis?.window, document
       return () => listeners.delete(listener);
     },
     dispose() {
-      if (mediaQuery?.removeEventListener) mediaQuery.removeEventListener('change', onSystemChange);
-      else mediaQuery?.removeListener?.(onSystemChange);
+      setSystemObservation(false);
       listeners.clear();
     },
   };

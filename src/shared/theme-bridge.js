@@ -10,7 +10,7 @@
     document.documentElement.dataset.theme = theme;
     document.documentElement.style.colorScheme = theme;
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = theme === 'light' ? '#f4f7fb' : '#0f172a';
+    if (meta) meta.content = theme === 'light' ? '#f5f5f7' : '#0f172a';
   }
 
   window.addEventListener('message', (event) => {

@@ -20,6 +20,7 @@ const APP_SHELL = [
   './src/app/shell.css',
   './src/app/shell.js',
   './src/shared/theme.css',
+  './src/shared/theme-preload.js',
   './src/shared/theme.js',
   './src/shared/theme-bridge.js',
   './src/shared/segment-control.css',

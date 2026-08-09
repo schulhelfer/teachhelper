@@ -404,9 +404,58 @@ export function createPlanningSeatplanBridge({
     seatplanController?.sendCourseContext?.(detail);
   }
 
+  function dispatchPublicLockedGradeRosterCourses(detail = null) {
+    const source = detail && typeof detail === 'object' ? detail : {};
+    const owner = getWorkspaceController()?.getOwner?.();
+    const store = owner?.store;
+    if (
+      source.unlock === true
+      || !owner?.isGradeVaultEncryptionEnabled?.()
+      || owner?.canAccessGradeVault?.()
+      || !store?.getActiveSchoolYear
+      || !store?.listCourses
+    ) {
+      return false;
+    }
+    const year = store.getActiveSchoolYear();
+    const studentCounts = store.getSetting?.('gradeCourseStudentCounts', {}) || {};
+    const hasCompleteStudentCounts = store.getSetting?.('gradeCourseStudentCountsComplete', false) === true;
+    const courses = year
+      ? store.listCourses(year.id)
+        .filter((course) => !course?.noLesson && !course?.noGrades && !course?.hiddenInSidebar)
+        .filter((course) => (
+          !hasCompleteStudentCounts
+          || Number(studentCounts[String(Number(course.id) || 0)]) > 0
+        ))
+        .map((course) => ({
+          id: Number(course.id) || 0,
+          name: String(course.name || 'Kurs'),
+          color: String(course.color || '#475569'),
+        }))
+        .filter((course) => course.id > 0)
+      : [];
+    const result = {
+      requestId: String(source.requestId || ''),
+      returnTab: String(source.returnTab || ''),
+      restoreTabAfterUnlock: source.restoreTabAfterUnlock === true,
+      ok: true,
+      locked: true,
+      hasCourses: courses.length > 0,
+      courses,
+    };
+    const target = typeof window !== 'undefined' && typeof window.dispatchEvent === 'function'
+      ? window
+      : documentBus;
+    target?.dispatchEvent?.(new CustomEvent(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, { detail: result }));
+    return true;
+  }
+
   function requestGradeRosterCourses(detail = null) {
     if (!isWorkspaceReady()) {
       return dispatchBlockedResult(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, detail);
+    }
+    if (dispatchPublicLockedGradeRosterCourses(detail)) {
+      return true;
     }
     ensureTabInitialized(TAB_GRADES);
     gradesController?.post?.(GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT, withWorkspaceRevision(detail));
@@ -418,6 +467,12 @@ export function createPlanningSeatplanBridge({
       return dispatchBlockedResult(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail);
     }
     ensureTabInitialized(TAB_GRADES);
+    // Kurs-Pills are also available while the vault is locked, so Grades may
+    // still be lazy at this point. Load it now to show the unlock overlay and
+    // resume this exact import after the password has been accepted.
+    if (gradesController?.frame?.loading === 'lazy') {
+      gradesController.frame.loading = 'eager';
+    }
     gradesController?.post?.(GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT, withWorkspaceRevision(detail));
     return true;
   }

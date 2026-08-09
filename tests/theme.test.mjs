@@ -32,10 +32,12 @@ test('speichert die Theme-Präferenz defensiv im lokalen Speicher', () => {
 
 test('System aktualisiert das effektive Theme bei einer Medienänderung', () => {
   let changeHandler = null;
+  let addCalls = 0;
+  let removeCalls = 0;
   const mediaQuery = {
     matches: false,
-    addEventListener(_name, listener) { changeHandler = listener; },
-    removeEventListener() {},
+    addEventListener(_name, listener) { addCalls += 1; changeHandler = listener; },
+    removeEventListener() { removeCalls += 1; },
   };
   const values = new Map([[THEME_PREFERENCE_STORAGE_KEY, 'system']]);
   const root = { dataset: {}, style: {} };
@@ -47,20 +49,26 @@ test('System aktualisiert das effektive Theme bei einer Medienänderung', () => 
   };
   const documentRef = { documentElement: root, querySelector: () => meta };
   const controller = createThemeController({ windowRef, documentRef });
+  assert.equal(addCalls, 1);
   assert.equal(controller.getTheme(), 'light');
   mediaQuery.matches = true;
   changeHandler();
   assert.equal(controller.getTheme(), 'dark');
   assert.equal(root.dataset.theme, 'dark');
+  controller.setPreference('dark');
+  assert.equal(removeCalls, 1);
   controller.dispose();
 });
 
-test('stellt Theme-Control, Light-Tokens und Frame-Brücke bereit', async () => {
-  const [planningHtml, gradesHtml, css, mainSource] = await Promise.all([
+test('stellt Theme-Control, Light-Tokens, frühen Start und Frame-Brücke bereit', async () => {
+  const [indexHtml, planningHtml, gradesHtml, css, gradesCss, mainSource, manifest] = await Promise.all([
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/modules/planning/app.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/shared/theme.css', import.meta.url), 'utf8'),
+    readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
     readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+    readFile(new URL('../manifest.webmanifest', import.meta.url), 'utf8'),
   ]);
   for (const source of [planningHtml, gradesHtml]) {
     assert.match(source, /data-theme-preference/);
@@ -69,5 +77,15 @@ test('stellt Theme-Control, Light-Tokens und Frame-Brücke bereit', async () => 
   }
   assert.match(css, /:root\[data-theme="light"\]/);
   assert.match(css, /color-scheme: light/);
+  assert.match(css, /--surface-page:/);
+  assert.match(css, /--nav-active: #007aff/);
+  assert.match(css, /--text-dialog: #3a3a3c/);
+  assert.doesNotMatch(css, /data-theme="light"\] \.segment-control/);
+  assert.match(gradesCss, /\.message-dialog-text\s*\{[\s\S]*?color: var\(--text-dialog\)/);
   assert.match(mainSource, /THEME_PREFERENCE_CHANGE_EVENT/);
+  for (const source of [indexHtml, planningHtml, gradesHtml]) {
+    assert.match(source, /theme-preload\.js/);
+    assert.match(source, /theme-color" content="#f5f5f7/);
+  }
+  assert.match(manifest, /"theme_color": "#f5f5f7"/);
 });

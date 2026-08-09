@@ -292,7 +292,9 @@ export function createShellController({
     const syncHandlePosition = () => {
       const appBounds = els.app.getBoundingClientRect();
       const sidebarBounds = sidebar.getBoundingClientRect();
-      handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left)}px`);
+      // The resize target is 14px wide; centre its visible one-pixel divider
+      // exactly on the sidebar edge instead of drawing it inside the main view.
+      handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left - 7)}px`);
       handle.style.setProperty('--sidebar-resize-top', `${Math.round(sidebarBounds.top - appBounds.top)}px`);
       handle.style.setProperty('--sidebar-resize-height', `${Math.round(sidebarBounds.height)}px`);
     };
@@ -1471,6 +1473,7 @@ export function createShellController({
       requestGradeVault({
         action: locked ? 'unlock' : 'lock',
         overlay: state.activeTab !== TAB_GRADES,
+        preserveSourceTab: state.activeTab !== TAB_GRADES,
       });
     });
   }

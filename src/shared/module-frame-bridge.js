@@ -30,13 +30,16 @@ function resolveSandboxTokens(sandbox) {
   return String(sandbox).trim();
 }
 
-function appendFrameNonceFragment(src, nonce) {
-  if (!src || !nonce) return src;
+function appendFrameParameters(src, { nonce = '', theme = '' } = {}) {
+  if (!src || (!nonce && !theme)) return src;
   try {
     const url = new URL(src instanceof URL ? src.href : String(src), window.location.href);
-    const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
-    hashParams.set(MODULE_FRAME_NONCE_PARAM, nonce);
-    url.hash = hashParams.toString();
+    if (theme === 'light' || theme === 'dark') url.searchParams.set('theme', theme);
+    if (nonce) {
+      const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
+      hashParams.set(MODULE_FRAME_NONCE_PARAM, nonce);
+      url.hash = hashParams.toString();
+    }
     return url.href;
   } catch {
     return src instanceof URL ? src.href : String(src);
@@ -71,7 +74,10 @@ export function createModuleFrame({
     frame.dataset.moduleOpaqueOrigin = '1';
     frame.dataset.moduleFrameNonce = frameNonce;
   }
-  if (src) frame.src = frameNonce ? appendFrameNonceFragment(src, frameNonce) : (src instanceof URL ? src.href : String(src));
+  if (src) {
+    const initialTheme = document.documentElement?.dataset?.theme;
+    frame.src = appendFrameParameters(src, { nonce: frameNonce, theme: initialTheme });
+  }
   return frame;
 }
 

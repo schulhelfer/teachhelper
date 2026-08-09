@@ -36,7 +36,6 @@ import {
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
   GRADES_NAVIGATE_EVENT,
-  GRADES_READY_EVENT,
   GRADES_TUTORIAL_START_REQUEST_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
@@ -3429,8 +3428,9 @@ import {
           );
         } else {
           card.classList.remove('is-empty-state');
-          card.textContent = emptyLabel;
+          card.textContent = '';
         }
+        card.setAttribute('aria-hidden', slotIndex === 3 ? 'false' : 'true');
       });
       randomPickerCurrentIndex = 0;
       return;
@@ -3442,6 +3442,7 @@ import {
       const candidateIndex = ((safeIndex + offset) % total + total) % total;
       const distance = Math.abs(offset);
       card.classList.remove('is-empty-state');
+      card.removeAttribute('aria-hidden');
       card.textContent = names[candidateIndex];
       card.dataset.distance = String(Math.min(3, distance));
       card.classList.toggle('is-final', final && offset === 0);
@@ -6260,7 +6261,7 @@ import {
     const brightness = (red * 299) + (green * 587) + (blue * 114);
     return brightness >= 150000 ? '#0f172a' : '#ffffff';
   };
-  const requestGradeRosterCourses = ({ interactive = false } = {}) => {
+  const requestGradeRosterCourses = ({ interactive = false, unlock = false } = {}) => {
     const requestId = createGradeRosterRequestId();
     pendingGradeRosterCoursesRequestId = requestId;
     const keepUnavailableSurfaceHidden = gradeRosterCoursesState === 'ready'
@@ -6273,6 +6274,8 @@ import {
       requestId,
       returnTab: getActiveTab(),
       interactive,
+      unlock,
+      restoreTabAfterUnlock: true,
     });
   };
   const importGradeRosterCourse = (courseId) => {
@@ -6501,11 +6504,6 @@ import {
     const observer = new ResizeObserver(() => renderGradeRosterPills());
     observer.observe(els.csvDropZone);
   }
-  window.addEventListener(GRADES_READY_EVENT, () => {
-    
-    
-    requestGradeRosterCourses();
-  });
   requestGradeRosterCourses();
 
   document.addEventListener('click', (event) => {
@@ -8239,10 +8237,6 @@ import {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (getActiveTab() === TAB_GROUPS || getActiveTab() === TAB_RANDOM_PICKER) {
-            
-            
-            
-            requestGradeRosterCourses();
             renderGradeRosterPills();
           }
         });

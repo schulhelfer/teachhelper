@@ -80,7 +80,7 @@ button {
   border: 1px solid var(--button-border);
   border-radius: var(--control-radius);
   background: var(--button-bg);
-  color: #e9eef5;
+  color: var(--text-control);
   box-shadow: var(--button-shadow);
   cursor: pointer;
 }
@@ -114,7 +114,7 @@ button:focus-visible {
 }
 
 .app-dialog::backdrop {
-  background: rgba(2, 6, 23, 0.58);
+  background: var(--backdrop-dialog);
   backdrop-filter: blur(4px);
 }
 

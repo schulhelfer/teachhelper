@@ -44,7 +44,7 @@
   --dropzone-border: rgba(148, 163, 184, 0.75);
   --dropzone-radius: 12px;
   --dropzone-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
-  color-scheme: dark;
+  color-scheme: inherit;
 }
 
 * {
@@ -276,8 +276,8 @@ h1,
   border: 1px solid var(--button-border);
   border-radius: 12px;
   padding: 0;
-  background: rgba(28, 34, 44, 0.75);
-  color: #e2e8f0;
+  background: var(--surface-control-glass);
+  color: var(--text-on-overlay-secondary);
   font-size: 1.25rem;
   line-height: 1;
   box-shadow: var(--button-shadow);
@@ -615,7 +615,7 @@ h1,
 }
 
 .settings-dialog::backdrop {
-  background: rgba(2, 6, 23, 0.44);
+  background: var(--backdrop-settings-subtle);
 }
 
 .dialog-header {

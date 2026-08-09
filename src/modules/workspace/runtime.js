@@ -874,6 +874,27 @@ export class WorkspaceRuntime {
     return { courseId: id, studentCount };
   }
 
+  setGradeCourseStudentCounts(counts = null) {
+    const source = counts && typeof counts === 'object' ? counts : {};
+    const validCourseIds = this.store.state.courses
+      .map((course) => String(Number(course.id) || 0))
+      .filter((courseId) => courseId !== '0');
+    const next = Object.fromEntries(
+      validCourseIds.map((courseId) => [courseId, Math.max(0, Number(source[courseId]) || 0)])
+    );
+    const current = this.store.state.settings.gradeCourseStudentCounts || {};
+    if (
+      this.store.state.settings.gradeCourseStudentCountsComplete === true
+      && JSON.stringify(current) === JSON.stringify(next)
+    ) {
+      return false;
+    }
+    this.store.state.settings.gradeCourseStudentCounts = next;
+    this.store.state.settings.gradeCourseStudentCountsComplete = true;
+    this.onPublicChanged();
+    return true;
+  }
+
   async getOccurrenceCategoryUsage(categoryId) {
     const id = Number(categoryId) || 0;
     if (!id || !this.canAccessGradeVault()) return 0;
