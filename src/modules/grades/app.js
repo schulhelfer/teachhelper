@@ -9964,7 +9964,8 @@ class GradesApp {
         const backupState = persistenceOwner.backupState || this.backupState;
         const restoredStoredDirectory = !backupState.directoryHandle
           && Boolean(backupState.storedDirectoryHandle)
-          && await persistenceOwner.ensureBackupDirectoryReady(syncFileHandle, { allowPrompt: true });
+          && typeof persistenceOwner.ensureBackupDirectoryReady === "function"
+          && await persistenceOwner.ensureBackupDirectoryReady({ allowPrompt: true });
         const assigned = restoredStoredDirectory
           || await this.assignBackupDirectoryFromSyncFile(syncFileHandle);
         if (assigned) {

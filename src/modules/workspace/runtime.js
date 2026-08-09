@@ -250,6 +250,7 @@ export class WorkspaceRuntime {
     this.fileHandle = null;
     this.storedFileHandle = null;
     this.backupDirectoryHandle = null;
+    this.storedBackupDirectoryHandle = null;
     this.fileName = '';
     this.knownRevision = 0;
     this.knownFileHash = '';
@@ -326,7 +327,7 @@ export class WorkspaceRuntime {
   get backupState() {
     return {
       directoryHandle: this.backupDirectoryHandle,
-      storedDirectoryHandle: null,
+      storedDirectoryHandle: this.storedBackupDirectoryHandle,
     };
   }
 
@@ -494,6 +495,7 @@ export class WorkspaceRuntime {
         pendingFileName: String(this.storedFileHandle?.name || ''),
         backupConnected: Boolean(this.backupDirectoryHandle),
         backupDirectoryName: String(this.backupDirectoryHandle?.name || ''),
+        pendingBackupDirectoryName: String(this.storedBackupDirectoryHandle?.name || ''),
         statusText: '',
         statusError: false,
       },
@@ -1159,10 +1161,15 @@ export class WorkspaceRuntime {
 
   async acceptWorkspaceSyncFileHandle(handle, mode = 'existing') {
     if (!handle) return false;
+    if (!await this.ensureHandleReadWritePermission(handle)) {
+      throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
+    }
     const preserveBackupDirectory = String(mode || '') === 'reconnect';
     const previousBackupDirectoryHandle = this.backupDirectoryHandle;
+    const previousStoredBackupDirectoryHandle = this.storedBackupDirectoryHandle;
     if (!preserveBackupDirectory) {
       this.backupDirectoryHandle = null;
+      this.storedBackupDirectoryHandle = null;
     }
     this.fileHandle = handle;
     this.storedFileHandle = handle;
@@ -1181,6 +1188,7 @@ export class WorkspaceRuntime {
     } catch (error) {
       if (!preserveBackupDirectory) {
         this.backupDirectoryHandle = previousBackupDirectoryHandle;
+        this.storedBackupDirectoryHandle = previousStoredBackupDirectoryHandle;
       }
       throw error;
     }
@@ -1193,8 +1201,16 @@ export class WorkspaceRuntime {
 
   async acceptWorkspaceBackupDirectoryHandle(handle) {
     if (!handle) return false;
+    if (!await this.ensureHandleReadWritePermission(handle)) {
+      throw new Error('Für den Backup-Ordner wurde keine Schreibberechtigung erteilt.');
+    }
     this.backupDirectoryHandle = handle;
-    await this.storeHandle(HANDLE_BACKUP_KEY, handle);
+    this.storedBackupDirectoryHandle = handle;
+    if (!await this.storeHandle(HANDLE_BACKUP_KEY, handle)) {
+      this.backupDirectoryHandle = null;
+      this.storedBackupDirectoryHandle = null;
+      throw new Error('Die Auswahl des Backup-Ordners konnte nicht dauerhaft gespeichert werden.');
+    }
     this.controller?.markChanged?.('shell');
     return true;
   }
@@ -1328,15 +1344,33 @@ export class WorkspaceRuntime {
     }
   }
 
-  async ensureBackupDirectoryReady() {
+  async ensureHandleReadWritePermission(handle, { allowPrompt = true } = {}) {
+    if (!handle || typeof handle.queryPermission !== 'function') return Boolean(handle);
+    try {
+      let permission = await handle.queryPermission({ mode: 'readwrite' });
+      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
+        permission = await handle.requestPermission({ mode: 'readwrite' });
+      }
+      return permission === 'granted';
+    } catch {
+      return false;
+    }
+  }
+
+  async ensureBackupDirectoryReady({ allowPrompt = false } = {}) {
     if (this.ephemeral) return false;
     if (this.backupDirectoryHandle) return true;
-    const handle = await this.loadStoredHandle(HANDLE_BACKUP_KEY);
+    const handle = this.storedBackupDirectoryHandle || await this.loadStoredHandle(HANDLE_BACKUP_KEY);
     if (!handle) return false;
+    this.storedBackupDirectoryHandle = handle;
     try {
-      const permission = await handle.queryPermission?.({ mode: 'readwrite' });
+      let permission = await handle.queryPermission?.({ mode: 'readwrite' });
+      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
+        permission = await handle.requestPermission({ mode: 'readwrite' });
+      }
       if (permission !== 'granted') return false;
       this.backupDirectoryHandle = handle;
+      this.controller?.markChanged?.('shell');
       return true;
     } catch {
       return false;
@@ -1473,6 +1507,7 @@ export class WorkspaceRuntime {
     if (name === 'sync-connect') return { changed: await this.acceptWorkspaceSyncFileHandle(detail?.handle, detail?.mode), scope: 'shell' };
     if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
     if (name === 'backup-directory-connect') return { changed: await this.acceptWorkspaceBackupDirectoryHandle(detail?.handle), scope: 'shell' };
+    if (name === 'backup-directory-reconnect') return { changed: await this.ensureBackupDirectoryReady({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
     if (name === 'sync-save') return { changed: await this.saveToConnectedFile(detail?.reason), scope: 'shell' };
     if (name === 'backup-create') return { changed: await this.createLatestWebBackup(detail?.mode, detail?.silent), scope: 'shell' };
     if (name === 'backup-auto') return { changed: await this.maybeRunAutomaticWebBackup(), scope: 'shell' };

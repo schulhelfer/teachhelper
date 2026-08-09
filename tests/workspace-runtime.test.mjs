@@ -206,6 +206,46 @@ test('a stored database handle is retained and re-authorized on the next user ac
   assert.equal(acceptedMode, 'reconnect');
 });
 
+test('selecting a database handle explicitly requests persistent write access', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const handle = {
+    name: 'Klasse-7a.thdb',
+    async queryPermission() { return 'prompt'; },
+    async requestPermission() { return 'granted'; },
+    async getFile() { return { async arrayBuffer() { return new Uint8Array().buffer; } }; },
+  };
+  let storedHandle = null;
+  runtime.storeHandle = async (_key, value) => {
+    storedHandle = value;
+    return true;
+  };
+  runtime.loadBytes = async () => ({ ok: true });
+
+  assert.equal(await runtime.acceptWorkspaceSyncFileHandle(handle), true);
+  assert.equal(storedHandle, handle);
+});
+
+test('a stored backup directory is retained and re-authorized on the next user action', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const handle = {
+    name: 'TeachHelper-Backups',
+    async queryPermission() { return 'prompt'; },
+    async requestPermission() { return 'granted'; },
+  };
+  let changedScope = '';
+  runtime.loadStoredHandle = async () => handle;
+  runtime.bindController({ markChanged(scope) { changedScope = scope; } });
+
+  assert.equal(await runtime.ensureBackupDirectoryReady(), false);
+  assert.equal(runtime.backupDirectoryHandle, null);
+  assert.equal(runtime.backupState.storedDirectoryHandle, handle);
+  assert.equal(runtime.createWorkspaceSnapshot('shell').persistence.pendingBackupDirectoryName, 'TeachHelper-Backups');
+
+  assert.equal(await runtime.ensureBackupDirectoryReady({ allowPrompt: true }), true);
+  assert.equal(runtime.backupDirectoryHandle, handle);
+  assert.equal(changedScope, 'shell');
+});
+
 test('locking a vault clears every plaintext course cache', async () => {
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });

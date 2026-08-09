@@ -1836,6 +1836,11 @@ class PlanningApp {
     return Boolean(result.changed);
   }
 
+  async ensureBackupDirectoryReady({ allowPrompt = false } = {}) {
+    const result = await this.executeWorkspaceAction("backup-directory-reconnect", { allowPrompt });
+    return Boolean(result.changed);
+  }
+
   openSyncSetupSettingsOnStartup() {}
 
   ensureStandaloneSettingsView() {
@@ -5697,8 +5702,14 @@ class PlanningApp {
         }
         let assigned = false;
         try {
-          const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
-          assigned = await this.acceptWorkspaceBackupDirectoryHandle(directoryHandle);
+          const persistence = this.getWorkspacePersistenceStatus();
+          const hasStoredDirectory = Boolean(persistence.pendingBackupDirectoryName);
+          if (hasStoredDirectory) {
+            assigned = await this.ensureBackupDirectoryReady({ allowPrompt: true });
+          } else {
+            const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+            assigned = await this.acceptWorkspaceBackupDirectoryHandle(directoryHandle);
+          }
         } catch (error) {
           if (error?.name !== "AbortError") {
             this.setBackupStatus("Backup-Ordner konnte nicht verbunden werden.", true);
