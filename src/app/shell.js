@@ -48,6 +48,8 @@ const SHELL_SIDEBAR_DEFAULT_WIDTHS = Object.freeze({
 });
 const SHELL_SIDEBAR_FULLSCREEN_THRESHOLD = 160;
 const SHELL_SIDEBAR_DESKTOP_BREAKPOINT = 981;
+const SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DELAY_MS = 350;
+const SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DISTANCE_PX = 24;
 
 function parseCssTimeToMs(value) {
   if (!value) return 0;
@@ -123,6 +125,7 @@ export function createShellController({
     [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: readStoredSidebarWidth(SHELL_SIDEBAR_WIDTH_SCOPE_OTHER),
   };
   let sidebarResizeState = null;
+  let lastSidebarResizeTouchTap = null;
 
   function getSidebarWidthScope(tab = state.activeTab) {
     return tab === TAB_PLANNING || tab === TAB_GRADES
@@ -211,6 +214,45 @@ export function createShellController({
   function getMaximumShellSidebarWidth() {
     if (typeof window === 'undefined') return SHELL_SIDEBAR_DEFAULT_WIDTHS[SHELL_SIDEBAR_WIDTH_SCOPE_OTHER];
     return Math.floor(window.innerWidth * 0.5);
+  }
+
+  function resetActiveShellSidebarWidth() {
+    const scope = getSidebarWidthScope();
+    setShellSidebarWidth(scope, getDefaultShellSidebarWidth(scope), { persist: true });
+  }
+
+  function handleSidebarResizeTouchTap(event, wasTap) {
+    if (
+      event?.pointerType !== 'touch'
+      || !wasTap
+      || !isSidebarResizeDesktop()
+      || !isShellSidebarResizableTab()
+      || state.chromeCollapsed
+      || state.chromeTransitionState !== 'idle'
+    ) {
+      lastSidebarResizeTouchTap = null;
+      return;
+    }
+    const tap = {
+      at: Date.now(),
+      clientX: Number(event.clientX) || 0,
+      clientY: Number(event.clientY) || 0,
+      scope: getSidebarWidthScope(),
+    };
+    const previousTap = lastSidebarResizeTouchTap;
+    lastSidebarResizeTouchTap = tap;
+    if (
+      !previousTap
+      || previousTap.scope !== tap.scope
+      || tap.at - previousTap.at > SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DELAY_MS
+      || Math.hypot(tap.clientX - previousTap.clientX, tap.clientY - previousTap.clientY)
+        > SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DISTANCE_PX
+    ) {
+      return;
+    }
+    lastSidebarResizeTouchTap = null;
+    event.preventDefault();
+    resetActiveShellSidebarWidth();
   }
 
   function finishSidebarResize(event, { cancelled = false } = {}) {
@@ -302,7 +344,9 @@ export function createShellController({
     });
     handle.addEventListener('pointerup', (event) => {
       if (sidebarResizeState?.pointerId !== event.pointerId) return;
+      const wasTap = !sidebarResizeState.hasMoved;
       finishSidebarResize(event);
+      handleSidebarResizeTouchTap(event, wasTap);
     });
     handle.addEventListener('pointercancel', (event) => {
       if (sidebarResizeState?.pointerId !== event.pointerId) return;
@@ -315,7 +359,7 @@ export function createShellController({
     handle.addEventListener('dblclick', (event) => {
       if (!isSidebarResizeDesktop() || !isShellSidebarResizableTab()) return;
       event.preventDefault();
-      setShellSidebarWidth(getSidebarWidthScope(), getDefaultShellSidebarWidth(getSidebarWidthScope()), { persist: true });
+      resetActiveShellSidebarWidth();
     });
     window.addEventListener('storage', (event) => {
       const scope = Object.entries(SHELL_SIDEBAR_WIDTH_STORAGE_KEYS)
@@ -998,15 +1042,20 @@ export function createShellController({
       );
     }
     els.sidebarManualSaveBtn.hidden = hidden;
-    els.sidebarManualSaveBtn.disabled = hidden || state.chromeTransitionState !== 'idle';
+    const hasManualChanges = Boolean(state.planningManualSaveState.dirty);
+    els.sidebarManualSaveBtn.disabled = hidden || !hasManualChanges || state.chromeTransitionState !== 'idle';
     els.sidebarManualSaveBtn.setAttribute('aria-hidden', hidden ? 'true' : 'false');
     els.sidebarManualSaveBtn.classList.toggle('attention-pulse', shouldShow && state.planningManualSaveState.dirty);
     els.sidebarManualSaveBtn.classList.toggle(
       'manual-header-save-btn-collapsed',
       shouldShow && state.chromeCollapsed && state.chromeTransitionState === 'idle'
     );
-    const title = state.planningManualSaveState.title || 'Datenbank speichern/neu anlegen';
-    const ariaLabel = state.planningManualSaveState.ariaLabel || title;
+    const title = shouldShow && !hasManualChanges
+      ? 'Keine zu speichernden Änderungen'
+      : (state.planningManualSaveState.title || 'Datenbank speichern/neu anlegen');
+    const ariaLabel = shouldShow && !hasManualChanges
+      ? 'Keine zu speichernden Änderungen'
+      : (state.planningManualSaveState.ariaLabel || title);
     els.sidebarManualSaveBtn.title = title;
     els.sidebarManualSaveBtn.setAttribute('aria-label', ariaLabel);
   }
@@ -1427,7 +1476,11 @@ export function createShellController({
   }
   if (els.sidebarManualSaveBtn) {
     els.sidebarManualSaveBtn.addEventListener('click', () => {
-      if ((state.activeTab !== TAB_PLANNING && state.activeTab !== TAB_GRADES) || !state.planningManualSaveState.isManualMode) {
+      if (
+        (state.activeTab !== TAB_PLANNING && state.activeTab !== TAB_GRADES)
+        || !state.planningManualSaveState.isManualMode
+        || !state.planningManualSaveState.dirty
+      ) {
         return;
       }
       requestManualSave();

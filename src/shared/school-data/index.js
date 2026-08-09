@@ -68,7 +68,7 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
         id: Number(item.id),
         schoolYearId: Number(item.schoolYearId),
         name: String(item.name || ''),
-        subject: String(item.subject || ''),
+        subject: noLesson ? '' : String(item.subject || ''),
         color: normalizeCourseColor(item.color, noLesson),
         previousColor: item.previousColor == null ? null : normalizeCourseColor(item.previousColor, false),
         noLesson,

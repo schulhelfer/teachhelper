@@ -122,6 +122,40 @@ test('public planning changes do not trigger downloads in manual persistence mod
   assert.equal(runtime.publicDirty, true);
 });
 
+test('grade changes automatically save to a connected database', () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.fileHandle = { name: 'noten.thdb' };
+  runtime.loadedCourseId = 7;
+  runtime.isManualPersistenceMode = () => false;
+  const reasons = [];
+  runtime.queueSyncSave = (reason) => {
+    reasons.push(reason);
+    return true;
+  };
+  let scope = '';
+  runtime.bindController({ markChanged(nextScope) { scope = nextScope; } });
+
+  runtime.onGradeChanged();
+
+  assert.equal(runtime.manualDirty, true);
+  assert.equal(scope, 'grades');
+  assert.deepEqual(reasons, ['grades-auto-save']);
+  assert.equal(runtime.dirtyCourseIds.has(7), true);
+});
+
+test('grade changes do not trigger downloads in manual persistence mode', () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.isManualPersistenceMode = () => true;
+  let saveCalls = 0;
+  runtime.queueSyncSave = () => { saveCalls += 1; return true; };
+
+  runtime.onGradeChanged();
+
+  assert.equal(saveCalls, 0);
+  assert.equal(runtime.manualDirty, true);
+});
+
 test('ephemeral tutorial runtimes never reconnect database or backup handles', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), {
     eventTarget: new EventTarget(),
@@ -143,6 +177,33 @@ test('ephemeral tutorial runtimes never reconnect database or backup handles', a
   assert.equal(reconnectCalls, 0);
   assert.equal(backupCalls, 0);
   assert.equal(await runtime.openHandleDb(), null);
+});
+
+test('a stored database handle is retained and re-authorized on the next user action', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const handle = {
+    name: 'Klasse-7a.thdb',
+    async queryPermission() { return 'prompt'; },
+    async requestPermission() { return 'granted'; },
+  };
+  let acceptedHandle = null;
+  let acceptedMode = '';
+  runtime.loadStoredHandle = async () => handle;
+  runtime.acceptWorkspaceSyncFileHandle = async (nextHandle, mode) => {
+    acceptedHandle = nextHandle;
+    acceptedMode = mode;
+    runtime.fileHandle = nextHandle;
+    return true;
+  };
+
+  assert.equal(await runtime.tryReconnectStoredSyncFile(), false);
+  assert.equal(runtime.storedFileHandle, handle);
+  assert.equal(runtime.fileName, 'Klasse-7a.thdb');
+  assert.equal(runtime.createWorkspaceSnapshot('shell').persistence.pendingFileName, 'Klasse-7a.thdb');
+
+  assert.equal(await runtime.tryReconnectStoredSyncFile({ allowPrompt: true }), true);
+  assert.equal(acceptedHandle, handle);
+  assert.equal(acceptedMode, 'reconnect');
 });
 
 test('locking a vault clears every plaintext course cache', async () => {

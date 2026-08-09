@@ -64,6 +64,7 @@ const WORKSPACE_OWNER_ACTION_CAPABILITIES = Object.freeze({
     'manual-save',
     'manual-load',
     'sync-connect',
+    'sync-reconnect',
     'backup-directory-connect',
     'sync-save',
     'backup-create',

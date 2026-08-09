@@ -11,7 +11,7 @@
   <link rel="manifest" href="../../../manifest.webmanifest">
   <link rel="icon" type="image/png" sizes="32x32" href="../../../icon-192.png">
   <link rel="apple-touch-icon" sizes="192x192" href="../../../icon-192.png">
-  <link rel="stylesheet" href="./app.css?v=qr-r5">
+  <link rel="stylesheet" href="./app.css?v=qr-r6">
   <link rel="stylesheet" href="../../shared/app-tooltips.css">
 </head>
 
@@ -45,16 +45,16 @@
           </div>
 
           <div class="stack-layout">
-            <form id="generatorForm" class="options-panel generator-form">
+            <div id="generatorForm" class="options-panel generator-form">
               <label class="field" for="generatorLinkInput">
                 <span>Link</span>
                 <input id="generatorLinkInput" type="text" inputmode="url" autocomplete="url"
                   placeholder="https://www.tagesschau.de/">
               </label>
               <div class="controls">
-                <button id="generateButton" class="start" type="submit">QR-Code erstellen</button>
+                <button id="generateButton" class="start" type="button">QR-Code erstellen</button>
               </div>
-            </form>
+            </div>
 
             <section id="generatorResult" class="result-panel empty" aria-live="polite">
               <div id="generatorEmpty" class="empty-state-box">
@@ -138,9 +138,9 @@
     </div>
   </dialog>
 
-  <script src="./vendor/qrcode.min.js?v=qr-r5"></script>
-  <script src="./vendor/jsQR.js?v=qr-r5"></script>
-  <script type="module" src="./app.js?v=qr-r5"></script>
+  <script src="./vendor/qrcode.min.js?v=qr-r6"></script>
+  <script src="./vendor/jsQR.js?v=qr-r6"></script>
+  <script type="module" src="./app.js?v=qr-r6"></script>
   <script src="../../shared/sidebar-resize.js"></script>
 </body>
 

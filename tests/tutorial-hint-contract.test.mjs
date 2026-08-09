@@ -5,6 +5,7 @@ import test from 'node:test';
 const [
   tutorialSource,
   moduleHintSource,
+  tutorialStateSource,
   tooltipSource,
   tooltipStyles,
   shellSource,
@@ -13,6 +14,7 @@ const [
 ] = await Promise.all([
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/tutorial-entry-hint.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/shared/tutorial-entry-state.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/app-tooltips.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/app-tooltips.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
@@ -30,16 +32,20 @@ const [
   )),
 ]);
 
-test('merkt gestartete Einführungen dauerhaft pro Tab', () => {
-  assert.match(tutorialSource, /TUTORIAL_STARTED_TABS_STORAGE_KEY/);
-  assert.match(tutorialSource, /localStorage\?\.getItem\(TUTORIAL_STARTED_TABS_STORAGE_KEY\)/);
-  assert.match(tutorialSource, /localStorage\?\.setItem\(TUTORIAL_STARTED_TABS_STORAGE_KEY/);
+test('merkt gestartete Einführungen dauerhaft und modulübergreifend', () => {
+  assert.match(tutorialStateSource, /TUTORIAL_ENTRY_HINT_SEEN_STORAGE_KEY = 'teachhelper:tutorial-entry-hint-seen:v1'/);
+  assert.match(tutorialStateSource, /hasTutorialEntryHintBeenSeen/);
+  assert.match(tutorialStateSource, /markTutorialEntryHintSeen/);
+  assert.match(tutorialStateSource, /teachhelper:tutorial-started-tabs:v1/);
+  assert.match(tutorialStateSource, /teachhelper:module-sidebar-tutorial-started-tabs:v1/);
   assert.match(tutorialSource, /function startFromEntry\(\) \{\s+return start\(\{ markStarted: true \}\);/);
-  assert.match(tutorialSource, /if \(markStarted\) markActiveTabStarted\(\);/);
+  assert.match(tutorialSource, /if \(markStarted\) markTutorialStarted\(\);/);
+  assert.match(moduleHintSource, /hasTutorialEntryHintBeenSeen\(\)/);
+  assert.match(moduleHintSource, /markTutorialEntryHintSeen\(\)/);
 });
 
-test('zeigt den Hinweis nur für unbesuchte Tabs und bis zur Interaktion', () => {
-  assert.match(tutorialSource, /!prompt \|\| active \|\| !activeTab \|\| startedTabs\.has\(activeTab\)/);
+test('zeigt den Hinweis nur bis ein Tutorial in einem beliebigen Modul gestartet wurde', () => {
+  assert.match(tutorialSource, /!prompt \|\| active \|\| !activeTab \|\| hasTutorialEntryHintBeenSeen\(\)/);
   assert.match(tutorialSource, /persistUntilInteraction: true/);
   assert.match(tooltipSource, /show: \(anchor, options\) => showTooltip\(anchor, options\)/);
   assert.match(tooltipSource, /function handlePointerOver\(event\) \{\s+if \(persistentAnchor\) return;/);

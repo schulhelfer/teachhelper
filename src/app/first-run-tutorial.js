@@ -4,6 +4,10 @@ import {
   TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
 } from '../shared/module-frame-bridge.js';
+import {
+  hasTutorialEntryHintBeenSeen,
+  markTutorialEntryHintSeen,
+} from '../shared/tutorial-entry-state.js';
 
 const VIEWPORT_MARGIN = 14;
 const TARGET_GAP = 14;
@@ -12,7 +16,6 @@ const REPOSITION_LONG_DELAY_MS = 1100;
 const TARGET_RESOLVE_ATTEMPTS = 30;
 const TARGET_RESOLVE_INTERVAL_MS = 50;
 const TUTORIAL_MORPH_DURATION_MS = 600;
-const TUTORIAL_STARTED_TABS_STORAGE_KEY = 'teachhelper:tutorial-started-tabs:v1';
 const CONTEXT_HELP_PROMPT_DELAY_MS = 420;
 
 function isHtmlElement(element) {
@@ -186,30 +189,12 @@ export function createFirstRunTutorial({
     contextHelpPromptTimer = 0;
   }
 
-  function readStartedTabs() {
-    try {
-      const stored = window.localStorage?.getItem(TUTORIAL_STARTED_TABS_STORAGE_KEY);
-      const values = JSON.parse(stored || '[]');
-      return new Set(Array.isArray(values) ? values.filter((tab) => typeof tab === 'string' && tab) : []);
-    } catch {
-      return new Set();
-    }
-  }
-
-  const startedTabs = readStartedTabs();
-
-  function markActiveTabStarted() {
+  function markTutorialStarted() {
     clearContextHelpPromptTimer();
     els.firstRunTutorialStart?.classList.remove('tutorial-attention-pulse');
     tooltipController?.hide?.();
-    const tab = String(getActiveTab() || '');
-    if (!tab || startedTabs.has(tab)) return;
-    startedTabs.add(tab);
-    try {
-      window.localStorage?.setItem(TUTORIAL_STARTED_TABS_STORAGE_KEY, JSON.stringify([...startedTabs]));
-    } catch {
-      
-    }
+    if (hasTutorialEntryHintBeenSeen()) return;
+    markTutorialEntryHintSeen();
   }
 
   const clearRepositionTimer = () => {
@@ -468,12 +453,12 @@ export function createFirstRunTutorial({
   function showContextHelp({ prompt = false } = {}) {
     setSidebarHelpButtonLabel(`Tutorial für das Modul ${getActiveModuleName()}`);
     const activeTab = String(getActiveTab() || '');
-    if (!prompt || active || !activeTab || startedTabs.has(activeTab)) return;
+    if (!prompt || active || !activeTab || hasTutorialEntryHintBeenSeen()) return;
     clearContextHelpPromptTimer();
     els.firstRunTutorialStart?.classList.add('tutorial-attention-pulse');
     contextHelpPromptTimer = window.setTimeout(() => {
       contextHelpPromptTimer = 0;
-      if (active || getActiveTab() !== activeTab || startedTabs.has(activeTab)) {
+      if (active || getActiveTab() !== activeTab || hasTutorialEntryHintBeenSeen()) {
         els.firstRunTutorialStart?.classList.remove('tutorial-attention-pulse');
         return;
       }
@@ -1037,7 +1022,7 @@ export function createFirstRunTutorial({
     try {
       const allowed = await beforeStart();
       if (allowed === false) return false;
-      if (markStarted) markActiveTabStarted();
+      if (markStarted) markTutorialStarted();
       return startTutorial();
     } catch (error) {
       console.error(error);

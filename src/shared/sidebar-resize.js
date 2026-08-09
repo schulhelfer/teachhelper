@@ -1,7 +1,9 @@
 (function installTeachHelperSidebarResize() {
   const FULLSCREEN_THRESHOLD = 160;
   const DEFAULT_WIDTH = 360;
-  const DESKTOP_BREAKPOINT = 981;
+  const MIN_RESIZE_VIEWPORT_WIDTH = 320;
+  const TOUCH_DOUBLE_TAP_DELAY_MS = 350;
+  const TOUCH_DOUBLE_TAP_DISTANCE_PX = 24;
   const WIDTH_REQUEST_EVENT = 'classroom:sidebar-width-request';
   const WIDTH_SYNC_EVENT = 'classroom:sidebar-width-sync';
   const WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
@@ -24,8 +26,8 @@
     return FULLSCREEN_THRESHOLD;
   }
 
-  function isDesktop() {
-    return window.innerWidth >= DESKTOP_BREAKPOINT;
+  function isResizableViewport() {
+    return window.innerWidth >= MIN_RESIZE_VIEWPORT_WIDTH;
   }
 
   function getMaximumWidth() {
@@ -82,9 +84,45 @@
     const defaultWidth = getDefaultWidth(scope);
     let currentWidth = defaultWidth;
     let resizeState = null;
+    let lastTouchTap = null;
     const setWidth = (width) => {
       if (!Number.isFinite(width)) return;
       app.style.setProperty('--module-sidebar-width', `${Math.round(width)}px`);
+    };
+    const resetWidth = () => {
+      currentWidth = defaultWidth;
+      setWidth(currentWidth);
+      postToShell(WIDTH_COMMIT_EVENT, { scope, width: currentWidth });
+    };
+    const handleTouchTap = (event, wasTap) => {
+      if (
+        event?.pointerType !== 'touch'
+        || !wasTap
+        || !isResizableViewport()
+        || document.documentElement.dataset.shellCollapsed === 'true'
+        || app.closest('[data-shell-collapsed="true"]')
+      ) {
+        lastTouchTap = null;
+        return;
+      }
+      const tap = {
+        at: Date.now(),
+        clientX: Number(event.clientX) || 0,
+        clientY: Number(event.clientY) || 0,
+      };
+      const previousTap = lastTouchTap;
+      lastTouchTap = tap;
+      if (
+        !previousTap
+        || tap.at - previousTap.at > TOUCH_DOUBLE_TAP_DELAY_MS
+        || Math.hypot(tap.clientX - previousTap.clientX, tap.clientY - previousTap.clientY)
+          > TOUCH_DOUBLE_TAP_DISTANCE_PX
+      ) {
+        return;
+      }
+      lastTouchTap = null;
+      event.preventDefault();
+      resetWidth();
     };
     const finishResize = (event, { cancelled = false } = {}) => {
       const state = resizeState;
@@ -127,7 +165,7 @@
     handle.addEventListener('pointerdown', (event) => {
       if (
         event.button !== 0
-        || !isDesktop()
+        || !isResizableViewport()
         || document.documentElement.dataset.shellCollapsed === 'true'
         || app.closest('[data-shell-collapsed="true"]')
       ) {
@@ -157,7 +195,9 @@
     });
     handle.addEventListener('pointerup', (event) => {
       if (resizeState?.pointerId !== event.pointerId) return;
+      const wasTap = !resizeState.hasMoved;
       finishResize(event);
+      handleTouchTap(event, wasTap);
     });
     handle.addEventListener('pointercancel', (event) => {
       if (resizeState?.pointerId !== event.pointerId) return;
@@ -168,11 +208,9 @@
       finishResize(event, { cancelled: true });
     });
     handle.addEventListener('dblclick', (event) => {
-      if (!isDesktop() || document.documentElement.dataset.shellCollapsed === 'true') return;
+      if (!isResizableViewport() || document.documentElement.dataset.shellCollapsed === 'true') return;
       event.preventDefault();
-      currentWidth = defaultWidth;
-      setWidth(currentWidth);
-      postToShell(WIDTH_COMMIT_EVENT, { scope, width: currentWidth });
+      resetWidth();
     });
     window.addEventListener('message', (event) => {
       if (!isTrustedShellMessage(event)) return;

@@ -21,6 +21,7 @@ export function createQrApp({ root = document } = {}) {
     tutorialButton: root.getElementById('tutorialButton'),
     generatorForm: root.getElementById('generatorForm'),
     generatorLinkInput: root.getElementById('generatorLinkInput'),
+    generateButton: root.getElementById('generateButton'),
     generatorResult: root.getElementById('generatorResult'),
     generatorEmpty: root.getElementById('generatorEmpty'),
     qrPreviewShell: root.getElementById('qrPreviewShell'),
@@ -1103,7 +1104,10 @@ export function createQrApp({ root = document } = {}) {
     ui.toolTabs.forEach((tab) => {
       tab.addEventListener('click', () => setActiveTool(tab.dataset.tool));
     });
-    ui.generatorForm?.addEventListener('submit', generateQr);
+    ui.generateButton?.addEventListener('click', generateQr);
+    ui.generatorLinkInput?.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') generateQr(event);
+    });
     ui.downloadQrButton?.addEventListener('click', downloadQr);
     ui.copyQrImageButton?.addEventListener('click', copyQrImage);
     ui.pasteImageButton?.addEventListener('click', pasteImageFromClipboard);

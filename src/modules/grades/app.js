@@ -2846,6 +2846,7 @@ class GradesApp {
     this.selectedGradesEntryAssessmentId = null;
     this.selectedGradesOverviewColumnKey = "";
     this.selectedGradesOverviewColumnCourseId = null;
+    this.gradeAssessmentColumnDrag = null;
     this.gradesOverviewNameOrder = "last";
     this.gradesEntryNameOrder = "first";
     this.gradesEntryDistributionView = "points";
@@ -4517,17 +4518,25 @@ class GradesApp {
     return Boolean(this.getWorkspaceOwnerApp()?.isManualPersistencePresentationMode?.());
   }
 
+  getWorkspacePersistenceStatus() {
+    const ownerPersistence = this.getWorkspaceOwnerApp()?.getWorkspacePersistenceStatus?.();
+    if (ownerPersistence && typeof ownerPersistence === "object") return ownerPersistence;
+    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
+    return snapshot.persistence && typeof snapshot.persistence === "object" ? snapshot.persistence : {};
+  }
+
   shouldPromptForManualDatabaseOnStartup() {
     return Boolean(this.getWorkspaceOwnerApp()?.shouldPromptForManualDatabaseOnStartup?.());
   }
 
   dispatchManualSaveButtonState() {
     if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
-    const state = this.getWorkspaceUnsavedState();
-    const isManualMode = this.isManualPersistencePresentationMode();
-    const title = state.dirty ? "Ungespeicherte Änderungen speichern/neu anlegen" : "Datenbank speichern/neu anlegen";
+    const persistence = this.getWorkspacePersistenceStatus();
+    const isManualMode = Boolean(persistence.isManualMode);
+    const dirty = isManualMode && Boolean(persistence.dirty);
+    const title = dirty ? "Ungespeicherte Änderungen speichern/neu anlegen" : "Keine zu speichernden Änderungen";
     window.dispatchEvent(new CustomEvent("classroom:grades-manual-save-state", {
-      detail: { isManualMode, dirty: isManualMode && state.dirty, title, ariaLabel: title }
+      detail: { isManualMode, dirty, title, ariaLabel: title }
     }));
   }
 
@@ -7322,6 +7331,174 @@ class GradesApp {
     root.addEventListener("blur", (event) => {
       this.handleGradesTableBlur(event);
     }, true);
+    root.addEventListener("dragstart", (event) => {
+      this.handleGradeAssessmentColumnDragStart(event);
+    });
+    root.addEventListener("dragover", (event) => {
+      this.handleGradeAssessmentColumnDragOver(event);
+    });
+    root.addEventListener("dragleave", (event) => {
+      this.handleGradeAssessmentColumnDragLeave(event, root);
+    });
+    root.addEventListener("drop", (event) => {
+      void this.handleGradeAssessmentColumnDrop(event);
+    });
+    root.addEventListener("dragend", () => {
+      this.clearGradeAssessmentColumnDragState();
+    });
+  }
+
+  getGradeAssessmentColumnOrderGroupKey(assessment) {
+    return [
+      Number(assessment?.courseId || 0),
+      normalizeGradeHalfYear(assessment?.halfYear),
+      Number(assessment?.categoryId || 0),
+      Number(assessment?.subcategoryId || 0)
+    ].join(":");
+  }
+
+  clearGradeAssessmentColumnDragState() {
+    this.refs.gradesTable?.querySelectorAll(
+      ".grade-assessment-col.is-assessment-dragging, .grade-assessment-col.is-assessment-drag-target-before, .grade-assessment-col.is-assessment-drag-target-after"
+    ).forEach((element) => {
+      element.classList.remove(
+        "is-assessment-dragging",
+        "is-assessment-drag-target-before",
+        "is-assessment-drag-target-after"
+      );
+    });
+    this.gradeAssessmentColumnDrag = null;
+  }
+
+  getGradeAssessmentColumnDragTarget(event) {
+    const target = event?.target instanceof Element
+      ? event.target.closest("th.grade-assessment-col[data-grade-assessment-id]")
+      : null;
+    if (!(target instanceof HTMLElement) || !this.refs.gradesTable?.contains(target)) {
+      return null;
+    }
+    const assessmentId = Number(target.dataset.gradeAssessmentId || 0);
+    const assessment = assessmentId ? this.store.getGradeAssessment(assessmentId) : null;
+    return assessment ? { element: target, assessment } : null;
+  }
+
+  handleGradeAssessmentColumnDragStart(event) {
+    const handle = event?.target instanceof Element
+      ? event.target.closest("[data-grade-drag-assessment]")
+      : null;
+    const assessmentId = Number(handle?.dataset.gradeDragAssessment || 0);
+    const assessment = assessmentId ? this.store.getGradeAssessment(assessmentId) : null;
+    if (this.locked || !assessment || Number(assessment.courseId || 0) !== Number(this.selectedCourseId || 0)) {
+      event.preventDefault();
+      return;
+    }
+    this.clearGradeAssessmentColumnDragState();
+    this.gradeAssessmentColumnDrag = {
+      assessmentId,
+      courseId: Number(assessment.courseId),
+      groupKey: this.getGradeAssessmentColumnOrderGroupKey(assessment),
+      targetAssessmentId: 0,
+      position: ""
+    };
+    const header = handle.closest("th.grade-assessment-col");
+    header?.classList.add("is-assessment-dragging");
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", String(assessmentId));
+    }
+  }
+
+  handleGradeAssessmentColumnDragOver(event) {
+    const drag = this.gradeAssessmentColumnDrag;
+    const target = this.getGradeAssessmentColumnDragTarget(event);
+    if (!drag || !target || Number(target.assessment.id) === Number(drag.assessmentId)) {
+      return;
+    }
+    if (
+      Number(target.assessment.courseId) !== Number(drag.courseId)
+      || this.getGradeAssessmentColumnOrderGroupKey(target.assessment) !== drag.groupKey
+    ) {
+      return;
+    }
+    event.preventDefault();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = "move";
+    }
+    const rect = target.element.getBoundingClientRect();
+    const position = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
+    this.refs.gradesTable?.querySelectorAll(
+      ".grade-assessment-col.is-assessment-drag-target-before, .grade-assessment-col.is-assessment-drag-target-after"
+    ).forEach((element) => {
+      element.classList.remove("is-assessment-drag-target-before", "is-assessment-drag-target-after");
+    });
+    target.element.classList.add(`is-assessment-drag-target-${position}`);
+    drag.targetAssessmentId = Number(target.assessment.id);
+    drag.position = position;
+  }
+
+  handleGradeAssessmentColumnDragLeave(event, root) {
+    if (root?.contains(event.relatedTarget)) {
+      return;
+    }
+    this.refs.gradesTable?.querySelectorAll(
+      ".grade-assessment-col.is-assessment-drag-target-before, .grade-assessment-col.is-assessment-drag-target-after"
+    ).forEach((element) => {
+      element.classList.remove("is-assessment-drag-target-before", "is-assessment-drag-target-after");
+    });
+    if (this.gradeAssessmentColumnDrag) {
+      this.gradeAssessmentColumnDrag.targetAssessmentId = 0;
+      this.gradeAssessmentColumnDrag.position = "";
+    }
+  }
+
+  async handleGradeAssessmentColumnDrop(event) {
+    const drag = this.gradeAssessmentColumnDrag;
+    const target = this.getGradeAssessmentColumnDragTarget(event);
+    if (!drag || !target || Number(target.assessment.id) !== Number(drag.targetAssessmentId)) {
+      return;
+    }
+    event.preventDefault();
+    const sourceAssessment = this.store.getGradeAssessment(drag.assessmentId);
+    const targetAssessment = this.store.getGradeAssessment(drag.targetAssessmentId);
+    const position = drag.position;
+    this.clearGradeAssessmentColumnDragState();
+    if (
+      !sourceAssessment
+      || !targetAssessment
+      || !position
+      || Number(sourceAssessment.courseId) !== Number(targetAssessment.courseId)
+      || this.getGradeAssessmentColumnOrderGroupKey(sourceAssessment) !== this.getGradeAssessmentColumnOrderGroupKey(targetAssessment)
+    ) {
+      return;
+    }
+    const siblings = this.store.listGradeAssessments(sourceAssessment.courseId).filter((assessment) => (
+      this.getGradeAssessmentColumnOrderGroupKey(assessment) === this.getGradeAssessmentColumnOrderGroupKey(sourceAssessment)
+    ));
+    const orderedIds = siblings.map((assessment) => Number(assessment.id));
+    const sourceIndex = orderedIds.indexOf(Number(sourceAssessment.id));
+    const targetIndex = orderedIds.indexOf(Number(targetAssessment.id));
+    if (sourceIndex < 0 || targetIndex < 0) {
+      return;
+    }
+    orderedIds.splice(sourceIndex, 1);
+    const adjustedTargetIndex = orderedIds.indexOf(Number(targetAssessment.id));
+    orderedIds.splice(adjustedTargetIndex + (position === "after" ? 1 : 0), 0, Number(sourceAssessment.id));
+    if (orderedIds.every((assessmentId, index) => assessmentId === siblings[index]?.id)) {
+      return;
+    }
+    try {
+      const reordered = await this.runGradeCourseMutation(sourceAssessment.courseId, () => (
+        this.store.reorderGradeAssessments(sourceAssessment.courseId, orderedIds)
+      ), { preserveRoster: true });
+      if (!reordered) {
+        throw new Error("Die Leistungsreihenfolge konnte nicht gespeichert werden.");
+      }
+      this.renderGradesView();
+    } catch (error) {
+      await this.showInfoMessage(
+        error instanceof Error ? error.message : "Die Leistungsreihenfolge konnte nicht gespeichert werden."
+      );
+    }
   }
 
   trackGradesEntryControlInteraction(event) {
@@ -20955,13 +21132,13 @@ class GradesApp {
               occurrenceCategoryId: occurrenceCategory.id,
               rightBoundary
             });
-            headerRows[3].push({
+            headerRows[2].push({
               type: "category-homework",
               period: periodGroup.period,
               category,
               occurrenceCategoryId: occurrenceCategory.id,
               rightBoundary,
-              rowSpan: 1,
+              rowSpan: 2,
               colSpan: 1
             });
           });
@@ -20978,14 +21155,14 @@ class GradesApp {
                 assessment,
                 rightBoundary
               });
-              headerRows[3].push({
+              headerRows[2].push({
                 type: "assessment",
                 period: periodGroup.period,
                 category,
                 subcategory: null,
                 assessment,
                 rightBoundary,
-                rowSpan: 1,
+                rowSpan: 2,
                 colSpan: 1
               });
             });
@@ -20998,13 +21175,13 @@ class GradesApp {
                 subcategoryId: null,
                 rightBoundary: categoryRightBoundary
               });
-              headerRows[3].push({
+              headerRows[2].push({
                 type: "add",
                 period: periodGroup.period,
                 category,
                 subcategory: null,
                 rightBoundary: categoryRightBoundary,
-                rowSpan: 1,
+                rowSpan: 2,
                 colSpan: 1
               });
             }
@@ -21488,6 +21665,8 @@ class GradesApp {
         : `grade-assessment-label is-weightless${assessmentModeClass}`;
       th.innerHTML = `
         <div class="grade-assessment-head">
+          <button type="button" class="grade-assessment-drag-handle" draggable="true" data-grade-drag-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} zum Anordnen ziehen" title="Spalte innerhalb dieser Kategorie anordnen">
+          </button>
           <button type="button" class="${assessmentLabelClass}" data-grade-edit-assessment="${cell.assessment.id}" data-course-id="${cell.assessment.courseId}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="${escapeHtml(assessmentTooltip)}">
             <span class="grade-assessment-title">${buildGradeAssessmentDisplayTitleMarkup(cell.assessment.title)}</span>
             ${buildGradeAssessmentWeightMarkup(cell.assessment.weight, cell.assessment.mode)}

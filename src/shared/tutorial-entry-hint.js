@@ -1,6 +1,9 @@
 import { installAppTooltips } from './app-tooltips.js';
+import {
+  hasTutorialEntryHintBeenSeen,
+  markTutorialEntryHintSeen,
+} from './tutorial-entry-state.js';
 
-const STORAGE_KEY = 'teachhelper:module-sidebar-tutorial-started-tabs:v1';
 const DELAY_MS = 420;
 
 export function installTutorialEntryHint(button, moduleKey, moduleName, root = document) {
@@ -9,12 +12,7 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
   const label = `Tutorial für das Modul ${moduleName}`;
   button.setAttribute('aria-label', label);
   button.dataset.tooltip = label;
-  let seen = new Set();
-  try {
-    const stored = JSON.parse(window.localStorage?.getItem(STORAGE_KEY) || '[]');
-    seen = new Set(Array.isArray(stored) ? stored : []);
-  } catch {  }
-  if (seen.has(moduleKey)) return;
+  if (hasTutorialEntryHintBeenSeen()) return;
   button.classList.add('tutorial-attention-pulse');
   let attempts = 0;
   let timer = 0;
@@ -31,8 +29,7 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
   timer = window.setTimeout(showWhenVisible, DELAY_MS);
   button.addEventListener('click', () => {
     window.clearTimeout(timer);
-    seen.add(moduleKey);
-    try { window.localStorage?.setItem(STORAGE_KEY, JSON.stringify([...seen])); } catch {  }
+    markTutorialEntryHintSeen();
     button.classList.remove('tutorial-attention-pulse');
     tooltips?.hide?.();
   }, { once: true });

@@ -24,6 +24,7 @@ const APP_SHELL = [
   './src/shared/app-tooltips.css',
   './src/shared/app-tooltips.js',
   './src/shared/tutorial-entry-hint.js',
+  './src/shared/tutorial-entry-state.js',
   './src/shared/app-version.js',
   './src/shared/error-reporting.js',
   './src/shared/file-guards.js',

@@ -6,7 +6,7 @@ import {
 } from '../../shared/module-frame-bridge.js';
 import { QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 
-const QR_VERSION = 'qr-r5';
+const QR_VERSION = 'qr-r6';
 const QR_URL = new URL(`./app.html?v=${QR_VERSION}`, import.meta.url);
 
 export function mountQr({ host }) {

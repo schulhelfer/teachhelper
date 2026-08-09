@@ -248,6 +248,7 @@ export class WorkspaceRuntime {
     this.clients = new Map();
     this.ready = true;
     this.fileHandle = null;
+    this.storedFileHandle = null;
     this.backupDirectoryHandle = null;
     this.fileName = '';
     this.knownRevision = 0;
@@ -315,7 +316,7 @@ export class WorkspaceRuntime {
       supported: this.isExternalFileSyncPresentationSupported(),
       initialized: true,
       fileHandle: this.fileHandle,
-      storedFileHandle: null,
+      storedFileHandle: this.storedFileHandle,
       fileName: this.fileName,
       statusText: '',
       statusError: false,
@@ -472,6 +473,9 @@ export class WorkspaceRuntime {
     }
     this.manualDirty = true;
     this.controller?.markChanged?.('grades');
+    if (!this.isManualPersistenceMode() && this.fileHandle) {
+      this.queueSyncSave('grades-auto-save');
+    }
   }
 
   createWorkspaceSnapshot(scope = 'shell') {
@@ -487,7 +491,7 @@ export class WorkspaceRuntime {
         isManualMode: this.isManualPersistenceMode(),
         dirty: this.manualDirty,
         fileName: this.fileName,
-        pendingFileName: '',
+        pendingFileName: String(this.storedFileHandle?.name || ''),
         backupConnected: Boolean(this.backupDirectoryHandle),
         backupDirectoryName: String(this.backupDirectoryHandle?.name || ''),
         statusText: '',
@@ -1161,9 +1165,12 @@ export class WorkspaceRuntime {
       this.backupDirectoryHandle = null;
     }
     this.fileHandle = handle;
+    this.storedFileHandle = handle;
     this.fileName = String(handle.name || this.buildSyncFileSuggestedName());
     try {
-      await this.storeHandle(HANDLE_FILE_KEY, handle);
+      if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
+        throw new Error('Die Auswahl der Datenbankdatei konnte nicht dauerhaft gespeichert werden.');
+      }
       if (String(mode || '').startsWith('new')) {
         this.knownRevision = 0;
         this.knownFileHash = '';
@@ -1303,12 +1310,17 @@ export class WorkspaceRuntime {
     return this.loadManualDatabaseFromFile(file);
   }
 
-  async tryReconnectStoredSyncFile() {
+  async tryReconnectStoredSyncFile({ allowPrompt = false } = {}) {
     if (this.ephemeral) return false;
-    const handle = await this.loadStoredHandle(HANDLE_FILE_KEY);
+    const handle = this.storedFileHandle || await this.loadStoredHandle(HANDLE_FILE_KEY);
     if (!handle) return false;
+    this.storedFileHandle = handle;
+    if (!this.fileHandle) this.fileName = String(handle.name || this.fileName || '');
     try {
-      const permission = await handle.queryPermission?.({ mode: 'readwrite' });
+      let permission = await handle.queryPermission?.({ mode: 'readwrite' });
+      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
+        permission = await handle.requestPermission({ mode: 'readwrite' });
+      }
       if (permission !== 'granted') return false;
       return this.acceptWorkspaceSyncFileHandle(handle, 'reconnect');
     } catch {
@@ -1459,6 +1471,7 @@ export class WorkspaceRuntime {
     if (name === 'manual-save') return { changed: await this.saveManualDatabase(detail), scope: 'shell' };
     if (name === 'manual-load') return { changed: await this.loadManualDatabaseFromFile(detail?.file), scope: 'shell' };
     if (name === 'sync-connect') return { changed: await this.acceptWorkspaceSyncFileHandle(detail?.handle, detail?.mode), scope: 'shell' };
+    if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
     if (name === 'backup-directory-connect') return { changed: await this.acceptWorkspaceBackupDirectoryHandle(detail?.handle), scope: 'shell' };
     if (name === 'sync-save') return { changed: await this.saveToConnectedFile(detail?.reason), scope: 'shell' };
     if (name === 'backup-create') return { changed: await this.createLatestWebBackup(detail?.mode, detail?.silent), scope: 'shell' };

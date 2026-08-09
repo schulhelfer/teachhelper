@@ -1533,6 +1533,29 @@ function createDefaultGradeStructureSetting() {
   });
 }
 
+function compareGradeAssessmentsByOrder(left, right) {
+  const sortLeft = Number(left?.sortOrder || 0);
+  const sortRight = Number(right?.sortOrder || 0);
+  if (sortLeft !== sortRight) {
+    return sortLeft - sortRight;
+  }
+  const createdLeft = String(left?.createdAt || "");
+  const createdRight = String(right?.createdAt || "");
+  if (createdLeft !== createdRight) {
+    return createdLeft.localeCompare(createdRight);
+  }
+  return Number(left?.id || 0) - Number(right?.id || 0);
+}
+
+function getGradeAssessmentOrderGroupKey(assessment) {
+  return [
+    Number(assessment?.courseId || 0),
+    normalizeGradeHalfYear(assessment?.halfYear),
+    Number(assessment?.categoryId || 0),
+    Number(assessment?.subcategoryId || 0)
+  ].join(":");
+}
+
 function normalizeGradeOccurrenceCategories(rawCategories = null) {
   const source = Array.isArray(rawCategories) ? rawCategories : [];
   const seenIds = new Set();
@@ -1715,7 +1738,7 @@ export class WorkspaceStore {
         continue;
       }
       const isNoLesson = Boolean(course.noLesson);
-      course.subject = String(course.subject || "");
+      course.subject = isNoLesson ? "" : String(course.subject || "");
       course.noLesson = isNoLesson;
       course.noGrades = Boolean(course.noGrades);
       course.hiddenInSidebar = Boolean(course.hiddenInSidebar);
@@ -2046,7 +2069,7 @@ export class WorkspaceStore {
   createCourse(schoolYearId, name, color, noLesson = false, hiddenInSidebar = false, subject = "") {
     const yearId = Number(schoolYearId);
     const cleanName = String(name || "").trim();
-    const cleanSubject = String(subject || "").trim();
+    const cleanSubject = Boolean(noLesson) ? "" : String(subject || "").trim();
     if (!cleanName) {
       return null;
     }
@@ -2095,7 +2118,9 @@ export class WorkspaceStore {
     }
     const courseNoLesson = Boolean(noLesson);
     course.name = cleanName;
-    course.subject = subject === undefined ? String(course.subject || "") : String(subject || "").trim();
+    course.subject = courseNoLesson
+      ? ""
+      : (subject === undefined ? String(course.subject || "") : String(subject || "").trim());
     course.noLesson = courseNoLesson;
     course.noGrades = Boolean(course.noGrades);
     if (hiddenInSidebar === undefined) {
@@ -2636,14 +2661,7 @@ export class WorkspaceStore {
     return this.gradeVaultState.gradeAssessments
       .filter((assessment) => Number(assessment.courseId) === id)
       .slice()
-      .sort((a, b) => {
-        const sortA = Number(a.sortOrder || 0);
-        const sortB = Number(b.sortOrder || 0);
-        if (sortA !== sortB) {
-          return sortA - sortB;
-        }
-        return String(a.title || "").localeCompare(String(b.title || ""), "de");
-      });
+      .sort(compareGradeAssessmentsByOrder);
   }
 
   getGradeAssessment(assessmentId) {
@@ -2679,7 +2697,16 @@ export class WorkspaceStore {
 
   createGradeAssessment(courseId, payload = {}) {
     const id = Number(courseId);
-    const nextSortOrder = this.listGradeAssessments(id).length + 1;
+    const orderGroup = {
+      courseId: id,
+      halfYear: normalizeGradeHalfYear(payload.halfYear),
+      categoryId: Number(payload.categoryId) || null,
+      subcategoryId: Number(payload.subcategoryId) || null
+    };
+    const orderGroupKey = getGradeAssessmentOrderGroupKey(orderGroup);
+    const nextSortOrder = this.gradeVaultState.gradeAssessments
+      .filter((assessment) => getGradeAssessmentOrderGroupKey(assessment) === orderGroupKey)
+      .reduce((maximum, assessment) => Math.max(maximum, Number(assessment.sortOrder) || 0), 0) + 1;
     const nextAssessmentId = Math.max(1, Number(this.gradeVaultState.counters.gradeAssessment) || 1);
     this.gradeVaultState.counters.gradeAssessment = nextAssessmentId + 1;
     const mode = normalizeGradeAssessmentMode(payload.mode);
@@ -2699,8 +2726,9 @@ export class WorkspaceStore {
     const assessment = {
       id: nextAssessmentId,
       courseId: id,
-      categoryId: Number(payload.categoryId) || null,
-      subcategoryId: Number(payload.subcategoryId) || null,
+      categoryId: orderGroup.categoryId,
+      subcategoryId: orderGroup.subcategoryId,
+      createdAt: new Date().toISOString(),
       title: normalizeGradeTextPart(payload.title) || formatShortDateLabel(new Date()),
       maxPoints: normalizeGradeNumber(payload.maxPoints, 15),
       weight: normalizeGradeInteger(payload.weight, 1),
@@ -2719,7 +2747,7 @@ export class WorkspaceStore {
       assessmentNumber: normalizeGradeAssessmentNumber(payload.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(payload.topic),
       examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(payload.examDurationMinutes) : null,
-      halfYear: normalizeGradeHalfYear(payload.halfYear),
+      halfYear: orderGroup.halfYear,
       sortOrder: Number(payload.sortOrder || nextSortOrder)
     };
     this._save();
@@ -2870,6 +2898,42 @@ export class WorkspaceStore {
     if (normalizeGradeAssessmentMode(assessment.mode) === "test" && shouldRecalculateTestEntries) {
       this.recalculateGradeTestEntries(assessment.id);
     }
+    this._saveGradeVault();
+    return true;
+  }
+
+  reorderGradeAssessments(courseId, assessmentIds = []) {
+    const courseKey = Number(courseId || 0);
+    const requestedIds = Array.isArray(assessmentIds)
+      ? assessmentIds.map((value) => Number(value || 0))
+      : [];
+    if (!courseKey || !requestedIds.length || requestedIds.some((id) => id <= 0)) {
+      return false;
+    }
+    const requestedIdSet = new Set(requestedIds);
+    if (requestedIdSet.size !== requestedIds.length) {
+      return false;
+    }
+    const orderedAssessments = requestedIds.map((assessmentId) => this.getGradeAssessment(assessmentId));
+    if (orderedAssessments.some((assessment) => !assessment || Number(assessment.courseId) !== courseKey)) {
+      return false;
+    }
+    const groupKey = getGradeAssessmentOrderGroupKey(orderedAssessments[0]);
+    if (orderedAssessments.some((assessment) => getGradeAssessmentOrderGroupKey(assessment) !== groupKey)) {
+      return false;
+    }
+    const siblingIds = this.gradeVaultState.gradeAssessments
+      .filter((assessment) => getGradeAssessmentOrderGroupKey(assessment) === groupKey)
+      .map((assessment) => Number(assessment.id || 0));
+    if (
+      siblingIds.length !== requestedIds.length
+      || siblingIds.some((assessmentId) => !requestedIdSet.has(assessmentId))
+    ) {
+      return false;
+    }
+    orderedAssessments.forEach((assessment, index) => {
+      assessment.sortOrder = index + 1;
+    });
     this._saveGradeVault();
     return true;
   }
@@ -4544,6 +4608,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         courseId: Number(item.courseId),
         categoryId: Number(item.categoryId) || null,
         subcategoryId: Number(item.subcategoryId) || null,
+        createdAt: String(item.createdAt || ""),
         title: normalizeGradeTextPart(item.title),
         maxPoints: normalizeGradeNumber(item.maxPoints, 15),
         weight: normalizeGradeInteger(item.weight, 1),

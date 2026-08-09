@@ -968,6 +968,7 @@ class PlanningApp {
       courseDialogForm: document.querySelector("#course-dialog-form"),
       courseDialogTitle: document.querySelector("#course-dialog-title"),
       courseDialogId: document.querySelector("#course-dialog-id"),
+      courseDialogSubjectRow: document.querySelector("#course-dialog-subject-row"),
       courseDialogSubject: document.querySelector("#course-dialog-subject"),
       courseDialogName: document.querySelector("#course-dialog-name"),
       courseDialogColorPanel: document.querySelector("#course-dialog-color-panel"),
@@ -1763,6 +1764,17 @@ class PlanningApp {
   saveSyncMeta() {}
 
   dispatchManualSaveButtonState() {
+    if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
+      const persistence = this.getWorkspacePersistenceStatus();
+      const isManualMode = Boolean(persistence.isManualMode);
+      const dirty = isManualMode && Boolean(persistence.dirty);
+      const title = dirty
+        ? "Ungespeicherte Änderungen speichern/neu anlegen"
+        : "Keine zu speichernden Änderungen";
+      window.dispatchEvent(new CustomEvent("classroom:planning-manual-save-state", {
+        detail: { isManualMode, dirty, title, ariaLabel: title }
+      }));
+    }
     this.renderDatabaseSection();
   }
 
@@ -1820,7 +1832,8 @@ class PlanningApp {
 
   async tryReconnectStoredSyncFile() {
     if (this.hasShellDatabaseConnection()) return true;
-    return this.selectSyncFile("existing");
+    const result = await this.executeWorkspaceAction("sync-reconnect", { allowPrompt: true });
+    return Boolean(result.changed);
   }
 
   openSyncSetupSettingsOnStartup() {}
@@ -3185,6 +3198,15 @@ class PlanningApp {
     if (this.refs.courseDialogColorPalette) {
       this.refs.courseDialogColorPalette.setAttribute("aria-disabled", checked ? "true" : "false");
     }
+    if (this.refs.courseDialogSubjectRow) {
+      this.refs.courseDialogSubjectRow.hidden = checked;
+    }
+    if (this.refs.courseDialogSubject) {
+      this.refs.courseDialogSubject.disabled = checked;
+      if (checked) {
+        this.refs.courseDialogSubject.value = "";
+      }
+    }
     this._updateCourseDialogColorHighlight();
   }
 
@@ -3282,7 +3304,7 @@ class PlanningApp {
       return;
     }
     const course = this.store.listCourses(year.id).find((item) => item.id === id);
-    if (!course) {
+    if (!course || course.noLesson) {
       return;
     }
     const nextSubject = await this.showPromptMessage(
@@ -3419,9 +3441,9 @@ class PlanningApp {
       await this.ensurePlanningPublicLoaded();
     }
     const id = Number(this.refs.courseDialogId.value || 0);
-    const subject = String(this.refs.courseDialogSubject?.value || "").trim();
     const name = String(this.refs.courseDialogName.value || "").trim();
     const noLesson = Boolean(this.refs.courseDialogNoLesson.checked);
+    const subject = noLesson ? "" : String(this.refs.courseDialogSubject?.value || "").trim();
     const hiddenInSidebar = Boolean(this.courseDialogDraft && this.courseDialogDraft.hiddenInSidebar);
     const color = noLesson
       ? null
@@ -3756,7 +3778,7 @@ class PlanningApp {
       return;
     }
     const block = this.store.getLessonBlock(lesson.id);
-    if (block.length === 0 || block.every((entry) => entry.canceled) || lesson.noLesson) {
+    if (block.length === 0 || block.every((entry) => entry.canceled)) {
       return;
     }
     this.pendingEntfallLessonId = lesson.id;
@@ -3802,7 +3824,7 @@ class PlanningApp {
       return false;
     }
     const allCanceled = block.every((entry) => entry.canceled);
-    if (allCanceled || lesson.noLesson) {
+    if (allCanceled) {
       return false;
     }
     const isEntfall = block.some((entry) => entry.isEntfall);
@@ -4944,9 +4966,6 @@ class PlanningApp {
       if (!button) {
         return;
       }
-      if (button.dataset.noLesson === "1") {
-        return;
-      }
       const courseId = Number(button.dataset.courseId);
       if (!await this.resolveUnsavedSettingsNavigation()) {
         return;
@@ -4979,9 +4998,7 @@ class PlanningApp {
         }
         return;
       }
-      if (row.dataset.noLesson !== "1" && !false) {
-        this.selectedCourseId = courseId;
-      }
+      this.selectedCourseId = courseId;
       this.openCourseContextMenu(courseId, event.clientX, event.clientY);
     });
 
@@ -5280,9 +5297,7 @@ class PlanningApp {
         }
       }
       const nextSchoolYearId = Number(this.refs.schoolYearSelect.value);
-      const targetCourses = this.store
-        .listCourses(nextSchoolYearId)
-        .filter((course) => !course.noLesson);
+      const targetCourses = this.store.listCourses(nextSchoolYearId);
       const nextSelectedCourseId = targetCourses.some((course) => course.id === this.selectedCourseId)
         ? this.selectedCourseId
         : (targetCourses[0]?.id || null);
@@ -5481,12 +5496,6 @@ class PlanningApp {
       const lessonBlock = event.target.closest(".lesson-block[data-lesson-id]");
       if (lessonBlock) {
         if (lessonBlock.matches("button:disabled")) {
-          return;
-        }
-        if (lessonBlock.dataset.noLesson === "1") {
-          this.selectedLessonId = null;
-          this.renderWeekTable();
-          this.renderLessonSection();
           return;
         }
         const lessonId = Number(lessonBlock.dataset.lessonId);
@@ -6750,14 +6759,12 @@ class PlanningApp {
     let displayTopic = "";
     if (allCanceled && lesson.cancelLabel) {
       displayTopic = String(lesson.cancelLabel || "").trim();
-    } else if (isNoLesson) {
-      displayTopic = String(lesson.courseName || "").trim();
     } else if (topics.size === 1) {
       displayTopic = [...topics][0];
     } else if (topics.size > 1) {
       displayTopic = "Mehrere Themen";
     }
-    if (!allCanceled && !isNoLesson && (isEntfall || isWritten)) {
+    if (!allCanceled && (isEntfall || isWritten)) {
       displayTopic = overrideTopicForFlags(displayTopic, isEntfall, isWritten);
     }
     const displayText = allCanceled
@@ -6865,7 +6872,7 @@ class PlanningApp {
       return false;
     }
     const allCanceled = block.every((entry) => entry.canceled);
-    if (allCanceled || lesson.noLesson) {
+    if (allCanceled) {
       return false;
     }
     const isEntfall = block.some((entry) => entry.isEntfall);
@@ -6935,7 +6942,6 @@ class PlanningApp {
     const blocked = !lesson
       || block.length === 0
       || block.every((entry) => entry.canceled)
-      || lesson.noLesson
       || block.some((entry) => entry.isEntfall || entry.isWrittenExam);
     if (!blocked) {
       this.store.updateLessonBlock(lessonId, {
@@ -6971,7 +6977,7 @@ class PlanningApp {
     const isNoLesson = Boolean(lesson.noLesson);
     const isEntfall = block.some((entry) => entry.isEntfall);
     const isWritten = block.some((entry) => entry.isWrittenExam);
-    const editable = !allCanceled && !isNoLesson;
+    const editable = !allCanceled;
     const isTopicEditable = editable && !(isEntfall || isWritten);
     const slotId = lesson.slotId ? Number(lesson.slotId) : null;
     const courseId = lesson.courseId ? Number(lesson.courseId) : null;
@@ -7031,7 +7037,7 @@ class PlanningApp {
           {
             label: "Serie anpassen",
             separatorBefore: true,
-            disabled: !slotId,
+            disabled: !slotId || isNoLesson,
             handler: async () => {
               const slot = this.store.getSlot(slotId);
               if (!slot) {
@@ -7042,7 +7048,7 @@ class PlanningApp {
           },
           {
             label: isWritten ? "Schriftliche Arbeit aufheben" : "Schriftliche Arbeit",
-            disabled: !editable,
+            disabled: !editable || isNoLesson,
             handler: async () => {
               if (isWritten) {
                 this.store.updateLessonBlock(lesson.id, {
@@ -7227,6 +7233,7 @@ class PlanningApp {
       },
       {
         label: "Fach ändern",
+        disabled: Boolean(course.noLesson),
         handler: async () => {
           await this.openCourseSubjectDialog(id);
         }
@@ -8224,7 +8231,7 @@ class PlanningApp {
       ? courses.filter((course) => course.hiddenInSidebar)
       : [];
     const orderedCourses = visibleCourses.concat(hiddenCourses);
-    const selectableCourses = courses.filter((course) => !course.noLesson);
+    const selectableCourses = courses;
     if (!selectableCourses.some((course) => course.id === this.selectedCourseId)) {
       this.selectedCourseId = selectableCourses.length > 0 ? selectableCourses[0].id : null;
     }
@@ -8244,17 +8251,16 @@ class PlanningApp {
       li.dataset.courseId = String(course.id);
       li.dataset.noLesson = course.noLesson ? "1" : "0";
       li.dataset.hiddenInSidebar = course.hiddenInSidebar ? "1" : "0";
-      li.draggable = !this.locked && !course.noLesson;
+      li.draggable = !this.locked;
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.courseId = String(course.id);
       button.dataset.tutorialAnchor = "planning-course";
       button.dataset.noLesson = course.noLesson ? "1" : "0";
-      button.disabled = this.locked || Boolean(course.noLesson);
+      button.disabled = this.locked;
       if (course.noLesson) {
-        button.classList.add("disabled-course");
-        button.title = "Unterrichtsfrei-Kurs · Rechtsklick: Kursaktionen";
-        li.title = "Rechtsklick: Kursaktionen";
+        button.title = "Linksklick: Kursansicht / Rechtsklick: Kursaktionen / Ziehen: Reihenfolge in Randleiste";
+        li.title = button.title;
       } else {
         button.title = "Linksklick: Kursansicht / Rechtsklick: Kursaktionen / Ziehen: Reihenfolge in Randleiste";
       }
@@ -8841,10 +8847,9 @@ class PlanningApp {
     const hasNotes = blockLessons.some((entry) => Boolean(String(entry.notes || "").trim()));
     let displayTopic = "";
     if (allCanceled && topLesson.cancelLabel) displayTopic = topLesson.cancelLabel;
-    else if (isNoLesson) displayTopic = topLesson.courseName || "";
     else if (topics.size === 1) displayTopic = [...topics][0];
     else if (topics.size > 1) displayTopic = "Mehrere Themen";
-    if (!allCanceled && !isNoLesson && (isEntfall || isWritten)) {
+    if (!allCanceled && (isEntfall || isWritten)) {
       displayTopic = overrideTopicForFlags(displayTopic, isEntfall, isWritten);
     }
     const courseColor = normalizeCourseColor(topLesson.color, false);
@@ -8864,7 +8869,7 @@ class PlanningApp {
       hasNotes,
       displayText: allCanceled ? (topLesson.cancelLabel || "Unterrichtsfrei") : formatPartialDisplay(displayTopic, partialCanceled),
       background: allCanceled ? "rgba(28, 34, 44, 0.72)" : (isNoLesson ? "rgba(120, 120, 120, 0.82)" : colorToRgba(tinted, 0.88)),
-      selectable: !allCanceled && !isNoLesson,
+      selectable: !allCanceled,
       startHour: Math.min(...blockLessons.map((entry) => Number(entry.hour))),
       endHour: Math.max(...blockLessons.map((entry) => Number(entry.hour)))
     };
@@ -8920,7 +8925,7 @@ class PlanningApp {
     if (!block.selectable) chip.classList.add("not-selectable");
     if (block.allCanceled && chip instanceof HTMLButtonElement) chip.disabled = true;
 
-    const seatplanVisible = block.selectable && !block.isNoGrades && block.courseId > 0;
+    const seatplanVisible = block.selectable && !block.isNoLesson && !block.isNoGrades && block.courseId > 0;
     if (seatplanVisible) {
       chip.classList.add("has-seatplan-trigger");
       const trigger = document.createElement("span");
@@ -8963,7 +8968,7 @@ class PlanningApp {
     }
     const title = document.createElement("span");
     title.className = "title";
-    if (!block.isNoLesson && block.courseId > 0) {
+    if (block.courseId > 0) {
       title.classList.add("course-link");
       title.dataset.courseId = String(block.courseId);
       title.title = "Kursansicht öffnen";
@@ -8991,7 +8996,7 @@ class PlanningApp {
       });
       input.addEventListener("blur", () => { if (Number(this.inlineTopicLessonId || 0) === block.firstLessonId) this.finishInlineWeekBlockTopicEdit(true); });
       topicZone.append(input);
-    } else if (topicText && !(block.courseName && block.isNoLesson && topicText.toLowerCase() === block.courseName.toLowerCase())) {
+    } else if (topicText) {
       const line = document.createElement("span"); line.className = "line"; line.textContent = topicText; topicZone.append(line);
     }
     chip.append(topicZone);
@@ -9156,8 +9161,6 @@ class PlanningApp {
       let rawTopic = "";
       if (allCanceled && topLesson.cancelLabel) {
         displayTopic = topLesson.cancelLabel;
-      } else if (isNoLesson) {
-        displayTopic = topLesson.courseName || "";
       } else if (topics.size === 1) {
         rawTopic = [...topics][0];
         displayTopic = rawTopic;
@@ -9165,7 +9168,7 @@ class PlanningApp {
         displayTopic = "Mehrere Themen";
       }
 
-      if (!allCanceled && !isNoLesson && (isEntfall || isWritten)) {
+      if (!allCanceled && (isEntfall || isWritten)) {
         displayTopic = overrideTopicForFlags(displayTopic, isEntfall, isWritten);
         rawTopic = displayTopic;
       }
@@ -9207,7 +9210,7 @@ class PlanningApp {
           : formatPartialDisplay(displayTopic, partialCanceled),
         background,
         foreground,
-        selectable: !allCanceled && !isNoLesson
+        selectable: !allCanceled
       };
     };
 
@@ -9448,7 +9451,7 @@ class PlanningApp {
             .filter(Boolean);
           const title = document.createElement("span");
           title.className = "title";
-          if (!block.isNoLesson && block.courseId > 0) {
+          if (block.courseId > 0) {
             title.classList.add("course-link");
             title.dataset.courseId = String(block.courseId);
             title.title = "Kursansicht öffnen";
@@ -9460,8 +9463,7 @@ class PlanningApp {
             : lines.slice(1).join(" ");
           const shouldShowTopicLine = Boolean(topicText) && !(
             courseName
-            && block.isNoLesson
-            && topicText.toLowerCase() === courseName.toLowerCase()
+            && false
           );
           if (isInlineEditing) {
             chip.classList.add("inline-editing");
@@ -9682,6 +9684,7 @@ class PlanningApp {
       : null;
 
     this.refs.courseTable.innerHTML = "";
+    this.refs.courseTable.classList.toggle("no-grades-course", Boolean(course?.noLesson));
 
     if (!year || !course) {
       this.refs.courseTitle.textContent = "";
@@ -9711,7 +9714,7 @@ class PlanningApp {
         <th>Datum</th>
         <th>Tag</th>
         <th>Dauer</th>
-        <th>Noten</th>
+        ${course.noLesson ? "" : "<th>Noten</th>"}
         <th>Details</th>
         <th>Thema</th>
       </tr>
@@ -9782,7 +9785,9 @@ class PlanningApp {
       notesCell.className = "course-details-cell";
 
       const firstLessonId = topLesson.id;
-      const performanceNavigationState = this.getPerformanceNavigationStateForLesson(topLesson, performanceLookup);
+      const performanceNavigationState = course.noLesson
+        ? null
+        : this.getPerformanceNavigationStateForLesson(topLesson, performanceLookup);
       tr.dataset.lessonId = String(firstLessonId);
       const contentWrap = document.createElement("div");
       contentWrap.className = "course-topic-wrap";
@@ -9850,7 +9855,11 @@ class PlanningApp {
       }
       notesCell.append(notesWrap);
 
-      tr.append(dateCell, dayCell, durCell, performanceCell, notesCell, topicCell);
+      tr.append(dateCell, dayCell, durCell);
+      if (!course.noLesson) {
+        tr.append(performanceCell);
+      }
+      tr.append(notesCell, topicCell);
       tbody.append(tr);
     }
 
