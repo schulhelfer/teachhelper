@@ -825,7 +825,7 @@ export class WorkspaceRuntime {
     return runtimeCourseFromPersisted(this.store, courseId, persisted);
   }
 
-  async ensureGradeCourseLoaded(courseId) {
+  async ensureGradeCourseLoaded(courseId, { publish = true } = {}) {
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return false;
     const load = async () => {
@@ -845,7 +845,7 @@ export class WorkspaceRuntime {
       }
       this.store.replaceGradeVaultState(state);
       this.loadedCourseId = id;
-      this.controller?.publish?.('grades');
+      if (publish) this.controller?.publish?.('grades');
       return true;
     };
     const pending = this.courseLoadTail.then(load, load);
@@ -872,6 +872,26 @@ export class WorkspaceRuntime {
         && Number(student?.id || 0) > 0
       )).length;
     return { courseId: id, studentCount };
+  }
+
+  async getGradeCourseStateSnapshot(courseId) {
+    const id = Number(courseId) || 0;
+    if (!id || !this.canAccessGradeVault()) return null;
+    let state = this.loadedCourseId === id
+      ? this.store.exportGradeVaultStateSnapshot()
+      : this.courseCache.get(id) || null;
+    if (!state) {
+      const text = this.segmentTexts.get(id) || '';
+      const initialState = this.store.exportGradeVaultStateSnapshot();
+      state = text
+        ? await this.decodeCourse(id, text)
+        : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
+          ? initialState
+          : emptyGradeState(this.store));
+      this.courseCache.set(id, state);
+      this.rememberPerformanceIndex(id, state);
+    }
+    return clone(state, emptyGradeState(this.store));
   }
 
   setGradeCourseStudentCounts(counts = null) {
@@ -969,11 +989,17 @@ export class WorkspaceRuntime {
 
   async withTemporaryGradeCourse(courseId, operation) {
     const previous = this.loadedCourseId;
-    await this.ensureGradeCourseLoaded(courseId);
+    // Do not publish the intermediary course state. A grades-view render can
+    // otherwise queue its selected course for loading and replace the state
+    // before the operation reads the requested course's roster or structure.
+    await this.ensureGradeCourseLoaded(courseId, { publish: false });
     try {
       return await operation();
     } finally {
-      if (previous && previous !== Number(courseId)) await this.ensureGradeCourseLoaded(previous);
+      if (previous && previous !== Number(courseId)) {
+        await this.ensureGradeCourseLoaded(previous, { publish: false });
+      }
+      this.controller?.publish?.('grades');
     }
   }
 

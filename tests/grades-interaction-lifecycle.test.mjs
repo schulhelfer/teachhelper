@@ -174,6 +174,99 @@ test('automatic roster discovery uses a read-only workspace summary', () => {
   assert.doesNotMatch(request, /withTemporaryGradeCourse/);
 });
 
+test('opening roster management creates its draft from the requested course snapshot', async () => {
+  const openCourseStudentsDialog = Function(
+    `"use strict"; return ({${extractClassMethod('openCourseStudentsDialog')}}).openCourseStudentsDialog;`,
+  )();
+  const calls = [];
+  const course = { id: 8, name: '8a' };
+  const harness = {
+    activeSchoolYear: { id: 1 },
+    refs: { courseStudentsDialog: {}, courseStudentsDialogId: { value: '' } },
+    canAccessGradeVault() { return true; },
+    store: {
+      listCourses() { return [course]; },
+    },
+    async buildCourseDialogDraftForCourse(nextCourse) {
+      const courseId = Number(nextCourse.id);
+      calls.push(`load:${courseId}`);
+      return { students: [{ id: 81, firstName: 'Ada' }] };
+    },
+    renderCourseDialogStudents() { calls.push('render'); },
+    openDialog() { calls.push('open'); },
+    setSyncStatus() { throw new Error('loading must not fail'); },
+  };
+
+  await openCourseStudentsDialog.call(harness, course.id);
+
+  assert.deepEqual(calls, ['load:8', 'render', 'open']);
+  assert.equal(harness.refs.courseStudentsDialogId.value, '8');
+  assert.equal(harness.courseDialogDraft.students.length, 1);
+});
+
+test('opening grade structure management creates its draft from the requested course snapshot', async () => {
+  const openCourseStructureDialog = Function(
+    `"use strict"; return ({${extractClassMethod('openCourseStructureDialog')}}).openCourseStructureDialog;`,
+  )();
+  const calls = [];
+  const course = { id: 8, name: '8a' };
+  const harness = {
+    activeSchoolYear: { id: 1 },
+    refs: {
+      courseStructureDialog: {},
+      courseStructureDialogId: { value: '' },
+      courseStructureDialogTitle: { textContent: '' },
+    },
+    canAccessGradeVault() { return true; },
+    store: {
+      listCourses() { return [course]; },
+    },
+    async buildCourseDialogDraftForCourse(nextCourse) {
+      const courseId = Number(nextCourse.id);
+      calls.push(`load:${courseId}`);
+      return { periodCategories: { h1: [], h2: [] } };
+    },
+    renderCourseDialogStructure() { calls.push('render'); },
+    openDialog() { calls.push('open'); },
+    setSyncStatus() { throw new Error('loading must not fail'); },
+  };
+
+  await openCourseStructureDialog.call(harness, course.id);
+
+  assert.deepEqual(calls, ['load:8', 'render', 'open']);
+  assert.equal(harness.refs.courseStructureDialogId.value, '8');
+  assert.equal(harness.refs.courseStructureDialogTitle.textContent, 'Notenstruktur · 8a');
+});
+
+test('course dialog drafts use the requested read-only grade course snapshot', async () => {
+  const buildCourseDialogDraftForCourse = Function(
+    `"use strict"; return ({${extractClassMethod('buildCourseDialogDraftForCourse')}}).buildCourseDialogDraftForCourse;`,
+  )();
+  const course = { id: 8, name: '8a' };
+  const gradeState = {
+    gradeStudents: [{ id: 81, courseId: 8, firstName: 'Ada' }],
+    gradeStructures: [{ courseId: 8, periodCategories: { h1: [{ name: 'Mitarbeit' }], h2: [] } }],
+  };
+  const harness = {
+    getWorkspaceOwnerApp() {
+      return {
+        async getGradeCourseStateSnapshot(courseId) {
+          assert.equal(courseId, 8);
+          return gradeState;
+        },
+      };
+    },
+    buildCourseDialogDraft(nextCourse, options) {
+      assert.equal(nextCourse, course);
+      return options;
+    },
+  };
+
+  const result = await buildCourseDialogDraftForCourse.call(harness, course);
+
+  assert.equal(result.gradeState, gradeState);
+});
+
 test('fresh grades context menus survive incidental opening layout events', () => {
   const isFreshContextMenu = Function(
     `"use strict"; return ({${extractClassMethod('isFreshContextMenu')}}).isFreshContextMenu;`,

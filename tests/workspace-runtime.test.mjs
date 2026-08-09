@@ -588,6 +588,31 @@ test('read-only roster summaries never replace or publish the active grade cours
   assert.equal(publishCount, 0);
 });
 
+test('read-only grade course snapshots retain the selected course data without replacing the active course', async () => {
+  const store = new FakeStore();
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 70, courseId: 7, firstName: 'Aktiv' }],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = 7;
+  runtime.courseCache.set(8, {
+    ...emptyGrades(),
+    gradeStructures: [{ courseId: 8, periodCategories: { h1: [{ name: 'Mitarbeit' }], h2: [] } }],
+    gradeStudents: [{ id: 80, courseId: 8, firstName: 'Ada' }],
+  });
+  let publishCount = 0;
+  runtime.bindController({ publish() { publishCount += 1; } });
+
+  const snapshot = await runtime.getGradeCourseStateSnapshot(8);
+
+  assert.equal(snapshot.gradeStudents[0].firstName, 'Ada');
+  assert.equal(snapshot.gradeStructures[0].periodCategories.h1[0].name, 'Mitarbeit');
+  assert.equal(runtime.loadedCourseId, 7);
+  assert.equal(store.gradeState.gradeStudents[0].courseId, 7);
+  assert.equal(publishCount, 0);
+});
+
 test('concurrent requests for the same grade course are serialized without a late second publish', async () => {
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });

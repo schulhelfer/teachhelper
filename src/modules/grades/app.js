@@ -3793,6 +3793,25 @@ class GradesApp {
     return owner.withTemporaryGradeCourse(courseId, operation);
   }
 
+  async buildCourseDialogDraftForCourse(course) {
+    const courseId = Number(course?.id || 0);
+    if (!courseId) {
+      return this.buildCourseDialogDraft(course);
+    }
+    const owner = this.getWorkspaceOwnerApp();
+    if (typeof owner?.getGradeCourseStateSnapshot === "function") {
+      const gradeState = await owner.getGradeCourseStateSnapshot(courseId);
+      if (!gradeState) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
+      return this.buildCourseDialogDraft(course, { gradeState });
+    }
+    return this.withTemporaryGradeCourse(
+      courseId,
+      () => this.buildCourseDialogDraft(course)
+    );
+  }
+
   async getOccurrenceCategoryUsage(categoryId) {
     const owner = this.getWorkspaceOwnerApp();
     if (!owner?.getOccurrenceCategoryUsage) return 0;
@@ -5732,9 +5751,32 @@ class GradesApp {
 
   buildCourseDialogDraft(course = null, options = {}) {
     const includeGrades = options.includeGrades !== false;
-    const students = includeGrades && course ? this.store.listGradeStudents(course.id) : [];
-    const structure = includeGrades && course ? this.store.getGradeStructure(course.id) : { categories: [] };
-    const importMeta = includeGrades && course ? this.store.getGradeImportMeta(course.id) : null;
+    const gradeState = options.gradeState && typeof options.gradeState === "object"
+      ? options.gradeState
+      : null;
+    const courseId = Number(course?.id || 0);
+    const students = includeGrades && course
+      ? (gradeState
+        ? (Array.isArray(gradeState.gradeStudents) ? gradeState.gradeStudents : [])
+          .filter((student) => Number(student?.courseId || 0) === courseId)
+          .slice()
+          .sort(compareGradeStudents)
+        : this.store.listGradeStudents(courseId))
+      : [];
+    const structure = includeGrades && course
+      ? (gradeState
+        ? (Array.isArray(gradeState.gradeStructures)
+          ? gradeState.gradeStructures.find((entry) => Number(entry?.courseId || 0) === courseId)
+          : null) || { courseId, categories: [], periodCategories: { h1: [], h2: [] }, performanceFlairWeightOverrides: {} }
+        : this.store.getGradeStructure(courseId))
+      : { categories: [] };
+    const importMeta = includeGrades && course
+      ? (gradeState
+        ? (Array.isArray(gradeState.gradeImports)
+          ? gradeState.gradeImports.find((entry) => Number(entry?.courseId || 0) === courseId) || null
+          : null)
+        : this.store.getGradeImportMeta(courseId))
+      : null;
     const periodCategories = normalizeGradeStructurePeriodCategoriesPercentDraft(structure);
     const hasPeriodCategories = ["h1", "h2"].some((period) => (
       Array.isArray(periodCategories[period]) && periodCategories[period].length > 0
@@ -6730,10 +6772,7 @@ class GradesApp {
       return;
     }
     try {
-      this.courseDialogDraft = await this.withTemporaryGradeCourse(
-        course.id,
-        () => this.buildCourseDialogDraft(course)
-      );
+      this.courseDialogDraft = await this.buildCourseDialogDraftForCourse(course);
     } catch (error) {
       this.setSyncStatus(
         error instanceof Error && error.message ? error.message : "Notenkurs konnte nicht geladen werden.",
@@ -6828,10 +6867,7 @@ class GradesApp {
       return;
     }
     try {
-      this.courseDialogDraft = await this.withTemporaryGradeCourse(
-        course.id,
-        () => this.buildCourseDialogDraft(course)
-      );
+      this.courseDialogDraft = await this.buildCourseDialogDraftForCourse(course);
     } catch (error) {
       this.setSyncStatus(
         error instanceof Error && error.message ? error.message : "Notenkurs konnte nicht geladen werden.",
