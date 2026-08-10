@@ -24,6 +24,16 @@ test('eine gemeinsame Disketten-Persistenz exportiert nur im manuellen Modus', (
   assert.match(workspaceSource, /'explicit-save'/);
 });
 
+test('ein abgebrochener Datenbank-Dateidialog wird still behandelt', () => {
+  const planningStart = planningSource.indexOf('  async selectSyncFile(mode = "existing")');
+  const planningEnd = planningSource.indexOf('\n  async acceptWorkspaceSyncFileHandle', planningStart);
+  assert.ok(planningStart >= 0 && planningEnd > planningStart);
+  const planningPicker = planningSource.slice(planningStart, planningEnd);
+  assert.match(planningPicker, /String\(mode\)\.startsWith\("new"\)/);
+  assert.match(planningPicker, /error\?\.name !== "AbortError"/);
+  assert.match(planningSource, /dbCreateNewBtn\.addEventListener\("click", async \(\) => \{\s+await this\.selectSyncFile\("new"\);/);
+});
+
 
 test('die Disketten-Dialoge speichern nach erfolgreichen Datenbankänderungen', () => {
   for (const reason of [

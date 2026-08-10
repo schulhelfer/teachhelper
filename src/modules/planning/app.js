@@ -1809,19 +1809,26 @@ class PlanningApp {
 
   async selectSyncFile(mode = "existing") {
     if (!this.workspaceController || this.isStandaloneWorkspace) return false;
-    let handle = null;
-    if (mode === "new" && typeof window.showSaveFilePicker === "function") {
-      handle = await window.showSaveFilePicker({
-        suggestedName: this.workspaceController.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
-        types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
-      });
-    } else if (typeof window.showOpenFilePicker === "function") {
-      [handle] = await window.showOpenFilePicker({
-        multiple: false,
-        types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
-      });
+    try {
+      let handle = null;
+      if (String(mode).startsWith("new") && typeof window.showSaveFilePicker === "function") {
+        handle = await window.showSaveFilePicker({
+          suggestedName: this.workspaceController.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
+          types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
+        });
+      } else if (typeof window.showOpenFilePicker === "function") {
+        [handle] = await window.showOpenFilePicker({
+          multiple: false,
+          types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
+        });
+      }
+      return handle ? this.acceptWorkspaceSyncFileHandle(handle, mode) : false;
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.");
+      }
+      return false;
     }
-    return handle ? this.acceptWorkspaceSyncFileHandle(handle, mode) : false;
   }
 
   async acceptWorkspaceSyncFileHandle(handle, mode = "existing") {
@@ -5835,7 +5842,7 @@ class PlanningApp {
 
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.addEventListener("click", async () => {
-        await this.selectSyncFile("new-empty");
+        await this.selectSyncFile("new");
         this.renderAll();
       });
     }
