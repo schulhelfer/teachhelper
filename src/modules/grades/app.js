@@ -4470,6 +4470,17 @@ class GradesApp {
     return saved;
   }
 
+  async persistExplicitDatabaseSave() {
+    const owner = this.getWorkspaceOwnerApp();
+    if (!owner?.persistExplicitDatabaseSave) return false;
+    try {
+      return Boolean(await owner.persistExplicitDatabaseSave());
+    } catch (_error) {
+      await this.showInfoMessage("Änderung übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.", "Datenbank speichern");
+      return false;
+    }
+  }
+
   async saveGradesEntryImmediatelyAfterDiskSave() {
     if (!this.canAccessGradeVault()) {
       this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
@@ -5015,7 +5026,9 @@ class GradesApp {
   }
 
   async applySettingsSaveForActiveTab() {
-    if (this.settingsDirty) await this.applySettingsDraftToStore();
+    if (this.settingsDirty && await this.applySettingsDraftToStore() && this.activeSettingsTab !== "encryption") {
+      await this.persistExplicitDatabaseSave();
+    }
   }
 
   applySettingsCancelForActiveTab() {
@@ -6593,6 +6606,7 @@ class GradesApp {
       await this.showInfoMessage("Kursname bereits vorhanden.");
       return;
     }
+    await this.persistExplicitDatabaseSave();
     this.renderAll();
   }
 
@@ -6627,6 +6641,7 @@ class GradesApp {
       await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.");
       return;
     }
+    await this.persistExplicitDatabaseSave();
     this.renderAll();
   }
 
@@ -6682,6 +6697,7 @@ class GradesApp {
       await this.showInfoMessage("Die Farbe konnte nicht gespeichert werden.");
       return;
     }
+    await this.persistExplicitDatabaseSave();
     this.closeCourseColorDialog();
     this.renderAll();
   }
@@ -6752,6 +6768,7 @@ class GradesApp {
       await this.showInfoMessage(result?.message || "Kursname bereits vorhanden.");
       return;
     }
+    await this.persistExplicitDatabaseSave();
     if (!noLesson && !this.selectedCourseId) this.selectedCourseId = targetCourseId;
     if (noLesson && Number(this.selectedCourseId) === id) this.selectedCourseId = null;
     this.closeCourseDialog();
@@ -6849,6 +6866,7 @@ class GradesApp {
       );
       return;
     }
+    await this.persistExplicitDatabaseSave();
     this.closeCourseStudentsDialog();
     this.renderAll();
   }
@@ -6931,6 +6949,7 @@ class GradesApp {
       );
       return;
     }
+    await this.persistExplicitDatabaseSave();
     this.closeCourseStructureDialog();
     this.renderAll();
   }
@@ -14392,6 +14411,7 @@ class GradesApp {
       );
       return false;
     }
+    await this.persistExplicitDatabaseSave();
     this.closeGradeAccommodationDialog();
     this.renderAll();
     return true;

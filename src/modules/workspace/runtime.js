@@ -810,6 +810,11 @@ export class WorkspaceRuntime {
       : this.saveToConnectedFile('grade-vault-explicit-save');
   }
 
+  async persistExplicitDatabaseSave() {
+    if (!this.isManualPersistenceMode()) return true;
+    return this.saveManualDatabase();
+  }
+
   async decodeCourse(courseId, text) {
     const parsed = parseCourseSegment(text);
     if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
@@ -1029,6 +1034,10 @@ export class WorkspaceRuntime {
         this.rememberPerformanceIndex(id, after);
         this.dirtyCourseIds.add(id);
         this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
+        this.manualDirty = true;
+        if (!this.isManualPersistenceMode() && this.fileHandle) {
+          this.queueSyncSave('grades-auto-save');
+        }
         return result;
       } catch (error) {
         this.store.replaceGradeVaultState(before);
@@ -1575,6 +1584,7 @@ export class WorkspaceRuntime {
   async handleWorkspaceAction(action = '', detail = null) {
     const name = String(action || '').toLowerCase();
     if (name === 'manual-save') return { changed: await this.saveManualDatabase(detail), scope: 'shell' };
+    if (name === 'explicit-save') return { changed: await this.persistExplicitDatabaseSave(detail), scope: 'shell' };
     if (name === 'manual-create-empty') return { changed: false, value: await this.createEmptyManualDatabase(), scope: 'shell' };
     if (name === 'manual-load') return { changed: await this.loadManualDatabaseFromFile(detail?.file), scope: 'shell' };
     if (name === 'sync-connect') return { changed: await this.acceptWorkspaceSyncFileHandle(detail?.handle, detail?.mode), scope: 'shell' };

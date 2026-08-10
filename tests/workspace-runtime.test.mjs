@@ -46,6 +46,8 @@ class FakeStore {
     this.settings = new Map();
   }
   setAfterSaveHooks(hooks) { this.hooks = hooks; }
+  _suspendSaveHooks() {}
+  _resumeSaveHooks() {}
   exportPublicStateSnapshot() { return structuredClone(this.publicState); }
   exportGradeVaultStateSnapshot() { return structuredClone(this.gradeState); }
   replaceGradeVaultState(state) { this.gradeState = this.normalizeGradeVaultState(state); }
@@ -155,6 +157,37 @@ test('grade changes do not trigger downloads in manual persistence mode', () => 
   assert.equal(saveCalls, 0);
   assert.equal(runtime.manualDirty, true);
 });
+
+test('explizite Notenkursmutationen markieren den manuellen Speicherstatus und synchronisieren automatisch', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = 7;
+  runtime.isManualPersistenceMode = () => false;
+  runtime.fileHandle = { name: 'noten.thdb' };
+  const reasons = [];
+  runtime.queueSyncSave = (reason) => { reasons.push(reason); return true; };
+
+  await runtime.runGradeCourseMutation(7, () => {
+    store.gradeState.gradeStudents.push({ id: 10, courseId: 7, firstName: 'Ada' });
+  });
+
+  assert.equal(runtime.manualDirty, true);
+  assert.equal(runtime.dirtyCourseIds.has(7), true);
+  assert.deepEqual(reasons, ['grades-auto-save']);
+});
+
+test('explizite Datenbank-Speicherungen laden nur im manuellen Modus herunter', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  let downloads = 0;
+  runtime.saveManualDatabase = async () => { downloads += 1; return true; };
+
+  runtime.isManualPersistenceMode = () => true;
+  assert.equal(await runtime.persistExplicitDatabaseSave(), true);
+  runtime.isManualPersistenceMode = () => false;
+  assert.equal(await runtime.persistExplicitDatabaseSave(), true);
+  assert.equal(downloads, 1);
+});
+
 
 test('ephemeral tutorial runtimes never reconnect database or backup handles', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), {

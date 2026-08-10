@@ -2349,7 +2349,9 @@ class PlanningApp {
       if (!this.settingsDirty) {
         return;
       }
-      await this.applySettingsDraftToStore();
+      if (await this.applySettingsDraftToStore()) {
+        await this.persistExplicitDatabaseSave("planning-settings-save");
+      }
     }
   }
 
@@ -3315,6 +3317,7 @@ class PlanningApp {
       await this.showInfoMessage("Kursname bereits vorhanden.");
       return;
     }
+    await this.persistExplicitDatabaseSave("planning-course-name-save");
     this.renderAll();
   }
 
@@ -3349,6 +3352,7 @@ class PlanningApp {
       await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.");
       return;
     }
+    await this.persistExplicitDatabaseSave("planning-course-subject-save");
     this.renderAll();
   }
 
@@ -3404,6 +3408,7 @@ class PlanningApp {
       await this.showInfoMessage("Die Farbe konnte nicht gespeichert werden.");
       return;
     }
+    await this.persistExplicitDatabaseSave("planning-course-color-save");
     this.closeCourseColorDialog();
     this.renderAll();
   }
@@ -3531,6 +3536,7 @@ class PlanningApp {
       }
     }
 
+    await this.persistExplicitDatabaseSave("planning-course-save");
     this.closeCourseDialog();
     this.renderAll();
   }
@@ -3685,6 +3691,7 @@ class PlanningApp {
       return;
     }
     this.store.upsertFreeRange(id || null, year.id, label, startDate, endDate);
+    await this.persistExplicitDatabaseSave("planning-free-range-save");
     this.closeFreeRangeDialog();
     this.renderAll();
   }
@@ -3762,6 +3769,7 @@ class PlanningApp {
       await this.showInfoMessage("Name bereits vorhanden oder Eingabe ungültig.");
       return;
     }
+    await this.persistExplicitDatabaseSave("planning-special-day-save");
     this.closeSpecialDayDialog();
     this.renderAll();
   }
@@ -3816,7 +3824,7 @@ class PlanningApp {
     this.closeDialog(this.refs.entfallDialog);
   }
 
-  submitEntfallDialog() {
+  async submitEntfallDialog() {
     const lessonId = Number(this.pendingEntfallLessonId || 0);
     if (!lessonId) {
       this.closeEntfallDialog();
@@ -3829,6 +3837,7 @@ class PlanningApp {
       isEntfall: true,
       isWrittenExam: false
     });
+    await this.persistExplicitDatabaseSave("planning-cancellation-save");
     this.closeEntfallDialog();
     this.renderWeekSection();
     this.renderLessonSection();
@@ -4051,7 +4060,7 @@ class PlanningApp {
     window.open(target.href, "_blank", "noopener,noreferrer");
   }
 
-  submitTopicDialog() {
+  async submitTopicDialog() {
     const lessonId = Number(this.pendingTopicLessonId || this.refs.topicDialogLesson.value || 0);
     if (!lessonId) {
       this.closeTopicDialog();
@@ -4071,6 +4080,7 @@ class PlanningApp {
       patch.topic = String(this.refs.topicDialogInput.value || "").trim();
     }
     this.store.updateLessonBlock(lessonId, patch);
+    await this.persistExplicitDatabaseSave("planning-topic-save");
     this.selectedLessonId = lessonId;
     this.closeTopicDialog();
     this.renderWeekSection();
@@ -4606,6 +4616,7 @@ class PlanningApp {
     if (!ok) {
       return;
     }
+    await this.persistExplicitDatabaseSave("planning-slot-series-save");
     this.closeSlotDialog();
     this.resetSlotForm();
     this.renderAll();
@@ -5084,9 +5095,9 @@ class PlanningApp {
       this.closeEntfallDialog();
     });
 
-    this.refs.entfallDialogForm.addEventListener("submit", (event) => {
+    this.refs.entfallDialogForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      this.submitEntfallDialog();
+      await this.submitEntfallDialog();
     });
 
     this.refs.entfallDialog.addEventListener("cancel", (event) => {
@@ -5118,9 +5129,9 @@ class PlanningApp {
       this.openTopicDialogNoteLink(event);
     });
 
-    this.refs.topicDialogForm.addEventListener("submit", (event) => {
+    this.refs.topicDialogForm.addEventListener("submit", async (event) => {
       event.preventDefault();
-      this.submitTopicDialog();
+      await this.submitTopicDialog();
     });
 
     this.refs.topicDialog.addEventListener("cancel", (event) => {
@@ -5897,6 +5908,7 @@ class PlanningApp {
       if (!ok) {
         return;
       }
+      await this.persistExplicitDatabaseSave("planning-slot-series-save");
       this.resetSlotForm();
       this.renderAll();
     });
@@ -6343,6 +6355,16 @@ class PlanningApp {
   async saveManualDatabase(options = {}) {
     const result = await this.executeWorkspaceAction("manual-save", options);
     return Boolean(result.changed);
+  }
+
+  async persistExplicitDatabaseSave(reason = "planning-dialog-save") {
+    try {
+      const result = await this.executeWorkspaceAction("explicit-save", { reason });
+      return Boolean(result.changed);
+    } catch (_error) {
+      await this.showInfoMessage("Änderung übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.", "Datenbank speichern");
+      return false;
+    }
   }
 
   async createEmptyManualDatabase() {
