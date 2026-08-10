@@ -23,6 +23,7 @@ import {
   writeThemePreference,
 } from "../../shared/theme.js";
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
+import { installTouchLongPress } from "../../shared/touch-long-press.js";
 import {
   FILE_TIMEOUTS,
   readFileArrayBufferWithTimeout,
@@ -4574,7 +4575,7 @@ class GradesApp {
     const persistence = this.getWorkspacePersistenceStatus();
     const isManualMode = Boolean(persistence.isManualMode);
     const dirty = isManualMode && Boolean(persistence.dirty);
-    const title = dirty ? "Ungespeicherte Änderungen speichern/neu anlegen" : "Keine zu speichernden Änderungen";
+    const title = dirty ? "Ungespeicherte Änderungen speichern" : "Keine zu speichernden Änderungen";
     window.dispatchEvent(new CustomEvent("classroom:grades-manual-save-state", {
       detail: { isManualMode, dirty, title, ariaLabel: title }
     }));
@@ -10081,7 +10082,7 @@ class GradesApp {
 
     if (this.refs.dbManualSaveBtn) {
       this.refs.dbManualSaveBtn?.addEventListener("click", () => {
-        void this.saveManualDatabase();
+        void this.createEmptyManualDatabase();
       });
     }
 
@@ -10369,6 +10370,28 @@ class GradesApp {
       event.preventDefault();
       event.returnValue = "";
     });
+    this.bindTouchContextMenus();
+  }
+
+  bindTouchContextMenus() {
+    this.touchContextMenuCleanup = installTouchLongPress(this.refs.sidebarCourseList, {
+      getTarget: (event) => {
+        const target = this._getEventTargetElement(event.target);
+        if (!target || target.closest("input, textarea, select, [contenteditable='true']")) {
+          return null;
+        }
+        return target.closest("li[data-course-id]");
+      },
+      onLongPress: ({ target, clientX, clientY }) => {
+        if (this.locked) return;
+        const courseId = Number(target.dataset.courseId || 0);
+        if (!courseId) return;
+        if (target.dataset.noLesson !== "1" && !this.isGradesTopTabActive()) {
+          this.selectedCourseId = courseId;
+        }
+        this.openCourseContextMenu(courseId, clientX, clientY);
+      },
+    });
   }
 
   _getEventTargetElement(target) {
@@ -10391,6 +10414,10 @@ class GradesApp {
 
   async saveManualDatabase() {
     return this.getWorkspaceOwnerApp()?.saveManualDatabase?.() || false;
+  }
+
+  async createEmptyManualDatabase() {
+    return this.getWorkspaceOwnerApp()?.createEmptyManualDatabase?.() || false;
   }
 
   async loadManualDatabaseFromFile(file) {
@@ -25181,13 +25208,13 @@ class GradesApp {
         isManualMode && this.manualPersistenceState.dirty
       );
       this.refs.sidebarManualSaveBtn.title = this.manualPersistenceState.dirty
-        ? "Ungespeicherte Änderungen speichern/neu anlegen"
-        : "Datenbank speichern/neu anlegen";
+        ? "Ungespeicherte Änderungen speichern"
+        : "Datenbank speichern";
       this.refs.sidebarManualSaveBtn.setAttribute(
         "aria-label",
         this.manualPersistenceState.dirty
-          ? "Ungespeicherte Änderungen speichern/neu anlegen"
-          : "Datenbank speichern/neu anlegen"
+          ? "Ungespeicherte Änderungen speichern"
+          : "Datenbank speichern"
       );
     }
     this.dispatchManualSaveButtonState();

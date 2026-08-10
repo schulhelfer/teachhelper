@@ -240,8 +240,8 @@ import {
     planningManualSaveState: {
       isManualMode: false,
       dirty: false,
-      title: 'Datenbank speichern/neu anlegen',
-      ariaLabel: 'Datenbank speichern/neu anlegen',
+      title: 'Datenbank speichern',
+      ariaLabel: 'Datenbank speichern',
     },
     planningGradeVaultState: {
       ready: false,

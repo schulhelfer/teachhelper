@@ -62,6 +62,7 @@ const WORKSPACE_OWNER_ACTION_CAPABILITIES = Object.freeze({
   shell: null,
   planning: new Set([
     'manual-save',
+    'manual-create-empty',
     'manual-load',
     'sync-connect',
     'sync-reconnect',

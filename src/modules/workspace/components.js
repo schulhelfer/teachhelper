@@ -52,11 +52,11 @@ const DATABASE_PANEL_MARKUP = `
         <button id="db-create-new-btn" type="button">Leere Datenbankdatei neu anlegen</button>
       </div>
       <div id="db-manual-actions" class="button-row settings-db-manual-actions" data-tutorial-anchor="database-actions" hidden>
-        <button id="db-manual-load-btn" type="button">Datenbank laden</button>
-        <button id="db-manual-save-btn" type="button">Datenbank speichern/neu anlegen</button>
+        <button id="db-manual-load-btn" type="button">Bestehende Datenbankdatei auswählen</button>
+        <button id="db-manual-save-btn" type="button">Leere Datenbankdatei neu anlegen</button>
         <input id="db-manual-file" type="file" accept="application/json,.json" hidden>
       </div>
-      <p id="db-manual-hint" class="muted" hidden>Dieser Browser unterstützt keinen dauerhaften Zugriff auf Datenbankdateien. Bitte installiere den TeachHelper über die Browser Edge oder Chrome.</p>
+      <p id="db-manual-hint" class="muted" hidden>Dieser Browser oder dieses Betriebssystem unterstützt keinen dauerhaften Zugriff auf Datenbankdateien. Bitte installiere den TeachHelper über die Browser Edge oder Chrome auf einem Windows- oder macOS-System.</p>
     </div>
     <div id="db-backup-section" class="settings-extra-section" data-tutorial-anchor="workspace-backup">
       <h3 class="settings-panel-title">Backups</h3>

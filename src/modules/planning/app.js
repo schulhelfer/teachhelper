@@ -9,6 +9,7 @@ import {
   writeThemePreference,
 } from "../../shared/theme.js";
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
+import { installTouchLongPress } from "../../shared/touch-long-press.js";
 import { appendPlanningNoteWithLinks, normalizePlanningNoteText } from "../../shared/planning-note-links.js";
 import {
   normalizePublicSchoolData
@@ -1784,7 +1785,7 @@ class PlanningApp {
       const isManualMode = Boolean(persistence.isManualMode);
       const dirty = isManualMode && Boolean(persistence.dirty);
       const title = dirty
-        ? "Ungespeicherte Änderungen speichern/neu anlegen"
+        ? "Ungespeicherte Änderungen speichern"
         : "Keine zu speichernden Änderungen";
       window.dispatchEvent(new CustomEvent("classroom:planning-manual-save-state", {
         detail: { isManualMode, dirty, title, ariaLabel: title }
@@ -5790,7 +5791,7 @@ class PlanningApp {
 
     if (this.refs.dbManualSaveBtn) {
       this.refs.dbManualSaveBtn.addEventListener("click", () => {
-        void this.saveManualDatabase();
+        void this.createEmptyManualDatabase();
       });
     }
 
@@ -6226,6 +6227,52 @@ class PlanningApp {
       event.preventDefault();
       event.returnValue = "";
     });
+    this.bindTouchContextMenus();
+  }
+
+  bindTouchContextMenus() {
+    const findNonEditableTarget = (event, selector) => {
+      const target = this._getEventTargetElement(event.target);
+      if (!target || target.closest("input, textarea, select, [contenteditable='true']")) {
+        return null;
+      }
+      return target.closest(selector);
+    };
+    const bindCourseList = (list) => installTouchLongPress(list, {
+      getTarget: (event) => findNonEditableTarget(event, "li[data-course-id]"),
+      onLongPress: ({ target, clientX, clientY }) => {
+        if (this.locked) return;
+        const courseId = Number(target.dataset.courseId || 0);
+        if (!courseId) return;
+        this.selectedCourseId = courseId;
+        this.openCourseContextMenu(courseId, clientX, clientY);
+      },
+    });
+
+    this.touchContextMenuCleanups = [
+      bindCourseList(this.refs.sidebarCourseList),
+      bindCourseList(this.refs.courseList),
+      installTouchLongPress(this.refs.weekTable, {
+        getTarget: (event) => findNonEditableTarget(event, ".lesson-block[data-lesson-id]"),
+        onLongPress: ({ target, clientX, clientY }) => {
+          if (this.locked || target.matches("button:disabled")) return;
+          const lessonId = Number(target.dataset.lessonId || 0);
+          if (!lessonId) return;
+          this.openWeekBlockContextMenu(lessonId, clientX, clientY, "week");
+        },
+      }),
+      installTouchLongPress(this.refs.courseTable, {
+        getTarget: (event) => findNonEditableTarget(event, "tr[data-lesson-id]"),
+        onLongPress: ({ target, clientX, clientY }) => {
+          if (this.locked) return;
+          const lessonId = Number(target.dataset.lessonId || 0);
+          const lesson = this.store.getLessonById(lessonId);
+          const block = lesson ? this.store.getLessonBlock(lessonId) : [];
+          if (!lesson || block.length === 0 || block.every((entry) => entry.canceled)) return;
+          this.openWeekBlockContextMenu(lessonId, clientX, clientY, "course");
+        },
+      }),
+    ];
   }
 
   handleWeekEmptySlotPointerDown(event) {
@@ -6296,6 +6343,11 @@ class PlanningApp {
   async saveManualDatabase(options = {}) {
     const result = await this.executeWorkspaceAction("manual-save", options);
     return Boolean(result.changed);
+  }
+
+  async createEmptyManualDatabase() {
+    const result = await this.executeWorkspaceAction("manual-create-empty");
+    return Boolean(result.value);
   }
 
   async loadManualDatabaseFromFile(file) {
@@ -7849,13 +7901,13 @@ class PlanningApp {
         isManualMode && persistenceDirty
       );
       this.refs.sidebarManualSaveBtn.title = persistenceDirty
-        ? "Ungespeicherte Änderungen speichern/neu anlegen"
-        : "Datenbank speichern/neu anlegen";
+        ? "Ungespeicherte Änderungen speichern"
+        : "Datenbank speichern";
       this.refs.sidebarManualSaveBtn.setAttribute(
         "aria-label",
         persistenceDirty
-          ? "Ungespeicherte Änderungen speichern/neu anlegen"
-          : "Datenbank speichern/neu anlegen"
+          ? "Ungespeicherte Änderungen speichern"
+          : "Datenbank speichern"
       );
     }
     this.dispatchManualSaveButtonState();

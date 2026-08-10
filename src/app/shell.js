@@ -1054,7 +1054,7 @@ export function createShellController({
     );
     const title = shouldShow && !hasManualChanges
       ? 'Keine zu speichernden Änderungen'
-      : (state.planningManualSaveState.title || 'Datenbank speichern/neu anlegen');
+      : (state.planningManualSaveState.title || 'Datenbank speichern');
     const ariaLabel = shouldShow && !hasManualChanges
       ? 'Keine zu speichernden Änderungen'
       : (state.planningManualSaveState.ariaLabel || title);
@@ -1295,7 +1295,7 @@ export function createShellController({
   function setPlanningManualSaveState(detail = null) {
     const title = detail && typeof detail.title === 'string' && detail.title.trim()
       ? detail.title.trim()
-      : 'Datenbank speichern/neu anlegen';
+      : 'Datenbank speichern';
     const ariaLabel = detail && typeof detail.ariaLabel === 'string' && detail.ariaLabel.trim()
       ? detail.ariaLabel.trim()
       : title;

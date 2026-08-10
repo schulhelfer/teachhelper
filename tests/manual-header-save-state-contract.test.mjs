@@ -24,6 +24,7 @@ test('die Menüleiste reserviert im manuellen Speichermodus Platz für den Kopfz
 test('der manuelle Kopfzeilen-Speicherbutton ist ohne exportierbare Änderungen gesperrt', () => {
   assert.match(shellSource, /const hasManualChanges = Boolean\(state\.planningManualSaveState\.dirty\);/);
   assert.match(shellSource, /disabled = hidden \|\| !hasManualChanges \|\| state\.chromeTransitionState !== 'idle';/);
+  assert.match(shellSource, /'Datenbank speichern'/);
   assert.match(shellSource, /Keine zu speichernden Änderungen/);
   assert.match(shellSource, /\|\| !state\.planningManualSaveState\.dirty/);
 });

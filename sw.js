@@ -46,6 +46,7 @@ const APP_SHELL = [
   './src/shared/school-data/sync-safety.js',
   './src/shared/school-data/thdb.js',
   './src/shared/sidebar-resize.js',
+  './src/shared/touch-long-press.js',
   './src/shared/pdf-vendor.js',
   './src/shared/student-sync-bus.js',
   './src/shared/timer-store.js',

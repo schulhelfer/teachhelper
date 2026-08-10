@@ -226,15 +226,21 @@ function runtimeCourseFromPersisted(store, courseId, persisted) {
 }
 
 function downloadBytes(bytes, fileName) {
-  const blob = new Blob([bytes], { type: 'application/json' });
+  // Ein JSON-MIME-Type kann bei einem nachgelagerten Navigations-Fallback im
+  // Browser sichtbar geöffnet werden. Die Dateiendung bleibt .json, der Blob
+  // selbst wird jedoch bewusst als Download behandelt.
+  const blob = new Blob([bytes], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
   anchor.href = url;
   anchor.download = String(fileName || 'TeachHelper-Datenbank.json');
+  anchor.hidden = true;
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  URL.revokeObjectURL(url);
+  // Der Browser darf die Blob-URL noch lesen, bevor sie freigegeben wird.
+  // Ein sofortiger Widerruf kann den Download je nach Browser verhindern.
+  setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
 export class WorkspaceRuntime {
@@ -1314,6 +1320,24 @@ export class WorkspaceRuntime {
     return true;
   }
 
+  async createEmptyManualDatabase() {
+    const publicState = this.store.normalizePublicState(null);
+    const config = normalizeVaultConfig(null);
+    const built = buildThdb1ContainerBytes({
+      schema: APP_DB_SCHEMA,
+      startupShellText: JSON.stringify(buildStartupShell(publicState, false, 0)),
+      planningPublicText: JSON.stringify(publicState),
+      gradeVaultConfigText: JSON.stringify(config),
+      gradeCourseSegments: [],
+      revision: 1,
+      updatedAt: new Date().toISOString(),
+      deviceId: this.deviceId,
+      reason: 'manual-create-empty',
+    });
+    downloadBytes(built.bytes, this.buildSyncFileSuggestedName());
+    return true;
+  }
+
   async loadManualDatabaseFromFile(file) {
     if (!file) return false;
     this.fileName = String(file.name || this.buildSyncFileSuggestedName());
@@ -1551,6 +1575,7 @@ export class WorkspaceRuntime {
   async handleWorkspaceAction(action = '', detail = null) {
     const name = String(action || '').toLowerCase();
     if (name === 'manual-save') return { changed: await this.saveManualDatabase(detail), scope: 'shell' };
+    if (name === 'manual-create-empty') return { changed: false, value: await this.createEmptyManualDatabase(), scope: 'shell' };
     if (name === 'manual-load') return { changed: await this.loadManualDatabaseFromFile(detail?.file), scope: 'shell' };
     if (name === 'sync-connect') return { changed: await this.acceptWorkspaceSyncFileHandle(detail?.handle, detail?.mode), scope: 'shell' };
     if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
