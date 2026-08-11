@@ -6235,7 +6235,7 @@ import {
   let pendingGradeRosterCoursesRequestId = '';
   let pendingGradeRosterImportRequestId = '';
   let gradeRosterCourses = [];
-  let gradeRosterCoursesState = 'loading';
+  let gradeRosterCoursesState = 'idle';
   let gradeRosterHasAvailableCourses = true;
   let gradeRosterSelectedCourseId = 0;
   let gradeRosterSelectedCourseName = '';
@@ -6262,11 +6262,10 @@ import {
     return brightness >= 150000 ? '#0f172a' : '#ffffff';
   };
   const requestGradeRosterCourses = ({ interactive = false, unlock = false } = {}) => {
+    if (!interactive && pendingGradeRosterCoursesRequestId) return;
     const requestId = createGradeRosterRequestId();
     pendingGradeRosterCoursesRequestId = requestId;
-    const keepUnavailableSurfaceHidden = gradeRosterCoursesState === 'ready'
-      && !gradeRosterHasAvailableCourses;
-    if (!keepUnavailableSurfaceHidden) {
+    if (interactive) {
       gradeRosterCoursesState = 'loading';
       renderGradeRosterPills();
     }

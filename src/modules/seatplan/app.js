@@ -39,6 +39,13 @@
             courseSaveDialogFile: document.getElementById('course-save-dialog-file'),
             courseSaveDialogGrades: document.getElementById('course-save-dialog-grades'),
             courseSaveDialogCancel: document.getElementById('course-save-dialog-cancel'),
+            courseSwitchDialog: document.getElementById('course-switch-dialog'),
+            courseSwitchDialogSave: document.getElementById('course-switch-dialog-save'),
+            courseSwitchDialogDiscard: document.getElementById('course-switch-dialog-discard'),
+            courseSwitchDialogCancel: document.getElementById('course-switch-dialog-cancel'),
+            courseRosterResetDialog: document.getElementById('course-roster-reset-dialog'),
+            courseRosterResetDialogConfirm: document.getElementById('course-roster-reset-dialog-confirm'),
+            courseRosterResetDialogAbort: document.getElementById('course-roster-reset-dialog-abort'),
             courseGradeCompleteDialog: document.getElementById('course-grade-complete-dialog'),
             courseGradeCompleteSave: document.getElementById('course-grade-complete-save'),
             courseGradeCompleteCancel: document.getElementById('course-grade-complete-cancel'),
@@ -104,6 +111,12 @@
           }
           if (els.courseSaveDialog && !els.courseSaveDialog.hasAttribute('tabindex')) {
             els.courseSaveDialog.setAttribute('tabindex', '-1');
+          }
+          if (els.courseSwitchDialog && !els.courseSwitchDialog.hasAttribute('tabindex')) {
+            els.courseSwitchDialog.setAttribute('tabindex', '-1');
+          }
+          if (els.courseRosterResetDialog && !els.courseRosterResetDialog.hasAttribute('tabindex')) {
+            els.courseRosterResetDialog.setAttribute('tabindex', '-1');
           }
           if (els.courseGradeCompleteDialog && !els.courseGradeCompleteDialog.hasAttribute('tabindex')) {
             els.courseGradeCompleteDialog.setAttribute('tabindex', '-1');
@@ -694,6 +707,8 @@
             optimalScorePending: false,
             optimalScoreVersion: 0,
             courseContext: null,
+            courseSeatplanBaseline: '',
+            pendingCourseSwitchCourseId: 0,
             pendingCourseSaveRequestId: '',
             pendingCourseSaveRequest: null,
             pendingCourseGradeConfigRequestId: '',
@@ -742,7 +757,7 @@
           let pendingGradeRosterCoursesRequestId = '';
           let pendingGradeRosterImportRequestId = '';
           let gradeRosterCourses = [];
-          let gradeRosterCoursesState = 'loading';
+          let gradeRosterCoursesState = 'idle';
           let gradeRosterHasAvailableCourses = true;
           let gradeRosterSelectedCourseId = 0;
           let gradeRosterSelectedCourseName = '';
@@ -803,6 +818,26 @@
             return Boolean(state.courseContext && Number(state.courseContext.courseId) > 0);
           }
 
+          function canSwitchCourseRoster() {
+            return isCourseSeatplanMode()
+              && !Number(state.courseContext?.lessonId || 0)
+              && !state.courseGradeDraft
+              && !state.pendingCourseGradeConfigRequestId
+              && !state.pendingCourseGradeSaveRequestId;
+          }
+
+          function canImportGradeRoster() {
+            return !isCourseSeatplanMode() || canSwitchCourseRoster();
+          }
+
+          function isCourseRosterSwitchPending() {
+            return Boolean(
+              state.pendingCourseSwitchCourseId
+              || state.pendingCourseSaveRequestId
+              || pendingGradeRosterImportRequestId
+            );
+          }
+
           function getCourseSeatplanStudents() {
             return cloneStudentsForSync(state.courseContext?.students || []);
           }
@@ -838,7 +873,9 @@
 
           function updateCourseSeatplanUi() {
             const active = isCourseSeatplanMode();
+            const canSwitchRoster = canSwitchCourseRoster();
             appEl.dataset.courseSeatplan = active ? '1' : '0';
+            appEl.dataset.courseRosterSwitch = canSwitchRoster ? '1' : '0';
             if (els.exportPlan) {
               els.exportPlan.disabled = Boolean(state.pendingCourseSaveRequestId) || Boolean(state.pendingCourseGradeSaveRequestId);
               els.exportPlan.title = active
@@ -857,13 +894,13 @@
             }
             els.csvDropZone?.classList.toggle('course-seatplan-locked', active);
             if (els.gradeRosterImportTrigger) {
-              els.gradeRosterImportTrigger.disabled = active;
-              els.gradeRosterImportTrigger.hidden = active;
-              els.gradeRosterImportTrigger.title = active
+              els.gradeRosterImportTrigger.disabled = isCourseRosterSwitchPending();
+              els.gradeRosterImportTrigger.hidden = active && !canSwitchRoster;
+              els.gradeRosterImportTrigger.title = active && !canSwitchRoster
                 ? 'Dieser Sitzplan ist bereits mit einem Notenkurs verbunden.'
                 : 'Namensliste aus einem Notenkurs importieren';
             }
-            if (active) {
+            if (active && !canSwitchRoster) {
               closeGradeRosterImportMenu();
               if (els.gradeRosterPills) {
                 els.gradeRosterPills.hidden = true;
@@ -899,12 +936,14 @@
           }
 
           function requestGradeRosterCourses({ interactive = false, unlock = false } = {}) {
-            if (TUTORIAL_DEMO_MODE || isCourseSeatplanMode() || !window.parent || window.parent === window) return;
+            if (TUTORIAL_DEMO_MODE || !canImportGradeRoster() || !window.parent || window.parent === window) return;
+            // Layout messages may be emitted repeatedly while the shell settles.
+            // The course list is cached until the user explicitly opens the
+            // import menu, so those messages must not start a refresh loop.
+            if (!interactive && (pendingGradeRosterCoursesRequestId || gradeRosterCoursesState !== 'idle')) return;
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
             pendingGradeRosterCoursesRequestId = requestId;
-            const keepUnavailableSurfaceHidden = gradeRosterCoursesState === 'ready'
-              && !gradeRosterHasAvailableCourses;
-            if (!keepUnavailableSurfaceHidden) {
+            if (interactive) {
               gradeRosterCoursesState = 'loading';
               renderGradeRosterPills();
             }
@@ -914,14 +953,109 @@
             }, TRUSTED_PARENT_ORIGIN);
           }
 
-          function importGradeRosterCourse(courseId) {
-            if (TUTORIAL_DEMO_MODE || isCourseSeatplanMode() || !window.parent || window.parent === window) return;
+          function startGradeRosterImport(courseId) {
+            if (TUTORIAL_DEMO_MODE || !canImportGradeRoster() || !window.parent || window.parent === window) return;
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
             pendingGradeRosterImportRequestId = requestId;
+            updateCourseSeatplanUi();
             window.parent.postMessage({
               type: SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
               detail: { requestId, courseId: Number(courseId || 0), returnTab: 'seatplan' }
             }, TRUSTED_PARENT_ORIGIN);
+          }
+
+          async function importGradeRosterCourse(courseId) {
+            const targetCourseId = Number(courseId || 0);
+            if (!targetCourseId || isCourseRosterSwitchPending()) return;
+            if (!isCourseSeatplanMode()) {
+              startGradeRosterImport(targetCourseId);
+              return;
+            }
+            if (!canSwitchCourseRoster() || targetCourseId === Number(state.courseContext?.courseId || 0)) return;
+            if (hasUnsavedCourseSeatplanChanges()) {
+              const choice = await chooseCourseSwitchAction();
+              if (choice === 'save') {
+                state.pendingCourseSwitchCourseId = targetCourseId;
+                if (!requestCourseSeatplanSave()) {
+                  state.pendingCourseSwitchCourseId = 0;
+                  updateCourseSeatplanUi();
+                }
+                return;
+              }
+              if (choice !== 'discard') return;
+            }
+            startGradeRosterImport(targetCourseId);
+          }
+
+          function closeCourseRosterResetDialog(returnValue = '') {
+            if (!els.courseRosterResetDialog) return;
+            if (typeof els.courseRosterResetDialog.close === 'function' && els.courseRosterResetDialog.open) {
+              els.courseRosterResetDialog.close(returnValue);
+            }
+            els.courseRosterResetDialog.removeAttribute('open');
+          }
+
+          function chooseCourseRosterReset() {
+            if (!els.courseRosterResetDialog) {
+              return Promise.resolve(confirm('Kursbindung und aktuellen Sitzplan zurücksetzen?'));
+            }
+            return new Promise((resolve) => {
+              let settled = false;
+              const finish = (confirmed) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                closeCourseRosterResetDialog(confirmed ? 'reset' : '');
+                resolve(confirmed);
+              };
+              const onCancel = (event) => {
+                event.preventDefault();
+                finish(false);
+              };
+              const onConfirm = () => finish(true);
+              const onClose = () => finish(els.courseRosterResetDialog?.returnValue === 'reset');
+              const cleanup = () => {
+                els.courseRosterResetDialog?.removeEventListener('cancel', onCancel);
+                els.courseRosterResetDialog?.removeEventListener('close', onClose);
+                els.courseRosterResetDialogConfirm?.removeEventListener('click', onConfirm);
+                els.courseRosterResetDialogAbort?.removeEventListener('click', onCancel);
+              };
+              els.courseRosterResetDialog.addEventListener('cancel', onCancel);
+              els.courseRosterResetDialog.addEventListener('close', onClose);
+              els.courseRosterResetDialogConfirm?.addEventListener('click', onConfirm);
+              els.courseRosterResetDialogAbort?.addEventListener('click', onCancel);
+              if (typeof els.courseRosterResetDialog.showModal === 'function') {
+                if (!els.courseRosterResetDialog.open) els.courseRosterResetDialog.showModal();
+              } else {
+                els.courseRosterResetDialog.setAttribute('open', 'open');
+              }
+              const focusDialog = () => els.courseRosterResetDialogConfirm?.focus({ preventScroll: true });
+              if (typeof queueMicrotask === 'function') queueMicrotask(focusDialog);
+              else setTimeout(focusDialog, 0);
+            });
+          }
+
+          async function resetCourseRoster() {
+            if (!canSwitchCourseRoster() || isCourseRosterSwitchPending()) return;
+            if (!await chooseCourseRosterReset()) return;
+            state.courseContext = null;
+            state.courseSeatplanBaseline = '';
+            state.pendingCourseSwitchCourseId = 0;
+            state.pendingCourseSaveRequestId = '';
+            state.pendingCourseSaveRequest = null;
+            state.pendingCourseGradeConfigRequestId = '';
+            state.pendingCourseGradeConfigRequest = null;
+            state.pendingCourseGradeSaveRequestId = '';
+            state.pendingCourseGradeSaveRequest = null;
+            resetCourseGradeMode();
+            gradeRosterSelectedCourseId = 0;
+            gradeRosterSelectedCourseName = '';
+            state.headers = [];
+            state.delim = ',';
+            state.csvName = '';
+            resetCourseSeatplanForStudents([]);
+            closeGradeRosterImportMenu();
+            updateCourseSeatplanUi();
           }
 
           function syncGradeRosterImportHeight() {
@@ -975,7 +1109,7 @@
           function renderGradeRosterPills() {
             const pills = els.gradeRosterPills;
             const trigger = els.gradeRosterImportTrigger;
-            if (!pills || !trigger || isCourseSeatplanMode()) return;
+            if (!pills || !trigger || !canImportGradeRoster()) return;
             const hasNoAvailableCourses = gradeRosterCoursesState === 'ready'
               && !gradeRosterHasAvailableCourses;
             setGradeRosterImportSurfaceVisible(!hasNoAvailableCourses);
@@ -1014,14 +1148,50 @@
               button.style.background = color;
               button.style.color = getGradeRosterPillTextColor(color);
               const courseName = String(course?.name || '').trim();
-              const isSelected = Number(course?.id || 0) === gradeRosterSelectedCourseId
+              const isSelected = Number(course?.id || 0) === Number(state.courseContext?.courseId || 0)
+                || Number(course?.id || 0) === gradeRosterSelectedCourseId
                 || (gradeRosterSelectedCourseName && courseName === gradeRosterSelectedCourseName)
                 || state.csvName === `${courseName} (Notenmodul)`;
               button.classList.toggle('is-imported', isSelected);
               if (isSelected) button.setAttribute('aria-current', 'true');
+              const resetRequired = isCourseSeatplanMode() && !isSelected;
+              button.disabled = isCourseRosterSwitchPending() || isSelected || resetRequired;
+              if (resetRequired) button.title = 'Bitte zuerst den aktuellen Kurs zurücksetzen.';
               button.addEventListener('click', () => importGradeRosterCourse(course?.id));
               pills.append(button);
             });
+            if (canSwitchCourseRoster()) {
+              const resetButton = document.createElement('button');
+              resetButton.type = 'button';
+              resetButton.className = 'ghost dialog-icon-button app-action-icon grade-roster-reset-button';
+              resetButton.setAttribute('aria-label', 'Kurs zurücksetzen');
+              resetButton.dataset.tooltip = 'Kurs zurücksetzen';
+              resetButton.title = 'Kursbindung lösen und einen anderen Kurs auswählen';
+              const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+              icon.setAttribute('class', 'app-action-reset-icon');
+              icon.setAttribute('viewBox', '0 0 24 24');
+              icon.setAttribute('aria-hidden', 'true');
+              icon.setAttribute('focusable', 'false');
+              [
+                ['M20 11a8 8 0 0 0-14.8-4.2L3 9', '2'],
+                ['M3 4.5V9h4.5', '2'],
+                ['M4 13a8 8 0 0 0 14.8 4.2L21 15', '2'],
+                ['M21 19.5V15h-4.5', '2'],
+              ].forEach(([d, strokeWidth]) => {
+                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                path.setAttribute('d', d);
+                path.setAttribute('fill', 'none');
+                path.setAttribute('stroke', 'currentColor');
+                path.setAttribute('stroke-width', strokeWidth);
+                path.setAttribute('stroke-linecap', 'round');
+                path.setAttribute('stroke-linejoin', 'round');
+                icon.append(path);
+              });
+              resetButton.append(icon);
+              resetButton.disabled = isCourseRosterSwitchPending();
+              resetButton.addEventListener('click', () => { void resetCourseRoster(); });
+              pills.append(resetButton);
+            }
             pills.hidden = false;
             if (pills.clientWidth < 1 || pills.clientHeight < 1) {
               return;
@@ -1048,6 +1218,7 @@
             if (!detail?.ok) {
               if (detail?.unlockRequired || detail?.unlockCancelled) {
                 closeGradeRosterImportMenu();
+                updateCourseSeatplanUi();
                 return;
               }
               showGradeRosterImportMessage(detail?.message || 'Notenkurse konnten nicht geladen werden.');
@@ -1105,6 +1276,7 @@
               } else {
                 showGradeRosterImportMessage(message);
               }
+              updateCourseSeatplanUi();
               requestGradeRosterCourses();
               return;
             }
@@ -1196,6 +1368,7 @@
               loadedAt: String(detail.requestedAt || new Date().toISOString()),
             };
             state.csvName = state.courseContext.courseName;
+            state.pendingCourseSwitchCourseId = 0;
             state.pendingCourseSaveRequestId = '';
             state.pendingCourseSaveRequest = null;
             state.pendingCourseGradeConfigRequestId = '';
@@ -1214,6 +1387,7 @@
               showMessage('Der Notenkontext ist nicht mehr aktuell. Bitte die Noteneingabe erneut öffnen.', 'warn');
             }
             updateCourseSeatplanUi();
+            setCourseSeatplanBaseline();
             markPlanSavedAction();
           }
 
@@ -1225,18 +1399,51 @@
             return plan;
           }
 
+          function getCourseSeatplanSnapshotKey() {
+            if (!isCourseSeatplanMode()) return '';
+            const activeSeatIds = [...state.activeSeats].map(String).sort();
+            const seats = Object.fromEntries(activeSeatIds.map((seatId) => [seatId, state.seats[seatId] || null]));
+            const teacherDistances = [...getTeacherDistanceMap().entries()]
+              .map(([studentId, maxDistance]) => [String(studentId), Number(maxDistance)])
+              .sort(([left], [right]) => left.localeCompare(right));
+            return JSON.stringify({
+              gridRows: Number(state.gridRows) || 0,
+              gridCols: Number(state.gridCols) || 0,
+              activeSeatIds,
+              seats,
+              mergedPairs: [...state.mergedPairs].map(String).sort(),
+              teacherDistances,
+              genderAlternation: Boolean(state.conditions?.genderAlternation),
+              mergeToggleValue: String(state.mergeToggleValue || ''),
+              mergeMode: String(state.mergeMode || ''),
+              mergeSymbolsHidden: Boolean(state.mergeSymbolsHidden),
+              seatScoresHidden: Boolean(state.seatScoresHidden),
+            });
+          }
+
+          function setCourseSeatplanBaseline() {
+            state.courseSeatplanBaseline = getCourseSeatplanSnapshotKey();
+          }
+
+          function hasUnsavedCourseSeatplanChanges() {
+            return Boolean(
+              state.courseSeatplanBaseline
+              && state.courseSeatplanBaseline !== getCourseSeatplanSnapshotKey()
+            );
+          }
+
           function requestCourseSeatplanSave() {
             if (!isCourseSeatplanMode()) {
-              return;
+              return false;
             }
             const plan = createCoursePlanSnapshot();
-            if (!plan) return;
+            if (!plan) return false;
             const courseId = Number(state.courseContext?.courseId || 0);
             const contextToken = normalizeCourseGradeToken(state.courseContext?.contextToken);
             const rosterToken = normalizeCourseGradeToken(state.courseContext?.rosterToken);
             if (!courseId || !contextToken || !rosterToken) {
               showMessage('Der Kurskontext ist veraltet. Bitte den Sitzplan erneut aus der Planung öffnen.', 'error');
-              return;
+              return false;
             }
             const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             state.pendingCourseSaveRequestId = requestId;
@@ -1253,6 +1460,65 @@
                 plan,
               }
             }, TRUSTED_PARENT_ORIGIN);
+            return true;
+          }
+
+          function closeCourseSwitchDialog(returnValue = '') {
+            if (!els.courseSwitchDialog) return;
+            if (typeof els.courseSwitchDialog.close === 'function' && els.courseSwitchDialog.open) {
+              els.courseSwitchDialog.close(returnValue);
+            }
+            els.courseSwitchDialog.removeAttribute('open');
+          }
+
+          function chooseCourseSwitchAction() {
+            if (!els.courseSwitchDialog) {
+              if (confirm('Der aktuelle Sitzplan enthält ungesicherte Änderungen. Im Notenmodul speichern?')) {
+                return Promise.resolve('save');
+              }
+              return Promise.resolve(
+                confirm('Ungesicherte Änderungen wirklich verwerfen und den Kurs wechseln?')
+                  ? 'discard'
+                  : ''
+              );
+            }
+            return new Promise((resolve) => {
+              let settled = false;
+              const finish = (action) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                closeCourseSwitchDialog(action || '');
+                resolve(action || '');
+              };
+              const onCancel = (event) => {
+                event.preventDefault();
+                finish('');
+              };
+              const onSave = () => finish('save');
+              const onDiscard = () => finish('discard');
+              const onClose = () => finish(els.courseSwitchDialog?.returnValue || '');
+              const cleanup = () => {
+                els.courseSwitchDialog?.removeEventListener('cancel', onCancel);
+                els.courseSwitchDialog?.removeEventListener('close', onClose);
+                els.courseSwitchDialogSave?.removeEventListener('click', onSave);
+                els.courseSwitchDialogDiscard?.removeEventListener('click', onDiscard);
+                els.courseSwitchDialogCancel?.removeEventListener('click', onCancel);
+              };
+              els.courseSwitchDialog.addEventListener('cancel', onCancel);
+              els.courseSwitchDialog.addEventListener('close', onClose);
+              els.courseSwitchDialogSave?.addEventListener('click', onSave);
+              els.courseSwitchDialogDiscard?.addEventListener('click', onDiscard);
+              els.courseSwitchDialogCancel?.addEventListener('click', onCancel);
+              if (typeof els.courseSwitchDialog.showModal === 'function') {
+                if (!els.courseSwitchDialog.open) els.courseSwitchDialog.showModal();
+              } else {
+                els.courseSwitchDialog.setAttribute('open', 'open');
+              }
+              const focusDialog = () => els.courseSwitchDialogSave?.focus({ preventScroll: true });
+              if (typeof queueMicrotask === 'function') queueMicrotask(focusDialog);
+              else setTimeout(focusDialog, 0);
+            });
           }
 
           function closeCourseSaveDialog(returnValue = '') {
@@ -1348,12 +1614,18 @@
             }
             state.pendingCourseSaveRequestId = '';
             state.pendingCourseSaveRequest = null;
-            updateCourseSeatplanUi();
+            const targetCourseId = Number(state.pendingCourseSwitchCourseId || 0);
             if (detail.ok) {
               showMessage(detail.message || 'Sitzplan im Notenmodul gespeichert.', 'success', { presentation: 'toast' });
+              setCourseSeatplanBaseline();
               markPlanSavedAction();
+              state.pendingCourseSwitchCourseId = 0;
+              updateCourseSeatplanUi();
+              if (targetCourseId) startGradeRosterImport(targetCourseId);
               return;
             }
+            state.pendingCourseSwitchCourseId = 0;
+            updateCourseSeatplanUi();
             showMessage(detail.message || 'Sitzplan konnte nicht im Notenmodul gespeichert werden.', 'error');
           }
 

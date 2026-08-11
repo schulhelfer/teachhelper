@@ -48,7 +48,7 @@ export const SYNC_HANDLE_STORE_NAME = "handles";
 export const EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT = "both";
 export const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
 export const COLOR_PALETTE = Object.freeze([
-  "#E6194B", "#3CB44B", "#FFE119", "#911EB4", "#F58231",
-  "#F032E6", "#BFEF45", "#9A6324", "#808000", "#FABED4",
-  "#800000", "#FF6F61", "#006400", "#D4A017", "#707070"
+  "#FF1744", "#2979FF", "#00C853", "#FF9100", "#AA00FF",
+  "#00B8D4", "#F500A4", "#AEEA00", "#FFD600", "#5E35B1",
+  "#00A67A", "#FF3D00", "#1A237E", "#C2185B", "#795548"
 ]);

@@ -34,6 +34,7 @@ const APP_SHELL = [
   './src/shared/file-guards.js',
   './src/shared/docx-template.js',
   './src/shared/planning-note-links.js',
+  './src/shared/planning-rich-text.js',
   './src/shared/workspace-client.css',
   './src/shared/school-data/defaults.js',
   './src/shared/messages.js',

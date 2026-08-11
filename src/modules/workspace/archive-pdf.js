@@ -1,4 +1,5 @@
 import { ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
+import { PLANNING_RICH_TEXT_COLORS } from '../../shared/planning-rich-text.js';
 
 function sanitizePdfText(value) {
   return String(value ?? '')
@@ -33,6 +34,8 @@ export async function buildWorkspaceArchivePdfBytes(year, sections = []) {
   const pdfDoc = await PDFDocument.create();
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
   const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const italicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
+  const boldItalicFont = await pdfDoc.embedFont(StandardFonts.HelveticaBoldOblique);
   const pageWidth = 841.89;
   const pageHeight = 595.28;
   const margin = 30;
@@ -46,6 +49,12 @@ export async function buildWorkspaceArchivePdfBytes(year, sections = []) {
     line: rgb(0.78, 0.82, 0.88),
     headerBg: rgb(0.9, 0.93, 0.97),
     title: rgb(0.05, 0.12, 0.24),
+  };
+  const richTextColor = (color) => {
+    const hex = PLANNING_RICH_TEXT_COLORS[color];
+    if (!hex) return colors.text;
+    const value = Number.parseInt(hex.slice(1), 16);
+    return rgb(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
   };
 
   const addPage = () => {
@@ -121,6 +130,87 @@ export async function buildWorkspaceArchivePdfBytes(year, sections = []) {
     y -= height;
   };
 
+  const fontForRichInline = (inline) => {
+    if (inline?.bold && inline?.italic) return boldItalicFont;
+    if (inline?.bold) return boldFont;
+    if (inline?.italic) return italicFont;
+    return font;
+  };
+
+  const richLines = (children, maxWidth, baseSize = 9) => {
+    const lines = [[]];
+    let width = 0;
+    (Array.isArray(children) ? children : []).forEach((inline) => {
+      const size = Number(inline?.size) || baseSize;
+      const activeFont = fontForRichInline(inline);
+      String(inline?.text || '').split(/(\s+)/).forEach((part) => {
+        if (!part) return;
+        if (part.includes('\n')) {
+          part.split(/(\n)/).forEach((piece) => {
+            if (piece === '\n') { lines.push([]); width = 0; }
+            else if (piece) {
+              const pieceWidth = activeFont.widthOfTextAtSize(sanitizePdfText(piece), size);
+              lines.at(-1).push({ ...inline, text: piece, size, activeFont, width: pieceWidth }); width += pieceWidth;
+            }
+          });
+          return;
+        }
+        const partWidth = activeFont.widthOfTextAtSize(sanitizePdfText(part), size);
+        if (width && width + partWidth > maxWidth && !/^\s+$/u.test(part)) { lines.push([]); width = 0; }
+        lines.at(-1).push({ ...inline, text: part, size, activeFont, width: partWidth }); width += partWidth;
+      });
+    });
+    return lines;
+  };
+
+  const drawRichParagraph = (children, indent = 0, prefix = '') => {
+    const size = 9;
+    const prefixWidth = prefix ? font.widthOfTextAtSize(prefix, size) + 4 : 0;
+    const lines = richLines(children, contentWidth - indent - prefixWidth, size);
+    const lineHeight = Math.max(12, ...lines.flat().map((run) => Number(run.size) + 3), 12);
+    const height = Math.max(lineHeight, lines.length * lineHeight + 3);
+    ensureSpace(height);
+    lines.forEach((line, lineIndex) => {
+      let x = margin + indent + (lineIndex === 0 ? 0 : prefixWidth);
+      if (lineIndex === 0 && prefix) page.drawText(prefix, { x, y: y - lineHeight, size, font, color: colors.text });
+      if (lineIndex === 0 && prefix) x += prefixWidth;
+      line.forEach((run) => {
+        const baseline = y - lineHeight;
+        const color = richTextColor(run.color);
+        page.drawText(sanitizePdfText(run.text), { x, y: baseline, size: run.size, font: run.activeFont, color });
+        if (run.underline) page.drawLine({ start: { x, y: baseline - 1 }, end: { x: x + run.width, y: baseline - 1 }, thickness: 0.6, color });
+        x += run.width;
+      });
+      y -= lineIndex === lines.length - 1 ? 0 : lineHeight;
+    });
+    y -= lineHeight + 3;
+  };
+
+  const plainRichBlock = (block) => {
+    if (block?.type === 'paragraph') return (block.children || []).map((inline) => inline.text || '').join('');
+    if (block?.type === 'list') return (block.items || []).map((item, index) => `${block.ordered ? `${index + 1}.` : '•'} ${item.map(plainRichBlock).join(' ')}`).join('\n');
+    if (block?.type === 'table') return (block.rows || []).map((row) => row.map((cell) => cell.map(plainRichBlock).join(' ')).join(' | ')).join('\n');
+    return '';
+  };
+
+  const drawRichBlocks = (blocks, indent = 0) => {
+    (Array.isArray(blocks) ? blocks : []).forEach((block) => {
+      if (block?.type === 'paragraph') drawRichParagraph(block.children, indent);
+      else if (block?.type === 'list') (block.items || []).forEach((item, index) => {
+        const prefix = block.ordered ? `${index + 1}.` : '•';
+        const first = item[0] || { type: 'paragraph', children: [] };
+        if (first.type === 'paragraph') drawRichParagraph(first.children, indent, prefix);
+        else drawRichParagraph([{ text: plainRichBlock(first) }], indent, prefix);
+        item.slice(1).forEach((child) => drawRichBlocks([child], indent + 14));
+      });
+      else if (block?.type === 'table') {
+        const rows = block.rows || [];
+        const columns = Array.from({ length: Math.max(1, ...rows.map((row) => row.length)) }, (_value, index) => `Spalte ${index + 1}`);
+        drawTablePart('Tabelle', columns, rows.map((row) => row.map((cell) => cell.map(plainRichBlock).join('\n'))));
+      }
+    });
+  };
+
   const drawTablePart = (title, columns, rows) => {
     drawHeading(title, 2);
     const size = 7;
@@ -178,6 +268,10 @@ export async function buildWorkspaceArchivePdfBytes(year, sections = []) {
       drawHeading(section.title || 'Hinweis', 2);
       drawParagraph(section.text || 'Keine Daten.');
     } else if (section?.type === 'table') drawTable(section);
+    else if (section?.type === 'richText') {
+      drawHeading(section.title || 'Detailplanung', 2);
+      drawRichBlocks(section.blocks);
+    }
   }
   return pdfDoc.save();
 }

@@ -10,7 +10,16 @@ import {
 } from "../../shared/theme.js";
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
 import { installTouchLongPress } from "../../shared/touch-long-press.js";
-import { appendPlanningNoteWithLinks, normalizePlanningNoteText } from "../../shared/planning-note-links.js";
+import {
+  PLANNING_RICH_TEXT_COLORS,
+  createPlanningRichTextFromPlainText,
+  linkifyPlanningRichText,
+  planningRichTextFromClipboard,
+  planningRichTextFromElement,
+  planningRichTextToArchiveBlocks,
+  planningRichTextToPlainText,
+  renderPlanningRichText
+} from "../../shared/planning-rich-text.js";
 import {
   normalizePublicSchoolData
 } from "../../shared/school-data/index.js";
@@ -48,21 +57,21 @@ const BACKUP_INTERVAL_MAX_DAYS = 30;
 const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
 const ARCHIVE_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
 const COLOR_PALETTE = [
-  "#E6194B",
-  "#3CB44B",
-  "#FFE119",
-  "#911EB4",
-  "#F58231",
-  "#F032E6",
-  "#BFEF45",
-  "#9A6324",
-  "#808000",
-  "#FABED4",
-  "#800000",
-  "#FF6F61",
-  "#006400",
-  "#D4A017",
-  "#707070"
+  "#FF1744",
+  "#2979FF",
+  "#00C853",
+  "#FF9100",
+  "#AA00FF",
+  "#00B8D4",
+  "#F500A4",
+  "#AEEA00",
+  "#FFD600",
+  "#5E35B1",
+  "#00A67A",
+  "#FF3D00",
+  "#1A237E",
+  "#C2185B",
+  "#795548"
 ];
 
 const TUTORIAL_DEMO_MODE = (() => {
@@ -968,6 +977,7 @@ class PlanningApp {
       messageDialogInputRow: document.querySelector("#message-dialog-input-row"),
       messageDialogInputLabel: document.querySelector("#message-dialog-input-label"),
       messageDialogInput: document.querySelector("#message-dialog-input"),
+      messageDialogSelect: document.querySelector("#message-dialog-select"),
       messageDialogCancel: document.querySelector("#message-dialog-cancel"),
       messageDialogOk: document.querySelector("#message-dialog-ok"),
       messageDialogActionsTop: document.querySelector("#message-dialog-actions-top"),
@@ -1006,6 +1016,7 @@ class PlanningApp {
       topicDialogContext: document.querySelector("#topic-dialog-context"),
       topicDialogInput: document.querySelector("#topic-dialog-input"),
       topicDialogNotes: document.querySelector("#topic-dialog-notes"),
+      topicDialogRichTextToolbar: document.querySelector("#topic-dialog-rich-text-toolbar"),
       topicDialogCancel: document.querySelector("#topic-dialog-cancel"),
 
       slotDialog: document.querySelector("#slot-dialog"),
@@ -1807,13 +1818,14 @@ class PlanningApp {
     this.dispatchPlanningUnsavedState();
   }
 
-  async selectSyncFile(mode = "existing") {
+  async selectSyncFile(mode = "existing", options = {}) {
     if (!this.workspaceController || this.isStandaloneWorkspace) return false;
     try {
       let handle = null;
-      if (String(mode).startsWith("new") && typeof window.showSaveFilePicker === "function") {
+      if (mode === "new-empty" && typeof window.showSaveFilePicker === "function") {
+        const owner = this.workspaceController.getOwner?.();
         handle = await window.showSaveFilePicker({
-          suggestedName: this.workspaceController.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
+          suggestedName: owner?.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
           types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
         });
       } else if (typeof window.showOpenFilePicker === "function") {
@@ -1822,7 +1834,7 @@ class PlanningApp {
           types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
         });
       }
-      return handle ? this.acceptWorkspaceSyncFileHandle(handle, mode) : false;
+      return handle ? this.acceptWorkspaceSyncFileHandle(handle, mode, options) : false;
     } catch (error) {
       if (error?.name !== "AbortError") {
         await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.");
@@ -1831,8 +1843,8 @@ class PlanningApp {
     }
   }
 
-  async acceptWorkspaceSyncFileHandle(handle, mode = "existing") {
-    const result = await this.executeWorkspaceAction("sync-connect", { handle, mode });
+  async acceptWorkspaceSyncFileHandle(handle, mode = "existing", options = {}) {
+    const result = await this.executeWorkspaceAction("sync-connect", { handle, mode, ...options });
     return Boolean(result.changed);
   }
 
@@ -2920,9 +2932,9 @@ class PlanningApp {
       resolver(action === "ok" || action === "discard" ? action : "cancel");
       return;
     }
-    if (mode === "prompt") {
+    if (mode === "prompt" || mode === "select") {
       if (action === "ok") {
-        resolver(String(this.refs.messageDialogInput.value || ""));
+        resolver(String((mode === "select" ? this.refs.messageDialogSelect : this.refs.messageDialogInput).value || ""));
       } else {
         resolver(null);
       }
@@ -2940,13 +2952,14 @@ class PlanningApp {
     defaultValue = "",
     inputLabel = "Eingabe",
     inputListId = "",
+    selectOptions = [],
     dangerOk = false,
     warnOk = false,
     alternateText = "",
     dangerAlternate = false,
     warning = false
   } = {}) {
-    const normalizedMode = mode === "confirm" || mode === "choice" || mode === "prompt" ? mode : "alert";
+    const normalizedMode = mode === "confirm" || mode === "choice" || mode === "prompt" || mode === "select" ? mode : "alert";
     if (
       !this.refs.messageDialog
       || !this.refs.messageDialogTitle
@@ -2960,6 +2973,7 @@ class PlanningApp {
       || !this.refs.messageDialogDiscardTop
       || !this.refs.messageDialogActionsBottom
       || !this.refs.messageDialogInput
+      || !this.refs.messageDialogSelect
       || !this.refs.messageDialogInputRow
     ) {
       if (normalizedMode === "confirm") {
@@ -2971,6 +2985,7 @@ class PlanningApp {
       if (normalizedMode === "prompt") {
         return Promise.resolve(null);
       }
+      if (normalizedMode === "select") return Promise.resolve(null);
       return Promise.resolve(undefined);
     }
     if (this.pendingMessageDialogResolver) {
@@ -2986,14 +3001,15 @@ class PlanningApp {
     this.refs.messageDialogCancel.textContent = String(cancelText || "Abbrechen");
     const isChoice = normalizedMode === "choice";
     const isPrompt = normalizedMode === "prompt";
-    const usesTopActions = isPrompt || isChoice;
+    const isSelect = normalizedMode === "select";
+    const usesTopActions = isPrompt || isSelect || isChoice;
     const showDiscardTop = isChoice && Boolean(String(alternateText || "").trim());
     this.refs.messageDialogActionsTop.hidden = !usesTopActions;
     this.refs.messageDialogActionsBottom.hidden = usesTopActions;
     this.refs.messageDialogCancelTop.textContent = "❌";
     this.refs.messageDialogCancelTop.setAttribute("aria-label", String(cancelText || "Abbrechen"));
     this.refs.messageDialogCancelTop.dataset.tooltip = String(cancelText || "Abbrechen");
-    this.refs.messageDialogOkTop.textContent = "💾";
+    this.refs.messageDialogOkTop.textContent = isSelect ? "✓" : "💾";
     this.refs.messageDialogOkTop.setAttribute("aria-label", String(okText || "OK"));
     this.refs.messageDialogOkTop.dataset.tooltip = String(okText || "OK");
     this.refs.messageDialogDiscardTop.textContent = "🗑️";
@@ -3003,9 +3019,9 @@ class PlanningApp {
     this.refs.messageDialogDiscardTop.hidden = !showDiscardTop;
     this.refs.messageDialogOkTop.classList.toggle("danger-action", Boolean(dangerOk));
     this.refs.messageDialogOkTop.classList.toggle("warn-action", Boolean(warnOk) && !dangerOk);
-    this.refs.messageDialogInputRow.hidden = !isPrompt;
+    this.refs.messageDialogInputRow.hidden = !isPrompt && !isSelect;
     this.refs.messageDialogInputLabel.textContent = String(inputLabel || "");
-    this.refs.messageDialogInputLabel.hidden = !isPrompt || !String(inputLabel || "").trim();
+    this.refs.messageDialogInputLabel.hidden = (!isPrompt && !isSelect) || !String(inputLabel || "").trim();
     this.refs.messageDialogCancel.hidden = normalizedMode === "alert";
     if (isPrompt) {
       this.refs.messageDialogInput.value = String(defaultValue || "");
@@ -3019,6 +3035,20 @@ class PlanningApp {
       this.refs.messageDialogInput.value = "";
       this.refs.messageDialogInput.removeAttribute("list");
     }
+    this.refs.messageDialogInput.hidden = !isPrompt;
+    this.refs.messageDialogSelect.hidden = !isSelect;
+    if (isSelect) {
+      const values = Array.isArray(selectOptions) ? selectOptions : [];
+      this.refs.messageDialogSelect.replaceChildren(...values.map((entry) => {
+        const option = document.createElement("option");
+        option.value = String(entry?.value ?? entry ?? "");
+        option.textContent = String(entry?.label ?? entry?.value ?? entry ?? "");
+        return option;
+      }));
+      this.refs.messageDialogSelect.value = String(defaultValue || "");
+    } else {
+      this.refs.messageDialogSelect.replaceChildren();
+    }
 
     return new Promise((resolve) => {
       this.pendingMessageDialogResolver = resolve;
@@ -3028,6 +3058,8 @@ class PlanningApp {
         if (isPrompt) {
           this.refs.messageDialogInput.focus();
           this.refs.messageDialogInput.select();
+        } else if (isSelect) {
+          this.refs.messageDialogSelect.focus();
         } else {
           (isChoice ? this.refs.messageDialogOkTop : this.refs.messageDialogOk).focus();
         }
@@ -3869,9 +3901,9 @@ class PlanningApp {
     const firstTopic = block
       .map((entry) => String(entry.topic || "").trim())
       .find(Boolean) || "";
-    const firstNotes = block
-      .map((entry) => String(entry.notes || ""))
-      .find((entry) => String(entry || "").trim()) || "";
+    const firstNotesLesson = block.find((entry) => String(entry.notes || "").trim());
+    const firstNotes = String(firstNotesLesson?.notes || "");
+    const firstNotesRichText = firstNotesLesson?.notesRichText || null;
     const firstHour = Number(block[0]?.hour || lesson.hour || 0);
     const lastHour = Number(block[block.length - 1]?.hour || lesson.hour || 0);
     const hourLabel = firstHour && lastHour
@@ -3898,7 +3930,7 @@ class PlanningApp {
     }
     this.refs.topicDialogInput.value = firstTopic;
     this.refs.topicDialogInput.disabled = Boolean(isEntfall || isWritten);
-    this.renderTopicDialogNotesEditor(firstNotes);
+    this.renderTopicDialogNotesEditor(firstNotesRichText, { fallbackText: firstNotes });
     this.openDialog(this.refs.topicDialog);
     const focusTarget = this.refs.topicDialogInput.disabled ? this.refs.topicDialogNotes : this.refs.topicDialogInput;
     focusTarget.focus();
@@ -3925,8 +3957,22 @@ class PlanningApp {
       this.refs.topicDialogInput.value = "";
       this.refs.topicDialogInput.disabled = false;
     }
-    this.renderTopicDialogNotesEditor("");
+    this.setTopicDialogColorPaletteOpen(false);
+    this.renderTopicDialogNotesEditor(createPlanningRichTextFromPlainText(""));
     this.closeDialog(this.refs.topicDialog);
+  }
+
+  async showSelectMessage(message, defaultValue = "", options = {}) {
+    return this.showMessageDialog({
+      mode: "select",
+      title: options.title || "Bitte auswählen",
+      message,
+      okText: options.okText || "Übernehmen",
+      cancelText: options.cancelText || "Abbrechen",
+      defaultValue,
+      inputLabel: options.inputLabel ?? "Auswahl",
+      selectOptions: options.selectOptions || [],
+    });
   }
 
   async showChoiceMessage(message, options = {}) {
@@ -3943,85 +3989,131 @@ class PlanningApp {
   }
 
   getTopicDialogNotesText() {
-    const editor = this.refs.topicDialogNotes;
-    if (!editor) {
-      return "";
-    }
-    return normalizePlanningNoteText(editor.innerText ?? editor.textContent ?? "");
+    return planningRichTextToPlainText(this.getTopicDialogNotesRichText());
   }
 
-  renderTopicDialogNotesEditor(notes = "", { restoreSelection = false } = {}) {
+  getTopicDialogNotesRichText() {
     const editor = this.refs.topicDialogNotes;
-    if (!editor) {
-      return;
-    }
-    const selectionOffset = restoreSelection ? this.getTopicDialogNotesSelectionOffset() : null;
-    editor.replaceChildren();
-    const text = normalizePlanningNoteText(notes);
-    if (text) {
-      appendPlanningNoteWithLinks(editor, text, { linkContentEditable: false });
-    }
-    if (selectionOffset !== null) {
-      this.restoreTopicDialogNotesSelection(selectionOffset);
-    }
+    return planningRichTextFromElement(editor, editor?.innerText ?? "");
   }
 
-  getTopicDialogNotesSelectionOffset() {
+  renderTopicDialogNotesEditor(notes = null, { restoreSelection = false, fallbackText = "" } = {}) {
+    const editor = this.refs.topicDialogNotes;
+    if (!editor) return;
+    const selectionOffsets = restoreSelection
+      ? (this.topicDialogRichTextSelectionLocked
+        ? this.topicDialogRichTextSelectionOffsets
+        : (this.getTopicDialogNotesSelectionOffsets() || this.topicDialogRichTextSelectionOffsets))
+      : null;
+    const documentValue = notes && typeof notes === "object"
+      ? notes
+      : createPlanningRichTextFromPlainText(notes ?? fallbackText);
+    renderPlanningRichText(editor, linkifyPlanningRichText(documentValue, fallbackText), fallbackText);
+    if (selectionOffsets !== null) {
+      this.restoreTopicDialogNotesSelection(selectionOffsets.start, selectionOffsets.end);
+    }
+    this.updateTopicDialogRichTextToolbar();
+  }
+
+  getTopicDialogNotesSelectionOffsets() {
     const editor = this.refs.topicDialogNotes;
     const selection = window.getSelection?.();
     if (!editor || !selection?.rangeCount) {
       return null;
     }
     const range = selection.getRangeAt(0);
-    if (!editor.contains(range.endContainer)) {
+    if (!editor.contains(range.startContainer) || !editor.contains(range.endContainer)) {
       return null;
     }
-    const prefix = document.createRange();
-    prefix.selectNodeContents(editor);
-    prefix.setEnd(range.endContainer, range.endOffset);
-    return prefix.toString().length;
+    const offsetFor = (container, offset) => {
+      const prefix = document.createRange();
+      prefix.selectNodeContents(editor);
+      prefix.setEnd(container, offset);
+      return prefix.toString().length;
+    };
+    return {
+      start: offsetFor(range.startContainer, range.startOffset),
+      end: offsetFor(range.endContainer, range.endOffset)
+    };
   }
 
-  restoreTopicDialogNotesSelection(offset = 0) {
+  rememberTopicDialogNotesSelection() {
+    const editor = this.refs.topicDialogNotes;
+    const selection = window.getSelection?.();
+    if (!editor || !selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (editor.contains(range.commonAncestorContainer)) {
+      // Native selects collapse the document selection when they receive focus.
+      // Keep the previous text range in that case so toolbar dropdowns still
+      // format the marked text rather than the newly placed caret.
+      if (this.topicDialogRichTextSelectionLocked && range.collapsed) {
+        return;
+      }
+      if (!range.collapsed || document.activeElement === editor || !this.topicDialogRichTextSelectionRange) {
+        this.topicDialogRichTextSelectionRange = range.cloneRange();
+        this.topicDialogRichTextSelectionOffsets = this.getTopicDialogNotesSelectionOffsets();
+      }
+    }
+  }
+
+  restoreTopicDialogNotesSelectionRange() {
+    const editor = this.refs.topicDialogNotes;
+    const selection = window.getSelection?.();
+    const range = this.topicDialogRichTextSelectionRange;
+    const offsets = this.topicDialogRichTextSelectionOffsets;
+    if (!editor || !selection) return false;
+    // Dropdowns move focus away from the editor. Restore the durable text
+    // offsets first: a DOM Range can become stale after browser focus changes
+    // or after the editor has been normalised.
+    if (offsets && Number.isFinite(offsets.start) && Number.isFinite(offsets.end)) {
+      return this.restoreTopicDialogNotesSelection(offsets.start, offsets.end);
+    }
+    if (!range || !editor.contains(range.commonAncestorContainer)) return false;
+    editor.focus();
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
+  }
+
+  restoreTopicDialogNotesSelection(startOffset = 0, endOffset = startOffset) {
     const editor = this.refs.topicDialogNotes;
     const selection = window.getSelection?.();
     if (!editor || !selection) {
       return;
     }
-    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
-    let remaining = Math.max(0, Number(offset) || 0);
-    let node = walker.nextNode();
-    while (node) {
-      const nodeLength = node.textContent.length;
-      if (remaining < nodeLength) {
-        const range = document.createRange();
-        range.setStart(node, remaining);
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return;
-      }
-      if (remaining === nodeLength) {
-        const range = document.createRange();
-        const link = node.parentElement?.closest("a[contenteditable='false']");
-        if (link) {
-          range.setStartAfter(link);
-        } else {
-          range.setStart(node, nodeLength);
+    const findPoint = (offset) => {
+      const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+      let remaining = Math.max(0, Number(offset) || 0);
+      let node = walker.nextNode();
+      while (node) {
+        const nodeLength = node.textContent.length;
+        if (remaining <= nodeLength) {
+          const link = node.parentElement?.closest("a[contenteditable='false']");
+          return link && remaining === nodeLength
+            ? { container: link.parentNode, offset: [...link.parentNode.childNodes].indexOf(link) + 1 }
+            : { container: node, offset: remaining };
         }
-        range.collapse(true);
-        selection.removeAllRanges();
-        selection.addRange(range);
-        return;
+        remaining -= nodeLength;
+        node = walker.nextNode();
       }
-      remaining -= nodeLength;
-      node = walker.nextNode();
+      return null;
+    };
+    const start = findPoint(startOffset);
+    const end = findPoint(endOffset);
+    if (!start || !end) {
+      editor.focus();
+      return false;
     }
-    editor.focus();
+    const range = document.createRange();
+    range.setStart(start.container, start.offset);
+    range.setEnd(end.container, end.offset);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return true;
   }
 
   normalizeTopicDialogNotesEditor({ restoreSelection = false } = {}) {
-    this.renderTopicDialogNotesEditor(this.getTopicDialogNotesText(), { restoreSelection });
+    this.renderTopicDialogNotesEditor(this.getTopicDialogNotesRichText(), { restoreSelection });
   }
 
   shouldNormalizeTopicDialogNotesAfterInput(event) {
@@ -4032,7 +4124,7 @@ class PlanningApp {
     return /\s/u.test(String(event?.data || ""));
   }
 
-  insertTopicDialogNotesPlainText(text) {
+  insertTopicDialogNotesRichText(html, text) {
     const editor = this.refs.topicDialogNotes;
     const selection = window.getSelection?.();
     if (!editor || !selection) {
@@ -4045,13 +4137,14 @@ class PlanningApp {
       range.collapse(false);
     }
     range.deleteContents();
-    const plainText = normalizePlanningNoteText(text);
-    if (!plainText) {
-      return;
-    }
-    const textNode = document.createTextNode(plainText);
-    range.insertNode(textNode);
-    range.setStart(textNode, textNode.textContent.length);
+    const temporary = document.createElement("div");
+    renderPlanningRichText(temporary, linkifyPlanningRichText(planningRichTextFromClipboard(html, text), text), text);
+    const fragment = document.createDocumentFragment();
+    const lastNode = temporary.lastChild;
+    while (temporary.firstChild) fragment.append(temporary.firstChild);
+    if (!lastNode) return;
+    range.insertNode(fragment);
+    range.setStartAfter(lastNode);
     range.collapse(true);
     selection.removeAllRanges();
     selection.addRange(range);
@@ -4065,6 +4158,214 @@ class PlanningApp {
     event.preventDefault();
     event.stopPropagation();
     window.open(target.href, "_blank", "noopener,noreferrer");
+  }
+
+  applyTopicDialogTextSize(value) {
+    const editor = this.refs.topicDialogNotes;
+    const size = [12, 14, 16, 18, 22].includes(Number(value)) ? Number(value) : 16;
+    if (!editor || !this.restoreTopicDialogNotesSelectionRange()) return false;
+    const selection = window.getSelection?.();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || range.collapsed || !editor.contains(range.commonAncestorContainer)) return false;
+
+    // Format text nodes individually. This also works across paragraphs, list
+    // items and table cells and never creates invalid spans around block nodes.
+    const textNodes = [];
+    const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      if (node.textContent && range.intersectsNode(node)) textNodes.push(node);
+      node = walker.nextNode();
+    }
+    [...textNodes].reverse().forEach((textNode) => {
+      const start = textNode === range.startContainer ? range.startOffset : 0;
+      const end = textNode === range.endContainer ? range.endOffset : textNode.textContent.length;
+      if (start >= end) return;
+      const textRange = document.createRange();
+      textRange.setStart(textNode, start);
+      textRange.setEnd(textNode, end);
+      const wrapper = document.createElement("span");
+      wrapper.className = `planning-rich-size-${size}`;
+      wrapper.append(textRange.extractContents());
+      textRange.insertNode(wrapper);
+    });
+    this.rememberTopicDialogNotesSelection();
+    return textNodes.length > 0;
+  }
+
+  toggleTopicDialogList(ordered) {
+    const editor = this.refs.topicDialogNotes;
+    if (!editor || !this.restoreTopicDialogNotesSelectionRange()) return false;
+    const selection = window.getSelection?.();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || !editor.contains(range.commonAncestorContainer)) return false;
+    const paragraphs = [...editor.querySelectorAll("p")].filter((paragraph) => (
+      range.collapsed
+        ? paragraph.contains(range.startContainer)
+        : range.intersectsNode(paragraph)
+    ));
+    if (!paragraphs.length) return false;
+
+    const selectedItems = [...new Set(paragraphs.map((paragraph) => paragraph.closest("li")).filter(Boolean))];
+    const selectedList = selectedItems.length === paragraphs.length
+      ? selectedItems[0]?.parentElement
+      : null;
+    const requestedTag = ordered ? "ol" : "ul";
+    if (selectedList && ["ul", "ol"].includes(selectedList.tagName.toLowerCase())
+      && selectedItems.every((item) => item.parentElement === selectedList)) {
+      if (selectedList.tagName.toLowerCase() !== requestedTag) {
+        const replacement = document.createElement(requestedTag);
+        while (selectedList.firstChild) replacement.append(selectedList.firstChild);
+        selectedList.replaceWith(replacement);
+      } else {
+        // Applying the active list type again returns the affected items to
+        // normal paragraphs, matching the expected toolbar toggle behaviour.
+        selectedItems.forEach((item) => {
+          const paragraph = item.querySelector(":scope > p") || document.createElement("p");
+          if (!paragraph.parentElement) while (item.firstChild) paragraph.append(item.firstChild);
+          item.before(paragraph);
+          item.remove();
+        });
+        if (!selectedList.querySelector(":scope > li")) selectedList.remove();
+      }
+    } else {
+      const groups = [];
+      paragraphs.forEach((paragraph) => {
+        const group = groups.at(-1);
+        if (group && group.parent === paragraph.parentElement && group.last.nextElementSibling === paragraph) {
+          group.paragraphs.push(paragraph); group.last = paragraph;
+        } else groups.push({ parent: paragraph.parentElement, paragraphs: [paragraph], last: paragraph });
+      });
+      groups.forEach((group) => {
+        const list = document.createElement(requestedTag);
+        group.paragraphs[0].before(list);
+        group.paragraphs.forEach((paragraph) => {
+          const item = document.createElement("li");
+          item.append(paragraph);
+          list.append(item);
+        });
+      });
+    }
+    this.rememberTopicDialogNotesSelection();
+    return true;
+  }
+
+  executeTopicDialogRichTextCommand(command, value = "") {
+    const editor = this.refs.topicDialogNotes;
+    if (!editor) return;
+    let changed = false;
+    if (command === "fontSize") {
+      changed = this.applyTopicDialogTextSize(value);
+    } else if (["insertUnorderedList", "insertOrderedList"].includes(command)) {
+      changed = this.toggleTopicDialogList(command === "insertOrderedList");
+    } else if (command === "insertTable") {
+      this.restoreTopicDialogNotesSelectionRange();
+      editor.focus();
+      const [rows, columns] = String(value || "2x2").split("x").map((part) => Math.max(1, Math.min(8, Number(part) || 2)));
+      const cells = Array.from({ length: rows }, () => `<tr>${"<td><br></td>".repeat(columns)}</tr>`).join("");
+      document.execCommand("insertHTML", false, `<table><tbody>${cells}</tbody></table><p><br></p>`);
+      changed = true;
+    } else {
+      this.restoreTopicDialogNotesSelectionRange();
+      editor.focus();
+      document.execCommand(command, false, value || null);
+      changed = true;
+    }
+    if (changed) this.normalizeTopicDialogNotesEditor({ restoreSelection: true });
+    this.topicDialogRichTextSelectionLocked = false;
+  }
+
+  getTopicDialogSelectedTableCell() {
+    const selection = window.getSelection?.();
+    const node = selection?.anchorNode;
+    const element = node instanceof Element ? node : node?.parentElement;
+    return element?.closest("#topic-dialog-notes td") || null;
+  }
+
+  setTopicDialogColorPaletteOpen(open) {
+    const toolbar = this.refs.topicDialogRichTextToolbar;
+    const trigger = toolbar?.querySelector(".rich-text-color-trigger");
+    const palette = toolbar?.querySelector(".rich-text-color-palette");
+    if (!trigger || !palette) return;
+    const nextOpen = Boolean(open);
+    palette.hidden = !nextOpen;
+    trigger.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+  }
+
+  applyTopicDialogTextColor(color = "") {
+    const editor = this.refs.topicDialogNotes;
+    const nextColor = Object.hasOwn(PLANNING_RICH_TEXT_COLORS, String(color)) ? String(color) : "";
+    if (!editor) return;
+    this.restoreTopicDialogNotesSelectionRange();
+    editor.focus();
+    const selection = window.getSelection?.();
+    const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+    if (!range || range.collapsed || !editor.contains(range.commonAncestorContainer)) return;
+    const fragment = range.extractContents();
+    fragment.querySelectorAll("[class*='planning-rich-color-']").forEach((node) => {
+      [...node.classList].filter((className) => className.startsWith("planning-rich-color-")).forEach((className) => node.classList.remove(className));
+      if (!node.classList.length) node.removeAttribute("class");
+    });
+    const wrapper = document.createElement("span");
+    wrapper.className = `planning-rich-color-${nextColor || "default"}`;
+    wrapper.append(fragment);
+    range.insertNode(wrapper);
+    const nextRange = document.createRange();
+    nextRange.selectNodeContents(wrapper);
+    selection.removeAllRanges();
+    selection.addRange(nextRange);
+    this.rememberTopicDialogNotesSelection();
+    this.normalizeTopicDialogNotesEditor({ restoreSelection: true });
+    this.topicDialogRichTextSelectionLocked = false;
+    this.setTopicDialogColorPaletteOpen(false);
+  }
+
+  changeTopicDialogTable(action) {
+    const cell = this.getTopicDialogSelectedTableCell();
+    const table = cell?.closest("table");
+    if (!cell || !table) return;
+    const row = cell.parentElement;
+    const columnIndex = [...row.children].indexOf(cell);
+    const rows = [...table.querySelectorAll(":scope > tbody > tr, :scope > tr")];
+    if (action === "addRow") {
+      const nextRow = table.ownerDocument.createElement("tr");
+      [...row.children].forEach(() => { const nextCell = table.ownerDocument.createElement("td"); nextCell.append(table.ownerDocument.createElement("br")); nextRow.append(nextCell); });
+      row.after(nextRow);
+    } else if (action === "deleteRow") {
+      row.remove();
+    } else {
+      rows.forEach((currentRow) => {
+        if (action === "addColumn") { const nextCell = table.ownerDocument.createElement("td"); nextCell.append(table.ownerDocument.createElement("br")); currentRow.children[columnIndex]?.after(nextCell); }
+        if (action === "deleteColumn") currentRow.children[columnIndex]?.remove();
+      });
+    }
+    if (!table.querySelector("tr") || !table.querySelector("td, th")) table.remove();
+    this.normalizeTopicDialogNotesEditor({ restoreSelection: true });
+    this.topicDialogRichTextSelectionLocked = false;
+  }
+
+  updateTopicDialogRichTextToolbar() {
+    const toolbar = this.refs.topicDialogRichTextToolbar;
+    if (!toolbar) return;
+    const hasActiveTable = Boolean(this.getTopicDialogSelectedTableCell());
+    toolbar.classList.toggle("has-active-table", hasActiveTable);
+    const colorTrigger = toolbar.querySelector(".rich-text-color-trigger");
+    if (colorTrigger) {
+      const selection = window.getSelection?.();
+      const anchor = selection?.anchorNode instanceof Element ? selection.anchorNode : selection?.anchorNode?.parentElement;
+      const colorClass = [...(anchor?.closest("[class*='planning-rich-color-']")?.classList || [])]
+        .find((className) => Object.hasOwn(PLANNING_RICH_TEXT_COLORS, className.replace("planning-rich-color-", "")));
+      [...colorTrigger.classList].filter((className) => className.startsWith("is-color-")).forEach((className) => colorTrigger.classList.remove(className));
+      colorTrigger.classList.toggle("is-color-default", !colorClass);
+      if (colorClass) colorTrigger.classList.add(`is-color-${colorClass.replace("planning-rich-color-", "")}`);
+    }
+    toolbar.querySelectorAll("[data-rich-text-command]").forEach((button) => {
+      const command = button.dataset.richTextCommand;
+      if (["bold", "italic", "underline", "insertUnorderedList", "insertOrderedList"].includes(command)) {
+        button.setAttribute("aria-pressed", document.queryCommandState?.(command) ? "true" : "false");
+      }
+      if (["addRow", "deleteRow", "addColumn", "deleteColumn"].includes(command)) button.disabled = !hasActiveTable;
+    });
   }
 
   async submitTopicDialog() {
@@ -4081,7 +4382,8 @@ class PlanningApp {
     const isEntfall = block.some((entry) => entry.isEntfall);
     const isWritten = block.some((entry) => entry.isWrittenExam);
     const patch = {
-      notes: this.getTopicDialogNotesText()
+      notes: this.getTopicDialogNotesText(),
+      notesRichText: this.getTopicDialogNotesRichText()
     };
     if (!(isEntfall || isWritten)) {
       patch.topic = String(this.refs.topicDialogInput.value || "").trim();
@@ -5117,23 +5419,88 @@ class PlanningApp {
     });
 
     this.refs.topicDialogNotes?.addEventListener("input", (event) => {
-      if (this.shouldNormalizeTopicDialogNotesAfterInput(event)) {
-        this.normalizeTopicDialogNotesEditor({ restoreSelection: true });
-      }
+      this.topicDialogRichTextSelectionLocked = false;
+      this.updateTopicDialogRichTextToolbar();
     });
 
     this.refs.topicDialogNotes?.addEventListener("paste", (event) => {
       event.preventDefault();
-      this.insertTopicDialogNotesPlainText(event.clipboardData?.getData("text/plain") || "");
+      this.insertTopicDialogNotesRichText(
+        event.clipboardData?.getData("text/html") || "",
+        event.clipboardData?.getData("text/plain") || ""
+      );
       this.normalizeTopicDialogNotesEditor({ restoreSelection: true });
     });
 
     this.refs.topicDialogNotes?.addEventListener("blur", () => {
-      this.normalizeTopicDialogNotesEditor();
+      // A select in the toolbar must receive focus to open. Rendering here
+      // would replace the selected DOM nodes before its change event applies
+      // the chosen formatting.
+      if (!this.topicDialogRichTextSelectionLocked) this.normalizeTopicDialogNotesEditor();
     });
 
     this.refs.topicDialogNotes?.addEventListener("click", (event) => {
       this.openTopicDialogNoteLink(event);
+    });
+
+    this.refs.topicDialogNotes?.addEventListener("keyup", () => this.updateTopicDialogRichTextToolbar());
+    this.refs.topicDialogNotes?.addEventListener("keyup", () => this.rememberTopicDialogNotesSelection());
+    this.refs.topicDialogNotes?.addEventListener("mouseup", () => {
+      this.topicDialogRichTextSelectionLocked = false;
+      this.rememberTopicDialogNotesSelection();
+      this.updateTopicDialogRichTextToolbar();
+    });
+    this.refs.topicDialogNotes?.addEventListener("pointerup", () => {
+      this.topicDialogRichTextSelectionLocked = false;
+      this.rememberTopicDialogNotesSelection();
+    });
+    this.refs.topicDialogNotes?.addEventListener("dragend", () => {
+      this.topicDialogRichTextSelectionLocked = false;
+      this.rememberTopicDialogNotesSelection();
+    });
+    this.refs.topicDialogNotes?.addEventListener("dragstart", () => {
+      this.rememberTopicDialogNotesSelection();
+      this.topicDialogRichTextSelectionLocked = true;
+    });
+    this.refs.topicDialogNotes?.addEventListener("focus", () => {
+      this.rememberTopicDialogNotesSelection();
+      this.updateTopicDialogRichTextToolbar();
+    });
+    document.addEventListener("selectionchange", () => {
+      this.rememberTopicDialogNotesSelection();
+      this.updateTopicDialogRichTextToolbar();
+    });
+
+    this.refs.topicDialogRichTextToolbar?.addEventListener("pointerdown", (event) => {
+      this.topicDialogRichTextSelectionLocked = true;
+      this.rememberTopicDialogNotesSelection();
+      if (event.target.closest("button")) event.preventDefault();
+    });
+    this.refs.topicDialogRichTextToolbar?.addEventListener("click", (event) => {
+      const colorTrigger = event.target.closest(".rich-text-color-trigger");
+      if (colorTrigger) {
+        this.setTopicDialogColorPaletteOpen(colorTrigger.getAttribute("aria-expanded") !== "true");
+        return;
+      }
+      const colorButton = event.target.closest("button[data-rich-text-color]");
+      if (colorButton) {
+        this.applyTopicDialogTextColor(colorButton.dataset.richTextColor || "");
+        return;
+      }
+      const button = event.target.closest("button[data-rich-text-command]");
+      if (!button) return;
+      const command = button.dataset.richTextCommand;
+      if (["addRow", "deleteRow", "addColumn", "deleteColumn"].includes(command)) this.changeTopicDialogTable(command);
+      else this.executeTopicDialogRichTextCommand(command, button.value || "");
+    });
+    this.refs.topicDialogRichTextToolbar?.addEventListener("change", (event) => {
+      const select = event.target.closest("select[data-rich-text-command]");
+      if (!select) return;
+      this.executeTopicDialogRichTextCommand(select.dataset.richTextCommand, select.value);
+      select.value = select.dataset.richTextCommand === "fontSize" ? select.value : "2x2";
+    });
+    this.refs.topicDialogRichTextToolbar?.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") this.setTopicDialogColorPaletteOpen(false);
     });
 
     this.refs.topicDialogForm.addEventListener("submit", async (event) => {
@@ -5508,6 +5875,13 @@ class PlanningApp {
         void this.requestSeatplanNavigation(lessonId);
         return;
       }
+      const detailsTrigger = event.target.closest(".lesson-block-details-trigger[data-detail-planning-lesson-id]");
+      if (detailsTrigger) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.openTopicDialog(Number(detailsTrigger.dataset.detailPlanningLessonId || 0));
+        return;
+      }
       const performanceEntryTrigger = event.target.closest(".lesson-block-performance-entry[data-performance-entry-lesson-id]");
       if (performanceEntryTrigger) {
         event.preventDefault();
@@ -5809,7 +6183,7 @@ class PlanningApp {
 
     if (this.refs.dbManualSaveBtn) {
       this.refs.dbManualSaveBtn.addEventListener("click", () => {
-        void this.createEmptyManualDatabase();
+        void this.startEmptyDatabase();
       });
     }
 
@@ -5842,8 +6216,7 @@ class PlanningApp {
 
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.addEventListener("click", async () => {
-        await this.selectSyncFile("new");
-        this.renderAll();
+        await this.startEmptyDatabase();
       });
     }
 
@@ -6374,9 +6747,78 @@ class PlanningApp {
     }
   }
 
-  async createEmptyManualDatabase() {
-    const result = await this.executeWorkspaceAction("manual-create-empty");
-    return Boolean(result.value);
+  async createEmptyManualDatabase(options = {}) {
+    const result = await this.executeWorkspaceAction("manual-create-empty", options);
+    return Boolean(result.changed);
+  }
+
+  getDefaultInitialSchoolYearStartYear() {
+    const fromRuntime = Number(this.getWorkspaceRuntime()?.getDefaultSchoolYearStartYear?.());
+    if (Number.isInteger(fromRuntime)) return fromRuntime;
+    const today = new Date();
+    return today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+  }
+
+  async chooseInitialDatabaseSchoolYear() {
+    const defaultStartYear = this.getDefaultInitialSchoolYearStartYear();
+    const options = [defaultStartYear - 1, defaultStartYear, defaultStartYear + 1];
+    const selected = await this.showSelectMessage(
+      "Wähle das erste Schuljahr für die neue Datenbank.",
+      String(defaultStartYear),
+      {
+        title: "Schuljahr für neue Datenbank",
+        inputLabel: "Schuljahr",
+        okText: "Weiter",
+        selectOptions: options.map((startYear) => ({
+          value: String(startYear),
+          label: `${startYear}/${startYear + 1}`,
+        })),
+      }
+    );
+    if (selected === null) return null;
+    return Number(selected) || null;
+  }
+
+  async prepareEmptyDatabaseRestart() {
+    const workspaceUnsaved = this.workspaceController?.getSnapshot?.("shell")?.unsaved || {};
+    const hasUnsavedChanges = Boolean(workspaceUnsaved.dirty || this.settingsDirty);
+    if (hasUnsavedChanges) {
+      const choice = await this.showChoiceMessage(
+        "Die aktuelle Datenbank enthält ungespeicherte Änderungen.",
+        {
+          title: "Neue leere Datenbank",
+          okText: "Speichern",
+          cancelText: "Abbrechen",
+          alternateText: "Verwerfen & neu starten",
+          dangerAlternate: true,
+          warning: true,
+        }
+      );
+      if (choice === "ok") {
+        if (this.settingsDirty && !await this.applySettingsDraftToStore()) return false;
+        if (this.isManualPersistenceMode()) return this.saveManualDatabase();
+        const result = await this.executeWorkspaceAction("sync-save", { reason: "before-create-empty" });
+        return Boolean(result.changed);
+      }
+      if (choice !== "discard") return false;
+      if (this.settingsDirty) this.cancelSettingsDraftChanges();
+      return true;
+    }
+    return this.showConfirmMessage(
+      "Die bisherige Datenbankdatei bleibt unverändert. Danach arbeitest du mit einer neuen leeren Datenbank.",
+      { title: "Neue leere Datenbank", okText: "Neu starten", dangerOk: true }
+    );
+  }
+
+  async startEmptyDatabase() {
+    const schoolYearStart = await this.chooseInitialDatabaseSchoolYear();
+    if (!schoolYearStart) return false;
+    if (!await this.prepareEmptyDatabaseRestart()) return false;
+    const created = this.isManualPersistenceMode()
+      ? await this.createEmptyManualDatabase({ schoolYearStart })
+      : await this.selectSyncFile("new-empty", { schoolYearStart });
+    if (created) this.renderAll();
+    return created;
   }
 
   async loadManualDatabaseFromFile(file) {
@@ -7704,7 +8146,7 @@ class PlanningApp {
     const courses = this.store.listCourses(year.id).filter((course) => !course.noLesson);
     if (options.includePlanningCourses) {
       courses.forEach((course) => {
-        sections.push(this.buildArchivePlanningCourseSection(year, course));
+        sections.push(...this.buildArchivePlanningCourseSection(year, course));
       });
     }
     if (options.includePlanningWeeks) {
@@ -7717,18 +8159,28 @@ class PlanningApp {
     const lessons = this.store.listLessonsForWeek(year.id, year.startDate, year.endDate, course.id);
     const blocks = this._buildCourseTableBlocks(lessons);
     if (!blocks.length) {
-      return {
+      return [{
         type: "note",
         title: `Planung - Kursansicht - ${course.name || "Kurs"}`,
         text: "Für diesen Kurs sind im Schuljahr keine Unterrichtsstunden angelegt."
-      };
+      }];
     }
-    return {
+    const overview = {
       type: "table",
       title: `Planung - Kursansicht - ${course.name || "Kurs"}`,
       columns: ["Datum", "Stunde", "Thema", "Notizen", "Markierungen"],
       rows: blocks.map((block) => this.buildArchivePlanningCourseRow(block))
     };
+    const details = blocks.flatMap((block) => {
+      const lesson = block.find((item) => String(item.notes || "").trim());
+      if (!lesson) return [];
+      return [{
+        type: "richText",
+        title: `Detailplanung - ${course.name || "Kurs"} - ${formatDate(lesson.lessonDate || "")}`,
+        blocks: planningRichTextToArchiveBlocks(lesson.notesRichText, lesson.notes)
+      }];
+    });
+    return [overview, ...details];
   }
 
   buildArchivePlanningCourseRow(block = []) {
@@ -7794,6 +8246,18 @@ class PlanningApp {
         title: `Planung - Wochenansicht KW ${String(isoWeekNumber(weekStart)).padStart(2, "0")} (${formatDate(days[0])} - ${formatDate(days[4])})`,
         columns: ["Std.", ...days.map((dayIso, index) => `${DAYS_SHORT[index]} ${formatDate(dayIso).slice(0, 5)}`)],
         rows
+      });
+      const detailedLessons = new Set();
+      lessons.forEach((lesson) => {
+        if (lesson.canceled || !String(lesson.notes || "").trim()) return;
+        const key = `${lesson.slotId}|${lesson.lessonDate}`;
+        if (detailedLessons.has(key)) return;
+        detailedLessons.add(key);
+        sections.push({
+          type: "richText",
+          title: `Detailplanung - KW ${String(isoWeekNumber(weekStart)).padStart(2, "0")} - ${lesson.courseName || "Kurs"} - ${formatDate(lesson.lessonDate || "")}`,
+          blocks: planningRichTextToArchiveBlocks(lesson.notesRichText, lesson.notes)
+        });
       });
     }
     return sections;
@@ -8392,15 +8856,20 @@ class PlanningApp {
       const loadedStudentCount = this.store.listGradeStudents(course.id)
         .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
         .length;
-      const studentCount = this.courseStudentCounts.get(Number(course.id)) ?? loadedStudentCount;
-      if (studentCount > 0) {
-        const count = document.createElement("span");
-        count.className = "course-student-count";
-        count.textContent = String(studentCount);
-        count.title = "Lernendenanzahl";
-        count.setAttribute("aria-label", "Lernendenanzahl");
-        button.append(count);
-      }
+      const persistedStudentCounts = this.store.getSetting?.("gradeCourseStudentCounts", {}) || {};
+      const courseId = String(Number(course.id) || 0);
+      const persistedStudentCount = Object.prototype.hasOwnProperty.call(persistedStudentCounts, courseId)
+        ? Math.max(0, Number(persistedStudentCounts[courseId]) || 0)
+        : null;
+      const studentCount = this.courseStudentCounts.get(Number(course.id))
+        ?? persistedStudentCount
+        ?? loadedStudentCount;
+      const count = document.createElement("span");
+      count.className = "course-student-count";
+      count.textContent = String(studentCount);
+      count.title = "Lernendenanzahl";
+      count.setAttribute("aria-label", "Lernendenanzahl");
+      button.append(count);
       li.append(button);
       this.refs.sidebarCourseList.append(li);
     });
@@ -9000,7 +9469,7 @@ class PlanningApp {
       isWritten,
       hasNotes,
       displayText: allCanceled ? (topLesson.cancelLabel || "Unterrichtsfrei") : formatPartialDisplay(displayTopic, partialCanceled),
-      background: allCanceled ? "rgba(28, 34, 44, 0.72)" : (isNoLesson ? "rgba(120, 120, 120, 0.82)" : colorToRgba(tinted, 0.88)),
+      background: allCanceled ? "rgba(28, 34, 44, 1)" : (isNoLesson ? "rgba(120, 120, 120, 1)" : colorToRgba(tinted, 1)),
       selectable: !allCanceled,
       startHour: Math.min(...blockLessons.map((entry) => Number(entry.hour))),
       endHour: Math.max(...blockLessons.map((entry) => Number(entry.hour)))
@@ -9071,6 +9540,22 @@ class PlanningApp {
       trigger.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault(); event.stopPropagation(); void this.requestSeatplanNavigation(block.firstLessonId);
+        }
+      });
+      chip.append(trigger);
+    }
+    if (block.hasNotes && block.selectable) {
+      const trigger = document.createElement("span");
+      trigger.className = "lesson-block-details-trigger";
+      trigger.dataset.detailPlanningLessonId = String(block.firstLessonId);
+      trigger.setAttribute("role", "button");
+      trigger.setAttribute("tabindex", "0");
+      trigger.setAttribute("aria-label", "Detailplanung öffnen");
+      trigger.title = "Detailplanung öffnen";
+      trigger.textContent = "🔎";
+      trigger.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault(); event.stopPropagation(); this.openTopicDialog(block.firstLessonId);
         }
       });
       chip.append(trigger);
@@ -9308,15 +9793,15 @@ class PlanningApp {
       let background = "rgba(34, 41, 54, 0.84)";
       let foreground = "#0f1216";
       if (allCanceled) {
-        background = "rgba(28, 34, 44, 0.72)";
+        background = "rgba(28, 34, 44, 1)";
         foreground = "#8b96a8";
       } else if (isNoLesson) {
-        background = "rgba(120, 120, 120, 0.82)";
+        background = "rgba(120, 120, 120, 1)";
         foreground = "#0f1216";
       } else {
         const courseColor = normalizeCourseColor(topLesson.color, false);
         const tinted = lightenHex(courseColor, 0.1);
-        background = colorToRgba(tinted, 0.88);
+        background = colorToRgba(tinted, 1);
         foreground = readableTextColor(tinted);
         if (isEntfall) {
           foreground = "#000000";
@@ -9539,6 +10024,22 @@ class PlanningApp {
               void this.requestSeatplanNavigation(block.firstLessonId);
             });
             chip.append(seatplanTrigger);
+          }
+          if (block.hasNotes && block.selectable) {
+            const detailsTrigger = document.createElement("span");
+            detailsTrigger.className = "lesson-block-details-trigger";
+            detailsTrigger.dataset.detailPlanningLessonId = String(block.firstLessonId);
+            detailsTrigger.setAttribute("role", "button");
+            detailsTrigger.setAttribute("tabindex", "0");
+            detailsTrigger.setAttribute("aria-label", "Detailplanung öffnen");
+            detailsTrigger.title = "Detailplanung öffnen";
+            detailsTrigger.textContent = "🔎";
+            detailsTrigger.addEventListener("keydown", (keyEvent) => {
+              if (keyEvent.key === "Enter" || keyEvent.key === " ") {
+                keyEvent.preventDefault(); keyEvent.stopPropagation(); this.openTopicDialog(block.firstLessonId);
+              }
+            });
+            chip.append(detailsTrigger);
           }
           const performanceNavigationState = !block.isNoLesson && !block.isNoGrades
             ? this.getPerformanceNavigationStateForLesson(block.topLesson, performanceLookup)

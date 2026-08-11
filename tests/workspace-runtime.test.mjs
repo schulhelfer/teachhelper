@@ -16,12 +16,18 @@ const archiveUrl = dataUrl(`
   export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
   export function downloadWorkspaceArchivePdf() {}
 `);
+const storeUrl = dataUrl(`
+  export function getDefaultSchoolYearStartYear(date = new Date()) {
+    return date.getMonth() >= 6 ? date.getFullYear() : date.getFullYear() - 1;
+  }
+`);
 let runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
 for (const [path, url] of [
   ['../../shared/school-data/thdb.js', thdbUrl],
   ['../../shared/school-data/sync-safety.js', syncUrl],
   ['../../shared/school-data/defaults.js', defaultsUrl],
   ['../../shared/school-data/messages.js', messagesUrl],
+  ['./store.js', storeUrl],
   ['./crypto.js', cryptoUrl],
   ['./archive-pdf.js', archiveUrl],
 ]) runtimeSource = runtimeSource.replace(path, url);
@@ -44,12 +50,25 @@ class FakeStore {
     this.publicState = { settings: { activeSchoolYearId: 1 }, schoolYears: [{ id: 1 }], courses: [{ id: 7, name: '7a' }] };
     this.gradeState = emptyGrades();
     this.settings = new Map();
+    this.state = { settings: { ...this.publicState.settings } };
   }
   setAfterSaveHooks(hooks) { this.hooks = hooks; }
   _suspendSaveHooks() {}
   _resumeSaveHooks() {}
   exportPublicStateSnapshot() { return structuredClone(this.publicState); }
   exportGradeVaultStateSnapshot() { return structuredClone(this.gradeState); }
+  normalizePublicState(state) {
+    return structuredClone(state || {
+      settings: { activeSchoolYearId: null },
+      schoolYears: [], courses: [], slots: [], freeRanges: [], specialDays: [], lessons: [],
+    });
+  }
+  importDatabaseState(publicState, gradeState, options = {}) {
+    this.publicState = this.normalizePublicState(publicState);
+    this.gradeState = this.normalizeGradeVaultState(gradeState);
+    this.state = { settings: { ...this.publicState.settings } };
+    this.importOptions = options;
+  }
   replaceGradeVaultState(state) { this.gradeState = this.normalizeGradeVaultState(state); }
   normalizeGradeVaultState(state) { return { ...emptyGrades(), ...(structuredClone(state) || {}) }; }
   getGradeVaultEncryptionEnabled() { return Boolean(this.settings.get('gradeVaultEncryptionEnabled')); }
@@ -186,6 +205,30 @@ test('explizite Datenbank-Speicherungen laden nur im manuellen Modus herunter', 
   runtime.isManualPersistenceMode = () => false;
   assert.equal(await runtime.persistExplicitDatabaseSave(), true);
   assert.equal(downloads, 1);
+});
+
+test('ein leerer Datenbankcontainer bleibt beim Laden ohne Schuljahre und Kurse', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const empty = runtime.buildEmptyDatabaseContainer();
+
+  await runtime.loadBytes(empty.bytes, 'test');
+
+  assert.deepEqual(store.publicState.schoolYears, []);
+  assert.deepEqual(store.publicState.courses, []);
+  assert.equal(store.importOptions.allowEmpty, true);
+});
+
+test('ein gewähltes erstes Schuljahr wird in den neuen Datenbankcontainer übernommen', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const database = runtime.buildEmptyDatabaseContainer('test', { schoolYearStart: 2026 });
+
+  await runtime.loadBytes(database.bytes, 'test');
+
+  assert.deepEqual(runtime.store.publicState.schoolYears, [{
+    id: 1, name: '2026/2027', startDate: '2026-08-01', endDate: '2027-07-31',
+  }]);
+  assert.equal(runtime.store.publicState.settings.activeSchoolYearId, 1);
 });
 
 

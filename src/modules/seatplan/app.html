@@ -224,8 +224,9 @@
                     stroke-linejoin="round"></path>
                 </svg>
               </button>
-              <button type="button" id="preferences-reset-gender" class="ghost dialog-icon-button app-action-icon"
+              <button type="button" id="preferences-reset-gender" class="ghost dialog-icon-button app-action-icon app-action-gender-reset"
                 aria-label="Geschlecht zurücksetzen" data-tooltip="Geschlecht zurücksetzen">
+                <span class="app-action-gender-reset-label" aria-hidden="true">m/w/d</span>
                 <svg class="app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                   <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
                     stroke-linecap="round" stroke-linejoin="round"></path>
@@ -318,6 +319,34 @@
           <div class="dialog-actions">
             <button type="button" id="course-save-dialog-file" class="ghost">Separate Sitzplan-Datei</button>
             <button type="button" id="course-save-dialog-grades" class="primary">Im Notenmodul</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="course-switch-dialog" aria-labelledby="course-switch-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="course-switch-dialog-title" class="dialog-title">Kurs wechseln?</h2>
+            <div class="app-action-group">
+              <button type="button" id="course-switch-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+                aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+            </div>
+          </div>
+          <p class="dialog-copy">Der aktuelle Sitzplan enthält ungesicherte Änderungen.</p>
+          <div class="dialog-actions">
+            <button type="button" id="course-switch-dialog-discard" class="ghost">Verwerfen &amp; wechseln</button>
+            <button type="button" id="course-switch-dialog-save" class="primary">Im Notenmodul speichern</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="course-roster-reset-dialog" class="course-roster-reset-dialog" aria-labelledby="course-roster-reset-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="course-roster-reset-dialog-title" class="dialog-title">Kurs zurücksetzen?</h2>
+          </div>
+          <p class="dialog-copy">Der aktuelle Sitzplan wird aus der Kursbindung gelöst. Gespeicherte Sitzpläne im Notenmodul bleiben erhalten.</p>
+          <div class="dialog-actions">
+            <button type="button" id="course-roster-reset-dialog-abort" class="ghost">Abbrechen</button>
+            <button type="button" id="course-roster-reset-dialog-confirm" class="danger-action">Kurs zurücksetzen</button>
           </div>
         </form>
       </dialog>

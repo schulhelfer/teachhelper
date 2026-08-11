@@ -1635,6 +1635,12 @@ function createInitialState() {
   };
 }
 
+export function getDefaultSchoolYearStartYear(date = new Date()) {
+  const today = date instanceof Date ? date : new Date(date);
+  const year = today.getFullYear();
+  return today.getMonth() >= 6 ? year : year - 1;
+}
+
 export class WorkspaceStore {
   constructor() {
     this.onAfterPublicSave = null;
@@ -1988,8 +1994,7 @@ export class WorkspaceStore {
       }
       return null;
     }
-    const now = new Date();
-    const startYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+    const startYear = getDefaultSchoolYearStartYear();
     const startDate = `${startYear}-08-01`;
     const endDate = `${startYear + 1}-07-31`;
     const year = {
@@ -3902,6 +3907,7 @@ export class WorkspaceStore {
             hour,
             topic: old ? old.topic : "",
             notes: old ? String(old.notes || "") : "",
+            notesRichText: old ? cloneJsonValue(old.notesRichText, null) : null,
             canceled: false,
             cancelLabel: "",
             isEntfall: old ? Boolean(old.isEntfall) : false,
@@ -4005,6 +4011,7 @@ export class WorkspaceStore {
     const nextPatch = patch && typeof patch === "object" ? patch : {};
     const hasTopic = Object.prototype.hasOwnProperty.call(nextPatch, "topic");
     const hasNotes = Object.prototype.hasOwnProperty.call(nextPatch, "notes");
+    const hasNotesRichText = Object.prototype.hasOwnProperty.call(nextPatch, "notesRichText");
     const hasEntfall = Object.prototype.hasOwnProperty.call(nextPatch, "isEntfall");
     const hasWritten = Object.prototype.hasOwnProperty.call(nextPatch, "isWrittenExam");
     for (const lesson of block) {
@@ -4016,6 +4023,12 @@ export class WorkspaceStore {
       }
       if (hasNotes) {
         lesson.notes = String(nextPatch.notes || "");
+        if (!hasNotesRichText) {
+          lesson.notesRichText = null;
+        }
+      }
+      if (hasNotesRichText) {
+        lesson.notesRichText = cloneJsonValue(nextPatch.notesRichText, null);
       }
       lesson.isEntfall = nextIsEntfall;
       lesson.isWrittenExam = nextIsWritten;
@@ -4032,6 +4045,7 @@ export class WorkspaceStore {
     for (const lesson of block) {
       lesson.topic = "";
       lesson.notes = "";
+      lesson.notesRichText = null;
       lesson.isEntfall = false;
       lesson.isWrittenExam = false;
     }
@@ -4100,6 +4114,7 @@ WorkspaceStore.prototype.shiftCourseTopicsForward = function (schoolYearId, cour
 
   const blockTopics = [];
   const blockNotes = [];
+  const blockRichNotes = [];
   const blockLessonIds = [];
   const blockEntfallFlags = [];
   const blockWrittenFlags = [];
@@ -4111,11 +4126,13 @@ WorkspaceStore.prototype.shiftCourseTopicsForward = function (schoolYearId, cour
     const firstNotesLesson = block.find((lesson) => String(lesson.notes || "").trim());
     const topic = firstTopicLesson ? String(firstTopicLesson.topic || "") : "";
     const notes = firstNotesLesson ? String(firstNotesLesson.notes || "") : "";
+    const notesRichText = firstNotesLesson ? cloneJsonValue(firstNotesLesson.notesRichText, null) : null;
     const isEntfall = block.some((lesson) => Boolean(lesson.isEntfall));
     const isWritten = block.some((lesson) => Boolean(lesson.isWrittenExam));
     blockLessonIds.push(ids);
     blockTopics.push(topic);
     blockNotes.push(notes);
+    blockRichNotes.push(notesRichText);
     blockEntfallFlags.push(isEntfall);
     blockWrittenFlags.push(isWritten);
     blockHasContent.push(Boolean(topic.trim()) || Boolean(notes.trim()) || isEntfall || isWritten);
@@ -4163,6 +4180,7 @@ WorkspaceStore.prototype.shiftCourseTopicsForward = function (schoolYearId, cour
   for (let idx = emptyIndex; idx > startIndex; idx -= 1) {
     const topic = blockTopics[idx - 1];
     const notes = blockNotes[idx - 1];
+    const notesRichText = blockRichNotes[idx - 1];
     const entfall = blockEntfallFlags[idx - 1];
     const written = blockWrittenFlags[idx - 1];
     for (const lessonId of blockLessonIds[idx]) {
@@ -4172,6 +4190,7 @@ WorkspaceStore.prototype.shiftCourseTopicsForward = function (schoolYearId, cour
       }
       lesson.topic = overrideTopicForFlags(topic, entfall, written);
       lesson.notes = notes;
+      lesson.notesRichText = cloneJsonValue(notesRichText, null);
       lesson.isEntfall = Boolean(entfall);
       lesson.isWrittenExam = Boolean(written);
     }
@@ -4184,6 +4203,7 @@ WorkspaceStore.prototype.shiftCourseTopicsForward = function (schoolYearId, cour
     }
     lesson.topic = "";
     lesson.notes = "";
+    lesson.notesRichText = null;
     lesson.isEntfall = false;
     lesson.isWrittenExam = false;
   }
@@ -4213,6 +4233,7 @@ WorkspaceStore.prototype.shiftCourseTopicsBackward = function (schoolYearId, cou
 
   const blockTopics = [];
   const blockNotes = [];
+  const blockRichNotes = [];
   const blockLessonIds = [];
   const blockEntfallFlags = [];
   const blockWrittenFlags = [];
@@ -4224,11 +4245,13 @@ WorkspaceStore.prototype.shiftCourseTopicsBackward = function (schoolYearId, cou
     const firstNotesLesson = block.find((lesson) => String(lesson.notes || "").trim());
     const topic = firstTopicLesson ? String(firstTopicLesson.topic || "") : "";
     const notes = firstNotesLesson ? String(firstNotesLesson.notes || "") : "";
+    const notesRichText = firstNotesLesson ? cloneJsonValue(firstNotesLesson.notesRichText, null) : null;
     const isEntfall = block.some((lesson) => Boolean(lesson.isEntfall));
     const isWritten = block.some((lesson) => Boolean(lesson.isWrittenExam));
     blockLessonIds.push(ids);
     blockTopics.push(topic);
     blockNotes.push(notes);
+    blockRichNotes.push(notesRichText);
     blockEntfallFlags.push(isEntfall);
     blockWrittenFlags.push(isWritten);
     blockHasContent.push(Boolean(topic.trim()) || Boolean(notes.trim()) || isEntfall || isWritten);
@@ -4276,6 +4299,7 @@ WorkspaceStore.prototype.shiftCourseTopicsBackward = function (schoolYearId, cou
   for (let idx = emptyIndex; idx < startIndex; idx += 1) {
     const topic = blockTopics[idx + 1];
     const notes = blockNotes[idx + 1];
+    const notesRichText = blockRichNotes[idx + 1];
     const entfall = blockEntfallFlags[idx + 1];
     const written = blockWrittenFlags[idx + 1];
     for (const lessonId of blockLessonIds[idx]) {
@@ -4285,6 +4309,7 @@ WorkspaceStore.prototype.shiftCourseTopicsBackward = function (schoolYearId, cou
       }
       lesson.topic = overrideTopicForFlags(topic, entfall, written);
       lesson.notes = notes;
+      lesson.notesRichText = cloneJsonValue(notesRichText, null);
       lesson.isEntfall = Boolean(entfall);
       lesson.isWrittenExam = Boolean(written);
     }
@@ -4297,6 +4322,7 @@ WorkspaceStore.prototype.shiftCourseTopicsBackward = function (schoolYearId, cou
     }
     lesson.topic = "";
     lesson.notes = "";
+    lesson.notesRichText = null;
     lesson.isEntfall = false;
     lesson.isWrittenExam = false;
   }
@@ -4365,6 +4391,7 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
     .map((lesson) => ({
       topic: lesson.topic || "",
       notes: lesson.notes || "",
+      notesRichText: cloneJsonValue(lesson.notesRichText, null),
       isEntfall: Boolean(lesson.isEntfall),
       isWrittenExam: Boolean(lesson.isWrittenExam)
     }));
@@ -4401,6 +4428,7 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
   for (let idx = 0; idx < maxLen; idx += 1) {
     targetRows[idx].topic = sourceRows[idx].topic;
     targetRows[idx].notes = sourceRows[idx].notes;
+    targetRows[idx].notesRichText = cloneJsonValue(sourceRows[idx].notesRichText, null);
     targetRows[idx].isEntfall = sourceRows[idx].isEntfall;
     targetRows[idx].isWrittenExam = sourceRows[idx].isWrittenExam;
   }
@@ -4507,6 +4535,7 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
         hour: Number(item.hour),
         topic: String(item.topic || ""),
         notes: String(item.notes || ""),
+        notesRichText: cloneJsonValue(item.notesRichText, null),
         canceled: Boolean(item.canceled),
         cancelLabel: String(item.cancelLabel || ""),
         isEntfall: Boolean(item.isEntfall),
@@ -4798,6 +4827,7 @@ WorkspaceStore.prototype.importDatabaseState = function (publicState, gradeVault
   const rebuildLessons = options?.rebuildLessons === true;
   const startupShellOnly = options?.startupShellOnly === true;
   const skipSaveNotification = options?.skipSaveNotification === true;
+  const allowEmpty = options?.allowEmpty === true;
   const importedLessonYearIds = new Set(
     normalizedPublic.lessons
       .map((item) => Number(item?.schoolYearId || 0))
@@ -4824,7 +4854,7 @@ WorkspaceStore.prototype.importDatabaseState = function (publicState, gradeVault
     this.state = normalizedPublic;
     this.gradeVaultState = normalizedVault;
     this.normalizeCourseColors();
-    this.ensureDefaultSchoolYear();
+    if (!allowEmpty) this.ensureDefaultSchoolYear();
     if (!startupShellOnly) {
       for (const year of this.state.schoolYears) {
         const startYear = Number(String(year.startDate).slice(0, 4));

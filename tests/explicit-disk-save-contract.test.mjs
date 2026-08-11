@@ -25,13 +25,15 @@ test('eine gemeinsame Disketten-Persistenz exportiert nur im manuellen Modus', (
 });
 
 test('ein abgebrochener Datenbank-Dateidialog wird still behandelt', () => {
-  const planningStart = planningSource.indexOf('  async selectSyncFile(mode = "existing")');
+  const planningStart = planningSource.indexOf('  async selectSyncFile(mode = "existing", options = {})');
   const planningEnd = planningSource.indexOf('\n  async acceptWorkspaceSyncFileHandle', planningStart);
   assert.ok(planningStart >= 0 && planningEnd > planningStart);
   const planningPicker = planningSource.slice(planningStart, planningEnd);
-  assert.match(planningPicker, /String\(mode\)\.startsWith\("new"\)/);
+  assert.match(planningPicker, /mode === "new-empty"/);
+  assert.match(planningPicker, /const owner = this\.workspaceController\.getOwner\?\.\(\);[\s\S]*?owner\?\.buildSyncFileSuggestedName\?\.\(\)/);
   assert.match(planningPicker, /error\?\.name !== "AbortError"/);
-  assert.match(planningSource, /dbCreateNewBtn\.addEventListener\("click", async \(\) => \{\s+await this\.selectSyncFile\("new"\);/);
+  assert.match(planningSource, /dbCreateNewBtn\.addEventListener\("click", async \(\) => \{\s+await this\.startEmptyDatabase\(\);/);
+  assert.match(planningSource, /async startEmptyDatabase\(\)[\s\S]*?selectSyncFile\("new-empty", \{ schoolYearStart \}\)/);
 });
 
 

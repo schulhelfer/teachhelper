@@ -746,6 +746,14 @@
           display: none;
         }
 
+        .app[data-course-seatplan="1"][data-course-roster-switch="1"] .roster-import-row {
+          grid-template-columns: minmax(0, var(--grade-roster-csv-column)) minmax(0, var(--grade-roster-course-column));
+        }
+
+        .app[data-course-seatplan="1"][data-course-roster-switch="1"] .grade-roster-import {
+          display: block;
+        }
+
         .roster-import-row .file-upload,
         .grade-roster-import {
           min-width: 0;
@@ -813,6 +821,37 @@
         .grade-roster-pill.is-imported {
           border: 3px solid rgba(248, 250, 252, 0.98);
           box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.52);
+        }
+
+        .grade-roster-reset-button {
+          position: absolute;
+          right: 3px;
+          bottom: 3px;
+          z-index: 1;
+          width: 18px;
+          min-width: 18px;
+          height: 18px;
+          min-height: 18px;
+          border-radius: 50%;
+          font-size: 12px;
+          box-shadow: 0 2px 7px rgba(15, 23, 42, 0.22);
+        }
+
+        .grade-roster-reset-button .app-action-reset-icon {
+          width: 16px;
+          height: 16px;
+        }
+
+        .course-roster-reset-dialog .dialog-title {
+          font-size: 1.15rem;
+          color: var(--text);
+        }
+
+        .course-roster-reset-dialog .dialog-copy {
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.5;
+          color: var(--text);
         }
 
         .grade-roster-import-trigger {
@@ -2551,6 +2590,18 @@
           font-size: 13px;
           line-height: 1.2;
           text-align: center;
+        }
+
+        .app-action-gender-reset {
+          flex-direction: column;
+          gap: 1px;
+        }
+
+        .app-action-gender-reset-label {
+          font-size: 8px;
+          font-weight: 700;
+          line-height: 1;
+          letter-spacing: 0.02em;
         }
 
         .preferences-table .gender-cell .gender-group {

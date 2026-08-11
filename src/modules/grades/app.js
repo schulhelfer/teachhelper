@@ -135,21 +135,21 @@ const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY = "competence-expectations-template";
 const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
-  "#E6194B",
-  "#3CB44B",
-  "#FFE119",
-  "#911EB4",
-  "#F58231",
-  "#F032E6",
-  "#BFEF45",
-  "#9A6324",
-  "#808000",
-  "#FABED4",
-  "#800000",
-  "#FF6F61",
-  "#006400",
-  "#D4A017",
-  "#707070"
+  "#FF1744",
+  "#2979FF",
+  "#00C853",
+  "#FF9100",
+  "#AA00FF",
+  "#00B8D4",
+  "#F500A4",
+  "#AEEA00",
+  "#FFD600",
+  "#5E35B1",
+  "#00A67A",
+  "#FF3D00",
+  "#1A237E",
+  "#C2185B",
+  "#795548"
 ];
 
 const TUTORIAL_DEMO_MODE = (() => {
@@ -2670,6 +2670,7 @@ class GradesApp {
       messageDialogInputRow: document.querySelector("#message-dialog-input-row"),
       messageDialogInputLabel: document.querySelector("#message-dialog-input-label"),
       messageDialogInput: document.querySelector("#message-dialog-input"),
+      messageDialogSelect: document.querySelector("#message-dialog-select"),
       messageDialogCancel: document.querySelector("#message-dialog-cancel"),
       messageDialogOk: document.querySelector("#message-dialog-ok"),
       messageDialogActionsTop: document.querySelector("#message-dialog-actions-top"),
@@ -4616,12 +4617,12 @@ class GradesApp {
     return this.getWorkspaceOwnerApp()?.tryReconnectStoredSyncFile?.() || false;
   }
 
-  async selectSyncFile(mode = "existing") {
+  async selectSyncFile(mode = "existing", options = {}) {
     const owner = this.getWorkspaceOwnerApp();
     if (!owner?.acceptWorkspaceSyncFileHandle) return false;
     try {
       let handle;
-      if (mode === "new-empty" || mode === "new-current") {
+      if (mode === "new-empty") {
         handle = await window.showSaveFilePicker({
           suggestedName: owner.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
           types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
@@ -4632,7 +4633,7 @@ class GradesApp {
           types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
         });
       }
-      return owner.acceptWorkspaceSyncFileHandle(handle, mode);
+      return owner.acceptWorkspaceSyncFileHandle(handle, mode, options);
     } catch (error) {
       if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.");
       return false;
@@ -5179,9 +5180,9 @@ class GradesApp {
       resolver(action === "ok" || action === "discard" ? action : "cancel");
       return;
     }
-    if (mode === "prompt") {
+    if (mode === "prompt" || mode === "select") {
       if (action === "ok") {
-        resolver(String(this.refs.messageDialogInput.value || ""));
+        resolver(String((mode === "select" ? this.refs.messageDialogSelect : this.refs.messageDialogInput).value || ""));
       } else {
         resolver(null);
       }
@@ -5199,13 +5200,14 @@ class GradesApp {
     defaultValue = "",
     inputLabel = "Eingabe",
     inputListId = "",
+    selectOptions = [],
     dangerOk = false,
     warnOk = false,
     alternateText = "",
     dangerAlternate = false,
     warning = false
   } = {}) {
-    const normalizedMode = mode === "confirm" || mode === "choice" || mode === "prompt" ? mode : "alert";
+    const normalizedMode = mode === "confirm" || mode === "choice" || mode === "prompt" || mode === "select" ? mode : "alert";
     if (
       !this.refs.messageDialog
       || !this.refs.messageDialogTitle
@@ -5219,6 +5221,7 @@ class GradesApp {
       || !this.refs.messageDialogDiscardTop
       || !this.refs.messageDialogActionsBottom
       || !this.refs.messageDialogInput
+      || !this.refs.messageDialogSelect
       || !this.refs.messageDialogInputRow
     ) {
       if (normalizedMode === "confirm") {
@@ -5230,6 +5233,7 @@ class GradesApp {
       if (normalizedMode === "prompt") {
         return Promise.resolve(null);
       }
+      if (normalizedMode === "select") return Promise.resolve(null);
       return Promise.resolve(undefined);
     }
     if (this.pendingMessageDialogResolver) {
@@ -5245,14 +5249,15 @@ class GradesApp {
     this.refs.messageDialogCancel.textContent = String(cancelText || "Abbrechen");
     const isChoice = normalizedMode === "choice";
     const isPrompt = normalizedMode === "prompt";
-    const usesTopActions = isPrompt || isChoice;
+    const isSelect = normalizedMode === "select";
+    const usesTopActions = isPrompt || isSelect || isChoice;
     const showDiscardTop = isChoice && Boolean(String(alternateText || "").trim());
     this.refs.messageDialogActionsTop.hidden = !usesTopActions;
     this.refs.messageDialogActionsBottom.hidden = usesTopActions;
     this.refs.messageDialogCancelTop.textContent = "❌";
     this.refs.messageDialogCancelTop.setAttribute("aria-label", String(cancelText || "Abbrechen"));
     this.refs.messageDialogCancelTop.dataset.tooltip = String(cancelText || "Abbrechen");
-    this.refs.messageDialogOkTop.textContent = "💾";
+    this.refs.messageDialogOkTop.textContent = isSelect ? "✓" : "💾";
     this.refs.messageDialogOkTop.setAttribute("aria-label", String(okText || "OK"));
     this.refs.messageDialogOkTop.dataset.tooltip = String(okText || "OK");
     this.refs.messageDialogDiscardTop.textContent = "🗑️";
@@ -5262,9 +5267,9 @@ class GradesApp {
     this.refs.messageDialogDiscardTop.hidden = !showDiscardTop;
     this.refs.messageDialogOkTop.classList.toggle("danger-action", Boolean(dangerOk));
     this.refs.messageDialogOkTop.classList.toggle("warn-action", Boolean(warnOk) && !dangerOk);
-    this.refs.messageDialogInputRow.hidden = !isPrompt;
+    this.refs.messageDialogInputRow.hidden = !isPrompt && !isSelect;
     this.refs.messageDialogInputLabel.textContent = String(inputLabel || "");
-    this.refs.messageDialogInputLabel.hidden = !isPrompt || !String(inputLabel || "").trim();
+    this.refs.messageDialogInputLabel.hidden = (!isPrompt && !isSelect) || !String(inputLabel || "").trim();
     this.refs.messageDialogCancel.hidden = normalizedMode === "alert";
     if (isPrompt) {
       this.refs.messageDialogInput.value = String(defaultValue || "");
@@ -5278,6 +5283,20 @@ class GradesApp {
       this.refs.messageDialogInput.value = "";
       this.refs.messageDialogInput.removeAttribute("list");
     }
+    this.refs.messageDialogInput.hidden = !isPrompt;
+    this.refs.messageDialogSelect.hidden = !isSelect;
+    if (isSelect) {
+      const values = Array.isArray(selectOptions) ? selectOptions : [];
+      this.refs.messageDialogSelect.replaceChildren(...values.map((entry) => {
+        const option = document.createElement("option");
+        option.value = String(entry?.value ?? entry ?? "");
+        option.textContent = String(entry?.label ?? entry?.value ?? entry ?? "");
+        return option;
+      }));
+      this.refs.messageDialogSelect.value = String(defaultValue || "");
+    } else {
+      this.refs.messageDialogSelect.replaceChildren();
+    }
 
     return new Promise((resolve) => {
       this.pendingMessageDialogResolver = resolve;
@@ -5287,6 +5306,8 @@ class GradesApp {
         if (isPrompt) {
           this.refs.messageDialogInput.focus();
           this.refs.messageDialogInput.select();
+        } else if (isSelect) {
+          this.refs.messageDialogSelect.focus();
         } else {
           const focusTarget = isChoice
             ? this.refs.messageDialogOkTop
@@ -5343,6 +5364,19 @@ class GradesApp {
       defaultValue,
       inputLabel: options.inputLabel ?? "Eingabe",
       inputListId: options.inputListId || ""
+    });
+  }
+
+  async showSelectMessage(message, defaultValue = "", options = {}) {
+    return this.showMessageDialog({
+      mode: "select",
+      title: options.title || "Bitte auswählen",
+      message,
+      okText: options.okText || "Übernehmen",
+      cancelText: options.cancelText || "Abbrechen",
+      defaultValue,
+      inputLabel: options.inputLabel ?? "Auswahl",
+      selectOptions: options.selectOptions || [],
     });
   }
 
@@ -10101,7 +10135,7 @@ class GradesApp {
 
     if (this.refs.dbManualSaveBtn) {
       this.refs.dbManualSaveBtn?.addEventListener("click", () => {
-        void this.createEmptyManualDatabase();
+        void this.startEmptyDatabase();
       });
     }
 
@@ -10121,8 +10155,7 @@ class GradesApp {
 
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn?.addEventListener("click", async () => {
-        await this.selectSyncFile("new-empty");
-        this.renderAll();
+        await this.startEmptyDatabase();
       });
     }
 
@@ -10435,8 +10468,77 @@ class GradesApp {
     return this.getWorkspaceOwnerApp()?.saveManualDatabase?.() || false;
   }
 
-  async createEmptyManualDatabase() {
-    return this.getWorkspaceOwnerApp()?.createEmptyManualDatabase?.() || false;
+  async createEmptyManualDatabase(options = {}) {
+    return this.getWorkspaceOwnerApp()?.createEmptyManualDatabase?.(options) || false;
+  }
+
+  getDefaultInitialSchoolYearStartYear() {
+    const fromRuntime = Number(this.getWorkspaceOwnerApp()?.getDefaultSchoolYearStartYear?.());
+    if (Number.isInteger(fromRuntime)) return fromRuntime;
+    const today = new Date();
+    return today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
+  }
+
+  async chooseInitialDatabaseSchoolYear() {
+    const defaultStartYear = this.getDefaultInitialSchoolYearStartYear();
+    const options = [defaultStartYear - 1, defaultStartYear, defaultStartYear + 1];
+    const selected = await this.showSelectMessage(
+      "Wähle das erste Schuljahr für die neue Datenbank.",
+      String(defaultStartYear),
+      {
+        title: "Schuljahr für neue Datenbank",
+        inputLabel: "Schuljahr",
+        okText: "Weiter",
+        selectOptions: options.map((startYear) => ({
+          value: String(startYear),
+          label: `${startYear}/${startYear + 1}`,
+        })),
+      }
+    );
+    if (selected === null) return null;
+    return Number(selected) || null;
+  }
+
+  async prepareEmptyDatabaseRestart() {
+    const unsaved = this.getWorkspaceUnsavedState();
+    if (unsaved.dirty) {
+      const choice = await this.showChoiceMessage(
+        "Die aktuelle Datenbank enthält ungespeicherte Änderungen.",
+        {
+          title: "Neue leere Datenbank",
+          okText: "Speichern",
+          cancelText: "Abbrechen",
+          alternateText: "Verwerfen & neu starten",
+          dangerAlternate: true,
+          warning: true,
+        }
+      );
+      if (choice === "ok") {
+        if (this.gradesEntryDraftDirty && !await this.saveCurrentGradesEntry()) return false;
+        if (this.settingsDirty && !await this.applySettingsDraftToStore()) return false;
+        if (this.isManualPersistenceMode()) return this.saveManualDatabase();
+        return Boolean(await this.getWorkspaceOwnerApp()?.saveToConnectedFile?.("before-create-empty"));
+      }
+      if (choice !== "discard") return false;
+      if (this.gradesEntryDraftDirty) this.discardGradesEntryEditSession();
+      if (this.settingsDirty) this.cancelSettingsDraftChanges();
+      return true;
+    }
+    return this.showConfirmMessage(
+      "Die bisherige Datenbankdatei bleibt unverändert. Danach arbeitest du mit einer neuen leeren Datenbank.",
+      { title: "Neue leere Datenbank", okText: "Neu starten", dangerOk: true }
+    );
+  }
+
+  async startEmptyDatabase() {
+    const schoolYearStart = await this.chooseInitialDatabaseSchoolYear();
+    if (!schoolYearStart) return false;
+    if (!await this.prepareEmptyDatabaseRestart()) return false;
+    const created = this.isManualPersistenceMode()
+      ? await this.createEmptyManualDatabase({ schoolYearStart })
+      : await this.selectSyncFile("new-empty", { schoolYearStart });
+    if (created) this.renderAll();
+    return created;
   }
 
   async loadManualDatabaseFromFile(file) {
@@ -21351,14 +21453,12 @@ class GradesApp {
           );
 
           if (!subcategoryExpanded) {
-            const collapsedColSpan = 1 + occurrenceColumnCount;
-            categoryColSpan += collapsedColSpan;
+            categoryColSpan += 1;
             columns.push({
               type: "subcategory-collapsed",
               period: periodGroup.period,
               categoryId: category.id,
               subcategoryId: subcategory.id,
-              hasHomeworkColumn,
               leftBoundary: subcategoryLeftBoundary,
               rightBoundary: subcategoryRightBoundary
             });
@@ -21367,44 +21467,11 @@ class GradesApp {
               period: periodGroup.period,
               category,
               subcategory,
-              hasHomeworkColumn,
               leftBoundary: subcategoryLeftBoundary,
               rightBoundary: subcategoryRightBoundary,
-              rowSpan: hasHomeworkColumn ? 1 : 2,
-              colSpan: collapsedColSpan
+              rowSpan: 2,
+              colSpan: 1
             });
-            if (hasHomeworkColumn) {
-              headerRows[3].push({
-                type: "subcategory-partial",
-                period: periodGroup.period,
-                category,
-                subcategory,
-                rightBoundary: "",
-                rowSpan: 1,
-                colSpan: 1
-              });
-              occurrenceCategories.forEach((occurrenceCategory, occurrenceIndex) => {
-                const rightBoundary = occurrenceIndex === occurrenceColumnCount - 1 ? subcategoryRightBoundary : "";
-                columns.push({
-                  type: "subcategory-homework",
-                  period: periodGroup.period,
-                  categoryId: category.id,
-                  subcategoryId: subcategory.id,
-                  occurrenceCategoryId: occurrenceCategory.id,
-                  rightBoundary
-                });
-                headerRows[3].push({
-                  type: "subcategory-homework",
-                  period: periodGroup.period,
-                  category,
-                  subcategory,
-                  occurrenceCategoryId: occurrenceCategory.id,
-                  rightBoundary,
-                  rowSpan: 1,
-                  colSpan: 1
-                });
-              });
-            }
             return;
           }
 
@@ -21682,7 +21749,7 @@ class GradesApp {
       applyBoundaryClasses();
       applyColumnSelection();
       applyNonAssessmentTooltip();
-      th.textContent = "";
+      th.innerHTML = '<span class="grade-header-summary-cover" aria-hidden="true"></span>';
       return th;
     }
 
@@ -21722,7 +21789,7 @@ class GradesApp {
       applyBoundaryClasses();
       applyColumnSelection();
       applyNonAssessmentTooltip();
-      th.innerHTML = "&nbsp;";
+      th.innerHTML = '<span class="grade-header-summary-cover" aria-hidden="true"></span>&nbsp;';
       th.setAttribute("aria-label", "");
       return th;
     }
@@ -21762,7 +21829,7 @@ class GradesApp {
       applyBoundaryClasses();
       applyColumnSelection();
       applyNonAssessmentTooltip();
-      th.innerHTML = "&nbsp;";
+      th.innerHTML = '<span class="grade-header-summary-cover" aria-hidden="true"></span>&nbsp;';
       th.setAttribute("aria-label", "");
       return th;
     }
@@ -25877,8 +25944,11 @@ class GradesApp {
     }
   }
 
-  buildCourseSeatplanStudents(courseId) {
-    return this.store.listGradeStudents(courseId)
+  buildCourseSeatplanStudents(courseId, sourceStudents = null) {
+    const students = Array.isArray(sourceStudents)
+      ? sourceStudents
+      : this.store.listGradeStudents(courseId);
+    return students
       .filter((student) => !student?.isPlaceholder)
       .map((student) => ({
         id: String(Number(student.id) || ""),
@@ -26024,16 +26094,34 @@ class GradesApp {
         this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Notenkurs nicht gefunden." });
         return;
       }
-      const importPayload = await this.withTemporaryGradeCourse(course.id, () => {
-        const students = this.buildCourseSeatplanStudents(course.id);
-        const contextState = this.buildCourseSeatplanContextState(course.id, "", students);
-        return {
-          students,
-          plan: this.store.getGradeSeatPlan(course.id),
-          contextToken: contextState.contextToken,
-          rosterToken: contextState.rosterToken
-        };
-      });
+      const workspaceOwner = this.getWorkspaceOwnerApp();
+      const courseState = typeof workspaceOwner?.getGradeCourseStateSnapshot === "function"
+        ? await workspaceOwner.getGradeCourseStateSnapshot(course.id)
+        : null;
+      const importPayload = courseState
+        ? (() => {
+          const students = this.buildCourseSeatplanStudents(course.id, courseState.gradeStudents);
+          const contextState = this.buildCourseSeatplanContextState(course.id, "", students);
+          const seatPlan = Array.isArray(courseState.gradeSeatPlans)
+            ? courseState.gradeSeatPlans.find((item) => Number(item?.courseId) === Number(course.id))?.plan || null
+            : null;
+          return {
+            students,
+            plan: seatPlan,
+            contextToken: contextState.contextToken,
+            rosterToken: contextState.rosterToken
+          };
+        })()
+        : await this.withTemporaryGradeCourse(course.id, () => {
+          const students = this.buildCourseSeatplanStudents(course.id);
+          const contextState = this.buildCourseSeatplanContextState(course.id, "", students);
+          return {
+            students,
+            plan: this.store.getGradeSeatPlan(course.id),
+            contextToken: contextState.contextToken,
+            rosterToken: contextState.rosterToken
+          };
+        });
       if (importPayload.students.length === 0) {
         this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Dieser Kurs enthält keine Lernenden." });
         return;
@@ -27196,15 +27284,20 @@ class GradesApp {
       const loadedStudentCount = this.store.listGradeStudents(course.id)
         .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
         .length;
-      const studentCount = this.courseStudentCounts.get(Number(course.id)) ?? loadedStudentCount;
-      if (studentCount > 0) {
-        const count = document.createElement("span");
-        count.className = "course-student-count";
-        count.textContent = String(studentCount);
-        count.title = "Lernendenanzahl";
-        count.setAttribute("aria-label", "Lernendenanzahl");
-        button.append(count);
-      }
+      const persistedStudentCounts = this.store.getSetting?.("gradeCourseStudentCounts", {}) || {};
+      const courseId = String(Number(course.id) || 0);
+      const persistedStudentCount = Object.prototype.hasOwnProperty.call(persistedStudentCounts, courseId)
+        ? Math.max(0, Number(persistedStudentCounts[courseId]) || 0)
+        : null;
+      const studentCount = this.courseStudentCounts.get(Number(course.id))
+        ?? persistedStudentCount
+        ?? loadedStudentCount;
+      const count = document.createElement("span");
+      count.className = "course-student-count";
+      count.textContent = String(studentCount);
+      count.title = "Lernendenanzahl";
+      count.setAttribute("aria-label", "Lernendenanzahl");
+      button.append(count);
       li.append(button);
       this.refs.sidebarCourseList.append(li);
     });

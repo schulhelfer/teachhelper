@@ -5966,6 +5966,17 @@
           padding-block: 0.2rem;
         }
 
+        .grades-master-table thead th > .grade-header-summary-cover {
+          position: absolute;
+          z-index: 1;
+          top: -1px;
+          right: 0;
+          left: 0;
+          height: 1px;
+          background: var(--surface-week-header);
+          pointer-events: none;
+        }
+
         .grades-master-table thead th.student-col {
           position: sticky;
           left: 0;
@@ -6068,6 +6079,11 @@
           width: 1px;
           background: var(--border-control);
           pointer-events: none;
+        }
+
+        .grades-master-table th:has(+ th.is-leading-boundary-subcategory),
+        .grades-master-table td:has(+ td.is-leading-boundary-subcategory) {
+          border-right-color: transparent;
         }
 
         .grades-master-table th.is-leading-boundary-category,

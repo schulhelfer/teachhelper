@@ -120,6 +120,7 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
         hour: Number(item.hour),
         topic: String(item.topic || ''),
         notes: String(item.notes || ''),
+        notesRichText: cloneJson(item.notesRichText, null),
         canceled: Boolean(item.canceled),
         cancelLabel: String(item.cancelLabel || ''),
         isEntfall: Boolean(item.isEntfall),

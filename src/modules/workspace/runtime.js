@@ -24,6 +24,7 @@ import {
   WORKSPACE_ERROR_VAULT_DIRTY,
   WORKSPACE_ERROR_VAULT_LOCKED,
 } from '../../shared/school-data/messages.js';
+import { getDefaultSchoolYearStartYear } from './store.js';
 import {
   createWorkspaceVaultKdf,
   decryptWorkspaceVaultText,
@@ -888,6 +889,11 @@ export class WorkspaceRuntime {
   async getGradeCourseStateSnapshot(courseId) {
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return null;
+    // A roster request may arrive while Grades is still completing a navigation
+    // to another course. Wait for that atomic load before inspecting the active
+    // state; otherwise `loadedCourseId` and the store can briefly describe
+    // different courses and the previous roster is returned for this request.
+    await this.courseLoadTail;
     let state = this.loadedCourseId === id
       ? this.store.exportGradeVaultStateSnapshot()
       : this.courseCache.get(id) || null;
@@ -1188,7 +1194,19 @@ export class WorkspaceRuntime {
     } catch {
       throw new Error('Datenbanksegmente enthalten ungültiges JSON.');
     }
-    this.store.importDatabaseState(publicState, emptyGradeState(this.store), { skipSaveNotification: true });
+    const isEmptyDatabase = [
+      publicState?.schoolYears,
+      publicState?.courses,
+      publicState?.slots,
+      publicState?.freeRanges,
+      publicState?.specialDays,
+      publicState?.lessons,
+      parsed.gradeCourseSegments,
+    ].every((items) => Array.isArray(items) && items.length === 0);
+    this.store.importDatabaseState(publicState, emptyGradeState(this.store), {
+      skipSaveNotification: true,
+      allowEmpty: isEmptyDatabase,
+    });
     this.segmentTexts = new Map(parsed.gradeCourseSegments.map((segment) => [Number(segment.courseId), String(segment.text || '')]));
     this.courseCache.clear();
     this.performanceIndexCache.clear();
@@ -1222,8 +1240,85 @@ export class WorkspaceRuntime {
     return new Uint8Array(await file.arrayBuffer());
   }
 
-  async acceptWorkspaceSyncFileHandle(handle, mode = 'existing') {
+  getDefaultSchoolYearStartYear(date = new Date()) {
+    return getDefaultSchoolYearStartYear(date);
+  }
+
+  buildEmptyDatabaseContainer(reason = 'create-empty', { schoolYearStart = null } = {}) {
+    const publicState = this.store.normalizePublicState(null);
+    const startYear = Number(schoolYearStart);
+    if (Number.isInteger(startYear) && startYear >= 1900 && startYear <= 9998) {
+      publicState.schoolYears = [{
+        id: 1,
+        name: `${startYear}/${startYear + 1}`,
+        startDate: `${startYear}-08-01`,
+        endDate: `${startYear + 1}-07-31`,
+      }];
+      publicState.settings = { ...publicState.settings, activeSchoolYearId: 1 };
+      publicState.counters = { ...publicState.counters, schoolYear: 2 };
+    }
+    const config = normalizeVaultConfig(null);
+    return buildThdb1ContainerBytes({
+      schema: APP_DB_SCHEMA,
+      startupShellText: JSON.stringify(buildStartupShell(publicState, false, 0)),
+      planningPublicText: JSON.stringify(publicState),
+      gradeVaultConfigText: JSON.stringify(config),
+      gradeCourseSegments: [],
+      revision: 1,
+      updatedAt: new Date().toISOString(),
+      deviceId: this.deviceId,
+      reason,
+    });
+  }
+
+  async isCurrentWorkspaceFileHandle(handle) {
+    if (!handle || !this.fileHandle) return false;
+    if (handle === this.fileHandle) return true;
+    if (typeof handle.isSameEntry !== 'function') return false;
+    try {
+      return Boolean(await handle.isSameEntry(this.fileHandle));
+    } catch {
+      return false;
+    }
+  }
+
+  async connectEmptyWorkspaceFile(handle, options = {}) {
+    if (await this.isCurrentWorkspaceFileHandle(handle)) {
+      throw new Error('Bitte wähle für die neue leere Datenbank eine andere Datei.');
+    }
+    if (!await this.ensureHandleReadWritePermission(handle)) {
+      throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
+    }
+    // A pending automatic save still belongs to the previous workspace. Let it
+    // finish before the active file handle can point at the new empty file.
+    await this.operationTail;
+    const built = this.buildEmptyDatabaseContainer('create-empty', options);
+    const writeResult = await writeAndVerifyFileBytes(
+      handle,
+      built.bytes,
+      (persisted) => getThdb1FileHash(persisted) === getThdb1FileHash(built.bytes),
+    );
+    if (!writeResult.ok) throw writeResult.error || new Error('Leere Datenbankdatei konnte nicht verifiziert werden.');
+    if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
+      throw new Error('Die Auswahl der Datenbankdatei konnte nicht dauerhaft gespeichert werden.');
+    }
+
+    this.fileHandle = handle;
+    this.storedFileHandle = handle;
+    this.fileName = String(handle.name || this.buildSyncFileSuggestedName());
+    this.backupDirectoryHandle = null;
+    this.storedBackupDirectoryHandle = null;
+    await this.loadBytes(built.bytes, 'new-empty');
+    await this.removeStoredHandle(HANDLE_BACKUP_KEY);
+    this.controller?.markChanged?.('shell');
+    return true;
+  }
+
+  async acceptWorkspaceSyncFileHandle(handle, mode = 'existing', options = {}) {
     if (!handle) return false;
+    if (String(mode || '') === 'new-empty') {
+      return this.connectEmptyWorkspaceFile(handle, options);
+    }
     if (!await this.ensureHandleReadWritePermission(handle)) {
       throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
     }
@@ -1241,13 +1336,7 @@ export class WorkspaceRuntime {
       if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
         throw new Error('Die Auswahl der Datenbankdatei konnte nicht dauerhaft gespeichert werden.');
       }
-      if (String(mode || '').startsWith('new')) {
-        this.knownRevision = 0;
-        this.knownFileHash = '';
-        await this.saveToConnectedFile('create');
-      } else {
-        await this.loadBytes(await this.readHandleBytes(handle), 'file');
-      }
+      await this.loadBytes(await this.readHandleBytes(handle), 'file');
     } catch (error) {
       if (!preserveBackupDirectory) {
         this.backupDirectoryHandle = previousBackupDirectoryHandle;
@@ -1329,21 +1418,12 @@ export class WorkspaceRuntime {
     return true;
   }
 
-  async createEmptyManualDatabase() {
-    const publicState = this.store.normalizePublicState(null);
-    const config = normalizeVaultConfig(null);
-    const built = buildThdb1ContainerBytes({
-      schema: APP_DB_SCHEMA,
-      startupShellText: JSON.stringify(buildStartupShell(publicState, false, 0)),
-      planningPublicText: JSON.stringify(publicState),
-      gradeVaultConfigText: JSON.stringify(config),
-      gradeCourseSegments: [],
-      revision: 1,
-      updatedAt: new Date().toISOString(),
-      deviceId: this.deviceId,
-      reason: 'manual-create-empty',
-    });
-    downloadBytes(built.bytes, this.buildSyncFileSuggestedName());
+  async createEmptyManualDatabase(options = {}) {
+    const built = this.buildEmptyDatabaseContainer('manual-create-empty', options);
+    const fileName = this.buildSyncFileSuggestedName();
+    downloadBytes(built.bytes, fileName);
+    this.fileName = fileName;
+    await this.loadBytes(built.bytes, 'manual-create-empty');
     return true;
   }
 
@@ -1585,7 +1665,7 @@ export class WorkspaceRuntime {
     const name = String(action || '').toLowerCase();
     if (name === 'manual-save') return { changed: await this.saveManualDatabase(detail), scope: 'shell' };
     if (name === 'explicit-save') return { changed: await this.persistExplicitDatabaseSave(detail), scope: 'shell' };
-    if (name === 'manual-create-empty') return { changed: false, value: await this.createEmptyManualDatabase(), scope: 'shell' };
+    if (name === 'manual-create-empty') return { changed: await this.createEmptyManualDatabase(detail), scope: 'shell' };
     if (name === 'manual-load') return { changed: await this.loadManualDatabaseFromFile(detail?.file), scope: 'shell' };
     if (name === 'sync-connect') return { changed: await this.acceptWorkspaceSyncFileHandle(detail?.handle, detail?.mode), scope: 'shell' };
     if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };

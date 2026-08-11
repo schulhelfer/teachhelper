@@ -1371,11 +1371,6 @@
       display: block;
     }
 
-    .app.app-tab-planning:not(.app-js-ready)>.side,
-    .app.app-tab-planning:not(.app-js-ready)>.main {
-      display: flex;
-    }
-
     .app.app-tab-planning:not(.app-js-ready)>.planning-shell {
       display: none;
     }

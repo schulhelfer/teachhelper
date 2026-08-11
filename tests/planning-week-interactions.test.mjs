@@ -71,6 +71,12 @@ test('lesson hover styling does not move the pointer target', () => {
   assert.equal(hoverRule.includes('translateY('), false);
 });
 
+test('week lesson blocks cover the hour separators', () => {
+  assert.match(appSource, /colorToRgba\(tinted, 1\)/);
+  assert.doesNotMatch(appSource, /colorToRgba\(tinted, 0\.88\)/);
+  assert.doesNotMatch(appSource, /rgba\(120, 120, 120, 0\.82\)/);
+});
+
 test('week layout scaling batches reads before writes and has no search loop', () => {
   const methodSource = extractClassMethod('syncWeekLayoutScale');
   const batchingComment = methodSource.indexOf('Read every layout metric before changing styles');
