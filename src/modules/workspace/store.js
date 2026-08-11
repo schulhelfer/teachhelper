@@ -2033,6 +2033,59 @@ export class WorkspaceStore {
     return created;
   }
 
+  buildNewDatabasePublicState(startYear) {
+    const year = Number(startYear);
+    const publicState = this.normalizePublicState(null);
+    if (!Number.isInteger(year) || year < 1900 || year > 9998) {
+      return publicState;
+    }
+
+    const schoolYear = {
+      id: 1,
+      name: `${year}/${year + 1}`,
+      startDate: `${year}-08-01`,
+      endDate: `${year + 1}-07-31`,
+    };
+    const sourceYear = this.state.schoolYears.find((item) => (
+      String(item?.startDate || '') === schoolYear.startDate
+      && String(item?.endDate || '') === schoolYear.endDate
+    ));
+    const sourceFreeRanges = sourceYear
+      ? this.state.freeRanges.filter((item) => Number(item?.schoolYearId) === Number(sourceYear.id))
+      : requiredHolidayRowSpecs().flatMap((spec) => {
+        const [startDate, endDate] = defaultHolidayRangeForRow(year, spec.label, spec.occurrence);
+        return startDate || endDate ? [{ label: spec.label, startDate, endDate }] : [];
+      });
+    const sourceSpecialDays = sourceYear
+      ? this.state.specialDays.filter((item) => (
+        String(item?.dayDate || '') >= schoolYear.startDate
+        && String(item?.dayDate || '') <= schoolYear.endDate
+      ))
+      : defaultSpecialDays(year);
+
+    publicState.schoolYears = [schoolYear];
+    publicState.settings = { ...publicState.settings, activeSchoolYearId: schoolYear.id };
+    publicState.freeRanges = sourceFreeRanges.map((item, index) => ({
+      id: index + 1,
+      schoolYearId: schoolYear.id,
+      label: String(item?.label || ''),
+      startDate: item?.startDate ? String(item.startDate) : '',
+      endDate: item?.endDate ? String(item.endDate) : '',
+    }));
+    publicState.specialDays = sourceSpecialDays.map((item, index) => ({
+      id: index + 1,
+      name: String(item?.name || ''),
+      dayDate: String(item?.dayDate || ''),
+    }));
+    publicState.counters = {
+      ...publicState.counters,
+      schoolYear: 2,
+      freeRange: publicState.freeRanges.length + 1,
+      specialDay: publicState.specialDays.length + 1,
+    };
+    return this.normalizePublicState(publicState);
+  }
+
   getActiveSchoolYear() {
     const stored = Number(this.getSetting("activeSchoolYearId"));
     if (stored) {

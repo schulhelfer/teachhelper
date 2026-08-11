@@ -4101,6 +4101,18 @@ class PlanningApp {
     const start = findPoint(startOffset);
     const end = findPoint(endOffset);
     if (!start || !end) {
+      // Empty paragraphs contain only a <br>, so there is no text node for
+      // the walker to find. Keep a real caret in that paragraph nonetheless.
+      if (Number(startOffset) === 0 && Number(endOffset) === 0) {
+        const emptyBlock = editor.querySelector("p") || editor;
+        const emptyRange = document.createRange();
+        emptyRange.setStart(emptyBlock, 0);
+        emptyRange.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(emptyRange);
+        editor.focus();
+        return true;
+      }
       editor.focus();
       return false;
     }
@@ -4193,9 +4205,31 @@ class PlanningApp {
     return textNodes.length > 0;
   }
 
+  ensureTopicDialogNotesSelection() {
+    const editor = this.refs.topicDialogNotes;
+    if (!editor) return false;
+    if (this.restoreTopicDialogNotesSelectionRange()) return true;
+    // The user may activate a format directly after opening the dialog,
+    // before ever placing a caret in the empty editor.
+    const paragraph = editor.querySelector("p") || document.createElement("p");
+    if (!paragraph.parentElement) {
+      paragraph.append(document.createElement("br"));
+      editor.append(paragraph);
+    }
+    const initialRange = document.createRange();
+    initialRange.selectNodeContents(paragraph);
+    initialRange.collapse(true);
+    const initialSelection = window.getSelection?.();
+    initialSelection?.removeAllRanges();
+    initialSelection?.addRange(initialRange);
+    editor.focus();
+    this.rememberTopicDialogNotesSelection();
+    return true;
+  }
+
   toggleTopicDialogList(ordered) {
     const editor = this.refs.topicDialogNotes;
-    if (!editor || !this.restoreTopicDialogNotesSelectionRange()) return false;
+    if (!editor || !this.ensureTopicDialogNotesSelection()) return false;
     const selection = window.getSelection?.();
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
     if (!range || !editor.contains(range.commonAncestorContainer)) return false;
@@ -4255,7 +4289,18 @@ class PlanningApp {
     if (!editor) return;
     let changed = false;
     if (command === "fontSize") {
-      changed = this.applyTopicDialogTextSize(value);
+      this.ensureTopicDialogNotesSelection();
+      const selection = window.getSelection?.();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+      if (range?.collapsed && editor.contains(range.commonAncestorContainer)) {
+        // Keep the native typing state alive. Normalising here would clear the
+        // size before the first character is entered.
+        const sizeMap = { 12: "2", 14: "3", 16: "4", 18: "5", 22: "6" };
+        editor.focus();
+        document.execCommand("styleWithCSS", false, false);
+        document.execCommand("fontSize", false, sizeMap[Number(value)] || "3");
+        this.rememberTopicDialogNotesSelection();
+      } else changed = this.applyTopicDialogTextSize(value);
     } else if (["insertUnorderedList", "insertOrderedList"].includes(command)) {
       changed = this.toggleTopicDialogList(command === "insertOrderedList");
     } else if (command === "insertTable") {
@@ -4266,13 +4311,20 @@ class PlanningApp {
       document.execCommand("insertHTML", false, `<table><tbody>${cells}</tbody></table><p><br></p>`);
       changed = true;
     } else {
-      this.restoreTopicDialogNotesSelectionRange();
+      this.ensureTopicDialogNotesSelection();
       editor.focus();
+      const selection = window.getSelection?.();
+      const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       document.execCommand(command, false, value || null);
-      changed = true;
+      // At a caret the browser creates the requested semantic wrapper for
+      // subsequent input. Do not rebuild the editor until text has been
+      // entered, otherwise that typing mode is discarded.
+      changed = !range?.collapsed;
+      this.rememberTopicDialogNotesSelection();
     }
     if (changed) this.normalizeTopicDialogNotesEditor({ restoreSelection: true });
     this.topicDialogRichTextSelectionLocked = false;
+    this.updateTopicDialogRichTextToolbar();
   }
 
   getTopicDialogSelectedTableCell() {

@@ -16,6 +16,8 @@ test('eine neue leere Datenbank ersetzt den aktiven Stand in beiden Persistenzmo
   assert.match(runtimeSource, /buildEmptyDatabaseContainer\(reason = 'create-empty', \{ schoolYearStart = null \} = \{\}\)[\s\S]*?gradeCourseSegments: \[\]/);
   assert.match(runtimeSource, /const isEmptyDatabase = \[[\s\S]*?allowEmpty: isEmptyDatabase/);
   assert.match(storeSource, /const allowEmpty = options\?\.allowEmpty === true;[\s\S]*?if \(!allowEmpty\) this\.ensureDefaultSchoolYear\(\);/);
+  assert.match(storeSource, /buildNewDatabasePublicState\(startYear\)[\s\S]*?sourceYear[\s\S]*?sourceFreeRanges[\s\S]*?sourceSpecialDays[\s\S]*?freeRange: publicState\.freeRanges\.length \+ 1/);
+  assert.match(runtimeSource, /this\.store\.buildNewDatabasePublicState\(startYear\)/);
   assert.match(runtimeSource, /async connectEmptyWorkspaceFile\(handle, options = \{\}\)[\s\S]*?isCurrentWorkspaceFileHandle\(handle\)[\s\S]*?writeAndVerifyFileBytes[\s\S]*?await this\.loadBytes\(built\.bytes, 'new-empty'\)/);
   assert.match(runtimeSource, /async createEmptyManualDatabase\(options = \{\}\) \{[\s\S]*?downloadBytes\(built\.bytes, fileName\);[\s\S]*?await this\.loadBytes\(built\.bytes, 'manual-create-empty'\)/);
   assert.match(planningSource, /dbManualSaveBtn\.addEventListener\("click", \(\) => \{\s+void this\.startEmptyDatabase\(\);/);

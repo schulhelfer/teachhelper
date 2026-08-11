@@ -59,3 +59,24 @@ test('Textfarben sind auf die feste Palette begrenzt und die Standardfarbe hebt 
     { text: ' Unsicher' },
   ]);
 });
+
+test('Mehrere Schriftgrößen bleiben innerhalb eines Absatzes getrennt erhalten', () => {
+  const value = richText.normalizePlanningRichText({
+    blocks: [{
+      type: 'paragraph',
+      children: [
+        { text: 'Klein', size: 12 },
+        { text: ' normal' },
+        { text: ' groß', size: 22 },
+        { text: ' wieder klein', size: 12 },
+      ],
+    }],
+  });
+
+  assert.deepEqual(value.blocks[0].children, [
+    { text: 'Klein', size: 12 },
+    { text: ' normal' },
+    { text: ' groß', size: 22 },
+    { text: ' wieder klein', size: 12 },
+  ]);
+});

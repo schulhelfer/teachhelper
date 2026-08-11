@@ -63,6 +63,34 @@ class FakeStore {
       schoolYears: [], courses: [], slots: [], freeRanges: [], specialDays: [], lessons: [],
     });
   }
+  buildNewDatabasePublicState(startYear) {
+    const year = Number(startYear);
+    const schoolYear = {
+      id: 1,
+      name: `${year}/${year + 1}`,
+      startDate: `${year}-08-01`,
+      endDate: `${year + 1}-07-31`,
+    };
+    const sourceYear = this.publicState.schoolYears.find((item) => (
+      item.startDate === schoolYear.startDate && item.endDate === schoolYear.endDate
+    ));
+    const sourceFreeRanges = sourceYear
+      ? (this.publicState.freeRanges || []).filter((item) => item.schoolYearId === sourceYear.id)
+      : [{ label: 'Standardferien', startDate: `${year}-10-01`, endDate: `${year}-10-12` }];
+    const sourceSpecialDays = sourceYear
+      ? (this.publicState.specialDays || []).filter((item) => (
+        item.dayDate >= schoolYear.startDate && item.dayDate <= schoolYear.endDate
+      ))
+      : [{ name: 'Standardfreier Tag', dayDate: `${year}-10-03` }];
+    return {
+      settings: { activeSchoolYearId: 1 },
+      counters: { schoolYear: 2, freeRange: sourceFreeRanges.length + 1, specialDay: sourceSpecialDays.length + 1 },
+      schoolYears: [schoolYear],
+      courses: [], slots: [], lessons: [],
+      freeRanges: sourceFreeRanges.map((item, index) => ({ ...item, id: index + 1, schoolYearId: 1 })),
+      specialDays: sourceSpecialDays.map((item, index) => ({ ...item, id: index + 1 })),
+    };
+  }
   importDatabaseState(publicState, gradeState, options = {}) {
     this.publicState = this.normalizePublicState(publicState);
     this.gradeState = this.normalizeGradeVaultState(gradeState);
@@ -229,6 +257,51 @@ test('ein gewähltes erstes Schuljahr wird in den neuen Datenbankcontainer über
     id: 1, name: '2026/2027', startDate: '2026-08-01', endDate: '2027-07-31',
   }]);
   assert.equal(runtime.store.publicState.settings.activeSchoolYearId, 1);
+});
+
+test('ein neuer Datenbankcontainer übernimmt nur die Kalenderdaten des gewählten Schuljahrs', async () => {
+  const store = new FakeStore();
+  store.publicState = {
+    settings: { activeSchoolYearId: 4 },
+    schoolYears: [
+      { id: 3, startDate: '2025-08-01', endDate: '2026-07-31' },
+      { id: 4, startDate: '2026-08-01', endDate: '2027-07-31' },
+    ],
+    courses: [{ id: 9, schoolYearId: 4 }],
+    slots: [{ id: 10, courseId: 9 }],
+    lessons: [{ id: 11, courseId: 9 }],
+    freeRanges: [
+      { id: 12, schoolYearId: 3, label: 'Alt', startDate: '2025-10-01', endDate: '2025-10-10' },
+      { id: 13, schoolYearId: 4, label: 'Herbstferien', startDate: '2026-10-12', endDate: '2026-10-24' },
+    ],
+    specialDays: [
+      { id: 14, name: 'Alt', dayDate: '2025-10-03' },
+      { id: 15, name: 'Neu', dayDate: '2026-10-03' },
+    ],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const database = runtime.buildEmptyDatabaseContainer('test', { schoolYearStart: 2026 });
+
+  await runtime.loadBytes(database.bytes, 'test');
+
+  assert.deepEqual(store.publicState.freeRanges, [{
+    id: 1, schoolYearId: 1, label: 'Herbstferien', startDate: '2026-10-12', endDate: '2026-10-24',
+  }]);
+  assert.deepEqual(store.publicState.specialDays, [{ id: 1, name: 'Neu', dayDate: '2026-10-03' }]);
+  assert.deepEqual(store.publicState.courses, []);
+  assert.deepEqual(store.publicState.slots, []);
+  assert.deepEqual(store.publicState.lessons, []);
+});
+
+test('ein nicht vorhandenes Schuljahr erhält Standardkalenderdaten', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const database = runtime.buildEmptyDatabaseContainer('test', { schoolYearStart: 2031 });
+
+  await runtime.loadBytes(database.bytes, 'test');
+
+  assert.equal(store.publicState.freeRanges[0].label, 'Standardferien');
+  assert.equal(store.publicState.specialDays[0].name, 'Standardfreier Tag');
 });
 
 

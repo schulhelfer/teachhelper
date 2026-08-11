@@ -1245,18 +1245,10 @@ export class WorkspaceRuntime {
   }
 
   buildEmptyDatabaseContainer(reason = 'create-empty', { schoolYearStart = null } = {}) {
-    const publicState = this.store.normalizePublicState(null);
     const startYear = Number(schoolYearStart);
-    if (Number.isInteger(startYear) && startYear >= 1900 && startYear <= 9998) {
-      publicState.schoolYears = [{
-        id: 1,
-        name: `${startYear}/${startYear + 1}`,
-        startDate: `${startYear}-08-01`,
-        endDate: `${startYear + 1}-07-31`,
-      }];
-      publicState.settings = { ...publicState.settings, activeSchoolYearId: 1 };
-      publicState.counters = { ...publicState.counters, schoolYear: 2 };
-    }
+    const publicState = Number.isInteger(startYear) && startYear >= 1900 && startYear <= 9998
+      ? this.store.buildNewDatabasePublicState(startYear)
+      : this.store.normalizePublicState(null);
     const config = normalizeVaultConfig(null);
     return buildThdb1ContainerBytes({
       schema: APP_DB_SCHEMA,

@@ -5803,17 +5803,16 @@
 
         .rich-text-color-trigger::after { background: #dc2626; }
         .rich-text-color-palette [data-rich-text-color="navy"] { color: #1e3a8a; }
-        .rich-text-color-palette [data-rich-text-color="blue"] { color: #2563eb; }
-        .rich-text-color-palette [data-rich-text-color="cyan"] { color: #0891b2; }
+        .rich-text-color-palette [data-rich-text-color="blue"] { color: #1d4ed8; }
         .rich-text-color-palette [data-rich-text-color="teal"] { color: #0f766e; }
-        .rich-text-color-palette [data-rich-text-color="emerald"] { color: #059669; }
-        .rich-text-color-palette [data-rich-text-color="red"] { color: #dc2626; }
-        .rich-text-color-palette [data-rich-text-color="rose"] { color: #e11d48; }
-        .rich-text-color-palette [data-rich-text-color="lime"] { color: #65a30d; }
-        .rich-text-color-palette [data-rich-text-color="amber"] { color: #d97706; }
-        .rich-text-color-palette [data-rich-text-color="orange"] { color: #ea580c; }
-        .rich-text-color-palette [data-rich-text-color="violet"] { color: #7c3aed; }
-        .rich-text-color-palette [data-rich-text-color="gray"] { color: #475569; }
+        .rich-text-color-palette [data-rich-text-color="emerald"] { color: #047857; }
+        .rich-text-color-palette [data-rich-text-color="red"] { color: #b91c1c; }
+        .rich-text-color-palette [data-rich-text-color="rose"] { color: #be123c; }
+        .rich-text-color-palette [data-rich-text-color="lime"] { color: #4d7c0f; }
+        .rich-text-color-palette [data-rich-text-color="amber"] { color: #a16207; }
+        .rich-text-color-palette [data-rich-text-color="orange"] { color: #c2410c; }
+        .rich-text-color-palette [data-rich-text-color="violet"] { color: #6d28d9; }
+        .rich-text-color-palette [data-rich-text-color="gray"] { color: #334155; }
 
         .rich-text-color-palette {
           display: flex;
@@ -5943,23 +5942,23 @@
         .topic-dialog-notes .planning-rich-size-22 { font-size: 22px !important; }
         .planning-rich-color-default { color: var(--text); }
         .planning-rich-color-navy { color: #1e3a8a; }
-        .planning-rich-color-blue { color: #2563eb; }
+        .planning-rich-color-blue { color: #1d4ed8; }
         .planning-rich-color-sky { color: #0284c7; }
         .planning-rich-color-cyan { color: #0891b2; }
         .planning-rich-color-teal { color: #0f766e; }
-        .planning-rich-color-emerald { color: #059669; }
-        .planning-rich-color-red { color: #dc2626; }
-        .planning-rich-color-rose { color: #e11d48; }
+        .planning-rich-color-emerald { color: #047857; }
+        .planning-rich-color-red { color: #b91c1c; }
+        .planning-rich-color-rose { color: #be123c; }
         .planning-rich-color-pink { color: #db2777; }
         .planning-rich-color-green { color: #16a34a; }
-        .planning-rich-color-lime { color: #65a30d; }
-        .planning-rich-color-amber { color: #d97706; }
-        .planning-rich-color-orange { color: #ea580c; }
-        .planning-rich-color-violet { color: #7c3aed; }
+        .planning-rich-color-lime { color: #4d7c0f; }
+        .planning-rich-color-amber { color: #a16207; }
+        .planning-rich-color-orange { color: #c2410c; }
+        .planning-rich-color-violet { color: #6d28d9; }
         .planning-rich-color-purple { color: #9333ea; }
         .planning-rich-color-indigo { color: #4f46e5; }
         .planning-rich-color-brown { color: #92400e; }
-        .planning-rich-color-gray { color: #475569; }
+        .planning-rich-color-gray { color: #334155; }
 
         .planning-note-link {
           color: #93c5fd;

@@ -4,23 +4,23 @@ export const PLANNING_RICH_TEXT_VERSION = 1;
 export const PLANNING_RICH_TEXT_SIZES = [12, 14, 16, 18, 22];
 export const PLANNING_RICH_TEXT_COLORS = Object.freeze({
   navy: "#1e3a8a",
-  blue: "#2563eb",
+  blue: "#1d4ed8",
   sky: "#0284c7",
   cyan: "#0891b2",
   teal: "#0f766e",
-  emerald: "#059669",
-  lime: "#65a30d",
-  amber: "#d97706",
-  red: "#dc2626",
-  rose: "#e11d48",
+  emerald: "#047857",
+  lime: "#4d7c0f",
+  amber: "#a16207",
+  red: "#b91c1c",
+  rose: "#be123c",
   pink: "#db2777",
   green: "#16a34a",
-  orange: "#ea580c",
-  violet: "#7c3aed",
+  orange: "#c2410c",
+  violet: "#6d28d9",
   purple: "#9333ea",
   indigo: "#4f46e5",
   brown: "#92400e",
-  gray: "#475569"
+  gray: "#334155"
 });
 
 const TEXT_MARKS = ["bold", "italic", "underline"];
