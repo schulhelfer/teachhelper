@@ -236,20 +236,6 @@ function isSchoolWeekdayIso(iso) {
   return weekday >= 1 && weekday <= 5;
 }
 
-function normalizeIsoToSchoolWeekday(iso, direction = "forward") {
-  if (!iso) {
-    return iso;
-  }
-  let current = iso;
-  const step = direction === "backward" ? -1 : 1;
-  let guard = 0;
-  while (!isSchoolWeekdayIso(current) && guard < 7) {
-    current = addDays(current, step);
-    guard += 1;
-  }
-  return current;
-}
-
 function weekStartFor(iso) {
   const value = parseIsoDate(iso);
   const weekday = dayOfWeekIso(iso);
@@ -4923,20 +4909,8 @@ class PlanningApp {
     if (!year) {
       return;
     }
-    let startDate = this.refs.slotDialogStart.value || null;
-    let endDate = this.refs.slotDialogEnd.value || null;
-    if (startDate) {
-      startDate = normalizeIsoToSchoolWeekday(startDate, "forward");
-      this.refs.slotDialogStart.value = startDate;
-    }
-    if (endDate) {
-      endDate = normalizeIsoToSchoolWeekday(endDate, "backward");
-      this.refs.slotDialogEnd.value = endDate;
-    }
-    if (startDate && endDate && endDate < startDate) {
-      endDate = startDate;
-      this.refs.slotDialogEnd.value = endDate;
-    }
+    const startDate = this.refs.slotDialogStart.value || null;
+    const endDate = this.refs.slotDialogEnd.value || null;
     if (!startDate || !endDate) {
       await this.showInfoMessage("Bitte Start- und Enddatum vollständig eingeben.");
       return;
@@ -4951,6 +4925,14 @@ class PlanningApp {
     }
     if (!this.refs.slotDialogId.value && this.slotDialogStartMinIso && startDate < this.slotDialogStartMinIso) {
       await this.showInfoMessage("Startdatum liegt vor dem gewählten Tag.");
+      return;
+    }
+    if (!isSchoolWeekdayIso(startDate)) {
+      await this.showInfoMessage("Das Startdatum muss auf einen Schultag (Montag bis Freitag) fallen.");
+      return;
+    }
+    if (!isSchoolWeekdayIso(endDate)) {
+      await this.showInfoMessage("Das Enddatum muss auf einen Schultag (Montag bis Freitag) fallen.");
       return;
     }
     if (endDate < startDate) {
@@ -5623,21 +5605,10 @@ class PlanningApp {
     });
 
     this.refs.slotDialogStart.addEventListener("change", () => {
-      const normalizedStart = normalizeIsoToSchoolWeekday(this.refs.slotDialogStart.value || "", "forward");
-      if (normalizedStart && normalizedStart !== this.refs.slotDialogStart.value) {
-        this.refs.slotDialogStart.value = normalizedStart;
-      }
       this.syncSlotDialogEditTools();
     });
 
     this.refs.slotDialogEnd.addEventListener("change", () => {
-      const normalizedEnd = normalizeIsoToSchoolWeekday(this.refs.slotDialogEnd.value || "", "backward");
-      if (normalizedEnd && normalizedEnd !== this.refs.slotDialogEnd.value) {
-        this.refs.slotDialogEnd.value = normalizedEnd;
-      }
-      if (this.refs.slotDialogStart.value && this.refs.slotDialogEnd.value < this.refs.slotDialogStart.value) {
-        this.refs.slotDialogEnd.value = this.refs.slotDialogStart.value;
-      }
       this.syncSlotDialogEditTools();
     });
 
