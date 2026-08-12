@@ -108,6 +108,11 @@ const NO_LESSON_COLOR = "#787878";
 const BACKUP_ENABLED_DEFAULT = true;
 const BACKUP_INTERVAL_DEFAULT_DAYS = 7;
 const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
+const SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT = false;
+const GRADE_STUDENT_PORTRAIT_MIME = "image/webp";
+const GRADE_STUDENT_PORTRAIT_SIZE = 512;
+const GRADE_STUDENT_PORTRAIT_MAX_BYTES = 150 * 1024;
+const GRADE_STUDENT_PORTRAIT_INPUT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
@@ -1967,6 +1972,71 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function normalizeGradeStudentPortrait(value) {
+  if (!value || typeof value !== "object" || value.mime !== GRADE_STUDENT_PORTRAIT_MIME) return null;
+  const data = typeof value.data === "string" ? value.data.trim() : "";
+  if (!data || data.length > Math.ceil(GRADE_STUDENT_PORTRAIT_MAX_BYTES * 4 / 3) + 8) return null;
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) return null;
+  return { mime: GRADE_STUDENT_PORTRAIT_MIME, data };
+}
+
+function base64ToGradeStudentPortraitBytes(data) {
+  const binary = window.atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return window.btoa(binary);
+}
+
+function canvasToWebpBlob(canvas, quality) {
+  return new Promise((resolve) => canvas.toBlob(resolve, GRADE_STUDENT_PORTRAIT_MIME, quality));
+}
+
+async function encodeGradeStudentPortraitCrop(image, sourceX, sourceY, sourceSize) {
+  const canvas = document.createElement("canvas");
+  canvas.width = GRADE_STUDENT_PORTRAIT_SIZE;
+  canvas.height = GRADE_STUDENT_PORTRAIT_SIZE;
+  const context = canvas.getContext("2d", { alpha: false });
+  if (!context) throw new Error("Die Bildverarbeitung wird von diesem Browser nicht unterstützt.");
+  context.drawImage(image, sourceX, sourceY, sourceSize, sourceSize, 0, 0, canvas.width, canvas.height);
+  for (let quality = 0.86; quality >= 0.38; quality -= 0.08) {
+    const blob = await canvasToWebpBlob(canvas, quality);
+    if (blob && blob.size <= GRADE_STUDENT_PORTRAIT_MAX_BYTES) {
+      return { mime: GRADE_STUDENT_PORTRAIT_MIME, data: bytesToBase64(new Uint8Array(await blob.arrayBuffer())) };
+    }
+  }
+  throw new Error("Das Bild lässt sich nicht auf höchstens 150 KB komprimieren.");
+}
+
+async function prepareGradeStudentPortrait(file) {
+  if (!(file instanceof File) || !GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(file.type)) {
+    throw new Error("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.");
+  }
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    image.src = sourceUrl;
+    await image.decode();
+    if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Bild konnte nicht gelesen werden.");
+    const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
+    const sourceX = Math.floor((image.naturalWidth - sourceSize) / 2);
+    const sourceY = Math.floor((image.naturalHeight - sourceSize) / 2);
+    return encodeGradeStudentPortraitCrop(image, sourceX, sourceY, sourceSize);
+  } catch (error) {
+    throw error instanceof Error ? error : new Error("Das Bild konnte nicht verarbeitet werden.");
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
 
 function buildGradeStudentPerformanceFlairBadgeMarkup(student) {
   const performanceFlair = normalizeGradePerformanceFlair(student && student.performanceFlair);
@@ -1990,6 +2060,20 @@ function createGradeStudentNameElement(student, studentName, options = {}) {
     }
     node.dataset.studentLabel = String(studentName || "");
     node.append(document.createTextNode(String(studentName || "")));
+    if (options.portraitUrl) {
+      const portrait = document.createElement("img");
+      portrait.className = "grade-student-portrait grade-student-portrait--entry";
+      portrait.src = options.portraitUrl;
+      portrait.alt = "";
+      portrait.decoding = "async";
+      node.prepend(portrait);
+    } else if (options.showPortraitPlaceholder) {
+      const portraitPlaceholder = document.createElement("span");
+      portraitPlaceholder.className = "grade-student-portrait-placeholder grade-student-portrait-placeholder--entry";
+      portraitPlaceholder.setAttribute("aria-hidden", "true");
+      portraitPlaceholder.textContent = "👤︎";
+      node.prepend(portraitPlaceholder);
+    }
     const performanceFlair = normalizeGradePerformanceFlair(student?.performanceFlair);
     if (performanceFlair) {
       const flair = document.createElement("span");
@@ -2600,6 +2684,7 @@ class GradesApp {
       settingsGradeOccurrenceSuggestions: document.querySelector("#settings-grade-occurrence-suggestions"),
       settingsGradeOccurrencesAdd: document.querySelector("#settings-grade-occurrences-add"),
       showHiddenSidebarCourses: document.querySelector("#show-hidden-sidebar-courses"),
+      showGradeStudentPortraits: document.querySelector("#show-grade-student-portraits"),
 
       gradesCollapsedTitleShell: document.querySelector("#grades-collapsed-title-shell"),
       gradesTitle: document.querySelector("#grades-title"),
@@ -2779,7 +2864,13 @@ class GradesApp {
       courseDialogStudentsAdd: document.querySelector("#course-dialog-students-add"),
       courseDialogStudentsDropzone: document.querySelector("#course-dialog-students-dropzone"),
       courseDialogStudentsList: document.querySelector("#course-dialog-students-list"),
-      courseDialogImportPreviewText: document.querySelector("#course-dialog-import-preview-text"),
+      courseDialogGroupPhotoOpen: document.querySelector("#course-dialog-group-photo-open"),
+      courseGroupPhotoDialog: document.querySelector("#course-group-photo-dialog"),
+      courseGroupPhotoDialogForm: document.querySelector("#course-group-photo-dialog-form"),
+      courseGroupPhotoCancel: document.querySelector("#course-group-photo-cancel"),
+      courseGroupPhotoFile: document.querySelector("#course-group-photo-file"),
+      courseGroupPhotoStage: document.querySelector("#course-group-photo-stage"),
+      courseGroupPhotoSelectionList: document.querySelector("#course-group-photo-selection-list"),
       courseDialogCategoryAdd: document.querySelector("#course-dialog-category-add"),
       courseDialogStructureList: document.querySelector("#course-dialog-structure-list"),
       courseDialogCancel: document.querySelector("#course-dialog-cancel"),
@@ -2947,6 +3038,8 @@ class GradesApp {
     this.gradesTableStickyScrollbarPointerActive = false;
     this.gradeVaultStartupUnlockPromptResolved = false;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
+    this.gradeStudentPortraitObjectUrls = new Map();
+    this.groupPhotoExtractionState = null;
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
     this.gradeCourseOperationTail = Promise.resolve();
@@ -3035,6 +3128,8 @@ class GradesApp {
         (detail) => this.handleWorkspaceState(detail)
       );
       window.addEventListener("pagehide", () => {
+        this.clearGroupPhotoExtractionState();
+        this.revokeGradeStudentPortraitObjectUrls();
         this.unregisterWorkspaceFeatureClient?.();
         this.unregisterWorkspaceClient?.();
       }, { once: true });
@@ -3100,6 +3195,33 @@ class GradesApp {
         this.renderBackupSection();
         this.renderDatabaseSection();
       }
+    }
+  }
+
+  shouldShowGradeStudentPortraits() {
+    return Boolean(this.settingsDraft?.showGradeStudentPortraits ?? this.store.getSetting(
+      "showGradeStudentPortraits",
+      SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT
+    ));
+  }
+
+  revokeGradeStudentPortraitObjectUrls() {
+    this.gradeStudentPortraitObjectUrls?.forEach((url) => URL.revokeObjectURL(url));
+    this.gradeStudentPortraitObjectUrls?.clear();
+  }
+
+  getGradeStudentPortraitUrl(student) {
+    if (!this.shouldShowGradeStudentPortraits()) return "";
+    const portrait = normalizeGradeStudentPortrait(student?.portrait);
+    if (!portrait) return "";
+    const existing = this.gradeStudentPortraitObjectUrls.get(portrait.data);
+    if (existing) return existing;
+    try {
+      const url = URL.createObjectURL(new Blob([base64ToGradeStudentPortraitBytes(portrait.data)], { type: portrait.mime }));
+      this.gradeStudentPortraitObjectUrls.set(portrait.data, url);
+      return url;
+    } catch (_error) {
+      return "";
     }
   }
 
@@ -3445,6 +3567,10 @@ class GradesApp {
       showHiddenSidebarCourses: Boolean(
         this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
       ),
+      showGradeStudentPortraits: Boolean(this.store.getSetting(
+        "showGradeStudentPortraits",
+        SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT
+      )),
       gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
       gradeOccurrenceCategories: this.store.getGradeOccurrenceCategories(),
       defaultGradeStructure: this.store.getDefaultGradeStructure(),
@@ -3520,6 +3646,7 @@ class GradesApp {
         configured: this.hasGradeVaultUnlockConfig(),
         unlocked: this.isGradeVaultUnlocked(),
         encryptionEnabled: this.isGradeVaultEncryptionEnabled(),
+        showGradeStudentPortraits: this.shouldShowGradeStudentPortraits(),
         setupRequired: this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig()
       }
     }));
@@ -4204,6 +4331,8 @@ class GradesApp {
   async lockGradeVaultSession() {
     const owner = this.getWorkspaceOwnerApp();
     if (!owner?.lockGradeVaultSession) return false;
+    this.closeGroupPhotoExtractionDialog();
+    this.revokeGradeStudentPortraitObjectUrls();
     const locked = await owner.lockGradeVaultSession();
     if (locked) {
       this.gradeVaultSession.loadedGradeCourseId = null;
@@ -4216,6 +4345,8 @@ class GradesApp {
   async discardGradeVaultChanges() {
     const owner = this.getWorkspaceOwnerApp();
     if (!owner?.discardGradeVaultChanges) return false;
+    this.closeGroupPhotoExtractionDialog();
+    this.revokeGradeStudentPortraitObjectUrls();
     const discarded = await owner.discardGradeVaultChanges();
     if (discarded) {
       this.gradeVaultSession.loadedGradeCourseId = null;
@@ -4914,6 +5045,10 @@ class GradesApp {
       || Boolean(draft.showHiddenSidebarCourses) !== Boolean(
         this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
       )
+      || Boolean(draft.showGradeStudentPortraits) !== Boolean(this.store.getSetting(
+        "showGradeStudentPortraits",
+        SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT
+      ))
       || !gradeTestScaleSettingsEqual(draft.gradeTestScaleSettings, this.store.getGradeTestScaleSettings())
       || JSON.stringify(draft.gradeOccurrenceCategories || []) !== JSON.stringify(this.store.getGradeOccurrenceCategories())
       || !defaultGradeStructureSettingsEqual(draft.defaultGradeStructure, this.store.getDefaultGradeStructure())
@@ -4938,6 +5073,7 @@ class GradesApp {
     if (this.activeSettingsTab === "gradeStructure") draft.defaultGradeStructure = this.readDefaultGradeStructureSettingsFromDom();
     if (this.activeSettingsTab === "display") {
       draft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses?.checked);
+      draft.showGradeStudentPortraits = Boolean(this.refs.showGradeStudentPortraits?.checked);
     }
     if (this.activeSettingsTab === "occurrences") draft.gradeOccurrenceCategories = this.readGradeOccurrenceCategoriesFromDom();
     const gradeScaleValidation = this.validateGradeTestScaleSettingsDraft(draft.gradeTestScaleSettings);
@@ -5018,6 +5154,7 @@ class GradesApp {
       this.settingsDraft.expectationHorizonCommentTemplate = EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
     } else if (tab === "display") {
       this.settingsDraft.showHiddenSidebarCourses = SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
+      this.settingsDraft.showGradeStudentPortraits = SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT;
     } else if (tab === "database") {
       this.settingsDraft.backupEnabled = BACKUP_ENABLED_DEFAULT;
       this.settingsDraft.backupIntervalDays = BACKUP_INTERVAL_DEFAULT_DAYS;
@@ -5843,7 +5980,8 @@ class GradesApp {
         id: Number(student.id),
         lastName: String(student.lastName || ""),
         firstName: String(student.firstName || ""),
-        performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair)
+        performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair),
+        portrait: normalizeGradeStudentPortrait(student.portrait)
       })),
       baseStudentIds: students
         .map((student) => Number(student.id) || 0)
@@ -6058,6 +6196,13 @@ class GradesApp {
     if (!this.refs.courseDialogStudentsList || !this.courseDialogDraft) {
       return;
     }
+    const showPortraits = this.shouldShowGradeStudentPortraits();
+    if (this.refs.courseDialogGroupPhotoOpen) {
+      this.refs.courseDialogGroupPhotoOpen.hidden = !showPortraits;
+    }
+    if (!showPortraits && this.refs.courseGroupPhotoDialog?.open) {
+      this.closeGroupPhotoExtractionDialog();
+    }
     const students = Array.isArray(this.courseDialogDraft.students) ? this.courseDialogDraft.students : [];
     const participantCount = students.filter((student) => (
       !student?.isPlaceholder
@@ -6073,6 +6218,7 @@ class GradesApp {
     if (students.length > 0) {
       students.forEach((student, index) => {
         const performanceFlair = normalizeGradePerformanceFlair(student.performanceFlair);
+        const portraitUrl = this.getGradeStudentPortraitUrl(student);
         const row = document.createElement("div");
         row.className = "course-dialog-student-row";
         const grid = document.createElement("div");
@@ -6102,6 +6248,7 @@ class GradesApp {
         flairSelect.dataset.studentField = "performanceFlair";
         flairSelect.dataset.studentIndex = String(index);
         flairSelect.setAttribute("aria-label", "Flair für Teilnehmende");
+        flairSelect.title = "Abitur-Prüfungsfach";
         const emptyOption = document.createElement("option");
         emptyOption.value = "";
         emptyOption.textContent = "-";
@@ -6124,20 +6271,57 @@ class GradesApp {
           text: "🗑️"
         });
 
-        grid.append(lastName, firstName, flairSelect, removeButton);
+        const portraitInput = document.createElement("input");
+        portraitInput.type = "file";
+        portraitInput.accept = "image/jpeg,image/png,image/webp";
+        portraitInput.hidden = true;
+        portraitInput.dataset.studentPortraitFile = String(index);
+
+        const portraitControl = document.createElement("div");
+        portraitControl.className = "course-dialog-student-portrait-control";
+
+        if (portraitUrl) {
+          const portraitImage = document.createElement("img");
+          portraitImage.className = "grade-student-portrait grade-student-portrait--management";
+          portraitImage.src = portraitUrl;
+          portraitImage.alt = "";
+          portraitImage.decoding = "async";
+          const portraitDeleteButton = this.createGradeStructureActionButton({
+            className: "ghost danger-action course-dialog-student-portrait-delete",
+            dataAttribute: "student-portrait-delete",
+            dataValue: String(index),
+            ariaLabel: "Bild löschen",
+            title: "Bild löschen",
+            text: "🗑️"
+          });
+          portraitControl.append(portraitImage, portraitDeleteButton);
+        } else if (showPortraits) {
+          const portraitPlaceholder = document.createElement("span");
+          portraitPlaceholder.className = "grade-student-portrait-placeholder grade-student-portrait-placeholder--management";
+          portraitPlaceholder.setAttribute("aria-hidden", "true");
+          portraitPlaceholder.textContent = "👤︎";
+          const portraitAddButton = this.createGradeStructureActionButton({
+            className: "ghost course-dialog-student-portrait-add",
+            dataAttribute: "student-portrait-select",
+            dataValue: String(index),
+            ariaLabel: "Bild hinzufügen",
+            title: "Bild hinzufügen",
+            text: "＋"
+          });
+          portraitControl.append(portraitPlaceholder, portraitAddButton);
+        } else {
+          const portraitPlaceholder = document.createElement("span");
+          portraitPlaceholder.className = "grade-student-portrait grade-student-portrait--management is-portrait-placeholder";
+          portraitPlaceholder.setAttribute("aria-hidden", "true");
+          portraitControl.append(portraitPlaceholder);
+        }
+
+        /* The image controls share one cell so every participant stays on one row. */
+        grid.append(portraitControl);
+        grid.append(lastName, firstName, flairSelect, portraitInput, removeButton);
         row.append(grid);
         this.refs.courseDialogStudentsList.append(row);
       });
-    }
-    if (this.refs.courseDialogImportPreviewText) {
-      const meta = this.courseDialogDraft.importMeta;
-      const hasMeta = Boolean(meta && meta.fileName);
-      this.refs.courseDialogImportPreviewText.hidden = !hasMeta;
-      if (hasMeta) {
-        this.refs.courseDialogImportPreviewText.textContent = String(meta.fileName || "");
-      } else {
-        this.refs.courseDialogImportPreviewText.textContent = "";
-      }
     }
   }
 
@@ -6261,7 +6445,7 @@ class GradesApp {
     if (!this.courseDialogDraft) {
       return;
     }
-    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", performanceFlair: "" });
+    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", performanceFlair: "", portrait: null });
     this.renderCourseDialogStudents();
   }
 
@@ -6299,6 +6483,27 @@ class GradesApp {
   }
 
   async handleCourseDialogStudentListClick(event) {
+    const portraitSelectButton = event.target.closest("button[data-student-portrait-select]");
+    if (portraitSelectButton && this.courseDialogDraft) {
+      event.preventDefault();
+      const index = Number(portraitSelectButton.dataset.studentPortraitSelect || -1);
+      this.refs.courseDialogStudentsList
+        ?.querySelector(`input[data-student-portrait-file="${index}"]`)
+        ?.click();
+      return;
+    }
+    const portraitDeleteButton = event.target.closest("button[data-student-portrait-delete]");
+    if (portraitDeleteButton && this.courseDialogDraft) {
+      event.preventDefault();
+      const index = Number(portraitDeleteButton.dataset.studentPortraitDelete || -1);
+      const student = this.courseDialogDraft.students[index];
+      if (student) {
+        student.portrait = null;
+        this.revokeGradeStudentPortraitObjectUrls();
+        this.renderCourseDialogStudents();
+      }
+      return;
+    }
     const button = event.target.closest("button[data-student-remove]");
     if (!button || !this.courseDialogDraft) {
       return;
@@ -6343,6 +6548,334 @@ class GradesApp {
       this.courseDialogDraft.confirmedRemovedStudentIds = [...confirmedIds];
     }
     this.courseDialogDraft.students.splice(index, 1);
+    this.renderCourseDialogStudents();
+  }
+
+  async handleCourseDialogStudentPortraitFileChange(event) {
+    const input = event.target.closest("input[data-student-portrait-file]");
+    if (!input || !this.courseDialogDraft) return;
+    const index = Number(input.dataset.studentPortraitFile || -1);
+    const student = this.courseDialogDraft.students[index];
+    const [file] = input.files || [];
+    input.value = "";
+    if (!student || !file) return;
+    try {
+      student.portrait = await prepareGradeStudentPortrait(file);
+      this.revokeGradeStudentPortraitObjectUrls();
+      this.renderCourseDialogStudents();
+    } catch (error) {
+      await this.showInfoMessage(error instanceof Error ? error.message : "Das Bild konnte nicht verarbeitet werden.");
+    }
+  }
+
+  clearGroupPhotoExtractionState() {
+    const state = this.groupPhotoExtractionState;
+    if (state?.url) URL.revokeObjectURL(state.url);
+    this.groupPhotoExtractionState = null;
+  }
+
+  openGroupPhotoExtractionDialog() {
+    if (!this.courseDialogDraft || !this.refs.courseGroupPhotoDialog) return;
+    this.clearGroupPhotoExtractionState();
+    this.groupPhotoExtractionState = {
+      url: "",
+      image: null,
+      selections: [],
+      selectedId: "",
+      drag: null,
+      nextId: 1
+    };
+    this.renderGroupPhotoExtractionDialog();
+    this.openDialog(this.refs.courseGroupPhotoDialog);
+  }
+
+  closeGroupPhotoExtractionDialog() {
+    this.clearGroupPhotoExtractionState();
+    this.closeDialog(this.refs.courseGroupPhotoDialog);
+  }
+
+  getGroupPhotoSelection(selectionId) {
+    return this.groupPhotoExtractionState?.selections.find((item) => item.id === String(selectionId || "")) || null;
+  }
+
+  getGroupPhotoStudentLabel(student) {
+    return buildGradeStudentDisplayName(student?.lastName, student?.firstName) || "Unbenannte Person";
+  }
+
+  renderGroupPhotoExtractionDialog() {
+    const state = this.groupPhotoExtractionState;
+    if (!state || !this.refs.courseGroupPhotoStage) return;
+    const stage = this.refs.courseGroupPhotoStage;
+    stage.replaceChildren();
+    stage.classList.toggle("has-image", Boolean(state.image));
+    stage.classList.toggle("is-dropzone", !state.image);
+    if (state.image) {
+      stage.removeAttribute("role");
+      stage.tabIndex = -1;
+      stage.setAttribute("aria-label", "Gruppenfoto zum Markieren");
+    } else {
+      stage.setAttribute("role", "button");
+      stage.tabIndex = 0;
+      stage.setAttribute("aria-label", "Gruppenfoto auswählen oder ablegen");
+    }
+    if (state.image) {
+      const imageWrap = document.createElement("div");
+      imageWrap.className = "course-group-photo-image-wrap";
+      const image = document.createElement("img");
+      image.width = state.image.naturalWidth;
+      image.height = state.image.naturalHeight;
+      image.src = state.url;
+      image.alt = "Gruppenfoto";
+      image.draggable = false;
+      image.dataset.groupPhotoImage = "1";
+      imageWrap.append(image);
+      for (const selection of state.selections) {
+        const circle = document.createElement("div");
+        circle.className = `course-group-photo-circle${selection.id === state.selectedId ? " is-selected" : ""}`;
+        circle.dataset.groupPhotoSelectionId = selection.id;
+        circle.style.left = `${(selection.x / state.image.naturalWidth) * 100}%`;
+        circle.style.top = `${(selection.y / state.image.naturalHeight) * 100}%`;
+        circle.style.width = `${(selection.size / state.image.naturalWidth) * 100}%`;
+        circle.style.height = `${(selection.size / state.image.naturalHeight) * 100}%`;
+        circle.setAttribute("aria-label", "Markierung verschieben oder am Rand in der Größe ändern");
+        const label = document.createElement("button");
+        label.type = "button";
+        label.className = "course-group-photo-circle-label";
+        label.dataset.groupPhotoSelectionDelete = selection.id;
+        label.setAttribute("aria-label", "Markierung löschen");
+        label.title = "Markierung löschen";
+        label.dataset.tooltip = "Markierung löschen";
+        const student = this.courseDialogDraft?.students.find((item) => Number(item?.id || 0) === Number(selection.studentId || 0));
+        label.textContent = student ? this.getGroupPhotoStudentLabel(student) : "Zuordnen";
+        circle.append(label);
+        imageWrap.append(circle);
+      }
+      stage.append(imageWrap);
+    } else {
+      const dropContent = document.createElement("div");
+      dropContent.className = "course-group-photo-drop-content";
+      const title = document.createElement("strong");
+      title.textContent = "Datei hier ablegen";
+      const hint = document.createElement("div");
+      hint.textContent = "oder klicken zum Auswählen";
+      dropContent.append(title, hint);
+      stage.append(dropContent);
+    }
+    if (this.refs.courseGroupPhotoSelectionList) {
+      this.refs.courseGroupPhotoSelectionList.replaceChildren();
+      state.selections.forEach((selection, index) => {
+        const assigned = new Set(state.selections
+          .filter((item) => item.id !== selection.id && Number(item.studentId || 0) > 0)
+          .map((item) => Number(item.studentId)));
+        const select = document.createElement("select");
+        select.className = "course-group-photo-selection-select";
+        select.dataset.groupPhotoSelectionStudent = selection.id;
+        select.setAttribute("aria-label", `Teilnehmende für Markierung ${index + 1}`);
+        (this.courseDialogDraft?.students || []).forEach((student) => {
+          const id = Number(student?.id || 0);
+          if (!id || (assigned.has(id) && id !== Number(selection.studentId || 0))) return;
+          const option = document.createElement("option");
+          option.value = String(id);
+          option.textContent = this.getGroupPhotoStudentLabel(student);
+          option.selected = id === Number(selection.studentId || 0);
+          select.append(option);
+        });
+        if (!Number(selection.studentId || 0)) select.selectedIndex = -1;
+        this.refs.courseGroupPhotoSelectionList.append(select);
+      });
+    }
+    this.syncGroupPhotoSelectionPanelHeight();
+  }
+
+  syncGroupPhotoSelectionPanelHeight() {
+    const state = this.groupPhotoExtractionState;
+    const stage = this.refs.courseGroupPhotoStage;
+    const layout = stage?.closest(".course-group-photo-layout");
+    const list = this.refs.courseGroupPhotoSelectionList;
+    if (!layout || !list) return;
+    if (!state?.image) {
+      layout.style.removeProperty("--course-group-photo-image-height");
+      return;
+    }
+    const sync = () => {
+      if (this.groupPhotoExtractionState !== state) return;
+      const image = stage.querySelector("img[data-group-photo-image]");
+      const height = Math.ceil(image?.getBoundingClientRect().height || 0);
+      if (!height) return;
+      layout.style.setProperty("--course-group-photo-image-height", `${height}px`);
+      const selectionId = String(this.groupPhotoExtractionState?.selectedId || "");
+      const current = selectionId
+        ? list.querySelector(`[data-group-photo-selection-student="${selectionId}"]`)
+        : list.lastElementChild;
+      if (!current || list.scrollHeight <= list.clientHeight) return;
+      const targetTop = current.offsetTop - list.offsetTop;
+      list.scrollTop = clamp(
+        targetTop - (list.clientHeight - current.offsetHeight) / 2,
+        0,
+        list.scrollHeight - list.clientHeight
+      );
+    };
+    stage.querySelector("img[data-group-photo-image]")?.addEventListener("load", sync, { once: true });
+    requestAnimationFrame(sync);
+  }
+
+  getGroupPhotoPointerPosition(event) {
+    const state = this.groupPhotoExtractionState;
+    if (!state?.image) return null;
+    const image = this.refs.courseGroupPhotoStage?.querySelector("img[data-group-photo-image]");
+    const rect = image?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return null;
+    return {
+      x: clamp(((event.clientX - rect.left) / rect.width) * state.image.naturalWidth, 0, state.image.naturalWidth),
+      y: clamp(((event.clientY - rect.top) / rect.height) * state.image.naturalHeight, 0, state.image.naturalHeight)
+    };
+  }
+
+  isGroupPhotoCircleBorderHit(circle, event) {
+    const rect = circle?.getBoundingClientRect();
+    if (!rect?.width || !rect?.height) return false;
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const radius = Math.min(rect.width, rect.height) / 2;
+    const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
+    return Math.abs(distance - radius) <= Math.max(9, radius * 0.14);
+  }
+
+  handleGroupPhotoStagePointerDown(event) {
+    const state = this.groupPhotoExtractionState;
+    if (!state?.image) return;
+    const point = this.getGroupPhotoPointerPosition(event);
+    if (!point) return;
+    const deleteButton = event.target.closest("[data-group-photo-selection-delete]");
+    if (deleteButton) {
+      const id = String(deleteButton.dataset.groupPhotoSelectionDelete || "");
+      state.selections = state.selections.filter((item) => item.id !== id);
+      state.selectedId = "";
+      event.preventDefault();
+      this.renderGroupPhotoExtractionDialog();
+      return;
+    }
+    const circle = event.target.closest("[data-group-photo-selection-id]");
+    if (circle) {
+      const id = String(circle.dataset.groupPhotoSelectionId || "");
+      const selection = this.getGroupPhotoSelection(id);
+      if (!selection) return;
+      state.selectedId = id;
+      state.drag = {
+        type: this.isGroupPhotoCircleBorderHit(circle, event) ? "resize" : "move",
+        id,
+        point,
+        selection: { ...selection }
+      };
+      event.preventDefault();
+      this.refs.courseGroupPhotoStage?.setPointerCapture?.(event.pointerId);
+      this.renderGroupPhotoExtractionDialog();
+      return;
+    }
+    const id = `group-photo-${state.nextId++}`;
+    const minSize = Math.min(state.image.naturalWidth, state.image.naturalHeight) * 0.04;
+    state.selections.push({
+      id,
+      x: clamp(point.x, 0, state.image.naturalWidth - minSize),
+      y: clamp(point.y, 0, state.image.naturalHeight - minSize),
+      size: minSize,
+      studentId: 0
+    });
+    state.selectedId = id;
+    state.drag = { type: "create", id, point, selection: null };
+    event.preventDefault();
+    this.refs.courseGroupPhotoStage?.setPointerCapture?.(event.pointerId);
+    this.renderGroupPhotoExtractionDialog();
+  }
+
+  handleGroupPhotoStagePointerMove(event) {
+    const state = this.groupPhotoExtractionState;
+    const drag = state?.drag;
+    if (!drag) {
+      const circle = event.target.closest("[data-group-photo-selection-id]");
+      this.refs.courseGroupPhotoStage
+        ?.querySelectorAll(".course-group-photo-circle.is-resize-target")
+        .forEach((item) => item.classList.remove("is-resize-target"));
+      if (circle && this.isGroupPhotoCircleBorderHit(circle, event)) {
+        circle.classList.add("is-resize-target");
+      }
+      return;
+    }
+    const point = this.getGroupPhotoPointerPosition(event);
+    const selection = this.getGroupPhotoSelection(drag.id);
+    if (!point || !selection) return;
+    if (drag.type === "move") {
+      const dx = point.x - drag.point.x;
+      const dy = point.y - drag.point.y;
+      selection.x = clamp(drag.selection.x + dx, 0, state.image.naturalWidth - selection.size);
+      selection.y = clamp(drag.selection.y + dy, 0, state.image.naturalHeight - selection.size);
+    } else if (drag.type === "create") {
+      const minSize = Math.min(state.image.naturalWidth, state.image.naturalHeight) * 0.04;
+      const size = Math.max(Math.abs(point.x - drag.point.x), Math.abs(point.y - drag.point.y), minSize);
+      const x = point.x < drag.point.x ? drag.point.x - size : drag.point.x;
+      const y = point.y < drag.point.y ? drag.point.y - size : drag.point.y;
+      selection.x = clamp(x, 0, state.image.naturalWidth - minSize);
+      selection.y = clamp(y, 0, state.image.naturalHeight - minSize);
+      selection.size = Math.min(size, state.image.naturalWidth - selection.x, state.image.naturalHeight - selection.y);
+    } else {
+      const minSize = Math.min(state.image.naturalWidth, state.image.naturalHeight) * 0.04;
+      const centerX = drag.selection.x + drag.selection.size / 2;
+      const centerY = drag.selection.y + drag.selection.size / 2;
+      const maxHalfSize = Math.min(centerX, centerY, state.image.naturalWidth - centerX, state.image.naturalHeight - centerY);
+      const halfSize = clamp(
+        Math.max(Math.abs(point.x - centerX), Math.abs(point.y - centerY)),
+        minSize / 2,
+        maxHalfSize
+      );
+      selection.x = centerX - halfSize;
+      selection.y = centerY - halfSize;
+      selection.size = halfSize * 2;
+    }
+    this.renderGroupPhotoExtractionDialog();
+  }
+
+  handleGroupPhotoStagePointerUp(event) {
+    const state = this.groupPhotoExtractionState;
+    if (!state?.drag) return;
+    this.refs.courseGroupPhotoStage?.releasePointerCapture?.(event.pointerId);
+    state.drag = null;
+  }
+
+  async loadGroupPhotoExtractionFile(file) {
+    if (!(file instanceof File) || !GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(file.type)) {
+      await this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.");
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    try {
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Gruppenfoto konnte nicht gelesen werden.");
+      this.clearGroupPhotoExtractionState();
+      this.groupPhotoExtractionState = { url, image, selections: [], selectedId: "", drag: null, nextId: 1 };
+      this.renderGroupPhotoExtractionDialog();
+    } catch (error) {
+      URL.revokeObjectURL(url);
+      await this.showInfoMessage(error instanceof Error ? error.message : "Das Gruppenfoto konnte nicht gelesen werden.");
+    }
+  }
+
+  async applyGroupPhotoExtractions() {
+    const state = this.groupPhotoExtractionState;
+    if (!state?.image || !this.courseDialogDraft) return;
+    const selections = state.selections.filter((item) => Number(item.studentId || 0) > 0);
+    for (const selection of selections) {
+      const student = this.courseDialogDraft.students.find((item) => Number(item?.id || 0) === Number(selection.studentId));
+      if (!student) continue;
+      if (student.portrait && !await this.showConfirmMessage(
+        `Das vorhandene Bild von ${this.getGroupPhotoStudentLabel(student)} ersetzen?`,
+        { title: "Vorhandenes Bild ersetzen", okText: "Ersetzen", cancelText: "Beibehalten", dangerOk: true }
+      )) continue;
+      student.portrait = await encodeGradeStudentPortraitCrop(state.image, selection.x, selection.y, selection.size);
+    }
+    this.revokeGradeStudentPortraitObjectUrls();
+    this.closeGroupPhotoExtractionDialog();
     this.renderCourseDialogStudents();
   }
 
@@ -6550,7 +7083,8 @@ class GradesApp {
         id: Number(student && student.id) || 0,
         lastName: normalizeGradeTextPart(student && student.lastName),
         firstName: normalizeGradeTextPart(student && student.firstName),
-        performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair)
+        performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair),
+        portrait: normalizeGradeStudentPortrait(student && student.portrait)
       }));
     if (normalized.some((student) => student.id > 0 && !student.lastName && !student.firstName)) {
       throw new Error("Bei vorhandenen Teilnehmenden dürfen Vor- und Nachname nicht beide leer sein. Zum Löschen bitte den Papierkorb verwenden.");
@@ -6824,6 +7358,10 @@ class GradesApp {
       return;
     }
     try {
+      this.selectedCourseId = id;
+      if (!await this.ensureGradeCourseLoaded(id)) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
       this.courseDialogDraft = await this.buildCourseDialogDraftForCourse(course);
     } catch (error) {
       this.setSyncStatus(
@@ -6839,7 +7377,10 @@ class GradesApp {
 
   closeCourseStudentsDialog() {
     this.courseDialogDraft = null;
+    this.closeGroupPhotoExtractionDialog();
+    this.revokeGradeStudentPortraitObjectUrls();
     this.closeDialog(this.refs.courseStudentsDialog);
+    this.renderAll({ visibleOnly: true });
   }
 
   async submitCourseStudentsDialog() {
@@ -6893,9 +7434,10 @@ class GradesApp {
         });
       });
     } catch (error) {
+      const message = typeof error?.message === "string" ? error.message.trim() : "";
       await this.showInfoMessage(
-        error instanceof Error && error.message
-          ? error.message
+        message
+          ? message
           : "Teilnehmendenliste konnte nicht sicher gespeichert werden."
       );
       return;
@@ -6920,6 +7462,10 @@ class GradesApp {
       return;
     }
     try {
+      this.selectedCourseId = id;
+      if (!await this.ensureGradeCourseLoaded(id)) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
       this.courseDialogDraft = await this.buildCourseDialogDraftForCourse(course);
     } catch (error) {
       this.setSyncStatus(
@@ -9581,6 +10127,93 @@ class GradesApp {
     this.refs.courseDialogStudentsAdd?.addEventListener("click", () => {
       this.addCourseDialogStudentDraft();
     });
+    this.refs.courseDialogGroupPhotoOpen?.addEventListener("click", () => {
+      this.openGroupPhotoExtractionDialog();
+    });
+    this.refs.courseGroupPhotoFile?.addEventListener("change", (event) => {
+      const [file] = event.target.files || [];
+      event.target.value = "";
+      if (file) void this.loadGroupPhotoExtractionFile(file);
+    });
+    this.refs.courseGroupPhotoDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      void this.applyGroupPhotoExtractions().catch(async (error) => {
+        await this.showInfoMessage(error instanceof Error ? error.message : "Bilder konnten nicht übernommen werden.");
+      });
+    });
+    this.refs.courseGroupPhotoCancel?.addEventListener("click", () => {
+      this.closeGroupPhotoExtractionDialog();
+    });
+    this.refs.courseGroupPhotoDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeGroupPhotoExtractionDialog();
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("pointerdown", (event) => {
+      this.handleGroupPhotoStagePointerDown(event);
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("pointermove", (event) => {
+      this.handleGroupPhotoStagePointerMove(event);
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("pointerup", (event) => {
+      this.handleGroupPhotoStagePointerUp(event);
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("pointercancel", (event) => {
+      this.handleGroupPhotoStagePointerUp(event);
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("click", () => {
+      if (!this.groupPhotoExtractionState?.image) this.refs.courseGroupPhotoFile?.click();
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("keydown", (event) => {
+      if (this.groupPhotoExtractionState?.image || !["Enter", " "].includes(event.key)) return;
+      event.preventDefault();
+      this.refs.courseGroupPhotoFile?.click();
+    });
+    if (this.refs.courseGroupPhotoStage) {
+      let groupPhotoDragDepth = 0;
+      const clearGroupPhotoDragState = () => {
+        groupPhotoDragDepth = 0;
+        this.refs.courseGroupPhotoStage.classList.remove("is-drag-over");
+      };
+      this.refs.courseGroupPhotoStage.addEventListener("dragenter", (event) => {
+        if (!gradeDataTransferHasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        groupPhotoDragDepth += 1;
+        this.refs.courseGroupPhotoStage.classList.add("is-drag-over");
+      });
+      this.refs.courseGroupPhotoStage.addEventListener("dragover", (event) => {
+        if (!gradeDataTransferHasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        this.refs.courseGroupPhotoStage.classList.add("is-drag-over");
+      });
+      this.refs.courseGroupPhotoStage.addEventListener("dragleave", (event) => {
+        if (!gradeDataTransferHasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        groupPhotoDragDepth = Math.max(0, groupPhotoDragDepth - 1);
+        if (groupPhotoDragDepth === 0) clearGroupPhotoDragState();
+      });
+      this.refs.courseGroupPhotoStage.addEventListener("drop", (event) => {
+        if (!gradeDataTransferHasFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.stopPropagation();
+        clearGroupPhotoDragState();
+        const file = Array.from(event.dataTransfer?.files || [])
+          .find((item) => GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(item.type));
+        if (file) void this.loadGroupPhotoExtractionFile(file);
+        else void this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild ablegen.");
+      });
+      document.addEventListener("dragend", clearGroupPhotoDragState);
+    }
+    this.refs.courseGroupPhotoSelectionList?.addEventListener("change", (event) => {
+      const select = event.target.closest("select[data-group-photo-selection-student]");
+      if (!select || !this.groupPhotoExtractionState) return;
+      const selection = this.getGroupPhotoSelection(select.dataset.groupPhotoSelectionStudent);
+      if (!selection) return;
+      selection.studentId = Number(select.value || 0);
+      this.groupPhotoExtractionState.selectedId = selection.id;
+      this.renderGroupPhotoExtractionDialog();
+    });
     this.refs.courseDialogStudentsFile?.addEventListener("change", async (event) => {
       const [file] = event.target.files || [];
       if (!file) {
@@ -9594,6 +10227,9 @@ class GradesApp {
     });
     this.refs.courseDialogStudentsList?.addEventListener("change", (event) => {
       this.handleCourseDialogStudentListInput(event);
+    });
+    this.refs.courseDialogStudentsList?.addEventListener("change", (event) => {
+      void this.handleCourseDialogStudentPortraitFileChange(event);
     });
     this.refs.courseDialogStudentsList?.addEventListener("click", (event) => {
       this.handleCourseDialogStudentListClick(event);
@@ -9890,6 +10526,11 @@ class GradesApp {
     this.refs.showHiddenSidebarCourses?.addEventListener("change", () => {
       this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
       this.settingsDraft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses.checked);
+      this.refreshSettingsDirtyState();
+    });
+    this.refs.showGradeStudentPortraits?.addEventListener("change", () => {
+      this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+      this.settingsDraft.showGradeStudentPortraits = Boolean(this.refs.showGradeStudentPortraits.checked);
       this.refreshSettingsDirtyState();
     });
 
@@ -11054,6 +11695,9 @@ class GradesApp {
     if (!course) {
       return;
     }
+    if (!course.noLesson) {
+      this.selectedCourseId = id;
+    }
     const canEditGrades = this.courseAllowsGrades(course);
     const isGradesView = this.isGradesTopTabActive();
     const items = [
@@ -11105,15 +11749,15 @@ class GradesApp {
           label: "Notenstruktur verwalten",
           separatorBefore: true,
           disabled: !canEditGrades,
-          handler: () => {
-            this.openCourseStructureDialog(id);
+          handler: async () => {
+            await this.openCourseStructureDialog(id);
           }
         },
         {
           label: "Teilnehmende verwalten",
           disabled: !canEditGrades,
-          handler: () => {
-            this.openCourseStudentsDialog(id);
+          handler: async () => {
+            await this.openCourseStudentsDialog(id);
           }
         }
       );
@@ -20195,7 +20839,9 @@ class GradesApp {
       studentCell.className = "student-col";
       studentCell.append(createGradeStudentNameElement(student, studentName, {
         active: isActive,
-        placeholder: isPlaceholderRow
+        placeholder: isPlaceholderRow,
+        portraitUrl: this.getGradeStudentPortraitUrl(student),
+        showPortraitPlaceholder: this.shouldShowGradeStudentPortraits()
       }));
       tr.append(studentCell);
       const gradeCell = document.createElement("td");
@@ -20709,7 +21355,9 @@ class GradesApp {
       studentCell.className = "student-col";
       studentCell.append(createGradeStudentNameElement(student, studentName, {
         active: isActive,
-        placeholder: isPlaceholderRow
+        placeholder: isPlaceholderRow,
+        portraitUrl: this.getGradeStudentPortraitUrl(student),
+        showPortraitPlaceholder: this.shouldShowGradeStudentPortraits()
       }));
       tr.append(studentCell);
       const entry = Object.prototype.hasOwnProperty.call(entries, student.id)
@@ -25204,6 +25852,7 @@ class GradesApp {
   }
 
   renderAll({ visibleOnly = false } = {}) {
+    this.revokeGradeStudentPortraitObjectUrls();
     const workspaceOwner = this.getWorkspaceOwnerApp();
     if (this.isGradeCourseNavigationUiLocked()) {
       this.pendingGradesRenderAfterCourseLoad = true;
@@ -25955,6 +26604,7 @@ class GradesApp {
         first: String(student.firstName || ""),
         last: String(student.lastName || ""),
         performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair),
+        portrait: normalizeGradeStudentPortrait(student.portrait),
         buddies: [],
         foes: []
       }))
@@ -26133,6 +26783,7 @@ class GradesApp {
         courseId: Number(course.id),
         courseName: String(course.name || "Kurs"),
         students: importPayload.students,
+        showGradeStudentPortraits: this.shouldShowGradeStudentPortraits(),
         plan: importPayload.plan,
         contextToken: importPayload.contextToken,
         rosterToken: importPayload.rosterToken,
@@ -27914,6 +28565,9 @@ class GradesApp {
     const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
     if (this.refs.showHiddenSidebarCourses) {
       this.refs.showHiddenSidebarCourses.checked = Boolean(draft.showHiddenSidebarCourses);
+    }
+    if (this.refs.showGradeStudentPortraits) {
+      this.refs.showGradeStudentPortraits.checked = Boolean(draft.showGradeStudentPortraits);
     }
     this.refs.themePreferenceInputs.forEach((input) => {
       input.checked = input.value === this.themePreference;

@@ -139,6 +139,7 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
     normalized.settings.expectationHorizonCommentTemplate,
   );
   normalized.settings.gradeVaultEncryptionEnabled = Boolean(normalized.settings.gradeVaultEncryptionEnabled);
+  normalized.settings.showGradeStudentPortraits = Boolean(normalized.settings.showGradeStudentPortraits);
 
   normalized.schoolYears = normalized.schoolYears.filter(
     (item) => item.id > 0 && item.name && item.startDate && item.endDate,

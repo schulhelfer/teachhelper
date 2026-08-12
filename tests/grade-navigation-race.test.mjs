@@ -212,3 +212,12 @@ test('a failed latest load restores the pre-navigation course before unlocking t
   assert.equal(roots.gradesEntryContent.inert, false);
   assert.equal(roots.gradesTable.inert, false);
 });
+
+test('course context actions bind participant management to the right-clicked course', () => {
+  const studentsDialog = extractClassMethod('openCourseStudentsDialog');
+  const structureDialog = extractClassMethod('openCourseStructureDialog');
+  const contextMenu = extractClassMethod('openCourseContextMenu');
+  assert.match(studentsDialog, /this\.selectedCourseId = id;[\s\S]*?await this\.ensureGradeCourseLoaded\(id\)/);
+  assert.match(structureDialog, /this\.selectedCourseId = id;[\s\S]*?await this\.ensureGradeCourseLoaded\(id\)/);
+  assert.match(contextMenu, /if \(!course\.noLesson\) \{\s*this\.selectedCourseId = id;/);
+});

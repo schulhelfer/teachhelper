@@ -315,6 +315,13 @@
                       Ausgeblendete Kurse in Randleiste anzeigen
                     </label>
                   </div>
+                  <div class="settings-form-row">
+                    <span class="settings-form-label">Fotos</span>
+                    <label class="checkbox-line settings-inline-checkbox">
+                      <input id="show-grade-student-portraits" type="checkbox">
+                      Fotos anzeigen
+                    </label>
+                  </div>
                 </form>
               </div>
 
@@ -516,15 +523,36 @@
           Auswählen<br>oder<br>Ablegen
         </div>
         <p><strong id="course-students-dialog-step-title">3. Verwalte die Teilnehmenden (Anzahl: 0)</strong></p>
-        <p id="course-dialog-import-preview-text" class="muted" hidden></p>
         <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
         <div class="button-row course-dialog-students-manual-row">
+          <button type="button" id="course-dialog-group-photo-open" class="ghost"
+            aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">📷 Aus Gruppenfoto extrahieren</button>
           <button type="button" id="course-dialog-students-add" class="sidebar-add-btn"
             aria-label="Teilnehmende hinzufügen" title="Teilnehmende hinzufügen">
             <span class="sidebar-add-plus" aria-hidden="true"></span>
           </button>
         </div>
       </section>
+    </form>
+  </dialog>
+
+  <dialog id="course-group-photo-dialog" class="app-dialog course-group-photo-dialog" aria-label="Bilder aus Gruppenfoto extrahieren">
+    <form id="course-group-photo-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 class="dialog-title">Bilder aus Gruppenfoto extrahieren</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="submit" id="course-group-photo-apply" class="dialog-icon-button app-action-icon" aria-label="Bilder übernehmen" data-tooltip="Bilder übernehmen">💾</button>
+          <button type="button" id="course-group-photo-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+        </div>
+      </div>
+      <input id="course-group-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <div class="course-group-photo-layout">
+        <div id="course-group-photo-stage" class="course-group-photo-stage" role="button" tabindex="0"
+          aria-label="Gruppenfoto auswählen oder ablegen"></div>
+        <section class="course-group-photo-selection-panel" aria-label="Markierung zuordnen">
+          <div id="course-group-photo-selection-list" class="course-group-photo-selection-list"></div>
+        </section>
+      </div>
     </form>
   </dialog>
 

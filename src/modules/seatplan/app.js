@@ -676,6 +676,7 @@
 
           const state = {
             students: [],
+            showGradeStudentPortraits: false,
             performanceFlairCount: 4,
             seats: {},
             gridRows: 10,
@@ -803,6 +804,11 @@
                   performanceFlair: typeof student.performanceFlair === 'string'
                     ? student.performanceFlair.trim().toUpperCase()
                     : '',
+                  portrait: student.portrait && typeof student.portrait === 'object'
+                    && student.portrait.mime === 'image/webp'
+                    && typeof student.portrait.data === 'string'
+                    ? { mime: 'image/webp', data: student.portrait.data }
+                    : null,
                   buddies: Array.isArray(student.buddies)
                     ? student.buddies.map(v => String(v)).filter(Boolean)
                     : [],
@@ -813,6 +819,32 @@
               })
               .filter(Boolean);
           }
+
+          const gradeStudentPortraitObjectUrls = new Map();
+
+          function revokeGradeStudentPortraitObjectUrls() {
+            gradeStudentPortraitObjectUrls.forEach((url) => URL.revokeObjectURL(url));
+            gradeStudentPortraitObjectUrls.clear();
+          }
+
+          function getGradeStudentPortraitUrl(student) {
+            if (!state.showGradeStudentPortraits || !student?.portrait?.data) return '';
+            const data = String(student.portrait.data || '');
+            const existing = gradeStudentPortraitObjectUrls.get(data);
+            if (existing) return existing;
+            try {
+              const binary = window.atob(data);
+              const bytes = new Uint8Array(binary.length);
+              for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+              const url = URL.createObjectURL(new Blob([bytes], { type: 'image/webp' }));
+              gradeStudentPortraitObjectUrls.set(data, url);
+              return url;
+            } catch (_error) {
+              return '';
+            }
+          }
+
+          window.addEventListener('pagehide', revokeGradeStudentPortraitObjectUrls, { once: true });
 
           function isCourseSeatplanMode() {
             return Boolean(state.courseContext && Number(state.courseContext.courseId) > 0);
@@ -1255,6 +1287,22 @@
           }
 
           function handleGradeRosterImportResult(detail) {
+            if (detail?.clearGradeStudentPortraits === true) {
+              revokeGradeStudentPortraitObjectUrls();
+              state.showGradeStudentPortraits = false;
+              state.students.forEach((student) => { if (student) student.portrait = null; });
+              if (state.courseContext?.students) {
+                state.courseContext.students.forEach((student) => { if (student) student.portrait = null; });
+              }
+              renderSeats();
+              return;
+            }
+            if (typeof detail?.showGradeStudentPortraits === 'boolean' && !detail?.ok) {
+              revokeGradeStudentPortraitObjectUrls();
+              state.showGradeStudentPortraits = detail.showGradeStudentPortraits;
+              renderSeats();
+              return;
+            }
             const isOwnRequest = String(detail?.requestId || '') === pendingGradeRosterImportRequestId;
             if (!isOwnRequest) {
               if (detail?.ok) {
@@ -1286,6 +1334,7 @@
               courseId: gradeRosterSelectedCourseId,
               courseName: gradeRosterSelectedCourseName || 'Kurs',
               students: Array.isArray(detail.students) ? detail.students : [],
+              showGradeStudentPortraits: detail.showGradeStudentPortraits === true,
               plan: detail.plan && typeof detail.plan === 'object' ? detail.plan : null,
               contextToken: normalizeCourseGradeToken(detail.contextToken),
               rosterToken: normalizeCourseGradeToken(detail.rosterToken),
@@ -1312,6 +1361,7 @@
           }
 
           function resetCourseSeatplanForStudents(students) {
+            revokeGradeStudentPortraitObjectUrls();
             state.students = cloneStudentsForSync(students);
             state.seats = {};
             state.activeSeats = new Set();
@@ -1367,6 +1417,7 @@
               rosterToken,
               loadedAt: String(detail.requestedAt || new Date().toISOString()),
             };
+            state.showGradeStudentPortraits = detail.showGradeStudentPortraits === true;
             state.csvName = state.courseContext.courseName;
             state.pendingCourseSwitchCourseId = 0;
             state.pendingCourseSaveRequestId = '';
@@ -2665,6 +2716,7 @@
             const importedAt = Number(detail.importedAt);
             if (Number.isFinite(importedAt) && importedAt <= lastStudentsSyncTimestamp) return;
             lastStudentsSyncTimestamp = Number.isFinite(importedAt) ? importedAt : Date.now();
+            revokeGradeStudentPortraitObjectUrls();
             state.students = cloneStudentsForSync(detail.students);
             state.performanceFlairCount = Number.isFinite(Number(detail.performanceFlairCount))
               ? (Number(detail.performanceFlairCount) >= 2 ? Number(detail.performanceFlairCount) : 4)
@@ -6336,6 +6388,23 @@
                   return;
                 }
                 if (isCourseSeatplanMode()) {
+                  if (isCourseGradeMode()) {
+                    const portraitUrl = getGradeStudentPortraitUrl(s);
+                    if (portraitUrl) {
+                      const portrait = document.createElement('img');
+                      portrait.className = 'seat-grade-student-portrait';
+                      portrait.src = portraitUrl;
+                      portrait.alt = '';
+                      portrait.decoding = 'async';
+                      content.appendChild(portrait);
+                    } else if (state.showGradeStudentPortraits) {
+                      const portraitPlaceholder = document.createElement('span');
+                      portraitPlaceholder.className = 'seat-grade-student-portrait-placeholder';
+                      portraitPlaceholder.setAttribute('aria-hidden', 'true');
+                      portraitPlaceholder.textContent = '👤︎';
+                      content.appendChild(portraitPlaceholder);
+                    }
+                  }
                   const labelNode = document.createElement('span');
                   labelNode.className = 'seat-grade-name';
                   if (isCourseGradeMode() && String(state.courseGradePickerStudentId || '') === String(sid)) {

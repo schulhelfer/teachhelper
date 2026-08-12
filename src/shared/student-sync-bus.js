@@ -17,6 +17,11 @@ function cloneStudent(student, index = 0) {
     first: typeof student.first === 'string' ? student.first : '',
     last: typeof student.last === 'string' ? student.last : '',
     performanceFlair: typeof student.performanceFlair === 'string' ? student.performanceFlair : '',
+    portrait: student.portrait && typeof student.portrait === 'object'
+      && student.portrait.mime === 'image/webp'
+      && typeof student.portrait.data === 'string'
+      ? { mime: 'image/webp', data: student.portrait.data }
+      : null,
     buddies: Array.isArray(student.buddies)
       ? student.buddies.map((value) => String(value)).filter(Boolean)
       : [],

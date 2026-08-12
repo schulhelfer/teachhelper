@@ -31,6 +31,7 @@ import {
   NO_LESSON_COLOR,
   REQUIRED_HOLIDAYS,
   SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
+  SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
   WRITTEN_EXAM_TOPIC
 } from "../../shared/school-data/defaults.js";
 
@@ -1533,6 +1534,20 @@ function createDefaultGradeStructureSetting() {
   });
 }
 
+const GRADE_STUDENT_PORTRAIT_MIME = "image/webp";
+const GRADE_STUDENT_PORTRAIT_MAX_BYTES = 150 * 1024;
+const GRADE_STUDENT_PORTRAIT_MAX_BASE64_LENGTH = Math.ceil(GRADE_STUDENT_PORTRAIT_MAX_BYTES * 4 / 3) + 8;
+
+function normalizeGradeStudentPortrait(value) {
+  if (!isRecord(value) || value.mime !== GRADE_STUDENT_PORTRAIT_MIME) return null;
+  const data = typeof value.data === "string" ? value.data.trim() : "";
+  if (!data || data.length > GRADE_STUDENT_PORTRAIT_MAX_BASE64_LENGTH) return null;
+  if (!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(data)) return null;
+  const padding = data.endsWith("==") ? 2 : (data.endsWith("=") ? 1 : 0);
+  if (((data.length * 3) / 4) - padding > GRADE_STUDENT_PORTRAIT_MAX_BYTES) return null;
+  return { mime: GRADE_STUDENT_PORTRAIT_MIME, data };
+}
+
 function compareGradeAssessmentsByOrder(left, right) {
   const sortLeft = Number(left?.sortOrder || 0);
   const sortRight = Number(right?.sortOrder || 0);
@@ -1613,6 +1628,7 @@ function createInitialState() {
       hoursPerDay: HOURS_PER_DAY_DEFAULT,
       lessonTimes: buildDefaultLessonTimes(HOURS_PER_DAY_DEFAULT),
       showHiddenSidebarCourses: SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
+      showGradeStudentPortraits: SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
       gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
       gradeTestScaleSettings: buildDefaultGradeTestScaleSettings(),
       gradeOccurrenceCategories: normalizeGradeOccurrenceCategories(),
@@ -2560,6 +2576,7 @@ export class WorkspaceStore {
       const lastName = normalizeGradeTextPart(rawStudent && rawStudent.lastName);
       const firstName = normalizeGradeTextPart(rawStudent && rawStudent.firstName);
       const performanceFlair = normalizeGradePerformanceFlair(rawStudent && rawStudent.performanceFlair);
+      const portrait = normalizeGradeStudentPortrait(rawStudent && rawStudent.portrait);
       if (!lastName && !firstName) {
         continue;
       }
@@ -2578,6 +2595,7 @@ export class WorkspaceStore {
         lastName,
         firstName,
         performanceFlair,
+        portrait,
         sortKey: buildGradeStudentSortKey(lastName, firstName, studentId)
       });
     }
@@ -4740,12 +4758,14 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
       const lastName = normalizeGradeTextPart(item.lastName);
       const firstName = normalizeGradeTextPart(item.firstName);
       const performanceFlair = normalizeGradePerformanceFlair(item.performanceFlair);
+      const portrait = normalizeGradeStudentPortrait(item.portrait);
       return {
         id,
         courseId,
         lastName,
         firstName,
         performanceFlair,
+        portrait,
         sortKey: buildGradeStudentSortKey(lastName, firstName, id)
       };
     }) : [],

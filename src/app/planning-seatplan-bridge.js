@@ -15,6 +15,7 @@ import {
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  GRADES_GRADE_VAULT_STATE_EVENT,
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_MANUAL_SAVE_REQUEST_EVENT,
   GRADES_READY_EVENT,
@@ -617,6 +618,18 @@ export function createPlanningSeatplanBridge({
     documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, { detail }));
     if (!detail.ok || !Array.isArray(detail.students)) return;
     rosterStore?.dispatch?.(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GRADES, Date.now(), detail));
+  });
+
+  saveResultTarget.addEventListener(GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
+    const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
+    if (detail.encryptionEnabled && !detail.unlocked) {
+      seatplanController?.sendGradeRosterImportResult?.({ clearGradeStudentPortraits: true });
+      return;
+    }
+    seatplanController?.sendGradeRosterImportResult?.({
+      ok: false,
+      showGradeStudentPortraits: detail.showGradeStudentPortraits === true,
+    });
   });
 
   saveResultTarget.addEventListener(GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {
