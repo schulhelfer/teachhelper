@@ -52,6 +52,18 @@ test('locking and teardown revoke all generated portrait object URLs', () => {
   assert.match(bridge, /clearGradeStudentPortraits: true/);
 });
 
+test('portrait previews open a bounded three-times overlay and are cleaned up with the vault', () => {
+  assert.match(gradesApp, /\.dataset\.gradeStudentPortraitPreview = "1"/);
+  assert.match(gradesApp, /openGradeStudentPortraitOverlay\(source\)/);
+  assert.match(gradesApp, /rect\.width \* 3/);
+  assert.match(gradesApp, /overlay\.addEventListener\("click", \(\) => this\.removeGradeStudentPortraitOverlay\(\)/);
+  assert.match(gradesApp, /revokeGradeStudentPortraitObjectUrls\(\) \{[\s\S]*?this\.removeGradeStudentPortraitOverlay\(\)/);
+  assert.match(seatplanApp, /\.dataset\.gradeStudentPortraitPreview = '1'/);
+  assert.match(seatplanApp, /function openGradeStudentPortraitOverlay\(source\)/);
+  assert.match(seatplanApp, /rect\.width \* 3/);
+  assert.match(seatplanApp, /function renderSeats\(options = \{\}\) \{[\s\S]*?removeGradeStudentPortraitOverlay\(\)/);
+});
+
 test('group photo extraction is local, manually assigned, and cleans up its temporary URL', () => {
   assert.match(gradesHtml, /id="course-dialog-group-photo-open"/);
   assert.match(gradesApp, /courseDialogGroupPhotoOpen\.hidden = !showPortraits/);

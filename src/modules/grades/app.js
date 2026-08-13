@@ -2065,6 +2065,11 @@ function createGradeStudentNameElement(student, studentName, options = {}) {
       portrait.className = "grade-student-portrait grade-student-portrait--entry";
       portrait.src = options.portraitUrl;
       portrait.alt = "";
+      portrait.dataset.gradeStudentPortraitPreview = "1";
+      portrait.setAttribute("role", "button");
+      portrait.tabIndex = 0;
+      portrait.setAttribute("aria-label", "Foto vergrößern");
+      portrait.title = "Foto vergrößern";
       portrait.decoding = "async";
       node.prepend(portrait);
     } else if (options.showPortraitPlaceholder) {
@@ -3039,6 +3044,7 @@ class GradesApp {
     this.gradeVaultStartupUnlockPromptResolved = false;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
     this.gradeStudentPortraitObjectUrls = new Map();
+    this.gradeStudentPortraitOverlay = null;
     this.groupPhotoExtractionState = null;
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
@@ -3206,8 +3212,66 @@ class GradesApp {
   }
 
   revokeGradeStudentPortraitObjectUrls() {
+    this.removeGradeStudentPortraitOverlay();
     this.gradeStudentPortraitObjectUrls?.forEach((url) => URL.revokeObjectURL(url));
     this.gradeStudentPortraitObjectUrls?.clear();
+  }
+
+  removeGradeStudentPortraitOverlay() {
+    const overlay = this.gradeStudentPortraitOverlay;
+    if (overlay?.isConnected) overlay.remove();
+    this.gradeStudentPortraitOverlay = null;
+  }
+
+  openGradeStudentPortraitOverlay(source) {
+    if (!(source instanceof HTMLImageElement) || !source.src) return;
+    this.removeGradeStudentPortraitOverlay();
+    const rect = source.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+    const viewportPadding = 16;
+    const endSize = Math.min(
+      rect.width * 3,
+      window.innerWidth - viewportPadding * 2,
+      window.innerHeight - viewportPadding * 2
+    );
+    const centerX = rect.left + rect.width / 2;
+    const centerY = rect.top + rect.height / 2;
+    const endLeft = clamp(centerX - endSize / 2, viewportPadding, Math.max(viewportPadding, window.innerWidth - endSize - viewportPadding));
+    const endTop = clamp(centerY - endSize / 2, viewportPadding, Math.max(viewportPadding, window.innerHeight - endSize - viewportPadding));
+    const overlay = document.createElement("div");
+    overlay.className = "grade-student-portrait-overlay";
+    overlay.setAttribute("role", "presentation");
+    const portrait = document.createElement("img");
+    portrait.className = "grade-student-portrait-overlay-image";
+    portrait.src = source.currentSrc || source.src;
+    portrait.alt = "";
+    portrait.style.left = `${rect.left}px`;
+    portrait.style.top = `${rect.top}px`;
+    portrait.style.width = `${rect.width}px`;
+    portrait.style.height = `${rect.height}px`;
+    overlay.append(portrait);
+    overlay.addEventListener("click", () => this.removeGradeStudentPortraitOverlay(), { once: true });
+    (source.closest("dialog") || document.body).append(overlay);
+    this.gradeStudentPortraitOverlay = overlay;
+    requestAnimationFrame(() => {
+      if (this.gradeStudentPortraitOverlay !== overlay) return;
+      overlay.classList.add("is-open");
+      portrait.style.left = `${endLeft}px`;
+      portrait.style.top = `${endTop}px`;
+      portrait.style.width = `${endSize}px`;
+      portrait.style.height = `${endSize}px`;
+    });
+  }
+
+  handleGradeStudentPortraitPreview(event) {
+    const portrait = event.target instanceof Element
+      ? event.target.closest("img[data-grade-student-portrait-preview='1']")
+      : null;
+    if (!(portrait instanceof HTMLImageElement)) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    this.openGradeStudentPortraitOverlay(portrait);
+    return true;
   }
 
   getGradeStudentPortraitUrl(student) {
@@ -6196,6 +6260,7 @@ class GradesApp {
     if (!this.refs.courseDialogStudentsList || !this.courseDialogDraft) {
       return;
     }
+    this.removeGradeStudentPortraitOverlay();
     const showPortraits = this.shouldShowGradeStudentPortraits();
     if (this.refs.courseDialogGroupPhotoOpen) {
       this.refs.courseDialogGroupPhotoOpen.hidden = !showPortraits;
@@ -6285,6 +6350,11 @@ class GradesApp {
           portraitImage.className = "grade-student-portrait grade-student-portrait--management";
           portraitImage.src = portraitUrl;
           portraitImage.alt = "";
+          portraitImage.dataset.gradeStudentPortraitPreview = "1";
+          portraitImage.setAttribute("role", "button");
+          portraitImage.tabIndex = 0;
+          portraitImage.setAttribute("aria-label", "Foto vergrößern");
+          portraitImage.title = "Foto vergrößern";
           portraitImage.decoding = "async";
           const portraitDeleteButton = this.createGradeStructureActionButton({
             className: "ghost danger-action course-dialog-student-portrait-delete",
@@ -6483,6 +6553,7 @@ class GradesApp {
   }
 
   async handleCourseDialogStudentListClick(event) {
+    if (this.handleGradeStudentPortraitPreview(event)) return;
     const portraitSelectButton = event.target.closest("button[data-student-portrait-select]");
     if (portraitSelectButton && this.courseDialogDraft) {
       event.preventDefault();
@@ -7974,6 +8045,7 @@ class GradesApp {
       this.handleGradesSurfaceGradeInputPointerActivation(event);
     }, true);
     root.addEventListener("click", async (event) => {
+      if (this.handleGradeStudentPortraitPreview(event)) return;
       await this.handleGradesSurfaceClick(event);
     });
     root.addEventListener("contextmenu", (event) => {
@@ -7991,6 +8063,10 @@ class GradesApp {
       this.handleGradesTableFocusIn(event);
     });
     root.addEventListener("keydown", (event) => {
+      if (
+        ["Enter", " "].includes(event.key)
+        && this.handleGradeStudentPortraitPreview(event)
+      ) return;
       this.handleGradesEntryTitleKeyDown(event);
       this.handleGradesTableKeyDown(event);
     }, true);
@@ -10232,7 +10308,11 @@ class GradesApp {
       void this.handleCourseDialogStudentPortraitFileChange(event);
     });
     this.refs.courseDialogStudentsList?.addEventListener("click", (event) => {
-      this.handleCourseDialogStudentListClick(event);
+      void this.handleCourseDialogStudentListClick(event);
+    });
+    this.refs.courseDialogStudentsList?.addEventListener("keydown", (event) => {
+      if (!["Enter", " "].includes(event.key)) return;
+      this.handleGradeStudentPortraitPreview(event);
     });
     this.refs.courseDialogCategoryAdd?.addEventListener("click", () => {
       this.addCourseDialogCategoryDraft();

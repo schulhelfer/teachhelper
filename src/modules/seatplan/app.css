@@ -2296,6 +2296,43 @@
           box-shadow: 0 2px 7px rgba(2, 6, 23, 0.28);
         }
 
+        .seat-grade-student-portrait[data-grade-student-portrait-preview='1'] {
+          cursor: zoom-in;
+        }
+
+        .seat-grade-student-portrait-overlay {
+          position: fixed;
+          z-index: 1000;
+          inset: 0;
+          background: rgba(2, 6, 23, 0);
+          cursor: zoom-out;
+          opacity: 0;
+          transition: opacity 180ms ease, background-color 180ms ease;
+        }
+
+        .seat-grade-student-portrait-overlay.is-open {
+          background: rgba(2, 6, 23, 0.54);
+          opacity: 1;
+        }
+
+        .seat-grade-student-portrait-overlay-image {
+          position: fixed;
+          box-sizing: border-box;
+          object-fit: cover;
+          border: 2px solid rgba(255, 255, 255, 0.84);
+          border-radius: 50%;
+          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.46);
+          pointer-events: none;
+          transition: left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .seat-grade-student-portrait-overlay,
+          .seat-grade-student-portrait-overlay-image {
+            transition-duration: 1ms;
+          }
+        }
+
         .seat-grade-student-portrait-placeholder {
           display: inline-flex;
           align-items: center;

@@ -9147,6 +9147,43 @@
           border: 1px solid rgba(148, 163, 184, 0.38);
         }
 
+        .grade-student-portrait[data-grade-student-portrait-preview='1'] {
+          cursor: zoom-in;
+        }
+
+        .grade-student-portrait-overlay {
+          position: fixed;
+          z-index: 1000;
+          inset: 0;
+          background: rgba(2, 6, 23, 0);
+          cursor: zoom-out;
+          opacity: 0;
+          transition: opacity 180ms ease, background-color 180ms ease;
+        }
+
+        .grade-student-portrait-overlay.is-open {
+          background: rgba(2, 6, 23, 0.54);
+          opacity: 1;
+        }
+
+        .grade-student-portrait-overlay-image {
+          position: fixed;
+          box-sizing: border-box;
+          object-fit: cover;
+          border: 2px solid rgba(255, 255, 255, 0.84);
+          border-radius: 50%;
+          box-shadow: 0 16px 40px rgba(2, 6, 23, 0.46);
+          pointer-events: none;
+          transition: left 220ms ease, top 220ms ease, width 220ms ease, height 220ms ease;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+          .grade-student-portrait-overlay,
+          .grade-student-portrait-overlay-image {
+            transition-duration: 1ms;
+          }
+        }
+
         .grade-student-portrait--management {
           width: 2.55rem;
           height: 2.55rem;

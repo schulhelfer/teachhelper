@@ -821,10 +821,60 @@
           }
 
           const gradeStudentPortraitObjectUrls = new Map();
+          let gradeStudentPortraitOverlay = null;
 
           function revokeGradeStudentPortraitObjectUrls() {
+            removeGradeStudentPortraitOverlay();
             gradeStudentPortraitObjectUrls.forEach((url) => URL.revokeObjectURL(url));
             gradeStudentPortraitObjectUrls.clear();
+          }
+
+          function removeGradeStudentPortraitOverlay() {
+            if (gradeStudentPortraitOverlay?.isConnected) gradeStudentPortraitOverlay.remove();
+            gradeStudentPortraitOverlay = null;
+          }
+
+          function openGradeStudentPortraitOverlay(source) {
+            if (!(source instanceof HTMLImageElement) || !source.src) return;
+            removeGradeStudentPortraitOverlay();
+            const rect = source.getBoundingClientRect();
+            if (!rect.width || !rect.height) return;
+            const viewportPadding = 16;
+            const endSize = Math.min(rect.width * 3, window.innerWidth - viewportPadding * 2, window.innerHeight - viewportPadding * 2);
+            const clampPosition = (value, min, max) => Math.max(min, Math.min(value, max));
+            const endLeft = clampPosition(
+              rect.left + rect.width / 2 - endSize / 2,
+              viewportPadding,
+              Math.max(viewportPadding, window.innerWidth - endSize - viewportPadding)
+            );
+            const endTop = clampPosition(
+              rect.top + rect.height / 2 - endSize / 2,
+              viewportPadding,
+              Math.max(viewportPadding, window.innerHeight - endSize - viewportPadding)
+            );
+            const overlay = document.createElement('div');
+            overlay.className = 'seat-grade-student-portrait-overlay';
+            overlay.setAttribute('role', 'presentation');
+            const portrait = document.createElement('img');
+            portrait.className = 'seat-grade-student-portrait-overlay-image';
+            portrait.src = source.currentSrc || source.src;
+            portrait.alt = '';
+            portrait.style.left = `${rect.left}px`;
+            portrait.style.top = `${rect.top}px`;
+            portrait.style.width = `${rect.width}px`;
+            portrait.style.height = `${rect.height}px`;
+            overlay.appendChild(portrait);
+            overlay.addEventListener('click', removeGradeStudentPortraitOverlay, { once: true });
+            document.body.appendChild(overlay);
+            gradeStudentPortraitOverlay = overlay;
+            requestAnimationFrame(() => {
+              if (gradeStudentPortraitOverlay !== overlay) return;
+              overlay.classList.add('is-open');
+              portrait.style.left = `${endLeft}px`;
+              portrait.style.top = `${endTop}px`;
+              portrait.style.width = `${endSize}px`;
+              portrait.style.height = `${endSize}px`;
+            });
           }
 
           function getGradeStudentPortraitUrl(student) {
@@ -6339,6 +6389,7 @@
           }
 
           function renderSeats(options = {}) {
+            removeGradeStudentPortraitOverlay();
             if (!options.skipOptimalMark) {
               markOptimalScoreStale();
             }
@@ -6395,7 +6446,25 @@
                       portrait.className = 'seat-grade-student-portrait';
                       portrait.src = portraitUrl;
                       portrait.alt = '';
+                      portrait.dataset.gradeStudentPortraitPreview = '1';
+                      portrait.setAttribute('role', 'button');
+                      portrait.tabIndex = 0;
+                      portrait.setAttribute('aria-label', 'Foto vergrößern');
+                      portrait.title = 'Foto vergrößern';
                       portrait.decoding = 'async';
+                      portrait.draggable = false;
+                      portrait.addEventListener('pointerdown', event => event.stopPropagation());
+                      portrait.addEventListener('click', event => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openGradeStudentPortraitOverlay(portrait);
+                      });
+                      portrait.addEventListener('keydown', event => {
+                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                        event.preventDefault();
+                        event.stopPropagation();
+                        openGradeStudentPortraitOverlay(portrait);
+                      });
                       content.appendChild(portrait);
                     } else if (state.showGradeStudentPortraits) {
                       const portraitPlaceholder = document.createElement('span');

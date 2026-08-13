@@ -187,6 +187,10 @@ test('opening roster management creates its draft from the requested course snap
     store: {
       listCourses() { return [course]; },
     },
+    async ensureGradeCourseLoaded(courseId) {
+      assert.equal(courseId, 8);
+      return true;
+    },
     async buildCourseDialogDraftForCourse(nextCourse) {
       const courseId = Number(nextCourse.id);
       calls.push(`load:${courseId}`);
@@ -220,6 +224,10 @@ test('opening grade structure management creates its draft from the requested co
     canAccessGradeVault() { return true; },
     store: {
       listCourses() { return [course]; },
+    },
+    async ensureGradeCourseLoaded(courseId) {
+      assert.equal(courseId, 8);
+      return true;
     },
     async buildCourseDialogDraftForCourse(nextCourse) {
       const courseId = Number(nextCourse.id);
