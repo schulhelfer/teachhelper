@@ -3186,6 +3186,10 @@ export function createMergerApp({
 	            }
 	          }
 
+	          async function cleanupPdfPreviewDocument(pdfDocument) {
+	            await pdfDocument.cleanup();
+	          }
+
 	          async function loadRotatePagePreviews(file) {
 	            cancelActivePdfPreview(rotateState);
 	            const token = ++rotateState.previewSetupToken;
@@ -3210,7 +3214,7 @@ export function createMergerApp({
 	                "PDF-Vorschau konnte nicht rechtzeitig geladen werden."
 	              );
 	              if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-	                await pdfDocument.destroy();
+	                await cleanupPdfPreviewDocument(pdfDocument);
 	                return;
               }
 
@@ -3218,7 +3222,7 @@ export function createMergerApp({
               for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex += 1) {
                 const page = await pdfDocument.getPage(pageIndex + 1);
                 if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-                  await pdfDocument.destroy();
+                  await cleanupPdfPreviewDocument(pdfDocument);
                   return;
                 }
                 const viewport = page.getViewport({ scale: 0.28 });
@@ -3234,11 +3238,11 @@ export function createMergerApp({
 	              }
 
               if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-                await pdfDocument.destroy();
+                await cleanupPdfPreviewDocument(pdfDocument);
                 return;
               }
               rotateState.previewUrls = previews;
-              await pdfDocument.destroy();
+              await cleanupPdfPreviewDocument(pdfDocument);
 	            } catch (error) {
 	              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
               if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
@@ -3309,7 +3313,7 @@ export function createMergerApp({
 	                "PDF-Vorschau konnte nicht rechtzeitig geladen werden."
 	              );
               if (token !== splitState.previewSetupToken || splitState.file !== file) {
-                await pdfDocument.destroy();
+                await cleanupPdfPreviewDocument(pdfDocument);
                 return;
               }
 
@@ -3317,7 +3321,7 @@ export function createMergerApp({
               for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex += 1) {
                 const page = await pdfDocument.getPage(pageIndex + 1);
                 if (token !== splitState.previewSetupToken || splitState.file !== file) {
-                  await pdfDocument.destroy();
+                  await cleanupPdfPreviewDocument(pdfDocument);
                   return;
                 }
                 const viewport = page.getViewport({ scale: 0.28 });
@@ -3333,11 +3337,11 @@ export function createMergerApp({
 	              }
 
               if (token !== splitState.previewSetupToken || splitState.file !== file) {
-                await pdfDocument.destroy();
+                await cleanupPdfPreviewDocument(pdfDocument);
                 return;
               }
               splitState.previewUrls = previews;
-              await pdfDocument.destroy();
+              await cleanupPdfPreviewDocument(pdfDocument);
 	            } catch (error) {
 	              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
               if (token !== splitState.previewSetupToken || splitState.file !== file) return;

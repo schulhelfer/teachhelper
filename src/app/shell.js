@@ -116,6 +116,7 @@ export function createShellController({
     : (() => {});
   let unsavedTabConfirmPromise = null;
   let tabIndicatorFrame = 0;
+  let tabIndicatorSettleTimer = 0;
   let lastRenderedActiveTab = null;
   let tabNavResizeObserver = null;
   let moreToolsSyncFrame = 0;
@@ -574,7 +575,7 @@ export function createShellController({
     const sync = () => {
       moreToolsSyncFrame = 0;
       syncMoreToolsNavigation();
-      queueActiveTabIndicatorUpdate();
+      queueSettledActiveTabIndicatorUpdate();
     };
     if (typeof window.requestAnimationFrame !== 'function') {
       sync();
@@ -662,9 +663,13 @@ export function createShellController({
         });
       });
     }
-    window.setTimeout?.(() => {
+    if (tabIndicatorSettleTimer) {
+      window.clearTimeout?.(tabIndicatorSettleTimer);
+    }
+    tabIndicatorSettleTimer = window.setTimeout?.(() => {
+      tabIndicatorSettleTimer = 0;
       queueActiveTabIndicatorUpdate({ instant: true });
-    }, 120);
+    }, getChromeTransitionDuration()) || 0;
   }
 
   function renderTabs() {
