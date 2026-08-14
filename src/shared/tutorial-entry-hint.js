@@ -46,7 +46,6 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
         ...(moduleFrameNonce ? { frameNonce: moduleFrameNonce } : {}),
       }, parentOrigin);
     } catch {
-      // The local hint still works when a host does not support the bridge.
     }
   }
   if (hintSeen) return;

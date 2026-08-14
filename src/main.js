@@ -573,182 +573,11 @@ import {
     }
     return steps;
   };
-  const TUTORIAL_STEP_BUDGETS = Object.freeze({
-    [TAB_GRADES]: 25,
-    [TAB_PLANNING]: 14,
-    [TAB_SEATPLAN]: 10,
-    [TAB_MERGER]: 6,
-    [TAB_GROUPS]: 8,
-    [TAB_RANDOM_PICKER]: 5,
-    [TAB_DUPLICATE_CHECK]: 6,
-    [TAB_WORK_PHASE]: 7,
-    [TAB_QR]: 5,
-  });
   const TUTORIAL_OPAQUE_FRAME_TABS = new Set([
     TAB_MERGER,
     TAB_DUPLICATE_CHECK,
     TAB_QR,
   ]);
-  const TUTORIAL_FLOW_STEPS = Object.freeze({
-    [TAB_GRADES]: [
-      { source: 'Datenbank verbinden', title: 'Datenbank wählen', copy: 'Hier wird eine Datei gewählt oder eine neue angelegt.' },
-      { source: 'Daten sichern', title: 'Backup anlegen', copy: 'Hier lassen sich regelmäßige Backups einrichten.' },
-      { source: 'Noten verschlüsseln', title: 'Noten schützen', copy: 'Ein Passwort schützt sensible Noten.' },
-      { source: 'Kurs anlegen', title: 'Kurs anlegen', copy: 'Das Plus erstellt einen neuen Kurs.' },
-      { source: 'Kurs per Rechtsklick verwalten', title: 'Kursmenü', copy: 'Ein Rechtsklick öffnet Kursdaten, Struktur und Teilnehmende.' },
-      { source: 'Notenstruktur festlegen', title: 'Struktur festlegen', copy: 'Hier lassen sich Kategorien und Gewichtungen für den Kurs festlegen.' },
-      { source: 'Teilnehmende verwalten', title: 'Teilnehmende eintragen', copy: 'Hier lassen sich Listen importieren und Personen einzeln eintragen.' },
-      { source: 'Eingabe öffnen', title: 'Leistung öffnen', copy: 'Der Stift öffnet eine neue Leistung.' },
-      { source: 'Leistung einordnen', title: 'Leistung einrichten', copy: 'Hier lassen sich Art, Halbjahr, Kategorie und Gewichtung wählen.' },
-      { source: 'Ergebnisse erfassen', title: 'Ergebnisse erfassen', copy: 'Hier werden Werte und bei BE auch Erwartungen eingetragen.' },
-      { source: 'Verteilung prüfen', title: 'Prüfen und speichern', copy: 'Die Verteilung lässt sich vor dem Speichern prüfen.' },
-      { source: 'Notenübersicht lesen', title: 'Übersicht lesen', copy: 'Halbjahre und Kategorien lassen sich bei Bedarf aufklappen.' },
-      { source: 'Gesamtnote festsetzen', title: 'Gesamtnote festsetzen', copy: 'Ein Klick auf den Gesamtwert setzt ihn fest.' },
-      {
-        create: () => createModuleTutorialStep({
-          tab: TAB_GRADES,
-          title: 'Spaltenmenü',
-          copy: 'Ein Rechtsklick auf eine Spalte öffnet Bearbeiten und Übertragen.',
-          target: gradesFrameTarget('th[data-grade-transfer-column-key]', () => null),
-          placement: 'top',
-          beforeRender: () => prepareGradesTutorialSurface('gradesOverviewTable'),
-        }),
-      },
-      { source: 'Datenschutzmodus', title: 'Datenschutzmodus', copy: 'Bei Gesprächen bleibt nur eine Person sichtbar.' },
-      { source: 'Notensystem wählen', title: 'Ansicht ändern', copy: 'Hier lassen sich Sortierung, Anzeige und Plus/Minus ändern.' },
-      { source: 'Übersicht drucken', title: 'Übersicht drucken', copy: 'Der Ausdruck enthält die sichtbaren Spalten.' },
-      { source: 'Schuljahr archivieren', title: 'Warnungen und Archiv', copy: 'Warnungen lassen sich testen und das Schuljahr archivieren.' },
-    ],
-    [TAB_PLANNING]: [
-      { source: 'Datenbank', title: 'Daten sichern', copy: 'Hier wird die Datenbank gewählt und Backups werden eingerichtet.' },
-      { source: 'Ferien eintragen', title: 'Freie Tage eintragen', copy: 'Hier lassen sich Ferien und einzelne freie Tage eintragen.' },
-      { source: 'Kurs hinzufügen', title: 'Kurs anlegen', copy: 'Das Plus erstellt einen neuen Kurs.' },
-      { source: 'Kurse bedienen', title: 'Kurse bedienen', copy: 'Ein Klick öffnet, Ziehen sortiert und Rechtsklick zeigt Aktionen.' },
-      { source: 'Kurs per Rechtsklick ändern', title: 'Kursmenü', copy: 'Das Kursmenü bietet Änderungen an Daten, Sichtbarkeit und Löschung.' },
-      { source: 'Serie per Doppelklick anlegen', title: 'Serie anlegen', copy: 'Ein Doppelklick auf eine freie Zelle erstellt eine Serie.' },
-      { source: 'Serie konfigurieren', title: 'Serie einstellen', copy: 'Hier lassen sich Kurs, Zeit, Wiederholung und Zeitraum wählen.' },
-      { source: 'Woche wechseln', title: 'Woche und Thema', copy: 'Pfeile wechseln die Woche; Themen lassen sich direkt eintragen.' },
-      { source: 'Detailplanung', title: 'Stunde planen', copy: 'Hier lassen sich Ablauf, Material, Ziele und Notizen ergänzen.' },
-      { source: 'Stunde per Rechtsklick steuern', title: 'Stundenmenü', copy: 'Das Stundenmenü bietet Kopieren, Verschieben, Entfall und Arbeiten.' },
-      { source: 'Sitzplan öffnen', title: 'Sitzplan und Noten', copy: 'Die Symbole öffnen Sitzplan und passende Noteneingabe.' },
-      { source: 'Kursverlauf öffnen', title: 'Kursverlauf öffnen', copy: 'Ein Klick auf den Kurs zeigt den Verlauf.' },
-      { source: 'Einstellungen öffnen', title: 'Einstellungen und Archiv', copy: 'Hier lassen sich Anzeige und Zeiten ändern und das Archiv vorbereiten.' },
-    ],
-    [TAB_SEATPLAN]: [
-      { source: ['Namensliste importieren', 'Kursliste aus dem Notenmodul'], title: 'Liste wählen', copy: 'Hier wird eine Liste importiert oder ein Notenkurs gewählt.' },
-      { source: 'Raumform auswählen', title: 'Raum vorbereiten', copy: 'Hier lassen sich Raster, Raumform, aktive Plätze und Zweiertische wählen.' },
-      { source: 'Lehrkraft platzieren', title: 'Personen setzen', copy: 'Lehrkraft und Lernende lassen sich auf Plätze ziehen.' },
-      { source: 'Sitzkriterien eingeben', title: 'Kriterien festlegen', copy: 'Hier lassen sich Wünsche, Ausschlüsse und Sitzwünsche eintragen.' },
-      { source: 'Vorschlag oder Zufall', title: 'Vorschlag erstellen', copy: 'Vorschlag nutzt Kriterien, Zufall verteilt frei.' },
-      { source: 'Sitzplan nachbearbeiten', title: 'Plan anpassen', copy: 'Personen lassen sich umsetzen und die Perspektive wechseln.' },
-      { source: 'Belegung oder Raster zurücksetzen', title: 'Plan zurücksetzen', copy: 'Belegung und Raster lassen sich gezielt zurücksetzen.' },
-      { source: ['Sitzplan speichern', 'Im Notenmodul speichern'], title: 'Plan ausgeben', copy: 'Der Sitzplan lässt sich laden, speichern oder drucken.' },
-      { source: 'Noten am Sitzplatz eingeben', title: 'Noten am Sitzplatz', copy: 'Noten lassen sich direkt am Platz eintragen und im Kurs speichern.' },
-    ],
-    [TAB_MERGER]: [
-      {
-        source: 'Werkzeugauswahl',
-        title: 'Werkzeuge im Überblick',
-        copy: 'Die vier Schaltflächen öffnen Layout, Verbinden, Drehen und Aufteilen.',
-        target: mergerFrameTarget('.tool-tab-bar', (nodes) => nodes.tabMerger),
-      },
-      {
-        source: 'Seiten auf ein Blatt',
-        title: 'Seiten anordnen',
-        copy: 'Diese Schaltfläche erstellt nach Datei und Einstellungen das Seitenlayout.',
-        target: mergerFrameTarget('#layoutStartButton', (nodes) => nodes.tabMerger),
-        placement: 'top',
-      },
-      {
-        source: 'Dateien verbinden',
-        title: 'Dateien verbinden',
-        copy: 'Diese Schaltfläche verbindet die ausgewählten Dateien in ihrer Reihenfolge.',
-        target: mergerFrameTarget('#mergeStartButton', (nodes) => nodes.tabMerger),
-        placement: 'top',
-      },
-      {
-        source: 'PDF drehen',
-        title: 'PDF drehen',
-        copy: 'Diese Schaltfläche erstellt die PDF mit den gewählten Drehungen.',
-        target: mergerFrameTarget('#rotateStartButton', (nodes) => nodes.tabMerger),
-        placement: 'top',
-      },
-      {
-        source: 'PDF aufteilen',
-        title: 'PDF aufteilen',
-        copy: 'Diese Schaltfläche erstellt die gewählte gemeinsame oder einzelne Ausgabe.',
-        target: mergerFrameTarget('#splitStartButton', (nodes) => nodes.tabMerger),
-        placement: 'top',
-      },
-    ],
-    [TAB_GROUPS]: [
-      { source: 'Namensliste importieren', title: 'Liste und Größe', copy: 'Hier werden die Liste importiert und Gruppengrößen gewählt.' },
-      { source: 'Gruppenraster', title: 'Gruppen bilden', copy: 'Lernende lassen sich in die Gruppen ziehen.' },
-      { source: 'Vorschlag erzeugen', title: 'Vorschlag nutzen', copy: 'Kriterien lassen sich festlegen und für Vorschläge nutzen.' },
-      { source: 'Gruppen sperren', title: 'Gruppe sperren', copy: 'Ein Doppelklick sperrt eine Gruppe.' },
-      { source: 'Gruppenthemen eintragen', title: 'Gruppen bearbeiten', copy: 'Themen, weitere Gruppen und Löschungen lassen sich hier verwalten.' },
-      { source: 'Belegung zurücksetzen', title: 'Belegung zurücksetzen', copy: 'Beim Zurücksetzen bleibt die Liste erhalten.' },
-      { source: 'Gruppeneinteilung speichern', title: 'Plan ausgeben', copy: 'Die Einteilung lässt sich laden, speichern oder drucken.' },
-    ],
-    [TAB_RANDOM_PICKER]: [
-      { source: 'Gemeinsame Namensliste', title: 'Liste wählen', copy: 'Picker und Gruppen nutzen dieselbe Liste.' },
-      { source: 'Auswahlbedingungen öffnen', title: 'Chancen festlegen', copy: 'Personen lassen sich auf normal, sicher oder ausgeschlossen setzen.' },
-      { source: 'Auswahl starten', title: 'Auswahl starten', copy: 'Das Rad startet die Auswahl; die mittlere Karte zeigt das Ergebnis.' },
-      { source: 'Pickerstand speichern', title: 'Stand speichern', copy: 'Liste und Chancen lassen sich speichern oder laden.' },
-    ],
-    [TAB_DUPLICATE_CHECK]: [
-      { source: 'Prüfkriterien auswählen', title: 'Regeln wählen', copy: 'Hier lassen sich Namen, Größe und Bildähnlichkeit prüfen.' },
-      { source: 'Abgaben als ZIP prüfen', title: 'ZIP prüfen', copy: 'Die Abgaben werden als ZIP-Datei geladen.' },
-      { source: 'Zusammenfassung', title: 'Ergebnis lesen', copy: 'Die Zusammenfassung zeigt Dateien und mögliche Treffer.' },
-      { source: 'Duplikatgruppen', title: 'Treffer prüfen', copy: 'Gruppen lassen sich öffnen und Bilder bei Bedarf vergleichen.' },
-      { source: 'Originale bleiben unverändert', title: 'Sicher prüfen', copy: 'Die Originale in der ZIP bleiben unverändert.' },
-    ],
-    [TAB_WORK_PHASE]: [
-      { source: 'Arbeitsphase im Überblick', title: 'Arbeitsauftrag', copy: 'Auftrag, Timer und Ampel können zusammen laufen.' },
-      { source: 'Arbeitsdauer festlegen', title: 'Timer einstellen', copy: 'Hier lassen sich Dauer, Töne und Sekundenanzeige wählen.' },
-      { source: 'Arbeitszeit starten', title: 'Timer steuern', copy: 'Der Timer zeigt Restzeit, Warnungen und die Stopp-Funktion.' },
-      { source: 'Ampelschwellen festlegen', title: 'Ampel einstellen', copy: 'Hier lassen sich Schwellen und Warntöne festlegen.' },
-      { source: 'Lautstärkeüberwachung starten', title: 'Ampel starten', copy: 'Die Messung benötigt die Mikrofonfreigabe und lässt sich stoppen.' },
-      { source: 'Präsentationsansicht', title: 'Präsentieren', copy: 'Im Vollbild bleiben Timer und Mikrofon erreichbar.' },
-    ],
-    [TAB_QR]: [
-      { source: 'QR-Werkzeuge auswählen', title: 'Werkzeug wählen', copy: 'Hier lassen sich QR-Codes erstellen oder auslesen.' },
-      { source: 'Link eingeben', title: 'QR-Code erstellen', copy: 'Ein Link wird eingegeben und als QR-Code erstellt.' },
-      { source: 'QR-Code herunterladen', title: 'Code prüfen und speichern', copy: 'Das Ziel lässt sich prüfen und der Code speichern oder kopieren.' },
-      { source: 'QR-Code aus Bild lesen', title: 'QR-Code lesen', copy: 'Bild, Zwischenablage oder Kamera liefern ein kopierbares Ergebnis.' },
-    ],
-  });
-  const compactTutorialSteps = (activeTab, steps) => {
-    const flow = TUTORIAL_FLOW_STEPS[activeTab];
-    if (!Array.isArray(flow) || !Array.isArray(steps)) return steps;
-    const usedIndexes = new Set();
-    return flow.flatMap((definition) => {
-      if (typeof definition?.create === 'function') {
-        const step = definition.create();
-        return step ? [step] : [];
-      }
-      const sources = Array.isArray(definition?.source) ? definition.source : [definition?.source];
-      const index = steps.findIndex((step, stepIndex) => (
-        !usedIndexes.has(stepIndex) && sources.includes(step?.title)
-      ));
-      if (index < 0) return [];
-      usedIndexes.add(index);
-      const { source, create, ...overrides } = definition;
-      const compactedStep = { ...steps[index], ...overrides };
-      if (TUTORIAL_OPAQUE_FRAME_TABS.has(activeTab)) {
-        compactedStep.skipIfMissing = false;
-      }
-      return [compactedStep];
-    });
-  };
-  const applyTutorialStepBudget = (activeTab, definition) => {
-    const budget = TUTORIAL_STEP_BUDGETS[activeTab];
-    if (!Number.isFinite(budget)) return definition;
-    const steps = Array.isArray(definition) ? definition : definition?.steps;
-    if (!Array.isArray(steps)) return definition;
-    const limitedSteps = steps.slice(0, budget);
-    return Array.isArray(definition) ? limitedSteps : { ...definition, steps: limitedSteps };
-  };
   let requestedQrTutorialTool = 'generator';
   let requestedQrTutorialSurface = '';
   let qrTutorialLoadFrame = null;
@@ -997,7 +826,6 @@ import {
               copy,
               target: gradesTarget(selector),
               placement,
-              // Do not remove a demo step while its iframe is switching views.
               skipIfMissing: false,
               ...options,
               beforeRender: () => prepareGradesTutorialSurface(surface),
@@ -1035,9 +863,8 @@ import {
           );
           const databaseSteps = [
             databaseConnectionStep,
-            ...(shellSupportsExternalFileSync
-              ? [encryptionStep, backupStep]
-              : [backupStep, encryptionStep]),
+            encryptionStep,
+            backupStep,
           ];
           const setupSteps = [
             gradesStep(
@@ -1151,6 +978,13 @@ import {
               'top'
             ),
             gradesStep(
+              'Spalten per Rechtsklick verwalten',
+              'Ein Rechtsklick auf eine Leistungsspalte öffnet Aktionen zum Bearbeiten und Übertragen.',
+              'th[data-grade-transfer-column-key]',
+              'gradesOverviewTable',
+              'top'
+            ),
+            gradesStep(
               'Datenschutzmodus',
               'Für Gespräche bleibt eine Person sichtbar, alle anderen Noten werden verdeckt.',
               '[data-tutorial-anchor="grades-privacy"]',
@@ -1211,8 +1045,6 @@ import {
               title,
               copy,
               target: planningFrameTarget(selector, fallback),
-              // The demo iframe can still be rendering when a surface changes.
-              // Keep its step instead of shortening the tutorial in that brief gap.
               skipIfMissing: false,
               ...options,
               beforeRender: () => preparePlanningTutorialSurface(surface),
@@ -1439,8 +1271,8 @@ import {
           createModuleTutorialStep({
             tab: TAB_MERGER,
             title: 'Dateireihenfolge',
-            copy: 'Sortiere geladene PDFs per Drag-and-drop, ergänze oder entferne sie.',
-            target: mergerFrameTarget(['#mergeFileListShell:not(.hidden)', '#mergeAppendFileList:not(:empty)']),
+            copy: 'Nach dem Laden erscheint hier die Dateiliste. Per Drag-and-drop legst du die Reihenfolge fest; weitere PDFs lassen sich ergänzen oder entfernen.',
+            target: mergerFrameTarget(['#mergeFileListShell:not(.hidden)', '#mergeAppendFileList:not(:empty)', '#mergeDropZone']),
             placement: 'top',
             beforeRender: () => openMergerToolForTutorial('merge'),
           }),
@@ -1471,8 +1303,8 @@ import {
           createModuleTutorialStep({
             tab: TAB_MERGER,
             title: 'Einzelne Seiten drehen',
-            copy: 'Nach dem Laden drehst du einzelne Seiten und prüfst die Vorschau.',
-            target: mergerFrameTarget(['.rotate-page-card', '#rotatePagesList:not(:empty)']),
+            copy: 'Nach dem Laden erscheinen hier die Seitenvorschauen. Die Drehschaltflächen gelten jeweils nur für die ausgewählte Seite.',
+            target: mergerFrameTarget(['.rotate-page-card', '#rotatePagesList:not(:empty)', '#rotateDropZone']),
             placement: 'top',
             beforeRender: () => openMergerToolForTutorial('rotate'),
           }),
@@ -1495,11 +1327,12 @@ import {
           createModuleTutorialStep({
             tab: TAB_MERGER,
             title: 'Seitenauswahl',
-            copy: 'Wähle Seiten einzeln oder mit Sammelaktionen aus.',
+            copy: 'Nach dem Laden erscheinen hier alle Seiten. Einzelne Seiten und Sammelaktionen bestimmen, was ausgegeben wird.',
             target: mergerFrameTarget([
               '.split-page-card',
               '#splitPagesList:not(:empty)',
               '.split-toolbar-group-selection',
+              '#splitDropZone',
             ]),
             placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
@@ -1515,8 +1348,8 @@ import {
           createModuleTutorialStep({
             tab: TAB_MERGER,
             title: 'Seitengruppen',
-            copy: 'Bilde Bereiche oder ziehe Seiten direkt in andere Gruppen.',
-            target: mergerFrameTarget(['#splitGroupRowsList:not(:empty)', '.split-toolbar-group-config']),
+            copy: 'Im Gruppenmodus bildest du Seitenbereiche. Geladene Seiten lassen sich per Drag-and-drop einer anderen Gruppe zuordnen.',
+            target: mergerFrameTarget(['#splitGroupRowsList:not(:empty)', '.split-toolbar-group-config', '#splitOutputModeGroup']),
             placement: 'top',
             beforeRender: () => openMergerToolForTutorial('split'),
           }),
@@ -1615,23 +1448,23 @@ import {
             }),
             createModuleTutorialStep({
               tab: TAB_SEATPLAN,
-              title: 'Belegung oder Raster zurücksetzen',
-              copy: 'Dieser Button löst nur die Lernenden von den Plätzen; Raumform und aktive Plätze bleiben erhalten.',
+              title: 'Perspektive umdrehen',
+              copy: 'Die Spiegelung wechselt zwischen der Sicht der Lehrkraft und der Sicht der Lernenden.',
+              target: seatplanFrameTarget('#toggle-perspective', seatplanFallback),
+              placement: 'right',
+            }),
+            createModuleTutorialStep({
+              tab: TAB_SEATPLAN,
+              title: 'Belegung zurücksetzen',
+              copy: 'Diese Aktion löst nur die Lernenden von den Plätzen. Raumform und aktive Plätze bleiben erhalten.',
               target: seatplanFrameTarget('#reset-learners', seatplanFallback),
               placement: 'right',
             }),
             createModuleTutorialStep({
               tab: TAB_SEATPLAN,
               title: 'Platzraster zurücksetzen',
-              copy: 'Damit entfernst du die aktive Raumform und beginnst das Raster neu.',
+              copy: 'Diese Aktion entfernt die Raumform und alle aktiven Plätze, damit das Raster neu aufgebaut werden kann.',
               target: seatplanFrameTarget('#reset-raster', seatplanFallback),
-              placement: 'right',
-            }),
-            createModuleTutorialStep({
-              tab: TAB_SEATPLAN,
-              title: 'Perspektive umdrehen',
-              copy: 'Spiegle den fertigen Sitzplan horizontal, um zwischen der Sicht der Lehrkraft und der Sicht der Lernenden zu wechseln.',
-              target: seatplanFrameTarget('#toggle-perspective', seatplanFallback),
               placement: 'right',
             }),
           ];
@@ -2336,13 +2169,9 @@ import {
 
   const getCurrentModuleTutorialSteps = ({ activeTab } = {}) => {
     const definition = getModuleTutorialDefinition({ activeTab });
-    const rawSteps = Array.isArray(definition) ? definition : definition?.steps;
-    const compactedSteps = compactTutorialSteps(activeTab, rawSteps);
-    const compactedDefinition = Array.isArray(definition)
-      ? compactedSteps
-      : { ...definition, steps: compactedSteps };
+    const steps = Array.isArray(definition) ? definition : definition?.steps;
     const intro = MODULE_TUTORIAL_INTRO[activeTab];
-    if (!intro) return applyTutorialStepBudget(activeTab, compactedDefinition);
+    if (!intro) return definition;
     const introStep = createModuleTutorialStep({
       tab: activeTab,
       ...intro,
@@ -2350,13 +2179,13 @@ import {
       anchor: 'center',
       skipIfMissing: !TUTORIAL_OPAQUE_FRAME_TABS.has(activeTab),
     });
-    if (Array.isArray(compactedDefinition)) {
-      return applyTutorialStepBudget(activeTab, [introStep, ...compactedDefinition]);
+    if (Array.isArray(definition)) {
+      return [introStep, ...definition];
     }
-    return applyTutorialStepBudget(activeTab, {
-      ...compactedDefinition,
-      steps: [introStep, ...(Array.isArray(compactedDefinition?.steps) ? compactedDefinition.steps : [])],
-    });
+    return {
+      ...definition,
+      steps: [introStep, ...(Array.isArray(steps) ? steps : [])],
+    };
   };
 
   function bindTabNavigation() {
@@ -2393,8 +2222,6 @@ import {
     const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
     const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
     const backupDirectoryConnected = Boolean(workspaceOwner?.backupState?.directoryHandle);
-    // Tutorials remain available with isolated example data before persistence
-    // has been set up. Once it is set up, protect the current workspace first.
     if (!databaseConnected || !backupDirectoryConnected) return true;
     try {
       const created = await workspaceOwner.createLatestWebBackup?.('tutorial', true);
@@ -2433,11 +2260,6 @@ import {
         if (frame !== getPlanningFrame()) return;
         const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
         bridgeController?.dispatchGradesNavigation?.(detail);
-        // Let the grades module request its visible destination once it has
-        // actually completed the navigation. This keeps the planning view in
-        // place while a locked vault is being unlocked, but still opens the
-        // grades entry afterwards. Seatplans likewise go straight to their
-        // own tab instead of flashing the grades tab in between.
         return;
       }
       if (data.type === GRADES_GRADE_VAULT_ACTIVITY_EVENT) {
@@ -3395,22 +3217,20 @@ import {
     if (!card) return;
     card.classList.add('is-empty-state');
     card.replaceChildren();
-    const box = document.createElement('div');
-    box.className = 'empty-state-box';
     const titleEl = document.createElement('span');
     titleEl.className = 'empty-state-title';
     titleEl.textContent = title;
     const copyEl = document.createElement('span');
     copyEl.className = 'empty-state-copy';
     copyEl.textContent = copy;
-    box.append(titleEl, copyEl);
-    card.appendChild(box);
+    card.append(titleEl, copyEl);
   }
   function updateRandomPickerCards(centerIndex = 0, { final = false } = {}) {
     if (!els.randomPickerCards?.length) return;
     const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
     const names = getRandomPickerNames({ includeZeroWeight: true });
     const total = names.length;
+    els.randomPickerWheel?.closest('.random-picker-machine')?.classList.toggle('is-empty-state', !total);
     const cards = Array.from(els.randomPickerCards);
     if (!total) {
       const emptyLabel = allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen importiert';
@@ -6180,10 +6000,6 @@ import {
     const preserveSourceTab = detail?.preserveSourceTab !== false;
     const gradesTabIsActive = appEl.classList.contains('app-tab-grades');
 
-    // The grades shell never carries a hidden attribute. That keeps the vault
-    // form semantically available to password managers even when another tool
-    // is active; CSS alone controls whether the shell or only its modal overlay
-    // is painted.
     if (isOpen) {
       gradeVaultOverlayPreservesSourceTab = preserveSourceTab;
       if (preserveSourceTab && !gradesTabIsActive) {

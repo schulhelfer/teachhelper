@@ -22,6 +22,7 @@ test('integrates an accessible, blurred installation dialog into the offline app
   assert.match(htmlSource, /id="pwa-install-dialog-later"[\s\S]*id="pwa-install-dialog-install"/);
   assert.match(mainSource, /import \{ createPwaInstallPrompt \} from '\.\/app\/pwa-install-prompt\.js';/);
   assert.match(mainSource, /pwaInstallPrompt\.showIfNeeded\(\);/);
+  assert.match(shellStyles, /dialog\s*\{[\s\S]*?border: 1px solid var\(--module-surface-border\);[\s\S]*?border-radius: var\(--module-surface-radius\);[\s\S]*?background: var\(--module-surface-strong\);[\s\S]*?box-shadow: var\(--module-surface-shadow\);/);
   assert.match(shellStyles, /\.pwa-install-dialog::backdrop[\s\S]*blur\(8px\)/);
   assert.match(serviceWorkerSource, /'\.\/src\/app\/pwa-install-prompt\.js'/);
 });

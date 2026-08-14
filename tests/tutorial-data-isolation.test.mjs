@@ -6,7 +6,9 @@ const [
   tutorialSource,
   mainSource,
   planningSource,
+  planningBridgeSource,
   gradesSource,
+  gradesBridgeSource,
   seatplanSource,
   duplicateSource,
   qrSource,
@@ -15,7 +17,9 @@ const [
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/planning/bridge.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/grades/bridge.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/duplicate-check/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8'),
@@ -26,6 +30,20 @@ test('automatic tutorial demos replace the step set and retain their cleanup', (
   assert.match(tutorialSource, /const activateDemoDefinition = \(definition\) => \{/);
   assert.match(tutorialSource, /setStepSet\(result\.steps \|\| definition\.demo\.steps \|\| definition\.steps\)/);
   assert.match(tutorialSource, /if \(contextualDefinition\.demo\.auto\) \{\s+activateDemoDefinition\(contextualDefinition\)/);
+});
+
+test('grades tutorial commands reach the grades tutorial presentation', () => {
+  assert.match(gradesBridgeSource, /function withGradesTutorialApi\(callback, attempt = 0\)/);
+  assert.match(gradesBridgeSource, /window\.__teachhelperGradesTutorial \|\| null/);
+  assert.doesNotMatch(gradesBridgeSource, /__teachhelperPlanningTutorial/);
+  assert.match(gradesBridgeSource, /withGradesTutorialApi\(\(api\) => api\.showSurface\?\.\(/);
+});
+
+test('planning tutorial commands reach the planning tutorial presentation', () => {
+  assert.match(planningBridgeSource, /TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command'/);
+  assert.match(planningBridgeSource, /function withPlanningTutorialApi\(callback, attempt = 0\)/);
+  assert.match(planningBridgeSource, /window\.__teachhelperPlanningTutorial \|\| null/);
+  assert.match(planningBridgeSource, /withPlanningTutorialApi\(\(api\) => api\.showSurface\?\.\(/);
 });
 
 test('data-bearing module tutorials use automatic isolated examples', () => {

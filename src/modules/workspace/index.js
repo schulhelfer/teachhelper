@@ -25,11 +25,6 @@ import { createWorkspaceRuntime } from './runtime.js';
 
 export const WORKSPACE_GLOBAL_KEY = '__teachhelperWorkspaceController';
 
-// Workspace requests carry a client field for routing and state updates. That
-// field is never an authority boundary for frame messages: the message bridge
-// derives the client from the registered WindowProxy instead. Keeping the
-// capability lists here additionally limits direct WorkspaceClient calls to
-// the operations their module actually needs.
 const WORKSPACE_COMMAND_CAPABILITIES = Object.freeze({
   shell: null,
   planning: new Set([
@@ -178,8 +173,6 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
   let queue = Promise.resolve();
   let disposed = false;
 
-  // The shell owns this stable identity. Attached service implementations stay
-  // private and can never become the owner observed by a workspace client.
   const owner = new Proxy(Object.create(null), {
     get(_target, property) {
       if (property === 'store') return store;
@@ -424,8 +417,6 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
       const identity = messageSources.get(source);
       if (!identity || disposed) return null;
       const request = rawRequest && typeof rawRequest === 'object' ? rawRequest : {};
-      // Do not let a same-origin frame select a more privileged client in its
-      // payload. The WindowProxy registration is the sole source of identity.
       return execute({ ...request, client: identity.client }, identity);
     },
     getOwner: () => owner,

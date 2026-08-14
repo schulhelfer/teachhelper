@@ -10,7 +10,6 @@
     requestedTheme = new URL(window.location.href).searchParams.get('theme') || '';
     preference = window.localStorage?.getItem(storageKey) || preference;
   } catch {
-    // Sandboxed module frames may not have storage. Their parent supplies theme.
   }
 
   const systemDark = window.matchMedia?.('(prefers-color-scheme: dark)').matches;

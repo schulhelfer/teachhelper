@@ -11,10 +11,6 @@ function isMatchingTarget(expected, actual) {
   );
 }
 
-/**
- * Opens an existing contextual action after a stationary touch hold while keeping
- * the subsequent synthetic click and native context menu from reaching the UI.
- */
 export function installTouchLongPress(root, options = {}) {
   if (!root || typeof root.addEventListener !== "function") {
     return () => {};

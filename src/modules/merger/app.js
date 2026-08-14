@@ -31,6 +31,7 @@ export function createMergerApp({
   const TOOL_LAYOUT = "layout";
   const TOOL_ROTATE = "rotate";
   const TOOL_SPLIT = "split";
+  const JSZIP_URL = new URL("../../vendor/jszip/3.10.1/jszip.min.js", import.meta.url);
   const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
     ? new URL(import.meta.url).origin
     : window.location.origin;
@@ -293,6 +294,7 @@ export function createMergerApp({
   let resultOpenUrl = null;
   let messageListener = null;
   let splitDragPreviewElement = null;
+  let jsZipLoadPromise = null;
   const MACOS_PERMISSION_HINT_MESSAGE = [
     "macOS blockiert manchmal den Zugriff auf Dateien.",
     "",
@@ -1955,6 +1957,10 @@ export function createMergerApp({
             return `${getBaseName(filename || "PDF")} - Teil ${String(index + 1).padStart(width, "0")}.pdf`;
           }
 
+          function buildSplitArchiveOutputName(filename) {
+            return `${getBaseName(filename || "PDF")} - aufgeteilt.zip`;
+          }
+
           function getPaddingModeValue() {
             const selected = ui.paddingModes.find((radio) => radio.checked);
             return selected ? selected.value : "blank";
@@ -2083,6 +2089,13 @@ export function createMergerApp({
               renderSplitSelection();
               return;
             }
+          }
+
+          function clearSharedPdfFiles() {
+            mergeState.files = [];
+            mergeState.pageCountByFile.clear();
+            renderMergeFileList();
+            [TOOL_LAYOUT, TOOL_ROTATE, TOOL_SPLIT].forEach(clearSingleToolFile);
           }
 
           function normalizeRotationAngle(angle) {
@@ -3425,14 +3438,50 @@ export function createMergerApp({
             showResultDialog(messages.join("\n"), "warn", "Hinweis");
           }
 
-	          async function addMergeFiles(fileList) {
+	          async function applyValidatedSingleToolFile(tool, file) {
+	            const state = getToolFileState(tool);
+	            if (!state) return;
+	            state.file = file;
+	            if (tool === TOOL_LAYOUT) {
+	              renderLayoutSelection();
+	              await updateSpecialThreeModeAvailability(file);
+	              return;
+	            }
+	            if (tool === TOOL_ROTATE) {
+	              renderRotateSelection();
+	              await initializeRotatePageSelections(file);
+	              void loadRotatePagePreviews(file);
+	              return;
+	            }
+	            if (tool === TOOL_SPLIT) {
+	              renderSplitSelection();
+	              await initializeSplitPageSelections(file);
+	              void loadSplitPagePreviews(file);
+	            }
+	          }
+
+	          async function setSharedPdfFiles(files) {
+	            const mergeFiles = Array.isArray(files) ? files.filter(Boolean) : [];
+	            const [singleToolFile] = mergeFiles;
+	            if (!singleToolFile) return;
+
+	            mergeState.files = mergeFiles;
+	            renderMergeFileList();
+	            await Promise.all([
+	              applyValidatedSingleToolFile(TOOL_LAYOUT, singleToolFile),
+	              applyValidatedSingleToolFile(TOOL_ROTATE, singleToolFile),
+	              applyValidatedSingleToolFile(TOOL_SPLIT, singleToolFile),
+	            ]);
+	          }
+
+	          async function replaceMergeFiles(fileList) {
 	            if (!fileList || !fileList.length) return;
 	            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
 	            let totalSizeMessage = "";
 	            if (accepted.length) {
 	              try {
 	                assertTotalSizeAtMost(
-	                  mergeState.files.concat(accepted),
+	                  accepted,
 	                  FILE_LIMITS.PDF_MERGE_TOTAL_BYTES,
 	                  "PDF-Auswahl"
 	                );
@@ -3443,47 +3492,15 @@ export function createMergerApp({
 	            }
 	            maybeShowFileSelectionWarning({ rejectedMessages, totalSizeMessage });
 	            if (!accepted.length) return;
-	            mergeState.files = mergeState.files.concat(accepted);
-	            renderMergeFileList();
+	            await setSharedPdfFiles(accepted);
 	          }
 
-	          async function setSingleToolFile(tool, file) {
-	            if (!file) return;
-	            try {
-	              await validatePdfFile(file);
-	            } catch (error) {
-	              showResultDialog(error && error.message ? error.message : "Bitte eine gültige PDF-Datei auswählen.", "warn", "Hinweis");
-	              return;
-	            }
-
-            const state = getToolFileState(tool);
-            if (!state) return;
-            state.file = file;
-            if (tool === TOOL_LAYOUT) {
-              renderLayoutSelection();
-              await updateSpecialThreeModeAvailability(file);
-              return;
-            }
-            if (tool === TOOL_ROTATE) {
-              renderRotateSelection();
-              await initializeRotatePageSelections(file);
-              void loadRotatePagePreviews(file);
-              return;
-            }
-            if (tool === TOOL_SPLIT) {
-              renderSplitSelection();
-              await initializeSplitPageSelections(file);
-              void loadSplitPagePreviews(file);
-              return;
-            }
-          }
-
-	          async function setSingleToolFileFromSelection(tool, fileList) {
+	          async function setSingleToolFileFromSelection(fileList) {
 	            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
 	            const ignoredExtraCount = Math.max(0, accepted.length - 1);
 	            maybeShowFileSelectionWarning({ rejectedMessages, ignoredExtraCount });
 	            if (!accepted.length) return;
-	            await setSingleToolFile(tool, accepted[0]);
+	            await setSharedPdfFiles([accepted[0]]);
 	          }
 
           function openSharedPdfPicker(target) {
@@ -3645,6 +3662,45 @@ export function createMergerApp({
             syncLayoutStartButtonState();
           }
 
+          function hasJsZipLoaded() {
+            return Boolean(window.JSZip && typeof window.JSZip === "function");
+          }
+
+          function loadJsZipScript() {
+            return new Promise((resolve, reject) => {
+              if (!document.head) {
+                reject(new Error("ZIP-Library kann in dieser Umgebung nicht geladen werden."));
+                return;
+              }
+
+              const script = document.createElement("script");
+              script.src = JSZIP_URL.href;
+              script.async = true;
+              script.onload = () => resolve();
+              script.onerror = () => {
+                script.remove();
+                reject(new Error(`ZIP-Library konnte nicht geladen werden: ${JSZIP_URL.pathname}`));
+              };
+              document.head.append(script);
+            });
+          }
+
+          async function ensureJsZipLoaded() {
+            if (hasJsZipLoaded()) return window.JSZip;
+            if (!jsZipLoadPromise) {
+              jsZipLoadPromise = loadJsZipScript()
+                .then(() => {
+                  if (!hasJsZipLoaded()) throw new Error("ZIP-Library wurde geladen, ist aber unvollständig.");
+                  return window.JSZip;
+                })
+                .catch((error) => {
+                  jsZipLoadPromise = null;
+                  throw error;
+                });
+            }
+            return jsZipLoadPromise;
+          }
+
           function triggerDownload(url, outputName) {
             const anchor = document.createElement("a");
             anchor.href = url;
@@ -3652,17 +3708,23 @@ export function createMergerApp({
             anchor.click();
           }
 
-          async function deliverMultiplePdfs(outputs, successMessage) {
-            for (let index = 0; index < outputs.length; index += 1) {
-              const output = outputs[index];
-              const url = URL.createObjectURL(new Blob([output.bytes], { type: "application/pdf" }));
-              triggerDownload(url, output.name);
-              setTimeout(() => URL.revokeObjectURL(url), 30_000);
-              if (index < outputs.length - 1) {
-                await new Promise((resolve) => setTimeout(resolve, 80));
-              }
+          async function deliverMultiplePdfs(outputs, archiveName) {
+            if (outputs.length === 1) {
+              await deliverSinglePdf(outputs[0].bytes, outputs[0].name, "PDF erstellt.");
+              return;
             }
-            showResultDialog(successMessage, "ok", "");
+
+            const JSZip = await ensureJsZipLoaded();
+            const archive = new JSZip();
+            outputs.forEach((output) => archive.file(output.name, output.bytes));
+            const archiveBytes = await runPdfOperation(
+              () => archive.generateAsync({ type: "uint8array", compression: "STORE" }),
+              "ZIP-Archiv erstellen"
+            );
+            const url = URL.createObjectURL(new Blob([archiveBytes], { type: "application/zip" }));
+            triggerDownload(url, archiveName);
+            setTimeout(() => URL.revokeObjectURL(url), 120_000);
+            showResultDialog(`${outputs.length} PDFs als ZIP-Download erstellt.`, "ok", "", url);
           }
 
           async function deliverSinglePdf(bytes, outputName, successMessage) {
@@ -3954,10 +4016,7 @@ export function createMergerApp({
                       : buildSplitPartOutputName(splitState.file.name, index, groups.length),
                   });
                 }
-                await deliverMultiplePdfs(
-                  outputs,
-                  outputs.length === 1 ? "PDF erstellt." : `${outputs.length} PDFs erstellt.`
-                );
+                await deliverMultiplePdfs(outputs, buildSplitArchiveOutputName(splitState.file.name));
               } else {
                 const outBytes = await createPdfFromPageIndexes(PDFLib, sourceDoc, getOrderedActiveSplitPageIndexes());
                 await deliverSinglePdf(
@@ -4064,10 +4123,10 @@ export function createMergerApp({
             pendingPickerTarget = null;
             if (!files.length || !target) return;
             if (target.tool === TOOL_MERGE) {
-              await addMergeFiles(files);
+              await replaceMergeFiles(files);
               return;
             }
-            await setSingleToolFileFromSelection(target.tool, files);
+            await setSingleToolFileFromSelection(files);
           });
 
           [ui.layoutDropSummary, ui.rotateDropSummary, ui.splitDropSummary].forEach((summary) => {
@@ -4076,30 +4135,30 @@ export function createMergerApp({
               if (!removeButton) return;
               event.preventDefault();
               event.stopPropagation();
-              clearSingleToolFile(removeButton.dataset.clearTool);
+              clearSharedPdfFiles();
             });
           });
 
           bindFileDropZone({
             dropZone: ui.mergeDropZone,
             openPicker: () => openSharedPdfPicker({ tool: TOOL_MERGE, multiple: true }),
-            onFilesDropped: addMergeFiles,
+            onFilesDropped: replaceMergeFiles,
             shouldOpenPicker: (event) => !event.target.closest("#mergeFileListShell"),
           });
           bindFileDropZone({
             dropZone: ui.layoutDropZone,
             openPicker: () => openSharedPdfPicker({ tool: TOOL_LAYOUT, multiple: false }),
-            onFilesDropped: (files) => setSingleToolFileFromSelection(TOOL_LAYOUT, files),
+            onFilesDropped: setSingleToolFileFromSelection,
           });
           bindFileDropZone({
             dropZone: ui.rotateDropZone,
             openPicker: () => openSharedPdfPicker({ tool: TOOL_ROTATE, multiple: false }),
-            onFilesDropped: (files) => setSingleToolFileFromSelection(TOOL_ROTATE, files),
+            onFilesDropped: setSingleToolFileFromSelection,
           });
           bindFileDropZone({
             dropZone: ui.splitDropZone,
             openPicker: () => openSharedPdfPicker({ tool: TOOL_SPLIT, multiple: false }),
-            onFilesDropped: (files) => setSingleToolFileFromSelection(TOOL_SPLIT, files),
+            onFilesDropped: setSingleToolFileFromSelection,
           });
           ui.mergeAppendFileList.addEventListener("dragstart", (event) => {
             const row = event.target.closest(".file-item");
@@ -4164,9 +4223,7 @@ export function createMergerApp({
             if (!removeButton) return;
             const index = Number(removeButton.dataset.removeIndex);
             if (!Number.isInteger(index) || index < 0 || index >= mergeState.files.length) return;
-            const [removedFile] = mergeState.files.splice(index, 1);
-            mergeState.pageCountByFile.delete(removedFile);
-            renderMergeFileList();
+            clearSharedPdfFiles();
           });
 
           ui.studentCount.addEventListener("input", () => {

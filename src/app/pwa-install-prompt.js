@@ -57,7 +57,6 @@ function writeSessionFlag(storage, key) {
   try {
     storage?.setItem(key, '1');
   } catch {
-    // Storage can be unavailable in privacy-restricted browser sessions.
   }
 }
 
@@ -65,8 +64,6 @@ function getSessionStorage(windowRef) {
   try {
     return windowRef?.sessionStorage ?? null;
   } catch {
-    // Sandboxed iframe documents without allow-same-origin have an opaque
-    // origin and accessing the storage getter itself throws a SecurityError.
     return null;
   }
 }

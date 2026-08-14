@@ -683,6 +683,7 @@
             gridCols: 10,
             activeSeats: new Set(),
             dragSourceSeat: null,
+            dragSourceTable: null,
             dragPayloadType: null,
             headers: [],
             delim: ',',
@@ -775,6 +776,7 @@
           const supportsTouchDrag = typeof window !== 'undefined'
             && (('ontouchstart' in window) || touchPoints > 0);
           let touchDragState = null;
+          let mergedTableDragClickSuppressedUntil = 0;
           const MIN_VISIBLE_GRID_DIMENSION = 10;
           const GRID_LAYOUT_DEFAULTS = {
             seatWidth: 90,
@@ -945,11 +947,10 @@
           function updateCsvStatusDisplay() {
             if (!els.csvStatus) return;
             if (isCourseSeatplanMode()) {
-              const count = Array.isArray(state.students) ? state.students.length : 0;
-              const courseName = String(state.courseContext?.courseName || 'Kurs').trim() || 'Kurs';
-              renderCsvStatus(`${courseName}: ${count} Kursteilnehmer aus dem Notenmodul`);
+              els.csvStatus.hidden = true;
               return;
             }
+            els.csvStatus.hidden = false;
             renderCsvStatus(state.csvName);
           }
 
@@ -1019,9 +1020,6 @@
 
           function requestGradeRosterCourses({ interactive = false, unlock = false } = {}) {
             if (TUTORIAL_DEMO_MODE || !canImportGradeRoster() || !window.parent || window.parent === window) return;
-            // Layout messages may be emitted repeatedly while the shell settles.
-            // The course list is cached until the user explicitly opens the
-            // import menu, so those messages must not start a refresh loop.
             if (!interactive && (pendingGradeRosterCoursesRequestId || gradeRosterCoursesState !== 'idle')) return;
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
             pendingGradeRosterCoursesRequestId = requestId;
@@ -3917,7 +3915,7 @@
             const target = els.grid || els.gridWrap;
             if (!target) return;
             const rect = target.getBoundingClientRect();
-            const marginMm = 8; // must match @page margin
+            const marginMm = 8;
             const mmPerIn = 25.4;
             const marginIn = marginMm / mmPerIn;
             const a4Landscape = { widthIn: 297 / mmPerIn, heightIn: 210 / mmPerIn };
@@ -4993,9 +4991,9 @@
               for (let pass = 0; pass < 11; pass += 1) {
                 const mid = (low + high) / 2;
                 content.style.fontSize = `${mid}px`;
-                content.style.lineHeight = mid <= 10 ? '1' : '1.02';
+                content.style.lineHeight = mid <= 10 ? '1.08' : '1.12';
                 nameBlock.style.fontSize = `${mid}px`;
-                nameBlock.style.lineHeight = mid <= 10 ? '1' : '1.02';
+                nameBlock.style.lineHeight = mid <= 10 ? '1.08' : '1.12';
                 if (seatNameBlockFits(nameBlock, availableWidth, availableHeight)) {
                   low = mid;
                 } else {
@@ -5012,7 +5010,7 @@
               return;
             }
             const sharedSize = Math.min(...fitted.map(item => item.size));
-            const lineHeight = sharedSize <= 10 ? '1' : '1.02';
+            const lineHeight = sharedSize <= 10 ? '1.08' : '1.12';
             fitted.forEach(({ content, nameBlock }) => {
               content.style.fontSize = `${sharedSize}px`;
               content.style.lineHeight = lineHeight;
@@ -5037,6 +5035,7 @@
           function handleGridLinkClick(e) {
             const link = e.target.closest('.grid-link');
             if (!link) return;
+            if (Date.now() < mergedTableDragClickSuppressedUntil) return;
             const aId = link.dataset.a;
             const bId = link.dataset.b;
             const merged = link.dataset.merged === '1';
@@ -5081,6 +5080,102 @@
           function pairKey(a, b) {
             if (!a || !b) return null;
             return [a, b].sort().join('|');
+          }
+
+          function getSeatCoordinates(id) {
+            const [row, column] = String(id || '').split('-').map(Number);
+            if (!Number.isInteger(row) || !Number.isInteger(column)) return null;
+            if (row < 1 || row > state.gridRows || column < 1 || column > state.gridCols) return null;
+            return { row, column };
+          }
+
+          function getMergedTableDescriptor(seatId) {
+            if (!seatId || !state.mergedPairs?.size) return null;
+            const matchingKeys = [...state.mergedPairs].filter(key => {
+              const [aId, bId] = String(key || '').split('|');
+              return aId === seatId || bId === seatId;
+            });
+            if (matchingKeys.length !== 1) return null;
+            const key = matchingKeys[0];
+            const [firstId, secondId] = String(key || '').split('|');
+            if (!firstId || !secondId || !state.activeSeats.has(firstId) || !state.activeSeats.has(secondId)) return null;
+            if (state.seats[firstId] === 'TEACHER' || state.seats[secondId] === 'TEACHER') return null;
+            const first = getSeatCoordinates(firstId);
+            const second = getSeatCoordinates(secondId);
+            if (!first || !second) return null;
+            const rowDistance = Math.abs(first.row - second.row);
+            const columnDistance = Math.abs(first.column - second.column);
+            if ((rowDistance + columnDistance) !== 1) return null;
+            const orientation = columnDistance === 1 ? 'horizontal' : 'vertical';
+            const firstIsAnchor = orientation === 'horizontal'
+              ? first.column < second.column
+              : first.row < second.row;
+            const anchorId = firstIsAnchor ? firstId : secondId;
+            const partnerId = firstIsAnchor ? secondId : firstId;
+            const partnerKeys = [...state.mergedPairs].filter(candidate => {
+              const [aId, bId] = String(candidate || '').split('|');
+              return aId === partnerId || bId === partnerId;
+            });
+            if (partnerKeys.length !== 1) return null;
+            return { key, anchorId, partnerId, seatIds: [anchorId, partnerId], orientation };
+          }
+
+          function getMergedTableDropTarget(sourceTable, targetId) {
+            if (!sourceTable || !targetId || sourceTable.seatIds.includes(targetId)) return null;
+            const targetTable = getMergedTableDescriptor(targetId);
+            if (targetTable) {
+              if (targetTable.key === sourceTable.key) return null;
+              return { type: 'swap', table: targetTable };
+            }
+            const target = getSeatCoordinates(targetId);
+            if (!target) return null;
+            const orientations = sourceTable.orientation === 'horizontal'
+              ? ['horizontal', 'vertical']
+              : ['vertical', 'horizontal'];
+            for (const orientation of orientations) {
+              const partnerId = orientation === 'horizontal'
+                ? seatId(target.row, target.column + 1)
+                : seatId(target.row + 1, target.column);
+              if (!getSeatCoordinates(partnerId)) continue;
+              if (state.activeSeats.has(targetId) || state.activeSeats.has(partnerId)) continue;
+              if (state.seats[targetId] || state.seats[partnerId]) continue;
+              return { type: 'move', seatIds: [targetId, partnerId], orientation };
+            }
+            return null;
+          }
+
+          function applyMergedTableDropAction(tablePayload, targetId) {
+            const sourceTable = getMergedTableDescriptor(tablePayload?.anchorId);
+            if (!sourceTable || sourceTable.partnerId !== tablePayload?.partnerId) return false;
+            const target = getMergedTableDropTarget(sourceTable, targetId);
+            if (!target) return false;
+            if (target.type === 'move') {
+              const assignments = sourceTable.seatIds.map(id => state.seats[id] || null);
+              sourceTable.seatIds.forEach(id => {
+                state.activeSeats.delete(id);
+                state.seats[id] = null;
+              });
+              target.seatIds.forEach((id, index) => {
+                state.activeSeats.add(id);
+                state.seats[id] = assignments[index];
+              });
+              state.mergedPairs.delete(sourceTable.key);
+              state.mergedPairs.add(pairKey(target.seatIds[0], target.seatIds[1]));
+            } else {
+              const targetTable = target.table;
+              const sourceAssignments = sourceTable.seatIds.map(id => state.seats[id] || null);
+              const targetAssignments = targetTable.seatIds.map(id => state.seats[id] || null);
+              sourceTable.seatIds.forEach((id, index) => {
+                state.seats[id] = targetAssignments[index];
+              });
+              targetTable.seatIds.forEach((id, index) => {
+                state.seats[id] = sourceAssignments[index];
+              });
+            }
+            markOptimalScoreStale();
+            renderSeats();
+            refreshUnseated();
+            return true;
           }
 
           function removeMergesInvolving(seatIds) {
@@ -6290,6 +6385,19 @@
               if (isMerged) {
                 node.dataset.merged = '1';
                 node.classList.add('merged');
+                node.setAttribute('draggable', 'true');
+                node.title = 'Ziehen: Zweiertisch verschieben / Klicken: Verbindung lösen';
+                addMergedTableDragHandlers(node);
+                enableTouchDragSource(node, () => {
+                  const table = getMergedTableDescriptor(aId);
+                  if (!table || table.key !== pairKey(aId, bId)) return null;
+                  return {
+                    type: 'table',
+                    anchorId: table.anchorId,
+                    partnerId: table.partnerId,
+                    label: 'Zweiertisch'
+                  };
+                });
               }
               node.style.left = `${x}px`;
               node.style.top = `${y}px`;
@@ -6402,6 +6510,7 @@
               const id = seat.dataset.seat;
               const sid = state.seats[id];
               const nameEl = seat.querySelector('.name');
+              seat.classList.toggle('active', state.activeSeats.has(id));
               seat.classList.remove('teacher-seat');
               nameEl.innerHTML = '';
               if (!sid) {
@@ -6545,6 +6654,39 @@
             });
           }
 
+          function addMergedTableDragHandlers(link) {
+            if (link.dataset.tableDragBound) return;
+            link.dataset.tableDragBound = '1';
+            link.addEventListener('dragstart', event => {
+              const table = getMergedTableDescriptor(link.dataset.a);
+              if (!table || table.key !== pairKey(link.dataset.a, link.dataset.b)) {
+                event.preventDefault();
+                return;
+              }
+              event.dataTransfer.setData('text/plain', `TABLE:${table.anchorId}|${table.partnerId}`);
+              event.dataTransfer.effectAllowed = 'move';
+              state.dragSourceTable = { anchorId: table.anchorId, partnerId: table.partnerId };
+              state.dragPayloadType = 'table';
+              mergedTableDragClickSuppressedUntil = Date.now() + 500;
+              link.classList.add('dragging');
+              const preview = document.createElement('div');
+              preview.className = 'drag-preview';
+              preview.textContent = 'Zweiertisch';
+              const rect = link.getBoundingClientRect();
+              document.body.appendChild(preview);
+              if (typeof event.dataTransfer.setDragImage === 'function') {
+                event.dataTransfer.setDragImage(preview, rect.width / 2, rect.height / 2);
+              }
+              setTimeout(() => preview.remove(), 0);
+            });
+            link.addEventListener('dragend', () => {
+              state.dragSourceTable = null;
+              state.dragSourceSeat = null;
+              state.dragPayloadType = null;
+              link.classList.remove('dragging');
+            });
+          }
+
           function addDropHandlers(seat) {
             seat.addEventListener('dragover', e => { e.preventDefault(); seat.classList.add('drag-over'); });
             seat.addEventListener('dragleave', () => seat.classList.remove('drag-over'));
@@ -6555,8 +6697,14 @@
               const sourceSeat = state.dragSourceSeat;
               const dragType = state.dragPayloadType;
               const seatPayload = payload.startsWith('SEAT:') ? payload.slice(5) : null;
+              const tableMatch = /^TABLE:([^|]+)\|([^|]+)$/.exec(payload);
+              const tablePayload = tableMatch
+                ? { anchorId: tableMatch[1], partnerId: tableMatch[2] }
+                : null;
               const targetWasActive = seat.classList.contains('active');
               state.dragSourceSeat = null;
+              const sourceTable = state.dragSourceTable;
+              state.dragSourceTable = null;
               state.dragPayloadType = null;
               const seatDragSource = dragType === 'seat'
                 ? (sourceSeat || seatPayload)
@@ -6566,7 +6714,9 @@
                 targetId,
                 wasActive: targetWasActive,
               };
-              if (seatDragSource) {
+              if (dragType === 'table' || (!dragType && tablePayload)) {
+                context.tableDragSource = sourceTable || tablePayload;
+              } else if (seatDragSource) {
                 context.seatDragSourceId = seatDragSource;
               } else if (payload) {
                 context.studentId = payload;
@@ -6584,8 +6734,12 @@
             const targetId = opts.targetId;
             const targetWasActive = !!opts.wasActive;
             const seatDragSourceId = opts.seatDragSourceId || null;
+            const tableDragSource = opts.tableDragSource || null;
             const studentId = opts.studentId || null;
             const sourceSeatId = opts.sourceSeatId || null;
+            if (tableDragSource) {
+              return applyMergedTableDropAction(tableDragSource, targetId);
+            }
             if (seatDragSourceId) {
               if (seatDragSourceId === targetId) return false;
               if (targetWasActive) return false;
@@ -6743,6 +6897,9 @@
             const wasActive = seatEl ? seatEl.classList.contains('active') : false;
             const context = seatEl ? buildTouchDropContext(descriptor, seatEl, wasActive) : null;
             const wasActiveDrag = state.active;
+            if (wasActiveDrag && descriptor?.type === 'table') {
+              mergedTableDragClickSuppressedUntil = Date.now() + 500;
+            }
             cancelTouchDrag();
             if (!wasActiveDrag) return;
             if (e) e.preventDefault();
@@ -6772,6 +6929,11 @@
             const ctx = { targetSeatEl: seatEl, targetId: seatId, wasActive };
             if (descriptor.type === 'seat') {
               ctx.seatDragSourceId = descriptor.seatId;
+            } else if (descriptor.type === 'table') {
+              ctx.tableDragSource = {
+                anchorId: descriptor.anchorId,
+                partnerId: descriptor.partnerId
+              };
             } else if (descriptor.type === 'assignment') {
               ctx.studentId = descriptor.studentId;
               ctx.sourceSeatId = descriptor.fromSeat || null;

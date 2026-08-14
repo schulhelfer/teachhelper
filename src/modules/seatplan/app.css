@@ -1592,6 +1592,16 @@
           transform: translate(-50%, -50%) scale(1.08);
         }
 
+        .grid-link.merged[draggable="true"] {
+          cursor: grab;
+          touch-action: none;
+        }
+
+        .grid-link.merged[draggable="true"].dragging,
+        .grid-link.merged[draggable="true"]:active {
+          cursor: grabbing;
+        }
+
         .grid.merge-icons-hidden .grid-link {
           display: none;
         }
@@ -1827,7 +1837,7 @@
         .seat .name {
           font-weight: 600;
           font-size: var(--seat-name-font-size);
-          line-height: 0.96;
+          line-height: 1.12;
           text-align: center;
           padding: var(--seat-name-padding-block) var(--seat-name-padding-inline);
           position: absolute;
@@ -1881,6 +1891,7 @@
           width: 100%;
           max-width: 100%;
           min-width: 0;
+          padding-block: 0.06em;
           overflow: hidden;
           text-overflow: clip;
           white-space: nowrap;

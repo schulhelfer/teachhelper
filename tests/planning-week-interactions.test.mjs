@@ -28,6 +28,10 @@ function extractClassMethod(name) {
 const handlePointerDown = Function(
   `"use strict"; return ({${extractClassMethod('handleWeekEmptySlotPointerDown')}}).handleWeekEmptySlotPointerDown;`,
 )();
+const syncWeekLessonBlockTopicScale = Function(
+  'clamp',
+  `"use strict"; return ({${extractClassMethod('syncWeekLessonBlockTopicScale')}}).syncWeekLessonBlockTopicScale;`,
+)((value, min, max) => Math.min(Math.max(value, min), max));
 
 function createPointerEvent(day = 2, hour = 3) {
   const calls = { preventDefault: 0, stopPropagation: 0 };
@@ -54,8 +58,6 @@ test('empty planning slots recognize a double press even if the table DOM is rep
   const firstEvent = createPointerEvent();
   assert.equal(handlePointerDown.call(harness, firstEvent), false);
 
-  // The second event deliberately uses a new target object, just as it does after
-  // renderWeekTable replaced the first event target.
   const secondEvent = createPointerEvent();
   assert.equal(handlePointerDown.call(harness, secondEvent), true);
   assert.deepEqual(opened, [[2, 3]]);
@@ -79,15 +81,52 @@ test('week lesson blocks cover the hour separators', () => {
 
 test('week layout scaling batches reads before writes and has no search loop', () => {
   const methodSource = extractClassMethod('syncWeekLayoutScale');
-  const batchingComment = methodSource.indexOf('Read every layout metric before changing styles');
-  const lastMetricRead = methodSource.indexOf('block.clientHeight / block.scrollHeight');
+  const lastMetricRead = methodSource.indexOf('table.tHead ? table.tHead.getBoundingClientRect().height : 0');
   const firstBatchedWrite = methodSource.indexOf(
     'header.style.setProperty("--week-header-scale", headerScale.toFixed(2))',
   );
 
-  assert.ok(batchingComment >= 0);
-  assert.ok(lastMetricRead > batchingComment);
+  assert.ok(lastMetricRead >= 0);
   assert.ok(firstBatchedWrite > lastMetricRead);
   assert.equal(methodSource.includes('while ('), false);
   assert.equal(methodSource.includes('getBoundingClientRect();\n      '), false);
+  assert.equal(methodSource.includes('blockFitRatio'), false);
+  assert.ok(methodSource.includes('this.syncWeekLessonBlockTopicScales()'));
+});
+
+test('week topics receive an independent font scale per lesson block', () => {
+  const methodSource = extractClassMethod('syncWeekLessonBlockTopicScale');
+  assert.match(methodSource, /--week-topic-font-scale/);
+  assert.match(methodSource, /0\.7/);
+  assert.match(methodSource, /topicContent\.scrollHeight/);
+  assert.doesNotMatch(methodSource, /--week-block-font-scale/);
+
+  const topicStyle = cssSource.match(/\.lesson-block \.line \{[\s\S]*?\n\s*\}/)?.[0] || '';
+  const inlineTopicStyle = cssSource.match(/\.lesson-block \.week-inline-topic-input \{[\s\S]*?\n\s*\}/)?.[0] || '';
+  assert.match(topicStyle, /var\(--week-topic-font-scale, 1\)/);
+  assert.match(inlineTopicStyle, /var\(--week-topic-font-scale, 1\)/);
+});
+
+test('a long topic only scales down its own lesson block to the 70 percent minimum', () => {
+  const createBlock = ({ availableHeight, contentHeight }) => {
+    const properties = new Map();
+    const topicContent = { scrollHeight: contentHeight };
+    const topicZone = {
+      clientHeight: availableHeight,
+      querySelector: () => topicContent,
+    };
+    return {
+      style: { setProperty: (name, value) => properties.set(name, value) },
+      querySelector: () => topicZone,
+      scale: () => properties.get('--week-topic-font-scale'),
+    };
+  };
+  const longTopicBlock = createBlock({ availableHeight: 100, contentHeight: 180 });
+  const fittingTopicBlock = createBlock({ availableHeight: 100, contentHeight: 80 });
+
+  syncWeekLessonBlockTopicScale.call({}, longTopicBlock);
+  syncWeekLessonBlockTopicScale.call({}, fittingTopicBlock);
+
+  assert.equal(longTopicBlock.scale(), '0.70');
+  assert.equal(fittingTopicBlock.scale(), '1.00');
 });

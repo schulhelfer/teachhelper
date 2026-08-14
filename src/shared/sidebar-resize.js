@@ -67,8 +67,6 @@
     const syncHandlePosition = () => {
       const appBounds = app.getBoundingClientRect();
       const sidebarBounds = sidebar.getBoundingClientRect();
-      // Center the visible separator on the actual sidebar edge. The handle remains
-      // easy to grab without exposing the main surface inside the sidebar.
       handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left - 7)}px`);
       handle.style.setProperty('--sidebar-resize-top', `${Math.round(sidebarBounds.top - appBounds.top)}px`);
       handle.style.setProperty('--sidebar-resize-height', `${Math.round(sidebarBounds.height)}px`);

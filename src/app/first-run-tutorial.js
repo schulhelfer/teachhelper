@@ -14,6 +14,7 @@ const TARGET_GAP = 14;
 const REPOSITION_DELAY_MS = 460;
 const REPOSITION_LONG_DELAY_MS = 1100;
 const TARGET_RESOLVE_ATTEMPTS = 30;
+const REQUIRED_TARGET_RESOLVE_ATTEMPTS = 120;
 const TARGET_RESOLVE_INTERVAL_MS = 50;
 const TUTORIAL_MORPH_DURATION_MS = 600;
 const CONTEXT_HELP_PROMPT_DELAY_MS = 420;
@@ -175,8 +176,12 @@ export function createFirstRunTutorial({
     frame._tutorialTargetRectRequests.delete(requestId);
     pendingOpaqueTargetRequests.delete(request.pendingKey);
     const rect = data.detail?.rect;
-    if (!rect || ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)) return;
     const bySelector = opaqueTargetRects.get(frame) || new Map();
+    if (!rect || ![rect.left, rect.top, rect.width, rect.height].every(Number.isFinite)) {
+      bySelector.delete(request.key);
+      opaqueTargetRects.set(frame, bySelector);
+      return;
+    }
     bySelector.set(request.key, rect);
     opaqueTargetRects.set(frame, bySelector);
     positionCurrentStep();
@@ -489,32 +494,10 @@ export function createFirstRunTutorial({
     if (preferred && fitsPlacement(preferred)) {
       return preferred;
     }
-    const fallback = ['bottom', 'top', 'right', 'left']
-      .sort((a, b) => available[b] - available[a])
-      .find((placement) => fitsPlacement(placement));
-    return fallback || 'center';
-  }
-
-  function applyFallbackPosition() {
-    if (!bubble || !highlight) return;
-    const viewport = getSafeViewportSize();
-    const bubbleRect = bubble.getBoundingClientRect();
-    const left = viewport.offsetLeft + clamp(
-      (viewport.width - bubbleRect.width) / 2,
-      VIEWPORT_MARGIN,
-      Math.max(VIEWPORT_MARGIN, viewport.width - bubbleRect.width - VIEWPORT_MARGIN)
-    );
-    const top = viewport.offsetTop + clamp(
-      (viewport.height - bubbleRect.height) / 2,
-      VIEWPORT_MARGIN,
-      Math.max(VIEWPORT_MARGIN, viewport.height - bubbleRect.height - VIEWPORT_MARGIN)
-    );
-    bubble.dataset.placement = 'center';
-    bubble.style.left = `${Math.round(left)}px`;
-    bubble.style.top = `${Math.round(top)}px`;
-    bubble.style.setProperty('--tutorial-arrow-left', '50%');
-    bubble.style.setProperty('--tutorial-arrow-top', '50%');
-    highlight.hidden = true;
+    const placementsBySpace = ['bottom', 'top', 'right', 'left']
+      .sort((a, b) => available[b] - available[a]);
+    return placementsBySpace.find((placement) => fitsPlacement(placement))
+      || placementsBySpace[0];
   }
 
   function getTargetRect(target) {
@@ -596,12 +579,12 @@ export function createFirstRunTutorial({
   }
 
   function applyTargetPosition(target, preferredPlacement, anchor = 'center', offsetX = 0, offsetY = 0, highlightPadding = 7) {
-    if (!bubble || !highlight) return;
+    if (!bubble || !highlight) return false;
     revealTarget(target);
     const rect = getTargetRect(target);
     if (!rect) {
-      applyFallbackPosition();
-      return;
+      highlight.hidden = true;
+      return false;
     }
 
     const viewport = getSafeViewportSize();
@@ -652,12 +635,13 @@ export function createFirstRunTutorial({
     highlight.style.width = `${Math.round(rect.width + padding * 2)}px`;
     highlight.style.height = `${Math.round(rect.height + padding * 2)}px`;
     highlight.style.borderRadius = `${Math.min(22, Math.max(12, rect.height / 3))}px`;
+    return true;
   }
 
   function positionCurrentStep() {
-    if (!active || !bubble) return;
+    if (!active || !bubble) return false;
     const step = activeSteps[stepIndex];
-    applyTargetPosition(
+    const positioned = applyTargetPosition(
       resolveTarget(step),
       step?.placement,
       step?.anchor,
@@ -665,6 +649,13 @@ export function createFirstRunTutorial({
       step?.offsetY,
       step?.highlightPadding
     );
+    if (!positioned) {
+      bubble.hidden = true;
+      highlight.hidden = true;
+      return false;
+    }
+    if (bubble.dataset.rendered === 'true') bubble.hidden = false;
+    return true;
   }
 
   function trackCurrentTarget() {
@@ -791,9 +782,22 @@ export function createFirstRunTutorial({
     nextButton?.focus({ preventScroll: true });
   }
 
-  function morphToPreparedStep(previousRect, previousContent, currentRenderToken) {
+  function morphToPreparedStep(previousRect, previousContent, currentRenderToken, preparedTarget) {
     bubble.hidden = false;
-    positionCurrentStep();
+    const step = activeSteps[stepIndex];
+    const positioned = applyTargetPosition(
+      preparedTarget,
+      step?.placement,
+      step?.anchor,
+      step?.offsetX,
+      step?.offsetY,
+      step?.highlightPadding
+    );
+    if (!positioned) {
+      bubble.hidden = true;
+      removeUnavailableStep(currentRenderToken);
+      return;
+    }
     const nextRect = bubble.getBoundingClientRect();
     bubble.dataset.rendered = 'true';
     schedulePositionRefresh();
@@ -901,10 +905,7 @@ export function createFirstRunTutorial({
       }
     }
     const skipIfMissing = step?.skipIfMissing === true;
-    const waitForOpaqueFrameTarget = Boolean(getFrameTargetDescriptor(
-      typeof step?.target === 'function' ? step.target(els) : step?.target
-    ));
-    if (!hadRenderedStep) bubble.hidden = skipIfMissing;
+    bubble.hidden = true;
     highlight.hidden = true;
 
     const showPreparedStep = async () => {
@@ -914,16 +915,19 @@ export function createFirstRunTutorial({
         console.error(error);
       }
       if (!active || currentRenderToken !== renderToken) return;
-      if (skipIfMissing || waitForOpaqueFrameTarget) {
-        const target = await waitForStepTarget(step, currentRenderToken);
-        if (!active || currentRenderToken !== renderToken) return;
-        if (!target) {
-          removeUnavailableStep(currentRenderToken);
-          return;
-        }
+      const target = await waitForStepTarget(
+        step,
+        currentRenderToken,
+        skipIfMissing ? TARGET_RESOLVE_ATTEMPTS : REQUIRED_TARGET_RESOLVE_ATTEMPTS
+      );
+      if (!active || currentRenderToken !== renderToken) return;
+      if (!target) {
+        console.warn(`[TeachHelper] Tutorialziel nicht sichtbar: ${step?.title || 'Unbenannter Schritt'}`);
+        removeUnavailableStep(currentRenderToken);
+        return;
       }
       updateStepContent(step);
-      morphToPreparedStep(previousRect, previousContent, currentRenderToken);
+      morphToPreparedStep(previousRect, previousContent, currentRenderToken, target);
     };
 
     void showPreparedStep();

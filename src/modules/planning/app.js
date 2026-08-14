@@ -861,8 +861,6 @@ function seedTutorialDemoStore(store) {
 class PlanningApp {
   constructor() {
     this.tutorialDemoMode = TUTORIAL_DEMO_MODE;
-    // The shell owns the application workspace. Direct and tutorial starts use
-    // an isolated neutral workspace, never a Planning-owned persistence stack.
     this.workspaceController = getParentWorkspaceController()
       || createWorkspaceController({
         eventTarget: window,
@@ -4029,9 +4027,6 @@ class PlanningApp {
     if (!editor || !selection?.rangeCount) return;
     const range = selection.getRangeAt(0);
     if (editor.contains(range.commonAncestorContainer)) {
-      // Native selects collapse the document selection when they receive focus.
-      // Keep the previous text range in that case so toolbar dropdowns still
-      // format the marked text rather than the newly placed caret.
       if (this.topicDialogRichTextSelectionLocked && range.collapsed) {
         return;
       }
@@ -4048,9 +4043,6 @@ class PlanningApp {
     const range = this.topicDialogRichTextSelectionRange;
     const offsets = this.topicDialogRichTextSelectionOffsets;
     if (!editor || !selection) return false;
-    // Dropdowns move focus away from the editor. Restore the durable text
-    // offsets first: a DOM Range can become stale after browser focus changes
-    // or after the editor has been normalised.
     if (offsets && Number.isFinite(offsets.start) && Number.isFinite(offsets.end)) {
       return this.restoreTopicDialogNotesSelection(offsets.start, offsets.end);
     }
@@ -4087,8 +4079,6 @@ class PlanningApp {
     const start = findPoint(startOffset);
     const end = findPoint(endOffset);
     if (!start || !end) {
-      // Empty paragraphs contain only a <br>, so there is no text node for
-      // the walker to find. Keep a real caret in that paragraph nonetheless.
       if (Number(startOffset) === 0 && Number(endOffset) === 0) {
         const emptyBlock = editor.querySelector("p") || editor;
         const emptyRange = document.createRange();
@@ -4166,8 +4156,6 @@ class PlanningApp {
     const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
     if (!range || range.collapsed || !editor.contains(range.commonAncestorContainer)) return false;
 
-    // Format text nodes individually. This also works across paragraphs, list
-    // items and table cells and never creates invalid spans around block nodes.
     const textNodes = [];
     const walker = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
@@ -4195,8 +4183,6 @@ class PlanningApp {
     const editor = this.refs.topicDialogNotes;
     if (!editor) return false;
     if (this.restoreTopicDialogNotesSelectionRange()) return true;
-    // The user may activate a format directly after opening the dialog,
-    // before ever placing a caret in the empty editor.
     const paragraph = editor.querySelector("p") || document.createElement("p");
     if (!paragraph.parentElement) {
       paragraph.append(document.createElement("br"));
@@ -4238,8 +4224,6 @@ class PlanningApp {
         while (selectedList.firstChild) replacement.append(selectedList.firstChild);
         selectedList.replaceWith(replacement);
       } else {
-        // Applying the active list type again returns the affected items to
-        // normal paragraphs, matching the expected toolbar toggle behaviour.
         selectedItems.forEach((item) => {
           const paragraph = item.querySelector(":scope > p") || document.createElement("p");
           if (!paragraph.parentElement) while (item.firstChild) paragraph.append(item.firstChild);
@@ -4279,8 +4263,6 @@ class PlanningApp {
       const selection = window.getSelection?.();
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       if (range?.collapsed && editor.contains(range.commonAncestorContainer)) {
-        // Keep the native typing state alive. Normalising here would clear the
-        // size before the first character is entered.
         const sizeMap = { 12: "2", 14: "3", 16: "4", 18: "5", 22: "6" };
         editor.focus();
         document.execCommand("styleWithCSS", false, false);
@@ -4302,9 +4284,6 @@ class PlanningApp {
       const selection = window.getSelection?.();
       const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
       document.execCommand(command, false, value || null);
-      // At a caret the browser creates the requested semantic wrapper for
-      // subsequent input. Do not rebuild the editor until text has been
-      // entered, otherwise that typing mode is discarded.
       changed = !range?.collapsed;
       this.rememberTopicDialogNotesSelection();
     }
@@ -5325,6 +5304,33 @@ class PlanningApp {
       }
     });
 
+    this.refs.sidebarCourseList.addEventListener("pointerdown", (event) => {
+      if (event.button !== 0 || this.locked) {
+        return;
+      }
+      const button = event.target.closest("button[data-course-id]");
+      const activeTopicInput = document.activeElement?.closest?.("input.course-topic-input");
+      if (!button || !(activeTopicInput instanceof HTMLInputElement)) {
+        return;
+      }
+      const courseId = Number(button.dataset.courseId || 0);
+      if (!courseId) {
+        return;
+      }
+
+      event.preventDefault();
+      this.suppressedSidebarCourseClicks ??= new WeakSet();
+      this.suppressedSidebarCourseClicks.add(button);
+      this.saveCourseTopicInput(activeTopicInput);
+      void (async () => {
+        if (!await this.resolveUnsavedSettingsNavigation()) {
+          return;
+        }
+        this.selectedCourseId = courseId;
+        await this.switchView("course");
+      })();
+    });
+
     this.refs.sidebarCourseList.addEventListener("click", async (event) => {
       const addButton = event.target.closest("button[data-add-course='1']");
       if (addButton) {
@@ -5339,6 +5345,9 @@ class PlanningApp {
       }
       const button = event.target.closest("button[data-course-id]");
       if (!button) {
+        return;
+      }
+      if (this.suppressedSidebarCourseClicks?.delete(button)) {
         return;
       }
       const courseId = Number(button.dataset.courseId);
@@ -5467,9 +5476,6 @@ class PlanningApp {
     });
 
     this.refs.topicDialogNotes?.addEventListener("blur", () => {
-      // A select in the toolbar must receive focus to open. Rendering here
-      // would replace the selected DOM nodes before its change event applies
-      // the chosen formatting.
       if (!this.topicDialogRichTextSelectionLocked) this.normalizeTopicDialogNotesEditor();
     });
 
@@ -9407,9 +9413,6 @@ class PlanningApp {
       return;
     }
 
-    // Read every layout metric before changing styles. The previous implementation
-    // alternated hundreds of style writes and geometry reads during two binary
-    // searches, forcing a full reflow for nearly every candidate.
     const panelWidth = tablePanel.clientWidth;
     const panelHeight = tablePanel.clientHeight;
     const headerWidth = header.clientWidth;
@@ -9419,13 +9422,6 @@ class PlanningApp {
     const weekClientHeight = weekView ? weekView.clientHeight : panelHeight;
     const weekContentHeight = weekView ? weekView.scrollHeight : tableContentHeight;
     const tableHeaderHeight = table.tHead ? table.tHead.getBoundingClientRect().height : 0;
-    const blocks = [...table.querySelectorAll("button.lesson-block")];
-    const blockFitRatio = blocks.reduce((ratio, block) => {
-      if (block.scrollHeight <= 0 || block.clientHeight <= 0) {
-        return ratio;
-      }
-      return Math.min(ratio, block.clientHeight / block.scrollHeight);
-    }, 1);
 
     const fitRatio = (available, content) => (
       content > 0 ? Math.min(1, available / content) : 1
@@ -9446,16 +9442,44 @@ class PlanningApp {
     );
     const scaledHeaderHeight = tableHeaderHeight * tableScale;
     const rowHeight = Math.max(0, (panelHeight - scaledHeaderHeight - 1) / rowCount);
-    const blockFontScale = clamp(blockFitRatio < 1 ? blockFitRatio * 0.98 : 1, 0.25, 1);
-
     header.style.setProperty("--week-header-scale", headerScale.toFixed(2));
     table.style.setProperty("--week-table-scale", tableScale.toFixed(2));
     table.style.setProperty("--week-row-height", `${rowHeight}px`);
-    table.style.setProperty("--week-block-font-scale", blockFontScale.toFixed(2));
+    table.style.setProperty("--week-block-font-scale", "1");
+    this.syncWeekLessonBlockTopicScales();
 
     if (this.inlineTopicLessonId) {
       requestAnimationFrame(() => this.syncInlineWeekBlockTopicInputSize());
     }
+  }
+
+  syncWeekLessonBlockTopicScales() {
+    const table = this.refs.weekTable;
+    if (!table) {
+      return;
+    }
+    [...table.querySelectorAll(".lesson-block")].forEach((block) => {
+      this.syncWeekLessonBlockTopicScale(block);
+    });
+  }
+
+  syncWeekLessonBlockTopicScale(block) {
+    if (!block || !block.style || typeof block.querySelector !== "function") {
+      return;
+    }
+    const topicZone = block.querySelector(".topic-zone");
+    const topicContent = topicZone?.querySelector(".line, .week-inline-topic-input");
+    block.style.setProperty("--week-topic-font-scale", "1");
+    if (!topicZone || !topicContent || topicZone.clientHeight <= 0) {
+      return;
+    }
+
+    const availableHeight = topicZone.clientHeight;
+    const contentHeight = topicContent.scrollHeight;
+    const topicScale = contentHeight > availableHeight
+      ? clamp((availableHeight / contentHeight) * 0.98, 0.7, 1)
+      : 1;
+    block.style.setProperty("--week-topic-font-scale", topicScale.toFixed(2));
   }
 
   _buildWeekLessonBlock(blockLessons) {
@@ -9627,7 +9651,11 @@ class PlanningApp {
       input.setAttribute("contenteditable", "true"); input.setAttribute("role", "textbox"); input.setAttribute("aria-label", "Thema bearbeiten"); input.setAttribute("spellcheck", "true");
       input.textContent = String(this.inlineTopicDraft || "");
       input.addEventListener("click", (event) => event.stopPropagation());
-      input.addEventListener("input", () => { this.inlineTopicDraft = this._limitInlineWeekBlockTopicLength(input); this.syncInlineWeekBlockTopicInputSize(input); });
+      input.addEventListener("input", () => {
+        this.inlineTopicDraft = this._limitInlineWeekBlockTopicLength(input);
+        this.syncInlineWeekBlockTopicInputSize(input);
+        this.syncWeekLessonBlockTopicScale(chip);
+      });
       input.addEventListener("keydown", (event) => {
         event.stopPropagation();
         if (event.key === "Escape") { event.preventDefault(); this.finishInlineWeekBlockTopicEdit(false); }
@@ -10141,6 +10169,7 @@ class PlanningApp {
             input.addEventListener("input", () => {
               this.inlineTopicDraft = this._limitInlineWeekBlockTopicLength(input);
               this.syncInlineWeekBlockTopicInputSize(input);
+              this.syncWeekLessonBlockTopicScale(chip);
             });
             input.addEventListener("keyup", (event) => {
               event.stopPropagation();

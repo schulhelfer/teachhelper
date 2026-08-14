@@ -243,7 +243,6 @@
   --tooltip-error-border: #c43224;
   --tooltip-error-text: #7a271a;
 
-  /* Compatibility aliases for established module styles in the Light theme. */
   --bg: var(--surface-page);
   --canvas: var(--surface-page);
   --panel: rgba(255, 255, 255, 0.9);
@@ -322,7 +321,6 @@
   --scrollbar-thumb-hover: rgba(99, 99, 102, 0.62);
 }
 
-/* Dialog and modal hints share a readable semantic color in every module. */
 :is(dialog, .app-dialog, .message, .message-stack) :is(.muted, .hint, .dialog-inline-hint, [id$="-hint"], [class$="-hint"]) {
   color: var(--text-hint);
 }

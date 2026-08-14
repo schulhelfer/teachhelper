@@ -2209,8 +2209,6 @@
           opacity: 0.45;
         }
 
-        /* The setup lock applies until both the database and its backup folder
-           are connected. Use the native system "not allowed" cursor. */
         body[data-persistence-setup-pending="true"] #sidebar-course-list button[data-course-id],
         body[data-persistence-setup-pending="true"] #sidebar-course-list button[data-add-course],
         body[data-persistence-setup-pending="true"] #view-grades-entry-btn,
@@ -9745,8 +9743,6 @@
           cursor: not-allowed;
         }
 
-        /* Uses the common liquid segment indicator while retaining the compact
-           one-control-row geometry of the occurrence-category settings. */
         .settings-grade-occurrence-polarity-control.assessment-mode-toggle {
           --liquid-segment-count: 2;
           --liquid-segment-gap: 0.2rem;
@@ -10019,7 +10015,6 @@
         @media (max-width: 1200px) {
           .app-window {
             grid-template-columns: minmax(160px, min(var(--module-sidebar-width), 50vw)) minmax(0, 1fr);
-            /* Keep the sidebar flush with the module edge at browser zoom levels. */
             padding: 0;
             column-gap: 0;
           }

@@ -2568,9 +2568,6 @@ function seedTutorialDemoStore(store) {
 class GradesApp {
   constructor() {
     this.tutorialDemoMode = TUTORIAL_DEMO_MODE;
-    // A shell-owned controller is used in the application. A direct module or
-    // tutorial start receives an isolated neutral workspace with the same
-    // contracts; Grades never becomes the persistence/vault owner.
     this.workspaceController = getParentWorkspaceController()
       || createWorkspaceController({
         eventTarget: window,
@@ -4089,9 +4086,6 @@ class GradesApp {
     if (this.gradeVaultStartupUnlockPromptResolved || this.tutorialDemoMode) {
       return false;
     }
-    // The database connection is only usable after its backup location has
-    // been selected.  Do not consume the startup prompt while that setup is
-    // still incomplete, so it can run once the backup folder is connected.
     if (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired") {
       return false;
     }
@@ -4105,8 +4099,6 @@ class GradesApp {
     if (!selectedCourse) {
       return false;
     }
-    // A course is now available, so this startup decision must not be repeated
-    // after a manual close or a later automatic vault lock.
     this.gradeVaultStartupUnlockPromptResolved = true;
     if (this.getGradeVaultStatusMode() !== "unlock") {
       return false;
@@ -4179,8 +4171,6 @@ class GradesApp {
   }
 
   openGradeVaultDialog(mode = "unlock") {
-    // Opening the vault before the persistence setup is complete would expose
-    // an encrypted database without its required backup location.
     if (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired") {
       return;
     }
@@ -4280,9 +4270,6 @@ class GradesApp {
       this.refs.gradeVaultDialogHint.textContent = "";
     }
     if (isUnlockMode) {
-      // Expose the grades iframe semantically as well as visually. Password
-      // managers otherwise keep treating this login form as part of a hidden
-      // shell even though the modal itself is painted above the active module.
       this.notifyParentGradeVaultOverlay(true);
     }
     this.openDialog(this.refs.gradeVaultDialog);
@@ -6386,7 +6373,6 @@ class GradesApp {
           portraitControl.append(portraitPlaceholder);
         }
 
-        /* The image controls share one cell so every participant stays on one row. */
         grid.append(portraitControl);
         grid.append(lastName, firstName, flairSelect, portraitInput, removeButton);
         row.append(grid);
@@ -13467,14 +13453,7 @@ class GradesApp {
       update();
       return;
     }
-    const oldShell = previous.shell.cloneNode(true);
-    oldShell.classList.add("is-grade-table-transition-old");
-    oldShell.setAttribute("aria-hidden", "true");
-    if ("inert" in oldShell) oldShell.inert = true;
-    oldShell.querySelectorAll("[id]").forEach((element) => element.removeAttribute("id"));
-    oldShell.querySelectorAll("button, input, select, textarea, a").forEach((element) => {
-      element.setAttribute("tabindex", "-1");
-    });
+    const oldShell = previous.shell.cloneNode(false);
 
     update();
 
@@ -13483,7 +13462,6 @@ class GradesApp {
     if (!(host instanceof HTMLElement) || !(nextShell instanceof HTMLElement)) {
       return;
     }
-    host.prepend(oldShell);
     const nextWidth = nextShell.getBoundingClientRect().width;
     const revealOffset = nextWidth >= previous.width ? -6 : 6;
     const panelRect = this.refs.gradesBookPanel?.getBoundingClientRect();
@@ -13496,13 +13474,13 @@ class GradesApp {
     const duration = 360;
     const easing = "cubic-bezier(0.16, 1, 0.3, 1)";
     const animations = [];
-    animations.push(oldShell.animate(
-      [{ opacity: 1 }, { opacity: 0 }],
-      { duration: 190, easing: "ease-out", fill: "both" }
-    ));
 
     nextShell.querySelectorAll("th[data-grade-transfer-column-key], tbody td[data-grade-column-key]").forEach((cell) => {
       if (!isVisible(cell)) return;
+      const isHeaderCell = cell.tagName === "TH";
+      const isHeaderSummaryCell = isHeaderCell
+        && cell.firstElementChild?.classList.contains("grade-header-summary-cover");
+      if (isHeaderSummaryCell) return;
       const key = this.getGradeTableMorphKey(cell);
       if (!key) return;
       const previousRect = previous.positions.get(key);
@@ -13511,7 +13489,7 @@ class GradesApp {
         if (Math.abs(deltaX) < 0.5) return;
         animations.push(cell.animate(
           [
-            { transform: `translateX(${deltaX}px)`, opacity: 0.9 },
+            { transform: `translateX(${deltaX}px)`, opacity: isHeaderCell ? 1 : 0.9 },
             { transform: "translateX(0)", opacity: 1 }
           ],
           { duration, easing, fill: "both" }
@@ -13522,8 +13500,8 @@ class GradesApp {
         [
           {
             transform: `translateX(${revealOffset}px)`,
-            clipPath: "inset(0 100% 0 0)",
-            opacity: 0
+            clipPath: isHeaderCell ? "inset(0)" : "inset(0 100% 0 0)",
+            opacity: isHeaderCell ? 1 : 0
           },
           {
             transform: "translateX(0)",
@@ -26619,9 +26597,6 @@ class GradesApp {
     if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") {
       return;
     }
-    // A navigation explicitly started by another module is meant to continue
-    // into Grades after the vault is unlocked. Standalone unlocks, however,
-    // should leave the currently active module in place.
     const detail = {
       open: Boolean(open),
       preserveSourceTab: this.gradeVaultOverlayPreserveSourceTab
@@ -28595,9 +28570,6 @@ class GradesApp {
     this.settingsDirty = true;
     this.updateSettingsActionButtons();
     if (isPolarityControl) {
-      // Keep the slider in place until its transition has completed. Rebuilding
-      // the suggestion row immediately after a tap can otherwise interrupt the
-      // compact segment control and make its selected state jump upward.
       this.runAfterSegmentControlSlide(event, () => {
         this.renderGradeOccurrenceCategorySuggestions(this.getGradeOccurrenceCategoriesDraft());
       });

@@ -124,7 +124,6 @@ function parseCourseSegment(text = '') {
       return { encrypted: true, envelope: parsed };
     }
   } catch {
-    // Invalid data is rejected by the caller with a stable error message.
   }
   return null;
 }
@@ -228,9 +227,6 @@ function runtimeCourseFromPersisted(store, courseId, persisted) {
 }
 
 function downloadBytes(bytes, fileName) {
-  // Ein JSON-MIME-Type kann bei einem nachgelagerten Navigations-Fallback im
-  // Browser sichtbar geöffnet werden. Die Dateiendung bleibt .json, der Blob
-  // selbst wird jedoch bewusst als Download behandelt.
   const blob = new Blob([bytes], { type: 'application/octet-stream' });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
@@ -240,8 +236,6 @@ function downloadBytes(bytes, fileName) {
   document.body.append(anchor);
   anchor.click();
   anchor.remove();
-  // Der Browser darf die Blob-URL noch lesen, bevor sie freigegeben wird.
-  // Ein sofortiger Widerruf kann den Download je nach Browser verhindern.
   setTimeout(() => URL.revokeObjectURL(url), 30_000);
 }
 
@@ -269,8 +263,6 @@ export class WorkspaceRuntime {
     this.publicDirty = false;
     this.segmentTexts = new Map();
     this.courseCache = new Map();
-    // Planning may retain this deliberately redacted index while the vault is
-    // locked. No roster, result or grade value is ever stored here.
     this.performanceIndexCache = new Map();
     this.dirtyCourseIds = new Set();
     this.courseRevisions = new Map();
@@ -283,9 +275,6 @@ export class WorkspaceRuntime {
       configured: false,
       unlocked: false,
       config: normalizeVaultConfig(null),
-      // Last successfully persisted configuration. It lets a user discard a
-      // pending KDF/password/encryption change without breaking the ciphertext
-      // that is still stored on disk.
       persistedConfig: normalizeVaultConfig(null),
       persistedCryptoKey: null,
       cryptoKey: null,
@@ -638,15 +627,9 @@ export class WorkspaceRuntime {
     this.vault.unlocked = true;
     this.vault.cryptoKey = cryptoKey;
     this.vault.kdf = kdf;
-    // The KDF parameters live in the persisted vault configuration. Existing
-    // files can therefore be read with their original parameters and, after a
-    // successful unlock, upgraded before their next regular save.
     try {
       await this.upgradeGradeVaultKdf(password);
     } catch {
-      // A damaged or otherwise unreadable course must not turn a successful
-      // password verification into a failed unlock. The legacy parameters are
-      // kept unchanged and the course still reports its own read error later.
     }
     this.recordGradeVaultActivity();
     this.controller?.markChanged?.('grades');
@@ -657,8 +640,6 @@ export class WorkspaceRuntime {
     const currentKdf = normalizeWorkspaceVaultKdf(this.vault.config?.kdf);
     if (currentKdf.iterations >= WORKSPACE_VAULT_KDF_ITERATIONS) return false;
 
-    // Complete all decryptions with the verified legacy key first. Nothing is
-    // changed until this preparation and creation of the stronger key succeed.
     const courseIds = new Set([
       ...this.segmentTexts.keys(),
       ...this.courseCache.keys(),
@@ -890,10 +871,6 @@ export class WorkspaceRuntime {
   async getGradeCourseStateSnapshot(courseId) {
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return null;
-    // A roster request may arrive while Grades is still completing a navigation
-    // to another course. Wait for that atomic load before inspecting the active
-    // state; otherwise `loadedCourseId` and the store can briefly describe
-    // different courses and the previous roster is returned for this request.
     await this.courseLoadTail;
     let state = this.loadedCourseId === id
       ? this.store.exportGradeVaultStateSnapshot()
@@ -1007,9 +984,6 @@ export class WorkspaceRuntime {
 
   async withTemporaryGradeCourse(courseId, operation) {
     const previous = this.loadedCourseId;
-    // Do not publish the intermediary course state. A grades-view render can
-    // otherwise queue its selected course for loading and replace the state
-    // before the operation reads the requested course's roster or structure.
     await this.ensureGradeCourseLoaded(courseId, { publish: false });
     try {
       return await operation();
@@ -1282,8 +1256,6 @@ export class WorkspaceRuntime {
     if (!await this.ensureHandleReadWritePermission(handle)) {
       throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
     }
-    // A pending automatic save still belongs to the previous workspace. Let it
-    // finish before the active file handle can point at the new empty file.
     await this.operationTail;
     const built = this.buildEmptyDatabaseContainer('create-empty', options);
     const writeResult = await writeAndVerifyFileBytes(

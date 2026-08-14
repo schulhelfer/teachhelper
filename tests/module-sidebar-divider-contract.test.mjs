@@ -35,7 +35,7 @@ test('die Sidebar bleibt im kompakten Layout bündig mit dem Modulrand', () => {
   for (const source of sources) {
     assert.match(
       source,
-      /@media \(max-width: 1200px\) \{\s+\.app-window \{\s+grid-template-columns: minmax\(160px, min\(var\(--module-sidebar-width\), 50vw\)\) minmax\(0, 1fr\);\s+\/\* Keep the sidebar flush with the module edge at browser zoom levels\. \*\/\s+padding: 0;\s+column-gap: 0;/,
+      /@media \(max-width: 1200px\) \{\s+\.app-window \{\s+grid-template-columns: minmax\(160px, min\(var\(--module-sidebar-width\), 50vw\)\) minmax\(0, 1fr\);\s+padding: 0;\s+column-gap: 0;/,
     );
     assert.doesNotMatch(source, /@media \(max-width: 1200px\) \{[\s\S]{0,360}\.app-window \{[\s\S]{0,240}padding: 10px;/);
   }

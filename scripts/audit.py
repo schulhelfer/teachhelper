@@ -476,8 +476,8 @@ dom_path = ROOT / 'src' / 'app' / 'dom.js'
 if main_path.exists() and dom_path.exists():
   main_body = main_path.read_text(encoding='utf-8', errors='ignore')
   dom_body = dom_path.read_text(encoding='utf-8', errors='ignore')
-  tutorial_start = main_body.find('const getCurrentModuleTutorialSteps')
-  tutorial_end = main_body.find('const FIRST_RUN_TUTORIAL_STEPS', tutorial_start)
+  tutorial_start = main_body.find('const getModuleTutorialDefinition')
+  tutorial_end = main_body.find('function bindTabNavigation', tutorial_start)
   tutorial_body = main_body[tutorial_start:tutorial_end]
 
   tutorial_node_refs = set(re.findall(r'\bnodes\.([A-Za-z_$][\w$]*)', tutorial_body))

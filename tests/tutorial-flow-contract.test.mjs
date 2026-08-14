@@ -3,122 +3,130 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
-const flowSource = mainSource.slice(
-  mainSource.indexOf('const TUTORIAL_FLOW_STEPS'),
-  mainSource.indexOf('const compactTutorialSteps'),
-);
 
-const budgets = {
-  TAB_GRADES: 25,
-  TAB_PLANNING: 14,
-  TAB_SEATPLAN: 10,
-  TAB_MERGER: 6,
-  TAB_GROUPS: 8,
-  TAB_RANDOM_PICKER: 5,
-  TAB_DUPLICATE_CHECK: 6,
-  TAB_WORK_PHASE: 7,
-  TAB_QR: 5,
+function moduleCase(tab, nextTab) {
+  const start = mainSource.indexOf(`case ${tab}:`);
+  const end = nextTab
+    ? mainSource.indexOf(`case ${nextTab}:`, start + 1)
+    : mainSource.indexOf('\n      default:', start + 1);
+  assert.ok(start >= 0 && end > start, `Tutorialblock ${tab} fehlt`);
+  return mainSource.slice(start, end);
+}
+
+function assertOrdered(source, labels) {
+  let previous = -1;
+  labels.forEach((label) => {
+    const index = source.indexOf(label, previous + 1);
+    assert.ok(index > previous, `Tutorialschritt fehlt oder steht falsch: ${label}`);
+    previous = index;
+  });
+}
+
+function count(source, pattern) {
+  return [...source.matchAll(pattern)].length;
+}
+
+const cases = {
+  grades: moduleCase('TAB_GRADES', 'TAB_PLANNING'),
+  planning: moduleCase('TAB_PLANNING', 'TAB_MERGER'),
+  merger: moduleCase('TAB_MERGER', 'TAB_SEATPLAN'),
+  seatplan: moduleCase('TAB_SEATPLAN', 'TAB_GROUPS'),
+  groups: moduleCase('TAB_GROUPS', 'TAB_RANDOM_PICKER'),
+  picker: moduleCase('TAB_RANDOM_PICKER', 'TAB_DUPLICATE_CHECK'),
+  duplicate: moduleCase('TAB_DUPLICATE_CHECK', 'TAB_WORK_PHASE'),
+  workPhase: moduleCase('TAB_WORK_PHASE', 'TAB_QR'),
+  qr: moduleCase('TAB_QR'),
 };
 
-test('begrenzt jede Modultour inklusive Einstieg', () => {
-  assert.match(mainSource, /const TUTORIAL_STEP_BUDGETS = Object\.freeze\(\{/);
-  Object.entries(budgets).forEach(([tab, budget]) => {
-    assert.match(mainSource, new RegExp(`\\[${tab}\\]: ${budget},`));
+test('liefert die ausführlichen Definitionen ohne Budgets oder Komprimierung aus', () => {
+  assert.doesNotMatch(mainSource, /TUTORIAL_STEP_BUDGETS|TUTORIAL_FLOW_STEPS|compactTutorialSteps|applyTutorialStepBudget/);
+  assert.match(mainSource, /const steps = Array\.isArray\(definition\) \? definition : definition\?\.steps;/);
+  assert.match(mainSource, /return \[introStep, \.\.\.definition\];/);
+  assert.match(mainSource, /steps: \[introStep, \.\.\.\(Array\.isArray\(steps\) \? steps : \[\]\)\]/);
+
+  const minimumStepDefinitions = {
+    grades: [26, /gradesStep\(/g],
+    planning: [28, /planningStep\(/g],
+    merger: [21, /createModuleTutorialStep\(/g],
+    seatplan: [17, /createModuleTutorialStep\(/g],
+    groups: [16, /createModuleTutorialStep\(/g],
+    picker: [7, /createModuleTutorialStep\(/g],
+    duplicate: [13, /createModuleTutorialStep\(/g],
+    workPhase: [18, /createModuleTutorialStep\(/g],
+    qr: [13, /createModuleTutorialStep\(/g],
+  };
+  Object.entries(minimumStepDefinitions).forEach(([module, [minimum, pattern]]) => {
+    assert.ok(count(cases[module], pattern) >= minimum, `${module} ist nicht vollständig`);
   });
-  assert.match(mainSource, /const compactedSteps = compactTutorialSteps\(activeTab, rawSteps\)/);
-  assert.match(mainSource, /return applyTutorialStepBudget\(activeTab, \[introStep, \.\.\.compactedDefinition\]\)/);
-  assert.match(mainSource, /steps\.slice\(0, budget\)/);
 });
 
-test('behält wichtige Rechts- und Doppelklicks in den gekürzten Touren', () => {
-  assert.match(mainSource, /title: 'Kursmenü', copy: 'Ein Rechtsklick öffnet Kursdaten, Struktur und Teilnehmende\.'/);
-  assert.match(mainSource, /title: 'Spaltenmenü',[\s\S]*?Ein Rechtsklick auf eine Spalte öffnet Bearbeiten und Übertragen\./);
-  assert.match(mainSource, /title: 'Stundenmenü', copy: 'Das Stundenmenü bietet Kopieren, Verschieben, Entfall und Arbeiten\.'/);
-  assert.match(mainSource, /title: 'Serie anlegen', copy: 'Ein Doppelklick auf eine freie Zelle erstellt eine Serie\.'/);
-  assert.match(mainSource, /title: 'Gruppe sperren', copy: 'Ein Doppelklick sperrt eine Gruppe\.'/);
+test('ordnet Noten und Planung entlang der realen Arbeitsabläufe', () => {
+  assertOrdered(cases.grades, [
+    "'Datenbank verbinden'", "'Noten verschlüsseln'", "'Daten sichern'", "'Kurs anlegen'",
+    "'Notenstruktur festlegen'", "'Teilnehmende verwalten'", "'Eingabe öffnen'", "'Modus wählen'",
+    "'Leistung einordnen'", "'Ergebnisse erfassen'", "'Leistung speichern'", "'Notenübersicht lesen'",
+    "'Spalten per Rechtsklick verwalten'", "'Datenschutzmodus'", "'Schuljahr archivieren'",
+  ]);
+  assertOrdered(cases.planning, [
+    "'Datenbank'", "'Backup'", "'Ferien eintragen'", "'Kurs hinzufügen'",
+    "'Serie per Doppelklick anlegen'", "'Wochenraster'", "'Thema direkt eintragen'", "'Detailplanung'",
+    "'Sitzplan öffnen'", "'Noteneingabe verknüpfen'", "'Stunde per Rechtsklick steuern'",
+    "'Kursverlauf öffnen'", "'Einstellungen öffnen'", "'Archiv vorbereiten'", "'Speichern und weiterarbeiten'",
+  ]);
 });
 
-test('bündelt QR-Erstellen und QR-Lesen in fünf Schritten', () => {
-  [
-    'Werkzeug wählen',
-    'QR-Code erstellen',
-    'Code prüfen und speichern',
-    'QR-Code lesen',
-  ].forEach((title) => {
-    assert.match(mainSource, new RegExp(`title: '${title}'`));
-  });
-  assert.match(mainSource, /\[TAB_QR\]: 5,/);
-  assert.match(mainSource, /const qrFallback = \(nodes\) => nodes\.tabQr;/);
-  assert.match(
-    mainSource,
-    /case TAB_QR:[\s\S]*?demo:\s*\{[\s\S]*?activate: activateQrTutorialDemo,[\s\S]*?auto: true/
-  );
+test('ordnet die sieben weiteren Touren vollständig und aufgabenorientiert', () => {
+  assertOrdered(cases.seatplan, [
+    "'Namensliste importieren'", "'Rastergröße anpassen'", "'Raumform auswählen'", "'Lehrkraft platzieren'",
+    "'Sitzkriterien eingeben'", "'Vorschlag oder Zufall'", "'Kriterien auswerten'", "'Sitzplan nachbearbeiten'",
+    "'Perspektive umdrehen'", "'Sitzplan laden'", "'Sitzplan drucken'",
+  ]);
+  assertOrdered(cases.merger, [
+    "'Werkzeugauswahl'", "'PDF auswählen'", "'Seiten pro Blatt'", "'Layout erstellen'", "'Dateien verbinden'",
+    "'Dateireihenfolge'", "'Dateien zusammenführen'", "'PDF drehen'", "'Einzelne Seiten drehen'",
+    "'Gedrehte PDF erstellen'", "'PDF aufteilen'", "'Seitenauswahl'", "'Ausgabeformat'", "'Seitengruppen'",
+  ]);
+  assertOrdered(cases.groups, ["'Namensliste importieren'", "'Gruppenkriterien öffnen'", "'Vorschlag erzeugen'", "'Einteilung manuell anpassen'", "'Gruppen sperren'", "'Gruppenthemen eintragen'", "'Gruppeneinteilung laden'", "'Gruppen drucken'"]);
+  assertOrdered(cases.picker, ["'Gemeinsame Namensliste'", "'Auswahlbedingungen öffnen'", "'Picker-Rad'", "'Auswahl starten'", "'Ergebnis erkennen'", "'Erneut auswählen'", "'Pickerstand speichern'"]);
+  assertOrdered(cases.duplicate, ["'Prüfkriterien auswählen'", "'Abgaben als ZIP prüfen'", "'Zusammenfassung'", "'Duplikatgruppen'", "'Treffergründe'", "'Bilder vergleichen'", "'Ergebnis neu auswerten'", "'Originale bleiben unverändert'"]);
+  assertOrdered(cases.workPhase, ["'Arbeitsphase im Überblick'", "'Arbeitsauftrag eingeben'", "'Arbeitsdauer festlegen'", "'Arbeitszeit starten'", "'Timer stoppen'", "'Ampelschwellen festlegen'", "'Lautstärkeüberwachung starten'", "'Ampelfarben verstehen'", "'Überwachung stoppen'", "'Präsentationsansicht'"]);
+  assertOrdered(cases.qr, ["'QR-Werkzeuge auswählen'", "'Link eingeben'", "'QR-Code erstellen'", "'QR-Code kontrollieren'", "'QR-Code herunterladen'", "'QR-Bild kopieren'", "'QR-Code aus Bild lesen'", "'Bild aus der Zwischenablage'", "'Kamera verwenden'", "'Kamerascan beenden'", "'Gelesenes Ergebnis'", "'Ergebnis kopieren'", "'Wenn das Lesen nicht klappt'"]);
 });
 
-test('hält opake DuplikatCheck- und QR-Touren über sichtbare Host-Ziele vollständig', () => {
+test('benennt Gesten, Berechtigungen und Sicherheitsfolgen eindeutig', () => {
+  assert.match(cases.grades, /Ohne Passwort lassen sie sich nicht wiederherstellen\./);
+  assert.match(cases.grades, /Rechtsklick auf eine Leistungsspalte/);
+  assert.match(cases.planning, /Doppelklicke eine freie Zelle/);
+  assert.match(cases.groups, /Doppelklick sperrt eine Gruppe/);
+  assert.match(cases.merger, /Per Drag-and-drop legst du die Reihenfolge fest/);
+  assert.match(cases.duplicate, /deine Abgaben werden nicht verändert/);
+  assert.match(cases.workPhase, /Mikrofonfreigabe/);
+  assert.match(cases.qr, /Kamerafreigabe/);
+});
+
+test('behält isolierte Beispieldaten und zustandsabhängige Varianten', () => {
+  for (const [source, activation] of [
+    [cases.grades, 'activateGradesTutorialDemo'], [cases.planning, 'activatePlanningTutorialDemo'],
+    [cases.seatplan, 'activateSeatplanTutorialDemo'], [cases.groups, 'activateClassroomTutorialDemo'],
+    [cases.picker, 'activateClassroomTutorialDemo'], [cases.duplicate, 'activateDuplicateCheckTutorialDemo'],
+    [cases.workPhase, 'activateWorkPhaseTutorialDemo'], [cases.qr, 'activateQrTutorialDemo'],
+  ]) {
+    assert.match(source, new RegExp(`activate: (?:\\(\\) => )?${activation}`));
+    assert.match(source, /auto: true/);
+  }
+  assert.match(cases.seatplan, /if \(isCourseGradeMode\)/);
+  assert.match(cases.seatplan, /!isCourseSeatplan/);
+  assert.match(cases.seatplan, /if \(isCourseSeatplan\)/);
+});
+
+test('verankert opake Module an konkreten sichtbaren Modulzielen', () => {
   assert.match(mainSource, /const TUTORIAL_OPAQUE_FRAME_TABS = new Set\(\[\s+TAB_MERGER,\s+TAB_DUPLICATE_CHECK,\s+TAB_QR,/);
-  assert.match(mainSource, /if \(TUTORIAL_OPAQUE_FRAME_TABS\.has\(activeTab\)\) \{\s+compactedStep\.skipIfMissing = false;/);
-  assert.match(mainSource, /skipIfMissing: !TUTORIAL_OPAQUE_FRAME_TABS\.has\(activeTab\)/);
-  assert.match(mainSource, /const duplicateFallback = \(nodes\) => nodes\.tabDuplicateCheck;/);
-  assert.match(mainSource, /const qrFallback = \(nodes\) => nodes\.tabQr;/);
-  assert.match(
-    mainSource,
-    /case TAB_DUPLICATE_CHECK:[\s\S]*?title: 'Zusammenfassung'[\s\S]*?title: 'Duplikatgruppen'[\s\S]*?title: 'Originale bleiben unverändert'/
-  );
-  assert.match(
-    mainSource,
-    /case TAB_DUPLICATE_CHECK:[\s\S]*?demo:\s*\{[\s\S]*?activate: activateDuplicateCheckTutorialDemo,[\s\S]*?auto: true/
-  );
-  assert.doesNotMatch(
-    mainSource.slice(mainSource.indexOf('case TAB_DUPLICATE_CHECK:'), mainSource.indexOf('case TAB_WORK_PHASE:')),
-    /contentDocument/
-  );
-  assert.doesNotMatch(
-    mainSource.slice(mainSource.indexOf('case TAB_QR:'), mainSource.indexOf('default:', mainSource.indexOf('case TAB_QR:'))),
-    /contentDocument/
-  );
-});
-
-test('erklärt die PDF-Werkzeuge an ihren Ausgabeschaltflächen', () => {
-  [
-    '.tool-tab-bar',
-    '#layoutStartButton',
-    '#mergeStartButton',
-    '#rotateStartButton',
-    '#splitStartButton',
-  ].forEach((selector) => {
-    assert.ok(
-      mainSource.includes(`target: mergerFrameTarget('${selector}', (nodes) => nodes.tabMerger)`),
-      `PDF-Tutorialziel fehlt: ${selector}`,
-    );
-  });
-  assert.doesNotMatch(flowSource, /target: mergerFrameTarget\('#tool-tab-(?:layout|merge|rotate|split)'/);
-  assert.doesNotMatch(flowSource, /\[TAB_MERGER\][\s\S]*?demo:/);
-  assert.match(mainSource, /\[TAB_MERGER\]: 6,/);
-});
-
-test('berücksichtigt optionale Sitzplan- und DuplikatCheck-Schritte', () => {
-  assert.match(mainSource, /source: \['Sitzplan speichern', 'Im Notenmodul speichern'\]/);
-  assert.match(mainSource, /source: 'Noten am Sitzplatz eingeben'/);
-  assert.match(mainSource, /source: 'Duplikatgruppen'/);
-  assert.match(
-    mainSource,
-    /seatplanFrameTarget\(\['#teacher-card', '#grid \.seat-content\.teacher'\], seatplanFallback\)/
-  );
-  assert.match(mainSource, /if \(index < 0\) return \[\];/);
-});
-
-test('beschreibt die Tutorialschritte ohne Imperative', () => {
-  assert.doesNotMatch(
-    flowSource,
-    /copy: '[^']*\b(?:Wähle|Lege|Trage|Erstelle|Importiere|Ziehe|Klicke|Wechsle|Drucke|Lade|Starte|Speichere|Prüfe|Öffne|Nutze|Sichere|Ergänze|Setze|Doppelklicke)\b/,
-  );
-  assert.match(flowSource, /Hier lassen sich Kategorien und Gewichtungen für den Kurs festlegen\./);
-});
-
-test('führt Notenstruktur und Teilnehmende vor der Leistungserfassung', () => {
-  const structure = flowSource.indexOf("source: 'Notenstruktur festlegen'");
-  const students = flowSource.indexOf("source: 'Teilnehmende verwalten'");
-  const entry = flowSource.indexOf("source: 'Eingabe öffnen'");
-  assert.ok(structure >= 0 && students > structure && entry > students);
+  for (const selector of ['.tool-tab-bar', '#layoutStartButton', '#mergeStartButton', '#rotateStartButton', '#splitStartButton']) {
+    assert.ok(cases.merger.includes(`target: mergerFrameTarget('${selector}')`), `PDF-Tutorialziel fehlt: ${selector}`);
+  }
+  assert.match(cases.merger, /#mergeFileListShell:not\(\.hidden\)[\s\S]*?#mergeDropZone/);
+  assert.match(cases.merger, /\.rotate-page-card[\s\S]*?#rotateDropZone/);
+  assert.match(cases.merger, /\.split-page-card[\s\S]*?#splitDropZone/);
+  assert.doesNotMatch(cases.duplicate, /contentDocument/);
+  assert.doesNotMatch(cases.qr, /contentDocument/);
 });

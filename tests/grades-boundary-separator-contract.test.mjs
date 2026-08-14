@@ -37,6 +37,11 @@ test('subcategory separators are drawn from the following cell edge', () => {
   assert.match(appSource, /is-leading-boundary-subcategory/);
   assert.match(appSource, /grade-header-summary-cover/);
   assert.match(css, /\.grades-master-table thead th > \.grade-header-summary-cover/);
+  assert.match(appSource, /const isHeaderCell = cell\.tagName === "TH";/);
+  assert.match(appSource, /const isHeaderSummaryCell = isHeaderCell/);
+  assert.match(appSource, /if \(isHeaderSummaryCell\) return;/);
+  assert.match(appSource, /clipPath: isHeaderCell \? "inset\(0\)" : "inset\(0 100% 0 0\)"/);
+  assert.doesNotMatch(appSource, /oldShell\.animate\(/);
   assert.match(css, /th:has\(\+ th\.is-leading-boundary-subcategory\)/);
   assert.match(
     css,

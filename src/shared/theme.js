@@ -35,7 +35,6 @@ export function writeThemePreference(preference, storage = null) {
   try {
     resolveStorage(storage)?.setItem(THEME_PREFERENCE_STORAGE_KEY, normalized);
   } catch {
-    // A private or restricted browser context still receives the live theme.
   }
   return normalized;
 }

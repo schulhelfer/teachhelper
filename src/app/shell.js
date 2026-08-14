@@ -293,8 +293,6 @@ export function createShellController({
     const syncHandlePosition = () => {
       const appBounds = els.app.getBoundingClientRect();
       const sidebarBounds = sidebar.getBoundingClientRect();
-      // The resize target is 14px wide; centre its visible one-pixel divider
-      // exactly on the sidebar edge instead of drawing it inside the main view.
       handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left - 7)}px`);
       handle.style.setProperty('--sidebar-resize-top', `${Math.round(sidebarBounds.top - appBounds.top)}px`);
       handle.style.setProperty('--sidebar-resize-height', `${Math.round(sidebarBounds.height)}px`);
@@ -575,7 +573,7 @@ export function createShellController({
     const sync = () => {
       moreToolsSyncFrame = 0;
       syncMoreToolsNavigation();
-      queueSettledActiveTabIndicatorUpdate();
+      queueActiveTabIndicatorUpdate({ instant: state.tabTransitionState === 'idle' });
     };
     if (typeof window.requestAnimationFrame !== 'function') {
       sync();

@@ -234,9 +234,6 @@ export function createPlanningSeatplanBridge({
 
   function dispatchGradesNavigation(detail = null) {
     ensureTabInitialized(TAB_GRADES);
-    // The grades frame can still be lazy while Planning remains visible for
-    // the vault dialog. Start it explicitly so the queued navigation reaches
-    // the unlock dialog without first switching tabs.
     if (gradesController?.frame?.loading === 'lazy') {
       gradesController.frame.loading = 'eager';
     }
@@ -468,9 +465,6 @@ export function createPlanningSeatplanBridge({
       return dispatchBlockedResult(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail);
     }
     ensureTabInitialized(TAB_GRADES);
-    // Kurs-Pills are also available while the vault is locked, so Grades may
-    // still be lazy at this point. Load it now to show the unlock overlay and
-    // resume this exact import after the password has been accepted.
     if (gradesController?.frame?.loading === 'lazy') {
       gradesController.frame.loading = 'eager';
     }

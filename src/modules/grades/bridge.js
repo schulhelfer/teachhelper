@@ -38,14 +38,14 @@
     GRADE_ROSTER_IMPORT_REQUEST_EVENT,
   ]);
 
-  function withPlanningTutorialApi(callback, attempt = 0) {
-    const api = window.__teachhelperPlanningTutorial || null;
+  function withGradesTutorialApi(callback, attempt = 0) {
+    const api = window.__teachhelperGradesTutorial || null;
     if (api) {
       callback(api);
       return;
     }
     if (attempt >= 40) return;
-    window.setTimeout(() => withPlanningTutorialApi(callback, attempt + 1), 50);
+    window.setTimeout(() => withGradesTutorialApi(callback, attempt + 1), 50);
   }
 
   window.addEventListener('message', (event) => {
@@ -76,15 +76,15 @@
       const command = String(detail.command || '');
       const commandDetail = detail.detail && typeof detail.detail === 'object' ? detail.detail : {};
       if (command === 'activate') {
-        withPlanningTutorialApi((api) => api.activate?.());
+        withGradesTutorialApi((api) => api.activate?.());
         return;
       }
       if (command === 'showSurface') {
-        withPlanningTutorialApi((api) => api.showSurface?.(String(commandDetail.surface || '')));
+        withGradesTutorialApi((api) => api.showSurface?.(String(commandDetail.surface || '')));
         return;
       }
       if (command === 'cleanup') {
-        withPlanningTutorialApi((api) => api.cleanup?.());
+        withGradesTutorialApi((api) => api.cleanup?.());
       }
       return;
     }

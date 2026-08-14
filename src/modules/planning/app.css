@@ -475,7 +475,7 @@
           overflow: auto;
           border: 1px solid var(--module-surface-border);
           border-radius: var(--module-surface-radius);
-          background: var(--surface-panel);
+          background: var(--module-surface-strong);
           color: var(--text);
           padding: 0;
           box-shadow: var(--module-surface-shadow);
@@ -1641,7 +1641,6 @@
           transition: margin-left 360ms cubic-bezier(0.22, 1, 0.36, 1), margin-top 240ms ease;
         }
 
-        /* The weekly grid starts directly below the navigation without a shadow gradient. */
         body[data-view="week"] .header-glass {
           box-shadow: none;
         }
@@ -2351,7 +2350,6 @@
           box-shadow: inset -1px 0 0 var(--border-subtle);
         }
 
-        /* Keep the first-column hour cell in the second row visually clean. */
         #week-table tbody tr:nth-child(2) > .hour {
           border-bottom: none;
           box-shadow: inset -1px 0 0 var(--border-subtle);
@@ -2702,8 +2700,6 @@
           cursor: default;
         }
 
-        /* The setup lock applies until both the database and its backup folder
-           are connected. Use the native system "not allowed" cursor. */
         body[data-persistence-setup-pending="true"] #sidebar-course-list button[data-course-id],
         body[data-persistence-setup-pending="true"] #sidebar-course-list button[data-add-course],
         body[data-persistence-setup-pending="true"] #view-week-btn,
@@ -2833,7 +2829,7 @@
           width: 100%;
           max-width: 100%;
           text-align: center;
-          font-size: calc(1.3rem * var(--week-table-scale, 1) * var(--week-block-font-scale, 1));
+          font-size: calc(1.3rem * var(--week-table-scale, 1) * var(--week-topic-font-scale, 1));
           line-height: 1.12;
           opacity: 0.95;
         }
@@ -3028,7 +3024,7 @@
           color: inherit;
           text-align: center;
           text-align-last: center;
-          font-size: calc(1.3rem * var(--week-table-scale, 1) * var(--week-block-font-scale, 1));
+          font-size: calc(1.3rem * var(--week-table-scale, 1) * var(--week-topic-font-scale, 1));
           line-height: 1.12;
           font-weight: 700;
           padding: 0;
@@ -5934,7 +5930,6 @@
           margin-bottom: 0;
         }
 
-        /* Must win over generic editor typography inherited from the app. */
         .topic-dialog-notes .planning-rich-size-12 { font-size: 12px !important; }
         .topic-dialog-notes .planning-rich-size-14 { font-size: 14px !important; }
         .topic-dialog-notes .planning-rich-size-16 { font-size: 16px !important; }
@@ -6505,7 +6500,6 @@
         @media (max-width: 1200px) {
           .app-window {
             grid-template-columns: minmax(160px, min(var(--module-sidebar-width), 50vw)) minmax(0, 1fr);
-            /* Keep the sidebar flush with the module edge at browser zoom levels. */
             padding: 0;
             column-gap: 0;
           }
