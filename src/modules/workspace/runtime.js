@@ -3,6 +3,7 @@ import {
   getThdb1FileHash,
   parseThdb1ContainerBytes,
 } from '../../shared/school-data/thdb.js';
+import { FILE_LIMITS, formatFileSize } from '../../shared/file-guards.js';
 import { writeAndVerifyFileBytes } from '../../shared/school-data/sync-safety.js';
 import {
   APP_DB_SCHEMA,
@@ -31,6 +32,7 @@ import {
   deriveWorkspaceVaultKey,
   encryptWorkspaceVaultText,
   normalizeWorkspaceVaultKdf,
+  validateWorkspaceVaultKdf,
   WORKSPACE_VAULT_KDF_ITERATIONS,
 } from './crypto.js';
 import { buildWorkspaceArchivePdfBytes, downloadWorkspaceArchivePdf } from './archive-pdf.js';
@@ -42,6 +44,7 @@ const HANDLE_FILE_KEY = 'sync-file';
 const HANDLE_BACKUP_KEY = 'backup-dir';
 const AUTO_LOCK_MS = 45 * 60 * 1000;
 const AUTO_LOCK_RETRY_MS = 10 * 60 * 1000;
+const THDB_CONFIRM_BYTES = 100 * 1024 * 1024;
 const PLANNING_SETTING_KEYS = new Set([
   'hoursPerDay',
   'lessonTimes',
@@ -995,7 +998,7 @@ export class WorkspaceRuntime {
     }
   }
 
-  async runGradeCourseMutation(courseId, operation, { preserveRoster = false } = {}) {
+  async runGradeCourseMutation(courseId, operation, { preserveRoster = false, skipAutoSave = false } = {}) {
     const id = Number(courseId) || 0;
     const run = async () => {
       await this.ensureGradeCourseLoaded(id);
@@ -1016,7 +1019,7 @@ export class WorkspaceRuntime {
         this.dirtyCourseIds.add(id);
         this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
         this.manualDirty = true;
-        if (!this.isManualPersistenceMode() && this.fileHandle) {
+        if (!skipAutoSave && !this.isManualPersistenceMode() && this.fileHandle) {
           this.queueSyncSave('grades-auto-save');
         }
         return result;
@@ -1165,9 +1168,11 @@ export class WorkspaceRuntime {
     let config;
     try {
       publicState = JSON.parse(parsed.planningPublicText);
-      config = normalizeVaultConfig(JSON.parse(parsed.gradeVaultConfigText || '{}'));
+      const rawVaultConfig = JSON.parse(parsed.gradeVaultConfigText || '{}');
+      config = normalizeVaultConfig(rawVaultConfig);
+      if (config.configured) validateWorkspaceVaultKdf(rawVaultConfig.kdf);
     } catch {
-      throw new Error('Datenbanksegmente enthalten ungültiges JSON.');
+      throw new Error('Datenbanksegmente oder Verschlüsselungseinstellungen sind ungültig.');
     }
     const isEmptyDatabase = [
       publicState?.schoolYears,
@@ -1212,6 +1217,26 @@ export class WorkspaceRuntime {
 
   async readHandleBytes(handle) {
     const file = await handle.getFile();
+    return this.readDatabaseFileBytes(file, 'Datenbankdatei');
+  }
+
+  async readDatabaseFileBytes(file, label = 'Datenbankdatei') {
+    if (!file || typeof file.arrayBuffer !== 'function') {
+      throw new Error(`${label} konnte nicht gelesen werden.`);
+    }
+    const size = Number(file.size);
+    if (Number.isFinite(size) && size > FILE_LIMITS.THDB_BYTES) {
+      throw new Error(`${label} ist zu groß: maximal ${formatFileSize(FILE_LIMITS.THDB_BYTES)}.`);
+    }
+    if (Number.isFinite(size) && size > THDB_CONFIRM_BYTES) {
+      const shouldContinue = typeof globalThis.confirm === 'function'
+        && globalThis.confirm(
+          `${label} ist ${formatFileSize(size)} groß. Das Laden kann viel Arbeitsspeicher beanspruchen und den Browser verlangsamen. Trotzdem laden?`
+        );
+      if (!shouldContinue) {
+        throw new Error(`${label} wurde nicht geladen.`);
+      }
+    }
     return new Uint8Array(await file.arrayBuffer());
   }
 
@@ -1395,7 +1420,7 @@ export class WorkspaceRuntime {
   async loadManualDatabaseFromFile(file) {
     if (!file) return false;
     this.fileName = String(file.name || this.buildSyncFileSuggestedName());
-    await this.loadBytes(new Uint8Array(await file.arrayBuffer()), 'manual');
+    await this.loadBytes(await this.readDatabaseFileBytes(file), 'manual');
     return true;
   }
 
@@ -1437,7 +1462,7 @@ export class WorkspaceRuntime {
     const latest = candidates[0];
     if (!latest) return false;
     const file = await latest.getFile();
-    await this.loadBytes(new Uint8Array(await file.arrayBuffer()), 'backup');
+    await this.loadBytes(await this.readDatabaseFileBytes(file, 'Sicherung'), 'backup');
     this.fileName = String(latest.name || this.fileName || this.buildSyncFileSuggestedName());
     return true;
   }

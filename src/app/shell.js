@@ -549,7 +549,9 @@ export function createShellController({
   }
 
   function syncMoreToolsNavigation() {
-    if (!els.tabNav || els.tabNav.hidden) return;
+    if (!els.tabNav || els.tabNav.hidden) return false;
+    const wasCompact = els.tabNav.classList.contains('is-tabs-compact');
+    const wasCondensed = els.tabNav.classList.contains('is-tools-condensed');
     setMoreToolsMenuOpen(false);
     els.tabNav.classList.remove('is-tools-condensed', 'is-tabs-compact');
     els.tabNav.classList.add('is-measuring-full-tabs');
@@ -563,6 +565,7 @@ export function createShellController({
     els.tabNav.classList.remove('is-measuring-full-tabs');
     els.tabNav.classList.toggle('is-tools-condensed', needsCondensing);
     updateMoreToolsNavigationState();
+    return wasCompact !== needsCompactTabs || wasCondensed !== needsCondensing;
   }
 
   function queueMoreToolsNavigationSync() {
@@ -572,8 +575,12 @@ export function createShellController({
     }
     const sync = () => {
       moreToolsSyncFrame = 0;
-      syncMoreToolsNavigation();
-      queueActiveTabIndicatorUpdate({ instant: state.tabTransitionState === 'idle' });
+      const navigationModeChanged = syncMoreToolsNavigation();
+      if (navigationModeChanged) {
+        queueSettledActiveTabIndicatorUpdate();
+      } else {
+        queueActiveTabIndicatorUpdate({ instant: state.tabTransitionState === 'idle' });
+      }
     };
     if (typeof window.requestAnimationFrame !== 'function') {
       sync();
@@ -745,8 +752,12 @@ export function createShellController({
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
-    syncMoreToolsNavigation();
-    queueActiveTabIndicatorUpdate();
+    const navigationModeChanged = syncMoreToolsNavigation();
+    if (navigationModeChanged) {
+      queueSettledActiveTabIndicatorUpdate();
+    } else {
+      queueActiveTabIndicatorUpdate();
+    }
     if (state.activeTab === TAB_RANDOM_PICKER) {
       renderRandomPicker();
     }

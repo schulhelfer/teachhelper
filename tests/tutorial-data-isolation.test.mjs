@@ -153,3 +153,16 @@ test('opaque tutorial module sandboxes stay isolated from the shell origin', () 
   assert.ok(!duplicateSandbox.includes('allow-same-origin'));
   assert.ok(!qrSandbox.includes('allow-same-origin'));
 });
+
+test('the opaque duplicate-check frame uses one fresh revision without storage access in its document', async () => {
+  const [duplicateIndex, duplicateHtml] = await Promise.all([
+    readFile(new URL('../src/modules/duplicate-check/index.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/modules/duplicate-check/app.html', import.meta.url), 'utf8'),
+  ]);
+  const revision = duplicateIndex.match(/DUPLICATE_CHECK_VERSION = '([^']+)'/)?.[1] || '';
+
+  assert.equal(revision, 'duplicate-check-r5');
+  assert.match(duplicateHtml, new RegExp(`app\\.css\\?v=${revision}`));
+  assert.match(duplicateHtml, new RegExp(`app\\.js\\?v=${revision}`));
+  assert.doesNotMatch(duplicateHtml, /(?:local|session)Storage/);
+});

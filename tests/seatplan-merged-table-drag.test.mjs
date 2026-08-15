@@ -182,3 +182,11 @@ test('merged table symbols expose dedicated mouse and touch drag payloads', () =
   assert.match(appSource, /table\.key !== pairKey\(aId, bId\)/);
   assert.match(appSource, /seat\.classList\.toggle\('active', state\.activeSeats\.has\(id\)\)/);
 });
+
+test('merged table dragging renders and highlights the complete two-seat table', () => {
+  assert.match(appSource, /function createMergedTableDragPreview\(table/);
+  assert.match(appSource, /table-drag-preview--\$\{table\.orientation\}/);
+  assert.match(appSource, /function showMergedTableDropPreview\(tablePayload, targetId\)/);
+  assert.match(appSource, /classList\.add\('table-drop-target'\)/);
+  assert.match(appSource, /clearMergedTableDropPreview\(\);/);
+});

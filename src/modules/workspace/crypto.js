@@ -1,6 +1,13 @@
 export const WORKSPACE_VAULT_SCHEMA = 'teachhelper-grade-vault-v1';
 export const WORKSPACE_VAULT_AAD_SCHEMA = 'teachhelper-db-v1';
 export const WORKSPACE_VAULT_KDF_ITERATIONS = 600000;
+export const WORKSPACE_VAULT_KDF_MIN_ITERATIONS = 100000;
+// Leave room for future KDF-cost increases while rejecting hostile containers
+// that would keep the browser busy for an unreasonable amount of time.
+export const WORKSPACE_VAULT_KDF_MAX_ITERATIONS = 2000000;
+export const WORKSPACE_VAULT_SALT_BYTES = 16;
+export const WORKSPACE_VAULT_IV_BYTES = 12;
+export const WORKSPACE_VAULT_TAG_LENGTH = 128;
 
 function bytesToBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
@@ -14,6 +21,27 @@ function base64ToBytes(value) {
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
 
+function base64LengthForBytes(length) {
+  return Math.ceil(length / 3) * 4;
+}
+
+function decodeFixedBase64(value, byteLength, label) {
+  const encoded = typeof value === 'string' ? value : '';
+  if (encoded.length !== base64LengthForBytes(byteLength)) {
+    throw new Error(`${label} hat eine ungültige Länge.`);
+  }
+  let bytes;
+  try {
+    bytes = base64ToBytes(encoded);
+  } catch {
+    throw new Error(`${label} ist nicht gültig Base64-kodiert.`);
+  }
+  if (bytes.length !== byteLength || bytesToBase64(bytes) !== encoded) {
+    throw new Error(`${label} ist ungültig.`);
+  }
+  return bytes;
+}
+
 function randomBytes(length, cryptoProvider = globalThis.crypto) {
   const bytes = new Uint8Array(Math.max(0, Number(length) || 0));
   cryptoProvider.getRandomValues(bytes);
@@ -25,8 +53,28 @@ export function normalizeWorkspaceVaultKdf(raw = null) {
   return {
     name: 'PBKDF2',
     hash: 'SHA-256',
-    iterations: Math.max(100000, Number(source.iterations) || WORKSPACE_VAULT_KDF_ITERATIONS),
+    iterations: Math.max(WORKSPACE_VAULT_KDF_MIN_ITERATIONS, Number(source.iterations) || WORKSPACE_VAULT_KDF_ITERATIONS),
     salt: String(source.salt || ''),
+  };
+}
+
+export function validateWorkspaceVaultKdf(raw = null) {
+  const source = raw && typeof raw === 'object' ? raw : null;
+  if (!source) throw new Error('Die KDF-Konfiguration ist ungültig.');
+  const iterations = Number(source.iterations);
+  if (
+    !Number.isSafeInteger(iterations)
+    || iterations < WORKSPACE_VAULT_KDF_MIN_ITERATIONS
+    || iterations > WORKSPACE_VAULT_KDF_MAX_ITERATIONS
+  ) {
+    throw new Error('Die PBKDF2-Iterationszahl ist ungültig.');
+  }
+  decodeFixedBase64(source.salt, WORKSPACE_VAULT_SALT_BYTES, 'Der PBKDF2-Salt');
+  return {
+    name: 'PBKDF2',
+    hash: 'SHA-256',
+    iterations,
+    salt: source.salt,
   };
 }
 
@@ -36,7 +84,7 @@ export function createWorkspaceVaultKdf({
 } = {}) {
   return normalizeWorkspaceVaultKdf({
     iterations,
-    salt: bytesToBase64(randomBytes(16, cryptoProvider)),
+    salt: bytesToBase64(randomBytes(WORKSPACE_VAULT_SALT_BYTES, cryptoProvider)),
   });
 }
 
@@ -52,7 +100,7 @@ export function buildWorkspaceVaultAad(scope = {}) {
 }
 
 export async function deriveWorkspaceVaultKey(password, kdfConfig, cryptoProvider = globalThis.crypto) {
-  const kdf = normalizeWorkspaceVaultKdf(kdfConfig);
+  const kdf = validateWorkspaceVaultKdf(kdfConfig);
   const baseKey = await cryptoProvider.subtle.importKey(
     'raw',
     new TextEncoder().encode(String(password || '')),
@@ -76,18 +124,18 @@ export async function encryptWorkspaceVaultText(
   scope = {},
   cryptoProvider = globalThis.crypto,
 ) {
-  const kdf = normalizeWorkspaceVaultKdf(kdfConfig);
-  const iv = randomBytes(12, cryptoProvider);
+  const kdf = validateWorkspaceVaultKdf(kdfConfig);
+  const iv = randomBytes(WORKSPACE_VAULT_IV_BYTES, cryptoProvider);
   const ciphertext = await cryptoProvider.subtle.encrypt({
     name: 'AES-GCM',
     iv,
     additionalData: buildWorkspaceVaultAad(scope),
-    tagLength: 128,
+    tagLength: WORKSPACE_VAULT_TAG_LENGTH,
   }, cryptoKey, new TextEncoder().encode(String(plaintext || '')));
   return {
     schema: WORKSPACE_VAULT_SCHEMA,
     kdf,
-    cipher: { name: 'AES-GCM', iv: bytesToBase64(iv), tagLength: 128 },
+    cipher: { name: 'AES-GCM', iv: bytesToBase64(iv), tagLength: WORKSPACE_VAULT_TAG_LENGTH },
     ciphertext: bytesToBase64(new Uint8Array(ciphertext)),
   };
 }
@@ -100,7 +148,7 @@ export async function decryptWorkspaceVaultText(
   cryptoProvider = globalThis.crypto,
 ) {
   const source = envelope && typeof envelope === 'object' ? envelope : null;
-  const kdf = normalizeWorkspaceVaultKdf(kdfConfig || source?.kdf);
+  const kdf = validateWorkspaceVaultKdf(kdfConfig || source?.kdf);
   if (
     !source
     || String(source.schema || '') !== WORKSPACE_VAULT_SCHEMA
@@ -110,12 +158,19 @@ export async function decryptWorkspaceVaultText(
   ) {
     throw new Error('Der verschlüsselte Notenbereich ist unvollständig.');
   }
+  if (source.cipher.name !== 'AES-GCM') {
+    throw new Error('Der verschlüsselte Notenbereich verwendet ein ungültiges Verschlüsselungsverfahren.');
+  }
+  const iv = decodeFixedBase64(source.cipher.iv, WORKSPACE_VAULT_IV_BYTES, 'Der AES-GCM-IV');
+  if (source.cipher.tagLength !== WORKSPACE_VAULT_TAG_LENGTH) {
+    throw new Error('Die AES-GCM-Taglänge ist ungültig.');
+  }
   try {
     const plaintext = await cryptoProvider.subtle.decrypt({
       name: 'AES-GCM',
-      iv: base64ToBytes(source.cipher.iv),
+      iv,
       additionalData: buildWorkspaceVaultAad(scope),
-      tagLength: Number(source.cipher.tagLength) || 128,
+      tagLength: WORKSPACE_VAULT_TAG_LENGTH,
     }, cryptoKey, base64ToBytes(source.ciphertext));
     return new TextDecoder().decode(new Uint8Array(plaintext));
   } catch {

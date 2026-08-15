@@ -18,3 +18,23 @@ test('the assessment mode control uses compact descriptive labels', () => {
   );
   assert.doesNotMatch(modeControl, /\btitle=/);
 });
+
+test('the standard grade-entry table reads only its declared draft entries', () => {
+  const start = appSource.indexOf('\n  buildGradesEntryTable(');
+  const end = appSource.indexOf('\n  getActiveGradeTestContext(', start);
+  assert.ok(start >= 0 && end > start, 'standard entry table must be present');
+  const table = appSource.slice(start, end);
+  assert.doesNotMatch(table, /Object\.prototype\.hasOwnProperty\.call\(entries,/);
+  assert.match(table, /Object\.prototype\.hasOwnProperty\.call\(draftEntries,/);
+});
+
+test('the BE entry table declares each student entry before using its scores', () => {
+  const start = appSource.indexOf('\n  buildGradesTestEntryTable(');
+  const end = appSource.indexOf('\n  openGradesEntryCoursePicker(', start);
+  assert.ok(start >= 0 && end > start, 'BE entry table must be present');
+  const table = appSource.slice(start, end);
+  const entryDeclaration = table.indexOf('const entry = Object.prototype.hasOwnProperty.call(entries, student.id)');
+  const scoreDeclaration = table.indexOf('const scores = normalizeGradeTestScores(entry?.testScores);', entryDeclaration);
+  const scoreUse = table.indexOf('calculateGradeTestValue(tasks, scores', scoreDeclaration);
+  assert.ok(entryDeclaration >= 0 && scoreDeclaration > entryDeclaration && scoreUse > scoreDeclaration);
+});

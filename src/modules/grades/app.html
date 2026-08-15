@@ -212,7 +212,9 @@
         <section id="view-settings" class="view-panel" hidden>
           <div class="settings-tabs-shell">
             <div class="settings-tabs-head">
-              <div class="settings-tab-bar" role="tablist" aria-label="Einstellungen">
+              <div class="settings-tab-bar" role="tablist" aria-label="Einstellungen">
+
+
                 <button class="settings-tab active" type="button" role="tab" data-tab="gradeTestScales"
                   aria-controls="settings-tab-grade-test-scales" aria-selected="true">Prozentgrenzen</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="gradeStructure"
@@ -222,7 +224,8 @@
                 <button class="settings-tab" type="button" role="tab" data-tab="occurrences"
                   aria-controls="settings-tab-occurrences" aria-selected="false">Vorkommnisse</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="expectationHorizon"
-                  aria-controls="settings-tab-expectation-horizon" aria-selected="false">Vorlagen</button>
+                  aria-controls="settings-tab-expectation-horizon" aria-selected="false">Vorlagen</button>
+
                 <button class="settings-tab" type="button" role="tab" data-tab="database"
                   aria-controls="settings-tab-database" aria-selected="false">Datenbank</button>
                 <button class="settings-tab" type="button" role="tab" data-tab="encryption"
@@ -231,7 +234,8 @@
               <div class="settings-actions-row app-action-group">
                 <button id="settings-reset-all" type="button" class="ghost dialog-icon-button app-action-icon"
                   aria-label="Standardwerte" data-tooltip="Standardwerte">
-                  <svg class="settings-reset-icon app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <svg class="settings-reset-icon app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true"
+                    focusable="false">
                     <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
                       stroke-linecap="round" stroke-linejoin="round"></path>
                     <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -242,10 +246,10 @@
                       stroke-linejoin="round"></path>
                   </svg>
                 </button>
-                <button id="settings-save-all" type="button" class="dialog-icon-button app-action-icon" aria-label="Speichern"
-                  data-tooltip="Speichern">💾</button>
-                <button id="settings-cancel-all" type="button" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-                  data-tooltip="Abbrechen">❌</button>
+                <button id="settings-save-all" type="button" class="dialog-icon-button app-action-icon"
+                  aria-label="Speichern" data-tooltip="Speichern">💾</button>
+                <button id="settings-cancel-all" type="button" class="ghost dialog-icon-button app-action-icon"
+                  aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
               </div>
             </div>
             <div class="settings-tab-content">
@@ -400,10 +404,13 @@
 
               <div id="settings-tab-occurrences" class="settings-panel" role="tabpanel" hidden>
                 <section class="settings-grade-occurrences-panel">
-                  <p class="muted">Kategorien gelten für alle Kurse. Jede Vorkommnisleistung wird genau einer Kategorie zugeordnet.</p>
-                  <section class="settings-grade-occurrence-suggestions-section" aria-labelledby="settings-grade-occurrence-suggestions-title">
+                  <p class="muted">Kategorien gelten für alle Kurse. Jede Vorkommnisleistung wird genau einer Kategorie
+                    zugeordnet.</p>
+                  <section class="settings-grade-occurrence-suggestions-section"
+                    aria-labelledby="settings-grade-occurrence-suggestions-title">
                     <h3 id="settings-grade-occurrence-suggestions-title" class="settings-panel-title">Vorschläge</h3>
-                    <div id="settings-grade-occurrence-suggestions" class="settings-grade-occurrence-suggestions-list"></div>
+                    <div id="settings-grade-occurrence-suggestions" class="settings-grade-occurrence-suggestions-list">
+                    </div>
                   </section>
                   <div id="settings-grade-occurrences-list" class="settings-grade-occurrences-list"></div>
                   <div class="button-row settings-grade-occurrences-add-row">
@@ -427,9 +434,10 @@
       <div class="dialog-header">
         <h3 id="course-dialog-title" class="dialog-title">Kurs</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
-          <button type="button" id="course-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-            data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="course-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-dialog-id">
@@ -487,9 +495,10 @@
       <div class="dialog-header">
         <h3 id="course-color-dialog-title" class="dialog-title">Farbe bearbeiten</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
-          <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-            data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-color-dialog-id">
@@ -506,9 +515,10 @@
       <div class="dialog-header">
         <h3 id="course-students-dialog-title" class="dialog-title">Teilnehmende verwalten</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="course-students-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-students-dialog-id">
@@ -526,7 +536,8 @@
         <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
         <div class="button-row course-dialog-students-manual-row">
           <button type="button" id="course-dialog-group-photo-open" class="ghost"
-            aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">📷 Aus Gruppenfoto extrahieren</button>
+            aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">📷 Aus Gruppenfoto
+            extrahieren</button>
           <button type="button" id="course-dialog-students-add" class="sidebar-add-btn"
             aria-label="Teilnehmende hinzufügen" title="Teilnehmende hinzufügen">
             <span class="sidebar-add-plus" aria-hidden="true"></span>
@@ -536,13 +547,16 @@
     </form>
   </dialog>
 
-  <dialog id="course-group-photo-dialog" class="app-dialog course-group-photo-dialog" aria-label="Bilder aus Gruppenfoto extrahieren">
+  <dialog id="course-group-photo-dialog" class="app-dialog course-group-photo-dialog"
+    aria-label="Bilder aus Gruppenfoto extrahieren">
     <form id="course-group-photo-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
         <h3 class="dialog-title">Bilder aus Gruppenfoto extrahieren</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" id="course-group-photo-apply" class="dialog-icon-button app-action-icon" aria-label="Bilder übernehmen" data-tooltip="Bilder übernehmen">💾</button>
-          <button type="button" id="course-group-photo-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="course-group-photo-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" id="course-group-photo-apply" class="dialog-icon-button app-action-icon"
+            aria-label="Bilder übernehmen" data-tooltip="Bilder übernehmen">💾</button>
         </div>
       </div>
       <input id="course-group-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
@@ -586,9 +600,10 @@
             <option value="P4">P4</option>
             <option value="P5">P5</option>
           </select>
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="course-structure-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-structure-dialog-id">
@@ -610,12 +625,12 @@
       <div class="dialog-header">
         <h3 id="message-dialog-title" class="dialog-title">Hinweis</h3>
         <div id="message-dialog-actions-top" class="dialog-actions-top app-action-group" hidden>
-          <button type="button" id="message-dialog-cancel-top" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-            data-tooltip="Abbrechen">❌</button>
-          <button type="submit" id="message-dialog-ok-top" class="dialog-icon-button app-action-icon" aria-label="Speichern"
-            data-tooltip="Speichern">💾</button>
-          <button type="button" id="message-dialog-discard-top" class="danger-action dialog-icon-button app-action-icon" aria-label="Verwerfen &amp; Wechseln"
-            data-tooltip="Verwerfen &amp; Wechseln" hidden>🗑️</button>
+          <button type="button" id="message-dialog-cancel-top" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="message-dialog-discard-top" class="danger-action dialog-icon-button app-action-icon"
+            aria-label="Verwerfen &amp; wechseln" data-tooltip="Verwerfen &amp; wechseln" hidden>🗑️</button>
+          <button type="submit" id="message-dialog-ok-top" class="dialog-icon-button app-action-icon"
+            aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <p id="message-dialog-text" class="message-dialog-text"></p>
@@ -638,8 +653,8 @@
       <div class="dialog-header">
         <h3 id="schoolmanager-transfer-dialog-title" class="dialog-title">Noten in Schulmanager/AbiWeb übertragen</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="button" id="schoolmanager-transfer-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
-            aria-label="Schließen" data-tooltip="Schließen">❌</button>
+          <button type="button" id="schoolmanager-transfer-dialog-cancel"
+            class="ghost dialog-icon-button app-action-icon" aria-label="Schließen" data-tooltip="Schließen">❌</button>
         </div>
       </div>
       <div class="schoolmanager-transfer-steps">
@@ -778,21 +793,47 @@
       <div class="dialog-header">
         <h3 id="grade-accommodation-dialog-title" class="dialog-title">Nachteilsausgleich</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" id="grade-accommodation-save" class="dialog-icon-button app-action-icon" aria-label="Speichern"
-            data-tooltip="Speichern">💾</button>
-          <button type="button" id="grade-accommodation-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-            data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="grade-accommodation-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" id="grade-accommodation-save" class="dialog-icon-button app-action-icon"
+            aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input id="grade-accommodation-course-id" type="hidden">
       <div id="grade-accommodation-list" class="grade-accommodation-list"></div>
       <div class="button-row grade-accommodation-add-row">
-        <button type="button" id="grade-accommodation-add" class="sidebar-add-btn"
-          aria-label="Kachel hinzufügen" title="Kachel hinzufügen">
+        <button type="button" id="grade-accommodation-add" class="sidebar-add-btn" aria-label="Kachel hinzufügen"
+          title="Kachel hinzufügen">
           <span class="sidebar-add-plus" aria-hidden="true"></span>
         </button>
       </div>
       <div id="grade-accommodation-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-expectation-horizon-comment-dialog" class="app-dialog grade-expectation-horizon-comment-dialog"
+    aria-labelledby="grade-expectation-horizon-comment-dialog-title">
+    <form id="grade-expectation-horizon-comment-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-expectation-horizon-comment-dialog-title" class="dialog-title">Kommentar</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="grade-expectation-horizon-comment-previous"
+            class="ghost dialog-icon-button app-action-icon" aria-label="Vorherige Schülerin oder vorherigen Schüler bearbeiten"
+            data-tooltip="Vorherige Schülerin oder vorherigen Schüler">◀</button>
+          <button type="button" id="grade-expectation-horizon-comment-next"
+            class="ghost dialog-icon-button app-action-icon" aria-label="Nächste Schülerin oder nächsten Schüler bearbeiten"
+            data-tooltip="Nächste Schülerin oder nächsten Schüler">▶</button>
+          <button type="button" id="grade-expectation-horizon-comment-cancel"
+            class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
+        </div>
+      </div>
+      <label class="grade-expectation-horizon-comment-field" for="grade-expectation-horizon-comment-input">
+        Freitext
+        <textarea id="grade-expectation-horizon-comment-input" rows="8" maxlength="500" spellcheck="true"
+          placeholder="Individueller Kommentar für den Erwartungshorizont"></textarea>
+      </label>
     </form>
   </dialog>
 
@@ -804,12 +845,13 @@
         <div class="dialog-actions-top app-action-group">
           <button type="button" id="expectation-horizon-generate" class="ghost dialog-icon-button app-action-icon"
             aria-label="Generieren" data-tooltip="Generieren">✨</button>
-          <button type="button" id="expectation-horizon-template-download" class="ghost dialog-icon-button app-action-icon"
-            aria-label="Vorlage herunterladen" data-tooltip="Vorlage herunterladen">📥</button>
-          <button type="button" id="expectation-horizon-save" class="ghost dialog-icon-button app-action-icon" aria-label="Speichern"
-            data-tooltip="Speichern">💾</button>
+          <button type="button" id="expectation-horizon-template-download"
+            class="ghost dialog-icon-button app-action-icon" aria-label="Vorlage herunterladen"
+            data-tooltip="Vorlage herunterladen">📥</button>
           <button type="button" id="expectation-horizon-cancel-top" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="expectation-horizon-save" class="dialog-icon-button app-action-icon"
+            aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input id="expectation-horizon-file" class="visually-hidden" type="file"
@@ -873,10 +915,10 @@
         <div class="dialog-actions-top app-action-group">
           <button type="button" id="competence-expectations-generate" class="ghost dialog-icon-button app-action-icon"
             aria-label="Generieren" data-tooltip="Generieren">✨</button>
-          <button type="button" id="competence-expectations-save" class="ghost dialog-icon-button app-action-icon"
-            aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="competence-expectations-cancel-top" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="competence-expectations-save" class="dialog-icon-button app-action-icon"
+            aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input id="competence-expectations-latex-file" class="visually-hidden" type="file"
@@ -898,10 +940,10 @@
       <div class="dialog-header">
         <h3 id="grade-task-competence-dialog-title" class="dialog-title">Kompetenzen zuordnen</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" id="grade-task-competence-save" class="dialog-icon-button app-action-icon" aria-label="Speichern"
-            data-tooltip="Speichern">💾</button>
           <button type="button" id="grade-task-competence-cancel-top" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+          <button type="submit" id="grade-task-competence-save" class="dialog-icon-button app-action-icon"
+            aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <div id="grade-task-competence-list" class="grade-task-competence-list"></div>
@@ -909,13 +951,14 @@
     </form>
   </dialog>
 
-  <dialog id="grade-vault-dialog" class="app-dialog grade-vault-dialog" data-grade-vault-mode="unlock" aria-labelledby="grade-vault-dialog-title">
+  <dialog id="grade-vault-dialog" class="app-dialog grade-vault-dialog" data-grade-vault-mode="unlock"
+    aria-labelledby="grade-vault-dialog-title">
     <form id="grade-vault-dialog-form" class="form-grid" method="post" action="" autocomplete="on" spellcheck="false">
       <div class="dialog-header">
         <h3 id="grade-vault-dialog-title" class="dialog-title">Notenmodul schützen</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="button" id="grade-vault-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-            data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="grade-vault-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
         </div>
       </div>
       <p id="grade-vault-dialog-text" class="message-dialog-text"></p>
@@ -951,7 +994,8 @@
           title="Bestätigen">🔓</button>
       </div>
     </form>
-  </dialog>
+  </dialog>
+
   <div id="grade-picker" class="grade-picker" hidden></div>
   <div id="grades-title-date-picker" class="grades-title-date-picker" hidden></div>
   <div id="grades-print-area" class="grades-print-area" aria-hidden="true"></div>

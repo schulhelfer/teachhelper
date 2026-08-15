@@ -5,12 +5,13 @@ import test from 'node:test';
 const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const loadSourceUrl = async (path) => dataUrl(await readFile(new URL(path, import.meta.url), 'utf8'));
 
-const [thdbUrl, syncUrl, defaultsUrl, messagesUrl, cryptoUrl] = await Promise.all([
+const [thdbUrl, syncUrl, defaultsUrl, messagesUrl, cryptoUrl, fileGuardsUrl] = await Promise.all([
   loadSourceUrl('../src/shared/school-data/thdb.js'),
   loadSourceUrl('../src/shared/school-data/sync-safety.js'),
   loadSourceUrl('../src/shared/school-data/defaults.js'),
   loadSourceUrl('../src/shared/school-data/messages.js'),
   loadSourceUrl('../src/modules/workspace/crypto.js'),
+  loadSourceUrl('../src/shared/file-guards.js'),
 ]);
 const archiveUrl = dataUrl(`
   export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
@@ -24,6 +25,7 @@ const storeUrl = dataUrl(`
 let runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
 for (const [path, url] of [
   ['../../shared/school-data/thdb.js', thdbUrl],
+  ['../../shared/file-guards.js', fileGuardsUrl],
   ['../../shared/school-data/sync-safety.js', syncUrl],
   ['../../shared/school-data/defaults.js', defaultsUrl],
   ['../../shared/school-data/messages.js', messagesUrl],
@@ -32,10 +34,11 @@ for (const [path, url] of [
   ['./archive-pdf.js', archiveUrl],
 ]) runtimeSource = runtimeSource.replace(path, url);
 
-const [{ WorkspaceRuntime }, messages, workspaceCrypto] = await Promise.all([
+const [{ WorkspaceRuntime }, messages, workspaceCrypto, thdb] = await Promise.all([
   import(dataUrl(runtimeSource)),
   import(messagesUrl),
   import(cryptoUrl),
+  import(thdbUrl),
 ]);
 
 function emptyGrades() {
@@ -221,6 +224,23 @@ test('explizite Notenkursmutationen markieren den manuellen Speicherstatus und s
   assert.equal(runtime.manualDirty, true);
   assert.equal(runtime.dirtyCourseIds.has(7), true);
   assert.deepEqual(reasons, ['grades-auto-save']);
+});
+
+test('explizite Notenkursmutationen können eine nachfolgende explizite Speicherung ohne parallelen Auto-Sync vorbereiten', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = 7;
+  runtime.isManualPersistenceMode = () => false;
+  runtime.fileHandle = { name: 'noten.thdb' };
+  let saveCalls = 0;
+  runtime.queueSyncSave = () => { saveCalls += 1; return true; };
+
+  await runtime.runGradeCourseMutation(7, () => {
+    store.gradeState.gradeStudents.push({ id: 10, courseId: 7, firstName: 'Ada' });
+  }, { skipAutoSave: true });
+
+  assert.equal(saveCalls, 0);
+  assert.equal(runtime.dirtyCourseIds.has(7), true);
 });
 
 test('explizite Datenbank-Speicherungen laden nur im manuellen Modus herunter', async () => {
@@ -709,6 +729,74 @@ test('unlocking a legacy PBKDF2 vault upgrades its KDF and stages every course f
   runtime.clearGradeVaultAutoLockTimer();
 });
 
+test('grade-vault crypto rejects hostile KDF and AES-GCM parameters before WebCrypto', async () => {
+  const validKdf = {
+    iterations: workspaceCrypto.WORKSPACE_VAULT_KDF_ITERATIONS,
+    salt: 'AAAAAAAAAAAAAAAAAAAAAA==',
+  };
+  const invalidKdfs = [
+    { ...validKdf, iterations: workspaceCrypto.WORKSPACE_VAULT_KDF_MAX_ITERATIONS + 1 },
+    { ...validKdf, iterations: 100000.5 },
+    { ...validKdf, salt: 'AAAAAAAAAAAAAAAAAAAAAA=' },
+  ];
+  let cryptoCalls = 0;
+  const cryptoProvider = {
+    subtle: {
+      importKey() { cryptoCalls += 1; },
+      deriveKey() { cryptoCalls += 1; },
+      decrypt() { cryptoCalls += 1; },
+    },
+  };
+
+  for (const kdf of invalidKdfs) {
+    await assert.rejects(
+      () => workspaceCrypto.deriveWorkspaceVaultKey('ein-passwort', kdf, cryptoProvider),
+      /KDF|PBKDF2|Salt/,
+    );
+  }
+
+  const validEnvelope = {
+    schema: workspaceCrypto.WORKSPACE_VAULT_SCHEMA,
+    ciphertext: 'AAAAAAAAAAAAAAAAAAAAAA==',
+    cipher: { name: 'AES-GCM', iv: 'AAAAAAAAAAAAAAAA', tagLength: 128 },
+  };
+  for (const envelope of [
+    { ...validEnvelope, cipher: { ...validEnvelope.cipher, iv: 'AAAAAAAAAAAAAA==' } },
+    { ...validEnvelope, cipher: { ...validEnvelope.cipher, tagLength: 96 } },
+    { ...validEnvelope, cipher: { ...validEnvelope.cipher, name: 'AES-CBC' } },
+  ]) {
+    await assert.rejects(
+      () => workspaceCrypto.decryptWorkspaceVaultText(envelope, {}, validKdf, {}, cryptoProvider),
+      /AES-GCM|IV|Verschlüsselungsverfahren/,
+    );
+  }
+  assert.equal(cryptoCalls, 0);
+});
+
+test('import rejects a vault configuration with excessive PBKDF2 work before it can be unlocked', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const empty = runtime.buildEmptyDatabaseContainer();
+  const parsed = thdb.parseThdb1ContainerBytes(empty.bytes, { includePlanningPublic: true });
+  const hostile = thdb.buildThdb1ContainerBytes({
+    schema: parsed.header.schema,
+    startupShellText: parsed.startupShellText,
+    planningPublicText: parsed.planningPublicText,
+    gradeVaultConfigText: JSON.stringify({
+      configured: true,
+      kdf: {
+        iterations: workspaceCrypto.WORKSPACE_VAULT_KDF_MAX_ITERATIONS + 1,
+        salt: 'AAAAAAAAAAAAAAAAAAAAAA==',
+      },
+      validation: { ciphertext: 'irrelevant' },
+    }),
+  });
+
+  await assert.rejects(
+    () => runtime.loadBytes(hostile.bytes, 'test'),
+    /Verschlüsselungseinstellungen/,
+  );
+});
+
 test('read-only roster summaries never replace or publish the active grade course', async () => {
   const store = new FakeStore();
   store.gradeState = {
@@ -831,6 +919,46 @@ test('latest directory backup is selected and loaded by the workspace', async ()
   };
   assert.equal(await runtime.restoreLatestWebBackup(), true);
   assert.deepEqual(loaded, [{ bytes: [3], source: 'backup' }]);
+});
+
+test('large database files require confirmation and oversized files are rejected before reading', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const originalConfirm = globalThis.confirm;
+  let promptCount = 0;
+  let readCount = 0;
+  globalThis.confirm = () => {
+    promptCount += 1;
+    return false;
+  };
+  try {
+    await assert.rejects(runtime.readDatabaseFileBytes({
+      name: 'gross.thdb',
+      size: 101 * 1024 * 1024,
+      async arrayBuffer() {
+        readCount += 1;
+        return new ArrayBuffer(0);
+      },
+    }), /wurde nicht geladen/);
+    assert.equal(promptCount, 1);
+    assert.equal(readCount, 0);
+
+    await assert.rejects(runtime.readDatabaseFileBytes({
+      name: 'zu-gross.thdb',
+      size: 251 * 1024 * 1024,
+      async arrayBuffer() {
+        readCount += 1;
+        return new ArrayBuffer(0);
+      },
+    }), /zu groß/);
+    assert.equal(promptCount, 1);
+    assert.equal(readCount, 0);
+  } finally {
+    if (originalConfirm === undefined) {
+      delete globalThis.confirm;
+    } else {
+      globalThis.confirm = originalConfirm;
+    }
+  }
 });
 
 test('new backups use the TeachHelper backup filename while legacy backups remain restorable', () => {

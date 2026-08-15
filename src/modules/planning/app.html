@@ -335,9 +335,9 @@
       <div class="dialog-header">
         <h3 id="course-dialog-title" class="dialog-title">Kurs</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="course-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-dialog-id">
@@ -406,9 +406,9 @@
       <div class="dialog-header">
         <h3 id="course-color-dialog-title" class="dialog-title">Farbe bearbeiten</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-color-dialog-id">
@@ -428,9 +428,9 @@
       <div class="dialog-header">
         <h3 class="dialog-title">Entfall eintragen</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="entfall-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <label>
@@ -446,9 +446,9 @@
         <h3 class="dialog-title topic-dialog-title">Stunde planen</h3>
         <p id="topic-dialog-course-pill" class="topic-dialog-course-pill"></p>
         <div class="dialog-actions-top topic-dialog-actions-top app-action-group">
-          <button type="submit" class="topic-dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="topic-dialog-cancel" class="ghost topic-dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="topic-dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input id="topic-dialog-lesson" type="hidden">
@@ -501,15 +501,21 @@
       <div class="dialog-header">
         <h3 id="slot-dialog-title" class="dialog-title">Unterrichtsstunde</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="slot-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="slot-dialog-delete" class="danger-action dialog-icon-button app-action-icon" aria-label="Löschen"
+            data-tooltip="Löschen" hidden>🗑️</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="slot-dialog-id">
-      <label class="slot-dialog-row">
+      <label id="slot-dialog-course-row" class="slot-dialog-row">
         <span>Kurs</span>
         <select id="slot-dialog-course" required></select>
+      </label>
+      <label id="slot-dialog-break-name-row" class="slot-dialog-row" hidden>
+        <span>Bezeichnung</span>
+        <input id="slot-dialog-break-name" maxlength="80" placeholder="z. B. Hof" autocomplete="off">
       </label>
       <label class="slot-dialog-row">
         <span>Wochentag</span>
@@ -521,13 +527,17 @@
           <option value="5">Fr</option>
         </select>
       </label>
-      <label class="slot-dialog-row">
+      <label id="slot-dialog-hour-row" class="slot-dialog-row">
         <span>Startstunde</span>
         <input id="slot-dialog-hour" type="number" min="1" max="12" value="1" required>
       </label>
-      <label class="slot-dialog-row">
+      <label id="slot-dialog-end-hour-row" class="slot-dialog-row">
         <span>Endstunde</span>
         <input id="slot-dialog-end-hour" type="number" min="1" max="12" value="2" required>
+      </label>
+      <label id="slot-dialog-break-row" class="slot-dialog-row" hidden>
+        <span>Pause nach</span>
+        <select id="slot-dialog-break-after" required></select>
       </label>
       <label class="slot-dialog-row">
         <span>Wiederholung</span>
@@ -551,9 +561,6 @@
         <input id="slot-dialog-edit-scope" type="hidden" value="all">
         <input id="slot-dialog-edit-from-date" type="hidden">
       </div>
-      <div class="button-row dialog-actions">
-        <button type="button" id="slot-dialog-delete" class="ghost danger-action" hidden>Löschen</button>
-      </div>
     </form>
   </dialog>
 
@@ -562,9 +569,9 @@
       <div class="dialog-header">
         <h3 id="free-range-dialog-title" class="dialog-title">Ferienzeitraum</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="free-range-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="free-range-dialog-id">
@@ -588,11 +595,11 @@
       <div class="dialog-header">
         <h3 id="special-day-dialog-title" class="dialog-title">Unterrichtsfreier Tag</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="button" id="special-day-dialog-delete" class="ghost danger-action dialog-icon-button app-action-icon" aria-label="Löschen"
-            data-tooltip="Löschen" hidden>🗑️</button>
-          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
           <button type="button" id="special-day-dialog-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="special-day-dialog-delete" class="danger-action dialog-icon-button app-action-icon" aria-label="Löschen"
+            data-tooltip="Löschen" hidden>🗑️</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern" data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="special-day-dialog-id">
@@ -615,10 +622,10 @@
         <div id="message-dialog-actions-top" class="dialog-actions-top app-action-group" hidden>
           <button type="button" id="message-dialog-cancel-top" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
             data-tooltip="Abbrechen">❌</button>
+          <button type="button" id="message-dialog-discard-top" class="danger-action dialog-icon-button app-action-icon" aria-label="Verwerfen &amp; wechseln"
+            data-tooltip="Verwerfen &amp; wechseln" hidden>🗑️</button>
           <button type="submit" id="message-dialog-ok-top" class="dialog-icon-button app-action-icon" aria-label="Speichern"
             data-tooltip="Speichern">💾</button>
-          <button type="button" id="message-dialog-discard-top" class="danger-action dialog-icon-button app-action-icon" aria-label="Verwerfen &amp; Wechseln"
-            data-tooltip="Verwerfen &amp; Wechseln" hidden>🗑️</button>
         </div>
       </div>
       <p id="message-dialog-text" class="message-dialog-text"></p>

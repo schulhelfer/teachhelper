@@ -94,11 +94,11 @@ test('the unsaved-entry dialog exposes the requested single-step actions', () =>
   assert.match(method, /showChoiceMessage\(/);
   assert.match(method, /okText: "Speichern"/);
   assert.match(method, /cancelText: "Abbrechen"/);
-  assert.match(method, /alternateText: "Verwerfen & Wechseln"/);
+  assert.match(method, /alternateText: "Verwerfen & wechseln"/);
   assert.doesNotMatch(method, /Weitere Optionen|shouldDiscard/);
   assert.match(
     appHtml,
-    /id="message-dialog-cancel-top"[^>]*>❌<\/button>[\s\S]*id="message-dialog-ok-top"[^>]*>💾<\/button>[\s\S]*id="message-dialog-discard-top"[^>]*>🗑️<\/button>/,
+    /id="message-dialog-cancel-top"[^>]*>❌<\/button>[\s\S]*id="message-dialog-discard-top"[^>]*>🗑️<\/button>[\s\S]*id="message-dialog-ok-top"[^>]*>💾<\/button>/,
   );
   assert.doesNotMatch(appHtml, /message-dialog-alternate/);
   assert.match(appSource, /this\._resolveMessageDialog\("discard"\)/);

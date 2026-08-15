@@ -23,6 +23,7 @@ import {
   EXPECTATION_HORIZON_TEMPLATE_FILE_NAME,
   GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
   GRADE_ACCOMMODATION_TEXT_MAX_LENGTH,
+  GRADE_EXPECTATION_HORIZON_COMMENT_MAX_LENGTH,
   GRADE_DISPLAY_SYSTEM_DEFAULT,
   GRADE_STUDENT_PERFORMANCE_FLAIRS,
   GRADE_TEST_AFB_OPTIONS,
@@ -1534,6 +1535,13 @@ function createDefaultGradeStructureSetting() {
   });
 }
 
+function normalizeGradeExpectationHorizonComment(value) {
+  return String(value || "")
+    .replace(/\r\n?/g, "\n")
+    .trim()
+    .slice(0, GRADE_EXPECTATION_HORIZON_COMMENT_MAX_LENGTH);
+}
+
 const GRADE_STUDENT_PORTRAIT_MIME = "image/webp";
 const GRADE_STUDENT_PORTRAIT_MAX_BYTES = 150 * 1024;
 const GRADE_STUDENT_PORTRAIT_MAX_BASE64_LENGTH = Math.ceil(GRADE_STUDENT_PORTRAIT_MAX_BYTES * 4 / 3) + 8;
@@ -2964,12 +2972,12 @@ export class WorkspaceStore {
             return entry;
           }
           if (nextMode === "homework") {
-            return { ...entry, value: null, testScores: null };
+            return { ...entry, value: null, testScores: null, expectationHorizonComment: "" };
           }
           if (nextMode === "test") {
-            return { ...entry, value: null, checked: null, testScores: {} };
+            return { ...entry, value: null, checked: null, testScores: {}, expectationHorizonComment: "" };
           }
-          return { ...entry, checked: null, testScores: null };
+          return { ...entry, checked: null, testScores: null, expectationHorizonComment: "" };
         })
         .filter((entry) => entry.value !== null || entry.checked === true || hasGradeTestScores(entry.testScores));
     }
@@ -3050,7 +3058,10 @@ export class WorkspaceStore {
     const mode = normalizeGradeAssessmentMode(assessment?.mode);
     const existing = this.getGradeEntry(studentKey, assessmentKey);
     if (mode === "test") {
-      return this.setGradeTestEntry(studentKey, assessmentKey, value && typeof value === "object" ? value.testScores || value : {});
+      const options = value && typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "expectationHorizonComment")
+        ? { expectationHorizonComment: value.expectationHorizonComment }
+        : {};
+      return this.setGradeTestEntry(studentKey, assessmentKey, value && typeof value === "object" ? value.testScores || value : {}, options);
     }
     if (mode === "homework") {
       const checked = normalizeGradeEntryChecked(value);
@@ -3114,7 +3125,7 @@ export class WorkspaceStore {
     return true;
   }
 
-  setGradeTestEntry(studentId, assessmentId, scores = {}) {
+  setGradeTestEntry(studentId, assessmentId, scores = {}, options = {}) {
     const studentKey = Number(studentId);
     const assessmentKey = Number(assessmentId);
     const assessment = this.getGradeAssessment(assessmentKey);
@@ -3136,7 +3147,11 @@ export class WorkspaceStore {
       return result;
     }, {});
     const existing = this.getGradeEntry(studentKey, assessmentKey);
-    if (!hasGradeTestScores(normalizedScores)) {
+    const hasExpectationHorizonComment = Object.prototype.hasOwnProperty.call(options || {}, "expectationHorizonComment");
+    const expectationHorizonComment = hasExpectationHorizonComment
+      ? normalizeGradeExpectationHorizonComment(options.expectationHorizonComment)
+      : normalizeGradeExpectationHorizonComment(existing?.expectationHorizonComment);
+    if (!hasGradeTestScores(normalizedScores) && !expectationHorizonComment) {
       if (existing) {
         this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries.filter((entry) => !(
           Number(entry.studentId) === studentKey && Number(entry.assessmentId) === assessmentKey
@@ -3145,24 +3160,28 @@ export class WorkspaceStore {
       }
       return true;
     }
-    const value = calculateGradeTestValue(
-      assessment.testTasks,
-      normalizedScores,
-      assessment.testScaleSnapshot || assessment.testScale,
-      null,
-      normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
-    );
+    const value = hasGradeTestScores(normalizedScores)
+      ? calculateGradeTestValue(
+        assessment.testTasks,
+        normalizedScores,
+        assessment.testScaleSnapshot || assessment.testScale,
+        null,
+        normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
+      )
+      : null;
     if (existing) {
       existing.value = value;
       existing.checked = null;
       existing.testScores = normalizedScores;
+      existing.expectationHorizonComment = expectationHorizonComment;
     } else {
       this.gradeVaultState.gradeEntries.push({
         studentId: studentKey,
         assessmentId: assessmentKey,
         value,
         checked: null,
-        testScores: normalizedScores
+        testScores: normalizedScores,
+        expectationHorizonComment
       });
     }
     this._saveGradeVault();
@@ -3193,16 +3212,22 @@ export class WorkspaceStore {
           ...entry,
           checked: null,
           testScores,
-          value: calculateGradeTestValue(
-            assessment.testTasks,
-            testScores,
-            assessment.testScaleSnapshot || assessment.testScale,
-            null,
-            normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
-          )
+          value: hasGradeTestScores(testScores)
+            ? calculateGradeTestValue(
+              assessment.testTasks,
+              testScores,
+              assessment.testScaleSnapshot || assessment.testScale,
+              null,
+              normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
+            )
+            : null
         };
       })
-      .filter((entry) => Number(entry.assessmentId) !== Number(assessment.id) || hasGradeTestScores(entry.testScores));
+      .filter((entry) => (
+        Number(entry.assessmentId) !== Number(assessment.id)
+        || hasGradeTestScores(entry.testScores)
+        || normalizeGradeExpectationHorizonComment(entry.expectationHorizonComment)
+      ));
   }
 
   getGradeOverride(studentId, courseId, scope, categoryId = null, subcategoryId = null, period = "year") {
@@ -3508,7 +3533,10 @@ export class WorkspaceStore {
     const yearId = Number(schoolYearId);
     const courseIds = new Set(this.listCourses(yearId).map((item) => item.id));
     return this.state.slots
-      .filter((slot) => courseIds.has(slot.courseId))
+      .filter((slot) => (
+        courseIds.has(slot.courseId)
+        || (slot.placement === "break" && Number(slot.schoolYearId) === yearId)
+      ))
       .sort((a, b) => {
         if (a.dayOfWeek !== b.dayOfWeek) {
           return a.dayOfWeek - b.dayOfWeek;
@@ -3521,46 +3549,62 @@ export class WorkspaceStore {
     return this.state.slots.find((item) => item.id === Number(slotId)) || null;
   }
 
-  createSlot(courseId, dayOfWeek, startHour, duration, startDate = null, endDate = null, weekParity = 0) {
+  createSlot(courseId, dayOfWeek, startHour, duration, startDate = null, endDate = null, weekParity = 0, placement = "lesson", schoolYearId = null, label = "") {
     const course = this.state.courses.find((item) => item.id === Number(courseId));
-    if (!course) {
+    const normalizedPlacement = placement === "break" ? "break" : "lesson";
+    const year = normalizedPlacement === "break" ? this.getSchoolYear(Number(schoolYearId)) : null;
+    if ((!course && normalizedPlacement !== "break") || (normalizedPlacement === "break" && !year)) {
       return null;
     }
     const slot = {
       id: this._nextId("slot"),
-      courseId: course.id,
+      courseId: course ? course.id : 0,
+      schoolYearId: course ? course.schoolYearId : year.id,
+      label: normalizedPlacement === "break" ? String(label || "").trim() : "",
       dayOfWeek: Number(dayOfWeek),
       startHour: Number(startHour),
       duration: Math.max(1, Number(duration)),
       startDate: startDate || null,
       endDate: endDate || null,
-      weekParity: Number(weekParity) || 0
+      weekParity: Number(weekParity) || 0,
+      placement: normalizedPlacement
     };
     this.state.slots.push(slot);
-    this.generateLessonsForYear(course.schoolYearId);
+    this.generateLessonsForYear(slot.schoolYearId);
     this._save();
     return slot.id;
   }
 
-  updateSlot(slotId, courseId, dayOfWeek, startHour, duration, startDate = null, endDate = null, weekParity = 0) {
+  updateSlot(slotId, courseId, dayOfWeek, startHour, duration, startDate = null, endDate = null, weekParity = 0, placement = null, schoolYearId = null, label = "") {
     const slot = this.getSlot(slotId);
     const targetCourse = this.state.courses.find((item) => item.id === Number(courseId));
-    if (!slot || !targetCourse) {
+    const normalizedPlacement = placement === "break"
+      ? "break"
+      : placement === "lesson"
+        ? "lesson"
+        : slot?.placement === "break" ? "break" : "lesson";
+    const targetYear = normalizedPlacement === "break"
+      ? this.getSchoolYear(Number(schoolYearId || slot?.schoolYearId))
+      : null;
+    if (!slot || (!targetCourse && normalizedPlacement !== "break") || (normalizedPlacement === "break" && !targetYear)) {
       return false;
     }
-    const oldCourse = this.state.courses.find((item) => item.id === slot.courseId);
-    slot.courseId = targetCourse.id;
+    const oldSchoolYearId = Number(slot.schoolYearId) || this.state.courses.find((item) => item.id === slot.courseId)?.schoolYearId;
+    slot.courseId = targetCourse ? targetCourse.id : 0;
+    slot.schoolYearId = targetCourse ? targetCourse.schoolYearId : targetYear.id;
+    slot.label = normalizedPlacement === "break" ? String(label || "").trim() : "";
     slot.dayOfWeek = Number(dayOfWeek);
     slot.startHour = Number(startHour);
     slot.duration = Math.max(1, Number(duration));
     slot.startDate = startDate || null;
     slot.endDate = endDate || null;
     slot.weekParity = Number(weekParity) || 0;
+    slot.placement = normalizedPlacement;
 
-    if (oldCourse) {
-      this.generateLessonsForYear(oldCourse.schoolYearId);
+    if (oldSchoolYearId) {
+      this.generateLessonsForYear(oldSchoolYearId);
     }
-    this.generateLessonsForYear(targetCourse.schoolYearId);
+    this.generateLessonsForYear(slot.schoolYearId);
     this._save();
     return true;
   }
@@ -3570,11 +3614,11 @@ export class WorkspaceStore {
     if (!slot) {
       return;
     }
-    const course = this.state.courses.find((item) => item.id === slot.courseId);
+    const schoolYearId = Number(slot.schoolYearId) || this.state.courses.find((item) => item.id === slot.courseId)?.schoolYearId;
     this.state.slots = this.state.slots.filter((item) => item.id !== slot.id);
     this.state.lessons = this.state.lessons.filter((item) => item.slotId !== slot.id);
-    if (course) {
-      this.generateLessonsForYear(course.schoolYearId);
+    if (schoolYearId) {
+      this.generateLessonsForYear(schoolYearId);
     }
     this._save();
   }
@@ -3613,7 +3657,8 @@ export class WorkspaceStore {
     startDate = null,
     endDate = null,
     weekParity = 0,
-    excludeSlotId = null
+    excludeSlotId = null,
+    placement = "lesson"
   ) {
     const year = this.getSchoolYear(schoolYearId);
     if (!year) {
@@ -3632,6 +3677,7 @@ export class WorkspaceStore {
     if (candidateEnd < candidateStart) {
       return [];
     }
+    const normalizedPlacement = placement === "break" ? "break" : "lesson";
     const beginHour = Number(startHour);
     const endHour = beginHour + Math.max(1, Number(duration)) - 1;
 
@@ -3639,6 +3685,9 @@ export class WorkspaceStore {
     const conflicts = [];
     for (const slot of slots) {
       if (excludeSlotId && slot.id === Number(excludeSlotId)) {
+        continue;
+      }
+      if ((slot.placement === "break" ? "break" : "lesson") !== normalizedPlacement) {
         continue;
       }
       if (Number(slot.dayOfWeek) !== Number(dayOfWeek)) {
@@ -3672,7 +3721,10 @@ export class WorkspaceStore {
         )
       ) {
         const c = this.state.courses.find((item) => item.id === slot.courseId);
-        conflicts.push({ ...slot, courseName: c ? c.name : `Kurs ${slot.courseId}` });
+        conflicts.push({
+          ...slot,
+          courseName: slot.placement === "break" ? String(slot.label || "Aufsicht") : c ? c.name : `Kurs ${slot.courseId}`
+        });
       }
     }
     return conflicts;
@@ -4023,20 +4075,24 @@ export class WorkspaceStore {
   listLessonsForWeek(schoolYearId, weekStartIso, weekEndIso, courseId = null) {
     const yearId = Number(schoolYearId);
     const coursesById = new Map(this.listCourses(yearId).map((item) => [item.id, item]));
+    const slotsById = new Map(this.listSlotsForYear(yearId).map((item) => [item.id, item]));
     return this.state.lessons
       .filter((lesson) => lesson.schoolYearId === yearId)
       .filter((lesson) => lesson.lessonDate >= weekStartIso && lesson.lessonDate <= weekEndIso)
       .filter((lesson) => !courseId || lesson.courseId === Number(courseId))
       .map((lesson) => {
         const course = coursesById.get(lesson.courseId);
+        const slot = slotsById.get(lesson.slotId);
+        const isBreak = slot?.placement === "break";
         return {
           ...lesson,
-          courseName: course ? course.name : `Kurs ${lesson.courseId}`,
+          courseName: isBreak ? String(slot.label || "Aufsicht") : course ? course.name : `Kurs ${lesson.courseId}`,
           color: course
             ? normalizeCourseColor(course.color, Boolean(course.noLesson))
             : "#94A3B8",
-          noLesson: course ? Boolean(course.noLesson) : false,
-          noGrades: course ? Boolean(course.noGrades) : false
+          noLesson: isBreak || (course ? Boolean(course.noLesson) : false),
+          noGrades: course ? Boolean(course.noGrades) : false,
+          slotPlacement: slot?.placement === "break" ? "break" : "lesson"
         };
       })
       .sort((a, b) => {
@@ -4053,14 +4109,17 @@ export class WorkspaceStore {
       return null;
     }
     const course = this.state.courses.find((item) => item.id === found.courseId);
+    const slot = this.getSlot(found.slotId);
+    const isBreak = slot?.placement === "break";
     return {
       ...found,
-      courseName: course ? course.name : `Kurs ${found.courseId}`,
+      courseName: isBreak ? String(slot.label || "Aufsicht") : course ? course.name : `Kurs ${found.courseId}`,
       color: course
         ? normalizeCourseColor(course.color, Boolean(course.noLesson))
         : "#94A3B8",
-      noLesson: course ? Boolean(course.noLesson) : false,
-      noGrades: course ? Boolean(course.noGrades) : false
+      noLesson: isBreak || (course ? Boolean(course.noLesson) : false),
+      noGrades: course ? Boolean(course.noGrades) : false,
+      slotPlacement: slot?.placement === "break" ? "break" : "lesson"
     };
   }
 
@@ -4411,16 +4470,24 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
   startHour,
   duration,
   endDate,
-  weekParity
+  weekParity,
+  placement = null,
+  label = ""
 ) {
   const year = this.getSchoolYear(schoolYearId);
   const oldSlot = this.getSlot(slotId);
   const targetCourse = this.state.courses.find((item) => item.id === Number(courseId));
+  const normalizedPlacement = placement === "break" || (!placement && oldSlot?.placement === "break") ? "break" : "lesson";
   if (!year || !oldSlot || !fromDate) {
     return { ok: false, message: "Ungültige Eingabe für Teiländerung." };
   }
-  if (!targetCourse || Number(targetCourse.schoolYearId) !== Number(year.id)) {
-    return { ok: false, message: "Der gewählte Kurs gehört nicht zum aktiven Schuljahr." };
+  if (normalizedPlacement === "break" ? !String(label || oldSlot.label || "").trim() : (!targetCourse || Number(targetCourse.schoolYearId) !== Number(year.id))) {
+    return {
+      ok: false,
+      message: normalizedPlacement === "break"
+        ? "Bitte eine Bezeichnung für die Aufsicht angeben."
+        : "Der gewählte Kurs gehört nicht zum aktiven Schuljahr."
+    };
   }
 
   const oldStart = oldSlot.startDate || year.startDate;
@@ -4438,7 +4505,10 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
       duration,
       oldSlot.startDate || null,
       endDate || oldSlot.endDate || null,
-      weekParity
+      weekParity,
+      normalizedPlacement,
+      year.id,
+      label || oldSlot.label || ""
     );
     return { ok: true, mode: "all" };
   }
@@ -4471,13 +4541,16 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
 
   const newSlot = {
     id: this._nextId("slot"),
-    courseId: targetCourse.id,
+    courseId: normalizedPlacement === "break" ? 0 : targetCourse.id,
+    schoolYearId: year.id,
+    label: normalizedPlacement === "break" ? String(label || oldSlot.label || "").trim() : "",
     dayOfWeek: Number(dayOfWeek),
     startHour: Number(startHour),
     duration: Math.max(1, Number(duration)),
     startDate: fromDate,
     endDate: targetEnd || null,
-    weekParity: Number(weekParity) || 0
+    weekParity: Number(weekParity) || 0,
+    placement: normalizedPlacement
   };
   this.state.slots.push(newSlot);
 
@@ -4567,13 +4640,16 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
       const item = asObject(raw);
       return {
         id: Number(item.id),
-        courseId: Number(item.courseId),
+        courseId: Number(item.courseId) || 0,
+        schoolYearId: Number(item.schoolYearId) || 0,
+        label: String(item.label || ""),
         dayOfWeek: Number(item.dayOfWeek),
         startHour: Number(item.startHour),
         duration: Math.max(1, Number(item.duration || 1)),
         startDate: item.startDate || null,
         endDate: item.endDate || null,
-        weekParity: Number(item.weekParity || 0)
+        weekParity: Number(item.weekParity || 0),
+        placement: item.placement === "break" ? "break" : "lesson"
       };
     }) : [],
     freeRanges: Array.isArray(source.freeRanges) ? source.freeRanges.map((raw) => {
@@ -4648,7 +4724,15 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
     normalized.settings.gradeCourseStudentCountsComplete
   );
   normalized.slots = normalized.slots.filter(
-    (item) => item.id > 0 && item.courseId > 0 && item.dayOfWeek >= 1 && item.dayOfWeek <= 5
+    (item) => (
+      item.id > 0
+      && item.dayOfWeek >= 1
+      && item.dayOfWeek <= 5
+      && (item.courseId > 0 || (item.placement === "break" && item.schoolYearId > 0 && item.label))
+    )
+  );
+  const breakSlotIds = new Set(
+    normalized.slots.filter((item) => item.placement === "break").map((item) => item.id)
   );
   normalized.freeRanges = normalized.freeRanges.filter((item) => {
     if (!(item.id > 0 && item.schoolYearId > 0 && item.label)) {
@@ -4664,7 +4748,12 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
     (item) => item.id > 0 && item.name && item.dayDate
   );
   normalized.lessons = normalized.lessons.filter(
-    (item) => item.id > 0 && item.schoolYearId > 0 && item.slotId > 0 && item.courseId > 0
+    (item) => (
+      item.id > 0
+      && item.schoolYearId > 0
+      && item.slotId > 0
+      && (item.courseId > 0 || breakSlotIds.has(item.slotId))
+    )
   );
   normalized.counters = {
     schoolYear: Math.max(Number(normalized.counters.schoolYear) || 1, maxBy(normalized.schoolYears) + 1),
@@ -4777,7 +4866,8 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         assessmentId: Number(item.assessmentId),
         value: parsed.valid ? parsed.value : null,
         checked: normalizeGradeEntryChecked(item.checked) ? true : null,
-        testScores: normalizeGradeTestScores(item.testScores)
+        testScores: normalizeGradeTestScores(item.testScores),
+        expectationHorizonComment: normalizeGradeExpectationHorizonComment(item.expectationHorizonComment)
       };
     }) : [],
     gradeOverrides: Array.isArray(source.gradeOverrides) ? source.gradeOverrides.map((raw) => {
@@ -4832,7 +4922,11 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
   normalized.gradeAssessments = normalized.gradeAssessments
     .filter((item) => item.id > 0 && item.courseId > 0 && item.title);
   normalized.gradeEntries = normalized.gradeEntries
-    .filter((item) => item.studentId > 0 && item.assessmentId > 0 && (item.value !== null || item.checked === true || hasGradeTestScores(item.testScores)));
+    .filter((item) => (
+      item.studentId > 0
+      && item.assessmentId > 0
+      && (item.value !== null || item.checked === true || hasGradeTestScores(item.testScores) || item.expectationHorizonComment)
+    ));
   normalized.gradeOverrides = normalized.gradeOverrides
     .filter((item) => (
       item.studentId > 0

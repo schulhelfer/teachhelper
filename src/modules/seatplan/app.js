@@ -5144,6 +5144,45 @@
             return null;
           }
 
+          function clearMergedTableDropPreview() {
+            els.grid?.querySelectorAll('.seat.table-drop-target').forEach(seat => {
+              seat.classList.remove('table-drop-target');
+            });
+          }
+
+          function showMergedTableDropPreview(tablePayload, targetId) {
+            clearMergedTableDropPreview();
+            const sourceTable = getMergedTableDescriptor(tablePayload?.anchorId);
+            if (!sourceTable || sourceTable.partnerId !== tablePayload?.partnerId) return null;
+            const target = getMergedTableDropTarget(sourceTable, targetId);
+            if (!target) return null;
+            const targetSeatIds = target.type === 'swap'
+              ? target.table.seatIds
+              : target.seatIds;
+            targetSeatIds.forEach(id => {
+              els.grid?.querySelector(`[data-seat="${id}"]`)?.classList.add('table-drop-target');
+            });
+            return target;
+          }
+
+          function createMergedTableDragPreview(table, { touch = false } = {}) {
+            const preview = document.createElement('div');
+            preview.className = `table-drag-preview table-drag-preview--${table.orientation}`;
+            if (touch) preview.classList.add('touch-drag-ghost');
+            preview.setAttribute('aria-hidden', 'true');
+            table.seatIds.forEach(id => {
+              const seat = els.grid?.querySelector(`[data-seat="${id}"]`);
+              const content = seat?.querySelector('.seat-content');
+              const label = content?.dataset.label || content?.textContent?.trim() || 'Freier Platz';
+              const tile = document.createElement('div');
+              tile.className = 'table-drag-preview__seat';
+              tile.textContent = label.replace(/\s+/g, ' ');
+              preview.appendChild(tile);
+            });
+            document.body.appendChild(preview);
+            return preview;
+          }
+
           function applyMergedTableDropAction(tablePayload, targetId) {
             const sourceTable = getMergedTableDescriptor(tablePayload?.anchorId);
             if (!sourceTable || sourceTable.partnerId !== tablePayload?.partnerId) return false;
@@ -6669,17 +6708,15 @@
               state.dragPayloadType = 'table';
               mergedTableDragClickSuppressedUntil = Date.now() + 500;
               link.classList.add('dragging');
-              const preview = document.createElement('div');
-              preview.className = 'drag-preview';
-              preview.textContent = 'Zweiertisch';
-              const rect = link.getBoundingClientRect();
-              document.body.appendChild(preview);
+              const preview = createMergedTableDragPreview(table);
               if (typeof event.dataTransfer.setDragImage === 'function') {
+                const rect = preview.getBoundingClientRect();
                 event.dataTransfer.setDragImage(preview, rect.width / 2, rect.height / 2);
               }
               setTimeout(() => preview.remove(), 0);
             });
             link.addEventListener('dragend', () => {
+              clearMergedTableDropPreview();
               state.dragSourceTable = null;
               state.dragSourceSeat = null;
               state.dragPayloadType = null;
@@ -6688,10 +6725,24 @@
           }
 
           function addDropHandlers(seat) {
-            seat.addEventListener('dragover', e => { e.preventDefault(); seat.classList.add('drag-over'); });
-            seat.addEventListener('dragleave', () => seat.classList.remove('drag-over'));
+            seat.addEventListener('dragover', e => {
+              e.preventDefault();
+              const tablePayload = state.dragPayloadType === 'table' ? state.dragSourceTable : null;
+              if (tablePayload) {
+                const target = showMergedTableDropPreview(tablePayload, seat.dataset.seat);
+                seat.classList.toggle('drag-over', Boolean(target));
+                return;
+              }
+              clearMergedTableDropPreview();
+              seat.classList.add('drag-over');
+            });
+            seat.addEventListener('dragleave', () => {
+              seat.classList.remove('drag-over');
+              clearMergedTableDropPreview();
+            });
             seat.addEventListener('drop', e => {
               e.preventDefault(); seat.classList.remove('drag-over');
+              clearMergedTableDropPreview();
               const payload = e.dataTransfer.getData('text/plain') || '';
               const targetId = seat.dataset.seat;
               const sourceSeat = state.dragSourceSeat;
@@ -6885,7 +6936,15 @@
             if (seat !== state.overSeat) {
               if (state.overSeat) state.overSeat.classList.remove('drag-over');
               state.overSeat = seat;
-              if (seat) seat.classList.add('drag-over');
+              if (state.descriptor?.type === 'table') {
+                const target = seat && showMergedTableDropPreview(state.descriptor, seat.dataset.seat);
+                if (seat) seat.classList.toggle('drag-over', Boolean(target));
+              } else if (seat) {
+                clearMergedTableDropPreview();
+                seat.classList.add('drag-over');
+              } else {
+                clearMergedTableDropPreview();
+              }
             }
           }
 
@@ -6916,6 +6975,7 @@
             if (touchDragState.overSeat) {
               touchDragState.overSeat.classList.remove('drag-over');
             }
+            clearMergedTableDropPreview();
             if (touchDragState.ghost) {
               touchDragState.ghost.remove();
             }
@@ -6959,6 +7019,12 @@
           }
 
           function createTouchGhost(descriptor) {
+            if (descriptor?.type === 'table') {
+              const table = getMergedTableDescriptor(descriptor.anchorId);
+              if (table && table.partnerId === descriptor.partnerId) {
+                return createMergedTableDragPreview(table, { touch: true });
+              }
+            }
             const ghost = document.createElement('div');
             ghost.className = 'touch-drag-ghost';
             const fallback = descriptor?.type === 'seat' ? 'Sitzplatz' : 'Ziehen';

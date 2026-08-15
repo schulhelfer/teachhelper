@@ -150,8 +150,58 @@ test('grades entry controls establish a short render guard before grade-cell blu
   }
 });
 
+test('entry sidebar clicks never clear a saved assessment as overview focus', () => {
+  const shouldClear = Function(
+    `"use strict"; return ({${extractClassMethod('shouldClearGradesOverviewFocusForExternalTarget')}}).shouldClearGradesOverviewFocusForExternalTarget;`,
+  )();
+  const target = {
+    closest() { return null; },
+  };
+
+  globalThis.Element = class Element {};
+  Object.setPrototypeOf(target, Element.prototype);
+  try {
+    const entryHarness = {
+      isGradesOverviewVisible() { return false; },
+      isGradesOverviewFocusActive() { return true; },
+    };
+    assert.equal(shouldClear.call(entryHarness, target), false);
+
+    const overviewHarness = {
+      isGradesOverviewVisible() { return true; },
+      isGradesOverviewFocusActive() { return true; },
+    };
+    assert.equal(shouldClear.call(overviewHarness, target), true);
+  } finally {
+    delete globalThis.Element;
+  }
+});
+
 test('workspace renders do not implicitly close an open grades context menu', () => {
   assert.equal(extractClassMethod('renderAll').includes('this.hideContextMenu()'), false);
+});
+
+test('a changed database file keeps the grade draft open instead of rejecting navigation', async () => {
+  const saveImmediately = Function(
+    'WORKSPACE_ERROR_PERSISTENCE_CONFLICT',
+    `"use strict"; return ({${extractClassMethod('saveGradesEntryImmediatelyAfterDiskSave')}}).saveGradesEntryImmediatelyAfterDiskSave;`,
+  )('PERSISTENCE_CONFLICT');
+  const messages = [];
+  const harness = {
+    canAccessGradeVault() { return true; },
+    async saveGradeVaultChanges() {
+      const error = new Error('Die Datenbankdatei wurde außerhalb dieses Workspace geändert.');
+      error.code = 'PERSISTENCE_CONFLICT';
+      throw error;
+    },
+    async showInfoMessage(message, title) { messages.push({ message, title }); },
+  };
+
+  assert.equal(await saveImmediately.call(harness), false);
+  assert.deepEqual(messages, [{
+    message: 'Die Datenbankdatei wurde außerhalb dieses Workspace geändert. Zum Schutz wurde sie nicht überschrieben. Der Notenentwurf bleibt geöffnet.',
+    title: 'Datenbankkonflikt',
+  }]);
 });
 
 test('the workspace owner is authoritative while the first unlocked grade course finishes loading', () => {

@@ -17,7 +17,7 @@ for (const [name, source] of [['Planung', planningApp], ['Noten', gradesApp]]) {
   test(`${name} resolves a dirty settings draft with the three-way dialog`, () => {
     assert.match(source, /async resolveUnsavedSettingsNavigation\(\)/);
     assert.match(source, /title: "Ungespeicherte Änderungen"/);
-    assert.match(source, /alternateText: "Verwerfen & Wechseln"/);
+    assert.match(source, /alternateText: "Verwerfen & wechseln"/);
     assert.match(source, /choice === "ok"[\s\S]*?applySettingsDraftToStore\(\)/);
     assert.match(source, /choice === "discard"[\s\S]*?cancelSettingsDraftChanges\(\)/);
   });
@@ -45,7 +45,7 @@ test('the planning view switch resolves a dirty settings draft before leaving se
 });
 
 test('planning exposes the same discard action and tab-leave round trip as grades', () => {
-  assert.match(planningHtml, /id="message-dialog-cancel-top"[^>]*>❌<\/button>[\s\S]*id="message-dialog-ok-top"[^>]*>💾<\/button>[\s\S]*id="message-dialog-discard-top"[^>]*>🗑️<\/button>/);
+  assert.match(planningHtml, /id="message-dialog-cancel-top"[^>]*>❌<\/button>[\s\S]*id="message-dialog-discard-top"[^>]*>🗑️<\/button>[\s\S]*id="message-dialog-ok-top"[^>]*>💾<\/button>/);
   assert.match(planningApp, /showChoiceMessage\(message, options = \{\}\)/);
   assert.match(planningApp, /classroom:planning-tab-leave-request/);
   assert.match(planningApp, /classroom:planning-tab-leave-result/);

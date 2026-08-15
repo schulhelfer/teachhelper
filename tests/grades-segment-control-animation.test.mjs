@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const app = await readFile(
-  new URL('../src/modules/grades/app.js', import.meta.url),
-  'utf8',
-);
+const [app, appCss] = await Promise.all([
+  readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
+]);
 
 function extractMethod(name, nextName) {
   let start = app.indexOf(`\n  ${name}(`);
@@ -40,6 +40,12 @@ test('segment callbacks cancel an older pending callback for the same control', 
   assert.match(afterSlide, /segmentControlSlideTimers\?\.delete\(key\)/);
 });
 
+test('grade sidebar controls use a shorter response delay', () => {
+  const afterSlide = extractMethod('runAfterSegmentControlSlide', 'renderAll');
+  assert.match(afterSlide, /control\.matches\("\.sidebar-grade-segment-control"\) \? 180 : 330/);
+  assert.match(afterSlide, /}, delayMs\);/);
+});
+
 test('entry mode is stored before waiting for the visual slide', () => {
   const change = extractMethod('handleGradesSurfaceChange', 'ensureGradeTestScaleTooltipPortal');
   const modeBranch = change.slice(change.indexOf('const modeInput'));
@@ -47,4 +53,17 @@ test('entry mode is stored before waiting for the visual slide', () => {
   const animationWait = modeBranch.indexOf('this.runAfterSegmentControlSlide(event');
   assert.ok(stateWrite >= 0, 'mode branch must update its draft');
   assert.ok(animationWait > stateWrite, 'draft state must be updated before the animation callback');
+});
+
+test('the saved-entry notification does not block sidebar interactions', () => {
+  const createNotice = extractMethod('ensureGradesEntrySaveNoticeOverlay', 'renderGradesEntrySaveNoticeOverlay');
+  const renderNotice = extractMethod('renderGradesEntrySaveNoticeOverlay', 'removeGradesEntrySaveNoticeOverlay');
+  assert.match(createNotice, /dialog\.setAttribute\("role", "status"\)/);
+  assert.doesNotMatch(createNotice, /aria-modal/);
+  assert.doesNotMatch(renderNotice, /\.focus\(/);
+
+  const overlayCss = appCss.match(/\.grades-entry-save-overlay\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
+  const dialogCss = appCss.match(/\.grades-entry-save-dialog\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
+  assert.match(overlayCss, /pointer-events:\s*none/);
+  assert.match(dialogCss, /pointer-events:\s*auto/);
 });

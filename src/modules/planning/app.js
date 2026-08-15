@@ -46,6 +46,7 @@ const REQUIRED_HOLIDAYS = [
   "Sommerferien"
 ];
 const HOURS_PER_DAY_DEFAULT = 8;
+const BREAK_SUPERVISION_AFTER_HOURS = [2, 4, 6];
 const ENTFALL_TOPIC_DEFAULT = "Entfall laut Plan";
 const WRITTEN_EXAM_TOPIC = "Schriftliche Arbeit";
 const DEFAULT_COURSE_COLOR = "#E6194B";
@@ -893,6 +894,7 @@ class PlanningApp {
     this.dragDropCommitted = false;
     this.slotDialogStartMinIso = null;
     this.slotDialogEndDateBackup = null;
+    this.slotDialogMode = "lesson";
     this.refs = {
       schoolYearSelect: document.querySelector("#school-year-select"),
       kwLabel: document.querySelector("#kw-label"),
@@ -1007,10 +1009,17 @@ class PlanningApp {
       slotDialogForm: document.querySelector("#slot-dialog-form"),
       slotDialogTitle: document.querySelector("#slot-dialog-title"),
       slotDialogId: document.querySelector("#slot-dialog-id"),
+      slotDialogCourseRow: document.querySelector("#slot-dialog-course-row"),
       slotDialogCourse: document.querySelector("#slot-dialog-course"),
+      slotDialogBreakNameRow: document.querySelector("#slot-dialog-break-name-row"),
+      slotDialogBreakName: document.querySelector("#slot-dialog-break-name"),
       slotDialogDay: document.querySelector("#slot-dialog-day"),
+      slotDialogHourRow: document.querySelector("#slot-dialog-hour-row"),
       slotDialogHour: document.querySelector("#slot-dialog-hour"),
+      slotDialogEndHourRow: document.querySelector("#slot-dialog-end-hour-row"),
       slotDialogEndHour: document.querySelector("#slot-dialog-end-hour"),
+      slotDialogBreakRow: document.querySelector("#slot-dialog-break-row"),
+      slotDialogBreakAfter: document.querySelector("#slot-dialog-break-after"),
       slotDialogStart: document.querySelector("#slot-dialog-start"),
       slotDialogEnd: document.querySelector("#slot-dialog-end"),
       slotDialogParity: document.querySelector("#slot-dialog-parity"),
@@ -2276,7 +2285,7 @@ class PlanningApp {
         title: "Ungespeicherte Änderungen",
         okText: "Speichern",
         cancelText: "Abbrechen",
-        alternateText: "Verwerfen & Wechseln",
+        alternateText: "Verwerfen & wechseln",
         dangerAlternate: true,
         warning: true
       }
@@ -2997,8 +3006,8 @@ class PlanningApp {
     this.refs.messageDialogOkTop.setAttribute("aria-label", String(okText || "OK"));
     this.refs.messageDialogOkTop.dataset.tooltip = String(okText || "OK");
     this.refs.messageDialogDiscardTop.textContent = "🗑️";
-    this.refs.messageDialogDiscardTop.setAttribute("aria-label", String(alternateText || "Verwerfen & Wechseln"));
-    this.refs.messageDialogDiscardTop.dataset.tooltip = String(alternateText || "Verwerfen & Wechseln");
+    this.refs.messageDialogDiscardTop.setAttribute("aria-label", String(alternateText || "Verwerfen & wechseln"));
+    this.refs.messageDialogDiscardTop.dataset.tooltip = String(alternateText || "Verwerfen & wechseln");
     this.refs.messageDialogDiscardTop.classList.toggle("danger-action", Boolean(dangerAlternate));
     this.refs.messageDialogDiscardTop.hidden = !showDiscardTop;
     this.refs.messageDialogOkTop.classList.toggle("danger-action", Boolean(dangerOk));
@@ -4414,7 +4423,7 @@ class PlanningApp {
     this.renderCourseTimeline();
   }
 
-  formatSlotConflictMessage(conflicts, year) {
+  formatSlotConflictMessage(conflicts, year, placement = "lesson") {
     const parityLabel = (slot) => {
       const parity = Number(slot.weekParity || 0);
       if (parity === 0 && slot.startDate && slot.endDate && slot.startDate === slot.endDate) {
@@ -4445,7 +4454,9 @@ class PlanningApp {
     const lines = conflicts.slice(0, 3).map((item) => {
       const begin = Number(item.startHour);
       const end = begin + Math.max(1, Number(item.duration || 1)) - 1;
-      const hourLabel = begin === end ? `Std. ${begin}` : `Std. ${begin}-${end}`;
+      const hourLabel = placement === "break"
+        ? `Pause nach der ${begin}. Std.`
+        : begin === end ? `Std. ${begin}` : `Std. ${begin}-${end}`;
       const dayLabel = DAYS_SHORT[Number(item.dayOfWeek) - 1] || `Tag ${item.dayOfWeek}`;
       const details = [dayLabel, hourLabel, rangeLabel(item), parityLabel(item)]
         .filter(Boolean)
@@ -4455,7 +4466,8 @@ class PlanningApp {
     if (conflicts.length > 3) {
       lines.push(`... und ${conflicts.length - 3} weitere.`);
     }
-    return `Die Änderung erzeugt parallele Unterrichtsstunden:\n${lines.join("\n")}\n\nMöchtest du die Änderung trotzdem speichern?`;
+    const label = placement === "break" ? "parallele Aufsichten" : "parallele Unterrichtsstunden";
+    return `Die Änderung erzeugt ${label}:\n${lines.join("\n")}\n\nMöchtest du die Änderung trotzdem speichern?`;
   }
 
   async persistSlotChange({
@@ -4468,7 +4480,9 @@ class PlanningApp {
     endDateInput = null,
     recurrenceValue = 0,
     editScope = "all",
-    editFromDate = null
+    editFromDate = null,
+    placement = "lesson",
+    label = ""
   }) {
     const year = this.activeSchoolYear;
     if (!year) {
@@ -4476,13 +4490,30 @@ class PlanningApp {
     }
     const normalizedSlotId = Number(slotId || 0);
     const normalizedCourseId = Number(courseId || 0);
+    const normalizedPlacement = placement === "break" ? "break" : "lesson";
     let normalizedDay = Number(dayOfWeek || 0);
-    const normalizedStartHour = clamp(Number(startHour), 1, this.store.getHoursPerDay());
-    const normalizedDuration = Math.max(1, Number(duration));
+    const normalizedStartHour = clamp(
+      Number(startHour),
+      1,
+      normalizedPlacement === "break" ? Math.max(1, this.store.getHoursPerDay() - 1) : this.store.getHoursPerDay()
+    );
+    const normalizedDuration = normalizedPlacement === "break" ? 1 : Math.max(1, Number(duration));
     const normalizedStartDate = startDate || null;
     let endDate = endDateInput || null;
     const normalizedRecurrence = Number(recurrenceValue || 0);
     let weekParity = normalizedRecurrence;
+
+    const normalizedLabel = normalizedPlacement === "break" ? String(label || "").trim() : "";
+    if (normalizedPlacement === "break") {
+      if (!normalizedLabel) {
+        await this.showInfoMessage("Bitte eine Bezeichnung für die Aufsicht angeben.");
+        return false;
+      }
+      if (!BREAK_SUPERVISION_AFTER_HOURS.includes(normalizedStartHour)) {
+        await this.showInfoMessage("Aufsichten sind nur nach der 2., 4. oder 6. Stunde möglich.");
+        return false;
+      }
+    }
 
     if (normalizedRecurrence === -1) {
       if (!normalizedStartDate) {
@@ -4513,11 +4544,12 @@ class PlanningApp {
       normalizedStartDate,
       endDate,
       weekParity,
-      normalizedSlotId || null
+      normalizedSlotId || null,
+      normalizedPlacement
     );
     if (conflicts.length > 0) {
-      const allowed = await this.showConfirmMessage(this.formatSlotConflictMessage(conflicts, year), {
-        title: "Parallele Unterrichtsstunden",
+      const allowed = await this.showConfirmMessage(this.formatSlotConflictMessage(conflicts, year, normalizedPlacement), {
+        title: normalizedPlacement === "break" ? "Parallele Aufsichten" : "Parallele Unterrichtsstunden",
         okText: "Trotzdem speichern",
         cancelText: "Abbrechen",
         warning: true,
@@ -4548,7 +4580,9 @@ class PlanningApp {
           normalizedStartHour,
           normalizedDuration,
           endDate,
-          weekParity
+          weekParity,
+          normalizedPlacement,
+          normalizedLabel
         );
         if (!result || !result.ok) {
           await this.showInfoMessage((result && result.message) || "Teiländerung konnte nicht gespeichert werden.");
@@ -4563,7 +4597,10 @@ class PlanningApp {
           normalizedDuration,
           normalizedStartDate,
           endDate,
-          weekParity
+          weekParity,
+          normalizedPlacement,
+          year.id,
+          normalizedLabel
         );
       }
     } else {
@@ -4574,7 +4611,10 @@ class PlanningApp {
         normalizedDuration,
         normalizedStartDate,
         endDate,
-        weekParity
+        weekParity,
+        normalizedPlacement,
+        year.id,
+        normalizedLabel
       );
     }
 
@@ -4616,7 +4656,9 @@ class PlanningApp {
           slot.startHour,
           slot.duration,
           slot.endDate || null,
-          slot.weekParity || 0
+          slot.weekParity || 0,
+          slot.placement === "break" ? "break" : "lesson",
+          slot.label || ""
         );
         if (!result || !result.ok) {
           await this.showInfoMessage((result && result.message) || "Teillöschung konnte nicht durchgeführt werden.");
@@ -4633,12 +4675,12 @@ class PlanningApp {
     return true;
   }
 
-  populateSlotDialogCourseSelect(selectedCourseId = null) {
+  populateSlotDialogCourseSelect(selectedCourseId = null, onlyNoLesson = false) {
     const year = this.activeSchoolYear;
     if (!year || !this.refs.slotDialogCourse) {
       return false;
     }
-    const courses = this.store.listCourses(year.id);
+    const courses = this.store.listCourses(year.id).filter((course) => !onlyNoLesson || course.noLesson);
     this.refs.slotDialogCourse.innerHTML = "";
     for (const course of courses) {
       const option = document.createElement("option");
@@ -4660,6 +4702,41 @@ class PlanningApp {
     );
     this.syncSlotDialogCourseColor();
     return true;
+  }
+
+  setSlotDialogMode(mode = "lesson", breakAfterHour = null) {
+    this.slotDialogMode = mode === "break" ? "break" : "lesson";
+    const isBreak = this.slotDialogMode === "break";
+    if (this.refs.slotDialogCourseRow) this.refs.slotDialogCourseRow.hidden = isBreak;
+    if (this.refs.slotDialogBreakNameRow) this.refs.slotDialogBreakNameRow.hidden = !isBreak;
+    if (this.refs.slotDialogCourse) this.refs.slotDialogCourse.disabled = isBreak;
+    if (this.refs.slotDialogBreakName) this.refs.slotDialogBreakName.required = isBreak;
+    if (this.refs.slotDialogHourRow) this.refs.slotDialogHourRow.hidden = isBreak;
+    if (this.refs.slotDialogEndHourRow) this.refs.slotDialogEndHourRow.hidden = isBreak;
+    if (this.refs.slotDialogBreakRow) this.refs.slotDialogBreakRow.hidden = !isBreak;
+    if (this.refs.slotDialogBreakAfter) {
+      this.refs.slotDialogBreakAfter.disabled = !isBreak;
+      this.refs.slotDialogBreakAfter.required = isBreak;
+    }
+    if (isBreak && this.refs.slotDialogBreakAfter) {
+      const availableBreakHours = BREAK_SUPERVISION_AFTER_HOURS
+        .filter((hour) => hour < this.store.getHoursPerDay());
+      const requestedHour = Number(breakAfterHour ?? this.refs.slotDialogBreakAfter.value ?? this.refs.slotDialogHour.value);
+      const hour = availableBreakHours.includes(requestedHour)
+        ? requestedHour
+        : availableBreakHours[0];
+      this.refs.slotDialogBreakAfter.replaceChildren(...availableBreakHours.map((breakHour) => {
+        const option = document.createElement("option");
+        option.value = String(breakHour);
+        option.textContent = `der ${breakHour}. Stunde`;
+        return option;
+      }));
+      if (hour) {
+        this.refs.slotDialogBreakAfter.value = String(hour);
+        this.refs.slotDialogHour.value = String(hour);
+        this.refs.slotDialogEndHour.value = String(hour);
+      }
+    }
   }
 
   syncSlotDialogCourseColor() {
@@ -4791,6 +4868,7 @@ class PlanningApp {
       await this.showInfoMessage("Erst Kurs anlegen.");
       return;
     }
+    this.setSlotDialogMode("lesson");
     this.refs.slotDialogTitle.textContent = "Unterrichtsstunde anlegen";
     this.refs.slotDialogId.value = "";
     this.refs.slotDialogDay.value = String(dayOfWeek);
@@ -4826,6 +4904,46 @@ class PlanningApp {
     this.openDialog(this.refs.slotDialog);
   }
 
+  async openBreakSupervisionDialog(dayOfWeek, breakAfterHour) {
+    const year = this.activeSchoolYear;
+    if (!year || !this.refs.slotDialog) {
+      return;
+    }
+    const afterHour = Number(breakAfterHour);
+    if (!BREAK_SUPERVISION_AFTER_HOURS.includes(afterHour) || afterHour >= this.store.getHoursPerDay()) {
+      return;
+    }
+    this.setSlotDialogMode("break", afterHour);
+    this.refs.slotDialogTitle.textContent = "Aufsicht anlegen";
+    this.refs.slotDialogId.value = "";
+    this.refs.slotDialogBreakName.value = "";
+    this.refs.slotDialogDay.value = String(dayOfWeek);
+    this.refs.slotDialogHour.value = String(afterHour);
+    this.refs.slotDialogEndHour.value = String(afterHour);
+    this.refs.slotDialogParity.value = "0";
+    this.refs.slotDialogEditScope.value = "all";
+    this.refs.slotDialogEditFromDate.value = "";
+    if (this.refs.slotDialogEditInfo) {
+      this.refs.slotDialogEditInfo.hidden = true;
+      this.refs.slotDialogEditInfo.textContent = "";
+    }
+    this.slotDialogEndDateBackup = null;
+
+    let startDefault = addDays(this.weekStartIso, Number(dayOfWeek) - 1);
+    if (startDefault < year.startDate) startDefault = year.startDate;
+    if (startDefault > year.endDate) startDefault = year.endDate;
+    const endDefault = this._computeSlotEndDefault(startDefault);
+    this.slotDialogStartMinIso = startDefault;
+    this.refs.slotDialogStart.min = startDefault;
+    this.refs.slotDialogStart.max = year.endDate;
+    this.refs.slotDialogEnd.min = startDefault;
+    this.refs.slotDialogEnd.max = year.endDate;
+    this.refs.slotDialogStart.value = startDefault;
+    this.refs.slotDialogEnd.value = endDefault;
+    this.syncSlotDialogEditTools();
+    this.openDialog(this.refs.slotDialog);
+  }
+
   async openSlotDialogForEdit(slotOrId, clickedDate = null) {
     const year = this.activeSchoolYear;
     if (!year || !this.refs.slotDialog) {
@@ -4837,14 +4955,20 @@ class PlanningApp {
     if (!slot) {
       return;
     }
-    if (!this.populateSlotDialogCourseSelect(slot.courseId)) {
+    const isBreak = slot.placement === "break";
+    if (!isBreak && !this.populateSlotDialogCourseSelect(slot.courseId)) {
       await this.showInfoMessage("Erst Kurs anlegen.");
       return;
     }
-    this.refs.slotDialogTitle.textContent = "Unterrichtsstunde anpassen";
+    this.setSlotDialogMode(isBreak ? "break" : "lesson", slot.startHour);
+    this.refs.slotDialogTitle.textContent = isBreak ? "Aufsicht anpassen" : "Unterrichtsstunde anpassen";
     this.refs.slotDialogId.value = String(slot.id);
-    this.refs.slotDialogCourse.value = String(slot.courseId);
-    this.syncSlotDialogCourseColor();
+    if (isBreak) {
+      this.refs.slotDialogBreakName.value = String(slot.label || "");
+    } else {
+      this.refs.slotDialogCourse.value = String(slot.courseId);
+      this.syncSlotDialogCourseColor();
+    }
     this.refs.slotDialogDay.value = String(slot.dayOfWeek);
     this.refs.slotDialogHour.value = String(slot.startHour);
     this.refs.slotDialogEndHour.value = String(
@@ -4880,6 +5004,7 @@ class PlanningApp {
   closeSlotDialog() {
     this.slotDialogStartMinIso = null;
     this.slotDialogEndDateBackup = null;
+    this.setSlotDialogMode("lesson");
     this.closeDialog(this.refs.slotDialog);
   }
 
@@ -4918,14 +5043,26 @@ class PlanningApp {
       await this.showInfoMessage("Enddatum muss am oder nach dem Startdatum liegen.");
       return;
     }
-    this.syncSlotDialogHourRange();
+    const placement = this.slotDialogMode === "break" ? "break" : "lesson";
+    if (placement === "break") {
+      const breakAfterHour = Number(this.refs.slotDialogBreakAfter.value || 0);
+      this.refs.slotDialogHour.value = String(breakAfterHour);
+      this.refs.slotDialogEndHour.value = String(breakAfterHour);
+    } else {
+      this.syncSlotDialogHourRange();
+    }
     const startHour = Number(this.refs.slotDialogHour.value || 1);
     const endHour = Number(this.refs.slotDialogEndHour.value || startHour);
-    const duration = Math.max(1, endHour - startHour + 1);
+    const duration = placement === "break" ? 1 : Math.max(1, endHour - startHour + 1);
+    const breakLabel = placement === "break" ? String(this.refs.slotDialogBreakName.value || "").trim() : "";
+    if (placement === "break" && !breakLabel) {
+      this.refs.slotDialogBreakName.focus();
+      return;
+    }
 
     const ok = await this.persistSlotChange({
       slotId: this.refs.slotDialogId.value || null,
-      courseId: this.refs.slotDialogCourse.value,
+      courseId: placement === "break" ? 0 : this.refs.slotDialogCourse.value,
       dayOfWeek: this.refs.slotDialogDay.value,
       startHour,
       duration,
@@ -4933,7 +5070,8 @@ class PlanningApp {
       endDateInput: endDate,
       recurrenceValue: this.refs.slotDialogParity.value,
       editScope: this.refs.slotDialogEditScope.value || "all",
-      editFromDate: this.refs.slotDialogEditFromDate.value || null
+      editFromDate: this.refs.slotDialogEditFromDate.value || null,
+      ...(placement === "break" ? { placement, label: breakLabel } : {})
     });
     if (!ok) {
       return;
@@ -5606,6 +5744,12 @@ class PlanningApp {
       this.syncSlotDialogHourRange();
     });
 
+    this.refs.slotDialogBreakAfter.addEventListener("change", () => {
+      const breakAfterHour = Number(this.refs.slotDialogBreakAfter.value || 0);
+      this.refs.slotDialogHour.value = String(breakAfterHour);
+      this.refs.slotDialogEndHour.value = String(breakAfterHour);
+    });
+
     this.refs.slotDialogEndHour.addEventListener("change", () => {
       this.syncSlotDialogHourRange();
     });
@@ -5923,6 +6067,22 @@ class PlanningApp {
         void this.requestPerformanceNavigation(lessonId, triggerMode);
         return;
       }
+      const breakSupervision = event.target.closest("[data-break-supervision='1'][data-slot-id]");
+      if (breakSupervision) {
+        const slot = this.store.getSlot(Number(breakSupervision.dataset.slotId || 0));
+        if (slot) await this.openSlotDialogForEdit(slot, breakSupervision.dataset.date || null);
+        return;
+      }
+      const breakTarget = event.target.closest("[data-week-break='1'][data-day][data-after-hour]");
+      if (breakTarget) {
+        this.lastWeekEmptySlotPointerDown = null;
+        this.weekEmptySlotDialogOpenedAt = Date.now();
+        await this.openBreakSupervisionDialog(
+          Number(breakTarget.dataset.day),
+          Number(breakTarget.dataset.afterHour)
+        );
+        return;
+      }
       const courseLink = event.target.closest(".lesson-block .title.course-link[data-course-id]");
       if (courseLink) {
         const courseId = Number(courseLink.dataset.courseId || 0);
@@ -5970,6 +6130,16 @@ class PlanningApp {
       }
       if (Date.now() - Number(this.weekEmptySlotDialogOpenedAt || 0) < 700) {
         event.preventDefault();
+        return;
+      }
+      const breakTarget = event.target.closest("[data-week-break='1'][data-day][data-after-hour]");
+      if (breakTarget) {
+        this.lastWeekEmptySlotPointerDown = null;
+        this.weekEmptySlotDialogOpenedAt = Date.now();
+        await this.openBreakSupervisionDialog(
+          Number(breakTarget.dataset.day),
+          Number(breakTarget.dataset.afterHour)
+        );
         return;
       }
       const lessonBlock = event.target.closest(".lesson-block[data-lesson-id]");
@@ -9030,7 +9200,9 @@ class PlanningApp {
           : Number(slot.weekParity) === 2
             ? "ger. KW"
             : "jede KW";
-      name.textContent = `${dayName} ${slot.startHour}.-${slot.startHour + slot.duration - 1}. Std. · ${course ? course.name : "?"}`;
+      name.textContent = slot.placement === "break"
+        ? `${dayName} · Pause nach der ${slot.startHour}. Std. · ${slot.label || "Aufsicht"}`
+        : `${dayName} ${slot.startHour}.-${slot.startHour + slot.duration - 1}. Std. · ${course ? course.name : "?"}`;
       const meta = document.createElement("div");
       meta.className = "meta";
       const rangeText = slot.startDate || slot.endDate
@@ -9671,6 +9843,18 @@ class PlanningApp {
     return chip;
   }
 
+  _createWeekBreakSupervisionCard(lesson) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "week-break-supervision";
+    chip.dataset.breakSupervision = "1";
+    chip.dataset.slotId = String(lesson.slotId || "");
+    chip.dataset.date = String(lesson.lessonDate || "");
+    chip.title = "Aufsicht bearbeiten";
+    chip.textContent = `👀 ${String(lesson.courseName || "Aufsicht")}`;
+    return chip;
+  }
+
   renderWeekTable() {
     const year = this.activeSchoolYear;
     this.refs.weekTable.innerHTML = "";
@@ -9695,8 +9879,17 @@ class PlanningApp {
       if (label) dayOffByIso.set(dayIso, { label: String(label), kind: range ? "holiday" : "special" });
     });
     const blocksByDay = new Map(days.map((dayIso) => [dayIso, new Map()]));
+    const breaksByDay = new Map(days.map((dayIso) => [dayIso, new Map()]));
     lessons.forEach((lesson) => {
       if (dayOffByIso.has(lesson.lessonDate)) return;
+      if (lesson.slotPlacement === "break") {
+        const breaks = breaksByDay.get(lesson.lessonDate);
+        const breakAfterHour = Number(lesson.hour || 0);
+        if (!breaks || breakAfterHour < 1 || breakAfterHour >= hoursPerDay) return;
+        if (!breaks.has(breakAfterHour)) breaks.set(breakAfterHour, []);
+        breaks.get(breakAfterHour).push(lesson);
+        return;
+      }
       const blocks = blocksByDay.get(lesson.lessonDate);
       if (!blocks) return;
       const key = `${lesson.lessonDate}|${lesson.slotId || lesson.id}`;
@@ -9735,17 +9928,44 @@ class PlanningApp {
               empty.dataset.weekEmpty = "1"; empty.dataset.day = String(dayIndex + 1); empty.dataset.hour = String(emptyHour);
               empty.title = "Doppelklick: Unterrichtsstunde anlegen"; empty.style.gridRow = String(emptyHour); grid.append(empty);
             }
+            for (const breakAfterHour of BREAK_SUPERVISION_AFTER_HOURS) {
+              if (breakAfterHour >= hoursPerDay) continue;
+              const target = document.createElement("button");
+              target.type = "button";
+              target.className = "week-day-break-target";
+              target.dataset.weekBreak = "1";
+              target.dataset.day = String(dayIndex + 1);
+              target.dataset.afterHour = String(breakAfterHour);
+              target.title = "Aufsicht anlegen";
+              target.setAttribute("aria-label", `Aufsicht nach der ${breakAfterHour}. Stunde anlegen`);
+              target.style.setProperty("--break-after-hour", String(breakAfterHour));
+              grid.append(target);
+            }
             const layer = document.createElement("div"); layer.className = "week-day-card-layer";
             const blocks = this._assignWeekBlockLanes([...blocksByDay.get(dayIso).values()].map((rows) => this._buildWeekLessonBlock(rows.sort((a, b) => a.hour - b.hour))));
             blocks.forEach((block) => {
               const card = this._createWeekLessonCard(block, performanceLookup);
+              if (breaksByDay.get(dayIso).has(Number(block.startHour) - 1)) {
+                card.querySelector(".title.course-link")?.classList.add("after-break-supervision");
+              }
               if (highlightedSlot && highlightedSlot.dayIso === dayIso
                 && block.lessons.some((lesson) => Number(lesson.id) === Number(highlightedSlot.lessonId || 0))) {
                 card.classList.add("highlighted-slot");
               }
               layer.append(card);
             });
-            grid.append(layer); td.append(grid);
+            const breakLayer = document.createElement("div");
+            breakLayer.className = "week-day-break-layer";
+            for (const [breakAfterHour, breakLessons] of breaksByDay.get(dayIso).entries()) {
+              const row = document.createElement("div");
+              row.className = "week-break-supervision-row";
+              row.style.setProperty("--break-after-hour", String(breakAfterHour));
+              breakLessons
+                .sort((left, right) => String(left.courseName || "").localeCompare(String(right.courseName || ""), "de"))
+                .forEach((lesson) => row.append(this._createWeekBreakSupervisionCard(lesson)));
+              breakLayer.append(row);
+            }
+            grid.append(layer, breakLayer); td.append(grid);
           }
           tr.append(td);
         });

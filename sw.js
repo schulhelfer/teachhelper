@@ -124,6 +124,10 @@ function isStaticAssetRequest(request, url) {
   );
 }
 
+function isCodeAssetRequest(request, url) {
+  return request.destination === 'script' || /\.(?:js|mjs)$/i.test(url.pathname);
+}
+
 async function preCacheAppShell() {
   const cache = await caches.open(PRECACHE_NAME);
   const results = await Promise.allSettled(
@@ -153,10 +157,16 @@ async function putInRuntimeCache(request, response) {
   return response;
 }
 
-async function networkFirst(request, { fallbackUrl = null, preloadResponsePromise = null } = {}) {
+async function networkFirst(request, {
+  fallbackUrl = null,
+  preloadResponsePromise = null,
+  cacheMode = undefined,
+} = {}) {
   try {
-    const preloadResponse = preloadResponsePromise ? await preloadResponsePromise : null;
-    const response = preloadResponse || await fetch(request);
+    const preloadResponse = cacheMode === 'reload'
+      ? null
+      : (preloadResponsePromise ? await preloadResponsePromise : null);
+    const response = preloadResponse || await fetch(request, { cache: cacheMode });
     await putInRuntimeCache(request, response);
     return response;
   } catch (error) {
@@ -175,9 +185,9 @@ async function networkFirst(request, { fallbackUrl = null, preloadResponsePromis
 }
 
 async function staleWhileRevalidate(request, event = null) {
-  
-  
-  
+
+
+
   const cached = await caches.match(request, { ignoreSearch: true });
   const networkPromise = fetch(request)
     .then((response) => putInRuntimeCache(request, response))
@@ -209,7 +219,7 @@ self.addEventListener('activate', (event) => {
       try {
         await self.registration.navigationPreload.enable();
       } catch {
-        
+
       }
     }
     await self.clients.claim();
@@ -254,11 +264,16 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(networkFirst(request, {
       fallbackUrl: OFFLINE_FALLBACK_URL,
       preloadResponsePromise: event.preloadResponse,
+      cacheMode: 'reload',
     }));
     return;
   }
 
   if (isStaticAssetRequest(request, url)) {
+    if (isCodeAssetRequest(request, url)) {
+      event.respondWith(networkFirst(request, { cacheMode: 'reload' }));
+      return;
+    }
     event.respondWith(staleWhileRevalidate(request, event));
   }
 });

@@ -81,13 +81,16 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
       const item = asRecord(raw);
       return {
         id: Number(item.id),
-        courseId: Number(item.courseId),
+        courseId: Number(item.courseId) || 0,
+        schoolYearId: Number(item.schoolYearId) || 0,
+        label: String(item.label || ''),
         dayOfWeek: Number(item.dayOfWeek),
         startHour: Number(item.startHour),
         duration: Math.max(1, Number(item.duration || 1)),
         startDate: item.startDate || null,
         endDate: item.endDate || null,
         weekParity: Number(item.weekParity || 0),
+        placement: item.placement === 'break' ? 'break' : 'lesson',
       };
     }) : [],
     freeRanges: Array.isArray(source.freeRanges) ? source.freeRanges.map((raw) => {
@@ -148,7 +151,15 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
     (item) => item.id > 0 && item.schoolYearId > 0 && item.name,
   );
   normalized.slots = normalized.slots.filter(
-    (item) => item.id > 0 && item.courseId > 0 && item.dayOfWeek >= 1 && item.dayOfWeek <= 5,
+    (item) => (
+      item.id > 0
+      && item.dayOfWeek >= 1
+      && item.dayOfWeek <= 5
+      && (item.courseId > 0 || (item.placement === 'break' && item.schoolYearId > 0 && item.label))
+    ),
+  );
+  const breakSlotIds = new Set(
+    normalized.slots.filter((item) => item.placement === 'break').map((item) => item.id),
   );
   normalized.freeRanges = normalized.freeRanges.filter((item) => {
     if (!(item.id > 0 && item.schoolYearId > 0 && item.label)) return false;
@@ -161,7 +172,12 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
     (item) => item.id > 0 && item.name && item.dayDate,
   );
   normalized.lessons = normalized.lessons.filter(
-    (item) => item.id > 0 && item.schoolYearId > 0 && item.slotId > 0 && item.courseId > 0,
+    (item) => (
+      item.id > 0
+      && item.schoolYearId > 0
+      && item.slotId > 0
+      && (item.courseId > 0 || breakSlotIds.has(item.slotId))
+    ),
   );
   normalized.counters = {
     schoolYear: Math.max(Number(normalized.counters.schoolYear) || 1, maxBy(normalized.schoolYears) + 1),

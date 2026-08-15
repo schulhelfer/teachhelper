@@ -2038,6 +2038,17 @@
             background var(--motion-fast) var(--motion-ease);
         }
 
+        .seat.table-drop-target {
+          border-color: rgba(251, 191, 36, 0.96);
+          background:
+            linear-gradient(180deg, rgba(251, 191, 36, 0.35), rgba(249, 115, 22, 0.24)),
+            var(--seat);
+          box-shadow:
+            0 0 0 3px rgba(251, 146, 60, 0.3),
+            0 14px 30px rgba(154, 52, 18, 0.28);
+          transform: translateY(-2px) scale(1.015);
+        }
+
         @keyframes dropPop {
           0% {
             transform: scale(0.97);
@@ -2324,6 +2335,59 @@
         .seat-grade-student-portrait-overlay.is-open {
           background: rgba(2, 6, 23, 0.54);
           opacity: 1;
+        }
+
+        .table-drag-preview {
+          position: fixed;
+          left: -9999px;
+          top: -9999px;
+          display: grid;
+          gap: 5px;
+          padding: 6px;
+          border: 2px solid rgba(251, 146, 60, 0.95);
+          border-radius: 16px;
+          background: linear-gradient(180deg, rgba(251, 146, 60, 0.7), rgba(234, 88, 12, 0.64));
+          box-shadow: 0 18px 38px rgba(0, 0, 0, 0.42), 0 0 0 2px rgba(255, 237, 213, 0.2);
+          color: var(--text);
+          font-size: 13px;
+          font-weight: 700;
+          line-height: 1.15;
+          pointer-events: none;
+          z-index: 2050;
+        }
+
+        .table-drag-preview--horizontal {
+          grid-template-columns: repeat(2, minmax(88px, 1fr));
+        }
+
+        .table-drag-preview--vertical {
+          grid-template-rows: repeat(2, minmax(54px, 1fr));
+          min-width: 132px;
+        }
+
+        .table-drag-preview__seat {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 0;
+          min-height: 54px;
+          padding: 8px;
+          border: 1px solid rgba(255, 255, 255, 0.18);
+          border-radius: 10px;
+          background: rgba(15, 23, 42, 0.82);
+          color: var(--text);
+          overflow: hidden;
+          text-align: center;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .touch-drag-ghost.table-drag-preview {
+          left: 0;
+          top: 0;
+          min-width: 0;
+          padding: 6px;
+          font-size: 12px;
         }
 
         .seat-grade-student-portrait-overlay-image {

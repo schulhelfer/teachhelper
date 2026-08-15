@@ -34,6 +34,7 @@ export const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = Object.freeze([
 export const GRADE_TEST_AFB_OPTIONS = Object.freeze(["I", "I/II", "II", "II/III", "III"]);
 export const GRADE_STUDENT_PERFORMANCE_FLAIRS = Object.freeze(["P1", "P2", "P3", "P4", "P5"]);
 export const GRADE_ACCOMMODATION_TEXT_MAX_LENGTH = 500;
+export const GRADE_EXPECTATION_HORIZON_COMMENT_MAX_LENGTH = 500;
 export const APP_DB_SCHEMA_LEGACY = "teachhelper-db-v1";
 export const APP_DB_SCHEMA = "teachhelper-db-v2";
 export const APP_DB_MAGIC = "THDB1";
