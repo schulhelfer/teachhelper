@@ -46,6 +46,15 @@ const { resumeAfterGradeVaultUnlock } = Function(
 const { applyGradeVaultEncryptionSettingsDraft } = Function(
   `"use strict"; return ({${extractClassMethod('applyGradeVaultEncryptionSettingsDraft')}});`,
 )();
+const { captureGradeVaultAutoLockNotice } = Function(
+  `"use strict"; return ({${extractClassMethod('captureGradeVaultAutoLockNotice')}});`,
+)();
+const { presentGradeVaultAutoLockNotice } = Function(
+  `"use strict"; return ({${extractClassMethod('presentGradeVaultAutoLockNotice')}});`,
+)();
+const { requestGradeVaultUnlockFromForegroundMenu } = Function(
+  `"use strict"; return ({${extractClassMethod('requestGradeVaultUnlockFromForegroundMenu')}});`,
+)();
 
 test('öffnet beim Start mit gewähltem Notenkurs einmalig den Entsperrdialog', () => {
   let dialogMode = '';
@@ -158,6 +167,77 @@ test('übernimmt die Verschlüsselungsänderung erst beim Speichern der Einstell
 
   assert.equal(await applyGradeVaultEncryptionSettingsDraft.call(app), true);
   assert.equal(requestedMode, false);
+});
+
+test('nutzt nach Bestätigung des Auto-Lock-Hinweises den Entsperrpfad des Vordergrund-Menüs', async () => {
+  const foregroundRequests = [];
+  const noticeCalls = [];
+  const app = {
+    gradeVaultAutoLockNoticeHandledId: '',
+    gradeVaultAutoLockNoticePending: null,
+    isGradesTopTabActive() { return true; },
+    getGradeVaultStatusMode() { return 'unlock'; },
+    async showConfirmMessage(...args) {
+      noticeCalls.push(args);
+      args[1].onConfirm();
+      return true;
+    },
+    requestGradeVaultUnlockFromForegroundMenu(...args) { foregroundRequests.push(args); },
+  };
+
+  assert.equal(captureGradeVaultAutoLockNotice.call(app, { id: 'auto-lock-1' }), true);
+  assert.equal(await presentGradeVaultAutoLockNotice.call(app), true);
+  assert.equal(noticeCalls[0][0], 'Die Noten-Datenbank wurde aus Sicherheitsgründen automatisch gesperrt.');
+  assert.equal(noticeCalls[0][1].title, 'Noten-Datenbank automatisch gesperrt');
+  assert.equal(noticeCalls[0][1].okText, 'Jetzt entsperren');
+  assert.equal(noticeCalls[0][1].cancelText, 'Später');
+  assert.equal(typeof noticeCalls[0][1].onConfirm, 'function');
+  assert.deepEqual(foregroundRequests, [[]]);
+  assert.equal(await presentGradeVaultAutoLockNotice.call(app), false);
+  assert.equal(captureGradeVaultAutoLockNotice.call(app, { id: 'auto-lock-1' }), false);
+});
+
+test('leitet den Auto-Lock-Entsperrwunsch an dieselbe Shell-Anforderung wie der Menübutton weiter', () => {
+  const previousWindow = globalThis.window;
+  const requests = [];
+  globalThis.window = {
+    location: { origin: 'https://teachhelper.test' },
+    parent: {
+      postMessage(message, origin) {
+        requests.push({ message, origin });
+      },
+    },
+  };
+  try {
+    assert.equal(requestGradeVaultUnlockFromForegroundMenu.call({}), true);
+    assert.deepEqual(requests, [{
+      message: {
+        type: 'classroom:grades-grade-vault-request',
+        detail: { action: 'unlock', overlay: false, preserveSourceTab: false },
+      },
+      origin: 'https://teachhelper.test',
+    }]);
+  } finally {
+    globalThis.window = previousWindow;
+  }
+});
+
+test('„Später“ zeigt denselben Auto-Lock-Hinweis nicht erneut', async () => {
+  let notices = 0;
+  const app = {
+    gradeVaultAutoLockNoticeHandledId: '',
+    gradeVaultAutoLockNoticePending: null,
+    isGradesTopTabActive() { return true; },
+    getGradeVaultStatusMode() { return 'unlock'; },
+    async showConfirmMessage() { notices += 1; return false; },
+    openGradeVaultDialog() { assert.fail('unlock must require confirmation'); },
+  };
+
+  captureGradeVaultAutoLockNotice.call(app, { id: 'auto-lock-2' });
+  assert.equal(await presentGradeVaultAutoLockNotice.call(app), true);
+  assert.equal(await presentGradeVaultAutoLockNotice.call(app), false);
+  assert.equal(captureGradeVaultAutoLockNotice.call(app, { id: 'auto-lock-2' }), false);
+  assert.equal(notices, 1);
 });
 
 test('speichert die Datenbank beim dauerhaften Aufheben der Verschlüsselung sofort', async () => {

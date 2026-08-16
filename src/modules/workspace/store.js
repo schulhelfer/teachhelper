@@ -28,6 +28,9 @@ import {
   GRADE_STUDENT_PERFORMANCE_FLAIRS,
   GRADE_TEST_AFB_OPTIONS,
   GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
+  GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
+  GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS,
+  GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT,
   HOURS_PER_DAY_DEFAULT,
   NO_LESSON_COLOR,
   REQUIRED_HOLIDAYS,
@@ -1646,6 +1649,8 @@ function createInitialState() {
       gradeCourseStudentCounts: {},
       gradeCourseStudentCountsComplete: false,
       gradeVaultEncryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
+      gradeVaultAutoLockMinutes: GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
+      gradeVaultAutoLockOnBackground: GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT,
       backupEnabled: BACKUP_ENABLED_DEFAULT,
       backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
       lastAutoBackupAt: null
@@ -1934,6 +1939,32 @@ export class WorkspaceStore {
     this.state.settings.gradeVaultEncryptionEnabled = Boolean(enabled);
     this._save();
     return this.getGradeVaultEncryptionEnabled();
+  }
+
+  getGradeVaultAutoLockMinutes() {
+    const minutes = Number(this.getSetting("gradeVaultAutoLockMinutes", GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT));
+    return GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS.includes(minutes)
+      ? minutes
+      : GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT;
+  }
+
+  setGradeVaultAutoLockMinutes(value) {
+    const minutes = Number(value);
+    this.state.settings.gradeVaultAutoLockMinutes = GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS.includes(minutes)
+      ? minutes
+      : GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT;
+    this._save();
+    return this.getGradeVaultAutoLockMinutes();
+  }
+
+  getGradeVaultAutoLockOnBackground() {
+    return Boolean(this.getSetting("gradeVaultAutoLockOnBackground", GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT));
+  }
+
+  setGradeVaultAutoLockOnBackground(enabled) {
+    this.state.settings.gradeVaultAutoLockOnBackground = Boolean(enabled);
+    this._save();
+    return this.getGradeVaultAutoLockOnBackground();
   }
 
   getGradeDisplaySystem() {
@@ -4704,6 +4735,10 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
     normalized.settings.expectationHorizonCommentTemplate
   );
   normalized.settings.gradeVaultEncryptionEnabled = Boolean(normalized.settings.gradeVaultEncryptionEnabled);
+  normalized.settings.gradeVaultAutoLockMinutes = GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS.includes(
+    Number(normalized.settings.gradeVaultAutoLockMinutes)
+  ) ? Number(normalized.settings.gradeVaultAutoLockMinutes) : GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT;
+  normalized.settings.gradeVaultAutoLockOnBackground = Boolean(normalized.settings.gradeVaultAutoLockOnBackground);
 
   normalized.schoolYears = normalized.schoolYears.filter(
     (item) => item.id > 0 && item.name && item.startDate && item.endDate

@@ -12,6 +12,7 @@ import {
   GRADE_COURSE_SCHEMA,
   GRADE_VAULT_CONFIG_SCHEMA,
   GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
+  GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
 } from '../../shared/school-data/defaults.js';
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
@@ -42,7 +43,6 @@ const HANDLE_DB_NAME = 'teachhelper-sync-handles-v1';
 const HANDLE_STORE_NAME = 'handles';
 const HANDLE_FILE_KEY = 'sync-file';
 const HANDLE_BACKUP_KEY = 'backup-dir';
-const AUTO_LOCK_MS = 45 * 60 * 1000;
 const AUTO_LOCK_RETRY_MS = 10 * 60 * 1000;
 const THDB_CONFIRM_BYTES = 100 * 1024 * 1024;
 const PLANNING_SETTING_KEYS = new Set([
@@ -63,6 +63,8 @@ const GRADES_SETTING_KEYS = new Set([
   'expectationHorizonCommentTemplate',
   'backupEnabled',
   'backupIntervalDays',
+  'gradeVaultAutoLockMinutes',
+  'gradeVaultAutoLockOnBackground',
 ]);
 
 function clone(value, fallback = null) {
@@ -284,7 +286,10 @@ export class WorkspaceRuntime {
       kdf: null,
       lastActivityAt: 0,
       autoLockTimer: 0,
+      backgroundAutoLockTimer: 0,
+      backgroundHiddenAt: 0,
       autoLockWarning: null,
+      autoLockNotice: null,
     };
     this.store.setAfterSaveHooks({
       publicChange: () => this.onPublicChanged(),
@@ -377,12 +382,21 @@ export class WorkspaceRuntime {
     for (const type of ['pointerdown', 'keydown', 'input', 'wheel', 'touchstart']) {
       this.eventTarget.addEventListener(type, record, { passive: true });
     }
+    const documentTarget = this.eventTarget.document || globalThis.document;
+    documentTarget?.addEventListener?.('visibilitychange', () => {
+      void this.handleGradeVaultVisibilityChange();
+    });
+  }
+
+  getGradeVaultAutoLockMs() {
+    const minutes = Number(this.store.getGradeVaultAutoLockMinutes?.() ?? GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT);
+    return Math.max(1, minutes) * 60 * 1000;
   }
 
   recordGradeVaultActivity() {
     if (!this.vault.unlocked) return;
     this.vault.lastActivityAt = Date.now();
-    this.scheduleGradeVaultAutoLock(AUTO_LOCK_MS);
+    this.scheduleGradeVaultAutoLock(this.getGradeVaultAutoLockMs());
   }
 
   clearGradeVaultAutoLockTimer() {
@@ -390,7 +404,13 @@ export class WorkspaceRuntime {
     this.vault.autoLockTimer = 0;
   }
 
-  scheduleGradeVaultAutoLock(delayMs = AUTO_LOCK_MS) {
+  clearGradeVaultBackgroundAutoLockTimer() {
+    clearTimeout(this.vault.backgroundAutoLockTimer);
+    this.vault.backgroundAutoLockTimer = 0;
+    this.vault.backgroundHiddenAt = 0;
+  }
+
+  scheduleGradeVaultAutoLock(delayMs = this.getGradeVaultAutoLockMs()) {
     this.clearGradeVaultAutoLockTimer();
     if (!this.isGradeVaultUnlocked()) return;
     const timeoutMs = Math.max(0, Number(delayMs) || 0);
@@ -415,7 +435,7 @@ export class WorkspaceRuntime {
         if (this.dirtyCourseIds.size > 0) {
           await this.saveDirtyGradeVaultChangesForAutoLock();
         }
-        const locked = await this.lockGradeVaultSession();
+        const locked = await this.lockGradeVaultSession({ autoLock: true });
         if (locked || !this.isGradeVaultUnlocked()) return locked;
         throw new Error('Die Noten-Datenbank konnte nicht automatisch gesperrt werden.');
       };
@@ -521,6 +541,13 @@ export class WorkspaceRuntime {
             message: String(this.vault.autoLockWarning.message || ''),
           }
           : { active: false, blockedAt: 0, retryAt: 0, message: '' },
+        autoLockNotice: this.vault.autoLockNotice
+          ? {
+            active: true,
+            id: String(this.vault.autoLockNotice.id || ''),
+            lockedAt: Number(this.vault.autoLockNotice.lockedAt) || 0,
+          }
+          : { active: false, id: '', lockedAt: 0 },
       },
     };
     if (normalized === 'planning') {
@@ -630,6 +657,7 @@ export class WorkspaceRuntime {
     this.vault.unlocked = true;
     this.vault.cryptoKey = cryptoKey;
     this.vault.kdf = kdf;
+    this.vault.autoLockNotice = null;
     try {
       await this.upgradeGradeVaultKdf(password);
     } catch {
@@ -704,13 +732,15 @@ export class WorkspaceRuntime {
     this.vault.cryptoKey = null;
     this.vault.kdf = null;
     this.clearGradeVaultAutoLockTimer();
+    this.clearGradeVaultBackgroundAutoLockTimer();
     this.clearGradeVaultAutoLockWarning();
+    this.vault.autoLockNotice = null;
     this.store.setGradeVaultEncryptionEnabled(false);
     this.controller?.markChanged?.('grades');
     return true;
   }
 
-  async lockGradeVaultSession() {
+  async lockGradeVaultSession({ autoLock = false } = {}) {
     if (!this.isGradeVaultEncryptionEnabled()) return false;
     if (this.dirtyCourseIds.size > 0) {
       const error = new Error('Ungespeicherte Notenänderungen müssen vor dem Sperren gespeichert werden.');
@@ -728,7 +758,11 @@ export class WorkspaceRuntime {
     this.vault.persistedCryptoKey = null;
     this.vault.kdf = this.vault.config?.kdf || null;
     this.clearGradeVaultAutoLockTimer();
+    this.clearGradeVaultBackgroundAutoLockTimer();
     this.clearGradeVaultAutoLockWarning();
+    this.vault.autoLockNotice = autoLock
+      ? { id: randomId(), lockedAt: Date.now() }
+      : null;
     this.controller?.markChanged?.('grades');
     return true;
   }
@@ -794,6 +828,35 @@ export class WorkspaceRuntime {
     return this.isManualPersistenceMode()
       ? this.saveManualDatabase()
       : this.saveToConnectedFile('grade-vault-explicit-save');
+  }
+
+  scheduleGradeVaultBackgroundAutoLock(delayMs = this.getGradeVaultAutoLockMs()) {
+    this.clearGradeVaultBackgroundAutoLockTimer();
+    if (!this.isGradeVaultUnlocked() || !this.store.getGradeVaultAutoLockOnBackground?.()) return;
+    this.vault.backgroundHiddenAt = Date.now();
+    this.vault.backgroundAutoLockTimer = setTimeout(() => {
+      this.vault.backgroundAutoLockTimer = 0;
+      this.vault.backgroundHiddenAt = 0;
+      void this.handleGradeVaultAutoLockTimeout().catch(() => undefined);
+    }, Math.max(0, Number(delayMs) || 0));
+  }
+
+  async handleGradeVaultVisibilityChange() {
+    const documentTarget = this.eventTarget?.document || globalThis.document;
+    if (!documentTarget || !this.isGradeVaultUnlocked() || !this.store.getGradeVaultAutoLockOnBackground?.()) return;
+    if (documentTarget.visibilityState === 'hidden') {
+      this.clearGradeVaultAutoLockTimer();
+      this.scheduleGradeVaultBackgroundAutoLock();
+      return;
+    }
+    const hiddenAt = Number(this.vault.backgroundHiddenAt) || 0;
+    this.clearGradeVaultBackgroundAutoLockTimer();
+    if (!hiddenAt) return;
+    if (Date.now() - hiddenAt >= this.getGradeVaultAutoLockMs()) {
+      await this.handleGradeVaultAutoLockTimeout();
+      return;
+    }
+    this.recordGradeVaultActivity();
   }
 
   async persistExplicitDatabaseSave() {
@@ -1642,8 +1705,15 @@ export class WorkspaceRuntime {
         else if (key === 'backupEnabled') this.store.setBackupEnabled(value);
         else if (key === 'backupIntervalDays') this.store.setBackupIntervalDays(value);
         else if (key === 'gradeOccurrenceCategories') this.store.setGradeOccurrenceCategories(value);
+        else if (key === 'gradeVaultAutoLockMinutes') this.store.setGradeVaultAutoLockMinutes(value);
+        else if (key === 'gradeVaultAutoLockOnBackground') this.store.setGradeVaultAutoLockOnBackground(value);
         else this.store.setSetting?.(key, clone(value));
       }
+      if (
+        request.client === 'grades'
+        && (Object.hasOwn(settings, 'gradeVaultAutoLockMinutes') || Object.hasOwn(settings, 'gradeVaultAutoLockOnBackground'))
+        && this.isGradeVaultUnlocked()
+      ) this.scheduleGradeVaultAutoLock();
       return { changed: true, scope: request.client === 'grades' ? 'grades' : 'planning' };
     }
     const error = new Error(`Unbekannter Workspace-Befehl: ${command || 'leer'}`);

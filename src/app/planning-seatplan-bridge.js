@@ -485,6 +485,14 @@ export function createPlanningSeatplanBridge({
     if (gradesController?.frame?.loading === 'lazy') {
       gradesController.frame.loading = 'eager';
     }
+    if (String(detail?.action || '').trim().toLowerCase() === 'unlock') {
+      try {
+        window.focus?.();
+        gradesController?.frame?.focus?.({ preventScroll: true });
+      } catch (_error) {
+        // Der Entsperrdialog funktioniert auch in eingebetteten Umgebungen ohne Fokus-API.
+      }
+    }
     gradesController?.post?.(GRADES_GRADE_VAULT_REQUEST_EVENT, withWorkspaceRevision(detail));
     return true;
   }

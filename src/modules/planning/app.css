@@ -2742,6 +2742,8 @@
         }
 
         .lesson-block {
+          --week-block-title-inset-left: 0;
+          --week-block-title-inset-right: 0;
           border: 1px solid rgba(0, 0, 0, 0.18);
           border-radius: calc(8px * var(--week-table-scale, 1));
           padding: calc(0.24rem * var(--week-table-scale, 1)) calc(0.28rem * var(--week-table-scale, 1));
@@ -2770,8 +2772,18 @@
         .lesson-block.has-performance-entry-trigger,
         .lesson-block.has-seatplan-trigger {
           padding-top: calc(0.24rem * var(--week-table-scale, 1));
-          padding-left: calc(2.6875rem * var(--week-table-scale, 1));
-          padding-right: calc(2.6875rem * var(--week-table-scale, 1));
+        }
+
+        .lesson-block.has-seatplan-trigger {
+          --week-block-title-inset-left: calc(2.4rem * var(--week-table-scale, 1));
+        }
+
+        .lesson-block.has-seatplan-trigger:has(.lesson-block-details-trigger) {
+          --week-block-title-inset-left: calc(4.7rem * var(--week-table-scale, 1));
+        }
+
+        .lesson-block.has-performance-entry-trigger {
+          --week-block-title-inset-right: calc(2.4rem * var(--week-table-scale, 1));
         }
 
         .lesson-block:hover:not(:disabled):not(.not-selectable),
@@ -2883,9 +2895,11 @@
         .lesson-block .title {
           display: block;
           position: static;
-          width: 100%;
+          width: calc(100% - var(--week-block-title-inset-left) - var(--week-block-title-inset-right));
           max-width: 100%;
           min-width: 0;
+          margin-left: var(--week-block-title-inset-left);
+          margin-right: var(--week-block-title-inset-right);
           text-align: center;
           font-size: calc(1rem * var(--week-table-scale, 1) * var(--week-block-font-scale, 1));
           line-height: 1.1;
@@ -2895,7 +2909,7 @@
         .lesson-block .title.course-link {
           display: inline-flex;
           width: auto;
-          max-width: 100%;
+          max-width: calc(100% - var(--week-block-title-inset-left) - var(--week-block-title-inset-right));
           align-items: center;
           justify-content: center;
           padding: 0.14em 0.6em;

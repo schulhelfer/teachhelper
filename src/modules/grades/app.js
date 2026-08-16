@@ -2730,6 +2730,9 @@ class GradesApp {
       gradesVaultBanner: document.querySelector("#grades-vault-banner"),
       gradeVaultSettingsSection: document.querySelector("#grade-vault-settings-section"),
       gradeVaultEncryptionEnabled: document.querySelector("#grade-vault-encryption-enabled"),
+      gradeVaultAutoLockSettings: document.querySelector("#grade-vault-auto-lock-settings"),
+      gradeVaultAutoLockMinutes: document.querySelector("#grade-vault-auto-lock-minutes"),
+      gradeVaultAutoLockOnBackground: document.querySelector("#grade-vault-auto-lock-on-background"),
       gradeVaultSettingsStatus: document.querySelector("#grade-vault-settings-status"),
       gradeVaultSettingsHint: document.querySelector("#grade-vault-settings-hint"),
       gradeVaultSettingsActionBtn: document.querySelector("#grade-vault-settings-action-btn"),
@@ -2983,6 +2986,7 @@ class GradesApp {
     this.contextMenuOpenedAt = 0;
     this.pendingMessageDialogResolver = null;
     this.pendingMessageDialogMode = null;
+    this.pendingMessageDialogConfirmAction = null;
     this.pendingEntfallLessonId = null;
     this.pendingTopicLessonId = null;
     this.pendingGradeVaultDialogMode = "";
@@ -2990,6 +2994,8 @@ class GradesApp {
     this.gradeVaultOverlayPreserveSourceTab = null;
     this.pendingGradeVaultEncryptionDisable = false;
     this.gradeVaultEncryptionDraft = null;
+    this.gradeVaultAutoLockMinutesDraft = null;
+    this.gradeVaultAutoLockOnBackgroundDraft = null;
     this.inlineTopicLessonId = null;
     this.inlineTopicDraft = "";
     this.courseDialogDraft = null;
@@ -3079,6 +3085,8 @@ class GradesApp {
     this.pendingGradesOverviewAutoScrollFrameType = "";
     this.gradesTableStickyScrollbarPointerActive = false;
     this.gradeVaultStartupUnlockPromptResolved = false;
+    this.gradeVaultAutoLockNoticeHandledId = "";
+    this.gradeVaultAutoLockNoticePending = null;
     this.gradeVaultSession = createInitialGradeVaultSessionState();
     this.gradeStudentPortraitObjectUrls = new Map();
     this.gradeStudentPortraitOverlay = null;
@@ -3199,6 +3207,9 @@ class GradesApp {
 
   handleWorkspaceState(detail = null) {
     if (!detail || typeof detail !== "object") return;
+    this.captureGradeVaultAutoLockNotice(
+      detail.snapshot?.vault?.autoLockNotice || detail.snapshot?.status?.vault?.autoLockNotice
+    );
     const previousRevision = Number(this.workspaceRevision) || 0;
     this.workspaceRevision = Number(detail.revision) || 0;
     this.workspaceHydrated = Boolean(detail.hydrated && detail.ready);
@@ -3212,6 +3223,7 @@ class GradesApp {
         return;
       }
       this.renderAll({ visibleOnly: true });
+      void this.presentGradeVaultAutoLockNotice();
       void this.refreshSidebarCourseStudentCounts();
       return;
     }
@@ -3239,6 +3251,53 @@ class GradesApp {
         this.renderDatabaseSection();
       }
     }
+  }
+
+  captureGradeVaultAutoLockNotice(notice = null) {
+    const id = String(notice?.id || "").trim();
+    if (!id || id === this.gradeVaultAutoLockNoticeHandledId) return false;
+    this.gradeVaultAutoLockNoticePending = { id };
+    return true;
+  }
+
+  requestGradeVaultUnlockFromForegroundMenu() {
+    if (typeof window === "undefined" || !window.parent || window.parent === window) return false;
+    try {
+      window.parent.postMessage({
+        type: "classroom:grades-grade-vault-request",
+        detail: {
+          action: "unlock",
+          overlay: false,
+          preserveSourceTab: false
+        }
+      }, window.location.origin);
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
+  async presentGradeVaultAutoLockNotice() {
+    const notice = this.gradeVaultAutoLockNoticePending;
+    if (!notice?.id || notice.id === this.gradeVaultAutoLockNoticeHandledId) return false;
+    if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+    if (!this.isGradesTopTabActive?.() || this.getGradeVaultStatusMode() !== "unlock") return false;
+    this.gradeVaultAutoLockNoticeHandledId = notice.id;
+    this.gradeVaultAutoLockNoticePending = null;
+    await this.showConfirmMessage(
+      "Die Noten-Datenbank wurde aus Sicherheitsgründen automatisch gesperrt.",
+      {
+        title: "Noten-Datenbank automatisch gesperrt",
+        okText: "Jetzt entsperren",
+        cancelText: "Später",
+        onConfirm: () => {
+          if (this.getGradeVaultStatusMode() === "unlock") {
+            this.requestGradeVaultUnlockFromForegroundMenu();
+          }
+        },
+      }
+    );
+    return true;
   }
 
   shouldShowGradeStudentPortraits() {
@@ -3678,7 +3737,9 @@ class GradesApp {
       expectationHorizonLocation: this.store.getExpectationHorizonLocation(),
       expectationHorizonCommentTemplate: this.store.getExpectationHorizonCommentTemplate(),
       backupEnabled: this.store.getBackupEnabled(),
-      backupIntervalDays: this.store.getBackupIntervalDays()
+      backupIntervalDays: this.store.getBackupIntervalDays(),
+      gradeVaultAutoLockMinutes: this.store.getGradeVaultAutoLockMinutes(),
+      gradeVaultAutoLockOnBackground: this.store.getGradeVaultAutoLockOnBackground()
     };
   }
 
@@ -4772,13 +4833,48 @@ class GradesApp {
 
   async applyGradeVaultEncryptionSettingsDraft() {
     const desired = this.gradeVaultEncryptionDraft;
-    if (desired === null || desired === this.isGradeVaultEncryptionEnabled()) {
-      this.gradeVaultEncryptionDraft = null;
-      this.refreshSettingsDirtyState();
-      this.renderGradeVaultSettings();
-      return true;
+    const encryptionChanged = desired !== null && desired !== this.isGradeVaultEncryptionEnabled();
+    const hasAutoLockDraft = this.gradeVaultAutoLockMinutesDraft != null || this.gradeVaultAutoLockOnBackgroundDraft != null;
+    if (!hasAutoLockDraft) {
+      if (!encryptionChanged) {
+        this.gradeVaultEncryptionDraft = null;
+        this.refreshSettingsDirtyState();
+        this.renderGradeVaultSettings();
+        return true;
+      }
+      return this.setGradeVaultEncryptionEnabledFromSettings(desired);
     }
-    return this.setGradeVaultEncryptionEnabledFromSettings(desired);
+    if (encryptionChanged) {
+      const changed = await this.setGradeVaultEncryptionEnabledFromSettings(desired);
+      if (!changed) return false;
+    }
+    const hasAutoLockChanges = this.isGradeVaultEncryptionEnabled() && (
+      this.gradeVaultAutoLockMinutesDraft != null
+      || this.gradeVaultAutoLockOnBackgroundDraft != null
+    );
+    if (hasAutoLockChanges) {
+      const settings = {
+        gradeVaultAutoLockMinutes: this.gradeVaultAutoLockMinutesDraft ?? this.store.getGradeVaultAutoLockMinutes(),
+        gradeVaultAutoLockOnBackground: this.gradeVaultAutoLockOnBackgroundDraft
+          ?? this.store.getGradeVaultAutoLockOnBackground()
+      };
+      const result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_APPLY_SETTINGS, {
+        settings
+      }, { baseRevision: this.settingsDraftRevision });
+      if (!result?.ok) {
+        await this.showInfoMessage(result?.message || "Auto-Lock-Einstellungen konnten nicht gespeichert werden.");
+        return false;
+      }
+      this.settingsDraftRevision = Number(result.revision) || this.workspaceRevision || 0;
+      await this.persistExplicitDatabaseSave();
+    }
+    this.gradeVaultEncryptionDraft = null;
+    this.gradeVaultAutoLockMinutesDraft = null;
+    this.gradeVaultAutoLockOnBackgroundDraft = null;
+    this.settingsDraft = this.buildSettingsDraftFromStore();
+    this.refreshSettingsDirtyState();
+    this.renderGradeVaultSettings();
+    return true;
   }
 
   renderGradeVaultSettings() {
@@ -5150,6 +5246,10 @@ class GradesApp {
     const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
     return (this.gradeVaultEncryptionDraft !== null
       && this.gradeVaultEncryptionDraft !== this.isGradeVaultEncryptionEnabled())
+      || (this.gradeVaultAutoLockMinutesDraft != null
+        && Number(this.gradeVaultAutoLockMinutesDraft) !== Number(this.store.getGradeVaultAutoLockMinutes()))
+      || (this.gradeVaultAutoLockOnBackgroundDraft != null
+        && Boolean(this.gradeVaultAutoLockOnBackgroundDraft) !== Boolean(this.store.getGradeVaultAutoLockOnBackground()))
       || Number(draft.gradesPrivacyGraphThreshold) !== Number(this.store.getGradesPrivacyGraphThreshold())
       || Boolean(draft.showHiddenSidebarCourses) !== Boolean(
         this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
@@ -5243,6 +5343,8 @@ class GradesApp {
   cancelSettingsDraftChanges() {
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.gradeVaultEncryptionDraft = null;
+    this.gradeVaultAutoLockMinutesDraft = null;
+    this.gradeVaultAutoLockOnBackgroundDraft = null;
     this.settingsDirty = false;
     this.settingsDraftRevision = Number(this.workspaceController?.getRevision?.()) || this.workspaceRevision || 0;
     this.switchSettingsTab(this.activeSettingsTab);
@@ -5412,9 +5514,12 @@ class GradesApp {
   _resolveMessageDialog(action = "cancel") {
     const resolver = this.pendingMessageDialogResolver;
     const mode = this.pendingMessageDialogMode || "alert";
+    const confirmAction = action === "ok" ? this.pendingMessageDialogConfirmAction : null;
     this.pendingMessageDialogResolver = null;
     this.pendingMessageDialogMode = null;
+    this.pendingMessageDialogConfirmAction = null;
     this.closeDialog(this.refs.messageDialog);
+    confirmAction?.();
     if (!resolver) {
       return;
     }
@@ -5451,7 +5556,8 @@ class GradesApp {
     warnOk = false,
     alternateText = "",
     dangerAlternate = false,
-    warning = false
+    warning = false,
+    onConfirm = null
   } = {}) {
     const normalizedMode = mode === "confirm" || mode === "choice" || mode === "prompt" || mode === "select" ? mode : "alert";
     if (
@@ -5547,6 +5653,7 @@ class GradesApp {
     return new Promise((resolve) => {
       this.pendingMessageDialogResolver = resolve;
       this.pendingMessageDialogMode = normalizedMode;
+      this.pendingMessageDialogConfirmAction = typeof onConfirm === "function" ? onConfirm : null;
       this.openDialog(this.refs.messageDialog);
       requestAnimationFrame(() => {
         if (isPrompt) {
@@ -5583,7 +5690,8 @@ class GradesApp {
       cancelText: options.cancelText || "Abbrechen",
       dangerOk: Boolean(options.dangerOk),
       warnOk: Boolean(options.warnOk),
-      warning: Boolean(options.warning)
+      warning: Boolean(options.warning),
+      onConfirm: typeof options.onConfirm === "function" ? options.onConfirm : null
     });
   }
 
@@ -9759,6 +9867,7 @@ class GradesApp {
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") {
         this.recordGradeVaultActivity();
+        void this.presentGradeVaultAutoLockNotice();
       }
     });
   }
@@ -9987,6 +10096,14 @@ class GradesApp {
     this.refs.gradeVaultEncryptionEnabled?.addEventListener("change", () => {
       const enabled = Boolean(this.refs.gradeVaultEncryptionEnabled.checked);
       this.gradeVaultEncryptionDraft = enabled;
+      this.refreshSettingsDirtyState();
+    });
+    this.refs.gradeVaultAutoLockMinutes?.addEventListener("change", () => {
+      this.gradeVaultAutoLockMinutesDraft = Number(this.refs.gradeVaultAutoLockMinutes.value);
+      this.refreshSettingsDirtyState();
+    });
+    this.refs.gradeVaultAutoLockOnBackground?.addEventListener("change", () => {
+      this.gradeVaultAutoLockOnBackgroundDraft = Boolean(this.refs.gradeVaultAutoLockOnBackground.checked);
       this.refreshSettingsDirtyState();
     });
     this.refs.gradeVaultSettingsActionBtn?.addEventListener("click", () => {
@@ -11445,6 +11562,27 @@ class GradesApp {
         this.refs.gradeVaultEncryptionEnabled.disabled = !databaseConnected
           || (this.locked && !allowDatabaseControls);
         this.refs.gradeVaultEncryptionEnabled.closest("label")?.classList.toggle(
+          "is-disabled",
+          !databaseConnected
+        );
+      }
+      const autoLockSettingsVisible = encryptionEnabled;
+      if (this.refs.gradeVaultAutoLockSettings) {
+        this.refs.gradeVaultAutoLockSettings.hidden = !autoLockSettingsVisible;
+      }
+      const autoLockSettingsDisabled = !databaseConnected || (this.locked && !allowDatabaseControls);
+      if (this.refs.gradeVaultAutoLockMinutes) {
+        this.refs.gradeVaultAutoLockMinutes.value = String(
+          this.gradeVaultAutoLockMinutesDraft ?? this.store.getGradeVaultAutoLockMinutes()
+        );
+        this.refs.gradeVaultAutoLockMinutes.disabled = autoLockSettingsDisabled;
+      }
+      if (this.refs.gradeVaultAutoLockOnBackground) {
+        this.refs.gradeVaultAutoLockOnBackground.checked = Boolean(
+          this.gradeVaultAutoLockOnBackgroundDraft ?? this.store.getGradeVaultAutoLockOnBackground()
+        );
+        this.refs.gradeVaultAutoLockOnBackground.disabled = autoLockSettingsDisabled;
+        this.refs.gradeVaultAutoLockOnBackground.closest("label")?.classList.toggle(
           "is-disabled",
           !databaseConnected
         );
@@ -26248,6 +26386,7 @@ class GradesApp {
     this.syncAllNumberSteppers();
     this.syncSegmentControlSlideStates(document, { animateFromPrevious: true });
     this.promptGradeVaultUnlockForInitialCourse();
+    void this.presentGradeVaultAutoLockNotice();
     this.queueGradesReadySignal();
   }
 

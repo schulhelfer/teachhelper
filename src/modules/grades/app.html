@@ -393,6 +393,23 @@
                         <input id="grade-vault-encryption-enabled" type="checkbox">
                       </label>
                     </div>
+                    <div id="grade-vault-auto-lock-settings" hidden>
+                      <div class="settings-form-row settings-form-row-compact">
+                        <label for="grade-vault-auto-lock-minutes" class="settings-form-label">Automatisch sperren nach</label>
+                        <select id="grade-vault-auto-lock-minutes">
+                          <option value="5">5 Minuten</option>
+                          <option value="15">15 Minuten</option>
+                          <option value="30">30 Minuten</option>
+                          <option value="45">45 Minuten</option>
+                        </select>
+                      </div>
+                      <div class="settings-form-row settings-form-row-compact">
+                        <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
+                          <span class="settings-form-label">Auch beim Verlassen oder Minimieren nach diesem Zeitraum sperren</span>
+                          <input id="grade-vault-auto-lock-on-background" type="checkbox">
+                        </label>
+                      </div>
+                    </div>
                   </div>
                   <p id="grade-vault-settings-status" class="muted"></p>
                   <p id="grade-vault-settings-hint" class="muted"></p>
@@ -818,11 +835,11 @@
         <h3 id="grade-expectation-horizon-comment-dialog-title" class="dialog-title">Kommentar</h3>
         <div class="dialog-actions-top app-action-group">
           <button type="button" id="grade-expectation-horizon-comment-previous"
-            class="ghost dialog-icon-button app-action-icon" aria-label="Vorherige Schülerin oder vorherigen Schüler bearbeiten"
-            data-tooltip="Vorherige Schülerin oder vorherigen Schüler">◀</button>
+            class="ghost dialog-icon-button app-action-icon" aria-label="Kommentar für vorherige Person bearbeiten"
+            data-tooltip="Vorherige Person">◀</button>
           <button type="button" id="grade-expectation-horizon-comment-next"
-            class="ghost dialog-icon-button app-action-icon" aria-label="Nächste Schülerin oder nächsten Schüler bearbeiten"
-            data-tooltip="Nächste Schülerin oder nächsten Schüler">▶</button>
+            class="ghost dialog-icon-button app-action-icon" aria-label="Kommentar für nächste Person bearbeiten"
+            data-tooltip="Nächste Person">▶</button>
           <button type="button" id="grade-expectation-horizon-comment-cancel"
             class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
           <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"

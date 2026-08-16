@@ -104,6 +104,16 @@ class FakeStore {
   normalizeGradeVaultState(state) { return { ...emptyGrades(), ...(structuredClone(state) || {}) }; }
   getGradeVaultEncryptionEnabled() { return Boolean(this.settings.get('gradeVaultEncryptionEnabled')); }
   setGradeVaultEncryptionEnabled(value) { this.settings.set('gradeVaultEncryptionEnabled', Boolean(value)); }
+  getGradeVaultAutoLockMinutes() {
+    const value = Number(this.settings.get('gradeVaultAutoLockMinutes'));
+    return [5, 15, 30, 45].includes(value) ? value : 30;
+  }
+  setGradeVaultAutoLockMinutes(value) {
+    const minutes = Number(value);
+    this.settings.set('gradeVaultAutoLockMinutes', [5, 15, 30, 45].includes(minutes) ? minutes : 30);
+  }
+  getGradeVaultAutoLockOnBackground() { return Boolean(this.settings.get('gradeVaultAutoLockOnBackground')); }
+  setGradeVaultAutoLockOnBackground(value) { this.settings.set('gradeVaultAutoLockOnBackground', Boolean(value)); }
   getSetting(key, fallback = null) { return this.settings.has(key) ? this.settings.get(key) : fallback; }
   setSetting(key, value) { this.settings.set(key, structuredClone(value)); }
   setHoursPerDay(value) { this.settings.set('hoursPerDay', Number(value)); }
@@ -587,6 +597,29 @@ test('auto-lock locks a clean vault without saving', async () => {
   assert.equal(runtime.isGradeVaultUnlocked(), false);
 });
 
+test('only a successful auto-lock publishes an in-memory unlock notice', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    cryptoKey: { opaque: true },
+    config: { kdf: { salt: 'x' } },
+  };
+
+  assert.equal(await runtime.lockGradeVaultSession(), true);
+  assert.equal(runtime.createWorkspaceSnapshot('grades').status.vault.autoLockNotice.active, false);
+
+  runtime.vault.unlocked = true;
+  runtime.vault.cryptoKey = { opaque: true };
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  const notice = runtime.createWorkspaceSnapshot('grades').status.vault.autoLockNotice;
+  assert.ok(notice.id);
+  assert.ok(notice.lockedAt > 0);
+});
+
 test('auto-lock leaves dirty grades unlocked when automatic saving fails', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   runtime.vault = {
@@ -653,8 +686,65 @@ test('grade-vault activity postpones a blocked auto-lock retry to the normal idl
 
   runtime.recordGradeVaultActivity();
 
-  assert.equal(scheduledDelay, 45 * 60 * 1000);
+  assert.equal(scheduledDelay, 30 * 60 * 1000);
   assert.equal(runtime.vault.autoLockWarning.active, true);
+});
+
+test('grade-vault activity uses the configured auto-lock interval', () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true, cryptoKey: { opaque: true } };
+  let scheduledDelay = 0;
+  runtime.scheduleGradeVaultAutoLock = (delay) => { scheduledDelay = delay; };
+
+  for (const minutes of [5, 15, 30, 45]) {
+    store.setGradeVaultAutoLockMinutes(minutes);
+    runtime.recordGradeVaultActivity();
+    assert.equal(scheduledDelay, minutes * 60 * 1000);
+  }
+});
+
+test('background auto-lock uses the configured interval and locks after delayed visibility restoration', async () => {
+  const documentTarget = new EventTarget();
+  Object.defineProperty(documentTarget, 'visibilityState', { value: 'hidden', writable: true });
+  const eventTarget = new EventTarget();
+  eventTarget.document = documentTarget;
+  const store = new FakeStore();
+  store.setGradeVaultAutoLockMinutes(5);
+  store.setGradeVaultAutoLockOnBackground(true);
+  const runtime = new WorkspaceRuntime(store, { eventTarget });
+  runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true, cryptoKey: { opaque: true } };
+  let scheduledDelay = 0;
+  runtime.scheduleGradeVaultBackgroundAutoLock = (delay) => {
+    scheduledDelay = delay ?? runtime.getGradeVaultAutoLockMs();
+    runtime.vault.backgroundHiddenAt = Date.now();
+  };
+
+  await runtime.handleGradeVaultVisibilityChange();
+  assert.equal(scheduledDelay, 5 * 60 * 1000);
+
+  let lockCalls = 0;
+  runtime.handleGradeVaultAutoLockTimeout = async () => { lockCalls += 1; return true; };
+  runtime.vault.backgroundHiddenAt = Date.now() - (5 * 60 * 1000);
+  documentTarget.visibilityState = 'visible';
+  await runtime.handleGradeVaultVisibilityChange();
+  assert.equal(lockCalls, 1);
+});
+
+test('visibility changes leave the existing auto-lock timer untouched when background locking is disabled', async () => {
+  const documentTarget = new EventTarget();
+  Object.defineProperty(documentTarget, 'visibilityState', { value: 'hidden', writable: true });
+  const eventTarget = new EventTarget();
+  eventTarget.document = documentTarget;
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget });
+  runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true };
+  let scheduled = false;
+  runtime.scheduleGradeVaultAutoLock = () => { scheduled = true; };
+
+  await runtime.handleGradeVaultVisibilityChange();
+  documentTarget.visibilityState = 'visible';
+  await runtime.handleGradeVaultVisibilityChange();
+  assert.equal(scheduled, false);
 });
 
 test('disabling an unlocked vault clears its encryption configuration', async () => {
@@ -900,6 +990,13 @@ test('workspace settings operations reject fields from the wrong client group', 
     payload: { settings: { hoursPerDay: 9 } },
   });
   assert.equal(store.getHoursPerDay(), 9);
+  await runtime.handleWorkspaceCommand({
+    client: 'grades',
+    command: messages.WORKSPACE_COMMAND_APPLY_SETTINGS,
+    payload: { settings: { gradeVaultAutoLockMinutes: 15, gradeVaultAutoLockOnBackground: true } },
+  });
+  assert.equal(store.getGradeVaultAutoLockMinutes(), 15);
+  assert.equal(store.getGradeVaultAutoLockOnBackground(), true);
 });
 
 test('latest directory backup is selected and loaded by the workspace', async () => {

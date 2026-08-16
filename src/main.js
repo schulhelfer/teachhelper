@@ -32,6 +32,7 @@ import { createSharedTimerStore } from './shared/timer-store.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
   GRADES_GRADE_VAULT_ACTIVITY_EVENT,
+  GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
@@ -2265,6 +2266,13 @@ import {
       if (data.type === GRADES_GRADE_VAULT_ACTIVITY_EVENT) {
         if (frame !== getGradesFrame()) return;
         window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
+        return;
+      }
+      if (data.type === GRADES_GRADE_VAULT_REQUEST_EVENT) {
+        if (frame !== getGradesFrame()) return;
+        bridgeController?.requestGradeVault?.(
+          data.detail && typeof data.detail === 'object' ? data.detail : {}
+        );
         return;
       }
       if (data.type === SIDEBAR_WIDTH_REQUEST_EVENT) {
