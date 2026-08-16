@@ -402,7 +402,8 @@
                     </div>
                     <div id="grade-vault-auto-lock-settings" hidden>
                       <div class="settings-form-row settings-form-row-compact">
-                        <label for="grade-vault-auto-lock-minutes" class="settings-form-label">Automatisch sperren nach</label>
+                        <label for="grade-vault-auto-lock-minutes" class="settings-form-label">Automatisch sperren
+                          nach</label>
                         <select id="grade-vault-auto-lock-minutes">
                           <option value="5">5 Minuten</option>
                           <option value="15">15 Minuten</option>
@@ -412,7 +413,8 @@
                       </div>
                       <div class="settings-form-row settings-form-row-compact">
                         <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
-                          <span class="settings-form-label">Auch beim Verlassen oder Minimieren nach diesem Zeitraum sperren</span>
+                          <span class="settings-form-label">Auch beim Verlassen oder Minimieren nach diesem Zeitraum
+                            sperren</span>
                           <input id="grade-vault-auto-lock-on-background" type="checkbox">
                         </label>
                       </div>
@@ -549,8 +551,12 @@
       <section class="course-dialog-panel active" data-panel="students">
         <p><strong>1. Lade die Namensliste herunter (oder erstelle sie selbst mit <a href="#"
               id="course-dialog-students-template">der Vorlage</a>)</strong></p>
-        <p class="muted">IServ-Randleiste → Alle Module → Gruppenlisten → Lerngruppe eingeben & „Nur Schüler zeigen”
-          aktivieren → Exportieren</p>
+        <p class="muted course-students-import-step">
+          <button id="course-students-iserv-populate" type="button" class="ghost dialog-icon-button app-action-icon"
+            aria-label="IServ-Gruppe bevölkern" data-tooltip="IServ-Gruppe bevölkern" disabled>👥</button>
+          <span>IServ-Randleiste → Alle Module → Gruppenlisten → Lerngruppe eingeben & „Nur Schüler zeigen”
+            aktivieren → Exportieren</span>
+        </p>
         <p><strong>2. Importiere die Namensliste</strong></p>
         <input id="course-dialog-students-file" type="file" accept=".csv,text/csv" hidden>
         <div id="course-dialog-students-dropzone" class="course-dialog-dropzone" tabindex="0">
@@ -560,7 +566,7 @@
         <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
         <div class="button-row course-dialog-students-manual-row">
           <button type="button" id="course-dialog-group-photo-open" class="ghost"
-            aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">📷 Aus Gruppenfoto
+            aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">Bilder aus Gruppenfoto
             extrahieren</button>
           <button type="button" id="course-dialog-students-add" class="sidebar-add-btn"
             aria-label="Teilnehmende hinzufügen" title="Teilnehmende hinzufügen">
@@ -667,6 +673,56 @@
         <button type="button" id="message-dialog-cancel" class="ghost" hidden>Abbrechen</button>
         <span class="dialog-grow"></span>
         <button type="submit" id="message-dialog-ok">OK</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="iserv-group-populate-dialog" class="app-dialog schoolmanager-transfer-dialog iserv-group-populate-dialog"
+    aria-labelledby="iserv-group-populate-dialog-title">
+    <form id="iserv-group-populate-dialog-form" class="form-grid schoolmanager-transfer-form" method="dialog">
+      <div class="dialog-header">
+        <h3 id="iserv-group-populate-dialog-title" class="dialog-title">IServ-Gruppe bevölkern</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="iserv-group-populate-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Schließen" data-tooltip="Schließen">❌</button>
+        </div>
+      </div>
+      <div class="schoolmanager-transfer-steps">
+        <section class="schoolmanager-transfer-setup" aria-labelledby="iserv-group-populate-setup-title">
+          <h4 id="iserv-group-populate-setup-title" class="schoolmanager-transfer-setup-title">Einmalige Vorbereitung
+          </h4>
+          <section class="schoolmanager-transfer-step">
+            <p>Öffne Deinen Browser und lege ein <strong>Lesezeichen</strong> an:</p>
+            <ul class="schoolmanager-transfer-bookmarklet-actions">
+              <li>Lesezeichen im Browser anzeigen (PC: Strg + ⇧ Shift + B / Mac: ⌘ + ⇧ Shift + B)</li>
+              <li>Folgende Box in die Lesezeichenzeile des Browsers ziehen:
+                <br>
+                <span class="schoolmanager-transfer-bookmarklet-link-row">
+                  <a id="iserv-group-populate-bookmarklet-link"
+                    class="schoolmanager-transfer-bookmarklet-link iserv-group-populate-bookmarklet-link"
+                    href="#iserv-group-populate-bookmarklet-link" draggable="true"
+                    aria-label="IServ-Gruppe bevölkern in die Lesezeichenleiste ziehen">👥 IServ-Gruppe bevölkern</a>
+                </span>
+              </li>
+            </ul>
+          </section>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>1. IServ-Randleiste → Alle Module → Verwaltung → Benutzer → Gruppen → Gruppe auswählen → Bearbeiten →
+            Mitglieder</p>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>2. Klicke auf das <strong>Lesezeichen</strong> „IServ-Gruppe bevölkern“ und befolge die weiteren
+            Anweisungen.</p>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>3. Maus nicht bewegen bis die Übertragung abgeschlossen ist.</p>
+        </section>
+        <section class="schoolmanager-transfer-step">
+          <p>4. Speichern</p>
+        </section>
+        <p class="schoolmanager-transfer-warning">Kontrolliere das Ergebnis: Die Übernahme erfolgt anhand des besten
+          Treffers.</p>
       </div>
     </form>
   </dialog>

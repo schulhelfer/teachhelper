@@ -625,6 +625,21 @@
           max-width: 620px;
         }
 
+        #iserv-group-populate-dialog.app-dialog {
+          width: min(620px, calc(100vw - 24px));
+          max-width: 620px;
+        }
+
+        .course-students-import-step {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+        }
+
+        .course-students-import-step .dialog-icon-button {
+          flex: 0 0 auto;
+        }
+
         .schoolmanager-transfer-form {
           gap: 1rem;
         }
@@ -915,6 +930,10 @@
           content: "🎓";
           font-size: 1.35rem;
           line-height: 1;
+        }
+
+        .iserv-group-populate-bookmarklet-link::before {
+          display: none;
         }
 
         .schoolmanager-transfer-dialog .dialog-actions {

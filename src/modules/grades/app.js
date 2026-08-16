@@ -120,6 +120,8 @@ const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
 const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager/AbiWeb-Import";
+const ISERV_GROUP_POPULATE_BOOKMARKLET_NAME = "IServ-Gruppe bevölkern";
+const ISERV_GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(()=>{const f=document.createElement('input');f.type='file';f.accept='.csv,.txt,text/csv,text/plain';f.style.display='none';document.body.appendChild(f);f.onchange=async()=>{try{const file=f.files[0];if(!file)return;const raw=await file.text(),lines=raw.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());if(lines.length<2){alert(%27Die Datei enthält keine Daten ab Zeile 2.%27);return}const detect=l=>{const s=(l.match(/;/g)||[]).length,c=(l.match(/,/g)||[]).length,t=(l.match(/\t/g)||[]).length;return t>s&&t>c?%27\t%27:s>=c?%27;%27:%27,%27},sep=detect(lines[0]),parseLine=line=>{const out=[];let cur=%27%27,q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch===%27"%27){if(q&&line[i+1]===%27"%27){cur+=%27"%27;i++}else q=!q}else if(ch===sep&&!q){out.push(cur.trim());cur=%27%27}else cur+=ch}out.push(cur.trim());return out},list=lines.slice(1).map(parseLine).filter(r=>r.length>=3).map(r=>(r[2]+%27 %27+r[1]).trim()).filter(Boolean);if(!list.length){alert(%27Keine gültigen Einträge in Spalte B und C gefunden.%27);return}const input=document.querySelector(%27#manage_group_users_add-selectized%27);if(!input){alert('Benutzer-Suchfeld nicht gefunden.');return}if(!confirm(list.length+' Einträge gefunden.\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nVerarbeitung starten?'))return;const sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),setValue=v=>{input.focus();const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},getOpts=()=>{const id=input.getAttribute('aria-owns'),box=id?document.getElementById(id):null;return box?[...box.querySelectorAll('[data-selectable]')].filter(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0}):[]},matches=(el,q)=>{const t=norm(el.textContent||''),p=norm(q).split(' ').filter(Boolean);return p.every(x=>t.includes(x))},waitClear=async()=>{const start=Date.now();while(Date.now()-start<2000){if(!getOpts().length)return;await sleep(50)}},waitFirst=async q=>{const start=Date.now();let last=null,stable=0;while(Date.now()-start<5000){const first=getOpts().find(el=>matches(el,q));if(first){if(first===last)stable++;else{last=first;stable=0}if(stable>=2)return first}else{last=null;stable=0}await sleep(100)}return null},waitAfter=async(el)=>{const start=Date.now();while(Date.now()-start<3000){if(!el.isConnected||!getOpts().includes(el))return;await sleep(100)}};let done=0;for(const name of list){setValue('');await waitClear();setValue(name);const first=await waitFirst(name);if(!first){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}first.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));first.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));first.click();done++;await waitAfter(first)}alert('Fertig: '+done+' Einträge hinzugefügt.')}finally{f.remove()}};f.click()})()`;
 const ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR = "body > app-root > app-course-detail > div > div > div:nth-child(2) > table > tbody > tr > td.text-center.cursor-pointer";
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
@@ -2627,6 +2629,7 @@ class GradesApp {
       firstGradeFieldIndex: 7,
       transferColumnKey: ""
     };
+    this.courseStudentsDialogInitialSignature = "";
     this._gradesReadySignalToken = 0;
     this.activeSettingsTab = "gradeTestScales";
     this.settingsSourceView = "grades";
@@ -2812,6 +2815,10 @@ class GradesApp {
       schoolmanagerTransferFirstGradeField: document.querySelector("#schoolmanager-transfer-first-grade-field"),
       schoolmanagerTransferBookmarkletLink: document.querySelector("#schoolmanager-transfer-bookmarklet-link"),
       schoolmanagerTransferSubmit: document.querySelector("#schoolmanager-transfer-submit"),
+      iservGroupPopulateDialog: document.querySelector("#iserv-group-populate-dialog"),
+      iservGroupPopulateDialogForm: document.querySelector("#iserv-group-populate-dialog-form"),
+      iservGroupPopulateDialogCancel: document.querySelector("#iserv-group-populate-dialog-cancel"),
+      iservGroupPopulateBookmarkletLink: document.querySelector("#iserv-group-populate-bookmarklet-link"),
       gradeSimulationDialog: document.querySelector("#grade-simulation-dialog"),
       gradeSimulationDialogForm: document.querySelector("#grade-simulation-dialog-form"),
       gradeSimulationDialogClose: document.querySelector("#grade-simulation-dialog-close"),
@@ -2899,6 +2906,7 @@ class GradesApp {
       courseStudentsDialogTitle: document.querySelector("#course-students-dialog-title"),
       courseStudentsDialogStepTitle: document.querySelector("#course-students-dialog-step-title"),
       courseStudentsDialogId: document.querySelector("#course-students-dialog-id"),
+      courseStudentsIservPopulate: document.querySelector("#course-students-iserv-populate"),
       courseStructureDialog: document.querySelector("#course-structure-dialog"),
       courseStructureDialogForm: document.querySelector("#course-structure-dialog-form"),
       courseStructureDialogTitle: document.querySelector("#course-structure-dialog-title"),
@@ -3803,8 +3811,15 @@ class GradesApp {
       backupConnected: Boolean(this.getWorkspaceOwnerApp()?.backupState?.directoryHandle),
       hasGradeCourse: courses.length > 0,
       hasGradeStudents: Boolean(selected && this.isGradeCourseLoaded(selected.id)
-        && this.store.listGradeStudents(selected.id).some((student) => !student?.isPlaceholder && Number(student?.id) > 0))
+        && this.hasGradeParticipants(this.store.listGradeStudents(selected.id)))
     };
+  }
+
+  hasGradeParticipants(students = []) {
+    return (Array.isArray(students) ? students : []).some((student) => (
+      !student?.isPlaceholder
+      && Boolean(String(student?.lastName || "").trim() || String(student?.firstName || "").trim())
+    ));
   }
 
   dispatchGradeVaultState() {
@@ -5799,6 +5814,45 @@ class GradesApp {
     this.closeDialog(this.refs.schoolmanagerTransferDialog);
   }
 
+  openIservGroupPopulateDialog() {
+    if (!this.isCourseStudentsDialogPristine()) {
+      this.updateCourseStudentsIservPopulateButton();
+      return;
+    }
+    this.updateIservGroupPopulateBookmarkletCode();
+    this.openDialog(this.refs.iservGroupPopulateDialog);
+  }
+
+  closeIservGroupPopulateDialog() {
+    this.closeDialog(this.refs.iservGroupPopulateDialog);
+  }
+
+  updateIservGroupPopulateBookmarkletCode() {
+    const link = this.refs.iservGroupPopulateBookmarkletLink;
+    if (!link) {
+      return;
+    }
+    link.dataset.bookmarkletCode = ISERV_GROUP_POPULATE_BOOKMARKLET_CODE;
+    link.setAttribute("href", ISERV_GROUP_POPULATE_BOOKMARKLET_CODE);
+    link.setAttribute("aria-label", `${ISERV_GROUP_POPULATE_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
+    link.title = `${ISERV_GROUP_POPULATE_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`;
+  }
+
+  async copyIservGroupPopulateBookmarkletCode() {
+    try {
+      await navigator.clipboard.writeText(ISERV_GROUP_POPULATE_BOOKMARKLET_CODE);
+      await this.showInfoMessage(
+        "Bookmarklet-Code wurde in die Zwischenablage kopiert.",
+        ISERV_GROUP_POPULATE_BOOKMARKLET_NAME
+      );
+    } catch (_error) {
+      await this.showInfoMessage(
+        "Bookmarklet-Code konnte nicht automatisch kopiert werden.",
+        ISERV_GROUP_POPULATE_BOOKMARKLET_NAME
+      );
+    }
+  }
+
   async submitSchoolmanagerTransferDialog() {
     const input = this.refs.schoolmanagerTransferFirstGradeField;
     const parsedIndex = this.getSchoolmanagerTransferFirstGradeFieldIndex();
@@ -6455,6 +6509,42 @@ class GradesApp {
     return card;
   }
 
+  getCourseStudentsDialogSignature() {
+    const draft = this.courseDialogDraft;
+    const students = Array.isArray(draft?.students) ? draft.students : [];
+    return JSON.stringify({
+      students: students.map((student) => ({
+        id: Number(student?.id || 0),
+        lastName: String(student?.lastName || ""),
+        firstName: String(student?.firstName || ""),
+        performanceFlair: normalizeGradePerformanceFlair(student?.performanceFlair),
+        portrait: normalizeGradeStudentPortrait(student?.portrait)
+      })),
+      importMeta: draft?.importMeta || null,
+      confirmedRemovedStudentIds: [...(draft?.confirmedRemovedStudentIds || [])]
+        .map((studentId) => Number(studentId) || 0)
+        .filter((studentId) => studentId > 0)
+        .sort((left, right) => left - right)
+    });
+  }
+
+  isCourseStudentsDialogPristine() {
+    return Boolean(this.courseDialogDraft)
+      && this.courseStudentsDialogInitialSignature === this.getCourseStudentsDialogSignature();
+  }
+
+  updateCourseStudentsIservPopulateButton() {
+    const button = this.refs.courseStudentsIservPopulate;
+    if (!button) {
+      return;
+    }
+    const pristine = this.isCourseStudentsDialogPristine();
+    button.disabled = !pristine;
+    button.title = pristine
+      ? "IServ-Gruppe bevölkern"
+      : "Bitte Teilnehmendenliste zuerst speichern oder Änderungen verwerfen";
+  }
+
   renderCourseDialogStudents() {
     if (!this.refs.courseDialogStudentsList || !this.courseDialogDraft) {
       return;
@@ -6478,6 +6568,7 @@ class GradesApp {
     if (this.refs.courseStudentsDialogStepTitle) {
       this.refs.courseStudentsDialogStepTitle.textContent = `3. Verwalte die Teilnehmenden (Anzahl: ${participantCount})`;
     }
+    this.updateCourseStudentsIservPopulateButton();
     this.refs.courseDialogStudentsList.innerHTML = "";
     if (students.length > 0) {
       students.forEach((student, index) => {
@@ -6756,6 +6847,7 @@ class GradesApp {
       input.value = student[field];
       input.classList.toggle("has-flair", Boolean(student[field]));
     }
+    this.updateCourseStudentsIservPopulateButton();
   }
 
   async handleCourseDialogStudentListClick(event) {
@@ -7681,11 +7773,14 @@ class GradesApp {
       return;
     }
     this.refs.courseStudentsDialogId.value = String(course.id);
+    this.courseStudentsDialogInitialSignature = this.getCourseStudentsDialogSignature();
     this.renderCourseDialogStudents();
     this.openDialog(this.refs.courseStudentsDialog);
   }
 
   closeCourseStudentsDialog() {
+    this.courseStudentsDialogInitialSignature = "";
+    this.closeIservGroupPopulateDialog();
     this.courseDialogDraft = null;
     this.closeGroupPhotoExtractionDialog();
     this.revokeGradeStudentPortraitObjectUrls();
@@ -10815,6 +10910,21 @@ class GradesApp {
       this.copySchoolmanagerTransferBookmarkletCode();
     });
 
+    this.refs.courseStudentsIservPopulate?.addEventListener("click", () => {
+      this.openIservGroupPopulateDialog();
+    });
+    this.refs.iservGroupPopulateDialogCancel?.addEventListener("click", () => {
+      this.closeIservGroupPopulateDialog();
+    });
+    this.refs.iservGroupPopulateDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeIservGroupPopulateDialog();
+    });
+    this.refs.iservGroupPopulateBookmarkletLink?.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.copyIservGroupPopulateBookmarkletCode();
+    });
+
 
 
 
@@ -12235,14 +12345,18 @@ class GradesApp {
       });
       return;
     }
-    if (students.length === 0) {
+    if (!this.hasGradeParticipants(students)) {
       this.clearActiveGradeAssessment();
       this.activeGradeOverrideContext = null;
       this.clearPrivacyFocusedGradeStudent();
       this.hideGradePrivacyOverlay();
-      this.setGradesOverviewEmptyState("Noch keine Teilnehmenden eingetragen", "", {
-        primaryAction: "manageStudents"
-      });
+      this.setGradesOverviewEmptyState(
+        "Noch keine Teilnehmenden eingetragen",
+        "Füge Teilnehmende hinzu, um die Kursübersicht zu nutzen.",
+        {
+          primaryAction: "manageStudents"
+        }
+      );
       return;
     }
     this.setGradesOverviewEmptyState("Noch keine Teilnehmenden eingetragen", "", {
@@ -13147,11 +13261,11 @@ class GradesApp {
     }
     groupedAssessments = this.store.getGroupedGradeAssessments(course.id);
     students = this.store.listGradeStudents(course.id);
-    if (canAccessVault && students.length === 0) {
+    if (canAccessVault && !this.hasGradeParticipants(students)) {
       this.clearActiveGradeAssessment();
       this.renderGradesEntryEmptyState(
         "Noch keine Teilnehmenden eingetragen",
-        "",
+        "Füge Teilnehmende hinzu, um die Noteneingabe zu nutzen.",
         { primaryAction: "manageStudents" }
       );
       return;
