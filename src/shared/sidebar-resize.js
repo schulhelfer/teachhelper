@@ -9,6 +9,9 @@
   const WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
   const COLLAPSE_REQUEST_EVENT = 'classroom:sidebar-collapse-request';
   const MORE_TOOLS_DISMISS_EVENT = 'classroom:more-tools-dismiss';
+  const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
+    ? new URL(document.currentScript?.src || window.location.href).origin
+    : window.location.origin;
   const moduleFrameNonce = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
 
   function getScope(app) {
@@ -41,14 +44,14 @@
   function postToShell(type, detail) {
     if (!window.parent || window.parent === window) return;
     try {
-      window.parent.postMessage(withModuleFrameNonce({ type, detail }), window.location.origin);
+      window.parent.postMessage(withModuleFrameNonce({ type, detail }), TRUSTED_PARENT_ORIGIN);
     } catch {
       
     }
   }
 
   function isTrustedShellMessage(event) {
-    if (!window.parent || event.source !== window.parent || event.origin !== window.location.origin) {
+    if (!window.parent || event.source !== window.parent || event.origin !== TRUSTED_PARENT_ORIGIN) {
       return false;
     }
     const data = event.data;

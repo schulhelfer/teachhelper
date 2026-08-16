@@ -6,6 +6,7 @@ const COURSE_COLLECTIONS = Object.freeze([
   'gradeImports',
   'gradeSeatPlans',
   'gradeAccommodations',
+  'gradeNameLearning',
 ]);
 
 const ALL_COLLECTIONS = Object.freeze([
@@ -109,6 +110,24 @@ export function assertGradeCourseIntegrity(courseId, rawState) {
       throw new Error(`Notenkurs ${courseKey} enthält einen ungültigen Nachteilsausgleich.`);
     }
     accommodationStudents.add(studentId);
+  }
+  const nameLearningStudents = new Set();
+  for (const progress of collections.gradeNameLearning) {
+    const studentId = positiveId(progress.studentId);
+    const stage = Number(progress.stage);
+    const dueAt = Number(progress.dueAt);
+    if (
+      !studentIds.has(studentId)
+      || nameLearningStudents.has(studentId)
+      || !Number.isInteger(stage)
+      || stage < 0
+      || stage > 10
+      || !Number.isFinite(dueAt)
+      || dueAt < 0
+    ) {
+      throw new Error(`Notenkurs ${courseKey} enthält einen ungültigen Namenslernfortschritt.`);
+    }
+    nameLearningStudents.add(studentId);
   }
 
   return {

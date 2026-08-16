@@ -127,6 +127,8 @@ class FakeStore {
 
 test('workspace runtime emits strictly scoped snapshots', () => {
   const store = new FakeStore();
+  store.setSetting('showGradeStudentPortraits', true);
+  store.setSetting('showNameLearningModule', true);
   store.gradeState = {
     ...emptyGrades(),
     gradeStudents: [{ id: 10, courseId: 7, firstName: 'Geheim' }],
@@ -146,6 +148,8 @@ test('workspace runtime emits strictly scoped snapshots', () => {
   assert.equal('publicState' in shell, false);
   assert.equal('gradeState' in shell, false);
   assert.equal('password' in shell, false);
+  assert.equal(shell.vault.showGradeStudentPortraits, true);
+  assert.equal(shell.vault.showNameLearningModule, true);
 
   const grades = runtime.createWorkspaceSnapshot('grades');
   assert.equal(grades.activeCourseId, 7);

@@ -98,6 +98,11 @@ const APP_SHELL = [
   './src/modules/seatplan/app.html',
   './src/modules/seatplan/app.css',
   './src/modules/seatplan/app.js',
+  './src/modules/name-learning/index.js',
+  './src/modules/name-learning/app.html',
+  './src/modules/name-learning/app.css',
+  './src/modules/name-learning/app.js',
+  './src/modules/name-learning/session.js',
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
 let updateActivationToken = null;

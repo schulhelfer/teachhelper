@@ -56,6 +56,7 @@ const GRADES_SETTING_KEYS = new Set([
   'gradesPrivacyGraphThreshold',
   'showHiddenSidebarCourses',
   'showGradeStudentPortraits',
+  'showNameLearningModule',
   'gradeTestScaleSettings',
   'gradeOccurrenceCategories',
   'defaultGradeStructure',
@@ -98,6 +99,7 @@ function gradeStateContainsCourseData(state, courseId) {
     'gradeImports',
     'gradeSeatPlans',
     'gradeAccommodations',
+    'gradeNameLearning',
   ].some((key) => (
     Array.isArray(state[key])
     && state[key].some((entry) => Number(entry?.courseId) === id)
@@ -209,6 +211,11 @@ function persistedCourseFromState(store, courseId, rawState = null) {
       delete copy.courseId;
       return copy;
     }),
+    gradeNameLearning: (Array.isArray(state.gradeNameLearning) ? state.gradeNameLearning : []).filter((row) => Number(row.courseId) === id).map((row) => {
+      const copy = clone(row, {});
+      delete copy.courseId;
+      return copy;
+    }),
   };
 }
 
@@ -228,6 +235,7 @@ function runtimeCourseFromPersisted(store, courseId, persisted) {
     gradeImports: withCourse(persisted.gradeImports),
     gradeSeatPlans: withCourse(persisted.gradeSeatPlans),
     gradeAccommodations: withCourse(persisted.gradeAccommodations),
+    gradeNameLearning: withCourse(persisted.gradeNameLearning),
   });
 }
 
@@ -532,6 +540,8 @@ export class WorkspaceRuntime {
         configured: this.isGradeVaultConfigured(),
         unlocked: this.isGradeVaultUnlocked(),
         encryptionEnabled: this.isGradeVaultEncryptionEnabled(),
+        showGradeStudentPortraits: Boolean(this.store.getSetting?.('showGradeStudentPortraits', false)),
+        showNameLearningModule: Boolean(this.store.getSetting?.('showNameLearningModule', false)),
         setupRequired: this.isGradeVaultEncryptionEnabled() && !this.isGradeVaultConfigured(),
         autoLockWarning: this.vault.autoLockWarning
           ? {
@@ -1497,7 +1507,14 @@ export class WorkspaceRuntime {
       built.bytes,
       (persisted) => getThdb1FileHash(persisted) === getThdb1FileHash(built.bytes),
     );
-    if (!writeResult.ok) throw writeResult.error || new Error('Backup konnte nicht verifiziert werden.');
+    if (!writeResult.ok) {
+      const error = writeResult.error || new Error('Backup konnte nicht verifiziert werden.');
+      if (silent) {
+        console.warn('[TeachHelper] Hintergrund-Backup fehlgeschlagen.', error);
+        return false;
+      }
+      throw error;
+    }
     return true;
   }
 

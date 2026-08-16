@@ -19,6 +19,10 @@
   const GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:grades-grade-roster-courses-result';
   const GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:grades-grade-roster-import-request';
   const GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:grades-grade-roster-import-result';
+  const NAME_LEARNING_DATA_REQUEST_EVENT = 'classroom:grades-name-learning-data-request';
+  const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:grades-name-learning-data-result';
+  const NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:grades-name-learning-review-request';
+  const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:grades-name-learning-review-result';
   const READY_EVENT = 'classroom:grades-ready';
   const SHELL_LAYOUT_EVENT = 'classroom:grades-shell-layout';
   const VIEW_REQUEST_EVENT = 'classroom:grades-view-request';
@@ -36,6 +40,8 @@
     COURSE_GRADE_SAVE_REQUEST_EVENT,
     GRADE_ROSTER_COURSES_REQUEST_EVENT,
     GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+    NAME_LEARNING_DATA_REQUEST_EVENT,
+    NAME_LEARNING_REVIEW_REQUEST_EVENT,
   ]);
 
   function withGradesTutorialApi(callback, attempt = 0) {
@@ -126,6 +132,12 @@
       window.dispatchEvent(new CustomEvent(GRADE_ROSTER_IMPORT_REQUEST_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
+      return;
+    }
+    if (data.type === NAME_LEARNING_DATA_REQUEST_EVENT || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT) {
+      window.dispatchEvent(new CustomEvent(data.type, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
     }
   });
 
@@ -205,6 +217,8 @@
 (() => {
   const NAVIGATE_EVENT = 'classroom:grades-navigate';
   const GRADE_VAULT_ACTIVITY_EVENT = 'classroom:grades-grade-vault-activity';
+  const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:grades-name-learning-data-result';
+  const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:grades-name-learning-review-result';
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const pendingNavigations = [];
   let navigationFlushTimer = 0;
@@ -238,6 +252,12 @@
     if (!data || typeof data !== 'object' || data.type !== NAVIGATE_EVENT) return;
     pendingNavigations.push(data.detail && typeof data.detail === 'object' ? data.detail : {});
     if (!navigationFlushTimer) flushNavigations();
+  });
+  [NAME_LEARNING_DATA_RESULT_EVENT, NAME_LEARNING_REVIEW_RESULT_EVENT].forEach((type) => {
+    window.addEventListener(type, (event) => {
+      if (!window.parent || window.parent === window) return;
+      window.parent.postMessage({ type, detail: event instanceof CustomEvent ? event.detail : null }, TRUSTED_PARENT_ORIGIN);
+    });
   });
 
   window.addEventListener(GRADE_VAULT_ACTIVITY_EVENT, () => {

@@ -9149,8 +9149,9 @@
           height: 2.55rem;
         }
 
-        .course-dialog-student-portrait-delete,
-        .course-dialog-student-portrait-add {
+.course-dialog-student-portrait-delete,
+.course-dialog-student-portrait-add,
+.course-dialog-student-portrait-paste {
           position: absolute;
           right: -0.2rem;
           bottom: -0.16rem;
@@ -9173,13 +9174,22 @@
           border-color: rgba(254, 202, 202, 0.56);
         }
 
-        .course-dialog-student-portrait-add {
+.course-dialog-student-portrait-add {
           color: #dbeafe;
           background: rgba(30, 64, 175, 0.96);
           border-color: rgba(191, 219, 254, 0.62);
           font-size: 0.86rem;
-          font-weight: 800;
-        }
+  font-weight: 800;
+}
+
+.course-dialog-student-portrait-paste {
+  right: auto;
+  left: -0.2rem;
+  color: #dbeafe;
+  background: rgba(30, 64, 175, 0.96);
+  border-color: rgba(191, 219, 254, 0.62);
+  font-size: 0.68rem;
+}
 
         .grade-student-portrait {
           display: inline-block;

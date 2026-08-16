@@ -173,6 +173,11 @@ required_precache_assets = [
   ROOT / 'src' / 'modules' / 'grades' / 'percentile-rank.js',
   ROOT / 'src' / 'modules' / 'grades' / 'expectation-horizon-template.docx',
   ROOT / 'src' / 'modules' / 'grades' / 'competence-expectations-template.docx',
+  ROOT / 'src' / 'modules' / 'name-learning' / 'index.js',
+  ROOT / 'src' / 'modules' / 'name-learning' / 'app.html',
+  ROOT / 'src' / 'modules' / 'name-learning' / 'app.css',
+  ROOT / 'src' / 'modules' / 'name-learning' / 'app.js',
+  ROOT / 'src' / 'modules' / 'name-learning' / 'session.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'index.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'client.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'components.js',
@@ -355,9 +360,11 @@ planning_index_path = ROOT / 'src' / 'modules' / 'planning' / 'index.js'
 grades_index_path = ROOT / 'src' / 'modules' / 'grades' / 'index.js'
 qr_index_path = ROOT / 'src' / 'modules' / 'qr' / 'index.js'
 seatplan_index_path = ROOT / 'src' / 'modules' / 'seatplan' / 'index.js'
+name_learning_index_path = ROOT / 'src' / 'modules' / 'name-learning' / 'index.js'
 merger_index_path = ROOT / 'src' / 'modules' / 'merger' / 'index.js'
 duplicate_check_index_path = ROOT / 'src' / 'modules' / 'duplicate-check' / 'index.js'
 isolated_tool_module_sandbox_profiles = {
+  name_learning_index_path: 'ISOLATED_MODULE_SANDBOX',
   qr_index_path: 'QR_MODULE_SANDBOX',
   merger_index_path: 'MERGER_MODULE_SANDBOX',
   duplicate_check_index_path: 'DUPLICATE_CHECK_MODULE_SANDBOX',

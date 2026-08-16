@@ -36,6 +36,7 @@ import {
   REQUIRED_HOLIDAYS,
   SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
   SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
+  SHOW_NAME_LEARNING_MODULE_DEFAULT,
   WRITTEN_EXAM_TOPIC
 } from "../../shared/school-data/defaults.js";
 
@@ -93,7 +94,8 @@ function createInitialGradeVaultState() {
     gradeOverrides: [],
     gradeImports: [],
     gradeSeatPlans: [],
-    gradeAccommodations: []
+    gradeAccommodations: [],
+    gradeNameLearning: []
   };
 }
 
@@ -1640,6 +1642,7 @@ function createInitialState() {
       lessonTimes: buildDefaultLessonTimes(HOURS_PER_DAY_DEFAULT),
       showHiddenSidebarCourses: SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
       showGradeStudentPortraits: SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
+      showNameLearningModule: SHOW_NAME_LEARNING_MODULE_DEFAULT,
       gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
       gradeTestScaleSettings: buildDefaultGradeTestScaleSettings(),
       gradeOccurrenceCategories: normalizeGradeOccurrenceCategories(),
@@ -2655,6 +2658,9 @@ export class WorkspaceStore {
         (entry) => !removedStudentIds.has(Number(entry.studentId))
       );
       this.gradeVaultState.gradeAccommodations = this.gradeVaultState.gradeAccommodations.filter(
+        (entry) => !removedStudentIds.has(Number(entry.studentId))
+      );
+      this.gradeVaultState.gradeNameLearning = this.gradeVaultState.gradeNameLearning.filter(
         (entry) => !removedStudentIds.has(Number(entry.studentId))
       );
     }
@@ -4735,6 +4741,7 @@ WorkspaceStore.prototype.normalizePublicState = function (rawState = null) {
     normalized.settings.expectationHorizonCommentTemplate
   );
   normalized.settings.gradeVaultEncryptionEnabled = Boolean(normalized.settings.gradeVaultEncryptionEnabled);
+  normalized.settings.showNameLearningModule = Boolean(normalized.settings.showNameLearningModule);
   normalized.settings.gradeVaultAutoLockMinutes = GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS.includes(
     Number(normalized.settings.gradeVaultAutoLockMinutes)
   ) ? Number(normalized.settings.gradeVaultAutoLockMinutes) : GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT;
@@ -4946,6 +4953,15 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         text: String(item.text || "").trim().slice(0, GRADE_ACCOMMODATION_TEXT_MAX_LENGTH),
         updatedAt: String(item.updatedAt || "")
       };
+    }) : [],
+    gradeNameLearning: Array.isArray(source.gradeNameLearning) ? source.gradeNameLearning.map((raw) => {
+      const item = asObject(raw);
+      return {
+        courseId: Number(item.courseId),
+        studentId: Number(item.studentId),
+        stage: Math.min(10, Math.max(0, Math.floor(Number(item.stage) || 0))),
+        dueAt: Math.max(0, Number(item.dueAt) || 0)
+      };
     }) : []
   };
 
@@ -4990,6 +5006,21 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         return false;
       }
       seenAccommodationKeys.add(key);
+      return true;
+    });
+  const seenNameLearningStudents = new Set();
+  normalized.gradeNameLearning = normalized.gradeNameLearning
+    .filter((item) => {
+      const key = `${Number(item.courseId) || 0}:${Number(item.studentId) || 0}`;
+      if (
+        item.courseId <= 0
+        || item.studentId <= 0
+        || !validGradeStudentKeys.has(key)
+        || seenNameLearningStudents.has(key)
+      ) {
+        return false;
+      }
+      seenNameLearningStudents.add(key);
       return true;
     });
   normalized.counters.gradeStudent = Math.max(
@@ -5183,4 +5214,3 @@ function seedTutorialDemoStore(store) {
   });
   return courseId;
 }
-

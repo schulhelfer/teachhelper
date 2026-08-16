@@ -110,6 +110,7 @@ const BACKUP_ENABLED_DEFAULT = true;
 const BACKUP_INTERVAL_DEFAULT_DAYS = 7;
 const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
 const SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT = false;
+const SHOW_NAME_LEARNING_MODULE_DEFAULT = false;
 const GRADE_STUDENT_PORTRAIT_MIME = "image/webp";
 const GRADE_STUDENT_PORTRAIT_SIZE = 512;
 const GRADE_STUDENT_PORTRAIT_MAX_BYTES = 150 * 1024;
@@ -2720,6 +2721,7 @@ class GradesApp {
       settingsGradeOccurrencesAdd: document.querySelector("#settings-grade-occurrences-add"),
       showHiddenSidebarCourses: document.querySelector("#show-hidden-sidebar-courses"),
       showGradeStudentPortraits: document.querySelector("#show-grade-student-portraits"),
+      showNameLearningModule: document.querySelector("#show-name-learning-module"),
 
       gradesCollapsedTitleShell: document.querySelector("#grades-collapsed-title-shell"),
       gradesTitle: document.querySelector("#grades-title"),
@@ -3307,6 +3309,13 @@ class GradesApp {
     ));
   }
 
+  shouldShowNameLearningModule() {
+    return Boolean(this.settingsDraft?.showNameLearningModule ?? this.store.getSetting(
+      "showNameLearningModule",
+      SHOW_NAME_LEARNING_MODULE_DEFAULT
+    ));
+  }
+
   revokeGradeStudentPortraitObjectUrls() {
     this.removeGradeStudentPortraitOverlay();
     this.gradeStudentPortraitObjectUrls?.forEach((url) => URL.revokeObjectURL(url));
@@ -3731,6 +3740,10 @@ class GradesApp {
         "showGradeStudentPortraits",
         SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT
       )),
+      showNameLearningModule: Boolean(this.store.getSetting(
+        "showNameLearningModule",
+        SHOW_NAME_LEARNING_MODULE_DEFAULT
+      )),
       gradeTestScaleSettings: this.store.getGradeTestScaleSettings(),
       gradeOccurrenceCategories: this.store.getGradeOccurrenceCategories(),
       defaultGradeStructure: this.store.getDefaultGradeStructure(),
@@ -3809,6 +3822,7 @@ class GradesApp {
         unlocked: this.isGradeVaultUnlocked(),
         encryptionEnabled: this.isGradeVaultEncryptionEnabled(),
         showGradeStudentPortraits: this.shouldShowGradeStudentPortraits(),
+        showNameLearningModule: this.shouldShowNameLearningModule(),
         setupRequired: this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig()
       }
     }));
@@ -4428,6 +4442,19 @@ class GradesApp {
       } else {
         this.dispatchGradeRosterImportResult(result);
       }
+    } else if (continuation?.type === "name-learning-data" || continuation?.type === "name-learning-review") {
+      const detail = continuation.detail && typeof continuation.detail === "object" ? continuation.detail : {};
+      const result = {
+        requestId: String(detail.requestId || ""),
+        ok: false,
+        unlockCancelled: true,
+        message: "Entsperren wurde abgebrochen."
+      };
+      if (continuation.type === "name-learning-data") {
+        this.dispatchNameLearningDataResult(result);
+      } else {
+        this.dispatchNameLearningReviewResult(result);
+      }
     } else if (["seatplan-grade-config", "seatplan-grade-save", "seatplan-save"].includes(continuation?.type)) {
       const detail = continuation.detail && typeof continuation.detail === "object" ? continuation.detail : {};
       const result = {
@@ -4579,6 +4606,11 @@ class GradesApp {
       this.pendingGradeVaultContinuation = { type, detail };
       return;
     }
+    if (type === "name-learning-data" || type === "name-learning-review") {
+      const detail = action.detail && typeof action.detail === "object" ? action.detail : {};
+      this.pendingGradeVaultContinuation = { type, detail };
+      return;
+    }
     if (["seatplan-grade-config", "seatplan-grade-save", "seatplan-save"].includes(type)) {
       const detail = action.detail && typeof action.detail === "object" ? action.detail : null;
       if (!String(detail?.requestId || "")) {
@@ -4629,6 +4661,14 @@ class GradesApp {
     }
     if (action.type === "grade-roster-import") {
       void this.handleGradeRosterImportRequest(action.detail);
+      return true;
+    }
+    if (action.type === "name-learning-data") {
+      void this.handleNameLearningDataRequest(action.detail);
+      return true;
+    }
+    if (action.type === "name-learning-review") {
+      void this.handleNameLearningReviewRequest(action.detail);
       return true;
     }
     if (action.type === "grades-navigation") {
@@ -5258,6 +5298,10 @@ class GradesApp {
         "showGradeStudentPortraits",
         SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT
       ))
+      || Boolean(draft.showNameLearningModule) !== Boolean(this.store.getSetting(
+        "showNameLearningModule",
+        SHOW_NAME_LEARNING_MODULE_DEFAULT
+      ))
       || !gradeTestScaleSettingsEqual(draft.gradeTestScaleSettings, this.store.getGradeTestScaleSettings())
       || JSON.stringify(draft.gradeOccurrenceCategories || []) !== JSON.stringify(this.store.getGradeOccurrenceCategories())
       || !defaultGradeStructureSettingsEqual(draft.defaultGradeStructure, this.store.getDefaultGradeStructure())
@@ -5283,6 +5327,7 @@ class GradesApp {
     if (this.activeSettingsTab === "display") {
       draft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses?.checked);
       draft.showGradeStudentPortraits = Boolean(this.refs.showGradeStudentPortraits?.checked);
+      draft.showNameLearningModule = Boolean(this.refs.showNameLearningModule?.checked);
     }
     if (this.activeSettingsTab === "occurrences") draft.gradeOccurrenceCategories = this.readGradeOccurrenceCategoriesFromDom();
     const gradeScaleValidation = this.validateGradeTestScaleSettingsDraft(draft.gradeTestScaleSettings);
@@ -5366,6 +5411,7 @@ class GradesApp {
     } else if (tab === "display") {
       this.settingsDraft.showHiddenSidebarCourses = SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
       this.settingsDraft.showGradeStudentPortraits = SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT;
+      this.settingsDraft.showNameLearningModule = SHOW_NAME_LEARNING_MODULE_DEFAULT;
     } else if (tab === "database") {
       this.settingsDraft.backupEnabled = BACKUP_ENABLED_DEFAULT;
       this.settingsDraft.backupIntervalDays = BACKUP_INTERVAL_DEFAULT_DAYS;
@@ -6531,7 +6577,15 @@ class GradesApp {
             title: "Bild hinzufügen",
             text: "＋"
           });
-          portraitControl.append(portraitPlaceholder, portraitAddButton);
+          const portraitPasteButton = this.createGradeStructureActionButton({
+            className: "ghost course-dialog-student-portrait-paste",
+            dataAttribute: "student-portrait-paste",
+            dataValue: String(index),
+            ariaLabel: "Bild aus Zwischenablage einfügen",
+            title: "Bild aus Zwischenablage einfügen",
+            text: "📋"
+          });
+          portraitControl.append(portraitPlaceholder, portraitAddButton, portraitPasteButton);
         } else {
           const portraitPlaceholder = document.createElement("span");
           portraitPlaceholder.className = "grade-student-portrait grade-student-portrait--management is-portrait-placeholder";
@@ -6706,6 +6760,13 @@ class GradesApp {
 
   async handleCourseDialogStudentListClick(event) {
     if (this.handleGradeStudentPortraitPreview(event)) return;
+    const portraitPasteButton = event.target.closest("button[data-student-portrait-paste]");
+    if (portraitPasteButton && this.courseDialogDraft) {
+      event.preventDefault();
+      const index = Number(portraitPasteButton.dataset.studentPortraitPaste || -1);
+      await this.pasteCourseDialogStudentPortrait(index);
+      return;
+    }
     const portraitSelectButton = event.target.closest("button[data-student-portrait-select]");
     if (portraitSelectButton && this.courseDialogDraft) {
       event.preventDefault();
@@ -6788,6 +6849,32 @@ class GradesApp {
       this.renderCourseDialogStudents();
     } catch (error) {
       await this.showInfoMessage(error instanceof Error ? error.message : "Das Bild konnte nicht verarbeitet werden.");
+    }
+  }
+
+  async pasteCourseDialogStudentPortrait(index) {
+    const student = this.courseDialogDraft?.students?.[Number(index)];
+    if (!student) return;
+    if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
+      await this.showInfoMessage("Dieser Browser kann keine Bilder aus der Zwischenablage lesen.");
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((type) => GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(type));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        const extension = imageType === "image/jpeg" ? "jpg" : imageType.slice("image/".length);
+        const file = new File([blob], `bild-aus-zwischenablage.${extension}`, { type: imageType });
+        student.portrait = await prepareGradeStudentPortrait(file);
+        this.revokeGradeStudentPortraitObjectUrls();
+        this.renderCourseDialogStudents();
+        return;
+      }
+      await this.showInfoMessage("In der Zwischenablage wurde kein JPEG-, PNG- oder WebP-Bild gefunden.");
+    } catch (error) {
+      await this.showInfoMessage(error instanceof Error ? error.message : "Bild konnte nicht aus der Zwischenablage gelesen werden.");
     }
   }
 
@@ -10030,6 +10117,14 @@ class GradesApp {
         const detail = event instanceof CustomEvent ? event.detail : null;
         void this.handleGradeRosterImportRequest(detail);
       });
+      window.addEventListener("classroom:grades-name-learning-data-request", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleNameLearningDataRequest(detail);
+      });
+      window.addEventListener("classroom:grades-name-learning-review-request", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleNameLearningReviewRequest(detail);
+      });
     }
     document.addEventListener("contextmenu", (event) => {
       this.contextMenuClickGuard = {
@@ -10604,6 +10699,9 @@ class GradesApp {
     });
 
     this.refs.courseStudentsDialog?.addEventListener("cancel", (event) => {
+      if (event.target !== this.refs.courseStudentsDialog) {
+        return;
+      }
       event.preventDefault();
       this.closeCourseStudentsDialog();
     });
@@ -10802,6 +10900,14 @@ class GradesApp {
     this.refs.showGradeStudentPortraits?.addEventListener("change", () => {
       this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
       this.settingsDraft.showGradeStudentPortraits = Boolean(this.refs.showGradeStudentPortraits.checked);
+      if (this.refs.showNameLearningModule) {
+        this.refs.showNameLearningModule.disabled = !this.settingsDraft.showGradeStudentPortraits;
+      }
+      this.refreshSettingsDirtyState();
+    });
+    this.refs.showNameLearningModule?.addEventListener("change", () => {
+      this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+      this.settingsDraft.showNameLearningModule = Boolean(this.refs.showNameLearningModule.checked);
       this.refreshSettingsDirtyState();
     });
 
@@ -27296,6 +27402,103 @@ class GradesApp {
     }
   }
 
+  dispatchNameLearningDataResult(detail) {
+    window.dispatchEvent(new CustomEvent("classroom:grades-name-learning-data-result", {
+      detail: detail && typeof detail === "object" ? detail : null
+    }));
+  }
+
+  dispatchNameLearningReviewResult(detail) {
+    window.dispatchEvent(new CustomEvent("classroom:grades-name-learning-review-result", {
+      detail: detail && typeof detail === "object" ? detail : null
+    }));
+  }
+
+  async handleNameLearningDataRequest(detail = null) {
+    const requestId = String(detail?.requestId || "");
+    if (!this.canAccessGradeVault()) {
+      this.queueGradeVaultContinuation({ type: "name-learning-data", detail });
+      this.gradeVaultOverlayPreserveSourceTab = true;
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      this.notifyParentGradeVaultOverlay(true);
+      return true;
+    }
+    try {
+      if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
+      const year = this.activeSchoolYear;
+      const cards = [];
+      const courses = year ? this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course)) : [];
+      const workspaceOwner = this.getWorkspaceOwnerApp();
+      for (const course of courses) {
+        const state = await workspaceOwner?.getGradeCourseStateSnapshot?.(course.id);
+        const progressByStudentId = new Map((state?.gradeNameLearning || []).map((row) => [Number(row.studentId), row]));
+        (state?.gradeStudents || []).forEach((student) => {
+          const portrait = normalizeGradeStudentPortrait(student?.portrait);
+          if (!portrait || Number(student?.id) <= 0) return;
+          cards.push({
+            courseId: Number(course.id),
+            courseName: String(course.name || "Kurs"),
+            courseColor: normalizeCourseColor(course.color, Boolean(course.noLesson)),
+            studentId: Number(student.id),
+            name: [String(student.firstName || "").trim(), String(student.lastName || "").trim()].filter(Boolean).join(" "),
+            portrait,
+            progress: progressByStudentId.get(Number(student.id)) || null
+          });
+        });
+      }
+      this.dispatchNameLearningDataResult({ requestId, ok: true, cards });
+      return true;
+    } catch (error) {
+      this.dispatchNameLearningDataResult({ requestId, ok: false, cards: [], message: error instanceof Error ? error.message : "Namenslerndaten konnten nicht geladen werden." });
+      return false;
+    }
+  }
+
+  async handleNameLearningReviewRequest(detail = null) {
+    const requestId = String(detail?.requestId || "");
+    const courseId = Number(detail?.courseId || 0);
+    const studentId = Number(detail?.studentId || 0);
+    const stage = Math.min(10, Math.max(0, Math.floor(Number(detail?.progress?.stage) || 0)));
+    const dueAt = Number(detail?.progress?.dueAt);
+    if (!courseId || !studentId || !Number.isFinite(dueAt) || dueAt < 0) {
+      this.dispatchNameLearningReviewResult({ requestId, ok: false, message: "Lernstatus ist ungültig." });
+      return false;
+    }
+    if (!this.canAccessGradeVault()) {
+      this.queueGradeVaultContinuation({ type: "name-learning-review", detail });
+      this.gradeVaultOverlayPreserveSourceTab = true;
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      this.notifyParentGradeVaultOverlay(true);
+      return true;
+    }
+    try {
+      await this.runGradeCourseMutation(courseId, () => {
+        const student = this.store.listGradeStudents(courseId).find((row) => Number(row.id) === studentId);
+        if (!student) {
+          const error = new Error("Die Schüler:in ist nicht mehr im Kurs.");
+          error.code = "NAME_LEARNING_STUDENT_MISSING";
+          throw error;
+        }
+        const rows = this.store.gradeVaultState.gradeNameLearning;
+        const current = rows.find((row) => Number(row.courseId) === courseId && Number(row.studentId) === studentId);
+        if (current) Object.assign(current, { stage, dueAt });
+        else rows.push({ courseId, studentId, stage, dueAt });
+      }, { preserveRoster: true });
+      this.dispatchNameLearningReviewResult({ requestId, ok: true, courseId, studentId, progress: { stage, dueAt } });
+      return true;
+    } catch (error) {
+      this.dispatchNameLearningReviewResult({
+        requestId,
+        ok: false,
+        courseId,
+        studentId,
+        code: String(error?.code || ""),
+        message: error instanceof Error ? error.message : "Lernstatus konnte nicht gespeichert werden."
+      });
+      return false;
+    }
+  }
+
   getCourseForSeatplan(courseId) {
     const courseKey = Number(courseId || 0);
     if (!courseKey) {
@@ -29059,6 +29262,10 @@ class GradesApp {
     }
     if (this.refs.showGradeStudentPortraits) {
       this.refs.showGradeStudentPortraits.checked = Boolean(draft.showGradeStudentPortraits);
+    }
+    if (this.refs.showNameLearningModule) {
+      this.refs.showNameLearningModule.checked = Boolean(draft.showNameLearningModule);
+      this.refs.showNameLearningModule.disabled = !Boolean(draft.showGradeStudentPortraits);
     }
     this.refs.themePreferenceInputs.forEach((input) => {
       input.checked = input.value === this.themePreference;

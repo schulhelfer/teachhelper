@@ -902,6 +902,7 @@
     .app>.qr-shell,
     .app>.planning-shell,
     .app>.grades-shell,
+    .app>.name-learning-shell,
     .app>.monitor-shell,
     .app>.work-order-shell,
     .app>.timer-shell {
@@ -916,6 +917,7 @@
     .app.is-tab-switching>.qr-shell,
     .app.is-tab-switching>.planning-shell,
     .app.is-tab-switching>.grades-shell,
+    .app.is-tab-switching>.name-learning-shell,
     .app.is-tab-switching>.monitor-shell,
     .app.is-tab-switching>.work-order-shell,
     .app.is-tab-switching>.timer-shell {
@@ -1162,6 +1164,7 @@
     .qr-shell,
     .planning-shell,
     .grades-shell,
+    .name-learning-shell,
     .monitor-shell,
     .work-order-shell,
     .timer-shell {
@@ -1183,7 +1186,8 @@
     .duplicate-check-shell,
     .qr-shell,
     .planning-shell,
-    .grades-shell {
+    .grades-shell,
+    .name-learning-shell {
       padding: 0;
       overflow-x: hidden;
       overflow-y: auto;
@@ -1207,7 +1211,8 @@
     }
 
     .planning-shell,
-    .grades-shell {
+    .grades-shell,
+    .name-learning-shell {
       background: transparent;
       backdrop-filter: none;
       border: none;
@@ -1219,7 +1224,8 @@
     .duplicate-check-host,
     .qr-host,
     .planning-host,
-    .grades-host {
+    .grades-host,
+    .name-learning-host {
       width: 100%;
       height: 100%;
       min-width: 0;
@@ -1236,6 +1242,7 @@
     #groups-main-host,
     #random-picker-host,
     #seatplan-main-host,
+    .name-learning-shell,
     #seatplan-side-host,
     .merger-host,
     .duplicate-check-host,
@@ -1329,6 +1336,7 @@
     .app.app-tab-planning>.duplicate-check-shell,
     .app.app-tab-planning>.qr-shell,
     .app.app-tab-planning>.grades-shell,
+    .app.app-tab-planning>.name-learning-shell,
     .app.app-tab-planning>.monitor-shell,
     .app.app-tab-planning>.work-order-shell,
     .app.app-tab-planning>.timer-shell {
@@ -1375,6 +1383,25 @@
       display: none;
     }
 
+    .app.app-tab-name-learning>.side,
+    .app.app-tab-name-learning>.main,
+    .app.app-tab-name-learning>.merger-shell,
+    .app.app-tab-name-learning>.duplicate-check-shell,
+    .app.app-tab-name-learning>.qr-shell,
+    .app.app-tab-name-learning>.planning-shell,
+    .app.app-tab-name-learning>.grades-shell,
+    .app.app-tab-name-learning>.monitor-shell,
+    .app.app-tab-name-learning>.work-order-shell,
+    .app.app-tab-name-learning>.timer-shell {
+      display: none;
+    }
+
+    .app.app-tab-name-learning>.name-learning-shell {
+      display: block;
+      grid-column: 1 / -1;
+      grid-row: 2;
+    }
+
     .app.app-tab-grades:not(.app-js-ready)>.side,
     .app.app-tab-grades:not(.app-js-ready)>.main {
       display: none;
@@ -1391,6 +1418,16 @@
       z-index: 5000;
       width: 100vw;
       height: 100vh;
+    }
+
+    .app.grade-vault-overlay.grade-vault-overlay-revealed-grades::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      z-index: 4999;
+      background: var(--backdrop-vault, rgba(5, 10, 18, 0.62));
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
     }
 
     .app.app-tab-seatplan>.merger-shell,
@@ -7183,6 +7220,7 @@
       .qr-shell,
       .planning-shell,
       .grades-shell,
+      .name-learning-shell,
       .monitor-shell,
       .work-order-shell,
       .timer-shell,
@@ -7216,6 +7254,7 @@
 
     #planning-host>.planning-frame,
     #grades-host>.grades-frame,
+    #name-learning-host>.name-learning-frame,
     #merger-host>.merger-frame,
     #duplicate-check-host>.duplicate-check-frame,
     #qr-host>.qr-frame,

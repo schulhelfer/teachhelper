@@ -5,6 +5,7 @@ export const TAB_GRADES = 'grades';
 export const TAB_GROUPS = 'groups';
 export const TAB_RANDOM_PICKER = 'random-picker';
 export const TAB_SEATPLAN = 'seatplan';
+export const TAB_NAME_LEARNING = 'name-learning';
 export const TAB_WORK_PHASE = 'work-phase';
 export const TAB_QR = 'qr';
 export const TAB_MONITOR = 'monitor';
@@ -48,12 +49,20 @@ export const GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:grades-grade
 export const GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:grades-grade-roster-courses-result';
 export const GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:grades-grade-roster-import-request';
 export const GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:grades-grade-roster-import-result';
+export const GRADES_NAME_LEARNING_DATA_REQUEST_EVENT = 'classroom:grades-name-learning-data-request';
+export const GRADES_NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:grades-name-learning-data-result';
+export const GRADES_NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:grades-name-learning-review-request';
+export const GRADES_NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:grades-name-learning-review-result';
 export const SEATPLAN_COURSE_CONTEXT_EVENT = 'classroom:seatplan-course-context';
 export const SEATPLAN_COURSE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-save-request';
 export const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-course-grade-config-request';
 export const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
 export const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
 export const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
+export const NAME_LEARNING_DATA_REQUEST_EVENT = 'classroom:name-learning-data-request';
+export const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:name-learning-data-result';
+export const NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:name-learning-review-request';
+export const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:name-learning-review-result';
 export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
 export const MERGER_TOOL_REQUEST_EVENT = 'classroom:merger-tool-request';
 export const DUPLICATE_CHECK_SHELL_LAYOUT_EVENT = 'classroom:duplicate-check-shell-layout';
@@ -68,6 +77,7 @@ export function normalizeTab(tab) {
   if (tab === TAB_GRADES) return TAB_GRADES;
   if (tab === TAB_RANDOM_PICKER) return TAB_RANDOM_PICKER;
   if (tab === TAB_SEATPLAN) return TAB_SEATPLAN;
+  if (tab === TAB_NAME_LEARNING) return TAB_NAME_LEARNING;
   if (tab === TAB_QR) return TAB_QR;
   if (tab === TAB_WORK_PHASE || tab === TAB_MONITOR || tab === TAB_WORK_ORDER || tab === TAB_TIMER) {
     return TAB_WORK_PHASE;

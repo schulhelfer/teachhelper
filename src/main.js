@@ -35,6 +35,8 @@ import {
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  NAME_LEARNING_DATA_REQUEST_EVENT,
+  NAME_LEARNING_REVIEW_REQUEST_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
   GRADES_NAVIGATE_EVENT,
   GRADES_TUTORIAL_START_REQUEST_EVENT,
@@ -46,6 +48,7 @@ import {
   TAB_GRADES,
   TAB_GROUPS,
   TAB_MERGER,
+  TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
   TAB_RANDOM_PICKER,
@@ -256,6 +259,8 @@ import {
       hasPlanningSlot: false,
       configured: false,
       unlocked: false,
+      showGradeStudentPortraits: false,
+      showNameLearningModule: false,
       setupRequired: false,
     },
     planningUnsavedState: {
@@ -333,6 +338,7 @@ import {
     || els.seatplanMainHost?.querySelector('iframe:not(.tutorial-demo-frame)')
     || null
   );
+  const getNameLearningFrame = () => els.nameLearningHost?.querySelector('iframe') || null;
   const getDuplicateCheckController = () => els.duplicateCheckHost?._duplicateCheckController || null;
   const getQrController = () => els.qrHost?._qrController || null;
   const getModuleFrameForMessage = (event) => (
@@ -343,6 +349,7 @@ import {
       getDuplicateCheckFrame(),
       getQrFrame(),
       getSeatplanFrame(),
+      getNameLearningFrame(),
     ].find((frame) => isTrustedModuleMessage(event, frame)) || null
   );
   const syncTutorialEntryHintToModules = () => {
@@ -354,6 +361,7 @@ import {
       getDuplicateCheckFrame(),
       getQrFrame(),
       getSeatplanFrame(),
+      getNameLearningFrame(),
     ].forEach((frame) => {
       postToModule(frame, {
         type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
@@ -369,7 +377,7 @@ import {
   const getFramesForSidebarWidthScope = (scope) => (
     scope === SIDEBAR_WIDTH_SCOPE_PLANNING
       ? [getPlanningFrame(), getGradesFrame()]
-      : [getMergerFrame(), getDuplicateCheckFrame(), getQrFrame(), getSeatplanFrame()]
+      : [getMergerFrame(), getDuplicateCheckFrame(), getQrFrame(), getSeatplanFrame(), getNameLearningFrame()]
   );
   const syncSidebarWidthToModules = (scope, width) => {
     const normalizedScope = scope === SIDEBAR_WIDTH_SCOPE_PLANNING
@@ -2197,6 +2205,7 @@ import {
       [els.tabPlanning, TAB_PLANNING],
       [els.tabGrades, TAB_GRADES],
       [els.tabSeatplan, TAB_SEATPLAN],
+      [els.tabNameLearning, TAB_NAME_LEARNING],
       [els.tabGroups, TAB_GROUPS],
       [els.tabRandomPicker, TAB_RANDOM_PICKER],
       [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
@@ -2246,6 +2255,14 @@ import {
       }
       const data = event.data;
       if (!data || typeof data !== 'object') {
+        return;
+      }
+      if (data.type === NAME_LEARNING_DATA_REQUEST_EVENT || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT) {
+        if (frame !== getNameLearningFrame()) return;
+        window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
+        document.dispatchEvent(new CustomEvent(data.type, {
+          detail: data.detail && typeof data.detail === 'object' ? data.detail : {},
+        }));
         return;
       }
       if (data.type === THEME_PREFERENCE_CHANGE_EVENT) {

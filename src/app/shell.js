@@ -11,6 +11,7 @@ import {
   TAB_GROUPS,
   TAB_DUPLICATE_CHECK,
   TAB_MERGER,
+  TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
   TAB_RANDOM_PICKER,
@@ -387,8 +388,14 @@ export function createShellController({
     return tab === TAB_PLANNING
       || tab === TAB_GRADES
       || tab === TAB_SEATPLAN
+      || tab === TAB_NAME_LEARNING
       || tab === TAB_GROUPS
       || tab === TAB_RANDOM_PICKER;
+  }
+
+  function canShowNameLearning() {
+    const vault = state.planningGradeVaultState || {};
+    return Boolean(vault.showGradeStudentPortraits && vault.showNameLearningModule);
   }
 
   function shouldPromptGradeVaultUnlockOnGradesNavigation(nextTab) {
@@ -698,6 +705,7 @@ export function createShellController({
       state.gradesInitialPaintPending && state.activeTab === TAB_GRADES
     );
     els.app.classList.toggle('app-tab-seatplan', state.activeTab === TAB_SEATPLAN);
+    els.app.classList.toggle('app-tab-name-learning', state.activeTab === TAB_NAME_LEARNING);
     els.app.classList.toggle('app-tab-work-phase', state.activeTab === TAB_WORK_PHASE);
     els.app.classList.toggle('app-tab-groups', state.activeTab === TAB_GROUPS);
     els.app.classList.toggle('app-tab-random-picker', state.activeTab === TAB_RANDOM_PICKER);
@@ -713,6 +721,9 @@ export function createShellController({
     }
     if (els.planningShell) {
       els.planningShell.hidden = state.activeTab !== TAB_PLANNING;
+    }
+    if (els.nameLearningShell) {
+      els.nameLearningShell.hidden = state.activeTab !== TAB_NAME_LEARNING;
     }
     if (els.seatplanSideHost) {
       els.seatplanSideHost.hidden = true;
@@ -742,6 +753,7 @@ export function createShellController({
       [els.tabPlanning, TAB_PLANNING],
       [els.tabGrades, TAB_GRADES],
       [els.tabSeatplan, TAB_SEATPLAN],
+      [els.tabNameLearning, TAB_NAME_LEARNING],
       [els.tabRandomPicker, TAB_RANDOM_PICKER],
       [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
       [els.tabWorkPhase, TAB_WORK_PHASE],
@@ -752,6 +764,9 @@ export function createShellController({
       button.classList.toggle('active', selected);
       button.setAttribute('aria-selected', selected ? 'true' : 'false');
     });
+    if (els.tabNameLearning) {
+      els.tabNameLearning.hidden = !canShowNameLearning();
+    }
     const navigationModeChanged = syncMoreToolsNavigation();
     if (navigationModeChanged) {
       queueSettledActiveTabIndicatorUpdate();
@@ -796,7 +811,7 @@ export function createShellController({
     if (!els.app) return [];
     return Array.from(els.app.children).filter((child) => {
       if (!(child instanceof HTMLElement)) return false;
-      if (!child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .monitor-shell, .work-order-shell, .timer-shell')) {
+      if (!child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .name-learning-shell, .monitor-shell, .work-order-shell, .timer-shell')) {
         return false;
       }
       if (child.hidden) return false;
@@ -808,7 +823,7 @@ export function createShellController({
     if (!els.app) return [];
     return Array.from(els.app.children).filter((child) => (
       child instanceof HTMLElement
-      && child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .monitor-shell, .work-order-shell, .timer-shell')
+      && child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .name-learning-shell, .monitor-shell, .work-order-shell, .timer-shell')
     ));
   }
 
@@ -1336,8 +1351,15 @@ export function createShellController({
       configured: Boolean(nextDetail.configured),
       unlocked: Boolean(nextDetail.unlocked),
       encryptionEnabled: Boolean(nextDetail.encryptionEnabled),
+      showGradeStudentPortraits: Boolean(nextDetail.showGradeStudentPortraits),
+      showNameLearningModule: Boolean(nextDetail.showNameLearningModule),
       setupRequired: Boolean(nextDetail.setupRequired),
     };
+    if (!canShowNameLearning() && state.activeTab === TAB_NAME_LEARNING) {
+      setActiveTab(TAB_PLANNING, { skipAnimation: true });
+      return;
+    }
+    renderTabs();
     renderPlanningGradeVaultUnlockButton();
   }
 

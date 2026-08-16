@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+  <meta name="theme-color" content="#f5f5f7">
+  <title>Namen lernen</title>
+  <script src="../../shared/theme-preload.js"></script>
+  <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="../../shared/app-tooltips.css">
+  <link rel="stylesheet" href="../../shared/theme.css">
+</head>
+<body>
+  <div class="name-learning-runtime-root">
+    <div class="app" data-sidebar-width-scope="other">
+      <aside class="side" aria-label="Namen lernen">
+        <div class="sidebar-resize-handle" aria-hidden="true"></div>
+        <div class="sidebar-header"><h1 class="sidebar-title">Namen lernen</h1></div>
+        <section class="tool-sidebar-panel" aria-label="Lerneinstellungen">
+          <section class="sidebar-section" aria-label="Kurse">
+            <h2 class="sidebar-section-title">Kurse</h2>
+            <div id="courses" class="course-list"></div>
+          </section>
+          <section id="setup" class="sidebar-section sidebar-mode" hidden>
+            <h2 class="sidebar-section-title">Lernmodus</h2>
+            <div class="mode-actions">
+              <button id="start-due" class="mode-action" type="button" aria-label="Fällige Karten abfragen" aria-pressed="true"><span id="start-due-label">Fällige Karten (0) abfragen</span></button>
+              <button id="start-random" class="mode-action" type="button" aria-label="Zufällig üben" aria-pressed="false">Zufällig üben</button>
+            </div>
+          </section>
+          <p id="status" class="sidebar-status" aria-live="polite">Lade Notendaten …</p>
+        </section>
+      </aside>
+      <main class="main" aria-live="polite">
+        <section class="tool-panel">
+          <section id="practice" class="practice-card" hidden>
+            <div id="flashcard" class="flashcard">
+              <div class="flashcard-inner">
+                <button id="flip-card" class="flashcard-face flashcard-front" type="button" aria-label="Name aufdecken">
+                  <img id="portrait" class="portrait" alt="Foto der abgefragten Person">
+                </button>
+                <div id="flashcard-back" class="flashcard-face flashcard-back" aria-hidden="true">
+                  <img id="portrait-reverse" class="portrait portrait-reverse" alt="" aria-hidden="true">
+                  <div class="flashcard-back-content">
+                    <p id="answer" class="answer"></p>
+                    <div class="button-row">
+                      <button id="unknown" class="unknown-action" type="button" disabled>Nicht gewusst</button>
+                      <button id="known" class="known-action" type="button" disabled>Gewusst</button>
+                    </div>
+                    <div class="review-feedback-slot">
+                      <p id="review-feedback" class="review-feedback" role="status" aria-live="polite" aria-atomic="true" hidden></p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section id="empty" class="empty-state-box" hidden>
+            <h3 id="empty-title">Keine Karten fällig</h3>
+            <p id="empty-copy"></p>
+            <div class="button-row"><button id="empty-random" class="secondary" type="button">Zufällig üben</button></div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
+  <script src="../../shared/theme-bridge.js"></script>
+  <script type="module" src="./app.js"></script>
+  <script src="../../shared/sidebar-resize.js"></script>
+</body>
+</html>
