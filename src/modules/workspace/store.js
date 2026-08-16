@@ -2108,18 +2108,21 @@ export class WorkspaceStore {
       String(item?.startDate || '') === schoolYear.startDate
       && String(item?.endDate || '') === schoolYear.endDate
     ));
-    const sourceFreeRanges = sourceYear
+    const defaultFreeRanges = requiredHolidayRowSpecs().flatMap((spec) => {
+      const [startDate, endDate] = defaultHolidayRangeForRow(year, spec.label, spec.occurrence);
+      return startDate || endDate ? [{ label: spec.label, startDate, endDate }] : [];
+    });
+    const existingFreeRanges = sourceYear
       ? this.state.freeRanges.filter((item) => Number(item?.schoolYearId) === Number(sourceYear.id))
-      : requiredHolidayRowSpecs().flatMap((spec) => {
-        const [startDate, endDate] = defaultHolidayRangeForRow(year, spec.label, spec.occurrence);
-        return startDate || endDate ? [{ label: spec.label, startDate, endDate }] : [];
-      });
-    const sourceSpecialDays = sourceYear
+      : [];
+    const sourceFreeRanges = existingFreeRanges.length > 0 ? existingFreeRanges : defaultFreeRanges;
+    const existingSpecialDays = sourceYear
       ? this.state.specialDays.filter((item) => (
         String(item?.dayDate || '') >= schoolYear.startDate
         && String(item?.dayDate || '') <= schoolYear.endDate
       ))
-      : defaultSpecialDays(year);
+      : [];
+    const sourceSpecialDays = existingSpecialDays.length > 0 ? existingSpecialDays : defaultSpecialDays(year);
 
     publicState.schoolYears = [schoolYear];
     publicState.settings = { ...publicState.settings, activeSchoolYearId: schoolYear.id };

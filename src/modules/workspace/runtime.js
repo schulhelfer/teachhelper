@@ -106,6 +106,21 @@ function gradeStateContainsCourseData(state, courseId) {
   ));
 }
 
+function gradeStateHasPersistedStructure(state, courseId) {
+  const id = Number(courseId) || 0;
+  const structure = Array.isArray(state?.gradeStructures)
+    ? state.gradeStructures.find((entry) => Number(entry?.courseId) === id)
+    : null;
+  if (!structure) return false;
+  const periodCategories = structure.periodCategories && typeof structure.periodCategories === 'object'
+    ? structure.periodCategories
+    : { h1: structure.categories };
+  return ['h1', 'h2'].some((period) => (
+    Array.isArray(periodCategories[period])
+    && periodCategories[period].some((category) => Number(category?.id || 0) > 0)
+  ));
+}
+
 function normalizeVaultConfig(raw = null) {
   const source = raw && typeof raw === 'object' ? raw : {};
   const configured = Boolean(source.configured && source.kdf && source.validation);
@@ -837,7 +852,7 @@ export class WorkspaceRuntime {
   async saveGradeVaultChanges() {
     return this.isManualPersistenceMode()
       ? this.saveManualDatabase()
-      : this.saveToConnectedFile('grade-vault-explicit-save');
+      : this.enqueueConnectedFileSave('grade-vault-explicit-save');
   }
 
   scheduleGradeVaultBackgroundAutoLock(delayMs = this.getGradeVaultAutoLockMs()) {
@@ -915,6 +930,28 @@ export class WorkspaceRuntime {
       }
       this.store.replaceGradeVaultState(state);
       this.loadedCourseId = id;
+      if (!gradeStateHasPersistedStructure(state, id)) {
+        const defaultStructure = this.store.getDefaultGradeStructure?.();
+        const defaultPeriodCategories = defaultStructure?.periodCategories;
+        const hasDefaults = ['h1', 'h2'].some((period) => (
+          Array.isArray(defaultPeriodCategories?.[period])
+          && defaultPeriodCategories[period].length > 0
+        ));
+        if (hasDefaults) {
+          this.store._suspendSaveHooks();
+          try {
+            this.store.saveGradeStructure(id, defaultPeriodCategories);
+          } finally {
+            this.store._resumeSaveHooks({ flush: false });
+          }
+          state = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
+          this.courseCache.set(id, state);
+          this.rememberPerformanceIndex(id, state);
+          this.dirtyCourseIds.add(id);
+          this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
+          this.manualDirty = true;
+        }
+      }
       if (publish) this.controller?.publish?.('grades');
       return true;
     };
@@ -1355,7 +1392,10 @@ export class WorkspaceRuntime {
       throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
     }
     await this.operationTail;
-    const built = this.buildEmptyDatabaseContainer('create-empty', options);
+    const built = this.buildEmptyDatabaseContainer('create-empty', {
+      ...options,
+      schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
+    });
     const writeResult = await writeAndVerifyFileBytes(
       handle,
       built.bytes,
@@ -1459,16 +1499,35 @@ export class WorkspaceRuntime {
     return true;
   }
 
-  queueSyncSave(reason = 'auto-save') {
-    if (this.isManualPersistenceMode() || !this.fileHandle) return false;
+  enqueueConnectedFileSave(reason = 'save') {
+    if (this.isManualPersistenceMode() || !this.fileHandle) return Promise.resolve(false);
     const save = () => this.saveToConnectedFile(reason);
     const operation = this.operationTail.then(save, save);
     this.operationTail = operation.catch(() => undefined);
+    return operation;
+  }
+
+  queueSyncSave(reason = 'auto-save') {
+    if (this.isManualPersistenceMode() || !this.fileHandle) return false;
+    const operation = this.enqueueConnectedFileSave(reason);
     void operation.catch(() => undefined);
     return true;
   }
 
   async saveManualDatabase() {
+    if (
+      !this.manualLoaded
+      && Array.isArray(this.store.state?.schoolYears)
+      && this.store.state.schoolYears.length === 0
+      && typeof this.store.buildNewDatabasePublicState === 'function'
+    ) {
+      const publicState = this.store.buildNewDatabasePublicState(this.getDefaultSchoolYearStartYear());
+      this.store.importDatabaseState(
+        publicState,
+        this.store.exportGradeVaultStateSnapshot(),
+        { skipSaveNotification: true, allowEmpty: false },
+      );
+    }
     const built = await this.buildContainer('manual-save');
     downloadBytes(built.bytes, this.fileName || this.buildSyncFileSuggestedName());
     this.commitPersistedVaultContainer(built.bytes);
@@ -1482,7 +1541,10 @@ export class WorkspaceRuntime {
   }
 
   async createEmptyManualDatabase(options = {}) {
-    const built = this.buildEmptyDatabaseContainer('manual-create-empty', options);
+    const built = this.buildEmptyDatabaseContainer('manual-create-empty', {
+      ...options,
+      schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
+    });
     const fileName = this.buildSyncFileSuggestedName();
     downloadBytes(built.bytes, fileName);
     this.fileName = fileName;
@@ -1748,7 +1810,7 @@ export class WorkspaceRuntime {
     if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
     if (name === 'backup-directory-connect') return { changed: await this.acceptWorkspaceBackupDirectoryHandle(detail?.handle), scope: 'shell' };
     if (name === 'backup-directory-reconnect') return { changed: await this.ensureBackupDirectoryReady({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
-    if (name === 'sync-save') return { changed: await this.saveToConnectedFile(detail?.reason), scope: 'shell' };
+    if (name === 'sync-save') return { changed: await this.enqueueConnectedFileSave(detail?.reason), scope: 'shell' };
     if (name === 'backup-create') return { changed: await this.createLatestWebBackup(detail?.mode, detail?.silent), scope: 'shell' };
     if (name === 'backup-auto') return { changed: await this.maybeRunAutomaticWebBackup(), scope: 'shell' };
     if (name === 'backup-restore') return { changed: await this.restoreLatestWebBackup(), scope: 'shell' };

@@ -4848,7 +4848,7 @@ class GradesApp {
     }
   }
 
-  async setGradeVaultEncryptionEnabledFromSettings(enabled) {
+  async setGradeVaultEncryptionEnabledFromSettings(enabled, { persist = true } = {}) {
     const owner = this.getWorkspaceOwnerApp();
     if (!owner?.setGradeVaultEncryptionEnabledFromSettings) return false;
     if (!enabled && this.isGradeVaultEncryptionEnabled() && !this.canAccessGradeVault()) {
@@ -4863,7 +4863,7 @@ class GradesApp {
     }
     const changed = await owner.setGradeVaultEncryptionEnabledFromSettings(Boolean(enabled));
     if (enabled && !changed) this.openGradeVaultDialog("setup");
-    if (!enabled && changed) {
+    if (!enabled && changed && persist) {
       let saved = false;
       try {
         saved = await this.saveGradeVaultChanges();
@@ -4900,7 +4900,7 @@ class GradesApp {
       return this.setGradeVaultEncryptionEnabledFromSettings(desired);
     }
     if (encryptionChanged) {
-      const changed = await this.setGradeVaultEncryptionEnabledFromSettings(desired);
+      const changed = await this.setGradeVaultEncryptionEnabledFromSettings(desired, { persist: false });
       if (!changed) return false;
     }
     const hasAutoLockChanges = this.isGradeVaultEncryptionEnabled() && (
@@ -4921,6 +4921,8 @@ class GradesApp {
         return false;
       }
       this.settingsDraftRevision = Number(result.revision) || this.workspaceRevision || 0;
+    }
+    if (encryptionChanged || hasAutoLockChanges) {
       await this.persistExplicitDatabaseSave();
     }
     this.gradeVaultEncryptionDraft = null;
@@ -11620,7 +11622,7 @@ class GradesApp {
         if (this.gradesEntryDraftDirty && !await this.saveCurrentGradesEntry()) return false;
         if (this.settingsDirty && !await this.applySettingsDraftToStore()) return false;
         if (this.isManualPersistenceMode()) return this.saveManualDatabase();
-        return Boolean(await this.getWorkspaceOwnerApp()?.saveToConnectedFile?.("before-create-empty"));
+        return Boolean(await this.getWorkspaceOwnerApp()?.enqueueConnectedFileSave?.("before-create-empty"));
       }
       if (choice !== "discard") return false;
       if (this.gradesEntryDraftDirty) this.discardGradesEntryEditSession();

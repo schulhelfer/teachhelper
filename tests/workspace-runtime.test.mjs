@@ -269,6 +269,42 @@ test('explizite Datenbank-Speicherungen laden nur im manuellen Modus herunter', 
   assert.equal(downloads, 1);
 });
 
+test('explizites Notenspeichern wartet auf ein bereits eingereihtes automatisches Speichern', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.fileHandle = { name: 'noten.thdb' };
+  runtime.isManualPersistenceMode = () => false;
+  const events = [];
+  let releaseAutoSave;
+  const autoSaveReleased = new Promise((resolve) => { releaseAutoSave = resolve; });
+  let signalAutoSaveStart;
+  const autoSaveStarted = new Promise((resolve) => { signalAutoSaveStart = resolve; });
+  runtime.saveToConnectedFile = async (reason) => {
+    events.push(`start:${reason}`);
+    if (reason === 'grades-auto-save') {
+      signalAutoSaveStart();
+      await autoSaveReleased;
+    }
+    events.push(`end:${reason}`);
+    return true;
+  };
+
+  assert.equal(runtime.queueSyncSave('grades-auto-save'), true);
+  await autoSaveStarted;
+  const explicitSave = runtime.saveGradeVaultChanges();
+  await Promise.resolve();
+  assert.deepEqual(events, ['start:grades-auto-save']);
+
+  releaseAutoSave();
+  assert.equal(await explicitSave, true);
+  await runtime.operationTail;
+  assert.deepEqual(events, [
+    'start:grades-auto-save',
+    'end:grades-auto-save',
+    'start:grade-vault-explicit-save',
+    'end:grade-vault-explicit-save',
+  ]);
+});
+
 test('ein leerer Datenbankcontainer bleibt beim Laden ohne Schuljahre und Kurse', async () => {
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
