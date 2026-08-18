@@ -2101,6 +2101,7 @@
           padding: 12px;
           min-height: 0;
           display: grid;
+          grid-row: 1 / -1;
         }
 
         #stackGlass {
@@ -5400,6 +5401,7 @@
         .grades-subview-panel.has-offset-empty-state,
         .grades-entry-content.has-offset-empty-state {
           position: relative;
+          min-height: 100%;
         }
 
         .grades-subview-panel.is-offset-empty-state>.grades-empty-state,
@@ -8827,6 +8829,24 @@
           height: auto;
         }
 
+        .course-group-photo-stage.is-photo-rotating .course-group-photo-image-wrap {
+          animation: courseGroupPhotoRotateSwap 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes courseGroupPhotoRotateSwap {
+          from { opacity: 0.15; transform: scale(0.94) rotate(6deg); }
+          to { opacity: 1; transform: scale(1) rotate(0deg); }
+        }
+
+        #course-group-photo-rotate.is-rotating {
+          animation: courseGroupPhotoRotateIconSpin 0.34s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        @keyframes courseGroupPhotoRotateIconSpin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(90deg); }
+        }
+
         .course-group-photo-circle {
           position: absolute;
           display: block;
@@ -9085,7 +9105,8 @@
         .course-dialog-students-list {
           display: grid;
           gap: 0.55rem;
-          padding-bottom: 0.32rem;
+          padding: 0 0.4rem 0.32rem;
+          margin: 0 -0.4rem;
           overflow-x: auto;
           overscroll-behavior-inline: contain;
         }
@@ -9238,6 +9259,10 @@
         .grade-student-portrait-overlay.is-open {
           background: rgba(2, 6, 23, 0.54);
           opacity: 1;
+        }
+
+        .grade-student-portrait-overlay.is-hover-preview {
+          pointer-events: none;
         }
 
         .grade-student-portrait-overlay-image {

@@ -2,8 +2,6 @@ export const WORKSPACE_VAULT_SCHEMA = 'teachhelper-grade-vault-v1';
 export const WORKSPACE_VAULT_AAD_SCHEMA = 'teachhelper-db-v1';
 export const WORKSPACE_VAULT_KDF_ITERATIONS = 600000;
 export const WORKSPACE_VAULT_KDF_MIN_ITERATIONS = 100000;
-// Leave room for future KDF-cost increases while rejecting hostile containers
-// that would keep the browser busy for an unreasonable amount of time.
 export const WORKSPACE_VAULT_KDF_MAX_ITERATIONS = 2000000;
 export const WORKSPACE_VAULT_SALT_BYTES = 16;
 export const WORKSPACE_VAULT_IV_BYTES = 12;

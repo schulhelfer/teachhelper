@@ -1111,7 +1111,7 @@ export class WorkspaceRuntime {
   async runGradeCourseMutation(courseId, operation, { preserveRoster = false, skipAutoSave = false } = {}) {
     const id = Number(courseId) || 0;
     const run = async () => {
-      await this.ensureGradeCourseLoaded(id);
+      await this.ensureGradeCourseLoaded(id, { publish: false });
       const before = this.store.exportGradeVaultStateSnapshot();
       const roster = before.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
       this.gradeCourseMutationActiveCourseId = id;
@@ -1749,6 +1749,9 @@ export class WorkspaceRuntime {
       const value = (name, fallback) => Object.prototype.hasOwnProperty.call(fields, name) ? fields[name] : fallback;
       if (!this.store.updateCourse(schoolYearId, courseId, value('name', current.name), value('color', current.color), value('noLesson', current.noLesson), value('hiddenInSidebar', current.hiddenInSidebar), value('subject', current.subject))) {
         throw new Error('Kurs konnte nicht aktualisiert werden.');
+      }
+      if (Object.prototype.hasOwnProperty.call(fields, 'noGrades')) {
+        this.store.setCourseNoGrades(schoolYearId, courseId, Boolean(fields.noGrades));
       }
       return { changed: true, scope: 'planning', courseId };
     }

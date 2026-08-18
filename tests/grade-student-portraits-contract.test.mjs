@@ -52,10 +52,10 @@ test('locking and teardown revoke all generated portrait object URLs', () => {
   assert.match(bridge, /clearGradeStudentPortraits: true/);
 });
 
-test('portrait previews open a bounded three-times overlay and are cleaned up with the vault', () => {
+test('portrait previews open a bounded overlay and are cleaned up with the vault', () => {
   assert.match(gradesApp, /\.dataset\.gradeStudentPortraitPreview = "1"/);
-  assert.match(gradesApp, /openGradeStudentPortraitOverlay\(source\)/);
-  assert.match(gradesApp, /rect\.width \* 3/);
+  assert.match(gradesApp, /openGradeStudentPortraitOverlay\(portrait\)/);
+  assert.match(gradesApp, /rect\.width \* 6/);
   assert.match(gradesApp, /overlay\.addEventListener\("click", \(\) => this\.removeGradeStudentPortraitOverlay\(\)/);
   assert.match(gradesApp, /revokeGradeStudentPortraitObjectUrls\(\) \{[\s\S]*?this\.removeGradeStudentPortraitOverlay\(\)/);
   assert.match(seatplanApp, /\.dataset\.gradeStudentPortraitPreview = '1'/);

@@ -41,6 +41,7 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
     currentView: 'grades',
     activeSettingsTab: 'gradeTestScales',
     refs: { sidebarCourseList: {} },
+    captureGradeVaultAutoLockNotice() {},
     shouldPreserveActiveGradesEntryControl() { return false; },
     updateAccessLock() {},
     renderAll() { calls.renderAll += 1; },
@@ -79,6 +80,8 @@ test('grade workspace changes still rebuild the visible grades data once', () =>
     workspaceHydrated: true,
     settingsDirty: true,
     refs: { sidebarCourseList: {} },
+    captureGradeVaultAutoLockNotice() {},
+    presentGradeVaultAutoLockNotice() { return Promise.resolve(); },
     shouldPreserveActiveGradesEntryControl() { return false; },
     renderAll() { renderCount += 1; },
     refreshSidebarCourseStudentCounts() { return Promise.resolve(); },
@@ -104,6 +107,7 @@ test('grade workspace changes do not replace a course picker or mode control bei
     settingsDirty: true,
     refs: { sidebarCourseList: {} },
     pendingWorkspaceRenderAfterEntryInteraction: false,
+    captureGradeVaultAutoLockNotice() {},
     shouldPreserveActiveGradesEntryControl() { return true; },
     renderAll() { renderCount += 1; },
   };
@@ -246,6 +250,7 @@ test('opening roster management creates its draft from the requested course snap
       calls.push(`load:${courseId}`);
       return { students: [{ id: 81, firstName: 'Ada' }] };
     },
+    getCourseStudentsDialogSignature() { return ''; },
     renderCourseDialogStudents() { calls.push('render'); },
     openDialog() { calls.push('open'); },
     setSyncStatus() { throw new Error('loading must not fail'); },

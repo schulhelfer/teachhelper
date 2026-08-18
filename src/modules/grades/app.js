@@ -121,7 +121,7 @@ const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
 const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager/AbiWeb-Import";
 const ISERV_GROUP_POPULATE_BOOKMARKLET_NAME = "IServ-Gruppe bevölkern";
-const ISERV_GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(()=>{const f=document.createElement('input');f.type='file';f.accept='.csv,.txt,text/csv,text/plain';f.style.display='none';document.body.appendChild(f);f.onchange=async()=>{try{const file=f.files[0];if(!file)return;const raw=await file.text(),lines=raw.replace(/^\uFEFF/,'').split(/\r?\n/).filter(x=>x.trim());if(lines.length<2){alert(%27Die Datei enthält keine Daten ab Zeile 2.%27);return}const detect=l=>{const s=(l.match(/;/g)||[]).length,c=(l.match(/,/g)||[]).length,t=(l.match(/\t/g)||[]).length;return t>s&&t>c?%27\t%27:s>=c?%27;%27:%27,%27},sep=detect(lines[0]),parseLine=line=>{const out=[];let cur=%27%27,q=false;for(let i=0;i<line.length;i++){const ch=line[i];if(ch===%27"%27){if(q&&line[i+1]===%27"%27){cur+=%27"%27;i++}else q=!q}else if(ch===sep&&!q){out.push(cur.trim());cur=%27%27}else cur+=ch}out.push(cur.trim());return out},list=lines.slice(1).map(parseLine).filter(r=>r.length>=3).map(r=>(r[2]+%27 %27+r[1]).trim()).filter(Boolean);if(!list.length){alert(%27Keine gültigen Einträge in Spalte B und C gefunden.%27);return}const input=document.querySelector(%27#manage_group_users_add-selectized%27);if(!input){alert('Benutzer-Suchfeld nicht gefunden.');return}if(!confirm(list.length+' Einträge gefunden.\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nVerarbeitung starten?'))return;const sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),setValue=v=>{input.focus();const s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},getOpts=()=>{const id=input.getAttribute('aria-owns'),box=id?document.getElementById(id):null;return box?[...box.querySelectorAll('[data-selectable]')].filter(el=>{const r=el.getBoundingClientRect();return r.width>0&&r.height>0}):[]},matches=(el,q)=>{const t=norm(el.textContent||''),p=norm(q).split(' ').filter(Boolean);return p.every(x=>t.includes(x))},waitClear=async()=>{const start=Date.now();while(Date.now()-start<2000){if(!getOpts().length)return;await sleep(50)}},waitFirst=async q=>{const start=Date.now();let last=null,stable=0;while(Date.now()-start<5000){const first=getOpts().find(el=>matches(el,q));if(first){if(first===last)stable++;else{last=first;stable=0}if(stable>=2)return first}else{last=null;stable=0}await sleep(100)}return null},waitAfter=async(el)=>{const start=Date.now();while(Date.now()-start<3000){if(!el.isConnected||!getOpts().includes(el))return;await sleep(100)}};let done=0;for(const name of list){setValue('');await waitClear();setValue(name);const first=await waitFirst(name);if(!first){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}first.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));first.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));first.click();done++;await waitAfter(first)}alert('Fertig: '+done+' Einträge hinzugefügt.')}finally{f.remove()}};f.click()})()`;
+const ISERV_GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(()=>{const f=document.createElement('input');f.type='file';f.accept='.csv,.txt,text/csv,text/plain';f.style.display='none';document.body.appendChild(f);const csv=(s,d)=>{s=s.replace(/^\uFEFF/,'');let a=[],r=[],v='',q=false;for(let i=0;i<s.length;i++){let c=s[i];if(q){if(c=='"'){if(s[i+1]=='"'){v+='"';i++}else q=false}else v+=c}else if(c=='"')q=true;else if(c==d){r.push(v.trim());v=''}else if(c=='\r'||c=='\n'){if(c=='\r'&&s[i+1]=='\n')i++;r.push(v.trim());a.push(r);r=[];v=''}else v+=c}if(v.length||r.length){r.push(v.trim());a.push(r)}return a},score=a=>{let x=a.filter(r=>r.some(v=>String(v).trim())).slice(0,30),m=new Map;if(!x.length)return-Infinity;for(const r of x)m.set(r.length,(m.get(r.length)||0)+1);let n=0,c=0;for(const[k,v]of m)if(v>c||(v==c&&k>n)){n=k;c=v}return n<2?-1e9+c:c*1000+n*10-x.reduce((s,r)=>s+Math.abs(r.length-n),0)*100},cell=s=>{let m=String(s||%27%27).trim().match(/^([A-Z]+)([1-9]\d*)$/i);if(!m)return null;let c=0;for(const x of m[1].toUpperCase())c=c*26+x.charCodeAt()-64;return{c:c-1,r:+m[2]-1,l:m[1].toUpperCase()+m[2]}},ask=(t,d)=>{for(;;){let v=prompt(t,d);if(v===null)return null;let p=cell(v);if(p)return p;alert(%27Ungültige Position: %27+v)}};f.onchange=async()=>{try{let file=f.files[0];if(!file)return;let raw=await file.text();if(!raw.trim()){alert(%27Die Datei ist leer.%27);return}let a=csv(raw,%27,%27),b=csv(raw,%27;%27),sep=score(b)>score(a)?%27;%27:%27,%27,rows=sep==%27;%27?b:a,first=ask(%27Position Vorname:%27,%27C2%27);if(!first)return;let last=ask(%27Position Nachname:%27,%27B2%27);if(!last)return;let list=[],n=Math.max(rows.length-first.r,rows.length-last.r);for(let i=0;i<n;i++){let x=((rows[first.r+i]?.[first.c]||%27%27)+%27 %27+(rows[last.r+i]?.[last.c]||%27%27)).trim();if(x)list.push(x)}if(!list.length){alert(%27Keine gültigen Einträge gefunden.%27);return}let input=document.querySelector(%27#manage_group_users_add-selectized');if(!input){alert('Benutzer-Suchfeld nicht gefunden.');return}if(!confirm(list.length+' Einträge gefunden.\nTrennzeichen: '+(sep==';'?'Semikolon':'Komma')+'\nVorname: '+first.l+', Nachname: '+last.l+'\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nVerarbeitung starten?'))return;let sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),set=v=>{input.focus();let s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},opts=()=>{let id=input.getAttribute('aria-owns'),box=id?document.getElementById(id):null;return box?[...box.querySelectorAll('[data-selectable]')].filter(e=>{let r=e.getBoundingClientRect();return r.width&&r.height}):[]},match=(e,q)=>norm(q).split(' ').filter(Boolean).every(x=>norm(e.textContent||'').includes(x)),clear=async()=>{let t=Date.now();while(Date.now()-t<2000){if(!opts().length)return;await sleep(50)}},find=async q=>{let t=Date.now(),last=null,s=0;while(Date.now()-t<5000){let e=opts().find(x=>match(x,q));if(e){if(e===last)s++;else{last=e;s=0}if(s>=2)return e}else{last=null;s=0}await sleep(100)}return null},gone=async e=>{let t=Date.now();while(Date.now()-t<3000){if(!e.isConnected||!opts().includes(e))return;await sleep(100)}};let done=0;for(const name of list){set('');await clear();set(name);let e=await find(name);if(!e){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}e.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));e.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));e.click();done++;await gone(e);await sleep(done===list.length?500:100)}alert('Fertig: '+done+' Einträge hinzugefügt.')}finally{f.remove()}};f.click()})()`;
 const ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR = "body > app-root > app-course-detail > div > div > div:nth-child(2) > table > tbody > tr > td.text-center.cursor-pointer";
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
@@ -2922,6 +2922,7 @@ class GradesApp {
       courseDialogGroupPhotoOpen: document.querySelector("#course-dialog-group-photo-open"),
       courseGroupPhotoDialog: document.querySelector("#course-group-photo-dialog"),
       courseGroupPhotoDialogForm: document.querySelector("#course-group-photo-dialog-form"),
+      courseGroupPhotoRotate: document.querySelector("#course-group-photo-rotate"),
       courseGroupPhotoCancel: document.querySelector("#course-group-photo-cancel"),
       courseGroupPhotoFile: document.querySelector("#course-group-photo-file"),
       courseGroupPhotoStage: document.querySelector("#course-group-photo-stage"),
@@ -3334,38 +3335,47 @@ class GradesApp {
     const overlay = this.gradeStudentPortraitOverlay;
     if (overlay?.isConnected) overlay.remove();
     this.gradeStudentPortraitOverlay = null;
+    this.gradeStudentPortraitOverlayHoverSource = null;
   }
 
-  openGradeStudentPortraitOverlay(source) {
+  openGradeStudentPortraitOverlay(source, { hover = false } = {}) {
     if (!(source instanceof HTMLImageElement) || !source.src) return;
     this.removeGradeStudentPortraitOverlay();
     const rect = source.getBoundingClientRect();
     if (!rect.width || !rect.height) return;
+    const container = source.closest("dialog");
+    const containerRect = container ? container.getBoundingClientRect() : null;
+    const offsetX = containerRect ? containerRect.left : 0;
+    const offsetY = containerRect ? containerRect.top : 0;
+    const boundsWidth = containerRect ? containerRect.width : window.innerWidth;
+    const boundsHeight = containerRect ? containerRect.height : window.innerHeight;
     const viewportPadding = 16;
     const endSize = Math.min(
-      rect.width * 3,
-      window.innerWidth - viewportPadding * 2,
-      window.innerHeight - viewportPadding * 2
+      rect.width * 6,
+      boundsWidth - viewportPadding * 2,
+      boundsHeight - viewportPadding * 2
     );
-    const centerX = rect.left + rect.width / 2;
-    const centerY = rect.top + rect.height / 2;
-    const endLeft = clamp(centerX - endSize / 2, viewportPadding, Math.max(viewportPadding, window.innerWidth - endSize - viewportPadding));
-    const endTop = clamp(centerY - endSize / 2, viewportPadding, Math.max(viewportPadding, window.innerHeight - endSize - viewportPadding));
+    const centerX = rect.left + rect.width / 2 - offsetX;
+    const centerY = rect.top + rect.height / 2 - offsetY;
+    const endLeft = clamp(centerX - endSize / 2, viewportPadding, Math.max(viewportPadding, boundsWidth - endSize - viewportPadding));
+    const endTop = clamp(centerY - endSize / 2, viewportPadding, Math.max(viewportPadding, boundsHeight - endSize - viewportPadding));
     const overlay = document.createElement("div");
     overlay.className = "grade-student-portrait-overlay";
+    overlay.classList.toggle("is-hover-preview", hover);
     overlay.setAttribute("role", "presentation");
     const portrait = document.createElement("img");
     portrait.className = "grade-student-portrait-overlay-image";
     portrait.src = source.currentSrc || source.src;
     portrait.alt = "";
-    portrait.style.left = `${rect.left}px`;
-    portrait.style.top = `${rect.top}px`;
+    portrait.style.left = `${rect.left - offsetX}px`;
+    portrait.style.top = `${rect.top - offsetY}px`;
     portrait.style.width = `${rect.width}px`;
     portrait.style.height = `${rect.height}px`;
     overlay.append(portrait);
     overlay.addEventListener("click", () => this.removeGradeStudentPortraitOverlay(), { once: true });
-    (source.closest("dialog") || document.body).append(overlay);
+    (container || document.body).append(overlay);
     this.gradeStudentPortraitOverlay = overlay;
+    this.gradeStudentPortraitOverlayHoverSource = hover ? source : null;
     requestAnimationFrame(() => {
       if (this.gradeStudentPortraitOverlay !== overlay) return;
       overlay.classList.add("is-open");
@@ -3385,6 +3395,24 @@ class GradesApp {
     event.stopPropagation();
     this.openGradeStudentPortraitOverlay(portrait);
     return true;
+  }
+
+  handleGradeStudentPortraitHoverPreview(event) {
+    const portrait = event.target instanceof Element
+      ? event.target.closest("img[data-grade-student-portrait-preview='1']")
+      : null;
+    if (!(portrait instanceof HTMLImageElement)) return;
+    if (event.relatedTarget instanceof Node && portrait.contains(event.relatedTarget)) return;
+    this.openGradeStudentPortraitOverlay(portrait, { hover: true });
+  }
+
+  handleGradeStudentPortraitHoverPreviewEnd(event) {
+    const portrait = event.target instanceof Element
+      ? event.target.closest("img[data-grade-student-portrait-preview='1']")
+      : null;
+    if (!(portrait instanceof HTMLImageElement) || portrait !== this.gradeStudentPortraitOverlayHoverSource) return;
+    if (event.relatedTarget instanceof Node && portrait.contains(event.relatedTarget)) return;
+    this.removeGradeStudentPortraitOverlay();
   }
 
   getGradeStudentPortraitUrl(student) {
@@ -3427,6 +3455,7 @@ class GradesApp {
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
+    workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
     const nextCounts = new Map(summaries.filter(([, count]) => count > 0));
     const hasChanged = nextCounts.size !== this.courseStudentCounts.size
       || [...nextCounts].some(([courseId, count]) => this.courseStudentCounts.get(courseId) !== count);
@@ -7013,6 +7042,7 @@ class GradesApp {
     stage.replaceChildren();
     stage.classList.toggle("has-image", Boolean(state.image));
     stage.classList.toggle("is-dropzone", !state.image);
+    if (this.refs.courseGroupPhotoRotate) this.refs.courseGroupPhotoRotate.disabled = !state.image;
     if (state.image) {
       stage.removeAttribute("role");
       stage.tabIndex = -1;
@@ -7077,7 +7107,9 @@ class GradesApp {
         select.setAttribute("aria-label", `Teilnehmende für Markierung ${index + 1}`);
         (this.courseDialogDraft?.students || []).forEach((student) => {
           const id = Number(student?.id || 0);
-          if (!id || (assigned.has(id) && id !== Number(selection.studentId || 0))) return;
+          const isCurrent = id === Number(selection.studentId || 0);
+          if (!id || (assigned.has(id) && !isCurrent)) return;
+          if (student.portrait && !isCurrent) return;
           const option = document.createElement("option");
           option.value = String(id);
           option.textContent = this.getGroupPhotoStudentLabel(student);
@@ -7262,6 +7294,51 @@ class GradesApp {
     } catch (error) {
       URL.revokeObjectURL(url);
       await this.showInfoMessage(error instanceof Error ? error.message : "Das Gruppenfoto konnte nicht gelesen werden.");
+    }
+  }
+
+  async rotateGroupPhotoExtractionImage() {
+    const state = this.groupPhotoExtractionState;
+    if (!state?.image || this.groupPhotoRotating) return;
+    this.groupPhotoRotating = true;
+    const rotateButton = this.refs.courseGroupPhotoRotate;
+    rotateButton?.classList.remove("is-rotating");
+    void rotateButton?.offsetWidth;
+    rotateButton?.classList.add("is-rotating");
+    try {
+      const oldImage = state.image;
+      const oldWidth = oldImage.naturalWidth;
+      const oldHeight = oldImage.naturalHeight;
+      const canvas = document.createElement("canvas");
+      canvas.width = oldHeight;
+      canvas.height = oldWidth;
+      const context = canvas.getContext("2d");
+      context.translate(oldHeight, 0);
+      context.rotate(Math.PI / 2);
+      context.drawImage(oldImage, 0, 0);
+      const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Das Foto konnte nicht gedreht werden.");
+      const url = URL.createObjectURL(blob);
+      const image = new Image();
+      image.src = url;
+      await image.decode();
+      if (state.url) URL.revokeObjectURL(state.url);
+      state.url = url;
+      state.image = image;
+      state.selections = state.selections.map((selection) => ({
+        ...selection,
+        x: oldHeight - selection.y - selection.size,
+        y: selection.x
+      }));
+      this.refs.courseGroupPhotoStage?.classList.add("is-photo-rotating");
+      this.renderGroupPhotoExtractionDialog();
+      window.setTimeout(() => {
+        this.refs.courseGroupPhotoStage?.classList.remove("is-photo-rotating");
+      }, 360);
+    } catch (error) {
+      await this.showInfoMessage(error instanceof Error ? error.message : "Das Foto konnte nicht gedreht werden.");
+    } finally {
+      this.groupPhotoRotating = false;
     }
   }
 
@@ -8383,6 +8460,12 @@ class GradesApp {
     root.addEventListener("click", async (event) => {
       if (this.handleGradeStudentPortraitPreview(event)) return;
       await this.handleGradesSurfaceClick(event);
+    });
+    root.addEventListener("mouseover", (event) => {
+      this.handleGradeStudentPortraitHoverPreview(event);
+    });
+    root.addEventListener("mouseout", (event) => {
+      this.handleGradeStudentPortraitHoverPreviewEnd(event);
     });
     root.addEventListener("contextmenu", (event) => {
       this.handleGradesSurfaceContextMenu(event);
@@ -10173,9 +10256,9 @@ class GradesApp {
                 );
               }
             } finally {
-            if (showLockNoticeAsOverlay) {
-              this.notifyParentGradeVaultOverlay(false);
-            }
+              if (showLockNoticeAsOverlay) {
+                this.notifyParentGradeVaultOverlay(false);
+              }
             }
           })().catch(() => undefined);
           return;
@@ -10495,7 +10578,7 @@ class GradesApp {
       if (!button) {
         return;
       }
-      if (button.dataset.noLesson === "1") {
+      if (button.dataset.noLesson === "1" || button.dataset.noGrades === "1") {
         return;
       }
       const courseId = Number(button.dataset.courseId);
@@ -10600,6 +10683,9 @@ class GradesApp {
         await this.showInfoMessage(error instanceof Error ? error.message : "Bilder konnten nicht übernommen werden.");
       });
     });
+    this.refs.courseGroupPhotoRotate?.addEventListener("click", () => {
+      void this.rotateGroupPhotoExtractionImage();
+    });
     this.refs.courseGroupPhotoCancel?.addEventListener("click", () => {
       this.closeGroupPhotoExtractionDialog();
     });
@@ -10692,6 +10778,12 @@ class GradesApp {
     });
     this.refs.courseDialogStudentsList?.addEventListener("click", (event) => {
       void this.handleCourseDialogStudentListClick(event);
+    });
+    this.refs.courseDialogStudentsList?.addEventListener("mouseover", (event) => {
+      this.handleGradeStudentPortraitHoverPreview(event);
+    });
+    this.refs.courseDialogStudentsList?.addEventListener("mouseout", (event) => {
+      this.handleGradeStudentPortraitHoverPreviewEnd(event);
     });
     this.refs.courseDialogStudentsList?.addEventListener("keydown", (event) => {
       if (!["Enter", " "].includes(event.key)) return;
@@ -12275,6 +12367,15 @@ class GradesApp {
     const primaryButtonLabel = primaryAction === "createCourse" ? "Neuen Kurs anlegen" : "Teilnehmende verwalten";
     const buttonRow = this.refs.gradesEmptyState?.querySelector(".button-row");
     const offsetTopThird = true;
+    if (this.refs.gradesOverviewPanel) {
+      this.refs.gradesOverviewPanel.hidden = false;
+    }
+    if (this.refs.gradesBookPanel) {
+      this.refs.gradesBookPanel.hidden = true;
+    }
+    if (this.refs.gradesEmptyState) {
+      this.refs.gradesEmptyState.hidden = false;
+    }
     this.refs.gradesOverviewPanel?.classList.toggle("is-offset-empty-state", showUnlockButton);
     this.refs.gradesOverviewPanel?.classList.toggle("has-offset-empty-state", offsetTopThird);
     if (emptyTitle) {
@@ -12353,8 +12454,8 @@ class GradesApp {
       this.clearPrivacyFocusedGradeStudent();
       this.hideGradePrivacyOverlay();
       this.setGradesOverviewEmptyState(
-        "Noch keine Teilnehmenden eingetragen",
-        "Füge Teilnehmende hinzu, um die Kursübersicht zu nutzen.",
+        "Keine Teilnehmer zugeordnet",
+        "Diesem Kurs sind aktuell keine Teilnehmer zugeordnet. Füge Teilnehmende hinzu, um die Kursübersicht zu nutzen.",
         {
           primaryAction: "manageStudents"
         }
@@ -19475,7 +19576,7 @@ class GradesApp {
           delta,
           blockingOverride
         };
-    });
+      });
     const periodLabel = getGradePeriodLabel(simulation.halfYear);
     const assignmentLabel = subcategory?.name
       ? `${category?.name || "Kategorie"} / ${subcategory.name}`
@@ -27367,7 +27468,7 @@ class GradesApp {
         return;
       }
       const availableCourses = this.store.listCourses(year.id).filter((item) => (
-        this.courseAllowsGrades(item) && !item.hiddenInSidebar
+        this.courseAllowsSeatplanRoster(item) && !item.hiddenInSidebar
       ));
       if (!this.canAccessGradeVault()) {
         if (detail?.unlock === true) {
@@ -27454,7 +27555,7 @@ class GradesApp {
       }
       const year = this.activeSchoolYear;
       const course = year
-        ? this.store.listCourses(year.id).find((item) => Number(item.id) === courseId && this.courseAllowsGrades(item))
+        ? this.store.listCourses(year.id).find((item) => Number(item.id) === courseId && this.courseAllowsSeatplanRoster(item))
         : null;
       if (!course) {
         this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Notenkurs nicht gefunden." });
@@ -28186,14 +28287,14 @@ class GradesApp {
       });
       return false;
     }
-    if (!this.courseAllowsGrades(this.getCourseForSeatplan(courseId))) {
+    if (!this.courseAllowsSeatplanRoster(this.getCourseForSeatplan(courseId))) {
       this.dispatchCourseSeatplanSaveResult({
         requestId,
         courseId,
         contextToken,
         rosterToken,
         ok: false,
-        message: "Dieser Kurs ist ohne Noten markiert."
+        message: "Dieser Kurs unterstützt keinen Sitzplan."
       });
       return false;
     }
@@ -28209,10 +28310,7 @@ class GradesApp {
     try {
       const saved = await this.runGradeCourseMutation(courseId, () => {
         const contextState = this.buildCourseSeatplanContextState(courseId, lessonDate);
-        if (
-          contextState.contextToken !== contextToken
-          || contextState.rosterToken !== rosterToken
-        ) {
+        if (contextState.rosterToken !== rosterToken) {
           const staleError = new Error("Der Kurs oder seine Teilnehmerliste wurde zwischenzeitlich geändert. Bitte den Sitzplan neu öffnen.");
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
@@ -28656,6 +28754,10 @@ class GradesApp {
     return Boolean(course) && !course.noLesson && !course.noGrades;
   }
 
+  courseAllowsSeatplanRoster(course) {
+    return Boolean(course) && !course.noLesson;
+  }
+
   lessonAllowsGrades(lesson) {
     return Boolean(lesson) && !lesson.noLesson && !lesson.noGrades;
   }
@@ -28671,14 +28773,17 @@ class GradesApp {
       this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
     );
     const sidebarCourses = isGradesView
-      ? allCourses.filter((course) => this.courseAllowsGrades(course))
+      ? allCourses.filter((course) => !course.noLesson)
       : allCourses;
+    const isEffectivelyHiddenInSidebar = (course) => (
+      Boolean(course.hiddenInSidebar) || (isGradesView && Boolean(course.noGrades))
+    );
     const courses = showHidden
       ? sidebarCourses
-      : sidebarCourses.filter((course) => !course.hiddenInSidebar);
-    const visibleCourses = courses.filter((course) => !course.hiddenInSidebar);
+      : sidebarCourses.filter((course) => !isEffectivelyHiddenInSidebar(course));
+    const visibleCourses = courses.filter((course) => !isEffectivelyHiddenInSidebar(course));
     const hiddenCourses = showHidden
-      ? courses.filter((course) => course.hiddenInSidebar)
+      ? courses.filter((course) => isEffectivelyHiddenInSidebar(course))
       : [];
     const orderedCourses = visibleCourses.concat(hiddenCourses);
     const selectableCourses = isGradesView
@@ -28716,20 +28821,25 @@ class GradesApp {
         separator.dataset.courseId = "separator";
         this.refs.sidebarCourseList.append(separator);
       }
+      const isNoGradesInGradesView = isGradesView && Boolean(course.noGrades);
       const li = document.createElement("li");
       li.dataset.courseId = String(course.id);
       li.dataset.noLesson = course.noLesson ? "1" : "0";
-      li.dataset.hiddenInSidebar = course.hiddenInSidebar ? "1" : "0";
+      li.dataset.hiddenInSidebar = isEffectivelyHiddenInSidebar(course) ? "1" : "0";
       li.draggable = !this.locked && !course.noLesson;
       const button = document.createElement("button");
       button.type = "button";
       button.dataset.courseId = String(course.id);
       button.dataset.tutorialAnchor = "grades-course";
       button.dataset.noLesson = course.noLesson ? "1" : "0";
+      button.dataset.noGrades = isNoGradesInGradesView ? "1" : "0";
       button.disabled = this.locked || Boolean(course.noLesson);
       if (course.noLesson) {
         button.classList.add("disabled-course");
         button.title = "Unterrichtsfrei-Kurs · Rechtsklick: Kursaktionen";
+        li.title = "Rechtsklick: Kursaktionen";
+      } else if (isNoGradesInGradesView) {
+        button.title = "Kurs ohne Noten · Rechtsklick: Kursaktionen";
         li.title = "Rechtsklick: Kursaktionen";
       } else {
         button.title = "Linksklick: Kursansicht / Rechtsklick: Kursaktionen / Ziehen: Reihenfolge in Randleiste";
@@ -28756,12 +28866,14 @@ class GradesApp {
       const studentCount = this.courseStudentCounts.get(Number(course.id))
         ?? persistedStudentCount
         ?? loadedStudentCount;
-      const count = document.createElement("span");
-      count.className = "course-student-count";
-      count.textContent = String(studentCount);
-      count.title = "Lernendenanzahl";
-      count.setAttribute("aria-label", "Lernendenanzahl");
-      button.append(count);
+      if (studentCount > 0) {
+        const count = document.createElement("span");
+        count.className = "course-student-count";
+        count.textContent = String(studentCount);
+        count.title = "Lernendenanzahl";
+        count.setAttribute("aria-label", "Lernendenanzahl");
+        button.append(count);
+      }
       li.append(button);
       this.refs.sidebarCourseList.append(li);
     });

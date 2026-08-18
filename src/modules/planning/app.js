@@ -1310,6 +1310,7 @@ class PlanningApp {
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
+    workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
     const nextCounts = new Map(summaries.filter(([, count]) => count > 0));
     const hasChanged = nextCounts.size !== this.courseStudentCounts.size
       || [...nextCounts].some(([courseId, count]) => this.courseStudentCounts.get(courseId) !== count);
@@ -7082,7 +7083,7 @@ class PlanningApp {
     }
     if (this.refs.dbBackupSection) {
       this.refs.dbBackupSection.hidden = unsupported;
-    }
+    }
     if (this.refs.syncFileName) {
       if (unsupported) {
         this.refs.syncFileName.textContent = persistence.fileName
@@ -9063,12 +9064,14 @@ class PlanningApp {
       const studentCount = this.courseStudentCounts.get(Number(course.id))
         ?? persistedStudentCount
         ?? loadedStudentCount;
-      const count = document.createElement("span");
-      count.className = "course-student-count";
-      count.textContent = String(studentCount);
-      count.title = "Lernendenanzahl";
-      count.setAttribute("aria-label", "Lernendenanzahl");
-      button.append(count);
+      if (studentCount > 0) {
+        const count = document.createElement("span");
+        count.className = "course-student-count";
+        count.textContent = String(studentCount);
+        count.title = "Lernendenanzahl";
+        count.setAttribute("aria-label", "Lernendenanzahl");
+        button.append(count);
+      }
       li.append(button);
       this.refs.sidebarCourseList.append(li);
     });
