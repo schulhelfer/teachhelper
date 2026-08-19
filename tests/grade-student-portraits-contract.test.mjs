@@ -88,14 +88,24 @@ test('group photo extraction is local, manually assigned, and cleans up its temp
   assert.match(gradesApp, /handleGroupPhotoStagePointerMove\(event\)/);
   assert.match(gradesApp, /isGroupPhotoCircleBorderHit\(circle, event\)/);
   assert.doesNotMatch(gradesApp, /course-group-photo-circle-resize/);
-  assert.match(gradesApp, /data-group-photo-selection-student/);
+  // Circles come from a free-hand drag or from a student pill, and a pill dropped on an
+  // existing circle links the two instead of stacking another circle on top.
+  assert.match(gradesApp, /data-group-photo-student-pill/);
+  assert.doesNotMatch(gradesApp, /course-group-photo-selection-select/);
+  assert.match(gradesApp, /createGroupPhotoSelectionForStudent\(drag\.studentId, point\)/);
+  assert.match(gradesApp, /assignGroupPhotoStudentToSelection\(/);
   assert.match(gradesApp, /data-group-photo-selection-delete/);
-  assert.match(gradesApp, /label\.title = "Markierung löschen"/);
+  // Instructions live in the hint line above the photo, not in tooltips over it.
+  assert.match(gradesHtml, /course-group-photo-hint/);
+  assert.doesNotMatch(
+    extractGradesMethod('renderGroupPhotoExtractionDialog()'),
+    /label\.(?:title|dataset\.tooltip)/
+  );
   assert.match(gradesApp, /courseGroupPhotoStage\.addEventListener\("dragenter"/);
   assert.match(gradesApp, /gradeDataTransferHasFiles\(event\.dataTransfer\)/);
   assert.match(gradesApp, /encodeGradeStudentPortraitCrop\(state\.image, selection\.x, selection\.y, selection\.size\)/);
   assert.match(gradesApp, /syncGroupPhotoSelectionPanelHeight\(\)/);
-  assert.match(gradesApp, /list\.scrollTop = clamp/);
+  assert.match(gradesApp, /--course-group-photo-image-height/);
   assert.match(gradesApp, /Vorhandenes Bild ersetzen/);
   assert.match(gradesApp, /clearGroupPhotoExtractionState\(\) \{[\s\S]*?URL\.revokeObjectURL\(state\.url\)/);
   assert.doesNotMatch(gradesApp, /face(?:\s|-)?recognition|face(?:\s|-)?detection/i);

@@ -8173,7 +8173,7 @@ import {
       els.headerVersion.dataset.updateCheckPending = '1';
       els.headerVersion.classList.add('is-checking-update');
       try {
-        const result = await serviceWorkerUpdates.checkForUpdates();
+        const result = await serviceWorkerUpdates.checkForUpdates({ force: true });
         switch (result?.status) {
           case 'update-available':
             showMessage('Update verfügbar. Aktualisieren-Dialog geöffnet.', 'info');

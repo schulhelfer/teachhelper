@@ -3,6 +3,10 @@ import { APP_VERSION } from './src/shared/app-version.js';
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
 const RUNTIME_NAME = `${CACHE_PREFIX}-runtime-v${APP_VERSION}`;
+// Muss immer APP_VERSION entsprechen (per Test abgesichert). Der Marker sorgt dafür, dass sich
+// sw.js bei jeder Version auch selbst byteweise ändert, damit der Browser das Update sicher
+// erkennt und nicht nur über das importierte Modul stolpern muss.
+const SW_VERSION_MARKER = '32';
 const APP_SHELL = [
   './',
   './index.html',
@@ -108,6 +112,23 @@ const DEFERRED_ASSETS = [
   './src/vendor/pdfjs-dist/6.2.108/LICENSE',
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
+
+if (SW_VERSION_MARKER !== APP_VERSION) {
+  console.warn(
+    `TeachHelper SW: SW_VERSION_MARKER (${SW_VERSION_MARKER}) weicht von APP_VERSION (${APP_VERSION}) ab.`,
+  );
+}
+
+// Alle Dateien, die zu genau dieser Version gehören. Sie werden ausschließlich aus dem
+// versionierten Precache bedient, damit ein aufgeschobenes Update ("Später") die laufende
+// Version nicht Datei für Datei durch die neue ersetzt.
+const PINNED_ASSET_PATHS = new Set(
+  [...APP_SHELL, ...DEFERRED_ASSETS].map((asset) => new URL(asset, self.location.href).pathname),
+);
+
+function isPinnedAsset(url) {
+  return url.origin === self.location.origin && PINNED_ASSET_PATHS.has(url.pathname);
+}
 
 const DEFERRED_IDLE_MS = 3000;
 const DEFERRED_MAX_WAIT_MS = 60000;
@@ -237,6 +258,32 @@ async function networkFirst(request, {
   }
 }
 
+async function precacheFirst(request, { fallbackUrl = null } = {}) {
+  const precache = await caches.open(PRECACHE_NAME);
+  const pinned = await precache.match(request, { ignoreSearch: true });
+  if (pinned) return pinned;
+
+  try {
+    const response = await fetch(request, { cache: 'no-cache' });
+    if (shouldCacheResponse(response)) {
+      await precache.put(request, response.clone());
+    }
+    return response;
+  } catch (error) {
+    const cached = await matchCached(request);
+    if (cached) {
+      return cached;
+    }
+    if (fallbackUrl) {
+      const fallback = await precache.match(fallbackUrl, { ignoreSearch: true });
+      if (fallback) {
+        return fallback;
+      }
+    }
+    throw error;
+  }
+}
+
 async function staleWhileRevalidate(request, event = null) {
   const cached = await matchCached(request);
   const networkPromise = fetch(request, { cache: 'no-cache' })
@@ -267,7 +314,9 @@ self.addEventListener('activate', (event) => {
     await cleanupOldCaches();
     if ('navigationPreload' in self.registration) {
       try {
-        await self.registration.navigationPreload.enable();
+        // Der Start wird aus dem versionierten Precache bedient; ein Preload-Request wäre
+        // bei jedem Start umsonst (und würde von Chrome als ungenutzt angemahnt).
+        await self.registration.navigationPreload.disable();
       } catch {
 
       }
@@ -315,6 +364,13 @@ self.addEventListener('fetch', (event) => {
   if (!deferredPrecacheAttached) {
     deferredPrecacheAttached = true;
     event.waitUntil(ensureDeferredPrecache());
+  }
+
+  if (isPinnedAsset(url)) {
+    event.respondWith(precacheFirst(request, {
+      fallbackUrl: request.mode === 'navigate' ? OFFLINE_FALLBACK_URL : null,
+    }));
+    return;
   }
 
   if (request.mode === 'navigate') {

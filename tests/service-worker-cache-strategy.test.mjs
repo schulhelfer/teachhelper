@@ -28,6 +28,8 @@ test('background revalidation asks the server instead of trusting the HTTP cache
   );
 });
 
+// Gilt nur für Dateien außerhalb von APP_SHELL/DEFERRED_ASSETS; die versionierten Dateien
+// laufen über precacheFirst und werden nie durch den Runtime-Cache überschrieben.
 test('reads the runtime cache before the precache so refreshed files win', () => {
   assert.match(
     serviceWorkerSource,
@@ -39,14 +41,74 @@ test('reads the runtime cache before the precache so refreshed files win', () =>
   );
 });
 
-test('navigated documents stay network-first and use the navigation preload', () => {
+test('files of this version are pinned to the versioned precache', () => {
   assert.match(
     serviceWorkerSource,
-    /if \(request\.mode === 'navigate'\) \{[\s\S]*?fallbackUrl: OFFLINE_FALLBACK_URL,[\s\S]*?preloadResponsePromise: event\.preloadResponse,[\s\S]*?cacheMode: 'no-cache',[\s\S]*?\}\)\);/,
+    /const PINNED_ASSET_PATHS = new Set\(\s*\[\.\.\.APP_SHELL, \.\.\.DEFERRED_ASSETS\]/,
+  );
+  assert.match(
+    serviceWorkerSource,
+    /if \(isPinnedAsset\(url\)\) \{\s*event\.respondWith\(precacheFirst\(request, \{[\s\S]*?\}\)\);\s*return;\s*\}/,
+  );
+
+  const fetchHandler = serviceWorkerSource.match(/addEventListener\('fetch'[\s\S]*$/);
+  assert.ok(fetchHandler, 'service worker must handle fetch');
+  assert.ok(
+    fetchHandler[0].indexOf('isPinnedAsset(url)') < fetchHandler[0].indexOf("request.mode === 'navigate'"),
+    'pinned files must be answered before the generic navigation and asset strategies',
+  );
+
+  const precacheFirstBody = serviceWorkerSource.match(
+    /async function precacheFirst\([\s\S]*?\n\}/,
+  );
+  assert.ok(precacheFirstBody, 'service worker must declare precacheFirst');
+  assert.match(precacheFirstBody[0], /caches\.open\(PRECACHE_NAME\)/);
+  assert.doesNotMatch(
+    precacheFirstBody[0],
+    /putInRuntimeCache|staleWhileRevalidate/,
+    'pinned files must never be refreshed in place while the old version is running',
+  );
+});
+
+test('the app shell is served from the precache instead of the network on start', () => {
+  const fetchHandler = serviceWorkerSource.match(/addEventListener\('fetch'[\s\S]*$/);
+  assert.ok(fetchHandler, 'service worker must handle fetch');
+  assert.match(
+    fetchHandler[0],
+    /fallbackUrl: request\.mode === 'navigate' \? OFFLINE_FALLBACK_URL : null,/,
+  );
+
+  const activateBody = serviceWorkerSource.match(/addEventListener\('activate'[\s\S]*?\n\}\);/);
+  assert.ok(activateBody, 'service worker must handle activate');
+  assert.match(activateBody[0], /navigationPreload\.disable\(\)/);
+  assert.doesNotMatch(activateBody[0], /navigationPreload\.enable\(\)/);
+});
+
+test('unknown navigations still fall back to the network and the offline shell', () => {
+  assert.match(
+    serviceWorkerSource,
+    /if \(request\.mode === 'navigate'\) \{[\s\S]*?fallbackUrl: OFFLINE_FALLBACK_URL,[\s\S]*?cacheMode: 'no-cache',[\s\S]*?\}\)\);/,
   );
   assert.match(
     serviceWorkerSource,
     /const preloadResponse = preloadResponsePromise \? await preloadResponsePromise : null;/,
+  );
+});
+
+test('the service worker carries its own version marker so updates are detected', async () => {
+  const appVersionSource = await readFile(
+    new URL('../src/shared/app-version.js', import.meta.url),
+    'utf8',
+  );
+  const appVersion = appVersionSource.match(/APP_VERSION\s*=\s*'([^']+)'/);
+  assert.ok(appVersion, 'app-version.js must export APP_VERSION');
+
+  const marker = serviceWorkerSource.match(/const SW_VERSION_MARKER\s*=\s*'([^']+)'/);
+  assert.ok(marker, 'sw.js must declare SW_VERSION_MARKER');
+  assert.equal(
+    marker[1],
+    appVersion[1],
+    'SW_VERSION_MARKER in sw.js must be bumped together with APP_VERSION',
   );
 });
 

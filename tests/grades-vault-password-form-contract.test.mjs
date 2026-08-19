@@ -108,6 +108,59 @@ test('ein manueller Sperrversuch mit ungespeicherten Noten wird abgefangen und e
   assert.match(resolutionSource, /lockGradeVaultSession\(\)/);
 });
 
+const vaultSource = (fromMarker, toMarker) => {
+  const start = appSource.indexOf(fromMarker);
+  const end = appSource.indexOf(toMarker, start);
+  assert.ok(start >= 0 && end > start, `${fromMarker} .. ${toMarker} must exist`);
+  return appSource.slice(start, end);
+};
+
+test('die Autofill-Felder werden erst aufgebaut, wenn der Dialog offen ist', () => {
+  const openSource = vaultSource(
+    '  openGradeVaultDialog(mode = "unlock")',
+    '  armGradeVaultDialogAutofill(mode, attempt = 0)',
+  );
+  const dialogIndex = openSource.indexOf('this.openDialog(this.refs.gradeVaultDialog)');
+  const armIndex = openSource.indexOf('this.armGradeVaultDialogAutofill(normalizedMode)');
+
+  assert.ok(dialogIndex >= 0 && armIndex > dialogIndex, 'das Scharfschalten folgt auf das Öffnen');
+  // Autofill-Attribute und Fokus dürfen nicht gesetzt werden, solange die Felder
+  // noch unsichtbar sind - sonst parst der Kennwortmanager sie als nicht füllbar.
+  assert.doesNotMatch(openSource, /setAttribute\(\s*"autocomplete"/);
+  assert.doesNotMatch(openSource, /\.focus\(/);
+});
+
+test('das Scharfschalten wartet auf das Rendern und hängt die Felder frisch ein', () => {
+  const armSource = vaultSource(
+    '  armGradeVaultDialogAutofill(mode, attempt = 0)',
+    '  rebuildGradeVaultDialogInput(input, configure)',
+  );
+
+  assert.match(armSource, /isElementRendered\(dialog\)/);
+  assert.match(armSource, /attempt < GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES/);
+  assert.match(armSource, /this\.rebuildGradeVaultDialogInput\(\s*this\.refs\.gradeVaultDialogUsername/);
+  assert.match(armSource, /this\.refs\[entry\.ref\] = this\.rebuildGradeVaultDialogInput\(/);
+  // Felder des inaktiven Modus verlassen das Formular, statt nur unsichtbar zu sein.
+  assert.match(armSource, /entry\.row\.remove\(\)/);
+  assert.doesNotMatch(armSource, /\.disabled = is(?:Unlock|Setup)Mode/);
+  // Nachfokussieren darf eine offene Vorschlagsliste nicht schließen.
+  assert.match(armSource, /document\.activeElement === focusTarget/);
+});
+
+test('ein neu eingehängtes Feld ist beim Einhängen bereits fertig konfiguriert', () => {
+  const rebuildSource = vaultSource(
+    '  rebuildGradeVaultDialogInput(input, configure)',
+    '\n  closeGradeVaultDialog()',
+  );
+  const cloneIndex = rebuildSource.indexOf('const fresh = input.cloneNode(false)');
+  const configureIndex = rebuildSource.indexOf('configure(fresh)');
+  const insertIndex = rebuildSource.indexOf('parent.replaceChild(fresh, input)');
+
+  assert.ok(cloneIndex >= 0, 'das Feld wird als frischer Knoten erzeugt');
+  assert.ok(configureIndex > cloneIndex, 'der Klon wird konfiguriert');
+  assert.ok(insertIndex > configureIndex, 'erst danach wird er eingehängt');
+});
+
 test('Sitzplan, Gruppen und Picker verwenden keinen hidden-Vorfahren für das Vault-Formular', () => {
   assert.match(shellHtml, /<section id="grades-shell" class="grades-shell" aria-label="Noten">/);
   assert.doesNotMatch(shellHtml, /id="grades-shell"[^>]*\shidden(?:\s|>)/);

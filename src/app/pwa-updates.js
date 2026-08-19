@@ -1,3 +1,6 @@
+export const UPDATE_SNOOZE_STORAGE_KEY = 'teachhelper:update-snooze-until';
+export const UPDATE_SNOOZE_MS = 6 * 60 * 60 * 1000;
+
 export function registerServiceWorkerUpdates({
   updateDialog,
   updateDialogLater,
@@ -48,6 +51,32 @@ export function registerServiceWorkerUpdates({
     postUpdateActivationToken(registration?.installing);
   };
 
+  const readSnoozedUntil = () => {
+    try {
+      const raw = window.localStorage?.getItem(UPDATE_SNOOZE_STORAGE_KEY);
+      const until = Number.parseInt(raw ?? '', 10);
+      return Number.isFinite(until) ? until : 0;
+    } catch {
+      return 0;
+    }
+  };
+
+  const writeSnoozedUntil = (until) => {
+    try {
+      if (until > 0) {
+        window.localStorage?.setItem(UPDATE_SNOOZE_STORAGE_KEY, String(until));
+      } else {
+        window.localStorage?.removeItem(UPDATE_SNOOZE_STORAGE_KEY);
+      }
+    } catch {
+
+    }
+  };
+
+  const isUpdateSnoozed = () => readSnoozedUntil() > Date.now();
+  const snoozeUpdate = () => writeSnoozedUntil(Date.now() + UPDATE_SNOOZE_MS);
+  const clearUpdateSnooze = () => writeSnoozedUntil(0);
+
   const notifyUpdateAvailability = (registration = activeRegistration) => {
     if (typeof onUpdateAvailabilityChange !== 'function') return;
     try {
@@ -76,11 +105,16 @@ export function registerServiceWorkerUpdates({
     updateDialog.removeAttribute('open');
   };
 
-  const maybePromptForUpdate = (registration) => {
+  const maybePromptForUpdate = (registration, { force = false } = {}) => {
     activeRegistration = registration || activeRegistration;
     notifyUpdateAvailability(activeRegistration);
     if (!hadControllerOnLoad) return;
     if (!activeRegistration?.waiting) return;
+    if (force) {
+      clearUpdateSnooze();
+    } else if (isUpdateSnoozed()) {
+      return;
+    }
     openUpdateDialog();
   };
 
@@ -95,7 +129,7 @@ export function registerServiceWorkerUpdates({
     });
   };
 
-  const checkForUpdates = async () => {
+  const checkForUpdates = async ({ force = false } = {}) => {
     if (!activeRegistration) {
       notifyUpdateAvailability(null);
       return { status: 'unavailable' };
@@ -106,7 +140,7 @@ export function registerServiceWorkerUpdates({
       notifyUpdateAvailability(activeRegistration);
       return { status: 'error' };
     }
-    maybePromptForUpdate(activeRegistration);
+    maybePromptForUpdate(activeRegistration, { force });
     return activeRegistration?.waiting
       ? { status: 'update-available' }
       : { status: 'up-to-date' };
@@ -129,10 +163,12 @@ export function registerServiceWorkerUpdates({
       });
 
       updateDialogLater?.addEventListener('click', () => {
+        snoozeUpdate();
         closeUpdateDialog();
       });
       updateDialogReload?.addEventListener('click', () => {
         reloadRequestedForUpdate = true;
+        clearUpdateSnooze();
         if (typeof beforeReloadForUpdate === 'function') {
           try {
             beforeReloadForUpdate();
@@ -163,6 +199,8 @@ export function registerServiceWorkerUpdates({
           watchInstallingWorker(registration, registration.installing);
         }
         registration.addEventListener('updatefound', () => {
+          // Eine neuere Version als die zuletzt vertagte: das alte "Später" gilt nicht mehr.
+          clearUpdateSnooze();
           shareUpdateActivationToken(registration);
           watchInstallingWorker(registration, registration.installing);
         });
@@ -188,9 +226,9 @@ export function registerServiceWorkerUpdates({
   void ensureInitialized();
 
   return {
-    checkForUpdates: async () => {
+    checkForUpdates: async (options = {}) => {
       await ensureInitialized();
-      return checkForUpdates();
+      return checkForUpdates(options);
     },
   };
 }

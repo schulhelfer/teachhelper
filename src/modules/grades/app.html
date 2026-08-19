@@ -602,6 +602,10 @@
         </div>
       </div>
       <input id="course-group-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
+      <p class="course-group-photo-hint">
+        Gesicht einkreisen · Namen hineinziehen oder antippen · Rand ziehen ändert die Größe · Klick auf den Namen
+        löscht
+      </p>
       <div class="course-group-photo-layout">
         <div class="course-group-photo-stage-wrap">
           <div id="course-group-photo-stage" class="course-group-photo-stage" role="button" tabindex="0"
@@ -614,7 +618,8 @@
               aria-label="Vergrößern" data-tooltip="Vergrößern" disabled>+</button>
           </div>
         </div>
-        <section class="course-group-photo-selection-panel" aria-label="Markierung zuordnen">
+        <section class="course-group-photo-selection-panel" aria-label="Teilnehmende zuordnen">
+          <h4 class="course-group-photo-selection-title">Verbleibende Teilnehmende</h4>
           <div id="course-group-photo-selection-list" class="course-group-photo-selection-list"></div>
         </section>
       </div>
@@ -1068,7 +1073,7 @@
         <input id="grade-vault-dialog-username" name="username" type="text"
           autocomplete="section-teachhelper-vault username" tabindex="-1">
       </label>
-      <div class="grade-vault-dialog-fields">
+      <div id="grade-vault-dialog-fields" class="grade-vault-dialog-fields">
         <label id="grade-vault-dialog-current-row">
           <span id="grade-vault-dialog-current-label">Aktuelles Passwort</span>
           <input id="grade-vault-dialog-current-password" name="current-password" type="password" minlength="10"

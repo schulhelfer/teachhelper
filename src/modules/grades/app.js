@@ -118,6 +118,9 @@ const GRADE_STUDENT_PORTRAIT_INPUT_TYPES = new Set(["image/jpeg", "image/png", "
 const GROUP_PHOTO_ZOOM_MIN = 1;
 const GROUP_PHOTO_ZOOM_MAX = 4;
 const GROUP_PHOTO_ZOOM_STEP = 0.25;
+// Circles dropped from a pill should look the same size on screen at any zoom level.
+const GROUP_PHOTO_DROP_SELECTION_SCREEN_PX = 96;
+const GROUP_PHOTO_PILL_DRAG_THRESHOLD_PX = 6;
 const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
@@ -142,6 +145,7 @@ const GRADE_COURSE_SCHEMA = "teachhelper-grade-course-v1";
 const GRADE_VAULT_KDF_ITERATIONS = 600000;
 const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;
 const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
+const GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES = 8;
 const GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT = false;
 const GRADE_VAULT_AUTO_LOCK_ACTIVITY_EVENTS = ["pointerdown", "keydown", "input", "wheel", "touchstart"];
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
@@ -248,6 +252,25 @@ function getGradeVaultAutofillMetadata() {
     identity: `gradevault@${origin.replace(/^https?:\/\//, "")}${basePath}`,
     sectionToken: GRADE_VAULT_AUTOFILL_SECTION
   };
+}
+
+function focusGradeVaultDialogField(field) {
+  try {
+    field.focus({ preventScroll: true });
+  } catch (_error) {
+    field.focus();
+  }
+}
+
+function isElementRendered(element) {
+  if (!element || typeof element.getClientRects !== "function") {
+    return true;
+  }
+  try {
+    return element.getClientRects().length > 0;
+  } catch (_error) {
+    return true;
+  }
 }
 
 function isRecord(value) {
@@ -2776,6 +2799,7 @@ class GradesApp {
       gradeVaultDialogUsername: document.querySelector("#grade-vault-dialog-username"),
       gradeVaultDialogTitle: document.querySelector("#grade-vault-dialog-title"),
       gradeVaultDialogText: document.querySelector("#grade-vault-dialog-text"),
+      gradeVaultDialogFields: document.querySelector("#grade-vault-dialog-fields"),
       gradeVaultDialogCurrentRow: document.querySelector("#grade-vault-dialog-current-row"),
       gradeVaultDialogCurrentLabel: document.querySelector("#grade-vault-dialog-current-label"),
       gradeVaultDialogCurrentPassword: document.querySelector("#grade-vault-dialog-current-password"),
@@ -4379,66 +4403,8 @@ class GradesApp {
     if (this.refs.gradeVaultDialogError) {
       this.refs.gradeVaultDialogError.textContent = "";
     }
-    if (this.refs.gradeVaultDialogForm) {
-      this.refs.gradeVaultDialogForm.setAttribute("autocomplete", "on");
-      this.refs.gradeVaultDialogForm.setAttribute("method", "post");
-
-
-
-      this.refs.gradeVaultDialogForm.setAttribute("action", new URL("./app.html", import.meta.url).href);
-    }
-    const autofillMetadata = getGradeVaultAutofillMetadata();
-    if (this.refs.gradeVaultDialogUsername) {
-      this.refs.gradeVaultDialogUsername.value = autofillMetadata.identity;
-      this.refs.gradeVaultDialogUsername.setAttribute(
-        "autocomplete",
-        `${autofillMetadata.sectionToken} username`
-      );
-      this.refs.gradeVaultDialogUsername.setAttribute("name", "username");
-      this.refs.gradeVaultDialogUsername.disabled = false;
-      this.refs.gradeVaultDialogUsername.readOnly = false;
-    }
-    if (this.refs.gradeVaultDialogCurrentPassword) {
-      this.refs.gradeVaultDialogCurrentPassword.value = "";
-      this.refs.gradeVaultDialogCurrentPassword.setAttribute(
-        "autocomplete",
-        `${autofillMetadata.sectionToken} current-password`
-      );
-      this.refs.gradeVaultDialogCurrentPassword.setAttribute("name", "current-password");
-    }
-    if (this.refs.gradeVaultDialogPassword) {
-      this.refs.gradeVaultDialogPassword.value = "";
-      this.refs.gradeVaultDialogPassword.setAttribute(
-        "autocomplete",
-        `${autofillMetadata.sectionToken} new-password`
-      );
-      this.refs.gradeVaultDialogPassword.setAttribute("name", "new-password");
-    }
-    if (this.refs.gradeVaultDialogConfirmPassword) {
-      this.refs.gradeVaultDialogConfirmPassword.value = "";
-      this.refs.gradeVaultDialogConfirmPassword.setAttribute(
-        "autocomplete",
-        `${autofillMetadata.sectionToken} new-password`
-      );
-      this.refs.gradeVaultDialogConfirmPassword.setAttribute("name", "confirm-password");
-    }
-    this.refs.gradeVaultDialogCurrentRow?.setAttribute("aria-hidden", isSetupMode ? "true" : "false");
     if (this.refs.gradeVaultDialogCurrentLabel) {
       this.refs.gradeVaultDialogCurrentLabel.textContent = isUnlockMode ? "Passwort" : "Aktuelles Passwort";
-    }
-    if (this.refs.gradeVaultDialogCurrentPassword) {
-      this.refs.gradeVaultDialogCurrentPassword.disabled = isSetupMode;
-      this.refs.gradeVaultDialogCurrentPassword.required = isUnlockMode || isChangeMode;
-    }
-    this.refs.gradeVaultDialogPasswordRow?.setAttribute("aria-hidden", isUnlockMode ? "true" : "false");
-    if (this.refs.gradeVaultDialogPassword) {
-      this.refs.gradeVaultDialogPassword.disabled = isUnlockMode;
-      this.refs.gradeVaultDialogPassword.required = !isUnlockMode;
-    }
-    this.refs.gradeVaultDialogConfirmRow?.setAttribute("aria-hidden", isUnlockMode ? "true" : "false");
-    if (this.refs.gradeVaultDialogConfirmPassword) {
-      this.refs.gradeVaultDialogConfirmPassword.disabled = isUnlockMode;
-      this.refs.gradeVaultDialogConfirmPassword.required = !isUnlockMode;
     }
     if (isSetupMode) {
       this.refs.gradeVaultDialogTitle.textContent = "Passwort für Noten-Verschlüsselung";
@@ -4457,40 +4423,141 @@ class GradesApp {
       this.notifyParentGradeVaultOverlay(true);
     }
     this.openDialog(this.refs.gradeVaultDialog);
-    const focusTarget = (isUnlockMode || isChangeMode)
-      ? this.refs.gradeVaultDialogCurrentPassword
-      : this.refs.gradeVaultDialogPassword;
-    if (focusTarget) {
-      try {
-        focusTarget.focus({ preventScroll: true });
-      } catch (_error) {
-        focusTarget.focus();
-      }
-      requestAnimationFrame(() => {
-        try {
-          focusTarget.focus({ preventScroll: true });
-        } catch (_error) {
-          focusTarget.focus();
-        }
-        if (typeof focusTarget.setSelectionRange === "function") {
-          const length = String(focusTarget.value || "").length;
-          try {
-            focusTarget.setSelectionRange(length, length);
-          } catch (_error) {
-            focusTarget.select?.();
-          }
-        } else {
-          focusTarget.select?.();
-        }
-      });
-      window.setTimeout(() => {
-        try {
-          focusTarget.focus({ preventScroll: true });
-        } catch (_error) {
-          focusTarget.focus();
-        }
-      }, 60);
+    this.armGradeVaultDialogAutofill(normalizedMode);
+  }
+
+  /**
+   * Baut die Felder des Vault-Formulars neu auf, sobald der Dialog wirklich
+   * gerendert ist.
+   *
+   * Kennwortmanager parsen Formulare asynchron und überspringen dabei Felder,
+   * die in einem unsichtbaren Teilbaum liegen; wird ein Feld später sichtbar,
+   * lösen sie von sich aus keinen neuen Parse aus. Genau das passiert hier:
+   * Der Dialog ist bis zum Öffnen ausgeblendet, und beim Aufruf aus einem
+   * anderen Tab deckt erst die Shell im Elterndokument den Modul-Frame auf –
+   * eine Mutation, die der Autofill-Agent dieses Frames nie zu sehen bekommt.
+   * Fällt der Parse in dieses Zeitfenster, gilt das Feld als nicht ausfüllbar
+   * und bleibt auch beim Fokussieren leer. Frisch eingefügte Felder erzwingen
+   * dagegen in allen Engines einen neuen Parse.
+   */
+  armGradeVaultDialogAutofill(mode, attempt = 0) {
+    const dialog = this.refs.gradeVaultDialog;
+    const form = this.refs.gradeVaultDialogForm;
+    if (!dialog || !form || this.pendingGradeVaultDialogMode !== mode) {
+      return;
     }
+    if (!isElementRendered(dialog) && attempt < GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES) {
+      const retry = () => this.armGradeVaultDialogAutofill(mode, attempt + 1);
+      if (typeof requestAnimationFrame === "function") {
+        requestAnimationFrame(retry);
+      } else {
+        window.setTimeout(retry, 16);
+      }
+      return;
+    }
+    const isUnlockMode = mode === "unlock";
+    const isSetupMode = mode === "setup";
+    const autofillMetadata = getGradeVaultAutofillMetadata();
+    if (!this.refs.gradeVaultDialogFields) {
+      this.refs.gradeVaultDialogFields = form.querySelector(".grade-vault-dialog-fields");
+    }
+    form.setAttribute("autocomplete", "on");
+    form.setAttribute("method", "post");
+    form.setAttribute("action", new URL("./app.html", import.meta.url).href);
+    this.refs.gradeVaultDialogUsername = this.rebuildGradeVaultDialogInput(
+      this.refs.gradeVaultDialogUsername,
+      (input) => {
+        input.setAttribute("autocomplete", `${autofillMetadata.sectionToken} username`);
+        input.setAttribute("name", "username");
+        input.disabled = false;
+        input.readOnly = false;
+        input.value = autofillMetadata.identity;
+      }
+    );
+    const rows = [
+      {
+        row: this.refs.gradeVaultDialogCurrentRow,
+        ref: "gradeVaultDialogCurrentPassword",
+        name: "current-password",
+        token: "current-password",
+        active: !isSetupMode
+      },
+      {
+        row: this.refs.gradeVaultDialogPasswordRow,
+        ref: "gradeVaultDialogPassword",
+        name: "new-password",
+        token: "new-password",
+        active: !isUnlockMode
+      },
+      {
+        row: this.refs.gradeVaultDialogConfirmRow,
+        ref: "gradeVaultDialogConfirmPassword",
+        name: "confirm-password",
+        token: "new-password",
+        active: !isUnlockMode
+      }
+    ];
+    rows.forEach((entry) => {
+      if (!entry.row) {
+        return;
+      }
+      entry.row.setAttribute("aria-hidden", entry.active ? "false" : "true");
+      if (!entry.active) {
+        // Nicht nur per CSS ausblenden: Solange new-password-Felder im
+        // Formular hängen, klassifizieren Browser es als Passwortänderung und
+        // füllen dann nicht mit dem gespeicherten Passwort.
+        entry.row.remove();
+        return;
+      }
+      this.refs.gradeVaultDialogFields?.append(entry.row);
+      this.refs[entry.ref] = this.rebuildGradeVaultDialogInput(this.refs[entry.ref], (input) => {
+        input.setAttribute("autocomplete", `${autofillMetadata.sectionToken} ${entry.token}`);
+        input.setAttribute("name", entry.name);
+        input.disabled = false;
+        input.required = true;
+        input.value = "";
+      });
+    });
+    const focusTarget = isSetupMode
+      ? this.refs.gradeVaultDialogPassword
+      : this.refs.gradeVaultDialogCurrentPassword;
+    if (!focusTarget) {
+      return;
+    }
+    focusGradeVaultDialogField(focusTarget);
+    const refocus = () => {
+      if (this.pendingGradeVaultDialogMode !== mode) {
+        return;
+      }
+      // Der Modul-Frame bekommt den Fokus je nach Einblendweg erst einen Frame
+      // später. Liegt er schon im Feld, nicht nachfassen: ein erneutes focus()
+      // schließt eine offene Vorschlagsliste des Kennwortmanagers.
+      if (document.activeElement === focusTarget) {
+        return;
+      }
+      focusGradeVaultDialogField(focusTarget);
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(refocus);
+    }
+    window.setTimeout(refocus, 60);
+  }
+
+  rebuildGradeVaultDialogInput(input, configure) {
+    if (!input) {
+      return input;
+    }
+    const parent = input.parentNode;
+    if (!parent || typeof input.cloneNode !== "function") {
+      configure(input);
+      return input;
+    }
+    // Vollständig konfiguriert einhängen, damit der Parser das Feld nicht in
+    // einem Zwischenzustand sieht.
+    const fresh = input.cloneNode(false);
+    configure(fresh);
+    parent.replaceChild(fresh, input);
+    return fresh;
   }
 
   closeGradeVaultDialog() {
@@ -7044,6 +7111,8 @@ class GradesApp {
     const state = this.groupPhotoExtractionState;
     if (state?.url) URL.revokeObjectURL(state.url);
     this.groupPhotoExtractionState = null;
+    this.groupPhotoPillDrag = null;
+    this.groupPhotoPillDragMoved = false;
   }
 
   openGroupPhotoExtractionDialog() {
@@ -7089,6 +7158,103 @@ class GradesApp {
     });
   }
 
+  getGroupPhotoImageElement() {
+    return this.refs.courseGroupPhotoStage?.querySelector("img[data-group-photo-image]") || null;
+  }
+
+  // Keeps a dropped circle at a constant on-screen size, so zooming in yields a tighter crop.
+  getGroupPhotoDefaultSelectionSize() {
+    const state = this.groupPhotoExtractionState;
+    const rect = this.getGroupPhotoImageElement()?.getBoundingClientRect();
+    const naturalWidth = state?.image?.naturalWidth || 0;
+    const naturalHeight = state?.image?.naturalHeight || 0;
+    const minEdge = Math.min(naturalWidth, naturalHeight);
+    if (!minEdge) return 0;
+    if (!rect?.width) return minEdge * 0.12;
+    return clamp(GROUP_PHOTO_DROP_SELECTION_SCREEN_PX * (naturalWidth / rect.width), minEdge * 0.04, minEdge);
+  }
+
+  // The photo box can extend past the scroll viewport, so only the overlap counts as "on the photo".
+  getGroupPhotoVisibleImageBox() {
+    const stage = this.refs.courseGroupPhotoStage;
+    const rect = this.getGroupPhotoImageElement()?.getBoundingClientRect();
+    if (!stage || !rect?.width || !rect?.height) return null;
+    const stageRect = stage.getBoundingClientRect();
+    const viewLeft = stageRect.left + stage.clientLeft;
+    const viewTop = stageRect.top + stage.clientTop;
+    const left = Math.max(viewLeft, rect.left);
+    const right = Math.min(viewLeft + stage.clientWidth, rect.right);
+    const top = Math.max(viewTop, rect.top);
+    const bottom = Math.min(viewTop + stage.clientHeight, rect.bottom);
+    return { left, right, top, bottom, imageRect: rect };
+  }
+
+  isGroupPhotoPointOverImage(event) {
+    const box = this.getGroupPhotoVisibleImageBox();
+    if (!box) return false;
+    return event.clientX >= box.left && event.clientX <= box.right
+      && event.clientY >= box.top && event.clientY <= box.bottom;
+  }
+
+  getGroupPhotoVisibleCenterPoint() {
+    const box = this.getGroupPhotoVisibleImageBox();
+    if (!box) return null;
+    const { left, right, top, bottom, imageRect } = box;
+    return this.getGroupPhotoPointerPosition({
+      clientX: right > left ? (left + right) / 2 : (imageRect.left + imageRect.right) / 2,
+      clientY: bottom > top ? (top + bottom) / 2 : (imageRect.top + imageRect.bottom) / 2
+    });
+  }
+
+  // Geometric hit test rather than elementFromPoint, which is unreliable while a pill holds the
+  // pointer capture. Later selections render on top, so they win.
+  getGroupPhotoSelectionAtPoint(point) {
+    const selections = this.groupPhotoExtractionState?.selections || [];
+    if (!point) return null;
+    for (let index = selections.length - 1; index >= 0; index -= 1) {
+      const selection = selections[index];
+      const radius = selection.size / 2;
+      const distance = Math.hypot(point.x - (selection.x + radius), point.y - (selection.y + radius));
+      if (distance <= radius) return selection;
+    }
+    return null;
+  }
+
+  getGroupPhotoFirstUnassignedSelection() {
+    return this.groupPhotoExtractionState?.selections.find((item) => !Number(item.studentId || 0)) || null;
+  }
+
+  assignGroupPhotoStudentToSelection(selectionId, studentId) {
+    const selection = this.getGroupPhotoSelection(selectionId);
+    const id = Number(studentId || 0);
+    if (!selection || !id) return;
+    // Replaces any previous assignment; that student's pill returns to the list on the next render.
+    selection.studentId = id;
+    this.groupPhotoExtractionState.selectedId = selection.id;
+    this.renderGroupPhotoExtractionDialog();
+  }
+
+  createGroupPhotoSelectionForStudent(studentId, point) {
+    const state = this.groupPhotoExtractionState;
+    const id = Number(studentId || 0);
+    if (!state?.image || !id || !point) return;
+    const naturalWidth = state.image.naturalWidth;
+    const naturalHeight = state.image.naturalHeight;
+    const size = Math.min(this.getGroupPhotoDefaultSelectionSize(), naturalWidth, naturalHeight);
+    if (!size) return;
+    const selectionId = `group-photo-${state.nextId++}`;
+    // The pointer marks the centre of the face, while selections are stored top-left first.
+    state.selections.push({
+      id: selectionId,
+      x: clamp(point.x - size / 2, 0, naturalWidth - size),
+      y: clamp(point.y - size / 2, 0, naturalHeight - size),
+      size,
+      studentId: id
+    });
+    state.selectedId = selectionId;
+    this.renderGroupPhotoExtractionDialog();
+  }
+
   renderGroupPhotoExtractionDialog() {
     const state = this.groupPhotoExtractionState;
     if (!state || !this.refs.courseGroupPhotoStage) return;
@@ -7125,16 +7291,17 @@ class GradesApp {
         circle.style.top = `${(selection.y / state.image.naturalHeight) * 100}%`;
         circle.style.width = `${(selection.size / state.image.naturalWidth) * 100}%`;
         circle.style.height = `${(selection.size / state.image.naturalHeight) * 100}%`;
-        circle.setAttribute("aria-label", "Markierung verschieben oder am Rand in der Größe ändern");
+        const student = this.courseDialogDraft?.students.find((item) => Number(item?.id || 0) === Number(selection.studentId || 0));
+        const name = student ? this.getGroupPhotoStudentLabel(student) : "";
+        circle.setAttribute("aria-label", name ? `Markierung für ${name}` : "Leere Markierung");
         const label = document.createElement("button");
         label.type = "button";
         label.className = "course-group-photo-circle-label";
         label.dataset.groupPhotoSelectionDelete = selection.id;
-        label.setAttribute("aria-label", "Markierung löschen");
-        label.title = "Markierung löschen";
-        label.dataset.tooltip = "Markierung löschen";
-        const student = this.courseDialogDraft?.students.find((item) => Number(item?.id || 0) === Number(selection.studentId || 0));
-        label.textContent = student ? this.getGroupPhotoStudentLabel(student) : "Zuordnen";
+        // No title/data-tooltip here: pop-ups over the photo get in the way while marking faces,
+        // so the instructions live in the hint line above instead. aria-label stays for screen readers.
+        label.setAttribute("aria-label", name ? `Markierung für ${name} löschen` : "Leere Markierung löschen");
+        label.textContent = name || "?";
         circle.append(label);
         imageWrap.append(circle);
       }
@@ -7150,50 +7317,32 @@ class GradesApp {
       stage.append(dropContent);
     }
     if (this.refs.courseGroupPhotoSelectionList) {
-      this.refs.courseGroupPhotoSelectionList.replaceChildren();
+      const list = this.refs.courseGroupPhotoSelectionList;
+      list.replaceChildren();
       const remaining = this.getGroupPhotoRemainingStudents();
-      const previewLabel = document.createElement("span");
-      previewLabel.className = "course-group-photo-selection-preview-label";
-      previewLabel.textContent = "Verbleibende Teilnehmende";
-      const preview = document.createElement("select");
-      preview.className = "course-group-photo-selection-select course-group-photo-selection-preview";
-      preview.setAttribute("aria-label", "Verbleibende Teilnehmende");
-      preview.title = "Verbleibende Teilnehmende";
       if (!remaining.length) {
-        const option = document.createElement("option");
-        option.textContent = "Alle Teilnehmenden zugeordnet";
-        preview.append(option);
+        const note = document.createElement("p");
+        note.className = "course-group-photo-pills-note";
+        note.textContent = "Alle Teilnehmenden zugeordnet";
+        list.append(note);
       } else {
         remaining.forEach((student) => {
-          const option = document.createElement("option");
-          option.textContent = this.getGroupPhotoStudentLabel(student);
-          preview.append(option);
+          const name = this.getGroupPhotoStudentLabel(student);
+          const pill = document.createElement("button");
+          pill.type = "button";
+          pill.className = "course-group-photo-student-pill";
+          pill.dataset.groupPhotoStudentPill = String(student.id);
+          pill.textContent = name;
+          // Without a photo there is nothing to drop onto, so the pills stay inert.
+          pill.disabled = !state.image;
+          pill.setAttribute("aria-label", state.image
+            ? `${name} auf dem Foto markieren — ziehen oder antippen`
+            : `${name} — zuerst ein Gruppenfoto laden`);
+          list.append(pill);
         });
       }
-      this.refs.courseGroupPhotoSelectionList.append(previewLabel, preview);
-      state.selections.forEach((selection, index) => {
-        const assigned = new Set(state.selections
-          .filter((item) => item.id !== selection.id && Number(item.studentId || 0) > 0)
-          .map((item) => Number(item.studentId)));
-        const select = document.createElement("select");
-        select.className = "course-group-photo-selection-select";
-        select.dataset.groupPhotoSelectionStudent = selection.id;
-        select.setAttribute("aria-label", `Teilnehmende für Markierung ${index + 1}`);
-        (this.courseDialogDraft?.students || []).forEach((student) => {
-          const id = Number(student?.id || 0);
-          const isCurrent = id === Number(selection.studentId || 0);
-          if (!id || (assigned.has(id) && !isCurrent)) return;
-          if (student.portrait && !isCurrent) return;
-          const option = document.createElement("option");
-          option.value = String(id);
-          option.textContent = this.getGroupPhotoStudentLabel(student);
-          option.selected = id === Number(selection.studentId || 0);
-          select.append(option);
-        });
-        if (!Number(selection.studentId || 0)) select.selectedIndex = -1;
-        this.refs.courseGroupPhotoSelectionList.append(select);
-      });
     }
+    this.renderGroupPhotoDropPreview();
     this.applyGroupPhotoZoom();
     this.syncGroupPhotoSelectionPanelHeight();
   }
@@ -7249,20 +7398,104 @@ class GradesApp {
       const height = Math.ceil(image?.getBoundingClientRect().height || 0);
       if (!height) return;
       layout.style.setProperty("--course-group-photo-image-height", `${height}px`);
-      const selectionId = String(this.groupPhotoExtractionState?.selectedId || "");
-      const current = selectionId
-        ? list.querySelector(`[data-group-photo-selection-student="${selectionId}"]`)
-        : list.lastElementChild;
-      if (!current || list.scrollHeight <= list.clientHeight) return;
-      const targetTop = current.offsetTop - list.offsetTop;
-      list.scrollTop = clamp(
-        targetTop - (list.clientHeight - current.offsetHeight) / 2,
-        0,
-        list.scrollHeight - list.clientHeight
-      );
     };
     stage.querySelector("img[data-group-photo-image]")?.addEventListener("load", sync, { once: true });
     requestAnimationFrame(sync);
+  }
+
+  // Drawn inside the photo instead of a body-level ghost: a modal dialog renders in the top layer,
+  // so a ghost appended elsewhere would sit behind it.
+  renderGroupPhotoDropPreview() {
+    const stage = this.refs.courseGroupPhotoStage;
+    const wrap = stage?.querySelector(".course-group-photo-image-wrap");
+    wrap?.querySelector(".course-group-photo-circle.is-preview")?.remove();
+    wrap?.querySelectorAll(".course-group-photo-circle.is-drop-target")
+      .forEach((item) => item.classList.remove("is-drop-target"));
+    const state = this.groupPhotoExtractionState;
+    const drag = this.groupPhotoPillDrag;
+    if (!wrap || !state?.image || !drag?.moved || !drag.point) return;
+    // Dropping onto an existing circle links the two, so highlight that circle instead of
+    // previewing a new one.
+    if (drag.targetId) {
+      wrap.querySelector(`[data-group-photo-selection-id="${drag.targetId}"]`)?.classList.add("is-drop-target");
+      return;
+    }
+    const size = Math.min(this.getGroupPhotoDefaultSelectionSize(), state.image.naturalWidth, state.image.naturalHeight);
+    if (!size) return;
+    const circle = document.createElement("div");
+    circle.className = "course-group-photo-circle is-preview";
+    circle.style.left = `${((drag.point.x - size / 2) / state.image.naturalWidth) * 100}%`;
+    circle.style.top = `${((drag.point.y - size / 2) / state.image.naturalHeight) * 100}%`;
+    circle.style.width = `${(size / state.image.naturalWidth) * 100}%`;
+    circle.style.height = `${(size / state.image.naturalHeight) * 100}%`;
+    wrap.append(circle);
+  }
+
+  handleGroupPhotoPillPointerDown(event) {
+    const pill = event.target.closest("[data-group-photo-student-pill]");
+    if (!pill || !this.groupPhotoExtractionState?.image) return;
+    // A dropped pill is removed by the re-render, so its trailing click never arrives to clear the
+    // flag. Every fresh gesture therefore starts from a clean slate.
+    this.groupPhotoPillDragMoved = false;
+    this.groupPhotoPillDrag = {
+      studentId: Number(pill.dataset.groupPhotoStudentPill || 0),
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      moved: false,
+      point: null,
+      targetId: ""
+    };
+    pill.setPointerCapture?.(event.pointerId);
+  }
+
+  handleGroupPhotoPillPointerMove(event) {
+    const drag = this.groupPhotoPillDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    if (!drag.moved) {
+      const distance = Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY);
+      if (distance <= GROUP_PHOTO_PILL_DRAG_THRESHOLD_PX) return;
+      drag.moved = true;
+      document.__teachhelperAppTooltipsController?.hide?.();
+      event.target.closest("[data-group-photo-student-pill]")?.classList.add("is-dragging");
+    }
+    drag.point = this.isGroupPhotoPointOverImage(event) ? this.getGroupPhotoPointerPosition(event) : null;
+    drag.targetId = this.getGroupPhotoSelectionAtPoint(drag.point)?.id || "";
+    this.renderGroupPhotoDropPreview();
+  }
+
+  handleGroupPhotoPillPointerUp(event, { cancelled = false } = {}) {
+    const drag = this.groupPhotoPillDrag;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const pill = event.target.closest("[data-group-photo-student-pill]");
+    pill?.releasePointerCapture?.(event.pointerId);
+    pill?.classList.remove("is-dragging");
+    // Re-rendering replaces the pill nodes, so drop the drag state before it happens.
+    this.groupPhotoPillDrag = null;
+    // A completed drag must not also place a circle through the click that follows it.
+    this.groupPhotoPillDragMoved = drag.moved;
+    const point = !cancelled && drag.moved && this.isGroupPhotoPointOverImage(event)
+      ? this.getGroupPhotoPointerPosition(event)
+      : null;
+    // Dropping onto an existing circle links the two instead of adding another circle.
+    const target = this.getGroupPhotoSelectionAtPoint(point);
+    if (target) this.assignGroupPhotoStudentToSelection(target.id, drag.studentId);
+    else if (point) this.createGroupPhotoSelectionForStudent(drag.studentId, point);
+    else this.renderGroupPhotoDropPreview();
+  }
+
+  handleGroupPhotoPillClick(event) {
+    const pill = event.target.closest("[data-group-photo-student-pill]");
+    if (!pill) return;
+    // detail === 0 marks a keyboard activation, which never follows a drag.
+    const draggedAway = this.groupPhotoPillDragMoved === true && event.detail > 0;
+    this.groupPhotoPillDragMoved = false;
+    if (draggedAway || !this.groupPhotoExtractionState?.image) return;
+    const studentId = Number(pill.dataset.groupPhotoStudentPill || 0);
+    // Circle the faces first, then tap the names: each tap fills the next circle still waiting.
+    const pending = this.getGroupPhotoFirstUnassignedSelection();
+    if (pending) this.assignGroupPhotoStudentToSelection(pending.id, studentId);
+    else this.createGroupPhotoSelectionForStudent(studentId, this.getGroupPhotoVisibleCenterPoint());
   }
 
   getGroupPhotoPointerPosition(event) {
@@ -7284,7 +7517,9 @@ class GradesApp {
     const centerY = rect.top + rect.height / 2;
     const radius = Math.min(rect.width, rect.height) / 2;
     const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
-    return Math.abs(distance - radius) <= Math.max(9, radius * 0.14);
+    // Capped at 60% of the radius so small circles keep a core that still drags instead of resizes.
+    const tolerance = Math.min(Math.max(16, radius * 0.28), radius * 0.6);
+    return Math.abs(distance - radius) <= tolerance;
   }
 
   handleGroupPhotoStagePointerDown(event) {
@@ -11225,14 +11460,20 @@ class GradesApp {
       });
       document.addEventListener("dragend", clearGroupPhotoDragState);
     }
-    this.refs.courseGroupPhotoSelectionList?.addEventListener("change", (event) => {
-      const select = event.target.closest("select[data-group-photo-selection-student]");
-      if (!select || !this.groupPhotoExtractionState) return;
-      const selection = this.getGroupPhotoSelection(select.dataset.groupPhotoSelectionStudent);
-      if (!selection) return;
-      selection.studentId = Number(select.value || 0);
-      this.groupPhotoExtractionState.selectedId = selection.id;
-      this.renderGroupPhotoExtractionDialog();
+    this.refs.courseGroupPhotoSelectionList?.addEventListener("pointerdown", (event) => {
+      this.handleGroupPhotoPillPointerDown(event);
+    });
+    this.refs.courseGroupPhotoSelectionList?.addEventListener("pointermove", (event) => {
+      this.handleGroupPhotoPillPointerMove(event);
+    });
+    this.refs.courseGroupPhotoSelectionList?.addEventListener("pointerup", (event) => {
+      this.handleGroupPhotoPillPointerUp(event);
+    });
+    this.refs.courseGroupPhotoSelectionList?.addEventListener("pointercancel", (event) => {
+      this.handleGroupPhotoPillPointerUp(event, { cancelled: true });
+    });
+    this.refs.courseGroupPhotoSelectionList?.addEventListener("click", (event) => {
+      this.handleGroupPhotoPillClick(event);
     });
     this.refs.courseDialogStudentsFile?.addEventListener("change", async (event) => {
       const [file] = event.target.files || [];
