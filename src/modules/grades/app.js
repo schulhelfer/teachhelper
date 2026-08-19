@@ -26267,6 +26267,7 @@ class GradesApp {
     this.activeGradeStudentId = nextStudentId;
     this.updateActiveGradeStudentHighlight();
     this.focusGradeInputElement(input, { preventScroll: true });
+    this.scheduleScrollGradeInputIntoView(input);
     window.setTimeout(() => {
       if (!document.body.contains(input) || input.disabled) {
         return;
@@ -26279,6 +26280,51 @@ class GradesApp {
         this.syncGradePickerSelectionFromInput(input);
       }
     }, 0);
+  }
+
+  scheduleScrollGradeInputIntoView(input) {
+    const run = () => {
+      this.scrollGradeInputIntoView(input);
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+      return;
+    }
+    if (typeof window !== "undefined" && typeof window.setTimeout === "function") {
+      window.setTimeout(run, 0);
+      return;
+    }
+    run();
+  }
+
+  scrollGradeInputIntoView(input) {
+    if (!(input instanceof HTMLInputElement) || !document.body.contains(input)) {
+      return false;
+    }
+    const root = this.getGradeInputRoot(input);
+    if (root !== this.refs.gradesEntryContent) {
+      return false;
+    }
+    const row = input.closest("tr") || input;
+    const rootRect = root.getBoundingClientRect();
+    const rowRect = row.getBoundingClientRect();
+    if (!rootRect.height || !rowRect.height) {
+      return false;
+    }
+    const scrollMargin = 8;
+    const visibleTop = rootRect.top + scrollMargin;
+    const visibleBottom = rootRect.bottom - scrollMargin;
+    let nextScrollTop = Number(root.scrollTop || 0);
+    if (rowRect.top < visibleTop) {
+      nextScrollTop += rowRect.top - visibleTop;
+    } else if (rowRect.bottom > visibleBottom) {
+      nextScrollTop += rowRect.bottom - visibleBottom;
+    } else {
+      return false;
+    }
+    const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+    root.scrollTop = clamp(Math.round(nextScrollTop), 0, maxScrollTop);
+    return true;
   }
 
   advanceGradePickerToNextStudent() {
