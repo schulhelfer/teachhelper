@@ -95,7 +95,16 @@ test('unknown navigations still fall back to the network and the offline shell',
   );
 });
 
-test('the service worker carries its own version marker so updates are detected', async () => {
+test('the service worker script is one self-contained file so updates cannot flap', async () => {
+  // Ein Import macht das Skript für den Update-Vergleich des Browsers zu zwei Dateien, die ein
+  // CDN unabhängig cacht. Werden sie unterschiedlich frisch ausgeliefert, wechselt die Identität
+  // des Workers hin und her und er installiert endlos neu.
+  assert.doesNotMatch(
+    serviceWorkerSource,
+    /^\s*import\s/m,
+    'sw.js must not import other modules',
+  );
+
   const appVersionSource = await readFile(
     new URL('../src/shared/app-version.js', import.meta.url),
     'utf8',
@@ -103,19 +112,25 @@ test('the service worker carries its own version marker so updates are detected'
   const appVersion = appVersionSource.match(/APP_VERSION\s*=\s*'([^']+)'/);
   assert.ok(appVersion, 'app-version.js must export APP_VERSION');
 
-  const marker = serviceWorkerSource.match(/const SW_VERSION_MARKER\s*=\s*'([^']+)'/);
-  assert.ok(marker, 'sw.js must declare SW_VERSION_MARKER');
+  const serviceWorkerVersion = serviceWorkerSource.match(/const APP_VERSION\s*=\s*'([^']+)'/);
+  assert.ok(serviceWorkerVersion, 'sw.js must declare its own APP_VERSION');
   assert.equal(
-    marker[1],
+    serviceWorkerVersion[1],
     appVersion[1],
-    'SW_VERSION_MARKER in sw.js must be bumped together with APP_VERSION',
+    'APP_VERSION in sw.js must be bumped together with src/shared/app-version.js',
   );
+});
+
+test('reinstalling the same version does not refetch the whole app shell', () => {
+  const precacheBody = serviceWorkerSource.match(/async function preCacheAppShell\([\s\S]*?\n\}/);
+  assert.ok(precacheBody, 'service worker must declare preCacheAppShell');
+  assert.match(precacheBody[0], /if \(await cache\.match\(asset\)\) return;/);
 });
 
 test('precaching the app shell does not bypass the HTTP cache', () => {
   assert.match(
     serviceWorkerSource,
-    /APP_SHELL\.map\(\(asset\) => cache\.add\(asset\)\)/,
+    /APP_SHELL\.map\(async \(asset\) => \{[\s\S]*?await cache\.add\(asset\);/,
   );
   assert.doesNotMatch(serviceWorkerSource, /\{ cache: 'reload' \}/);
   assert.doesNotMatch(serviceWorkerSource, /cache\.add\(new Request\(/);

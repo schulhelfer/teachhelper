@@ -1,5 +1,8 @@
 export const UPDATE_SNOOZE_STORAGE_KEY = 'teachhelper:update-snooze-until';
 export const UPDATE_SNOOZE_MS = 6 * 60 * 60 * 1000;
+// focus und visibilitychange feuern in der Modul-Oberfläche sehr oft (jeder Wechsel zwischen
+// Shell und Modul-iframe). Ohne Drossel würde daraus eine Flut von Update-Requests.
+export const AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS = 60 * 1000;
 
 export function registerServiceWorkerUpdates({
   updateDialog,
@@ -38,6 +41,7 @@ export function registerServiceWorkerUpdates({
   let reloadRequestedForUpdate = false;
   let activeRegistration = null;
   let initPromise = null;
+  let lastUpdateCheckAt = 0;
   const updateActivationToken = createUpdateActivationToken();
 
   const postUpdateActivationToken = (worker) => {
@@ -134,11 +138,17 @@ export function registerServiceWorkerUpdates({
       notifyUpdateAvailability(null);
       return { status: 'unavailable' };
     }
-    try {
-      await activeRegistration.update();
-    } catch {
-      notifyUpdateAvailability(activeRegistration);
-      return { status: 'error' };
+    const now = Date.now();
+    const throttled = !force
+      && now - lastUpdateCheckAt < AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS;
+    if (!throttled) {
+      lastUpdateCheckAt = now;
+      try {
+        await activeRegistration.update();
+      } catch {
+        notifyUpdateAvailability(activeRegistration);
+        return { status: 'error' };
+      }
     }
     maybePromptForUpdate(activeRegistration, { force });
     return activeRegistration?.waiting

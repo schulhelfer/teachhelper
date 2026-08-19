@@ -5,6 +5,7 @@ import test from 'node:test';
 const source = await readFile(new URL('../src/app/pwa-updates.js', import.meta.url), 'utf8');
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
 const {
+  AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS,
   UPDATE_SNOOZE_MS,
   UPDATE_SNOOZE_STORAGE_KEY,
   registerServiceWorkerUpdates,
@@ -219,6 +220,41 @@ test('a newer version cancels a snooze taken for the previous one', async () => 
     registration.installing.state = 'installed';
     registration.installing.dispatch('statechange');
     assert.equal(dialogs.updateDialog.showModalCount, 2);
+  });
+});
+
+test('automatic checks are throttled while manual checks always hit the network', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+
+    await updates.checkForUpdates();
+    assert.equal(registration.updateCount, 1);
+
+    // Jeder Wechsel zwischen Shell und Modul-iframe löst focus/visibilitychange aus.
+    for (let index = 0; index < 25; index += 1) {
+      await updates.checkForUpdates();
+    }
+    assert.equal(
+      registration.updateCount,
+      1,
+      'rapid automatic checks must not produce one update request each',
+    );
+
+    const result = await updates.checkForUpdates({ force: true });
+    assert.equal(registration.updateCount, 2, 'a manual check bypasses the throttle');
+    assert.equal(result.status, 'update-available');
+    assert.ok(AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS >= 60 * 1000);
+  });
+});
+
+test('a throttled check still reports the waiting update', async () => {
+  await withEnvironment(async () => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+    await updates.checkForUpdates();
+    const throttled = await updates.checkForUpdates();
+    assert.equal(throttled.status, 'update-available');
   });
 });
 

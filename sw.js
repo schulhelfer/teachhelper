@@ -1,12 +1,14 @@
-import { APP_VERSION } from './src/shared/app-version.js';
+// Bewusst kein Import aus src/shared/app-version.js: Die Identität des Service Workers muss von
+// genau einer Datei abhängen. Bei einem Import besteht das Skript für den Update-Vergleich des
+// Browsers aus zwei Dateien, die ein CDN (GitHub Pages) unabhängig voneinander cacht. Liefert es
+// sw.js und die Versionsdatei unterschiedlich frisch aus, sieht der Browser abwechselnd zwei
+// Skript-Varianten und installiert endlos neu. Der Wert wird per Test mit APP_VERSION synchron
+// gehalten.
+const APP_VERSION = '33';
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
 const RUNTIME_NAME = `${CACHE_PREFIX}-runtime-v${APP_VERSION}`;
-// Muss immer APP_VERSION entsprechen (per Test abgesichert). Der Marker sorgt dafür, dass sich
-// sw.js bei jeder Version auch selbst byteweise ändert, damit der Browser das Update sicher
-// erkennt und nicht nur über das importierte Modul stolpern muss.
-const SW_VERSION_MARKER = '32';
 const APP_SHELL = [
   './',
   './index.html',
@@ -113,12 +115,6 @@ const DEFERRED_ASSETS = [
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
 
-if (SW_VERSION_MARKER !== APP_VERSION) {
-  console.warn(
-    `TeachHelper SW: SW_VERSION_MARKER (${SW_VERSION_MARKER}) weicht von APP_VERSION (${APP_VERSION}) ab.`,
-  );
-}
-
 // Alle Dateien, die zu genau dieser Version gehören. Sie werden ausschließlich aus dem
 // versionierten Precache bedient, damit ein aufgeschobenes Update ("Später") die laufende
 // Version nicht Datei für Datei durch die neue ersetzt.
@@ -163,7 +159,13 @@ function isStaticAssetRequest(request, url) {
 
 async function preCacheAppShell() {
   const cache = await caches.open(PRECACHE_NAME);
-  const results = await Promise.allSettled(APP_SHELL.map((asset) => cache.add(asset)));
+  // Bereits vorhandene Einträge werden übersprungen: Der Cache-Name enthält die Version, gleiche
+  // Version bedeutet also gleiche Inhalte. So kostet eine Neuinstallation derselben Version keinen
+  // einzigen Request mehr.
+  const results = await Promise.allSettled(APP_SHELL.map(async (asset) => {
+    if (await cache.match(asset)) return;
+    await cache.add(asset);
+  }));
   const failedAssets = results
     .map((result, index) => (result.status === 'rejected' ? APP_SHELL[index] : null))
     .filter(Boolean);
