@@ -955,6 +955,53 @@ test('read-only roster summaries never replace or publish the active grade cours
   assert.equal(publishCount, 0);
 });
 
+test('roster summaries find the participants of a database that has no course segments yet', async () => {
+  const store = new FakeStore();
+  store.publicState.courses = [{ id: 8, name: '8b' }];
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [
+      { id: 80, courseId: 8, firstName: 'Ada' },
+      { id: 81, courseId: 8, firstName: 'Bea' },
+    ],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = null;
+
+  assert.deepEqual(await runtime.getGradeCourseRosterSummary(8), {
+    courseId: 8,
+    studentCount: 2,
+  });
+});
+
+test('a roster summary never leaves an empty placeholder behind that would make the course load empty', async () => {
+  const store = new FakeStore();
+  store.publicState.courses = [{ id: 8, name: '8b' }];
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [
+      { id: 80, courseId: 8, firstName: 'Ada' },
+      { id: 81, courseId: 8, firstName: 'Bea' },
+    ],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = null;
+
+  await runtime.getGradeCourseRosterSummary(8);
+  assert.equal(
+    runtime.courseCache.has(8),
+    false,
+    'a read-only summary must not cache a substitute state',
+  );
+
+  await runtime.ensureGradeCourseLoaded(8, { publish: false });
+  assert.equal(
+    store.gradeState.gradeStudents.length,
+    2,
+    'opening the course after a summary must still show its participants',
+  );
+});
+
 test('read-only grade course snapshots retain the selected course data without replacing the active course', async () => {
   const store = new FakeStore();
   store.gradeState = {

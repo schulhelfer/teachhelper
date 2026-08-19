@@ -963,14 +963,27 @@ export class WorkspaceRuntime {
   async getGradeCourseRosterSummary(courseId) {
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return null;
+    await this.courseLoadTail;
     let state = this.loadedCourseId === id
       ? this.store.exportGradeVaultStateSnapshot()
       : this.courseCache.get(id) || null;
     if (!state) {
       const text = this.segmentTexts.get(id) || '';
-      state = text ? await this.decodeCourse(id, text) : emptyGradeState(this.store);
-      this.courseCache.set(id, state);
-      this.rememberPerformanceIndex(id, state);
+      if (text) {
+        state = await this.decodeCourse(id, text);
+        this.courseCache.set(id, state);
+        this.rememberPerformanceIndex(id, state);
+      } else {
+        // Noch keine Segmente: Die Kursdaten können unsegmentiert im Store liegen (frisch
+        // importierte oder in dieser Sitzung angelegte Datenbank). Genau wie beim Laden des
+        // Kurses zählt dann dieser Bestand.
+        const initialState = this.store.exportGradeVaultStateSnapshot();
+        state = !this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
+          ? initialState
+          : emptyGradeState(this.store);
+        // Ein leerer Ersatzzustand darf nicht in den courseCache: ensureGradeCourseLoaded liest
+        // ihn dort zuerst und würde den Kurs dann tatsächlich leer laden.
+      }
     }
     const studentCount = (Array.isArray(state?.gradeStudents) ? state.gradeStudents : [])
       .filter((student) => (

@@ -261,3 +261,53 @@ test('a throttled check still reports the waiting update', async () => {
 test('the manual version check in the shell forces the dialog', () => {
   assert.match(mainSource, /serviceWorkerUpdates\.checkForUpdates\(\{ force: true \}\)/);
 });
+
+test('a failing beforeReloadForUpdate blocks the update instead of skipping waiting', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({
+      ...dialogs,
+      serviceWorkerUrl: './sw.js',
+      beforeReloadForUpdate: async () => false,
+    });
+    await updates.checkForUpdates();
+    assert.equal(dialogs.updateDialog.open, true);
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      false,
+      'a blocked update must not skip waiting',
+    );
+    assert.equal(dialogs.updateDialog.open, true, 'the dialog stays open when the backup fails');
+  });
+});
+
+test('a successful beforeReloadForUpdate runs before the waiting worker is activated', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    const calls = [];
+    const updates = registerServiceWorkerUpdates({
+      ...dialogs,
+      serviceWorkerUrl: './sw.js',
+      beforeReloadForUpdate: async () => {
+        calls.push('backup');
+        return true;
+      },
+    });
+    await updates.checkForUpdates();
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.deepEqual(calls, ['backup'], 'the backup hook must run before the update is applied');
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      true,
+      'the waiting worker is told to skip waiting',
+    );
+    assert.equal(dialogs.updateDialog.open, false);
+  });
+});

@@ -2247,6 +2247,32 @@ import {
     }
   }
 
+  async function createBackupBeforeUpdateReload() {
+    const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
+    const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
+    const backupDirectoryConnected = Boolean(workspaceOwner?.backupState?.directoryHandle);
+    if (!databaseConnected || !backupDirectoryConnected) return true;
+    try {
+      const created = await workspaceOwner.createLatestWebBackup?.('update', true);
+      if (created) return true;
+      showMessage('Vor dem Update konnte kein Backup erstellt werden.', 'error');
+      return false;
+    } catch (error) {
+      const detail = error instanceof Error && error.message
+        ? ` ${error.message}`
+        : '';
+      showMessage(`Vor dem Update konnte kein Backup erstellt werden.${detail}`, 'error');
+      return false;
+    }
+  }
+
+  async function beforeReloadForUpdate() {
+    const backupCreated = await createBackupBeforeUpdateReload();
+    if (!backupCreated) return false;
+    markVersionUpdateHintPending();
+    return true;
+  }
+
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
       const frame = getModuleFrameForMessage(event);
@@ -8161,7 +8187,7 @@ import {
     updateDialog: els.updateDialog,
     updateDialogLater: els.updateDialogLater,
     updateDialogReload: els.updateDialogReload,
-    beforeReloadForUpdate: markVersionUpdateHintPending,
+    beforeReloadForUpdate,
     onUpdateAvailabilityChange: setVersionUpdateAvailability,
     serviceWorkerUrl: './sw.js',
   });

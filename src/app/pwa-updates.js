@@ -177,23 +177,29 @@ export function registerServiceWorkerUpdates({
         closeUpdateDialog();
       });
       updateDialogReload?.addEventListener('click', () => {
-        reloadRequestedForUpdate = true;
-        clearUpdateSnooze();
-        if (typeof beforeReloadForUpdate === 'function') {
-          try {
-            beforeReloadForUpdate();
-          } catch {
-            
+        void (async () => {
+          // beforeReloadForUpdate darf das Update verhindern (z.B. wenn ein Datenbank-Backup vor
+          // dem Neuladen fehlschlägt) - erst danach wird die neue Version tatsächlich aktiviert.
+          if (typeof beforeReloadForUpdate === 'function') {
+            let allowed = true;
+            try {
+              allowed = await beforeReloadForUpdate();
+            } catch {
+              allowed = true;
+            }
+            if (allowed === false) return;
           }
-        }
-        notifyUpdateAvailability(null);
-        closeUpdateDialog();
-        const waitingWorker = activeRegistration?.waiting;
-        if (waitingWorker) {
-          waitingWorker.postMessage({ type: 'SKIP_WAITING', token: updateActivationToken });
-          return;
-        }
-        window.location.reload();
+          reloadRequestedForUpdate = true;
+          clearUpdateSnooze();
+          notifyUpdateAvailability(null);
+          closeUpdateDialog();
+          const waitingWorker = activeRegistration?.waiting;
+          if (waitingWorker) {
+            waitingWorker.postMessage({ type: 'SKIP_WAITING', token: updateActivationToken });
+            return;
+          }
+          window.location.reload();
+        })();
       });
 
       try {

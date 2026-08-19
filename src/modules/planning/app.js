@@ -1304,14 +1304,19 @@ class PlanningApp {
     const summaries = await Promise.all(courses.map(async (course) => {
       try {
         const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
-        return [Number(course.id), Number(summary?.studentCount || 0)];
+        // null heißt "unbekannt" (z. B. Tresor zwischenzeitlich gesperrt), nicht "keine Teilnehmer".
+        return [Number(course.id), summary ? Number(summary.studentCount || 0) : null];
       } catch {
-        return [Number(course.id), 0];
+        return [Number(course.id), null];
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
-    workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
-    const nextCounts = new Map(summaries.filter(([, count]) => count > 0));
+    // Nur ein vollständig ermittelter Stand darf gespeichert werden. Sonst würde ein einzelner
+    // Fehler die bekannten Teilnehmerzahlen aller Kurse dauerhaft mit 0 überschreiben.
+    if (summaries.every(([, count]) => count !== null)) {
+      workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
+    }
+    const nextCounts = new Map(summaries.filter(([, count]) => Number(count) > 0));
     const hasChanged = nextCounts.size !== this.courseStudentCounts.size
       || [...nextCounts].some(([courseId, count]) => this.courseStudentCounts.get(courseId) !== count);
     this.courseStudentCounts = nextCounts;
@@ -1860,7 +1865,7 @@ class PlanningApp {
   }
 
   async tryReconnectStoredSyncFile() {
-    if (this.hasShellDatabaseConnection()) return true;
+    if (this.hasShellDatabaseConnection()) return false;
     const result = await this.executeWorkspaceAction("sync-reconnect", { allowPrompt: true });
     return Boolean(result.changed);
   }

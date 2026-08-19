@@ -4,7 +4,7 @@
 // sw.js und die Versionsdatei unterschiedlich frisch aus, sieht der Browser abwechselnd zwei
 // Skript-Varianten und installiert endlos neu. Der Wert wird per Test mit APP_VERSION synchron
 // gehalten.
-const APP_VERSION = '33';
+const APP_VERSION = '34';
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
@@ -159,13 +159,13 @@ function isStaticAssetRequest(request, url) {
 
 async function preCacheAppShell() {
   const cache = await caches.open(PRECACHE_NAME);
-  // Bereits vorhandene Einträge werden übersprungen: Der Cache-Name enthält die Version, gleiche
-  // Version bedeutet also gleiche Inhalte. So kostet eine Neuinstallation derselben Version keinen
-  // einzigen Request mehr.
-  const results = await Promise.allSettled(APP_SHELL.map(async (asset) => {
-    if (await cache.match(asset)) return;
-    await cache.add(asset);
-  }));
+  // Ein vollständiger Precache dieser Version wird nicht angefasst: Eine Neuinstallation derselben
+  // Version kostet dann keinen einzigen Request. Ist er unvollständig, wird alles neu geholt statt
+  // nur die Lücken gefüllt - so heilt eine Installation, die während eines Deployments eine
+  // Mischung aus zwei Versionen erwischt hat, sich beim nächsten Anlauf selbst.
+  const cached = await Promise.all(APP_SHELL.map((asset) => cache.match(asset)));
+  if (cached.every(Boolean)) return;
+  const results = await Promise.allSettled(APP_SHELL.map((asset) => cache.add(asset)));
   const failedAssets = results
     .map((result, index) => (result.status === 'rejected' ? APP_SHELL[index] : null))
     .filter(Boolean);

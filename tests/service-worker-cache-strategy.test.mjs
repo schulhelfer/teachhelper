@@ -121,16 +121,21 @@ test('the service worker script is one self-contained file so updates cannot fla
   );
 });
 
-test('reinstalling the same version does not refetch the whole app shell', () => {
+test('a complete precache is left alone while an incomplete one is refilled entirely', () => {
   const precacheBody = serviceWorkerSource.match(/async function preCacheAppShell\([\s\S]*?\n\}/);
   assert.ok(precacheBody, 'service worker must declare preCacheAppShell');
-  assert.match(precacheBody[0], /if \(await cache\.match\(asset\)\) return;/);
+  // Vollständig: keine Requests. Unvollständig: alles neu holen, damit eine während eines
+  // Deployments entstandene Mischung aus zwei Versionen wieder verschwindet.
+  assert.match(
+    precacheBody[0],
+    /const cached = await Promise\.all\(APP_SHELL\.map\(\(asset\) => cache\.match\(asset\)\)\);\s*if \(cached\.every\(Boolean\)\) return;/,
+  );
 });
 
 test('precaching the app shell does not bypass the HTTP cache', () => {
   assert.match(
     serviceWorkerSource,
-    /APP_SHELL\.map\(async \(asset\) => \{[\s\S]*?await cache\.add\(asset\);/,
+    /APP_SHELL\.map\(\(asset\) => cache\.add\(asset\)\)/,
   );
   assert.doesNotMatch(serviceWorkerSource, /\{ cache: 'reload' \}/);
   assert.doesNotMatch(serviceWorkerSource, /cache\.add\(new Request\(/);

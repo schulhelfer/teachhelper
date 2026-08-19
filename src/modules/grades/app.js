@@ -3498,14 +3498,19 @@ class GradesApp {
     const summaries = await Promise.all(courses.map(async (course) => {
       try {
         const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
-        return [Number(course.id), Number(summary?.studentCount || 0)];
+        // null heißt "unbekannt" (z. B. Tresor zwischenzeitlich gesperrt), nicht "keine Teilnehmer".
+        return [Number(course.id), summary ? Number(summary.studentCount || 0) : null];
       } catch {
-        return [Number(course.id), 0];
+        return [Number(course.id), null];
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
-    workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
-    const nextCounts = new Map(summaries.filter(([, count]) => count > 0));
+    // Nur ein vollständig ermittelter Stand darf gespeichert werden. Sonst würde ein einzelner
+    // Fehler die bekannten Teilnehmerzahlen aller Kurse dauerhaft mit 0 überschreiben.
+    if (summaries.every(([, count]) => count !== null)) {
+      workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
+    }
+    const nextCounts = new Map(summaries.filter(([, count]) => Number(count) > 0));
     const hasChanged = nextCounts.size !== this.courseStudentCounts.size
       || [...nextCounts].some(([courseId, count]) => this.courseStudentCounts.get(courseId) !== count);
     this.courseStudentCounts = nextCounts;
@@ -28264,11 +28269,13 @@ class GradesApp {
       }
       const courses = [];
       const studentCounts = {};
+      let studentCountsComplete = true;
       const workspaceOwner = this.getWorkspaceOwnerApp();
       for (const course of availableCourses) {
         const rosterSummary = typeof workspaceOwner?.getGradeCourseRosterSummary === "function"
           ? await workspaceOwner.getGradeCourseRosterSummary(course.id)
           : null;
+        if (!rosterSummary) studentCountsComplete = false;
         const count = Number(rosterSummary?.studentCount || 0);
         studentCounts[String(Number(course.id) || 0)] = count;
         const courseSummary = count > 0 ? {
@@ -28281,7 +28288,10 @@ class GradesApp {
           courses.push(courseSummary);
         }
       }
-      workspaceOwner?.setGradeCourseStudentCounts?.(studentCounts);
+      // Nur einen vollständig ermittelten Stand speichern, siehe refreshSidebarCourseStudentCounts.
+      if (studentCountsComplete) {
+        workspaceOwner?.setGradeCourseStudentCounts?.(studentCounts);
+      }
       this.dispatchGradeRosterCoursesResult({
         requestId,
         ...responseContext,
