@@ -12,6 +12,19 @@ const [defaults, store, runtime, gradesHtml, gradesApp, seatplanApp, bridge] = a
   readFile(new URL('../src/app/planning-seatplan-bridge.js', import.meta.url), 'utf8'),
 ]);
 
+function extractGradesMethod(signature) {
+  const start = gradesApp.indexOf(signature);
+  assert.notEqual(start, -1, `${signature} must exist`);
+  const bodyStart = gradesApp.indexOf('{', start + signature.length);
+  let depth = 0;
+  for (let index = bodyStart; index < gradesApp.length; index += 1) {
+    if (gradesApp[index] === '{') depth += 1;
+    if (gradesApp[index] === '}') depth -= 1;
+    if (depth === 0) return gradesApp.slice(start, index + 1);
+  }
+  throw new Error(`${signature} is incomplete`);
+}
+
 test('portrait setting defaults to hidden and is accepted by the grades settings command', () => {
   assert.match(defaults, /SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT = false/);
   assert.match(store, /showGradeStudentPortraits: SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT/);
@@ -86,4 +99,29 @@ test('group photo extraction is local, manually assigned, and cleans up its temp
   assert.match(gradesApp, /Vorhandenes Bild ersetzen/);
   assert.match(gradesApp, /clearGroupPhotoExtractionState\(\) \{[\s\S]*?URL\.revokeObjectURL\(state\.url\)/);
   assert.doesNotMatch(gradesApp, /face(?:\s|-)?recognition|face(?:\s|-)?detection/i);
+});
+
+test('cross-course portrait import copies whole records and only fills empty portraits', () => {
+  assert.match(gradesHtml, /id="course-dialog-portrait-import"/);
+  assert.match(gradesApp, /courseDialogPortraitImport\.hidden = !showPortraits/);
+
+  const collect = extractGradesMethod('async collectGradeStudentPortraitSources(excludeCourseId = 0)');
+  // Reads foreign courses without switching the loaded grade course.
+  assert.match(collect, /workspaceOwner\.getGradeCourseStateSnapshot\(course\.id\)/);
+  assert.doesNotMatch(collect, /ensureGradeCourseLoaded|withTemporaryGradeCourse/);
+  // Scans every school year, newest first, and skips the course being edited.
+  assert.match(collect, /\[\.\.\.this\.store\.listSchoolYears\(\)\]\.reverse\(\)/);
+  assert.match(collect, /Number\(course\.id\) !== skipCourseId/);
+  // Matches on the normalised first + last name pair only.
+  assert.match(collect, /buildGradeStudentNameMatchKey\(student\.lastName, student\.firstName\)/);
+
+  const importPortraits = extractGradesMethod('async importCourseDialogPortraitsFromOtherCourses()');
+  // Copies the portrait record instead of linking back to the source course.
+  assert.match(importPortraits, /student\.portrait = \{ mime: match\.portrait\.mime, data: match\.portrait\.data \}/);
+  assert.doesNotMatch(gradesApp, /portraitRef|portraitSourceCourseId/);
+  // Existing portraits are never overwritten.
+  assert.match(importPortraits, /&& !normalizeGradeStudentPortrait\(student\?\.portrait\)/);
+  // Writes stay in the dialog draft; persistence remains the dialog submit path.
+  assert.doesNotMatch(importPortraits, /replaceGradeStudentsForCourse|runGradeCourseMutation/);
+  assert.match(importPortraits, /this\.revokeGradeStudentPortraitObjectUrls\(\)/);
 });

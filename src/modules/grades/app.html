@@ -559,8 +559,14 @@
         </p>
         <p><strong>2. Importiere die Namensliste</strong></p>
         <input id="course-dialog-students-file" type="file" accept=".csv,text/csv" hidden>
-        <div id="course-dialog-students-dropzone" class="course-dialog-dropzone" tabindex="0">
-          Auswählen<br>oder<br>Ablegen
+        <div id="course-students-import-row" class="course-students-import-row">
+          <div id="course-dialog-students-dropzone" class="course-dialog-dropzone" tabindex="0">
+            Auswählen<br>oder<br>Ablegen
+          </div>
+          <div id="course-dialog-roster-import" class="course-dialog-roster-import">
+            <div id="course-dialog-roster-pills" class="course-dialog-roster-pills"
+              aria-label="Teilnehmende aus einem anderen Kurs hinzufügen"></div>
+          </div>
         </div>
         <p><strong id="course-students-dialog-step-title">3. Verwalte die Teilnehmenden (Anzahl: 0)</strong></p>
         <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
@@ -568,6 +574,10 @@
           <button type="button" id="course-dialog-group-photo-open" class="ghost"
             aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">Bilder aus Gruppenfoto
             extrahieren</button>
+          <button type="button" id="course-dialog-portrait-import" class="ghost"
+            aria-label="Bilder aus anderen Kursen importieren"
+            title="Sucht in allen Schuljahren nach gleichem Vor- und Nachnamen und übernimmt fehlende Bilder">Bilder aus
+            anderen Kursen importieren</button>
           <button type="button" id="course-dialog-students-add" class="sidebar-add-btn"
             aria-label="Teilnehmende hinzufügen" title="Teilnehmende hinzufügen">
             <span class="sidebar-add-plus" aria-hidden="true"></span>

@@ -586,6 +586,9 @@ function buildGradeStudentNameMatchKey(lastName, firstName) {
   ].join("|");
 }
 
+const GRADE_STUDENT_EMPTY_NAME_MATCH_KEY = buildGradeStudentNameMatchKey("", "");
+const PORTRAIT_IMPORT_DIALOG_TITLE = "Bilder aus anderen Kursen";
+
 
 function compareGradeStudents(a, b) {
   const aLast = normalizeGradeTextPart(a && a.lastName);
@@ -2928,8 +2931,12 @@ class GradesApp {
       courseDialogStudentsTemplate: document.querySelector("#course-dialog-students-template"),
       courseDialogStudentsAdd: document.querySelector("#course-dialog-students-add"),
       courseDialogStudentsDropzone: document.querySelector("#course-dialog-students-dropzone"),
+      courseStudentsImportRow: document.querySelector("#course-students-import-row"),
+      courseDialogRosterImport: document.querySelector("#course-dialog-roster-import"),
+      courseDialogRosterPills: document.querySelector("#course-dialog-roster-pills"),
       courseDialogStudentsList: document.querySelector("#course-dialog-students-list"),
       courseDialogGroupPhotoOpen: document.querySelector("#course-dialog-group-photo-open"),
+      courseDialogPortraitImport: document.querySelector("#course-dialog-portrait-import"),
       courseGroupPhotoDialog: document.querySelector("#course-group-photo-dialog"),
       courseGroupPhotoDialogForm: document.querySelector("#course-group-photo-dialog-form"),
       courseGroupPhotoRotate: document.querySelector("#course-group-photo-rotate"),
@@ -3023,6 +3030,11 @@ class GradesApp {
     this.inlineTopicLessonId = null;
     this.inlineTopicDraft = "";
     this.courseDialogDraft = null;
+    this.courseDialogRosterImportCourses = [];
+    this.courseDialogRosterImportState = "idle";
+    this.courseDialogRosterImportToken = 0;
+    this.courseDialogRosterImportedCourseIds = new Set();
+    this.courseDialogRosterImportBusy = false;
     this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
     this.activeGradeOverrideContext = null;
@@ -6341,6 +6353,7 @@ class GradesApp {
         id: Number(student.id),
         lastName: String(student.lastName || ""),
         firstName: String(student.firstName || ""),
+        rufname: String(student.rufname || ""),
         performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair),
         portrait: normalizeGradeStudentPortrait(student.portrait)
       })),
@@ -6561,6 +6574,7 @@ class GradesApp {
         id: Number(student?.id || 0),
         lastName: String(student?.lastName || ""),
         firstName: String(student?.firstName || ""),
+        rufname: String(student?.rufname || ""),
         performanceFlair: normalizeGradePerformanceFlair(student?.performanceFlair),
         portrait: normalizeGradeStudentPortrait(student?.portrait)
       })),
@@ -6597,6 +6611,9 @@ class GradesApp {
     const showPortraits = this.shouldShowGradeStudentPortraits();
     if (this.refs.courseDialogGroupPhotoOpen) {
       this.refs.courseDialogGroupPhotoOpen.hidden = !showPortraits;
+    }
+    if (this.refs.courseDialogPortraitImport) {
+      this.refs.courseDialogPortraitImport.hidden = !showPortraits;
     }
     if (!showPortraits && this.refs.courseGroupPhotoDialog?.open) {
       this.closeGroupPhotoExtractionDialog();
@@ -7134,26 +7151,26 @@ class GradesApp {
     }
     if (this.refs.courseGroupPhotoSelectionList) {
       this.refs.courseGroupPhotoSelectionList.replaceChildren();
-      if (!state.selections.length) {
-        const remaining = this.getGroupPhotoRemainingStudents();
-        const preview = document.createElement("select");
-        preview.className = "course-group-photo-selection-select course-group-photo-selection-preview";
-        preview.disabled = true;
-        preview.setAttribute("aria-label", "Verbleibende Teilnehmende");
-        preview.title = "Verbleibende Teilnehmende";
-        if (!remaining.length) {
+      const remaining = this.getGroupPhotoRemainingStudents();
+      const previewLabel = document.createElement("span");
+      previewLabel.className = "course-group-photo-selection-preview-label";
+      previewLabel.textContent = "Verbleibende Teilnehmende";
+      const preview = document.createElement("select");
+      preview.className = "course-group-photo-selection-select course-group-photo-selection-preview";
+      preview.setAttribute("aria-label", "Verbleibende Teilnehmende");
+      preview.title = "Verbleibende Teilnehmende";
+      if (!remaining.length) {
+        const option = document.createElement("option");
+        option.textContent = "Alle Teilnehmenden zugeordnet";
+        preview.append(option);
+      } else {
+        remaining.forEach((student) => {
           const option = document.createElement("option");
-          option.textContent = "Alle Teilnehmenden zugeordnet";
+          option.textContent = this.getGroupPhotoStudentLabel(student);
           preview.append(option);
-        } else {
-          remaining.forEach((student) => {
-            const option = document.createElement("option");
-            option.textContent = this.getGroupPhotoStudentLabel(student);
-            preview.append(option);
-          });
-        }
-        this.refs.courseGroupPhotoSelectionList.append(preview);
+        });
       }
+      this.refs.courseGroupPhotoSelectionList.append(previewLabel, preview);
       state.selections.forEach((selection, index) => {
         const assigned = new Set(state.selections
           .filter((item) => item.id !== selection.id && Number(item.studentId || 0) > 0)
@@ -7461,6 +7478,116 @@ class GradesApp {
     this.revokeGradeStudentPortraitObjectUrls();
     this.closeGroupPhotoExtractionDialog();
     this.renderCourseDialogStudents();
+  }
+
+  async collectGradeStudentPortraitSources(excludeCourseId = 0) {
+    const workspaceOwner = this.getWorkspaceOwnerApp();
+    if (typeof workspaceOwner?.getGradeCourseStateSnapshot !== "function") {
+      throw new Error("Notenkursdienst ist nicht verfügbar.");
+    }
+    if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
+    const skipCourseId = Number(excludeCourseId) || 0;
+    // Newest school year first, so the most recent photo of a name wins.
+    const years = [...this.store.listSchoolYears()].reverse();
+    const sources = new Map();
+    for (const year of years) {
+      const courses = this.store.listCourses(year.id).filter((course) => (
+        this.courseAllowsGrades(course) && Number(course.id) !== skipCourseId
+      ));
+      for (const course of courses) {
+        const state = await workspaceOwner.getGradeCourseStateSnapshot(course.id);
+        (state?.gradeStudents || []).forEach((student) => {
+          if (student?.isPlaceholder || Number(student?.id || 0) <= 0) return;
+          const portrait = normalizeGradeStudentPortrait(student?.portrait);
+          if (!portrait) return;
+          const key = buildGradeStudentNameMatchKey(student.lastName, student.firstName);
+          if (key === GRADE_STUDENT_EMPTY_NAME_MATCH_KEY) return;
+          const known = sources.get(key);
+          if (known) {
+            if (known.portrait.data !== portrait.data) known.ambiguous = true;
+            return;
+          }
+          sources.set(key, {
+            portrait,
+            label: year?.name ? `${course.name} (${year.name})` : String(course.name || "Kurs"),
+            ambiguous: false
+          });
+        });
+      }
+    }
+    return sources;
+  }
+
+  async importCourseDialogPortraitsFromOtherCourses() {
+    if (!this.courseDialogDraft || !this.shouldShowGradeStudentPortraits()) {
+      return;
+    }
+    if (!this.canAccessGradeVault()) {
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      return;
+    }
+    const targets = (this.courseDialogDraft.students || []).filter((student) => (
+      !student?.isPlaceholder
+      && !normalizeGradeStudentPortrait(student?.portrait)
+      && buildGradeStudentNameMatchKey(student?.lastName, student?.firstName) !== GRADE_STUDENT_EMPTY_NAME_MATCH_KEY
+    ));
+    if (targets.length === 0) {
+      await this.showInfoMessage(
+        "Alle benannten Teilnehmenden dieses Kurses haben bereits ein Bild.",
+        PORTRAIT_IMPORT_DIALOG_TITLE
+      );
+      return;
+    }
+    const button = this.refs.courseDialogPortraitImport;
+    const previousLabel = button ? button.textContent : "";
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Suche läuft …";
+    }
+    try {
+      const sources = await this.collectGradeStudentPortraitSources(
+        Number(this.refs.courseStudentsDialogId?.value || 0)
+      );
+      const sourceLabels = new Set();
+      let imported = 0;
+      let ambiguous = 0;
+      targets.forEach((student) => {
+        const match = sources.get(buildGradeStudentNameMatchKey(student.lastName, student.firstName));
+        if (!match) return;
+        student.portrait = { mime: match.portrait.mime, data: match.portrait.data };
+        imported += 1;
+        if (match.ambiguous) ambiguous += 1;
+        sourceLabels.add(match.label);
+      });
+      if (imported === 0) {
+        await this.showInfoMessage(
+          targets.length === 1
+            ? "In anderen Kursen wurde kein Bild mit gleichem Vor- und Nachnamen gefunden."
+            : `Für die ${targets.length} Teilnehmenden ohne Bild wurde in anderen Kursen kein Bild mit gleichem Vor- und Nachnamen gefunden.`,
+          PORTRAIT_IMPORT_DIALOG_TITLE
+        );
+        return;
+      }
+      this.revokeGradeStudentPortraitObjectUrls();
+      this.renderCourseDialogStudents();
+      const lines = [
+        `${imported} von ${targets.length} fehlenden Bildern übernommen aus: ${
+          [...sourceLabels].sort((left, right) => left.localeCompare(right, "de")).join(", ")
+        }.`
+      ];
+      if (ambiguous > 0) {
+        lines.push(
+          `${ambiguous === 1 ? "Ein Name kam" : `${ambiguous} Namen kamen`} in mehreren Kursen mit unterschiedlichen Bildern vor. Übernommen wurde jeweils das Bild aus dem neuesten Schuljahr.`
+        );
+      }
+      lines.push("Die Bilder sind noch nicht gespeichert – dazu die Teilnehmendenliste mit 💾 sichern.");
+      await this.showInfoMessage(lines.join("\n\n"), PORTRAIT_IMPORT_DIALOG_TITLE);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = previousLabel;
+      }
+    }
   }
 
   handleCourseDialogStructureInput(event) {
@@ -7957,12 +8084,15 @@ class GradesApp {
     }
     this.refs.courseStudentsDialogId.value = String(course.id);
     this.courseStudentsDialogInitialSignature = this.getCourseStudentsDialogSignature();
+    this.resetCourseDialogRosterImport();
     this.renderCourseDialogStudents();
     this.openDialog(this.refs.courseStudentsDialog);
+    void this.refreshCourseDialogRosterImportCourses();
   }
 
   closeCourseStudentsDialog() {
     this.courseStudentsDialogInitialSignature = "";
+    this.resetCourseDialogRosterImport();
     this.closeIservGroupPopulateDialog();
     this.courseDialogDraft = null;
     this.closeGroupPhotoExtractionDialog();
@@ -8253,7 +8383,9 @@ class GradesApp {
     const existingStudents = draftStudents.length > 0
       ? draftStudents
       : (this.courseDialogDraft?.id ? this.store.listGradeStudents(this.courseDialogDraft.id) : []);
-    const existingFlairByNameKey = new Map();
+    // Re-importing a roster recreates every student, so the fields the CSV cannot
+    // carry are matched back by name. Ambiguous names keep nothing.
+    const existingDataByNameKey = new Map();
     const duplicateNameKeys = new Set();
     (existingStudents || []).forEach((student) => {
       const lastName = normalizeGradeTextPart(student && student.lastName);
@@ -8262,14 +8394,18 @@ class GradesApp {
         return;
       }
       const key = buildGradeStudentNameMatchKey(lastName, firstName);
-      if (existingFlairByNameKey.has(key)) {
+      if (existingDataByNameKey.has(key)) {
         duplicateNameKeys.add(key);
-        existingFlairByNameKey.delete(key);
+        existingDataByNameKey.delete(key);
         return;
       }
-      existingFlairByNameKey.set(key, normalizeGradePerformanceFlair(student && student.performanceFlair));
+      existingDataByNameKey.set(key, {
+        rufname: normalizeGradeTextPart(student && student.rufname),
+        performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair),
+        portrait: normalizeGradeStudentPortrait(student && student.portrait)
+      });
     });
-    duplicateNameKeys.forEach((key) => existingFlairByNameKey.delete(key));
+    duplicateNameKeys.forEach((key) => existingDataByNameKey.delete(key));
     const students = [];
     dataRows.forEach((row) => {
       let lastName = "";
@@ -8295,8 +8431,15 @@ class GradesApp {
       if (!lastName && !firstName) {
         return;
       }
-      const performanceFlair = existingFlairByNameKey.get(buildGradeStudentNameMatchKey(lastName, firstName)) || "";
-      students.push({ id: 0, lastName, firstName, performanceFlair });
+      const carried = existingDataByNameKey.get(buildGradeStudentNameMatchKey(lastName, firstName));
+      students.push({
+        id: 0,
+        lastName,
+        firstName,
+        rufname: carried?.rufname || "",
+        performanceFlair: carried?.performanceFlair || "",
+        portrait: carried?.portrait || null
+      });
     });
     const importedNameCounts = new Map();
     students.forEach((student) => {
@@ -8305,7 +8448,9 @@ class GradesApp {
     });
     students.forEach((student) => {
       if ((importedNameCounts.get(buildGradeStudentNameMatchKey(student.lastName, student.firstName)) || 0) > 1) {
+        student.rufname = "";
         student.performanceFlair = "";
+        student.portrait = null;
       }
     });
     return {
@@ -8335,6 +8480,9 @@ class GradesApp {
       const result = this.extractStudentsFromCsvRows(rows, delimiter, file.name);
       this.courseDialogDraft.students = result.students;
       this.courseDialogDraft.importMeta = result.importMeta;
+      // The CSV replaces the whole list, so no course contributes to it any more.
+      this.courseDialogRosterImportedCourseIds.clear();
+      this.renderCourseDialogRosterImport();
       this.renderCourseDialogStudents();
     } catch (error) {
       const message = error instanceof Error && error.message
@@ -8344,7 +8492,207 @@ class GradesApp {
     }
   }
 
+  listCourseDialogRosterImportCandidates() {
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return [];
+    }
+    const currentCourseId = Number(this.refs.courseStudentsDialogId?.value || this.courseDialogDraft?.id || 0);
+    return this.store.listCourses(year.id).filter((course) => (
+      this.courseAllowsSeatplanRoster(course)
+      && !course.hiddenInSidebar
+      && Number(course.id) !== currentCourseId
+    ));
+  }
 
+  resetCourseDialogRosterImport() {
+    this.courseDialogRosterImportToken += 1;
+    this.courseDialogRosterImportCourses = [];
+    this.courseDialogRosterImportState = "idle";
+    this.courseDialogRosterImportedCourseIds = new Set();
+    this.courseDialogRosterImportBusy = false;
+    this.refs.courseDialogRosterPills?.replaceChildren();
+    // Stays hidden until the first roster lookup answers, so no empty box flashes up.
+    this.refs.courseStudentsImportRow?.classList.add("roster-import-unavailable");
+  }
+
+  async refreshCourseDialogRosterImportCourses() {
+    if (!this.refs.courseDialogRosterPills) {
+      return;
+    }
+    const token = ++this.courseDialogRosterImportToken;
+    const candidates = this.listCourseDialogRosterImportCandidates();
+    const workspaceOwner = this.getWorkspaceOwnerApp();
+    if (candidates.length === 0 || !this.canAccessGradeVault() || !workspaceOwner) {
+      this.courseDialogRosterImportCourses = [];
+      this.courseDialogRosterImportState = "ready";
+      this.renderCourseDialogRosterImport();
+      return;
+    }
+    this.courseDialogRosterImportState = "loading";
+    this.renderCourseDialogRosterImport();
+    const courses = [];
+    for (const course of candidates) {
+      let count = Number(this.courseStudentCounts.get(Number(course.id)) || 0);
+      try {
+        const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
+        if (summary) {
+          count = Number(summary.studentCount || 0);
+        }
+      } catch (_error) {
+        // Falls back to the cached sidebar count for this course.
+      }
+      if (token !== this.courseDialogRosterImportToken) {
+        return;
+      }
+      if (count > 0) {
+        courses.push({
+          id: Number(course.id),
+          name: String(course.name || "Kurs"),
+          color: normalizeCourseColor(course.color, Boolean(course.noLesson)),
+          count
+        });
+      }
+    }
+    this.courseDialogRosterImportCourses = courses;
+    this.courseDialogRosterImportState = "ready";
+    this.renderCourseDialogRosterImport();
+  }
+
+  renderCourseDialogRosterImport() {
+    const pills = this.refs.courseDialogRosterPills;
+    if (!pills) {
+      return;
+    }
+    pills.replaceChildren();
+    const isLoading = this.courseDialogRosterImportState === "loading";
+    const courses = isLoading ? [] : (this.courseDialogRosterImportCourses || []);
+    const hasSurface = isLoading || courses.length > 0;
+    this.refs.courseStudentsImportRow?.classList.toggle("roster-import-unavailable", !hasSurface);
+    if (!hasSurface) {
+      return;
+    }
+    if (isLoading) {
+      const note = document.createElement("span");
+      note.className = "course-dialog-roster-pills-note";
+      note.textContent = "Kurse werden geladen …";
+      pills.append(note);
+      return;
+    }
+    courses.forEach((course) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "course-dialog-roster-pill";
+      button.textContent = course.name;
+      button.style.background = course.color;
+      button.style.color = readableTextColor(course.color);
+      button.dataset.rosterImportCourse = String(course.id);
+      button.title = `Teilnehmende aus „${course.name}“ hinzufügen (${course.count})`;
+      button.setAttribute("aria-label", `Teilnehmende aus ${course.name} hinzufügen`);
+      const isImported = this.courseDialogRosterImportedCourseIds.has(Number(course.id));
+      button.classList.toggle("is-imported", isImported);
+      if (isImported) {
+        button.setAttribute("aria-current", "true");
+      }
+      button.disabled = this.courseDialogRosterImportBusy === true;
+      pills.append(button);
+    });
+  }
+
+  async loadGradeStudentsForRosterImport(courseId) {
+    const id = Number(courseId || 0);
+    if (!id) {
+      return [];
+    }
+    const owner = this.getWorkspaceOwnerApp();
+    if (typeof owner?.getGradeCourseStateSnapshot === "function") {
+      const gradeState = await owner.getGradeCourseStateSnapshot(id);
+      if (!gradeState) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
+      return (Array.isArray(gradeState.gradeStudents) ? gradeState.gradeStudents : [])
+        .filter((student) => Number(student?.courseId || 0) === id);
+    }
+    return this.withTemporaryGradeCourse(id, () => this.store.listGradeStudents(id));
+  }
+
+  async importCourseDialogStudentsFromCourse(courseId) {
+    const id = Number(courseId || 0);
+    if (!id || !this.courseDialogDraft || this.courseDialogRosterImportBusy) {
+      return;
+    }
+    if (!this.canAccessGradeVault()) {
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      return;
+    }
+    const course = this.listCourseDialogRosterImportCandidates().find((item) => Number(item.id) === id);
+    if (!course) {
+      return;
+    }
+    const courseName = String(course.name || "Kurs");
+    this.courseDialogRosterImportBusy = true;
+    this.renderCourseDialogRosterImport();
+    try {
+      const sourceStudents = (await this.loadGradeStudentsForRosterImport(id)).filter((student) => (
+        !student?.isPlaceholder
+        && Boolean(normalizeGradeTextPart(student?.lastName) || normalizeGradeTextPart(student?.firstName))
+      ));
+      if (sourceStudents.length === 0) {
+        await this.showInfoMessage(`„${courseName}“ enthält keine Teilnehmenden.`);
+        return;
+      }
+      // The current rows stay untouched: they keep their ids, and with them every
+      // grade entry, so adding a second course never asks to delete anything.
+      const students = Array.isArray(this.courseDialogDraft.students)
+        ? this.courseDialogDraft.students.slice()
+        : [];
+      const previousCount = students.length;
+      const knownNameKeys = new Set(students.map((student) => buildGradeStudentNameMatchKey(
+        normalizeGradeTextPart(student?.lastName),
+        normalizeGradeTextPart(student?.firstName)
+      )));
+      sourceStudents.forEach((student) => {
+        const lastName = normalizeGradeTextPart(student?.lastName);
+        const firstName = normalizeGradeTextPart(student?.firstName);
+        const key = buildGradeStudentNameMatchKey(lastName, firstName);
+        if (knownNameKeys.has(key)) {
+          return;
+        }
+        knownNameKeys.add(key);
+        students.push({
+          id: 0,
+          lastName,
+          firstName,
+          rufname: normalizeGradeTextPart(student?.rufname),
+          // Flairs describe the exam status in this course, so an added row starts without one.
+          performanceFlair: "",
+          portrait: normalizeGradeStudentPortrait(student?.portrait)
+        });
+      });
+      const added = students.length - previousCount;
+      const skipped = sourceStudents.length - added;
+      this.courseDialogDraft.students = students.sort(compareGradeStudents);
+      this.courseDialogRosterImportedCourseIds.add(id);
+      this.revokeGradeStudentPortraitObjectUrls();
+      this.renderCourseDialogStudents();
+      if (added === 0) {
+        await this.showInfoMessage(`Alle Teilnehmenden aus „${courseName}“ stehen bereits in der Liste.`);
+      } else if (skipped > 0) {
+        await this.showInfoMessage(
+          `${added} von ${sourceStudents.length} Teilnehmenden aus „${courseName}“ hinzugefügt. `
+          + `${skipped === 1 ? "Ein Name stand" : `${skipped} Namen standen`} bereits in der Liste.`
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error && error.message
+        ? error.message
+        : "Die Teilnehmenden konnten nicht importiert werden.";
+      await this.showInfoMessage(message);
+    } finally {
+      this.courseDialogRosterImportBusy = false;
+      this.renderCourseDialogRosterImport();
+    }
+  }
 
   getDefaultGradeAssessmentHalfYear(referenceIso = "") {
     const year = this.activeSchoolYear;
@@ -10776,6 +11124,14 @@ class GradesApp {
     this.refs.courseDialogGroupPhotoOpen?.addEventListener("click", () => {
       this.openGroupPhotoExtractionDialog();
     });
+    this.refs.courseDialogPortraitImport?.addEventListener("click", () => {
+      void this.importCourseDialogPortraitsFromOtherCourses().catch(async (error) => {
+        await this.showInfoMessage(
+          error instanceof Error && error.message ? error.message : "Bilder konnten nicht importiert werden.",
+          PORTRAIT_IMPORT_DIALOG_TITLE
+        );
+      });
+    });
     this.refs.courseGroupPhotoFile?.addEventListener("change", (event) => {
       const [file] = event.target.files || [];
       event.target.value = "";
@@ -10922,6 +11278,13 @@ class GradesApp {
     });
     this.refs.courseDialogCopyH1ToH2?.addEventListener("click", () => {
       this.copyCourseDialogH1StructureToH2();
+    });
+    this.refs.courseDialogRosterPills?.addEventListener("click", (event) => {
+      const pill = event.target.closest("[data-roster-import-course]");
+      if (!pill || pill.disabled) {
+        return;
+      }
+      void this.importCourseDialogStudentsFromCourse(pill.dataset.rosterImportCourse);
     });
     if (this.refs.courseDialogStudentsDropzone) {
       let dragDepth = 0;
