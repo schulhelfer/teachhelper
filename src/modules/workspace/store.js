@@ -2620,6 +2620,7 @@ export class WorkspaceStore {
     for (const rawStudent of students || []) {
       const lastName = normalizeGradeTextPart(rawStudent && rawStudent.lastName);
       const firstName = normalizeGradeTextPart(rawStudent && rawStudent.firstName);
+      const rufname = normalizeGradeTextPart(rawStudent && rawStudent.rufname);
       const performanceFlair = normalizeGradePerformanceFlair(rawStudent && rawStudent.performanceFlair);
       const portrait = normalizeGradeStudentPortrait(rawStudent && rawStudent.portrait);
       if (!lastName && !firstName) {
@@ -2639,6 +2640,7 @@ export class WorkspaceStore {
         courseId: id,
         lastName,
         firstName,
+        rufname,
         performanceFlair,
         portrait,
         sortKey: buildGradeStudentSortKey(lastName, firstName, studentId)
@@ -4891,6 +4893,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
       const courseId = Number(item.courseId);
       const lastName = normalizeGradeTextPart(item.lastName);
       const firstName = normalizeGradeTextPart(item.firstName);
+      const rufname = normalizeGradeTextPart(item.rufname);
       const performanceFlair = normalizeGradePerformanceFlair(item.performanceFlair);
       const portrait = normalizeGradeStudentPortrait(item.portrait);
       return {
@@ -4898,6 +4901,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         courseId,
         lastName,
         firstName,
+        rufname,
         performanceFlair,
         portrait,
         sortKey: buildGradeStudentSortKey(lastName, firstName, id)

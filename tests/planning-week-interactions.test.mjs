@@ -89,7 +89,7 @@ test('week layout scaling batches reads before writes and has no search loop', (
   assert.ok(lastMetricRead >= 0);
   assert.ok(firstBatchedWrite > lastMetricRead);
   assert.equal(methodSource.includes('while ('), false);
-  assert.equal(methodSource.includes('getBoundingClientRect();\n      '), false);
+  assert.equal(methodSource.includes('getBoundingClientRect();'), false);
   assert.equal(methodSource.includes('blockFitRatio'), false);
   assert.ok(methodSource.includes('this.syncWeekLessonBlockTopicScales()'));
 });

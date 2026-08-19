@@ -115,6 +115,9 @@ const GRADE_STUDENT_PORTRAIT_MIME = "image/webp";
 const GRADE_STUDENT_PORTRAIT_SIZE = 512;
 const GRADE_STUDENT_PORTRAIT_MAX_BYTES = 150 * 1024;
 const GRADE_STUDENT_PORTRAIT_INPUT_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const GROUP_PHOTO_ZOOM_MIN = 1;
+const GROUP_PHOTO_ZOOM_MAX = 4;
+const GROUP_PHOTO_ZOOM_STEP = 0.25;
 const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
@@ -277,7 +280,12 @@ function normalizeGradeStudentNameOrder(value) {
   return value === "first" ? "first" : "last";
 }
 
-function formatGradeStudentName(student, order = "last") {
+function getGradeStudentPreferredFirstName(student) {
+  const rufname = String(student?.rufname || "").trim();
+  return rufname || String(student?.firstName || "").trim();
+}
+
+function formatGradeStudentName(student, order = "last", options = {}) {
   if (!student) {
     return "";
   }
@@ -285,7 +293,9 @@ function formatGradeStudentName(student, order = "last") {
     return student.placeholderLabel;
   }
   const lastName = String(student.lastName || "").trim();
-  const firstName = String(student.firstName || "").trim();
+  const firstName = options.legalName
+    ? String(student.firstName || "").trim()
+    : getGradeStudentPreferredFirstName(student);
   if (normalizeGradeStudentNameOrder(order) === "first") {
     return [firstName, lastName].filter(Boolean).join(" ");
   }
@@ -2926,6 +2936,9 @@ class GradesApp {
       courseGroupPhotoCancel: document.querySelector("#course-group-photo-cancel"),
       courseGroupPhotoFile: document.querySelector("#course-group-photo-file"),
       courseGroupPhotoStage: document.querySelector("#course-group-photo-stage"),
+      courseGroupPhotoZoomIn: document.querySelector("#course-group-photo-zoom-in"),
+      courseGroupPhotoZoomOut: document.querySelector("#course-group-photo-zoom-out"),
+      courseGroupPhotoZoomLevel: document.querySelector("#course-group-photo-zoom-level"),
       courseGroupPhotoSelectionList: document.querySelector("#course-group-photo-selection-list"),
       courseDialogCategoryAdd: document.querySelector("#course-dialog-category-add"),
       courseDialogStructureList: document.querySelector("#course-dialog-structure-list"),
@@ -6628,6 +6641,15 @@ class GradesApp {
         firstName.placeholder = "Vorname";
         firstName.autocomplete = "off";
 
+        const rufname = document.createElement("input");
+        rufname.type = "text";
+        rufname.name = `student-rufname-${index}`;
+        rufname.dataset.studentField = "rufname";
+        rufname.dataset.studentIndex = String(index);
+        rufname.value = String(student.rufname || "");
+        rufname.placeholder = "Rufname";
+        rufname.autocomplete = "off";
+
         const flairSelect = document.createElement("select");
         flairSelect.name = `student-performance-flair-${index}`;
         flairSelect.className = `course-dialog-student-flair-select${performanceFlair ? " has-flair" : ""}`;
@@ -6716,7 +6738,7 @@ class GradesApp {
         }
 
         grid.append(portraitControl);
-        grid.append(lastName, firstName, flairSelect, portraitInput, removeButton);
+        grid.append(lastName, firstName, rufname, flairSelect, portraitInput, removeButton);
         row.append(grid);
         this.refs.courseDialogStudentsList.append(row);
       });
@@ -6843,7 +6865,7 @@ class GradesApp {
     if (!this.courseDialogDraft) {
       return;
     }
-    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", performanceFlair: "", portrait: null });
+    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", rufname: "", performanceFlair: "", portrait: null });
     this.renderCourseDialogStudents();
   }
 
@@ -6868,7 +6890,7 @@ class GradesApp {
     const index = Number(input.dataset.studentIndex || -1);
     const field = String(input.dataset.studentField || "");
     const student = this.courseDialogDraft.students[index];
-    if (!student || !["lastName", "firstName", "performanceFlair"].includes(field)) {
+    if (!student || !["lastName", "firstName", "rufname", "performanceFlair"].includes(field)) {
       return;
     }
     student[field] = field === "performanceFlair"
@@ -7016,7 +7038,8 @@ class GradesApp {
       selections: [],
       selectedId: "",
       drag: null,
-      nextId: 1
+      nextId: 1,
+      zoom: 1
     };
     this.renderGroupPhotoExtractionDialog();
     this.openDialog(this.refs.courseGroupPhotoDialog);
@@ -7033,6 +7056,20 @@ class GradesApp {
 
   getGroupPhotoStudentLabel(student) {
     return buildGradeStudentDisplayName(student?.lastName, student?.firstName) || "Unbenannte Person";
+  }
+
+  getGroupPhotoRemainingStudents() {
+    const state = this.groupPhotoExtractionState;
+    const assigned = new Set(
+      (state?.selections || [])
+        .filter((item) => Number(item.studentId || 0) > 0)
+        .map((item) => Number(item.studentId))
+    );
+    return (this.courseDialogDraft?.students || []).filter((student) => {
+      const id = Number(student?.id || 0);
+      if (!id || assigned.has(id)) return false;
+      return !student.portrait;
+    });
   }
 
   renderGroupPhotoExtractionDialog() {
@@ -7097,6 +7134,26 @@ class GradesApp {
     }
     if (this.refs.courseGroupPhotoSelectionList) {
       this.refs.courseGroupPhotoSelectionList.replaceChildren();
+      if (!state.selections.length) {
+        const remaining = this.getGroupPhotoRemainingStudents();
+        const preview = document.createElement("select");
+        preview.className = "course-group-photo-selection-select course-group-photo-selection-preview";
+        preview.disabled = true;
+        preview.setAttribute("aria-label", "Verbleibende Teilnehmende");
+        preview.title = "Verbleibende Teilnehmende";
+        if (!remaining.length) {
+          const option = document.createElement("option");
+          option.textContent = "Alle Teilnehmenden zugeordnet";
+          preview.append(option);
+        } else {
+          remaining.forEach((student) => {
+            const option = document.createElement("option");
+            option.textContent = this.getGroupPhotoStudentLabel(student);
+            preview.append(option);
+          });
+        }
+        this.refs.courseGroupPhotoSelectionList.append(preview);
+      }
       state.selections.forEach((selection, index) => {
         const assigned = new Set(state.selections
           .filter((item) => item.id !== selection.id && Number(item.studentId || 0) > 0)
@@ -7120,7 +7177,43 @@ class GradesApp {
         this.refs.courseGroupPhotoSelectionList.append(select);
       });
     }
+    this.applyGroupPhotoZoom();
     this.syncGroupPhotoSelectionPanelHeight();
+  }
+
+  applyGroupPhotoZoom() {
+    const state = this.groupPhotoExtractionState;
+    const zoom = state?.zoom || 1;
+    const wrap = this.refs.courseGroupPhotoStage?.querySelector(".course-group-photo-image-wrap");
+    if (wrap) wrap.style.transform = zoom === 1 ? "" : `scale(${zoom})`;
+    if (this.refs.courseGroupPhotoZoomLevel) {
+      this.refs.courseGroupPhotoZoomLevel.textContent = `${Math.round(zoom * 100)}%`;
+    }
+    const hasImage = Boolean(state?.image);
+    if (this.refs.courseGroupPhotoZoomOut) {
+      this.refs.courseGroupPhotoZoomOut.disabled = !hasImage || zoom <= GROUP_PHOTO_ZOOM_MIN;
+    }
+    if (this.refs.courseGroupPhotoZoomIn) {
+      this.refs.courseGroupPhotoZoomIn.disabled = !hasImage || zoom >= GROUP_PHOTO_ZOOM_MAX;
+    }
+  }
+
+  setGroupPhotoZoom(nextZoom, focal = null) {
+    const state = this.groupPhotoExtractionState;
+    const stage = this.refs.courseGroupPhotoStage;
+    if (!state?.image || !stage) return;
+    const prevZoom = state.zoom || 1;
+    const clamped = clamp(Math.round(nextZoom * 100) / 100, GROUP_PHOTO_ZOOM_MIN, GROUP_PHOTO_ZOOM_MAX);
+    if (clamped === prevZoom) return;
+    const stageRect = stage.getBoundingClientRect();
+    const anchorX = focal ? focal.clientX - stageRect.left : stage.clientWidth / 2;
+    const anchorY = focal ? focal.clientY - stageRect.top : stage.clientHeight / 2;
+    const contentX = stage.scrollLeft + anchorX;
+    const contentY = stage.scrollTop + anchorY;
+    state.zoom = clamped;
+    this.applyGroupPhotoZoom();
+    stage.scrollLeft = (contentX / prevZoom) * clamped - anchorX;
+    stage.scrollTop = (contentY / prevZoom) * clamped - anchorY;
   }
 
   syncGroupPhotoSelectionPanelHeight() {
@@ -7188,6 +7281,7 @@ class GradesApp {
       state.selections = state.selections.filter((item) => item.id !== id);
       state.selectedId = "";
       event.preventDefault();
+      document.__teachhelperAppTooltipsController?.hide?.();
       this.renderGroupPhotoExtractionDialog();
       return;
     }
@@ -7289,8 +7383,12 @@ class GradesApp {
       await image.decode();
       if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Gruppenfoto konnte nicht gelesen werden.");
       this.clearGroupPhotoExtractionState();
-      this.groupPhotoExtractionState = { url, image, selections: [], selectedId: "", drag: null, nextId: 1 };
+      this.groupPhotoExtractionState = { url, image, selections: [], selectedId: "", drag: null, nextId: 1, zoom: 1 };
       this.renderGroupPhotoExtractionDialog();
+      if (this.refs.courseGroupPhotoStage) {
+        this.refs.courseGroupPhotoStage.scrollLeft = 0;
+        this.refs.courseGroupPhotoStage.scrollTop = 0;
+      }
     } catch (error) {
       URL.revokeObjectURL(url);
       await this.showInfoMessage(error instanceof Error ? error.message : "Das Gruppenfoto konnte nicht gelesen werden.");
@@ -7330,8 +7428,13 @@ class GradesApp {
         x: oldHeight - selection.y - selection.size,
         y: selection.x
       }));
+      state.zoom = 1;
       this.refs.courseGroupPhotoStage?.classList.add("is-photo-rotating");
       this.renderGroupPhotoExtractionDialog();
+      if (this.refs.courseGroupPhotoStage) {
+        this.refs.courseGroupPhotoStage.scrollLeft = 0;
+        this.refs.courseGroupPhotoStage.scrollTop = 0;
+      }
       window.setTimeout(() => {
         this.refs.courseGroupPhotoStage?.classList.remove("is-photo-rotating");
       }, 360);
@@ -7564,6 +7667,7 @@ class GradesApp {
         id: Number(student && student.id) || 0,
         lastName: normalizeGradeTextPart(student && student.lastName),
         firstName: normalizeGradeTextPart(student && student.firstName),
+        rufname: normalizeGradeTextPart(student && student.rufname),
         performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair),
         portrait: normalizeGradeStudentPortrait(student && student.portrait)
       }));
@@ -10686,6 +10790,21 @@ class GradesApp {
     this.refs.courseGroupPhotoRotate?.addEventListener("click", () => {
       void this.rotateGroupPhotoExtractionImage();
     });
+    this.refs.courseGroupPhotoZoomIn?.addEventListener("click", () => {
+      this.setGroupPhotoZoom((this.groupPhotoExtractionState?.zoom || 1) + GROUP_PHOTO_ZOOM_STEP);
+    });
+    this.refs.courseGroupPhotoZoomOut?.addEventListener("click", () => {
+      this.setGroupPhotoZoom((this.groupPhotoExtractionState?.zoom || 1) - GROUP_PHOTO_ZOOM_STEP);
+    });
+    this.refs.courseGroupPhotoZoomLevel?.addEventListener("dblclick", () => {
+      this.setGroupPhotoZoom(1);
+    });
+    this.refs.courseGroupPhotoStage?.addEventListener("wheel", (event) => {
+      if (!this.groupPhotoExtractionState?.image) return;
+      event.preventDefault();
+      const step = event.deltaY < 0 ? GROUP_PHOTO_ZOOM_STEP : -GROUP_PHOTO_ZOOM_STEP;
+      this.setGroupPhotoZoom((this.groupPhotoExtractionState.zoom || 1) + step, event);
+    }, { passive: false });
     this.refs.courseGroupPhotoCancel?.addEventListener("click", () => {
       this.closeGroupPhotoExtractionDialog();
     });
@@ -10778,12 +10897,6 @@ class GradesApp {
     });
     this.refs.courseDialogStudentsList?.addEventListener("click", (event) => {
       void this.handleCourseDialogStudentListClick(event);
-    });
-    this.refs.courseDialogStudentsList?.addEventListener("mouseover", (event) => {
-      this.handleGradeStudentPortraitHoverPreview(event);
-    });
-    this.refs.courseDialogStudentsList?.addEventListener("mouseout", (event) => {
-      this.handleGradeStudentPortraitHoverPreviewEnd(event);
     });
     this.refs.courseDialogStudentsList?.addEventListener("keydown", (event) => {
       if (!["Enter", " "].includes(event.key)) return;
@@ -18883,7 +18996,7 @@ class GradesApp {
     };
     const records = [];
     for (const student of context.students) {
-      const name = this.getGradeStudentDisplayName(student);
+      const name = this.getGradeStudentLegalDisplayName(student);
       const entry = this.getExpectationHorizonStudentEntry(context, student);
       const scores = normalizeGradeTestScores(entry?.testScores);
       const deficitFollowUpTaskNumbers = tasks.reduce((result, task, index) => {
@@ -20066,6 +20179,10 @@ class GradesApp {
 
   getGradeStudentOverviewDisplayName(student) {
     return formatGradeStudentName(student, this.gradesOverviewNameOrder);
+  }
+
+  getGradeStudentLegalDisplayName(student) {
+    return formatGradeStudentName(student, this.gradesEntryNameOrder, { legalName: true });
   }
 
   getSortedGradeStudentsForNameOrder(students, order = this.gradesEntryNameOrder) {
@@ -27657,7 +27774,7 @@ class GradesApp {
             courseName: String(course.name || "Kurs"),
             courseColor: normalizeCourseColor(course.color, Boolean(course.noLesson)),
             studentId: Number(student.id),
-            name: [String(student.firstName || "").trim(), String(student.lastName || "").trim()].filter(Boolean).join(" "),
+            name: [getGradeStudentPreferredFirstName(student), String(student.lastName || "").trim()].filter(Boolean).join(" "),
             portrait,
             progress: progressByStudentId.get(Number(student.id)) || null
           });

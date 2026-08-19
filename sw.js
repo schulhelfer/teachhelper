@@ -7,9 +7,7 @@ const APP_SHELL = [
   './',
   './index.html',
   './manifest.webmanifest',
-  './THIRD_PARTY_NOTICES.md',
   './icon-192.png',
-  './icon-512.png',
   './src/main.js',
   './src/app/bootstrap.js',
   './src/app/dom.js',
@@ -51,13 +49,6 @@ const APP_SHELL = [
   './src/shared/pdf-vendor.js',
   './src/shared/student-sync-bus.js',
   './src/shared/timer-store.js',
-  './src/vendor/jszip/3.10.1/jszip.min.js',
-  './src/vendor/jszip/3.10.1/LICENSE.markdown',
-  './src/vendor/pdf-lib/1.17.1/pdf-lib.min.js',
-  './src/vendor/pdf-lib/1.17.1/LICENSE.md',
-  './src/vendor/pdfjs-dist/6.2.108/build/pdf.mjs',
-  './src/vendor/pdfjs-dist/6.2.108/build/pdf.worker.mjs',
-  './src/vendor/pdfjs-dist/6.2.108/LICENSE',
   './src/shell/tabs.js',
   './src/modules/planning/index.js',
   './src/modules/planning/app.html',
@@ -81,31 +72,51 @@ const APP_SHELL = [
   './src/modules/workspace/crypto.js',
   './src/modules/workspace/store.js',
   './src/modules/merger/index.js',
-  './src/modules/merger/app.html',
-  './src/modules/merger/app.css',
-  './src/modules/merger/app.js',
   './src/modules/duplicate-check/index.js',
-  './src/modules/duplicate-check/app.html',
-  './src/modules/duplicate-check/app.css',
-  './src/modules/duplicate-check/app.js',
   './src/modules/qr/index.js',
-  './src/modules/qr/app.html',
-  './src/modules/qr/app.css',
-  './src/modules/qr/app.js',
-  './src/modules/qr/vendor/qrcode.min.js',
-  './src/modules/qr/vendor/jsQR.js',
   './src/modules/seatplan/index.js',
-  './src/modules/seatplan/app.html',
-  './src/modules/seatplan/app.css',
-  './src/modules/seatplan/app.js',
   './src/modules/name-learning/index.js',
   './src/modules/name-learning/app.html',
   './src/modules/name-learning/app.css',
   './src/modules/name-learning/app.js',
   './src/modules/name-learning/session.js',
 ];
+
+const DEFERRED_ASSETS = [
+  './THIRD_PARTY_NOTICES.md',
+  './icon-512.png',
+  './src/modules/seatplan/app.html',
+  './src/modules/seatplan/app.css',
+  './src/modules/seatplan/app.js',
+  './src/modules/merger/app.html',
+  './src/modules/merger/app.css',
+  './src/modules/merger/app.js',
+  './src/modules/duplicate-check/app.html',
+  './src/modules/duplicate-check/app.css',
+  './src/modules/duplicate-check/app.js',
+  './src/modules/qr/app.html',
+  './src/modules/qr/app.css',
+  './src/modules/qr/app.js',
+  './src/modules/qr/vendor/qrcode.min.js',
+  './src/modules/qr/vendor/jsQR.js',
+  './src/vendor/jszip/3.10.1/jszip.min.js',
+  './src/vendor/jszip/3.10.1/LICENSE.markdown',
+  './src/vendor/pdf-lib/1.17.1/pdf-lib.min.js',
+  './src/vendor/pdf-lib/1.17.1/LICENSE.md',
+  './src/vendor/pdfjs-dist/6.2.108/build/pdf.mjs',
+  './src/vendor/pdfjs-dist/6.2.108/build/pdf.worker.mjs',
+  './src/vendor/pdfjs-dist/6.2.108/LICENSE',
+];
 const OFFLINE_FALLBACK_URL = './index.html';
+
+const DEFERRED_IDLE_MS = 3000;
+const DEFERRED_MAX_WAIT_MS = 60000;
+const DEFERRED_CONCURRENCY = 2;
+
 let updateActivationToken = null;
+let lastRequestAt = Date.now();
+let deferredPrecachePromise = null;
+let deferredPrecacheAttached = false;
 
 function shouldCacheResponse(response) {
   if (!response || !response.ok) return false;
@@ -129,21 +140,52 @@ function isStaticAssetRequest(request, url) {
   );
 }
 
-function isCodeAssetRequest(request, url) {
-  return request.destination === 'script' || /\.(?:js|mjs)$/i.test(url.pathname);
-}
-
 async function preCacheAppShell() {
   const cache = await caches.open(PRECACHE_NAME);
-  const results = await Promise.allSettled(
-    APP_SHELL.map((asset) => cache.add(new Request(asset, { cache: 'reload' })))
-  );
+  const results = await Promise.allSettled(APP_SHELL.map((asset) => cache.add(asset)));
   const failedAssets = results
     .map((result, index) => (result.status === 'rejected' ? APP_SHELL[index] : null))
     .filter(Boolean);
   if (failedAssets.length > 0) {
     console.warn('TeachHelper SW precache skipped assets:', failedAssets);
   }
+}
+
+async function waitForRequestIdle() {
+  const deadline = Date.now() + DEFERRED_MAX_WAIT_MS;
+  for (;;) {
+    const quietFor = Date.now() - lastRequestAt;
+    if (quietFor >= DEFERRED_IDLE_MS) return;
+    const waitMs = Math.min(DEFERRED_IDLE_MS - quietFor, Math.max(0, deadline - Date.now()));
+    if (waitMs <= 0) return;
+    await new Promise((resolve) => { setTimeout(resolve, waitMs); });
+  }
+}
+
+async function precacheDeferredAssets() {
+  const cache = await caches.open(PRECACHE_NAME);
+  const queue = DEFERRED_ASSETS.slice();
+  const drain = async () => {
+    while (queue.length > 0) {
+      const asset = queue.shift();
+      if (await cache.match(asset)) continue;
+      try {
+        await cache.add(asset);
+      } catch {
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: DEFERRED_CONCURRENCY }, drain));
+}
+
+function ensureDeferredPrecache() {
+  if (!deferredPrecachePromise) {
+    deferredPrecachePromise = (async () => {
+      await waitForRequestIdle();
+      await precacheDeferredAssets();
+    })().catch(() => null);
+  }
+  return deferredPrecachePromise;
 }
 
 async function cleanupOldCaches() {
@@ -162,20 +204,26 @@ async function putInRuntimeCache(request, response) {
   return response;
 }
 
+async function matchCached(request) {
+  const runtime = await caches.open(RUNTIME_NAME);
+  const runtimeMatch = await runtime.match(request, { ignoreSearch: true });
+  if (runtimeMatch) return runtimeMatch;
+  const precache = await caches.open(PRECACHE_NAME);
+  return precache.match(request, { ignoreSearch: true });
+}
+
 async function networkFirst(request, {
   fallbackUrl = null,
   preloadResponsePromise = null,
   cacheMode = undefined,
 } = {}) {
   try {
-    const preloadResponse = cacheMode === 'reload'
-      ? null
-      : (preloadResponsePromise ? await preloadResponsePromise : null);
+    const preloadResponse = preloadResponsePromise ? await preloadResponsePromise : null;
     const response = preloadResponse || await fetch(request, { cache: cacheMode });
     await putInRuntimeCache(request, response);
     return response;
   } catch (error) {
-    const cached = await caches.match(request);
+    const cached = await matchCached(request);
     if (cached) {
       return cached;
     }
@@ -190,11 +238,8 @@ async function networkFirst(request, {
 }
 
 async function staleWhileRevalidate(request, event = null) {
-
-
-
-  const cached = await caches.match(request, { ignoreSearch: true });
-  const networkPromise = fetch(request)
+  const cached = await matchCached(request);
+  const networkPromise = fetch(request, { cache: 'no-cache' })
     .then((response) => putInRuntimeCache(request, response))
     .catch(() => null);
   if (event && typeof event.waitUntil === 'function') {
@@ -228,6 +273,7 @@ self.addEventListener('activate', (event) => {
       }
     }
     await self.clients.claim();
+    void ensureDeferredPrecache();
   })());
 });
 
@@ -264,21 +310,23 @@ self.addEventListener('fetch', (event) => {
   }
 
   const url = new URL(request.url);
+  lastRequestAt = Date.now();
+
+  if (!deferredPrecacheAttached) {
+    deferredPrecacheAttached = true;
+    event.waitUntil(ensureDeferredPrecache());
+  }
 
   if (request.mode === 'navigate') {
     event.respondWith(networkFirst(request, {
       fallbackUrl: OFFLINE_FALLBACK_URL,
       preloadResponsePromise: event.preloadResponse,
-      cacheMode: 'reload',
+      cacheMode: 'no-cache',
     }));
     return;
   }
 
   if (isStaticAssetRequest(request, url)) {
-    if (isCodeAssetRequest(request, url)) {
-      event.respondWith(networkFirst(request, { cacheMode: 'reload' }));
-      return;
-    }
     event.respondWith(staleWhileRevalidate(request, event));
   }
 });

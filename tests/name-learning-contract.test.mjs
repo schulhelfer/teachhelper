@@ -68,7 +68,7 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningApp, /if \(mode === 'random'\) \{ renderCard\(\); return; \}/);
   assert.match(nameLearningApp, /Fällige Karten \(\$\{dueCount\}\) abfragen/);
   assert.doesNotMatch(nameLearningApp, /Karte\$\{dueCount === 1/);
-  assert.match(nameLearningApp, /REVIEW_FEEDBACK_DISPLAY_MS = 4500/);
+  assert.match(nameLearningApp, /REVIEW_FEEDBACK_DISPLAY_MS = 2250/);
   assert.match(nameLearningApp, /showReviewFeedback\(progress, now, \(\) => renderCard\(\)\)/);
   assert.match(nameLearningApp, /function advanceAfterReviewFeedback\(\) \{/);
   assert.match(nameLearningApp, /refs\.flashcard\.addEventListener\('click', \(event\) => \{/);
@@ -90,7 +90,7 @@ test('only compact progress data is stored in encrypted grade course segments', 
   assert.match(runtime, /gradeNameLearning: \(Array\.isArray\(state\.gradeNameLearning\)/);
   assert.match(runtime, /gradeNameLearning: withCourse\(persisted\.gradeNameLearning\)/);
   assert.match(integrity, /ungültigen Namenslernfortschritt/);
-  assert.match(gradesApp, /portrait,\n            progress:/);
+  assert.match(gradesApp, /portrait,\r?\n            progress:/);
 });
 
 test('cancelling a participant portrait picker does not close its parent dialog', () => {

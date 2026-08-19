@@ -6,7 +6,7 @@ const DATA_REQUEST = 'classroom:name-learning-data-request';
 const DATA_RESULT = 'classroom:name-learning-data-result';
 const REVIEW_REQUEST = 'classroom:name-learning-review-request';
 const REVIEW_RESULT = 'classroom:name-learning-review-result';
-const REVIEW_FEEDBACK_DISPLAY_MS = 4500;
+const REVIEW_FEEDBACK_DISPLAY_MS = 2250;
 const refs = {
   status: document.getElementById('status'), setup: document.getElementById('setup'), courses: document.getElementById('courses'),
   startDue: document.getElementById('start-due'), startDueLabel: document.getElementById('start-due-label'), startRandom: document.getElementById('start-random'),

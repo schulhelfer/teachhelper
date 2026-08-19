@@ -25,6 +25,7 @@ import {
   GRADES_READY_EVENT,
   GRADES_TAB_LEAVE_REQUEST_EVENT,
   GRADES_TAB_LEAVE_RESULT_EVENT,
+  PLANNING_READY_EVENT,
   PLANNING_TAB_LEAVE_REQUEST_EVENT,
   PLANNING_TAB_LEAVE_RESULT_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
@@ -53,6 +54,8 @@ import {
   WORKSPACE_OWNER_READY_EVENT,
 } from '../shared/school-data/messages.js';
 
+const DEFERRED_GRADES_MOUNT_TIMEOUT_MS = 4000;
+
 export function createPlanningSeatplanBridge({
   els,
   getChromeCollapsed,
@@ -71,6 +74,7 @@ export function createPlanningSeatplanBridge({
   let planningTabLeaveRequestSequence = 0;
   let seatplanController = null;
   let nameLearningController = null;
+  let cancelDeferredGradesMount = null;
   const tabInitState = {
     [TAB_MERGER]: false,
     [TAB_DUPLICATE_CHECK]: false,
@@ -168,6 +172,35 @@ export function createPlanningSeatplanBridge({
     if (!host || host.dataset.initialized === '1') return;
     gradesController = mountGrades({ host });
     gradesController?.applyShellLayout({ collapsed: getChromeCollapsed() });
+  };
+
+  const mountGradesTabNow = () => {
+    cancelDeferredGradesMount?.();
+    cancelDeferredGradesMount = null;
+    if (tabInitState[TAB_GRADES]) return;
+    initGradesTab(els.gradesHost);
+    tabInitState[TAB_GRADES] = true;
+  };
+
+  const scheduleGradesTabMount = () => {
+    if (tabInitState[TAB_GRADES] || cancelDeferredGradesMount) return;
+    const view = typeof window !== 'undefined' ? window : null;
+    if (!view) {
+      mountGradesTabNow();
+      return;
+    }
+    const run = () => {
+      const cancel = cancelDeferredGradesMount;
+      cancelDeferredGradesMount = null;
+      cancel?.();
+      mountGradesTabNow();
+    };
+    const timer = view.setTimeout(run, DEFERRED_GRADES_MOUNT_TIMEOUT_MS);
+    view.addEventListener(PLANNING_READY_EVENT, run, { once: true });
+    cancelDeferredGradesMount = () => {
+      view.clearTimeout(timer);
+      view.removeEventListener(PLANNING_READY_EVENT, run);
+    };
   };
 
   const initMergerTab = (root = els.mergerHost) => {
@@ -358,19 +391,16 @@ export function createPlanningSeatplanBridge({
     }
     if (tab === TAB_PLANNING) {
       if (tabInitState[TAB_PLANNING]) return;
-      if (!tabInitState[TAB_GRADES]) {
-        initGradesTab(els.gradesHost);
-        tabInitState[TAB_GRADES] = true;
-      }
       if (initPlanningTab(els.planningHost)) {
         tabInitState[TAB_PLANNING] = true;
+        scheduleGradesTabMount();
+        return;
       }
+      mountGradesTabNow();
       return;
     }
     if (tab === TAB_GRADES) {
-      if (tabInitState[TAB_GRADES]) return;
-      initGradesTab(els.gradesHost);
-      tabInitState[TAB_GRADES] = true;
+      mountGradesTabNow();
       return;
     }
     if (tab === TAB_SEATPLAN) {
