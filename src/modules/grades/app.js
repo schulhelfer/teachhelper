@@ -2141,7 +2141,7 @@ function createGradeStudentNameElement(student, studentName, options = {}) {
       portrait.tabIndex = 0;
       portrait.setAttribute("aria-label", "Foto vergrößern");
       portrait.title = "Foto vergrößern";
-      portrait.decoding = "async";
+      portrait.decoding = "sync";
       node.prepend(portrait);
     } else if (options.showPortraitPlaceholder) {
       const portraitPlaceholder = document.createElement("span");
@@ -2963,6 +2963,7 @@ class GradesApp {
       courseDialogPortraitImport: document.querySelector("#course-dialog-portrait-import"),
       courseGroupPhotoDialog: document.querySelector("#course-group-photo-dialog"),
       courseGroupPhotoDialogForm: document.querySelector("#course-group-photo-dialog-form"),
+      courseGroupPhotoPaste: document.querySelector("#course-group-photo-paste"),
       courseGroupPhotoRotate: document.querySelector("#course-group-photo-rotate"),
       courseGroupPhotoCancel: document.querySelector("#course-group-photo-cancel"),
       courseGroupPhotoFile: document.querySelector("#course-group-photo-file"),
@@ -6787,7 +6788,7 @@ class GradesApp {
           portraitImage.tabIndex = 0;
           portraitImage.setAttribute("aria-label", "Foto vergrößern");
           portraitImage.title = "Foto vergrößern";
-          portraitImage.decoding = "async";
+          portraitImage.decoding = "sync";
           const portraitDeleteButton = this.createGradeStructureActionButton({
             className: "ghost danger-action course-dialog-student-portrait-delete",
             dataAttribute: "student-portrait-delete",
@@ -7104,6 +7105,28 @@ class GradesApp {
         student.portrait = await prepareGradeStudentPortrait(file);
         this.revokeGradeStudentPortraitObjectUrls();
         this.renderCourseDialogStudents();
+        return;
+      }
+      await this.showInfoMessage("In der Zwischenablage wurde kein JPEG-, PNG- oder WebP-Bild gefunden.");
+    } catch (error) {
+      await this.showInfoMessage(error instanceof Error ? error.message : "Bild konnte nicht aus der Zwischenablage gelesen werden.");
+    }
+  }
+
+  async pasteGroupPhotoExtractionImage() {
+    if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
+      await this.showInfoMessage("Dieser Browser kann keine Bilder aus der Zwischenablage lesen.");
+      return;
+    }
+    try {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((type) => GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(type));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        const extension = imageType === "image/jpeg" ? "jpg" : imageType.slice("image/".length);
+        const file = new File([blob], `gruppenfoto-aus-zwischenablage.${extension}`, { type: imageType });
+        await this.loadGroupPhotoExtractionFile(file);
         return;
       }
       await this.showInfoMessage("In der Zwischenablage wurde kein JPEG-, PNG- oder WebP-Bild gefunden.");
@@ -11382,6 +11405,9 @@ class GradesApp {
       void this.applyGroupPhotoExtractions().catch(async (error) => {
         await this.showInfoMessage(error instanceof Error ? error.message : "Bilder konnten nicht übernommen werden.");
       });
+    });
+    this.refs.courseGroupPhotoPaste?.addEventListener("click", () => {
+      void this.pasteGroupPhotoExtractionImage();
     });
     this.refs.courseGroupPhotoRotate?.addEventListener("click", () => {
       void this.rotateGroupPhotoExtractionImage();

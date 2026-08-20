@@ -28,8 +28,6 @@ test('background revalidation asks the server instead of trusting the HTTP cache
   );
 });
 
-// Gilt nur für Dateien außerhalb von APP_SHELL/DEFERRED_ASSETS; die versionierten Dateien
-// laufen über precacheFirst und werden nie durch den Runtime-Cache überschrieben.
 test('reads the runtime cache before the precache so refreshed files win', () => {
   assert.match(
     serviceWorkerSource,
@@ -96,9 +94,6 @@ test('unknown navigations still fall back to the network and the offline shell',
 });
 
 test('the service worker script is one self-contained file so updates cannot flap', async () => {
-  // Ein Import macht das Skript für den Update-Vergleich des Browsers zu zwei Dateien, die ein
-  // CDN unabhängig cacht. Werden sie unterschiedlich frisch ausgeliefert, wechselt die Identität
-  // des Workers hin und her und er installiert endlos neu.
   assert.doesNotMatch(
     serviceWorkerSource,
     /^\s*import\s/m,
@@ -121,11 +116,15 @@ test('the service worker script is one self-contained file so updates cannot fla
   );
 });
 
+test('the version in sw.js is stamped from the single source instead of typed twice', async () => {
+  const hook = await readFile(new URL('../scripts/pre-commit-checks.sh', import.meta.url), 'utf8');
+  assert.match(hook, /node scripts\/sync-sw-version\.mjs/);
+  assert.match(hook, /node scripts\/check-version-bump\.mjs/);
+});
+
 test('a complete precache is left alone while an incomplete one is refilled entirely', () => {
   const precacheBody = serviceWorkerSource.match(/async function preCacheAppShell\([\s\S]*?\n\}/);
   assert.ok(precacheBody, 'service worker must declare preCacheAppShell');
-  // Vollständig: keine Requests. Unvollständig: alles neu holen, damit eine während eines
-  // Deployments entstandene Mischung aus zwei Versionen wieder verschwindet.
   assert.match(
     precacheBody[0],
     /const cached = await Promise\.all\(APP_SHELL\.map\(\(asset\) => cache\.match\(asset\)\)\);\s*if \(cached\.every\(Boolean\)\) return;/,

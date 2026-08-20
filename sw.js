@@ -1,10 +1,4 @@
-// Bewusst kein Import aus src/shared/app-version.js: Die Identität des Service Workers muss von
-// genau einer Datei abhängen. Bei einem Import besteht das Skript für den Update-Vergleich des
-// Browsers aus zwei Dateien, die ein CDN (GitHub Pages) unabhängig voneinander cacht. Liefert es
-// sw.js und die Versionsdatei unterschiedlich frisch aus, sieht der Browser abwechselnd zwei
-// Skript-Varianten und installiert endlos neu. Der Wert wird per Test mit APP_VERSION synchron
-// gehalten.
-const APP_VERSION = '34';
+const APP_VERSION = '35';
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
@@ -115,9 +109,6 @@ const DEFERRED_ASSETS = [
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
 
-// Alle Dateien, die zu genau dieser Version gehören. Sie werden ausschließlich aus dem
-// versionierten Precache bedient, damit ein aufgeschobenes Update ("Später") die laufende
-// Version nicht Datei für Datei durch die neue ersetzt.
 const PINNED_ASSET_PATHS = new Set(
   [...APP_SHELL, ...DEFERRED_ASSETS].map((asset) => new URL(asset, self.location.href).pathname),
 );
@@ -159,10 +150,6 @@ function isStaticAssetRequest(request, url) {
 
 async function preCacheAppShell() {
   const cache = await caches.open(PRECACHE_NAME);
-  // Ein vollständiger Precache dieser Version wird nicht angefasst: Eine Neuinstallation derselben
-  // Version kostet dann keinen einzigen Request. Ist er unvollständig, wird alles neu geholt statt
-  // nur die Lücken gefüllt - so heilt eine Installation, die während eines Deployments eine
-  // Mischung aus zwei Versionen erwischt hat, sich beim nächsten Anlauf selbst.
   const cached = await Promise.all(APP_SHELL.map((asset) => cache.match(asset)));
   if (cached.every(Boolean)) return;
   const results = await Promise.allSettled(APP_SHELL.map((asset) => cache.add(asset)));
@@ -316,8 +303,6 @@ self.addEventListener('activate', (event) => {
     await cleanupOldCaches();
     if ('navigationPreload' in self.registration) {
       try {
-        // Der Start wird aus dem versionierten Precache bedient; ein Preload-Request wäre
-        // bei jedem Start umsonst (und würde von Chrome als ungenutzt angemahnt).
         await self.registration.navigationPreload.disable();
       } catch {
 

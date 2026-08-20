@@ -1,8 +1,7 @@
 export const UPDATE_SNOOZE_STORAGE_KEY = 'teachhelper:update-snooze-until';
 export const UPDATE_SNOOZE_MS = 6 * 60 * 60 * 1000;
-// focus und visibilitychange feuern in der Modul-Oberfläche sehr oft (jeder Wechsel zwischen
-// Shell und Modul-iframe). Ohne Drossel würde daraus eine Flut von Update-Requests.
 export const AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS = 60 * 1000;
+export const UPDATE_ACTIVATION_TIMEOUT_MS = 8 * 1000;
 
 export function registerServiceWorkerUpdates({
   updateDialog,
@@ -37,8 +36,8 @@ export function registerServiceWorkerUpdates({
   }
 
   let hadControllerOnLoad = false;
-  let updateDialogShown = false;
   let reloadRequestedForUpdate = false;
+  let updateReloadFallbackTimer = null;
   let activeRegistration = null;
   let initPromise = null;
   let lastUpdateCheckAt = 0;
@@ -91,10 +90,9 @@ export function registerServiceWorkerUpdates({
   };
 
   const openUpdateDialog = () => {
-    if (!updateDialog || updateDialogShown) return;
-    updateDialogShown = true;
+    if (!updateDialog || updateDialog.open) return;
     if (typeof updateDialog.showModal === 'function') {
-      if (!updateDialog.open) updateDialog.showModal();
+      updateDialog.showModal();
     } else {
       updateDialog.setAttribute('open', 'open');
     }
@@ -102,11 +100,25 @@ export function registerServiceWorkerUpdates({
 
   const closeUpdateDialog = () => {
     if (!updateDialog) return;
-    updateDialogShown = false;
     if (typeof updateDialog.close === 'function' && updateDialog.open) {
       updateDialog.close();
     }
     updateDialog.removeAttribute('open');
+  };
+
+  const clearUpdateReloadFallback = () => {
+    if (updateReloadFallbackTimer === null) return;
+    window.clearTimeout?.(updateReloadFallbackTimer);
+    updateReloadFallbackTimer = null;
+  };
+
+  const scheduleUpdateReloadFallback = () => {
+    if (updateReloadFallbackTimer !== null) return;
+    updateReloadFallbackTimer = window.setTimeout(() => {
+      updateReloadFallbackTimer = null;
+      if (!reloadRequestedForUpdate) return;
+      window.location.reload();
+    }, UPDATE_ACTIVATION_TIMEOUT_MS);
   };
 
   const maybePromptForUpdate = (registration, { force = false } = {}) => {
@@ -169,6 +181,7 @@ export function registerServiceWorkerUpdates({
 
       navigator.serviceWorker.addEventListener('controllerchange', () => {
         if (!reloadRequestedForUpdate) return;
+        clearUpdateReloadFallback();
         window.location.reload();
       });
 
@@ -176,10 +189,11 @@ export function registerServiceWorkerUpdates({
         snoozeUpdate();
         closeUpdateDialog();
       });
+      updateDialog?.addEventListener('cancel', () => {
+        snoozeUpdate();
+      });
       updateDialogReload?.addEventListener('click', () => {
         void (async () => {
-          // beforeReloadForUpdate darf das Update verhindern (z.B. wenn ein Datenbank-Backup vor
-          // dem Neuladen fehlschlägt) - erst danach wird die neue Version tatsächlich aktiviert.
           if (typeof beforeReloadForUpdate === 'function') {
             let allowed = true;
             try {
@@ -195,7 +209,9 @@ export function registerServiceWorkerUpdates({
           closeUpdateDialog();
           const waitingWorker = activeRegistration?.waiting;
           if (waitingWorker) {
+            postUpdateActivationToken(waitingWorker);
             waitingWorker.postMessage({ type: 'SKIP_WAITING', token: updateActivationToken });
+            scheduleUpdateReloadFallback();
             return;
           }
           window.location.reload();
@@ -205,7 +221,6 @@ export function registerServiceWorkerUpdates({
       try {
         const registration = await navigator.serviceWorker.register(serviceWorkerUrl, {
           updateViaCache: 'none',
-          type: 'module',
         });
         activeRegistration = registration;
         shareUpdateActivationToken(registration);
@@ -215,7 +230,6 @@ export function registerServiceWorkerUpdates({
           watchInstallingWorker(registration, registration.installing);
         }
         registration.addEventListener('updatefound', () => {
-          // Eine neuere Version als die zuletzt vertagte: das alte "Später" gilt nicht mehr.
           clearUpdateSnooze();
           shareUpdateActivationToken(registration);
           watchInstallingWorker(registration, registration.installing);

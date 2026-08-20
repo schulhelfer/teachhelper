@@ -8908,6 +8908,13 @@
           touch-action: none;
         }
 
+        .course-group-photo-paste-button {
+          position: absolute;
+          right: 0.6rem;
+          top: 0.6rem;
+          z-index: 3;
+        }
+
         .course-group-photo-zoom-controls {
           position: absolute;
           right: 0.6rem;

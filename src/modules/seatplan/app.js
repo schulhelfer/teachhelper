@@ -6599,7 +6599,7 @@
                       portrait.tabIndex = 0;
                       portrait.setAttribute('aria-label', 'Foto vergrößern');
                       portrait.title = 'Foto vergrößern';
-                      portrait.decoding = 'async';
+                      portrait.decoding = 'sync';
                       portrait.draggable = false;
                       portrait.addEventListener('pointerdown', event => event.stopPropagation());
                       portrait.addEventListener('click', event => {

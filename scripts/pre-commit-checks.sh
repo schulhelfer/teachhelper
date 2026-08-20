@@ -6,6 +6,12 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
+echo "Syncing the service worker version..."
+node scripts/sync-sw-version.mjs
+
+echo "Checking the version bump..."
+node scripts/check-version-bump.mjs
+
 echo "Running Node.js regression tests..."
 node --test tests/*.test.mjs
 

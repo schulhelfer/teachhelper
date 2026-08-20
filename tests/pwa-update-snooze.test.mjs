@@ -6,6 +6,7 @@ const source = await readFile(new URL('../src/app/pwa-updates.js', import.meta.u
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
 const {
   AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS,
+  UPDATE_ACTIVATION_TIMEOUT_MS,
   UPDATE_SNOOZE_MS,
   UPDATE_SNOOZE_STORAGE_KEY,
   registerServiceWorkerUpdates,
@@ -104,9 +105,19 @@ async function withEnvironment(run, { hostname = 'teachhelper.example' } = {}) {
   serviceWorkerContainer.register = async () => registration;
 
   const windowStub = new EventTargetStub();
-  windowStub.location = { hostname, reload: () => {} };
+  windowStub.reloadCount = 0;
+  windowStub.location = { hostname, reload: () => { windowStub.reloadCount += 1; } };
   windowStub.localStorage = localStorageStub;
   windowStub.setInterval = () => 0;
+  windowStub.scheduledTimeouts = [];
+  windowStub.setTimeout = (handler, delay) => {
+    windowStub.scheduledTimeouts.push({ handler, delay, cleared: false });
+    return windowStub.scheduledTimeouts.length;
+  };
+  windowStub.clearTimeout = (id) => {
+    const timer = windowStub.scheduledTimeouts[id - 1];
+    if (timer) timer.cleared = true;
+  };
 
   const documentStub = new EventTargetStub();
   documentStub.readyState = 'complete';
@@ -231,7 +242,6 @@ test('automatic checks are throttled while manual checks always hit the network'
     await updates.checkForUpdates();
     assert.equal(registration.updateCount, 1);
 
-    // Jeder Wechsel zwischen Shell und Modul-iframe löst focus/visibilitychange aus.
     for (let index = 0; index < 25; index += 1) {
       await updates.checkForUpdates();
     }
@@ -283,6 +293,79 @@ test('a failing beforeReloadForUpdate blocks the update instead of skipping wait
     );
     assert.equal(dialogs.updateDialog.open, true, 'the dialog stays open when the backup fails');
   });
+});
+
+test('ESC counts as "Später" instead of silencing the dialog for good', async () => {
+  await withEnvironment(async ({ localStorage }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+    await updates.checkForUpdates();
+    assert.equal(dialogs.updateDialog.showModalCount, 1);
+
+    dialogs.updateDialog.dispatch('cancel');
+    dialogs.updateDialog.open = false;
+
+    assert.ok(
+      Number(localStorage.getItem(UPDATE_SNOOZE_STORAGE_KEY)) > Date.now(),
+      'ESC must snooze the update like "Später" does',
+    );
+
+    localStorage.setItem(UPDATE_SNOOZE_STORAGE_KEY, String(Date.now() - 1));
+    await updates.checkForUpdates();
+    assert.equal(
+      dialogs.updateDialog.showModalCount,
+      2,
+      'the dialog must reopen once the snooze has expired',
+    );
+  });
+});
+
+test('the waiting worker gets the token again right before it skips waiting', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+    await updates.checkForUpdates();
+
+    registration.waiting.messages.length = 0;
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.deepEqual(
+      registration.waiting.messages.map((message) => message.type),
+      ['SET_UPDATE_TOKEN', 'SKIP_WAITING'],
+      'the token must travel with the click, not only with the registration',
+    );
+    const [tokenMessage, skipMessage] = registration.waiting.messages;
+    assert.ok(skipMessage.token);
+    assert.equal(tokenMessage.token, skipMessage.token);
+  });
+});
+
+test('an activation that never takes over still gets the user out of the dialog', async () => {
+  await withEnvironment(async ({ windowStub }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+    await updates.checkForUpdates();
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    const fallback = windowStub.scheduledTimeouts.at(-1);
+    assert.ok(fallback, 'the reload must not hang on controllerchange alone');
+    assert.equal(fallback.delay, UPDATE_ACTIVATION_TIMEOUT_MS);
+
+    assert.equal(windowStub.reloadCount, 0, 'the fallback must not reload right away');
+    fallback.handler();
+    assert.equal(windowStub.reloadCount, 1);
+  });
+});
+
+test('the service worker is registered as a classic script so old browsers keep working', () => {
+  const registerCall = source.match(/navigator\.serviceWorker\.register\([\s\S]*?\n\s*\}\);/);
+  assert.ok(registerCall, 'the module must register a service worker');
+  assert.match(registerCall[0], /updateViaCache: 'none'/);
+  assert.doesNotMatch(registerCall[0], /type:/);
 });
 
 test('a successful beforeReloadForUpdate runs before the waiting worker is activated', async () => {
