@@ -1,4 +1,4 @@
-const APP_VERSION = '35';
+const APP_VERSION = '36';
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
@@ -42,6 +42,7 @@ const APP_SHELL = [
   './src/shared/school-data/index.js',
   './src/shared/school-data/grades.js',
   './src/shared/school-data/grade-integrity.js',
+  './src/shared/school-data/seatplan-transfer.js',
   './src/shared/school-data/sync-safety.js',
   './src/shared/school-data/thdb.js',
   './src/shared/sidebar-resize.js',

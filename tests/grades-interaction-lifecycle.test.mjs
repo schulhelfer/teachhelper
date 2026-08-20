@@ -260,8 +260,6 @@ test('opening roster management creates its draft from the requested course snap
 
   await openCourseStudentsDialog.call(harness, course.id);
 
-  // The pills of the other courses are filled in after the dialog is on screen, so
-  // reading their rosters never delays opening it.
   assert.deepEqual(calls, ['load:8', 'roster-reset', 'render', 'open', 'roster-pills']);
   assert.equal(harness.refs.courseStudentsDialogId.value, '8');
   assert.equal(harness.courseDialogDraft.students.length, 1);

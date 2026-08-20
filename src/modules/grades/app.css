@@ -8875,7 +8875,6 @@
         }
 
         .course-group-photo-hint {
-          /* .form-grid already spaces its rows, so no own margin. */
           margin: 0;
           color: var(--muted);
           font-size: 0.78rem;
@@ -9130,7 +9129,6 @@
           cursor: grab;
           user-select: none;
           -webkit-user-drag: none;
-          /* pan-y keeps the pill list scrollable on touch while a sideways drag still reaches the photo. */
           touch-action: pan-y;
           transition: filter 0.12s ease, transform 0.12s ease, opacity 0.12s ease;
         }

@@ -44,6 +44,10 @@ import {
   assertGradeRosterUnchanged,
   validateGradeDelta
 } from "../../shared/school-data/grade-integrity.js";
+import {
+  buildStudentNameMatchKey,
+  remapCourseSeatPlan
+} from "../../shared/school-data/seatplan-transfer.js";
 import { createWorkspaceClient } from "../workspace/client.js";
 import { createWorkspaceController } from "../workspace/index.js";
 import { installWorkspaceComponents } from "../workspace/components.js";
@@ -118,7 +122,6 @@ const GRADE_STUDENT_PORTRAIT_INPUT_TYPES = new Set(["image/jpeg", "image/png", "
 const GROUP_PHOTO_ZOOM_MIN = 1;
 const GROUP_PHOTO_ZOOM_MAX = 4;
 const GROUP_PHOTO_ZOOM_STEP = 0.25;
-// Circles dropped from a pill should look the same size on screen at any zoom level.
 const GROUP_PHOTO_DROP_SELECTION_SCREEN_PX = 96;
 const GROUP_PHOTO_PILL_DRAG_THRESHOLD_PX = 6;
 const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
@@ -603,10 +606,7 @@ function normalizeGradePerformanceFlair(value) {
 }
 
 function buildGradeStudentNameMatchKey(lastName, firstName) {
-  return [
-    normalizeGradeTextPart(lastName).toLocaleLowerCase("de"),
-    normalizeGradeTextPart(firstName).toLocaleLowerCase("de")
-  ].join("|");
+  return buildStudentNameMatchKey(lastName, firstName);
 }
 
 const GRADE_STUDENT_EMPTY_NAME_MATCH_KEY = buildGradeStudentNameMatchKey("", "");
@@ -3499,15 +3499,12 @@ class GradesApp {
     const summaries = await Promise.all(courses.map(async (course) => {
       try {
         const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
-        // null heißt "unbekannt" (z. B. Tresor zwischenzeitlich gesperrt), nicht "keine Teilnehmer".
         return [Number(course.id), summary ? Number(summary.studentCount || 0) : null];
       } catch {
         return [Number(course.id), null];
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
-    // Nur ein vollständig ermittelter Stand darf gespeichert werden. Sonst würde ein einzelner
-    // Fehler die bekannten Teilnehmerzahlen aller Kurse dauerhaft mit 0 überschreiben.
     if (summaries.every(([, count]) => count !== null)) {
       workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
     }
@@ -4432,20 +4429,6 @@ class GradesApp {
     this.armGradeVaultDialogAutofill(normalizedMode);
   }
 
-  /**
-   * Baut die Felder des Vault-Formulars neu auf, sobald der Dialog wirklich
-   * gerendert ist.
-   *
-   * Kennwortmanager parsen Formulare asynchron und überspringen dabei Felder,
-   * die in einem unsichtbaren Teilbaum liegen; wird ein Feld später sichtbar,
-   * lösen sie von sich aus keinen neuen Parse aus. Genau das passiert hier:
-   * Der Dialog ist bis zum Öffnen ausgeblendet, und beim Aufruf aus einem
-   * anderen Tab deckt erst die Shell im Elterndokument den Modul-Frame auf –
-   * eine Mutation, die der Autofill-Agent dieses Frames nie zu sehen bekommt.
-   * Fällt der Parse in dieses Zeitfenster, gilt das Feld als nicht ausfüllbar
-   * und bleibt auch beim Fokussieren leer. Frisch eingefügte Felder erzwingen
-   * dagegen in allen Engines einen neuen Parse.
-   */
   armGradeVaultDialogAutofill(mode, attempt = 0) {
     const dialog = this.refs.gradeVaultDialog;
     const form = this.refs.gradeVaultDialogForm;
@@ -4509,9 +4492,6 @@ class GradesApp {
       }
       entry.row.setAttribute("aria-hidden", entry.active ? "false" : "true");
       if (!entry.active) {
-        // Nicht nur per CSS ausblenden: Solange new-password-Felder im
-        // Formular hängen, klassifizieren Browser es als Passwortänderung und
-        // füllen dann nicht mit dem gespeicherten Passwort.
         entry.row.remove();
         return;
       }
@@ -4535,9 +4515,6 @@ class GradesApp {
       if (this.pendingGradeVaultDialogMode !== mode) {
         return;
       }
-      // Der Modul-Frame bekommt den Fokus je nach Einblendweg erst einen Frame
-      // später. Liegt er schon im Feld, nicht nachfassen: ein erneutes focus()
-      // schließt eine offene Vorschlagsliste des Kennwortmanagers.
       if (document.activeElement === focusTarget) {
         return;
       }
@@ -4558,8 +4535,6 @@ class GradesApp {
       configure(input);
       return input;
     }
-    // Vollständig konfiguriert einhängen, damit der Parser das Feld nicht in
-    // einem Zwischenzustand sieht.
     const fresh = input.cloneNode(false);
     configure(fresh);
     parent.replaceChild(fresh, input);
@@ -7190,7 +7165,6 @@ class GradesApp {
     return this.refs.courseGroupPhotoStage?.querySelector("img[data-group-photo-image]") || null;
   }
 
-  // Keeps a dropped circle at a constant on-screen size, so zooming in yields a tighter crop.
   getGroupPhotoDefaultSelectionSize() {
     const state = this.groupPhotoExtractionState;
     const rect = this.getGroupPhotoImageElement()?.getBoundingClientRect();
@@ -7202,7 +7176,6 @@ class GradesApp {
     return clamp(GROUP_PHOTO_DROP_SELECTION_SCREEN_PX * (naturalWidth / rect.width), minEdge * 0.04, minEdge);
   }
 
-  // The photo box can extend past the scroll viewport, so only the overlap counts as "on the photo".
   getGroupPhotoVisibleImageBox() {
     const stage = this.refs.courseGroupPhotoStage;
     const rect = this.getGroupPhotoImageElement()?.getBoundingClientRect();
@@ -7234,8 +7207,6 @@ class GradesApp {
     });
   }
 
-  // Geometric hit test rather than elementFromPoint, which is unreliable while a pill holds the
-  // pointer capture. Later selections render on top, so they win.
   getGroupPhotoSelectionAtPoint(point) {
     const selections = this.groupPhotoExtractionState?.selections || [];
     if (!point) return null;
@@ -7256,7 +7227,6 @@ class GradesApp {
     const selection = this.getGroupPhotoSelection(selectionId);
     const id = Number(studentId || 0);
     if (!selection || !id) return;
-    // Replaces any previous assignment; that student's pill returns to the list on the next render.
     selection.studentId = id;
     this.groupPhotoExtractionState.selectedId = selection.id;
     this.renderGroupPhotoExtractionDialog();
@@ -7271,7 +7241,6 @@ class GradesApp {
     const size = Math.min(this.getGroupPhotoDefaultSelectionSize(), naturalWidth, naturalHeight);
     if (!size) return;
     const selectionId = `group-photo-${state.nextId++}`;
-    // The pointer marks the centre of the face, while selections are stored top-left first.
     state.selections.push({
       id: selectionId,
       x: clamp(point.x - size / 2, 0, naturalWidth - size),
@@ -7326,8 +7295,6 @@ class GradesApp {
         label.type = "button";
         label.className = "course-group-photo-circle-label";
         label.dataset.groupPhotoSelectionDelete = selection.id;
-        // No title/data-tooltip here: pop-ups over the photo get in the way while marking faces,
-        // so the instructions live in the hint line above instead. aria-label stays for screen readers.
         label.setAttribute("aria-label", name ? `Markierung für ${name} löschen` : "Leere Markierung löschen");
         label.textContent = name || "?";
         circle.append(label);
@@ -7361,7 +7328,6 @@ class GradesApp {
           pill.className = "course-group-photo-student-pill";
           pill.dataset.groupPhotoStudentPill = String(student.id);
           pill.textContent = name;
-          // Without a photo there is nothing to drop onto, so the pills stay inert.
           pill.disabled = !state.image;
           pill.setAttribute("aria-label", state.image
             ? `${name} auf dem Foto markieren — ziehen oder antippen`
@@ -7431,8 +7397,6 @@ class GradesApp {
     requestAnimationFrame(sync);
   }
 
-  // Drawn inside the photo instead of a body-level ghost: a modal dialog renders in the top layer,
-  // so a ghost appended elsewhere would sit behind it.
   renderGroupPhotoDropPreview() {
     const stage = this.refs.courseGroupPhotoStage;
     const wrap = stage?.querySelector(".course-group-photo-image-wrap");
@@ -7442,8 +7406,6 @@ class GradesApp {
     const state = this.groupPhotoExtractionState;
     const drag = this.groupPhotoPillDrag;
     if (!wrap || !state?.image || !drag?.moved || !drag.point) return;
-    // Dropping onto an existing circle links the two, so highlight that circle instead of
-    // previewing a new one.
     if (drag.targetId) {
       wrap.querySelector(`[data-group-photo-selection-id="${drag.targetId}"]`)?.classList.add("is-drop-target");
       return;
@@ -7462,8 +7424,6 @@ class GradesApp {
   handleGroupPhotoPillPointerDown(event) {
     const pill = event.target.closest("[data-group-photo-student-pill]");
     if (!pill || !this.groupPhotoExtractionState?.image) return;
-    // A dropped pill is removed by the re-render, so its trailing click never arrives to clear the
-    // flag. Every fresh gesture therefore starts from a clean slate.
     this.groupPhotoPillDragMoved = false;
     this.groupPhotoPillDrag = {
       studentId: Number(pill.dataset.groupPhotoStudentPill || 0),
@@ -7498,14 +7458,11 @@ class GradesApp {
     const pill = event.target.closest("[data-group-photo-student-pill]");
     pill?.releasePointerCapture?.(event.pointerId);
     pill?.classList.remove("is-dragging");
-    // Re-rendering replaces the pill nodes, so drop the drag state before it happens.
     this.groupPhotoPillDrag = null;
-    // A completed drag must not also place a circle through the click that follows it.
     this.groupPhotoPillDragMoved = drag.moved;
     const point = !cancelled && drag.moved && this.isGroupPhotoPointOverImage(event)
       ? this.getGroupPhotoPointerPosition(event)
       : null;
-    // Dropping onto an existing circle links the two instead of adding another circle.
     const target = this.getGroupPhotoSelectionAtPoint(point);
     if (target) this.assignGroupPhotoStudentToSelection(target.id, drag.studentId);
     else if (point) this.createGroupPhotoSelectionForStudent(drag.studentId, point);
@@ -7515,12 +7472,10 @@ class GradesApp {
   handleGroupPhotoPillClick(event) {
     const pill = event.target.closest("[data-group-photo-student-pill]");
     if (!pill) return;
-    // detail === 0 marks a keyboard activation, which never follows a drag.
     const draggedAway = this.groupPhotoPillDragMoved === true && event.detail > 0;
     this.groupPhotoPillDragMoved = false;
     if (draggedAway || !this.groupPhotoExtractionState?.image) return;
     const studentId = Number(pill.dataset.groupPhotoStudentPill || 0);
-    // Circle the faces first, then tap the names: each tap fills the next circle still waiting.
     const pending = this.getGroupPhotoFirstUnassignedSelection();
     if (pending) this.assignGroupPhotoStudentToSelection(pending.id, studentId);
     else this.createGroupPhotoSelectionForStudent(studentId, this.getGroupPhotoVisibleCenterPoint());
@@ -7545,7 +7500,6 @@ class GradesApp {
     const centerY = rect.top + rect.height / 2;
     const radius = Math.min(rect.width, rect.height) / 2;
     const distance = Math.hypot(event.clientX - centerX, event.clientY - centerY);
-    // Capped at 60% of the radius so small circles keep a core that still drags instead of resizes.
     const tolerance = Math.min(Math.max(16, radius * 0.28), radius * 0.6);
     return Math.abs(distance - radius) <= tolerance;
   }
@@ -7750,7 +7704,6 @@ class GradesApp {
     }
     if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
     const skipCourseId = Number(excludeCourseId) || 0;
-    // Newest school year first, so the most recent photo of a name wins.
     const years = [...this.store.listSchoolYears()].reverse();
     const sources = new Map();
     for (const year of years) {
@@ -8646,8 +8599,6 @@ class GradesApp {
     const existingStudents = draftStudents.length > 0
       ? draftStudents
       : (this.courseDialogDraft?.id ? this.store.listGradeStudents(this.courseDialogDraft.id) : []);
-    // Re-importing a roster recreates every student, so the fields the CSV cannot
-    // carry are matched back by name. Ambiguous names keep nothing.
     const existingDataByNameKey = new Map();
     const duplicateNameKeys = new Set();
     (existingStudents || []).forEach((student) => {
@@ -8743,7 +8694,6 @@ class GradesApp {
       const result = this.extractStudentsFromCsvRows(rows, delimiter, file.name);
       this.courseDialogDraft.students = result.students;
       this.courseDialogDraft.importMeta = result.importMeta;
-      // The CSV replaces the whole list, so no course contributes to it any more.
       this.courseDialogRosterImportedCourseIds.clear();
       this.renderCourseDialogRosterImport();
       this.renderCourseDialogStudents();
@@ -8775,7 +8725,6 @@ class GradesApp {
     this.courseDialogRosterImportedCourseIds = new Set();
     this.courseDialogRosterImportBusy = false;
     this.refs.courseDialogRosterPills?.replaceChildren();
-    // Stays hidden until the first roster lookup answers, so no empty box flashes up.
     this.refs.courseStudentsImportRow?.classList.add("roster-import-unavailable");
   }
 
@@ -8803,7 +8752,6 @@ class GradesApp {
           count = Number(summary.studentCount || 0);
         }
       } catch (_error) {
-        // Falls back to the cached sidebar count for this course.
       }
       if (token !== this.courseDialogRosterImportToken) {
         return;
@@ -8904,8 +8852,6 @@ class GradesApp {
         await this.showInfoMessage(`„${courseName}“ enthält keine Teilnehmenden.`);
         return;
       }
-      // The current rows stay untouched: they keep their ids, and with them every
-      // grade entry, so adding a second course never asks to delete anything.
       const students = Array.isArray(this.courseDialogDraft.students)
         ? this.courseDialogDraft.students.slice()
         : [];
@@ -8927,7 +8873,6 @@ class GradesApp {
           lastName,
           firstName,
           rufname: normalizeGradeTextPart(student?.rufname),
-          // Flairs describe the exam status in this course, so an added row starts without one.
           performanceFlair: "",
           portrait: normalizeGradeStudentPortrait(student?.portrait)
         });
@@ -28314,7 +28259,6 @@ class GradesApp {
           courses.push(courseSummary);
         }
       }
-      // Nur einen vollständig ermittelten Stand speichern, siehe refreshSidebarCourseStudentCounts.
       if (studentCountsComplete) {
         workspaceOwner?.setGradeCourseStudentCounts?.(studentCounts);
       }
@@ -28338,7 +28282,9 @@ class GradesApp {
   async handleGradeRosterImportRequest(detail = null) {
     const requestId = String(detail?.requestId || "");
     const courseId = Number(detail?.courseId || 0);
+    const mode = detail?.mode === "plan" ? "plan" : "roster";
     const responseContext = {
+      mode,
       returnTab: String(detail?.returnTab || ""),
       restoreTabAfterUnlock: detail?.restoreTabAfterUnlock === true
     };
@@ -28362,6 +28308,15 @@ class GradesApp {
         : null;
       if (!course) {
         this.dispatchGradeRosterImportResult({ requestId, ...responseContext, ok: false, message: "Notenkurs nicht gefunden." });
+        return;
+      }
+      if (mode === "plan") {
+        await this.respondWithAdoptedCourseSeatPlan({
+          requestId,
+          responseContext,
+          sourceCourse: course,
+          targetCourseId: Number(detail?.targetCourseId || 0)
+        });
         return;
       }
       const workspaceOwner = this.getWorkspaceOwnerApp();
@@ -28420,6 +28375,87 @@ class GradesApp {
         message: error instanceof Error && error.message ? error.message : "Namensliste konnte nicht importiert werden."
       });
     }
+  }
+
+  async loadGradeCourseSeatplanSource(courseId) {
+    const id = Number(courseId || 0);
+    if (!id) {
+      return { students: [], plan: null };
+    }
+    const owner = this.getWorkspaceOwnerApp();
+    if (typeof owner?.getGradeCourseStateSnapshot === "function") {
+      const gradeState = await owner.getGradeCourseStateSnapshot(id);
+      if (!gradeState) {
+        throw new Error("Notenkurs konnte nicht geladen werden.");
+      }
+      return {
+        students: (Array.isArray(gradeState.gradeStudents) ? gradeState.gradeStudents : [])
+          .filter((student) => Number(student?.courseId || 0) === id),
+        plan: Array.isArray(gradeState.gradeSeatPlans)
+          ? gradeState.gradeSeatPlans.find((item) => Number(item?.courseId) === id)?.plan || null
+          : null
+      };
+    }
+    return this.withTemporaryGradeCourse(id, () => ({
+      students: this.store.listGradeStudents(id),
+      plan: this.store.getGradeSeatPlan(id)
+    }));
+  }
+
+  async respondWithAdoptedCourseSeatPlan({ requestId, responseContext, sourceCourse, targetCourseId }) {
+    const sourceId = Number(sourceCourse?.id || 0);
+    const targetId = Number(targetCourseId || 0);
+    const year = this.activeSchoolYear;
+    const targetCourse = year && targetId && targetId !== sourceId
+      ? this.store.listCourses(year.id).find((item) => (
+        Number(item.id) === targetId && this.courseAllowsSeatplanRoster(item)
+      ))
+      : null;
+    if (!targetCourse) {
+      this.dispatchGradeRosterImportResult({
+        requestId,
+        ...responseContext,
+        ok: false,
+        message: "Der Kurs dieses Sitzplans wurde nicht gefunden."
+      });
+      return;
+    }
+    const sourceName = String(sourceCourse?.name || "Kurs");
+    const source = await this.loadGradeCourseSeatplanSource(sourceId);
+    if (!source.plan) {
+      this.dispatchGradeRosterImportResult({
+        requestId,
+        ...responseContext,
+        ok: false,
+        message: `„${sourceName}“ hat noch keinen gespeicherten Sitzplan.`
+      });
+      return;
+    }
+    const remapped = remapCourseSeatPlan({
+      plan: source.plan,
+      sourceStudents: source.students,
+      targetStudents: await this.loadGradeStudentsForRosterImport(targetId)
+    });
+    if (!remapped) {
+      this.dispatchGradeRosterImportResult({
+        requestId,
+        ...responseContext,
+        ok: false,
+        message: `Der Sitzplan von „${sourceName}“ konnte nicht gelesen werden.`
+      });
+      return;
+    }
+    this.dispatchGradeRosterImportResult({
+      requestId,
+      ...responseContext,
+      ok: true,
+      courseId: sourceId,
+      courseName: sourceName,
+      targetCourseId: targetId,
+      plan: remapped.plan,
+      matchedCount: remapped.matchedCount,
+      sourceSeatedCount: remapped.sourceSeatedCount
+    });
   }
 
   dispatchNameLearningDataResult(detail) {

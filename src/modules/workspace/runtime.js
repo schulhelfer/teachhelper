@@ -974,15 +974,10 @@ export class WorkspaceRuntime {
         this.courseCache.set(id, state);
         this.rememberPerformanceIndex(id, state);
       } else {
-        // Noch keine Segmente: Die Kursdaten können unsegmentiert im Store liegen (frisch
-        // importierte oder in dieser Sitzung angelegte Datenbank). Genau wie beim Laden des
-        // Kurses zählt dann dieser Bestand.
         const initialState = this.store.exportGradeVaultStateSnapshot();
         state = !this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
           ? initialState
           : emptyGradeState(this.store);
-        // Ein leerer Ersatzzustand darf nicht in den courseCache: ensureGradeCourseLoaded liest
-        // ihn dort zuerst und würde den Kurs dann tatsächlich leer laden.
       }
     }
     const studentCount = (Array.isArray(state?.gradeStudents) ? state.gradeStudents : [])

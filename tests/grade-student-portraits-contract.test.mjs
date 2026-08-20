@@ -88,14 +88,11 @@ test('group photo extraction is local, manually assigned, and cleans up its temp
   assert.match(gradesApp, /handleGroupPhotoStagePointerMove\(event\)/);
   assert.match(gradesApp, /isGroupPhotoCircleBorderHit\(circle, event\)/);
   assert.doesNotMatch(gradesApp, /course-group-photo-circle-resize/);
-  // Circles come from a free-hand drag or from a student pill, and a pill dropped on an
-  // existing circle links the two instead of stacking another circle on top.
   assert.match(gradesApp, /data-group-photo-student-pill/);
   assert.doesNotMatch(gradesApp, /course-group-photo-selection-select/);
   assert.match(gradesApp, /createGroupPhotoSelectionForStudent\(drag\.studentId, point\)/);
   assert.match(gradesApp, /assignGroupPhotoStudentToSelection\(/);
   assert.match(gradesApp, /data-group-photo-selection-delete/);
-  // Instructions live in the hint line above the photo, not in tooltips over it.
   assert.match(gradesHtml, /course-group-photo-hint/);
   assert.doesNotMatch(
     extractGradesMethod('renderGroupPhotoExtractionDialog()'),
@@ -116,22 +113,16 @@ test('cross-course portrait import copies whole records and only fills empty por
   assert.match(gradesApp, /courseDialogPortraitImport\.hidden = !showPortraits/);
 
   const collect = extractGradesMethod('async collectGradeStudentPortraitSources(excludeCourseId = 0)');
-  // Reads foreign courses without switching the loaded grade course.
   assert.match(collect, /workspaceOwner\.getGradeCourseStateSnapshot\(course\.id\)/);
   assert.doesNotMatch(collect, /ensureGradeCourseLoaded|withTemporaryGradeCourse/);
-  // Scans every school year, newest first, and skips the course being edited.
   assert.match(collect, /\[\.\.\.this\.store\.listSchoolYears\(\)\]\.reverse\(\)/);
   assert.match(collect, /Number\(course\.id\) !== skipCourseId/);
-  // Matches on the normalised first + last name pair only.
   assert.match(collect, /buildGradeStudentNameMatchKey\(student\.lastName, student\.firstName\)/);
 
   const importPortraits = extractGradesMethod('async importCourseDialogPortraitsFromOtherCourses()');
-  // Copies the portrait record instead of linking back to the source course.
   assert.match(importPortraits, /student\.portrait = \{ mime: match\.portrait\.mime, data: match\.portrait\.data \}/);
   assert.doesNotMatch(gradesApp, /portraitRef|portraitSourceCourseId/);
-  // Existing portraits are never overwritten.
   assert.match(importPortraits, /&& !normalizeGradeStudentPortrait\(student\?\.portrait\)/);
-  // Writes stay in the dialog draft; persistence remains the dialog submit path.
   assert.doesNotMatch(importPortraits, /replaceGradeStudentsForCourse|runGradeCourseMutation/);
   assert.match(importPortraits, /this\.revokeGradeStudentPortraitObjectUrls\(\)/);
 });

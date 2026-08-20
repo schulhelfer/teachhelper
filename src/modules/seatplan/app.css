@@ -6,7 +6,7 @@
           --module-surface-border: rgba(148, 163, 184, 0.16);
           --module-surface-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
           --module-surface-radius: 20px;
-          --muted: #334155;
+          --muted: #9fb0c7;
           --text: #e5e7eb;
           --accent: #22d3ee;
           --accent-2: #60a5fa;
@@ -58,6 +58,7 @@
           --dropzone-border: rgba(148, 163, 184, 0.75);
           --dropzone-radius: 12px;
           --dropzone-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+          --progress-track: #334155;
           --motion-fast: 150ms;
           --motion-medium: 220ms;
           --motion-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -852,6 +853,34 @@
           font-weight: 600;
           line-height: 1.5;
           color: var(--text);
+        }
+
+        #course-roster-action-dialog .dialog-copy {
+          font-size: 15px;
+          font-weight: 600;
+          line-height: 1.6;
+          color: var(--text-on-overlay);
+        }
+
+        #course-roster-action-dialog .course-roster-action-question {
+          line-height: 1.75;
+        }
+
+        #course-roster-action-dialog .course-roster-action-warning {
+          font-weight: 700;
+          color: var(--text-error);
+        }
+
+        .course-roster-action-chip {
+          display: inline;
+          padding: 2px 9px;
+          border-radius: 999px;
+          box-shadow: inset 0 0 0 1px var(--control-border);
+          font-size: inherit;
+          font-weight: 700;
+          white-space: nowrap;
+          -webkit-box-decoration-break: clone;
+          box-decoration-break: clone;
         }
 
         .grade-roster-import-trigger {
@@ -3428,7 +3457,7 @@
           position: relative;
           height: 8px;
           border-radius: 999px;
-          background: var(--muted);
+          background: var(--progress-track);
           overflow: hidden;
         }
 

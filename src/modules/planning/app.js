@@ -1304,15 +1304,12 @@ class PlanningApp {
     const summaries = await Promise.all(courses.map(async (course) => {
       try {
         const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
-        // null heißt "unbekannt" (z. B. Tresor zwischenzeitlich gesperrt), nicht "keine Teilnehmer".
         return [Number(course.id), summary ? Number(summary.studentCount || 0) : null];
       } catch {
         return [Number(course.id), null];
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
-    // Nur ein vollständig ermittelter Stand darf gespeichert werden. Sonst würde ein einzelner
-    // Fehler die bekannten Teilnehmerzahlen aller Kurse dauerhaft mit 0 überschreiben.
     if (summaries.every(([, count]) => count !== null)) {
       workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
     }

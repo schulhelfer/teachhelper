@@ -34,15 +34,23 @@ test('course-imported seatplans can safely switch courses without unlocking less
   assert.match(seatplanHtml, /id="course-switch-dialog-discard"/);
 });
 
-test('course-imported seatplans offer an explicit reset before a different course can be selected', () => {
+test('course-imported seatplans keep the explicit reset next to the course pills', () => {
   assert.match(seatplanApp, /async function resetCourseRoster\(\)/);
   assert.match(seatplanApp, /state\.courseContext = null/);
   assert.match(seatplanApp, /resetCourseSeatplanForStudents\(\[\]\)/);
-  assert.match(seatplanApp, /const resetRequired = isCourseSeatplanMode\(\) && !isSelected/);
   assert.match(seatplanApp, /grade-roster-reset-button/);
   assert.match(seatplanApp, /app-action-reset-icon/);
   assert.match(seatplanHtml, /id="course-roster-reset-dialog"/);
   assert.match(seatplanHtml, /id="course-roster-reset-dialog-confirm"/);
+});
+
+test('picking another course while bound asks whether to switch or to adopt its seatplan', () => {
+  assert.match(seatplanApp, /async function chooseCourseRosterAction\(courseId\)/);
+  assert.match(seatplanApp, /function requestCourseSeatplanAdoption\(sourceCourseId\)/);
+  assert.doesNotMatch(seatplanApp, /const resetRequired = isCourseSeatplanMode\(\) && !isSelected/);
+  assert.match(seatplanHtml, /id="course-roster-action-dialog"/);
+  assert.match(seatplanHtml, /id="course-roster-action-switch"/);
+  assert.match(seatplanHtml, /id="course-roster-action-adopt"/);
 });
 
 test('shell layout updates reuse the cached course pills instead of refreshing them repeatedly', () => {

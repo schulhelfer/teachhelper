@@ -124,8 +124,6 @@ test('die Autofill-Felder werden erst aufgebaut, wenn der Dialog offen ist', () 
   const armIndex = openSource.indexOf('this.armGradeVaultDialogAutofill(normalizedMode)');
 
   assert.ok(dialogIndex >= 0 && armIndex > dialogIndex, 'das Scharfschalten folgt auf das Öffnen');
-  // Autofill-Attribute und Fokus dürfen nicht gesetzt werden, solange die Felder
-  // noch unsichtbar sind - sonst parst der Kennwortmanager sie als nicht füllbar.
   assert.doesNotMatch(openSource, /setAttribute\(\s*"autocomplete"/);
   assert.doesNotMatch(openSource, /\.focus\(/);
 });
@@ -140,10 +138,8 @@ test('das Scharfschalten wartet auf das Rendern und hängt die Felder frisch ein
   assert.match(armSource, /attempt < GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES/);
   assert.match(armSource, /this\.rebuildGradeVaultDialogInput\(\s*this\.refs\.gradeVaultDialogUsername/);
   assert.match(armSource, /this\.refs\[entry\.ref\] = this\.rebuildGradeVaultDialogInput\(/);
-  // Felder des inaktiven Modus verlassen das Formular, statt nur unsichtbar zu sein.
   assert.match(armSource, /entry\.row\.remove\(\)/);
   assert.doesNotMatch(armSource, /\.disabled = is(?:Unlock|Setup)Mode/);
-  // Nachfokussieren darf eine offene Vorschlagsliste nicht schließen.
   assert.match(armSource, /document\.activeElement === focusTarget/);
 });
 

@@ -338,6 +338,28 @@
           </div>
         </form>
       </dialog>
+      <dialog id="course-roster-action-dialog" aria-labelledby="course-roster-action-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="course-roster-action-dialog-title" class="dialog-title">Kurs wechseln oder Sitzplan übernehmen?</h2>
+            <div class="app-action-group">
+              <button type="button" id="course-roster-action-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
+                aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+            </div>
+          </div>
+          <p class="dialog-copy course-roster-action-question">Zu <span class="course-roster-action-chip"
+              id="course-roster-action-target"></span>
+            wechseln – oder nur dessen Sitzordnung in <span class="course-roster-action-chip"
+              id="course-roster-action-current"></span> übernehmen?</p>
+          <p class="dialog-copy">Beim Übernehmen bleibt die Teilnehmerliste unverändert. Danach noch speichern.</p>
+          <p class="dialog-copy course-roster-action-warning" id="course-roster-action-unsaved" hidden>Ungespeicherte
+            Änderungen gehen dabei verloren.</p>
+          <div class="dialog-actions">
+            <button type="button" id="course-roster-action-adopt" class="ghost">Sitzplan übernehmen</button>
+            <button type="button" id="course-roster-action-switch" class="primary">Kurs wechseln</button>
+          </div>
+        </form>
+      </dialog>
       <dialog id="course-roster-reset-dialog" class="course-roster-reset-dialog" aria-labelledby="course-roster-reset-dialog-title">
         <form class="dialog-form">
           <div class="dialog-header">

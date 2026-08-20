@@ -43,6 +43,13 @@
             courseSwitchDialogSave: document.getElementById('course-switch-dialog-save'),
             courseSwitchDialogDiscard: document.getElementById('course-switch-dialog-discard'),
             courseSwitchDialogCancel: document.getElementById('course-switch-dialog-cancel'),
+            courseRosterActionDialog: document.getElementById('course-roster-action-dialog'),
+            courseRosterActionDialogCancel: document.getElementById('course-roster-action-dialog-cancel'),
+            courseRosterActionCurrent: document.getElementById('course-roster-action-current'),
+            courseRosterActionTarget: document.getElementById('course-roster-action-target'),
+            courseRosterActionUnsaved: document.getElementById('course-roster-action-unsaved'),
+            courseRosterActionAdopt: document.getElementById('course-roster-action-adopt'),
+            courseRosterActionSwitch: document.getElementById('course-roster-action-switch'),
             courseRosterResetDialog: document.getElementById('course-roster-reset-dialog'),
             courseRosterResetDialogConfirm: document.getElementById('course-roster-reset-dialog-confirm'),
             courseRosterResetDialogAbort: document.getElementById('course-roster-reset-dialog-abort'),
@@ -114,6 +121,9 @@
           }
           if (els.courseSwitchDialog && !els.courseSwitchDialog.hasAttribute('tabindex')) {
             els.courseSwitchDialog.setAttribute('tabindex', '-1');
+          }
+          if (els.courseRosterActionDialog && !els.courseRosterActionDialog.hasAttribute('tabindex')) {
+            els.courseRosterActionDialog.setAttribute('tabindex', '-1');
           }
           if (els.courseRosterResetDialog && !els.courseRosterResetDialog.hasAttribute('tabindex')) {
             els.courseRosterResetDialog.setAttribute('tabindex', '-1');
@@ -1068,6 +1078,125 @@
             startGradeRosterImport(targetCourseId);
           }
 
+          function findGradeRosterCourse(courseId) {
+            const id = Number(courseId || 0);
+            if (!id) return null;
+            return (gradeRosterCourses || []).find((course) => Number(course?.id || 0) === id) || null;
+          }
+
+          function renderCourseRosterActionChip(node, courseId, fallbackName) {
+            if (!node) return;
+            const course = findGradeRosterCourse(courseId);
+            const color = String(course?.color || '#475569');
+            node.textContent = String(course?.name || fallbackName || 'Kurs');
+            node.style.background = color;
+            node.style.color = getGradeRosterPillTextColor(color);
+          }
+
+          function closeCourseRosterActionDialog(returnValue = '') {
+            if (!els.courseRosterActionDialog) return;
+            if (typeof els.courseRosterActionDialog.close === 'function' && els.courseRosterActionDialog.open) {
+              els.courseRosterActionDialog.close(returnValue);
+            }
+            els.courseRosterActionDialog.removeAttribute('open');
+          }
+
+          function openCourseRosterActionDialog(targetCourseId) {
+            const dialog = els.courseRosterActionDialog;
+            if (!dialog) {
+              const targetName = String(findGradeRosterCourse(targetCourseId)?.name || 'Kurs');
+              return Promise.resolve(confirm(`Zu „${targetName}“ wechseln?`) ? 'switch' : '');
+            }
+            renderCourseRosterActionChip(
+              els.courseRosterActionCurrent,
+              state.courseContext?.courseId,
+              state.courseContext?.courseName,
+            );
+            renderCourseRosterActionChip(els.courseRosterActionTarget, targetCourseId, '');
+            if (els.courseRosterActionUnsaved) {
+              els.courseRosterActionUnsaved.hidden = !hasUnsavedCourseSeatplanChanges();
+            }
+            return new Promise((resolve) => {
+              let settled = false;
+              const finish = (choice) => {
+                if (settled) return;
+                settled = true;
+                cleanup();
+                closeCourseRosterActionDialog(choice);
+                resolve(choice);
+              };
+              const onCancel = (event) => {
+                event.preventDefault();
+                finish('');
+              };
+              const onSwitch = () => finish('switch');
+              const onAdopt = () => finish('adopt');
+              const onClose = () => {
+                const returnValue = dialog.returnValue === 'adopt' || dialog.returnValue === 'switch'
+                  ? dialog.returnValue
+                  : '';
+                finish(returnValue);
+              };
+              const cleanup = () => {
+                dialog.removeEventListener('cancel', onCancel);
+                dialog.removeEventListener('close', onClose);
+                els.courseRosterActionSwitch?.removeEventListener('click', onSwitch);
+                els.courseRosterActionAdopt?.removeEventListener('click', onAdopt);
+                els.courseRosterActionDialogCancel?.removeEventListener('click', onCancel);
+              };
+              dialog.addEventListener('cancel', onCancel);
+              dialog.addEventListener('close', onClose);
+              els.courseRosterActionSwitch?.addEventListener('click', onSwitch);
+              els.courseRosterActionAdopt?.addEventListener('click', onAdopt);
+              els.courseRosterActionDialogCancel?.addEventListener('click', onCancel);
+              if (typeof dialog.showModal === 'function') {
+                if (!dialog.open) dialog.showModal();
+              } else {
+                dialog.setAttribute('open', 'open');
+              }
+              const focusDialog = () => els.courseRosterActionSwitch?.focus({ preventScroll: true });
+              if (typeof queueMicrotask === 'function') queueMicrotask(focusDialog);
+              else setTimeout(focusDialog, 0);
+            });
+          }
+
+          async function chooseCourseRosterAction(courseId) {
+            const targetCourseId = Number(courseId || 0);
+            if (!targetCourseId || isCourseRosterSwitchPending()) return;
+            if (!isCourseSeatplanMode()) {
+              await importGradeRosterCourse(targetCourseId);
+              return;
+            }
+            if (!canSwitchCourseRoster() || targetCourseId === Number(state.courseContext?.courseId || 0)) return;
+            const choice = await openCourseRosterActionDialog(targetCourseId);
+            if (choice === 'switch') {
+              await importGradeRosterCourse(targetCourseId);
+              return;
+            }
+            if (choice === 'adopt') requestCourseSeatplanAdoption(targetCourseId);
+          }
+
+          function requestCourseSeatplanAdoption(sourceCourseId) {
+            const sourceId = Number(sourceCourseId || 0);
+            const targetId = Number(state.courseContext?.courseId || 0);
+            if (TUTORIAL_DEMO_MODE || !sourceId || !targetId || sourceId === targetId) return;
+            if (!canSwitchCourseRoster() || isCourseRosterSwitchPending()) return;
+            if (!window.parent || window.parent === window) return;
+            const requestId = `seatplan-course-plan-${createRequestId()}`;
+            pendingGradeRosterImportRequestId = requestId;
+            updateCourseSeatplanUi();
+            window.parent.postMessage({
+              type: SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+              detail: {
+                requestId,
+                courseId: sourceId,
+                targetCourseId: targetId,
+                mode: 'plan',
+                returnTab: 'seatplan',
+              },
+            }, TRUSTED_PARENT_ORIGIN);
+          }
+
           function closeCourseRosterResetDialog(returnValue = '') {
             if (!els.courseRosterResetDialog) return;
             if (typeof els.courseRosterResetDialog.close === 'function' && els.courseRosterResetDialog.open) {
@@ -1235,10 +1364,11 @@
                 || state.csvName === `${courseName} (Notenmodul)`;
               button.classList.toggle('is-imported', isSelected);
               if (isSelected) button.setAttribute('aria-current', 'true');
-              const resetRequired = isCourseSeatplanMode() && !isSelected;
-              button.disabled = isCourseRosterSwitchPending() || isSelected || resetRequired;
-              if (resetRequired) button.title = 'Bitte zuerst den aktuellen Kurs zurücksetzen.';
-              button.addEventListener('click', () => importGradeRosterCourse(course?.id));
+              const rosterLocked = isCourseSeatplanMode() && !canSwitchCourseRoster();
+              button.disabled = isCourseRosterSwitchPending() || isSelected || rosterLocked;
+              if (rosterLocked) button.title = 'Dieser Sitzplan ist fest mit einer Stunde verbunden.';
+              else if (isCourseSeatplanMode() && !isSelected) button.title = 'Kurs wechseln oder Sitzplan übernehmen';
+              button.addEventListener('click', () => { void chooseCourseRosterAction(course?.id); });
               pills.append(button);
             });
             if (canSwitchCourseRoster()) {
@@ -1328,8 +1458,8 @@
               button.setAttribute('role', 'menuitem');
               button.textContent = String(course?.name || 'Kurs');
               button.addEventListener('click', () => {
-                showGradeRosterImportMessage('Namensliste wird importiert …');
-                importGradeRosterCourse(course?.id);
+                if (!isCourseSeatplanMode()) showGradeRosterImportMessage('Namensliste wird importiert …');
+                void chooseCourseRosterAction(course?.id);
               });
               els.gradeRosterImportMenu.append(button);
             });
@@ -1354,7 +1484,7 @@
             }
             const isOwnRequest = String(detail?.requestId || '') === pendingGradeRosterImportRequestId;
             if (!isOwnRequest) {
-              if (detail?.ok) {
+              if (detail?.ok && detail?.mode !== 'plan') {
                 gradeRosterSelectedCourseId = Number(detail.courseId || 0);
                 gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
                 renderGradeRosterPills();
@@ -1375,6 +1505,11 @@
               }
               updateCourseSeatplanUi();
               requestGradeRosterCourses();
+              return;
+            }
+            if (detail?.mode === 'plan') {
+              closeGradeRosterImportMenu();
+              applyAdoptedCourseSeatplan(detail);
               return;
             }
             gradeRosterSelectedCourseId = Number(detail.courseId || 0);
@@ -1444,6 +1579,46 @@
               return;
             }
             resetCourseSeatplanForStudents(courseStudents);
+          }
+
+          function applyAdoptedCourseSeatplan(detail) {
+            const targetCourseId = Number(detail?.targetCourseId || 0);
+            if (!isCourseSeatplanMode() || targetCourseId !== Number(state.courseContext?.courseId || 0)) {
+              showMessage('Der Kurs hat sich zwischenzeitlich geändert. Der Sitzplan wurde nicht übernommen.', 'warn');
+              updateCourseSeatplanUi();
+              return;
+            }
+            const courseName = String(detail?.courseName || 'Kurs');
+            const plan = detail?.plan && typeof detail.plan === 'object' ? detail.plan : null;
+            if (!plan) {
+              showMessage(`„${courseName}“ hat noch keinen gespeicherten Sitzplan.`, 'warn');
+              updateCourseSeatplanUi();
+              return;
+            }
+            try {
+              applyCoursePlanData(
+                { ...plan, headers: state.headers, delim: state.delim },
+                getCourseSeatplanStudents(),
+              );
+            } catch (error) {
+              const message = error instanceof Error && error.message
+                ? error.message
+                : 'Der Sitzplan konnte nicht übernommen werden.';
+              showMessage(message, 'warn');
+              updateCourseSeatplanUi();
+              return;
+            }
+            markUnsavedAction();
+            updateCourseSeatplanUi();
+            const matched = Number(detail?.matchedCount || 0);
+            const seated = Number(detail?.sourceSeatedCount || 0);
+            const seatSummary = seated > 0
+              ? `${matched} von ${seated} Plätzen zugeordnet`
+              : 'in diesem Plan war noch niemand gesetzt';
+            showMessage(
+              `Sitzplan aus „${courseName}“ übernommen – ${seatSummary}. Zum Sichern noch speichern.`,
+              'success',
+            );
           }
 
           function applyCourseSeatplanContext(detail) {
