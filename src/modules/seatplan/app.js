@@ -765,6 +765,7 @@
           let gradeRosterSelectedCourseName = '';
           let courseGradePickerPositionFrame = 0;
           let courseGradePickerPositionSequence = 0;
+          let seatplanTabWasActive = false;
           const PREFERENCE_SLOT_COUNT = 3;
           const ALONE_NEIGHBOR_PENALTY = 0.6;
           const BUDDY_ADJACENT_BONUS_ONE_WAY = 0.4;
@@ -2805,10 +2806,25 @@
               document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
               scheduleCourseGradePickerPosition();
               if (detail?.activeTab === 'seatplan') {
+                if (!seatplanTabWasActive) {
+                  seatplanTabWasActive = true;
+                  if (isCourseGradeMode()) {
+                    const hadUnsavedChanges = buildCourseGradeChanges().changes.length > 0;
+                    resetCourseGradeMode();
+                    updateCourseSeatplanUi();
+                    renderSeats();
+                    refreshUnseated();
+                    if (hadUnsavedChanges) {
+                      showMessage('Ungespeicherte Noteneingabe wurde verworfen, da der Sitzplan verlassen wurde.', 'warn', { presentation: 'toast' });
+                    }
+                  }
+                }
                 requestGradeRosterCourses();
                 requestAnimationFrame(() => {
                   requestAnimationFrame(() => renderGradeRosterPills());
                 });
+              } else {
+                seatplanTabWasActive = false;
               }
               return;
             }
