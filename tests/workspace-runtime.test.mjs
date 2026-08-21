@@ -425,6 +425,104 @@ test('a stored database handle is retained and re-authorized on the next user ac
   assert.equal(acceptedMode, 'reconnect');
 });
 
+const flushAsync = () => new Promise((resolve) => { setTimeout(resolve, 0); });
+
+test('a pending database permission is requested on the first user gesture after startup', async () => {
+  const eventTarget = new EventTarget();
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget });
+  let permission = 'prompt';
+  let prompts = 0;
+  const handle = {
+    name: 'Klasse-7a.thdb',
+    async queryPermission() { return permission; },
+    async requestPermission() {
+      prompts += 1;
+      permission = 'granted';
+      return permission;
+    },
+  };
+  runtime.loadStoredHandle = async (key) => (key === 'sync-file' ? handle : null);
+  runtime.acceptWorkspaceSyncFileHandle = async (nextHandle) => {
+    runtime.fileHandle = nextHandle;
+    return true;
+  };
+  runtime.bindController({ publish() {}, markChanged() {} });
+
+  await runtime.initialize();
+  assert.equal(prompts, 0);
+  assert.equal(runtime.fileHandle, null);
+  assert.equal(runtime.storedFileHandle, handle);
+
+  eventTarget.dispatchEvent(new Event('pointerdown'));
+  await flushAsync();
+
+  assert.equal(prompts, 1);
+  assert.equal(runtime.fileHandle, handle);
+
+  eventTarget.dispatchEvent(new Event('pointerdown'));
+  await flushAsync();
+  assert.equal(prompts, 1);
+});
+
+test('a declined database permission is not requested again on every later gesture', async () => {
+  const eventTarget = new EventTarget();
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget });
+  let prompts = 0;
+  const handle = {
+    name: 'Klasse-7a.thdb',
+    async queryPermission() { return 'prompt'; },
+    async requestPermission() {
+      prompts += 1;
+      return 'prompt';
+    },
+  };
+  runtime.loadStoredHandle = async (key) => (key === 'sync-file' ? handle : null);
+  runtime.bindController({ publish() {}, markChanged() {} });
+
+  await runtime.initialize();
+  for (const _attempt of [0, 1, 2]) {
+    eventTarget.dispatchEvent(new Event('pointerdown'));
+    await flushAsync();
+  }
+
+  assert.equal(prompts, 1);
+  assert.equal(runtime.fileHandle, null);
+});
+
+test('a pending backup directory is requested on a separate gesture from the database file', async () => {
+  const eventTarget = new EventTarget();
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget });
+  const requested = [];
+  const makeHandle = (name, key) => ({
+    name,
+    async queryPermission() { return 'prompt'; },
+    async requestPermission() {
+      requested.push(key);
+      return 'granted';
+    },
+  });
+  const fileHandle = makeHandle('Klasse-7a.thdb', 'sync-file');
+  const backupHandle = makeHandle('TeachHelper-Backups', 'backup-dir');
+  runtime.loadStoredHandle = async (key) => (key === 'sync-file' ? fileHandle : backupHandle);
+  runtime.acceptWorkspaceSyncFileHandle = async (nextHandle) => {
+    runtime.fileHandle = nextHandle;
+    return true;
+  };
+  runtime.bindController({ publish() {}, markChanged() {} });
+
+  await runtime.initialize();
+  assert.deepEqual(requested, []);
+
+  eventTarget.dispatchEvent(new Event('pointerdown'));
+  await flushAsync();
+  assert.deepEqual(requested, ['sync-file']);
+
+  eventTarget.dispatchEvent(new Event('pointerdown'));
+  await flushAsync();
+  assert.deepEqual(requested, ['sync-file', 'backup-dir']);
+  assert.equal(runtime.backupDirectoryHandle, backupHandle);
+});
+
 test('selecting a database handle explicitly requests persistent write access', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   const handle = {

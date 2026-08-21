@@ -282,6 +282,8 @@ export class WorkspaceRuntime {
     this.storedFileHandle = null;
     this.backupDirectoryHandle = null;
     this.storedBackupDirectoryHandle = null;
+    this.syncReconnectInFlight = null;
+    this.startupPermissionRecovery = null;
     this.fileName = '';
     this.knownRevision = 0;
     this.knownFileHash = '';
@@ -332,6 +334,7 @@ export class WorkspaceRuntime {
       this.ensureBackupDirectoryReady(),
     ]);
     this.ready = true;
+    this.bindStartupPermissionRecovery();
     this.controller?.publish?.('shell');
     return results.some((result) => result.status === 'fulfilled' && result.value);
   }
@@ -1627,7 +1630,57 @@ export class WorkspaceRuntime {
     return this.loadManualDatabaseFromFile(file);
   }
 
-  async tryReconnectStoredSyncFile({ allowPrompt = false } = {}) {
+  bindStartupPermissionRecovery() {
+    if (this.ephemeral || this.startupPermissionRecovery) return false;
+    if (!this.eventTarget?.addEventListener) return false;
+    const queue = [];
+    if (this.storedFileHandle && !this.fileHandle) queue.push('sync-file');
+    if (this.storedBackupDirectoryHandle && !this.backupDirectoryHandle) queue.push('backup-directory');
+    if (!queue.length) return false;
+
+    const types = ['pointerdown', 'keydown', 'touchstart'];
+    const state = { queue, busy: false, detach: () => {} };
+    const onGesture = () => {
+      if (state.busy || !state.queue.length) return;
+      const step = state.queue.shift();
+      state.busy = true;
+      const settle = (reconnected) => {
+        state.busy = false;
+        if (reconnected) this.controller?.markChanged?.('shell');
+        if (!reconnected || !state.queue.length) state.detach();
+      };
+      const attempt = step === 'sync-file'
+        ? this.tryReconnectStoredSyncFile({ allowPrompt: true })
+        : this.ensureBackupDirectoryReady({ allowPrompt: true });
+      void attempt.then((changed) => settle(Boolean(changed)), () => settle(false));
+    };
+    for (const type of types) {
+      this.eventTarget.addEventListener(type, onGesture, { passive: true });
+    }
+    state.detach = () => {
+      state.queue.length = 0;
+      for (const type of types) {
+        this.eventTarget.removeEventListener?.(type, onGesture);
+      }
+      if (this.startupPermissionRecovery === state) this.startupPermissionRecovery = null;
+    };
+    this.startupPermissionRecovery = state;
+    return true;
+  }
+
+  tryReconnectStoredSyncFile(options = {}) {
+    if (this.ephemeral) return Promise.resolve(false);
+    if (this.syncReconnectInFlight) return this.syncReconnectInFlight;
+    const attempt = this.runStoredSyncFileReconnect(options);
+    this.syncReconnectInFlight = attempt;
+    const release = () => {
+      if (this.syncReconnectInFlight === attempt) this.syncReconnectInFlight = null;
+    };
+    attempt.then(release, release);
+    return attempt;
+  }
+
+  async runStoredSyncFileReconnect({ allowPrompt = false } = {}) {
     if (this.ephemeral) return false;
     const handle = this.storedFileHandle || await this.loadStoredHandle(HANDLE_FILE_KEY);
     if (!handle) return false;
