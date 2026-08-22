@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <title>Sitzplangenerator</title>
   <meta name="theme-color" content="#f5f5f7" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -50,7 +50,22 @@
               </span>
             </li>
             <li>
-              <strong>Importiere die Namensliste</strong>
+              <div class="roster-import-heading">
+                <strong>Importiere die Namensliste</strong>
+                <button type="button" id="course-roster-reset-button" class="ghost course-roster-reset-button" hidden
+                  aria-label="Kurs zurücksetzen" title="Kursbindung lösen und einen anderen Kurs auswählen">
+                  <svg class="app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                    <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                    <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round" />
+                    <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                      stroke-linejoin="round" />
+                  </svg>
+                </button>
+              </div>
               <div class="roster-import-row mt-sm">
                 <div id="csv-drop-zone" class="file-upload">
                   <input id="csv" type="file" accept=".csv,text/csv" />
@@ -168,6 +183,17 @@
         <div id="sidebar-score" class="sidebar-score" aria-live="polite" title="Gesamtübersicht der Kriterienerfüllung">
           <span class="sidebar-score-value">Gesamtscore: –</span>
         </div>
+        <div id="course-grade-overlay" class="course-grade-bar" hidden>
+          <button type="button" id="course-grade-entry-mode-button" class="course-grade-bar-mode"
+            aria-haspopup="dialog" aria-label="Erfassungsart wählen" data-tooltip="Erfassungsart wählen">
+            <span class="course-grade-bar-mode-label">Einzelnote</span>
+            <span class="course-grade-bar-chevron" aria-hidden="true">▾</span>
+          </button>
+          <span id="course-grade-progress" class="course-grade-bar-progress" role="status" aria-live="polite"></span>
+          <button type="button" id="course-grade-overlay-save"
+            class="primary dialog-icon-button app-action-icon course-grade-bar-save"
+            aria-label="Eingaben speichern" data-tooltip="Eingaben speichern">💾</button>
+        </div>
         <h1 id="print-plan-title" class="print-plan-title" aria-hidden="true"></h1>
         <div class="grid-wrap">
           <div id="grid" class="grid" aria-label="Sitzraster"></div>
@@ -248,7 +274,7 @@
             <table class="preferences-table">
               <thead>
                 <tr>
-                  <th class="group-header name-header" aria-label="Schülername">Schüler</th>
+                  <th class="group-header name-header" aria-label="Name">Name</th>
                   <th class="group-header gender-header" aria-label="Geschlecht für Wechsel"
                     title="Kriterium genau dann aktiv, wenn mindestens ein Geschlechthaken gesetzt ist">m/w
                     abwechselnd
@@ -351,7 +377,7 @@
               id="course-roster-action-target"></span>
             wechseln – oder nur dessen Sitzordnung in <span class="course-roster-action-chip"
               id="course-roster-action-current"></span> übernehmen?</p>
-          <p class="dialog-copy">Beim Übernehmen bleibt die Teilnehmerliste unverändert. Danach noch speichern.</p>
+          <p class="dialog-copy">Beim Übernehmen bleibt die Teilnehmendenliste unverändert. Danach noch speichern.</p>
           <p class="dialog-copy course-roster-action-warning" id="course-roster-action-unsaved" hidden>Ungespeicherte
             Änderungen gehen dabei verloren.</p>
           <div class="dialog-actions">
@@ -383,6 +409,29 @@
               aria-label="Noten von allen speichern" data-tooltip="Noten von allen speichern">💾</button>
             <button type="button" id="course-grade-complete-cancel" class="ghost dialog-icon-button app-action-icon"
               aria-label="Nicht speichern" data-tooltip="Nicht speichern">❌</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="course-grade-entry-mode-dialog" aria-labelledby="course-grade-entry-mode-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="course-grade-entry-mode-dialog-title" class="dialog-title">Erfassungsart</h2>
+            <div class="app-action-group">
+              <button type="button" id="course-grade-entry-mode-cancel" class="ghost dialog-icon-button app-action-icon"
+                aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
+            </div>
+          </div>
+          <p class="dialog-copy">Was soll am Sitzplatz erfasst werden?</p>
+          <div id="course-grade-entry-mode-options" class="course-grade-entry-mode-options" role="radiogroup"
+            aria-label="Erfassungsart"></div>
+          <p class="dialog-copy course-grade-entry-mode-warning" id="course-grade-entry-mode-unsaved" hidden>Es gibt
+            ungespeicherte Eingaben. Bitte erst speichern oder verwerfen.</p>
+          <div class="dialog-actions">
+            <button type="button" id="course-grade-entry-mode-discard" class="ghost" hidden>Verwerfen &amp;
+              wechseln</button>
+            <button type="button" id="course-grade-entry-mode-save" class="primary" hidden>Speichern &amp;
+              wechseln</button>
+            <button type="button" id="course-grade-entry-mode-apply" class="primary">Übernehmen</button>
           </div>
         </form>
       </dialog>

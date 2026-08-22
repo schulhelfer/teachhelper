@@ -1,6 +1,6 @@
 import { installAppTooltips } from '../../shared/app-tooltips.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
-import { QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
+import { MODULE_OPEN_EXTERNAL_REQUEST_EVENT, QR_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 import {
   TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
@@ -303,11 +303,28 @@ export function createQrApp({ root = document } = {}) {
     ui.externalLinkOpenButton?.focus();
   }
 
+  function openExternalLink(value) {
+    const url = getHttpUrl(value);
+    if (!url) return;
+    if (!window.parent || window.parent === window) {
+      window.open(url.href, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    try {
+      window.parent.postMessage(withModuleFrameNonce({
+        type: MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
+        detail: { url: url.href },
+      }), TRUSTED_PARENT_ORIGIN);
+    } catch {
+
+    }
+  }
+
   function openPendingExternalLink() {
     const target = pendingExternalLink;
     closeMessage();
     if (!target) return;
-    window.open(target, '_blank', 'noopener,noreferrer');
+    openExternalLink(target);
   }
 
   function handleDecodedLinkClick(event) {
@@ -319,7 +336,7 @@ export function createQrApp({ root = document } = {}) {
       showExternalLinkWarning(url.href);
       return;
     }
-    window.open(url.href, '_blank', 'noopener,noreferrer');
+    openExternalLink(url.href);
   }
 
   async function drawQrToCanvas(value) {

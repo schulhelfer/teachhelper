@@ -47,7 +47,7 @@ test('der Dialog benennt beide Kurse und den Speicherhinweis', () => {
   assert.match(seatplanHtml, /id="course-roster-action-target"/);
   assert.match(seatplanHtml, /id="course-roster-action-switch"/);
   assert.match(seatplanHtml, /id="course-roster-action-adopt"/);
-  assert.match(seatplanHtml, /Teilnehmerliste unverändert/);
+  assert.match(seatplanHtml, /Teilnehmendenliste unverändert/);
   assert.match(seatplanHtml, /Danach noch speichern/);
   assert.match(seatplanHtml, /id="course-roster-action-unsaved"[^>]*hidden/);
 

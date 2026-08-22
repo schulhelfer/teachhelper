@@ -104,22 +104,43 @@ test('the service worker script is one self-contained file so updates cannot fla
     new URL('../src/shared/app-version.js', import.meta.url),
     'utf8',
   );
-  const appVersion = appVersionSource.match(/APP_VERSION\s*=\s*'([^']+)'/);
-  assert.ok(appVersion, 'app-version.js must export APP_VERSION');
-
-  const serviceWorkerVersion = serviceWorkerSource.match(/const APP_VERSION\s*=\s*'([^']+)'/);
-  assert.ok(serviceWorkerVersion, 'sw.js must declare its own APP_VERSION');
-  assert.equal(
-    serviceWorkerVersion[1],
-    appVersion[1],
-    'APP_VERSION in sw.js must be bumped together with src/shared/app-version.js',
+  assert.match(
+    appVersionSource,
+    /APP_VERSION\s*=\s*'([^']+)'/,
+    'app-version.js must export APP_VERSION for sync-sw-version.mjs to read',
+  );
+  assert.match(
+    serviceWorkerSource,
+    /const APP_VERSION\s*=\s*'([^']+)'/,
+    'sw.js must declare its own APP_VERSION for sync-sw-version.mjs to stamp',
   );
 });
 
-test('the version in sw.js is stamped from the single source instead of typed twice', async () => {
-  const hook = await readFile(new URL('../scripts/pre-commit-checks.sh', import.meta.url), 'utf8');
+test('the version stamp runs before release checks and the audit rejects mismatches', async () => {
+  const [hook, audit, syncScript] = await Promise.all([
+    readFile(new URL('../scripts/pre-commit-checks.sh', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/audit.py', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/sync-sw-version.mjs', import.meta.url), 'utf8'),
+  ]);
   assert.match(hook, /node scripts\/sync-sw-version\.mjs/);
   assert.match(hook, /node scripts\/check-version-bump\.mjs/);
+  assert.ok(
+    hook.indexOf('node scripts/sync-sw-version.mjs') < hook.indexOf('node --test'),
+    'sync-sw-version.mjs must run before the test suite',
+  );
+  assert.ok(
+    hook.indexOf('node scripts/sync-sw-version.mjs') < hook.indexOf('scripts/audit.py'),
+    'sync-sw-version.mjs must run before the PWA audit',
+  );
+  assert.match(audit, /def check_service_worker_version\(\):/);
+  assert.match(audit, /if app_version != service_worker_version:/);
+  assert.match(audit, /Run node scripts\/sync-sw-version\.mjs before committing\./);
+  assert.match(syncScript, /const checkOnly = process\.argv\.slice\(2\)\.includes\('--check'\)/);
+  assert.match(
+    syncScript,
+    /sw\.js enthält neben dem Versionsstempel ungestagte Änderungen\. Bitte prüfen und selbst stagen\./,
+  );
+  assert.match(syncScript, /git\('add', '--', 'sw\.js'\);/);
 });
 
 test('a complete precache is left alone while an incomplete one is refilled entirely', () => {

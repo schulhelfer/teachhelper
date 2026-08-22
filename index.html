@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' 'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <title>TeachHelper</title>
   <meta name="theme-color" content="#f5f5f7" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -52,37 +52,52 @@
             aria-selected="false">Sitzplan</button>
           <button id="tab-name-learning" class="tab-button" type="button" data-tab-target="name-learning"
             aria-selected="false" hidden>Namen lernen</button>
-          <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups" data-more-tools-tab="1"
+          <button id="tab-groups" class="tab-button" type="button" data-tab-target="groups"
             aria-selected="false">Gruppen</button>
           <button id="tab-random-picker" class="tab-button" type="button" data-tab-target="random-picker"
-            data-more-tools-tab="1" aria-selected="false">Picker</button>
+            aria-selected="false">Picker</button>
           <button id="tab-merger" class="tab-button" type="button" data-tab-target="merger"
             aria-selected="false">PDF-Tools</button>
           <button id="tab-duplicate-check" class="tab-button" type="button" data-tab-target="duplicate-check"
-            data-more-tools-tab="1" aria-selected="false">DuplikatCheck</button>
+            aria-selected="false">DuplikatCheck</button>
           <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
-            data-more-tools-tab="1" aria-selected="false">Arbeitsphase</button>
-          <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" data-more-tools-tab="1"
-            aria-selected="false">QR</button>
+            aria-selected="false">Arbeitsphase</button>
+          <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
           <div id="more-tools" class="more-tools">
             <button id="more-tools-trigger" class="tab-button more-tools-trigger" type="button" aria-haspopup="menu"
-              aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false">
-              Weitere Tools <span class="more-tools-trigger-caret" aria-hidden="true">▾</span>
+              aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false" aria-label="Weitere Tools"
+              title="Weitere Tools">
+              <span class="more-tools-trigger-label">Weitere Tools</span>
+              <span class="more-tools-trigger-compact-label" aria-hidden="true">⋯</span>
+              <span class="more-tools-trigger-caret" aria-hidden="true">▾</span>
             </button>
             <div id="more-tools-menu" class="more-tools-menu" role="menu" aria-label="Weitere Tools" hidden>
-              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="groups">
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="seatplan" hidden>
+                Sitzplan <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="name-learning"
+                hidden>
+                Namen lernen <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="groups" hidden>
                 Gruppen <span class="more-tools-menu-check" aria-hidden="true">✓</span>
               </button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="random-picker">
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="random-picker"
+                hidden>
                 Picker <span class="more-tools-menu-check" aria-hidden="true">✓</span>
               </button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="duplicate-check">
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="merger" hidden>
+                PDF-Tools <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="duplicate-check"
+                hidden>
                 DuplikatCheck <span class="more-tools-menu-check" aria-hidden="true">✓</span>
               </button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="work-phase">
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="work-phase"
+                hidden>
                 Arbeitsphase <span class="more-tools-menu-check" aria-hidden="true">✓</span>
               </button>
-              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="qr">
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="qr" hidden>
                 QR <span class="more-tools-menu-check" aria-hidden="true">✓</span>
               </button>
             </div>
@@ -125,8 +140,8 @@
     <aside class="side">
       <div id="sidebar-resize-handle" class="sidebar-resize-handle" aria-hidden="true"></div>
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
-      <button id="first-run-tutorial-start" class="sidebar-help-button" type="button" aria-label="Tutorial für das Modul Noten"
-        data-tooltip="Tutorial für das Modul Noten">🛟</button>
+      <button id="first-run-tutorial-start" class="sidebar-help-button" type="button"
+        aria-label="Tutorial für das Modul Noten" data-tooltip="Tutorial für das Modul Noten">🛟</button>
       <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
         <h1 class="sidebar-title">Gruppengenerator</h1>
       </div>
@@ -436,9 +451,10 @@
         <div class="dialog-header">
           <h2 id="preferences-dialog-title" class="dialog-title">Auswahlbedingungen</h2>
           <div class="dialog-actions-top app-action-group">
-            <button type="button" id="preferences-reset" class="ghost dialog-icon-button app-action-icon" aria-label="Zurücksetzen"
-              data-tooltip="Zurücksetzen" hidden>
-              <svg class="preferences-reset-icon app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <button type="button" id="preferences-reset" class="ghost dialog-icon-button app-action-icon"
+              aria-label="Zurücksetzen" data-tooltip="Zurücksetzen" hidden>
+              <svg class="preferences-reset-icon app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true"
+                focusable="false">
                 <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
                   stroke-linecap="round" stroke-linejoin="round"></path>
                 <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
@@ -449,8 +465,8 @@
                   stroke-linejoin="round"></path>
               </svg>
             </button>
-            <button type="button" id="preferences-cancel" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
-              data-tooltip="Abbrechen">❌</button>
+            <button type="button" id="preferences-cancel" class="ghost dialog-icon-button app-action-icon"
+              aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
             <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
               data-tooltip="Speichern">💾</button>
           </div>
@@ -467,13 +483,12 @@
             <thead id="preferences-thead">
               <tr>
                 <th colspan="3" class="group-header">
-                  Gute Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
+                  Gute Gruppenpartner
                 </th>
                 <th class="group-header name-header"></th>
                 <th class="group-header performance-flair-header">Leistungsklasse</th>
                 <th colspan="3" class="group-header">
-                  Schlechte Gruppenpartner für <span class="preference-midpoint-label">Schüler in der
-                    Tabellenmitte</span>
+                  Schlechte Gruppenpartner
                 </th>
               </tr>
             </thead>

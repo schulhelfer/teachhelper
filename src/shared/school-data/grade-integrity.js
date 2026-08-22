@@ -70,7 +70,7 @@ export function assertGradeCourseIntegrity(courseId, rawState) {
   const studentIds = assertUniquePositiveIds(
     collections.gradeStudents,
     'id',
-    'Teilnehmerzeile',
+    'Teilnehmendenzeile',
     courseKey,
   );
   const assessmentIds = assertUniquePositiveIds(
@@ -140,17 +140,17 @@ export function assertGradeCourseIntegrity(courseId, rawState) {
 
 export function assertGradeRosterUnchanged(beforeStudentIds, afterStudentIds) {
   const normalize = (values) => {
-    if (!Array.isArray(values)) throw new Error('Teilnehmerstand ist ungültig.');
+    if (!Array.isArray(values)) throw new Error('Teilnehmendenstand ist ungültig.');
     const ids = values.map(positiveId);
     if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
-      throw new Error('Teilnehmerstand enthält ungültige oder doppelte IDs.');
+      throw new Error('Teilnehmendenstand enthält ungültige oder doppelte IDs.');
     }
     return ids.sort((left, right) => left - right);
   };
   const before = normalize(beforeStudentIds);
   const after = normalize(afterStudentIds);
   if (before.length !== after.length || before.some((id, index) => id !== after[index])) {
-    throw new Error('Eine Notenänderung darf die Teilnehmerliste nicht verändern.');
+    throw new Error('Eine Notenänderung darf die Teilnehmendenliste nicht verändern.');
   }
   return true;
 }
@@ -169,6 +169,11 @@ function normalizeGradeValue(value, label) {
 
 
 
+function normalizeGradeCheckedValue(value, label) {
+  if (value === true || value === false) return value;
+  throw new Error(`${label} ist kein gültiger Vorkommnis-Wert.`);
+}
+
 export function validateGradeDelta(changes, {
   studentIds,
   currentValueForStudent,
@@ -181,13 +186,13 @@ export function validateGradeDelta(changes, {
   }
   const roster = new Set(studentIds.map(positiveId));
   if (roster.has(0) || roster.size !== studentIds.length) {
-    throw new Error('Teilnehmerstand ist ungültig.');
+    throw new Error('Teilnehmendenstand ist ungültig.');
   }
   const seen = new Set();
   const normalized = changes.map((change) => {
     const studentId = positiveId(change?.studentId);
     if (!isRecord(change) || !studentId || !roster.has(studentId) || seen.has(studentId)) {
-      throw new Error('Notenänderung enthält fremde oder doppelte Teilnehmer.');
+      throw new Error('Notenänderung enthält fremde oder doppelte Teilnehmende.');
     }
     seen.add(studentId);
     if (!Object.prototype.hasOwnProperty.call(change, 'expectedValue')) {
@@ -211,4 +216,47 @@ export function validateGradeDelta(changes, {
     return { studentId, expectedValue, value };
   });
   return normalized;
+}
+
+export function validateGradeOccurrenceDelta(changes, {
+  studentIds,
+  currentCheckedForStudent,
+} = {}) {
+  if (!Array.isArray(changes) || changes.length === 0) {
+    throw new Error('Vorkommnisänderungen fehlen.');
+  }
+  if (!Array.isArray(studentIds) || typeof currentCheckedForStudent !== 'function') {
+    throw new Error('Vorkommniskontext ist unvollständig.');
+  }
+  const roster = new Set(studentIds.map(positiveId));
+  if (roster.has(0) || roster.size !== studentIds.length) {
+    throw new Error('Teilnehmendenstand ist ungültig.');
+  }
+  const seen = new Set();
+  return changes.map((change) => {
+    const studentId = positiveId(change?.studentId);
+    if (!isRecord(change) || !studentId || !roster.has(studentId) || seen.has(studentId)) {
+      throw new Error('Vorkommnisänderung enthält fremde oder doppelte Teilnehmende.');
+    }
+    seen.add(studentId);
+    if (!Object.prototype.hasOwnProperty.call(change, 'expectedChecked')) {
+      throw new Error('Vorkommnisänderung enthält keinen erwarteten Ausgangswert.');
+    }
+    if (!Object.prototype.hasOwnProperty.call(change, 'checked')) {
+      throw new Error('Vorkommnisänderung enthält keinen neuen Wert.');
+    }
+    const expectedChecked = normalizeGradeCheckedValue(change.expectedChecked, 'Erwarteter Vorkommnis-Wert');
+    const checked = normalizeGradeCheckedValue(change.checked, 'Neuer Vorkommnis-Wert');
+    const currentChecked = normalizeGradeCheckedValue(
+      currentCheckedForStudent(studentId),
+      'Aktueller Vorkommnis-Wert',
+    );
+    if (currentChecked !== expectedChecked) {
+      throw new Error('Ein Vorkommnis wurde zwischenzeitlich geändert.');
+    }
+    if (checked === expectedChecked) {
+      throw new Error('Vorkommnisänderung enthält keinen geänderten Wert.');
+    }
+    return { studentId, expectedChecked, checked };
+  });
 }

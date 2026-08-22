@@ -1,6 +1,6 @@
 export const THDB_MAGIC = 'THDB1';
-export const THDB_INTEGRITY_VERSION = 1;
-export const THDB_INTEGRITY_ALGORITHM = 'SHA-256';
+export const THDB_CHECKSUM_VERSION = 1;
+export const THDB_CHECKSUM_ALGORITHM = 'SHA-256';
 
 const SHA256_PREFIX = 'sha256:';
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/i;
@@ -169,8 +169,8 @@ function normalizeIntegrity(raw) {
   const gradeVaultConfigHash = normalizeContentHash(raw.gradeVaultConfigHash);
   const contentHash = normalizeContentHash(raw.contentHash);
   if (
-    version !== THDB_INTEGRITY_VERSION
-    || algorithm !== THDB_INTEGRITY_ALGORITHM
+    version !== THDB_CHECKSUM_VERSION
+    || algorithm !== THDB_CHECKSUM_ALGORITHM
     || !startupShellHash
     || !planningPublicHash
     || !gradeVaultConfigHash
@@ -178,7 +178,7 @@ function normalizeIntegrity(raw) {
   ) return null;
   return {
     version,
-    algorithm: THDB_INTEGRITY_ALGORITHM,
+    algorithm: THDB_CHECKSUM_ALGORITHM,
     startupShellHash,
     planningPublicHash,
     gradeVaultConfigHash,
@@ -234,8 +234,8 @@ function buildContentIntegrity({
     contentHash: hashBytes(segment.bytes),
   }));
   return {
-    version: THDB_INTEGRITY_VERSION,
-    algorithm: THDB_INTEGRITY_ALGORITHM,
+    version: THDB_CHECKSUM_VERSION,
+    algorithm: THDB_CHECKSUM_ALGORITHM,
     startupShellHash,
     planningPublicHash,
     gradeVaultConfigHash,

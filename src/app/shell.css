@@ -484,6 +484,14 @@
       transition: none !important;
     }
 
+    .app.is-viewport-resizing .app-header,
+    .app.is-viewport-resizing .app-header-title,
+    .app.is-viewport-resizing .app-header-actions,
+    .app.is-viewport-resizing .tab-nav,
+    .app.is-viewport-resizing .tab-indicator {
+      transition: none !important;
+    }
+
     .app.app-tab-groups>.app-header,
     .app.app-tab-random-picker>.app-header,
     .app.app-tab-work-phase>.app-header {
@@ -653,7 +661,7 @@
       overflow-y: visible;
       pointer-events: auto;
       transform-origin: left center;
-      transition: max-width var(--chrome-transition-duration) var(--chrome-transition-ease), max-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), margin-left var(--chrome-transition-duration-medium) var(--chrome-transition-ease), gap var(--chrome-transition-duration-short) var(--chrome-transition-ease);
+      transition: max-width var(--chrome-transition-duration) var(--chrome-transition-ease), max-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), margin-left var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
     .more-tools {
@@ -663,7 +671,7 @@
       flex: 0 0 auto;
     }
 
-    .tab-nav.is-tools-condensed [data-more-tools-tab] {
+    .tab-nav .tab-button[data-tab-overflow] {
       display: none;
     }
 
@@ -671,19 +679,19 @@
       display: block;
     }
 
+    .tab-nav.is-measuring-full-tabs,
+    .tab-nav.is-measuring-full-tabs .tab-button,
+    .tab-nav.is-measuring-full-tabs .tab-unlock-button {
+      transition: none !important;
+      transform: none !important;
+    }
+
     .tab-nav.is-measuring-full-tabs .tab-button {
       flex: 0 0 auto;
     }
 
-    .tab-nav.is-tabs-compact {
-      gap: clamp(2px, 0.35vw, 4px);
-    }
-
-    .tab-nav.is-tabs-compact .tab-button {
-      min-width: clamp(62px, 6vw, 96px);
-      padding-right: clamp(5px, 0.55vw, 8px);
-      padding-left: clamp(5px, 0.55vw, 8px);
-      font-size: clamp(11px, 1.05vw, 13px);
+    .tab-nav.is-measuring-full-tabs .more-tools {
+      display: block;
     }
 
     .tab-nav .more-tools-trigger {
@@ -692,6 +700,12 @@
       justify-content: center;
       gap: 6px;
       white-space: nowrap;
+    }
+
+    .more-tools-trigger-compact-label {
+      display: none;
+      font-size: 1.05em;
+      line-height: 1;
     }
 
     .more-tools-trigger-caret {
@@ -741,6 +755,10 @@
       text-align: left;
       box-shadow: none;
       transform: none;
+    }
+
+    .tab-nav .more-tools-menu button[hidden] {
+      display: none;
     }
 
     .tab-nav .more-tools-menu button:hover,
@@ -6894,8 +6912,12 @@
         grid-row: auto;
       }
 
+      .app.app-tab-merger,
+      .app.app-tab-duplicate-check,
+      .app.app-tab-qr,
       .app.app-tab-planning,
-      .app.app-tab-grades {
+      .app.app-tab-grades,
+      .app.app-tab-name-learning {
         grid-template-rows: auto minmax(0, 1fr);
         grid-auto-rows: unset;
         height: 100vh;
@@ -6904,8 +6926,12 @@
         overflow: hidden;
       }
 
+      .app.app-tab-merger>.merger-shell,
+      .app.app-tab-duplicate-check>.duplicate-check-shell,
+      .app.app-tab-qr>.qr-shell,
       .app.app-tab-planning>.planning-shell,
-      .app.app-tab-grades>.grades-shell {
+      .app.app-tab-grades>.grades-shell,
+      .app.app-tab-name-learning>.name-learning-shell {
         grid-row: 2;
         display: flex;
         flex-direction: column;
@@ -6914,10 +6940,46 @@
         overflow: hidden;
       }
 
+      .app.app-tab-merger .merger-host,
+      .app.app-tab-duplicate-check .duplicate-check-host,
+      .app.app-tab-qr .qr-host,
       .app.app-tab-planning .planning-host,
       .app.app-tab-grades .grades-host,
+      .app.app-tab-name-learning .name-learning-host,
+      .app.app-tab-merger #merger-host>.merger-frame,
+      .app.app-tab-duplicate-check #duplicate-check-host>.duplicate-check-frame,
+      .app.app-tab-qr #qr-host>.qr-frame,
       .app.app-tab-planning #planning-host>.planning-frame,
-      .app.app-tab-grades #grades-host>.grades-frame {
+      .app.app-tab-grades #grades-host>.grades-frame,
+      .app.app-tab-name-learning #name-learning-host>.name-learning-frame {
+        display: flex;
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
+      }
+
+      .app.app-tab-seatplan {
+        grid-template-rows: auto minmax(0, 1fr);
+        grid-auto-rows: unset;
+        height: 100vh;
+        height: 100dvh;
+        align-items: stretch;
+        overflow: hidden;
+      }
+
+      .app.app-tab-seatplan>.main {
+        grid-column: 1;
+        grid-row: 2;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        height: 100%;
+        overflow: hidden;
+      }
+
+      .app.app-tab-seatplan #seatplan-main-host,
+      .app.app-tab-seatplan.app-seatplan-full #seatplan-main-host,
+      .app.app-tab-seatplan #seatplan-main-host>.seatplan-frame {
         display: flex;
         flex: 1 1 auto;
         min-height: 0;
@@ -7133,7 +7195,7 @@
       }
 
       .tab-button {
-        flex: 0 1 auto;
+        flex: 0 0 auto;
         min-width: 0;
         white-space: nowrap;
         line-height: 1.2;
@@ -7177,6 +7239,18 @@
     @media (max-width:480px) {
       .tab-nav {
         gap: 3px;
+      }
+
+      .more-tools-trigger-label {
+        display: none;
+      }
+
+      .more-tools-trigger-compact-label {
+        display: inline;
+      }
+
+      .tab-nav .more-tools-trigger {
+        min-width: 0;
       }
 
       .tab-button {

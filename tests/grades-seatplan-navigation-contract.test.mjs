@@ -38,8 +38,8 @@ test('course-imported seatplans keep the explicit reset next to the course pills
   assert.match(seatplanApp, /async function resetCourseRoster\(\)/);
   assert.match(seatplanApp, /state\.courseContext = null/);
   assert.match(seatplanApp, /resetCourseSeatplanForStudents\(\[\]\)/);
-  assert.match(seatplanApp, /grade-roster-reset-button/);
-  assert.match(seatplanApp, /app-action-reset-icon/);
+  assert.match(seatplanApp, /course-roster-reset-button/);
+  assert.match(seatplanHtml, /id="course-roster-reset-button"[\s\S]*?class="app-action-reset-icon"/);
   assert.match(seatplanHtml, /id="course-roster-reset-dialog"/);
   assert.match(seatplanHtml, /id="course-roster-reset-dialog-confirm"/);
 });

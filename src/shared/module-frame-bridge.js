@@ -4,9 +4,9 @@ export const PLANNING_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboar
 export const CAMERA_MODULE_ALLOW = "camera; clipboard-read; clipboard-write; microphone 'none'";
 
 export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
-export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox';
+export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const DUPLICATE_CHECK_MODULE_SANDBOX = 'allow-scripts allow-downloads';
-export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads allow-popups allow-popups-to-escape-sandbox';
+export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
 export const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-response';
 

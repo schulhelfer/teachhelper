@@ -54,27 +54,72 @@ function normaliseInlines(value) {
 }
 
 function normaliseBlocks(value) {
-  return (Array.isArray(value) ? value : []).flatMap((raw) => {
-    if (!raw || typeof raw !== "object") return [];
-    if (raw.type === "paragraph") return [{ type: "paragraph", children: normaliseInlines(raw.children) }];
-    if (raw.type === "list" && (raw.ordered === true || raw.ordered === false)) {
-      const items = (Array.isArray(raw.items) ? raw.items : []).map((item) => normaliseBlocks(item));
-      return items.length ? [{ type: "list", ordered: raw.ordered, items }] : [];
+  const blocks = [];
+  const stack = [{ type: "blocks", source: Array.isArray(value) ? value : [], target: blocks, index: 0 }];
+  while (stack.length) {
+    const frame = stack.at(-1);
+    if (frame.type === "blocks") {
+      if (frame.index >= frame.source.length) { stack.pop(); continue; }
+      const raw = frame.source[frame.index++];
+      if (!raw || typeof raw !== "object") continue;
+      if (raw.type === "paragraph") {
+        frame.target.push({ type: "paragraph", children: normaliseInlines(raw.children) });
+        continue;
+      }
+      if (raw.type === "list" && (raw.ordered === true || raw.ordered === false)) {
+        const source = Array.isArray(raw.items) ? raw.items : [];
+        const items = source.map(() => []);
+        stack.push({ type: "commitList", target: frame.target, ordered: raw.ordered, items });
+        stack.push({ type: "listItems", source, items, index: 0 });
+        continue;
+      }
+      if (raw.type === "table") {
+        const source = Array.isArray(raw.rows) ? raw.rows : [];
+        const rows = source.map((row) => Array.isArray(row) ? row.map(() => []) : []);
+        stack.push({ type: "commitTable", target: frame.target, rows });
+        stack.push({ type: "tableCells", source, rows, rowIndex: 0, cellIndex: 0 });
+      }
+      continue;
     }
-    if (raw.type === "table") {
-      const rows = (Array.isArray(raw.rows) ? raw.rows : []).map((row) =>
-        (Array.isArray(row) ? row : []).map((cell) => normaliseBlocks(cell))
-      ).filter((row) => row.length);
-      const columns = rows.reduce((max, row) => Math.max(max, row.length), 0);
-      if (!rows.length || !columns) return [];
-      return [{ type: "table", rows: rows.map((row) => {
-        const next = [...row];
-        while (next.length < columns) next.push([]);
-        return next;
-      }) }];
+    if (frame.type === "listItems") {
+      if (frame.index >= frame.source.length) { stack.pop(); continue; }
+      const index = frame.index++;
+      stack.push({ type: "blocks", source: Array.isArray(frame.source[index]) ? frame.source[index] : [], target: frame.items[index], index: 0 });
+      continue;
     }
-    return [];
-  });
+    if (frame.type === "tableCells") {
+      while (frame.rowIndex < frame.source.length
+        && frame.cellIndex >= (Array.isArray(frame.source[frame.rowIndex]) ? frame.source[frame.rowIndex].length : 0)) {
+        frame.rowIndex += 1;
+        frame.cellIndex = 0;
+      }
+      if (frame.rowIndex >= frame.source.length) { stack.pop(); continue; }
+      const rowIndex = frame.rowIndex;
+      const cellIndex = frame.cellIndex++;
+      stack.push({
+        type: "blocks",
+        source: Array.isArray(frame.source[rowIndex][cellIndex]) ? frame.source[rowIndex][cellIndex] : [],
+        target: frame.rows[rowIndex][cellIndex],
+        index: 0
+      });
+      continue;
+    }
+    if (frame.type === "commitList") {
+      stack.pop();
+      if (frame.items.length) frame.target.push({ type: "list", ordered: frame.ordered, items: frame.items });
+      continue;
+    }
+    stack.pop();
+    const rows = frame.rows.filter((row) => row.length);
+    const columns = rows.reduce((max, row) => Math.max(max, row.length), 0);
+    if (!rows.length || !columns) continue;
+    frame.target.push({ type: "table", rows: rows.map((row) => {
+      const next = [...row];
+      while (next.length < columns) next.push([]);
+      return next;
+    }) });
+  }
+  return blocks;
 }
 
 export function createPlanningRichTextFromPlainText(value) {
@@ -100,19 +145,47 @@ function inlinePlainText(children) {
 
 export function planningRichTextToPlainText(value, fallbackText = "") {
   const documentValue = normalizePlanningRichText(value, fallbackText);
-  const blockText = (block, listIndex = 0) => {
-    if (block.type === "paragraph") return inlinePlainText(block.children);
-    if (block.type === "list") return block.items.map((item, index) =>
-      item.map((child) => blockText(child, index)).filter(Boolean).map((text) =>
-        `${block.ordered ? `${index + 1}.` : "•"} ${text}`
-      ).join("\n")
-    ).join("\n");
-    if (block.type === "table") return block.rows.map((row) => row.map((cell) =>
-      cell.map((child) => blockText(child, listIndex)).join("\n")
-    ).join("\t")).join("\n");
-    return "";
-  };
-  return documentValue.blocks.map((block) => blockText(block)).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  const results = [];
+  const stack = documentValue.blocks.slice().reverse().map((block) => ({ type: "block", block, listIndex: 0, target: results }));
+  while (stack.length) {
+    const frame = stack.pop();
+    if (frame.type === "block") {
+      if (frame.block.type === "paragraph") { frame.target.push(inlinePlainText(frame.block.children)); continue; }
+      if (frame.block.type === "list") {
+        const items = frame.block.items.map(() => []);
+        stack.push({ type: "list", block: frame.block, items, target: frame.target });
+        for (let itemIndex = frame.block.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+          const item = frame.block.items[itemIndex];
+          for (let childIndex = item.length - 1; childIndex >= 0; childIndex -= 1) {
+            stack.push({ type: "block", block: item[childIndex], listIndex: itemIndex, target: items[itemIndex] });
+          }
+        }
+        continue;
+      }
+      if (frame.block.type === "table") {
+        const rows = frame.block.rows.map((row) => row.map(() => []));
+        stack.push({ type: "table", rows, target: frame.target });
+        for (let rowIndex = frame.block.rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+          const row = frame.block.rows[rowIndex];
+          for (let cellIndex = row.length - 1; cellIndex >= 0; cellIndex -= 1) {
+            const cell = row[cellIndex];
+            for (let childIndex = cell.length - 1; childIndex >= 0; childIndex -= 1) {
+              stack.push({ type: "block", block: cell[childIndex], listIndex: frame.listIndex, target: rows[rowIndex][cellIndex] });
+            }
+          }
+        }
+      }
+      continue;
+    }
+    if (frame.type === "list") {
+      frame.target.push(frame.items.map((item, index) => item.filter(Boolean).map((text) =>
+        `${frame.block.ordered ? `${index + 1}.` : "•"} ${text}`
+      ).join("\n")).join("\n"));
+      continue;
+    }
+    frame.target.push(frame.rows.map((row) => row.map((cell) => cell.join("\n")).join("\t")).join("\n"));
+  }
+  return results.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
 function readStyleSize(element) {
@@ -134,59 +207,92 @@ function readColorName(element) {
 }
 
 function collectInlineNodes(node, marks = {}, target = []) {
-  if (node.nodeType === Node.TEXT_NODE) {
-    const value = textNode(node.textContent, marks);
-    if (value) target.push(value);
-    return target;
+  const stack = [{ node, marks }];
+  while (stack.length) {
+    const current = stack.pop();
+    if (current.node.nodeType === Node.TEXT_NODE) {
+      const value = textNode(current.node.textContent, current.marks);
+      if (value) target.push(value);
+      continue;
+    }
+    if (current.node.nodeType !== Node.ELEMENT_NODE) continue;
+    const tag = current.node.tagName.toLowerCase();
+    const nextMarks = { ...current.marks };
+    if (["b", "strong"].includes(tag)) nextMarks.bold = true;
+    if (["i", "em"].includes(tag)) nextMarks.italic = true;
+    if (tag === "u") nextMarks.underline = true;
+    if (["span", "font"].includes(tag) && (current.node.style?.fontSize || current.node.hasAttribute("size") || current.node.className?.includes("planning-rich-size-"))) nextMarks.size = readStyleSize(current.node);
+    if (tag === "span" && current.node.className?.includes("planning-rich-color-")) nextMarks.color = readColorName(current.node);
+    if (tag === "a" && isAllowedPlanningNoteLink(current.node.getAttribute("href"))) nextMarks.link = current.node.getAttribute("href");
+    if (tag === "br") {
+      const value = textNode("\n", nextMarks);
+      if (value) target.push(value);
+      continue;
+    }
+    const children = current.node.childNodes || [];
+    for (let index = children.length - 1; index >= 0; index -= 1) stack.push({ node: children[index], marks: nextMarks });
   }
-  if (node.nodeType !== Node.ELEMENT_NODE) return target;
-  const tag = node.tagName.toLowerCase();
-  const nextMarks = { ...marks };
-  if (["b", "strong"].includes(tag)) nextMarks.bold = true;
-  if (["i", "em"].includes(tag)) nextMarks.italic = true;
-  if (tag === "u") nextMarks.underline = true;
-  if (["span", "font"].includes(tag) && (node.style?.fontSize || node.hasAttribute("size") || node.className?.includes("planning-rich-size-"))) nextMarks.size = readStyleSize(node);
-  if (tag === "span" && node.className?.includes("planning-rich-color-")) nextMarks.color = readColorName(node);
-  if (tag === "a" && isAllowedPlanningNoteLink(node.getAttribute("href"))) nextMarks.link = node.getAttribute("href");
-  if (tag === "br") {
-    const value = textNode("\n", nextMarks);
-    if (value) target.push(value);
-    return target;
-  }
-  [...node.childNodes].forEach((child) => collectInlineNodes(child, nextMarks, target));
   return target;
 }
 
 function collectBlocks(nodes) {
   const blocks = [];
-  [...nodes].forEach((node) => {
-    if (node.nodeType === Node.TEXT_NODE) {
+  const stack = [{ type: "nodes", source: [...nodes], target: blocks, index: 0 }];
+  while (stack.length) {
+    const frame = stack.at(-1);
+    if (frame.type === "nodes") {
+      if (frame.index >= frame.source.length) { stack.pop(); continue; }
+      const node = frame.source[frame.index++];
+      if (node.nodeType === Node.TEXT_NODE) {
+        const children = collectInlineNodes(node);
+        if (children.length) frame.target.push({ type: "paragraph", children });
+        continue;
+      }
+      if (node.nodeType !== Node.ELEMENT_NODE) continue;
+      const tag = node.tagName.toLowerCase();
+      if (["ul", "ol"].includes(tag)) {
+        const source = [...node.children].filter((child) => child.tagName.toLowerCase() === "li");
+        const items = source.map(() => []);
+        stack.push({ type: "commitList", target: frame.target, ordered: tag === "ol", items });
+        stack.push({ type: "listItems", source, items, index: 0 });
+        continue;
+      }
+      if (tag === "table") {
+        const source = [...node.querySelectorAll(":scope > tbody > tr, :scope > thead > tr, :scope > tr")]
+          .map((row) => [...row.children].filter((cell) => ["td", "th"].includes(cell.tagName.toLowerCase())));
+        const rows = source.map((row) => row.map(() => []));
+        stack.push({ type: "commitTable", target: frame.target, rows });
+        stack.push({ type: "tableCells", source, rows, rowIndex: 0, cellIndex: 0 });
+        continue;
+      }
       const children = collectInlineNodes(node);
-      if (children.length) blocks.push({ type: "paragraph", children });
-      return;
+      if (["p", "div", "h1", "h2", "h3", "h4", "blockquote"].includes(tag) || children.length) {
+        frame.target.push({ type: "paragraph", children });
+      }
+      continue;
     }
-    if (node.nodeType !== Node.ELEMENT_NODE) return;
-    const tag = node.tagName.toLowerCase();
-    if (["ul", "ol"].includes(tag)) {
-      const items = [...node.children].filter((child) => child.tagName.toLowerCase() === "li")
-        .map((item) => collectBlocks(item.childNodes));
-      if (items.length) blocks.push({ type: "list", ordered: tag === "ol", items });
-      return;
+    if (frame.type === "listItems") {
+      if (frame.index >= frame.source.length) { stack.pop(); continue; }
+      const index = frame.index++;
+      stack.push({ type: "nodes", source: [...frame.source[index].childNodes], target: frame.items[index], index: 0 });
+      continue;
     }
-    if (tag === "table") {
-      const rows = [...node.querySelectorAll(":scope > tbody > tr, :scope > thead > tr, :scope > tr")]
-        .map((row) => [...row.children].filter((cell) => ["td", "th"].includes(cell.tagName.toLowerCase()))
-          .map((cell) => collectBlocks(cell.childNodes)));
-      if (rows.length) blocks.push({ type: "table", rows });
-      return;
+    if (frame.type === "tableCells") {
+      while (frame.rowIndex < frame.source.length && frame.cellIndex >= frame.source[frame.rowIndex].length) {
+        frame.rowIndex += 1;
+        frame.cellIndex = 0;
+      }
+      if (frame.rowIndex >= frame.source.length) { stack.pop(); continue; }
+      const rowIndex = frame.rowIndex;
+      const cellIndex = frame.cellIndex++;
+      stack.push({ type: "nodes", source: [...frame.source[rowIndex][cellIndex].childNodes], target: frame.rows[rowIndex][cellIndex], index: 0 });
+      continue;
     }
-    if (["p", "div", "h1", "h2", "h3", "h4", "blockquote"].includes(tag)) {
-      blocks.push({ type: "paragraph", children: collectInlineNodes(node) });
-      return;
-    }
-    const children = collectInlineNodes(node);
-    if (children.length) blocks.push({ type: "paragraph", children });
-  });
+    stack.pop();
+    if (frame.type === "commitList") {
+      if (frame.items.length) frame.target.push({ type: "list", ordered: frame.ordered, items: frame.items });
+    } else if (frame.rows.length) frame.target.push({ type: "table", rows: frame.rows });
+  }
   return blocks;
 }
 
@@ -215,37 +321,59 @@ function appendInline(parent, inline, documentRef) {
   parent.append(node);
 }
 
-function appendBlock(parent, block, documentRef) {
-  if (block.type === "paragraph") {
-    const paragraph = documentRef.createElement("p");
-    if (!block.children.length) paragraph.append(documentRef.createElement("br"));
-    else block.children.forEach((inline) => appendInline(paragraph, inline, documentRef));
-    parent.append(paragraph); return;
-  }
-  if (block.type === "list") {
-    const list = documentRef.createElement(block.ordered ? "ol" : "ul");
-    block.items.forEach((item) => {
-      const listItem = documentRef.createElement("li");
-      item.forEach((child) => appendBlock(listItem, child, documentRef));
-      if (!item.length) listItem.append(documentRef.createElement("br"));
-      list.append(listItem);
-    });
-    parent.append(list); return;
-  }
-  if (block.type === "table") {
-    const table = documentRef.createElement("table");
-    const body = documentRef.createElement("tbody");
-    block.rows.forEach((row) => {
-      const tr = documentRef.createElement("tr");
-      row.forEach((cell) => {
-        const td = documentRef.createElement("td");
-        cell.forEach((child) => appendBlock(td, child, documentRef));
-        if (!cell.length) td.append(documentRef.createElement("br"));
-        tr.append(td);
+function appendBlocks(parent, blocks, documentRef) {
+  const stack = blocks.slice().reverse().map((block) => ({ parent, block }));
+  while (stack.length) {
+    const { parent: target, block } = stack.pop();
+    if (block.type === "paragraph") {
+      const paragraph = documentRef.createElement("p");
+      if (!block.children.length) paragraph.append(documentRef.createElement("br"));
+      else block.children.forEach((inline) => appendInline(paragraph, inline, documentRef));
+      target.append(paragraph);
+      continue;
+    }
+    if (block.type === "list") {
+      const list = documentRef.createElement(block.ordered ? "ol" : "ul");
+      const items = block.items.map((item) => {
+        const listItem = documentRef.createElement("li");
+        if (!item.length) listItem.append(documentRef.createElement("br"));
+        list.append(listItem);
+        return listItem;
       });
-      body.append(tr);
-    });
-    table.append(body); parent.append(table);
+      target.append(list);
+      for (let itemIndex = block.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const item = block.items[itemIndex];
+        for (let childIndex = item.length - 1; childIndex >= 0; childIndex -= 1) {
+          stack.push({ parent: items[itemIndex], block: item[childIndex] });
+        }
+      }
+      continue;
+    }
+    if (block.type === "table") {
+      const table = documentRef.createElement("table");
+      const body = documentRef.createElement("tbody");
+      const cells = block.rows.map((row) => {
+        const tr = documentRef.createElement("tr");
+        const rowCells = row.map((cell) => {
+          const td = documentRef.createElement("td");
+          if (!cell.length) td.append(documentRef.createElement("br"));
+          tr.append(td);
+          return td;
+        });
+        body.append(tr);
+        return rowCells;
+      });
+      table.append(body); target.append(table);
+      for (let rowIndex = block.rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+        const row = block.rows[rowIndex];
+        for (let cellIndex = row.length - 1; cellIndex >= 0; cellIndex -= 1) {
+          const cell = row[cellIndex];
+          for (let childIndex = cell.length - 1; childIndex >= 0; childIndex -= 1) {
+            stack.push({ parent: cells[rowIndex][cellIndex], block: cell[childIndex] });
+          }
+        }
+      }
+    }
   }
 }
 
@@ -253,7 +381,7 @@ export function renderPlanningRichText(element, value, fallbackText = "") {
   if (!element) return;
   const documentValue = normalizePlanningRichText(value, fallbackText);
   element.replaceChildren();
-  documentValue.blocks.forEach((block) => appendBlock(element, block, element.ownerDocument || document));
+  appendBlocks(element, documentValue.blocks, element.ownerDocument || document);
 }
 
 export function planningRichTextToArchiveBlocks(value, fallbackText = "") {
@@ -275,11 +403,40 @@ export function linkifyPlanningRichText(value, fallbackText = "") {
       ? { ...inline, text: token.value, link: token.href }
       : { ...inline, text: token.value });
   });
-  const mapBlock = (block) => {
-    if (block.type === "paragraph") return { ...block, children: linkify(block.children) };
-    if (block.type === "list") return { ...block, items: block.items.map((item) => item.map(mapBlock)) };
-    if (block.type === "table") return { ...block, rows: block.rows.map((row) => row.map((cell) => cell.map(mapBlock))) };
-    return block;
-  };
-  return { ...documentValue, blocks: documentValue.blocks.map(mapBlock) };
+  const blocks = [];
+  const stack = documentValue.blocks.slice().reverse().map((block) => ({ block, target: blocks }));
+  while (stack.length) {
+    const { block, target } = stack.pop();
+    if (block.type === "paragraph") {
+      target.push({ ...block, children: linkify(block.children) });
+      continue;
+    }
+    if (block.type === "list") {
+      const mapped = { ...block, items: block.items.map(() => []) };
+      target.push(mapped);
+      for (let itemIndex = block.items.length - 1; itemIndex >= 0; itemIndex -= 1) {
+        const item = block.items[itemIndex];
+        for (let childIndex = item.length - 1; childIndex >= 0; childIndex -= 1) {
+          stack.push({ block: item[childIndex], target: mapped.items[itemIndex] });
+        }
+      }
+      continue;
+    }
+    if (block.type === "table") {
+      const mapped = { ...block, rows: block.rows.map((row) => row.map(() => [])) };
+      target.push(mapped);
+      for (let rowIndex = block.rows.length - 1; rowIndex >= 0; rowIndex -= 1) {
+        const row = block.rows[rowIndex];
+        for (let cellIndex = row.length - 1; cellIndex >= 0; cellIndex -= 1) {
+          const cell = row[cellIndex];
+          for (let childIndex = cell.length - 1; childIndex >= 0; childIndex -= 1) {
+            stack.push({ block: cell[childIndex], target: mapped.rows[rowIndex][cellIndex] });
+          }
+        }
+      }
+      continue;
+    }
+    target.push(block);
+  }
+  return { ...documentValue, blocks };
 }

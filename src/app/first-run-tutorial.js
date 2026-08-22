@@ -220,6 +220,11 @@ export function createFirstRunTutorial({
     try { cleanup?.(); } catch (error) { console.error(error); }
   };
 
+  const resolveOverflowedTabTarget = (element) => {
+    if (!isHtmlElement(element) || !element.hasAttribute?.('data-tab-overflow')) return null;
+    return isElementVisible(els.moreToolsTrigger) ? els.moreToolsTrigger : null;
+  };
+
   const resolveTarget = (step) => {
     if (!step) return null;
     const target = typeof step.target === 'function'
@@ -231,10 +236,11 @@ export function createFirstRunTutorial({
     }
     const opaqueFrameTarget = resolveOpaqueFrameTarget(target);
     if (opaqueFrameTarget) return opaqueFrameTarget;
-    if (target && typeof target === 'object' && !(target instanceof HTMLElement) && target.fallback) {
-      return typeof target.fallback === 'function' ? target.fallback(els) : target.fallback;
-    }
-    return target || null;
+    const element = target && typeof target === 'object'
+      && !(target instanceof HTMLElement) && target.fallback
+      ? (typeof target.fallback === 'function' ? target.fallback(els) : target.fallback)
+      : (target || null);
+    return resolveOverflowedTabTarget(element) || element;
   };
 
   const resolveContextualDefinition = () => {
@@ -694,7 +700,7 @@ export function createFirstRunTutorial({
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ['class', 'hidden', 'style'],
+          attributeFilter: ['class', 'hidden', 'style', 'data-tab-overflow'],
         });
         cleanups.push(() => mutationObserver.disconnect());
       }
@@ -708,7 +714,7 @@ export function createFirstRunTutorial({
           childList: true,
           subtree: true,
           attributes: true,
-          attributeFilter: ['class', 'hidden', 'style'],
+          attributeFilter: ['class', 'hidden', 'style', 'data-tab-overflow'],
         });
         cleanups.push(() => mutationObserver.disconnect());
       }

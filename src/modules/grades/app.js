@@ -42,7 +42,8 @@ import {
 import {
   assertGradeCourseIntegrity,
   assertGradeRosterUnchanged,
-  validateGradeDelta
+  validateGradeDelta,
+  validateGradeOccurrenceDelta
 } from "../../shared/school-data/grade-integrity.js";
 import {
   buildStudentNameMatchKey,
@@ -128,9 +129,11 @@ const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
+const COURSE_SEATPLAN_ENTRY_MODE_GRADE = "grade";
+const COURSE_SEATPLAN_ENTRY_MODE_OCCURRENCE = "occurrence";
 const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager/AbiWeb-Import";
 const ISERV_GROUP_POPULATE_BOOKMARKLET_NAME = "IServ-Gruppe bevölkern";
-const ISERV_GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(()=>{const f=document.createElement('input');f.type='file';f.accept='.csv,.txt,text/csv,text/plain';f.style.display='none';document.body.appendChild(f);const csv=(s,d)=>{s=s.replace(/^\uFEFF/,'');let a=[],r=[],v='',q=false;for(let i=0;i<s.length;i++){let c=s[i];if(q){if(c=='"'){if(s[i+1]=='"'){v+='"';i++}else q=false}else v+=c}else if(c=='"')q=true;else if(c==d){r.push(v.trim());v=''}else if(c=='\r'||c=='\n'){if(c=='\r'&&s[i+1]=='\n')i++;r.push(v.trim());a.push(r);r=[];v=''}else v+=c}if(v.length||r.length){r.push(v.trim());a.push(r)}return a},score=a=>{let x=a.filter(r=>r.some(v=>String(v).trim())).slice(0,30),m=new Map;if(!x.length)return-Infinity;for(const r of x)m.set(r.length,(m.get(r.length)||0)+1);let n=0,c=0;for(const[k,v]of m)if(v>c||(v==c&&k>n)){n=k;c=v}return n<2?-1e9+c:c*1000+n*10-x.reduce((s,r)=>s+Math.abs(r.length-n),0)*100},cell=s=>{let m=String(s||%27%27).trim().match(/^([A-Z]+)([1-9]\d*)$/i);if(!m)return null;let c=0;for(const x of m[1].toUpperCase())c=c*26+x.charCodeAt()-64;return{c:c-1,r:+m[2]-1,l:m[1].toUpperCase()+m[2]}},ask=(t,d)=>{for(;;){let v=prompt(t,d);if(v===null)return null;let p=cell(v);if(p)return p;alert(%27Ungültige Position: %27+v)}};f.onchange=async()=>{try{let file=f.files[0];if(!file)return;let raw=await file.text();if(!raw.trim()){alert(%27Die Datei ist leer.%27);return}let a=csv(raw,%27,%27),b=csv(raw,%27;%27),sep=score(b)>score(a)?%27;%27:%27,%27,rows=sep==%27;%27?b:a,first=ask(%27Position Vorname:%27,%27C2%27);if(!first)return;let last=ask(%27Position Nachname:%27,%27B2%27);if(!last)return;let list=[],n=Math.max(rows.length-first.r,rows.length-last.r);for(let i=0;i<n;i++){let x=((rows[first.r+i]?.[first.c]||%27%27)+%27 %27+(rows[last.r+i]?.[last.c]||%27%27)).trim();if(x)list.push(x)}if(!list.length){alert(%27Keine gültigen Einträge gefunden.%27);return}let input=document.querySelector(%27#manage_group_users_add-selectized');if(!input){alert('Benutzer-Suchfeld nicht gefunden.');return}if(!confirm(list.length+' Einträge gefunden.\nTrennzeichen: '+(sep==';'?'Semikolon':'Komma')+'\nVorname: '+first.l+', Nachname: '+last.l+'\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nVerarbeitung starten?'))return;let sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),set=v=>{input.focus();let s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},opts=()=>{let id=input.getAttribute('aria-owns'),box=id?document.getElementById(id):null;return box?[...box.querySelectorAll('[data-selectable]')].filter(e=>{let r=e.getBoundingClientRect();return r.width&&r.height}):[]},match=(e,q)=>norm(q).split(' ').filter(Boolean).every(x=>norm(e.textContent||'').includes(x)),clear=async()=>{let t=Date.now();while(Date.now()-t<2000){if(!opts().length)return;await sleep(50)}},find=async q=>{let t=Date.now(),last=null,s=0;while(Date.now()-t<5000){let e=opts().find(x=>match(x,q));if(e){if(e===last)s++;else{last=e;s=0}if(s>=2)return e}else{last=null;s=0}await sleep(100)}return null},gone=async e=>{let t=Date.now();while(Date.now()-t<3000){if(!e.isConnected||!opts().includes(e))return;await sleep(100)}};let done=0;for(const name of list){set('');await clear();set(name);let e=await find(name);if(!e){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}e.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));e.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));e.click();done++;await gone(e);await sleep(done===list.length?500:100)}alert('Fertig: '+done+' Einträge hinzugefügt.')}finally{f.remove()}};f.click()})()`;
+const ISERV_GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(()=>{const f=document.createElement('input');f.type='file';f.accept='.csv,.txt,text/csv,text/plain';f.style.display='none';document.body.appendChild(f);const csv=(s,d)=>{s=s.replace(/^\uFEFF/,'');let a=[],r=[],v='',q=false;for(let i=0;i<s.length;i++){let c=s[i];if(q){if(c=='"'){if(s[i+1]=='"'){v+='"';i++}else q=false}else v+=c}else if(c=='"')q=true;else if(c==d){r.push(v.trim());v=''}else if(c=='\r'||c=='\n'){if(c=='\r'&&s[i+1]=='\n')i++;r.push(v.trim());a.push(r);r=[];v=''}else v+=c}if(v.length||r.length){r.push(v.trim());a.push(r)}return a},score=a=>{let x=a.filter(r=>r.some(v=>String(v).trim())).slice(0,30),m=new Map;if(!x.length)return-Infinity;for(const r of x)m.set(r.length,(m.get(r.length)||0)+1);let n=0,c=0;for(const[k,v]of m)if(v>c||(v==c&&k>n)){n=k;c=v}return n<2?-1e9+c:c*1000+n*10-x.reduce((s,r)=>s+Math.abs(r.length-n),0)*100},cell=s=>{let m=String(s||%27%27).trim().match(/^([A-Z]+)([1-9]\d*)$/i);if(!m)return null;let c=0;for(const x of m[1].toUpperCase())c=c*26+x.charCodeAt()-64;return{c:c-1,r:+m[2]-1,l:m[1].toUpperCase()+m[2]}},ask=(t,d)=>{for(;;){let v=prompt(t,d);if(v===null)return null;let p=cell(v);if(p)return p;alert(%27Ungültige Position: %27+v)}};f.onchange=async()=>{try{let file=f.files[0];if(!file)return;let raw=await file.text();if(!raw.trim()){alert(%27Die Datei ist leer.%27);return}let a=csv(raw,%27,%27),b=csv(raw,%27;%27),sep=score(b)>score(a)?%27;%27:%27,%27,rows=sep==%27;%27?b:a,first=ask(%27Position Vorname:%27,%27C2%27);if(!first)return;let last=ask(%27Position Nachname:%27,%27B2%27);if(!last)return;let list=[],n=Math.max(rows.length-first.r,rows.length-last.r);for(let i=0;i<n;i++){let x=((rows[first.r+i]?.[first.c]||%27%27)+%27 %27+(rows[last.r+i]?.[last.c]||%27%27)).trim();if(x)list.push(x)}if(!list.length){alert(%27Keine gültigen Einträge gefunden.%27);return}let input=document.querySelector(%27#manage_group_users_add-selectized');if(!input){alert('IServ-Suchfeld nicht gefunden.');return}if(!confirm(list.length+' Einträge gefunden.\nTrennzeichen: '+(sep==';'?'Semikolon':'Komma')+'\nVorname: '+first.l+', Nachname: '+last.l+'\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nVerarbeitung starten?'))return;let sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),set=v=>{input.focus();let s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},opts=()=>{let id=input.getAttribute('aria-owns'),box=id?document.getElementById(id):null;return box?[...box.querySelectorAll('[data-selectable]')].filter(e=>{let r=e.getBoundingClientRect();return r.width&&r.height}):[]},match=(e,q)=>norm(q).split(' ').filter(Boolean).every(x=>norm(e.textContent||'').includes(x)),clear=async()=>{let t=Date.now();while(Date.now()-t<2000){if(!opts().length)return;await sleep(50)}},find=async q=>{let t=Date.now(),last=null,s=0;while(Date.now()-t<5000){let e=opts().find(x=>match(x,q));if(e){if(e===last)s++;else{last=e;s=0}if(s>=2)return e}else{last=null;s=0}await sleep(100)}return null},gone=async e=>{let t=Date.now();while(Date.now()-t<3000){if(!e.isConnected||!opts().includes(e))return;await sleep(100)}};let done=0;for(const name of list){set('');await clear();set(name);let e=await find(name);if(!e){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}e.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));e.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));e.click();done++;await gone(e);await sleep(done===list.length?500:100)}alert('Fertig: '+done+' Einträge hinzugefügt.')}finally{f.remove()}};f.click()})()`;
 const ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR = "body > app-root > app-course-detail > div > div > div:nth-child(2) > table > tbody > tr > td.text-center.cursor-pointer";
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
@@ -789,6 +792,12 @@ function normalizeGradeAssessmentMode(value) {
     return normalized;
   }
   return "grade";
+}
+
+function normalizeCourseSeatplanEntryMode(value) {
+  return String(value || "").trim().toLowerCase() === COURSE_SEATPLAN_ENTRY_MODE_OCCURRENCE
+    ? COURSE_SEATPLAN_ENTRY_MODE_OCCURRENCE
+    : COURSE_SEATPLAN_ENTRY_MODE_GRADE;
 }
 
 function normalizeGradeAssessmentYearLevel(value) {
@@ -6047,11 +6056,11 @@ class GradesApp {
   }
 
   buildSchoolmanagerTransferTargetAdapterCode(startIndex) {
-    return `async()=>{let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),f=[...document.querySelectorAll('input,textarea')].filter(e=>e.offsetParent&&!e.disabled&&!e.readOnly&&!['hidden','submit','button','checkbox','radio'].includes(e.type)).slice(${startIndex}),n=Math.min(v.length,f.length),m=v.length===f.length?v.length+' Punktwerte nach Schulmanager übertragen?':'Schülerzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, Schulmanager zeigt '+f.length+' Eingabefelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?';if(!confirm(m))return;for(let i=0;i<n;i++){let e=f[i];e.value=v[i];e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
+    return `async()=>{let all=[...document.querySelectorAll('input,textarea')].filter(e=>e.offsetParent&&!e.disabled&&!e.readOnly&&!['hidden','submit','button','checkbox','radio'].includes(e.type)),f=all.slice(${startIndex});if(!f.length)throw new Error('Diese Seite hat '+all.length+' ausfüllbare Eingabefelder, die ersten ${startIndex} sollen übersprungen werden. Es bleibt keines zum Befüllen übrig — vermutlich ist das nicht die Noteneingabe. Abgebrochen, es wurde nichts geändert.');let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),n=Math.min(v.length,f.length),m=(v.length===f.length?v.length+' Punktwerte nach Schulmanager übertragen?':'Anzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, Schulmanager zeigt '+f.length+' Eingabefelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?')+'\\n\\nZielseite: '+location.origin;if(!confirm(m))return;for(let i=0;i<n;i++){let e=f[i];e.value=v[i];e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
   }
 
   buildAbiWebTransferTargetAdapterCode() {
-    return `async()=>{let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),f=[...document.querySelectorAll('${ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR}')],n=Math.min(v.length,f.length),m=v.length===f.length?v.length+' Punktwerte nach AbiWeb übertragen?':'Schülerzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, AbiWeb zeigt '+f.length+' Notenfelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?';if(!confirm(m))return;let w=(p,m)=>new Promise((r,j)=>{if(p()){r();return}let o=new MutationObserver(()=>{if(p()){clearTimeout(t);o.disconnect();r()}}),t=setTimeout(()=>{o.disconnect();j(new Error(m))},5000);o.observe(document.documentElement,{childList:true,subtree:true})});for(let i=0;i<n;i++){f[i].click();await w(()=>document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geöffnet.');let p=document.querySelector('.points-selector-popup'),d=[...p.querySelectorAll('td')].find(e=>e.textContent.trim()===v[i]);if(!d)throw new Error('Punktwert '+v[i]+' für Eintrag '+(i+1)+' von '+n+' wurde im AbiWeb-Auswahlfenster nicht gefunden.');d.click();await w(()=>!document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geschlossen.')}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
+    return `async()=>{let f=[...document.querySelectorAll('${ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR}')];if(!f.length)throw new Error('Auf dieser Seite wurden keine AbiWeb-Notenfelder gefunden. Abgebrochen, es wurde nichts geändert.');let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),n=Math.min(v.length,f.length),m=(v.length===f.length?v.length+' Punktwerte nach AbiWeb übertragen?':'Anzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, AbiWeb zeigt '+f.length+' Notenfelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?')+'\\n\\nZielseite: '+location.origin;if(!confirm(m))return;let w=(p,m)=>new Promise((r,j)=>{if(p()){r();return}let o=new MutationObserver(()=>{if(p()){clearTimeout(t);o.disconnect();r()}}),t=setTimeout(()=>{o.disconnect();j(new Error(m))},5000);o.observe(document.documentElement,{childList:true,subtree:true})});for(let i=0;i<n;i++){f[i].click();await w(()=>document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geöffnet.');let p=document.querySelector('.points-selector-popup'),d=[...p.querySelectorAll('td')].find(e=>e.textContent.trim()===v[i]);if(!d)throw new Error('Punktwert '+v[i]+' für Eintrag '+(i+1)+' von '+n+' wurde im AbiWeb-Auswahlfenster nicht gefunden.');d.click();await w(()=>!document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geschlossen.')}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
   }
 
   buildSchoolmanagerTransferBookmarkletCode() {
@@ -8341,7 +8350,7 @@ class GradesApp {
     );
     if (requiresReplaceConfirm) {
       const confirmed = await this.showConfirmMessage(
-        "Vorhandene Schülerliste und zugehörige Noteneinträge dieses Kurses werden ersetzt. Fortfahren?"
+        "Vorhandene Teilnehmendenliste und zugehörige Noteneinträge dieses Kurses werden ersetzt. Fortfahren?"
       );
       if (!confirmed) {
         return;
@@ -8353,7 +8362,7 @@ class GradesApp {
     try {
       await this.runGradeCourseMutation(id, () => {
         if (this.getGradeCourseRevision(id) !== Number(this.courseDialogDraft.gradeCourseRevision || 0)) {
-          const staleError = new Error("Die Teilnehmerliste wurde zwischenzeitlich geändert. Bitte neu laden.");
+          const staleError = new Error("Die Teilnehmendenliste wurde zwischenzeitlich geändert. Bitte neu laden.");
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
         }
@@ -13147,8 +13156,8 @@ class GradesApp {
       this.clearPrivacyFocusedGradeStudent();
       this.hideGradePrivacyOverlay();
       this.setGradesOverviewEmptyState(
-        "Keine Teilnehmer zugeordnet",
-        "Diesem Kurs sind aktuell keine Teilnehmer zugeordnet. Füge Teilnehmende hinzu, um die Kursübersicht zu nutzen.",
+        "Keine Teilnehmenden zugeordnet",
+        "Diesem Kurs sind aktuell keine Teilnehmenden zugeordnet. Füge Teilnehmende hinzu, um die Kursübersicht zu nutzen.",
         {
           primaryAction: "manageStudents"
         }
@@ -15348,8 +15357,8 @@ class GradesApp {
     const previousStudentId = this.getGradePrivacyNavigationStudentId("previous");
     const nextStudentId = this.getGradePrivacyNavigationStudentId("next");
     overlay.innerHTML = `
-        <button type="button" class="grade-privacy-nav-button is-previous" data-grade-privacy-nav="previous" aria-label="Vorherigen Schüler im Datenschutzmodus anzeigen" title="Vorheriger Schüler" ${previousStudentId ? "" : "disabled"}>▲</button>
-        <button type="button" class="grade-privacy-nav-button is-next" data-grade-privacy-nav="next" aria-label="Nächsten Schüler im Datenschutzmodus anzeigen" title="Nächster Schüler" ${nextStudentId ? "" : "disabled"}>▼</button>
+        <button type="button" class="grade-privacy-nav-button is-previous" data-grade-privacy-nav="previous" aria-label="Vorherige Person im Datenschutzmodus anzeigen" title="Vorherige Person" ${previousStudentId ? "" : "disabled"}>▲</button>
+        <button type="button" class="grade-privacy-nav-button is-next" data-grade-privacy-nav="next" aria-label="Nächste Person im Datenschutzmodus anzeigen" title="Nächste Person" ${nextStudentId ? "" : "disabled"}>▼</button>
       `;
     this.positionGradePrivacyNavigationOverlay();
     requestAnimationFrame(() => {
@@ -16099,7 +16108,7 @@ class GradesApp {
     const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id), nameOrder)
       .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
     if (!students.length) {
-      return { ready: false, reason: "Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden." };
+      return { ready: false, reason: "Für diesen Kurs sind keine Lernenden vorhanden." };
     }
     return {
       ready: true,
@@ -16409,7 +16418,7 @@ class GradesApp {
           .filter((studentId) => studentId > 0)
           .sort((left, right) => left - right);
         if (JSON.stringify(currentStudentIds) !== JSON.stringify(draft.baseStudentIds || [])) {
-          throw new Error("Die Teilnehmerliste wurde zwischenzeitlich geändert. Bitte den Dialog neu öffnen.");
+          throw new Error("Die Teilnehmendenliste wurde zwischenzeitlich geändert. Bitte den Dialog neu öffnen.");
         }
         const saved = this.store.saveGradeAccommodationsForCourse(draft.courseId, entries);
         if (!Array.isArray(saved)) {
@@ -16508,8 +16517,8 @@ class GradesApp {
       button.dataset.tooltip = navigationLabel;
       button.title = navigationLabel;
     };
-    updateButton(this.refs.gradeExpectationHorizonCommentPrevious, index > 0 ? students[index - 1] : null, "Vorherige Schülerin oder vorherigen Schüler bearbeiten");
-    updateButton(this.refs.gradeExpectationHorizonCommentNext, index >= 0 && index < students.length - 1 ? students[index + 1] : null, "Nächste Schülerin oder nächsten Schüler bearbeiten");
+    updateButton(this.refs.gradeExpectationHorizonCommentPrevious, index > 0 ? students[index - 1] : null, "Vorherige Person bearbeiten");
+    updateButton(this.refs.gradeExpectationHorizonCommentNext, index >= 0 && index < students.length - 1 ? students[index + 1] : null, "Nächste Person bearbeiten");
   }
 
   async navigateGradeExpectationHorizonCommentDialog(direction) {
@@ -16663,7 +16672,7 @@ class GradesApp {
     const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id))
       .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
     if (!students.length) {
-      return { ready: false, reason: "Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden." };
+      return { ready: false, reason: "Für diesen Kurs sind keine Lernenden vorhanden." };
     }
     const assessment = this.getGradesEntryActiveAssessment(course.id);
     const draft = assessment
@@ -19701,7 +19710,7 @@ class GradesApp {
         percentBoundaryMode: this.expectationHorizonPercentBoundaryMode
       });
       if (!records.length) {
-        this.setExpectationHorizonStatus("Für diesen Kurs sind keine Schülerinnen oder Schüler vorhanden.", "error");
+        this.setExpectationHorizonStatus("Für diesen Kurs sind keine Lernenden vorhanden.", "error");
         return;
       }
       const hasPercentileImages = records.some((record) => record.hasPercentileImage);
@@ -20378,7 +20387,7 @@ class GradesApp {
                 ? "Notenmodul zuerst entsperren"
                 : (
                   isGradesOverview
-                    ? "Kein Schüler für den Datenschutzmodus verfügbar"
+                    ? "Keine Person für den Datenschutzmodus verfügbar"
                     : "Datenschutzmodus in der Kursübersicht verfügbar"
                 )
             ))
@@ -27058,6 +27067,23 @@ class GradesApp {
     const grid = document.createElement("div");
     grid.className = "grade-picker-grid";
     this.gradePickerState.values.forEach((value, index) => {
+      if (value === 0 && this.gradePickerState.mode === "table") {
+        const clearButton = document.createElement("button");
+        clearButton.type = "button";
+        clearButton.className = "grade-picker-clear";
+        clearButton.textContent = "–";
+        clearButton.classList.toggle("active", this.gradePickerState.activeIndex === -1);
+        clearButton.setAttribute("aria-label", "Eintrag leeren");
+        clearButton.title = "Eintrag leeren";
+        clearButton.addEventListener("mousedown", (event) => {
+          event.preventDefault();
+        });
+        clearButton.addEventListener("click", (event) => {
+          event.stopPropagation();
+          this.applyGradePickerClear();
+        });
+        grid.append(clearButton);
+      }
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = formatGradeInputForSystem(value, this.getCurrentGradeInputDisplaySystem());
@@ -27076,13 +27102,13 @@ class GradesApp {
       const skipButton = document.createElement("button");
       skipButton.type = "button";
       skipButton.className = "grade-picker-skip";
-      skipButton.textContent = "⬇";
+      skipButton.textContent = "⬇️";
       if (this.gradePickerState.mode === "override") {
         skipButton.setAttribute("aria-label", "Nächste errechnete Note");
         skipButton.title = "Nächste errechnete Note";
       } else {
-        skipButton.setAttribute("aria-label", "Schüler auslassen und weiter");
-        skipButton.title = "Schüler auslassen und weiter";
+        skipButton.setAttribute("aria-label", "Person auslassen und weiter");
+        skipButton.title = "Person auslassen und weiter";
       }
       skipButton.addEventListener("mousedown", (event) => {
         event.preventDefault();
@@ -27188,6 +27214,21 @@ class GradesApp {
       return;
     }
     input.value = this.formatCurrentGradeInput(value);
+    const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
+    this.commitGradeCellInput(input);
+    this.hideGradePicker();
+    this.focusVerticalGradeInput(input, 1, navigationSnapshot);
+  }
+
+  applyGradePickerClear() {
+    const input = this.gradePickerState.input;
+    if (!input) {
+      return;
+    }
+    input.value = "";
+    if (Object.prototype.hasOwnProperty.call(input.dataset, "gradeOriginalValue")) {
+      input.dataset.gradeDirty = "1";
+    }
     const navigationSnapshot = this.getGradeInputNavigationSnapshot(input);
     this.commitGradeCellInput(input);
     this.hideGradePicker();
@@ -28531,7 +28572,7 @@ class GradesApp {
       await this.runGradeCourseMutation(courseId, () => {
         const student = this.store.listGradeStudents(courseId).find((row) => Number(row.id) === studentId);
         if (!student) {
-          const error = new Error("Die Schüler:in ist nicht mehr im Kurs.");
+          const error = new Error("Diese Person ist nicht mehr im Kurs.");
           error.code = "NAME_LEARNING_STUDENT_MISSING";
           throw error;
         }
@@ -28588,6 +28629,118 @@ class GradesApp {
       }
       return result;
     }, []);
+  }
+
+  buildCourseSeatplanOccurrenceEntries(assessmentId, students = []) {
+    const assessmentKey = Number(assessmentId || 0);
+    if (!assessmentKey) {
+      return [];
+    }
+    const studentIds = Array.from(new Set(
+      (Array.isArray(students) ? students : [])
+        .map((student) => Number(student?.id || 0))
+        .filter((studentId) => studentId > 0)
+    ));
+    return studentIds.reduce((result, studentId) => {
+      if (this.store.getGradeEntry(studentId, assessmentKey)?.checked === true) {
+        result.push({ studentId, checked: true });
+      }
+      return result;
+    }, []);
+  }
+
+  listCourseSeatplanOccurrenceAssessments(courseId, lessonDate = "", occurrenceCategoryId = null) {
+    const courseKey = Number(courseId || 0);
+    const normalizedLessonDate = String(lessonDate || "").trim();
+    if (!courseKey || !normalizedLessonDate || !this.isGradeCourseLoaded(courseKey)) {
+      return [];
+    }
+    const expectedTitle = normalizeGradeTextPart(formatShortDateLabel(normalizedLessonDate));
+    if (!expectedTitle) {
+      return [];
+    }
+    const categoryFilter = occurrenceCategoryId === null || occurrenceCategoryId === undefined
+      ? null
+      : this.resolveGradeOccurrenceCategoryId(occurrenceCategoryId);
+    return this.store.listGradeAssessments(courseKey).filter((assessment) => (
+      normalizeGradeAssessmentMode(assessment?.mode) === "homework"
+      && normalizeGradeTextPart(assessment?.title) === expectedTitle
+      && (
+        categoryFilter === null
+        || this.resolveGradeOccurrenceCategoryId(assessment?.occurrenceCategoryId) === categoryFilter
+      )
+    ));
+  }
+
+  findCourseSeatplanOccurrenceAssessmentByLessonDate(courseId, lessonDate = "", occurrenceCategoryId = null) {
+    const courseKey = Number(courseId || 0);
+    const normalizedLessonDate = String(lessonDate || "").trim();
+    const titleMatches = this.listCourseSeatplanOccurrenceAssessments(
+      courseKey,
+      normalizedLessonDate,
+      occurrenceCategoryId
+    );
+    if (!titleMatches.length) {
+      return null;
+    }
+    const expectedHalfYear = this.getDefaultGradeAssessmentHalfYear(normalizedLessonDate);
+    const exactMatches = titleMatches.filter((assessment) => (
+      normalizeGradeHalfYear(assessment?.halfYear) === expectedHalfYear
+    ));
+    if (exactMatches.length > 1 || (exactMatches.length === 0 && titleMatches.length > 1)) {
+      const error = new Error(
+        "Für diese Unterrichtsstunde gibt es mehrere gleich benannte Vorkommnisse. Bitte das gewünschte Vorkommnis im Notenmodul eindeutig benennen."
+      );
+      error.code = "AMBIGUOUS_GRADE_ASSESSMENT";
+      throw error;
+    }
+    return exactMatches[0] || titleMatches[0] || null;
+  }
+
+  buildCourseSeatplanOccurrenceAssessmentPayload(assessment, students = []) {
+    const assessmentId = Number(assessment?.id || 0);
+    if (!assessmentId || normalizeGradeAssessmentMode(assessment?.mode) !== "homework") {
+      return null;
+    }
+    return {
+      assessmentId,
+      title: String(assessment.title || ""),
+      halfYear: normalizeGradeHalfYear(assessment.halfYear),
+      weight: 1,
+      occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(assessment.occurrenceCategoryId),
+      categoryId: Number(assessment.categoryId || 0) || null,
+      subcategoryId: Number(assessment.subcategoryId || 0) || null,
+      entries: this.buildCourseSeatplanOccurrenceEntries(assessmentId, students)
+    };
+  }
+
+  getCourseSeatplanOccurrenceDefaultSelection(courseId, halfYear, occurrenceCategoryId) {
+    const courseKey = Number(courseId || 0);
+    const normalizedHalfYear = normalizeGradeHalfYear(halfYear);
+    const categoryId = this.resolveGradeOccurrenceCategoryId(occurrenceCategoryId);
+    const previous = this.store.listGradeAssessments(courseKey)
+      .filter((assessment) => (
+        normalizeGradeAssessmentMode(assessment?.mode) === "homework"
+        && normalizeGradeHalfYear(assessment?.halfYear) === normalizedHalfYear
+        && this.resolveGradeOccurrenceCategoryId(assessment?.occurrenceCategoryId) === categoryId
+        && Number(assessment?.categoryId || 0) > 0
+      ))
+      .sort((left, right) => Number(right.id || 0) - Number(left.id || 0))[0] || null;
+    if (
+      previous
+      && this.isGradeAssessmentAssignmentValid(
+        courseKey,
+        normalizedHalfYear,
+        Number(previous.categoryId || 0) || null,
+        Number(previous.subcategoryId || 0) || null
+      )
+    ) {
+      return {
+        categoryId: Number(previous.categoryId || 0) || null,
+        subcategoryId: Number(previous.subcategoryId || 0) || null
+      };
+    }
+    return this.getMostUsedGradeAssessmentSelection(courseKey, null, normalizedHalfYear);
   }
 
   findCourseSeatplanGradeAssessmentByLessonDate(courseId, lessonDate = "") {
@@ -28747,6 +28900,31 @@ class GradesApp {
     });
   }
 
+  buildCourseSeatplanOccurrenceContextSnapshot(courseId, lessonDate = "") {
+    const courseKey = Number(courseId || 0);
+    const assessments = this.listCourseSeatplanOccurrenceAssessments(courseKey, lessonDate);
+    if (!assessments.length) {
+      return [];
+    }
+    const studentIds = this.store.listGradeStudents(courseKey)
+      .map((student) => Number(student?.id || 0))
+      .filter((studentId) => studentId > 0)
+      .sort((left, right) => left - right);
+    return assessments
+      .map((assessment) => ({
+        assessmentId: Number(assessment?.id || 0) || null,
+        occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(assessment?.occurrenceCategoryId),
+        halfYear: normalizeGradeHalfYear(assessment?.halfYear),
+        checkedStudentIds: studentIds.filter((studentId) => (
+          this.store.getGradeEntry(studentId, Number(assessment?.id || 0))?.checked === true
+        ))
+      }))
+      .sort((left, right) => (
+        Number(left.assessmentId || 0) - Number(right.assessmentId || 0)
+        || left.occurrenceCategoryId - right.occurrenceCategoryId
+      ));
+  }
+
   buildCourseSeatplanContextToken(courseId, lessonDate = "", assessmentPayload = null, rosterToken = "") {
     const courseKey = Number(courseId || 0);
     return hashStateObject({
@@ -28754,6 +28932,7 @@ class GradesApp {
       lessonDate: String(lessonDate || "").trim(),
       courseRevision: this.getGradeCourseRevision(courseKey),
       rosterToken: String(rosterToken || ""),
+      occurrences: this.buildCourseSeatplanOccurrenceContextSnapshot(courseKey, lessonDate),
       assessment: assessmentPayload ? {
         assessmentId: Number(assessmentPayload.assessmentId || 0) || null,
         title: String(assessmentPayload.title || ""),
@@ -28793,7 +28972,7 @@ class GradesApp {
     };
   }
 
-  buildCourseSeatplanGradeConfig(courseId, lessonDate = "", students = null) {
+  buildCourseSeatplanGradeConfig(courseId, lessonDate = "", students = null, options = {}) {
     const courseKey = Number(courseId || 0);
     if (!courseKey) {
       return null;
@@ -28803,17 +28982,30 @@ class GradesApp {
       return null;
     }
     const normalizedLessonDate = String(lessonDate || "").trim();
-    const assessment = this.findCourseSeatplanGradeAssessmentByLessonDate(courseKey, normalizedLessonDate);
-    const assessmentPayload = assessment
-      ? this.buildCourseSeatplanGradeAssessmentPayload(
-        assessment,
-        Array.isArray(students) ? students : this.buildCourseSeatplanStudents(courseKey)
-      )
+    const entryMode = normalizeCourseSeatplanEntryMode(options?.entryMode);
+    const isOccurrenceMode = entryMode === COURSE_SEATPLAN_ENTRY_MODE_OCCURRENCE;
+    const occurrenceCategoryId = isOccurrenceMode
+      ? this.resolveGradeOccurrenceCategoryId(options?.occurrenceCategoryId)
       : null;
+    const rosterRows = Array.isArray(students) ? students : this.buildCourseSeatplanStudents(courseKey);
+    const gradeAssessment = this.findCourseSeatplanGradeAssessmentByLessonDate(courseKey, normalizedLessonDate);
+    const gradeAssessmentPayload = gradeAssessment
+      ? this.buildCourseSeatplanGradeAssessmentPayload(gradeAssessment, rosterRows)
+      : null;
+    const occurrenceAssessment = isOccurrenceMode
+      ? this.findCourseSeatplanOccurrenceAssessmentByLessonDate(courseKey, normalizedLessonDate, occurrenceCategoryId)
+      : null;
+    const assessmentPayload = isOccurrenceMode
+      ? (occurrenceAssessment
+        ? this.buildCourseSeatplanOccurrenceAssessmentPayload(occurrenceAssessment, rosterRows)
+        : null)
+      : gradeAssessmentPayload;
     const halfYear = normalizeGradeHalfYear(
       assessmentPayload?.halfYear || this.getDefaultGradeAssessmentHalfYear(normalizedLessonDate)
     );
-    const defaultSelection = this.getMostUsedGradeAssessmentSelection(courseKey, null, halfYear);
+    const defaultSelection = isOccurrenceMode
+      ? this.getCourseSeatplanOccurrenceDefaultSelection(courseKey, halfYear, occurrenceCategoryId)
+      : this.getMostUsedGradeAssessmentSelection(courseKey, null, halfYear);
     const defaultDraft = {
       weight: 1,
       categoryId: defaultSelection.categoryId,
@@ -28836,12 +29028,11 @@ class GradesApp {
       )
     );
     const categoriesForHalfYear = this.getGradesEntryStructureCategories(courseKey, halfYear);
-    const rosterRows = Array.isArray(students) ? students : this.buildCourseSeatplanStudents(courseKey);
     const rosterToken = this.buildCourseSeatplanRosterToken(courseKey, rosterRows);
     const contextToken = this.buildCourseSeatplanContextToken(
       courseKey,
       normalizedLessonDate,
-      assessmentPayload,
+      gradeAssessmentPayload,
       rosterToken
     );
     return {
@@ -28851,10 +29042,18 @@ class GradesApp {
       rosterToken,
       courseRevision: this.getGradeCourseRevision(courseKey),
       courseName: String(course?.name || "Kurs"),
+      entryMode,
+      occurrenceCategoryId,
+      occurrenceCategories: this.getGradeOccurrenceCategories().map((category) => ({
+        id: Number(category.id) || 0,
+        name: String(category.name || ""),
+        emoji: normalizeGradeOccurrenceCategoryEmoji(category.emoji),
+        polarity: normalizeGradeOccurrenceCategoryPolarity(category.polarity)
+      })),
       assessmentId: assessmentPayload?.assessmentId || null,
       title: assessmentPayload?.title || (normalizedLessonDate ? formatShortDateLabel(normalizedLessonDate) : formatShortDateLabel(new Date())),
       halfYear,
-      weight: normalizeGradeInteger(assessmentPayload?.weight || defaultDraft?.weight, 1),
+      weight: isOccurrenceMode ? 1 : normalizeGradeInteger(assessmentPayload?.weight || defaultDraft?.weight, 1),
       categoryId: Number((hasAssessmentSelection ? assessmentCategoryId : defaultDraft?.categoryId) || 0) || null,
       subcategoryId: Number((hasAssessmentSelection ? assessmentSubcategoryId : defaultDraft?.subcategoryId) || 0) || null,
       displaySystem: this.getCurrentGradeInputDisplaySystem(),
@@ -28909,7 +29108,10 @@ class GradesApp {
     try {
       const config = await this.withTemporaryGradeCourse(
         courseId,
-        () => this.buildCourseSeatplanGradeConfig(courseId, lessonDate)
+        () => this.buildCourseSeatplanGradeConfig(courseId, lessonDate, null, {
+          entryMode: detail?.entryMode,
+          occurrenceCategoryId: detail?.occurrenceCategoryId
+        })
       );
       if (!config || !Array.isArray(config.categories) || config.categories.length === 0) {
         this.dispatchCourseSeatplanGradeConfigResult({
@@ -28952,6 +29154,11 @@ class GradesApp {
     const rosterToken = String(detail?.rosterToken || "");
     const assessment = detail?.assessment && typeof detail.assessment === "object" ? detail.assessment : null;
     const changes = Array.isArray(detail?.changes) ? detail.changes : null;
+    const entryMode = normalizeCourseSeatplanEntryMode(detail?.entryMode);
+    const isOccurrenceMode = entryMode === COURSE_SEATPLAN_ENTRY_MODE_OCCURRENCE;
+    const occurrenceCategoryId = isOccurrenceMode
+      ? this.resolveGradeOccurrenceCategoryId(detail?.occurrenceCategoryId)
+      : null;
     if (!requestId || !courseId || !assessment || !contextToken || !rosterToken || !changes?.length) {
       this.dispatchCourseSeatplanGradeSaveResult({
         requestId,
@@ -28977,6 +29184,24 @@ class GradesApp {
       });
       return false;
     }
+    if (
+      isOccurrenceMode
+      && !this.getGradeOccurrenceCategories().some((category) => (
+        Number(category.id) === Number(detail?.occurrenceCategoryId || 0)
+      ))
+    ) {
+      this.dispatchCourseSeatplanGradeSaveResult({
+        requestId,
+        courseId,
+        requestContextToken,
+        contextToken,
+        rosterToken,
+        ok: false,
+        stale: true,
+        message: "Die Vorkommniskategorie ist nicht mehr verfügbar. Bitte die Erfassung neu öffnen."
+      });
+      return false;
+    }
     if (!this.canAccessGradeVault()) {
       this.queueGradeVaultContinuation({
         type: "seatplan-grade-save",
@@ -28988,13 +29213,16 @@ class GradesApp {
     }
     try {
       const result = await this.runGradeCourseMutation(courseId, () => {
-        const currentConfig = this.buildCourseSeatplanGradeConfig(courseId, lessonDate);
+        const currentConfig = this.buildCourseSeatplanGradeConfig(courseId, lessonDate, null, {
+          entryMode,
+          occurrenceCategoryId
+        });
         if (
           !currentConfig
           || currentConfig.contextToken !== contextToken
           || currentConfig.rosterToken !== rosterToken
         ) {
-          const staleError = new Error("Die Leistung oder Teilnehmerliste wurde zwischenzeitlich geändert. Bitte neu laden.");
+          const staleError = new Error("Die Leistung oder Teilnehmendenliste wurde zwischenzeitlich geändert. Bitte neu laden.");
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
         }
@@ -29004,22 +29232,33 @@ class GradesApp {
         const requestedAssessmentId = Number(assessment.assessmentId || assessment.id || 0) || null;
         const currentAssessmentId = Number(currentConfig.assessmentId || 0) || null;
         if (requestedAssessmentId !== currentAssessmentId) {
-          const staleError = new Error("Die Einzelleistung wurde zwischenzeitlich geändert oder bereits angelegt.");
+          const staleError = new Error(isOccurrenceMode
+            ? "Das Vorkommnis wurde zwischenzeitlich geändert oder bereits angelegt."
+            : "Die Einzelleistung wurde zwischenzeitlich geändert oder bereits angelegt.");
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
         }
-        const normalizedChanges = validateGradeDelta(changes, {
-          studentIds: [...currentStudents],
-          currentValueForStudent: (studentId) => {
-            if (!requestedAssessmentId) {
-              return null;
+        const isCurrentlyChecked = (studentId) => (
+          Boolean(requestedAssessmentId)
+          && this.store.getGradeEntry(studentId, requestedAssessmentId)?.checked === true
+        );
+        const normalizedChanges = isOccurrenceMode
+          ? validateGradeOccurrenceDelta(changes, {
+            studentIds: [...currentStudents],
+            currentCheckedForStudent: isCurrentlyChecked
+          })
+          : validateGradeDelta(changes, {
+            studentIds: [...currentStudents],
+            currentValueForStudent: (studentId) => {
+              if (!requestedAssessmentId) {
+                return null;
+              }
+              const currentEntry = this.store.getGradeEntry(studentId, requestedAssessmentId);
+              return currentEntry && Number.isFinite(Number(currentEntry.value))
+                ? Number(currentEntry.value)
+                : null;
             }
-            const currentEntry = this.store.getGradeEntry(studentId, requestedAssessmentId);
-            return currentEntry && Number.isFinite(Number(currentEntry.value))
-              ? Number(currentEntry.value)
-              : null;
-          }
-        });
+          });
 
         let assessmentId = requestedAssessmentId;
         if (assessmentId) {
@@ -29027,7 +29266,11 @@ class GradesApp {
           if (
             !existingAssessment
             || Number(existingAssessment.courseId || 0) !== courseId
-            || normalizeGradeAssessmentMode(existingAssessment.mode) !== "grade"
+            || normalizeGradeAssessmentMode(existingAssessment.mode) !== (isOccurrenceMode ? "homework" : "grade")
+            || (
+              isOccurrenceMode
+              && this.resolveGradeOccurrenceCategoryId(existingAssessment.occurrenceCategoryId) !== occurrenceCategoryId
+            )
           ) {
             throw new Error("Die vorhandene Leistung gehört nicht zu diesem Kurs.");
           }
@@ -29043,21 +29286,39 @@ class GradesApp {
           assessmentId = this.store.createGradeAssessment(courseId, {
             title: assessment.title || currentConfig.title || "",
             halfYear,
-            weight: normalizeGradeInteger(assessment.weight || currentConfig.weight, 1),
-            mode: "grade",
+            weight: isOccurrenceMode ? 1 : normalizeGradeInteger(assessment.weight || currentConfig.weight, 1),
+            mode: isOccurrenceMode ? "homework" : "grade",
+            occurrenceCategoryId: isOccurrenceMode ? occurrenceCategoryId : null,
             categoryId,
             subcategoryId,
             maxPoints: 15
           });
           if (!assessmentId) {
-            throw new Error("Die neue Einzelleistung konnte nicht angelegt werden.");
+            throw new Error(isOccurrenceMode
+              ? "Das neue Vorkommnis konnte nicht angelegt werden."
+              : "Die neue Einzelleistung konnte nicht angelegt werden.");
           }
         }
 
         let savedCount = 0;
         for (const change of normalizedChanges) {
           if (!currentStudents.has(change.studentId)) {
-            throw new Error("Mindestens eine Notenänderung gehört nicht zur aktuellen Teilnehmerliste.");
+            throw new Error(isOccurrenceMode
+              ? "Mindestens eine Vorkommnisänderung gehört nicht zur aktuellen Teilnehmendenliste."
+              : "Mindestens eine Notenänderung gehört nicht zur aktuellen Teilnehmendenliste.");
+          }
+          if (isOccurrenceMode) {
+            const currentChecked = this.store.getGradeEntry(change.studentId, assessmentId)?.checked === true;
+            if (currentChecked !== change.expectedChecked) {
+              const staleError = new Error("Mindestens ein Vorkommnis wurde zwischenzeitlich geändert. Es wurde nichts gespeichert.");
+              staleError.code = "STALE_GRADE_CONTEXT";
+              throw staleError;
+            }
+            if (!this.store.setGradeEntry(change.studentId, assessmentId, change.checked)) {
+              throw new Error("Ein Vorkommnis konnte nicht sicher gespeichert werden.");
+            }
+            savedCount += 1;
+            continue;
           }
           const currentEntry = this.store.getGradeEntry(change.studentId, assessmentId);
           const currentValue = currentEntry && Number.isFinite(Number(currentEntry.value))
@@ -29089,7 +29350,9 @@ class GradesApp {
         ok: true,
         assessmentId: result.assessmentId,
         savedCount: result.savedCount,
-        message: "Noten im Notenmodul gespeichert."
+        message: isOccurrenceMode
+          ? "Vorkommnisse im Notenmodul gespeichert."
+          : "Noten im Notenmodul gespeichert."
       });
       return true;
     } catch (error) {
@@ -29150,7 +29413,7 @@ class GradesApp {
       const saved = await this.runGradeCourseMutation(courseId, () => {
         const contextState = this.buildCourseSeatplanContextState(courseId, lessonDate);
         if (contextState.rosterToken !== rosterToken) {
-          const staleError = new Error("Der Kurs oder seine Teilnehmerliste wurde zwischenzeitlich geändert. Bitte den Sitzplan neu öffnen.");
+          const staleError = new Error("Der Kurs oder seine Teilnehmendenliste wurde zwischenzeitlich geändert. Bitte den Sitzplan neu öffnen.");
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
         }

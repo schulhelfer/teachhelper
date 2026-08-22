@@ -1,4 +1,8 @@
-import { MERGER_SHELL_LAYOUT_EVENT, MERGER_TOOL_REQUEST_EVENT } from '../../shell/tabs.js';
+import {
+  MERGER_OPEN_RESULT_REQUEST_EVENT,
+  MERGER_SHELL_LAYOUT_EVENT,
+  MERGER_TOOL_REQUEST_EVENT,
+} from '../../shell/tabs.js';
 import { installAppTooltips } from '../../shared/app-tooltips.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
 import {
@@ -291,7 +295,7 @@ export function createMergerApp({
     dragPreviewX: 0,
     dragPreviewY: 0,
   };
-  let resultOpenUrl = null;
+  let resultOpenPayload = null;
   let messageListener = null;
   let splitDragPreviewElement = null;
   let jsZipLoadPromise = null;
@@ -552,13 +556,13 @@ export function createMergerApp({
             return showMacOSPermissionHint();
           }
 
-          function showResultDialog(message, tone = "warn", title = "Hinweis", openUrl = null) {
+          function showResultDialog(message, tone = "warn", title = "Hinweis", openPayload = null) {
             const hasTitle = Boolean(title && String(title).trim());
             ui.resultTitle.textContent = hasTitle ? title : "";
             ui.resultTitle.classList.toggle("hidden", !hasTitle);
             ui.resultMessage.textContent = message;
-            resultOpenUrl = openUrl;
-            ui.resultOpenButton.classList.toggle("hidden", !resultOpenUrl);
+            resultOpenPayload = openPayload;
+            ui.resultOpenButton.classList.toggle("hidden", !resultOpenPayload);
             ui.resultDialog.setAttribute("data-tone", tone);
             ui.resultDialog.classList.remove("hidden");
             if (typeof ui.resultDialog.showModal === "function") {
@@ -570,7 +574,7 @@ export function createMergerApp({
           }
 
           function hideResultDialog() {
-            resultOpenUrl = null;
+            resultOpenPayload = null;
             ui.resultOpenButton.classList.add("hidden");
             if (typeof ui.resultDialog.close === "function" && ui.resultDialog.open) {
               ui.resultDialog.close();
@@ -3708,6 +3712,25 @@ export function createMergerApp({
             anchor.click();
           }
 
+          function openResultPdf({ bytes, name }) {
+            if (!bytes?.length) return;
+            if (!window.parent || window.parent === window) {
+              const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+              window.open(url, "_blank", "noopener,noreferrer");
+              setTimeout(() => URL.revokeObjectURL(url), 120_000);
+              return;
+            }
+            const buffer = bytes.slice().buffer;
+            try {
+              window.parent.postMessage(withModuleFrameNonce({
+                type: MERGER_OPEN_RESULT_REQUEST_EVENT,
+                detail: { bytes: buffer, name: String(name || "") },
+              }), TRUSTED_PARENT_ORIGIN, [buffer]);
+            } catch (_error) {
+
+            }
+          }
+
           async function deliverMultiplePdfs(outputs, archiveName) {
             if (outputs.length === 1) {
               await deliverSinglePdf(outputs[0].bytes, outputs[0].name, "PDF erstellt.");
@@ -3724,7 +3747,7 @@ export function createMergerApp({
             const url = URL.createObjectURL(new Blob([archiveBytes], { type: "application/zip" }));
             triggerDownload(url, archiveName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
-            showResultDialog(`${outputs.length} PDFs als ZIP-Download erstellt.`, "ok", "", url);
+            showResultDialog(`${outputs.length} PDFs als ZIP-Download erstellt.`, "ok", "");
           }
 
           async function deliverSinglePdf(bytes, outputName, successMessage) {
@@ -3743,7 +3766,7 @@ export function createMergerApp({
             const url = URL.createObjectURL(blob);
             triggerDownload(url, outputName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
-            showResultDialog(successMessage, "ok", "", url);
+            showResultDialog(successMessage, "ok", "", { bytes, name: outputName });
           }
 
           async function ensurePdfLibForTool(operationLabel) {
@@ -4408,12 +4431,12 @@ export function createMergerApp({
           ui.splitStartButton?.addEventListener("click", handleSplitStart);
           ui.resultCloseButton.addEventListener("click", hideResultDialog);
           ui.resultOpenButton.addEventListener("click", () => {
-            if (!resultOpenUrl) return;
-            window.open(resultOpenUrl, "_blank", "noopener,noreferrer");
+            if (!resultOpenPayload) return;
+            openResultPdf(resultOpenPayload);
           });
           ui.resultDialog.addEventListener("close", () => {
             ui.resultDialog.classList.add("hidden");
-            resultOpenUrl = null;
+            resultOpenPayload = null;
             ui.resultOpenButton.classList.add("hidden");
             syncDialogUiState();
           });
@@ -4439,7 +4462,7 @@ export function createMergerApp({
                 window.removeEventListener("message", messageListener);
                 messageListener = null;
               }
-              resultOpenUrl = null;
+              resultOpenPayload = null;
               if (runtimeChrome) {
                 runtimeChrome.classList.remove("dialog-active");
                 delete runtimeChrome.dataset.tool;

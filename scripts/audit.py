@@ -10,8 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 errors = []
 HTML_FILES = sorted(ROOT.rglob('*.html'))
 EXPECTED_CSP_POLICY = (
-  "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self' "
-  "'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='; "
+  "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; "
   "script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; "
   "img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; "
   "worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; "
@@ -81,7 +80,7 @@ def check_csp_meta(path, body):
   directives = parse_csp_policy(policy)
   required_directives = {
     'default-src': ["'self'"],
-    'script-src': ["'self'", "'sha256-vvt4KWwuNr51XfE5m+hzeNEGhiOfZzG97ccfqGsPwvE='"],
+    'script-src': ["'self'"],
     'object-src': ["'none'"],
     'base-uri': ["'none'"],
     'script-src-attr': ["'none'"],
@@ -205,6 +204,38 @@ expected = [
 for path in expected:
   if not path.exists():
     errors.append(f'missing asset: {path.relative_to(ROOT)}')
+
+
+def check_service_worker_version():
+  app_version_path = ROOT / 'src' / 'shared' / 'app-version.js'
+  sw_path = ROOT / 'sw.js'
+  if not app_version_path.exists() or not sw_path.exists():
+    return
+
+  app_version_source = app_version_path.read_text(encoding='utf-8', errors='ignore')
+  service_worker_source = sw_path.read_text(encoding='utf-8', errors='ignore')
+  app_version_match = re.search(r"\bexport\s+const\s+APP_VERSION\s*=\s*'([^']+)'", app_version_source)
+  service_worker_version_match = re.search(
+    r"\bconst\s+APP_VERSION\s*=\s*'([^']+)'", service_worker_source,
+  )
+  if not app_version_match:
+    errors.append('app version must export APP_VERSION from src/shared/app-version.js')
+    return
+  if not service_worker_version_match:
+    errors.append('service worker must declare const APP_VERSION in sw.js')
+    return
+
+  app_version = app_version_match.group(1)
+  service_worker_version = service_worker_version_match.group(1)
+  if app_version != service_worker_version:
+    errors.append(
+      'service worker version mismatch: '
+      f'src/shared/app-version.js is {app_version!r}, sw.js is {service_worker_version!r}. '
+      'Run node scripts/sync-sw-version.mjs before committing.'
+    )
+
+
+check_service_worker_version()
 
 
 def iter_source_files():
@@ -371,9 +402,9 @@ isolated_tool_module_sandbox_profiles = {
 }
 isolated_sandbox_profile_tokens = {
   'ISOLATED_MODULE_SANDBOX': {'allow-scripts'},
-  'MERGER_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads', 'allow-popups', 'allow-popups-to-escape-sandbox'},
+  'MERGER_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
   'DUPLICATE_CHECK_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
-  'QR_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads', 'allow-popups', 'allow-popups-to-escape-sandbox'},
+  'QR_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
 }
 isolated_sandbox_profile_names = set(isolated_sandbox_profile_tokens)
 privileged_sandbox_tokens = {

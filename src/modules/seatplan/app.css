@@ -648,6 +648,7 @@
           #scroll-hint,
           .main-header,
           #sidebar-score,
+          #course-grade-overlay,
           .seat-score,
           .seat-info,
           dialog {
@@ -824,23 +825,45 @@
           box-shadow: inset 0 0 0 2px rgba(15, 23, 42, 0.52);
         }
 
-        .grade-roster-reset-button {
-          position: absolute;
-          right: 3px;
-          bottom: 3px;
-          z-index: 1;
-          width: 18px;
-          min-width: 18px;
-          height: 18px;
-          min-height: 18px;
-          border-radius: 50%;
-          font-size: 12px;
+        .roster-import-heading {
+          display: flex;
+          align-items: center;
+          justify-content: space-between;
+          gap: 8px;
+          flex-wrap: nowrap;
+        }
+
+        .roster-import-heading strong {
+          min-width: 0;
+        }
+
+        .course-roster-reset-button {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          flex: 0 0 auto;
+          width: 26px;
+          min-width: 26px;
+          height: 22px;
+          min-height: 22px;
+          padding: 0;
+          border-radius: 7px;
           box-shadow: 0 2px 7px rgba(15, 23, 42, 0.22);
         }
 
-        .grade-roster-reset-button .app-action-reset-icon {
-          width: 16px;
-          height: 16px;
+        .course-roster-reset-button[hidden] {
+          display: none;
+        }
+
+        .course-roster-reset-button:disabled {
+          cursor: not-allowed;
+          opacity: 0.62;
+        }
+
+        .course-roster-reset-button .app-action-reset-icon {
+          width: 14px;
+          height: 14px;
+          flex: 0 0 auto;
         }
 
         .course-roster-reset-dialog .dialog-title {
@@ -2298,6 +2321,183 @@
           box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.22);
         }
 
+        .course-grade-bar {
+          flex: 0 0 auto;
+          align-self: center;
+          display: inline-flex;
+          align-items: center;
+          margin: 4px 0 8px;
+          padding: 4px;
+          border-radius: 999px;
+          border: 1px solid var(--module-surface-border);
+          background: var(--module-surface-strong);
+          box-shadow: var(--module-surface-shadow);
+        }
+
+        .course-grade-bar[hidden] {
+          display: none;
+        }
+
+        .course-grade-bar-mode {
+          min-height: 40px;
+          padding: 0 12px;
+          border: 0;
+          border-radius: 999px;
+          background: transparent;
+          color: var(--text);
+          font: inherit;
+          font-weight: 700;
+          white-space: nowrap;
+          box-shadow: none;
+        }
+
+        .course-grade-bar-mode:hover:not(:disabled) {
+          transform: none;
+          filter: none;
+          background: var(--control-bg);
+        }
+
+        .course-grade-bar-mode:focus-visible {
+          outline: none;
+          background: var(--control-bg);
+          box-shadow: var(--focus-ring);
+        }
+
+        .course-grade-bar-mode:disabled {
+          background: transparent;
+        }
+
+        .course-grade-bar-chevron {
+          margin-left: 6px;
+          font-size: 11px;
+          line-height: 1;
+          color: var(--muted);
+        }
+
+        .course-grade-bar-progress {
+          padding: 0 12px;
+          border-left: 1px solid var(--module-surface-border);
+          border-right: 1px solid var(--module-surface-border);
+          font-size: 14px;
+          font-weight: 700;
+          line-height: 1;
+          white-space: nowrap;
+          font-variant-numeric: tabular-nums;
+          color: var(--muted);
+        }
+
+        .course-grade-bar-progress[hidden] {
+          display: none;
+        }
+
+        .course-grade-bar-progress.is-complete {
+          color: var(--accent);
+        }
+
+        .course-grade-bar .course-grade-bar-save {
+          margin-left: 8px;
+          border-radius: 999px;
+          box-shadow: none;
+        }
+
+        .course-grade-bar .course-grade-bar-save:hover:not(:disabled) {
+          transform: none;
+          box-shadow: none;
+        }
+
+        .course-grade-bar .course-grade-bar-save:active:not(:disabled) {
+          transform: scale(0.96);
+          box-shadow: none;
+        }
+
+        .course-grade-bar .course-grade-bar-save:disabled {
+          cursor: not-allowed;
+          background: var(--control-bg);
+          box-shadow: none;
+          opacity: 0.55;
+        }
+
+        button.course-grade-occurrence-toggle {
+          position: relative;
+        }
+
+        .course-grade-occurrence-indicator {
+          position: absolute;
+          inset: 0;
+          border-radius: inherit;
+          pointer-events: none;
+        }
+
+        .course-grade-occurrence-indicator::before,
+        .course-grade-occurrence-indicator::after {
+          content: "";
+          position: absolute;
+          left: 50%;
+          top: 50%;
+          width: 60%;
+          height: 2.5px;
+          border-radius: 999px;
+          background: transparent;
+          transform-origin: center;
+          transition: background-color 0.14s ease;
+        }
+
+        .course-grade-occurrence-indicator::before {
+          transform: translate(-50%, -50%) rotate(45deg);
+        }
+
+        .course-grade-occurrence-indicator::after {
+          transform: translate(-50%, -50%) rotate(-45deg);
+        }
+
+        .course-grade-occurrence-toggle.is-checked .course-grade-occurrence-indicator::before,
+        .course-grade-occurrence-toggle.is-checked .course-grade-occurrence-indicator::after {
+          background: rgba(248, 113, 113, 0.92);
+        }
+
+        .course-grade-occurrence-toggle.is-positive-occurrence.is-checked .course-grade-occurrence-indicator::before {
+          display: none;
+        }
+
+        .course-grade-occurrence-toggle.is-positive-occurrence.is-checked .course-grade-occurrence-indicator::after {
+          content: "✔";
+          width: auto;
+          height: auto;
+          background: transparent;
+          color: rgba(74, 222, 128, 0.98);
+          font-size: 1.05rem;
+          font-weight: 900;
+          line-height: 1;
+          transform: translate(-50%, -50%);
+        }
+
+        .course-grade-entry-mode-options {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .dialog-form .course-grade-entry-mode-option {
+          flex-direction: row;
+          align-items: center;
+          gap: 10px;
+          padding: 8px 10px;
+          border-radius: 10px;
+          border: 1px solid var(--border);
+          font-size: 14px;
+          cursor: pointer;
+        }
+
+        .dialog-form .course-grade-entry-mode-option:has(input:checked) {
+          border-color: rgba(34, 211, 238, 0.65);
+          background: var(--surface-overlay-alpha-85);
+        }
+
+        #course-grade-entry-mode-dialog .course-grade-entry-mode-warning {
+          font-weight: 700;
+          color: var(--text-error);
+        }
+
         .course-grade-seat-content {
           display: flex;
           flex-direction: column;
@@ -2520,10 +2720,8 @@
           grid-column: 2;
         }
 
-        .course-grade-picker .grade-picker-grid button.grade-picker-save {
+        .course-grade-picker .grade-picker-grid button.grade-picker-clear {
           grid-column: 1;
-          font-size: 1rem;
-          line-height: 1;
         }
 
         .course-grade-picker .grade-picker-grid button.grade-picker-skip {

@@ -791,12 +791,6 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-function escapeHtmlAttribute(value) {
-  return escapeHtml(value)
-    .replace(/'/g, "&#39;")
-    .replace(/`/g, "&#96;");
-}
-
 function seedTutorialDemoStore(store) {
   const year = store.getActiveSchoolYear();
   if (!year) return null;

@@ -8516,6 +8516,10 @@
           gap: 6px;
         }
 
+        .grade-picker-grid button.grade-picker-clear {
+          grid-column: 1;
+        }
+
         .grade-picker-grid button.grade-picker-zero {
           grid-column: 2;
         }

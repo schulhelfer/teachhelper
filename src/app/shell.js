@@ -51,6 +51,43 @@ const SHELL_SIDEBAR_FULLSCREEN_THRESHOLD = 160;
 const SHELL_SIDEBAR_DESKTOP_BREAKPOINT = 981;
 const SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DELAY_MS = 350;
 const SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DISTANCE_PX = 24;
+const TAB_NAV_MODE_HYSTERESIS = 8;
+const VIEWPORT_RESIZE_SETTLE_DELAY = 160;
+const PROTECTED_TAB_TARGETS = Object.freeze([TAB_GRADES, TAB_PLANNING]);
+
+export function fitTabNavItems({
+  widths = [],
+  gap = 0,
+  triggerWidth = 0,
+  available = 0,
+  minimumVisibleCount = 0,
+  previousVisibleCount = null,
+  hysteresis = 0,
+} = {}) {
+  const epsilon = 0.5;
+  const floor = Math.min(Math.max(minimumVisibleCount, 0), widths.length);
+  const fitWithin = (budget) => {
+    let used = 0;
+    let count = 0;
+    for (let index = 0; index < widths.length; index += 1) {
+      const next = used + (count > 0 ? gap : 0) + widths[index];
+      if (count >= floor && next > budget + epsilon) break;
+      used = next;
+      count += 1;
+    }
+    return count;
+  };
+  const fitRow = (budget) => (
+    fitWithin(budget) === widths.length
+      ? widths.length
+      : fitWithin(budget - gap - triggerWidth)
+  );
+  let visibleCount = fitRow(available);
+  if (Number.isFinite(previousVisibleCount) && visibleCount > previousVisibleCount) {
+    visibleCount = Math.max(previousVisibleCount, fitRow(available - hysteresis));
+  }
+  return visibleCount;
+}
 
 function parseCssTimeToMs(value) {
   if (!value) return 0;
@@ -121,6 +158,10 @@ export function createShellController({
   let lastRenderedActiveTab = null;
   let tabNavResizeObserver = null;
   let moreToolsSyncFrame = 0;
+  let viewportResizeTimer = 0;
+  let lastViewportSignature = '';
+  let tabNavOverflowTargets = new Set();
+  let tabNavLastFit = { itemCount: 0, visibleCount: 0 };
   let pendingTabTransitionOptions = null;
   const shellSidebarWidths = {
     [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: readStoredSidebarWidth(SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING),
@@ -376,12 +417,8 @@ export function createShellController({
     return tab === TAB_PLANNING || tab === TAB_GRADES;
   }
 
-  function isMoreToolsTab(tab) {
-    return tab === TAB_GROUPS
-      || tab === TAB_RANDOM_PICKER
-      || tab === TAB_DUPLICATE_CHECK
-      || tab === TAB_WORK_PHASE
-      || tab === TAB_QR;
+  function isOverflowedTab(tab) {
+    return tabNavOverflowTargets.has(tab);
   }
 
   function isGradeVaultStatusTab(tab) {
@@ -509,6 +546,10 @@ export function createShellController({
     return Array.from(els.moreToolsMenu.querySelectorAll('[data-more-tools-target]'));
   }
 
+  function getFocusableMoreToolsMenuItems() {
+    return getMoreToolsMenuItems().filter((item) => !item.hidden);
+  }
+
   function setMoreToolsMenuOpen(open, options = {}) {
     const canOpen = Boolean(
       open
@@ -523,7 +564,7 @@ export function createShellController({
       els.moreToolsTrigger.setAttribute('aria-expanded', canOpen ? 'true' : 'false');
     }
     if (canOpen && options.focusFirst) {
-      const focusFirst = () => getMoreToolsMenuItems()[0]?.focus();
+      const focusFirst = () => getFocusableMoreToolsMenuItems()[0]?.focus();
       if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
         window.requestAnimationFrame(focusFirst);
       } else {
@@ -534,7 +575,7 @@ export function createShellController({
 
   function updateMoreToolsNavigationState() {
     const isCondensed = Boolean(els.tabNav?.classList.contains('is-tools-condensed'));
-    const hasActiveTool = isMoreToolsTab(state.activeTab);
+    const hasActiveTool = isOverflowedTab(state.activeTab);
     if (els.moreToolsTrigger) {
       const isActive = isCondensed && hasActiveTool;
       els.moreToolsTrigger.classList.toggle('active', isActive);
@@ -555,45 +596,144 @@ export function createShellController({
     }
   }
 
-  function syncMoreToolsNavigation() {
-    if (!els.tabNav || els.tabNav.hidden) return false;
-    const wasCompact = els.tabNav.classList.contains('is-tabs-compact');
-    const wasCondensed = els.tabNav.classList.contains('is-tools-condensed');
-    setMoreToolsMenuOpen(false);
-    els.tabNav.classList.remove('is-tools-condensed', 'is-tabs-compact');
-    els.tabNav.classList.add('is-measuring-full-tabs');
-    els.tabNav.getBoundingClientRect();
-    const needsCompactTabs = els.tabNav.scrollWidth > els.tabNav.clientWidth + 1;
-    els.tabNav.classList.toggle('is-tabs-compact', needsCompactTabs);
-    if (needsCompactTabs) {
-      els.tabNav.getBoundingClientRect();
-    }
-    const needsCondensing = els.tabNav.scrollWidth > els.tabNav.clientWidth + 1;
-    els.tabNav.classList.remove('is-measuring-full-tabs');
-    els.tabNav.classList.toggle('is-tools-condensed', needsCondensing);
-    updateMoreToolsNavigationState();
-    return wasCompact !== needsCompactTabs || wasCondensed !== needsCondensing;
+  function clearTabNavOverflowMarkers() {
+    Array.from(els.tabNav.children).forEach((child) => {
+      if (child instanceof HTMLElement) child.removeAttribute('data-tab-overflow');
+    });
   }
 
-  function queueMoreToolsNavigationSync() {
+  function measureTabNavFit() {
+    const navStyle = window.getComputedStyle(els.tabNav);
+    const paddingLeft = Number.parseFloat(navStyle.paddingLeft) || 0;
+    const paddingRight = Number.parseFloat(navStyle.paddingRight) || 0;
+    const items = Array.from(els.tabNav.children).filter((child) => (
+      child instanceof HTMLElement
+      && child !== els.tabIndicator
+      && child !== els.moreTools
+      && child.offsetParent !== null
+    ));
+    let minimumVisibleCount = 0;
+    for (let index = 0; index < items.length; index += 1) {
+      const target = items[index].dataset?.tabTarget;
+      if (target && !PROTECTED_TAB_TARGETS.includes(target)) break;
+      minimumVisibleCount = index + 1;
+    }
+    return {
+      items,
+      minimumVisibleCount,
+      gap: Number.parseFloat(navStyle.columnGap) || 0,
+      widths: items.map((item) => item.getBoundingClientRect().width),
+      triggerWidth: els.moreTools ? els.moreTools.getBoundingClientRect().width : 0,
+      available: els.tabNav.clientWidth - paddingLeft - paddingRight,
+    };
+  }
+
+  function applyTabNavOverflow(items, visibleCount) {
+    const overflowTargets = new Set();
+    let focusEscaped = false;
+    items.forEach((item, index) => {
+      const target = item.dataset?.tabTarget;
+      if (target && index >= visibleCount) {
+        if (item === document.activeElement) focusEscaped = true;
+        item.setAttribute('data-tab-overflow', '1');
+        overflowTargets.add(target);
+      } else {
+        item.removeAttribute('data-tab-overflow');
+      }
+    });
+    els.tabNav.classList.toggle('is-tools-condensed', overflowTargets.size > 0);
+    getMoreToolsMenuItems().forEach((menuItem) => {
+      menuItem.hidden = !overflowTargets.has(menuItem.dataset.moreToolsTarget);
+    });
+    return { overflowTargets, focusEscaped };
+  }
+
+  function haveSameTabTargets(before, after) {
+    if (before.size !== after.size) return false;
+    return Array.from(before).every((target) => after.has(target));
+  }
+
+  function syncMoreToolsNavigation() {
+    if (!els.tabNav || els.tabNav.hidden || els.tabNav.clientWidth <= 0) return false;
+    const previousTargets = tabNavOverflowTargets;
+    els.tabNav.classList.add('is-measuring-full-tabs');
+    clearTabNavOverflowMarkers();
+    els.tabNav.getBoundingClientRect();
+    const measurement = measureTabNavFit();
+    const visibleCount = fitTabNavItems({
+      ...measurement,
+      previousVisibleCount: tabNavLastFit.itemCount === measurement.items.length
+        ? tabNavLastFit.visibleCount
+        : null,
+      hysteresis: TAB_NAV_MODE_HYSTERESIS,
+    });
+    const applied = applyTabNavOverflow(measurement.items, visibleCount);
+    els.tabNav.classList.remove('is-measuring-full-tabs');
+    tabNavOverflowTargets = applied.overflowTargets;
+    tabNavLastFit = { itemCount: measurement.items.length, visibleCount };
+    const overflowChanged = !haveSameTabTargets(previousTargets, applied.overflowTargets);
+    if (overflowChanged) setMoreToolsMenuOpen(false);
+    if (applied.focusEscaped) els.moreToolsTrigger?.focus?.({ preventScroll: true });
+    updateMoreToolsNavigationState();
+    return overflowChanged;
+  }
+
+  function runMoreToolsNavigationSync() {
+    moreToolsSyncFrame = 0;
+    const navigationModeChanged = syncMoreToolsNavigation();
+    if (tabIndicatorFrame) {
+      window.cancelAnimationFrame?.(tabIndicatorFrame);
+      tabIndicatorFrame = 0;
+    }
+    positionActiveTabIndicator({
+      instant: navigationModeChanged || state.tabTransitionState === 'idle',
+    });
+  }
+
+  function queueMoreToolsNavigationSync(options = {}) {
     if (!els.tabNav || typeof window === 'undefined') return;
     if (moreToolsSyncFrame) {
       window.cancelAnimationFrame?.(moreToolsSyncFrame);
-    }
-    const sync = () => {
       moreToolsSyncFrame = 0;
-      const navigationModeChanged = syncMoreToolsNavigation();
-      if (navigationModeChanged) {
-        queueSettledActiveTabIndicatorUpdate();
-      } else {
-        queueActiveTabIndicatorUpdate({ instant: state.tabTransitionState === 'idle' });
-      }
-    };
-    if (typeof window.requestAnimationFrame !== 'function') {
-      sync();
+    }
+    if (options?.immediate || typeof window.requestAnimationFrame !== 'function') {
+      runMoreToolsNavigationSync();
       return;
     }
-    moreToolsSyncFrame = window.requestAnimationFrame(sync);
+    moreToolsSyncFrame = window.requestAnimationFrame(runMoreToolsNavigationSync);
+  }
+
+  function endViewportResizeSession() {
+    viewportResizeTimer = 0;
+    els.app?.classList.remove('is-viewport-resizing');
+  }
+
+  function readViewportSignature() {
+    if (typeof window === 'undefined') return '';
+    const visual = window.visualViewport;
+    return [
+      window.innerWidth,
+      window.innerHeight,
+      visual ? Math.round(visual.width) : '',
+      visual ? Math.round(visual.height) : '',
+    ].join('x');
+  }
+
+  function handleViewportResize() {
+    if (typeof window === 'undefined') return;
+    const signature = readViewportSignature();
+    const viewportChanged = signature !== lastViewportSignature;
+    lastViewportSignature = signature;
+    if (!viewportChanged) {
+      queueMoreToolsNavigationSync();
+      return;
+    }
+    els.app?.classList.add('is-viewport-resizing');
+    if (viewportResizeTimer) {
+      window.clearTimeout?.(viewportResizeTimer);
+    }
+    viewportResizeTimer = window.setTimeout?.(endViewportResizeSession, VIEWPORT_RESIZE_SETTLE_DELAY) || 0;
+    queueMoreToolsNavigationSync({ immediate: true });
   }
 
   function positionActiveTabIndicator(options = {}) {
@@ -1548,7 +1688,7 @@ export function createShellController({
       originalTabButton?.click();
     });
     els.moreToolsMenu.addEventListener('keydown', (event) => {
-      const items = getMoreToolsMenuItems();
+      const items = getFocusableMoreToolsMenuItems();
       const currentIndex = items.indexOf(document.activeElement);
       if (event.key === 'Escape') {
         event.preventDefault();
@@ -1585,12 +1725,13 @@ export function createShellController({
     els.moreToolsTrigger?.focus();
   });
   if (typeof window !== 'undefined') {
-    window.addEventListener('resize', queueMoreToolsNavigationSync);
-    window.visualViewport?.addEventListener?.('resize', queueMoreToolsNavigationSync);
-    document.addEventListener('fullscreenchange', queueMoreToolsNavigationSync);
-    document.addEventListener('webkitfullscreenchange', queueMoreToolsNavigationSync);
+    lastViewportSignature = readViewportSignature();
+    window.addEventListener('resize', handleViewportResize);
+    window.visualViewport?.addEventListener?.('resize', handleViewportResize);
+    document.addEventListener('fullscreenchange', handleViewportResize);
+    document.addEventListener('webkitfullscreenchange', handleViewportResize);
     if (typeof ResizeObserver === 'function' && els.tabNav) {
-      tabNavResizeObserver = new ResizeObserver(queueMoreToolsNavigationSync);
+      tabNavResizeObserver = new ResizeObserver(() => queueMoreToolsNavigationSync());
       tabNavResizeObserver.observe(els.tabNav);
     }
     queueMoreToolsNavigationSync();
@@ -1603,6 +1744,7 @@ export function createShellController({
     isChromeCollapsed: () => state.chromeCollapsed,
     getChromeTransitionState: () => state.chromeTransitionState,
     closeMoreToolsMenu: () => setMoreToolsMenuOpen(false),
+    isTabOverflowed: (tab) => tabNavOverflowTargets.has(tab),
     renderTabs,
     renderPlanningGradeVaultUnlockButton,
     renderPlanningManualSaveButton,

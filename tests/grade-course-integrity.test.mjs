@@ -98,11 +98,11 @@ test('grade-only mutations cannot add, remove, replace, or duplicate students', 
   assert.equal(integrity.assertGradeRosterUnchanged([202, 201], [201, 202]), true);
   assert.throws(
     () => integrity.assertGradeRosterUnchanged([201, 202], [201]),
-    /darf die Teilnehmerliste nicht verändern/,
+    /darf die Teilnehmendenliste nicht verändern/,
   );
   assert.throws(
     () => integrity.assertGradeRosterUnchanged([201, 202], [201, 203]),
-    /darf die Teilnehmerliste nicht verändern/,
+    /darf die Teilnehmendenliste nicht verändern/,
   );
   assert.throws(
     () => integrity.assertGradeRosterUnchanged([201, 202], [201, 202, 202]),
@@ -142,12 +142,12 @@ test('grade deltas reject foreign, duplicate, missing, invalid, and no-op values
   };
   assert.throws(
     () => integrity.validateGradeDelta([{ studentId: 999, expectedValue: null, value: 8 }], context),
-    /fremde oder doppelte Teilnehmer/,
+    /fremde oder doppelte Teilnehmende/,
   );
   assert.throws(() => integrity.validateGradeDelta([
     { studentId: 201, expectedValue: 10, value: 11 },
     { studentId: 201, expectedValue: 10, value: 12 },
-  ], context), /fremde oder doppelte Teilnehmer/);
+  ], context), /fremde oder doppelte Teilnehmende/);
   assert.throws(
     () => integrity.validateGradeDelta([{ studentId: 201, value: 11 }], context),
     /keinen erwarteten Ausgangswert/,

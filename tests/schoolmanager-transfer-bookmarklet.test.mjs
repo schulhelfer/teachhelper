@@ -17,7 +17,9 @@ function getBookmarkletAdapterCode(methodName, replacements = {}) {
   );
 }
 
-async function runSchoolmanagerAdapter(valueCount, fieldCount) {
+const TARGET_ORIGIN = 'https://beispiel.test';
+
+async function runSchoolmanagerAdapter(valueCount, fieldCount, startIndex = 0) {
   const fields = Array.from({ length: fieldCount }, () => ({
     offsetParent: true,
     disabled: false,
@@ -29,11 +31,13 @@ async function runSchoolmanagerAdapter(valueCount, fieldCount) {
     },
   }));
   const confirms = [];
+  const clipboardReads = [];
   const values = Array.from({ length: valueCount }, (_, index) => String(index + 1));
   const context = {
     navigator: {
       clipboard: {
         async readText() {
+          clipboardReads.push(true);
           return values.join(';');
         },
         async writeText() {},
@@ -45,6 +49,7 @@ async function runSchoolmanagerAdapter(valueCount, fieldCount) {
         return fields;
       },
     },
+    location: { origin: TARGET_ORIGIN },
     Event: class Event {
       constructor(type) {
         this.type = type;
@@ -56,10 +61,15 @@ async function runSchoolmanagerAdapter(valueCount, fieldCount) {
     },
   };
   const code = getBookmarkletAdapterCode('buildSchoolmanagerTransferTargetAdapterCode', {
-    '${startIndex}': '0',
+    '${startIndex}': String(startIndex),
   });
-  await runInNewContext(`(${code})`, context)();
-  return { confirms, fields };
+  let error = null;
+  try {
+    await runInNewContext(`(${code})`, context)();
+  } catch (thrown) {
+    error = thrown;
+  }
+  return { confirms, fields, clipboardReads, error };
 }
 
 async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
@@ -84,10 +94,12 @@ async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
     },
   }));
   const confirms = [];
+  const clipboardReads = [];
   const context = {
     navigator: {
       clipboard: {
         async readText() {
+          clipboardReads.push(true);
           return values.join(';');
         },
         async writeText(value) {
@@ -106,6 +118,7 @@ async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
       },
       documentElement: {},
     },
+    location: { origin: TARGET_ORIGIN },
     confirm(message) {
       confirms.push(message);
       return confirms.length === 1 || clearClipboard;
@@ -114,8 +127,13 @@ async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
   const code = getBookmarkletAdapterCode('buildAbiWebTransferTargetAdapterCode', {
     '${ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR}': '.abi-fields',
   });
-  await runInNewContext(`(${code})`, context)();
-  return { clipboardWrites, confirms, selectedValues };
+  let error = null;
+  try {
+    await runInNewContext(`(${code})`, context)();
+  } catch (thrown) {
+    error = thrown;
+  }
+  return { clipboardWrites, confirms, selectedValues, clipboardReads, error };
 }
 
 test('the universal bookmarklet has a native link label for bookmark titles', () => {
@@ -209,4 +227,59 @@ test('the AbiWeb adapter validates input and reports actionable transfer message
   assert.match(source, /nicht innerhalb von 5 Sekunden geöffnet\./);
   assert.match(source, /nicht innerhalb von 5 Sekunden geschlossen\./);
   assert.match(source, /setTimeout\(\(\)=>\{o\.disconnect\(\);j\(new Error\(m\)\)\},5000\)/);
+});
+
+test('the Schoolmanager adapter aborts before touching the clipboard when the page lacks fields', async () => {
+  const { error, clipboardReads, confirms, fields } = await runSchoolmanagerAdapter(5, 4, 6);
+
+  assert.ok(error, 'der Adapter muss abbrechen');
+  assert.match(error.message, /Diese Seite hat 4 ausfüllbare Eingabefelder/);
+  assert.match(error.message, /Abgebrochen, es wurde nichts geändert\./);
+  assert.deepEqual(clipboardReads, [], 'die Zwischenablage darf gar nicht erst gelesen werden');
+  assert.deepEqual(confirms, []);
+  assert.deepEqual(fields.map((field) => field.value), Array(4).fill(undefined));
+});
+
+test('the Schoolmanager adapter still transfers when enough fields remain after the skip', async () => {
+  const { error, confirms, fields } = await runSchoolmanagerAdapter(2, 5, 3);
+
+  assert.equal(error, null);
+  assert.equal(confirms.length, 2);
+  assert.deepEqual(fields.slice(0, 3).map((field) => field.value), Array(3).fill(undefined));
+  assert.deepEqual(fields.slice(3).map((field) => field.value), ['1', '2']);
+});
+
+test('the AbiWeb adapter aborts before touching the clipboard when no grade fields exist', async () => {
+  const { error, clipboardReads, confirms, selectedValues } = await runAbiWebAdapter(3, 0);
+
+  assert.ok(error, 'der Adapter muss abbrechen');
+  assert.match(error.message, /keine AbiWeb-Notenfelder gefunden/);
+  assert.match(error.message, /Abgebrochen, es wurde nichts geändert\./);
+  assert.deepEqual(clipboardReads, [], 'die Zwischenablage darf gar nicht erst gelesen werden');
+  assert.deepEqual(confirms, []);
+  assert.deepEqual(selectedValues, []);
+});
+
+test('both adapters name the target page in the transfer confirmation', async () => {
+  const schoolmanager = await runSchoolmanagerAdapter(2, 2);
+  const abiWeb = await runAbiWebAdapter(2, 2);
+
+  assert.match(schoolmanager.confirms[0], new RegExp(`Zielseite: ${TARGET_ORIGIN}$`));
+  assert.match(abiWeb.confirms[0], new RegExp(`Zielseite: ${TARGET_ORIGIN}$`));
+  assert.match(schoolmanager.confirms[0], /^2 Punktwerte nach Schulmanager übertragen\?/);
+  assert.match(abiWeb.confirms[0], /^2 Punktwerte nach AbiWeb übertragen\?/);
+});
+
+test('the structural precondition runs before the clipboard read in both adapters', () => {
+  for (const method of [
+    'buildSchoolmanagerTransferTargetAdapterCode',
+    'buildAbiWebTransferTargetAdapterCode',
+  ]) {
+    const code = getBookmarkletAdapterCode(method);
+    const guard = code.indexOf('Abgebrochen, es wurde nichts geändert.');
+    const read = code.indexOf('navigator.clipboard.readText()');
+    assert.ok(guard >= 0, `${method}: Abbruchhinweis fehlt`);
+    assert.ok(read >= 0, `${method}: Clipboard-Lesen fehlt`);
+    assert.ok(guard < read, `${method}: die Strukturprüfung muss vor dem Clipboard-Lesen stehen`);
+  }
 });

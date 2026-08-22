@@ -21,6 +21,7 @@
             gradeRosterImportTrigger: document.getElementById('grade-roster-import-trigger'),
             gradeRosterImportMenu: document.getElementById('grade-roster-import-menu'),
             gradeRosterPills: document.getElementById('grade-roster-pills'),
+            courseRosterResetButton: document.getElementById('course-roster-reset-button'),
             appVersion: document.getElementById('app-version'),
             random: document.getElementById('random'),
             suggest: document.getElementById('suggest'),
@@ -57,6 +58,18 @@
             courseGradeCompleteSave: document.getElementById('course-grade-complete-save'),
             courseGradeCompleteCancel: document.getElementById('course-grade-complete-cancel'),
             courseGradePicker: document.getElementById('course-grade-picker'),
+            courseGradeOverlay: document.getElementById('course-grade-overlay'),
+            courseGradeEntryModeButton: document.getElementById('course-grade-entry-mode-button'),
+            courseGradeEntryModeLabel: document.querySelector('.course-grade-bar-mode-label'),
+            courseGradeProgress: document.getElementById('course-grade-progress'),
+            courseGradeOverlaySave: document.getElementById('course-grade-overlay-save'),
+            courseGradeEntryModeDialog: document.getElementById('course-grade-entry-mode-dialog'),
+            courseGradeEntryModeOptions: document.getElementById('course-grade-entry-mode-options'),
+            courseGradeEntryModeUnsaved: document.getElementById('course-grade-entry-mode-unsaved'),
+            courseGradeEntryModeCancel: document.getElementById('course-grade-entry-mode-cancel'),
+            courseGradeEntryModeDiscard: document.getElementById('course-grade-entry-mode-discard'),
+            courseGradeEntryModeSave: document.getElementById('course-grade-entry-mode-save'),
+            courseGradeEntryModeApply: document.getElementById('course-grade-entry-mode-apply'),
             importPlan: document.getElementById('import-plan'),
             importPlanFile: document.getElementById('import-plan-file'),
             unseated: document.getElementById('unseated'),
@@ -736,6 +749,12 @@
             courseGradePickerStudentId: '',
             courseGradeCompletionPromptShown: false,
             courseGradeVisitedStudentIds: new Set(),
+            courseGradeEntryMode: 'grade',
+            courseGradeOccurrenceCategoryId: null,
+            courseGradeCheckedEntries: {},
+            courseGradeOriginalCheckedEntries: {},
+            courseGradeOccurrenceCategories: [],
+            pendingCourseGradeModeSwitch: null,
           };
           const STUDENTS_UPDATED_EVENT = 'classroom:students-updated';
           const SEATPLAN_SHELL_LAYOUT_EVENT = 'classroom:seatplan-shell-layout';
@@ -753,6 +772,8 @@
           const COURSE_GRADE_DISPLAY_POINTS = 'points15';
           const COURSE_GRADE_DISPLAY_SCHOOL = 'school';
           const COURSE_GRADE_SCHOOL_LABELS = ['6', '5-', '5', '5+', '4-', '4', '4+', '3-', '3', '3+', '2-', '2', '2+', '1-', '1', '1+'];
+          const COURSE_GRADE_ENTRY_MODE_GRADE = 'grade';
+          const COURSE_GRADE_ENTRY_MODE_OCCURRENCE = 'occurrence';
           const STUDENTS_SYNC_SOURCE = 'seatplan';
           const TRUSTED_PARENT_ORIGIN = window.location.origin;
           const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
@@ -965,9 +986,55 @@
             renderCsvStatus(state.csvName);
           }
 
+          function syncCourseRosterResetButton() {
+            const button = els.courseRosterResetButton;
+            if (!button) return;
+            const visible = canSwitchCourseRoster();
+            button.hidden = !visible;
+            if (visible) button.disabled = isCourseRosterSwitchPending();
+          }
+
+          let courseGradeBarVisible = null;
+
+          function syncCourseGradeOverlay() {
+            const visible = isCourseGradeMode();
+            if (els.courseGradeOverlay) {
+              els.courseGradeOverlay.hidden = !visible;
+            }
+            if (courseGradeBarVisible !== visible) {
+              courseGradeBarVisible = visible;
+              updateGridAutoScale();
+            }
+            if (els.courseGradeEntryModeLabel) {
+              els.courseGradeEntryModeLabel.textContent = getCourseGradeEntryModeLabel();
+            }
+            if (els.courseGradeEntryModeButton) {
+              els.courseGradeEntryModeButton.disabled = !visible
+                || Boolean(state.pendingCourseGradeSaveRequestId)
+                || Boolean(state.pendingCourseGradeConfigRequestId);
+            }
+            if (els.courseGradeProgress) {
+              const { done, total } = getCourseGradeProgress();
+              els.courseGradeProgress.hidden = !visible || total <= 0;
+              els.courseGradeProgress.textContent = total > 0 ? `${done}/${total}` : '';
+              els.courseGradeProgress.classList.toggle('is-complete', total > 0 && done >= total);
+              const label = isCourseGradeOccurrenceMode()
+                ? `${done} von ${total} markiert`
+                : `${done} von ${total} durchgegangen`;
+              els.courseGradeProgress.setAttribute('aria-label', label);
+              els.courseGradeProgress.dataset.tooltip = label;
+            }
+            if (els.courseGradeOverlaySave) {
+              els.courseGradeOverlaySave.disabled = !visible
+                || Boolean(state.pendingCourseGradeSaveRequestId)
+                || !hasCourseGradeUnsavedChanges();
+            }
+          }
+
           function updateCourseSeatplanUi() {
             const active = isCourseSeatplanMode();
             const canSwitchRoster = canSwitchCourseRoster();
+            syncCourseRosterResetButton();
             appEl.dataset.courseSeatplan = active ? '1' : '0';
             appEl.dataset.courseRosterSwitch = canSwitchRoster ? '1' : '0';
             if (els.exportPlan) {
@@ -977,6 +1044,10 @@
                 : 'Aktuellen Sitzplan als Datei speichern';
             }
             appEl.dataset.courseGradeMode = state.courseGradeDraft ? '1' : '0';
+            appEl.dataset.courseGradeEntryMode = isCourseGradeOccurrenceMode()
+              ? COURSE_GRADE_ENTRY_MODE_OCCURRENCE
+              : COURSE_GRADE_ENTRY_MODE_GRADE;
+            syncCourseGradeOverlay();
             if (els.courseGradeCompleteSave) {
               els.courseGradeCompleteSave.disabled = !Boolean(state.courseGradeDraft) || Boolean(state.pendingCourseGradeSaveRequestId);
             }
@@ -1317,6 +1388,7 @@
           }
 
           function renderGradeRosterPills() {
+            syncCourseRosterResetButton();
             const pills = els.gradeRosterPills;
             const trigger = els.gradeRosterImportTrigger;
             if (!pills || !trigger || !canImportGradeRoster()) return;
@@ -1371,38 +1443,6 @@
               button.addEventListener('click', () => { void chooseCourseRosterAction(course?.id); });
               pills.append(button);
             });
-            if (canSwitchCourseRoster()) {
-              const resetButton = document.createElement('button');
-              resetButton.type = 'button';
-              resetButton.className = 'ghost dialog-icon-button app-action-icon grade-roster-reset-button';
-              resetButton.setAttribute('aria-label', 'Kurs zurücksetzen');
-              resetButton.dataset.tooltip = 'Kurs zurücksetzen';
-              resetButton.title = 'Kursbindung lösen und einen anderen Kurs auswählen';
-              const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-              icon.setAttribute('class', 'app-action-reset-icon');
-              icon.setAttribute('viewBox', '0 0 24 24');
-              icon.setAttribute('aria-hidden', 'true');
-              icon.setAttribute('focusable', 'false');
-              [
-                ['M20 11a8 8 0 0 0-14.8-4.2L3 9', '2'],
-                ['M3 4.5V9h4.5', '2'],
-                ['M4 13a8 8 0 0 0 14.8 4.2L21 15', '2'],
-                ['M21 19.5V15h-4.5', '2'],
-              ].forEach(([d, strokeWidth]) => {
-                const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-                path.setAttribute('d', d);
-                path.setAttribute('fill', 'none');
-                path.setAttribute('stroke', 'currentColor');
-                path.setAttribute('stroke-width', strokeWidth);
-                path.setAttribute('stroke-linecap', 'round');
-                path.setAttribute('stroke-linejoin', 'round');
-                icon.append(path);
-              });
-              resetButton.append(icon);
-              resetButton.disabled = isCourseRosterSwitchPending();
-              resetButton.addEventListener('click', () => { void resetCourseRoster(); });
-              pills.append(resetButton);
-            }
             pills.hidden = false;
             if (pills.clientWidth < 1 || pills.clientHeight < 1) {
               return;
@@ -1653,9 +1693,10 @@
             resetCourseGradeMode();
             applyCoursePlanData(detail.plan && typeof detail.plan === 'object' ? detail.plan : null, state.courseContext.students);
             if (gradeConfig && courseGradeConfigMatchesContext(gradeConfig, state.courseContext)) {
-              state.courseGradeConfig = { ...gradeConfig };
+              adoptCourseGradeConfig({ ...gradeConfig });
               startCourseGradeMode(buildCourseGradeDefaults(state.courseGradeConfig), {
                 entries: state.courseGradeConfig.entries,
+                entryMode: state.courseGradeConfig.entryMode,
                 openFirst: true,
               });
             } else if (gradeConfig) {
@@ -1940,6 +1981,153 @@
             return Boolean(state.courseGradeDraft);
           }
 
+          function adoptCourseGradeConfig(config) {
+            state.courseGradeConfig = config && typeof config === 'object' ? config : null;
+            const categories = Array.isArray(config?.occurrenceCategories) ? config.occurrenceCategories : [];
+            state.courseGradeOccurrenceCategories = categories
+              .map(category => ({
+                id: Number(category?.id || 0),
+                name: String(category?.name || '').trim(),
+                emoji: String(category?.emoji || '').trim(),
+                polarity: String(category?.polarity || '') === 'positive' ? 'positive' : 'negative',
+              }))
+              .filter(category => category.id > 0);
+            return state.courseGradeConfig;
+          }
+
+          function normalizeCourseGradeEntryMode(value) {
+            return String(value || '').trim().toLowerCase() === COURSE_GRADE_ENTRY_MODE_OCCURRENCE
+              ? COURSE_GRADE_ENTRY_MODE_OCCURRENCE
+              : COURSE_GRADE_ENTRY_MODE_GRADE;
+          }
+
+          function isCourseGradeOccurrenceMode() {
+            return isCourseGradeMode()
+              && normalizeCourseGradeEntryMode(state.courseGradeEntryMode) === COURSE_GRADE_ENTRY_MODE_OCCURRENCE;
+          }
+
+          function getCourseGradeOccurrenceCategories() {
+            return Array.isArray(state.courseGradeOccurrenceCategories)
+              ? state.courseGradeOccurrenceCategories
+              : [];
+          }
+
+          function findCourseGradeOccurrenceCategory(categoryId) {
+            const id = Number(categoryId || 0);
+            return getCourseGradeOccurrenceCategories().find(category => Number(category?.id || 0) === id) || null;
+          }
+
+          function getCourseGradeOccurrenceCategoryLabel(categoryId) {
+            const category = findCourseGradeOccurrenceCategory(categoryId);
+            const name = String(category?.name || '').trim() || 'Vorkommnis';
+            const emoji = String(category?.emoji || '').trim();
+            return emoji ? `${name} ${emoji}` : name;
+          }
+
+          function isCourseGradePositiveOccurrence() {
+            return findCourseGradeOccurrenceCategory(state.courseGradeOccurrenceCategoryId)?.polarity === 'positive';
+          }
+
+          function getCourseGradeEntryModeLabel() {
+            return isCourseGradeOccurrenceMode()
+              ? getCourseGradeOccurrenceCategoryLabel(state.courseGradeOccurrenceCategoryId)
+              : 'Einzelnote';
+          }
+
+          function normalizeCourseGradeCheckedEntries(entries) {
+            const sourceEntries = Array.isArray(entries)
+              ? entries
+              : Object.entries(entries && typeof entries === 'object' ? entries : {})
+                .map(([studentId, value]) => ({ studentId, checked: value }));
+            const result = {};
+            const seenStudentIds = new Set();
+            let valid = true;
+            sourceEntries.forEach(entry => {
+              const studentId = String(entry?.studentId || '').trim();
+              const rawChecked = entry?.checked !== undefined ? entry.checked : entry?.value;
+              if (!studentId || !Number(studentId) || seenStudentIds.has(studentId) || rawChecked !== true) {
+                valid = false;
+                return;
+              }
+              seenStudentIds.add(studentId);
+              result[studentId] = true;
+            });
+            return { valid, entries: result };
+          }
+
+          function isCourseGradeStudentChecked(studentId) {
+            return state.courseGradeCheckedEntries?.[String(studentId || '')] === true;
+          }
+
+          function setCourseGradeOccurrenceEntry(studentId, checked) {
+            const sid = String(studentId || '').trim();
+            if (!sid || !isCourseGradeOccurrenceMode()) return false;
+            if (!state.courseGradeCheckedEntries || typeof state.courseGradeCheckedEntries !== 'object') {
+              state.courseGradeCheckedEntries = {};
+            }
+            if (checked) {
+              state.courseGradeCheckedEntries[sid] = true;
+            } else {
+              delete state.courseGradeCheckedEntries[sid];
+            }
+            markCourseGradeStudentVisited(sid);
+            return true;
+          }
+
+          function toggleCourseGradeOccurrenceEntry(studentId) {
+            const sid = String(studentId || '').trim();
+            if (!sid) return false;
+            return setCourseGradeOccurrenceEntry(sid, !isCourseGradeStudentChecked(sid));
+          }
+
+          function buildCourseGradeOccurrenceChanges() {
+            const rosterStudentIds = new Set(
+              (Array.isArray(state.courseContext?.students) ? state.courseContext.students : [])
+                .map(student => String(student?.id || '').trim())
+                .filter(Boolean)
+            );
+            const originalEntries = state.courseGradeOriginalCheckedEntries && typeof state.courseGradeOriginalCheckedEntries === 'object'
+              ? state.courseGradeOriginalCheckedEntries
+              : {};
+            const currentEntries = state.courseGradeCheckedEntries && typeof state.courseGradeCheckedEntries === 'object'
+              ? state.courseGradeCheckedEntries
+              : {};
+            const studentIds = new Set([...Object.keys(originalEntries), ...Object.keys(currentEntries)]);
+            const changes = [];
+            for (const studentId of studentIds) {
+              const sid = String(studentId || '').trim();
+              const expectedChecked = originalEntries[sid] === true;
+              const checked = currentEntries[sid] === true;
+              if (!sid || !rosterStudentIds.has(sid)) {
+                if (expectedChecked !== checked) {
+                  return { valid: false, changes: [] };
+                }
+                continue;
+              }
+              const numericStudentId = Number(sid);
+              if (!numericStudentId) {
+                return { valid: false, changes: [] };
+              }
+              if (expectedChecked === checked) {
+                continue;
+              }
+              changes.push({
+                studentId: numericStudentId,
+                expectedChecked,
+                checked,
+              });
+            }
+            return { valid: true, changes };
+          }
+
+          function hasCourseGradeUnsavedChanges() {
+            if (!isCourseGradeMode()) return false;
+            const delta = isCourseGradeOccurrenceMode()
+              ? buildCourseGradeOccurrenceChanges()
+              : buildCourseGradeChanges();
+            return !delta.valid || delta.changes.length > 0;
+          }
+
           function normalizeCourseGradeDisplaySystem(value) {
             return String(value || '').trim().toLowerCase() === COURSE_GRADE_DISPLAY_SCHOOL
               ? COURSE_GRADE_DISPLAY_SCHOOL
@@ -2057,16 +2245,34 @@
             state.pendingCourseGradeStudentId = '';
             state.courseGradeCompletionPromptShown = false;
             state.courseGradeVisitedStudentIds = new Set();
+            state.courseGradeEntryMode = COURSE_GRADE_ENTRY_MODE_GRADE;
+            state.courseGradeOccurrenceCategoryId = null;
+            state.courseGradeCheckedEntries = {};
+            state.courseGradeOriginalCheckedEntries = {};
             hideCourseGradePicker();
             closeCourseGradeCompleteDialog();
           }
 
-          function requestCourseGradeConfig(studentId = '') {
+          function requestCourseGradeConfig(studentId = '', options = {}) {
             if (!isCourseSeatplanMode() || !Number(state.courseContext?.lessonId || 0)) return;
             const courseId = Number(state.courseContext?.courseId || 0);
             const contextToken = normalizeCourseGradeToken(state.courseContext?.contextToken);
             if (!courseId || !contextToken) {
               showMessage('Der Notenkontext fehlt. Bitte die Einzelleistung erneut aus der Planung öffnen.', 'error');
+              return;
+            }
+            const entryMode = options.entryMode === undefined
+              ? normalizeCourseGradeEntryMode(state.courseGradeEntryMode)
+              : normalizeCourseGradeEntryMode(options.entryMode);
+            const occurrenceCategoryId = entryMode === COURSE_GRADE_ENTRY_MODE_OCCURRENCE
+              ? Number(
+                options.occurrenceCategoryId === undefined
+                  ? state.courseGradeOccurrenceCategoryId
+                  : options.occurrenceCategoryId
+              ) || 0
+              : 0;
+            if (entryMode === COURSE_GRADE_ENTRY_MODE_OCCURRENCE && !occurrenceCategoryId) {
+              showMessage('Bitte eine Vorkommniskategorie auswählen.', 'warn');
               return;
             }
             state.pendingCourseGradeStudentId = String(studentId || '');
@@ -2086,6 +2292,8 @@
                 lessonId: Number(state.courseContext.lessonId || 0),
                 lessonDate: String(state.courseContext.lessonDate || ''),
                 contextToken,
+                entryMode,
+                occurrenceCategoryId: occurrenceCategoryId || null,
               }
             }, TRUSTED_PARENT_ORIGIN);
           }
@@ -2160,9 +2368,21 @@
               showMessage('Bitte Titel, Kategorie und Unterkategorie auswählen.', 'warn');
               return false;
             }
-            const normalizedEntryResult = normalizeCourseGradeEntries(
-              options.entries !== undefined ? options.entries : state.courseGradeConfig?.entries
+            const entryMode = normalizeCourseGradeEntryMode(
+              options.entryMode !== undefined ? options.entryMode : state.courseGradeConfig?.entryMode
             );
+            const isOccurrenceMode = entryMode === COURSE_GRADE_ENTRY_MODE_OCCURRENCE;
+            const occurrenceCategoryId = isOccurrenceMode
+              ? Number(state.courseGradeConfig?.occurrenceCategoryId || 0)
+              : 0;
+            if (isOccurrenceMode && !findCourseGradeOccurrenceCategory(occurrenceCategoryId)) {
+              showMessage('Die Vorkommniskategorie ist nicht mehr verfügbar. Bitte erneut öffnen.', 'error');
+              return false;
+            }
+            const sourceEntries = options.entries !== undefined ? options.entries : state.courseGradeConfig?.entries;
+            const normalizedEntryResult = isOccurrenceMode
+              ? normalizeCourseGradeCheckedEntries(sourceEntries)
+              : normalizeCourseGradeEntries(sourceEntries);
             const normalizedEntries = normalizedEntryResult.entries;
             const rosterStudentIds = new Set(
               (Array.isArray(state.courseContext?.students) ? state.courseContext.students : [])
@@ -2177,15 +2397,26 @@
               return false;
             }
             state.courseGradeDraft = values;
-            state.courseGradeEntries = normalizedEntries;
-            state.courseGradeOriginalEntries = { ...normalizedEntries };
+            state.courseGradeEntryMode = entryMode;
+            state.courseGradeOccurrenceCategoryId = isOccurrenceMode ? occurrenceCategoryId : null;
+            state.courseGradeEntries = isOccurrenceMode ? {} : normalizedEntries;
+            state.courseGradeOriginalEntries = isOccurrenceMode ? {} : { ...normalizedEntries };
+            state.courseGradeCheckedEntries = isOccurrenceMode ? normalizedEntries : {};
+            state.courseGradeOriginalCheckedEntries = isOccurrenceMode ? { ...normalizedEntries } : {};
             state.courseGradeDeletedStudentIds = new Set();
             state.courseGradePickerStudentId = '';
             state.courseGradeCompletionPromptShown = false;
             state.courseGradeVisitedStudentIds = new Set();
+            if (isOccurrenceMode) {
+              hideCourseGradePicker();
+            }
             updateCourseSeatplanUi();
             renderSeats();
             refreshUnseated();
+            if (isOccurrenceMode) {
+              state.pendingCourseGradeStudentId = '';
+              return true;
+            }
             if (options.openFirst) {
               requestAnimationFrame(() => openFirstCourseGradePicker());
             } else if (options.openPending !== false) {
@@ -2252,8 +2483,10 @@
               showMessage('Die Notenkonfiguration ist veraltet oder unvollständig. Bitte erneut öffnen.', 'error');
               return;
             }
-            state.courseGradeConfig = config;
-            if (!startCourseGradeMode(buildCourseGradeDefaults(state.courseGradeConfig))) {
+            adoptCourseGradeConfig(config);
+            if (!startCourseGradeMode(buildCourseGradeDefaults(state.courseGradeConfig), {
+              entryMode: state.courseGradeConfig.entryMode,
+            })) {
               state.pendingCourseGradeStudentId = '';
             }
           }
@@ -2277,6 +2510,7 @@
               state.courseGradeEntries[sid] = parsed.value;
               state.courseGradeDeletedStudentIds.delete(sid);
             }
+            syncCourseGradeOverlay();
             checkCourseGradeCompletionPrompt({ allowOpen: Boolean(options.prompt) });
             return true;
           }
@@ -2373,6 +2607,175 @@
             updateCourseGradeActiveStudentHighlight();
           }
 
+          function closeCourseGradeEntryModeDialog(returnValue = '') {
+            if (!els.courseGradeEntryModeDialog) return;
+            if (typeof els.courseGradeEntryModeDialog.close === 'function' && els.courseGradeEntryModeDialog.open) {
+              els.courseGradeEntryModeDialog.close(returnValue);
+            }
+            els.courseGradeEntryModeDialog.removeAttribute('open');
+          }
+
+          function buildCourseGradeEntryModeChoices() {
+            const choices = [{
+              value: COURSE_GRADE_ENTRY_MODE_GRADE,
+              label: 'Einzelnote',
+              entryMode: COURSE_GRADE_ENTRY_MODE_GRADE,
+              occurrenceCategoryId: null,
+            }];
+            getCourseGradeOccurrenceCategories().forEach(category => {
+              const id = Number(category?.id || 0);
+              if (!id) return;
+              choices.push({
+                value: `${COURSE_GRADE_ENTRY_MODE_OCCURRENCE}:${id}`,
+                label: getCourseGradeOccurrenceCategoryLabel(id),
+                entryMode: COURSE_GRADE_ENTRY_MODE_OCCURRENCE,
+                occurrenceCategoryId: id,
+              });
+            });
+            return choices;
+          }
+
+          function getCurrentCourseGradeEntryModeValue() {
+            return isCourseGradeOccurrenceMode()
+              ? `${COURSE_GRADE_ENTRY_MODE_OCCURRENCE}:${Number(state.courseGradeOccurrenceCategoryId || 0)}`
+              : COURSE_GRADE_ENTRY_MODE_GRADE;
+          }
+
+          function renderCourseGradeEntryModeOptions(choices, selectedValue) {
+            const container = els.courseGradeEntryModeOptions;
+            if (!container) return;
+            container.textContent = '';
+            choices.forEach(choice => {
+              const option = document.createElement('label');
+              option.className = 'course-grade-entry-mode-option';
+              const input = document.createElement('input');
+              input.type = 'radio';
+              input.name = 'course-grade-entry-mode';
+              input.value = choice.value;
+              input.checked = choice.value === selectedValue;
+              const text = document.createElement('span');
+              text.textContent = choice.label;
+              option.append(input, text);
+              container.append(option);
+            });
+          }
+
+          function readCourseGradeEntryModeSelection(choices) {
+            const selected = els.courseGradeEntryModeOptions
+              ?.querySelector("input[name='course-grade-entry-mode']:checked");
+            const value = String(selected?.value || '');
+            return choices.find(choice => choice.value === value) || null;
+          }
+
+          function openCourseGradeEntryModeDialog() {
+            if (!isCourseGradeMode()) return Promise.resolve(null);
+            const choices = buildCourseGradeEntryModeChoices();
+            const currentValue = getCurrentCourseGradeEntryModeValue();
+            const dirty = hasCourseGradeUnsavedChanges();
+            if (!els.courseGradeEntryModeDialog || !els.courseGradeEntryModeOptions) {
+              const labels = choices.map((choice, index) => `${index + 1}: ${choice.label}`).join('\n');
+              const answer = prompt(`Erfassungsart wählen:\n${labels}`, '');
+              const choice = choices[Number(answer || 0) - 1] || null;
+              if (!choice || choice.value === currentValue) return Promise.resolve(null);
+              if (dirty) {
+                const save = confirm('Es gibt ungespeicherte Eingaben.\n\nOK: speichern und wechseln\nAbbrechen: verwerfen und wechseln');
+                return Promise.resolve({ ...choice, action: save ? 'save' : 'discard' });
+              }
+              return Promise.resolve({ ...choice, action: 'apply' });
+            }
+            renderCourseGradeEntryModeOptions(choices, currentValue);
+            if (els.courseGradeEntryModeUnsaved) {
+              els.courseGradeEntryModeUnsaved.hidden = !dirty;
+            }
+            if (els.courseGradeEntryModeApply) {
+              els.courseGradeEntryModeApply.hidden = dirty;
+            }
+            if (els.courseGradeEntryModeDiscard) {
+              els.courseGradeEntryModeDiscard.hidden = !dirty;
+            }
+            if (els.courseGradeEntryModeSave) {
+              els.courseGradeEntryModeSave.hidden = !dirty;
+            }
+            return new Promise(resolve => {
+              let settled = false;
+              const finish = (action) => {
+                if (settled) return;
+                settled = true;
+                const choice = action ? readCourseGradeEntryModeSelection(choices) : null;
+                cleanup();
+                closeCourseGradeEntryModeDialog(action || '');
+                if (!action || !choice || choice.value === currentValue) {
+                  resolve(null);
+                  return;
+                }
+                resolve({ ...choice, action });
+              };
+              const onCancel = (event) => {
+                event.preventDefault();
+                finish('');
+              };
+              const onApply = () => finish('apply');
+              const onDiscard = () => finish('discard');
+              const onSave = () => finish('save');
+              const onClose = () => finish('');
+              const cleanup = () => {
+                els.courseGradeEntryModeDialog?.removeEventListener('cancel', onCancel);
+                els.courseGradeEntryModeDialog?.removeEventListener('close', onClose);
+                els.courseGradeEntryModeCancel?.removeEventListener('click', onCancel);
+                els.courseGradeEntryModeApply?.removeEventListener('click', onApply);
+                els.courseGradeEntryModeDiscard?.removeEventListener('click', onDiscard);
+                els.courseGradeEntryModeSave?.removeEventListener('click', onSave);
+              };
+              els.courseGradeEntryModeDialog.addEventListener('cancel', onCancel);
+              els.courseGradeEntryModeDialog.addEventListener('close', onClose);
+              els.courseGradeEntryModeCancel?.addEventListener('click', onCancel);
+              els.courseGradeEntryModeApply?.addEventListener('click', onApply);
+              els.courseGradeEntryModeDiscard?.addEventListener('click', onDiscard);
+              els.courseGradeEntryModeSave?.addEventListener('click', onSave);
+              if (typeof els.courseGradeEntryModeDialog.showModal === 'function') {
+                if (!els.courseGradeEntryModeDialog.open) els.courseGradeEntryModeDialog.showModal();
+              } else {
+                els.courseGradeEntryModeDialog.setAttribute('open', 'open');
+              }
+              const focusDialog = () => {
+                const primary = dirty ? els.courseGradeEntryModeSave : els.courseGradeEntryModeApply;
+                primary?.focus({ preventScroll: true });
+              };
+              if (typeof queueMicrotask === 'function') queueMicrotask(focusDialog);
+              else setTimeout(focusDialog, 0);
+            });
+          }
+
+          async function chooseCourseGradeEntryMode() {
+            if (!isCourseGradeMode() || state.pendingCourseGradeSaveRequestId || state.pendingCourseGradeConfigRequestId) {
+              return false;
+            }
+            hideCourseGradePicker();
+            const choice = await openCourseGradeEntryModeDialog();
+            if (!choice) return false;
+            if (choice.action === 'save') {
+              state.pendingCourseGradeModeSwitch = {
+                entryMode: choice.entryMode,
+                occurrenceCategoryId: choice.occurrenceCategoryId,
+              };
+              if (!requestCourseGradeSave()) {
+                state.pendingCourseGradeModeSwitch = null;
+                return false;
+              }
+              return true;
+            }
+            if (choice.action === 'discard') {
+              state.courseGradeEntries = { ...state.courseGradeOriginalEntries };
+              state.courseGradeCheckedEntries = { ...state.courseGradeOriginalCheckedEntries };
+              state.courseGradeDeletedStudentIds = new Set();
+            }
+            requestCourseGradeConfig('', {
+              entryMode: choice.entryMode,
+              occurrenceCategoryId: choice.occurrenceCategoryId,
+            });
+            return true;
+          }
+
           function closeCourseGradeCompleteDialog() {
             if (!els.courseGradeCompleteDialog) return;
             if (typeof els.courseGradeCompleteDialog.close === 'function' && els.courseGradeCompleteDialog.open) {
@@ -2389,18 +2792,33 @@
             ));
           }
 
+          function isCourseGradeStudentDone(studentId) {
+            const sid = String(studentId || '');
+            if (!sid) return false;
+            if (isCourseGradeOccurrenceMode()) {
+              return isCourseGradeStudentChecked(sid);
+            }
+            const value = state.courseGradeEntries[sid];
+            const hasGrade = Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 15;
+            return hasGrade || Boolean(state.courseGradeVisitedStudentIds?.has(sid));
+          }
+
+          function getCourseGradeProgress() {
+            const seatedIds = getSeatedCourseGradeStudentIds();
+            return {
+              done: seatedIds.filter(isCourseGradeStudentDone).length,
+              total: seatedIds.length,
+            };
+          }
+
           function isCourseGradePromptReadyForSeatedStudents() {
             const seatedIds = getSeatedCourseGradeStudentIds();
             if (!seatedIds.length) return false;
-            return seatedIds.every(studentId => {
-              const value = state.courseGradeEntries[studentId];
-              const hasGrade = Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 15;
-              return hasGrade || state.courseGradeVisitedStudentIds?.has(studentId);
-            });
+            return seatedIds.every(isCourseGradeStudentDone);
           }
 
           function openCourseGradeCompleteDialog() {
-            if (!isCourseGradeMode() || state.pendingCourseGradeSaveRequestId) return;
+            if (!isCourseGradeMode() || isCourseGradeOccurrenceMode() || state.pendingCourseGradeSaveRequestId) return;
             if (!isCourseGradePromptReadyForSeatedStudents()) return;
             hideCourseGradePicker();
             updateCourseSeatplanUi();
@@ -2424,7 +2842,7 @@
           }
 
           function checkCourseGradeCompletionPrompt(options = {}) {
-            if (!isCourseGradeMode()) return false;
+            if (!isCourseGradeMode() || isCourseGradeOccurrenceMode()) return false;
             if (!isCourseGradePromptReadyForSeatedStudents()) {
               state.courseGradeCompletionPromptShown = false;
               return false;
@@ -2583,6 +3001,7 @@
             selectStudentForCourseGrade(studentId);
             state.courseGradePickerStudentId = studentId;
             updateCourseGradeActiveStudentHighlight();
+            syncCourseGradeOverlay();
             els.courseGradePicker.hidden = false;
             els.courseGradePicker.dataset.positionReady = 'false';
             els.courseGradePicker.style.visibility = 'hidden';
@@ -2592,12 +3011,22 @@
             els.courseGradePicker.textContent = '';
             const grid = document.createElement('div');
             grid.className = 'grade-picker-grid';
-            const appendGradeButton = (value) => {
+            const appendGradeButton = (value, options = {}) => {
               const button = document.createElement('button');
               button.type = 'button';
               button.textContent = formatCourseGradeDisplayValue(value);
               button.classList.toggle('grade-picker-zero', value === 0);
-              button.classList.toggle('active', Number(state.courseGradeEntries[studentId]) === value);
+              button.classList.toggle(
+                'active',
+                value === null
+                  ? state.courseGradeEntries[studentId] === undefined
+                  : Number(state.courseGradeEntries[studentId]) === value,
+              );
+              if (options.className) button.classList.add(options.className);
+              if (options.label) {
+                button.setAttribute('aria-label', options.label);
+                button.dataset.tooltip = options.label;
+              }
               button.addEventListener('mousedown', event => event.preventDefault());
               button.addEventListener('click', event => {
                 event.stopPropagation();
@@ -2608,29 +3037,15 @@
               });
               grid.appendChild(button);
             };
-            Array.from({ length: 15 }, (_, index) => 15 - index).forEach(appendGradeButton);
-            const saveButton = document.createElement('button');
-            saveButton.type = 'button';
-            saveButton.className = 'grade-picker-save';
-            saveButton.textContent = '💾';
-            saveButton.disabled = Boolean(state.pendingCourseGradeSaveRequestId);
-            saveButton.setAttribute('aria-label', 'Noten von allen speichern');
-            saveButton.dataset.tooltip = 'Noten von allen speichern';
-            saveButton.addEventListener('mousedown', event => event.preventDefault());
-            saveButton.addEventListener('click', event => {
-              event.stopPropagation();
-              formatCourseGradeInputDisplay(input);
-              requestCourseGradeSave();
-              saveButton.disabled = Boolean(state.pendingCourseGradeSaveRequestId);
-            });
-            grid.appendChild(saveButton);
+            Array.from({ length: 15 }, (_, index) => 15 - index).forEach(value => appendGradeButton(value));
+            appendGradeButton(null, { className: 'grade-picker-clear', label: 'Eintrag leeren' });
             appendGradeButton(0);
             const skipButton = document.createElement('button');
             skipButton.type = 'button';
             skipButton.className = 'grade-picker-skip';
-            skipButton.textContent = '⬇';
-            skipButton.setAttribute('aria-label', 'Schüler auslassen und weiter');
-            skipButton.dataset.tooltip = 'Schüler auslassen und weiter';
+            skipButton.textContent = '⬇️';
+            skipButton.setAttribute('aria-label', 'Person auslassen und weiter');
+            skipButton.dataset.tooltip = 'Person auslassen und weiter';
             skipButton.addEventListener('mousedown', event => event.preventDefault());
             skipButton.addEventListener('click', event => {
               event.stopPropagation();
@@ -2747,8 +3162,65 @@
             return button;
           }
 
+          function applyCourseGradeOccurrenceToggleState(button) {
+            if (!(button instanceof HTMLButtonElement)) return;
+            const sid = String(button.dataset.studentId || '');
+            const checked = isCourseGradeStudentChecked(sid);
+            button.setAttribute('aria-pressed', checked ? 'true' : 'false');
+            button.classList.toggle('is-checked', checked);
+            button.classList.toggle('is-positive-occurrence', isCourseGradePositiveOccurrence());
+          }
+
+          function createCourseGradeOccurrenceToggle(studentId, label) {
+            const sid = String(studentId || '');
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'course-grade-input course-grade-occurrence-toggle';
+            button.dataset.courseGradeOccurrenceToggle = '1';
+            button.dataset.studentId = sid;
+            const categoryLabel = getCourseGradeOccurrenceCategoryLabel(state.courseGradeOccurrenceCategoryId);
+            button.setAttribute('aria-label', `${categoryLabel} für ${label || sid} setzen`);
+            button.title = `${categoryLabel} setzen`;
+            const indicator = document.createElement('span');
+            indicator.className = 'course-grade-occurrence-indicator';
+            indicator.setAttribute('aria-hidden', 'true');
+            button.append(indicator);
+            applyCourseGradeOccurrenceToggleState(button);
+            button.addEventListener('mousedown', event => event.stopPropagation());
+            button.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
+            button.addEventListener('dragstart', event => event.preventDefault());
+            button.addEventListener('click', event => {
+              event.preventDefault();
+              event.stopPropagation();
+              selectStudentForCourseGrade(sid);
+              if (toggleCourseGradeOccurrenceEntry(sid)) {
+                updateCourseGradeOccurrenceToggleForStudent(sid);
+                syncCourseGradeOverlay();
+              }
+            });
+            return button;
+          }
+
+          function updateCourseGradeOccurrenceToggleForStudent(studentId) {
+            const sid = String(studentId || '');
+            document.querySelectorAll("button[data-course-grade-occurrence-toggle='1']").forEach(button => {
+              if (String(button.dataset.studentId || '') !== sid) return;
+              applyCourseGradeOccurrenceToggleState(button);
+            });
+          }
+
           function createCourseGradeControl(studentId, label) {
             if (!isCourseSeatplanMode() || !Number(state.courseContext?.lessonId || 0)) return null;
+            if (isCourseGradeOccurrenceMode()) {
+              const toggle = createCourseGradeOccurrenceToggle(studentId, label);
+              return createCourseGradeHitArea(toggle, () => {
+                selectStudentForCourseGrade(String(studentId || ''));
+                if (toggleCourseGradeOccurrenceEntry(studentId)) {
+                  updateCourseGradeOccurrenceToggleForStudent(studentId);
+                  updateCourseSeatplanUi();
+                }
+              });
+            }
             if (isCourseGradeMode()) {
               const input = createCourseGradeInput(studentId, label);
               return createCourseGradeHitArea(input, () => {
@@ -2815,15 +3287,18 @@
 
           function requestCourseGradeSave() {
             if (!isCourseSeatplanMode() || !isCourseGradeMode() || state.pendingCourseGradeSaveRequestId) return false;
-            const invalidInput = getCourseGradeInputOrder().find(input => {
-              const parsed = parseCourseGradeValue(input.value);
-              input.classList.toggle('invalid', !parsed.valid);
-              return !parsed.valid;
-            });
-            if (invalidInput) {
-              invalidInput.focus({ preventScroll: false });
-              showMessage('Bitte gültige Noten eingeben.', 'warn');
-              return false;
+            const occurrenceMode = isCourseGradeOccurrenceMode();
+            if (!occurrenceMode) {
+              const invalidInput = getCourseGradeInputOrder().find(input => {
+                const parsed = parseCourseGradeValue(input.value);
+                input.classList.toggle('invalid', !parsed.valid);
+                return !parsed.valid;
+              });
+              if (invalidInput) {
+                invalidInput.focus({ preventScroll: false });
+                showMessage('Bitte gültige Noten eingeben.', 'warn');
+                return false;
+              }
             }
             const courseId = Number(state.courseContext?.courseId || 0);
             const contextToken = normalizeCourseGradeToken(state.courseContext?.contextToken);
@@ -2837,22 +3312,28 @@
               showMessage('Der Notenkontext ist veraltet. Der Entwurf bleibt erhalten; bitte die Noteneingabe neu öffnen.', 'error');
               return false;
             }
-            const delta = buildCourseGradeChanges();
+            const delta = occurrenceMode ? buildCourseGradeOccurrenceChanges() : buildCourseGradeChanges();
             if (!delta.valid) {
-              showMessage('Der Notenentwurf enthält ungültige oder kursfremde Daten und wurde nicht gespeichert.', 'error');
+              showMessage(occurrenceMode
+                ? 'Der Vorkommnis-Entwurf enthält ungültige oder kursfremde Daten und wurde nicht gespeichert.'
+                : 'Der Notenentwurf enthält ungültige oder kursfremde Daten und wurde nicht gespeichert.', 'error');
               return false;
             }
             if (delta.changes.length === 0) {
-              showMessage('Es wurden keine Noten geändert.', 'warn');
+              showMessage(occurrenceMode ? 'Es wurden keine Vorkommnisse geändert.' : 'Es wurden keine Noten geändert.', 'warn');
               return false;
             }
-            const deletedChanges = delta.changes.filter(change => change.expectedValue !== null && change.value === null);
+            const deletedChanges = occurrenceMode
+              ? delta.changes.filter(change => change.expectedChecked === true && change.checked === false)
+              : delta.changes.filter(change => change.expectedValue !== null && change.value === null);
             if (deletedChanges.length > 0) {
-              const confirmed = confirm(
-                `${deletedChanges.length} vorhandene ${deletedChanges.length === 1 ? 'Note' : 'Noten'} wirklich im Notenmodul löschen?`
-              );
+              const confirmed = confirm(occurrenceMode
+                ? `${deletedChanges.length} vorhandene ${deletedChanges.length === 1 ? 'Vorkommnis' : 'Vorkommnisse'} wirklich im Notenmodul löschen?`
+                : `${deletedChanges.length} vorhandene ${deletedChanges.length === 1 ? 'Note' : 'Noten'} wirklich im Notenmodul löschen?`);
               if (!confirmed) {
-                showMessage('Speichern abgebrochen. Leere Felder wurden nicht gelöscht.', 'warn');
+                showMessage(occurrenceMode
+                  ? 'Speichern abgebrochen. Entfernte Häkchen wurden nicht gelöscht.'
+                  : 'Speichern abgebrochen. Leere Felder wurden nicht gelöscht.', 'warn');
                 return false;
               }
             }
@@ -2869,6 +3350,8 @@
                 lessonDate: String(state.courseContext.lessonDate || ''),
                 contextToken,
                 rosterToken,
+                entryMode: occurrenceMode ? COURSE_GRADE_ENTRY_MODE_OCCURRENCE : COURSE_GRADE_ENTRY_MODE_GRADE,
+                occurrenceCategoryId: occurrenceMode ? Number(state.courseGradeOccurrenceCategoryId || 0) : null,
                 assessment: { ...state.courseGradeDraft },
                 changes: delta.changes,
               }
@@ -2899,18 +3382,22 @@
             state.pendingCourseGradeSaveRequest = null;
             updateCourseSeatplanUi();
             if (detail.ok) {
+              const pendingModeSwitch = state.pendingCourseGradeModeSwitch;
+              state.pendingCourseGradeModeSwitch = null;
               resetCourseGradeMode();
               updateCourseSeatplanUi();
               renderSeats();
               refreshUnseated();
               showMessage(detail.message || 'Noten im Notenmodul gespeichert.', 'success', { presentation: 'toast' });
+              if (pendingModeSwitch) {
+                requestCourseGradeConfig('', {
+                  entryMode: pendingModeSwitch.entryMode,
+                  occurrenceCategoryId: pendingModeSwitch.occurrenceCategoryId,
+                });
+              }
               return;
             }
-            els.courseGradePicker?.querySelectorAll('.grade-picker-save').forEach(button => {
-              if (button instanceof HTMLButtonElement) {
-                button.disabled = false;
-              }
-            });
+            state.pendingCourseGradeModeSwitch = null;
             showMessage(detail.message || 'Noten konnten nicht gespeichert werden.', 'error');
           }
 
@@ -2984,13 +3471,16 @@
                 if (!seatplanTabWasActive) {
                   seatplanTabWasActive = true;
                   if (isCourseGradeMode()) {
-                    const hadUnsavedChanges = buildCourseGradeChanges().changes.length > 0;
+                    const hadUnsavedChanges = hasCourseGradeUnsavedChanges();
+                    const wasOccurrenceMode = isCourseGradeOccurrenceMode();
                     resetCourseGradeMode();
                     updateCourseSeatplanUi();
                     renderSeats();
                     refreshUnseated();
                     if (hadUnsavedChanges) {
-                      showMessage('Ungespeicherte Noteneingabe wurde verworfen, da der Sitzplan verlassen wurde.', 'warn', { presentation: 'toast' });
+                      showMessage(wasOccurrenceMode
+                        ? 'Ungespeicherte Vorkommnisse wurden verworfen, da der Sitzplan verlassen wurde.'
+                        : 'Ungespeicherte Noteneingabe wurde verworfen, da der Sitzplan verlassen wurde.', 'warn', { presentation: 'toast' });
                     }
                   }
                 }
@@ -6345,7 +6835,7 @@
             const anySeatPrefs = rows.some(d => Array.isArray(d.preferenceRows) && d.preferenceRows.length);
 
             const columns = [
-              { key: 'name', label: 'Schüler' },
+              { key: 'name', label: 'Name' },
               { key: 'score', label: 'Score' },
             ];
             if (anyFront) columns.push({ key: 'front', label: 'Vorne' });
@@ -8614,6 +9104,14 @@
               updateCourseSeatplanUi();
             }
           });
+          els.courseGradeOverlaySave?.addEventListener('click', () => {
+            if (requestCourseGradeSave()) {
+              updateCourseSeatplanUi();
+            }
+          });
+          els.courseGradeEntryModeButton?.addEventListener('click', () => {
+            void chooseCourseGradeEntryMode();
+          });
           els.courseGradeCompleteCancel?.addEventListener('click', () => {
             if (state.pendingCourseGradeSaveRequestId) return;
             closeCourseGradeCompleteDialog();
@@ -9584,6 +10082,12 @@
             });
           }
 
+          if (els.courseRosterResetButton) {
+            els.courseRosterResetButton.addEventListener('click', () => {
+              if (els.courseRosterResetButton.disabled) return;
+              void resetCourseRoster();
+            });
+          }
           if (els.gradeRosterImportTrigger) {
             els.gradeRosterImportTrigger.addEventListener('click', () => {
               if (isCourseSeatplanMode() || els.gradeRosterImportTrigger.disabled) return;

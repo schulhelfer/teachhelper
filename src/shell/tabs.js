@@ -65,8 +65,10 @@ export const NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:name-learning-revie
 export const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:name-learning-review-result';
 export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
 export const MERGER_TOOL_REQUEST_EVENT = 'classroom:merger-tool-request';
+export const MERGER_OPEN_RESULT_REQUEST_EVENT = 'classroom:merger-open-result-request';
 export const DUPLICATE_CHECK_SHELL_LAYOUT_EVENT = 'classroom:duplicate-check-shell-layout';
 export const QR_SHELL_LAYOUT_EVENT = 'classroom:qr-shell-layout';
+export const MODULE_OPEN_EXTERNAL_REQUEST_EVENT = 'classroom:module-open-external-request';
 export const PLANNING_SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
 export const GRADES_SHELL_LAYOUT_EVENT = 'classroom:grades-shell-layout';
 

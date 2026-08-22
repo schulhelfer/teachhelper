@@ -23,6 +23,7 @@ import {
   hasTutorialEntryHintBeenSeen,
   TUTORIAL_ENTRY_HINT_SYNC_EVENT,
 } from './shared/tutorial-entry-state.js';
+import { FILE_LIMITS } from './shared/file-guards.js';
 import { createSharedRosterStore } from './shared/roster-store.js';
 import {
   STUDENTS_SYNC_SOURCE_GRADES,
@@ -41,6 +42,8 @@ import {
   GRADES_NAVIGATE_EVENT,
   GRADES_TUTORIAL_START_REQUEST_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
+  MERGER_OPEN_RESULT_REQUEST_EVENT,
+  MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
   PLANNING_TUTORIAL_START_REQUEST_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
@@ -156,7 +159,7 @@ import {
     try {
       getSafeSessionStorage()?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
     } catch {
-      
+
     }
   };
 
@@ -169,7 +172,7 @@ import {
       storage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
       showVersionUpdateHint();
     } catch {
-      
+
     }
   };
 
@@ -352,6 +355,24 @@ import {
       getNameLearningFrame(),
     ].find((frame) => isTrustedModuleMessage(event, frame)) || null
   );
+  const openExternalUrlForModule = (value) => {
+    let url;
+    try {
+      url = new URL(String(value || ''));
+    } catch {
+      return;
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
+    window.open(url.href, '_blank', 'noopener,noreferrer');
+  };
+  const openModuleResultPdf = (detail) => {
+    const buffer = detail?.bytes;
+    if (!(buffer instanceof ArrayBuffer) || !buffer.byteLength) return;
+    if (buffer.byteLength > FILE_LIMITS.PDF_BYTES) return;
+    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/pdf' }));
+    window.open(url, '_blank', 'noopener,noreferrer');
+    setTimeout(() => URL.revokeObjectURL(url), 120_000);
+  };
   const syncTutorialEntryHintToModules = () => {
     if (!hasTutorialEntryHintBeenSeen()) return;
     [
@@ -1579,7 +1600,7 @@ import {
             createModuleTutorialStep({
               tab: TAB_GROUPS,
               title: 'Gruppenkriterien öffnen',
-              copy: 'Hier pflegst du Partnerwünsche, Ausschlüsse und Leistungsklassen für den Vorschlag.',
+              copy: 'Hier pflegst du Sitzwünsche, Ausschlüsse und Leistungsklassen für den Vorschlag.',
               target: (nodes) => nodes.groupSeatPreferences,
               placement: 'right',
             }),
@@ -1705,7 +1726,7 @@ import {
             createModuleTutorialStep({
               tab: TAB_RANDOM_PICKER,
               title: 'Ergebnis erkennen',
-              copy: 'Das Rad bremst beim Gewinner ab. Die Person in der mittleren, hervorgehobenen Karte ist das Ergebnis der Ziehung.',
+              copy: 'Das Rad bremst langsam ab. Die Person in der mittleren, hervorgehobenen Karte ist das Ergebnis der Ziehung.',
               target: (nodes) => nodes.randomPickerCards?.[3] || nodes.randomPickerWheel || pickerFallback(nodes),
               placement: 'top',
             }),
@@ -2300,6 +2321,16 @@ import {
         shellController?.closeMoreToolsMenu();
         return;
       }
+      if (data.type === MODULE_OPEN_EXTERNAL_REQUEST_EVENT) {
+        if (frame !== getQrFrame()) return;
+        openExternalUrlForModule(data.detail?.url);
+        return;
+      }
+      if (data.type === MERGER_OPEN_RESULT_REQUEST_EVENT) {
+        if (frame !== getMergerFrame()) return;
+        openModuleResultPdf(data.detail);
+        return;
+      }
       if (data.type === GRADES_NAVIGATE_EVENT) {
         if (frame !== getPlanningFrame()) return;
         const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
@@ -2607,7 +2638,7 @@ import {
   function activateWorkPhaseTutorialDemo() {
     if (workPhaseTutorialDemoActive) {
       const current = getCurrentModuleTutorialSteps({ activeTab: TAB_WORK_PHASE });
-      return { steps: Array.isArray(current) ? current : current.steps, cleanup: () => {} };
+      return { steps: Array.isArray(current) ? current : current.steps, cleanup: () => { } };
     }
     const previousTimerState = SharedTimerStore.getState();
     workPhaseTutorialDemoActive = true;
@@ -2906,7 +2937,7 @@ import {
     let rows = clampGridDimension(state.gridRows);
     let cols = clampGridDimension(state.gridCols);
     const occupied = new Set(state.activeSeatOrder || state.activeSeats);
-    
+
     for (let r = 1; r <= rows; r++) {
       for (let c = 1; c <= cols; c++) {
         const id = seatId(r, c);
@@ -2915,7 +2946,7 @@ import {
         }
       }
     }
-    
+
     if (cols < limit) {
       cols += 1;
       return { id: seatId(rows, cols), rows, cols };
@@ -3469,12 +3500,12 @@ import {
     els.preferencesTableHead.innerHTML = `
           <tr>
             <th colspan="3" class="group-header">
-              Gute Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
+              Gute Gruppenpartner
             </th>
             <th class="group-header name-header"></th>
             <th class="group-header performance-flair-header">Leistungsklasse</th>
             <th colspan="3" class="group-header">
-              Schlechte Gruppenpartner für <span class="preference-midpoint-label">Schüler in der Tabellenmitte</span>
+              Schlechte Gruppenpartner
             </th>
           </tr>
         `;
@@ -6420,7 +6451,7 @@ import {
     syncStateFromTimerStore();
     state.lockedSeats.clear();
     syncGroupGridFromSizeInputs({ forceCapacity: true });
-    
+
     els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
     refreshUnseated();
     renderRandomPicker();
@@ -7252,7 +7283,7 @@ import {
             return;
           }
         } catch {
-          
+
         }
       }
       starting = true;

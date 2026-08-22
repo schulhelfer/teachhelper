@@ -34,7 +34,7 @@ test('the grade course overview (Kursansicht) keeps its add-participants button 
   const method = extractClassMethod('renderGradesOverview', 'renderGradesEntryEmptyState');
 
   assert.match(method, /hasGradeParticipants\(students\)/);
-  assert.match(method, /"Keine Teilnehmer zugeordnet"[\s\S]*keine Teilnehmer zugeordnet[\s\S]*primaryAction: "manageStudents"/);
+  assert.match(method, /"Keine Teilnehmenden zugeordnet"[\s\S]*keine Teilnehmenden zugeordnet[\s\S]*primaryAction: "manageStudents"/);
   assert.match(appCss, /\.grades-subview-panel\.is-offset-empty-state[\s\S]*?\{[\s\S]*?min-height:\s*100%/);
 });
 
