@@ -907,6 +907,12 @@ export function createShellController({
     if (els.tabNameLearning) {
       els.tabNameLearning.hidden = !canShowNameLearning();
     }
+    const nameLearningDueCount = Number(state.planningGradeVaultState?.nameLearningDueCount);
+    els.tabNav?.querySelectorAll?.('[data-name-learning-due-count]').forEach((element) => {
+      const hasDueCards = Number.isInteger(nameLearningDueCount) && nameLearningDueCount > 0;
+      element.hidden = !hasDueCards;
+      element.textContent = hasDueCards ? ` (${nameLearningDueCount})` : '';
+    });
     const navigationModeChanged = syncMoreToolsNavigation();
     if (navigationModeChanged) {
       queueSettledActiveTabIndicatorUpdate();
@@ -1480,6 +1486,8 @@ export function createShellController({
   function setPlanningGradeVaultState(detail = null) {
     const nextDetail = detail && typeof detail === 'object' ? detail : {};
     const mode = typeof nextDetail.mode === 'string' ? nextDetail.mode : '';
+    const hasNameLearningDueCount = Object.hasOwn(nextDetail, 'nameLearningDueCount');
+    const previousNameLearningDueCount = state.planningGradeVaultState?.nameLearningDueCount ?? null;
     state.planningGradeVaultState = {
       ...state.planningGradeVaultState,
       ready: Boolean(nextDetail.ready ?? state.planningGradeVaultState?.ready),
@@ -1493,6 +1501,11 @@ export function createShellController({
       encryptionEnabled: Boolean(nextDetail.encryptionEnabled),
       showGradeStudentPortraits: Boolean(nextDetail.showGradeStudentPortraits),
       showNameLearningModule: Boolean(nextDetail.showNameLearningModule),
+      nameLearningDueCount: hasNameLearningDueCount
+        ? (Number.isInteger(nextDetail.nameLearningDueCount) && nextDetail.nameLearningDueCount >= 0
+          ? nextDetail.nameLearningDueCount
+          : null)
+        : previousNameLearningDueCount,
       setupRequired: Boolean(nextDetail.setupRequired),
     };
     if (!canShowNameLearning() && state.activeTab === TAB_NAME_LEARNING) {

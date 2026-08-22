@@ -1,4 +1,4 @@
-const APP_VERSION = '38';
+const APP_VERSION = '39';
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;

@@ -5,13 +5,14 @@ import test from 'node:test';
 const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const loadSourceUrl = async (path) => dataUrl(await readFile(new URL(path, import.meta.url), 'utf8'));
 
-const [thdbUrl, syncUrl, defaultsUrl, messagesUrl, cryptoUrl, fileGuardsUrl] = await Promise.all([
+const [thdbUrl, syncUrl, defaultsUrl, messagesUrl, cryptoUrl, fileGuardsUrl, nameLearningDueSummaryUrl] = await Promise.all([
   loadSourceUrl('../src/shared/school-data/thdb.js'),
   loadSourceUrl('../src/shared/school-data/sync-safety.js'),
   loadSourceUrl('../src/shared/school-data/defaults.js'),
   loadSourceUrl('../src/shared/school-data/messages.js'),
   loadSourceUrl('../src/modules/workspace/crypto.js'),
   loadSourceUrl('../src/shared/file-guards.js'),
+  loadSourceUrl('../src/shared/name-learning-due-summary.js'),
 ]);
 const archiveUrl = dataUrl(`
   export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
@@ -32,6 +33,7 @@ for (const [path, url] of [
   ['./store.js', storeUrl],
   ['./crypto.js', cryptoUrl],
   ['./archive-pdf.js', archiveUrl],
+  ['../../shared/name-learning-due-summary.js', nameLearningDueSummaryUrl],
 ]) runtimeSource = runtimeSource.replace(path, url);
 
 const [{ WorkspaceRuntime }, messages, workspaceCrypto, thdb] = await Promise.all([

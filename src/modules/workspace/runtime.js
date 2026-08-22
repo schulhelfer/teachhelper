@@ -37,6 +37,11 @@ import {
   WORKSPACE_VAULT_KDF_ITERATIONS,
 } from './crypto.js';
 import { buildWorkspaceArchivePdfBytes, downloadWorkspaceArchivePdf } from './archive-pdf.js';
+import {
+  buildNameLearningDueBuckets,
+  countPublicNameLearningDueCards,
+  normalizeNameLearningDueSummary,
+} from '../../shared/name-learning-due-summary.js';
 
 const VAULT_VALIDATION_TOKEN = 'teachhelper-grade-vault-v1';
 const HANDLE_DB_NAME = 'teachhelper-sync-handles-v1';
@@ -333,6 +338,7 @@ export class WorkspaceRuntime {
       this.tryReconnectStoredSyncFile(),
       this.ensureBackupDirectoryReady(),
     ]);
+    if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
     this.ready = true;
     this.bindStartupPermissionRecovery();
     this.controller?.publish?.('shell');
@@ -560,6 +566,7 @@ export class WorkspaceRuntime {
         encryptionEnabled: this.isGradeVaultEncryptionEnabled(),
         showGradeStudentPortraits: Boolean(this.store.getSetting?.('showGradeStudentPortraits', false)),
         showNameLearningModule: Boolean(this.store.getSetting?.('showNameLearningModule', false)),
+        nameLearningDueCount: this.getNameLearningDueCount(),
         setupRequired: this.isGradeVaultEncryptionEnabled() && !this.isGradeVaultConfigured(),
         autoLockWarning: this.vault.autoLockWarning
           ? {
@@ -672,6 +679,7 @@ export class WorkspaceRuntime {
     };
     this.store.setGradeVaultEncryptionEnabled(true);
     for (const courseId of this.segmentTexts.keys()) this.dirtyCourseIds.add(courseId);
+    await this.refreshNameLearningDueSummary();
     this.recordGradeVaultActivity();
     this.controller?.markChanged?.('grades');
     return true;
@@ -690,6 +698,7 @@ export class WorkspaceRuntime {
       await this.upgradeGradeVaultKdf(password);
     } catch {
     }
+    await this.refreshNameLearningDueSummary();
     this.recordGradeVaultActivity();
     this.controller?.markChanged?.('grades');
     return true;
@@ -764,6 +773,7 @@ export class WorkspaceRuntime {
     this.clearGradeVaultAutoLockWarning();
     this.vault.autoLockNotice = null;
     this.store.setGradeVaultEncryptionEnabled(false);
+    await this.refreshNameLearningDueSummary();
     this.controller?.markChanged?.('grades');
     return true;
   }
@@ -1034,6 +1044,73 @@ export class WorkspaceRuntime {
     return true;
   }
 
+  getNameLearningDueCount(now = Date.now()) {
+    const activeYearId = Number(this.store.getActiveSchoolYear?.()?.id) || 0;
+    const courses = Array.isArray(this.store.state?.courses)
+      ? this.store.state.courses
+      : (this.store.exportPublicStateSnapshot?.().courses || []);
+    return countPublicNameLearningDueCards(
+      this.store.state.settings.nameLearningDueSummary,
+      courses,
+      activeYearId,
+      now,
+    );
+  }
+
+  saveNameLearningDueSummary(summary, { notify = true } = {}) {
+    const courses = Array.isArray(this.store.state?.courses)
+      ? this.store.state.courses
+      : (this.store.exportPublicStateSnapshot?.().courses || []);
+    const validCourseIds = new Set(courses.map((course) => Number(course.id)).filter((id) => id > 0));
+    const next = normalizeNameLearningDueSummary(summary, validCourseIds);
+    const current = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary, validCourseIds);
+    if (JSON.stringify(current) === JSON.stringify(next)) return false;
+    this.store.state.settings.nameLearningDueSummary = next;
+    if (notify) this.onPublicChanged();
+    return true;
+  }
+
+  updateNameLearningDueSummaryForCourse(courseId, gradeState) {
+    const id = Number(courseId) || 0;
+    const courses = Array.isArray(this.store.state?.courses)
+      ? this.store.state.courses
+      : (this.store.exportPublicStateSnapshot?.().courses || []);
+    const course = courses.find((item) => Number(item.id) === id);
+    if (!id || !course) return false;
+    const summary = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary);
+    if (course.noLesson || course.noGrades) delete summary.courses[String(id)];
+    else summary.courses[String(id)] = buildNameLearningDueBuckets(gradeState, id);
+    // This runs as part of a grade-course mutation. That mutation already queues
+    // the corresponding grade save, whose container also includes public state.
+    return this.saveNameLearningDueSummary(summary, { notify: false });
+  }
+
+  removeNameLearningDueSummaryForCourse(courseId) {
+    const id = Number(courseId) || 0;
+    if (!id) return false;
+    const summary = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary);
+    if (!Object.hasOwn(summary.courses, String(id))) return false;
+    delete summary.courses[String(id)];
+    return this.saveNameLearningDueSummary(summary);
+  }
+
+  async refreshNameLearningDueSummary() {
+    if (!this.canAccessGradeVault()) return false;
+    const courses = {};
+    const publicCourses = Array.isArray(this.store.state?.courses)
+      ? this.store.state.courses
+      : (this.store.exportPublicStateSnapshot?.().courses || []);
+    const courseIds = publicCourses
+      .filter((course) => !course.noLesson && !course.noGrades)
+      .map((course) => Number(course.id))
+      .filter((courseId) => courseId > 0);
+    for (const courseId of courseIds) {
+      const state = await this.getGradeCourseStateSnapshot(courseId);
+      courses[String(courseId)] = buildNameLearningDueBuckets(state, courseId);
+    }
+    return this.saveNameLearningDueSummary({ complete: true, courses });
+  }
+
   async getOccurrenceCategoryUsage(categoryId) {
     const id = Number(categoryId) || 0;
     if (!id || !this.canAccessGradeVault()) return 0;
@@ -1137,6 +1214,7 @@ export class WorkspaceRuntime {
         this.store.replaceGradeVaultState(after);
         this.courseCache.set(id, after);
         this.rememberPerformanceIndex(id, after);
+        this.updateNameLearningDueSummaryForCourse(id, after);
         this.dirtyCourseIds.add(id);
         this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
         this.manualDirty = true;
@@ -1331,6 +1409,7 @@ export class WorkspaceRuntime {
     this.clearGradeVaultAutoLockWarning();
     this.manualLoaded = true;
     this.ready = true;
+    if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
     this.controller?.markChanged?.('planning');
     this.controller?.publish?.('grades');
     return { ok: true, source };
@@ -1823,6 +1902,7 @@ export class WorkspaceRuntime {
     if (command === WORKSPACE_COMMAND_DELETE_COURSE) {
       if (payload.destructive !== true) throw new Error('Kurslöschung wurde nicht ausdrücklich bestätigt.');
       this.store.deleteCourse(courseId);
+      this.removeNameLearningDueSummaryForCourse(courseId);
       this.segmentTexts.delete(courseId);
       this.courseCache.delete(courseId);
       this.performanceIndexCache.delete(courseId);

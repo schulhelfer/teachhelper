@@ -25,6 +25,8 @@ test('name learning visibility requires both portrait and module settings', () =
 test('the module is a registered first-level tab and uses the existing bridge', () => {
   assert.match(tabs, /TAB_NAME_LEARNING = 'name-learning'/);
   assert.match(index, /id="tab-name-learning"[\s\S]*?Namen lernen/);
+  assert.match(index, /id="tab-name-learning"[\s\S]*?data-name-learning-due-count hidden/);
+  assert.match(index, /data-more-tools-target="name-learning"[\s\S]*?data-name-learning-due-count hidden/);
   assert.match(index, /id="name-learning-host"/);
   assert.match(main, /NAME_LEARNING_DATA_REQUEST_EVENT/);
   assert.match(bridge, /mountNameLearning/);
@@ -38,6 +40,12 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(nameLearningApp, /MODULE_FRAME_NONCE/);
   assert.match(nameLearningApp, /frameNonce: MODULE_FRAME_NONCE/);
   assert.match(gradesApp, /courseColor: normalizeCourseColor\(course\.color/);
+  assert.match(runtime, /nameLearningDueCount: this\.getNameLearningDueCount\(\)/);
+  assert.match(runtime, /async refreshNameLearningDueSummary\(\)/);
+  assert.match(runtime, /await this\.refreshNameLearningDueSummary\(\);/);
+  assert.doesNotMatch(bridge, /refreshNameLearningDueCount/);
+  assert.match(shell, /\[data-name-learning-due-count\]/);
+  assert.match(main, /shellController\?\.setPlanningGradeVaultState\?\.\(/);
 });
 
 test('name learning uses the shared module shell with its own sidebar', () => {
@@ -62,21 +70,33 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.doesNotMatch(nameLearningHtml, /id="reveal"/);
   assert.match(nameLearningHtml, /id="flip-card"[\s\S]*?aria-label="Name aufdecken"/);
   assert.match(nameLearningHtml, /id="portrait-reverse" class="portrait portrait-reverse"/);
-  assert.match(nameLearningHtml, /id="flashcard-back"[\s\S]*?id="answer"[\s\S]*?id="unknown"[\s\S]*?id="known"[\s\S]*?id="review-feedback"/);
+  assert.match(nameLearningHtml, /id="flashcard-back"[\s\S]*?id="answer"[\s\S]*?id="course" class="course-pill"[\s\S]*?id="known"[\s\S]*?id="unknown"[\s\S]*?id="review-feedback"/);
   assert.match(nameLearningHtml, /id="review-feedback" class="review-feedback" role="status" aria-live="polite"/);
   assert.match(nameLearningApp, /refs\.flipCard\.addEventListener\('click', reveal\)/);
+  assert.match(nameLearningApp, /refs\.practice\.classList\.add\('is-ready-to-reveal'\)/);
+  assert.match(nameLearningApp, /if \(reviewFeedbackActive\) \{[\s\S]*?advanceAfterReviewFeedback\(\);[\s\S]*?reveal\(\);/);
   assert.match(nameLearningApp, /if \(mode === 'random'\) \{ renderCard\(\); return; \}/);
   assert.match(nameLearningApp, /Fällige Karten \(\$\{dueCount\}\) abfragen/);
   assert.doesNotMatch(nameLearningApp, /Karte\$\{dueCount === 1/);
   assert.match(nameLearningApp, /REVIEW_FEEDBACK_DISPLAY_MS = 2250/);
   assert.match(nameLearningApp, /showReviewFeedback\(progress, now, \(\) => renderCard\(\)\)/);
   assert.match(nameLearningApp, /function advanceAfterReviewFeedback\(\) \{/);
-  assert.match(nameLearningApp, /refs\.flashcard\.addEventListener\('click', \(event\) => \{/);
+  assert.match(nameLearningApp, /refs\.practice\.addEventListener\('click', \(\) => \{/);
+  assert.match(nameLearningApp, /refs\.course\.textContent = courseName\(card\)/);
+  assert.match(nameLearningApp, /refs\.course\.style\.setProperty\('--course-color', String\(card\.courseColor \|\| '#334155'\)\)/);
   assert.match(nameLearningApp, /event\.stopPropagation\(\); review\(true\)/);
+  assert.doesNotMatch(nameLearningApp, /reviewFeedbackActive \|\| event\.target\.closest\('button'\)/);
   assert.match(nameLearningApp, /refs\.portraitReverse\.src = objectUrl/);
   assert.match(nameLearningCss, /\.flashcard\.is-awaiting-next-card \{ cursor: pointer; \}/);
   assert.match(nameLearningCss, /\.portrait-reverse \{[\s\S]*?opacity: \.58/);
   assert.match(nameLearningCss, /\.flashcard\.is-revealed \.flashcard-inner \{ transform: rotateY\(180deg\); \}/);
+  assert.match(nameLearningCss, /\.answer \{[\s\S]*?user-select: none/);
+  assert.match(nameLearningCss, /\.course-pill \{[\s\S]*?background: var\(--course-color/);
+  assert.match(nameLearningCss, /\.flashcard-back \.button-row \{[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(nameLearningCss, /\.flashcard-back \.button-row > button \{ min-height: 54px; \}/);
+  assert.match(nameLearningCss, /\.practice-card\.is-ready-to-reveal, \.practice-card\.is-ready-to-reveal \* \{ cursor: pointer; \}/);
+  assert.match(nameLearningCss, /\.practice-card\.is-awaiting-next-card, \.practice-card\.is-awaiting-next-card \* \{ cursor: pointer; \}/);
+  assert.match(nameLearningCss, /\.flashcard\.is-awaiting-next-card \.button-row \{ pointer-events: none; \}/);
   assert.match(nameLearningCss, /\.review-feedback\.is-visible/);
   assert.match(nameLearningCss, /\.review-feedback-slot \{[\s\S]*?min-height: 56px/);
   assert.match(nameLearningCss, /@media \(prefers-reduced-motion: reduce\)/);

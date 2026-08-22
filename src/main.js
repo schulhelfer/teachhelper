@@ -216,6 +216,11 @@ import {
   window.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     if (!detail || detail.scope !== 'shell' || !detail.snapshot) return;
+    const vault = detail.snapshot.vault;
+    shellController?.setPlanningGradeVaultState?.({
+      ...vault,
+      ready: Boolean(detail.snapshot.ready),
+    });
     const warning = detail.snapshot?.vault?.autoLockWarning;
     if (warning?.active !== true) {
       displayedGradeVaultAutoLockWarningId = '';
@@ -264,6 +269,7 @@ import {
       unlocked: false,
       showGradeStudentPortraits: false,
       showNameLearningModule: false,
+      nameLearningDueCount: null,
       setupRequired: false,
     },
     planningUnsavedState: {

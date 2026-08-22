@@ -12,7 +12,7 @@ const refs = {
   startDue: document.getElementById('start-due'), startDueLabel: document.getElementById('start-due-label'), startRandom: document.getElementById('start-random'),
   practice: document.getElementById('practice'), portrait: document.getElementById('portrait'), portraitReverse: document.getElementById('portrait-reverse'),
   flashcard: document.getElementById('flashcard'), flipCard: document.getElementById('flip-card'), flashcardBack: document.getElementById('flashcard-back'),
-  answer: document.getElementById('answer'), known: document.getElementById('known'), unknown: document.getElementById('unknown'),
+  answer: document.getElementById('answer'), course: document.getElementById('course'), known: document.getElementById('known'), unknown: document.getElementById('unknown'),
   empty: document.getElementById('empty'), emptyTitle: document.getElementById('empty-title'), emptyCopy: document.getElementById('empty-copy'), emptyRandom: document.getElementById('empty-random'),
   reviewFeedback: document.getElementById('review-feedback'),
 };
@@ -37,6 +37,7 @@ function clearReviewFeedbackTimer() { if (reviewFeedbackTimer) window.clearTimeo
 function resetReviewFeedback() {
   clearReviewFeedbackTimer();
   reviewFeedbackActive = false;
+  refs.practice.classList.remove('is-awaiting-next-card');
   refs.flashcard.classList.remove('is-awaiting-next-card');
   refs.reviewFeedback.classList.remove('is-visible');
   refs.reviewFeedback.hidden = true;
@@ -63,6 +64,7 @@ function showReviewFeedback(progress, now, afterHidden) {
   refs.reviewFeedback.hidden = false;
   refs.reviewFeedback.textContent = nextReviewMessage(progress, now);
   reviewFeedbackActive = true;
+  refs.practice.classList.add('is-awaiting-next-card');
   refs.flashcard.classList.add('is-awaiting-next-card');
   requestAnimationFrame(() => refs.reviewFeedback.classList.add('is-visible'));
   reviewFeedbackTimer = window.setTimeout(() => finishReviewFeedback(afterHidden), REVIEW_FEEDBACK_DISPLAY_MS);
@@ -135,10 +137,13 @@ function renderCard() {
   const card = queue[0];
   if (!card) { if (mode === 'due') { start('due'); } else { showEmpty(); } return; }
   resetReviewFeedback(); revokePortrait(); hideAll(); refs.practice.hidden = false;
+  refs.practice.classList.add('is-ready-to-reveal');
   refs.flashcard.classList.remove('is-revealed');
   refs.flashcardBack.setAttribute('aria-hidden', 'true');
   refs.flipCard.disabled = false;
   refs.answer.textContent = card.name;
+  refs.course.textContent = courseName(card);
+  refs.course.style.setProperty('--course-color', String(card.courseColor || '#334155'));
   refs.known.disabled = true;
   refs.unknown.disabled = true;
   try {
@@ -152,6 +157,7 @@ function renderCard() {
 
 function reveal() {
   if (refs.flashcard.classList.contains('is-revealed')) return;
+  refs.practice.classList.remove('is-ready-to-reveal');
   refs.flashcard.classList.add('is-revealed');
   refs.flipCard.disabled = true;
   refs.flashcardBack.setAttribute('aria-hidden', 'false');
@@ -175,9 +181,12 @@ function review(known) {
 }
 
 refs.startDue.addEventListener('click', () => start('due')); refs.startRandom.addEventListener('click', () => start('random')); refs.emptyRandom.addEventListener('click', () => start('random')); refs.flipCard.addEventListener('click', reveal);
-refs.flashcard.addEventListener('click', (event) => {
-  if (!reviewFeedbackActive || event.target.closest('button')) return;
-  advanceAfterReviewFeedback();
+refs.practice.addEventListener('click', () => {
+  if (reviewFeedbackActive) {
+    advanceAfterReviewFeedback();
+    return;
+  }
+  reveal();
 });
 refs.known.addEventListener('click', (event) => { event.stopPropagation(); review(true); });
 refs.unknown.addEventListener('click', (event) => { event.stopPropagation(); review(false); });

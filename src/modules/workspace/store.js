@@ -1651,6 +1651,7 @@ function createInitialState() {
       expectationHorizonCommentTemplate: EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT,
       gradeCourseStudentCounts: {},
       gradeCourseStudentCountsComplete: false,
+      nameLearningDueSummary: { complete: false, courses: {} },
       gradeVaultEncryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
       gradeVaultAutoLockMinutes: GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
       gradeVaultAutoLockOnBackground: GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT,

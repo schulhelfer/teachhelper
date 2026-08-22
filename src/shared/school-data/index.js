@@ -14,6 +14,27 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, Number(value) || 0));
 }
 
+function normalizeNameLearningDueSummary(value = null, validCourseIds = null) {
+  const source = asRecord(value);
+  const allowed = validCourseIds instanceof Set ? validCourseIds : null;
+  const courses = {};
+  Object.entries(asRecord(source.courses)).forEach(([courseId, rawBuckets]) => {
+    const id = Number(courseId) || 0;
+    if (!id || (allowed && !allowed.has(id))) return;
+    const grouped = new Map();
+    (Array.isArray(rawBuckets) ? rawBuckets : []).forEach((bucket) => {
+      const dueAt = Math.max(0, Number(bucket?.dueAt) || 0);
+      const count = Math.max(0, Math.floor(Number(bucket?.count) || 0));
+      if (!count) return;
+      grouped.set(dueAt, (grouped.get(dueAt) || 0) + count);
+    });
+    courses[String(id)] = [...grouped.entries()]
+      .map(([dueAt, count]) => ({ dueAt, count }))
+      .sort((left, right) => left.dueAt - right.dueAt);
+  });
+  return { complete: source.complete === true, courses };
+}
+
 
 
 
@@ -149,6 +170,10 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
   );
   normalized.courses = normalized.courses.filter(
     (item) => item.id > 0 && item.schoolYearId > 0 && item.name,
+  );
+  normalized.settings.nameLearningDueSummary = normalizeNameLearningDueSummary(
+    normalized.settings.nameLearningDueSummary,
+    new Set(normalized.courses.map((course) => Number(course.id))),
   );
   normalized.slots = normalized.slots.filter(
     (item) => (
