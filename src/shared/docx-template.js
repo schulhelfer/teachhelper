@@ -1,6 +1,7 @@
 import {
   FILE_LIMITS,
   FILE_TIMEOUTS,
+  exceedsZipCompressionRatio,
   formatFileSize,
   withTimeout,
 } from "./file-guards.js";
@@ -115,11 +116,51 @@ async function inflateRaw(bytes, options = {}) {
   } catch (_error) {
     throw new Error("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.");
   }
-  return new Uint8Array(await withTimeout(
-    () => new Response(stream).arrayBuffer(),
-    options.timeoutMs ?? FILE_TIMEOUTS.ZIP_LOAD_MS,
-    "Die DOCX-ZIP-Dekompression hat zu lange gedauert."
-  ));
+  const maxBytes = Number.isFinite(options.maxBytes) && options.maxBytes >= 0
+    ? options.maxBytes
+    : FILE_LIMITS.ZIP_ENTRY_BYTES;
+  const timeoutMs = options.timeoutMs ?? FILE_TIMEOUTS.ZIP_LOAD_MS;
+  const deadline = Date.now() + timeoutMs;
+  const reader = stream.getReader();
+  const chunks = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const remainingMs = Math.max(1, deadline - Date.now());
+      const { done, value } = await withTimeout(
+        () => reader.read(),
+        remainingMs,
+        "Die DOCX-ZIP-Dekompression hat zu lange gedauert."
+      );
+      if (done) {
+        break;
+      }
+      if (!value?.length) {
+        continue;
+      }
+      total += value.length;
+      if (total > maxBytes) {
+        throw new Error(
+          `Ein DOCX-ZIP-Eintrag ist entpackt zu groß. Maximal erlaubt: ${formatFileSize(maxBytes)}.`
+        );
+      }
+      chunks.push(value);
+    }
+  } finally {
+    // Bricht die laufende Dekompression tatsächlich ab – ein Timeout allein tut das nicht.
+    try {
+      await reader.cancel();
+    } catch (_error) {
+      /* Der Stream ist bereits beendet. */
+    }
+  }
+  const result = new Uint8Array(total);
+  let offset = 0;
+  chunks.forEach((chunk) => {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  });
+  return result;
 }
 
 async function readZipEntries(input, options = {}) {
@@ -158,8 +199,10 @@ async function readZipEntries(input, options = {}) {
     if (uncompressedSize > limits.maxUncompressedEntryBytes) {
       throw new Error(`Ein DOCX-ZIP-Eintrag ist entpackt zu groß. Maximal erlaubt: ${formatFileSize(limits.maxUncompressedEntryBytes)}.`);
     }
-    totalUncompressedBytes += uncompressedSize;
-    if (totalUncompressedBytes > limits.maxTotalUncompressedBytes) {
+    if (exceedsZipCompressionRatio(compressedSize, uncompressedSize)) {
+      throw new Error("Ein DOCX-ZIP-Eintrag ist verdächtig stark komprimiert.");
+    }
+    if (totalUncompressedBytes + uncompressedSize > limits.maxTotalUncompressedBytes) {
       throw new Error(`Die DOCX-Datei ist entpackt zu groß. Maximal erlaubt: ${formatFileSize(limits.maxTotalUncompressedBytes)}.`);
     }
     if (centralOffset + 46 + nameLength + extraLength + commentLength > sourceBytes.length) {
@@ -184,13 +227,24 @@ async function readZipEntries(input, options = {}) {
     if (method === ZIP_STORE) {
       data = compressedData;
     } else if (method === ZIP_DEFLATE) {
-      data = await inflateRaw(compressedData, { timeoutMs: limits.inflateTimeoutMs });
+      // Das Central Directory ist für die entpackte Größe maßgeblich: Jedes Byte darüber
+      // hinaus belegt einen manipulierten Deflate-Stream, deshalb wird schon während des
+      // Entpackens gedeckelt statt erst danach geprüft.
+      data = await inflateRaw(compressedData, {
+        timeoutMs: limits.inflateTimeoutMs,
+        maxBytes: Math.min(
+          uncompressedSize,
+          limits.maxUncompressedEntryBytes,
+          Math.max(0, limits.maxTotalUncompressedBytes - totalUncompressedBytes)
+        ),
+      });
     } else {
       throw new Error("Diese DOCX-Komprimierung wird nicht unterstützt.");
     }
-    if (uncompressedSize && data.length !== uncompressedSize) {
+    if (data.length !== uncompressedSize) {
       throw new Error("Die DOCX-Datei konnte nicht vollständig gelesen werden.");
     }
+    totalUncompressedBytes += data.length;
     entries.push({ name, data, flags });
     centralOffset += 46 + nameLength + extraLength + commentLength;
   }

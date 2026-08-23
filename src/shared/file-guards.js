@@ -9,6 +9,8 @@ export const FILE_LIMITS = Object.freeze({
   ZIP_ENTRY_BYTES: 100 * BYTES_PER_MIB,
   ZIP_TOTAL_UNCOMPRESSED_BYTES: 750 * BYTES_PER_MIB,
   ZIP_MAX_ENTRIES: 2000,
+  ZIP_MAX_COMPRESSION_RATIO: 200,
+  ZIP_RATIO_CHECK_MIN_BYTES: BYTES_PER_MIB,
 });
 
 export const FILE_TIMEOUTS = Object.freeze({
@@ -98,6 +100,25 @@ export async function readFileHeader(file, byteLength = 8, options = {}) {
     { signal: options.signal }
   );
   return new Uint8Array(buffer);
+}
+
+export function exceedsZipCompressionRatio(compressedSize, uncompressedSize) {
+  // Fehlende Angaben sind kein Verdachtsmoment – dagegen schützt der Deckel beim Entpacken.
+  if (compressedSize == null || uncompressedSize == null) {
+    return false;
+  }
+  const compressed = Number(compressedSize);
+  const uncompressed = Number(uncompressedSize);
+  if (!Number.isFinite(compressed) || !Number.isFinite(uncompressed)) {
+    return false;
+  }
+  if (uncompressed <= FILE_LIMITS.ZIP_RATIO_CHECK_MIN_BYTES) {
+    return false;
+  }
+  if (compressed <= 0) {
+    return true;
+  }
+  return uncompressed / compressed > FILE_LIMITS.ZIP_MAX_COMPRESSION_RATIO;
 }
 
 export function assertFileSizeAtMost(file, limitBytes, label) {

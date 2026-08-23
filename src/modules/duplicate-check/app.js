@@ -4,6 +4,7 @@ import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 import {
   FILE_LIMITS,
   FILE_TIMEOUTS,
+  exceedsZipCompressionRatio,
   validateZipFile,
   withTimeout,
 } from '../../shared/file-guards.js';
@@ -883,6 +884,9 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	        if (uncompressedSize > FILE_LIMITS.ZIP_ENTRY_BYTES) {
 	          throw new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_ENTRY_BYTES)}.`);
 	        }
+	        if (compressedSize != null && exceedsZipCompressionRatio(compressedSize, uncompressedSize)) {
+	          throw new Error(`"${entry.name}" ist verdächtig stark komprimiert.`);
+	        }
 	        knownUncompressedTotal += uncompressedSize;
 	      }
 	    });
@@ -890,6 +894,67 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	    if (knownUncompressedTotal > FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES) {
 	      throw new Error(`Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`);
 	    }
+	  }
+
+	  // Deckelt die Ausgabemenge bereits während des Entpackens: Die ZIP-Metadaten stammen
+	  // aus der Datei und können lügen, und ein Timeout um entry.async() herum stoppt die
+	  // laufende Dekompression nicht. Über internalStream() lässt sie sich wirklich abbrechen.
+	  function readZipEntryCapped(entry, maxBytes, timeoutMs) {
+	    return new Promise((resolve, reject) => {
+	      let stream;
+	      try {
+	        stream = entry.internalStream('uint8array');
+	      } catch (error) {
+	        reject(error);
+	        return;
+	      }
+	      const chunks = [];
+	      let total = 0;
+	      let settled = false;
+	      const timer = setTimeout(() => {
+	        fail(new Error('ZIP-Eintrag konnte nicht rechtzeitig entpackt werden.'));
+	      }, Math.max(1, timeoutMs));
+
+	      function stop() {
+	        settled = true;
+	        clearTimeout(timer);
+	        try {
+	          stream.pause();
+	        } catch (_error) {
+	          /* Der Stream ist bereits beendet. */
+	        }
+	      }
+
+	      function fail(error) {
+	        if (settled) return;
+	        stop();
+	        reject(error);
+	      }
+
+	      stream
+	        .on('data', (chunk) => {
+	          if (settled) return;
+	          total += chunk.length;
+	          if (total > maxBytes) {
+	            fail(new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(maxBytes)}.`));
+	            return;
+	          }
+	          chunks.push(chunk);
+	        })
+	        .on('error', fail)
+	        .on('end', () => {
+	          if (settled) return;
+	          stop();
+	          const result = new Uint8Array(total);
+	          let offset = 0;
+	          chunks.forEach((chunk) => {
+	            result.set(chunk, offset);
+	            offset += chunk.length;
+	          });
+	          resolve(result);
+	        })
+	        .resume();
+	    });
 	  }
 
   function getBasename(path) {
@@ -1216,14 +1281,11 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	      const knownSize = getZipEntrySize(entry, 'uncompressedSize');
 	      if (shouldReadBytes) {
 	        const remainingMs = Math.max(1, deadlineMs - Date.now());
-	        bytes = await withTimeout(
-	          () => entry.async('uint8array'),
-	          remainingMs,
-	          'ZIP-Eintrag konnte nicht rechtzeitig entpackt werden.'
+	        const maxBytes = Math.min(
+	          knownSize ?? FILE_LIMITS.ZIP_ENTRY_BYTES,
+	          FILE_LIMITS.ZIP_ENTRY_BYTES
 	        );
-	        if (bytes.byteLength > FILE_LIMITS.ZIP_ENTRY_BYTES) {
-	          throw new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_ENTRY_BYTES)}.`);
-	        }
+	        bytes = await readZipEntryCapped(entry, maxBytes, remainingMs);
 	        visualSignature = await createVisualSignature(bytes, name);
 	      }
 	      records.push({
@@ -1232,7 +1294,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	        displayPath: stripRootPrefix(entry.name, rootPrefix),
 	        name,
 	        nameKey: normalizeNameKey(name),
-	        size: knownSize ?? bytes?.byteLength ?? 0,
+	        size: bytes?.byteLength ?? knownSize ?? 0,
 	        bytes,
 	        visualSignature,
 	      });
