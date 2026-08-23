@@ -1,4 +1,4 @@
-const APP_VERSION = '40';
+const APP_VERSION = '43';
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
@@ -37,6 +37,7 @@ const APP_SHELL = [
   './src/shared/school-data/defaults.js',
   './src/shared/messages.js',
   './src/shared/module-frame-bridge.js',
+  './src/shared/name-learning-due-summary.js',
   './src/shared/roster-store.js',
   './src/shared/school-data/messages.js',
   './src/shared/school-data/index.js',
@@ -89,6 +90,7 @@ const DEFERRED_ASSETS = [
   './src/modules/seatplan/app.html',
   './src/modules/seatplan/app.css',
   './src/modules/seatplan/app.js',
+  './src/modules/seatplan/tooltips.js',
   './src/modules/merger/app.html',
   './src/modules/merger/app.css',
   './src/modules/merger/app.js',

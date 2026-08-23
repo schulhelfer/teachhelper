@@ -5,7 +5,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <meta name="theme-color" content="#f5f5f7">
   <title>Noten</title>
   <link rel="manifest" href="../../../manifest.webmanifest">
@@ -105,14 +105,14 @@
             class="sidebar-grade-action-section sidebar-grade-action-section-competence-expectations">
             <div class="sidebar-grade-action-title">Kompetenzerwartung</div>
             <button id="sidebar-grade-competence-expectations-btn" class="sidebar-grade-expectation-btn" type="button"
-              aria-label="Kompetenzerwartung erzeugen" title="Kompetenzerwartung erzeugen" disabled><span
+              aria-label="Kompetenzerwartung erzeugen" disabled><span
                 class="sidebar-grade-print-icon" aria-hidden="true">💪</span></button>
           </div>
           <div id="sidebar-grade-expectation-section" data-tutorial-anchor="grades-expectation"
             class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
             <div class="sidebar-grade-action-title">Erwartungshorizont</div>
             <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
-              aria-label="Erwartungshorizont erzeugen" title="Erwartungshorizont erzeugen" disabled><span
+              aria-label="Erwartungshorizont erzeugen" disabled><span
                 class="sidebar-grade-print-icon" aria-hidden="true">🎯</span></button>
           </div>
           <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print"
@@ -131,7 +131,7 @@
               <small>(Simulation)</small>
             </div>
             <button id="sidebar-grade-simulation-btn" class="sidebar-grade-simulation-btn" type="button"
-              aria-label="Warnungen (Simulation)" title="Warnungen (Simulation)" disabled>
+              aria-label="Warnungen (Simulation)" disabled>
               <span class="sidebar-grade-print-icon" aria-hidden="true">✉️</span>
             </button>
           </div>
@@ -139,7 +139,7 @@
             class="sidebar-grade-action-section sidebar-grade-action-section-accommodation">
             <div class="sidebar-grade-action-title">Nachteilsausgleich</div>
             <button id="sidebar-grade-accommodation-btn" class="sidebar-grade-print-btn" type="button"
-              aria-label="Nachteilsausgleich" title="Nachteilsausgleich" disabled>
+              aria-label="Nachteilsausgleich" disabled>
               <span class="sidebar-grade-print-icon" aria-hidden="true">♿</span>
             </button>
           </div>
@@ -572,7 +572,7 @@
         <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
         <div class="button-row course-dialog-students-manual-row">
           <button type="button" id="course-dialog-group-photo-open" class="ghost"
-            aria-label="Aus Gruppenfoto extrahieren" title="Aus Gruppenfoto extrahieren">Bilder aus Gruppenfoto
+            aria-label="Aus Gruppenfoto extrahieren">Bilder aus Gruppenfoto
             extrahieren</button>
           <button type="button" id="course-dialog-portrait-import" class="ghost"
             aria-label="Bilder aus anderen Kursen importieren"

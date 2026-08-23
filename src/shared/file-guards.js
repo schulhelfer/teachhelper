@@ -103,7 +103,6 @@ export async function readFileHeader(file, byteLength = 8, options = {}) {
 }
 
 export function exceedsZipCompressionRatio(compressedSize, uncompressedSize) {
-  // Fehlende Angaben sind kein Verdachtsmoment – dagegen schützt der Deckel beim Entpacken.
   if (compressedSize == null || uncompressedSize == null) {
     return false;
   }

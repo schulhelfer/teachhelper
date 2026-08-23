@@ -3421,7 +3421,7 @@ export function createMergerApp({
 	            return { accepted, rejectedMessages };
 	          }
 
-	          function maybeShowFileSelectionWarning({ rejectedMessages = [], ignoredExtraCount = 0, totalSizeMessage = "" } = {}) {
+	          function maybeShowFileSelectionWarning({ rejectedMessages = [], ignoredExtraCount = 0, totalSizeMessage = "", duplicateCount = 0 } = {}) {
 	            const messages = [];
 	            if (rejectedMessages.length > 0) {
 	              const visibleMessages = rejectedMessages.slice(0, 4);
@@ -3431,6 +3431,13 @@ export function createMergerApp({
 	              }
 	            }
 	            if (totalSizeMessage) messages.push(totalSizeMessage);
+	            if (duplicateCount > 0) {
+	              messages.push(
+	                duplicateCount === 1
+                  ? "Eine PDF war bereits in der Liste und wurde übersprungen."
+                  : `${duplicateCount} PDFs waren bereits in der Liste und wurden übersprungen.`
+              );
+            }
 	            if (ignoredExtraCount > 0) {
 	              messages.push(
 	                ignoredExtraCount === 1
@@ -3478,26 +3485,61 @@ export function createMergerApp({
 	            ]);
 	          }
 
-	          async function replaceMergeFiles(fileList) {
-	            if (!fileList || !fileList.length) return;
-	            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
-	            let totalSizeMessage = "";
-	            if (accepted.length) {
-	              try {
-	                assertTotalSizeAtMost(
-	                  accepted,
-	                  FILE_LIMITS.PDF_MERGE_TOTAL_BYTES,
-	                  "PDF-Auswahl"
-	                );
-	              } catch (error) {
-	                totalSizeMessage = error && error.message ? error.message : "Die ausgewählten PDFs sind zu groß.";
-	                accepted.length = 0;
-	              }
-	            }
-	            maybeShowFileSelectionWarning({ rejectedMessages, totalSizeMessage });
-	            if (!accepted.length) return;
-	            await setSharedPdfFiles(accepted);
-	          }
+          function isSameMergeFile(a, b) {
+            return a.name === b.name && a.size === b.size && a.lastModified === b.lastModified;
+          }
+
+          async function appendMergeFiles(fileList) {
+            if (!fileList || !fileList.length) return;
+            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
+
+            const added = [];
+            let duplicateCount = 0;
+            for (const file of accepted) {
+              const known = mergeState.files.some((existing) => isSameMergeFile(existing, file))
+                || added.some((existing) => isSameMergeFile(existing, file));
+              if (known) duplicateCount += 1;
+              else added.push(file);
+            }
+
+            const combined = [...mergeState.files, ...added];
+            let totalSizeMessage = "";
+            if (added.length) {
+              try {
+                assertTotalSizeAtMost(
+                  combined,
+                  FILE_LIMITS.PDF_MERGE_TOTAL_BYTES,
+                  "PDF-Auswahl"
+                );
+              } catch (error) {
+                totalSizeMessage = error && error.message ? error.message : "Die ausgewählten PDFs sind zu groß.";
+                added.length = 0;
+              }
+            }
+            maybeShowFileSelectionWarning({ rejectedMessages, totalSizeMessage, duplicateCount });
+            if (!added.length) return;
+
+            if (!mergeState.files.length) {
+              await setSharedPdfFiles(added);
+              return;
+            }
+            mergeState.files = combined;
+            renderMergeFileList();
+          }
+
+          async function removeMergeFileAt(index) {
+            const [removed] = mergeState.files.splice(index, 1);
+            mergeState.pageCountByFile.delete(removed);
+            if (!mergeState.files.length) {
+              clearSharedPdfFiles();
+              return;
+            }
+            if (index === 0) {
+              await setSharedPdfFiles(mergeState.files);
+              return;
+            }
+            renderMergeFileList();
+          }
 
 	          async function setSingleToolFileFromSelection(fileList) {
 	            const { accepted, rejectedMessages } = await partitionPdfFiles(fileList);
@@ -4146,7 +4188,7 @@ export function createMergerApp({
             pendingPickerTarget = null;
             if (!files.length || !target) return;
             if (target.tool === TOOL_MERGE) {
-              await replaceMergeFiles(files);
+              await appendMergeFiles(files);
               return;
             }
             await setSingleToolFileFromSelection(files);
@@ -4165,7 +4207,7 @@ export function createMergerApp({
           bindFileDropZone({
             dropZone: ui.mergeDropZone,
             openPicker: () => openSharedPdfPicker({ tool: TOOL_MERGE, multiple: true }),
-            onFilesDropped: replaceMergeFiles,
+            onFilesDropped: appendMergeFiles,
             shouldOpenPicker: (event) => !event.target.closest("#mergeFileListShell"),
           });
           bindFileDropZone({
@@ -4246,7 +4288,7 @@ export function createMergerApp({
             if (!removeButton) return;
             const index = Number(removeButton.dataset.removeIndex);
             if (!Number.isInteger(index) || index < 0 || index >= mergeState.files.length) return;
-            clearSharedPdfFiles();
+            void removeMergeFileAt(index);
           });
 
           ui.studentCount.addEventListener("input", () => {

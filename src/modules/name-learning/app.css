@@ -38,9 +38,32 @@ button:focus-visible, input:focus-visible { outline: none; border-color: var(--f
 .sidebar-resize-handle { position: absolute; z-index: 6; top: 0; right: 0; bottom: 0; width: 14px; cursor: col-resize; touch-action: none; }
 .app > .sidebar-resize-handle { top: var(--sidebar-resize-top, 0px); right: auto; bottom: auto; left: var(--sidebar-resize-left, 0px); height: var(--sidebar-resize-height, 0px); }
 .sidebar-resize-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: calc(50% - .5px); width: 1px; background: var(--sidebar-border); }
-.sidebar-header { display: flex; align-items: center; min-height: 38px; margin-bottom: 10px; }
+.sidebar-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 38px; margin-bottom: 10px; }
 .sidebar-title, .card-title { margin: 0; line-height: 1.1; letter-spacing: -.01em; }
-.sidebar-title { font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif; font-size: 22px; }
+.sidebar-title { font-family: "SF Pro Display", "SF Pro Text", "Avenir Next", "Helvetica Neue", "Segoe UI Variable", "Segoe UI", sans-serif; font-size: 22px; min-width: 0; }
+.sidebar-header-actions { display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; flex: 0 0 auto; }
+.module-tutorial-button {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex: 0 0 auto;
+  border: 1px solid var(--button-border);
+  border-radius: 12px;
+  padding: 0;
+  background: var(--surface-control-glass);
+  color: var(--text-on-overlay-secondary);
+  font-size: 1.25rem;
+  line-height: 1;
+  box-shadow: var(--button-shadow);
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+.module-tutorial-button:hover,
+.module-tutorial-button:focus-visible { background: rgba(60, 72, 92, .98); border-color: rgba(130, 190, 255, .95); color: #fff; transform: translateY(-1px); }
 .tool-sidebar-panel { display: grid; gap: 14px; margin: 12px 0 0 22px; }
 .sidebar-section-title, .section-title { margin: 0; font-size: .86rem; font-weight: 720; letter-spacing: .01em; color: var(--text-secondary, #cbd5e1); }
 .sidebar-section { display: grid; gap: 8px; }

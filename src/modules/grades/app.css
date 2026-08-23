@@ -5758,8 +5758,11 @@
         }
 
         .grades-total-table tr>*:last-child,
-        .grade-block-table tr>*:last-child,
-        .grades-master-table tr>*:last-child {
+        .grade-block-table tr>*:last-child {
+          border-right: none;
+        }
+
+        .grades-master-table .is-table-edge-cell {
           border-right: none;
         }
 
@@ -6082,46 +6085,12 @@
         .grades-master-table th.is-boundary-category,
         .grades-master-table td.is-boundary-category,
         .grades-master-table th.is-boundary-subcategory,
-        .grades-master-table td.is-boundary-subcategory {
-          border-right-color: transparent;
-        }
-
-        .grades-master-table th.is-boundary-category::after,
-        .grades-master-table td.is-boundary-category::after,
-        .grades-master-table th.is-boundary-subcategory::after,
-        .grades-master-table td.is-boundary-subcategory::after {
-          content: "";
-          position: absolute;
-          z-index: 2;
-          top: -1px;
-          right: 0;
-          bottom: -1px;
-          width: 1px;
-          background: var(--border-control);
-          pointer-events: none;
-        }
-
+        .grades-master-table td.is-boundary-subcategory,
+        .grades-master-table th:has(+ th.is-leading-boundary-category),
+        .grades-master-table td:has(+ td.is-leading-boundary-category),
         .grades-master-table th:has(+ th.is-leading-boundary-subcategory),
         .grades-master-table td:has(+ td.is-leading-boundary-subcategory) {
-          border-right-color: transparent;
-        }
-
-        .grades-master-table th.is-leading-boundary-category,
-        .grades-master-table td.is-leading-boundary-category {
-          --grade-boundary-left-shadow: inset 1px 0 0 var(--border-control);
-        }
-
-        .grades-master-table th.is-leading-boundary-subcategory::before,
-        .grades-master-table td.is-leading-boundary-subcategory::before {
-          content: "";
-          position: absolute;
-          z-index: 2;
-          top: 0;
-          bottom: 0;
-          left: 0;
-          width: 1px;
-          background: var(--border-control);
-          pointer-events: none;
+          border-right-color: var(--border-control);
         }
 
         .grades-master-table th.grade-category-head {

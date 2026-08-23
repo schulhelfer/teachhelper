@@ -30,16 +30,40 @@ test('shared PDF loading replaces all targets and initializes every single-file 
   assert.match(sharedLoading, /applyValidatedSingleToolFile\(TOOL_SPLIT, singleToolFile\)/);
 });
 
-test('merge selections retain every valid file while single-file selections share their first PDF', () => {
-  const mergeLoading = extractFunction('replaceMergeFiles');
+test('merge selections collect files while single-file selections share their first PDF', () => {
+  const mergeLoading = extractFunction('appendMergeFiles');
   const singleLoading = extractFunction('setSingleToolFileFromSelection');
 
-  assert.match(mergeLoading, /assertTotalSizeAtMost\(\s*accepted,/);
-  assert.match(mergeLoading, /await setSharedPdfFiles\(accepted\);/);
+  assert.match(mergeLoading, /const combined = \[\.\.\.mergeState\.files, \.\.\.added\];/);
+  assert.match(mergeLoading, /mergeState\.files = combined;/);
+  assert.match(mergeLoading, /if \(!mergeState\.files\.length\) \{\s*await setSharedPdfFiles\(added\);/);
+  assert.doesNotMatch(mergerSource, /replaceMergeFiles/);
+
+  assert.match(mergeLoading, /assertTotalSizeAtMost\(\s*combined,/);
   assert.match(singleLoading, /await setSharedPdfFiles\(\[accepted\[0\]\]\);/);
 });
 
-test('removing a PDF clears every shared subtool selection', () => {
+test('adding an already listed PDF is skipped instead of duplicated', () => {
+  const sameFile = extractFunction('isSameMergeFile');
+  const mergeLoading = extractFunction('appendMergeFiles');
+  assert.match(sameFile, /a\.name === b\.name && a\.size === b\.size && a\.lastModified === b\.lastModified/);
+  assert.match(mergeLoading, /if \(known\) duplicateCount \+= 1;/);
+  assert.match(mergeLoading, /maybeShowFileSelectionWarning\(\{[^}]*duplicateCount[^}]*\}\)/);
+  assert.match(mergerSource, /function maybeShowFileSelectionWarning\(\{[^)]*duplicateCount = 0/);
+  assert.match(mergerSource, /if \(duplicateCount > 0\) \{/);
+});
+
+test('the row delete button removes only its own PDF', () => {
+  const removeFile = extractFunction('removeMergeFileAt');
+
+  assert.match(removeFile, /mergeState\.files\.splice\(index, 1\)/);
+  assert.match(removeFile, /mergeState\.pageCountByFile\.delete\(removed\);/);
+  assert.match(removeFile, /if \(!mergeState\.files\.length\) \{\s*clearSharedPdfFiles\(\);/);
+  assert.match(removeFile, /if \(index === 0\) \{[\s\S]*?await setSharedPdfFiles\(mergeState\.files\);/);
+  assert.match(mergerSource, /void removeMergeFileAt\(index\);/);
+});
+
+test('clearing a shared selection resets every subtool', () => {
   const clearSharedSelection = extractFunction('clearSharedPdfFiles');
   const clearSelection = extractFunction('clearSingleToolFile');
 

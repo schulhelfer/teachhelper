@@ -147,11 +147,9 @@ async function inflateRaw(bytes, options = {}) {
       chunks.push(value);
     }
   } finally {
-    // Bricht die laufende Dekompression tatsächlich ab – ein Timeout allein tut das nicht.
     try {
       await reader.cancel();
     } catch (_error) {
-      /* Der Stream ist bereits beendet. */
     }
   }
   const result = new Uint8Array(total);
@@ -227,9 +225,6 @@ async function readZipEntries(input, options = {}) {
     if (method === ZIP_STORE) {
       data = compressedData;
     } else if (method === ZIP_DEFLATE) {
-      // Das Central Directory ist für die entpackte Größe maßgeblich: Jedes Byte darüber
-      // hinaus belegt einen manipulierten Deflate-Stream, deshalb wird schon während des
-      // Entpackens gedeckelt statt erst danach geprüft.
       data = await inflateRaw(compressedData, {
         timeoutMs: limits.inflateTimeoutMs,
         maxBytes: Math.min(

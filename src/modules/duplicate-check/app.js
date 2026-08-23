@@ -896,9 +896,6 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	    }
 	  }
 
-	  // Deckelt die Ausgabemenge bereits während des Entpackens: Die ZIP-Metadaten stammen
-	  // aus der Datei und können lügen, und ein Timeout um entry.async() herum stoppt die
-	  // laufende Dekompression nicht. Über internalStream() lässt sie sich wirklich abbrechen.
 	  function readZipEntryCapped(entry, maxBytes, timeoutMs) {
 	    return new Promise((resolve, reject) => {
 	      let stream;
@@ -921,7 +918,6 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	        try {
 	          stream.pause();
 	        } catch (_error) {
-	          /* Der Stream ist bereits beendet. */
 	        }
 	      }
 

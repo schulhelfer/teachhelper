@@ -60,6 +60,13 @@ export async function ensurePdfJsLoaded() {
         if (pdfjsLib.GlobalWorkerOptions) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_JS_WORKER_URL.href;
         }
+        if (
+          typeof window !== "undefined"
+          && window.origin === "null"
+          && typeof pdfjsLib.PDFWorker?._isSameOrigin === "function"
+        ) {
+          pdfjsLib.PDFWorker._isSameOrigin = () => false;
+        }
         return pdfjsLib;
       })
       .catch((error) => {

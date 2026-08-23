@@ -114,8 +114,10 @@ export function createFirstRunTutorial({
   let bubble = null;
   let highlight = null;
   let contentNode = null;
+  let sectionNode = null;
   let titleNode = null;
   let copyNode = null;
+  let progressNode = null;
   let countNode = null;
   let prevButton = null;
   let nextButton = null;
@@ -304,6 +306,9 @@ export function createFirstRunTutorial({
 
     endButton = makeButton('tutorial-close-button', '❌', 'Tutorial beenden');
 
+    sectionNode = document.createElement('p');
+    sectionNode.className = 'tutorial-section';
+
     titleNode = document.createElement('h2');
     titleNode.className = 'tutorial-title';
 
@@ -312,7 +317,15 @@ export function createFirstRunTutorial({
 
     contentNode = document.createElement('div');
     contentNode.className = 'tutorial-content';
-    contentNode.append(titleNode, copyNode);
+    contentNode.append(sectionNode, titleNode, copyNode);
+
+    const progressFill = document.createElement('span');
+    progressFill.className = 'tutorial-progress-fill';
+    progressNode = document.createElement('div');
+    progressNode.className = 'tutorial-progress';
+    progressNode.setAttribute('role', 'progressbar');
+    progressNode.setAttribute('aria-valuemin', '0');
+    progressNode.append(progressFill);
 
     const actions = document.createElement('div');
     actions.className = 'tutorial-actions';
@@ -324,7 +337,7 @@ export function createFirstRunTutorial({
     nextButton = makeButton('tutorial-next-button', '➡️', 'Nächster Tipp');
 
     actions.append(prevButton, countNode, nextButton);
-    bubble.append(endButton, contentNode, actions);
+    bubble.append(endButton, contentNode, progressNode, actions);
     document.body.append(highlight, bubble);
 
     endButton.addEventListener('click', finish);
@@ -439,8 +452,10 @@ export function createFirstRunTutorial({
     bubble = null;
     highlight = null;
     contentNode = null;
+    sectionNode = null;
     titleNode = null;
     copyNode = null;
+    progressNode = null;
     countNode = null;
     prevButton = null;
     nextButton = null;
@@ -770,10 +785,39 @@ export function createFirstRunTutorial({
     renderStep();
   }
 
+  function getSectionProgress(index) {
+    const section = String(activeSteps[index]?.section || '');
+    if (!section) return null;
+    let position = 0;
+    let total = 0;
+    activeSteps.forEach((candidate, candidateIndex) => {
+      if (String(candidate?.section || '') !== section) return;
+      total += 1;
+      if (candidateIndex <= index) position += 1;
+    });
+    return { section, position, total };
+  }
+
+  function updateStepProgress() {
+    if (!progressNode) return;
+    const total = activeSteps.length;
+    const value = total ? stepIndex + 1 : 0;
+    progressNode.style.setProperty('--tutorial-progress', total ? value / total : 0);
+    progressNode.setAttribute('aria-valuemax', String(total));
+    progressNode.setAttribute('aria-valuenow', String(value));
+    progressNode.setAttribute('aria-label', `Schritt ${value} von ${total}`);
+  }
+
   function updateStepContent(step) {
+    const sectionProgress = getSectionProgress(stepIndex);
+    sectionNode.textContent = sectionProgress
+      ? `${sectionProgress.section} · ${sectionProgress.position}/${sectionProgress.total}`
+      : '';
+    sectionNode.hidden = !sectionProgress;
     titleNode.textContent = step.title || '';
     copyNode.textContent = step.copy || '';
     countNode.textContent = `${stepIndex + 1}/${activeSteps.length}`;
+    updateStepProgress();
     nextButton.textContent = '➡️';
     nextButton.setAttribute(
       'aria-label',

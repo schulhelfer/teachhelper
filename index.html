@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <title>TeachHelper</title>
   <meta name="theme-color" content="#f5f5f7" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -65,8 +65,7 @@
           <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
           <div id="more-tools" class="more-tools">
             <button id="more-tools-trigger" class="tab-button more-tools-trigger" type="button" aria-haspopup="menu"
-              aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false" aria-label="Weitere Tools"
-              title="Weitere Tools">
+              aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false" aria-label="Weitere Tools">
               <span class="more-tools-trigger-label">Weitere Tools</span>
               <span class="more-tools-trigger-compact-label" aria-hidden="true">⋯</span>
               <span class="more-tools-trigger-caret" aria-hidden="true">▾</span>
@@ -259,7 +258,7 @@
           title="Gespeicherte Gruppeneinteilung laden">Gruppen<br>laden</button>
         <button id="group-export-plan" class="primary flex-1"
           title="Aktuelle Gruppeneinteilung als Datei speichern">Gruppen<br>speichern</button>
-        <button id="group-print-plan" class="primary flex-1" title="Gruppen drucken">Gruppen<br>drucken</button>
+        <button id="group-print-plan" class="primary flex-1">Gruppen<br>drucken</button>
         <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
       </div>
       <section class="side-monitor-settings" aria-label="Lautstärkeampel-Einstellungen">
@@ -280,12 +279,12 @@
           </div>
           <div class="tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-monitor-warning-tone-toggle="yellow"
-              aria-checked="true" aria-label="Warnton Gelb" title="Warnton Gelb">
+              aria-checked="true" aria-label="Warnton Gelb">
               <span class="tone-toggle-label" data-monitor-warning-tone-label="yellow">Warnton Gelb</span>
               <span class="tone-toggle-switch" aria-hidden="true"></span>
             </button>
             <button class="tone-toggle-button" type="button" role="switch" data-monitor-warning-tone-toggle="red"
-              aria-checked="true" aria-label="Warnton Rot" title="Warnton Rot">
+              aria-checked="true" aria-label="Warnton Rot">
               <span class="tone-toggle-label" data-monitor-warning-tone-label="red">Warnton Rot</span>
               <span class="tone-toggle-switch" aria-hidden="true"></span>
             </button>
@@ -316,28 +315,28 @@
           </label>
           <div class="timer-tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="half"
-              aria-checked="true" aria-label="Warnton nach 50%" title="Warnton nach 50%">
+              aria-checked="true" aria-label="Warnton nach 50%">
               <span class="tone-toggle-label" data-timer-warning-tone-label="half">Warnton nach 50%</span>
               <span class="tone-toggle-switch" aria-hidden="true"></span>
             </button>
           </div>
           <div class="timer-tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="quarter"
-              aria-checked="true" aria-label="Warnton nach 75%" title="Warnton nach 75%">
+              aria-checked="true" aria-label="Warnton nach 75%">
               <span class="tone-toggle-label" data-timer-warning-tone-label="quarter">Warnton nach 75%</span>
               <span class="tone-toggle-switch" aria-hidden="true"></span>
             </button>
           </div>
           <div class="timer-tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-timer-warning-tone-toggle="end"
-              aria-checked="true" aria-label="Warnton bei Ende" title="Warnton bei Ende">
+              aria-checked="true" aria-label="Warnton bei Ende">
               <span class="tone-toggle-label" data-timer-warning-tone-label="end">Warnton bei Ende</span>
               <span class="tone-toggle-switch" aria-hidden="true"></span>
             </button>
           </div>
           <div class="timer-tone-row">
             <button class="tone-toggle-button" type="button" role="switch" data-timer-seconds-toggle aria-checked="true"
-              aria-label="Sekunden anzeigen" title="Sekunden anzeigen">
+              aria-label="Sekunden anzeigen">
               <span class="tone-toggle-label" data-timer-seconds-label>Sekunden anzeigen</span>
               <span class="tone-toggle-switch" aria-hidden="true"></span>
             </button>

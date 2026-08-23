@@ -20,10 +20,6 @@ const ZIP_CENTRAL_FILE_HEADER = 0x02014b50;
 const ZIP_END_OF_CENTRAL_DIRECTORY = 0x06054b50;
 const ZIP_DEFLATE = 8;
 
-/**
- * Baut ein ZIP mit einem einzigen Deflate-Eintrag und frei wählbaren Größenangaben
- * im Central Directory – so lässt sich ein lügender Header nachstellen.
- */
 function buildSingleEntryZip({ name, compressed, declaredUncompressedSize }) {
   const nameBytes = Buffer.from(name, 'utf8');
   const compressedSize = compressed.length;
@@ -78,7 +74,6 @@ test('ein gelogener uncompressedSize-Header bricht das Entpacken ab', async () =
   );
   const heapGrowth = process.memoryUsage().heapUsed - heapBefore;
 
-  // Der 64-MiB-Stream darf nie vollständig materialisiert werden.
   assert.ok(
     heapGrowth < BOMB_UNCOMPRESSED_BYTES / 4,
     `Heap wuchs um ${heapGrowth} Bytes – der Eintrag wurde offenbar komplett entpackt.`
@@ -137,18 +132,14 @@ test('die ausgelieferte Erwartungshorizont-Vorlage bleibt lesbar', async () => {
 });
 
 test('die Kompressionsraten-Heuristik verschont kleine, gut komprimierbare Dateien', () => {
-  // Kleine Dateien bleiben unangetastet, egal wie stark sie komprimiert sind.
   assert.equal(exceedsZipCompressionRatio(50, 40 * 1024), false);
-  // Große Dateien mit plausibler Rate ebenfalls.
   assert.equal(
     exceedsZipCompressionRatio(10_000, 10_000 * (FILE_LIMITS.ZIP_MAX_COMPRESSION_RATIO - 100)),
     false
   );
-  // Große Dateien mit absurder Rate nicht.
   assert.equal(
     exceedsZipCompressionRatio(10_000, 10_000 * (FILE_LIMITS.ZIP_MAX_COMPRESSION_RATIO + 100)),
     true
   );
-  // Fehlende Metadaten dürfen die Heuristik nicht auslösen – dafür greift der Stream-Deckel.
   assert.equal(exceedsZipCompressionRatio(null, 10 * 1024 * 1024), false);
 });

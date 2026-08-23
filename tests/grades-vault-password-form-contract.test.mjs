@@ -157,6 +157,76 @@ test('ein neu eingehängtes Feld ist beim Einhängen bereits fertig konfiguriert
   assert.ok(insertIndex > configureIndex, 'erst danach wird er eingehängt');
 });
 
+test('ein erfolgreicher Vault-Vorgang meldet die Zugangsdaten explizit an den Browser', () => {
+  const submitSource = vaultSource(
+    '  async submitGradeVaultDialog()',
+    '\n  async saveGradeVaultChanges()',
+  );
+  const storeIndex = submitSource.indexOf('await this.storeGradeVaultCredential(');
+  const closeIndex = submitSource.indexOf('this.closeDialog(this.refs.gradeVaultDialog)');
+
+  assert.ok(storeIndex >= 0, 'der Erfolgspfad meldet die Zugangsdaten');
+  assert.ok(closeIndex > storeIndex, 'die Meldung erfolgt, solange der Dialog noch offen ist');
+  assert.match(submitSource, /storeGradeVaultCredential\(mode === "unlock" \? currentPassword : password\)/);
+
+  const storeSource = vaultSource(
+    '  async storeGradeVaultCredential(password)',
+    '\n  hasUnsavedGradeVaultRuntimeChanges()',
+  );
+
+  assert.match(storeSource, /id: getGradeVaultAutofillMetadata\(\)\.identity/);
+  assert.match(storeSource, /typeof CredentialCtor !== "function"/);
+  assert.match(storeSource, /typeof window\.navigator\?\.credentials\?\.store !== "function"/);
+  assert.match(storeSource, /catch \(_error\) \{\s*return false;/);
+});
+
+test('das Leeren der Passwortfelder rahmt Erfolg und Abbruch bewusst unterschiedlich ein', () => {
+  const closeSource = vaultSource(
+    '  closeGradeVaultDialog()',
+    '\n  clearGradeVaultDialogSecrets()',
+  );
+  const clearOnCancel = closeSource.indexOf('this.clearGradeVaultDialogSecrets()');
+  const closeOnCancel = closeSource.indexOf('this.closeDialog(this.refs.gradeVaultDialog)');
+  assert.ok(clearOnCancel >= 0 && closeOnCancel > clearOnCancel, 'Abbruch leert vor dem Schließen');
+
+  const submitSource = vaultSource(
+    '  async submitGradeVaultDialog()',
+    '\n  async saveGradeVaultChanges()',
+  );
+  const closeOnSuccess = submitSource.indexOf('this.closeDialog(this.refs.gradeVaultDialog)');
+  const clearOnSuccess = submitSource.indexOf('this.scheduleGradeVaultDialogSecretClear()');
+  assert.ok(closeOnSuccess >= 0 && clearOnSuccess > closeOnSuccess, 'Erfolg leert nach dem Schließen');
+  assert.doesNotMatch(submitSource, /this\.clearGradeVaultDialogSecrets\(\)/);
+
+  const scheduleSource = vaultSource(
+    '  scheduleGradeVaultDialogSecretClear()',
+    '\n  discardRejectedGradeVaultPassword(mode)',
+  );
+  assert.match(scheduleSource, /if \(this\.refs\.gradeVaultDialog\?\.open\)/);
+  assert.match(scheduleSource, /requestAnimationFrame\(run\)/);
+});
+
+test('ein vom Vault abgelehntes Passwort bleibt nicht im Feld stehen', () => {
+  const submitSource = vaultSource(
+    '  async submitGradeVaultDialog()',
+    '\n  async saveGradeVaultChanges()',
+  );
+  assert.match(submitSource, /this\.discardRejectedGradeVaultPassword\(mode\);\s*throw error;/);
+
+  const commandIndex = submitSource.indexOf('await this.executeWorkspaceCommand("owner-action"');
+  const lengthCheckIndex = submitSource.indexOf('GRADE_VAULT_PASSWORD_MIN_LENGTH} Zeichen lang sein.');
+  assert.ok(lengthCheckIndex >= 0 && lengthCheckIndex < commandIndex);
+
+  const discardSource = vaultSource(
+    '  discardRejectedGradeVaultPassword(mode)',
+    '\n  async storeGradeVaultCredential(password)',
+  );
+  assert.match(discardSource, /if \(mode === "setup"\)/);
+  assert.match(discardSource, /this\.refs\.gradeVaultDialogCurrentPassword/);
+  assert.match(discardSource, /focusGradeVaultDialogField\(field\)/);
+  assert.doesNotMatch(discardSource, /gradeVaultDialog(?:Password|ConfirmPassword)/);
+});
+
 test('Sitzplan, Gruppen und Picker verwenden keinen hidden-Vorfahren für das Vault-Formular', () => {
   assert.match(shellHtml, /<section id="grades-shell" class="grades-shell" aria-label="Noten">/);
   assert.doesNotMatch(shellHtml, /id="grades-shell"[^>]*\shidden(?:\s|>)/);

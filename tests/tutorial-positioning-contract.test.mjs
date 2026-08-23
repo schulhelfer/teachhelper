@@ -51,7 +51,7 @@ test('begrenzt lange Tutorialtexte im schmalen Viewport', () => {
     shellStyles.indexOf('.tutorial-content {'),
     shellStyles.indexOf('.tutorial-content-ghost'),
   );
-  assert.match(contentStyles, /max-height: max\(72px, calc\(100dvh - 118px\)\);/);
+  assert.match(contentStyles, /max-height: max\(72px, calc\(100dvh - 129px\)\);/);
   assert.match(contentStyles, /overflow-y: auto;/);
   assert.match(contentStyles, /overscroll-behavior: contain;/);
 });

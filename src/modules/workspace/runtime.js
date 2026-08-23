@@ -1080,8 +1080,6 @@ export class WorkspaceRuntime {
     const summary = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary);
     if (course.noLesson || course.noGrades) delete summary.courses[String(id)];
     else summary.courses[String(id)] = buildNameLearningDueBuckets(gradeState, id);
-    // This runs as part of a grade-course mutation. That mutation already queues
-    // the corresponding grade save, whose container also includes public state.
     return this.saveNameLearningDueSummary(summary, { notify: false });
   }
 

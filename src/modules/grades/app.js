@@ -125,6 +125,40 @@ const GROUP_PHOTO_ZOOM_MAX = 4;
 const GROUP_PHOTO_ZOOM_STEP = 0.25;
 const GROUP_PHOTO_DROP_SELECTION_SCREEN_PX = 96;
 const GROUP_PHOTO_PILL_DRAG_THRESHOLD_PX = 6;
+const GRADES_TUTORIAL_SETTINGS_SURFACES = {
+  gradesTestScales: {
+    tab: "gradeTestScales",
+    targets: ["#grade-test-scale-settings-content"]
+  },
+  gradesDefaultStructure: {
+    tab: "gradeStructure",
+    targets: ["#settings-grade-structure-list", "#settings-tab-grade-structure"]
+  },
+  gradesDisplay: {
+    tab: "display",
+    targets: ['[data-tutorial-anchor="grades-sidebar-visibility"]']
+  },
+  gradesPortraits: {
+    tab: "display",
+    targets: ["#show-grade-student-portraits", "#settings-tab-display"]
+  },
+  gradesOccurrences: {
+    tab: "occurrences",
+    targets: ["#settings-grade-occurrences-list", "#settings-tab-occurrences"]
+  },
+  gradesTemplates: {
+    tab: "expectationHorizon",
+    targets: ["#expectation-horizon-location", "#settings-tab-expectation-horizon"]
+  },
+  gradesDatabase: {
+    tab: "database",
+    targets: ["#db-auto-actions:not([hidden])", "#db-manual-actions:not([hidden])"]
+  },
+  gradesEncryption: {
+    tab: "encryption",
+    targets: ['[data-tutorial-anchor="grades-encryption"]']
+  }
+};
 const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
@@ -3733,23 +3767,13 @@ class GradesApp {
     this.resetGradesTutorialPresentation();
     this.shellTabContext = "grades";
     this.settingsSourceView = "grades";
-    if (surface === "gradesDatabase") {
+    const settingsSurface = GRADES_TUTORIAL_SETTINGS_SURFACES[surface];
+    if (settingsSurface) {
       this.currentView = "settings";
-      this.activeSettingsTab = "database";
+      this.activeSettingsTab = settingsSurface.tab;
       this.renderAll();
       await this.waitForGradesTutorialRender();
-      await this.waitForGradesTutorialTarget([
-        "#db-auto-actions:not([hidden])",
-        "#db-manual-actions:not([hidden])"
-      ]);
-      return;
-    }
-    if (surface === "gradesEncryption") {
-      this.currentView = "settings";
-      this.activeSettingsTab = "encryption";
-      this.renderAll();
-      await this.waitForGradesTutorialRender();
-      await this.waitForGradesTutorialTarget("[data-tutorial-anchor=\"grades-encryption\"]");
+      await this.waitForGradesTutorialTarget(settingsSurface.targets);
       return;
     }
     this.currentView = "grades";
@@ -4629,6 +4653,52 @@ class GradesApp {
     });
   }
 
+  scheduleGradeVaultDialogSecretClear() {
+    const run = () => {
+      if (this.refs.gradeVaultDialog?.open) {
+        return;
+      }
+      this.clearGradeVaultDialogSecrets();
+    };
+    if (typeof requestAnimationFrame === "function") {
+      requestAnimationFrame(run);
+      return;
+    }
+    window.setTimeout(run, 0);
+  }
+
+  discardRejectedGradeVaultPassword(mode) {
+    if (mode === "setup") {
+      return;
+    }
+    const field = this.refs.gradeVaultDialogCurrentPassword;
+    if (!field) {
+      return;
+    }
+    field.value = "";
+    focusGradeVaultDialogField(field);
+  }
+
+  async storeGradeVaultCredential(password) {
+    if (typeof window === "undefined" || !password) {
+      return false;
+    }
+    const CredentialCtor = window.PasswordCredential;
+    if (typeof CredentialCtor !== "function" || typeof window.navigator?.credentials?.store !== "function") {
+      return false;
+    }
+    try {
+      await window.navigator.credentials.store(new CredentialCtor({
+        id: getGradeVaultAutofillMetadata().identity,
+        password,
+        name: "Noten-Datenbank"
+      }));
+      return true;
+    } catch (_error) {
+      return false;
+    }
+  }
+
   hasUnsavedGradeVaultRuntimeChanges() {
     return Boolean(this.getWorkspaceUnsavedState().gradesDirty);
   }
@@ -4878,14 +4948,20 @@ class GradesApp {
       const action = mode === "unlock"
         ? "vault-unlock"
         : (mode === "change" ? "vault-change-password" : "vault-setup");
-      const result = await this.executeWorkspaceCommand("owner-action", {
-        action,
-        detail: { currentPassword, password: mode === "unlock" ? currentPassword : password }
-      });
-      if (!result?.ok) throw new Error(result?.message || "Der Grade-Vault konnte nicht verarbeitet werden.");
+      try {
+        const result = await this.executeWorkspaceCommand("owner-action", {
+          action,
+          detail: { currentPassword, password: mode === "unlock" ? currentPassword : password }
+        });
+        if (!result?.ok) throw new Error(result?.message || "Der Grade-Vault konnte nicht verarbeitet werden.");
+      } catch (error) {
+        this.discardRejectedGradeVaultPassword(mode);
+        throw error;
+      }
+      await this.storeGradeVaultCredential(mode === "unlock" ? currentPassword : password);
       this.closeDialog(this.refs.gradeVaultDialog);
       this.notifyParentGradeVaultOverlay(false);
-      this.clearGradeVaultDialogSecrets();
+      this.scheduleGradeVaultDialogSecretClear();
       this.pendingGradeVaultDialogMode = "";
       if (mode === "setup") {
         this.gradeVaultEncryptionDraft = null;
@@ -23763,6 +23839,34 @@ class GradesApp {
       }
     });
 
+    const occupied = [];
+    headerRows.forEach((row, rowIndex) => {
+      if (!occupied[rowIndex]) {
+        occupied[rowIndex] = [];
+      }
+      let columnIndex = 0;
+      row.forEach((cell) => {
+        while (occupied[rowIndex][columnIndex]) {
+          columnIndex += 1;
+        }
+        const colSpan = Number(cell.colSpan || 1);
+        const rowSpan = Number(cell.rowSpan || 1);
+        for (let rowOffset = rowIndex; rowOffset < rowIndex + rowSpan; rowOffset += 1) {
+          if (!occupied[rowOffset]) {
+            occupied[rowOffset] = [];
+          }
+          for (let offset = columnIndex; offset < columnIndex + colSpan; offset += 1) {
+            occupied[rowOffset][offset] = true;
+          }
+        }
+        columnIndex += colSpan;
+        cell.atRightEdge = columnIndex >= columns.length;
+      });
+    });
+    columns.forEach((column, columnIndex) => {
+      column.atRightEdge = columnIndex === columns.length - 1;
+    });
+
     return { columns, headerRows };
   }
 
@@ -23847,6 +23951,7 @@ class GradesApp {
     const applyBoundaryClasses = () => {
       this.applyGradeLeftBoundaryClass(th, cell.leftBoundary || "");
       this.applyGradeRightBoundaryClass(th, cell.rightBoundary || "");
+      th.classList.toggle("is-table-edge-cell", cell.atRightEdge === true);
     };
     const applyColumnSelection = () => {
       if (Number(cell.colSpan || 1) > 1) {
@@ -24098,6 +24203,7 @@ class GradesApp {
         const applyBodyBoundaryClasses = () => {
           this.applyGradeLeftBoundaryClass(td, column.leftBoundary || "");
           this.applyGradeRightBoundaryClass(td, column.rightBoundary || "");
+          td.classList.toggle("is-table-edge-cell", column.atRightEdge === true);
           if (column.type !== "student" && isPrivacyBlurred) {
             td.classList.add("is-privacy-blurred");
           }

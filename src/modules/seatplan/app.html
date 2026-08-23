@@ -5,7 +5,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta http-equiv="Content-Security-Policy"
-    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
+    content="default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; child-src 'self'; frame-src 'self'; media-src 'self' blob:; manifest-src 'self'; form-action 'self'">
   <title>Sitzplangenerator</title>
   <meta name="theme-color" content="#f5f5f7" />
   <meta name="mobile-web-app-capable" content="yes" />
@@ -166,7 +166,7 @@
             title="Gespeicherten Sitzplan laden">Sitzplan<br>laden</button>
           <button id="export-plan" class="primary flex-1"
             title="Aktuellen Sitzplan als Datei speichern">Sitzplan<br>speichern</button>
-          <button id="print-plan" class="primary flex-1" title="Sitzplan drucken">Sitzplan<br>drucken</button>
+          <button id="print-plan" class="primary flex-1">Sitzplan<br>drucken</button>
           <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
         </div>
         <div id="scroll-hint" class="scroll-hint" role="presentation">

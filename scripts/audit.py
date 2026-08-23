@@ -13,7 +13,7 @@ EXPECTED_CSP_POLICY = (
   "default-src 'self'; base-uri 'none'; object-src 'none'; script-src 'self'; "
   "script-src-attr 'none'; style-src 'self'; style-src-attr 'none'; "
   "img-src 'self' data: blob:; font-src 'self' data: blob:; connect-src 'self'; "
-  "worker-src 'self'; child-src 'self'; frame-src 'self'; media-src 'self' blob:; "
+  "worker-src 'self' blob:; child-src 'self'; frame-src 'self'; media-src 'self' blob:; "
   "manifest-src 'self'; form-action 'self'"
 )
 
@@ -527,6 +527,10 @@ if main_path.exists() and dom_path.exists():
   for path in ROOT.rglob('*'):
     if path.suffix not in {'.html', '.js'}:
       continue
+    if path == main_path:
+      # main.js only references anchors; counting it as a declaration would
+      # let a typo satisfy the check against itself.
+      continue
     body = path.read_text(encoding='utf-8', errors='ignore')
     declared_anchors.update(re.findall(r'data-tutorial-anchor=["\']([^"\']+)["\']', body))
     declared_anchors.update(re.findall(r'\.dataset\.tutorialAnchor\s*=\s*["\']([^"\']+)["\']', body))
@@ -540,7 +544,8 @@ if main_path.exists() and dom_path.exists():
     ('TAB_MERGER', 'TAB_SEATPLAN', ROOT / 'src' / 'modules' / 'merger'),
     ('TAB_SEATPLAN', 'TAB_GROUPS', ROOT / 'src' / 'modules' / 'seatplan'),
     ('TAB_DUPLICATE_CHECK', 'TAB_WORK_PHASE', ROOT / 'src' / 'modules' / 'duplicate-check'),
-    ('TAB_QR', 'default', ROOT / 'src' / 'modules' / 'qr'),
+    ('TAB_QR', 'TAB_NAME_LEARNING', ROOT / 'src' / 'modules' / 'qr'),
+    ('TAB_NAME_LEARNING', 'default', ROOT / 'src' / 'modules' / 'name-learning'),
   ]
   for start_case, end_case, module_dir in tutorial_modules:
     case_body = extract_tutorial_case(main_body, start_case, end_case)
