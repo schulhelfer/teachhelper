@@ -6,12 +6,6 @@ if ! command -v node >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "Syncing the service worker version..."
-node scripts/sync-sw-version.mjs
-
-echo "Checking the version bump..."
-node scripts/check-version-bump.mjs
-
 echo "Running Node.js regression tests..."
 node --test tests/*.test.mjs
 
@@ -39,23 +33,16 @@ run_python_checks() {
 
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
   run_python_checks python3
-  exit 0
-fi
-
-if command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
+elif command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
   run_python_checks py -3
-  exit 0
-fi
-
-if command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
+elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
   run_python_checks python
-  exit 0
-fi
-
-if command -v wsl.exe >/dev/null 2>&1 \
+elif command -v wsl.exe >/dev/null 2>&1 \
   && wsl.exe python3 -c 'import sys' >/dev/null 2>&1; then
   run_python_checks wsl.exe python3
-  exit 0
+else
+  echo "Warning: Python 3 not found; PWA audit skipped. Node.js regression tests passed." >&2
 fi
 
-echo "Warning: Python 3 not found; PWA audit skipped. Node.js regression tests passed." >&2
+echo "Stamping the app version..."
+node scripts/stamp-app-version.mjs

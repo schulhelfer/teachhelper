@@ -3128,7 +3128,10 @@
         .lesson-block .lesson-block-performance-entry.is-missing-assessment,
         .lesson-block .lesson-block-performance-entry.is-locked,
         .lesson-block .lesson-block-seatplan-trigger.is-missing-assessment,
-        .lesson-block .lesson-block-seatplan-trigger.is-locked,
+        .lesson-block .lesson-block-seatplan-trigger.is-locked {
+          font-size: calc(1.5rem * var(--week-table-scale, 1));
+        }
+
         .lesson-block .lesson-block-seatplan-trigger.has-no-plan {
           font-size: calc(1.5rem * var(--week-table-scale, 1));
         }

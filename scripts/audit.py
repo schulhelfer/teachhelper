@@ -162,6 +162,7 @@ if manifest_path.exists():
     check_local_asset_ref(manifest_path, ref)
 
 required_precache_assets = [
+  ROOT / 'src' / 'shared' / 'app-version.js',
   ROOT / 'src' / 'shared' / 'file-guards.js',
   ROOT / 'src' / 'shared' / 'roster-store.js',
   ROOT / 'src' / 'modules' / 'grades' / 'index.js',
@@ -206,7 +207,7 @@ for path in expected:
     errors.append(f'missing asset: {path.relative_to(ROOT)}')
 
 
-def check_service_worker_version():
+def check_service_worker_app_version():
   app_version_path = ROOT / 'src' / 'shared' / 'app-version.js'
   sw_path = ROOT / 'sw.js'
   if not app_version_path.exists() or not sw_path.exists():
@@ -214,28 +215,19 @@ def check_service_worker_version():
 
   app_version_source = app_version_path.read_text(encoding='utf-8', errors='ignore')
   service_worker_source = sw_path.read_text(encoding='utf-8', errors='ignore')
-  app_version_match = re.search(r"\bexport\s+const\s+APP_VERSION\s*=\s*'([^']+)'", app_version_source)
-  service_worker_version_match = re.search(
-    r"\bconst\s+APP_VERSION\s*=\s*'([^']+)'", service_worker_source,
-  )
-  if not app_version_match:
-    errors.append('app version must export APP_VERSION from src/shared/app-version.js')
-    return
-  if not service_worker_version_match:
-    errors.append('service worker must declare const APP_VERSION in sw.js')
-    return
-
-  app_version = app_version_match.group(1)
-  service_worker_version = service_worker_version_match.group(1)
-  if app_version != service_worker_version:
-    errors.append(
-      'service worker version mismatch: '
-      f'src/shared/app-version.js is {app_version!r}, sw.js is {service_worker_version!r}. '
-      'Run node scripts/sync-sw-version.mjs before committing.'
-    )
+  if not re.search(r"\bglobalThis\.TEACHHELPER_APP_VERSION\s*=\s*'\d+'\s*;", app_version_source):
+    errors.append('app version must declare a numeric TEACHHELPER_APP_VERSION in src/shared/app-version.js')
+  if not re.search(
+    r"^importScripts\(['\"]\./src/shared/app-version\.js['\"]\);",
+    service_worker_source,
+    flags=re.MULTILINE,
+  ):
+    errors.append('service worker must import src/shared/app-version.js before configuring caches')
+  if 'self.TEACHHELPER_APP_VERSION' not in service_worker_source:
+    errors.append('service worker cache version must derive from TEACHHELPER_APP_VERSION')
 
 
-check_service_worker_version()
+check_service_worker_app_version()
 
 
 def iter_source_files():

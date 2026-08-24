@@ -1,4 +1,3 @@
-import { APP_VERSION } from './shared/app-version.js';
 import { createAppDom } from './app/dom.js';
 import { createFirstRunTutorial } from './app/first-run-tutorial.js';
 import { createPlanningSeatplanBridge } from './app/planning-seatplan-bridge.js';
@@ -195,7 +194,7 @@ import {
       }
     }
   };
-  setDisplayedAppVersion(APP_VERSION);
+  setDisplayedAppVersion(String(globalThis.TEACHHELPER_APP_VERSION || 'dev'));
   consumePendingVersionUpdateHint();
   const isIOSDevice = (() => {
     if (typeof navigator === 'undefined') {

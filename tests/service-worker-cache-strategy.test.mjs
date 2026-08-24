@@ -93,54 +93,55 @@ test('unknown navigations still fall back to the network and the offline shell',
   );
 });
 
-test('the service worker script is one self-contained file so updates cannot flap', async () => {
+test('the service worker and app share the numeric app version', async () => {
   assert.doesNotMatch(
     serviceWorkerSource,
     /^\s*import\s/m,
-    'sw.js must not import other modules',
-  );
-
-  const appVersionSource = await readFile(
-    new URL('../src/shared/app-version.js', import.meta.url),
-    'utf8',
-  );
-  assert.match(
-    appVersionSource,
-    /APP_VERSION\s*=\s*'([^']+)'/,
-    'app-version.js must export APP_VERSION for sync-sw-version.mjs to read',
+    'sw.js must remain a classic service worker',
   );
   assert.match(
     serviceWorkerSource,
-    /const APP_VERSION\s*=\s*'([^']+)'/,
-    'sw.js must declare its own APP_VERSION for sync-sw-version.mjs to stamp',
+    /^importScripts\('\.\/src\/shared\/app-version\.js'\);\s+const APP_VERSION = String\(self\.TEACHHELPER_APP_VERSION \|\| 'dev'\);/m,
   );
+
+  const [appVersionSource, htmlSource, bootstrapSource, mainSource] = await Promise.all([
+    readFile(new URL('../src/shared/app-version.js', import.meta.url), 'utf8'),
+    readFile(new URL('../index.html', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/bootstrap.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  ]);
+  assert.match(
+    appVersionSource,
+    /globalThis\.TEACHHELPER_APP_VERSION\s*=\s*'\d+';/,
+    'app-version.js must provide the one shared numeric version',
+  );
+  assert.match(htmlSource, /<script src="\.\/src\/shared\/app-version\.js"><\/script>\s*<script type="module" src="\.\/src\/app\/bootstrap\.js">/);
+  assert.match(bootstrapSource, /globalThis\.TEACHHELPER_APP_VERSION/);
+  assert.match(mainSource, /globalThis\.TEACHHELPER_APP_VERSION/);
 });
 
-test('the version stamp runs before release checks and the audit rejects mismatches', async () => {
-  const [hook, audit, syncScript] = await Promise.all([
+test('the app version is stamped only after successful local checks', async () => {
+  const [hook, audit, stampScript] = await Promise.all([
     readFile(new URL('../scripts/pre-commit-checks.sh', import.meta.url), 'utf8'),
     readFile(new URL('../scripts/audit.py', import.meta.url), 'utf8'),
-    readFile(new URL('../scripts/sync-sw-version.mjs', import.meta.url), 'utf8'),
+    readFile(new URL('../scripts/stamp-app-version.mjs', import.meta.url), 'utf8'),
   ]);
-  assert.match(hook, /node scripts\/sync-sw-version\.mjs/);
-  assert.match(hook, /node scripts\/check-version-bump\.mjs/);
+  assert.match(hook, /node scripts\/stamp-app-version\.mjs/);
+  assert.doesNotMatch(hook, /sync-sw-version|check-version-bump/);
   assert.ok(
-    hook.indexOf('node scripts/sync-sw-version.mjs') < hook.indexOf('node --test'),
-    'sync-sw-version.mjs must run before the test suite',
+    hook.indexOf('node --test') < hook.indexOf('node scripts/stamp-app-version.mjs'),
+    'tests must pass before the generated app version is written',
   );
   assert.ok(
-    hook.indexOf('node scripts/sync-sw-version.mjs') < hook.indexOf('scripts/audit.py'),
-    'sync-sw-version.mjs must run before the PWA audit',
+    hook.indexOf('scripts/audit.py') < hook.indexOf('node scripts/stamp-app-version.mjs'),
+    'the PWA audit must pass before the generated app version is written',
   );
-  assert.match(audit, /def check_service_worker_version\(\):/);
-  assert.match(audit, /if app_version != service_worker_version:/);
-  assert.match(audit, /Run node scripts\/sync-sw-version\.mjs before committing\./);
-  assert.match(syncScript, /const checkOnly = process\.argv\.slice\(2\)\.includes\('--check'\)/);
-  assert.match(
-    syncScript,
-    /sw\.js enthält neben dem Versionsstempel ungestagte Änderungen\. Bitte prüfen und selbst stagen\./,
-  );
-  assert.match(syncScript, /git\('add', '--', 'sw\.js'\);/);
+  assert.match(audit, /def check_service_worker_app_version\(\):/);
+  assert.match(audit, /service worker must import src\/shared\/app-version\.js before configuring caches/);
+  assert.match(stampScript, /git\('add', '--', appVersionPath\)/);
+  assert.match(stampScript, /BigInt\(appVersionMatch\[1\]\) \+ 1n/);
+  assert.doesNotMatch(stampScript, /sw\.js/);
+  assert.doesNotMatch(stampScript, /write-tree/);
 });
 
 test('a complete precache is left alone while an incomplete one is refilled entirely', () => {
@@ -178,6 +179,7 @@ test('heavy optional assets are precached after the start, not during install', 
 
   for (const asset of [
     './index.html',
+    './src/shared/app-version.js',
     './src/main.js',
     './src/app/shell.css',
     './src/modules/planning/app.js',

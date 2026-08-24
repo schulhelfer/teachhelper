@@ -1,4 +1,6 @@
-const APP_VERSION = '44';
+importScripts('./src/shared/app-version.js');
+
+const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
 
 const CACHE_PREFIX = 'teachhelper';
 const PRECACHE_NAME = `${CACHE_PREFIX}-precache-v${APP_VERSION}`;
@@ -27,6 +29,7 @@ const APP_SHELL = [
   './src/shared/app-tooltips.js',
   './src/shared/tutorial-entry-hint.js',
   './src/shared/tutorial-entry-state.js',
+  './src/shared/app-version.js',
   './src/shared/app-version.js',
   './src/shared/error-reporting.js',
   './src/shared/file-guards.js',

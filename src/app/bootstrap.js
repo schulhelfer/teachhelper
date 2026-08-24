@@ -1,4 +1,3 @@
-import { APP_VERSION } from '../shared/app-version.js';
 import { installWorkspaceController } from '../modules/workspace/index.js';
 
 installWorkspaceController(window);
@@ -14,5 +13,6 @@ if (isLocalDevelopmentHost) {
     await Promise.all(cacheKeys.map((cacheKey) => caches.delete(cacheKey)));
   }
 }
-const entryVersion = isLocalDevelopmentHost ? String(Date.now()) : APP_VERSION;
+const appVersion = String(globalThis.TEACHHELPER_APP_VERSION || 'dev');
+const entryVersion = isLocalDevelopmentHost ? String(Date.now()) : appVersion;
 await import(`../main.js?v=${encodeURIComponent(entryVersion)}`);
