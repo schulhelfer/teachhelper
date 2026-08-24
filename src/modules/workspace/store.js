@@ -1,7 +1,10 @@
 import {
   deleteCourseCascadeInPlace,
+  getDefaultQualificationPhaseEndDates,
   normalizeGradeCourseRelations,
-  normalizePublicSchoolData
+  normalizeCourseGradeLevel,
+  normalizePublicSchoolData,
+  QUALIFICATION_PHASE_END_DATE_KEYS
 } from "../../shared/school-data/index.js";
 import {
   calculateWeightedGrade,
@@ -34,6 +37,7 @@ import {
   HOURS_PER_DAY_DEFAULT,
   NO_LESSON_COLOR,
   REQUIRED_HOLIDAYS,
+  SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT,
   SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
   SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
   SHOW_NAME_LEARNING_MODULE_DEFAULT,
@@ -258,7 +262,6 @@ function defaultSpecialDays(startYear) {
     { name: "Reformationstag", dayDate: toIsoDate(new Date(startYear, 9, 31)) }
   ].sort((a, b) => a.dayDate.localeCompare(b.dayDate));
 }
-
 
 function defaultHolidayRangesForYear(startYear) {
   const year = Number(startYear);
@@ -607,7 +610,7 @@ function normalizeGradeAssessmentYearLevel(value) {
 
 function isGradeAssessmentCourseLevelDisabled(yearLevel) {
   const normalized = normalizeGradeAssessmentYearLevel(yearLevel);
-  return normalized === null || normalized < 12;
+  return normalized === null || normalized < 11;
 }
 
 function normalizeGradeAssessmentCourseLevel(value, yearLevel = null) {
@@ -1641,6 +1644,7 @@ function createInitialState() {
       hoursPerDay: HOURS_PER_DAY_DEFAULT,
       lessonTimes: buildDefaultLessonTimes(HOURS_PER_DAY_DEFAULT),
       showHiddenSidebarCourses: SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
+      showHalfYearBoundaryMarkers: SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT,
       showGradeStudentPortraits: SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
       showNameLearningModule: SHOW_NAME_LEARNING_MODULE_DEFAULT,
       gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
@@ -1780,6 +1784,7 @@ export class WorkspaceStore {
       }
       const isNoLesson = Boolean(course.noLesson);
       course.subject = isNoLesson ? "" : String(course.subject || "");
+      course.gradeLevel = isNoLesson ? null : normalizeCourseGradeLevel(course.gradeLevel);
       course.noLesson = isNoLesson;
       course.noGrades = Boolean(course.noGrades);
       course.hiddenInSidebar = Boolean(course.hiddenInSidebar);
@@ -2060,7 +2065,8 @@ export class WorkspaceStore {
       id: this._nextId("schoolYear"),
       name: `${startYear}/${startYear + 1}`,
       startDate,
-      endDate
+      endDate,
+      ...getDefaultQualificationPhaseEndDates(startYear)
     };
     this.state.schoolYears.push(year);
     this.state.settings.activeSchoolYearId = year.id;
@@ -2083,7 +2089,8 @@ export class WorkspaceStore {
       id: this._nextId("schoolYear"),
       name: `${year}/${year + 1}`,
       startDate,
-      endDate
+      endDate,
+      ...getDefaultQualificationPhaseEndDates(year)
     };
     this.state.schoolYears.push(created);
     this.state.settings.activeSchoolYearId = created.id;
@@ -2104,6 +2111,7 @@ export class WorkspaceStore {
       name: `${year}/${year + 1}`,
       startDate: `${year}-08-01`,
       endDate: `${year + 1}-07-31`,
+      ...getDefaultQualificationPhaseEndDates(year),
     };
     const sourceYear = this.state.schoolYears.find((item) => (
       String(item?.startDate || '') === schoolYear.startDate
@@ -2188,10 +2196,11 @@ export class WorkspaceStore {
       });
   }
 
-  createCourse(schoolYearId, name, color, noLesson = false, hiddenInSidebar = false, subject = "") {
+  createCourse(schoolYearId, name, color, noLesson = false, hiddenInSidebar = false, subject = "", gradeLevel = null) {
     const yearId = Number(schoolYearId);
     const cleanName = String(name || "").trim();
     const cleanSubject = Boolean(noLesson) ? "" : String(subject || "").trim();
+    const cleanGradeLevel = Boolean(noLesson) ? null : normalizeCourseGradeLevel(gradeLevel);
     if (!cleanName) {
       return null;
     }
@@ -2211,6 +2220,7 @@ export class WorkspaceStore {
       schoolYearId: yearId,
       name: cleanName,
       subject: cleanSubject,
+      gradeLevel: cleanGradeLevel,
       color: normalizeCourseColor(resolvedColor, courseNoLesson),
       previousColor: courseNoLesson ? null : normalizeCourseColor(resolvedColor, false),
       noLesson: courseNoLesson,
@@ -2224,7 +2234,7 @@ export class WorkspaceStore {
     return course.id;
   }
 
-  updateCourse(schoolYearId, courseId, name, color, noLesson = false, hiddenInSidebar = undefined, subject = undefined) {
+  updateCourse(schoolYearId, courseId, name, color, noLesson = false, hiddenInSidebar = undefined, subject = undefined, gradeLevel = undefined) {
     const yearId = Number(schoolYearId);
     const id = Number(courseId);
     const cleanName = String(name || "").trim();
@@ -2243,6 +2253,9 @@ export class WorkspaceStore {
     course.subject = courseNoLesson
       ? ""
       : (subject === undefined ? String(course.subject || "") : String(subject || "").trim());
+    course.gradeLevel = courseNoLesson
+      ? null
+      : (gradeLevel === undefined ? normalizeCourseGradeLevel(course.gradeLevel) : normalizeCourseGradeLevel(gradeLevel));
     course.noLesson = courseNoLesson;
     course.noGrades = Boolean(course.noGrades);
     if (hiddenInSidebar === undefined) {
@@ -3691,6 +3704,28 @@ export class WorkspaceStore {
     return false;
   }
 
+  setQualificationPhaseEndDate(schoolYearId, key, value) {
+    const year = this.getSchoolYear(schoolYearId);
+    if (!year || !QUALIFICATION_PHASE_END_DATE_KEYS.includes(key)) {
+      return false;
+    }
+    const nextValue = String(value || "");
+    if (year[key] === nextValue) {
+      return true;
+    }
+    year[key] = nextValue;
+    this._save();
+    return true;
+  }
+
+  setQualificationPhaseFourthHalfYearEndDate(schoolYearId, value) {
+    return this.setQualificationPhaseEndDate(
+      schoolYearId,
+      "qualificationPhaseFourthHalfYearEndDate",
+      value
+    );
+  }
+
   findSlotConflicts(
     schoolYearId,
     courseId,
@@ -3881,6 +3916,7 @@ export class WorkspaceStore {
     }
     const startYear = Number(String(year.startDate).slice(0, 4));
     const yearId = Number(year.id);
+    const qualificationPhaseEndDates = getDefaultQualificationPhaseEndDates(startYear);
     const specs = requiredHolidayRowSpecs();
     let changed = false;
     const allYearRows = this.state.freeRanges.filter((item) => Number(item.schoolYearId) === yearId);
@@ -3950,6 +3986,13 @@ export class WorkspaceStore {
       const removeIds = new Set(rows.slice(count).map((item) => item.id));
       this.state.freeRanges = this.state.freeRanges.filter((item) => !removeIds.has(item.id));
       changed = true;
+    }
+    for (const key of QUALIFICATION_PHASE_END_DATE_KEYS) {
+      const defaultValue = qualificationPhaseEndDates[key];
+      if (defaultValue && (overwrite || !year[key]) && year[key] !== defaultValue) {
+        year[key] = defaultValue;
+        changed = true;
+      }
     }
     if (changed) {
       this.applyDayOffs(yearId);

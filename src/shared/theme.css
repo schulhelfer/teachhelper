@@ -84,6 +84,9 @@
   --surface-week-header: #1e242e;
   --text-holiday: #9fceff;
   --text-special-day: #ffe1a1;
+  --half-year-end-line: #f5c451;
+  --half-year-end-surface: rgba(212, 160, 23, 0.24);
+  --half-year-end-text: #ffe6a6;
   --text-strong: rgba(226, 232, 240, 0.88);
   --text-secondary-contrast: rgba(226, 232, 240, 0.78);
   --text-muted-contrast: rgba(226, 232, 240, 0.68);
@@ -208,6 +211,9 @@
   --surface-week-header: #d1d1d6;
   --text-holiday: #075985;
   --text-special-day: #7c4a03;
+  --half-year-end-line: #b8860b;
+  --half-year-end-surface: rgba(184, 134, 11, 0.2);
+  --half-year-end-text: #5c3d00;
   --text-strong: #1d1d1f;
   --text-secondary-contrast: #3a3a3c;
   --text-muted-contrast: #515154;

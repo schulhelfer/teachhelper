@@ -136,6 +136,7 @@ test('workspace runtime emits strictly scoped snapshots', () => {
     gradeStudents: [{ id: 10, courseId: 7, firstName: 'Geheim' }],
     gradeAssessments: [{ id: 20, courseId: 7, title: 'Test', date: '2026-09-01' }],
     gradeEntries: [{ studentId: 10, assessmentId: 20, value: 12 }],
+    gradeSeatPlans: [{ courseId: 7, plan: { activeSeats: ['a1'], seats: { a1: 10 } }, updatedAt: '' }],
   };
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   runtime.loadedCourseId = 7;
@@ -145,6 +146,7 @@ test('workspace runtime emits strictly scoped snapshots', () => {
   assert.equal('gradeState' in planning, false);
   assert.equal('status' in planning, false);
   assert.deepEqual(planning.assessmentIndex, [{ courseId: 7, assessmentId: 20, date: '2026-09-01', title: 'Test' }]);
+  assert.deepEqual(planning.seatplanCourseIds, [7], 'die Sitzplan-Präsenz reist mit dem Planungs-Snapshot');
 
   const shell = runtime.createWorkspaceSnapshot('shell');
   assert.equal('publicState' in shell, false);
@@ -633,6 +635,7 @@ test('discarding dirty grade changes restores a lockable persisted vault state',
   runtime.loadedCourseId = 7;
   runtime.courseCache.set(7, structuredClone(store.gradeState));
   runtime.performanceIndexCache.set(7, [{ courseId: 7, title: 'Zwischenspeicher' }]);
+  runtime.seatplanPresenceCache.set(7, true);
   runtime.dirtyCourseIds.add(7);
   runtime.vault = {
     ...runtime.vault,
@@ -649,6 +652,7 @@ test('discarding dirty grade changes restores a lockable persisted vault state',
   assert.equal(runtime.dirtyCourseIds.size, 0);
   assert.equal(runtime.courseCache.size, 0);
   assert.equal(runtime.performanceIndexCache.size, 0);
+  assert.equal(runtime.seatplanPresenceCache.size, 0);
   assert.equal(runtime.loadedCourseId, null);
   assert.deepEqual(store.gradeState.gradeStudents, []);
   assert.equal(await runtime.lockGradeVaultSession(), true);

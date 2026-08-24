@@ -38,12 +38,14 @@ import {
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   NAME_LEARNING_DATA_REQUEST_EVENT,
   NAME_LEARNING_REVIEW_REQUEST_EVENT,
+  GRADES_COURSE_CONTEXT_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
   GRADES_NAVIGATE_EVENT,
   GRADES_TUTORIAL_START_REQUEST_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
   MERGER_OPEN_RESULT_REQUEST_EVENT,
   MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
+  PLANNING_COURSE_CONTEXT_EVENT,
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
   PLANNING_TUTORIAL_START_REQUEST_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
@@ -2950,6 +2952,50 @@ import {
     return true;
   }
 
+  let sharedCourseContextId = 0;
+  let planningCourseViewCourseId = 0;
+  let gradesCourseAutoSelectSuppressedUntil = 0;
+
+  // Eine ausdrückliche Navigation ins Notenmodul bringt ihr eigenes Ziel mit; der Tabwechsel,
+  // der ihr folgt, darf den Kurs der laufenden Stunde nicht darüberlegen.
+  function suppressGradesCourseAutoSelect() {
+    gradesCourseAutoSelectSuppressedUntil = Date.now() + 2000;
+  }
+
+  function rememberSharedCourseContext(event) {
+    const courseId = Number(event?.detail?.courseId || 0);
+    if (courseId) sharedCourseContextId = courseId;
+    if (event?.type === PLANNING_COURSE_CONTEXT_EVENT) {
+      planningCourseViewCourseId = event?.detail?.courseViewOpen && courseId ? courseId : 0;
+    }
+  }
+
+  function applySharedCourseContext(nextTab) {
+    if (nextTab === TAB_GRADES) {
+      if (planningCourseViewCourseId) {
+        bridgeController?.dispatchGradesNavigation?.({
+          courseId: planningCourseViewCourseId,
+          source: 'course-context',
+        });
+        return;
+      }
+      if (Date.now() >= gradesCourseAutoSelectSuppressedUntil) {
+        bridgeController?.dispatchGradesNavigation?.({
+          autoSelectCourse: true,
+          source: 'course-context',
+        });
+      }
+      return;
+    }
+    if (nextTab === TAB_PLANNING && sharedCourseContextId) {
+      bridgeController?.dispatchPlanningViewRequest?.({
+        view: 'course',
+        courseId: sharedCourseContextId,
+        source: 'course-context',
+      });
+    }
+  }
+
   if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     window.addEventListener('message', (event) => {
       const frame = getModuleFrameForMessage(event);
@@ -2990,6 +3036,7 @@ import {
       if (data.type === GRADES_NAVIGATE_EVENT) {
         if (frame !== getPlanningFrame()) return;
         const detail = data.detail && typeof data.detail === 'object' ? data.detail : {};
+        suppressGradesCourseAutoSelect();
         bridgeController?.dispatchGradesNavigation?.(detail);
         return;
       }
@@ -3059,6 +3106,7 @@ import {
         return;
       }
       if (detail.view === 'grades') {
+        suppressGradesCourseAutoSelect();
         bridgeController?.dispatchGradesNavigation?.(detail);
         setActiveTab(TAB_GRADES);
         return;
@@ -3080,6 +3128,11 @@ import {
         }
         return;
       }
+      if (detail.view !== 'planning') {
+        // Das Notenmodul hat sich selbst schon auf ein Ziel gestellt und bittet nur noch um
+        // den Tab; die passive Kursauswahl darf dieses Ziel nicht ersetzen.
+        suppressGradesCourseAutoSelect();
+      }
       setActiveTab(detail.view === 'planning' ? TAB_PLANNING : TAB_GRADES);
     });
     window.addEventListener(PLANNING_TUTORIAL_START_REQUEST_EVENT, startTutorialFromEntry);
@@ -3095,6 +3148,8 @@ import {
     };
     window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, openCourseSeatplan);
     window.addEventListener(GRADES_COURSE_SEATPLAN_OPEN_EVENT, openCourseSeatplan);
+    window.addEventListener(PLANNING_COURSE_CONTEXT_EVENT, rememberSharedCourseContext);
+    window.addEventListener(GRADES_COURSE_CONTEXT_EVENT, rememberSharedCourseContext);
   }
 
   function stripJsonWarning(text) {
@@ -3429,6 +3484,7 @@ import {
     onResolvePlanningTabLeave: () => bridgeController?.requestPlanningTabLeaveConfirmation?.() || Promise.resolve(false),
     onSidebarWidthChange: (scope, width) => syncSidebarWidthToModules(scope, width),
     onActiveTabChange: () => firstRunTutorial?.showContextHelp?.({ prompt: true }),
+    onTabActivating: (tab) => applySharedCourseContext(tab),
   });
   const initialWorkspaceSnapshot = window.__teachhelperWorkspaceController?.getSnapshot?.('shell');
   if (initialWorkspaceSnapshot?.vault) {

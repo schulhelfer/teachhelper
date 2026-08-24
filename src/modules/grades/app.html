@@ -468,7 +468,7 @@
       </div>
       <input type="hidden" id="course-dialog-id">
       <section class="course-dialog-panel active" data-panel="general">
-        <label>
+        <label id="course-dialog-subject-row">
           Fach
           <input id="course-dialog-subject" maxlength="80" placeholder="z. B. Mathematik" autocomplete="off"
             list="course-dialog-subject-options">
@@ -497,6 +497,21 @@
             <option value="Darstellendes Spiel"></option>
             <option value="Seminarfach"></option>
           </datalist>
+        </label>
+        <label id="course-dialog-grade-level-row">
+          Jahrgang
+          <select id="course-dialog-grade-level">
+            <option value="">Keine Angabe</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="7">7</option>
+            <option value="8">8</option>
+            <option value="9">9</option>
+            <option value="10">10</option>
+            <option value="11">11</option>
+            <option value="12">12</option>
+            <option value="13">13</option>
+          </select>
         </label>
         <label>
           Kursname

@@ -31,8 +31,10 @@ import {
 } from "../../shared/file-guards.js";
 import { ensurePdfLibLoaded } from "../../shared/pdf-vendor.js";
 import {
+  COURSE_GRADE_LEVELS,
   deleteCourseCascadeInPlace,
   normalizeGradeCourseRelations,
+  normalizeCourseGradeLevel,
   normalizePublicSchoolData
 } from "../../shared/school-data/index.js";
 import {
@@ -845,7 +847,7 @@ function normalizeGradeAssessmentYearLevel(value) {
 
 function isGradeAssessmentCourseLevelDisabled(yearLevel) {
   const normalized = normalizeGradeAssessmentYearLevel(yearLevel);
-  return normalized === null || normalized < 12;
+  return normalized === null || normalized < 11;
 }
 
 function normalizeGradeAssessmentCourseLevel(value, yearLevel = null) {
@@ -911,6 +913,20 @@ function getGradeDeficitThresholdDefaultForScale(scale = GRADE_TEST_SCALE_DEFAUL
 
 function getDefaultGradeTestPredicateSuffixes(scale = GRADE_TEST_SCALE_DEFAULT) {
   return normalizeGradeTestScale(scale) !== "sek1";
+}
+
+function getGradeTestDefaultsForYearLevel(yearLevel = null) {
+  const normalizedYearLevel = normalizeGradeAssessmentYearLevel(yearLevel);
+  const testScale = normalizedYearLevel !== null && normalizedYearLevel <= 10
+    ? "sek1"
+    : "sek2";
+  return {
+    yearLevel: normalizedYearLevel,
+    testScale,
+    testPredicateSuffixes: getDefaultGradeTestPredicateSuffixes(testScale),
+    deficitThreshold: getGradeDeficitThresholdDefaultForScale(testScale),
+    courseLevel: ""
+  };
 }
 
 function normalizeGradeTestPredicateSuffixes(value, fallback = true) {
@@ -2972,7 +2988,10 @@ class GradesApp {
       courseDialogForm: document.querySelector("#course-dialog-form"),
       courseDialogTitle: document.querySelector("#course-dialog-title"),
       courseDialogId: document.querySelector("#course-dialog-id"),
+      courseDialogSubjectRow: document.querySelector("#course-dialog-subject-row"),
       courseDialogSubject: document.querySelector("#course-dialog-subject"),
+      courseDialogGradeLevelRow: document.querySelector("#course-dialog-grade-level-row"),
+      courseDialogGradeLevel: document.querySelector("#course-dialog-grade-level"),
       courseDialogName: document.querySelector("#course-dialog-name"),
       courseDialogColorPanel: document.querySelector("#course-dialog-color-panel"),
       courseDialogColorPalette: document.querySelector("#course-dialog-color-palette"),
@@ -3802,6 +3821,7 @@ class GradesApp {
       this.showGradesTutorialMenu([
         "Kursname bearbeiten",
         "Fach ändern",
+        "Jahrgang ändern",
         "Farbe bearbeiten",
         "Als Kurs ohne Noten",
         "In Randleiste ausblenden",
@@ -4347,13 +4367,17 @@ class GradesApp {
     if (this.getGradeVaultStatusMode() !== "unlock") {
       return false;
     }
-    this.queueGradeVaultContinuation({
-      type: "grades-navigation",
-      detail: {
-        courseId: selectedCourseId,
-        subview: this.normalizeGradesSubView(this.gradesSubView)
-      }
-    });
+    // Nur die eigene Kurswiederherstellung vormerken - eine bereits wartende Aktion
+    // (etwa der ausdrücklich aus einem anderen Modul gewählte Kurs) ist gezielter.
+    if (!this.pendingGradeVaultContinuation) {
+      this.queueGradeVaultContinuation({
+        type: "grades-navigation",
+        detail: {
+          courseId: selectedCourseId,
+          subview: this.normalizeGradesSubView(this.gradesSubView)
+        }
+      });
+    }
     this.openGradeVaultDialog("unlock");
     return true;
   }
@@ -4816,7 +4840,7 @@ class GradesApp {
       this.pendingGradeVaultContinuation = { type, detail };
       return;
     }
-    if (type === "grades-navigation") {
+    if (type === "grades-navigation" || type === "course-context") {
       const detail = action.detail && typeof action.detail === "object" ? action.detail : null;
       this.pendingGradeVaultContinuation = detail ? { type, detail } : null;
       return;
@@ -4867,7 +4891,7 @@ class GradesApp {
       void this.handleNameLearningReviewRequest(action.detail);
       return true;
     }
-    if (action.type === "grades-navigation") {
+    if (action.type === "grades-navigation" || action.type === "course-context") {
       void this.navigateGrades(action.detail);
       return true;
     }
@@ -5386,7 +5410,7 @@ class GradesApp {
 
 
 
-  getPreferredGradesEntryCourseIdForNow(now = new Date()) {
+  getPreferredGradesCourseIdForNow(now = new Date()) {
     const year = this.activeSchoolYear;
     if (!year) {
       return null;
@@ -5476,14 +5500,73 @@ class GradesApp {
       return;
     }
     this.pendingGradesEntryCourseAutoSelect = false;
-    const preferredCourseId = Number(this.getPreferredGradesEntryCourseIdForNow(new Date()) || 0);
+    const preferredCourseId = Number(this.getPreferredGradesCourseIdForNow(new Date()) || 0);
     if (!preferredCourseId) {
       return;
     }
-    const selectableCourses = this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course));
+    const selectableCourses = this.store.listCourses(year.id)
+      .filter((course) => this.isSidebarSelectableGradeCourse(course));
     if (selectableCourses.some((course) => Number(course.id) === preferredCourseId)) {
       this.selectedCourseId = preferredCourseId;
     }
+  }
+
+  resolveTimetableCourseAutoSelection(now = new Date()) {
+    if (
+      this.locked
+      || this.currentView !== "grades"
+      || this.gradesEntryDraftDirty
+      || !this.canAccessGradeVault()
+    ) {
+      return null;
+    }
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return null;
+    }
+    const preferredCourseId = Number(this.getPreferredGradesCourseIdForNow(now) || 0);
+    if (!preferredCourseId || preferredCourseId === Number(this.selectedCourseId || 0)) {
+      return null;
+    }
+    const course = this.store.listCourses(year.id)
+      .find((item) => Number(item.id) === preferredCourseId);
+    if (!this.isSidebarSelectableGradeCourse(course)) {
+      return null;
+    }
+    return {
+      courseId: preferredCourseId,
+      subview: this.normalizeGradesSubView(this.gradesSubView)
+    };
+  }
+
+  async applyTimetableCourseAutoSelection() {
+    if (!this.canAccessGradeVault()) {
+      // Wie beim geteilten Kurskontext: der Tabwechsel öffnet den Tresor-Dialog nicht selbst,
+      // holt die Auswahl aber nach, sobald irgendwo entsperrt wurde.
+      if (this.canReplaceGradeVaultContinuationWithCourseContext()) {
+        this.queueGradeVaultContinuation({
+          type: "course-context",
+          detail: { source: "course-context", autoSelectCourse: true }
+        });
+      }
+      return false;
+    }
+    if (!this.gradeVaultSession.workspacePublicLoaded) {
+      try {
+        await this.ensureWorkspacePublicLoaded();
+      } catch (error) {
+        this.setSyncStatus(
+          error instanceof Error && error.message ? error.message : "Planungsdaten konnten nicht geladen werden.",
+          true
+        );
+        return false;
+      }
+    }
+    const selection = this.resolveTimetableCourseAutoSelection(new Date());
+    if (!selection || selection.subview !== "overview") {
+      return false;
+    }
+    return this.navigateToGradesOverviewCourse(selection.courseId, { shareCourseContext: false });
   }
 
   isSettingsDraftDirty() {
@@ -8133,8 +8216,24 @@ class GradesApp {
 
     this.refs.courseDialogId.value = course ? String(course.id) : "";
     this.refs.courseDialogTitle.textContent = course ? "Kurs anpassen" : "Kurs anlegen";
+    const hideCourseDetails = Boolean(course?.noLesson);
     if (this.refs.courseDialogSubject) {
       this.refs.courseDialogSubject.value = course ? String(course.subject || "") : "";
+      this.refs.courseDialogSubject.disabled = hideCourseDetails;
+      if (hideCourseDetails) {
+        this.refs.courseDialogSubject.value = "";
+      }
+    }
+    if (this.refs.courseDialogSubjectRow) {
+      this.refs.courseDialogSubjectRow.hidden = hideCourseDetails;
+    }
+    if (this.refs.courseDialogGradeLevel) {
+      const gradeLevel = normalizeCourseGradeLevel(course?.gradeLevel);
+      this.refs.courseDialogGradeLevel.value = gradeLevel === null ? "" : String(gradeLevel);
+      this.refs.courseDialogGradeLevel.disabled = hideCourseDetails;
+      if (this.refs.courseDialogGradeLevelRow) {
+        this.refs.courseDialogGradeLevelRow.hidden = hideCourseDetails;
+      }
     }
     this.refs.courseDialogName.value = course ? String(course.name || "") : "";
     this.courseDialogDefaultColor = defaultColor;
@@ -8198,7 +8297,7 @@ class GradesApp {
       return;
     }
     const course = this.store.listCourses(year.id).find((item) => item.id === id);
-    if (!course) {
+    if (!course || course.noLesson) {
       return;
     }
     const nextSubject = await this.showPromptMessage(
@@ -8220,6 +8319,45 @@ class GradesApp {
     const ok = await this.updateCourseFields(id, { subject: String(nextSubject || "").trim() });
     if (!ok) {
       await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.");
+      return;
+    }
+    await this.persistExplicitDatabaseSave();
+    this.renderAll();
+  }
+
+  async openCourseGradeLevelDialog(courseId) {
+    const year = this.activeSchoolYear;
+    const id = Number(courseId || 0);
+    if (!year || !id) {
+      return;
+    }
+    const course = this.store.listCourses(year.id).find((item) => item.id === id);
+    if (!course || course.noLesson) {
+      return;
+    }
+    const currentGradeLevel = normalizeCourseGradeLevel(course.gradeLevel);
+    const nextGradeLevel = await this.showSelectMessage(
+      "",
+      currentGradeLevel === null ? "" : String(currentGradeLevel),
+      {
+        title: "Jahrgang ändern",
+        okText: "Speichern",
+        inputLabel: "Jahrgang",
+        selectOptions: [
+          { value: "", label: "Keine Angabe" },
+          ...COURSE_GRADE_LEVELS.map((gradeLevel) => ({ value: String(gradeLevel), label: String(gradeLevel) }))
+        ]
+      }
+    );
+    if (nextGradeLevel === null) {
+      return;
+    }
+    if (!this.gradeVaultSession.workspacePublicLoaded) {
+      await this.ensureWorkspacePublicLoaded();
+    }
+    const ok = await this.updateCourseFields(id, { gradeLevel: normalizeCourseGradeLevel(nextGradeLevel) });
+    if (!ok) {
+      await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.");
       return;
     }
     await this.persistExplicitDatabaseSave();
@@ -8319,9 +8457,10 @@ class GradesApp {
     if (!year) return;
     await this.ensureWorkspacePublicLoaded();
     const id = Number(this.refs.courseDialogId.value || 0);
-    const subject = String(this.refs.courseDialogSubject?.value || "").trim();
-    const name = String(this.refs.courseDialogName.value || "").trim();
     const noLesson = Boolean(this.courseDialogDraft?.noLesson);
+    const subject = noLesson ? "" : String(this.refs.courseDialogSubject?.value || "").trim();
+    const gradeLevel = noLesson ? null : normalizeCourseGradeLevel(this.refs.courseDialogGradeLevel?.value);
+    const name = String(this.refs.courseDialogName.value || "").trim();
     const hiddenInSidebar = Boolean(this.courseDialogDraft?.hiddenInSidebar);
     const color = noLesson ? null : normalizeHexColor(this.courseDialogSelectedColor, suggestColor(this._courseDialogExistingColors(id)));
     if (!name) { this.refs.courseDialogName.focus(); return; }
@@ -8329,12 +8468,12 @@ class GradesApp {
     let targetCourseId = id;
     if (id) {
       result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_UPDATE_COURSE, {
-        schoolYearId: year.id, courseId: id, name, subject, color, noLesson, hiddenInSidebar, bulk: true
+        schoolYearId: year.id, courseId: id, name, subject, gradeLevel, color, noLesson, hiddenInSidebar, bulk: true
       }, { baseRevision: this.courseDialogBaseRevision });
     } else {
       if (!this.ensureGradeVaultConfiguredBeforeGradeCourseCreate()) return;
       result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_CREATE_COURSE, {
-        schoolYearId: year.id, name, subject, color, noLesson, hiddenInSidebar, bulk: true
+        schoolYearId: year.id, name, subject, gradeLevel, color, noLesson, hiddenInSidebar, bulk: true
       }, { baseRevision: this.courseDialogBaseRevision });
       targetCourseId = result?.ok ? Number(result.data?.courseId || 0) : 0;
       if (targetCourseId && !noLesson && this.canAccessGradeVault()) {
@@ -10387,6 +10526,7 @@ class GradesApp {
 
       const nextCourseDraft = cloneJsonValue(this.getGradesEntryDraft(nextCourseId), {});
       this.selectedCourseId = nextCourseId;
+      this.notifyParentCourseContext(nextCourseId);
       this.selectedGradesEntryAssessmentId = null;
       this.gradesEntryDraft = {
         ...nextCourseDraft,
@@ -10489,7 +10629,8 @@ class GradesApp {
     if (modeInput) {
       const mode = normalizeGradeAssessmentMode(modeInput.value || "grade");
       const modeChangeGuard = this.getGradesEntryModeChangeGuardState(modeInput, activeAssessment);
-      const previousMode = modeChangeGuard?.previousMode || normalizeGradeAssessmentMode(activeAssessment?.mode || "grade");
+      const previousMode = modeChangeGuard?.previousMode
+        || normalizeGradeAssessmentMode(activeAssessment?.mode || draft?.mode || "grade");
       if (activeAssessment && mode !== previousMode) {
         const confirmationKey = modeChangeGuard?.confirmationKey || `${Number(activeAssessment.id || 0)}:${previousMode}->${mode}`;
         if (modeChangeGuard?.needsConfirmation) {
@@ -10520,8 +10661,16 @@ class GradesApp {
       if (!latestDraft) {
         return;
       }
-      const testScale = latestDraft.testScale || GRADE_TEST_SCALE_DEFAULT;
-      if (!this.gradeDeficitThresholdUserEdited) {
+      const applyCourseDefaults = !activeAssessment && mode === "test" && previousMode !== "test";
+      const courseYearLevel = applyCourseDefaults ? this.getCourseGradeLevel(courseId) : null;
+      const courseDefaults = applyCourseDefaults
+        ? getGradeTestDefaultsForYearLevel(courseYearLevel)
+        : null;
+      const testScale = courseDefaults?.testScale || latestDraft.testScale || GRADE_TEST_SCALE_DEFAULT;
+      if (courseDefaults) {
+        this.gradeDeficitThreshold = courseDefaults.deficitThreshold;
+        this.gradeDeficitThresholdUserEdited = false;
+      } else if (!this.gradeDeficitThresholdUserEdited) {
         this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(mode === "test" ? testScale : GRADE_TEST_SCALE_DEFAULT);
       }
       this.markGradesEntryDraftDirty();
@@ -10532,11 +10681,15 @@ class GradesApp {
         testScale,
         testPredicateSuffixes: mode === "test"
           ? (
-            activeAssessment
+            courseDefaults
+              ? courseDefaults.testPredicateSuffixes
+              : (activeAssessment
               ? normalizeGradeTestPredicateSuffixes(latestDraft.testPredicateSuffixes, true)
-              : getDefaultGradeTestPredicateSuffixes(testScale)
+              : getDefaultGradeTestPredicateSuffixes(testScale))
           )
           : true,
+        yearLevel: courseDefaults?.yearLevel ?? latestDraft.yearLevel,
+        courseLevel: courseDefaults?.courseLevel ?? latestDraft.courseLevel,
         testTasks: normalizeGradeTestTasks(latestDraft.testTasks, { ensureDefault: false }),
         competenceExpectations: mode === "test"
           ? normalizeGradeCompetenceExpectations(latestDraft.competenceExpectations)
@@ -10548,6 +10701,12 @@ class GradesApp {
           ? normalizeGradeAssessmentExamDurationMinutes(latestDraft.examDurationMinutes)
           : null
       };
+      if (courseDefaults) {
+        this.gradesEntryDraft = this.applyGradeTestDefaultsToNewDraft(
+          this.gradesEntryDraft,
+          courseYearLevel
+        );
+      }
       this.runAfterSegmentControlSlide(event, () => {
         this.renderGradesViewWithEntryModeFade();
       });
@@ -10604,11 +10763,13 @@ class GradesApp {
       }
       const yearLevel = normalizeGradeAssessmentYearLevel(yearLevelSelect.value);
       this.markGradesEntryDraftDirty();
-      this.gradesEntryDraft = {
-        ...latestDraft,
-        yearLevel,
-        courseLevel: normalizeGradeAssessmentCourseLevel(latestDraft.courseLevel, yearLevel)
-      };
+      this.gradesEntryDraft = activeAssessment
+        ? {
+          ...latestDraft,
+          yearLevel,
+          courseLevel: normalizeGradeAssessmentCourseLevel(latestDraft.courseLevel, yearLevel)
+        }
+        : this.applyGradeTestDefaultsToNewDraft(latestDraft, yearLevel);
       this.renderGradesView();
       return;
     }
@@ -11356,6 +11517,7 @@ class GradesApp {
       }
       if (row.dataset.noLesson !== "1" && !this.isGradesTopTabActive()) {
         this.selectedCourseId = courseId;
+        this.notifyParentCourseContext(courseId);
       }
       this.openCourseContextMenu(courseId, event.clientX, event.clientY);
     });
@@ -13064,8 +13226,16 @@ class GradesApp {
       },
       {
         label: "Fach ändern",
+        disabled: Boolean(course.noLesson),
         handler: async () => {
           await this.openCourseSubjectDialog(id);
+        }
+      },
+      {
+        label: "Jahrgang ändern",
+        disabled: Boolean(course.noLesson),
+        handler: async () => {
+          await this.openCourseGradeLevelDialog(id);
         }
       },
       {
@@ -23148,6 +23318,29 @@ class GradesApp {
     };
   }
 
+  getCourseGradeLevel(courseId) {
+    const year = this.activeSchoolYear;
+    const id = Number(courseId || 0);
+    const course = year && id
+      ? this.store.listCourses(year.id).find((item) => Number(item.id) === id)
+      : null;
+    return normalizeGradeAssessmentYearLevel(course?.gradeLevel);
+  }
+
+  applyGradeTestDefaultsToNewDraft(draft = {}, yearLevel = null) {
+    const defaults = getGradeTestDefaultsForYearLevel(yearLevel);
+    this.gradeDeficitThreshold = defaults.deficitThreshold;
+    this.gradeDeficitThresholdUserEdited = false;
+    return {
+      ...draft,
+      yearLevel: defaults.yearLevel,
+      testScale: defaults.testScale,
+      testScaleSnapshot: null,
+      testPredicateSuffixes: defaults.testPredicateSuffixes,
+      courseLevel: defaults.courseLevel
+    };
+  }
+
   getGradesEntryDraft(courseId = this.selectedCourseId) {
     const courseKey = Number(courseId || 0);
     const currentDraft = this.gradesEntryDraft || {};
@@ -23174,7 +23367,11 @@ class GradesApp {
     const halfYear = normalizeGradeHalfYear(previous.halfYear || this.getDefaultGradeAssessmentHalfYear());
     const categories = this.getGradesEntryStructureCategories(courseKey, halfYear);
     const mode = normalizeGradeAssessmentMode(previous.mode);
-    const testScale = normalizeGradeTestScale(previous.testScale);
+    const isFreshDraft = Object.keys(previous).length === 0;
+    const courseDefaults = isFreshDraft
+      ? getGradeTestDefaultsForYearLevel(this.getCourseGradeLevel(courseKey))
+      : null;
+    const testScale = courseDefaults?.testScale || normalizeGradeTestScale(previous.testScale);
     const defaultSelection = this.getMostUsedGradeAssessmentSelection(courseKey, null, halfYear);
     const categoryId = categories.some((item) => Number(item.id) === Number(previous.categoryId || 0))
       ? Number(previous.categoryId)
@@ -23204,9 +23401,11 @@ class GradesApp {
       mode,
       occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(previous.occurrenceCategoryId),
       testScale,
-      testPredicateSuffixes: Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
+      testPredicateSuffixes: courseDefaults
+        ? courseDefaults.testPredicateSuffixes
+        : (Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
         ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(testScale))
-        : getDefaultGradeTestPredicateSuffixes(testScale),
+        : getDefaultGradeTestPredicateSuffixes(testScale)),
       testTasks: normalizeGradeTestTasks(previous.testTasks, { ensureDefault: false }),
       competenceExpectations: normalizeGradeAssessmentMode(previous.mode) === "test"
         ? normalizeGradeCompetenceExpectations(previous.competenceExpectations)
@@ -23214,8 +23413,10 @@ class GradesApp {
       expectationHorizonTemplateFile: normalizeGradeAssessmentMode(previous.mode) === "test"
         ? normalizeGradeAssessmentExpectationHorizonTemplateFile(previous.expectationHorizonTemplateFile)
         : null,
-      yearLevel: normalizeGradeAssessmentYearLevel(previous.yearLevel),
-      courseLevel: normalizeGradeAssessmentCourseLevel(previous.courseLevel, previous.yearLevel),
+      yearLevel: courseDefaults?.yearLevel ?? normalizeGradeAssessmentYearLevel(previous.yearLevel),
+      courseLevel: courseDefaults
+        ? courseDefaults.courseLevel
+        : normalizeGradeAssessmentCourseLevel(previous.courseLevel, previous.yearLevel),
       assessmentNumber: normalizeGradeAssessmentNumber(previous.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(previous.topic),
       examDurationMinutes: normalizeGradeAssessmentMode(previous.mode) === "test"
@@ -23225,6 +23426,10 @@ class GradesApp {
       subcategoryId,
       entries
     };
+    if (courseDefaults) {
+      this.gradeDeficitThreshold = courseDefaults.deficitThreshold;
+      this.gradeDeficitThresholdUserEdited = false;
+    }
     return this.gradesEntryDraft;
   }
 
@@ -27756,7 +27961,7 @@ class GradesApp {
       this.clearGradesEntryDraftDirty();
       this.activeGradeAssessmentId = null;
       this.activeGradeStudentId = null;
-      this.pendingGradesEntryCourseAutoSelect = true;
+      this.pendingGradesEntryCourseAutoSelect = options.autoSelectCourse !== false;
     }
     if (this.currentView !== "grades") {
       this.switchView("grades");
@@ -28068,6 +28273,9 @@ class GradesApp {
       this.selectedGradesOverviewColumnCourseId = null;
     }
     this.selectedCourseId = normalizedCourseId;
+    if (options.shareCourseContext !== false) {
+      this.notifyParentCourseContext(normalizedCourseId);
+    }
     this.shellTabContext = "grades";
     this.pendingGradesEntryCourseAutoSelect = false;
     const assessmentId = Number(options?.assessmentId || 0);
@@ -28130,7 +28338,8 @@ class GradesApp {
       hasField("color") ? fields.color : course.color,
       hasField("noLesson") ? Boolean(fields.noLesson) : Boolean(course.noLesson),
       hasField("hiddenInSidebar") ? Boolean(fields.hiddenInSidebar) : Boolean(course.hiddenInSidebar),
-      hasField("subject") ? String(fields.subject || "") : String(course.subject || "")
+      hasField("subject") ? String(fields.subject || "") : String(course.subject || ""),
+      hasField("gradeLevel") ? fields.gradeLevel : course.gradeLevel
     );
     if (updated && hasField("noGrades")) {
       this.store.setCourseNoGrades(year.id, id, Boolean(fields.noGrades));
@@ -28142,6 +28351,12 @@ class GradesApp {
     const navigation = detail && typeof detail === "object" ? detail : {};
     if (false) {
       return this.requestGradesNavigation(navigation);
+    }
+    if (navigation.source === "course-context" && navigation.autoSelectCourse === true) {
+      return this.applyTimetableCourseAutoSelection();
+    }
+    if (navigation.source === "course-context" && !this.prepareSharedCourseContextNavigation(navigation)) {
+      return false;
     }
     this.shellTabContext = "grades";
     if (!this.canAccessGradeVault()) {
@@ -28222,7 +28437,11 @@ class GradesApp {
     }
     if (courseId) {
       this.selectedCourseId = courseId;
-      return this.switchGradesSubView("entry", { commit: false, resetEntry: true });
+      return this.switchGradesSubView("entry", {
+        commit: false,
+        resetEntry: true,
+        autoSelectCourse: navigation.autoSelectCourse
+      });
     }
     return this.switchGradesSubView(subview, { commit: false });
   }
@@ -28237,6 +28456,78 @@ class GradesApp {
         type: "classroom:grades-view-request",
         detail: {
           view: requestedView,
+          source: "iframe"
+        }
+      }, window.location.origin);
+    } catch (_error) {
+
+    }
+  }
+
+  canReplaceGradeVaultContinuationWithCourseContext() {
+    const pending = this.pendingGradeVaultContinuation;
+    if (!pending) {
+      return true;
+    }
+    if (pending.type !== "grades-navigation" && pending.type !== "course-context") {
+      return false;
+    }
+    // Eine reine Kurswiederherstellung (z. B. der Startdialog für den zuletzt gewählten Kurs)
+    // weicht der ausdrücklichen Kurswahl aus dem anderen Modul; stunden- oder
+    // leistungsgebundene Navigationen behalten Vorrang.
+    const detail = pending.detail && typeof pending.detail === "object" ? pending.detail : {};
+    return !Number(detail.lessonId || 0)
+      && !Number(detail.assessmentId || 0)
+      && detail.action !== "seatplan";
+  }
+
+  prepareSharedCourseContextNavigation(navigation) {
+    const contextCourseId = Number(navigation.courseId || 0);
+    const year = this.activeSchoolYear;
+    const course = year && contextCourseId
+      ? this.store.listCourses(year.id).find((item) => Number(item.id) === contextCourseId)
+      : null;
+    if (
+      !contextCourseId
+      || contextCourseId === Number(this.selectedCourseId || 0)
+      || this.locked
+      || this.currentView === "settings"
+      || this.gradesEntryDraftDirty
+      || !this.courseAllowsGrades(course)
+    ) {
+      return false;
+    }
+    if (!this.canAccessGradeVault()) {
+      // Der Tabwechsel öffnet den Tresor-Dialog nicht selbst, holt den Kurs aber nach,
+      // sobald irgendwo entsperrt wurde.
+      if (this.canReplaceGradeVaultContinuationWithCourseContext()) {
+        this.queueGradeVaultContinuation({
+          type: "course-context",
+          detail: { ...navigation }
+        });
+      }
+      return false;
+    }
+    navigation.subview = this.normalizeGradesSubView(this.gradesSubView);
+    navigation.autoSelectCourse = false;
+    return true;
+  }
+
+  notifyParentCourseContext(courseId) {
+    const normalizedCourseId = Number(courseId || 0);
+    if (
+      !normalizedCourseId
+      || typeof window === "undefined"
+      || !window.parent
+      || window.parent === window
+    ) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:grades-course-context",
+        detail: {
+          courseId: normalizedCourseId,
           source: "iframe"
         }
       }, window.location.origin);
@@ -29960,6 +30251,16 @@ class GradesApp {
 
   courseAllowsGrades(course) {
     return Boolean(course) && !course.noLesson && !course.noGrades;
+  }
+
+  isSidebarSelectableGradeCourse(course) {
+    if (!this.courseAllowsGrades(course)) {
+      return false;
+    }
+    if (!course.hiddenInSidebar) {
+      return true;
+    }
+    return Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT));
   }
 
   courseAllowsSeatplanRoster(course) {

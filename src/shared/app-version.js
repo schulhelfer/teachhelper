@@ -1,1 +1,1 @@
-export const APP_VERSION = '43';
+globalThis.TEACHHELPER_APP_VERSION = '47';

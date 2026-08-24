@@ -10,6 +10,7 @@
   const TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command';
   const READY_EVENT = 'classroom:planning-ready';
   const COURSE_SEATPLAN_OPEN_EVENT = 'classroom:planning-course-seatplan-open';
+  const COURSE_CONTEXT_EVENT = 'classroom:planning-course-context';
   const SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
 
   const incomingEvents = new Set([
@@ -26,6 +27,7 @@
     TUTORIAL_START_REQUEST_EVENT,
     READY_EVENT,
     COURSE_SEATPLAN_OPEN_EVENT,
+    COURSE_CONTEXT_EVENT,
   ]);
 
   function withPlanningTutorialApi(callback, attempt = 0) {

@@ -21,6 +21,7 @@ export const PLANNING_VIEW_REQUEST_EVENT = 'classroom:planning-view-request';
 export const PLANNING_TUTORIAL_START_REQUEST_EVENT = 'classroom:planning-tutorial-start-request';
 export const PLANNING_READY_EVENT = 'classroom:planning-ready';
 export const PLANNING_COURSE_SEATPLAN_OPEN_EVENT = 'classroom:planning-course-seatplan-open';
+export const PLANNING_COURSE_CONTEXT_EVENT = 'classroom:planning-course-context';
 
 
 
@@ -39,6 +40,7 @@ export const GRADES_GRADE_VAULT_REQUEST_EVENT = 'classroom:grades-grade-vault-re
 export const GRADES_GRADE_VAULT_OVERLAY_EVENT = 'classroom:grades-grade-vault-overlay';
 export const GRADES_GRADE_VAULT_ACTIVITY_EVENT = 'classroom:grades-grade-vault-activity';
 export const GRADES_COURSE_SEATPLAN_OPEN_EVENT = 'classroom:grades-course-seatplan-open';
+export const GRADES_COURSE_CONTEXT_EVENT = 'classroom:grades-course-context';
 export const GRADES_COURSE_SEATPLAN_SAVE_REQUEST_EVENT = 'classroom:grades-course-seatplan-save-request';
 export const GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:grades-course-seatplan-save-result';
 export const GRADES_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:grades-course-grade-config-request';

@@ -14,6 +14,35 @@ function clampNumber(value, min, max) {
   return Math.min(max, Math.max(min, Number(value) || 0));
 }
 
+export const QUALIFICATION_PHASE_END_DATE_KEYS = Object.freeze([
+  'qualificationPhaseFirstHalfYearEndDate',
+  'qualificationPhaseThirdHalfYearEndDate',
+  'qualificationPhaseFourthHalfYearEndDate',
+]);
+
+export const COURSE_GRADE_LEVELS = Object.freeze([5, 6, 7, 8, 9, 10, 11, 12, 13]);
+
+export function normalizeCourseGradeLevel(value, fallback = null) {
+  const gradeLevel = Number(value);
+  return Number.isInteger(gradeLevel) && COURSE_GRADE_LEVELS.includes(gradeLevel)
+    ? gradeLevel
+    : fallback;
+}
+
+export function getDefaultQualificationPhaseEndDates(startYear) {
+  const defaults = {
+    2025: ['2025-12-19', '2025-12-19', '2026-04-08'],
+    2026: ['2026-12-22', '2026-12-22', '2027-03-18'],
+    2027: ['', '', '2028-04-06'],
+  };
+  const dates = defaults[Number(startYear)] || ['', '', ''];
+  return Object.fromEntries(QUALIFICATION_PHASE_END_DATE_KEYS.map((key, index) => [key, dates[index]]));
+}
+
+export function getDefaultQualificationPhaseFourthHalfYearEndDate(startYear) {
+  return getDefaultQualificationPhaseEndDates(startYear).qualificationPhaseFourthHalfYearEndDate;
+}
+
 function normalizeNameLearningDueSummary(value = null, validCourseIds = null) {
   const source = asRecord(value);
   const allowed = validCourseIds instanceof Set ? validCourseIds : null;
@@ -75,11 +104,21 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
     counters: { ...asRecord(base.counters), ...asRecord(source.counters) },
     schoolYears: Array.isArray(source.schoolYears) ? source.schoolYears.map((raw) => {
       const item = asRecord(raw);
+      const qualificationPhaseDefaults = getDefaultQualificationPhaseEndDates(
+        String(item.startDate || '').slice(0, 4),
+      );
+      const qualificationPhaseEndDates = Object.fromEntries(
+        QUALIFICATION_PHASE_END_DATE_KEYS.map((key) => [
+          key,
+          Object.hasOwn(item, key) ? String(item[key] || '') : qualificationPhaseDefaults[key],
+        ]),
+      );
       return {
         id: Number(item.id),
         name: String(item.name || ''),
         startDate: String(item.startDate || ''),
         endDate: String(item.endDate || ''),
+        ...qualificationPhaseEndDates,
       };
     }) : [],
     courses: Array.isArray(source.courses) ? source.courses.map((raw) => {
@@ -90,6 +129,7 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
         schoolYearId: Number(item.schoolYearId),
         name: String(item.name || ''),
         subject: noLesson ? '' : String(item.subject || ''),
+        gradeLevel: noLesson ? null : normalizeCourseGradeLevel(item.gradeLevel),
         color: normalizeCourseColor(item.color, noLesson),
         previousColor: item.previousColor == null ? null : normalizeCourseColor(item.previousColor, false),
         noLesson,

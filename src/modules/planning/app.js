@@ -21,7 +21,10 @@ import {
   renderPlanningRichText
 } from "../../shared/planning-rich-text.js";
 import {
-  normalizePublicSchoolData
+  COURSE_GRADE_LEVELS,
+  normalizeCourseGradeLevel,
+  normalizePublicSchoolData,
+  QUALIFICATION_PHASE_END_DATE_KEYS
 } from "../../shared/school-data/index.js";
 import { createWorkspaceClient } from "../workspace/client.js";
 import { createWorkspaceController } from "../workspace/index.js";
@@ -45,6 +48,26 @@ const REQUIRED_HOLIDAYS = [
   "Osterferien",
   "Sommerferien"
 ];
+const QUALIFICATION_PHASE_END_DATE_RULES = [
+  {
+    key: QUALIFICATION_PHASE_END_DATE_KEYS[0],
+    label: "Ende von Schulhalbjahr 1",
+    sourceLabel: "Ausgabe der Studienbücher",
+    sourceHref: "https://www.mk.niedersachsen.de/startseite/service/schulverwaltungsblatt/schulverwaltungsblatt_amtlicher_teil/schulverwaltungsblatt-amtlicher-teil-6525.html"
+  },
+  {
+    key: QUALIFICATION_PHASE_END_DATE_KEYS[1],
+    label: "Ende von Schulhalbjahr 3",
+    sourceLabel: "Ausgabe der Studienbücher",
+    sourceHref: "https://www.mk.niedersachsen.de/startseite/service/schulverwaltungsblatt/schulverwaltungsblatt_amtlicher_teil/schulverwaltungsblatt-amtlicher-teil-6525.html"
+  },
+  {
+    key: QUALIFICATION_PHASE_END_DATE_KEYS[2],
+    label: "Ende von Schulhalbjahr 4",
+    sourceLabel: "Abiturtermine",
+    sourceHref: "https://www.mk.niedersachsen.de/startseite/schule/unsere_schulen/allgemein_bildende_schulen/gymnasium/abiturprufung/abiturpruefung-6441.html"
+  }
+];
 const HOURS_PER_DAY_DEFAULT = 8;
 const BREAK_SUPERVISION_AFTER_HOURS = [2, 4, 6];
 const ENTFALL_TOPIC_DEFAULT = "Entfall laut Plan";
@@ -57,6 +80,40 @@ const BACKUP_INTERVAL_MIN_DAYS = 1;
 const BACKUP_INTERVAL_MAX_DAYS = 30;
 const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
 const ARCHIVE_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
+const HALF_YEAR_BREAK_LABEL = "Halbjahresferien";
+const HALF_YEAR_END_WEEK_TOOLTIP = "Letzter Schultag vor den Halbjahresferien – Ende des 1. Halbjahres";
+const HALF_YEAR_END_COURSE_TOOLTIP = "Letzter Termin im 1. Halbjahr – danach beginnt das 2. Halbjahr";
+const QUALIFICATION_PHASE_BOUNDARY_MARKERS = [
+  {
+    key: QUALIFICATION_PHASE_END_DATE_KEYS[0],
+    courseGradeLevel: 12,
+    label: "Ende von Schulhalbjahr 1 der Qualifikationsphase"
+  },
+  {
+    key: QUALIFICATION_PHASE_END_DATE_KEYS[1],
+    courseGradeLevel: 13,
+    label: "Ende von Schulhalbjahr 3 der Qualifikationsphase"
+  }
+];
+const HALF_YEAR_BREAK_LOOKBACK_DAYS = 60;
+const SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT = true;
+const SEATPLAN_TRIGGER_LABEL = "Kurs-Sitzplan öffnen";
+const SEATPLAN_STATUS_SYMBOL_NO_PLAN = "⚠️";
+const PERFORMANCE_STATUS_SYMBOLS = {
+  locked: "🔒",
+  "has-assessment": "✓",
+  "missing-assessment": "❓"
+};
+const PERFORMANCE_STATUS_CLASSES = {
+  locked: "is-locked",
+  "has-assessment": "has-existing-assessment",
+  "missing-assessment": "is-missing-assessment"
+};
+const SEATPLAN_STATUS_CLASSES = {
+  ...PERFORMANCE_STATUS_CLASSES,
+  unresolved: "is-unresolved",
+  "no-plan": "has-no-plan"
+};
 const COLOR_PALETTE = [
   "#FF1744",
   "#2979FF",
@@ -971,6 +1028,8 @@ class PlanningApp {
       courseDialogId: document.querySelector("#course-dialog-id"),
       courseDialogSubjectRow: document.querySelector("#course-dialog-subject-row"),
       courseDialogSubject: document.querySelector("#course-dialog-subject"),
+      courseDialogGradeLevelRow: document.querySelector("#course-dialog-grade-level-row"),
+      courseDialogGradeLevel: document.querySelector("#course-dialog-grade-level"),
       courseDialogName: document.querySelector("#course-dialog-name"),
       courseDialogColorPanel: document.querySelector("#course-dialog-color-panel"),
       courseDialogColorPalette: document.querySelector("#course-dialog-color-palette"),
@@ -1032,6 +1091,7 @@ class PlanningApp {
       hoursPerDay: document.querySelector("#hours-per-day"),
       lessonTimesList: document.querySelector("#lesson-times-list"),
       showHiddenSidebarCourses: document.querySelector("#show-hidden-sidebar-courses"),
+      showHalfYearBoundaryMarkers: document.querySelector("#show-half-year-boundary-markers"),
       appVersion: document.querySelector("#app-version"),
       backupAutoEnabled: document.querySelector("#backup-auto-enabled"),
       backupIntervalDays: document.querySelector("#backup-interval-days"),
@@ -1094,6 +1154,14 @@ class PlanningApp {
       dayoffRequiredHint: document.querySelector("#dayoff-required-hint"),
       dayoffRequiredMissing: document.querySelector("#dayoff-required-missing"),
       freeRangeList: document.querySelector("#free-range-list"),
+      qualificationPhaseEndDateList: document.querySelector("#qualification-phase-end-date-list"),
+
+      qualificationPhaseEndDateDialog: document.querySelector("#qualification-phase-end-date-dialog"),
+      qualificationPhaseEndDateDialogForm: document.querySelector("#qualification-phase-end-date-dialog-form"),
+      qualificationPhaseEndDateDialogTitle: document.querySelector("#qualification-phase-end-date-dialog-title"),
+      qualificationPhaseEndDateDialogKey: document.querySelector("#qualification-phase-end-date-dialog-key"),
+      qualificationPhaseEndDateDialogDate: document.querySelector("#qualification-phase-end-date-dialog-date"),
+      qualificationPhaseEndDateDialogCancel: document.querySelector("#qualification-phase-end-date-dialog-cancel"),
 
       specialDayDialog: document.querySelector("#special-day-dialog"),
       specialDayDialogForm: document.querySelector("#special-day-dialog-form"),
@@ -1126,6 +1194,7 @@ class PlanningApp {
     this.workspacePublicLoaded = Boolean(this.tutorialDemoMode || this.workspaceController?.isReady?.());
     this.pendingWeekPerformanceIndexLoadKey = "";
     this.performanceIndex = new Map();
+    this.seatplanCourseIds = new Set();
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
     this.appVersion = "";
@@ -1249,6 +1318,7 @@ class PlanningApp {
         detail.snapshot.assessmentIndex,
         detail.snapshot.assessmentIndexResolvedCourseIds
       );
+      this.replaceSeatplanIndex(detail.snapshot.seatplanCourseIds);
     }
     if (detail.scope === "planning" && this.refs?.sidebarCourseList) {
       this.renderAll({ visibleOnly: true });
@@ -1321,9 +1391,13 @@ class PlanningApp {
       : { encryptionEnabled: true, unlocked: false };
   }
 
-  shouldDisableArchiveGradeSelection() {
+  isGradeVaultLocked() {
     const vault = this.getArchiveVaultStatus();
     return Boolean(vault.encryptionEnabled && !vault.unlocked);
+  }
+
+  shouldDisableArchiveGradeSelection() {
+    return this.isGradeVaultLocked();
   }
 
   setArchiveGradesLockedHintVisible(visible) {
@@ -1599,6 +1673,7 @@ class PlanningApp {
       this.showPlanningTutorialMenu([
         "Kursname bearbeiten",
         "Fach ändern",
+        "Jahrgang ändern",
         "Farbe bearbeiten",
         "Als Termin ohne Unterricht",
         "In Randleiste ausblenden",
@@ -1687,6 +1762,9 @@ class PlanningApp {
       lessonTimes: this.store.getLessonTimes(hoursPerDay),
       showHiddenSidebarCourses: Boolean(
         this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
+      ),
+      showHalfYearBoundaryMarkers: Boolean(
+        this.store.getSetting("showHalfYearBoundaryMarkers", SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT)
       ),
       backupEnabled: this.store.getBackupEnabled(),
       backupIntervalDays: this.store.getBackupIntervalDays()
@@ -2146,6 +2224,12 @@ class PlanningApp {
     ) {
       return true;
     }
+    if (
+      Boolean(draft.showHalfYearBoundaryMarkers)
+      !== Boolean(this.store.getSetting("showHalfYearBoundaryMarkers", SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT))
+    ) {
+      return true;
+    }
     if (Boolean(draft.backupEnabled) !== Boolean(this.store.getBackupEnabled())) {
       return true;
     }
@@ -2177,6 +2261,7 @@ class PlanningApp {
       this.store.setHoursPerDay(draft.hoursPerDay);
       this.store.setLessonTimes(normalizedLessonTimes, draft.hoursPerDay);
       this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
+      this.store.setSetting("showHalfYearBoundaryMarkers", Boolean(draft.showHalfYearBoundaryMarkers));
       this.store.setBackupEnabled(draft.backupEnabled);
       this.store.setBackupIntervalDays(draft.backupIntervalDays);
       if (
@@ -2188,6 +2273,8 @@ class PlanningApp {
         )
         || Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT))
           !== Boolean(draft.showHiddenSidebarCourses)
+        || Boolean(this.store.getSetting("showHalfYearBoundaryMarkers", SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT))
+          !== Boolean(draft.showHalfYearBoundaryMarkers)
         || Boolean(this.store.getBackupEnabled()) !== Boolean(draft.backupEnabled)
         || Number(this.store.getBackupIntervalDays()) !== Number(draft.backupIntervalDays)
       ) {
@@ -2302,7 +2389,7 @@ class PlanningApp {
     if (!year) {
       return false;
     }
-    if (!await this.showConfirmMessage("Standardwerte für Pflicht-Ferien und unterrichtsfreie Tage anwenden?")) {
+    if (!await this.showConfirmMessage("Standardwerte für Pflicht-Ferien, unterrichtsfreie Tage und die Oberstufenregelungen anwenden?")) {
       return false;
     }
     const overwrite = await this.showConfirmMessage("Sollen vorhandene Pflicht-Ferienwerte überschrieben werden?");
@@ -2331,6 +2418,7 @@ class PlanningApp {
         HOURS_PER_DAY_DEFAULT
       );
       this.settingsDraft.showHiddenSidebarCourses = SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
+      this.settingsDraft.showHalfYearBoundaryMarkers = SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT;
       this.renderDisplaySection();
       this.renderLessonTimesSection();
       this.refreshSettingsDirtyState();
@@ -2388,7 +2476,8 @@ class PlanningApp {
       resetEnabled = Boolean(this.activeSchoolYear);
     } else if (tab === "display") {
       resetEnabled = Number(this.settingsDraft.hoursPerDay) !== HOURS_PER_DAY_DEFAULT
-        || Boolean(this.settingsDraft.showHiddenSidebarCourses) !== SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT;
+        || Boolean(this.settingsDraft.showHiddenSidebarCourses) !== SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT
+        || Boolean(this.settingsDraft.showHalfYearBoundaryMarkers) !== SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT;
       saveEnabled = this.settingsDirty;
       cancelEnabled = this.settingsDirty;
     } else if (tab === "lessonTimes") {
@@ -3259,6 +3348,15 @@ class PlanningApp {
         this.refs.courseDialogSubject.value = "";
       }
     }
+    if (this.refs.courseDialogGradeLevelRow) {
+      this.refs.courseDialogGradeLevelRow.hidden = checked;
+    }
+    if (this.refs.courseDialogGradeLevel) {
+      this.refs.courseDialogGradeLevel.disabled = checked;
+      if (checked) {
+        this.refs.courseDialogGradeLevel.value = "";
+      }
+    }
     this._updateCourseDialogColorHighlight();
   }
 
@@ -3292,6 +3390,10 @@ class PlanningApp {
     this.refs.courseDialogTitle.textContent = course ? "Kurs anpassen" : "Kurs anlegen";
     if (this.refs.courseDialogSubject) {
       this.refs.courseDialogSubject.value = course ? String(course.subject || "") : "";
+    }
+    if (this.refs.courseDialogGradeLevel) {
+      const gradeLevel = normalizeCourseGradeLevel(course?.gradeLevel);
+      this.refs.courseDialogGradeLevel.value = gradeLevel === null ? "" : String(gradeLevel);
     }
     this.refs.courseDialogName.value = course ? String(course.name || "") : "";
     this.courseDialogDefaultColor = defaultColor;
@@ -3382,6 +3484,45 @@ class PlanningApp {
       return;
     }
     await this.persistExplicitDatabaseSave("planning-course-subject-save");
+    this.renderAll();
+  }
+
+  async openCourseGradeLevelDialog(courseId) {
+    const year = this.activeSchoolYear;
+    const id = Number(courseId || 0);
+    if (!year || !id) {
+      return;
+    }
+    const course = this.store.listCourses(year.id).find((item) => item.id === id);
+    if (!course || course.noLesson) {
+      return;
+    }
+    const currentGradeLevel = normalizeCourseGradeLevel(course.gradeLevel);
+    const nextGradeLevel = await this.showSelectMessage(
+      "",
+      currentGradeLevel === null ? "" : String(currentGradeLevel),
+      {
+        title: "Jahrgang ändern",
+        okText: "Speichern",
+        inputLabel: "Jahrgang",
+        selectOptions: [
+          { value: "", label: "Keine Angabe" },
+          ...COURSE_GRADE_LEVELS.map((gradeLevel) => ({ value: String(gradeLevel), label: String(gradeLevel) }))
+        ]
+      }
+    );
+    if (nextGradeLevel === null) {
+      return;
+    }
+    if (!this.workspacePublicLoaded) {
+      await this.ensurePlanningPublicLoaded();
+    }
+    const ok = await this.updateCourseFields(id, { gradeLevel: normalizeCourseGradeLevel(nextGradeLevel) });
+    if (!ok) {
+      await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.");
+      return;
+    }
+    await this.persistExplicitDatabaseSave("planning-course-grade-level-save");
     this.renderAll();
   }
 
@@ -3499,6 +3640,7 @@ class PlanningApp {
     const name = String(this.refs.courseDialogName.value || "").trim();
     const noLesson = Boolean(this.refs.courseDialogNoLesson.checked);
     const subject = noLesson ? "" : String(this.refs.courseDialogSubject?.value || "").trim();
+    const gradeLevel = noLesson ? null : normalizeCourseGradeLevel(this.refs.courseDialogGradeLevel?.value);
     const hiddenInSidebar = Boolean(this.courseDialogDraft && this.courseDialogDraft.hiddenInSidebar);
     const color = noLesson
       ? null
@@ -3518,6 +3660,7 @@ class PlanningApp {
           courseId: id,
           name,
           subject,
+          gradeLevel,
           color,
           noLesson,
           hiddenInSidebar,
@@ -3525,7 +3668,7 @@ class PlanningApp {
         }, { baseRevision: this.courseDialogBaseRevision });
         ok = Boolean(commandResult?.ok);
       } else {
-        ok = this.store.updateCourse(year.id, id, name, color, noLesson, hiddenInSidebar, subject);
+        ok = this.store.updateCourse(year.id, id, name, color, noLesson, hiddenInSidebar, subject, gradeLevel);
       }
       if (!ok) {
         await this.showInfoMessage(commandResult?.message || "Kursname bereits vorhanden.");
@@ -3542,6 +3685,7 @@ class PlanningApp {
           schoolYearId: year.id,
           name,
           subject,
+          gradeLevel,
           color,
           noLesson,
           hiddenInSidebar,
@@ -3550,7 +3694,7 @@ class PlanningApp {
         created = commandResult?.ok ? Number(commandResult.data?.courseId || 0) : null;
       } else {
         try {
-          created = this.store.createCourse(year.id, name, color, noLesson, hiddenInSidebar, subject);
+          created = this.store.createCourse(year.id, name, color, noLesson, hiddenInSidebar, subject, gradeLevel);
         } catch (_error) {
           created = null;
         }
@@ -3815,6 +3959,38 @@ class PlanningApp {
     }
     this.store.deleteSpecialDay(id);
     this.closeSpecialDayDialog();
+    this.renderAll();
+  }
+
+  openQualificationPhaseEndDateDialog(ruleKey) {
+    const year = this.activeSchoolYear;
+    const rule = QUALIFICATION_PHASE_END_DATE_RULES.find((item) => item.key === ruleKey);
+    if (!year || !rule || !this.refs.qualificationPhaseEndDateDialog) {
+      return;
+    }
+    this.refs.qualificationPhaseEndDateDialogTitle.textContent = rule.label;
+    this.refs.qualificationPhaseEndDateDialogKey.value = rule.key;
+    this.refs.qualificationPhaseEndDateDialogDate.value = String(year[rule.key] || "");
+    this.openDialog(this.refs.qualificationPhaseEndDateDialog);
+    this.refs.qualificationPhaseEndDateDialogDate.focus();
+  }
+
+  closeQualificationPhaseEndDateDialog() {
+    this.closeDialog(this.refs.qualificationPhaseEndDateDialog);
+  }
+
+  async submitQualificationPhaseEndDateDialog() {
+    const year = this.activeSchoolYear;
+    const key = String(this.refs.qualificationPhaseEndDateDialogKey.value || "");
+    if (!year || !QUALIFICATION_PHASE_END_DATE_KEYS.includes(key)) {
+      return;
+    }
+    const value = this.refs.qualificationPhaseEndDateDialogDate.value;
+    if (!this.store.setQualificationPhaseEndDate(year.id, key, value)) {
+      return;
+    }
+    await this.persistExplicitDatabaseSave("planning-qualification-phase-end-date-save");
+    this.closeQualificationPhaseEndDateDialog();
     this.renderAll();
   }
 
@@ -4856,6 +5032,140 @@ class PlanningApp {
     return endDefault;
   }
 
+  _getSecondSummerBreakStart() {
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return "";
+    }
+    const starts = this.store
+      .listFreeRanges(year.id)
+      .filter((item) => String(item.label || "").trim().toLowerCase() === "sommerferien")
+      .map((item) => String(item.startDate || ""))
+      .filter((startDate) => startDate >= year.startDate && startDate <= year.endDate)
+      .sort();
+    return starts.at(-1) || this._summerBreakBounds().start || "";
+  }
+
+  _findLastSchoolDayBefore(endExclusiveIso) {
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return "";
+    }
+    const ranges = this.store.listFreeRanges(year.id);
+    const specialDays = new Set(this.store.listSpecialDays().map((item) => String(item.dayDate || "")));
+    let candidate = addDays(endExclusiveIso || addDays(year.endDate, 1), -1);
+    while (candidate >= year.startDate) {
+      const inFreeRange = ranges.some((item) => isoInDateRange(candidate, item.startDate, item.endDate));
+      if (isSchoolWeekdayIso(candidate) && !inFreeRange && !specialDays.has(candidate)) {
+        return candidate;
+      }
+      candidate = addDays(candidate, -1);
+    }
+    return "";
+  }
+
+  _computeLessonSlotEndDefault(startDefaultIso, courseId) {
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return startDefaultIso;
+    }
+    const course = this.store
+      .listCourses(year.id)
+      .find((item) => Number(item.id) === Number(courseId || 0));
+    const qualificationPhaseEnd = Number(course?.gradeLevel) === 13
+      ? String(year.qualificationPhaseFourthHalfYearEndDate || "")
+      : "";
+    const endDefault = qualificationPhaseEnd
+      || this._findLastSchoolDayBefore(this._getSecondSummerBreakStart())
+      || this._findLastSchoolDayBefore(addDays(year.endDate, 1))
+      || year.endDate;
+    if (endDefault < startDefaultIso) {
+      return startDefaultIso;
+    }
+    return endDefault > year.endDate ? year.endDate : endDefault;
+  }
+
+  isHalfYearBoundaryMarkerEnabled() {
+    return Boolean(
+      this.store.getSetting("showHalfYearBoundaryMarkers", SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT)
+    );
+  }
+
+  _getHalfYearBreakInfo() {
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return null;
+    }
+    const ranges = this.store.listFreeRanges(year.id);
+    const halfYearRange = ranges.find(
+      (item) => String(item.label || "").trim().toLowerCase() === HALF_YEAR_BREAK_LABEL.toLowerCase()
+        && item.startDate
+    );
+    if (!halfYearRange) {
+      return null;
+    }
+    const breakStartIso = String(halfYearRange.startDate);
+    const specialDates = new Set(this.store.listSpecialDays().map((item) => item.dayDate));
+    let lastSchoolDayIso = "";
+    let candidate = addDays(breakStartIso, -1);
+    for (let step = 0; step < HALF_YEAR_BREAK_LOOKBACK_DAYS; step += 1) {
+      if (candidate < year.startDate) {
+        break;
+      }
+      const isFree = ranges.some((item) => isoInDateRange(candidate, item.startDate, item.endDate));
+      if (isSchoolWeekdayIso(candidate) && !isFree && !specialDates.has(candidate)) {
+        lastSchoolDayIso = candidate;
+        break;
+      }
+      candidate = addDays(candidate, -1);
+    }
+    return {
+      breakStartIso,
+      breakEndIso: String(halfYearRange.endDate || ""),
+      lastSchoolDayIso,
+      label: String(halfYearRange.label || HALF_YEAR_BREAK_LABEL)
+    };
+  }
+
+  _getQualificationPhaseBoundaryMarkers() {
+    const year = this.activeSchoolYear;
+    if (!year) {
+      return [];
+    }
+    return QUALIFICATION_PHASE_BOUNDARY_MARKERS
+      .map((rule) => ({
+        ...rule,
+        dateIso: String(year[rule.key] || "")
+      }))
+      .filter((marker) => (
+        marker.dateIso
+        && marker.dateIso >= year.startDate
+        && marker.dateIso <= year.endDate
+      ));
+  }
+
+  _getCourseHalfYearBoundaryMarker(course, halfYearBreak, qualificationPhaseMarkers) {
+    const courseGradeLevel = Number(course?.gradeLevel);
+    const qualificationPhaseMarker = qualificationPhaseMarkers.find(
+      (marker) => marker.courseGradeLevel === courseGradeLevel
+    );
+    if (qualificationPhaseMarker) {
+      return {
+        ...qualificationPhaseMarker,
+        includesBoundaryDate: true,
+        tooltip: `Letzter Termin vor ${qualificationPhaseMarker.label}`
+      };
+    }
+    if (!halfYearBreak) {
+      return null;
+    }
+    return {
+      dateIso: halfYearBreak.breakStartIso,
+      includesBoundaryDate: false,
+      tooltip: `${HALF_YEAR_END_COURSE_TOOLTIP} (${halfYearBreak.label} ab ${formatDate(halfYearBreak.breakStartIso)})`
+    };
+  }
+
   async openSlotDialogForCreate(dayOfWeek, startHour) {
     const year = this.activeSchoolYear;
     if (!year || !this.refs.slotDialog) {
@@ -4887,7 +5197,10 @@ class PlanningApp {
     if (startDefault > year.endDate) {
       startDefault = year.endDate;
     }
-    const endDefault = this._computeSlotEndDefault(startDefault);
+    const endDefault = this._computeLessonSlotEndDefault(
+      startDefault,
+      this.refs.slotDialogCourse.value
+    );
 
     this.slotDialogStartMinIso = startDefault;
     this.refs.slotDialogStart.min = startDefault;
@@ -5256,6 +5569,8 @@ class PlanningApp {
       this.scrollCourseNextIntoView = true;
       this.renderCourseTimeline();
     }
+    const courseViewCourseId = viewName === "course" ? Number(this.selectedCourseId || 0) : 0;
+    this.notifyParentCourseContext(courseViewCourseId, courseViewCourseId > 0);
     this.queuePlanningReadySignal();
     return true;
   }
@@ -5346,6 +5661,22 @@ class PlanningApp {
           && this.activeSettingsTab === "database";
         if (manualDatabaseSetupPending) {
           return;
+        }
+        if (detail?.source === "course-context") {
+          const contextCourseId = Number(detail.courseId || 0);
+          const contextYear = this.activeSchoolYear;
+          const knownCourse = contextYear && contextCourseId
+            ? this.store.listCourses(contextYear.id)
+              .some((course) => Number(course.id) === contextCourseId)
+            : false;
+          if (
+            !knownCourse
+            || contextCourseId === Number(this.selectedCourseId || 0)
+            || this.currentView === "settings"
+          ) {
+            return;
+          }
+          this.selectedCourseId = contextCourseId;
         }
         await this.switchView(requestedView);
       });
@@ -5462,6 +5793,7 @@ class PlanningApp {
           return;
         }
         this.selectedCourseId = courseId;
+        this.notifyParentCourseContext(courseId);
         await this.switchView("course");
       })();
     });
@@ -5490,6 +5822,7 @@ class PlanningApp {
         return;
       }
       this.selectedCourseId = courseId;
+      this.notifyParentCourseContext(courseId);
       await this.switchView("course");
     });
 
@@ -5518,6 +5851,7 @@ class PlanningApp {
         return;
       }
       this.selectedCourseId = courseId;
+      this.notifyParentCourseContext(courseId, this.currentView === "course");
       this.openCourseContextMenu(courseId, event.clientX, event.clientY);
     });
 
@@ -6088,6 +6422,7 @@ class PlanningApp {
             return;
           }
           this.selectedCourseId = courseId;
+          this.notifyParentCourseContext(courseId);
           await this.switchView("course");
         }
         return;
@@ -6213,6 +6548,15 @@ class PlanningApp {
     if (this.refs.showHiddenSidebarCourses) {
       this.refs.showHiddenSidebarCourses.addEventListener("change", () => {
         this.settingsDraft.showHiddenSidebarCourses = Boolean(this.refs.showHiddenSidebarCourses.checked);
+        this.renderDisplaySection();
+        this.refreshSettingsDirtyState();
+      });
+    }
+
+    if (this.refs.showHalfYearBoundaryMarkers) {
+      this.refs.showHalfYearBoundaryMarkers.addEventListener("change", () => {
+        this.settingsDraft.showHalfYearBoundaryMarkers =
+          Boolean(this.refs.showHalfYearBoundaryMarkers.checked);
         this.renderDisplaySection();
         this.refreshSettingsDirtyState();
       });
@@ -6665,6 +7009,31 @@ class PlanningApp {
       this.openSpecialDayDialog(id);
     });
 
+    this.refs.qualificationPhaseEndDateDialogCancel.addEventListener("click", () => {
+      this.closeQualificationPhaseEndDateDialog();
+    });
+
+    this.refs.qualificationPhaseEndDateDialogForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      await this.submitQualificationPhaseEndDateDialog();
+    });
+
+    this.refs.qualificationPhaseEndDateDialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeQualificationPhaseEndDateDialog();
+    });
+
+    this.refs.qualificationPhaseEndDateList.addEventListener("click", (event) => {
+      if (event.target.closest("a")) {
+        return;
+      }
+      const row = event.target.closest("li[data-qualification-phase-rule-key]");
+      if (!row || !this.activeSchoolYear) {
+        return;
+      }
+      this.openQualificationPhaseEndDateDialog(String(row.dataset.qualificationPhaseRuleKey || ""));
+    });
+
     this.refs.courseTable.addEventListener("change", (event) => {
       const input = event.target.closest("input.course-topic-input");
       if (!input) {
@@ -6833,6 +7202,7 @@ class PlanningApp {
         const courseId = Number(target.dataset.courseId || 0);
         if (!courseId) return;
         this.selectedCourseId = courseId;
+        this.notifyParentCourseContext(courseId, this.currentView === "course");
         this.openCourseContextMenu(courseId, clientX, clientY);
       },
     });
@@ -7991,6 +8361,13 @@ class PlanningApp {
         }
       },
       {
+        label: "Jahrgang ändern",
+        disabled: Boolean(course.noLesson),
+        handler: async () => {
+          await this.openCourseGradeLevelDialog(id);
+        }
+      },
+      {
         label: "Farbe bearbeiten",
         disabled: Boolean(course.noLesson),
         handler: () => {
@@ -8630,7 +9007,8 @@ class PlanningApp {
       hasField("color") ? fields.color : course.color,
       hasField("noLesson") ? Boolean(fields.noLesson) : Boolean(course.noLesson),
       hasField("hiddenInSidebar") ? Boolean(fields.hiddenInSidebar) : Boolean(course.hiddenInSidebar),
-      hasField("subject") ? String(fields.subject || "") : String(course.subject || "")
+      hasField("subject") ? String(fields.subject || "") : String(course.subject || ""),
+      hasField("gradeLevel") ? fields.gradeLevel : course.gradeLevel
     );
     return Boolean(updated);
   }
@@ -8650,6 +9028,31 @@ class PlanningApp {
       }, window.location.origin);
     } catch (_error) {
       
+    }
+  }
+
+  notifyParentCourseContext(courseId, courseViewOpen = true) {
+    const normalizedCourseId = Number(courseId || 0);
+    const normalizedCourseViewOpen = Boolean(courseViewOpen) && normalizedCourseId > 0;
+    if (
+      (!normalizedCourseId && courseViewOpen !== false)
+      || typeof window === "undefined"
+      || !window.parent
+      || window.parent === window
+    ) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:planning-course-context",
+        detail: {
+          courseId: normalizedCourseId,
+          courseViewOpen: normalizedCourseViewOpen,
+          source: "iframe"
+        }
+      }, window.location.origin);
+    } catch (_error) {
+
     }
   }
 
@@ -8723,6 +9126,25 @@ class PlanningApp {
     this.performanceIndex = next;
   }
 
+  replaceSeatplanIndex(seatplanCourseIds = []) {
+    this.seatplanCourseIds = new Set(
+      (Array.isArray(seatplanCourseIds) ? seatplanCourseIds : [])
+        .map((courseId) => Number(courseId) || 0)
+        .filter((courseId) => courseId > 0)
+    );
+  }
+
+  mergeSeatplanIndex(seatplanCourseIds = [], requestedCourseIds = []) {
+    const next = new Set(this.seatplanCourseIds || []);
+    (Array.isArray(requestedCourseIds) ? requestedCourseIds : [])
+      .forEach((courseId) => next.delete(Number(courseId) || 0));
+    (Array.isArray(seatplanCourseIds) ? seatplanCourseIds : [])
+      .map((courseId) => Number(courseId) || 0)
+      .filter((courseId) => courseId > 0)
+      .forEach((courseId) => next.add(courseId));
+    this.seatplanCourseIds = next;
+  }
+
   getPerformanceTitleSetForCourse(courseId) {
     const courseKey = Number(courseId || 0);
     if (!courseKey) {
@@ -8761,6 +9183,7 @@ class PlanningApp {
             result.data?.assessmentIndex,
             result.data?.assessmentIndexResolvedCourseIds || missingCourseIds
           );
+          this.mergeSeatplanIndex(result.data?.seatplanCourseIds, missingCourseIds);
         }
         if (
           this.pendingWeekPerformanceIndexLoadKey === requestKey
@@ -8805,7 +9228,7 @@ class PlanningApp {
       }
       lookup.set(courseId, titles);
     });
-    if (missingCourseIds.length > 0) {
+    if (missingCourseIds.length > 0 && !this.isGradeVaultLocked()) {
       this.ensureWeekPerformanceIndexLoaded(missingCourseIds, this.weekStartIso);
     }
     return lookup;
@@ -8817,18 +9240,57 @@ class PlanningApp {
     if (!this.lessonSupportsPerformance(lesson) || !courseId || !lessonDate) {
       return null;
     }
-    const hasExistingAssessment = this.hasExistingPerformanceForLesson(
+    const locked = this.isGradeVaultLocked();
+    const hasExistingAssessment = !locked && this.hasExistingPerformanceForLesson(
       courseId,
       lessonDate,
       assessmentLookup
     );
+    const status = locked
+      ? "locked"
+      : (hasExistingAssessment ? "has-assessment" : "missing-assessment");
+    const label = locked
+      ? ARCHIVE_LOCKED_TOOLTIP
+      : (hasExistingAssessment ? "Einzelleistung in der Noten-Eingabe öffnen" : "Noten-Eingabe öffnen");
     return {
       hasExistingAssessment,
-      assessmentResolved: true,
+      assessmentResolved: !locked,
+      status,
+      symbol: PERFORMANCE_STATUS_SYMBOLS[status],
+      statusClass: PERFORMANCE_STATUS_CLASSES[status],
       triggerMode: hasExistingAssessment ? "assessment" : "entry",
-      ariaLabel: hasExistingAssessment ? "Einzelleistung in der Noten-Eingabe öffnen" : "Noten-Eingabe öffnen",
-      title: hasExistingAssessment ? "Einzelleistung in der Noten-Eingabe öffnen" : "Noten-Eingabe öffnen"
+      ariaLabel: label,
+      title: label
     };
+  }
+
+  getSeatplanNavigationStateForLesson(lesson, assessmentLookup = null) {
+    const courseId = Number(lesson?.courseId || 0);
+    if (!courseId) {
+      return null;
+    }
+    const describe = (status, symbol, hint) => ({
+      status,
+      symbol,
+      statusClass: SEATPLAN_STATUS_CLASSES[status] || "",
+      ariaLabel: hint ? `${SEATPLAN_TRIGGER_LABEL} – ${hint}` : SEATPLAN_TRIGGER_LABEL,
+      title: hint ? `${SEATPLAN_TRIGGER_LABEL} – ${hint}` : SEATPLAN_TRIGGER_LABEL
+    });
+    if (this.isGradeVaultLocked()) {
+      return describe("locked", PERFORMANCE_STATUS_SYMBOLS.locked, ARCHIVE_LOCKED_TOOLTIP);
+    }
+    if (!(this.getPerformanceTitleSetForCourse(courseId) instanceof Set)) {
+      return describe("unresolved", "", "");
+    }
+    if (!this.seatplanCourseIds.has(courseId)) {
+      return describe("no-plan", SEATPLAN_STATUS_SYMBOL_NO_PLAN, "für diesen Kurs ist noch kein Sitzplan gespeichert");
+    }
+    const hasExistingAssessment = Boolean(
+      this.getPerformanceNavigationStateForLesson(lesson, assessmentLookup)?.hasExistingAssessment
+    );
+    return hasExistingAssessment
+      ? describe("has-assessment", PERFORMANCE_STATUS_SYMBOLS["has-assessment"], "Einzelleistung für diese Stunde vorhanden")
+      : describe("missing-assessment", PERFORMANCE_STATUS_SYMBOLS["missing-assessment"], "noch keine Einzelleistung für diese Stunde");
   }
 
   async requestPerformanceNavigation(lessonId, triggerMode = "entry") {
@@ -9233,6 +9695,9 @@ class PlanningApp {
       (this.settingsDraft && this.settingsDraft.showHiddenSidebarCourses)
       || false
     );
+    const draftHalfYearMarkers = this.settingsDraft
+      ? Boolean(this.settingsDraft.showHalfYearBoundaryMarkers)
+      : this.isHalfYearBoundaryMarkerEnabled();
     if (this.refs.hoursPerDay) {
       this.refs.hoursPerDay.value = String(draftHours);
     }
@@ -9242,6 +9707,9 @@ class PlanningApp {
     }
     if (this.refs.showHiddenSidebarCourses) {
       this.refs.showHiddenSidebarCourses.checked = draftShowHidden;
+    }
+    if (this.refs.showHalfYearBoundaryMarkers) {
+      this.refs.showHalfYearBoundaryMarkers.checked = draftHalfYearMarkers;
     }
     this.refs.themePreferenceInputs.forEach((input) => {
       input.checked = input.value === this.themePreference;
@@ -9314,7 +9782,44 @@ class PlanningApp {
     this.renderRequiredHolidayHint();
     this.renderFreeRangeList();
     this.renderSpecialDayList();
+    this.renderQualificationPhaseEndDateList();
     this.updateSettingsActionButtons();
+  }
+
+  renderQualificationPhaseEndDateList() {
+    const list = this.refs.qualificationPhaseEndDateList;
+    if (!list) {
+      return;
+    }
+    const year = this.activeSchoolYear;
+    const canEdit = Boolean(year);
+    list.innerHTML = "";
+
+    for (const rule of QUALIFICATION_PHASE_END_DATE_RULES) {
+      const li = document.createElement("li");
+      li.dataset.clickable = canEdit ? "1" : "0";
+      li.dataset.qualificationPhaseRuleKey = rule.key;
+      if (canEdit) {
+        li.title = "Linksklick: Datum bearbeiten";
+      }
+      const main = document.createElement("div");
+      main.className = "main";
+      const title = document.createElement("div");
+      title.textContent = `${rule.label} (`;
+      const sourceLink = document.createElement("a");
+      sourceLink.href = rule.sourceHref;
+      sourceLink.target = "_blank";
+      sourceLink.rel = "noopener noreferrer";
+      sourceLink.textContent = rule.sourceLabel;
+      title.append(sourceLink, document.createTextNode(")"));
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      const value = year ? String(year[rule.key] || "") : "";
+      meta.textContent = value ? formatDate(value) : "Nicht gesetzt";
+      main.append(title, meta);
+      li.append(main);
+      list.append(li);
+    }
   }
 
   getMissingRequiredHolidays(schoolYearId) {
@@ -9745,6 +10250,8 @@ class PlanningApp {
     if (block.allCanceled && chip instanceof HTMLButtonElement) chip.disabled = true;
 
     const seatplanVisible = block.selectable && !block.isNoLesson && !block.isNoGrades && block.courseId > 0;
+    const seatplanNavigationState = seatplanVisible
+      ? this.getSeatplanNavigationStateForLesson(block.topLesson, performanceLookup) : null;
     if (seatplanVisible) {
       chip.classList.add("has-seatplan-trigger");
       const trigger = document.createElement("span");
@@ -9752,9 +10259,10 @@ class PlanningApp {
       trigger.dataset.seatplanLessonId = String(block.firstLessonId);
       trigger.setAttribute("role", "button");
       trigger.setAttribute("tabindex", "0");
-      trigger.setAttribute("aria-label", "Kurs-Sitzplan öffnen");
-      trigger.title = "Kurs-Sitzplan öffnen";
-      trigger.textContent = "🪑";
+      trigger.setAttribute("aria-label", seatplanNavigationState?.ariaLabel || SEATPLAN_TRIGGER_LABEL);
+      trigger.title = seatplanNavigationState?.title || SEATPLAN_TRIGGER_LABEL;
+      if (seatplanNavigationState?.statusClass) trigger.classList.add(seatplanNavigationState.statusClass);
+      trigger.textContent = seatplanNavigationState?.symbol || "";
       trigger.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault(); event.stopPropagation(); void this.requestSeatplanNavigation(block.firstLessonId);
@@ -9790,10 +10298,8 @@ class PlanningApp {
       trigger.setAttribute("tabindex", "0");
       trigger.setAttribute("aria-label", performanceNavigationState.ariaLabel);
       trigger.title = performanceNavigationState.title;
-      if (!performanceNavigationState.assessmentResolved) trigger.classList.add("is-unresolved");
-      else if (performanceNavigationState.hasExistingAssessment) trigger.classList.add("has-existing-assessment");
-      else trigger.classList.add("is-missing-assessment");
-      trigger.textContent = performanceNavigationState.assessmentResolved ? (performanceNavigationState.hasExistingAssessment ? "✓" : "?") : "";
+      trigger.classList.add(performanceNavigationState.statusClass);
+      trigger.textContent = performanceNavigationState.symbol;
       trigger.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault(); event.stopPropagation(); void this.requestPerformanceNavigation(block.firstLessonId, performanceNavigationState.triggerMode);
@@ -9899,9 +10405,25 @@ class PlanningApp {
     const headerRow = document.createElement("tr");
     headerRow.append(document.createElement("th"));
     const todayIso = toIsoDate(new Date());
+    const showHalfYearBoundaryMarkers = this.isHalfYearBoundaryMarkerEnabled();
+    const halfYearBreak = showHalfYearBoundaryMarkers ? this._getHalfYearBreakInfo() : null;
+    const qualificationPhaseBoundaryMarkers = showHalfYearBoundaryMarkers
+      ? this._getQualificationPhaseBoundaryMarkers()
+      : [];
     days.forEach((dayIso, index) => {
       const th = document.createElement("th"); th.className = "day-head";
       if (dayIso === todayIso) th.classList.add("today");
+      const boundaryLabels = [];
+      if (halfYearBreak && dayIso === halfYearBreak.lastSchoolDayIso) {
+        boundaryLabels.push(HALF_YEAR_END_WEEK_TOOLTIP);
+      }
+      qualificationPhaseBoundaryMarkers
+        .filter((marker) => marker.dateIso === dayIso)
+        .forEach((marker) => boundaryLabels.push(marker.label));
+      if (boundaryLabels.length) {
+        th.classList.add("half-year-end-head");
+        th.dataset.appTooltip = `${boundaryLabels.join(" · ")} (${formatDate(dayIso)})`;
+      }
       const dayOff = dayOffByIso.get(dayIso);
       if (dayOff) th.classList.add("day-off-head", dayOff.kind === "holiday" ? "holiday" : "special");
       th.innerHTML = `<span class="day-name">${DAYS_SHORT[index]}</span><span class="day-date">${formatDate(dayIso).slice(0, 6)}</span>`;
@@ -10626,7 +11148,19 @@ class PlanningApp {
 
     const tbody = document.createElement("tbody");
     const todayIso = toIsoDate(new Date());
+    const showHalfYearBoundaryMarkers = this.isHalfYearBoundaryMarkerEnabled();
+    const halfYearBreak = showHalfYearBoundaryMarkers ? this._getHalfYearBreakInfo() : null;
+    const qualificationPhaseBoundaryMarkers = showHalfYearBoundaryMarkers
+      ? this._getQualificationPhaseBoundaryMarkers()
+      : [];
+    const halfYearBoundaryMarker = this._getCourseHalfYearBoundaryMarker(
+      course,
+      halfYearBreak,
+      qualificationPhaseBoundaryMarkers
+    );
     let nextLessonRow = null;
+    let halfYearBoundaryRow = null;
+    let lastRow = null;
 
     for (const block of blocks) {
       const topLesson = block[0];
@@ -10728,16 +11262,12 @@ class PlanningApp {
         const performanceButton = document.createElement("button");
         performanceButton.type = "button";
         performanceButton.className = "course-performance-entry-trigger";
-        if (performanceNavigationState.hasExistingAssessment) {
-          performanceButton.classList.add("has-existing-assessment");
-        } else {
-          performanceButton.classList.add("is-missing-assessment");
-        }
+        performanceButton.classList.add(performanceNavigationState.statusClass);
         performanceButton.dataset.performanceEntryLessonId = String(firstLessonId);
         performanceButton.dataset.performanceEntryMode = performanceNavigationState.triggerMode;
         performanceButton.setAttribute("aria-label", performanceNavigationState.ariaLabel);
         performanceButton.title = performanceNavigationState.title;
-        performanceButton.textContent = performanceNavigationState.hasExistingAssessment ? "✓" : "?";
+        performanceButton.textContent = performanceNavigationState.symbol;
         performanceCell.append(performanceButton);
       }
       topicCell.append(contentWrap);
@@ -10765,6 +11295,19 @@ class PlanningApp {
       }
       tr.append(notesCell, topicCell);
       tbody.append(tr);
+      lastRow = tr;
+      if (halfYearBoundaryMarker && (
+        halfYearBoundaryMarker.includesBoundaryDate
+          ? topLesson.lessonDate <= halfYearBoundaryMarker.dateIso
+          : topLesson.lessonDate < halfYearBoundaryMarker.dateIso
+      )) {
+        halfYearBoundaryRow = tr;
+      }
+    }
+
+    if (halfYearBoundaryRow && halfYearBoundaryRow !== lastRow) {
+      halfYearBoundaryRow.classList.add("half-year-boundary-row");
+      halfYearBoundaryRow.dataset.appTooltip = halfYearBoundaryMarker.tooltip;
     }
 
     this.refs.courseTable.append(thead, tbody);

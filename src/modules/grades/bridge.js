@@ -217,6 +217,7 @@
 (() => {
   const NAVIGATE_EVENT = 'classroom:grades-navigate';
   const GRADE_VAULT_ACTIVITY_EVENT = 'classroom:grades-grade-vault-activity';
+  const COURSE_CONTEXT_EVENT = 'classroom:grades-course-context';
   const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:grades-name-learning-data-result';
   const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:grades-name-learning-review-result';
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
@@ -263,6 +264,12 @@
   window.addEventListener(GRADE_VAULT_ACTIVITY_EVENT, () => {
     if (!window.parent || window.parent === window) return;
     window.parent.postMessage({ type: GRADE_VAULT_ACTIVITY_EVENT, detail: {} }, TRUSTED_PARENT_ORIGIN);
+  });
+
+  window.addEventListener(COURSE_CONTEXT_EVENT, (event) => {
+    if (!window.parent || window.parent === window) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    window.parent.postMessage({ type: COURSE_CONTEXT_EVENT, detail }, TRUSTED_PARENT_ORIGIN);
   });
 
   window.addEventListener('classroom:grades-ready', flushNavigations);

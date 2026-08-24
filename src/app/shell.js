@@ -118,6 +118,7 @@ export function createShellController({
   onResolvePlanningTabLeave,
   onSidebarWidthChange,
   onActiveTabChange,
+  onTabActivating,
 } = {}) {
   const ensureTabInitialized = typeof onEnsureTabInitialized === 'function'
     ? onEnsureTabInitialized
@@ -151,6 +152,9 @@ export function createShellController({
     : (() => {});
   const notifyActiveTabChange = typeof onActiveTabChange === 'function'
     ? onActiveTabChange
+    : (() => {});
+  const notifyTabActivating = typeof onTabActivating === 'function'
+    ? onTabActivating
     : (() => {});
   let unsavedTabConfirmPromise = null;
   let tabIndicatorFrame = 0;
@@ -1390,6 +1394,9 @@ export function createShellController({
     if (shouldPromptGradeVaultUnlockOnGradesNavigation(nextTab)) {
       requestGradeVault({ action: 'unlock', overlay: true });
     }
+    if (nextTab !== state.activeTab) {
+      notifyTabActivating(nextTab, state.activeTab);
+    }
     if (options.skipAnimation) {
       state.pendingTabTransitionTarget = null;
       state.activeTab = nextTab;
@@ -1459,7 +1466,11 @@ export function createShellController({
   }
 
   function setActiveTabImmediate(tab, options = {}) {
-    state.activeTab = normalizeTab(tab);
+    const nextTab = normalizeTab(tab);
+    if (nextTab !== state.activeTab) {
+      notifyTabActivating(nextTab, state.activeTab);
+    }
+    state.activeTab = nextTab;
     ensureTabInitialized(state.activeTab);
     renderTabs();
     if (options.showTutorialHint) {

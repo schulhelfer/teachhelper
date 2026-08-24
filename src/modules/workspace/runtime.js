@@ -54,6 +54,7 @@ const PLANNING_SETTING_KEYS = new Set([
   'hoursPerDay',
   'lessonTimes',
   'showHiddenSidebarCourses',
+  'showHalfYearBoundaryMarkers',
   'backupEnabled',
   'backupIntervalDays',
 ]);
@@ -108,6 +109,15 @@ function gradeStateContainsCourseData(state, courseId) {
   ].some((key) => (
     Array.isArray(state[key])
     && state[key].some((entry) => Number(entry?.courseId) === id)
+  ));
+}
+
+function courseStateHasSeatPlan(state) {
+  return (Array.isArray(state?.gradeSeatPlans) ? state.gradeSeatPlans : []).some((row) => (
+    row
+    && row.plan
+    && typeof row.plan === 'object'
+    && (!Array.isArray(row.plan.activeSeats) || row.plan.activeSeats.length > 0)
   ));
 }
 
@@ -171,6 +181,7 @@ function buildStartupShell(publicState, configured, gradeEntryCount = null) {
       schoolYearId: Number(course.schoolYearId) || 0,
       name: String(course.name || ''),
       subject: String(course.subject || ''),
+      gradeLevel: Number.isInteger(Number(course.gradeLevel)) ? Number(course.gradeLevel) : null,
       color: String(course.color || ''),
       noLesson: Boolean(course.noLesson),
       noGrades: Boolean(course.noGrades),
@@ -299,6 +310,7 @@ export class WorkspaceRuntime {
     this.segmentTexts = new Map();
     this.courseCache = new Map();
     this.performanceIndexCache = new Map();
+    this.seatplanPresenceCache = new Map();
     this.dirtyCourseIds = new Set();
     this.courseRevisions = new Map();
     this.loadedCourseId = null;
@@ -590,6 +602,7 @@ export class WorkspaceRuntime {
         publicState: this.store.exportPublicStateSnapshot(),
         assessmentIndex: this.buildPerformanceIndex([...this.performanceIndexCache.keys()]),
         assessmentIndexResolvedCourseIds: [...this.performanceIndexCache.keys()],
+        seatplanCourseIds: this.buildSeatplanCourseIds([...this.performanceIndexCache.keys()]),
       };
     }
     if (normalized === 'grades') {
@@ -815,6 +828,7 @@ export class WorkspaceRuntime {
 
     this.courseCache.clear();
     this.performanceIndexCache.clear();
+    this.seatplanPresenceCache.clear();
     this.courseRevisions.clear();
     this.dirtyCourseIds.clear();
     this.store.replaceGradeVaultState(emptyGradeState(this.store));
@@ -1269,6 +1283,17 @@ export class WorkspaceRuntime {
       title: String(assessment.title || ''),
     }));
     this.performanceIndexCache.set(id, items);
+    this.seatplanPresenceCache.set(id, courseStateHasSeatPlan(state));
+  }
+
+  buildSeatplanCourseIds(courseIds = []) {
+    const requested = new Set((Array.isArray(courseIds) ? courseIds : []).map(Number));
+    const result = [];
+    for (const [courseId, hasPlan] of this.seatplanPresenceCache.entries()) {
+      if (requested.size && !requested.has(courseId)) continue;
+      if (hasPlan) result.push(courseId);
+    }
+    return result;
   }
 
   async resolvePerformanceIndex(courseIds) {
@@ -1387,6 +1412,7 @@ export class WorkspaceRuntime {
     this.segmentTexts = new Map(parsed.gradeCourseSegments.map((segment) => [Number(segment.courseId), String(segment.text || '')]));
     this.courseCache.clear();
     this.performanceIndexCache.clear();
+    this.seatplanPresenceCache.clear();
     this.dirtyCourseIds.clear();
     this.loadedCourseId = null;
     this.store.replaceGradeVaultState(emptyGradeState(this.store));
@@ -1873,10 +1899,16 @@ export class WorkspaceRuntime {
     const courseId = Number(payload.courseId) || 0;
     if (command === WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX) {
       const assessmentIndex = await this.resolvePerformanceIndex(payload.courseIds);
-      return { changed: false, scope: 'planning', assessmentIndex, assessmentIndexResolvedCourseIds: payload.courseIds || [] };
+      return {
+        changed: false,
+        scope: 'planning',
+        assessmentIndex,
+        assessmentIndexResolvedCourseIds: payload.courseIds || [],
+        seatplanCourseIds: this.buildSeatplanCourseIds(payload.courseIds),
+      };
     }
     if (command === WORKSPACE_COMMAND_CREATE_COURSE) {
-      const id = this.store.createCourse(schoolYearId, payload.name, payload.color, payload.noLesson, payload.hiddenInSidebar, payload.subject);
+      const id = this.store.createCourse(schoolYearId, payload.name, payload.color, payload.noLesson, payload.hiddenInSidebar, payload.subject, payload.gradeLevel);
       if (!id) throw new Error('Kursname bereits vorhanden oder Kursdaten ungültig.');
       return { changed: true, scope: 'planning', courseId: id };
     }
@@ -1885,7 +1917,7 @@ export class WorkspaceRuntime {
       if (!current) throw new Error('Kurs nicht gefunden.');
       const fields = payload.fields && typeof payload.fields === 'object' ? payload.fields : payload;
       const value = (name, fallback) => Object.prototype.hasOwnProperty.call(fields, name) ? fields[name] : fallback;
-      if (!this.store.updateCourse(schoolYearId, courseId, value('name', current.name), value('color', current.color), value('noLesson', current.noLesson), value('hiddenInSidebar', current.hiddenInSidebar), value('subject', current.subject))) {
+      if (!this.store.updateCourse(schoolYearId, courseId, value('name', current.name), value('color', current.color), value('noLesson', current.noLesson), value('hiddenInSidebar', current.hiddenInSidebar), value('subject', current.subject), value('gradeLevel', current.gradeLevel))) {
         throw new Error('Kurs konnte nicht aktualisiert werden.');
       }
       if (Object.prototype.hasOwnProperty.call(fields, 'noGrades')) {
@@ -1904,6 +1936,7 @@ export class WorkspaceRuntime {
       this.segmentTexts.delete(courseId);
       this.courseCache.delete(courseId);
       this.performanceIndexCache.delete(courseId);
+      this.seatplanPresenceCache.delete(courseId);
       this.dirtyCourseIds.delete(courseId);
       if (this.loadedCourseId === courseId) this.loadedCourseId = null;
       return { changed: true, scope: 'planning' };

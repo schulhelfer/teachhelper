@@ -2,12 +2,13 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [index, app, seatplanApp, seatplanHtml, runtime] = await Promise.all([
+const [index, app, seatplanApp, seatplanHtml, runtime, shell] = await Promise.all([
   readFile(new URL('../src/modules/grades/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
 ]);
 
 test('course seatplan navigation keeps the entry route while crossing the grades frame boundary', () => {
@@ -21,6 +22,16 @@ test('a locked course seatplan request shows the vault dialog as an overlay befo
   const navigation = app.match(/\n  async navigateGrades\(detail = null\) \{([\s\S]*?)\n  notifyParentGradesViewRequest\(/)?.[1] || '';
   assert.match(navigation, /navigation\.action === "seatplan"[\s\S]*?notifyParentGradeVaultOverlay\(true\)/);
   assert.match(navigation, /queueGradeVaultContinuation\(\{ type: "grades-navigation", detail: navigation \}\)/);
+});
+
+test('opening a course without a saved plan loads its roster into the seatplan module', () => {
+  const open = app.match(/\n  dispatchCourseSeatplanOpen\(courseId, lesson = null\) \{([\s\S]*?)\n  async activateGradeSeatplanTrigger\(/)?.[1] || '';
+
+  assert.match(open, /const plan = this\.store\.getGradeSeatPlan\(courseKey\);/);
+  assert.match(open, /const students = this\.buildCourseSeatplanStudents\(courseKey\);/);
+  assert.match(open, /courseId: courseKey,[\s\S]*?students,[\s\S]*?plan,/);
+  assert.match(shell, /bridgeController\?\.sendCourseSeatplanContext\(detail\);\s+setActiveTab\(TAB_SEATPLAN\);/);
+  assert.match(seatplanApp, /applyCoursePlanData\(detail\.plan && typeof detail\.plan === 'object' \? detail\.plan : null, state\.courseContext\.students\);/);
 });
 
 test('course-imported seatplans can safely switch courses without unlocking lesson-bound grade entry', () => {
