@@ -100,6 +100,9 @@
             preferencesGuessGender: document.getElementById('preferences-guess-gender'),
             preferencesResetAll: document.getElementById('preferences-reset-all'),
             preferencesResetGender: document.getElementById('preferences-reset-gender'),
+            preferencesGenderMode: document.querySelectorAll('input[name="gender-mode"]'),
+            preferencesGenderMixWeight: document.getElementById('preferences-gender-mix-weight'),
+            preferencesGenderMixWeightOutput: document.getElementById('preferences-gender-mix-weight-output'),
             preferencesGuessHint: document.getElementById('preferences-guess-hint'),
             preferencesCancel: document.getElementById('preferences-cancel'),
             criteriaDialog: document.getElementById('criteria-dialog'),
@@ -191,137 +194,7 @@
           els.tutorialButton?.addEventListener('click', notifyParentTutorialStartRequest);
           const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
           const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
-          const MALE_GIVEN_NAMES = [
-            'aaron', 'abdullah', 'abraham', 'achim', 'adalbert', 'adalberto', 'adam', 'adamo', 'addison', 'adem', 'adiljan', 'adolf', 'adrian', 'adrianus', 'ahmad', 'ahmet',
-            'aiden', 'aidin', 'aiko', 'aiman', 'airon', 'ajdin', 'akim', 'akon', 'alain', 'alan', 'albrecht', 'aldo', 'aleks', 'aleksandar', 'aleksei', 'alessandrino',
-            'alexander', 'alexej', 'alfons', 'alfredo', 'ali', 'alihan', 'aljoscha', 'allan', 'aloysius', 'alper', 'alperen', 'alwin', 'amadeus', 'amar', 'ambrosius',
-            'aminullah', 'amir', 'amirhan', 'anas', 'anastas', 'anatol', 'andreas', 'anil', 'ankur', 'anselm', 'anthony', 'antoine', 'anton', 'antonin', 'antonio',
-            'antonios', 'antonius', 'anuar', 'arash', 'arcadius', 'archibald', 'arda', 'ares', 'arif', 'aristide', 'aristoteles', 'arjen', 'arkin', 'armand', 'armando',
-            'arne', 'arnold', 'arsen', 'arslan', 'artem', 'artemis', 'arturo', 'asaf', 'aslan', 'atalay', 'athanasios', 'atik', 'atlas', 'aubin', 'august', 'augustin',
-            'aurel', 'aurelio', 'aurelius', 'austin', 'ayaz', 'aydin', 'ayhan', 'aykut', 'ayman', 'azad', 'aziz', 'baltasar', 'baran', 'barnabas', 'barry', 'bart',
-            'bartholomaeus', 'batu', 'belaid', 'belmin', 'ben', 'benedikt', 'benicio', 'benjamin', 'bennet', 'bennett', 'benni', 'benno', 'benny', 'bent', 'berat', 'bernard',
-            'bernd', 'bernhard', 'bertram', 'bilal', 'bjarne', 'bjorn', 'bladimir', 'bodo', 'bogdan', 'bohdan', 'boris', 'borys', 'brad', 'brandon', 'brayan', 'brendan',
-            'brent', 'brian', 'brice', 'broderick', 'brook', 'bruno', 'burak', 'burhan', 'caglar', 'calvin', 'cameron', 'can', 'carlo', 'carlson', 'carmelo', 'casimir',
-            'caspar', 'cassian', 'cassius', 'celal', 'celestin', 'celio', 'cem', 'cesar', 'cesare', 'chadi', 'charles', 'chris', 'christian', 'christos', 'cillian', 'claas',
-            'claude', 'claudio', 'clement', 'cliff', 'clifford', 'colin', 'conner', 'conradin', 'constantin', 'corbin', 'cornelius', 'cyrill', 'cyrus', 'dag', 'dalen',
-            'damian', 'damiano', 'daniel', 'danyal', 'danylo', 'dario', 'dariusz', 'darwin', 'david', 'dawid', 'dean', 'demian', 'demianus', 'demir', 'dennis', 'denzel',
-            'dervis', 'detlef', 'devin', 'diego', 'dieter', 'dieter-werner', 'dimitri', 'dimitrios', 'dino', 'dirk', 'diyar', 'dmytro', 'dominik', 'dominique', 'don',
-            'donald', 'dorian', 'douglas', 'dragomir', 'dragos', 'drew', 'duarte', 'duke', 'dusan', 'dyllan', 'eberhard', 'eberhard-joachim', 'eddy', 'eden', 'edgar',
-            'edison', 'edmond', 'edmund', 'eduard', 'edvin', 'efrain', 'ege', 'ehsan', 'eike', 'einar', 'ekrem', 'elam', 'elchanan', 'eli', 'elian', 'eliano', 'elias',
-            'eliasz', 'eligius', 'elim', 'elio', 'eliseo', 'elisha', 'eliud', 'elvis', 'elyas', 'emad', 'emeka', 'emil', 'emilian', 'emiliano', 'emilio', 'emir', 'emircan',
-            'emirhan', 'emrah', 'emrecan', 'ender', 'engin', 'enno', 'enrico', 'enver', 'ephraim', 'eray', 'ercan', 'erdem', 'erdogan', 'eren', 'erhan', 'eric', 'erich',
-            'erik', 'erkan', 'erkut', 'ermal', 'ernest', 'ernesto', 'ernst', 'ersin', 'ertan', 'ervin', 'esat', 'esteban', 'etienne', 'eugen', 'eugene', 'eustachius', 'evan',
-            'evren', 'ewald', 'eymen', 'eyup', 'ezra', 'fabian', 'fabio', 'fabrice', 'fabrizio', 'fadi', 'faik', 'falk', 'farid', 'faris', 'fathi', 'fausto', 'fedor',
-            'feisal', 'felix', 'ferdinand', 'ferhat', 'ferit', 'ferman', 'fermin', 'fernando', 'feroz', 'ferris', 'fery', 'fiete', 'finley', 'finn', 'finnian', 'finnley',
-            'firas', 'firat', 'flavio', 'florian', 'florin', 'floris', 'fouad', 'francesco', 'franco', 'franklin', 'franz', 'fred', 'frederik', 'fredo', 'freidrich',
-            'friedrich', 'fritz', 'fulvio', 'furkan', 'fyn', 'fynn', 'gael', 'galo', 'gareth', 'gaspar', 'gaston', 'gennaro', 'geoff', 'geoffrey', 'georg', 'georgios',
-            'gerd', 'gerhard', 'gero', 'gian', 'gianni', 'gil', 'gino', 'gioele', 'giorgio', 'giovanni', 'gislain', 'giuliano', 'giuseppe', 'goran', 'gordon', 'gottfried',
-            'gregor', 'gregorio', 'guenter', 'guenther', 'guy', 'habib', 'hadi', 'hadrian', 'hagen', 'haidar', 'haitham', 'hakan', 'halil', 'halit', 'hamid', 'hamza',
-            'hannes', 'hanno', 'hans-joachim', 'harald', 'harris', 'harry', 'hartmut', 'hasan', 'hashem', 'hashim', 'hashir', 'hassan', 'haydar', 'heiko', 'heinrich',
-            'heinz', 'helge', 'helmut', 'henning', 'henry', 'herbert', 'hermann', 'hilmar', 'hinrich', 'hisham', 'hjalmar', 'hollis', 'horst', 'horst-dieter', 'hugo',
-            'huseyin', 'ian', 'ibrahim', 'idris', 'ignacio', 'ignaz', 'ihsan', 'ilya', 'ilyas', 'immanuel', 'indalecio', 'ingmar', 'inigo', 'ioannis', 'irakli', 'irvin',
-            'isa', 'isaac', 'isaak', 'isaias', 'isidor', 'israel', 'issam', 'ivica', 'ivo', 'iyar', 'jack', 'jackson', 'jacob', 'jacques', 'jafar', 'jaime', 'jair', 'jake',
-            'jakob', 'jalil', 'jamal', 'james', 'jamie', 'jamil', 'jan', 'janek', 'janko', 'jannes', 'jannik', 'jared', 'jarik', 'jarno', 'jaron', 'jaroslav', 'jascha',
-            'jason', 'jasper', 'javier', 'jay', 'jayce', 'jayden', 'jaydon', 'jean', 'jeff', 'jeffrey', 'jem', 'jenno', 'jens', 'jeremias', 'jerome', 'jerry', 'jesper',
-            'jibril', 'jim', 'jimmy', 'joachim', 'joao', 'job', 'jochem', 'jody', 'joe', 'joel', 'joerg', 'joey', 'johann', 'johannes', 'johny', 'jon', 'jona', 'jonah',
-            'jonas', 'jonathan', 'jonny', 'joran', 'jorge', 'joris', 'joscha', 'jose', 'josef', 'joseph', 'josh', 'joshua', 'josiah', 'jovan', 'juan', 'jubin', 'juergen',
-            'jules', 'julian', 'julio', 'julius', 'jupp', 'justin', 'justus', 'kadir', 'kain', 'kaleb', 'kalil', 'kalle', 'kamil', 'karim', 'karl', 'karl-otto', 'karlheinz',
-            'karlo', 'kasimir', 'kaspar', 'kassim', 'kazim', 'keano', 'keanu', 'keith', 'kellan', 'kelvin', 'ken', 'kenan', 'kenneth', 'kenny', 'kerem', 'kerim', 'kerimcan',
-            'kevin', 'khaled', 'khalil', 'kian', 'kiano', 'kieran', 'kiril', 'klaus', 'klaus-dieter', 'klemens', 'kofi', 'konrad', 'koray', 'korbinian', 'kosta', 'kris',
-            'krishna', 'kristian', 'kristof', 'kurt', 'kyan', 'kylo', 'kyrylo', 'laban', 'lambert', 'lamin', 'lars', 'larsen', 'lasse', 'laurentius', 'laurenz', 'lazar',
-            'lazaro', 'leander', 'leandro', 'leano', 'leart', 'leif', 'leith', 'leland', 'lemmy', 'len', 'lenn', 'lennard', 'lennart', 'lenni', 'lennox', 'lenny', 'leo',
-            'leoas', 'leon', 'leonard', 'leonardo', 'leonel', 'leopold', 'leroy', 'lev', 'levent', 'levi', 'levin', 'lewin', 'lewis', 'liam', 'lian', 'liban', 'linus', 'lio',
-            'lion', 'lionel', 'livio', 'lloyd', 'loic', 'lorcan', 'lorenzo', 'loris', 'lothar', 'louis', 'luc', 'luca', 'luca-noel', 'lucas', 'lucian', 'luciano', 'lucien',
-            'ludger', 'ludwig', 'luigi', 'luis', 'luk', 'luka', 'lukas', 'lukasz', 'luke', 'lupo', 'lyam', 'maarten', 'maceo', 'madsen', 'mahmood', 'mahmoud', 'maik',
-            'mailo', 'majeed', 'makin', 'maksym', 'malcolm', 'malek', 'maleo', 'malik', 'malte', 'manfred', 'manfred-otto', 'manolo', 'mansour', 'manuel', 'marc', 'marcello',
-            'marco', 'marcos', 'marek', 'marius', 'mariusz', 'mark', 'marko', 'marlo', 'marlon', 'marten', 'martin', 'martino', 'marvin', 'marwan', 'masoud', 'matej',
-            'mateo', 'matheo', 'mathias', 'mats', 'matteo', 'matthias', 'matthis', 'matti', 'maurice', 'max', 'maximilian', 'maximus', 'mayron', 'mehdi', 'mehmet', 'meir',
-            'melih', 'mendel', 'meric', 'mert', 'mertcan', 'mesut', 'metin', 'meysam', 'michail', 'mick', 'miguel', 'mihai', 'mihail', 'mika', 'mikael', 'mike', 'mikkel',
-            'milad', 'milan', 'milos', 'milosz', 'minh', 'mio', 'miran', 'mirza', 'mohammad', 'mohammed', 'mohsen', 'monty', 'mordechai', 'morgan', 'moritz', 'morris',
-            'moustafa', 'muhammed', 'munir', 'murad', 'musa', 'musaab', 'musab', 'mustafa', 'mustapha', 'mutlu', 'mykhailo', 'nabil', 'nadir', 'naim', 'naimullah', 'najib',
-            'nathan', 'nathanael', 'nathaniel', 'nazim', 'ndre', 'nebil', 'neil', 'nelson', 'neo', 'neoel', 'neven', 'nevio', 'nicanor', 'nick', 'nicklas', 'nico', 'niklas',
-            'niko', 'nikodem', 'nikola', 'nikolai', 'nikos', 'nil', 'nils', 'nima', 'nino', 'nizar', 'noah', 'noam', 'nobel', 'noel', 'norbert', 'nuh', 'numan', 'obrad',
-            'octavian', 'odysseus', 'oguz', 'okan', 'olaf', 'ole', 'oleg', 'oleksandr', 'oleksii', 'oliver', 'olivier', 'omar', 'omer', 'omerfaruk', 'onur', 'orhan',
-            'orlando', 'orlin', 'orun', 'oskar', 'osman', 'otmar', 'otto', 'otwin', 'ozan', 'ozgur', 'ozkan', 'pablo', 'pascal', 'patrick', 'paul', 'pavel', 'pedro', 'peer',
-            'pepe', 'per', 'percy', 'perikles', 'petar', 'peter', 'petros', 'petrus', 'philemon', 'philip', 'philipp', 'pierce', 'piero', 'pierre', 'piet', 'pietro', 'pim',
-            'piran', 'poldi', 'priam', 'prince', 'przemek', 'qasim', 'qays', 'quinten', 'quintus', 'rafael', 'ragip', 'rahim', 'rahman', 'raimund', 'rainer', 'ramazan',
-            'ramiro', 'ramon', 'raoul', 'rasmus', 'raul', 'ray', 'raymond', 'recep', 'redi', 'redwan', 'rehan', 'reidar', 'reinhard', 'reinhold', 'reino', 'rene', 'reza',
-            'richard', 'rida', 'ridvan', 'riku', 'rinaldo', 'ritchie', 'robin', 'rocco', 'rodrigo', 'roland', 'rolf', 'romanus', 'romario', 'rome', 'ron', 'ronald', 'ronny',
-            'rosario', 'rouven', 'ruben', 'rubin', 'rudi', 'rudiger', 'rudolf', 'ruediger', 'rufus', 'rune', 'rupert', 'ruslan', 'rustam', 'ryan', 'saban', 'sabri', 'sacha',
-            'sadi', 'sadik', 'safak', 'salah', 'salih', 'salim', 'salman', 'salvatore', 'sam', 'samed', 'samer', 'samet', 'samir', 'samuel', 'sandro', 'santo', 'sargon',
-            'sasa', 'sasha', 'saul', 'sean', 'sebastian', 'selcuk', 'selim', 'selman', 'serdar', 'serge', 'sergio', 'serkan', 'seth', 'seyed', 'shahin', 'shawn', 'shervin',
-            'shlomo', 'sid', 'siegfried', 'silas', 'silvan', 'silvano', 'simon', 'sinan', 'sinisa', 'sirin', 'siyar', 'skander', 'slavko', 'soeren', 'soheil', 'sokrates',
-            'solomon', 'sonny', 'soren', 'stan', 'stanislav', 'stanko', 'stephan', 'steve', 'stoyan', 'suleiman', 'suleyman', 'sven', 'svend', 'tadeo', 'tadeus', 'taha',
-            'tahir', 'tamas', 'tamer', 'tamino', 'tammo', 'tarik', 'tariq', 'tassilo', 'tayyip', 'teo', 'teoman', 'terence', 'terry', 'thabo', 'theo', 'theodor', 'thiago',
-            'thies', 'thilo', 'thor', 'thore', 'tian', 'tibor', 'tigran', 'till', 'tilman', 'tilmann', 'tilo', 'tim', 'timo', 'timon', 'timothy', 'titus', 'tjarco', 'tjerk',
-            'tobias', 'tobit', 'todor', 'togan', 'tolga', 'tom', 'tomas', 'tomer', 'tomke', 'toni', 'tor', 'tore', 'torsten', 'tristan', 'turanhan', 'tyler', 'tyron',
-            'tyrone', 'udo', 'ugur', 'ulises', 'ulrich', 'umar', 'umit', 'umut', 'urban', 'uriel', 'utku', 'vahit', 'valentin', 'vasil', 'vassili', 'vedat', 'veikko', 'veit',
-            'veli', 'verner', 'veselin', 'vincent', 'vincenzo', 'vithuran', 'vladimir', 'volkan', 'wade', 'walid', 'walter', 'waris', 'werner', 'wesley', 'wilfried',
-            'wilhelm', 'wilson', 'winston', 'wolf', 'wolfgang', 'wolfram', 'xaver', 'xavier', 'xeno', 'yahia', 'yaman', 'yannis', 'yaroslav', 'yaser', 'yasin', 'yassin',
-            'yavuz', 'yehor', 'yevhen', 'yigit', 'yonas', 'yorick', 'younan', 'yuri', 'yusuf', 'yves', 'zacharias', 'zack', 'zafer', 'zaki', 'zaman', 'zebulon', 'zeki',
-            'zeljko', 'zeno', 'zlatan', 'zsolt'
-          ];
-          const FEMALE_GIVEN_NAMES = [
-            'aaliyah', 'ada', 'adaline', 'adela', 'adele', 'adina', 'adriana', 'agatha', 'agnes', 'agnessa', 'aida', 'aileen', 'ailin', 'ailyn', 'aime', 'aimee', 'aimy',
-            'aina', 'aisha', 'aishah', 'aivie', 'ajla', 'akila', 'alba', 'aleena', 'alena', 'alessa', 'alessia', 'alexandra', 'alexia', 'alicia', 'alida', 'alina', 'aline',
-            'alisa', 'aliya', 'aliyah', 'aliza', 'alma', 'almina', 'almut', 'alva', 'amalia', 'amalie', 'amanda', 'amara', 'amari', 'amaya', 'amelia', 'amelie', 'amina',
-            'aminah', 'amira', 'amrei', 'amy', 'ana', 'anabel', 'anait', 'anastasia', 'anastasiya', 'anca', 'anda', 'andrea', 'anelia', 'anesa', 'anessa', 'anett', 'anette',
-            'anika', 'anissa', 'anita', 'anja', 'anka', 'ann', 'anna', 'annabell', 'annabella', 'annabelle', 'anne', 'annegret', 'annelie', 'annelies', 'anneliese',
-            'annelore', 'annemarie', 'annette', 'anni', 'annika', 'annina', 'anouk', 'anthea', 'antonia', 'antonina', 'anya', 'ariadne', 'ariana', 'ariella', 'arwen', 'arzu',
-            'asena', 'asia', 'astrid', 'asya', 'athina', 'aubrey', 'augusta', 'aurelia', 'aurora', 'ava', 'aya', 'ayda', 'ayla', 'ayleen', 'aylin', 'aysel', 'aysha', 'azra',
-            'bahar', 'barbara', 'basma', 'bea', 'beata', 'beate', 'beatrice', 'beatrix', 'belen', 'bente', 'beren', 'berfin', 'beril', 'berna', 'bernadette', 'beyza',
-            'bianca', 'bilge', 'birgit', 'birgitta', 'bistra', 'blanca', 'blanka', 'blume', 'bojana', 'bonnie', 'brenda', 'brianna', 'brigitte', 'brunhilde', 'carina',
-            'carla', 'carlotta', 'carmen', 'caro', 'carolin', 'carolina', 'caroline', 'cassandra', 'catalina', 'celeste', 'celina', 'cennet', 'charis', 'charlene',
-            'charlotte', 'chelsea', 'chiara', 'chloe', 'christa', 'christel', 'christina', 'christine', 'cindy', 'clara', 'clarissa', 'claudia', 'cleo', 'colette',
-            'constanze', 'corinna', 'cornelia', 'cynthia', 'dagmar', 'dalia', 'dalila', 'dana', 'daniela', 'danielle', 'daria', 'dariah', 'darlene', 'darya', 'defne',
-            'delia', 'dena', 'denise', 'desiree', 'diana', 'dilan', 'dilara', 'dina', 'dlimas', 'dora', 'dorina', 'dorothea', 'dorothee', 'dunya', 'ebba', 'ecrin', 'eda', 'eddie',
-            'edel', 'edina', 'editha', 'edna', 'efsun', 'eileen', 'ela', 'elaine', 'elana', 'elara', 'elda', 'elea', 'elena', 'eleonora', 'eleonore', 'elfriede', 'elif', 'elina',
-            'elinor', 'elisa', 'elisabeth', 'elise', 'eliska', 'eliza', 'ella', 'elle', 'ellen', 'elli', 'ellie', 'elmira', 'eloise', 'elona', 'elsa', 'else', 'elsie',
-            'elva', 'elvira', 'elysa', 'emelie', 'emely', 'emi', 'emilia', 'emilie', 'emily', 'emma', 'emma-marie', 'emma-sophie', 'emmi', 'emmie', 'emmy', 'enda', 'enissa',
-            'enna', 'enola', 'enya', 'erika', 'erin', 'esila', 'eslem', 'esma', 'esmeralda', 'esra', 'estelle', 'esther', 'eva', 'evangeline', 'evdokia', 'evelin', 'evelina',
-            'eveline', 'evelyn', 'evi', 'evita', 'fabienne', 'fadime', 'fanny', 'farah', 'farina', 'fatima', 'fatma', 'felicia', 'felicitas', 'felina', 'fenja', 'feride',
-            'fernanda', 'feyza', 'fidan', 'filiz', 'fina', 'finja', 'finnja', 'fiona', 'florence', 'florentina', 'florentine', 'florine', 'franca', 'frances', 'francesca',
-            'franzi', 'franziska', 'freya', 'frida', 'frieda', 'fritzi', 'gabi', 'gabriela', 'gabriella', 'gaia', 'gala', 'ganna', 'gaya', 'georgia', 'georgina', 'gerda',
-            'gertrud', 'gilda', 'ginevra', 'gisela', 'giulia', 'giuliana', 'gizem', 'gloria', 'gordana', 'grace', 'greta', 'grete', 'gretel', 'gudrun', 'gül', 'gülay', 'gülcan',
-            'gülsen', 'hadiya', 'hafsa', 'hajar', 'hale', 'halime', 'halina', 'hana', 'hande', 'hanna', 'hannah', 'hanne', 'hannelore', 'harmony', 'hatice', 'havva', 'hazal',
-            'hedda', 'heidi', 'heike', 'helena', 'helene', 'helga', 'henriette', 'hera', 'hermine', 'hiba', 'hilda', 'hildegard', 'hilke', 'hilma', 'hira', 'hivda', 'honey',
-            'ida', 'ilayda', 'ilayla', 'ilina', 'ilona', 'ilse', 'imke', 'ina', 'inaya', 'indira', 'ines', 'inessa', 'inga', 'inge', 'ingeborg', 'ingrid', 'iole', 'iona',
-            'irene', 'irina', 'iris', 'irma', 'irmgard', 'iryna', 'isabel', 'isabell', 'isabella', 'isabelle', 'isadora', 'isela', 'isla', 'ismene', 'isolde', 'ivana',
-            'ivanka', 'ivy', 'jainee', 'jana', 'janet', 'janette', 'janina', 'janna', 'janne', 'jara', 'jarmila', 'jasmin', 'jasmine', 'jella', 'jemima', 'jenna', 'jennifer',
-            'jenny', 'jessica', 'jette', 'jil', 'jill', 'joana', 'joanna', 'johanna', 'jola', 'jolina', 'josefa', 'josefine', 'josephine', 'joy', 'juana', 'judith', 'jule',
-            'julia', 'juliana', 'juliane', 'julie', 'julienne', 'julietta', 'julika', 'julina', 'juna', 'juno', 'jusra', 'justina', 'justine', 'kaja', 'kalina', 'kamila',
-            'karima', 'karin', 'karina', 'karla', 'karolina', 'karoline', 'kassandra', 'katarina', 'kateryna', 'katharina', 'kathrin', 'katja', 'katleen', 'katya', 'keira',
-            'kendra', 'kenia', 'kerstin', 'kiana', 'kiara', 'kira', 'kirsten', 'kitti', 'klara', 'kornelia', 'kristin', 'kristina', 'lana', 'lara', 'lara-sophie', 'larissa',
-            'laura', 'laureen', 'lauretta', 'laurine', 'lavinia', 'lea', 'lea-marie', 'lea-sophie', 'leah', 'leandra', 'leanne', 'leila', 'leilani', 'leina', 'lelia', 'lena',
-            'lena-marie', 'lena-sophie', 'leni', 'lenia', 'lenja', 'lenka', 'leona', 'leonie', 'leora', 'lerina', 'leticia', 'letizia', 'levke', 'leyla', 'lia', 'liana',
-            'liane', 'lianne', 'lidia', 'lidiya', 'lila', 'lili', 'lilia', 'lilian', 'liliana', 'lilith', 'lilja', 'lilli', 'lillian', 'lilly', 'lilly-marie', 'lina',
-            'lina-marie', 'lina-sophie', 'linda', 'line', 'linette', 'linh', 'linn', 'linnea', 'lisa', 'lisanne', 'liv', 'liva', 'livia', 'lola', 'lona', 'lore', 'lorelei',
-            'lorena', 'loretta', 'lori', 'lorraine', 'lotta', 'lotte', 'lotti', 'louisa', 'louise', 'louna', 'luana', 'lucia', 'luisa', 'luise', 'luna', 'luz', 'lya', 'lydia',
-            'lyla', 'lynn', 'madita', 'madlen', 'madlena', 'mady', 'maelle', 'magdalena', 'magdalene', 'maia', 'maike', 'maila', 'maja', 'malak', 'malea', 'malia', 'malina',
-            'malou', 'mara', 'maral', 'marcela', 'marceline', 'marcia', 'mareike', 'maren', 'marga', 'margarete', 'margarita', 'margit', 'margot', 'maria', 'mariah',
-            'mariam', 'marianne', 'marie', 'mariella', 'marielle', 'marietta', 'marika', 'marina', 'marion', 'marisa', 'marisol', 'marit', 'marla', 'marleen', 'marlen',
-            'marlene', 'marlie', 'marlies', 'marta', 'martha', 'marthe', 'martina', 'mary', 'masha', 'mathilda', 'mathilde', 'matilda', 'maura', 'maya', 'mayra', 'medina', 'melanie', 'melike',
-            'melina', 'melinda', 'meline', 'melis', 'melisa', 'melissa', 'meltem', 'mena', 'meral', 'meri', 'merle', 'meryem', 'mia', 'mia-marie', 'mia-sophie', 'michaela',
-            'michelle', 'mila', 'milena', 'mileva', 'milica', 'milla', 'mimi', 'mina', 'minna', 'minou', 'mira', 'miray', 'mirela', 'mirella', 'miriam', 'mirjam', 'mirka',
-            'mirna', 'mischa', 'mona', 'monika', 'monique', 'morena', 'morgane', 'mouna', 'muna', 'müjgan', 'nadiia', 'nadine', 'nadja', 'nadya', 'naila', 'naima', 'najla',
-            'nala', 'nana', 'nancy', 'nane', 'naomi', 'nara', 'narin', 'nasrin', 'natalia', 'natalie', 'nataliia', 'natascha', 'nathalie', 'nazli', 'nea', 'neela', 'neele',
-            'nele', 'nelli', 'nellie', 'nelly', 'nene', 'neri', 'neslihan', 'nessa', 'nestan', 'neva', 'nevena', 'nevin', 'nia', 'nida', 'nienke', 'nika', 'nikole', 'nikolina',
-            'nila', 'nilay', 'nilüfer', 'nina', 'nisa', 'nisha', 'noa', 'noemi', 'nola', 'noor', 'nora', 'nova', 'nura', 'odette', 'oksana', 'olena', 'olga', 'olivia',
-            'olympia', 'onika', 'ornella', 'oya', 'ozge', 'paige', 'paloma', 'pamela', 'paola', 'paula', 'paulina', 'pauline', 'peggy', 'perla', 'petra', 'philine',
-            'philippa', 'pia', 'pinar', 'polina', 'prisca', 'prisila', 'püschel', 'rabia', 'rachael', 'rafaela', 'rahma', 'raissa', 'ramona', 'rana', 'rania', 'raphaela',
-            'raquel', 'rebecca', 'regina', 'regina-elisabeth', 'renata', 'renate', 'renee', 'resmiye', 'ria', 'rianna', 'rieke', 'rina', 'rita', 'roberta', 'romy', 'rosa',
-            'rosalie', 'rosalind', 'rosanna', 'rosaria', 'rosemarie', 'roswitha', 'roxana', 'roxanne', 'rüya', 'sabine', 'sabrina', 'sadaf', 'safia', 'safiya', 'sahar',
-            'sahra', 'salma', 'salome', 'salomea', 'samira', 'sandra', 'sanja', 'sara', 'sarah', 'sarina', 'saskia', 'savannah', 'seda', 'sedef', 'selda', 'selin', 'selina',
-            'selma', 'semra', 'serafina', 'serap', 'serena', 'sevda', 'seyma', 'shakira', 'shania', 'sheila', 'sibel', 'sibylle', 'sidney', 'sieglinde', 'sienna', 'silke',
-            'silvia', 'simone', 'sina', 'sinem', 'sirona', 'sissi', 'siv', 'sive', 'siyah', 'sofia', 'sofie', 'sofiia', 'sophia', 'sophie', 'soraya', 'stella', 'stephanie',
-            'sude', 'sue', 'sultan', 'suna', 'susan', 'susanne', 'suzan', 'suzanne', 'svea', 'svenja', 'svetlana', 'tabea', 'tabita', 'talea', 'talia', 'talya', 'tamara',
-            'tamina', 'tanja', 'tara', 'tatiana', 'taya', 'tessa', 'tetiana', 'thalia', 'thea', 'theresa', 'therese', 'thi', 'tilda', 'tina', 'tiziana', 'tonja', 'traudel',
-            'tuba', 'tugba', 'tuva', 'tyra', 'ulrike', 'umay', 'ursel', 'ursula', 'valentina', 'valerie', 'valeska', 'vanessa', 'vania', 'vera', 'verena', 'veronica',
-            'veronika', 'vicky', 'victoria', 'vida', 'vienna', 'viktoria', 'viola', 'violetta', 'violette', 'virginia', 'vivian', 'viviane', 'vivien', 'vivienne', 'waleria',
-            'waltraud', 'wanda', 'wencke', 'wendy', 'wilhelmine', 'willow', 'wilma', 'xandra', 'xenia', 'yara', 'yaren', 'yasemin', 'yasmin', 'yasmina', 'yelena', 'yeliz', 'yesim',
-            'yildiz', 'ylva', 'yoko', 'yolanda', 'yuliia', 'yuna', 'yusra', 'yvonne', 'zahra', 'zaida', 'zainab', 'zalina', 'zara', 'zaria', 'zaya', 'zeynep', 'zita', 'zoe',
-            'zoey', 'zoja', 'zorica', 'zuzana', 'zuzanna'
-          ];
+          const { male: MALE_GIVEN_NAMES, female: FEMALE_GIVEN_NAMES } = globalThis.SEATPLAN_GENDER_GIVEN_NAMES;
           const GENDER_GUESS_BY_NAME = (() => {
             const maleSet = new Set();
             const femaleSet = new Set();
@@ -716,6 +589,8 @@
             conditions: {
               teacherDistances: {},
               genderAlternation: false,
+              genderMode: 'zwingend',
+              genderMixWeight: 3,
             },
             lastActionWasPlanSave: true,
             mergedPairs: new Set(),
@@ -798,6 +673,12 @@
           let courseGradePickerPositionSequence = 0;
           let seatplanTabWasActive = false;
           const PREFERENCE_SLOT_COUNT = 3;
+          const GENDER_MODE_FORCED = 'zwingend';
+          const GENDER_MODE_IGNORE = 'egal';
+          const GENDER_MODE_MIXED = 'durchmischt';
+          const DEFAULT_GENDER_MODE = GENDER_MODE_FORCED;
+          const DEFAULT_GENDER_MIX_WEIGHT = 3;
+          const GENDER_MIX_WEIGHT_FACTORS = [0.5, 0.75, 1, 1.5, 2];
           const ALONE_NEIGHBOR_PENALTY = 0.6;
           const BUDDY_ADJACENT_BONUS_ONE_WAY = 0.4;
           const BUDDY_DISTANCE_BASE_BONUS_ONE_WAY = 0.35;
@@ -1597,7 +1478,9 @@
             state.gridCols = 10;
             state.mergedPairs = new Set();
             state.conditions.teacherDistances = {};
-            state.conditions.genderAlternation = state.students.some(student => genderCode(student));
+            state.conditions.genderMode = DEFAULT_GENDER_MODE;
+            state.conditions.genderMixWeight = DEFAULT_GENDER_MIX_WEIGHT;
+            syncGenderConditionActivation();
             state.mergeToggleValue = 'zulässig';
             state.mergeMode = 'allow';
             state.mergeSymbolsHidden = false;
@@ -1793,6 +1676,8 @@
               teacherDistances,
               preferences: createCourseSeatPreferencesSnapshot(),
               genderAlternation: Boolean(state.conditions?.genderAlternation),
+              genderMode: normalizeGenderMode(state.conditions?.genderMode),
+              genderMixWeight: normalizeGenderMixWeight(state.conditions?.genderMixWeight),
               mergeToggleValue: String(state.mergeToggleValue || ''),
               mergeMode: String(state.mergeMode || ''),
               mergeSymbolsHidden: Boolean(state.mergeSymbolsHidden),
@@ -3497,7 +3382,7 @@
               : state.performanceFlairCount;
             state.seats = {};
             state.conditions.teacherDistances = {};
-            state.conditions.genderAlternation = state.students.some(student => genderCode(student));
+            syncGenderConditionActivation();
             if (Array.isArray(detail.headers)) {
               state.headers = detail.headers.slice();
             }
@@ -3919,7 +3804,42 @@
           }
           function genderCode(student) {
             const g = (student?.genderPref || '').trim().toLowerCase();
-            return g === 'm' || g === 'w' ? g : null;
+            return g === 'm' || g === 'w' || g === 'd' ? g : null;
+          }
+          function normalizeGenderMode(value, fallback = DEFAULT_GENDER_MODE) {
+            const mode = String(value || '').trim().toLowerCase();
+            return mode === GENDER_MODE_FORCED || mode === GENDER_MODE_IGNORE || mode === GENDER_MODE_MIXED
+              ? mode
+              : fallback;
+          }
+          function normalizeGenderMixWeight(value, fallback = DEFAULT_GENDER_MIX_WEIGHT) {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isInteger(parsed) ? Math.min(5, Math.max(1, parsed)) : fallback;
+          }
+          function getGenderMixWeightFactor(weight = state.conditions?.genderMixWeight) {
+            return GENDER_MIX_WEIGHT_FACTORS[normalizeGenderMixWeight(weight) - 1] || 1;
+          }
+          function hasGenderAssignments(students = state.students) {
+            return Array.isArray(students) && students.some(student => Boolean(genderCode(student)));
+          }
+          function syncGenderConditionActivation() {
+            state.conditions.genderMode = normalizeGenderMode(state.conditions?.genderMode);
+            state.conditions.genderMixWeight = normalizeGenderMixWeight(state.conditions?.genderMixWeight);
+            state.conditions.genderAlternation = state.conditions.genderMode === GENDER_MODE_FORCED
+              && hasGenderAssignments();
+          }
+          function isGenderMixingActive() {
+            return state.conditions?.genderMode === GENDER_MODE_MIXED && hasGenderAssignments();
+          }
+          function genderModeLabel(mode = state.conditions?.genderMode) {
+            const normalized = normalizeGenderMode(mode);
+            if (normalized === GENDER_MODE_FORCED) return 'Zwingend';
+            if (normalized === GENDER_MODE_MIXED) return 'Durchmischt';
+            return 'Egal';
+          }
+          function genderMixWeightLabel(weight = state.conditions?.genderMixWeight) {
+            const normalized = normalizeGenderMixWeight(weight);
+            return ['Niedrig', 'Eher niedrig', 'Mittel', 'Hoch', 'Sehr hoch'][normalized - 1];
           }
           function normalizeNameForGenderGuess(value) {
             return String(value || '')
@@ -4011,6 +3931,16 @@
               }
               input.checked = false;
             });
+            Array.from(els.preferencesGenderMode || []).forEach(input => {
+              input.checked = input.value === DEFAULT_GENDER_MODE;
+            });
+            if (els.preferencesGenderMixWeight) {
+              els.preferencesGenderMixWeight.value = String(DEFAULT_GENDER_MIX_WEIGHT);
+              els.preferencesGenderMixWeight.disabled = true;
+            }
+            if (els.preferencesGenderMixWeightOutput) {
+              els.preferencesGenderMixWeightOutput.textContent = genderMixWeightLabel(DEFAULT_GENDER_MIX_WEIGHT);
+            }
             studentIds.forEach(studentId => {
               updatePreferenceOptionDisablingForStudent(studentId);
               syncBuddyPreferenceAvailability(studentId);
@@ -4087,8 +4017,29 @@
             });
           }
 
+          function getSelectedGenderModeFromForm() {
+            const selected = Array.from(els.preferencesGenderMode || []).find(input => input.checked);
+            return normalizeGenderMode(selected?.value);
+          }
+
+          function syncGenderSettingsForm() {
+            const mode = normalizeGenderMode(state.conditions?.genderMode);
+            Array.from(els.preferencesGenderMode || []).forEach(input => {
+              input.checked = input.value === mode;
+            });
+            const weight = normalizeGenderMixWeight(state.conditions?.genderMixWeight);
+            if (els.preferencesGenderMixWeight) {
+              els.preferencesGenderMixWeight.value = String(weight);
+              els.preferencesGenderMixWeight.disabled = mode !== GENDER_MODE_MIXED;
+            }
+            if (els.preferencesGenderMixWeightOutput) {
+              els.preferencesGenderMixWeightOutput.textContent = genderMixWeightLabel(weight);
+            }
+          }
+
           function buildSeatPreferencesTable() {
             if (!els.preferencesTableBody) return;
+            syncGenderSettingsForm();
             els.preferencesTableBody.innerHTML = '';
             const ordered = state.students.slice().sort((a, b) => {
               const nameA = formatStudentLabel(a).toLowerCase();
@@ -4248,6 +4199,8 @@
               }
               map.get(sid)[slot] = control.value || '';
             });
+            state.conditions.genderMode = getSelectedGenderModeFromForm();
+            state.conditions.genderMixWeight = normalizeGenderMixWeight(els.preferencesGenderMixWeight?.value);
             state.students.forEach(student => {
               const buddySlots = buddyMap.get(student.id) || [];
               const foeSlots = foeMap.get(student.id) || [];
@@ -4257,8 +4210,8 @@
               student.prefersAlone = aloneSet.has(student.id);
             });
             state.conditions.teacherDistances = distanceMap;
-            state.conditions.genderAlternation = Object.keys(genderMap).length > 0;
-            if (state.conditions.genderAlternation) {
+            syncGenderConditionActivation();
+            if (state.conditions.genderMode !== GENDER_MODE_IGNORE && hasGenderAssignments()) {
               const missingGenderStudents = state.students.filter(student => !genderMap[student.id]);
               if (missingGenderStudents.length > 0) {
                 const names = missingGenderStudents
@@ -4267,7 +4220,7 @@
                 const preview = names.slice(0, 5).join(', ');
                 const suffix = names.length > 5 ? ` (+${names.length - 5} weitere)` : '';
                 showMessage(
-                  `„m/w abwechselnd“ ist aktiv, aber bei ${missingGenderStudents.length} Lernenden ist noch kein Geschlecht zugeordnet (${preview}${suffix}).`,
+                  `„${genderModeLabel()}“ ist aktiv, aber bei ${missingGenderStudents.length} Lernenden ist noch kein Geschlecht zugeordnet (${preview}${suffix}).`,
                   'info',
                   { enqueue: true }
                 );
@@ -4454,6 +4407,8 @@
                   };
                 }),
                 genderAlternation: !!state.conditions?.genderAlternation,
+                genderMode: normalizeGenderMode(state.conditions?.genderMode),
+                genderMixWeight: normalizeGenderMixWeight(state.conditions?.genderMixWeight),
               },
               mergeSettings: {
                 toggleValue: state.mergeToggleValue || 'zulässig',
@@ -4755,6 +4710,11 @@
             state.delim = typeof data.delim === 'string' ? data.delim : ',';
             state.csvName = incomingCsvName || '';
             const incomingConditions = data.conditions && typeof data.conditions === 'object' ? data.conditions : {};
+            const hasIncomingGenderMode = Object.prototype.hasOwnProperty.call(incomingConditions, 'genderMode');
+            state.conditions.genderMode = hasIncomingGenderMode
+              ? normalizeGenderMode(incomingConditions.genderMode)
+              : (incomingConditions.genderAlternation === true ? GENDER_MODE_FORCED : GENDER_MODE_IGNORE);
+            state.conditions.genderMixWeight = normalizeGenderMixWeight(incomingConditions.genderMixWeight);
             const incomingTeacherRaw = incomingConditions.teacherDistances;
             const incomingTeacherDists = Array.isArray(incomingTeacherRaw)
               ? incomingTeacherRaw
@@ -4798,7 +4758,7 @@
               }
             });
             state.conditions.teacherDistances = restored;
-            state.conditions.genderAlternation = state.students.some(student => genderCode(student));
+            syncGenderConditionActivation();
             const incomingMergeSettings = data.mergeSettings && typeof data.mergeSettings === 'object'
               ? data.mergeSettings
               : {};
@@ -4921,7 +4881,9 @@
             state.students = readStudents(dataRows, headers);
             state.seats = {};
             state.conditions.teacherDistances = {};
-            state.conditions.genderAlternation = state.students.some(student => genderCode(student));
+            state.conditions.genderMode = DEFAULT_GENDER_MODE;
+            state.conditions.genderMixWeight = DEFAULT_GENDER_MIX_WEIGHT;
+            syncGenderConditionActivation();
             refreshUnseated();
             renderSeats();
             publishStudentsUpdatedFromSeatplan();
@@ -6313,6 +6275,7 @@
                 front: { wants: false, status: 'neutral', dist: null, penalty: 0 },
                 alone: { wants: !!student?.prefersAlone, neighbors: [] },
                 neighbors: { foes: [], buddies: [], genderSame: [], genderChecked: 0 },
+                genderMix: { penalty: 0, runs: [], blocks: 0 },
                 buddyDistance: { near: [], mid: [] },
                 foeDistance: { near: [], mid: [], far: [] },
                 preferenceRows: [],
@@ -6426,6 +6389,20 @@
                 diagB.neighbors.buddies.push({ id: aId, name: diagA.name, mutual: aLikes, mergeFactor });
                 diagB.score += bonus;
               }
+            }
+
+            if (cache.genderMode === GENDER_MODE_MIXED) {
+              const genderMixing = calculateGenderMixingPenalty(seatMap, cache);
+              genderMixing.byStudent.forEach((entry, studentId) => {
+                const diag = byStudent.get(studentId);
+                if (!diag) return;
+                diag.genderMix = {
+                  penalty: entry.penalty,
+                  runs: entry.runs.slice(),
+                  blocks: entry.blocks,
+                };
+                diag.score += entry.penalty;
+              });
             }
 
             for (const [sid, seatIdStr] of seatByStudent.entries()) {
@@ -6727,7 +6704,7 @@
               }
             }
 
-            if (state.conditions?.genderAlternation) {
+            if (state.conditions?.genderMode === GENDER_MODE_FORCED && state.conditions?.genderAlternation) {
               if (diag.neighbors.genderChecked === 0) {
                 items.push(createCriteriaItem('Geschlechterwechsel', 'neutral', 'Keine Geschlechterangaben vorhanden.'));
               } else if (diag.neighbors.genderSame.length) {
@@ -6735,6 +6712,19 @@
                 items.push(createCriteriaItem('Geschlechterwechsel', 'bad', `Gleiches Geschlecht nebenan: ${names}.`));
               } else {
                 items.push(createCriteriaItem('Geschlechterwechsel', 'ok', 'Abwechselnd zu den Sitznachbarn.'));
+              }
+            } else if (state.conditions?.genderMode === GENDER_MODE_MIXED) {
+              const mix = diag.genderMix || { penalty: 0, runs: [], blocks: 0 };
+              if (!genderCode(state.students.find(student => student.id === diag.studentId))) {
+                items.push(createCriteriaItem('Durchmischung', 'neutral', 'Keine Geschlechtsangabe vorhanden.'));
+              } else if (mix.penalty > 0) {
+                const parts = [];
+                if (mix.runs.length) parts.push(`${mix.runs.length} längere Reihe${mix.runs.length === 1 ? '' : 'n'}`);
+                if (mix.blocks) parts.push(`${mix.blocks} gleich markierte 2×2-Fläche${mix.blocks === 1 ? '' : 'n'}`);
+                const status = mix.penalty >= 1 ? 'bad' : 'warn';
+                items.push(createCriteriaItem('Durchmischung', status, `Ansammlung erkannt: ${parts.join(', ')}.`));
+              } else {
+                items.push(createCriteriaItem('Durchmischung', 'ok', 'Keine auffällige Ansammlung.'));
               }
             }
 
@@ -6796,6 +6786,14 @@
             }
             if (key === 'gender') {
               if (!opts.genderActive) return { status: 'neutral', title: 'Kriterium deaktiviert.' };
+              if (opts.genderMode === GENDER_MODE_MIXED) {
+                const mix = diag.genderMix || { penalty: 0, runs: [], blocks: 0 };
+                if (!mix.penalty) return { status: 'ok', title: 'Keine auffällige Ansammlung.' };
+                const details = [];
+                if (mix.runs.length) details.push(`${mix.runs.length} längere Reihe${mix.runs.length === 1 ? '' : 'n'}`);
+                if (mix.blocks) details.push(`${mix.blocks} gleich markierte 2×2-Fläche${mix.blocks === 1 ? '' : 'n'}`);
+                return { status: mix.penalty >= 1 ? 'bad' : 'warn', title: `Ansammlung: ${details.join(', ')}.` };
+              }
               if (diag.neighbors.genderChecked === 0) {
                 return { status: 'neutral', title: 'Keine Geschlechterangaben vorhanden.' };
               }
@@ -6892,7 +6890,8 @@
             updateSeatDiagnostics();
             const diagMap = state.seatDiagnosticsByStudent;
             const rows = (diagMap instanceof Map) ? Array.from(diagMap.values()) : [];
-            const genderActive = !!state.conditions?.genderAlternation;
+            const genderMode = normalizeGenderMode(state.conditions?.genderMode);
+            const genderActive = genderMode !== GENDER_MODE_IGNORE && hasGenderAssignments();
             const anyFront = rows.some(d => d.front?.wants);
             const anyAlone = rows.some(d => d.alone?.wants);
             const anySeatPrefs = rows.some(d => Array.isArray(d.preferenceRows) && d.preferenceRows.length);
@@ -6904,7 +6903,7 @@
             if (anyFront) columns.push({ key: 'front', label: 'Vorne' });
             if (anyAlone) columns.push({ key: 'alone', label: 'Alleine' });
             if (anySeatPrefs) columns.push({ key: 'seatprefs', label: 'Sitznachbar-Wünsche' });
-            if (genderActive) columns.push({ key: 'gender', label: 'm/w' });
+            if (genderActive) columns.push({ key: 'gender', label: genderMode === GENDER_MODE_MIXED ? 'Mischung' : 'm/w' });
 
             els.summaryTableHead.textContent = '';
             columns.forEach(col => {
@@ -6968,7 +6967,7 @@
                 } else if (col.key === 'seatprefs') {
                   td.appendChild(createSummarySeatPreferenceList(diag));
                 } else {
-                  const status = buildSummaryStatus(diag, col.key, { genderActive });
+                  const status = buildSummaryStatus(diag, col.key, { genderActive, genderMode });
                   td.appendChild(createStatusPill(status.status, status.title));
                 }
                 tr.appendChild(td);
@@ -7986,6 +7985,8 @@
             const genderAlternate = (typeof options.genderAlternate === 'boolean')
               ? options.genderAlternate
               : !!state.conditions?.genderAlternation;
+            const genderMode = normalizeGenderMode(options.genderMode ?? state.conditions?.genderMode);
+            const genderMixWeight = normalizeGenderMixWeight(options.genderMixWeight ?? state.conditions?.genderMixWeight);
 
             return {
               activeIds,
@@ -7998,8 +7999,88 @@
               mergedPairs,
               teacherDistanceWanted,
               genderAlternate,
+              genderMode,
+              genderMixWeight,
               ...buildPreferenceIndex(studentById),
             };
+          }
+
+          function calculateGenderMixingPenalty(map, cache) {
+            const empty = { total: 0, byStudent: new Map() };
+            if (!(map instanceof Map) || !cache || cache.genderMode !== GENDER_MODE_MIXED) return empty;
+            const factor = getGenderMixWeightFactor(cache.genderMixWeight);
+            const byStudent = new Map();
+            const add = (studentIds, amount, detail) => {
+              const ids = Array.from(new Set(studentIds.filter(Boolean)));
+              if (!ids.length || !amount) return;
+              const share = amount / ids.length;
+              ids.forEach(studentId => {
+                const entry = byStudent.get(studentId) || { penalty: 0, runs: [], blocks: 0 };
+                entry.penalty += share;
+                if (detail?.type === 'run') entry.runs.push(detail.length);
+                if (detail?.type === 'block') entry.blocks += 1;
+                byStudent.set(studentId, entry);
+              });
+            };
+            const occupantAt = (row, col) => {
+              const seat = seatId(row, col);
+              if (!cache.activeHas.has(seat)) return null;
+              const studentId = map.get(seat);
+              if (!studentId || studentId === 'TEACHER' || !cache.genderById.get(studentId)) return null;
+              return { seat, studentId, gender: cache.genderById.get(studentId) };
+            };
+            const scanRuns = (fixed, horizontal) => {
+              const coords = cache.activeIds
+                .map(id => cache.seatCoords.get(id))
+                .filter(coords => coords && (horizontal ? coords.r === fixed : coords.c === fixed))
+                .sort((a, b) => (horizontal ? a.c - b.c : a.r - b.r));
+              let run = [];
+              const flush = () => {
+                if (run.length > 3) {
+                  const penalty = Math.pow(run.length - 3, 2) * factor;
+                  add(run.map(entry => entry.studentId), penalty, { type: 'run', length: run.length });
+                }
+                run = [];
+              };
+              let previousAxis = null;
+              let previousGender = null;
+              coords.forEach(coords => {
+                const axis = horizontal ? coords.c : coords.r;
+                const entry = occupantAt(coords.r, coords.c);
+                if (!entry || (previousAxis !== null && axis !== previousAxis + 1) || (run.length && entry.gender !== previousGender)) {
+                  flush();
+                }
+                if (entry) {
+                  run.push(entry);
+                  previousGender = entry.gender;
+                }
+                previousAxis = axis;
+              });
+              flush();
+            };
+
+            const rows = [...new Set(cache.activeIds.map(id => cache.seatCoords.get(id)?.r).filter(Number.isFinite))];
+            const cols = [...new Set(cache.activeIds.map(id => cache.seatCoords.get(id)?.c).filter(Number.isFinite))];
+            rows.forEach(row => scanRuns(row, true));
+            cols.forEach(col => scanRuns(col, false));
+
+            cache.activeIds.forEach(seat => {
+              const coords = cache.seatCoords.get(seat);
+              if (!coords) return;
+              const entries = [
+                occupantAt(coords.r, coords.c),
+                occupantAt(coords.r, coords.c + 1),
+                occupantAt(coords.r + 1, coords.c),
+                occupantAt(coords.r + 1, coords.c + 1),
+              ];
+              if (entries.some(entry => !entry)) return;
+              if (!entries.every(entry => entry.gender === entries[0].gender)) return;
+              add(entries.map(entry => entry.studentId), 0.5 * factor, { type: 'block' });
+            });
+
+            let total = 0;
+            byStudent.forEach(entry => { total += entry.penalty; });
+            return { total, byStudent };
           }
 
           function countConflicts(map, activeSet, studentById, mergedPairs = new Set(), cache = null) {
@@ -8113,6 +8194,10 @@
                 if (dist === 2) n += 1 * factor;
                 else n += scaledDistance34(foeDistancePenalty, dist) * factor;
               }
+            }
+
+            if (cached.genderMode === GENDER_MODE_MIXED) {
+              n += calculateGenderMixingPenalty(map, cached).total;
             }
 
             return n;
@@ -8258,6 +8343,12 @@
                   scores.set(sid, (scores.get(sid) || 0) + add);
                 }
               }
+            }
+
+            if (cached.genderMode === GENDER_MODE_MIXED) {
+              calculateGenderMixingPenalty(map, cached).byStudent.forEach((entry, studentId) => {
+                scores.set(studentId, (scores.get(studentId) || 0) + entry.penalty);
+              });
             }
 
             return scores;
@@ -9396,6 +9487,19 @@
           });
           els.preferencesResetGender?.addEventListener('click', () => {
             resetGenderAssignmentsInPreferences();
+          });
+          Array.from(els.preferencesGenderMode || []).forEach(input => {
+            input.addEventListener('change', () => {
+              const mode = getSelectedGenderModeFromForm();
+              if (els.preferencesGenderMixWeight) {
+                els.preferencesGenderMixWeight.disabled = mode !== GENDER_MODE_MIXED;
+              }
+            });
+          });
+          els.preferencesGenderMixWeight?.addEventListener('input', () => {
+            if (els.preferencesGenderMixWeightOutput) {
+              els.preferencesGenderMixWeightOutput.textContent = genderMixWeightLabel(els.preferencesGenderMixWeight.value);
+            }
           });
           els.preferencesDialog?.addEventListener('cancel', e => {
             e.preventDefault();

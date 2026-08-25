@@ -57,6 +57,19 @@ function listTeacherDistances(conditions) {
   return [];
 }
 
+function copyGenderConditions(conditions) {
+  const source = isRecord(conditions) ? conditions : {};
+  const rawMode = String(source.genderMode || "").trim().toLowerCase();
+  const genderMode = rawMode === "zwingend" || rawMode === "egal" || rawMode === "durchmischt"
+    ? rawMode
+    : (source.genderAlternation === true ? "zwingend" : "egal");
+  const rawWeight = Number.parseInt(source.genderMixWeight, 10);
+  const genderMixWeight = Number.isInteger(rawWeight)
+    ? Math.min(5, Math.max(1, rawWeight))
+    : 3;
+  return { genderMode, genderMixWeight };
+}
+
 function copyGrid(grid) {
   if (!isRecord(grid)) return null;
   const rows = Number(grid.rows);
@@ -165,6 +178,7 @@ export function remapCourseSeatPlan({ plan, sourceStudents, targetStudents } = {
     teacherDistances.push({ studentId: targetId, maxDistance: entry.maxDistance });
   }
   const preferences = remapCourseSeatPreferences(plan.preferences, resolveTargetId);
+  const genderConditions = copyGenderConditions(plan.conditions);
 
   const nextPlan = {
     activeSeats: (Array.isArray(plan.activeSeats) ? plan.activeSeats : [])
@@ -172,7 +186,7 @@ export function remapCourseSeatPlan({ plan, sourceStudents, targetStudents } = {
       .map((seatId) => String(seatId)),
     seats,
     mergedPairs: copyMergedPairs(plan.mergedPairs),
-    conditions: { teacherDistances },
+    conditions: { teacherDistances, ...genderConditions },
     preferences,
     seatScoresHidden: readSeatScoresHidden(plan)
   };

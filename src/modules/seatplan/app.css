@@ -2805,6 +2805,73 @@
           width: 100%;
         }
 
+        .preferences-gender-settings {
+          display: grid;
+          gap: 10px;
+          margin: 2px 0 12px;
+          padding: 12px;
+          border: 1px solid rgba(148, 163, 184, 0.32);
+          border-radius: 12px;
+          background: var(--surface-overlay-alpha-45);
+        }
+
+        .preferences-gender-settings-header {
+          display: flex;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 12px;
+        }
+
+        .preferences-gender-settings h3,
+        .preferences-gender-settings p {
+          margin: 0;
+        }
+
+        .preferences-gender-settings h3 {
+          font-size: 15px;
+        }
+
+        .preferences-gender-settings p,
+        .preferences-gender-weight small {
+          color: var(--text-hint);
+          font-size: 12px;
+          line-height: 1.3;
+        }
+
+        .preferences-gender-settings p {
+          margin-top: 2px;
+        }
+
+        .preferences-gender-mode .segment-control__option span {
+          min-height: 2.4rem;
+          padding-block: 0.45rem;
+        }
+
+        .preferences-gender-weight {
+          display: grid;
+          gap: 5px;
+          font-size: 13px;
+          font-weight: 600;
+        }
+
+        .preferences-gender-weight output {
+          color: var(--accent-2);
+        }
+
+        .preferences-gender-weight input[type="range"] {
+          width: 100%;
+          accent-color: var(--accent);
+        }
+
+        .preferences-gender-weight:has(input:disabled) {
+          color: var(--text-disabled);
+        }
+
+        .preferences-gender-weight:has(input:disabled) small,
+        .preferences-gender-weight:has(input:disabled) output {
+          color: var(--text-disabled);
+        }
+
         .preferences-table-wrap {
           max-height: 60vh;
           overflow: auto;

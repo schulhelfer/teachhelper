@@ -26,6 +26,8 @@ const sourcePlan = () => ({
   conditions: {
     teacherDistances: [{ studentId: '11', maxDistance: 2 }, { studentId: '13', maxDistance: 3 }],
     genderAlternation: true,
+    genderMode: 'durchmischt',
+    genderMixWeight: 5,
   },
   mergeSettings: { toggleValue: 'zulässig', mode: 'allow', symbolsHidden: false },
   seatScoresHidden: true,
@@ -99,6 +101,20 @@ test('Lehrerabstände werden mitgenommen oder verworfen, in beiden Speicherforme
   objectPlan.conditions.teacherDistances = { 11: 2, 12: 4 };
   const fromObject = remapCourseSeatPlan({ plan: objectPlan, sourceStudents, targetStudents });
   assert.deepEqual(fromObject.plan.conditions.teacherDistances, [{ studentId: '42', maxDistance: 2 }]);
+});
+
+test('globale MW-Einstellungen bleiben bei der Kursübernahme erhalten', () => {
+  const result = remapCourseSeatPlan({ plan: sourcePlan(), sourceStudents, targetStudents });
+  assert.equal(result.plan.conditions.genderMode, 'durchmischt');
+  assert.equal(result.plan.conditions.genderMixWeight, 5);
+
+  const legacyPlan = sourcePlan();
+  delete legacyPlan.conditions.genderMode;
+  delete legacyPlan.conditions.genderMixWeight;
+  legacyPlan.conditions.genderAlternation = false;
+  const legacyResult = remapCourseSeatPlan({ plan: legacyPlan, sourceStudents, targetStudents });
+  assert.equal(legacyResult.plan.conditions.genderMode, 'egal');
+  assert.equal(legacyResult.plan.conditions.genderMixWeight, 3);
 });
 
 test('individuelle Sitzkriterien werden nur für passende Personen und Referenzen übernommen', () => {
