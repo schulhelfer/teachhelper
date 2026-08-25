@@ -89,7 +89,7 @@ function getActionRole(button) {
   const classes = getClasses(button);
   if (/^(Abbrechen|Schließen)\b/.test(label)) return 'cancel';
   if (classes.has('danger-action') || text.includes('🗑️')) return 'discard';
-  if (text.includes('💾') || text.includes('✓')) return 'commit';
+  if (text.includes('💾') || text.includes('✓') || text.includes('✔')) return 'commit';
   return 'utility';
 }
 
@@ -138,7 +138,7 @@ test('all existing dialog header icon groups follow the shared semantic contract
         } else if (role === 'commit') {
           assert.ok(!classes.has('ghost'), `${sourceName}/${dialogId}: Speichern/Übernehmen muss hervorgehoben sein`);
           assert.ok(!classes.has('danger-action'), `${sourceName}/${dialogId}: Speichern/Übernehmen darf nicht destruktiv aussehen`);
-          assert.match(text, /💾|✓/, `${sourceName}/${dialogId}: Speichern/Übernehmen benötigt ein Commit-Icon`);
+          assert.match(text, /💾|✓|✔️?/, `${sourceName}/${dialogId}: Speichern/Übernehmen benötigt ein Commit-Icon`);
         } else {
           assert.ok(classes.has('ghost'), `${sourceName}/${dialogId}: Hilfsaktionen müssen neutral dargestellt sein`);
         }

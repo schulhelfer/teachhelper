@@ -16704,7 +16704,11 @@ class GradesApp {
     }
     const entry = normalizeGradeDraftEntry(draft.entries?.[studentKey]);
     const studentName = this.getGradeStudentDisplayName(student);
-    this.gradeExpectationHorizonCommentDialogState = { courseId, studentId: studentKey, isSaving: false };
+    this.gradeExpectationHorizonCommentDialogState = {
+      courseId,
+      studentId: studentKey,
+      isSaving: false
+    };
     if (this.refs.gradeExpectationHorizonCommentDialogTitle) {
       this.refs.gradeExpectationHorizonCommentDialogTitle.textContent = `Kommentar · ${studentName}`;
     }
@@ -16845,39 +16849,7 @@ class GradesApp {
       ...draft,
       entries
     };
-    if (assessment) {
-      try {
-        const saved = await this.runGradeCourseMutation(state.courseId, () => {
-          const currentEntry = this.store.getGradeEntry(studentId, assessment.id);
-          if (!this.store.setGradeTestEntry(studentId, assessment.id, currentEntry?.testScores, {
-            expectationHorizonComment: comment
-          })) {
-            throw new Error("Der Kommentar konnte nicht gespeichert werden.");
-          }
-          return true;
-        }, { preserveRoster: true, skipAutoSave: true });
-        const owner = this.getWorkspaceOwnerApp();
-        if (!saved || !await owner?.saveGradeVaultChanges?.()) {
-          throw new Error("Der Kommentar wurde übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.");
-        }
-        this.gradesEntryDraft = {
-          ...this.gradesEntryDraft,
-          baseCourseRevision: this.getGradeCourseRevision(state.courseId),
-          baseFingerprint: hashStateObject(this.store.createGradeAssessmentSnapshot(assessment.id))
-        };
-      } catch (error) {
-        this.markGradesEntryDraftDirty();
-        await this.showInfoMessage(
-          error instanceof Error && error.message
-            ? error.message
-            : "Der Kommentar konnte nicht sicher gespeichert werden.",
-          "Kommentar speichern"
-        );
-        return false;
-      }
-    } else {
-      this.markGradesEntryDraftDirty();
-    }
+    this.markGradesEntryDraftDirty();
     this.syncGradeExpectationHorizonCommentIndicator(studentId, comment);
     if (options.closeOnSuccess !== false) {
       this.closeGradeExpectationHorizonCommentDialog();

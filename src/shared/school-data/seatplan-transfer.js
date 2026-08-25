@@ -90,6 +90,36 @@ function readSeatScoresHidden(plan) {
   return Boolean(plan.seatScoresHidden);
 }
 
+function normalizeGenderPreference(value) {
+  const gender = String(value || "").trim().toLowerCase();
+  return gender === "m" || gender === "w" || gender === "d" ? gender : "";
+}
+
+function remapPreferenceIds(values, ownerId, resolveTargetId) {
+  const seen = new Set();
+  return (Array.isArray(values) ? values : [])
+    .map((value) => resolveTargetId(value))
+    .filter((value) => value && value !== ownerId && !seen.has(value) && (seen.add(value) || true))
+    .slice(0, 3);
+}
+
+function remapCourseSeatPreferences(preferences, resolveTargetId) {
+  if (!isRecord(preferences)) return {};
+  const nextPreferences = {};
+  for (const [sourceStudentId, value] of Object.entries(preferences)) {
+    if (!isRecord(value)) continue;
+    const targetStudentId = resolveTargetId(sourceStudentId);
+    if (!targetStudentId) continue;
+    const genderPref = normalizeGenderPreference(value.genderPref);
+    const prefersAlone = Boolean(value.prefersAlone);
+    const buddies = remapPreferenceIds(value.buddies, targetStudentId, resolveTargetId);
+    const foes = remapPreferenceIds(value.foes, targetStudentId, resolveTargetId);
+    if (!genderPref && !prefersAlone && !buddies.length && !foes.length) continue;
+    nextPreferences[targetStudentId] = { genderPref, prefersAlone, buddies, foes };
+  }
+  return nextPreferences;
+}
+
 export function remapCourseSeatPlan({ plan, sourceStudents, targetStudents } = {}) {
   if (!isRecord(plan)) return null;
 
@@ -134,6 +164,7 @@ export function remapCourseSeatPlan({ plan, sourceStudents, targetStudents } = {
     seenDistanceIds.add(targetId);
     teacherDistances.push({ studentId: targetId, maxDistance: entry.maxDistance });
   }
+  const preferences = remapCourseSeatPreferences(plan.preferences, resolveTargetId);
 
   const nextPlan = {
     activeSeats: (Array.isArray(plan.activeSeats) ? plan.activeSeats : [])
@@ -142,6 +173,7 @@ export function remapCourseSeatPlan({ plan, sourceStudents, targetStudents } = {
     seats,
     mergedPairs: copyMergedPairs(plan.mergedPairs),
     conditions: { teacherDistances },
+    preferences,
     seatScoresHidden: readSeatScoresHidden(plan)
   };
   const grid = copyGrid(plan.grid);

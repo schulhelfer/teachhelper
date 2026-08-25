@@ -34,6 +34,15 @@ test('opening a course without a saved plan loads its roster into the seatplan m
   assert.match(seatplanApp, /applyCoursePlanData\(detail\.plan && typeof detail\.plan === 'object' \? detail\.plan : null, state\.courseContext\.students\);/);
 });
 
+test('course seatplans persist criteria separately from the roster and restore them safely', () => {
+  assert.match(seatplanApp, /function createCourseSeatPreferencesSnapshot\(students = state\.students\)/);
+  assert.match(seatplanApp, /preferences: createCourseSeatPreferencesSnapshot\(\)/);
+  assert.match(seatplanApp, /function applyCourseSeatPreferences\(preferences, students\)/);
+  assert.match(seatplanApp, /applyCourseSeatPreferences\(plan\.preferences, courseStudents\);/);
+  assert.match(seatplanApp, /preferences: createCourseSeatPreferencesSnapshot\(\),[\s\S]*?genderAlternation:/);
+  assert.match(seatplanApp, /els\.preferencesForm\?\.addEventListener\('submit', e => \{[\s\S]*?savePreferencesFromForm\(\);[\s\S]*?markUnsavedAction\(\);/);
+});
+
 test('course-imported seatplans can safely switch courses without unlocking lesson-bound grade entry', () => {
   assert.match(seatplanApp, /function canSwitchCourseRoster\(\) \{[\s\S]*?!Number\(state\.courseContext\?\.lessonId \|\| 0\)[\s\S]*?!state\.courseGradeDraft/);
   assert.match(seatplanApp, /function hasUnsavedCourseSeatplanChanges\(\)/);

@@ -849,6 +849,10 @@
                   foes: Array.isArray(student.foes)
                     ? student.foes.map(v => String(v)).filter(Boolean)
                     : [],
+                  genderPref: ['m', 'w', 'd'].includes(String(student.genderPref || '').trim().toLowerCase())
+                    ? String(student.genderPref).trim().toLowerCase()
+                    : '',
+                  prefersAlone: Boolean(student.prefersAlone),
                 };
               })
               .filter(Boolean);
@@ -1605,9 +1609,64 @@
             setMergeModeFromToggle(state.mergeToggleValue);
           }
 
+          function normalizeCourseSeatPreferenceIds(values, studentId, validStudentIds) {
+            const seen = new Set();
+            return (Array.isArray(values) ? values : [])
+              .map(value => String(value || '').trim())
+              .filter(value => (
+                value
+                && value !== studentId
+                && validStudentIds.has(value)
+                && !seen.has(value)
+                && (seen.add(value) || true)
+              ))
+              .slice(0, PREFERENCE_SLOT_COUNT);
+          }
+
+          function createCourseSeatPreferencesSnapshot(students = state.students) {
+            const roster = Array.isArray(students) ? students : [];
+            const validStudentIds = new Set(roster.map(student => String(student?.id || '').trim()).filter(Boolean));
+            return Object.fromEntries(
+              roster
+                .map(student => {
+                  const studentId = String(student?.id || '').trim();
+                  if (!studentId) return null;
+                  const genderPref = String(student?.genderPref || '').trim().toLowerCase();
+                  return [studentId, {
+                    genderPref: ['m', 'w', 'd'].includes(genderPref) ? genderPref : '',
+                    prefersAlone: Boolean(student?.prefersAlone),
+                    buddies: normalizeCourseSeatPreferenceIds(student?.buddies, studentId, validStudentIds),
+                    foes: normalizeCourseSeatPreferenceIds(student?.foes, studentId, validStudentIds),
+                  }];
+                })
+                .filter(Boolean)
+                .sort(([left], [right]) => left.localeCompare(right))
+            );
+          }
+
+          function applyCourseSeatPreferences(preferences, students) {
+            const roster = Array.isArray(students) ? students : [];
+            const validStudentIds = new Set(roster.map(student => String(student?.id || '').trim()).filter(Boolean));
+            const source = preferences && typeof preferences === 'object' && !Array.isArray(preferences)
+              ? preferences
+              : {};
+            roster.forEach(student => {
+              const studentId = String(student?.id || '').trim();
+              const preference = source[studentId] && typeof source[studentId] === 'object'
+                ? source[studentId]
+                : {};
+              const genderPref = String(preference.genderPref || '').trim().toLowerCase();
+              student.genderPref = ['m', 'w', 'd'].includes(genderPref) ? genderPref : '';
+              student.prefersAlone = Boolean(preference.prefersAlone);
+              student.buddies = normalizeCourseSeatPreferenceIds(preference.buddies, studentId, validStudentIds);
+              student.foes = normalizeCourseSeatPreferenceIds(preference.foes, studentId, validStudentIds);
+            });
+          }
+
           function applyCoursePlanData(plan, students) {
             const courseStudents = cloneStudentsForSync(students);
             if (plan && typeof plan === 'object') {
+              applyCourseSeatPreferences(plan.preferences, courseStudents);
               applyPlanData({
                 ...plan,
                 students: courseStudents,
@@ -1710,7 +1769,10 @@
           function createCoursePlanSnapshot() {
             const snapshot = createPlanSnapshot();
             if (!snapshot) return null;
-            const plan = { ...snapshot };
+            const plan = {
+              ...snapshot,
+              preferences: createCourseSeatPreferencesSnapshot(),
+            };
             delete plan.students;
             return plan;
           }
@@ -1729,6 +1791,7 @@
               seats,
               mergedPairs: [...state.mergedPairs].map(String).sort(),
               teacherDistances,
+              preferences: createCourseSeatPreferencesSnapshot(),
               genderAlternation: Boolean(state.conditions?.genderAlternation),
               mergeToggleValue: String(state.mergeToggleValue || ''),
               mergeMode: String(state.mergeMode || ''),
@@ -9307,6 +9370,7 @@
           els.preferencesForm?.addEventListener('submit', e => {
             e.preventDefault();
             savePreferencesFromForm();
+            markUnsavedAction();
             if (els.preferencesDialog) {
               if (typeof els.preferencesDialog.close === 'function' && els.preferencesDialog.open) {
                 els.preferencesDialog.close();

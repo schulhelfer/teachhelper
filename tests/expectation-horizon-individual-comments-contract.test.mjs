@@ -31,8 +31,20 @@ test('the BE student name and its comment indicator open an individual expectati
   assert.match(appSource, /submitGradeExpectationHorizonCommentDialog\(\{ closeOnSuccess: false \}\)/);
   assert.match(appHtml, /id="grade-expectation-horizon-comment-previous"/);
   assert.match(appHtml, /id="grade-expectation-horizon-comment-next"/);
+  assert.match(appHtml, /grade-expectation-horizon-comment-cancel"[\s\S]*aria-label="Übernehmen"[\s\S]*data-tooltip="Übernehmen">✔️/);
   assert.match(appHtml, /id="grade-expectation-horizon-comment-dialog"/);
   assert.match(appHtml, /id="grade-expectation-horizon-comment-input"[^>]*maxlength="500"/);
+});
+
+test('the BE comment dialog always keeps changes in the grades entry draft', () => {
+  const methodStart = appSource.indexOf('\n  async submitGradeExpectationHorizonCommentDialog(');
+  const methodEnd = appSource.indexOf('\n  getExpectationHorizonCourseContext(', methodStart);
+  assert.ok(methodStart >= 0 && methodEnd > methodStart);
+  const method = appSource.slice(methodStart, methodEnd);
+
+  assert.match(method, /this\.gradesEntryDraft = \{[\s\S]*entries/);
+  assert.match(method, /this\.markGradesEntryDraftDirty\(\)/);
+  assert.doesNotMatch(method, /runGradeCourseMutation|saveGradeVaultChanges|setGradeTestEntry/);
 });
 
 test('saving an individual comment does not reject an otherwise unchanged BE entry as stale', () => {
@@ -41,8 +53,8 @@ test('saving an individual comment does not reject an otherwise unchanged BE ent
   assert.ok(methodStart >= 0 && methodEnd > methodStart);
   const method = appSource.slice(methodStart, methodEnd);
 
-  assert.match(method, /const currentEntry = this\.store\.getGradeEntry\(studentId, assessment\.id\)/);
-  assert.match(method, /\{ preserveRoster: true, skipAutoSave: true \}/);
+  assert.match(method, /this\.markGradesEntryDraftDirty\(\)/);
+  assert.doesNotMatch(method, /runGradeCourseMutation|saveGradeVaultChanges|setGradeTestEntry/);
   assert.doesNotMatch(method, /Die BE-Leistung wurde zwischenzeitlich geändert/);
 });
 

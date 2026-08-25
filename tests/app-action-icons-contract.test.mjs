@@ -22,11 +22,11 @@ test('shared action icons are available in every affected offline app shell', ()
 });
 
 test('direct dialog actions use app tooltips and place cancellation before the primary action', () => {
-  assert.match(rootHtml, /id="preferences-reset"[\s\S]*data-tooltip="Zurücksetzen"[\s\S]*id="preferences-cancel"[\s\S]*❌[\s\S]*data-tooltip="Speichern">💾/);
+  assert.match(rootHtml, /id="preferences-reset"[\s\S]*data-tooltip="Zurücksetzen"[\s\S]*id="preferences-cancel"[\s\S]*❌[\s\S]*data-tooltip="Übernehmen">✔️/);
   assert.match(planningHtml, /id="course-dialog-cancel"[\s\S]*data-tooltip="Abbrechen"/);
   assert.match(planningHtml, /id="course-dialog-cancel"[\s\S]*data-tooltip="Abbrechen">❌<\/button>\s*<button[^>]*data-tooltip="Speichern">💾/);
   assert.match(seatplanHtml, /id="grid-dialog-cancel"[^>]*data-tooltip="Abbrechen">❌/);
-  assert.match(seatplanHtml, /id="preferences-reset-all"[\s\S]*app-action-reset-icon[\s\S]*id="preferences-reset-gender"[\s\S]*id="preferences-cancel"[\s\S]*❌[\s\S]*data-tooltip="Speichern">💾/);
+  assert.match(seatplanHtml, /id="preferences-reset-all"[\s\S]*app-action-reset-icon[\s\S]*id="preferences-reset-gender"[\s\S]*id="preferences-cancel"[\s\S]*❌[\s\S]*data-tooltip="Übernehmen">✔️/);
   assert.match(seatplanHtml, /id="preferences-reset-gender"[\s\S]*app-action-gender-reset-label[^>]*>m\/w\/d<\/span>/);
 });
 

@@ -24,7 +24,7 @@
 html, body { min-height: 100%; height: 100%; background: var(--canvas); }
 body { margin: 0; overflow: hidden; color: var(--text); font: 16px/1.45 "SF Pro Text", "SF Pro Display", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
 button, input { font: inherit; }
-button { min-height: var(--control-height); padding: .45rem .72rem; border: 1px solid var(--button-border); border-radius: var(--control-radius); background: var(--button-bg); color: var(--text-control, #e9eef5); box-shadow: var(--button-shadow); cursor: pointer; }
+button { min-height: var(--control-height); padding: .45rem .72rem; border: 1px solid var(--button-border); border-radius: var(--control-radius); background: var(--button-bg); color: var(--text-control, #e9eef5); box-shadow: var(--button-shadow); cursor: pointer; -webkit-user-select: none; user-select: none; }
 button:hover:not(:disabled) { border-color: var(--focus-border); background: var(--button-bg-hover); }
 button:disabled { cursor: default; opacity: .55; filter: grayscale(18%); }
 button:focus-visible, input:focus-visible { outline: none; border-color: var(--focus-border); box-shadow: var(--focus-ring); }
@@ -34,7 +34,7 @@ button:focus-visible, input:focus-visible { outline: none; border-color: var(--f
 .name-learning-runtime-root { min-height: 100%; height: 100%; background: var(--canvas); }
 .app { --module-sidebar-width: 360px; display: grid; grid-template-columns: minmax(0, min(var(--module-sidebar-width), 50vw)) minmax(0, 1fr); gap: 16px; width: 100%; min-height: 100%; height: 100%; background: var(--canvas); transition: grid-template-columns 180ms ease; }
 .app.is-sidebar-resizing { transition: none; }
-.side { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 100%; padding: 14px 22px 22px 14px; overflow-x: visible; overflow-y: auto; background: var(--sidebar-surface); border-right: 1px solid transparent; backdrop-filter: saturate(145%) blur(12px); -webkit-backdrop-filter: saturate(145%) blur(12px); }
+.side { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 100%; padding: 14px 22px 22px 14px; overflow-x: visible; overflow-y: auto; background: var(--sidebar-surface); border-right: 1px solid transparent; backdrop-filter: saturate(145%) blur(12px); -webkit-backdrop-filter: saturate(145%) blur(12px); -webkit-user-select: none; user-select: none; }
 .sidebar-resize-handle { position: absolute; z-index: 6; top: 0; right: 0; bottom: 0; width: 14px; cursor: col-resize; touch-action: none; }
 .app > .sidebar-resize-handle { top: var(--sidebar-resize-top, 0px); right: auto; bottom: auto; left: var(--sidebar-resize-left, 0px); height: var(--sidebar-resize-height, 0px); }
 .sidebar-resize-handle::before { content: ''; position: absolute; top: 0; bottom: 0; left: calc(50% - .5px); width: 1px; background: var(--sidebar-border); }

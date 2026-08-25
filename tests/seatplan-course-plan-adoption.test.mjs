@@ -101,6 +101,22 @@ test('Lehrerabstände werden mitgenommen oder verworfen, in beiden Speicherforme
   assert.deepEqual(fromObject.plan.conditions.teacherDistances, [{ studentId: '42', maxDistance: 2 }]);
 });
 
+test('individuelle Sitzkriterien werden nur für passende Personen und Referenzen übernommen', () => {
+  const plan = sourcePlan();
+  plan.preferences = {
+    11: { genderPref: 'm', prefersAlone: false, buddies: ['12', '13'], foes: ['13'] },
+    12: { genderPref: 'w', prefersAlone: true, buddies: ['11'], foes: [] },
+    13: { genderPref: 'd', prefersAlone: false, buddies: ['11', '12'], foes: ['11', '13'] },
+  };
+
+  const result = remapCourseSeatPlan({ plan, sourceStudents, targetStudents });
+
+  assert.deepEqual(result.plan.preferences, {
+    41: { genderPref: 'd', prefersAlone: false, buddies: ['42'], foes: ['42'] },
+    42: { genderPref: 'm', prefersAlone: false, buddies: ['41'], foes: ['41'] },
+  });
+});
+
 test('ein doppelter Name im Quellkurs belegt den Zielplatz nur einmal', () => {
   const plan = sourcePlan();
   plan.seats = { '1-1': '11', '1-2': '12' };
