@@ -1004,7 +1004,7 @@ import {
               gradesStep(
                 'Struktur für neue Kurse',
                 'In den Einstellungen legst du die Voreinstellung fest, die jeder neu angelegte Kurs übernimmt. Bestehende Kurse bleiben unverändert.',
-                ['#settings-grade-structure-list', '#settings-tab-grade-structure'],
+                ['#settings-grade-structure-periods', '#settings-tab-grade-structure'],
                 'gradesDefaultStructure',
                 'right',
                 { skipIfMissing: true }
@@ -2955,8 +2955,6 @@ import {
   let planningCourseViewCourseId = 0;
   let gradesCourseAutoSelectSuppressedUntil = 0;
 
-  // Eine ausdrückliche Navigation ins Notenmodul bringt ihr eigenes Ziel mit; der Tabwechsel,
-  // der ihr folgt, darf den Kurs der laufenden Stunde nicht darüberlegen.
   function suppressGradesCourseAutoSelect() {
     gradesCourseAutoSelectSuppressedUntil = Date.now() + 2000;
   }
@@ -3128,8 +3126,6 @@ import {
         return;
       }
       if (detail.view !== 'planning') {
-        // Das Notenmodul hat sich selbst schon auf ein Ziel gestellt und bittet nur noch um
-        // den Tab; die passive Kursauswahl darf dieses Ziel nicht ersetzen.
         suppressGradesCourseAutoSelect();
       }
       setActiveTab(detail.view === 'planning' ? TAB_PLANNING : TAB_GRADES);

@@ -105,15 +105,15 @@
             class="sidebar-grade-action-section sidebar-grade-action-section-competence-expectations">
             <div class="sidebar-grade-action-title">Kompetenzerwartung</div>
             <button id="sidebar-grade-competence-expectations-btn" class="sidebar-grade-expectation-btn" type="button"
-              aria-label="Kompetenzerwartung erzeugen" disabled><span
-                class="sidebar-grade-print-icon" aria-hidden="true">💪</span></button>
+              aria-label="Kompetenzerwartung erzeugen" disabled><span class="sidebar-grade-print-icon"
+                aria-hidden="true">💪</span></button>
           </div>
           <div id="sidebar-grade-expectation-section" data-tutorial-anchor="grades-expectation"
             class="sidebar-grade-action-section sidebar-grade-action-section-expectation">
             <div class="sidebar-grade-action-title">Erwartungshorizont</div>
             <button id="sidebar-grade-expectation-btn" class="sidebar-grade-expectation-btn" type="button"
-              aria-label="Erwartungshorizont erzeugen" disabled><span
-                class="sidebar-grade-print-icon" aria-hidden="true">🎯</span></button>
+              aria-label="Erwartungshorizont erzeugen" disabled><span class="sidebar-grade-print-icon"
+                aria-hidden="true">🎯</span></button>
           </div>
           <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print"
             data-tutorial-anchor="grades-print">
@@ -262,32 +262,40 @@
                   <div class="settings-grade-structure-head">
                     <p class="muted">Änderungen gelten für neu angelegte Kurse. Kurse ohne gespeicherte
                       Notenstruktur verwenden diese Voreinstellung beim ersten Öffnen.</p>
-                    <div class="settings-grade-structure-actions">
-                      <div id="settings-grade-structure-period-toggle" class="course-dialog-structure-period-toggle"
-                        role="radiogroup" aria-label="Halbjahr">
-                        <label class="course-dialog-structure-period-option">
-                          <input type="radio" name="settings-grade-structure-period"
-                            data-default-grade-structure-period="1" value="h1" checked>
-                          <span>1. HJ</span>
-                        </label>
-                        <label class="course-dialog-structure-period-option">
-                          <input type="radio" name="settings-grade-structure-period"
-                            data-default-grade-structure-period="1" value="h2">
-                          <span>2. HJ</span>
-                        </label>
-                      </div>
-                      <button type="button" id="settings-grade-structure-copy-h1-to-h2"
-                        class="ghost course-dialog-copy-h1-to-h2" hidden>
-                        1. HJ nach 2. HJ übernehmen
-                      </button>
-                    </div>
                   </div>
-                  <div class="course-dialog-structure-row settings-grade-structure-row">
-                    <div id="settings-grade-structure-list" class="course-dialog-structure-list"></div>
-                    <button type="button" id="settings-grade-structure-category-add" class="sidebar-add-btn"
-                      aria-label="Kategorie hinzufügen" title="Kategorie hinzufügen">
-                      <span class="sidebar-add-plus" aria-hidden="true"></span>
-                    </button>
+                  <div id="settings-grade-structure-periods" class="settings-grade-structure-periods">
+                    <section class="settings-grade-structure-period" data-default-grade-structure-period-section="h1"
+                      aria-labelledby="settings-grade-structure-h1-title">
+                      <h3 id="settings-grade-structure-h1-title" class="settings-grade-structure-period-title">1.
+                        Halbjahr</h3>
+                      <div class="course-dialog-structure-row settings-grade-structure-row">
+                        <div id="settings-grade-structure-list-h1" class="course-dialog-structure-list"
+                          data-default-grade-structure-list="h1"></div>
+                        <button type="button" class="sidebar-add-btn" data-default-grade-structure-add-category="h1"
+                          aria-label="Kategorie für das 1. Halbjahr hinzufügen" title="Kategorie hinzufügen">
+                          <span class="sidebar-add-plus" aria-hidden="true"></span>
+                        </button>
+                      </div>
+                    </section>
+                    <section class="settings-grade-structure-period" data-default-grade-structure-period-section="h2"
+                      aria-labelledby="settings-grade-structure-h2-title">
+                      <div class="settings-grade-structure-period-head">
+                        <h3 id="settings-grade-structure-h2-title" class="settings-grade-structure-period-title">2.
+                          Halbjahr</h3>
+                        <button type="button" id="settings-grade-structure-copy-h1-to-h2"
+                          class="ghost course-dialog-copy-h1-to-h2">
+                          Aus 1. Halbjahr übernehmen
+                        </button>
+                      </div>
+                      <div class="course-dialog-structure-row settings-grade-structure-row">
+                        <div id="settings-grade-structure-list-h2" class="course-dialog-structure-list"
+                          data-default-grade-structure-list="h2"></div>
+                        <button type="button" class="sidebar-add-btn" data-default-grade-structure-add-category="h2"
+                          aria-label="Kategorie für das 2. Halbjahr hinzufügen" title="Kategorie hinzufügen">
+                          <span class="sidebar-add-plus" aria-hidden="true"></span>
+                        </button>
+                      </div>
+                    </section>
                   </div>
                 </div>
               </div>
@@ -312,80 +320,78 @@
                       </label>
                     </div>
                   </div>
-                  <div class="settings-form-row" data-tutorial-anchor="grades-sidebar-visibility">
-                    <span class="settings-form-label">Randleiste</span>
-                    <label class="checkbox-line settings-inline-checkbox">
-                      <input id="show-hidden-sidebar-courses" type="checkbox">
-                      Ausgeblendete Kurse in Randleiste anzeigen
-                    </label>
-                  </div>
-                  <div class="settings-form-row">
-                    <span class="settings-form-label">Fotos</span>
-                    <label class="checkbox-line settings-inline-checkbox">
-                      <input id="show-grade-student-portraits" type="checkbox">
-                      Fotos anzeigen
-                    </label>
-                  </div>
-                  <div class="settings-form-row">
-                    <span class="settings-form-label">Namen lernen</span>
-                    <label class="checkbox-line settings-inline-checkbox">
-                      <input id="show-name-learning-module" type="checkbox">
-                      Modul „Namen lernen“ anzeigen
-                    </label>
-                  </div>
+                  <label class="settings-form-row settings-toggle-row settings-inline-checkbox"
+                    data-tutorial-anchor="grades-sidebar-visibility">
+                    <span class="settings-form-label">Ausgeblendete Kurse in Randleiste anzeigen</span>
+                    <span class="settings-toggle-control">
+                      <input id="show-hidden-sidebar-courses" type="checkbox" role="switch">
+                      <span class="settings-toggle-track" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                  <label class="settings-form-row settings-toggle-row settings-inline-checkbox">
+                    <span class="settings-form-label">Fotos anzeigen</span>
+                    <span class="settings-toggle-control">
+                      <input id="show-grade-student-portraits" type="checkbox" role="switch">
+                      <span class="settings-toggle-track" aria-hidden="true"></span>
+                    </span>
+                  </label>
+                  <label class="settings-form-row settings-toggle-row settings-inline-checkbox">
+                    <span class="settings-form-label">Modul „Namen lernen“ anzeigen</span>
+                    <span class="settings-toggle-control">
+                      <input id="show-name-learning-module" type="checkbox" role="switch">
+                      <span class="settings-toggle-track" aria-hidden="true"></span>
+                    </span>
+                  </label>
                 </form>
               </div>
 
               <div id="settings-tab-expectation-horizon" class="settings-panel" role="tabpanel" hidden>
-                <section class="expectation-horizon-settings-section">
-                  <h3 class="settings-panel-title">Angaben</h3>
-                  <p class="muted">Der Ort ersetzt den Platzhalter &lt;&lt;Ort&gt;&gt; in erzeugten
-                    Erwartungshorizonten.</p>
+                <section class="expectation-horizon-settings-section"
+                  aria-labelledby="expectation-horizon-settings-title">
+                  <h3 id="expectation-horizon-settings-title" class="settings-panel-title">Erwartungshorizont</h3>
                   <form class="settings-form-table" autocomplete="off">
                     <div class="settings-form-row">
-                      <label class="settings-form-label" for="expectation-horizon-location">Ort</label>
+                      <label class="settings-form-label" for="expectation-horizon-location">Ort (Platzhalter
+                        &lt;&lt;Ort&gt;&gt;)</label>
                       <input id="expectation-horizon-location" type="text" maxlength="120" autocomplete="off">
                     </div>
                     <div class="settings-form-row expectation-horizon-comment-row">
-                      <label class="settings-form-label" for="expectation-horizon-comment-template">Kommentar</label>
+                      <label class="settings-form-label" for="expectation-horizon-comment-template">Kommentar
+                        (Platzhalter &lt;&lt;Aufgabenliste&gt;&gt;)</label>
                       <textarea id="expectation-horizon-comment-template" rows="8" spellcheck="true"></textarea>
                     </div>
                   </form>
-                  <p class="muted">Im Kommentar können &lt;&lt;Aufgabenlabel&gt;&gt; und &lt;&lt;Aufgabenliste&gt;&gt;
-                    verwendet werden.</p>
-                </section>
-                <section class="expectation-horizon-settings-section">
-                  <h3 class="settings-panel-title">Standardvorlage</h3>
-                  <p class="muted">Die Standardvorlagen werden verwendet, wenn im Generieren-Dialog keine Vorlage nur
-                    für
-                    diese Arbeit hochgeladen wird.</p>
                   <input id="expectation-horizon-template-settings-file" class="visually-hidden" type="file"
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                  <div class="expectation-horizon-template-settings-group">
+                    <p id="expectation-horizon-template-settings-file-name" class="muted"></p>
+                    <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
+                    <div class="button-row expectation-horizon-template-settings-actions">
+                      <button type="button" id="expectation-horizon-template-settings-download"
+                        class="ghost">Word-Vorlage
+                        herunterladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Eigene
+                        Word-Vorlage hochladen</button>
+                      <button type="button" id="expectation-horizon-template-settings-reset"
+                        class="ghost reset-action">Eingebaute Vorlage wiederherstellen</button>
+                    </div>
+                  </div>
+                </section>
+                <section class="expectation-horizon-settings-section"
+                  aria-labelledby="competence-expectations-settings-title">
+                  <h3 id="competence-expectations-settings-title" class="settings-panel-title">Kompetenzerwartungen</h3>
                   <input id="competence-expectations-template-settings-file" class="visually-hidden" type="file"
                     accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
                   <div class="expectation-horizon-template-settings-group">
-                    <h4>Allgemeine Standardvorlage</h4>
-                    <p id="expectation-horizon-template-settings-status" class="muted" aria-live="polite"></p>
-                    <div class="button-row">
-                      <button type="button" id="expectation-horizon-template-settings-download" class="ghost">Allgemeine
-                        Vorlage herunterladen</button>
-                      <button type="button" id="expectation-horizon-template-settings-upload" class="ghost">Geänderte
-                        allgemeine Vorlage hochladen</button>
-                      <button type="button" id="expectation-horizon-template-settings-reset"
-                        class="ghost reset-action">Auf eingebaute
-                        Vorlage zurücksetzen</button>
-                    </div>
-                  </div>
-                  <div class="expectation-horizon-template-settings-group">
-                    <h4>Kompetenzerwartungs-Vorlage</h4>
+                    <p id="competence-expectations-template-settings-file-name" class="muted"></p>
                     <p id="competence-expectations-template-settings-status" class="muted" aria-live="polite"></p>
-                    <div class="button-row">
+                    <div class="button-row expectation-horizon-template-settings-actions">
                       <button type="button" id="competence-expectations-template-settings-download"
-                        class="ghost">Kompetenzerwartungs-Vorlage herunterladen</button>
-                      <button type="button" id="competence-expectations-template-settings-upload"
-                        class="ghost">Geänderte Kompetenzerwartungs-Vorlage hochladen</button>
+                        class="ghost">Word-Vorlage herunterladen</button>
+                      <button type="button" id="competence-expectations-template-settings-upload" class="ghost">Eigene
+                        Word-Vorlage hochladen</button>
                       <button type="button" id="competence-expectations-template-settings-reset"
-                        class="ghost reset-action">Auf eingebaute Vorlage zurücksetzen</button>
+                        class="ghost reset-action">Eingebaute Vorlage wiederherstellen</button>
                     </div>
                   </div>
                 </section>
@@ -393,14 +399,23 @@
               <div id="settings-tab-encryption" class="settings-panel" role="tabpanel" hidden>
                 <div id="grade-vault-settings-section" class="settings-extra-section"
                   data-tutorial-anchor="grades-encryption">
-                  <div class="settings-form-table">
-                    <div class="settings-form-row settings-form-row-compact">
-                      <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
-                        <span class="settings-form-label">Notenbereich verschlüsseln</span>
-                        <input id="grade-vault-encryption-enabled" type="checkbox">
-                      </label>
-                    </div>
-                    <div id="grade-vault-auto-lock-settings" hidden>
+                  <div class="grade-vault-settings-layout">
+                    <section class="grade-vault-settings-group" aria-labelledby="grade-vault-encryption-title">
+                      <h3 id="grade-vault-encryption-title" class="grade-vault-settings-group-title">Verschlüsselung
+                      </h3>
+                      <div class="settings-form-table">
+                        <label
+                          class="settings-form-row settings-toggle-row settings-inline-checkbox settings-checkbox-control">
+                          <span class="settings-form-label">Notenbereich verschlüsseln</span>
+                          <span class="settings-toggle-control">
+                            <input id="grade-vault-encryption-enabled" type="checkbox" role="switch">
+                            <span class="settings-toggle-track" aria-hidden="true"></span>
+                          </span>
+                        </label>
+                      </div>
+                    </section>
+                    <fieldset id="grade-vault-auto-lock-settings" class="grade-vault-settings-group">
+                      <legend class="grade-vault-settings-group-title">Automatische Sperre</legend>
                       <div class="settings-form-row settings-form-row-compact">
                         <label for="grade-vault-auto-lock-minutes" class="settings-form-label">Automatisch sperren
                           nach</label>
@@ -411,19 +426,23 @@
                           <option value="45">45 Minuten</option>
                         </select>
                       </div>
-                      <div class="settings-form-row settings-form-row-compact">
-                        <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
-                          <span class="settings-form-label">Auch beim Verlassen oder Minimieren nach diesem Zeitraum
-                            sperren</span>
-                          <input id="grade-vault-auto-lock-on-background" type="checkbox">
-                        </label>
+                      <label
+                        class="settings-form-row settings-toggle-row settings-inline-checkbox settings-checkbox-control">
+                        <span class="settings-form-label">Auch beim Verlassen oder Minimieren nach diesem Zeitraum
+                          sperren</span>
+                        <span class="settings-toggle-control">
+                          <input id="grade-vault-auto-lock-on-background" type="checkbox" role="switch">
+                          <span class="settings-toggle-track" aria-hidden="true"></span>
+                        </span>
+                      </label>
+                    </fieldset>
+                    <section id="grade-vault-password-settings" class="grade-vault-settings-group"
+                      aria-labelledby="grade-vault-password-title">
+                      <h3 id="grade-vault-password-title" class="grade-vault-settings-group-title">Passwort</h3>
+                      <div class="button-row settings-grade-vault-actions">
+                        <button id="grade-vault-settings-action-btn" type="button">Passwort ändern</button>
                       </div>
-                    </div>
-                  </div>
-                  <p id="grade-vault-settings-status" class="muted"></p>
-                  <p id="grade-vault-settings-hint" class="muted"></p>
-                  <div class="button-row settings-grade-vault-actions">
-                    <button id="grade-vault-settings-action-btn" type="button">Passwort ändern</button>
+                    </section>
                   </div>
                 </div>
               </div>
@@ -438,12 +457,14 @@
                     <div id="settings-grade-occurrence-suggestions" class="settings-grade-occurrence-suggestions-list">
                     </div>
                   </section>
-                  <div id="settings-grade-occurrences-list" class="settings-grade-occurrences-list"></div>
-                  <div class="button-row settings-grade-occurrences-add-row">
-                    <button type="button" id="settings-grade-occurrences-add" class="sidebar-add-btn"
-                      aria-label="Vorkommniskategorie hinzufügen" title="Vorkommniskategorie hinzufügen">
-                      <span class="sidebar-add-plus" aria-hidden="true"></span>
-                    </button>
+                  <div class="settings-grade-occurrences-management">
+                    <div id="settings-grade-occurrences-list" class="settings-grade-occurrences-list"></div>
+                    <div class="button-row settings-grade-occurrences-add-row">
+                      <button type="button" id="settings-grade-occurrences-add" class="sidebar-add-btn"
+                        aria-label="Vorkommniskategorie hinzufügen" title="Vorkommniskategorie hinzufügen">
+                        <span class="sidebar-add-plus" aria-hidden="true"></span>
+                      </button>
+                    </div>
                   </div>
                 </section>
               </div>

@@ -1880,10 +1880,14 @@
         }
 
         #view-settings {
+          --settings-font-heading: 1.2rem;
+          --settings-font-content: 1rem;
+          --settings-font-meta: 0.85rem;
           overflow: visible;
           min-height: 0;
           display: flex;
           flex-direction: column;
+          font-size: var(--settings-font-content);
         }
 
         .settings-head {
@@ -1897,7 +1901,7 @@
           margin: 0;
           flex: 1 1 auto;
           text-align: center;
-          font-size: 1.28rem;
+          font-size: var(--settings-font-heading);
           font-weight: 700;
         }
 
@@ -1944,7 +1948,7 @@
           background: var(--surface-segment);
           color: var(--segment-label-fg);
           font-weight: 700;
-          font-size: 0.94rem;
+          font-size: var(--settings-font-content);
           padding: 0.58rem 0.98rem 0.64rem;
           min-height: 36px;
           margin-bottom: -1px;
@@ -2020,6 +2024,7 @@
         .lesson-times-list {
           display: grid;
           gap: 0.65rem;
+          justify-items: start;
         }
 
         
@@ -2038,6 +2043,8 @@
           gap: 0.75rem;
           align-items: end;
           justify-content: start;
+          inline-size: fit-content;
+          max-inline-size: 100%;
           padding: 0.7rem 0.8rem;
           border: 1px solid var(--border-subtle);
           border-radius: 12px;
@@ -2057,7 +2064,7 @@
         }
 
         .lesson-times-field span {
-          font-size: 0.83rem;
+          font-size: var(--settings-font-meta);
           color: var(--text-secondary);
         }
 
@@ -3133,7 +3140,11 @@
         }
 
         .lesson-block .lesson-block-seatplan-trigger.has-no-plan {
-          font-size: calc(1.5rem * var(--week-table-scale, 1));
+          font-size: calc(1.25rem * var(--week-table-scale, 1));
+        }
+
+        .lesson-block .lesson-block-seatplan-trigger.is-locked {
+          font-size: calc(1.25rem * var(--week-table-scale, 1));
         }
 
         .lesson-block .lesson-block-performance-entry-status {
@@ -3525,7 +3536,7 @@
         }
 
         .settings-panel-title {
-          font-size: 1rem;
+          font-size: var(--settings-font-heading);
           margin-bottom: 0.55rem;
         }
 
@@ -3613,7 +3624,7 @@
 
         .settings-link-hint {
           margin: 0 0 0.52rem;
-          font-size: 0.88rem;
+          font-size: var(--settings-font-meta);
           color: var(--muted);
         }
 
@@ -3645,13 +3656,13 @@
         }
 
         .settings-form-row-compact .settings-form-label {
-          font-size: 1rem;
+          font-size: var(--settings-font-content);
         }
 
         .settings-form-label {
           display: block;
           color: var(--muted);
-          font-size: 0.89rem;
+          font-size: var(--settings-font-content);
         }
 
         .settings-number-input {
@@ -3659,12 +3670,85 @@
           justify-self: start;
         }
 
-        .settings-inline-checkbox.checkbox-line {
+        .settings-toggle-row {
+          grid-template-columns: minmax(0, 1fr) auto;
+          min-block-size: 2.5rem;
+          cursor: pointer;
+        }
+
+        .settings-toggle-control {
+          position: relative;
           display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          grid-template-columns: none;
+          flex: 0 0 48px;
+          inline-size: 48px;
+          block-size: 28px;
+        }
+
+        .settings-toggle-control input[type="checkbox"] {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          inline-size: 100%;
+          block-size: 100%;
           margin: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+
+        .settings-toggle-track {
+          display: block;
+          inline-size: 100%;
+          block-size: 100%;
+          box-sizing: border-box;
+          border: 1px solid var(--control-border);
+          border-radius: 999px;
+          background: rgba(148, 163, 184, 0.38);
+          box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.28);
+          pointer-events: none;
+          transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+
+        .settings-toggle-track::after {
+          position: absolute;
+          inset: 3px auto 3px 3px;
+          inline-size: 20px;
+          block-size: 20px;
+          border-radius: 50%;
+          background: #f8fafc;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.42);
+          content: "";
+          transition: transform 160ms ease;
+        }
+
+        .settings-toggle-control input[type="checkbox"]:checked + .settings-toggle-track {
+          border-color: var(--accent);
+          background: var(--accent);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:checked + .settings-toggle-track::after {
+          transform: translateX(20px);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:focus-visible + .settings-toggle-track {
+          border-color: var(--focus-border);
+          box-shadow: var(--focus-ring);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:hover:not(:disabled) + .settings-toggle-track {
+          border-color: var(--focus-border);
+          background: var(--control-bg-focus);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:checked:hover:not(:disabled) + .settings-toggle-track {
+          background: #60a5fa;
+        }
+
+        .settings-toggle-control input[type="checkbox"]:disabled {
+          cursor: not-allowed;
+        }
+
+        .settings-toggle-control input[type="checkbox"]:disabled + .settings-toggle-track {
+          opacity: 0.5;
         }
 
         .settings-inline-checkbox.is-disabled {
@@ -3675,31 +3759,6 @@
         .settings-form-row.is-disabled .settings-form-label {
           cursor: default;
           opacity: 0.55;
-        }
-
-        .settings-inline-checkbox input[type="checkbox"] {
-          flex: 0 0 18px;
-          inline-size: 18px;
-          block-size: 18px;
-          min-inline-size: 18px;
-          min-block-size: 18px;
-          margin: 0;
-          padding: 0;
-          align-self: center;
-          box-sizing: border-box;
-          line-height: 1;
-          accent-color: #60a5fa;
-          transition: none;
-        }
-
-        .settings-inline-checkbox input[type="checkbox"]:focus {
-          background-color: var(--control-bg);
-          box-shadow: var(--focus-ring);
-        }
-
-        .settings-inline-checkbox input[type="checkbox"]:disabled {
-          opacity: 0.72;
-          filter: none;
         }
 
         #course-dialog .checkbox-line input[type="checkbox"] {
@@ -3812,6 +3871,11 @@
           font-size: 0.82rem;
         }
 
+        #view-settings .muted,
+        #view-settings .list .meta {
+          font-size: var(--settings-font-meta);
+        }
+
         .item-actions {
           display: flex;
           gap: 0.3rem;
@@ -3820,6 +3884,10 @@
         .item-actions button {
           padding: 0.25rem 0.45rem;
           font-size: 0.78rem;
+        }
+
+        #view-settings .item-actions button {
+          font-size: var(--settings-font-content);
         }
 
         .item-actions .delete {
@@ -3864,7 +3932,15 @@
         }
 
         #settings-tab-dayoff .list .main> :first-child {
-          font-size: 1rem;
+          font-size: var(--settings-font-content);
+          font-weight: 600;
+        }
+
+        #settings-tab-dayoff .list .main> .qualification-phase-rule-title {
+          font-weight: 400;
+        }
+
+        #settings-tab-dayoff .qualification-phase-rule-title strong {
           font-weight: 600;
         }
 
@@ -6698,6 +6774,11 @@
           .settings-form-row {
             grid-template-columns: 1fr;
             align-items: stretch;
+          }
+
+          .settings-form-row.settings-toggle-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
           }
 
           

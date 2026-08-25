@@ -46,23 +46,32 @@ test('Store und Workspace speichern den Jahrgang und leeren ihn für Termine ohn
   assert.match(runtimeSource, /value\('subject', current\.subject\), value\('gradeLevel', current\.gradeLevel\)/);
 });
 
-for (const [moduleName, source, html] of [
-  ['Planung', planningSource, planningHtml],
-  ['Notenverwaltung', gradesSource, gradesHtml],
+for (const [moduleName, source, html, gradeLevelControl] of [
+  ['Planung', planningSource, planningHtml, 'datalist'],
+  ['Notenverwaltung', gradesSource, gradesHtml, 'select'],
 ]) {
   test(`${moduleName} bietet Jahrgang im Kursdialog und Kontextmenü an`, () => {
     assert.match(html, /id="course-dialog-grade-level-row"[\s\S]*?id="course-dialog-grade-level"/);
-    assert.match(html, /<option value="">Keine Angabe<\/option>[\s\S]*?<option value="5">5<\/option>[\s\S]*?<option value="13">13<\/option>/);
+    if (gradeLevelControl === 'datalist') {
+      assert.match(html, /<input id="course-dialog-grade-level" type="text" inputmode="numeric"[\s\S]*?placeholder="Keine Angabe" list="course-grade-level-options">/);
+      assert.match(html, /<datalist id="course-grade-level-options">[\s\S]*?<option value="5"><\/option>[\s\S]*?<option value="13"><\/option>[\s\S]*?<\/datalist>/);
+    } else {
+      assert.match(html, /<select id="course-dialog-grade-level">[\s\S]*?<option value="">Keine Angabe<\/option>[\s\S]*?<option value="5">5<\/option>[\s\S]*?<option value="13">13<\/option>/);
+    }
     assert.match(source, /courseDialogGradeLevel: document\.querySelector\("#course-dialog-grade-level"\)/);
     assert.match(source, /async openCourseGradeLevelDialog\(courseId\)/);
     assert.match(source, /label: "Jahrgang ändern"/);
     assert.match(source, /disabled: Boolean\(course\.noLesson\),[\s\S]*?await this\.openCourseGradeLevelDialog\(id\)/);
-    assert.match(source, /gradeLevel: normalizeCourseGradeLevel\(nextGradeLevel\)/);
+    if (gradeLevelControl === 'datalist') {
+      assert.match(source, /const normalizedNextGradeLevel = normalizeCourseGradeLevel\(nextGradeLevel\);[\s\S]*?gradeLevel: normalizedNextGradeLevel/);
+    } else {
+      assert.match(source, /gradeLevel: normalizeCourseGradeLevel\(nextGradeLevel\)/);
+    }
   });
 }
 
 test('Kursdialoge reichen den Jahrgang beim Anlegen und Bearbeiten weiter', () => {
-  assert.match(planningSource, /const gradeLevel = noLesson \? null : normalizeCourseGradeLevel\(this\.refs\.courseDialogGradeLevel\?\.value\);/);
+  assert.match(planningSource, /const gradeLevelInput = String\(this\.refs\.courseDialogGradeLevel\?\.value \|\| ""\)\.trim\(\);\s*const gradeLevel = noLesson \? null : normalizeCourseGradeLevel\(gradeLevelInput\);/);
   assert.match(planningSource, /name,\s*subject,\s*gradeLevel,\s*color,/);
   assert.match(gradesSource, /const gradeLevel = noLesson \? null : normalizeCourseGradeLevel\(this\.refs\.courseDialogGradeLevel\?\.value\);/);
   assert.match(gradesSource, /name, subject, gradeLevel, color, noLesson/);

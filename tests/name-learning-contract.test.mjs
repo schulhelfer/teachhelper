@@ -75,11 +75,11 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningApp, /refs\.flipCard\.addEventListener\('click', reveal\)/);
   assert.match(nameLearningApp, /refs\.practice\.classList\.add\('is-ready-to-reveal'\)/);
   assert.match(nameLearningApp, /if \(reviewFeedbackActive\) \{[\s\S]*?advanceAfterReviewFeedback\(\);[\s\S]*?reveal\(\);/);
-  assert.match(nameLearningApp, /if \(mode === 'random'\) \{ renderCard\(\); return; \}/);
+  assert.match(nameLearningApp, /if \(mode === 'random'\) \{ renderNextCardAfterFlip\(\); return; \}/);
   assert.match(nameLearningApp, /Fällige Karten \(\$\{dueCount\}\) abfragen/);
   assert.doesNotMatch(nameLearningApp, /Karte\$\{dueCount === 1/);
   assert.match(nameLearningApp, /REVIEW_FEEDBACK_DISPLAY_MS = 2250/);
-  assert.match(nameLearningApp, /showReviewFeedback\(progress, now, \(\) => renderCard\(\)\)/);
+  assert.match(nameLearningApp, /showReviewFeedback\(progress, now, \(\) => renderNextCardAfterFlip\(\)\)/);
   assert.match(nameLearningApp, /function advanceAfterReviewFeedback\(\) \{/);
   assert.match(nameLearningApp, /refs\.practice\.addEventListener\('click', \(\) => \{/);
   assert.match(nameLearningApp, /refs\.course\.textContent = courseName\(card\)/);

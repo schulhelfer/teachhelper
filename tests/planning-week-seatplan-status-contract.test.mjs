@@ -224,7 +224,7 @@ test('der Stuhl trägt sein Icon im ::before und alle vier Zustandsfarben', () =
   );
   assert.match(
     cssSource,
-    /\.lesson-block \.lesson-block-seatplan-trigger\.has-no-plan \{?\s*\n?\s*font-size: calc\(1\.5rem \* var\(--week-table-scale, 1\)\);/,
-    'die Warnung für einen fehlenden Sitzplan muss dieselbe kleine Größe wie die übrigen Statussymbole haben',
+    /\.lesson-block \.lesson-block-seatplan-trigger\.has-no-plan \{?\s*\n?\s*font-size: calc\(1\.25rem \* var\(--week-table-scale, 1\)\);/,
+    'die Warnung für einen fehlenden Sitzplan bleibt bewusst kleiner als die übrigen Statussymbole',
   );
 });

@@ -142,13 +142,13 @@ test('deaktiviert die Verschlüsselung nach erfolgreichem Entsperren dauerhaft',
   try {
     const app = {
       pendingGradeVaultEncryptionDisable: true,
-      setGradeVaultEncryptionEnabledFromSettings(enabled) { calls.push(enabled); },
+      applyGradeVaultEncryptionSettingsDraft() { calls.push('apply-draft'); },
     };
 
     resumeAfterGradeVaultUnlock.call(app, { focusDefault: false });
 
     assert.equal(app.pendingGradeVaultEncryptionDisable, false);
-    assert.deepEqual(calls, [false]);
+    assert.deepEqual(calls, ['apply-draft']);
   } finally {
     globalThis.requestAnimationFrame = previousRequestAnimationFrame;
   }
@@ -255,6 +255,7 @@ test('speichert die Datenbank beim dauerhaften Aufheben der Verschlüsselung sof
     },
     isGradeVaultEncryptionEnabled() { return true; },
     canAccessGradeVault() { return true; },
+    async showConfirmMessage() { return true; },
     async saveGradeVaultChanges() { saved += 1; return true; },
     async showInfoMessage() { assert.fail('der erfolgreiche Speichervorgang darf keine Warnung zeigen'); },
     renderGradeVaultSettings() {},

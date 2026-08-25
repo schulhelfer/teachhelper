@@ -247,6 +247,7 @@ export function createPlanningSeatplanBridge({
   const initNameLearningTab = (host = els.nameLearningHost) => {
     if (!host || host.dataset.initialized === '1') return;
     nameLearningController = mountNameLearning({ host });
+    nameLearningController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
   };
 
   function dispatchPlanningViewRequest(view) {
@@ -364,6 +365,7 @@ export function createPlanningSeatplanBridge({
     mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    nameLearningController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     gradesController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed(), activeTab });

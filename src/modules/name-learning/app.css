@@ -118,3 +118,6 @@ button:focus-visible, input:focus-visible { outline: none; border-color: var(--f
 @media (prefers-reduced-motion: reduce) { .flashcard-inner { transition-duration: 1ms; } .review-feedback { transition: none; } }
 @media (max-width: 720px) { body { overflow: auto; } .app { display: block; height: auto; min-height: 100%; } .side { min-height: auto; padding: 14px 16px; overflow: visible; } .sidebar-resize-handle { display: none; } .tool-sidebar-panel { margin-left: 0; } .main { display: block; height: auto; overflow: visible; padding: 16px 0 24px; } .tool-panel { padding: 0 14px; } }
 @media (max-width: 460px) { .flashcard-back .button-row { width: 100%; } }
+
+html[data-shell-collapsed="true"] .app { grid-template-columns: minmax(0, 1fr); }
+html[data-shell-collapsed="true"] .side { display: none; }

@@ -65,12 +65,13 @@ const DATABASE_PANEL_MARKUP = `
         <button id="backup-dir-change-btn" type="button">Backup-Ordner auswählen</button>
       </div>
       <div class="settings-form-table">
-        <div class="settings-form-row settings-form-row-compact">
-          <label class="checkbox-line settings-inline-checkbox settings-checkbox-control">
-            <span class="settings-form-label">Automatisches Backup aktivieren</span>
-            <input id="db-backup-auto-enabled" type="checkbox">
-          </label>
-        </div>
+        <label class="settings-form-row settings-toggle-row settings-inline-checkbox settings-checkbox-control">
+          <span class="settings-form-label">Automatisches Backup aktivieren</span>
+          <span class="settings-toggle-control">
+            <input id="db-backup-auto-enabled" type="checkbox" role="switch">
+            <span class="settings-toggle-track" aria-hidden="true"></span>
+          </span>
+        </label>
         <div class="settings-form-row settings-form-row-compact">
           <label class="settings-form-label" for="db-backup-interval-days">Backup-Intervall (Tage)</label>
           <input id="db-backup-interval-days" class="settings-number-input" type="number" min="1" max="30" value="7">

@@ -39,6 +39,7 @@ test('suggested occurrence categories add complete optional presets exactly once
     assert.match(appSource, new RegExp(`\\{ emoji: "${emoji}", name: "${name}", polarity: "${polarity}" \\}`));
   }
   assert.match(htmlSource, /id="settings-grade-occurrence-suggestions"/);
+  assert.match(htmlSource, /class="settings-grade-occurrences-management"[\s\S]*?id="settings-grade-occurrences-list"[\s\S]*?id="settings-grade-occurrences-add"/);
   assert.match(appSource, /handleGradeOccurrenceCategorySuggestionClick\(event\)/);
   assert.match(appSource, /if \(categories\.some\(\(category\).*=== nameKey\)\) return;/);
 });
@@ -52,6 +53,11 @@ test('settings provide complete category management and protected deletion', () 
   assert.match(appSource, /settings-grade-occurrence-polarity-option assessment-mode-option segment-control__option/);
   assert.match(appSource, /this\.syncSegmentControlSlideStates\(root\);/);
   assert.match(cssSource, /settings-grade-occurrence-polarity-control\.assessment-mode-toggle[\s\S]*?--liquid-segment-count: 2/);
+  assert.match(cssSource, /\.settings-grade-occurrence-row\s*\{[\s\S]*?grid-template-columns:\s*minmax\(12rem, 14rem\)/);
+  assert.match(cssSource, /\.settings-grade-occurrences-list\s*\{[\s\S]*?justify-items:\s*start/);
+  assert.match(cssSource, /\.settings-grade-occurrences-management\s*\{[\s\S]*?inline-size:\s*fit-content[\s\S]*?max-inline-size:\s*100%/);
+  assert.match(cssSource, /\.settings-grade-occurrences-add-row\s*\{[\s\S]*?inline-size:\s*100%[\s\S]*?justify-content:\s*center/);
+  assert.match(cssSource, /\.settings-grade-occurrence-row\s*\{[\s\S]*?inline-size:\s*fit-content[\s\S]*?max-inline-size:\s*100%/);
   assert.match(appSource, /getGradeOccurrenceCategoryMarker\(value\)[\s\S]*?\|\| "#"/);
   assert.match(appSource, /getGradeOccurrenceCategoryPolarity\(value\)/);
   assert.match(appSource, /commitVisibleGradesEntryMetadataInputs[\s\S]*?occurrenceCategorySelect[\s\S]*?occurrenceCategoryId: mode === "homework"/);

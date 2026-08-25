@@ -2631,7 +2631,9 @@
     .app.is-collapsing.app-tab-duplicate-check .duplicate-check-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-duplicate-check .duplicate-check-host,
     .app.is-collapsing.app-tab-qr .qr-host,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-qr .qr-host {
+    .app.chrome-collapsed:not(.is-expanding).app-tab-qr .qr-host,
+    .app.is-collapsing.app-tab-name-learning .name-learning-host,
+    .app.chrome-collapsed:not(.is-expanding).app-tab-name-learning .name-learning-host {
       padding-left: var(--chrome-overlay-clearance);
     }
 
@@ -2841,6 +2843,7 @@
     .app.chrome-collapsed:not(.is-expanding)>.qr-shell,
     .app.chrome-collapsed:not(.is-expanding)>.planning-shell,
     .app.chrome-collapsed:not(.is-expanding)>.grades-shell,
+    .app.chrome-collapsed:not(.is-expanding)>.name-learning-shell,
     .app.chrome-collapsed:not(.is-expanding)>.monitor-shell,
     .app.chrome-collapsed:not(.is-expanding)>.work-order-shell,
     .app.chrome-collapsed:not(.is-expanding)>.timer-shell {

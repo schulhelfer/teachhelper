@@ -95,7 +95,7 @@ const EXPECTATION_HORIZON_PERCENTILE_IMAGE_WIDTH_EMU = PERCENTILE_RANK_IMAGE_WID
 const EXPECTATION_HORIZON_PERCENTILE_IMAGE_HEIGHT_EMU = PERCENTILE_RANK_IMAGE_HEIGHT_EMU;
 const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
   "Schriftliche Arbeiten dienen nicht nur der Leistungsfeststellung, sondern auch der Diagnose. Sie sind daher ein Zwischenschritt und nicht der Endpunkt Deines Lernprozesses. Entscheidend ist, dass Du noch bestehende Schwierigkeiten gezielt aufarbeitest.",
-  "Im IServ-Aufgabenmodul findest Du passendes Übungsmaterial zu den grundlegenden Kompetenzen, bei denen sich in Deiner Arbeit noch Unsicherheiten gezeigt haben (<<Aufgabenlabel>> <<Aufgabenliste>>):",
+  "Im IServ-Aufgabenmodul findest Du passendes Übungsmaterial zu den grundlegenden Kompetenzen, bei denen sich in Deiner Arbeit noch Unsicherheiten gezeigt haben (<<Aufgabenliste>>):",
   "1. Sieh Dir die Musterlösung der jeweiligen Aufgabe im IServ-Ordner sorgfältig an.",
   "2. Schau Dir das Erklärvideo unter dem im Aufgabenmodul verlinkten Applet an.",
   "3. Übe mit den Aufgaben im Applet.",
@@ -134,7 +134,7 @@ const GRADES_TUTORIAL_SETTINGS_SURFACES = {
   },
   gradesDefaultStructure: {
     tab: "gradeStructure",
-    targets: ["#settings-grade-structure-list", "#settings-tab-grade-structure"]
+    targets: ["#settings-grade-structure-periods", "#settings-tab-grade-structure"]
   },
   gradesDisplay: {
     tab: "display",
@@ -246,10 +246,6 @@ function normalizeExpectationHorizonCommentTemplate(value = EXPECTATION_HORIZON_
     return EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT;
   }
   return String(value).replace(/\r\n?/g, "\n");
-}
-
-function replaceExpectationHorizonCommentPlaceholder(text, placeholder, value) {
-  return String(text || "").split(placeholder).join(value);
 }
 
 function normalizeExpectationHorizonPercentBoundaryMode(value) {
@@ -2810,10 +2806,8 @@ class GradesApp {
       settingsActionsRow: document.querySelector(".settings-actions-row"),
       themePreferenceInputs: [...document.querySelectorAll("[data-theme-preference]")],
       gradeTestScaleSettingsContent: document.querySelector("#grade-test-scale-settings-content"),
-      settingsGradeStructurePeriodToggle: document.querySelector("#settings-grade-structure-period-toggle"),
-      settingsGradeStructureCopyH1ToH2: document.querySelector("#settings-grade-structure-copy-h1-to-h2"),
-      settingsGradeStructureList: document.querySelector("#settings-grade-structure-list"),
-      settingsGradeStructureCategoryAdd: document.querySelector("#settings-grade-structure-category-add"),
+      settingsGradeStructurePeriods: document.querySelector("#settings-grade-structure-periods"),
+      settingsGradeStructureLists: [...document.querySelectorAll("[data-default-grade-structure-list]")],
       settingsGradeOccurrencesList: document.querySelector("#settings-grade-occurrences-list"),
       settingsGradeOccurrenceSuggestions: document.querySelector("#settings-grade-occurrence-suggestions"),
       settingsGradeOccurrencesAdd: document.querySelector("#settings-grade-occurrences-add"),
@@ -2833,8 +2827,7 @@ class GradesApp {
       gradeVaultAutoLockSettings: document.querySelector("#grade-vault-auto-lock-settings"),
       gradeVaultAutoLockMinutes: document.querySelector("#grade-vault-auto-lock-minutes"),
       gradeVaultAutoLockOnBackground: document.querySelector("#grade-vault-auto-lock-on-background"),
-      gradeVaultSettingsStatus: document.querySelector("#grade-vault-settings-status"),
-      gradeVaultSettingsHint: document.querySelector("#grade-vault-settings-hint"),
+      gradeVaultPasswordSettings: document.querySelector("#grade-vault-password-settings"),
       gradeVaultSettingsActionBtn: document.querySelector("#grade-vault-settings-action-btn"),
       gradesOverviewPanel: document.querySelector("#grades-overview-panel"),
       gradesEntryPanel: document.querySelector("#grades-entry-panel"),
@@ -2943,6 +2936,8 @@ class GradesApp {
       expectationHorizonCommentTemplate: document.querySelector("#expectation-horizon-comment-template"),
       expectationHorizonTemplateSettingsFile: document.querySelector("#expectation-horizon-template-settings-file"),
       competenceExpectationsTemplateSettingsFile: document.querySelector("#competence-expectations-template-settings-file"),
+      expectationHorizonTemplateSettingsFileName: document.querySelector("#expectation-horizon-template-settings-file-name"),
+      competenceExpectationsTemplateSettingsFileName: document.querySelector("#competence-expectations-template-settings-file-name"),
       expectationHorizonTemplateSettingsStatus: document.querySelector("#expectation-horizon-template-settings-status"),
       competenceExpectationsTemplateSettingsStatus: document.querySelector("#competence-expectations-template-settings-status"),
       expectationHorizonTemplateSettingsDownload: document.querySelector("#expectation-horizon-template-settings-download"),
@@ -3238,7 +3233,6 @@ class GradesApp {
     this.courseDialogDefaultColor = this.courseDialogSelectedColor;
     this.courseColorDialogSelectedColor = this.courseDialogSelectedColor;
     this.courseColorDialogDefaultColor = this.courseDialogSelectedColor;
-    this.settingsDefaultGradeStructurePeriod = "h1";
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.settingsDirty = false;
     this.workspaceRevision = Math.max(0, Number(this.workspaceController?.getRevision?.()) || 0);
@@ -4367,8 +4361,6 @@ class GradesApp {
     if (this.getGradeVaultStatusMode() !== "unlock") {
       return false;
     }
-    // Nur die eigene Kurswiederherstellung vormerken - eine bereits wartende Aktion
-    // (etwa der ausdrücklich aus einem anderen Modul gewählte Kurs) ist gezielter.
     if (!this.pendingGradeVaultContinuation) {
       this.queueGradeVaultContinuation({
         type: "grades-navigation",
@@ -4600,6 +4592,7 @@ class GradesApp {
 
   closeGradeVaultDialog() {
     const continuation = this.pendingGradeVaultContinuation;
+    const cancelledGradeVaultEncryptionDisable = this.pendingGradeVaultEncryptionDisable;
     const cancelledLockedGradesNavigation = continuation?.type === "grades-navigation"
       && !this.canAccessGradeVault();
     if (continuation?.type === "grade-roster-courses" || continuation?.type === "grade-roster-import") {
@@ -4651,6 +4644,11 @@ class GradesApp {
     this.pendingGradeVaultDialogMode = "";
     this.pendingGradeVaultContinuation = null;
     this.pendingGradeVaultEncryptionDisable = false;
+    if (cancelledGradeVaultEncryptionDisable) {
+      this.gradeVaultEncryptionDraft = null;
+      this.refreshSettingsDirtyState();
+      this.renderGradeVaultSettings();
+    }
     this.clearGradeVaultDialogSecrets();
     this.closeDialog(this.refs.gradeVaultDialog);
     this.notifyParentGradeVaultOverlay(false);
@@ -4914,7 +4912,7 @@ class GradesApp {
     if (this.pendingGradeVaultEncryptionDisable) {
       this.pendingGradeVaultEncryptionDisable = false;
       requestAnimationFrame(() => {
-        void this.setGradeVaultEncryptionEnabledFromSettings(false);
+        void this.applyGradeVaultEncryptionSettingsDraft();
       });
       return;
     }
@@ -5071,6 +5069,24 @@ class GradesApp {
       this.openGradeVaultDialog("unlock");
       this.renderGradeVaultSettings();
       return false;
+    }
+    if (!enabled && this.isGradeVaultEncryptionEnabled()) {
+      const confirmed = await this.showConfirmMessage(
+        "Die Verschlüsselung wird aufgehoben. Notendaten werden künftig unverschlüsselt gespeichert.",
+        {
+          title: "Verschlüsselung deaktivieren",
+          okText: "Verschlüsselung deaktivieren",
+          cancelText: "Abbrechen",
+          dangerOk: true,
+          warning: true
+        }
+      );
+      if (!confirmed) {
+        this.gradeVaultEncryptionDraft = null;
+        this.refreshSettingsDirtyState();
+        this.renderGradeVaultSettings();
+        return false;
+      }
     }
     const changed = await owner.setGradeVaultEncryptionEnabledFromSettings(Boolean(enabled));
     if (enabled && !changed) this.openGradeVaultDialog("setup");
@@ -5541,8 +5557,6 @@ class GradesApp {
 
   async applyTimetableCourseAutoSelection() {
     if (!this.canAccessGradeVault()) {
-      // Wie beim geteilten Kurskontext: der Tabwechsel öffnet den Tresor-Dialog nicht selbst,
-      // holt die Auswahl aber nach, sobald irgendwo entsperrt wurde.
       if (this.canReplaceGradeVaultContinuationWithCourseContext()) {
         this.queueGradeVaultContinuation({
           type: "course-context",
@@ -5689,7 +5703,6 @@ class GradesApp {
     if (tab === "gradeTestScales") this.settingsDraft.gradeTestScaleSettings = buildDefaultGradeTestScaleSettings();
     else if (tab === "gradeStructure") {
       this.settingsDraft.defaultGradeStructure = createDefaultGradeStructureSetting();
-      this.settingsDefaultGradeStructurePeriod = "h1";
     } else if (tab === "occurrences") {
       this.settingsDraft.gradeOccurrenceCategories = [{ id: 1, name: "Vorkommnis", emoji: "", polarity: "negative" }];
     } else if (tab === "expectationHorizon") {
@@ -11278,6 +11291,7 @@ class GradesApp {
       const enabled = Boolean(this.refs.gradeVaultEncryptionEnabled.checked);
       this.gradeVaultEncryptionDraft = enabled;
       this.refreshSettingsDirtyState();
+      this.renderGradeVaultSettings();
     });
     this.refs.gradeVaultAutoLockMinutes?.addEventListener("change", () => {
       this.gradeVaultAutoLockMinutesDraft = Number(this.refs.gradeVaultAutoLockMinutes.value);
@@ -12170,20 +12184,11 @@ class GradesApp {
       void this.resetStoredCompetenceExpectationsTemplate();
     });
 
-    this.refs.settingsGradeStructureCategoryAdd?.addEventListener("click", () => {
-      this.addDefaultGradeStructureCategoryDraft();
-    });
-    this.refs.settingsGradeStructureList?.addEventListener("input", (event) => {
+    this.refs.settingsGradeStructurePeriods?.addEventListener("input", (event) => {
       this.handleDefaultGradeStructureSettingsInput(event);
     });
-    this.refs.settingsGradeStructureList?.addEventListener("click", (event) => {
+    this.refs.settingsGradeStructurePeriods?.addEventListener("click", (event) => {
       this.handleDefaultGradeStructureSettingsClick(event);
-    });
-    this.refs.settingsGradeStructurePeriodToggle?.addEventListener("change", (event) => {
-      this.handleDefaultGradeStructurePeriodChange(event);
-    });
-    this.refs.settingsGradeStructureCopyH1ToH2?.addEventListener("click", () => {
-      this.copyDefaultGradeStructureH1ToH2();
     });
     this.refs.settingsGradeOccurrencesAdd?.addEventListener("click", () => {
       this.addGradeOccurrenceCategoryDraft();
@@ -12806,6 +12811,7 @@ class GradesApp {
     if (encryptionSettingsContext) {
       const mode = this.getGradeVaultStatusMode();
       const encryptionEnabled = this.isGradeVaultEncryptionEnabled();
+      const effectiveEncryptionEnabled = Boolean(this.gradeVaultEncryptionDraft ?? encryptionEnabled);
       const databaseConnected = this.hasShellDatabaseConnection();
       if (this.refs.gradeVaultEncryptionEnabled) {
         this.refs.gradeVaultEncryptionEnabled.checked = this.gradeVaultEncryptionDraft ?? encryptionEnabled;
@@ -12816,11 +12822,17 @@ class GradesApp {
           !databaseConnected
         );
       }
-      const autoLockSettingsVisible = encryptionEnabled;
       if (this.refs.gradeVaultAutoLockSettings) {
-        this.refs.gradeVaultAutoLockSettings.hidden = !autoLockSettingsVisible;
+        const autoLockSettingsDisabled = !effectiveEncryptionEnabled
+          || !databaseConnected
+          || (this.locked && !allowDatabaseControls);
+        this.refs.gradeVaultAutoLockSettings.disabled = autoLockSettingsDisabled;
+        this.refs.gradeVaultAutoLockSettings.classList.toggle("is-disabled", autoLockSettingsDisabled);
+        this.refs.gradeVaultAutoLockSettings.setAttribute("aria-disabled", String(autoLockSettingsDisabled));
       }
-      const autoLockSettingsDisabled = !databaseConnected || (this.locked && !allowDatabaseControls);
+      const autoLockSettingsDisabled = !effectiveEncryptionEnabled
+        || !databaseConnected
+        || (this.locked && !allowDatabaseControls);
       if (this.refs.gradeVaultAutoLockMinutes) {
         this.refs.gradeVaultAutoLockMinutes.value = String(
           this.gradeVaultAutoLockMinutesDraft ?? this.store.getGradeVaultAutoLockMinutes()
@@ -12834,36 +12846,17 @@ class GradesApp {
         this.refs.gradeVaultAutoLockOnBackground.disabled = autoLockSettingsDisabled;
         this.refs.gradeVaultAutoLockOnBackground.closest("label")?.classList.toggle(
           "is-disabled",
-          !databaseConnected
+          autoLockSettingsDisabled
         );
-      }
-      if (this.refs.gradeVaultSettingsStatus) {
-        this.refs.gradeVaultSettingsStatus.textContent = mode === "off"
-          ? ""
-          : (mode === "setup"
-            ? "Der geschützte Notenbereich ist noch nicht eingerichtet."
-            : (mode === "unlock"
-              ? "Der geschützte Notenbereich ist aktuell gesperrt."
-              : "Der geschützte Notenbereich ist entsperrt."));
-        this.refs.gradeVaultSettingsStatus.hidden = mode === "off";
-      }
-      if (this.refs.gradeVaultSettingsHint) {
-        const hintText = mode === "off"
-          ? "Aktiviere die Option, um Notendaten künftig verschlüsselt zu speichern."
-          : (mode === "setup"
-            ? "Vergib ein Passwort, damit Notendaten verschlüsselt werden."
-            : (mode === "unlock"
-              ? "Zum Passwortwechsel oder Deaktivieren muss das Notenmodul zuerst entsperrt werden."
-              : ""));
-        this.refs.gradeVaultSettingsHint.textContent = hintText;
-        this.refs.gradeVaultSettingsHint.hidden = !hintText;
       }
       if (this.refs.gradeVaultSettingsActionBtn) {
         this.refs.gradeVaultSettingsActionBtn.textContent = mode === "setup"
           ? "Passwort einrichten"
           : (mode === "unlock" ? "Notenmodul entsperren" : "Passwort ändern");
-        this.refs.gradeVaultSettingsActionBtn.hidden = mode === "off";
-        this.refs.gradeVaultSettingsActionBtn.disabled = mode === "off" || !databaseConnected;
+        const passwordSettingsDisabled = !effectiveEncryptionEnabled || mode === "off" || !databaseConnected;
+        this.refs.gradeVaultSettingsActionBtn.disabled = passwordSettingsDisabled;
+        this.refs.gradeVaultPasswordSettings?.classList.toggle("is-disabled", passwordSettingsDisabled);
+        this.refs.gradeVaultPasswordSettings?.setAttribute("aria-disabled", String(passwordSettingsDisabled));
       }
     }
     this.updateSettingsActionButtons();
@@ -19103,7 +19096,7 @@ class GradesApp {
 
   async setStoredExpectationHorizonTemplateFile(file) {
     if (!this.isExpectationHorizonDocxFile(file)) {
-      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
+      this.setExpectationHorizonTemplateSettingsStatus("Bitte eine Word-Datei (.docx) für den Erwartungshorizont auswählen.", true);
       return false;
     }
     let template;
@@ -19115,19 +19108,19 @@ class GradesApp {
       };
     } catch (error) {
       this.setExpectationHorizonTemplateSettingsStatus(
-        error instanceof Error && error.message ? error.message : "Die Standardvorlage konnte nicht gelesen werden.",
+        error instanceof Error && error.message ? error.message : "Die Word-Vorlage für den Erwartungshorizont konnte nicht gelesen werden.",
         true
       );
       return false;
     }
     const saved = await storeLocalValue(this.getExpectationHorizonTemplateStorageKey(), template);
     if (!saved) {
-      this.setExpectationHorizonTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true);
+      this.setExpectationHorizonTemplateSettingsStatus("Die Word-Vorlage für den Erwartungshorizont konnte lokal nicht gespeichert werden.", true);
       return false;
     }
     this.setExpectationHorizonStoredTemplateState(template, true);
     this.renderExpectationHorizonSettingsSection();
-    this.setExpectationHorizonTemplateSettingsStatus("Eigene Standardvorlage gespeichert.", false);
+    this.setExpectationHorizonTemplateSettingsStatus("Eigene Word-Vorlage für den Erwartungshorizont gespeichert.", false);
     return true;
   }
 
@@ -19135,12 +19128,12 @@ class GradesApp {
     await clearStoredLocalValue(this.getExpectationHorizonTemplateStorageKey());
     this.setExpectationHorizonStoredTemplateState(null, true);
     this.renderExpectationHorizonSettingsSection();
-    this.setExpectationHorizonTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.", false);
+    this.setExpectationHorizonTemplateSettingsStatus("Die eingebaute Word-Vorlage für den Erwartungshorizont ist wieder aktiv.", false);
   }
 
   async setStoredCompetenceExpectationsTemplateFile(file) {
     if (!this.isExpectationHorizonDocxFile(file)) {
-      this.setCompetenceExpectationsTemplateSettingsStatus("Bitte eine DOCX-Datei auswählen.", true);
+      this.setCompetenceExpectationsTemplateSettingsStatus("Bitte eine Word-Datei (.docx) für Kompetenzerwartungen auswählen.", true);
       return false;
     }
     let template;
@@ -19152,20 +19145,20 @@ class GradesApp {
       };
     } catch (error) {
       this.setCompetenceExpectationsTemplateSettingsStatus(
-        error instanceof Error && error.message ? error.message : "Die Standardvorlage konnte nicht gelesen werden.",
+        error instanceof Error && error.message ? error.message : "Die Word-Vorlage für Kompetenzerwartungen konnte nicht gelesen werden.",
         true
       );
       return false;
     }
     const saved = await storeLocalValue(COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY, template);
     if (!saved) {
-      this.setCompetenceExpectationsTemplateSettingsStatus("Die Standardvorlage konnte lokal nicht gespeichert werden.", true);
+      this.setCompetenceExpectationsTemplateSettingsStatus("Die Word-Vorlage für Kompetenzerwartungen konnte lokal nicht gespeichert werden.", true);
       return false;
     }
     this.competenceExpectationsStoredTemplate = template;
     this.competenceExpectationsStoredTemplateLoaded = true;
     this.renderExpectationHorizonSettingsSection();
-    this.setCompetenceExpectationsTemplateSettingsStatus("Eigene Standardvorlage gespeichert.", false);
+    this.setCompetenceExpectationsTemplateSettingsStatus("Eigene Word-Vorlage für Kompetenzerwartungen gespeichert.", false);
     return true;
   }
 
@@ -19174,7 +19167,7 @@ class GradesApp {
     this.competenceExpectationsStoredTemplate = null;
     this.competenceExpectationsStoredTemplateLoaded = true;
     this.renderExpectationHorizonSettingsSection();
-    this.setCompetenceExpectationsTemplateSettingsStatus("Eingebaute Standardvorlage ist wieder aktiv.", false);
+    this.setCompetenceExpectationsTemplateSettingsStatus("Die eingebaute Word-Vorlage für Kompetenzerwartungen ist wieder aktiv.", false);
   }
 
   setExpectationHorizonTemplateSettingsStatus(message = "", isError = false) {
@@ -19613,13 +19606,13 @@ class GradesApp {
       .map((number) => Number(number || 0))
       .filter((number) => Number.isInteger(number) && number > 0)
       .map(String);
-    if (values.length <= 1) {
-      return values[0] || "";
-    }
-    if (values.length === 2) {
-      return `${values[0]} und ${values[1]}`;
-    }
-    return `${values.slice(0, -1).join(", ")} und ${values[values.length - 1]}`;
+    if (!values.length) return "";
+    const numbersLabel = values.length === 1
+      ? values[0]
+      : (values.length === 2
+        ? `${values[0]} und ${values[1]}`
+        : `${values.slice(0, -1).join(", ")} und ${values[values.length - 1]}`);
+    return `${values.length === 1 ? "Aufgabe" : "Aufgaben"} ${numbersLabel}`;
   }
 
   buildExpectationHorizonComment(taskNumbers = []) {
@@ -19627,15 +19620,13 @@ class GradesApp {
     if (!taskList) {
       return "";
     }
-    const taskLabel = taskNumbers
-      .map((number) => Number(number || 0))
-      .filter((number) => Number.isInteger(number) && number > 0)
-      .length === 1 ? "Aufgabe" : "Aufgaben";
     let comment = this.store.getExpectationHorizonCommentTemplate();
-    comment = replaceExpectationHorizonCommentPlaceholder(comment, "<<Aufgabenlabel>>", taskLabel);
-    comment = replaceExpectationHorizonCommentPlaceholder(comment, "<< Aufgabenlabel >>", taskLabel);
-    comment = replaceExpectationHorizonCommentPlaceholder(comment, "<<Aufgabenliste>>", taskList);
-    return replaceExpectationHorizonCommentPlaceholder(comment, "<< Aufgabenliste >>", taskList);
+    comment = String(comment || "").replace(
+      /<<\s*Aufgabenlabel\s*>>\s*<<\s*Aufgabenliste\s*>>/g,
+      "<<Aufgabenliste>>"
+    );
+    comment = comment.replace(/<<\s*Aufgabenlabel\s*>>/g, "");
+    return comment.replace(/<<\s*Aufgabenliste\s*>>/g, taskList);
   }
 
   buildExpectationHorizonStudentComment(individualComment = "", taskNumbers = []) {
@@ -28472,9 +28463,6 @@ class GradesApp {
     if (pending.type !== "grades-navigation" && pending.type !== "course-context") {
       return false;
     }
-    // Eine reine Kurswiederherstellung (z. B. der Startdialog für den zuletzt gewählten Kurs)
-    // weicht der ausdrücklichen Kurswahl aus dem anderen Modul; stunden- oder
-    // leistungsgebundene Navigationen behalten Vorrang.
     const detail = pending.detail && typeof pending.detail === "object" ? pending.detail : {};
     return !Number(detail.lessonId || 0)
       && !Number(detail.assessmentId || 0)
@@ -28498,8 +28486,6 @@ class GradesApp {
       return false;
     }
     if (!this.canAccessGradeVault()) {
-      // Der Tabwechsel öffnet den Tresor-Dialog nicht selbst, holt den Kurs aber nach,
-      // sobald irgendwo entsperrt wurde.
       if (this.canReplaceGradeVaultContinuationWithCourseContext()) {
         this.queueGradeVaultContinuation({
           type: "course-context",
@@ -30454,17 +30440,15 @@ class GradesApp {
     const renderScaleCard = (scale) => {
       const template = getGradeTestScaleTemplate(settings, scale);
       const isCustom = normalizeGradeTestScale(scale) === GRADE_TEST_SCALE_CUSTOM;
-      const title = isCustom ? "Eigener Modus" : String(template.label || getGradeTestScaleDefaultLabel(scale));
+      const title = String(template.label || getGradeTestScaleDefaultLabel(scale));
       return `
                 <section class="grade-test-scale-settings-card" data-grade-test-scale-card="${escapeHtml(scale)}">
                   <div class="grade-test-scale-settings-card-head">
-                    <h3 class="settings-panel-title">${escapeHtml(title)}</h3>
                     ${isCustom ? `
-                      <label class="grade-test-scale-name-field">
-                        <span>Name</span>
-                        <input type="text" maxlength="40" data-grade-test-scale-custom-name="1" value="${escapeHtml(template.label || "")}">
-                      </label>
-                    ` : ""}
+                      <input class="grade-test-scale-custom-name-input" type="text" maxlength="40"
+                        data-grade-test-scale-custom-name="1" value="${escapeHtml(template.label || "")}" placeholder="Eigener Modus"
+                        aria-label="Name des eigenen Modus">
+                    ` : `<h3 class="settings-panel-title grade-test-scale-settings-card-title">${escapeHtml(title)}</h3>`}
                   </div>
                   <div class="grade-test-scale-threshold-grid">
                     <div class="grade-test-scale-threshold-header">Note</div>
@@ -30564,9 +30548,9 @@ class GradesApp {
     return draft.defaultGradeStructure;
   }
 
-  getDefaultGradeStructureSettingsCategories(period = null) {
+  getDefaultGradeStructureSettingsCategories(period = "h1") {
     const structure = this.getDefaultGradeStructureSettingsDraft();
-    const normalizedPeriod = normalizeGradeHalfYear(period || this.settingsDefaultGradeStructurePeriod || "h1");
+    const normalizedPeriod = normalizeGradeHalfYear(period);
     if (!structure.periodCategories || typeof structure.periodCategories !== "object") {
       structure.periodCategories = createDefaultGradeStructureSetting().periodCategories;
     }
@@ -30577,45 +30561,40 @@ class GradesApp {
   }
 
   renderDefaultGradeStructureSettingsSection() {
-    const root = this.refs.settingsGradeStructureList;
-    if (!root) {
+    const roots = this.refs.settingsGradeStructureLists || [];
+    if (!roots.length) {
       return;
     }
     if (!this.isGradesTopTabActive()) {
-      root.innerHTML = "";
+      roots.forEach((root) => {
+        root.innerHTML = "";
+      });
       this.updateSettingsActionButtons();
       return;
     }
-    const period = normalizeGradeHalfYear(this.settingsDefaultGradeStructurePeriod || "h1");
-    this.settingsDefaultGradeStructurePeriod = period;
-    this.refs.settingsGradeStructurePeriodToggle
-      ?.querySelectorAll("input[data-default-grade-structure-period='1']")
-      .forEach((input) => {
-        input.checked = input.value === period;
+    ["h1", "h2"].forEach((period) => {
+      const root = roots.find((element) => element.dataset.defaultGradeStructureList === period);
+      if (!root) return;
+      const categories = this.getDefaultGradeStructureSettingsCategories(period);
+      root.innerHTML = "";
+      categories.forEach((category, categoryIndex) => {
+        root.append(
+          this.createGradeStructureCard({
+            category,
+            categoryIndex,
+            fieldAttribute: "default-grade-structure-field",
+            categoryName: (index) => `default-${period}-category-name-${index}`,
+            categoryWeight: (index) => `default-${period}-category-weight-${index}`,
+            subcategoryName: (categoryKey, subcategoryKey) => `default-${period}-subcategory-name-${categoryKey}-${subcategoryKey}`,
+            subcategoryWeight: (categoryKey, subcategoryKey) => `default-${period}-subcategory-weight-${categoryKey}-${subcategoryKey}`,
+            removeCategoryAttribute: "default-grade-structure-remove-category",
+            removeSubcategoryAttribute: "default-grade-structure-remove-subcategory",
+            addSubcategoryAttribute: "default-grade-structure-add-subcategory",
+            getCategoryWeightValue: (item) => item.weight ?? "",
+            getSubcategoryWeightValue: (item) => item.weight ?? ""
+          })
+        );
       });
-    this.syncSegmentControlSlideStates(this.refs.settingsGradeStructurePeriodToggle, { animateFromPrevious: true });
-    if (this.refs.settingsGradeStructureCopyH1ToH2) {
-      this.refs.settingsGradeStructureCopyH1ToH2.hidden = period !== "h2";
-    }
-    const categories = this.getDefaultGradeStructureSettingsCategories(period);
-    root.innerHTML = "";
-    categories.forEach((category, categoryIndex) => {
-      root.append(
-        this.createGradeStructureCard({
-          category,
-          categoryIndex,
-          fieldAttribute: "default-grade-structure-field",
-          categoryName: (index) => `default-category-name-${index}`,
-          categoryWeight: (index) => `default-category-weight-${index}`,
-          subcategoryName: (categoryKey, subcategoryKey) => `default-subcategory-name-${categoryKey}-${subcategoryKey}`,
-          subcategoryWeight: (categoryKey, subcategoryKey) => `default-subcategory-weight-${categoryKey}-${subcategoryKey}`,
-          removeCategoryAttribute: "default-grade-structure-remove-category",
-          removeSubcategoryAttribute: "default-grade-structure-remove-subcategory",
-          addSubcategoryAttribute: "default-grade-structure-add-subcategory",
-          getCategoryWeightValue: (item) => item.weight ?? "",
-          getSubcategoryWeightValue: (item) => item.weight ?? ""
-        })
-      );
     });
     this.updateSettingsActionButtons();
   }
@@ -30626,9 +30605,9 @@ class GradesApp {
     );
   }
 
-  addDefaultGradeStructureCategoryDraft() {
+  addDefaultGradeStructureCategoryDraft(period = "h1") {
     this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
-    this.getDefaultGradeStructureSettingsCategories().push({
+    this.getDefaultGradeStructureSettingsCategories(period).push({
       id: 0,
       name: "",
       weight: 0,
@@ -30645,9 +30624,12 @@ class GradesApp {
     }
     this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
     const field = String(input.dataset.defaultGradeStructureField || "");
+    const period = normalizeGradeHalfYear(
+      input.closest("[data-default-grade-structure-period-section]")?.dataset.defaultGradeStructurePeriodSection
+    );
     const categoryIndex = Number(input.dataset.categoryIndex || -1);
     const subcategoryIndex = Number(input.dataset.subcategoryIndex || -1);
-    const category = this.getDefaultGradeStructureSettingsCategories()[categoryIndex];
+    const category = this.getDefaultGradeStructureSettingsCategories(period)[categoryIndex];
     if (!category) {
       return;
     }
@@ -30670,35 +30652,36 @@ class GradesApp {
     this.updateSettingsActionButtons();
   }
 
-  handleDefaultGradeStructurePeriodChange(event) {
-    const input = event.target.closest("input[data-default-grade-structure-period='1']");
-    if (!input) {
-      return;
-    }
-    this.settingsDefaultGradeStructurePeriod = normalizeGradeHalfYear(input.value);
-    this.runAfterSegmentControlSlide(event, () => {
-      this.renderDefaultGradeStructureSettingsSection();
-    });
-  }
-
   copyDefaultGradeStructureH1ToH2() {
     this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
     const structure = this.getDefaultGradeStructureSettingsDraft();
     structure.periodCategories.h2 = stripGradeStructureIds(
       cloneJsonValue(structure.periodCategories.h1, [])
     );
-    this.settingsDefaultGradeStructurePeriod = "h2";
     this.settingsDirty = true;
     this.renderDefaultGradeStructureSettingsSection();
   }
 
   handleDefaultGradeStructureSettingsClick(event) {
     this.settingsDraft = this.settingsDraft || this.buildSettingsDraftFromStore();
+    const copyButton = event.target.closest("button#settings-grade-structure-copy-h1-to-h2");
+    if (copyButton) {
+      this.copyDefaultGradeStructureH1ToH2();
+      return;
+    }
+    const period = normalizeGradeHalfYear(
+      event.target.closest("[data-default-grade-structure-period-section]")?.dataset.defaultGradeStructurePeriodSection
+    );
+    const addCategoryButton = event.target.closest("button[data-default-grade-structure-add-category]");
+    if (addCategoryButton) {
+      this.addDefaultGradeStructureCategoryDraft(period);
+      return;
+    }
     const removeCategoryButton = event.target.closest("button[data-default-grade-structure-remove-category]");
     if (removeCategoryButton) {
       const categoryIndex = Number(removeCategoryButton.dataset.defaultGradeStructureRemoveCategory || -1);
       if (categoryIndex >= 0) {
-        this.getDefaultGradeStructureSettingsCategories().splice(categoryIndex, 1);
+        this.getDefaultGradeStructureSettingsCategories(period).splice(categoryIndex, 1);
         this.settingsDirty = true;
         this.renderDefaultGradeStructureSettingsSection();
       }
@@ -30707,7 +30690,7 @@ class GradesApp {
     const addSubcategoryButton = event.target.closest("button[data-default-grade-structure-add-subcategory]");
     if (addSubcategoryButton) {
       const categoryIndex = Number(addSubcategoryButton.dataset.defaultGradeStructureAddSubcategory || -1);
-      const category = this.getDefaultGradeStructureSettingsCategories()[categoryIndex];
+      const category = this.getDefaultGradeStructureSettingsCategories(period)[categoryIndex];
       if (category) {
         category.subcategories.push({ id: 0, name: "", weight: 0 });
         this.settingsDirty = true;
@@ -30718,7 +30701,7 @@ class GradesApp {
     const removeSubcategoryButton = event.target.closest("button[data-default-grade-structure-remove-subcategory]");
     if (removeSubcategoryButton) {
       const [categoryIndexRaw, subcategoryIndexRaw] = String(removeSubcategoryButton.dataset.defaultGradeStructureRemoveSubcategory || "").split(":");
-      const category = this.getDefaultGradeStructureSettingsCategories()[Number(categoryIndexRaw || -1)];
+      const category = this.getDefaultGradeStructureSettingsCategories(period)[Number(categoryIndexRaw || -1)];
       if (category) {
         category.subcategories.splice(Number(subcategoryIndexRaw || -1), 1);
         this.settingsDirty = true;
@@ -31046,11 +31029,13 @@ class GradesApp {
           this.renderExpectationHorizonSettingsSection();
         });
       } else {
-        this.refs.expectationHorizonTemplateSettingsStatus.textContent = this.expectationHorizonStoredTemplate
-          ? `Aktiv: eigene Standardvorlage (${this.expectationHorizonStoredTemplate.name})`
-          : `Aktiv: eingebaute Standardvorlage (${EXPECTATION_HORIZON_TEMPLATE_FILE_NAME})`;
+        this.refs.expectationHorizonTemplateSettingsStatus.textContent = "";
         this.refs.expectationHorizonTemplateSettingsStatus.style.color = "";
       }
+    }
+    if (this.refs.expectationHorizonTemplateSettingsFileName) {
+      const fileName = this.expectationHorizonStoredTemplate?.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME;
+      this.refs.expectationHorizonTemplateSettingsFileName.textContent = `Vorlagendatei: ${fileName}`;
     }
     if (this.refs.competenceExpectationsTemplateSettingsStatus) {
       if (!this.competenceExpectationsStoredTemplateLoaded) {
@@ -31058,11 +31043,13 @@ class GradesApp {
           this.renderExpectationHorizonSettingsSection();
         });
       } else {
-        this.refs.competenceExpectationsTemplateSettingsStatus.textContent = this.competenceExpectationsStoredTemplate
-          ? `Aktiv: eigene Standardvorlage (${this.competenceExpectationsStoredTemplate.name})`
-          : `Aktiv: eingebaute Standardvorlage (${COMPETENCE_EXPECTATIONS_FILE_NAME})`;
+        this.refs.competenceExpectationsTemplateSettingsStatus.textContent = "";
         this.refs.competenceExpectationsTemplateSettingsStatus.style.color = "";
       }
+    }
+    if (this.refs.competenceExpectationsTemplateSettingsFileName) {
+      const fileName = this.competenceExpectationsStoredTemplate?.name || COMPETENCE_EXPECTATIONS_FILE_NAME;
+      this.refs.competenceExpectationsTemplateSettingsFileName.textContent = `Vorlagendatei: ${fileName}`;
     }
     if (this.refs.expectationHorizonTemplateSettingsReset) {
       this.refs.expectationHorizonTemplateSettingsReset.disabled = !this.expectationHorizonStoredTemplate;

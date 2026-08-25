@@ -21,7 +21,6 @@ import {
   renderPlanningRichText
 } from "../../shared/planning-rich-text.js";
 import {
-  COURSE_GRADE_LEVELS,
   normalizeCourseGradeLevel,
   normalizePublicSchoolData,
   QUALIFICATION_PHASE_END_DATE_KEYS
@@ -3498,17 +3497,14 @@ class PlanningApp {
       return;
     }
     const currentGradeLevel = normalizeCourseGradeLevel(course.gradeLevel);
-    const nextGradeLevel = await this.showSelectMessage(
+    const nextGradeLevel = await this.showPromptMessage(
       "",
       currentGradeLevel === null ? "" : String(currentGradeLevel),
       {
         title: "Jahrgang ändern",
         okText: "Speichern",
         inputLabel: "Jahrgang",
-        selectOptions: [
-          { value: "", label: "Keine Angabe" },
-          ...COURSE_GRADE_LEVELS.map((gradeLevel) => ({ value: String(gradeLevel), label: String(gradeLevel) }))
-        ]
+        inputListId: "course-grade-level-options"
       }
     );
     if (nextGradeLevel === null) {
@@ -3517,7 +3513,12 @@ class PlanningApp {
     if (!this.workspacePublicLoaded) {
       await this.ensurePlanningPublicLoaded();
     }
-    const ok = await this.updateCourseFields(id, { gradeLevel: normalizeCourseGradeLevel(nextGradeLevel) });
+    const normalizedNextGradeLevel = normalizeCourseGradeLevel(nextGradeLevel);
+    if (String(nextGradeLevel || "").trim() && normalizedNextGradeLevel === null) {
+      await this.showInfoMessage("Bitte wähle einen Jahrgang zwischen 5 und 13.");
+      return;
+    }
+    const ok = await this.updateCourseFields(id, { gradeLevel: normalizedNextGradeLevel });
     if (!ok) {
       await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.");
       return;
@@ -3640,13 +3641,19 @@ class PlanningApp {
     const name = String(this.refs.courseDialogName.value || "").trim();
     const noLesson = Boolean(this.refs.courseDialogNoLesson.checked);
     const subject = noLesson ? "" : String(this.refs.courseDialogSubject?.value || "").trim();
-    const gradeLevel = noLesson ? null : normalizeCourseGradeLevel(this.refs.courseDialogGradeLevel?.value);
+    const gradeLevelInput = String(this.refs.courseDialogGradeLevel?.value || "").trim();
+    const gradeLevel = noLesson ? null : normalizeCourseGradeLevel(gradeLevelInput);
     const hiddenInSidebar = Boolean(this.courseDialogDraft && this.courseDialogDraft.hiddenInSidebar);
     const color = noLesson
       ? null
       : normalizeHexColor(this.courseDialogSelectedColor, suggestColor(this._courseDialogExistingColors(id)));
     if (!name) {
       this.refs.courseDialogName.focus();
+      return;
+    }
+    if (!noLesson && gradeLevelInput && gradeLevel === null) {
+      this.refs.courseDialogGradeLevel?.focus();
+      await this.showInfoMessage("Bitte wähle einen Jahrgang zwischen 5 und 13.");
       return;
     }
 
@@ -9805,13 +9812,15 @@ class PlanningApp {
       const main = document.createElement("div");
       main.className = "main";
       const title = document.createElement("div");
-      title.textContent = `${rule.label} (`;
+      title.className = "qualification-phase-rule-title";
+      const ruleLabel = document.createElement("strong");
+      ruleLabel.textContent = rule.label;
       const sourceLink = document.createElement("a");
       sourceLink.href = rule.sourceHref;
       sourceLink.target = "_blank";
       sourceLink.rel = "noopener noreferrer";
       sourceLink.textContent = rule.sourceLabel;
-      title.append(sourceLink, document.createTextNode(")"));
+      title.append(ruleLabel, document.createTextNode(" ("), sourceLink, document.createTextNode(")"));
       const meta = document.createElement("div");
       meta.className = "meta";
       const value = year ? String(year[rule.key] || "") : "";

@@ -1,5 +1,6 @@
 import { applyReview, buildDueQueue, buildRandomQueue, nextReviewMessage } from './session.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
+import { NAME_LEARNING_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 
 const ORIGIN = window.location.origin === 'null' ? new URL(import.meta.url).origin : window.location.origin;
 const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
@@ -12,11 +13,12 @@ const TUTORIAL_COMMAND_EVENT = 'classroom:name-learning-tutorial-command';
 const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
 const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-response';
 const REVIEW_FEEDBACK_DISPLAY_MS = 2250;
+const CARD_FLIP_FALLBACK_MS = 550;
 const refs = {
   status: document.getElementById('status'), setup: document.getElementById('setup'), courses: document.getElementById('courses'),
   startDue: document.getElementById('start-due'), startDueLabel: document.getElementById('start-due-label'), startRandom: document.getElementById('start-random'),
   practice: document.getElementById('practice'), portrait: document.getElementById('portrait'), portraitReverse: document.getElementById('portrait-reverse'),
-  flashcard: document.getElementById('flashcard'), flipCard: document.getElementById('flip-card'), flashcardBack: document.getElementById('flashcard-back'),
+  flashcard: document.getElementById('flashcard'), flashcardInner: document.querySelector('.flashcard-inner'), flipCard: document.getElementById('flip-card'), flashcardBack: document.getElementById('flashcard-back'),
   answer: document.getElementById('answer'), course: document.getElementById('course'), known: document.getElementById('known'), unknown: document.getElementById('unknown'),
   empty: document.getElementById('empty'), emptyTitle: document.getElementById('empty-title'), emptyCopy: document.getElementById('empty-copy'), emptyRandom: document.getElementById('empty-random'),
   reviewFeedback: document.getElementById('review-feedback'),
@@ -28,6 +30,8 @@ let queue = [];
 let mode = 'due';
 let objectUrl = '';
 let reviewFeedbackTimer = 0;
+let nextCardTransitionTimer = 0;
+let cancelNextCardTransition = null;
 let reviewFeedbackActive = false;
 let tutorialDemoActive = false;
 let tutorialPreviousState = null;
@@ -42,6 +46,12 @@ function post(type, detail = {}) {
 function selected() { return [...selectedCourses]; }
 function revokePortrait() { if (objectUrl) URL.revokeObjectURL(objectUrl); objectUrl = ''; }
 function clearReviewFeedbackTimer() { if (reviewFeedbackTimer) window.clearTimeout(reviewFeedbackTimer); reviewFeedbackTimer = 0; }
+function clearNextCardTransitionTimer() {
+  if (nextCardTransitionTimer) window.clearTimeout(nextCardTransitionTimer);
+  nextCardTransitionTimer = 0;
+  cancelNextCardTransition?.();
+  cancelNextCardTransition = null;
+}
 function resetReviewFeedback() {
   clearReviewFeedbackTimer();
   reviewFeedbackActive = false;
@@ -80,7 +90,7 @@ function showReviewFeedback(progress, now, afterHidden) {
 function advanceAfterReviewFeedback() {
   if (!reviewFeedbackActive) return;
   resetReviewFeedback();
-  renderCard();
+  renderNextCardAfterFlip();
 }
 function hideAll() { refs.practice.hidden = true; refs.empty.hidden = true; }
 function courseName(card) { return String(card.courseName || 'Kurs'); }
@@ -142,6 +152,7 @@ function start(nextMode) {
 }
 
 function renderCard() {
+  clearNextCardTransitionTimer();
   const card = queue[0];
   if (!card) { if (mode === 'due') { start('due'); } else { showEmpty(); } return; }
   resetReviewFeedback(); revokePortrait(); hideAll(); refs.practice.hidden = false;
@@ -163,6 +174,29 @@ function renderCard() {
   renderSidebarStatus();
 }
 
+function renderNextCardAfterFlip() {
+  if (!refs.flashcard.classList.contains('is-revealed') || !refs.flashcardInner) {
+    renderCard();
+    return;
+  }
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    clearNextCardTransitionTimer();
+    refs.flashcardInner.removeEventListener('transitionend', onTransitionEnd);
+    renderCard();
+  };
+  const onTransitionEnd = (event) => {
+    if (event.target === refs.flashcardInner && event.propertyName === 'transform') finish();
+  };
+  refs.flashcardInner.addEventListener('transitionend', onTransitionEnd);
+  cancelNextCardTransition = () => refs.flashcardInner.removeEventListener('transitionend', onTransitionEnd);
+  refs.flashcard.classList.remove('is-revealed');
+  refs.flashcardBack.setAttribute('aria-hidden', 'true');
+  nextCardTransitionTimer = window.setTimeout(finish, CARD_FLIP_FALLBACK_MS);
+}
+
 function reveal() {
   if (refs.flashcard.classList.contains('is-revealed')) return;
   refs.practice.classList.remove('is-ready-to-reveal');
@@ -176,13 +210,13 @@ function reveal() {
 function review(known) {
   const card = queue.shift();
   if (!card) return;
-  if (mode === 'random') { renderCard(); return; }
+  if (mode === 'random') { renderNextCardAfterFlip(); return; }
   const now = Date.now();
   const progress = applyReview(card.progress, known, now);
   card.progress = progress;
   refs.known.disabled = true;
   refs.unknown.disabled = true;
-  showReviewFeedback(progress, now, () => renderCard());
+  showReviewFeedback(progress, now, () => renderNextCardAfterFlip());
   if (!tutorialDemoActive) {
     post(REVIEW_REQUEST, { courseId: card.courseId, studentId: card.studentId, progress });
   }
@@ -345,15 +379,19 @@ refs.known.addEventListener('click', (event) => { event.stopPropagation(); revie
 refs.unknown.addEventListener('click', (event) => { event.stopPropagation(); review(false); });
 refs.tutorialButton?.addEventListener('click', () => post(TUTORIAL_START_REQUEST, { source: 'iframe', module: 'name-learning' }));
 installTutorialEntryHint(refs.tutorialButton, 'name-learning', 'Namen lernen');
-window.addEventListener('beforeunload', () => { revokePortrait(); clearReviewFeedbackTimer(); });
+window.addEventListener('beforeunload', () => { revokePortrait(); clearReviewFeedbackTimer(); clearNextCardTransitionTimer(); });
 window.addEventListener('message', (event) => {
   if (
     event.source !== window.parent
     || event.origin !== ORIGIN
     || !event.data
     || typeof event.data !== 'object'
-    || (MODULE_FRAME_NONCE && event.data.frameNonce !== MODULE_FRAME_NONCE)
+  || (MODULE_FRAME_NONCE && event.data.frameNonce !== MODULE_FRAME_NONCE)
   ) return;
+  if (event.data.type === NAME_LEARNING_SHELL_LAYOUT_EVENT) {
+    document.documentElement.dataset.shellCollapsed = event.data.detail?.collapsed ? 'true' : 'false';
+    return;
+  }
   if (event.data.type === TUTORIAL_TARGET_RECT_REQUEST_EVENT) {
     respondWithTutorialTargetRect(event.data.detail && typeof event.data.detail === 'object' ? event.data.detail : {});
     return;

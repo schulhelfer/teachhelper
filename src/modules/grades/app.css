@@ -76,7 +76,7 @@
 }
 
 .settings-grade-vault-actions {
-  margin-top: 0.45rem;
+  margin: 0;
 }
 
 .settings-backup-folder-actions {
@@ -2147,10 +2147,14 @@
         }
 
         #view-settings {
+          --settings-font-heading: 1.2rem;
+          --settings-font-content: 1rem;
+          --settings-font-meta: 0.85rem;
           overflow: visible;
           min-height: 0;
           display: flex;
           flex-direction: column;
+          font-size: var(--settings-font-content);
         }
 
         .settings-head {
@@ -2164,7 +2168,7 @@
           margin: 0;
           flex: 1 1 auto;
           text-align: center;
-          font-size: 1.28rem;
+          font-size: var(--settings-font-heading);
           font-weight: 700;
         }
 
@@ -2211,7 +2215,7 @@
           background: var(--surface-segment);
           color: var(--segment-label-fg);
           font-weight: 700;
-          font-size: 0.94rem;
+          font-size: var(--settings-font-content);
           padding: 0.58rem 0.98rem 0.64rem;
           min-height: 36px;
           margin-bottom: -1px;
@@ -2286,10 +2290,18 @@
         .settings-grade-occurrences-list {
           display: grid;
           gap: 0.75rem;
+          justify-items: start;
         }
 
         .settings-grade-occurrences-panel > .muted {
           margin: 0;
+        }
+
+        .settings-grade-occurrences-management {
+          display: grid;
+          gap: 0.75rem;
+          inline-size: fit-content;
+          max-inline-size: 100%;
         }
 
         .settings-grade-occurrence-suggestions-section {
@@ -2313,7 +2325,7 @@
           gap: 0.36rem;
           min-height: 2rem;
           padding: 0.34rem 0.55rem;
-          font-size: 0.8rem;
+          font-size: var(--settings-font-content);
         }
 
         .settings-grade-occurrence-suggestion.is-used {
@@ -2322,8 +2334,11 @@
 
         .settings-grade-occurrence-row {
           display: grid;
-          grid-template-columns: minmax(12rem, 1fr) minmax(4.75rem, 5.5rem) minmax(11rem, 12.5rem) 2.5rem;
+          grid-template-columns: minmax(12rem, 14rem) minmax(4.75rem, 5.5rem) minmax(11rem, 12.5rem) 2.5rem;
           align-items: start;
+          justify-content: start;
+          inline-size: fit-content;
+          max-inline-size: 100%;
           column-gap: 0.8rem;
           row-gap: 0.6rem;
           padding: 0.8rem;
@@ -2410,7 +2425,7 @@
           height: 100%;
           padding: 0.42rem;
           color: var(--muted);
-          font-size: 0.78rem;
+          font-size: var(--settings-font-content);
           font-weight: 700;
           cursor: pointer;
         }
@@ -2426,6 +2441,7 @@
         }
 
         .settings-grade-occurrences-add-row {
+          inline-size: 100%;
           justify-content: center;
           padding-top: 0.1rem;
         }
@@ -2455,12 +2471,33 @@
           margin: 0;
         }
 
-        .settings-grade-structure-actions {
+        .settings-grade-structure-periods {
+          display: grid;
+          gap: 1.15rem;
+        }
+
+        .settings-grade-structure-period {
+          display: grid;
+          gap: 0.65rem;
+          min-width: 0;
+        }
+
+        .settings-grade-structure-period + .settings-grade-structure-period {
+          padding-top: 1rem;
+        }
+
+        .settings-grade-structure-period-head {
           display: flex;
           align-items: center;
           justify-content: flex-start;
           gap: 0.55rem;
           flex-wrap: wrap;
+        }
+
+        .settings-grade-structure-period-title {
+          margin: 0;
+          font-size: var(--settings-font-heading);
+          font-weight: 800;
         }
 
         @media (max-width: 720px) {
@@ -2839,7 +2876,7 @@
         }
 
         .settings-panel-title {
-          font-size: 1rem;
+          font-size: var(--settings-font-heading);
           margin-bottom: 0.55rem;
         }
 
@@ -2869,6 +2906,45 @@
           margin-top: 0;
           border-top: none;
           padding-top: 0;
+        }
+
+        #settings-tab-encryption #grade-vault-settings-section {
+          display: grid;
+          max-width: 560px;
+        }
+
+        .grade-vault-settings-layout {
+          display: grid;
+          gap: 0.95rem;
+        }
+
+        .grade-vault-settings-group {
+          display: grid;
+          min-inline-size: 0;
+          margin: 0;
+          padding: 0;
+          border: 0;
+        }
+
+        .grade-vault-settings-group + .grade-vault-settings-group {
+          gap: 0.54rem;
+          padding-top: 0.95rem;
+        }
+
+        .grade-vault-settings-group-title {
+          margin: 0;
+          padding: 0;
+          color: var(--text);
+          font-size: var(--settings-font-heading);
+          font-weight: 800;
+        }
+
+        .grade-vault-settings-group.is-disabled {
+          opacity: 0.5;
+        }
+
+        .grade-vault-settings-group.is-disabled .settings-form-label {
+          cursor: default;
         }
 
         #settings-tab-database {
@@ -2908,17 +2984,17 @@
         #settings-tab-expectation-horizon {
           display: grid;
           align-content: start;
-          gap: 1.35rem;
+          gap: 1.5rem;
         }
 
         .expectation-horizon-settings-section {
           display: grid;
-          gap: 0.58rem;
+          gap: 0.7rem;
+          max-width: 720px;
         }
 
         .expectation-horizon-settings-section+.expectation-horizon-settings-section {
-          border-top: 1px solid var(--line-soft);
-          padding-top: 1.1rem;
+          padding-top: 0;
         }
 
         .expectation-horizon-settings-section .settings-panel-title,
@@ -2927,15 +3003,26 @@
           margin-bottom: 0;
         }
 
-        .expectation-horizon-template-settings-group {
-          display: grid;
-          gap: 0.45rem;
+        .expectation-horizon-template-settings-group .muted {
+          color: var(--muted);
+          font-size: var(--settings-font-meta);
+          line-height: 1.45;
         }
 
-        .expectation-horizon-template-settings-group h4 {
+        .expectation-horizon-template-settings-group {
+          display: grid;
+          gap: 0.54rem;
+        }
+
+        .expectation-horizon-template-settings-group .muted:empty {
+          display: none;
+        }
+
+        .expectation-horizon-template-settings-actions {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
           margin: 0;
-          font-size: 0.92rem;
-          font-weight: 800;
         }
 
         #settings-tab-expectation-horizon .settings-form-row {
@@ -2962,7 +3049,7 @@
 
         .settings-link-hint {
           margin: 0 0 0.52rem;
-          font-size: 0.88rem;
+          font-size: var(--settings-font-meta);
           color: var(--muted);
         }
 
@@ -2994,13 +3081,18 @@
         }
 
         .settings-form-row-compact .settings-form-label {
-          font-size: 1rem;
+          font-size: var(--settings-font-content);
         }
 
         .settings-form-label {
           display: block;
           color: var(--muted);
-          font-size: 0.89rem;
+          font-size: var(--settings-font-content);
+        }
+
+        #view-settings .muted,
+        #view-settings .list .meta {
+          font-size: var(--settings-font-meta);
         }
 
         .settings-number-input {
@@ -3008,12 +3100,85 @@
           justify-self: start;
         }
 
-        .settings-inline-checkbox.checkbox-line {
+        .settings-toggle-row {
+          grid-template-columns: minmax(0, 1fr) auto;
+          min-block-size: 2.5rem;
+          cursor: pointer;
+        }
+
+        .settings-toggle-control {
+          position: relative;
           display: inline-flex;
-          align-items: center;
-          gap: 0.4rem;
-          grid-template-columns: none;
+          flex: 0 0 48px;
+          inline-size: 48px;
+          block-size: 28px;
+        }
+
+        .settings-toggle-control input[type="checkbox"] {
+          position: absolute;
+          inset: 0;
+          z-index: 1;
+          inline-size: 100%;
+          block-size: 100%;
           margin: 0;
+          opacity: 0;
+          cursor: pointer;
+        }
+
+        .settings-toggle-track {
+          display: block;
+          inline-size: 100%;
+          block-size: 100%;
+          box-sizing: border-box;
+          border: 1px solid var(--control-border);
+          border-radius: 999px;
+          background: rgba(148, 163, 184, 0.38);
+          box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.28);
+          pointer-events: none;
+          transition: background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+        }
+
+        .settings-toggle-track::after {
+          position: absolute;
+          inset: 3px auto 3px 3px;
+          inline-size: 20px;
+          block-size: 20px;
+          border-radius: 50%;
+          background: #f8fafc;
+          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.42);
+          content: "";
+          transition: transform 160ms ease;
+        }
+
+        .settings-toggle-control input[type="checkbox"]:checked + .settings-toggle-track {
+          border-color: var(--accent);
+          background: var(--accent);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:checked + .settings-toggle-track::after {
+          transform: translateX(20px);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:focus-visible + .settings-toggle-track {
+          border-color: var(--focus-border);
+          box-shadow: var(--focus-ring);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:hover:not(:disabled) + .settings-toggle-track {
+          border-color: var(--focus-border);
+          background: var(--control-bg-focus);
+        }
+
+        .settings-toggle-control input[type="checkbox"]:checked:hover:not(:disabled) + .settings-toggle-track {
+          background: #60a5fa;
+        }
+
+        .settings-toggle-control input[type="checkbox"]:disabled {
+          cursor: not-allowed;
+        }
+
+        .settings-toggle-control input[type="checkbox"]:disabled + .settings-toggle-track {
+          opacity: 0.5;
         }
 
         .settings-inline-checkbox.is-disabled {
@@ -3024,31 +3189,6 @@
         .settings-form-row.is-disabled .settings-form-label {
           cursor: default;
           opacity: 0.55;
-        }
-
-        .settings-inline-checkbox input[type="checkbox"] {
-          flex: 0 0 18px;
-          inline-size: 18px;
-          block-size: 18px;
-          min-inline-size: 18px;
-          min-block-size: 18px;
-          margin: 0;
-          padding: 0;
-          align-self: center;
-          box-sizing: border-box;
-          line-height: 1;
-          accent-color: #60a5fa;
-          transition: none;
-        }
-
-        .settings-inline-checkbox input[type="checkbox"]:focus {
-          background-color: var(--control-bg);
-          box-shadow: var(--focus-ring);
-        }
-
-        .settings-inline-checkbox input[type="checkbox"]:disabled {
-          opacity: 0.72;
-          filter: none;
         }
 
         #course-dialog .checkbox-line input[type="checkbox"] {
@@ -3102,25 +3242,22 @@
 
         .grade-test-scale-settings-card-head {
           display: grid;
-          gap: 0.5rem;
           min-width: 0;
         }
 
-        .grade-test-scale-name-field {
-          display: grid;
-          gap: 0.25rem;
+        .grade-test-scale-settings-card-title {
           margin: 0;
-          max-width: 9.25rem;
-          color: var(--muted);
-          font-size: 0.78rem;
-          font-weight: 700;
+          font-size: var(--settings-font-heading);
+          line-height: 2.1rem;
         }
 
-        .grade-test-scale-name-field input {
-          width: 9.25rem;
+        .grade-test-scale-custom-name-input {
+          box-sizing: border-box;
+          width: 11.45rem;
+          min-height: 2.1rem;
         }
 
-        .grade-test-scale-name-field input,
+        .grade-test-scale-custom-name-input,
         .grade-test-scale-threshold-row input {
           min-width: 0;
           border-radius: 9px;
@@ -3144,7 +3281,7 @@
 
         .grade-test-scale-threshold-header {
           color: var(--muted);
-          font-size: 0.72rem;
+          font-size: var(--settings-font-meta);
           font-weight: 800;
           letter-spacing: 0.04em;
           text-transform: uppercase;
@@ -3154,7 +3291,7 @@
           display: grid;
           align-items: center;
           color: var(--muted);
-          font-size: 0.78rem;
+          font-size: var(--settings-font-content);
           font-weight: 800;
         }
 
@@ -3190,6 +3327,10 @@
 
         .required-hint-link {
           font-size: 0.84rem;
+        }
+
+        #view-settings .required-hint-link {
+          font-size: var(--settings-font-meta);
         }
 
         .required-hint-link a {
@@ -9337,8 +9478,7 @@
           flex: 0 0 auto;
         }
 
-        #course-dialog-category-add,
-        #settings-grade-structure-category-add {
+        #course-dialog-category-add {
           flex: 0 0 36px;
           align-self: center;
           margin-right: 2px;
@@ -10331,6 +10471,11 @@
           .settings-form-row {
             grid-template-columns: 1fr;
             align-items: stretch;
+          }
+
+          .settings-form-row.settings-toggle-row {
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-items: center;
           }
 
           #settings-tab-expectation-horizon .settings-form-row {

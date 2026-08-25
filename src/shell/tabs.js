@@ -65,6 +65,7 @@ export const NAME_LEARNING_DATA_REQUEST_EVENT = 'classroom:name-learning-data-re
 export const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:name-learning-data-result';
 export const NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:name-learning-review-request';
 export const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:name-learning-review-result';
+export const NAME_LEARNING_SHELL_LAYOUT_EVENT = 'classroom:name-learning-shell-layout';
 export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
 export const MERGER_TOOL_REQUEST_EVENT = 'classroom:merger-tool-request';
 export const MERGER_OPEN_RESULT_REQUEST_EVENT = 'classroom:merger-open-result-request';

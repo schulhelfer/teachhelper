@@ -158,6 +158,11 @@ test('die Einstellungen zeigen drei feste Qualifikationsphasen-Regeln mit passen
   assert.match(planningSource, /schulverwaltungsblatt_amtlicher_teil\/schulverwaltungsblatt-amtlicher-teil-6525\.html/);
   assert.match(planningSource, /Abiturtermine/);
   assert.match(planningSource, /abiturprufung\/abiturpruefung-6441\.html/);
+  assert.match(planningSource, /title\.className = "qualification-phase-rule-title";/);
+  assert.match(planningSource, /const ruleLabel = document\.createElement\("strong"\);/);
+  assert.match(planningSource, /title\.append\(ruleLabel, document\.createTextNode\(" \("\), sourceLink, document\.createTextNode\("\)"\)\);/);
+  assert.match(cssSource, /\.qualification-phase-rule-title \{\s+font-weight: 400;/);
+  assert.match(cssSource, /\.qualification-phase-rule-title strong \{\s+font-weight: 600;/);
   assert.match(planningSource, /persistExplicitDatabaseSave\("planning-qualification-phase-end-date-save"\)/);
   assert.match(planningSource, /openQualificationPhaseEndDateDialog/);
 });
