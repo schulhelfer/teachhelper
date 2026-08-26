@@ -26,6 +26,12 @@ test('der Sitzplan-Picker speichert nicht mehr selbst, sondern leert den Eintrag
     seatplanApp,
     /value === null\s*\?\s*state\.courseGradeEntries\[studentId\] === undefined/,
   );
+
+  const start = seatplanApp.indexOf('function openCourseGradePicker(input)');
+  const end = seatplanApp.indexOf('\n\n          function createCourseGradeInput', start);
+  const picker = seatplanApp.slice(start, end);
+  assert.ok(start >= 0 && end > start, 'der Sitzplan-Notenpicker muss vorhanden sein');
+  assert.doesNotMatch(picker, /dataset\.tooltip/);
 });
 
 test('das Notenmodul bietet die Leer-Taste nur in der Notentabelle an', () => {

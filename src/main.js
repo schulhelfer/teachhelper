@@ -3390,6 +3390,13 @@ import {
     getChromeCollapsed: isChromeCollapsed,
     rosterStore: SharedRosterStore,
     documentBus: document,
+    onCourseGradeSaveSuccess: () => {
+      setActiveTab(TAB_PLANNING);
+      showMessage('Noten gespeichert', 'success', {
+        presentation: 'toast',
+        durationMs: 1500,
+      });
+    },
   });
   SharedRosterStore.subscribe((detail) => {
     if (classroomTutorialDemoActive) return;
