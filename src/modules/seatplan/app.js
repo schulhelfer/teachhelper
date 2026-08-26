@@ -2524,7 +2524,10 @@ import { createMessageApi } from '../../shared/messages.js';
             const next = inputs[index >= 0 && index < inputs.length - 1 ? index + 1 : 0];
             const wrapped = index >= inputs.length - 1;
             if (wrapped) {
-              if (checkCourseGradeCompletionPrompt({ allowOpen: true })) {
+              if (
+                checkCourseGradeCompletionPrompt({ allowOpen: true })
+                || state.courseGradeCompletionPromptShown
+              ) {
                 return;
               }
             }
@@ -2537,6 +2540,23 @@ import { createMessageApi } from '../../shared/messages.js';
                 openCourseGradePicker(next);
               }
             }
+          }
+
+          function advanceCourseGradeInput(currentInput, options = {}) {
+            if (!(currentInput instanceof HTMLInputElement) || !currentInput.isConnected) return false;
+            if (options.closePicker) {
+              hideCourseGradePicker();
+            }
+            const moveFocus = () => {
+              if (!isCourseGradeMode() || !currentInput.isConnected) return;
+              focusNextCourseGradeInput(currentInput);
+            };
+            if (typeof requestAnimationFrame === 'function') {
+              requestAnimationFrame(moveFocus);
+            } else {
+              setTimeout(moveFocus, 0);
+            }
+            return true;
           }
 
           function hideCourseGradePicker(event = null) {
@@ -3027,15 +3047,13 @@ import { createMessageApi } from '../../shared/messages.js';
               if (options.className) button.classList.add(options.className);
               if (options.label) {
                 button.setAttribute('aria-label', options.label);
-                button.dataset.tooltip = options.label;
               }
               button.addEventListener('mousedown', event => event.preventDefault());
               button.addEventListener('click', event => {
                 event.stopPropagation();
                 setCourseGradeEntry(studentId, value, { prompt: true });
                 updateCourseGradeInputsForStudent(studentId);
-                hideCourseGradePicker();
-                focusNextCourseGradeInput(input);
+                advanceCourseGradeInput(input, { closePicker: true });
               });
               grid.appendChild(button);
             };
@@ -3047,13 +3065,11 @@ import { createMessageApi } from '../../shared/messages.js';
             skipButton.className = 'grade-picker-skip';
             skipButton.textContent = '⬇️';
             skipButton.setAttribute('aria-label', 'Person auslassen und weiter');
-            skipButton.dataset.tooltip = 'Person auslassen und weiter';
             skipButton.addEventListener('mousedown', event => event.preventDefault());
             skipButton.addEventListener('click', event => {
               event.stopPropagation();
               state.courseGradeCompletionPromptArmed = true;
-              hideCourseGradePicker();
-              focusNextCourseGradeInput(input);
+              advanceCourseGradeInput(input, { closePicker: true });
             });
             grid.appendChild(skipButton);
             els.courseGradePicker.appendChild(grid);
@@ -3093,6 +3109,9 @@ import { createMessageApi } from '../../shared/messages.js';
               input.classList.toggle('invalid', !parsed.valid);
               if (parsed.valid) {
                 setCourseGradeEntry(sid, sanitized, { armCompletion: true });
+                if (!isCourseGradeSchoolDisplay() && parsed.value !== null) {
+                  advanceCourseGradeInput(input, { closePicker: true });
+                }
               }
             });
             input.addEventListener('change', () => formatCourseGradeInputDisplay(input, { checkCompletion: true }));
@@ -3109,7 +3128,14 @@ import { createMessageApi } from '../../shared/messages.js';
               }
               if (event.key === 'Enter') {
                 event.preventDefault();
-                openCourseGradePicker(input);
+                const parsed = parseCourseGradeValue(input.value);
+                if (parsed.valid && parsed.value !== null) {
+                  formatCourseGradeInputDisplay(input, { checkCompletion: true });
+                  advanceCourseGradeInput(input, { closePicker: true });
+                } else {
+                  formatCourseGradeInputDisplay(input, { checkCompletion: true });
+                  openCourseGradePicker(input);
+                }
                 return;
               }
               if (event.key === 'Escape') {

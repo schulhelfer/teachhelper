@@ -63,6 +63,36 @@ test('saving without changes closes the completion dialog before showing the not
   );
 });
 
+test('grade entry advances reliably after a confirmed value', () => {
+  assert.match(
+    seatplanApp,
+    /function advanceCourseGradeInput\(currentInput, options = \{\}\) \{[\s\S]*?if \(options\.closePicker\) \{\s+hideCourseGradePicker\(\);[\s\S]*?requestAnimationFrame\(moveFocus\)/,
+  );
+  assert.match(
+    seatplanApp,
+    /function focusNextCourseGradeInput\(currentInput\) \{[\s\S]*?checkCourseGradeCompletionPrompt\(\{ allowOpen: true \}\)[\s\S]*?\|\| state\.courseGradeCompletionPromptShown[\s\S]*?return;/,
+  );
+  assert.match(
+    seatplanApp,
+    /setCourseGradeEntry\(studentId, value, \{ prompt: true \}\);\s+updateCourseGradeInputsForStudent\(studentId\);\s+advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+  );
+  assert.match(
+    seatplanApp,
+    /skipButton\.addEventListener\('click', event => \{[\s\S]*?advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+  );
+});
+
+test('keyboard grade entry advances only after an unambiguous confirmation', () => {
+  assert.match(
+    seatplanApp,
+    /if \(!isCourseGradeSchoolDisplay\(\) && parsed\.value !== null\) \{\s+advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+  );
+  assert.match(
+    seatplanApp,
+    /if \(event\.key === 'Enter'\) \{\s+event\.preventDefault\(\);\s+const parsed = parseCourseGradeValue\(input\.value\);\s+if \(parsed\.valid && parsed\.value !== null\) \{\s+formatCourseGradeInputDisplay\(input, \{ checkCompletion: true \}\);\s+advanceCourseGradeInput\(input, \{ closePicker: true \}\);\s+\} else \{\s+formatCourseGradeInputDisplay\(input, \{ checkCompletion: true \}\);\s+openCourseGradePicker\(input\);/,
+  );
+});
+
 test('occurrence seats toggle directly instead of opening the grade picker', () => {
   assert.match(seatplanApp, /button\.dataset\.courseGradeOccurrenceToggle = '1'/);
   assert.match(seatplanApp, /button\[data-course-grade-occurrence-toggle='1'\]/);

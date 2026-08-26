@@ -61,6 +61,7 @@ export function createPlanningSeatplanBridge({
   getChromeCollapsed,
   rosterStore,
   documentBus = document,
+  onCourseGradeSaveSuccess = null,
 } = {}) {
   let mergerController = null;
   let duplicateCheckController = null;
@@ -70,6 +71,7 @@ export function createPlanningSeatplanBridge({
   let planningInitPending = false;
   let pendingPlanningViewRequest = null;
   let pendingGradesNavigation = null;
+  let pendingCourseGradeSaveRequest = null;
   let gradesTabLeaveRequestSequence = 0;
   let planningTabLeaveRequestSequence = 0;
   let seatplanController = null;
@@ -671,6 +673,12 @@ export function createPlanningSeatplanBridge({
       dispatchBlockedResult(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, detail);
       return;
     }
+    pendingCourseGradeSaveRequest = {
+      requestId: String(detail.requestId || ''),
+      courseId: Number(detail.courseId || 0),
+      contextToken: String(detail.contextToken || ''),
+      rosterToken: String(detail.rosterToken || ''),
+    };
     ensureTabInitialized(TAB_GRADES);
     gradesController?.post?.(GRADES_COURSE_GRADE_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
   });
@@ -733,7 +741,26 @@ export function createPlanningSeatplanBridge({
   saveResultTarget.addEventListener(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
+    const pending = pendingCourseGradeSaveRequest;
+    const matchesPendingRequest = Boolean(
+      pending
+      && pending.requestId
+      && pending.requestId === String(detail.requestId || '')
+      && pending.courseId === Number(detail.courseId || 0)
+      && pending.contextToken === String(detail.contextToken || '')
+      && pending.rosterToken === String(detail.rosterToken || '')
+    );
+    if (matchesPendingRequest) {
+      pendingCourseGradeSaveRequest = null;
+    }
     seatplanController?.sendCourseGradeSaveResult?.(detail);
+    if (
+      matchesPendingRequest
+      && detail.ok === true
+      && typeof onCourseGradeSaveSuccess === 'function'
+    ) {
+      onCourseGradeSaveSuccess(detail);
+    }
   });
 
   return {
