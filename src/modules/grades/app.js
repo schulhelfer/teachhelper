@@ -28538,7 +28538,7 @@ class GradesApp {
     }
     try {
       window.parent.postMessage({
-        type: "classroom:grades-tutorial-start-request",
+        type: "classroom:help-entry-request",
         detail: {
           view: this.shellTabContext === "grades" ? "grades" : "planning",
           source: "iframe"

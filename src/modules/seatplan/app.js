@@ -181,7 +181,7 @@
             }
             try {
               window.parent.postMessage({
-                type: 'classroom:tutorial-start-request',
+                type: 'classroom:help-entry-request',
                 detail: {
                   source: 'iframe',
                   module: 'seatplan',

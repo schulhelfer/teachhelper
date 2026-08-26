@@ -4885,6 +4885,166 @@
       box-shadow: var(--button-shadow);
     }
 
+    .help-entry-dialog,
+    .help-dialog {
+      width: min(680px, calc(100vw - 28px));
+      max-height: min(760px, calc(100vh - 28px));
+      padding: 0;
+      border: 1px solid var(--control-border);
+      border-radius: 18px;
+      color: var(--text);
+      background: var(--panel);
+      box-shadow: 0 24px 64px rgba(0, 0, 0, 0.45);
+    }
+
+    .help-entry-dialog {
+      width: min(360px, calc(100vw - 28px));
+    }
+
+    .help-dialog {
+      height: min(680px, calc(100vh - 28px));
+    }
+
+    .help-entry-dialog::backdrop,
+    .help-dialog::backdrop {
+      background: rgba(2, 6, 23, 0.68);
+      backdrop-filter: blur(3px);
+    }
+
+    .help-entry-form,
+    .help-dialog-form {
+      width: 100%;
+      max-width: none;
+      padding: 22px;
+    }
+
+    .help-entry-form { padding: 16px; }
+
+    .help-dialog-form {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .help-entry-actions {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .help-search-wrap { position: relative; }
+
+    .help-search-icon {
+      position: absolute;
+      z-index: 1;
+      top: 50%;
+      left: 12px;
+      pointer-events: none;
+      transform: translateY(-50%);
+    }
+
+    .help-search {
+      width: 100%;
+      min-height: 42px;
+      padding: 9px 12px 9px 42px;
+      border: 1px solid var(--control-border);
+      border-radius: 10px;
+      color: var(--text);
+      background: var(--control-bg);
+    }
+
+    .help-back-button { margin-top: 14px; }
+
+    .help-results,
+    .help-detail {
+      min-height: 0;
+      flex: 1;
+      margin-top: 16px;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .help-results.is-filtering {
+      animation: help-results-filter-fade 160ms ease-out;
+    }
+
+    @keyframes help-results-filter-fade {
+      from {
+        opacity: 0.38;
+        transform: translateY(3px);
+      }
+
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .help-result-card {
+      display: grid;
+      width: 100%;
+      gap: 5px;
+      margin: 7px 0;
+      padding: 13px;
+      border: 1px solid var(--control-border);
+      border-radius: 12px;
+      color: var(--text);
+      text-align: left;
+      background: var(--control-bg);
+    }
+
+    .help-result-card:hover,
+    .help-result-card:focus-visible {
+      border-color: var(--accent-2);
+      background: var(--control-bg-focus);
+    }
+
+    .help-result-meta,
+    .help-article-module,
+    .help-empty-state {
+      color: var(--text-on-overlay-secondary);
+      font-size: 0.92rem;
+      line-height: 1.45;
+    }
+
+    .help-detail { line-height: 1.55; }
+    .help-article-module { margin: 0 0 4px; }
+    .help-article-title { margin: 0 0 20px; }
+    .help-detail section + section { margin-top: 20px; }
+    .help-detail h4 { margin: 0 0 6px; }
+    .help-detail p { margin: 0; }
+
+    .help-article-steps {
+      display: grid;
+      gap: 8px;
+      margin: 0;
+      padding-left: 24px;
+    }
+
+    .help-related-section {
+      padding-top: 18px;
+      border-top: 1px solid var(--control-border);
+    }
+
+    .help-related-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .help-related-button {
+      max-width: 100%;
+      text-align: left;
+    }
+
+    @media (max-width: 540px) {
+      .help-entry-form,
+      .help-dialog-form { padding: 16px; }
+      .help-entry-actions > button { width: 100%; }
+    }
+
     button.ghost,
     button.filled,
     button.reset-action {
@@ -6383,6 +6543,10 @@
 
       .tutorial-highlight {
         transition: none;
+      }
+
+      .help-results.is-filtering {
+        animation: none;
       }
     }
 

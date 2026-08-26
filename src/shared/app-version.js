@@ -1,1 +1,1 @@
-globalThis.TEACHHELPER_APP_VERSION = '51';
+globalThis.TEACHHELPER_APP_VERSION = '52';

@@ -9069,7 +9069,7 @@ class PlanningApp {
     }
     try {
       window.parent.postMessage({
-        type: "classroom:planning-tutorial-start-request",
+        type: "classroom:help-entry-request",
         detail: {
           view: "planning",
           source: "iframe"

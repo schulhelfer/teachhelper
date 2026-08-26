@@ -189,7 +189,7 @@ export function createMergerApp({
     }
     try {
       window.parent.postMessage(withModuleFrameNonce({
-        type: "classroom:tutorial-start-request",
+        type: "classroom:help-entry-request",
         detail: {
           source: "iframe",
           module: "merger",

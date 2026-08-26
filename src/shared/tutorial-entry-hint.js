@@ -14,7 +14,7 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
   const moduleOrigin = new URL(import.meta.url).origin;
   const parentOrigin = window.location.origin === 'null' ? moduleOrigin : window.location.origin;
   const embedded = window.parent && window.parent !== window;
-  const label = `Tutorial für das Modul ${moduleName}`;
+  const label = `Tutorial oder Hilfe für das Modul ${moduleName}`;
   button.setAttribute('aria-label', label);
   button.dataset.tooltip = label;
   let hintSeen = hasTutorialEntryHintBeenSeen();

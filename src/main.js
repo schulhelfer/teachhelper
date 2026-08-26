@@ -1,5 +1,6 @@
 import { createAppDom } from './app/dom.js';
 import { createFirstRunTutorial } from './app/first-run-tutorial.js';
+import { createHelpCenter } from './app/help-center.js';
 import { createPlanningSeatplanBridge } from './app/planning-seatplan-bridge.js';
 import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createPwaInstallPrompt } from './app/pwa-install-prompt.js';
@@ -317,6 +318,7 @@ import {
   const syncChromeState = () => shellController?.syncChromeState();
   let tabNavigationBound = false;
   let firstRunTutorial = null;
+  let helpCenter = null;
   let planningTutorialDemoFrame = null;
   let planningTutorialDemoActive = false;
   let planningTutorialDemoFrameReady = false;
@@ -2906,6 +2908,10 @@ import {
     return started;
   }
 
+  function openHelpEntry() {
+    helpCenter?.openEntry({ module: getActiveTab() });
+  }
+
   async function createBackupBeforeTutorialStart() {
     const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
     const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
@@ -3094,8 +3100,8 @@ import {
         });
         return;
       }
-      if (data.type !== 'classroom:tutorial-start-request') return;
-      startTutorialFromEntry();
+      if (data.type !== 'classroom:help-entry-request') return;
+      openHelpEntry();
     });
     window.addEventListener(PLANNING_VIEW_REQUEST_EVENT, (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
@@ -3130,8 +3136,8 @@ import {
       }
       setActiveTab(detail.view === 'planning' ? TAB_PLANNING : TAB_GRADES);
     });
-    window.addEventListener(PLANNING_TUTORIAL_START_REQUEST_EVENT, startTutorialFromEntry);
-    window.addEventListener(GRADES_TUTORIAL_START_REQUEST_EVENT, startTutorialFromEntry);
+    window.addEventListener(PLANNING_TUTORIAL_START_REQUEST_EVENT, openHelpEntry);
+    window.addEventListener(GRADES_TUTORIAL_START_REQUEST_EVENT, openHelpEntry);
     const openCourseSeatplan = (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (!detail || typeof detail !== 'object') {
@@ -8914,6 +8920,11 @@ import {
     setChromeCollapsed,
     tooltipController: appTooltips,
     beforeStart: createBackupBeforeTutorialStart,
+    onEntryRequest: openHelpEntry,
+  });
+  helpCenter = createHelpCenter({
+    els,
+    onStartTutorial: startTutorialFromEntry,
   });
   firstRunTutorial.showContextHelp({ prompt: true });
   window.addEventListener('resize', positionWorkOrderHintOverlay);

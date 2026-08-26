@@ -140,7 +140,7 @@
       <div id="sidebar-resize-handle" class="sidebar-resize-handle" aria-hidden="true"></div>
       <div id="seatplan-side-host" hidden aria-label="Sitzplan Sidebar"></div>
       <button id="first-run-tutorial-start" class="sidebar-help-button" type="button"
-        aria-label="Tutorial für das Modul Noten" data-tooltip="Tutorial für das Modul Noten">🛟</button>
+        aria-label="Tutorial oder Hilfe für das Modul Noten" data-tooltip="Tutorial oder Hilfe für das Modul Noten">🛟</button>
       <div class="sidebar-header shell-sidebar-header shell-sidebar-header-groups">
         <h1 class="sidebar-title">Gruppengenerator</h1>
       </div>
@@ -541,6 +541,33 @@
           <button type="button" id="pwa-install-dialog-later" class="ghost">Später</button>
           <button type="button" id="pwa-install-dialog-install" class="primary">Als App installieren</button>
         </div>
+      </div>
+    </dialog>
+    <dialog id="help-entry-dialog" class="help-entry-dialog" aria-labelledby="help-entry-dialog-title">
+      <div class="dialog-form help-entry-form">
+        <div class="dialog-header">
+          <h2 id="help-entry-dialog-title" class="dialog-title">Hilfe</h2>
+        </div>
+        <div class="help-entry-actions">
+          <button type="button" id="help-entry-tutorial" class="primary">Tutorial</button>
+          <button type="button" id="help-entry-help" class="ghost">Handbuch</button>
+        </div>
+      </div>
+    </dialog>
+    <dialog id="help-dialog" class="help-dialog" aria-labelledby="help-dialog-title">
+      <div class="dialog-form help-dialog-form">
+        <div class="dialog-header">
+          <h2 id="help-dialog-title" class="dialog-title">Handbuch</h2>
+          <button type="button" id="help-close" class="ghost dialog-icon-button" aria-label="Handbuch schließen">✕</button>
+        </div>
+        <div class="help-search-wrap">
+          <span class="help-search-icon" aria-hidden="true">🔎</span>
+          <input id="help-search" class="help-search" type="search" autocomplete="off"
+            aria-label="Handbuch durchsuchen" placeholder="z. B. Sicherung, Sitzplan oder QR-Code">
+        </div>
+        <button type="button" id="help-back" class="ghost help-back-button" hidden>← Zurück zu den Treffern</button>
+        <div id="help-results" class="help-results" aria-live="polite"></div>
+        <article id="help-detail" class="help-detail" hidden></article>
       </div>
     </dialog>
   </div>

@@ -102,6 +102,7 @@ export function createFirstRunTutorial({
   setChromeCollapsed = () => {},
   tooltipController = null,
   beforeStart = async () => true,
+  onEntryRequest = null,
 } = {}) {
   let activeSteps = [];
   let active = false;
@@ -477,7 +478,7 @@ export function createFirstRunTutorial({
   }
 
   function showContextHelp({ prompt = false } = {}) {
-    setSidebarHelpButtonLabel(`Tutorial für das Modul ${getActiveModuleName()}`);
+    setSidebarHelpButtonLabel(`Tutorial oder Hilfe für das Modul ${getActiveModuleName()}`);
     const activeTab = String(getActiveTab() || '');
     if (!prompt || active || !activeTab || hasTutorialEntryHintBeenSeen()) return;
     clearContextHelpPromptTimer();
@@ -1091,6 +1092,10 @@ export function createFirstRunTutorial({
   }
 
   els.firstRunTutorialStart?.addEventListener('click', () => {
+    if (typeof onEntryRequest === 'function') {
+      onEntryRequest();
+      return;
+    }
     void startFromEntry();
   });
   els.firstRunTutorialStart?.addEventListener('pointerenter', showContextHelp);
