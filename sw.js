@@ -18,6 +18,7 @@ const APP_SHELL = [
   './src/app/pwa-install-prompt.js',
   './src/app/pwa-updates.js',
   './src/app/shell.css',
+  './src/shared/toast.css',
   './src/app/shell.js',
   './src/shared/theme.css',
   './src/shared/theme-preload.js',

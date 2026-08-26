@@ -282,89 +282,6 @@
       border-color: rgba(16, 185, 129, 0.9)
     }
 
-    .toast-stack {
-      position: fixed;
-      right: max(18px, env(safe-area-inset-right, 0px) + 18px);
-      bottom: max(18px, env(safe-area-inset-bottom, 0px) + 18px);
-      z-index: 3100;
-      display: grid;
-      gap: 10px;
-      width: min(360px, calc(100vw - 32px));
-      pointer-events: none;
-    }
-
-    .toast-message {
-      display: grid;
-      grid-template-columns: auto minmax(0, 1fr) auto;
-      align-items: center;
-      gap: 10px;
-      padding: 12px 12px 12px 14px;
-      border: 1px solid var(--border-subtle);
-      border-radius: 14px;
-      background: var(--surface-overlay-strong);
-      color: var(--text-primary);
-      box-shadow: var(--shadow-overlay);
-      backdrop-filter: blur(12px) saturate(135%);
-      -webkit-backdrop-filter: blur(12px) saturate(135%);
-      opacity: 0;
-      transform: translateY(10px) scale(0.985);
-      transition:
-        opacity var(--motion-medium, 220ms) var(--motion-ease, ease),
-        transform var(--motion-medium, 220ms) var(--motion-ease, ease),
-        border-color var(--motion-fast, 150ms) var(--motion-ease, ease);
-      pointer-events: auto;
-    }
-
-    .toast-message.show {
-      opacity: 1;
-      transform: translateY(0) scale(1);
-    }
-
-    .toast-message.message-success {
-      border-color: rgba(16, 185, 129, 0.52);
-      box-shadow: 0 16px 38px rgba(2, 6, 23, 0.42), 0 0 0 1px rgba(16, 185, 129, 0.1);
-    }
-
-    .toast-message.message-info {
-      border-color: rgba(96, 165, 250, 0.52);
-    }
-
-    .toast-icon {
-      font-size: 18px;
-      line-height: 1;
-    }
-
-    .toast-body {
-      min-width: 0;
-      font-size: 14px;
-      font-weight: 700;
-      line-height: 1.35;
-      overflow-wrap: anywhere;
-    }
-
-    .toast-close {
-      width: 28px;
-      min-width: 28px;
-      height: 28px;
-      min-height: 28px;
-      display: inline-grid;
-      place-items: center;
-      padding: 0;
-      border: 1px solid rgba(148, 163, 184, 0.24);
-      border-radius: 9px;
-      background: rgba(148, 163, 184, 0.08);
-      color: var(--text-on-overlay);
-      font-size: 18px;
-      line-height: 1;
-      cursor: pointer;
-      box-shadow: none;
-    }
-
-    .toast-close:hover {
-      border-color: rgba(226, 232, 240, 0.42);
-      background: rgba(148, 163, 184, 0.16);
-    }
-
     .touch-drag-ghost {
       position: fixed;
       top: 0;
@@ -1918,10 +1835,6 @@
       color: #001018;
       border-color: rgba(96, 165, 250, 0.38);
       box-shadow: 0 8px 20px rgba(34, 211, 238, 0.3);
-    }
-
-    .app.app-tab-random-picker #scroll-hint {
-      display: none !important;
     }
 
     .app.app-tab-random-picker .main {
@@ -4211,7 +4124,6 @@
       .side,
       .message-stack,
       .toast-stack,
-      #scroll-hint,
       .work-order-region,
       #work-order-hint-overlay,
       .app-header,
@@ -6070,7 +5982,8 @@
       gap: 6px;
     }
 
-    .dialog-form input[type="number"] {
+    .dialog-form input[type="number"],
+    .dialog-form input[type="text"] {
       width: 140px;
       font-size: 18px;
       padding: 10px 14px;
@@ -6078,6 +5991,10 @@
       border: 1px solid rgba(255, 255, 255, 0.15);
       background: var(--surface-control-muted);
       color: var(--text);
+    }
+
+    #shell-action-dialog-input {
+      width: 100%;
     }
 
     .dialog-form input[type="number"]::-webkit-inner-spin-button,
@@ -6936,56 +6853,6 @@
       flex-direction: column;
       gap: 12px;
       margin-top: 16px
-    }
-
-    .scroll-hint {
-      display: none;
-      position: fixed;
-      bottom: 16px;
-      left: 50%;
-      transform: translateX(-50%);
-      padding: 12px 22px;
-      color: var(--text);
-      font-size: 18px;
-      font-weight: 700;
-      gap: 14px;
-      align-items: center;
-      justify-content: center;
-      pointer-events: none;
-      z-index: 1200;
-      background: rgba(8, 12, 22, 0.85);
-      border: 1px solid rgba(239, 68, 68, 0.45);
-      border-radius: 14px;
-      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.35);
-    }
-
-    .scroll-hint.active {
-      display: flex;
-    }
-
-    .scroll-hint .arrow {
-      font-size: 72px;
-      color: var(--danger);
-      animation: bounceDown 0.8s ease-in-out infinite;
-    }
-
-    @keyframes bounceDown {
-
-      0%,
-      20%,
-      50%,
-      80%,
-      100% {
-        transform: translateY(0)
-      }
-
-      28% {
-        transform: translateY(24px)
-      }
-
-      56% {
-        transform: translateY(12px)
-      }
     }
 
     @media (max-width:1100px) {

@@ -1,0 +1,90 @@
+.toast-stack {
+  position: fixed;
+  right: max(18px, env(safe-area-inset-right, 0px) + 18px);
+  bottom: max(18px, env(safe-area-inset-bottom, 0px) + 18px);
+  z-index: 3100;
+  display: grid;
+  gap: 10px;
+  width: min(360px, calc(100vw - 32px));
+  pointer-events: none;
+}
+
+.toast-message {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 12px 14px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  background: var(--surface-overlay-strong);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-overlay);
+  backdrop-filter: blur(12px) saturate(135%);
+  -webkit-backdrop-filter: blur(12px) saturate(135%);
+  opacity: 0;
+  transform: translateY(10px) scale(0.985);
+  transition:
+    opacity var(--motion-medium, 220ms) var(--motion-ease, ease),
+    transform var(--motion-medium, 220ms) var(--motion-ease, ease),
+    border-color var(--motion-fast, 150ms) var(--motion-ease, ease);
+  pointer-events: auto;
+}
+
+.toast-message.show {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.toast-message.message-success {
+  border-color: rgba(16, 185, 129, 0.52);
+  box-shadow: 0 16px 38px rgba(2, 6, 23, 0.42), 0 0 0 1px rgba(16, 185, 129, 0.1);
+}
+
+.toast-message.message-info {
+  border-color: rgba(96, 165, 250, 0.52);
+}
+
+.toast-message.message-warn {
+  border-color: rgba(251, 146, 60, 0.64);
+}
+
+.toast-message.message-error {
+  border-color: rgba(239, 68, 68, 0.72);
+}
+
+.toast-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.toast-body {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.toast-close {
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 9px;
+  background: rgba(148, 163, 184, 0.08);
+  color: var(--text-on-overlay);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.toast-close:hover {
+  border-color: rgba(226, 232, 240, 0.42);
+  background: rgba(148, 163, 184, 0.16);
+}

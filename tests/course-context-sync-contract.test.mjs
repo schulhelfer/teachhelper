@@ -75,7 +75,7 @@ test('the shell remembers the last course and pushes it before the tab transitio
     main,
     /function applySharedCourseContext\(nextTab\) \{[\s\S]*?nextTab === TAB_PLANNING && sharedCourseContextId[\s\S]*?dispatchPlanningViewRequest\?\.\(\{[\s\S]*?view: 'course'[\s\S]*?source: 'course-context'/,
   );
-  assert.match(main, /onTabActivating: \(tab\) => applySharedCourseContext\(tab\)/);
+  assert.match(main, /onTabActivating: \(tab\) => \{\s*applySharedCourseContext\(tab\);/);
   assert.match(
     shell,
     /if \(shouldPromptGradeVaultUnlockOnGradesNavigation\(nextTab\)\) \{[\s\S]*?\}\s*if \(nextTab !== state\.activeTab\) \{\s*notifyTabActivating\(nextTab, state\.activeTab\);/,

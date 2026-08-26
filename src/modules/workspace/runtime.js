@@ -287,10 +287,12 @@ export class WorkspaceRuntime {
   constructor(store, {
     eventTarget = globalThis.window || new EventTarget(),
     ephemeral = false,
+    confirmLargeFile = null,
   } = {}) {
     this.store = store;
     this.eventTarget = eventTarget;
     this.ephemeral = Boolean(ephemeral);
+    this.confirmLargeFile = typeof confirmLargeFile === 'function' ? confirmLargeFile : null;
     this.controller = null;
     this.clients = new Map();
     this.ready = true;
@@ -1453,10 +1455,16 @@ export class WorkspaceRuntime {
       throw new Error(`${label} ist zu groß: maximal ${formatFileSize(FILE_LIMITS.THDB_BYTES)}.`);
     }
     if (Number.isFinite(size) && size > THDB_CONFIRM_BYTES) {
-      const shouldContinue = typeof globalThis.confirm === 'function'
-        && globalThis.confirm(
-          `${label} ist ${formatFileSize(size)} groß. Das Laden kann viel Arbeitsspeicher beanspruchen und den Browser verlangsamen. Trotzdem laden?`
-        );
+      let shouldContinue = false;
+      try {
+        shouldContinue = Boolean(await this.confirmLargeFile?.({
+          label,
+          size,
+          formattedSize: formatFileSize(size),
+        }));
+      } catch {
+        shouldContinue = false;
+      }
       if (!shouldContinue) {
         throw new Error(`${label} wurde nicht geladen.`);
       }

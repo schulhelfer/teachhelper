@@ -21,6 +21,7 @@
   <script src="../../shared/theme-preload.js"></script>
   <link rel="stylesheet" href="../../shared/segment-control.css" />
   <link rel="stylesheet" href="./app.css" />
+  <link rel="stylesheet" href="../../shared/toast.css" />
   <link rel="stylesheet" href="../../shared/app-action-icons.css" />
   <link rel="stylesheet" href="../../shared/app-tooltips.css" />
   <link rel="stylesheet" href="../../shared/theme.css" />
@@ -169,11 +170,6 @@
           <button id="print-plan" class="primary flex-1">Sitzplan<br>drucken</button>
           <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
         </div>
-        <div id="scroll-hint" class="scroll-hint" role="presentation">
-          <span class="arrow" aria-hidden="true">⬇</span>
-          <span class="text">Namen importiert</span>
-        </div>
-
         <section id="roster-panel" class="roster-panel" aria-label="Freie Lernende">
           <div class="list" id="unseated"></div>
         </section>
@@ -190,6 +186,20 @@
             <span class="course-grade-bar-chevron" aria-hidden="true">▾</span>
           </button>
           <span id="course-grade-progress" class="course-grade-bar-progress" role="status" aria-live="polite"></span>
+          <button type="button" id="course-grade-overlay-reset"
+            class="ghost dialog-icon-button app-action-icon course-grade-bar-reset"
+            aria-label="Kursbindung lösen" data-tooltip="Kursbindung lösen">
+            <svg class="app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+              <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round" />
+              <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </button>
           <button type="button" id="course-grade-overlay-save"
             class="primary dialog-icon-button app-action-icon course-grade-bar-save"
             aria-label="Eingaben speichern" data-tooltip="Eingaben speichern">💾</button>
@@ -374,6 +384,21 @@
           </div>
         </form>
       </dialog>
+      <dialog id="export-file-name-dialog" aria-labelledby="export-file-name-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="export-file-name-dialog-title" class="dialog-title">Sitzplan speichern</h2>
+          </div>
+          <label for="export-file-name-dialog-input">
+            Dateiname
+            <input id="export-file-name-dialog-input" type="text" autocomplete="off">
+          </label>
+          <div class="dialog-actions">
+            <button type="button" id="export-file-name-dialog-cancel" class="ghost">Abbrechen</button>
+            <button type="button" id="export-file-name-dialog-confirm" class="primary">Speichern</button>
+          </div>
+        </form>
+      </dialog>
       <dialog id="course-switch-dialog" aria-labelledby="course-switch-dialog-title">
         <form class="dialog-form">
           <div class="dialog-header">
@@ -418,6 +443,7 @@
             <h2 id="course-roster-reset-dialog-title" class="dialog-title">Kurs zurücksetzen?</h2>
           </div>
           <p class="dialog-copy">Der aktuelle Sitzplan wird aus der Kursbindung gelöst. Gespeicherte Sitzpläne im Notenmodul bleiben erhalten.</p>
+          <p class="dialog-copy" id="course-roster-reset-grade-warning" hidden>Ungespeicherte Noteneingaben werden verworfen. Gespeicherte Noten im Notenmodul bleiben erhalten.</p>
           <div class="dialog-actions">
             <button type="button" id="course-roster-reset-dialog-abort" class="ghost">Abbrechen</button>
             <button type="button" id="course-roster-reset-dialog-confirm" class="danger-action">Kurs zurücksetzen</button>
@@ -435,6 +461,18 @@
               aria-label="Noten von allen speichern" data-tooltip="Noten von allen speichern">💾</button>
             <button type="button" id="course-grade-complete-cancel" class="ghost dialog-icon-button app-action-icon"
               aria-label="Nicht speichern" data-tooltip="Nicht speichern">❌</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="course-grade-delete-dialog" aria-labelledby="course-grade-delete-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="course-grade-delete-dialog-title" class="dialog-title">Noten löschen?</h2>
+          </div>
+          <p id="course-grade-delete-dialog-message" class="dialog-copy"></p>
+          <div class="dialog-actions">
+            <button type="button" id="course-grade-delete-dialog-cancel" class="ghost">Abbrechen</button>
+            <button type="button" id="course-grade-delete-dialog-confirm" class="danger-action">Noten löschen</button>
           </div>
         </form>
       </dialog>
@@ -477,7 +515,7 @@
   <script src="../../shared/theme-bridge.js"></script>
   <script type="module" src="./tooltips.js"></script>
   <script src="./gender-names.js"></script>
-  <script src="./app.js"></script>
+  <script type="module" src="./app.js"></script>
   <script src="../../shared/sidebar-resize.js"></script>
 </body>
 

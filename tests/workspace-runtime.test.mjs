@@ -1210,43 +1210,57 @@ test('latest directory backup is selected and loaded by the workspace', async ()
 });
 
 test('large database files require confirmation and oversized files are rejected before reading', async () => {
-  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
-  const originalConfirm = globalThis.confirm;
-  let promptCount = 0;
+  const confirmations = [];
+  const runtime = new WorkspaceRuntime(new FakeStore(), {
+    eventTarget: new EventTarget(),
+    async confirmLargeFile(detail) {
+      confirmations.push(detail);
+      return false;
+    },
+  });
   let readCount = 0;
-  globalThis.confirm = () => {
-    promptCount += 1;
-    return false;
-  };
-  try {
-    await assert.rejects(runtime.readDatabaseFileBytes({
-      name: 'gross.thdb',
-      size: 101 * 1024 * 1024,
-      async arrayBuffer() {
-        readCount += 1;
-        return new ArrayBuffer(0);
-      },
-    }), /wurde nicht geladen/);
-    assert.equal(promptCount, 1);
-    assert.equal(readCount, 0);
+  await assert.rejects(runtime.readDatabaseFileBytes({
+    name: 'gross.thdb',
+    size: 101 * 1024 * 1024,
+    async arrayBuffer() {
+      readCount += 1;
+      return new ArrayBuffer(0);
+    },
+  }), /wurde nicht geladen/);
+  assert.deepEqual(confirmations, [{
+    label: 'Datenbankdatei',
+    size: 101 * 1024 * 1024,
+    formattedSize: '101.0 MB',
+  }]);
+  assert.equal(readCount, 0);
 
-    await assert.rejects(runtime.readDatabaseFileBytes({
-      name: 'zu-gross.thdb',
-      size: 251 * 1024 * 1024,
-      async arrayBuffer() {
-        readCount += 1;
-        return new ArrayBuffer(0);
-      },
-    }), /zu groß/);
-    assert.equal(promptCount, 1);
-    assert.equal(readCount, 0);
-  } finally {
-    if (originalConfirm === undefined) {
-      delete globalThis.confirm;
-    } else {
-      globalThis.confirm = originalConfirm;
-    }
-  }
+  await assert.rejects(runtime.readDatabaseFileBytes({
+    name: 'zu-gross.thdb',
+    size: 251 * 1024 * 1024,
+    async arrayBuffer() {
+      readCount += 1;
+      return new ArrayBuffer(0);
+    },
+  }), /zu groß/);
+  assert.equal(confirmations.length, 1);
+  assert.equal(readCount, 0);
+});
+
+test('large database files are read only after the app confirmation', async () => {
+  let readCount = 0;
+  const runtime = new WorkspaceRuntime(new FakeStore(), {
+    eventTarget: new EventTarget(),
+    confirmLargeFile: async () => true,
+  });
+  const bytes = await runtime.readDatabaseFileBytes({
+    size: 101 * 1024 * 1024,
+    async arrayBuffer() {
+      readCount += 1;
+      return Uint8Array.of(7, 9).buffer;
+    },
+  });
+  assert.deepEqual([...bytes], [7, 9]);
+  assert.equal(readCount, 1);
 });
 
 test('new backups use the TeachHelper backup filename while legacy backups remain restorable', () => {

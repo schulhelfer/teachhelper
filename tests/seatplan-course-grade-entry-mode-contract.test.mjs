@@ -48,6 +48,21 @@ test('the seatplan defaults to single grades and only switches on demand', () =>
   );
 });
 
+test('the first grade picker waits for the seat input to be visible', () => {
+  assert.match(seatplanApp, /const COURSE_GRADE_INITIAL_PICKER_RETRY_LIMIT = 90;/);
+  assert.match(
+    seatplanApp,
+    /function openFirstCourseGradePicker\(attempt = 0\) \{[\s\S]*?const hasUsableInputRect = inputRect\.width >= 1 && inputRect\.height >= 1;[\s\S]*?if \(!hasUsableInputRect\) \{[\s\S]*?attempt < COURSE_GRADE_INITIAL_PICKER_RETRY_LIMIT[\s\S]*?requestAnimationFrame\(\(\) => openFirstCourseGradePicker\(attempt \+ 1\)\);[\s\S]*?return;[\s\S]*?\}\s*input\.focus/,
+  );
+});
+
+test('saving without changes closes the completion dialog before showing the notice', () => {
+  assert.match(
+    seatplanApp,
+    /if \(delta\.changes\.length === 0\) \{\s+closeCourseGradeCompleteDialog\(\);\s+showMessage\([\s\S]*?'Es wurden keine Noten geändert\.',\s+'warn',\s+\{ presentation: 'toast' \},/,
+  );
+});
+
 test('occurrence seats toggle directly instead of opening the grade picker', () => {
   assert.match(seatplanApp, /button\.dataset\.courseGradeOccurrenceToggle = '1'/);
   assert.match(seatplanApp, /button\[data-course-grade-occurrence-toggle='1'\]/);

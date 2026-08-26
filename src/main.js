@@ -1,4 +1,5 @@
 import { createAppDom } from './app/dom.js';
+import { createShellActionDialog } from './app/shell-action-dialog.js';
 import { createFirstRunTutorial } from './app/first-run-tutorial.js';
 import { createHelpCenter } from './app/help-center.js';
 import { createPlanningSeatplanBridge } from './app/planning-seatplan-bridge.js';
@@ -66,6 +67,7 @@ import {
   if (!appEl) {
     return;
   }
+  const shellActionDialog = createShellActionDialog(document);
   const themeController = createThemeController();
   const applyThemeToFrame = (frame, detail) => {
     if (!frame?.isConnected) return false;
@@ -2960,6 +2962,41 @@ import {
   let sharedCourseContextId = 0;
   let planningCourseViewCourseId = 0;
   let gradesCourseAutoSelectSuppressedUntil = 0;
+  let pendingCourseSeatplanContext = null;
+  let pendingCourseSeatplanContextFrame = 0;
+
+  const deliverPendingCourseSeatplanContext = () => {
+    pendingCourseSeatplanContextFrame = 0;
+    if (!pendingCourseSeatplanContext || getActiveTab() !== TAB_SEATPLAN) {
+      return;
+    }
+    const detail = pendingCourseSeatplanContext;
+    pendingCourseSeatplanContext = null;
+    bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
+    bridgeController?.sendCourseSeatplanContext(detail);
+  };
+
+  const schedulePendingCourseSeatplanContext = (attempt = 0) => {
+    if (!pendingCourseSeatplanContext || pendingCourseSeatplanContextFrame) return;
+    if (getActiveTab() === TAB_SEATPLAN) {
+      deliverPendingCourseSeatplanContext();
+      return;
+    }
+    if (attempt >= 120) return;
+    if (typeof requestAnimationFrame === 'function') {
+      pendingCourseSeatplanContextFrame = requestAnimationFrame(() => {
+        pendingCourseSeatplanContextFrame = 0;
+        schedulePendingCourseSeatplanContext(attempt + 1);
+      });
+      return;
+    }
+    if (typeof setTimeout === 'function') {
+      pendingCourseSeatplanContextFrame = setTimeout(() => {
+        pendingCourseSeatplanContextFrame = 0;
+        schedulePendingCourseSeatplanContext(attempt + 1);
+      }, 16);
+    }
+  };
 
   function suppressGradesCourseAutoSelect() {
     gradesCourseAutoSelectSuppressedUntil = Date.now() + 2000;
@@ -3007,6 +3044,13 @@ import {
       }
       const data = event.data;
       if (!data || typeof data !== 'object') {
+        return;
+      }
+      if (data.type === PLANNING_VIEW_REQUEST_EVENT) {
+        if (frame !== getSeatplanFrame()) return;
+        const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+        if (!detail || detail.source !== 'iframe') return;
+        window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, { detail }));
         return;
       }
       if (data.type === NAME_LEARNING_DATA_REQUEST_EVENT || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT) {
@@ -3115,6 +3159,9 @@ import {
         return;
       }
       setActiveTab(TAB_PLANNING);
+      if (detail.returnNotice) {
+        showMessage(String(detail.returnNotice), 'success', { presentation: 'toast' });
+      }
     });
     window.addEventListener(GRADES_VIEW_REQUEST_EVENT, (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
@@ -3143,8 +3190,12 @@ import {
       if (!detail || typeof detail !== 'object') {
         return;
       }
+      pendingCourseSeatplanContext = detail;
       bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
-      bridgeController?.sendCourseSeatplanContext(detail);
+      if (getActiveTab() === TAB_SEATPLAN) {
+        schedulePendingCourseSeatplanContext();
+        return;
+      }
       setActiveTab(TAB_SEATPLAN);
     };
     window.addEventListener(PLANNING_COURSE_SEATPLAN_OPEN_EVENT, openCourseSeatplan);
@@ -3173,12 +3224,10 @@ import {
     minGroupSize: 2,
     maxGroupSize: 4,
     seatTopics: {},
-    _lastImport: false,
     workOrder: '',
     workOrderDurationMinutes: null,
     workOrderStartISO: null,
     workOrderAlarmed: false,
-    scrollHintDismissed: true,
     csvName: '',
     lastDirectoryHandle: null,
     performanceFlairCount: 4,
@@ -3221,8 +3270,6 @@ import {
       minGroupSize: 2,
       maxGroupSize: 3,
       performanceFlairCount: 4,
-      _lastImport: false,
-      scrollHintDismissed: true,
     };
     updateCsvStatusDisplay();
     syncGroupSizeInputs();
@@ -3434,9 +3481,6 @@ import {
     renderSeats();
     renderWorkOrder();
     requestGroupGridLayoutRefresh({ resetViewport: true });
-    state.scrollHintDismissed = false;
-    state._lastImport = true;
-    updateScrollHint();
     renderGradeRosterPills();
   });
   shellController = createShellController({
@@ -3485,7 +3529,12 @@ import {
     onResolvePlanningTabLeave: () => bridgeController?.requestPlanningTabLeaveConfirmation?.() || Promise.resolve(false),
     onSidebarWidthChange: (scope, width) => syncSidebarWidthToModules(scope, width),
     onActiveTabChange: () => firstRunTutorial?.showContextHelp?.({ prompt: true }),
-    onTabActivating: (tab) => applySharedCourseContext(tab),
+    onTabActivating: (tab) => {
+      applySharedCourseContext(tab);
+      if (tab === TAB_SEATPLAN) {
+        schedulePendingCourseSeatplanContext();
+      }
+    },
   });
   const initialWorkspaceSnapshot = window.__teachhelperWorkspaceController?.getSnapshot?.('shell');
   if (initialWorkspaceSnapshot?.vault) {
@@ -3512,52 +3561,6 @@ import {
   let timerMilestoneTriggered = { half: false, quarter: false };
   let timerLastRemainingRatio = null;
   let timerShowSeconds = true;
-  const SCROLL_HINT_HIDE_OFFSET = 0;
-
-  function toggleScrollHint(visible) {
-    if (!els.scrollHint) return;
-    els.scrollHint.classList.toggle('active', Boolean(visible));
-    positionScrollHintBox();
-  }
-  function dismissScrollHint() {
-    toggleScrollHint(false);
-  }
-  function setScrollHintText() {
-    if (!els.scrollHint) return;
-    const textNode = els.scrollHint.querySelector('.text');
-    if (!textNode) return;
-    const count = Array.isArray(state.students) ? state.students.length : 0;
-    if (count > 0) {
-      const label = count === 1 ? 'Name' : 'Namen';
-      textNode.textContent = `${count} ${label} wurden importiert.`;
-    } else {
-      textNode.textContent = 'Namen importiert';
-    }
-  }
-  function positionScrollHintBox() {
-    if (!els.scrollHint) return;
-    const hint = els.scrollHint;
-    if (!hint.classList.contains('active')) {
-      hint.style.left = '';
-      hint.style.transform = '';
-      return;
-    }
-    const panelRect = els.sidePanel?.getBoundingClientRect();
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const inset = 12;
-    const hintWidth = hint.offsetWidth || hint.getBoundingClientRect().width || 0;
-    if (panelRect && viewportWidth && hintWidth) {
-      const targetCenter = panelRect.left + (panelRect.width / 2);
-      const minCenter = inset + (hintWidth / 2);
-      const maxCenter = viewportWidth - inset - (hintWidth / 2);
-      const clampedCenter = Math.min(Math.max(targetCenter, minCenter), maxCenter);
-      hint.style.left = `${clampedCenter}px`;
-      hint.style.transform = 'translateX(-50%)';
-    } else {
-      hint.style.left = '50%';
-      hint.style.transform = 'translateX(-50%)';
-    }
-  }
   function initSeatTopicInput(input) {
     if (!input) return;
     const defaultPlaceholder = input.getAttribute('data-default-placeholder') || input.getAttribute('placeholder') || 'Thema';
@@ -3576,50 +3579,6 @@ import {
     const hasTopic = Boolean(String(topicValue || '').trim());
     seat.classList.toggle('seat-topic-empty', !hasTopic);
   }
-  function updateScrollHint() {
-    if (!els.scrollHint || !els.sidePanel) return;
-    setScrollHintText();
-    const requiresScroll = (els.sidePanel.scrollHeight - els.sidePanel.clientHeight) > 16;
-    const isAtTop = els.sidePanel.scrollTop <= 4;
-    toggleScrollHint(requiresScroll && isAtTop && state.students.length > 0);
-  }
-  function handleSideScroll() {
-    if (!els.sidePanel) return;
-    if (els.sidePanel.scrollTop > SCROLL_HINT_HIDE_OFFSET) { dismissScrollHint(); }
-  }
-  function handleRosterScroll(e) {
-    const scroller = e?.target;
-    if (!scroller) return;
-    if (scroller.scrollTop > SCROLL_HINT_HIDE_OFFSET) { dismissScrollHint(); }
-  }
-  els.sidePanel?.addEventListener('scroll', handleSideScroll, { passive: true });
-  els.rosterPanel?.addEventListener('scroll', handleRosterScroll, { passive: true });
-  els.unseated?.addEventListener('scroll', handleRosterScroll, { passive: true });
-  els.groupsGridWrap?.addEventListener('scroll', dismissScrollHint, { passive: true });
-  window.addEventListener('resize', () => {
-    updateScrollHint();
-    positionScrollHintBox();
-  });
-  window.addEventListener('scroll', (e) => {
-    if (state.scrollHintDismissed) return;
-    const target = e?.target;
-    if (target && typeof target.scrollTop === 'number' && target.scrollTop > SCROLL_HINT_HIDE_OFFSET) {
-      dismissScrollHint();
-      return;
-    }
-    const doc = document;
-    const isMainScroll = target === doc || target === doc.body || target === doc.documentElement;
-    if (isMainScroll) {
-      const offset = window.scrollY
-        || doc.documentElement?.scrollTop
-        || doc.body?.scrollTop
-        || 0;
-      if (offset > SCROLL_HINT_HIDE_OFFSET) {
-        dismissScrollHint();
-      }
-    }
-  }, true);
-
   function normalizeGridDimension(value) {
     if (value === undefined || value === null) return null;
     const parsed = Math.floor(Number(value));
@@ -4845,10 +4804,17 @@ import {
     const defaultName = getSuggestedPlanFileName();
     let nameInput = defaultName;
     if (!isIOSDevice) {
+      if (!shellActionDialog) return;
       const promptLabel = getActiveTab() === TAB_RANDOM_PICKER
         ? 'Bitte gib einen Dateinamen für den Pickerstand ein:'
         : 'Bitte gib einen Dateinamen ein:';
-      const desiredName = prompt(promptLabel, defaultName);
+      const desiredName = await shellActionDialog.prompt({
+        title: 'Dateiname festlegen',
+        message: promptLabel,
+        inputLabel: 'Dateiname',
+        defaultValue: defaultName,
+        confirmText: 'Speichern',
+      });
       if (desiredName === null) return;
       nameInput = desiredName || '';
     }
@@ -5089,8 +5055,6 @@ import {
       startISO: nextStart,
       alarmState: false,
     });
-    state._lastImport = !restoreSeatAssignments;
-    state.scrollHintDismissed = restoreSeatAssignments;
     enforceGridBounds();
     buildGrid();
     if (!restoreSeatAssignments) {
@@ -5099,7 +5063,6 @@ import {
     renderRandomPicker();
     refreshUnseated();
     renderWorkOrder();
-    updateScrollHint();
   }
 
   async function importPlanFromFile(file, handle) {
@@ -5162,7 +5125,6 @@ import {
     unassigned.forEach(s => {
       els.unseated.appendChild(createStudentNode(s));
     });
-    updateScrollHint();
     syncGroupSizeInputs();
   }
 
@@ -6072,8 +6034,6 @@ import {
       state.lockedSeats.delete(id);
       delete state.seats[id];
       delete state.seatTopics[id];
-      state._lastImport = false;
-      state.scrollHintDismissed = true;
       buildGrid();
       refreshUnseated();
     };
@@ -6437,8 +6397,6 @@ import {
     }
     renderSeats();
     refreshUnseated();
-    state._lastImport = false;
-    state.scrollHintDismissed = true;
     return true;
   }
 
@@ -7169,10 +7127,10 @@ import {
     renderSeats();
     renderWorkOrder();
     requestGroupGridLayoutRefresh({ resetViewport: true });
-    state.scrollHintDismissed = false;
-    state._lastImport = true;
-    updateScrollHint();
     syncSharedRosterState(STUDENTS_SYNC_SOURCE_GROUPS);
+    const importedCount = state.students.length;
+    const importedLabel = importedCount === 1 ? 'Name' : 'Namen';
+    showMessage(`${importedCount} ${importedLabel} importiert.`, 'success', { presentation: 'toast' });
   }
 
   async function pickPlanFileWithPicker() {
@@ -8097,8 +8055,6 @@ import {
     const minSize = clampMinGroupSize(state.minGroupSize);
     ensureCapacityForStudents(maxSize, minSize);
     const activeIds = Array.from(state.activeSeats);
-    state._lastImport = false;
-    state.scrollHintDismissed = true;
     const lockedAssignments = {};
     const assigned = new Set();
     state.lockedSeats.forEach(id => {
@@ -8574,8 +8530,6 @@ import {
     const minSize = clampMinGroupSize(state.minGroupSize);
     ensureCapacityForStudents(maxSize, minSize);
     const activeIds = Array.from(state.activeSeats);
-    state._lastImport = false;
-    state.scrollHintDismissed = true;
     const lockedAssignments = {};
     const assigned = new Set();
     state.lockedSeats.forEach(id => {
@@ -8748,8 +8702,6 @@ import {
       state.seats = {};
       state.lockedSeats.clear();
       state.seatTopics = {};
-      state._lastImport = false;
-      state.scrollHintDismissed = true;
       renderSeats();
       refreshUnseated();
     });
@@ -8948,23 +8900,22 @@ import {
         const result = await serviceWorkerUpdates.checkForUpdates({ force: true });
         switch (result?.status) {
           case 'update-available':
-            showMessage('Update verfügbar. Aktualisieren-Dialog geöffnet.', 'info');
             break;
           case 'up-to-date':
             showMessage('TeachHelper ist aktuell.', 'info', { presentation: 'toast' });
             break;
           case 'disabled':
-            showMessage('Update-Check ist auf localhost deaktiviert.', 'warn');
+            showMessage('Update-Check ist auf localhost deaktiviert.', 'warn', { presentation: 'toast' });
             break;
           case 'unsupported':
-            showMessage('Update-Check wird von diesem Browser nicht unterstützt.', 'warn');
+            showMessage('Update-Check wird von diesem Browser nicht unterstützt.', 'warn', { presentation: 'toast' });
             break;
           default:
-            showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
+            showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn', { presentation: 'toast' });
             break;
         }
       } catch {
-        showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn');
+        showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn', { presentation: 'toast' });
       } finally {
         delete els.headerVersion.dataset.updateCheckPending;
         els.headerVersion.classList.remove('is-checking-update');

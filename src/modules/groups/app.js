@@ -12,7 +12,6 @@ export function resolveGroupsDom(doc = document) {
     groupPrintPlan: doc.getElementById('group-print-plan'),
     importPlanFile: doc.getElementById('import-plan-file'),
     unseated: doc.getElementById('unseated'),
-    scrollHint: doc.getElementById('scroll-hint'),
     groupsGrid: doc.getElementById('groups-grid'),
     groupsGridWrap: doc.querySelector('.groups-grid-wrap'),
     printPlanTitle: doc.getElementById('print-plan-title'),

@@ -3424,6 +3424,17 @@ class GradesApp {
     ));
   }
 
+  courseHasGradeStudentPortraits(courseId) {
+    const id = Number(courseId || 0);
+    if (!id) return false;
+    return this.store.listGradeStudents(id)
+      .some((student) => Boolean(normalizeGradeStudentPortrait(student?.portrait)));
+  }
+
+  shouldShowGradeStudentPortraitPlaceholders(courseId) {
+    return this.shouldShowGradeStudentPortraits() && this.courseHasGradeStudentPortraits(courseId);
+  }
+
   shouldShowNameLearningModule() {
     return Boolean(this.settingsDraft?.showNameLearningModule ?? this.store.getSetting(
       "showNameLearningModule",
@@ -22547,7 +22558,7 @@ class GradesApp {
         active: isActive,
         placeholder: isPlaceholderRow,
         portraitUrl: this.getGradeStudentPortraitUrl(student),
-        showPortraitPlaceholder: this.shouldShowGradeStudentPortraits()
+        showPortraitPlaceholder: this.shouldShowGradeStudentPortraitPlaceholders(course?.id)
       }));
       tr.append(studentCell);
       const gradeCell = document.createElement("td");
@@ -23067,7 +23078,7 @@ class GradesApp {
         active: isActive,
         placeholder: isPlaceholderRow,
         portraitUrl: this.getGradeStudentPortraitUrl(student),
-        showPortraitPlaceholder: this.shouldShowGradeStudentPortraits(),
+        showPortraitPlaceholder: this.shouldShowGradeStudentPortraitPlaceholders(course?.id),
         expectationHorizonComment: !isPlaceholderRow,
         hasExpectationHorizonComment: Boolean(entry?.expectationHorizonComment)
       }));
@@ -29171,6 +29182,7 @@ class GradesApp {
         rosterToken: contextState.rosterToken,
         gradeConfig,
         gradeAssessment,
+        showGradeStudentPortraits: this.shouldShowGradeStudentPortraits(),
         requestedAt: new Date().toISOString()
       }
     }));

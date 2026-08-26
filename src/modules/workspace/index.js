@@ -143,7 +143,7 @@ function createResult(request, revision, lifecycle, patch = {}) {
   };
 }
 
-export function createWorkspaceController({ eventTarget = null, ephemeral = false } = {}) {
+export function createWorkspaceController({ eventTarget = null, ephemeral = false, confirmLargeFile = null } = {}) {
   const target = eventTarget || (typeof window !== 'undefined' ? window : new EventTarget());
   const clients = new Map();
   const messageSources = new Map();
@@ -151,6 +151,7 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
   let runtimeService = createWorkspaceRuntime(store, {
     eventTarget: target,
     ephemeral: Boolean(ephemeral),
+    confirmLargeFile,
   });
   let runtimeOwner = new Proxy(Object.create(null), {
     get(_target, property) {
@@ -471,10 +472,10 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
   return controller;
 }
 
-export function installWorkspaceController(targetWindow = typeof window !== 'undefined' ? window : null) {
+export function installWorkspaceController(targetWindow = typeof window !== 'undefined' ? window : null, options = {}) {
   if (!targetWindow) return null;
   if (targetWindow[WORKSPACE_GLOBAL_KEY]) return targetWindow[WORKSPACE_GLOBAL_KEY];
-  const controller = createWorkspaceController({ eventTarget: targetWindow });
+  const controller = createWorkspaceController({ eventTarget: targetWindow, ...options });
   Object.defineProperty(targetWindow, WORKSPACE_GLOBAL_KEY, {
     configurable: true,
     enumerable: false,

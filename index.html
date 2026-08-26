@@ -17,6 +17,7 @@
   <link rel="icon" href="./icon-192.png" type="image/png" />
   <script src="./src/shared/theme-preload.js"></script>
   <link rel="stylesheet" href="./src/app/shell.css" />
+  <link rel="stylesheet" href="./src/shared/toast.css" />
   <link rel="stylesheet" href="./src/shared/app-action-icons.css" />
   <link rel="stylesheet" href="./src/shared/app-tooltips.css" />
   <link rel="stylesheet" href="./src/shared/theme.css" />
@@ -349,10 +350,6 @@
           </div>
         </div>
       </section>
-      <div id="scroll-hint" class="scroll-hint" role="presentation">
-        <span class="arrow" aria-hidden="true">⬇</span>
-        <span class="text">Namen importiert</span>
-      </div>
       <section id="roster-panel" class="roster-panel groups-sidebar-roster" aria-label="Freie Lernende">
         <div class="list" id="unseated"></div>
       </section>
@@ -500,6 +497,23 @@
         </div>
       </form>
     </dialog>
+    <dialog id="shell-action-dialog" aria-labelledby="shell-action-dialog-title"
+      aria-describedby="shell-action-dialog-message">
+      <form class="dialog-form">
+        <div class="dialog-header">
+          <h2 id="shell-action-dialog-title" class="dialog-title">Hinweis</h2>
+        </div>
+        <p id="shell-action-dialog-message" class="dialog-copy"></p>
+        <label id="shell-action-dialog-input-row" hidden>
+          <span id="shell-action-dialog-input-label">Eingabe</span>
+          <input id="shell-action-dialog-input" type="text" autocomplete="off">
+        </label>
+        <div class="dialog-actions">
+          <button type="button" id="shell-action-dialog-cancel" class="ghost">Abbrechen</button>
+          <button type="button" id="shell-action-dialog-confirm" class="primary">OK</button>
+        </div>
+      </form>
+    </dialog>
     <dialog id="unsaved-data-dialog" aria-labelledby="unsaved-data-dialog-title">
       <form method="dialog" class="dialog-form">
         <div class="dialog-header">
@@ -547,6 +561,8 @@
       <div class="dialog-form help-entry-form">
         <div class="dialog-header">
           <h2 id="help-entry-dialog-title" class="dialog-title">Hilfe</h2>
+          <button type="button" id="help-entry-close" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
         </div>
         <div class="help-entry-actions">
           <button type="button" id="help-entry-tutorial" class="primary">Tutorial</button>

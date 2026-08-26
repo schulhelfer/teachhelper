@@ -29,8 +29,11 @@ test('opening a course without a saved plan loads its roster into the seatplan m
 
   assert.match(open, /const plan = this\.store\.getGradeSeatPlan\(courseKey\);/);
   assert.match(open, /const students = this\.buildCourseSeatplanStudents\(courseKey\);/);
-  assert.match(open, /courseId: courseKey,[\s\S]*?students,[\s\S]*?plan,/);
-  assert.match(shell, /bridgeController\?\.sendCourseSeatplanContext\(detail\);\s+setActiveTab\(TAB_SEATPLAN\);/);
+  assert.match(open, /courseId: courseKey,[\s\S]*?students,[\s\S]*?plan,[\s\S]*?showGradeStudentPortraits: this\.shouldShowGradeStudentPortraits\(\)/);
+  assert.match(
+    shell,
+    /pendingCourseSeatplanContext = detail;[\s\S]*?setActiveTab\(TAB_SEATPLAN\);[\s\S]*?onTabActivating: \(tab\) => \{[\s\S]*?tab === TAB_SEATPLAN[\s\S]*?schedulePendingCourseSeatplanContext\(\)/,
+  );
   assert.match(seatplanApp, /applyCoursePlanData\(detail\.plan && typeof detail\.plan === 'object' \? detail\.plan : null, state\.courseContext\.students\);/);
 });
 

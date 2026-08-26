@@ -1,6 +1,14 @@
 import { installWorkspaceController } from '../modules/workspace/index.js';
+import { createShellActionDialog } from './shell-action-dialog.js';
 
-installWorkspaceController(window);
+const shellActionDialog = createShellActionDialog(document);
+installWorkspaceController(window, {
+  confirmLargeFile: ({ label, formattedSize }) => shellActionDialog?.confirm({
+    title: 'Große Datei laden?',
+    message: `${label} ist ${formattedSize} groß. Das Laden kann viel Arbeitsspeicher beanspruchen und den Browser verlangsamen. Trotzdem laden?`,
+    confirmText: 'Trotzdem laden',
+  }) || Promise.resolve(false),
+});
 
 const isLocalDevelopmentHost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
 if (isLocalDevelopmentHost) {

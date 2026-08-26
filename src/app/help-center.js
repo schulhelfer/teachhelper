@@ -641,6 +641,7 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
     await onStartTutorial();
   });
   els.helpEntryHelpButton?.addEventListener('click', openHelp);
+  els.helpEntryCloseButton?.addEventListener('click', () => closeDialog(els.helpEntryDialog));
   els.helpCloseButton?.addEventListener('click', () => closeDialog(els.helpDialog));
   els.helpBackButton?.addEventListener('click', () => showResults({ focusSearch: true }));
   els.helpSearch?.addEventListener('input', () => {

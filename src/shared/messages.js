@@ -10,6 +10,7 @@ const MESSAGE_EXIT_MS = 220;
 
 export function createMessageApi(doc = document) {
   const queuedMessages = [];
+  const toastTimers = new WeakMap();
 
   function ensureMessageHost() {
     let host = doc.getElementById('message-stack');
@@ -64,6 +65,8 @@ export function createMessageApi(doc = document) {
 
   function removeToast(node) {
     if (!node?.isConnected) return;
+    toastTimers.get(node)?.cancel();
+    toastTimers.delete(node);
     node.classList.remove('show');
     window.setTimeout(() => {
       node.remove();
@@ -98,7 +101,31 @@ export function createMessageApi(doc = document) {
     }
     const durationMs = Number(options.durationMs);
     const timeoutMs = Number.isFinite(durationMs) && durationMs > 0 ? durationMs : TOAST_DURATION_MS;
-    window.setTimeout(() => removeToast(node), timeoutMs);
+    let timeoutId;
+    let startedAt = 0;
+    let remainingMs = timeoutMs;
+    const cancel = () => {
+      if (timeoutId === undefined) return;
+      window.clearTimeout(timeoutId);
+      timeoutId = undefined;
+    };
+    const scheduleRemoval = () => {
+      startedAt = Date.now();
+      timeoutId = window.setTimeout(() => removeToast(node), remainingMs);
+    };
+    const pauseRemoval = () => {
+      if (timeoutId === undefined) return;
+      remainingMs = Math.max(0, remainingMs - (Date.now() - startedAt));
+      cancel();
+    };
+    const resumeRemoval = () => {
+      if (timeoutId !== undefined) return;
+      scheduleRemoval();
+    };
+    toastTimers.set(node, { cancel });
+    node.addEventListener('mouseenter', pauseRemoval);
+    node.addEventListener('mouseleave', resumeRemoval);
+    scheduleRemoval();
     return node;
   }
 
