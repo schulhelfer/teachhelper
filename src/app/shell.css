@@ -769,6 +769,14 @@
       transition: background var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-short) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-short) var(--chrome-transition-ease), color var(--chrome-transition-duration-short) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease);
     }
 
+    .grade-vault-lock-icon {
+      display: block;
+      width: 1em;
+      height: 1em;
+      overflow: visible;
+      flex: 0 0 auto;
+    }
+
     .tab-unlock-button.is-reserved {
       visibility: hidden;
       pointer-events: none;

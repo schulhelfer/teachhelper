@@ -3170,6 +3170,14 @@
             none;
         }
 
+        .grade-vault-lock-icon {
+          display: block;
+          width: 1em;
+          height: 1em;
+          overflow: visible;
+          flex: 0 0 auto;
+        }
+
         .lesson-block .lesson-block-performance-entry:hover,
         .lesson-block .lesson-block-performance-entry:focus-visible,
         .lesson-block .lesson-block-seatplan-trigger:hover,

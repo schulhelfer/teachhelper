@@ -70,6 +70,9 @@ import {
   WORKSPACE_ERROR_PERSISTENCE_CONFLICT,
   WORKSPACE_ERROR_VAULT_DIRTY
 } from "../../shared/school-data/messages.js";
+import {
+  GRADE_VAULT_UNLOCKED_ICON
+} from "../../shared/grade-vault-lock-icons.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const COMPETENCE_EXPECTATIONS_TEMPLATE_URL = new URL("./competence-expectations-template.docx", import.meta.url);
@@ -4452,6 +4455,10 @@ class GradesApp {
     }
     if (!this.refs.gradeVaultDialog || !this.refs.gradeVaultDialogForm) {
       return;
+    }
+    const submitButton = this.refs.gradeVaultDialog.querySelector(".grade-vault-dialog-submit");
+    if (submitButton) {
+      submitButton.innerHTML = GRADE_VAULT_UNLOCKED_ICON;
     }
     const normalizedMode = ["setup", "unlock", "change"].includes(mode) ? mode : "unlock";
     if (this.refs.gradeVaultDialog.open && this.pendingGradeVaultDialogMode === normalizedMode) {
@@ -11281,6 +11288,12 @@ class GradesApp {
     this.refs.gradesEmptyUnlock?.addEventListener("click", () => {
       this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
     });
+    if (this.refs.gradesEmptyUnlock) {
+      this.refs.gradesEmptyUnlock.innerHTML = GRADE_VAULT_UNLOCKED_ICON;
+    }
+    if (this.refs.gradeVaultDialog?.querySelector(".grade-vault-dialog-submit")) {
+      this.refs.gradeVaultDialog.querySelector(".grade-vault-dialog-submit").innerHTML = GRADE_VAULT_UNLOCKED_ICON;
+    }
     this.refs.gradeVaultToggleBtn?.addEventListener("click", () => {
       const mode = this.getGradeVaultStatusMode();
       if (mode !== "ready") {
@@ -13459,7 +13472,7 @@ class GradesApp {
                   <span class="sidebar-add-plus" aria-hidden="true"></span>
                 </button>
               ` : ""}
-              ${showUnlockButton ? `<button type="button" class="ghost grades-vault-unlock-button" data-grades-entry-unlock="1" aria-label="${escapeHtml(unlockButtonLabel)}" title="${escapeHtml(unlockButtonLabel)}">🔓</button>` : ""}
+              ${showUnlockButton ? `<button type="button" class="ghost grades-vault-unlock-button" data-grades-entry-unlock="1" aria-label="${escapeHtml(unlockButtonLabel)}" title="${escapeHtml(unlockButtonLabel)}">${GRADE_VAULT_UNLOCKED_ICON}</button>` : ""}
             </div>
           ` : ""}
         </div>

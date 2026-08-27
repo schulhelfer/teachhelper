@@ -26,8 +26,9 @@ function extractClassMethod(name) {
 }
 
 const ARCHIVE_LOCKED_TOOLTIP = 'Notenmodul ist gesperrt';
+const GRADE_VAULT_LOCKED_ICON = '<svg class="grade-vault-lock-icon"></svg>';
 const PERFORMANCE_STATUS_SYMBOLS = {
-  locked: '🔒',
+  locked: GRADE_VAULT_LOCKED_ICON,
   'has-assessment': '✓',
   'missing-assessment': '❓',
 };
@@ -88,7 +89,7 @@ test('das gesperrte Notenmodul zeigt das Schloss und behauptet keine Note', () =
   );
 
   assert.equal(state.status, 'locked');
-  assert.equal(state.symbol, '🔒');
+  assert.equal(state.symbol, GRADE_VAULT_LOCKED_ICON);
   assert.equal(state.statusClass, 'is-locked');
   assert.equal(state.hasExistingAssessment, false, 'ein veralteter Index darf keinen Haken erzeugen');
   assert.equal(state.assessmentResolved, false);
@@ -132,8 +133,10 @@ test('alle drei Trigger rendern aus demselben Status', () => {
   const courseTimeline = extractClassMethod('renderCourseTimeline');
 
   assert.match(weekCard, /trigger\.classList\.add\(performanceNavigationState\.statusClass\);/);
+  assert.match(weekCard, /trigger\.innerHTML = performanceNavigationState\.symbol;/);
   assert.match(weekCard, /trigger\.textContent = performanceNavigationState\.symbol;/);
   assert.match(courseTimeline, /performanceButton\.classList\.add\(performanceNavigationState\.statusClass\);/);
+  assert.match(courseTimeline, /performanceButton\.innerHTML = performanceNavigationState\.symbol;/);
   assert.match(courseTimeline, /performanceButton\.textContent = performanceNavigationState\.symbol;/);
 
   for (const body of [weekCard, courseTimeline]) {

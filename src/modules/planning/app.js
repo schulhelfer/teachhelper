@@ -10,6 +10,7 @@ import {
 } from "../../shared/theme.js";
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
 import { installTouchLongPress } from "../../shared/touch-long-press.js";
+import { GRADE_VAULT_LOCKED_ICON } from "../../shared/grade-vault-lock-icons.js";
 import {
   PLANNING_RICH_TEXT_COLORS,
   createPlanningRichTextFromPlainText,
@@ -99,7 +100,7 @@ const SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT = true;
 const SEATPLAN_TRIGGER_LABEL = "Kurs-Sitzplan öffnen";
 const SEATPLAN_STATUS_SYMBOL_NO_PLAN = "⚠️";
 const PERFORMANCE_STATUS_SYMBOLS = {
-  locked: "🔒",
+  locked: GRADE_VAULT_LOCKED_ICON,
   "has-assessment": "✓",
   "missing-assessment": "❓"
 };
@@ -10271,7 +10272,11 @@ class PlanningApp {
       trigger.setAttribute("aria-label", seatplanNavigationState?.ariaLabel || SEATPLAN_TRIGGER_LABEL);
       trigger.title = seatplanNavigationState?.title || SEATPLAN_TRIGGER_LABEL;
       if (seatplanNavigationState?.statusClass) trigger.classList.add(seatplanNavigationState.statusClass);
-      trigger.textContent = seatplanNavigationState?.symbol || "";
+      if (seatplanNavigationState?.status === "locked") {
+        trigger.innerHTML = seatplanNavigationState.symbol;
+      } else {
+        trigger.textContent = seatplanNavigationState?.symbol || "";
+      }
       trigger.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault(); event.stopPropagation(); void this.requestSeatplanNavigation(block.firstLessonId);
@@ -10308,7 +10313,11 @@ class PlanningApp {
       trigger.setAttribute("aria-label", performanceNavigationState.ariaLabel);
       trigger.title = performanceNavigationState.title;
       trigger.classList.add(performanceNavigationState.statusClass);
-      trigger.textContent = performanceNavigationState.symbol;
+      if (performanceNavigationState.status === "locked") {
+        trigger.innerHTML = performanceNavigationState.symbol;
+      } else {
+        trigger.textContent = performanceNavigationState.symbol;
+      }
       trigger.addEventListener("keydown", (event) => {
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault(); event.stopPropagation(); void this.requestPerformanceNavigation(block.firstLessonId, performanceNavigationState.triggerMode);
@@ -11276,7 +11285,11 @@ class PlanningApp {
         performanceButton.dataset.performanceEntryMode = performanceNavigationState.triggerMode;
         performanceButton.setAttribute("aria-label", performanceNavigationState.ariaLabel);
         performanceButton.title = performanceNavigationState.title;
-        performanceButton.textContent = performanceNavigationState.symbol;
+        if (performanceNavigationState.status === "locked") {
+          performanceButton.innerHTML = performanceNavigationState.symbol;
+        } else {
+          performanceButton.textContent = performanceNavigationState.symbol;
+        }
         performanceCell.append(performanceButton);
       }
       topicCell.append(contentWrap);

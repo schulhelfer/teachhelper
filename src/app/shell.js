@@ -19,6 +19,10 @@ import {
   TAB_WORK_PHASE,
 } from '../shell/tabs.js';
 import { WORKSPACE_STATE_EVENT } from '../shared/school-data/messages.js';
+import {
+  GRADE_VAULT_LOCKED_ICON,
+  GRADE_VAULT_UNLOCKED_ICON,
+} from '../shared/grade-vault-lock-icons.js';
 
 const CHROME_TOGGLE_EXPAND_ICON = `
   <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" aria-hidden="true">
@@ -1269,7 +1273,7 @@ export function createShellController({
       && state.chromeTransitionState === 'idle';
     const actionLabel = locked ? 'Notenmodul entsperren' : 'Notenmodul sperren';
     const label = locked ? 'Notenmodul gesperrt' : 'Notenmodul entsperrt';
-    els.tabGradesUnlock.textContent = locked ? '🔒' : '🔓';
+    els.tabGradesUnlock.innerHTML = locked ? GRADE_VAULT_LOCKED_ICON : GRADE_VAULT_UNLOCKED_ICON;
     els.tabGradesUnlock.title = canRequestToggle ? actionLabel : label;
     els.tabGradesUnlock.setAttribute('aria-label', canRequestToggle ? actionLabel : label);
     els.tabGradesUnlock.hidden = false;

@@ -43,8 +43,9 @@ function extractTopLevelFunction(source, name) {
   throw new Error(`function ${name} is incomplete`);
 }
 
+const GRADE_VAULT_LOCKED_ICON = '<svg class="grade-vault-lock-icon"></svg>';
 const PERFORMANCE_STATUS_SYMBOLS = {
-  locked: '🔒',
+  locked: GRADE_VAULT_LOCKED_ICON,
   'has-assessment': '✓',
   'missing-assessment': '❓',
 };
@@ -140,7 +141,7 @@ test('das gesperrte Notenmodul schlägt jeden anderen Stuhl-Zustand', () => {
       createHarness({ ...options, locked: true }),
       lesson,
     );
-    assert.equal(state.symbol, '🔒', JSON.stringify(options));
+    assert.equal(state.symbol, GRADE_VAULT_LOCKED_ICON, JSON.stringify(options));
     assert.equal(state.statusClass, 'is-locked', JSON.stringify(options));
     assert.match(state.title, /Notenmodul ist gesperrt/);
   }
