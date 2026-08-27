@@ -111,11 +111,13 @@ import { createMessageApi } from '../../shared/messages.js';
             preferencesGuessGender: document.getElementById('preferences-guess-gender'),
             preferencesResetAll: document.getElementById('preferences-reset-all'),
             preferencesResetGender: document.getElementById('preferences-reset-gender'),
-            preferencesGenderMode: document.querySelectorAll('input[name="gender-mode"]'),
-            preferencesGenderMixWeight: document.getElementById('preferences-gender-mix-weight'),
-            preferencesGenderMixWeightOutput: document.getElementById('preferences-gender-mix-weight-output'),
+            preferencesGenderMixing: document.getElementById('preferences-gender-mixing'),
+            preferencesGenderMixingOutput: document.getElementById('preferences-gender-mixing-output'),
             preferencesGuessHint: document.getElementById('preferences-guess-hint'),
             preferencesCancel: document.getElementById('preferences-cancel'),
+            preferenceConflictsDialog: document.getElementById('preference-conflicts-dialog'),
+            preferenceConflictsTableBody: document.getElementById('preference-conflicts-tbody'),
+            preferenceConflictsDialogClose: document.getElementById('preference-conflicts-dialog-close'),
             criteriaDialog: document.getElementById('criteria-dialog'),
             criteriaDialogClose: document.getElementById('criteria-dialog-close'),
             criteriaStudent: document.getElementById('criteria-student'),
@@ -136,6 +138,9 @@ import { createMessageApi } from '../../shared/messages.js';
           }
           if (els.preferencesDialog && !els.preferencesDialog.hasAttribute('tabindex')) {
             els.preferencesDialog.setAttribute('tabindex', '-1');
+          }
+          if (els.preferenceConflictsDialog && !els.preferenceConflictsDialog.hasAttribute('tabindex')) {
+            els.preferenceConflictsDialog.setAttribute('tabindex', '-1');
           }
           if (els.criteriaDialog && !els.criteriaDialog.hasAttribute('tabindex')) {
             els.criteriaDialog.setAttribute('tabindex', '-1');
@@ -558,7 +563,7 @@ import { createMessageApi } from '../../shared/messages.js';
             conditions: {
               teacherDistances: {},
               genderAlternation: false,
-              genderMode: 'zwingend',
+              genderMode: 'egal',
               genderMixWeight: 3,
             },
             lastActionWasPlanSave: true,
@@ -648,7 +653,7 @@ import { createMessageApi } from '../../shared/messages.js';
           const GENDER_MODE_FORCED = 'zwingend';
           const GENDER_MODE_IGNORE = 'egal';
           const GENDER_MODE_MIXED = 'durchmischt';
-          const DEFAULT_GENDER_MODE = GENDER_MODE_FORCED;
+          const DEFAULT_GENDER_MODE = GENDER_MODE_IGNORE;
           const DEFAULT_GENDER_MIX_WEIGHT = 3;
           const GENDER_MIX_WEIGHT_FACTORS = [0.5, 0.75, 1, 1.5, 2];
           const ALONE_NEIGHBOR_PENALTY = 0.6;
@@ -3886,6 +3891,26 @@ import { createMessageApi } from '../../shared/messages.js';
             const parsed = Number.parseInt(value, 10);
             return Number.isInteger(parsed) ? Math.min(5, Math.max(1, parsed)) : fallback;
           }
+          function normalizeGenderMixingSliderValue(value, fallback = 0) {
+            const parsed = Number.parseInt(value, 10);
+            return Number.isInteger(parsed) ? Math.min(6, Math.max(0, parsed)) : fallback;
+          }
+          function genderMixingSliderValueFromSettings(mode = state.conditions?.genderMode, weight = state.conditions?.genderMixWeight) {
+            const normalizedMode = normalizeGenderMode(mode);
+            if (normalizedMode === GENDER_MODE_IGNORE) return 0;
+            if (normalizedMode === GENDER_MODE_FORCED) return 6;
+            return normalizeGenderMixWeight(weight);
+          }
+          function genderSettingsFromMixingSlider(value) {
+            const level = normalizeGenderMixingSliderValue(value);
+            if (level === 0) {
+              return { genderMode: GENDER_MODE_IGNORE, genderMixWeight: DEFAULT_GENDER_MIX_WEIGHT };
+            }
+            if (level === 6) {
+              return { genderMode: GENDER_MODE_FORCED, genderMixWeight: DEFAULT_GENDER_MIX_WEIGHT };
+            }
+            return { genderMode: GENDER_MODE_MIXED, genderMixWeight: level };
+          }
           function getGenderMixWeightFactor(weight = state.conditions?.genderMixWeight) {
             return GENDER_MIX_WEIGHT_FACTORS[normalizeGenderMixWeight(weight) - 1] || 1;
           }
@@ -3910,6 +3935,12 @@ import { createMessageApi } from '../../shared/messages.js';
           function genderMixWeightLabel(weight = state.conditions?.genderMixWeight) {
             const normalized = normalizeGenderMixWeight(weight);
             return ['Niedrig', 'Eher niedrig', 'Mittel', 'Hoch', 'Sehr hoch'][normalized - 1];
+          }
+          function genderMixingSliderLabel(value) {
+            const level = normalizeGenderMixingSliderValue(value);
+            if (level === 0) return 'Egal';
+            if (level === 6) return 'Zwingend';
+            return genderMixWeightLabel(level);
           }
           function normalizeNameForGenderGuess(value) {
             return String(value || '')
@@ -4001,16 +4032,7 @@ import { createMessageApi } from '../../shared/messages.js';
               }
               input.checked = false;
             });
-            Array.from(els.preferencesGenderMode || []).forEach(input => {
-              input.checked = input.value === DEFAULT_GENDER_MODE;
-            });
-            if (els.preferencesGenderMixWeight) {
-              els.preferencesGenderMixWeight.value = String(DEFAULT_GENDER_MIX_WEIGHT);
-              els.preferencesGenderMixWeight.disabled = true;
-            }
-            if (els.preferencesGenderMixWeightOutput) {
-              els.preferencesGenderMixWeightOutput.textContent = genderMixWeightLabel(DEFAULT_GENDER_MIX_WEIGHT);
-            }
+            syncGenderMixingSlider(DEFAULT_GENDER_MODE, DEFAULT_GENDER_MIX_WEIGHT);
             studentIds.forEach(studentId => {
               updatePreferenceOptionDisablingForStudent(studentId);
               syncBuddyPreferenceAvailability(studentId);
@@ -4087,24 +4109,24 @@ import { createMessageApi } from '../../shared/messages.js';
             });
           }
 
-          function getSelectedGenderModeFromForm() {
-            const selected = Array.from(els.preferencesGenderMode || []).find(input => input.checked);
-            return normalizeGenderMode(selected?.value);
+          function getGenderSettingsFromForm() {
+            return genderSettingsFromMixingSlider(els.preferencesGenderMixing?.value);
+          }
+
+          function syncGenderMixingSlider(mode = state.conditions?.genderMode, weight = state.conditions?.genderMixWeight) {
+            const value = genderMixingSliderValueFromSettings(mode, weight);
+            const label = genderMixingSliderLabel(value);
+            if (els.preferencesGenderMixing) {
+              els.preferencesGenderMixing.value = String(value);
+              els.preferencesGenderMixing.setAttribute('aria-valuetext', label);
+            }
+            if (els.preferencesGenderMixingOutput) {
+              els.preferencesGenderMixingOutput.textContent = label;
+            }
           }
 
           function syncGenderSettingsForm() {
-            const mode = normalizeGenderMode(state.conditions?.genderMode);
-            Array.from(els.preferencesGenderMode || []).forEach(input => {
-              input.checked = input.value === mode;
-            });
-            const weight = normalizeGenderMixWeight(state.conditions?.genderMixWeight);
-            if (els.preferencesGenderMixWeight) {
-              els.preferencesGenderMixWeight.value = String(weight);
-              els.preferencesGenderMixWeight.disabled = mode !== GENDER_MODE_MIXED;
-            }
-            if (els.preferencesGenderMixWeightOutput) {
-              els.preferencesGenderMixWeightOutput.textContent = genderMixWeightLabel(weight);
-            }
+            syncGenderMixingSlider();
           }
 
           function buildSeatPreferencesTable() {
@@ -4269,8 +4291,9 @@ import { createMessageApi } from '../../shared/messages.js';
               }
               map.get(sid)[slot] = control.value || '';
             });
-            state.conditions.genderMode = getSelectedGenderModeFromForm();
-            state.conditions.genderMixWeight = normalizeGenderMixWeight(els.preferencesGenderMixWeight?.value);
+            const genderSettings = getGenderSettingsFromForm();
+            state.conditions.genderMode = genderSettings.genderMode;
+            state.conditions.genderMixWeight = genderSettings.genderMixWeight;
             state.students.forEach(student => {
               const buddySlots = buddyMap.get(student.id) || [];
               const foeSlots = foeMap.get(student.id) || [];
@@ -4297,19 +4320,9 @@ import { createMessageApi } from '../../shared/messages.js';
               }
             }
 
-            const conflicts = findBuddyFoeConflicts(state.students);
-            if (conflicts.length) {
-              const primary = conflicts[0];
-              const nameA = formatStudentLabel(primary.buddyOwner);
-              const nameB = formatStudentLabel(primary.foeOwner);
-              showMessage(
-                `${nameA} hat ${nameB} als guten Sitznachbarn, aber ${nameB} hat ${nameA} als schlechten Sitznachbarn gewählt.`,
-                'warn',
-                { enqueue: true }
-              );
-            }
             markOptimalScoreStale();
             updateSidebarScore();
+            return findBuddyFoeConflicts(state.students);
           }
           function applyPreferenceSlots(student, slots, variant) {
             const entries = [];
@@ -5419,6 +5432,59 @@ import { createMessageApi } from '../../shared/messages.js';
               if (els.criteriaDialog.open) els.criteriaDialog.close();
             }
             els.criteriaDialog.removeAttribute('open');
+          }
+
+          function buildPreferenceConflictsTable(conflicts) {
+            if (!els.preferenceConflictsTableBody) return;
+            els.preferenceConflictsTableBody.textContent = '';
+            const sortedConflicts = Array.isArray(conflicts) ? conflicts.slice().sort((a, b) => {
+              const aBuddyOwner = formatStudentLabel(a?.buddyOwner);
+              const bBuddyOwner = formatStudentLabel(b?.buddyOwner);
+              const ownerOrder = aBuddyOwner.localeCompare(bBuddyOwner, 'de');
+              if (ownerOrder) return ownerOrder;
+              return formatStudentLabel(a?.foeOwner).localeCompare(formatStudentLabel(b?.foeOwner), 'de');
+            }) : [];
+
+            sortedConflicts.forEach(conflict => {
+              const buddyOwnerName = formatStudentLabel(conflict?.buddyOwner);
+              const foeOwnerName = formatStudentLabel(conflict?.foeOwner);
+              const tr = document.createElement('tr');
+              [
+                buddyOwnerName,
+                foeOwnerName,
+                foeOwnerName,
+                `nicht ${buddyOwnerName}`,
+              ].forEach((value, index) => {
+                const td = document.createElement('td');
+                td.className = index === 1 ? 'preference-conflict-good' : index === 3 ? 'preference-conflict-bad' : 'preference-conflict-name';
+                td.textContent = value;
+                tr.appendChild(td);
+              });
+              els.preferenceConflictsTableBody.appendChild(tr);
+            });
+          }
+
+          function openPreferenceConflictsDialog(conflicts) {
+            if (!els.preferenceConflictsDialog) return;
+            buildPreferenceConflictsTable(conflicts);
+            if (typeof els.preferenceConflictsDialog.showModal === 'function') {
+              if (!els.preferenceConflictsDialog.open) els.preferenceConflictsDialog.showModal();
+            } else {
+              els.preferenceConflictsDialog.setAttribute('open', 'open');
+            }
+            const focusDialog = () => {
+              els.preferenceConflictsDialog?.focus({ preventScroll: true });
+            };
+            if (typeof queueMicrotask === 'function') { queueMicrotask(focusDialog); }
+            else { setTimeout(focusDialog, 0); }
+          }
+
+          function closePreferenceConflictsDialog() {
+            if (!els.preferenceConflictsDialog) return;
+            if (typeof els.preferenceConflictsDialog.close === 'function') {
+              if (els.preferenceConflictsDialog.open) els.preferenceConflictsDialog.close();
+            }
+            els.preferenceConflictsDialog.removeAttribute('open');
           }
 
           function openSummaryDialog() {
@@ -9594,7 +9660,7 @@ import { createMessageApi } from '../../shared/messages.js';
           });
           els.preferencesForm?.addEventListener('submit', e => {
             e.preventDefault();
-            savePreferencesFromForm();
+            const conflicts = savePreferencesFromForm();
             markUnsavedAction();
             if (els.preferencesDialog) {
               if (typeof els.preferencesDialog.close === 'function' && els.preferencesDialog.open) {
@@ -9602,6 +9668,9 @@ import { createMessageApi } from '../../shared/messages.js';
               }
               els.preferencesDialog.removeAttribute('open');
               resetPreferencesFocusTracking();
+            }
+            if (Array.isArray(conflicts) && conflicts.length) {
+              openPreferenceConflictsDialog(conflicts);
             }
           });
           els.preferencesCancel?.addEventListener('click', () => {
@@ -9622,18 +9691,9 @@ import { createMessageApi } from '../../shared/messages.js';
           els.preferencesResetGender?.addEventListener('click', () => {
             resetGenderAssignmentsInPreferences();
           });
-          Array.from(els.preferencesGenderMode || []).forEach(input => {
-            input.addEventListener('change', () => {
-              const mode = getSelectedGenderModeFromForm();
-              if (els.preferencesGenderMixWeight) {
-                els.preferencesGenderMixWeight.disabled = mode !== GENDER_MODE_MIXED;
-              }
-            });
-          });
-          els.preferencesGenderMixWeight?.addEventListener('input', () => {
-            if (els.preferencesGenderMixWeightOutput) {
-              els.preferencesGenderMixWeightOutput.textContent = genderMixWeightLabel(els.preferencesGenderMixWeight.value);
-            }
+          els.preferencesGenderMixing?.addEventListener('input', () => {
+            const settings = genderSettingsFromMixingSlider(els.preferencesGenderMixing.value);
+            syncGenderMixingSlider(settings.genderMode, settings.genderMixWeight);
           });
           els.preferencesDialog?.addEventListener('cancel', e => {
             e.preventDefault();
@@ -9642,6 +9702,13 @@ import { createMessageApi } from '../../shared/messages.js';
             }
             els.preferencesDialog?.removeAttribute('open');
             resetPreferencesFocusTracking();
+          });
+          els.preferenceConflictsDialogClose?.addEventListener('click', () => {
+            closePreferenceConflictsDialog();
+          });
+          els.preferenceConflictsDialog?.addEventListener('cancel', e => {
+            e.preventDefault();
+            closePreferenceConflictsDialog();
           });
           els.criteriaDialogClose?.addEventListener('click', () => {
             closeCriteriaDialog();

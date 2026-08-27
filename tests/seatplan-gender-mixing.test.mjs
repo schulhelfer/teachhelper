@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [appSource, htmlSource] = await Promise.all([
+const [appSource, htmlSource, cssSource] = await Promise.all([
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.html', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/seatplan/app.css', import.meta.url), 'utf8'),
 ]);
 
 function extractFunction(source, name) {
@@ -26,6 +27,30 @@ const calculateGenderMixingPenalty = Function(
   'seatId',
   '"use strict"; return (' + extractFunction(appSource, 'calculateGenderMixingPenalty') + ');',
 )('durchmischt', () => 1, (row, col) => `${row}-${col}`);
+
+const normalizeGenderMixingSliderValue = Function(
+  '"use strict"; return (' + extractFunction(appSource, 'normalizeGenderMixingSliderValue') + ');',
+)();
+const genderSettingsFromMixingSlider = Function(
+  'normalizeGenderMixingSliderValue',
+  'GENDER_MODE_IGNORE',
+  'GENDER_MODE_FORCED',
+  'GENDER_MODE_MIXED',
+  'DEFAULT_GENDER_MIX_WEIGHT',
+  '"use strict"; return (' + extractFunction(appSource, 'genderSettingsFromMixingSlider') + ');',
+)(normalizeGenderMixingSliderValue, 'egal', 'zwingend', 'durchmischt', 3);
+const genderMixingSliderValueFromSettings = Function(
+  'normalizeGenderMode',
+  'GENDER_MODE_IGNORE',
+  'GENDER_MODE_FORCED',
+  'normalizeGenderMixWeight',
+  '"use strict"; return (' + extractFunction(appSource, 'genderMixingSliderValueFromSettings') + ');',
+)(
+  (value) => ['egal', 'durchmischt', 'zwingend'].includes(value) ? value : 'egal',
+  'egal',
+  'zwingend',
+  (value) => Math.min(5, Math.max(1, Number.parseInt(value, 10) || 3)),
+);
 
 function mapFromRows(rows) {
   const map = new Map();
@@ -57,13 +82,37 @@ function mapFromRows(rows) {
   };
 }
 
-test('MW-Dialog bietet die drei Modi und die deaktivierbare Gewichtung', () => {
-  assert.match(htmlSource, /name="gender-mode" value="zwingend"/);
-  assert.match(htmlSource, /name="gender-mode" value="egal"/);
-  assert.match(htmlSource, /name="gender-mode" value="durchmischt"/);
-  assert.match(htmlSource, /id="preferences-gender-mix-weight"[^>]*disabled/);
+test('MW-Dialog bietet einen gemeinsamen Slider für den Grad der Durchmischung', () => {
+  assert.match(htmlSource, /id="preferences-gender-mixing"[^>]*type="range"[^>]*min="0"[^>]*max="6"[^>]*value="0"/);
+  assert.match(htmlSource, /Grad der Durchmischung/);
+  assert.match(htmlSource, /preferences-gender-mixing-endpoints"[^>]*><span>Egal<\/span><span>Zwingend<\/span>/);
+  assert.doesNotMatch(htmlSource, /name="gender-mode"/);
+  assert.doesNotMatch(htmlSource, /preferences-gender-mix-weight/);
+  assert.match(htmlSource, /<div class="preferences-table-wrap"[\s\S]*?<section class="preferences-gender-settings"[\s\S]*?id="preferences-guess-gender"/);
+  assert.match(cssSource, /\.preferences-gender-settings\s*\{[\s\S]*?width:\s*fit-content;[\s\S]*?max-width:\s*100%;/);
+  assert.match(cssSource, /\.preferences-gender-mixing\s*\{[\s\S]*?display:\s*grid;/);
   assert.match(appSource, /genderMode: normalizeGenderMode\(state\.conditions\?\.genderMode\)/);
   assert.match(appSource, /genderMixWeight: normalizeGenderMixWeight\(state\.conditions\?\.genderMixWeight\)/);
+});
+
+test('Slider-Stufen bleiben zu bestehenden Geschlechtereinstellungen kompatibel', () => {
+  const expected = [
+    { genderMode: 'egal', genderMixWeight: 3 },
+    { genderMode: 'durchmischt', genderMixWeight: 1 },
+    { genderMode: 'durchmischt', genderMixWeight: 2 },
+    { genderMode: 'durchmischt', genderMixWeight: 3 },
+    { genderMode: 'durchmischt', genderMixWeight: 4 },
+    { genderMode: 'durchmischt', genderMixWeight: 5 },
+    { genderMode: 'zwingend', genderMixWeight: 3 },
+  ];
+
+  expected.forEach((settings, level) => {
+    assert.deepEqual(genderSettingsFromMixingSlider(level), settings);
+    assert.equal(
+      genderMixingSliderValueFromSettings(settings.genderMode, settings.genderMixWeight),
+      level,
+    );
+  });
 });
 
 test('Durchmischung lässt Dreierreihen zu, bestraft aber längere Reihen und Flächen', () => {

@@ -2770,6 +2770,8 @@
 
         .preferences-gender-settings {
           display: grid;
+          width: fit-content;
+          max-width: 100%;
           gap: 10px;
           margin: 2px 0 12px;
           padding: 12px;
@@ -2794,8 +2796,7 @@
           font-size: 15px;
         }
 
-        .preferences-gender-settings p,
-        .preferences-gender-weight small {
+        .preferences-gender-settings p {
           color: var(--text-hint);
           font-size: 12px;
           line-height: 1.3;
@@ -2805,34 +2806,35 @@
           margin-top: 2px;
         }
 
-        .preferences-gender-mode .segment-control__option span {
-          min-height: 2.4rem;
-          padding-block: 0.45rem;
-        }
-
-        .preferences-gender-weight {
+        .preferences-gender-mixing {
           display: grid;
           gap: 5px;
           font-size: 13px;
           font-weight: 600;
         }
 
-        .preferences-gender-weight output {
+        .preferences-gender-mixing output {
           color: var(--accent-2);
         }
 
-        .preferences-gender-weight input[type="range"] {
+        .preferences-gender-mixing input[type="range"] {
           width: 100%;
           accent-color: var(--accent);
         }
 
-        .preferences-gender-weight:has(input:disabled) {
-          color: var(--text-disabled);
+        .preferences-gender-mixing-endpoints {
+          display: flex;
+          justify-content: space-between;
+          color: var(--text-hint);
+          font-size: 12px;
+          font-weight: 500;
         }
 
-        .preferences-gender-weight:has(input:disabled) small,
-        .preferences-gender-weight:has(input:disabled) output {
-          color: var(--text-disabled);
+        .preferences-gender-mixing small {
+          color: var(--text-hint);
+          font-size: 12px;
+          font-weight: 400;
+          line-height: 1.3;
         }
 
         .preferences-table-wrap {
@@ -3195,6 +3197,62 @@
           border: 1px solid rgba(255, 255, 255, 0.08);
           border-radius: 12px;
           padding: 6px;
+        }
+
+        #preference-conflicts-dialog {
+          width: min(760px, calc(100vw - 32px));
+        }
+
+        .preference-conflicts-table-wrap {
+          max-height: min(60vh, 520px);
+          overflow: auto;
+          border: 1px solid rgba(251, 146, 60, 0.35);
+          border-radius: 12px;
+        }
+
+        .preference-conflicts-table {
+          width: 100%;
+          border-collapse: collapse;
+          font-size: 13px;
+        }
+
+        .preference-conflicts-table th,
+        .preference-conflicts-table td {
+          padding: 9px 11px;
+          border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+          text-align: left;
+          vertical-align: middle;
+        }
+
+        .preference-conflicts-table th {
+          position: sticky;
+          top: 0;
+          z-index: 1;
+          background: var(--surface-overlay-alpha-95);
+          color: var(--text-hint);
+          font-size: 11px;
+          font-weight: 700;
+          letter-spacing: 0.3px;
+          text-transform: uppercase;
+        }
+
+        .preference-conflicts-table tbody tr:last-child td {
+          border-bottom: 0;
+        }
+
+        .preference-conflict-name {
+          font-weight: 700;
+          color: var(--text-on-overlay-secondary);
+        }
+
+        .preference-conflict-good {
+          color: var(--ok);
+          font-weight: 600;
+        }
+
+        .preference-conflict-bad {
+          color: var(--danger);
+          font-weight: 600;
         }
 
         .summary-table {

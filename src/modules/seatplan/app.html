@@ -266,6 +266,21 @@
                 data-tooltip="Übernehmen">✔️</button>
             </div>
           </div>
+          <div class="preferences-table-wrap">
+            <table class="preferences-table">
+              <thead>
+                <tr>
+                  <th class="group-header name-header" aria-label="Name">Name</th>
+                  <th class="group-header gender-header" aria-label="Geschlecht">Geschlecht</th>
+                  <th class="group-header distance-header" aria-label="weit vorne">weit vorne</th>
+                  <th class="group-header alone-header" aria-label="alleine">alleine</th>
+                  <th colspan="3" class="group-header">Gute Sitznachbarn</th>
+                  <th colspan="3" class="group-header">Schlechte Sitznachbarn</th>
+                </tr>
+              </thead>
+              <tbody id="preferences-tbody"></tbody>
+            </table>
+          </div>
           <section class="preferences-gender-settings" aria-labelledby="preferences-gender-settings-title">
             <div class="preferences-gender-settings-header">
               <div>
@@ -287,46 +302,40 @@
                 </svg>
               </button>
             </div>
-            <div class="segment-control segment-control--three preferences-gender-mode" role="radiogroup"
-              aria-label="Geschlechterverteilung im Sitzplan">
-              <label class="segment-control__option" title="Gleich markierte direkte Sitznachbarn werden bestraft.">
-                <input type="radio" name="gender-mode" value="zwingend" aria-label="Zwingend" checked />
-                <span>Zwingend</span>
-              </label>
-              <label class="segment-control__option" title="Geschlechtsangaben beeinflussen den Sitzplan nicht.">
-                <input type="radio" name="gender-mode" value="egal" aria-label="Egal" />
-                <span>Egal</span>
-              </label>
-              <label class="segment-control__option" title="Deutliche Ansammlungen werden bestraft, direkte Gleichheiten aber erlaubt.">
-                <input type="radio" name="gender-mode" value="durchmischt" aria-label="Durchmischt" />
-                <span>Durchmischt</span>
-              </label>
-            </div>
-            <label class="preferences-gender-weight" for="preferences-gender-mix-weight">
-              <span>Gewichtung der Durchmischung: <output id="preferences-gender-mix-weight-output" for="preferences-gender-mix-weight">Mittel</output></span>
-              <input id="preferences-gender-mix-weight" type="range" min="1" max="5" step="1" value="3"
-                aria-describedby="preferences-gender-mix-help" disabled />
-              <small id="preferences-gender-mix-help">Bis zu drei gleich markierte Lernende nebeneinander bleiben neutral; größere Ansammlungen zählen stärker.</small>
+            <label class="preferences-gender-mixing" for="preferences-gender-mixing">
+              <span>Grad der Durchmischung: <output id="preferences-gender-mixing-output" for="preferences-gender-mixing">Egal</output></span>
+              <input id="preferences-gender-mixing" type="range" min="0" max="6" step="1" value="0"
+                aria-describedby="preferences-gender-mixing-help" aria-valuetext="Egal" />
+              <span class="preferences-gender-mixing-endpoints" aria-hidden="true"><span>Egal</span><span>Zwingend</span></span>
+              <small id="preferences-gender-mixing-help">Die Zwischenstufen fördern eine Durchmischung von niedrig bis sehr hoch.</small>
             </label>
+            <div class="dialog-actions">
+              <span id="preferences-guess-hint" class="dialog-inline-hint" aria-live="polite"></span>
+              <button type="button" id="preferences-guess-gender" class="ghost">Geschlecht vermuten</button>
+            </div>
           </section>
-          <div class="preferences-table-wrap">
-            <table class="preferences-table">
+        </form>
+      </dialog>
+      <dialog id="preference-conflicts-dialog" aria-labelledby="preference-conflicts-dialog-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="preference-conflicts-dialog-title" class="dialog-title">Widersprüchliche Sitzwünsche</h2>
+          </div>
+          <div class="preference-conflicts-table-wrap">
+            <table class="preference-conflicts-table">
               <thead>
                 <tr>
-                  <th class="group-header name-header" aria-label="Name">Name</th>
-                  <th class="group-header gender-header" aria-label="Geschlecht">Geschlecht</th>
-                  <th class="group-header distance-header" aria-label="weit vorne">weit vorne</th>
-                  <th class="group-header alone-header" aria-label="alleine">alleine</th>
-                  <th colspan="3" class="group-header">Gute Sitznachbarn</th>
-                  <th colspan="3" class="group-header">Schlechte Sitznachbarn</th>
+                  <th scope="col">Person A</th>
+                  <th scope="col">A wünscht</th>
+                  <th scope="col">Person B</th>
+                  <th scope="col">B wünscht</th>
                 </tr>
               </thead>
-              <tbody id="preferences-tbody"></tbody>
+              <tbody id="preference-conflicts-tbody"></tbody>
             </table>
           </div>
           <div class="dialog-actions">
-            <span id="preferences-guess-hint" class="dialog-inline-hint" aria-live="polite"></span>
-            <button type="button" id="preferences-guess-gender" class="ghost">Geschlecht vermuten</button>
+            <button type="button" id="preference-conflicts-dialog-close" class="ghost">Schließen</button>
           </div>
         </form>
       </dialog>
