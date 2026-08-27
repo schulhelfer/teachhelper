@@ -509,6 +509,9 @@ export function createPlanningSeatplanBridge({
       return true;
     }
     ensureTabInitialized(TAB_GRADES);
+    if (gradesController?.frame?.loading === 'lazy') {
+      gradesController.frame.loading = 'eager';
+    }
     gradesController?.post?.(GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT, withWorkspaceRevision(detail));
     return true;
   }
