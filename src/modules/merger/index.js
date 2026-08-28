@@ -5,7 +5,7 @@ import {
   postToModule,
 } from '../../shared/module-frame-bridge.js';
 
-const MERGER_VERSION = 'merger-r13';
+const MERGER_VERSION = 'merger-r14';
 const MERGER_URL = new URL(`./app.html?v=${MERGER_VERSION}`, import.meta.url);
 
 export function mountMerger({ host }) {

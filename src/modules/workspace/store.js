@@ -556,9 +556,7 @@ function normalizeGradeHalfYear(value) {
 
 const GRADE_TEST_SCALE_DEFAULT = "sek2";
 const GRADE_TEST_SCALE_CUSTOM = "custom";
-const GRADE_TEST_SCALE_IDS = ["sek1", "sek2", GRADE_TEST_SCALE_CUSTOM];
 const GRADE_TEST_SCALE_GRADES = Array.from({ length: 16 }, (_item, index) => 15 - index);
-const GRADE_DEFICIT_THRESHOLD_DEFAULT = 4;
 const GRADE_TEST_SCALE_THRESHOLDS = {
   sek1: [
     [0.96, 15], [0.92, 14], [0.88, 13], [0.83, 12],
@@ -5018,80 +5016,3 @@ WorkspaceStore.prototype.ensureLessonsForYear = function (schoolYearId) {
   this.generateLessonsForYear(yearId);
   return true;
 };
-
-function seedTutorialDemoStore(store) {
-  const year = store.getActiveSchoolYear();
-  if (!year) return null;
-  const courseId = store.createCourse(year.id, "Biologie 8a", "#3CB44B", false, false, "Biologie");
-  const secondCourseId = store.createCourse(
-    year.id,
-    "Naturwissenschaften 9b",
-    "#E6194B",
-    false,
-    false,
-    "Naturwissenschaften"
-  );
-  if (!courseId) return null;
-  store.createSlot(courseId, 1, 2, 2);
-  store.createSlot(courseId, 3, 3, 1);
-  store.createSlot(courseId, 5, 1, 1);
-  if (secondCourseId) store.createSlot(secondCourseId, 2, 4, 2);
-
-  const topics = [
-    ["Fotosynthese: Licht- und Dunkelreaktion", "Versuchsbeobachtungen auswerten"],
-    ["Aufbau eines Laubblatts", "Material für die nächste Stunde mitbringen"],
-    ["Ökosystem Wald", "Nahrungsnetze wiederholen"]
-  ];
-  const weekStart = currentWeekStartForDisplay();
-  const weekEnd = addDays(weekStart, 4);
-  store.state.lessons
-    .filter((lesson) => (
-      Number(lesson.courseId) === Number(courseId)
-      && lesson.lessonDate >= weekStart
-      && lesson.lessonDate <= weekEnd
-      && !lesson.canceled
-    ))
-    .slice(0, topics.length)
-    .forEach((lesson, index) => {
-      store.updateLessonBlock(lesson.id, { topic: topics[index][0], notes: topics[index][1] });
-    });
-
-  const students = store.replaceGradeStudentsForCourse(courseId, [
-    { firstName: "Alex", lastName: "Beispiel", performanceFlair: "P3" },
-    { firstName: "Sam", lastName: "Muster", performanceFlair: "P2" },
-    { firstName: "Kim", lastName: "Demo", performanceFlair: "P4" },
-    { firstName: "Noah", lastName: "Probe", performanceFlair: "P1" }
-  ], {
-    fileName: "beispiel-namensliste.csv",
-    delimiter: ";",
-    header: ["Nachname", "Vorname"],
-    importedAt: new Date().toISOString()
-  });
-  const structure = store.saveGradeStructure(
-    courseId,
-    store.getDefaultGradeStructure().periodCategories
-  );
-  const secondHalfCategories = Array.isArray(structure?.periodCategories?.h2)
-    ? structure.periodCategories.h2
-    : [];
-  const category = secondHalfCategories.find((item) => item.name === "Mündlich")
-    || secondHalfCategories[0]
-    || null;
-  const subcategory = category?.subcategories?.find((item) => item.name === "Beteiligung")
-    || category?.subcategories?.[0]
-    || null;
-  const assessmentId = store.createGradeAssessment(courseId, {
-    title: "Mündliche Mitarbeit",
-    mode: "grade",
-    weight: 1,
-    halfYear: "h2",
-    categoryId: category?.id,
-    subcategoryId: subcategory?.id
-  });
-  [12, 10, 14, 8].forEach((value, index) => {
-    if (students[index] && assessmentId) {
-      store.setGradeEntry(students[index].id, assessmentId, value);
-    }
-  });
-  return courseId;
-}

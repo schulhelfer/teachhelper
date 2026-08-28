@@ -5,7 +5,7 @@ import {
 } from '../../shared/module-frame-bridge.js';
 import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 
-const DUPLICATE_CHECK_VERSION = 'duplicate-check-r5';
+const DUPLICATE_CHECK_VERSION = 'duplicate-check-r6';
 const DUPLICATE_CHECK_URL = new URL(`./app.html?v=${DUPLICATE_CHECK_VERSION}`, import.meta.url);
 
 export function mountDuplicateCheck({ host }) {

@@ -5081,32 +5081,6 @@ import { createMessageApi } from '../../shared/messages.js';
             }
           }
 
-          async function pickPlanFileWithPicker() {
-            const canPick = typeof window !== 'undefined' && typeof window.showOpenFilePicker === 'function';
-            if (!canPick) return { supported: false };
-            try {
-              const [handle] = await window.showOpenFilePicker({
-                multiple: false,
-                startIn: state.lastDirectoryHandle || 'downloads',
-                types: [{
-                  description: 'Sitzplan JSON',
-                  accept: { 'application/json': ['.json'] }
-                }],
-                excludeAcceptAllOption: true,
-              });
-              if (!handle) return { supported: true, aborted: true };
-              const file = await handle.getFile();
-              if (!file) return { supported: true, aborted: true };
-              return { supported: true, file, handle };
-            } catch (err) {
-              if (err && err.name === 'AbortError') {
-                return { supported: true, aborted: true };
-              }
-              console.warn('showOpenFilePicker fehlgeschlagen, fallback auf klassische Datei-Auswahl', err);
-              return { supported: true, aborted: true };
-            }
-          }
-
           function applySeatPattern(ids, label) {
             const unique = Array.from(new Set((ids || []).filter(Boolean)));
             if (!unique.length) {
@@ -5889,9 +5863,12 @@ import { createMessageApi } from '../../shared/messages.js';
                 ? parsePx(contentStyle.rowGap || contentStyle.gap, 0)
                 : 0;
               const availableHeight = Math.max(1, name.clientHeight - 4 - portraitHeight - portraitGap);
+              const maxHeightLimitedSize = portraitHeight > 0
+                ? availableHeight
+                : availableHeight * 0.5;
               const maxSize = Math.max(8, Math.min(72, Math.max(
                 baseSize,
-                Math.min(availableHeight * 0.5, availableWidth * 0.62)
+                Math.min(maxHeightLimitedSize, availableWidth * 0.62)
               )));
               let low = 4;
               let high = maxSize;
@@ -9489,24 +9466,8 @@ import { createMessageApi } from '../../shared/messages.js';
             }
             hideCourseGradePicker(e);
           });
-          els.importPlan.addEventListener('click', async () => {
-            const picked = await pickPlanFileWithPicker();
-            if (picked && picked.file) {
-              try {
-                await importPlanFromFile(picked.file, picked.handle);
-                return;
-              } catch (err) {
-                console.error(err);
-                showMessage(err?.message || 'Sitzplan konnte nicht geladen werden.', 'error');
-                return;
-              }
-            }
-            if (picked?.aborted) {
-              return;
-            }
-            if (!picked || picked.supported === false) {
-              els.importPlanFile?.click();
-            }
+          els.importPlan.addEventListener('click', () => {
+            els.importPlanFile?.click();
           });
           els.printPlan?.addEventListener('click', () => printSeatPlan());
           els.importPlanFile.addEventListener('change', async (e) => {

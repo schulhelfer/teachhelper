@@ -1,9 +1,5 @@
         :root {
-          --bg-start: #0b111b;
-          --bg-mid: #111a28;
-          --bg-end: #0a1220;
           --panel: rgba(18, 24, 34, 0.72);
-          --panel-strong: rgba(20, 26, 36, 0.75);
           --module-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.76), rgba(15, 23, 42, 0.68));
           --module-surface-strong: linear-gradient(180deg, rgba(20, 28, 40, 0.84), rgba(15, 23, 42, 0.76));
           --module-surface-border: rgba(148, 163, 184, 0.16);
@@ -11,7 +7,6 @@
           --module-surface-radius: 20px;
           --sidebar-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.78), rgba(15, 23, 42, 0.7));
           --sidebar-border: rgba(148, 163, 184, 0.16);
-          --sidebar-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
           --line: var(--border-control);
           --line-soft: var(--border-subtle);
           --text: #e5edf7;
@@ -53,8 +48,6 @@
           --dropzone-border: rgba(148, 163, 184, 0.75);
           --dropzone-radius: 12px;
           --dropzone-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
-          --btn-top: rgba(34, 42, 54, 0.95);
-          --btn-bottom: rgba(24, 30, 40, 0.8);
           --btn-top-hover: rgba(40, 50, 64, 1);
           --btn-bottom-hover: rgba(28, 36, 48, 0.9);
           --danger: #ff8a8a;
@@ -1434,12 +1427,6 @@
           font-size: 1.34rem;
         }
 
-        .sidebar-grade-print-label {
-          min-width: 0;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
-
         .sidebar-grade-privacy-switch {
           position: relative;
           flex: 0 0 44px;
@@ -2089,14 +2076,6 @@
           cursor: default;
         }
 
-        .inline-field {
-          display: flex;
-          align-items: center;
-          gap: 6px;
-          font-size: 0.88rem;
-          color: var(--muted);
-        }
-
         .stack-glass {
           padding: 12px;
           min-height: 0;
@@ -2157,20 +2136,6 @@
           font-size: var(--settings-font-content);
         }
 
-        .settings-head {
-          display: flex;
-          align-items: center;
-          gap: 0.6rem;
-          margin: 0 0 0.55rem;
-        }
-
-        .settings-main-title {
-          margin: 0;
-          flex: 1 1 auto;
-          text-align: center;
-          font-size: var(--settings-font-heading);
-          font-weight: 700;
-        }
 
         .settings-tabs-shell {
           min-height: 0;
@@ -3325,21 +3290,8 @@
           color: #fde68a;
         }
 
-        .required-hint-link {
-          font-size: 0.84rem;
-        }
 
-        #view-settings .required-hint-link {
-          font-size: var(--settings-font-meta);
-        }
 
-        .required-hint-link a {
-          color: #dbeafe;
-        }
-
-        .required-hint-link a:hover {
-          color: #ffffff;
-        }
 
         .list {
           list-style: none;
@@ -3508,41 +3460,12 @@
           text-align: center;
         }
 
-        .course-grade-entry-trigger {
-          position: relative;
-          isolation: isolate;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          width: 100%;
-          min-width: 100%;
-          height: 100%;
-          min-height: 2.4rem;
-          padding: 0;
-          border-radius: 0;
-          border: none;
-          background: transparent;
-          color: var(--text-strong);
-          box-shadow: none;
-          font-size: 1.3125rem;
-          font-weight: 800;
-          line-height: 1;
-          text-align: center;
-          transition: color 0.14s ease, transform 0.12s ease;
-        }
-
         .course-grade-entry-trigger.is-missing-assessment {
           color: #93c5fd;
         }
 
         .course-grade-entry-trigger.has-existing-assessment {
           color: #86efac;
-        }
-
-        .course-grade-entry-trigger:hover,
-        .course-grade-entry-trigger:focus-visible {
-          transform: translateY(-1px);
-          outline: none;
         }
 
         .course-grade-entry-trigger.is-missing-assessment:hover,
@@ -3734,18 +3657,6 @@
         .grades-vault-banner .button-row {
           margin: 0;
           justify-content: flex-end;
-        }
-
-        .grades-vault-placeholder {
-          display: grid;
-          gap: 0.42rem;
-          justify-items: center;
-          padding: 1rem 1.1rem;
-          border: 1px dashed rgba(245, 158, 11, 0.35);
-          border-radius: 14px;
-          background: rgba(20, 26, 34, 0.45);
-          color: var(--text-strong);
-          text-align: center;
         }
 
         .grades-vault-unlock-button {
@@ -5451,32 +5362,9 @@
           }
         }
 
-        .grades-entry-toolbar {
-          display: flex;
-          flex-wrap: wrap;
-          align-items: center;
-          justify-content: space-between;
-          gap: 0.55rem;
-        }
 
-        .grades-entry-toolbar h3,
-        .grades-entry-toolbar h4 {
-          margin: 0;
-        }
 
-        .grades-entry-toolbar h3 {
-          font-size: 1.02rem;
-        }
 
-        .grades-entry-toolbar h4 {
-          font-size: 0.98rem;
-        }
-
-        .grades-entry-summary {
-          color: var(--text-secondary-contrast);
-          font-size: 0.82rem;
-          text-align: right;
-        }
 
         .grades-entry-subcategory {
           display: grid;
@@ -5695,27 +5583,6 @@
           stroke-width: 2.2;
         }
 
-        .grades-privacy-chart-range {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          font-size: 0.7rem;
-          color: var(--text-muted-contrast);
-        }
-
-        .grades-privacy-empty {
-          display: grid;
-          place-items: center;
-          min-height: 5.7rem;
-          padding: 0.8rem;
-          border-radius: 12px;
-          border: 1px dashed rgba(148, 163, 184, 0.22);
-          background: rgba(255, 255, 255, 0.04);
-          color: var(--text-secondary-contrast);
-          text-align: center;
-          font-size: 0.8rem;
-          font-weight: 600;
-        }
 
         .grades-privacy-resize-handle {
           position: absolute;
@@ -5870,21 +5737,7 @@
           background: transparent;
         }
 
-        .grades-category-layout td {
-          padding: 0.45rem;
-          vertical-align: top;
-          border-right: 1px solid var(--border-subtle);
-        }
 
-        .grades-category-layout tr>*:last-child {
-          border-right: none;
-        }
-
-        .grades-category-layout .grades-group {
-          min-width: 380px;
-          height: 100%;
-          margin: 0;
-        }
 
         .grades-total-table th,
         .grades-total-table td,
@@ -7181,24 +7034,11 @@
           border-bottom: 0;
         }
 
-        .grades-group {
-          display: grid;
-          gap: 0.55rem;
-          padding: 0.75rem;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 16px;
-          background: rgba(20, 26, 34, 0.5);
-        }
-
         .grades-group.compact {
           gap: 0.45rem;
           padding: 0.6rem;
           border-radius: 14px;
           background: rgba(18, 24, 34, 0.5);
-        }
-
-        .grades-group-body[hidden] {
-          display: none;
         }
 
         .grades-group-toggle {
@@ -7228,37 +7068,9 @@
           border-radius: 12px;
         }
 
-        .grades-group-caret {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: 1.2rem;
-          font-size: 0.9rem;
-          color: var(--text-strong);
-        }
 
-        .grades-group-label {
-          display: grid;
-          gap: 0.08rem;
-          min-width: 0;
-        }
 
-        .grades-group-title {
-          font-weight: 800;
-          line-height: 1.15;
-        }
 
-        .grades-group-meta {
-          font-size: 0.78rem;
-          color: var(--text-secondary-contrast);
-        }
-
-        .grades-group-summary {
-          font-size: 0.84rem;
-          color: var(--text-strong);
-          text-align: right;
-          white-space: nowrap;
-        }
 
         .grades-group-empty {
           width: min(100%, 520px);
@@ -7273,11 +7085,6 @@
           text-align: center;
           background: rgba(20, 26, 34, 0.68);
           box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-        }
-
-        .grades-subgroup-list {
-          display: grid;
-          gap: 0.55rem;
         }
 
         .grades-master-group-button {
@@ -7363,12 +7170,6 @@
           font-weight: 800;
           line-height: 1.15;
           white-space: nowrap;
-        }
-
-        .grades-master-group-meta {
-          font-size: 0.75rem;
-          color: var(--text-secondary-contrast);
-          line-height: 1.15;
         }
 
         .grades-master-table,
@@ -8187,16 +7988,6 @@
           opacity: 0.48;
         }
 
-        .expectation-horizon-percentile-comparison {
-          width: 100%;
-          margin: 0;
-        }
-
-        .expectation-horizon-percentile-comparison svg {
-          display: block;
-          width: 100%;
-          height: auto;
-        }
 
         @media (max-width: 680px) {
           .expectation-horizon-dropzone-grid {
@@ -8808,16 +8599,6 @@
           color: var(--text-on-overlay);
         }
 
-        .course-dialog-tabs {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.45rem;
-        }
-
-        .course-dialog-tab {
-          min-height: 36px;
-          padding: 0.35rem 0.72rem;
-        }
 
         .course-dialog-tab.active {
           background: rgba(82, 150, 255, 0.25);
@@ -8949,24 +8730,7 @@
           }
         }
 
-        .course-dialog-preview {
-          display: grid;
-          gap: 0.18rem;
-          padding: 0.75rem 0.85rem;
-          border-radius: 12px;
-          background: rgba(24, 31, 43, 0.6);
-          border: 1px solid rgba(255, 255, 255, 0.06);
-        }
 
-        .course-dialog-students-actions {
-          display: flex;
-          flex-wrap: wrap;
-          gap: 0.45rem;
-        }
-
-        #course-students-dialog .course-dialog-students-actions {
-          margin-bottom: 0.15rem;
-        }
 
         #course-students-dialog .course-dialog-students-manual-row {
           display: grid;
@@ -9804,26 +9568,7 @@
           line-height: 1.2;
         }
 
-        .db-path-grid {
-          display: grid;
-          gap: 0.55rem;
-        }
 
-        .db-path-row {
-          display: grid;
-          grid-template-columns: 90px minmax(0, 1fr);
-          gap: 0.9rem;
-          align-items: center;
-        }
-
-        .db-path-name {
-          min-width: 0;
-          color: var(--text);
-          font-weight: 600;
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
-        }
 
         #db-manual-hint {
           margin-top: 1rem;

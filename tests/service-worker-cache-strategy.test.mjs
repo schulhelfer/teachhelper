@@ -172,6 +172,7 @@ test('heavy optional assets are precached after the start, not during install', 
     './src/vendor/pdf-lib/1.17.1/pdf-lib.min.js',
     './src/vendor/jszip/3.10.1/jszip.min.js',
     './src/modules/qr/vendor/jsQR.js',
+    './src/modules/seatplan/gender-names.js',
   ]) {
     assert.ok(deferred.includes(asset), `${asset} must be deferred`);
     assert.ok(!appShell.includes(asset), `${asset} must not block install`);
@@ -181,6 +182,8 @@ test('heavy optional assets are precached after the start, not during install', 
     './index.html',
     './src/shared/app-version.js',
     './src/main.js',
+    './src/app/help-center.js',
+    './src/app/shell-action-dialog.js',
     './src/app/shell.css',
     './src/modules/planning/app.js',
     './src/modules/grades/app.js',
@@ -194,6 +197,8 @@ test('heavy optional assets are precached after the start, not during install', 
     0,
     'no asset may appear in both precache stages',
   );
+  assert.equal(new Set(appShell).size, appShell.length, 'the app shell must not contain duplicate assets');
+  assert.equal(new Set(deferred).size, deferred.length, 'deferred assets must not contain duplicates');
 });
 
 test('deferred precaching waits for the app to go quiet', () => {

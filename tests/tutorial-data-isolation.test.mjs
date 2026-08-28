@@ -161,7 +161,7 @@ test('the opaque duplicate-check frame uses one fresh revision without storage a
   ]);
   const revision = duplicateIndex.match(/DUPLICATE_CHECK_VERSION = '([^']+)'/)?.[1] || '';
 
-  assert.equal(revision, 'duplicate-check-r5');
+  assert.equal(revision, 'duplicate-check-r6');
   assert.match(duplicateHtml, new RegExp(`app\\.css\\?v=${revision}`));
   assert.match(duplicateHtml, new RegExp(`app\\.js\\?v=${revision}`));
   assert.doesNotMatch(duplicateHtml, /(?:local|session)Storage/);

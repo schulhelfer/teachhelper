@@ -2242,14 +2242,6 @@ export async function createDocxFromPreparedTemplate(preparedTemplate, replaceme
   return buildZip(applyWordImageContext(nextEntries, imageContext));
 }
 
-export async function createDocxFromTemplate(templateBytes, replacements = {}, options = {}) {
-  return createDocxFromPreparedTemplate(
-    await prepareDocxTemplate(templateBytes),
-    replacements,
-    options
-  );
-}
-
 export function createZipArchive(files = []) {
   return buildZip(files.map((file) => ({
     name: String(file.name || "Datei"),

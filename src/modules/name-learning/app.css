@@ -72,7 +72,6 @@ button:focus-visible, input:focus-visible { outline: none; border-color: var(--f
 .mode-action.is-active { background: var(--primary-bg); border-color: rgba(96, 165, 250, .65); color: var(--text-on-accent, #f8fbff); }
 .mode-action.is-active:hover:not(:disabled) { background: var(--primary-bg-hover); }
 .sidebar-copy, .panel-subtitle, .empty-state-box p, .progress { margin: 0; color: var(--muted); }
-.sidebar-copy { font-size: .9rem; }
 .sidebar-status { margin: 2px 0 0; color: var(--muted); font-size: .9rem; }
 .course-list { display: grid; gap: 7px; }
 .course-list label { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--course-color, #334155) 74%, white); border-radius: 10px; background: var(--course-color, #334155); color: #111827; font-weight: 720; box-shadow: 0 5px 12px rgba(2, 6, 23, .2); cursor: pointer; }

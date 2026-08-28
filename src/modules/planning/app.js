@@ -76,8 +76,6 @@ const DEFAULT_COURSE_COLOR = "#E6194B";
 const NO_LESSON_COLOR = "#787878";
 const BACKUP_ENABLED_DEFAULT = true;
 const BACKUP_INTERVAL_DEFAULT_DAYS = 7;
-const BACKUP_INTERVAL_MIN_DAYS = 1;
-const BACKUP_INTERVAL_MAX_DAYS = 30;
 const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
 const ARCHIVE_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
 const HALF_YEAR_BREAK_LABEL = "Halbjahresferien";
@@ -175,27 +173,6 @@ function cloneJsonValue(value, fallback = null) {
   }
 }
 
-function sanitizePdfText(value) {
-  return String(value ?? "")
-    .replace(/\r\n?/g, "\n")
-    .replace(/[\u2010-\u2015]/g, "-")
-    .replace(/\u2026/g, "...")
-    .replace(/[“”]/g, "\"")
-    .replace(/[‘’]/g, "'")
-    .replace(/[^\x09\x0A\x0D\x20-\x7E\u00A0-\u00FF]/g, "?");
-}
-
-function sanitizeArchiveFileName(value, fallback = "Teachhelper-Archiv") {
-  const text = String(value || "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^\w.\- ]+/g, "-")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "");
-  return text || fallback;
-}
-
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
@@ -248,41 +225,6 @@ function formatShortDateLabel(value = new Date()) {
   });
 }
 
-function formatLongDateLabel(value = new Date()) {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-  return date.toLocaleDateString("de-DE", {
-    day: "numeric",
-    month: "long",
-    year: "numeric"
-  });
-}
-
-function parseShortDateLabel(value) {
-  const match = String(value || "").trim().match(/^(\d{2})\.(\d{2})\.(\d{2})$/);
-  if (!match) {
-    return null;
-  }
-  const day = Number(match[1]);
-  const month = Number(match[2]);
-  const year = 2000 + Number(match[3]);
-  if (!day || !month) {
-    return null;
-  }
-  const date = new Date(year, month - 1, day);
-  if (
-    Number.isNaN(date.getTime())
-    || date.getFullYear() !== year
-    || date.getMonth() !== month - 1
-    || date.getDate() !== day
-  ) {
-    return null;
-  }
-  return date;
-}
-
 function dayOfWeekIso(iso) {
   const value = parseIsoDate(iso);
   const weekday = value.getDay();
@@ -311,14 +253,6 @@ function currentWeekStartForDisplay(now = new Date()) {
   return start;
 }
 
-function iterIsoDates(startIso, endIso, callback) {
-  let current = startIso;
-  while (current <= endIso) {
-    callback(current);
-    current = addDays(current, 1);
-  }
-}
-
 function isoWeekNumber(iso) {
   const d = parseIsoDate(iso);
   const utc = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -326,12 +260,6 @@ function isoWeekNumber(iso) {
   utc.setUTCDate(utc.getUTCDate() + 4 - day);
   const yearStart = new Date(Date.UTC(utc.getUTCFullYear(), 0, 1));
   return Math.ceil((((utc - yearStart) / 86400000) + 1) / 7);
-}
-
-function schoolYearLabel(today = new Date()) {
-  const startYear = today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
-  const endYear = startYear + 1;
-  return `${startYear}/${endYear}`;
 }
 
 function easterDate(year) {
@@ -551,33 +479,6 @@ function defaultHolidayRangeForRow(startYear, label, occurrence = 0) {
     return [null, null];
   }
   return [fallback[0] || null, fallback[1] || null];
-}
-
-function buildDefaultHolidayRowsForSchoolYears(schoolYears = []) {
-  const rows = [];
-  let nextId = 1;
-  for (const rawYear of Array.isArray(schoolYears) ? schoolYears : []) {
-    const year = isRecord(rawYear) ? rawYear : {};
-    const schoolYearId = Number(year.id) || 0;
-    const startYear = Number(String(year.startDate || "").slice(0, 4));
-    if (!schoolYearId || !Number.isFinite(startYear) || startYear <= 0) {
-      continue;
-    }
-    for (const spec of requiredHolidayRowSpecs()) {
-      const [startDate, endDate] = defaultHolidayRangeForRow(startYear, spec.label, spec.occurrence);
-      if (!startDate && !endDate) {
-        continue;
-      }
-      rows.push({
-        id: nextId++,
-        schoolYearId,
-        label: spec.label,
-        startDate: startDate || "",
-        endDate: endDate || ""
-      });
-    }
-  }
-  return rows;
 }
 
 function overrideTopicForFlags(topic, isEntfall, isWrittenExam) {

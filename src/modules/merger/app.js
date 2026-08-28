@@ -3553,10 +3553,7 @@ export function createMergerApp({
             pendingPickerTarget = target;
             ui.sharedPdfInput.multiple = Boolean(target?.multiple);
             ui.sharedPdfInput.value = "";
-            window.setTimeout(() => {
-              if (pendingPickerTarget !== target) return;
-              ui.sharedPdfInput.click();
-            }, 0);
+            ui.sharedPdfInput.click();
           }
 
           function findMergeDragAfterElement(clientY) {

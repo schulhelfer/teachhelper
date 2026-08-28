@@ -2,13 +2,17 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const read = async (path) => (
+  await readFile(new URL(path, import.meta.url), 'utf8')
+).replace(/\r\n/g, '\n');
+
 const [tabs, shell, appBridge, gradesIndex, gradesBridge, gradesApp] = await Promise.all([
-  readFile(new URL('../src/shell/tabs.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/planning-seatplan-bridge.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/grades/index.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/grades/bridge.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
+  read('../src/shell/tabs.js'),
+  read('../src/app/shell.js'),
+  read('../src/app/planning-seatplan-bridge.js'),
+  read('../src/modules/grades/index.js'),
+  read('../src/modules/grades/bridge.js'),
+  read('../src/modules/grades/app.js'),
 ]);
 
 test('leaving a dirty grades tab delegates to the grades three-way dialog', () => {

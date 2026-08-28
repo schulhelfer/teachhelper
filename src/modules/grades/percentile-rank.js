@@ -28,20 +28,6 @@ export function formatPercentileRank(value) {
   }).format(number);
 }
 
-export function getPercentileRankQuartileLabel(value) {
-  const percentile = clampPercentileRank(value);
-  if (percentile < 25) {
-    return "unteres Viertel";
-  }
-  if (percentile < 50) {
-    return "unteres Mittelfeld";
-  }
-  if (percentile < 75) {
-    return "oberes Mittelfeld";
-  }
-  return "oberes Viertel";
-}
-
 export function getPercentileRankDescription(value) {
   const percentile = clampPercentileRank(value);
   const p = formatPercentileRank(percentile);

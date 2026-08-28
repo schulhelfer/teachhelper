@@ -3,18 +3,13 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import vm from 'node:vm';
 
-const planningSource = await readFile(
-  new URL('../src/modules/planning/app.js', import.meta.url),
-  'utf8',
-);
-const shellSource = await readFile(
-  new URL('../src/app/shell.js', import.meta.url),
-  'utf8',
-);
-const planningBridgeSource = await readFile(
-  new URL('../src/modules/planning/bridge.js', import.meta.url),
-  'utf8',
-);
+const read = async (path) => (
+  await readFile(new URL(path, import.meta.url), 'utf8')
+).replace(/\r\n/g, '\n');
+
+const planningSource = await read('../src/modules/planning/app.js');
+const shellSource = await read('../src/app/shell.js');
+const planningBridgeSource = await read('../src/modules/planning/bridge.js');
 
 function extractClassMethod(source, name) {
   const match = new RegExp(`\\n  ${name}\\(`).exec(source);

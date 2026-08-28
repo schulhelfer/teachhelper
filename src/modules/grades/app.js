@@ -164,7 +164,6 @@ const GRADES_TUTORIAL_SETTINGS_SURFACES = {
     targets: ['[data-tutorial-anchor="grades-encryption"]']
   }
 };
-const GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT = 5;
 const GRADE_DISPLAY_SYSTEM_DEFAULT = "points15";
 const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
@@ -182,20 +181,12 @@ const GRADE_SIDEBAR_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
 const GRADE_ACCOMMODATION_TEXT_MAX_LENGTH = 500;
 const GRADE_EXPECTATION_HORIZON_COMMENT_MAX_LENGTH = 500;
-const BACKUP_DAY_MS = 24 * 60 * 60 * 1000;
-const GRADE_VAULT_CONFIG_SCHEMA = "teachhelper-grade-vault-config-v1";
-const GRADE_VAULT_VALIDATION_TOKEN = "teachhelper-grade-vault-v1";
-const GRADE_VAULT_SCHEMA = "teachhelper-grade-vault-v1";
-const GRADE_COURSE_SCHEMA = "teachhelper-grade-course-v1";
-const GRADE_VAULT_KDF_ITERATIONS = 600000;
 const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;
 const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
 const GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES = 8;
-const GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT = false;
 const GRADE_VAULT_AUTO_LOCK_ACTIVITY_EVENTS = ["pointerdown", "keydown", "input", "wheel", "touchstart"];
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY = "competence-expectations-template";
-const SYNC_SAVE_DEBOUNCE_MS = 700;
 const COLOR_PALETTE = [
   "#FF1744",
   "#2979FF",
@@ -2153,10 +2144,6 @@ function buildGradeStudentPerformanceFlairBadgeMarkup(student) {
     return "";
   }
   return `<span class="grades-student-flair" aria-label="Flair ${escapeHtml(performanceFlair)}">${escapeHtml(performanceFlair)}</span>`;
-}
-
-function buildGradeStudentNameInnerMarkup(student, studentName) {
-  return `${escapeHtml(studentName)}${buildGradeStudentPerformanceFlairBadgeMarkup(student)}`;
 }
 
 function createGradeExpectationHorizonCommentIndicatorElement() {

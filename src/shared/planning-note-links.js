@@ -77,28 +77,3 @@ export function tokenizePlanningNoteLinks(value) {
   }
   return tokens;
 }
-
-export function appendPlanningNoteWithLinks(container, value, options = {}) {
-  if (!container) {
-    return container;
-  }
-  const linkClassName = String(options.linkClassName || "planning-note-link");
-  for (const token of tokenizePlanningNoteLinks(value)) {
-    if (token.type !== "link") {
-      container.append(document.createTextNode(token.value));
-      continue;
-    }
-    const link = document.createElement("a");
-    link.className = linkClassName;
-    link.href = token.href;
-    link.target = "_blank";
-    link.rel = "noopener noreferrer";
-    link.referrerPolicy = "no-referrer";
-    if (options.linkContentEditable === false) {
-      link.contentEditable = "false";
-    }
-    link.textContent = token.value;
-    container.append(link);
-  }
-  return container;
-}

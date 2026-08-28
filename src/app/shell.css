@@ -28,8 +28,6 @@
       --shell-bg-strong: var(--module-surface-strong);
       --sidebar-surface: linear-gradient(180deg, rgba(17, 24, 39, 0.78), rgba(15, 23, 42, 0.7));
       --sidebar-border: rgba(148, 163, 184, 0.16);
-      --sidebar-shadow: 0 18px 34px rgba(2, 6, 23, 0.24);
-      --sidebar-radius: 0;
       --scrollbar-size: 17px;
       --scrollbar-track: rgba(15, 23, 42, 0.14);
       --scrollbar-thumb: rgba(148, 163, 184, 0.55);
@@ -113,22 +111,6 @@
       display: none;
     }
 
-    #planning-host .planning-runtime-root,
-    #planning-host .planning-runtime-root *,
-    #grades-host .planning-runtime-root,
-    #grades-host .planning-runtime-root * {
-      scrollbar-width: auto !important;
-      -ms-overflow-style: auto !important;
-    }
-
-    #planning-host .planning-runtime-root::-webkit-scrollbar,
-    #planning-host .planning-runtime-root *::-webkit-scrollbar,
-    #grades-host .planning-runtime-root::-webkit-scrollbar,
-    #grades-host .planning-runtime-root *::-webkit-scrollbar {
-      width: var(--scrollbar-size) !important;
-      height: var(--scrollbar-size) !important;
-      display: block !important;
-    }
 
     .app.app-tab-groups>.side,
     .app.app-tab-random-picker>.side {
@@ -325,7 +307,6 @@
       --chrome-transition-duration-medium: 240ms;
       --motion-fast: 150ms;
       --motion-medium: 220ms;
-      --motion-slow: 280ms;
       --tab-switch-duration: 150ms;
       --chrome-transition-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
       --motion-ease: var(--chrome-transition-ease);
@@ -2072,17 +2053,6 @@
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 72'%3E%3Cpath fill='%23fff1dc' d='M112 30H56V16L8 36l48 20V42h56z'/%3E%3C/svg%3E");
     }
 
-    .random-picker-controls {
-      display: flex;
-      justify-content: center;
-      align-items: stretch;
-      gap: 16px;
-      flex-wrap: wrap;
-      width: 100%;
-      padding-bottom: 28px;
-      overflow: visible;
-    }
-
     .random-picker-button {
       width: min(100%, 360px);
       min-height: 96px;
@@ -3228,23 +3198,7 @@
       gap: 12px;
     }
 
-    .monitor-header {
-      display: grid;
-      gap: 4px;
-    }
 
-    .monitor-title {
-      margin: 0;
-      font-size: clamp(24px, 3.1vw, 36px);
-      font-weight: 800;
-      line-height: 1.1;
-    }
-
-    .monitor-subtitle {
-      margin: 0;
-      color: #94a3b8;
-      font-size: 14px;
-    }
 
     .monitor-status-layout {
       display: grid;
@@ -3451,40 +3405,8 @@
       filter: saturate(0.75);
     }
 
-    .monitor-timer-card {
-      background: rgba(255, 255, 255, 0.08);
-      border: 1px solid rgba(255, 255, 255, 0.16);
-      border-radius: 20px;
-      display: grid;
-      place-items: center;
-      padding: 16px;
-    }
 
-    .monitor-countdown-time {
-      margin: 0;
-      font-size: clamp(44px, 8vw, 108px);
-      line-height: 1;
-      font-weight: 800;
-      letter-spacing: 0.01em;
-      font-variant-numeric: tabular-nums;
-      text-align: center;
-    }
 
-    .monitor-assignment-card {
-      background: rgba(255, 255, 255, 0.05);
-      border: 1px solid rgba(255, 255, 255, 0.11);
-      border-radius: 16px;
-      padding: 12px;
-    }
-
-    .monitor-assignment-text {
-      margin: 0;
-      min-height: 44px;
-      white-space: pre-wrap;
-      font-size: clamp(18px, 2.4vw, 28px);
-      font-weight: 700;
-      line-height: 1.3;
-    }
 
     .monitor-assignment-text.is-placeholder {
       color: #94a3b8;
@@ -4457,26 +4379,6 @@
       box-shadow: none;
     }
 
-    .counter-btn {
-      width: 32px;
-      height: 44px;
-      border-radius: var(--control-radius);
-      border: 1px solid var(--button-border);
-      background: var(--button-bg);
-      color: var(--text-on-overlay);
-      font-size: 18px;
-      font-weight: 700;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: var(--button-shadow);
-      flex-shrink: 0;
-    }
-
-    .counter-btn:active {
-      transform: scale(0.97);
-    }
 
     .group-size-input.compact {
       width: 56px;
@@ -5469,15 +5371,6 @@
       outline-offset: 2px;
     }
 
-    .work-order-body {
-      width: 100%;
-      max-width: none;
-      font-size: 18px;
-      line-height: 1.7;
-      text-align: left;
-      white-space: pre-line;
-    }
-
     .work-order-clock .clock-label {
       width: 100%;
       max-width: 100%;
@@ -5500,24 +5393,7 @@
       font-variant-numeric: tabular-nums;
     }
 
-    .work-order-shell-controls {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
 
-    .timer-shell-controls {
-      justify-content: space-between;
-      align-items: flex-end;
-    }
-
-    .timer-shell-buttons {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-      justify-content: flex-start;
-    }
 
     .timer-duration-field {
       font-size: 13px;
@@ -5830,15 +5706,6 @@
       align-items: center;
       justify-content: center;
       width: 100%;
-    }
-
-    #groups-grid .seat-placeholder-hint {
-      font-size: max(10px, calc(13px * var(--group-fit-scale)));
-      font-weight: 400;
-      color: rgba(148, 163, 184, 0.82);
-      text-align: center;
-      padding: 0 calc(12px * var(--group-fit-scale)) calc(10px * var(--group-fit-scale));
-      line-height: 1.35;
     }
 
     #groups-grid .seat-placeholder:hover {
@@ -6513,11 +6380,6 @@
 
     .preferences-performance-summary[hidden] {
       display: none;
-    }
-
-    .preferences-performance-summary-label {
-      font-weight: 700;
-      color: rgba(254, 215, 170, 0.96);
     }
 
     .preferences-performance-summary-sublabel {
@@ -7195,18 +7057,7 @@
         flex: 1 1 0;
       }
 
-      .timer-shell-controls {
-        flex-direction: column;
-        align-items: stretch;
-      }
 
-      .timer-shell-buttons {
-        justify-content: stretch;
-      }
-
-      .timer-shell-buttons button {
-        flex: 1 1 auto;
-      }
 
       .timer-duration-field input[type="number"] {
         width: 100%;
@@ -7441,10 +7292,6 @@
     #seatplan-dialog-host {
       display: none !important;
     }
-
-.preference-midpoint-label {
-  color: orange;
-}
 
 @media (display-mode: window-controls-overlay) {
   .app {

@@ -20,7 +20,6 @@
   --backdrop-tutorial: rgba(2, 6, 23, 0.5);
   --backdrop-settings: rgba(2, 6, 23, 0.55);
   --backdrop-settings-subtle: rgba(2, 6, 23, 0.44);
-  --backdrop-save: rgba(5, 10, 18, 0.5);
   --surface-input-inset: rgba(2, 6, 23, 0.18);
   --surface-disabled: rgba(51, 65, 85, 0.62);
   --surface-segment: rgba(15, 23, 42, 0.48);
@@ -36,7 +35,6 @@
   --shadow-segment-active: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.16);
   --shadow-segment-indicator: inset 0 1px 0 rgba(255, 255, 255, 0.12), 0 8px 18px rgba(2, 6, 23, 0.2);
   --surface-subtle-transparent: rgba(15, 23, 42, 0.24);
-  --surface-form: rgba(15, 23, 42, 0.16);
   --surface-panel-subtle: rgba(15, 23, 42, 0.28);
   --surface-control-muted: rgba(15, 23, 42, 0.5);
   --surface-control-emphasized: rgba(15, 23, 42, 0.58);
@@ -147,7 +145,6 @@
   --backdrop-tutorial: rgba(28, 28, 30, 0.3);
   --backdrop-settings: rgba(28, 28, 30, 0.3);
   --backdrop-settings-subtle: rgba(28, 28, 30, 0.26);
-  --backdrop-save: rgba(28, 28, 30, 0.3);
   --surface-input-inset: rgba(255, 255, 255, 0.72);
   --surface-disabled: rgba(235, 235, 245, 0.82);
   --surface-segment: rgba(235, 235, 245, 0.72);
@@ -163,7 +160,6 @@
   --shadow-segment-active: 0 5px 14px rgba(0, 122, 255, 0.22);
   --shadow-segment-indicator: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 5px 14px rgba(0, 122, 255, 0.22);
   --surface-subtle-transparent: rgba(235, 235, 245, 0.78);
-  --surface-form: rgba(235, 235, 245, 0.62);
   --surface-panel-subtle: rgba(235, 235, 245, 0.78);
   --surface-control-muted: rgba(255, 255, 255, 0.72);
   --surface-control-emphasized: rgba(255, 255, 255, 0.82);
@@ -252,7 +248,6 @@
   --bg: var(--surface-page);
   --canvas: var(--surface-page);
   --panel: rgba(255, 255, 255, 0.9);
-  --panel-strong: var(--surface-overlay);
   --card: var(--surface-panel);
   --seat: rgba(255, 255, 255, 0.72);
   --text: var(--text-primary);
@@ -270,19 +265,12 @@
   --button-shadow: var(--shadow-control);
   --dropdown-bg: var(--surface-overlay);
   --drop: var(--surface-overlay);
-  --shadow: var(--shadow-panel);
   --inner: var(--shadow-inset);
   --tab-active: var(--nav-active);
 
-  --bg-start: #fbfbfd;
-  --bg-mid: #f5f5f7;
-  --bg-end: #ececf1;
-  --bg-top: #fbfbfd;
-  --bg-bottom: #ececf1;
   --link: #007aff;
   --danger: #d70015;
   --warn: #b25000;
-  --error: #d70015;
   --ok: #248a3d;
   --focus: #1d1d1f;
   --focus-border: var(--border-focus);
@@ -295,7 +283,6 @@
   --module-surface-shadow: var(--shadow-panel);
   --sidebar-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.74), rgba(242, 242, 247, 0.68));
   --sidebar-border: rgba(60, 60, 67, 0.32);
-  --sidebar-shadow: 0 18px 34px rgba(0, 0, 0, 0.1);
   --shell-bg: var(--module-surface);
   --shell-bg-strong: var(--module-surface-strong);
   --shell-border: var(--module-surface-border);
@@ -313,8 +300,6 @@
   --action-danger-bg-hover: linear-gradient(180deg, #f04438, #d92d20);
   --action-danger-color: #ffffff;
   --action-danger-shadow: 0 8px 18px rgba(180, 35, 24, 0.22);
-  --btn-top: #ffffff;
-  --btn-bottom: #e8eef5;
   --btn-top-hover: #ffffff;
   --btn-bottom-hover: #dce6f1;
   --dropzone-bg: rgba(255, 255, 255, 0.62);

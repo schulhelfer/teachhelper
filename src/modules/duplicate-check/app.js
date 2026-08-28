@@ -1342,36 +1342,9 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     handleFile(files[0]);
   }
 
-  async function openZipPicker() {
+  function openZipPicker() {
     if (tutorialDemoActive) return;
-    if (typeof window.showOpenFilePicker !== 'function') {
-      ui.zipInput?.click();
-      return;
-    }
-
-    try {
-      const handles = await window.showOpenFilePicker({
-        id: 'duplicate-check-zip',
-        multiple: false,
-        startIn: 'downloads',
-        types: [
-          {
-            description: 'ZIP-Dateien',
-            accept: {
-              'application/zip': ['.zip'],
-            },
-          },
-        ],
-      });
-      const [handle] = handles;
-      const file = await handle?.getFile?.();
-      if (file) {
-        handleFiles([file]);
-      }
-    } catch (error) {
-      if (error?.name === 'AbortError') return;
-      ui.zipInput?.click();
-    }
+    ui.zipInput?.click();
   }
 
   function toggleDuplicateRule(rule) {

@@ -39,10 +39,6 @@ export function getDefaultQualificationPhaseEndDates(startYear) {
   return Object.fromEntries(QUALIFICATION_PHASE_END_DATE_KEYS.map((key, index) => [key, dates[index]]));
 }
 
-export function getDefaultQualificationPhaseFourthHalfYearEndDate(startYear) {
-  return getDefaultQualificationPhaseEndDates(startYear).qualificationPhaseFourthHalfYearEndDate;
-}
-
 function normalizeNameLearningDueSummary(value = null, validCourseIds = null) {
   const source = asRecord(value);
   const allowed = validCourseIds instanceof Set ? validCourseIds : null;

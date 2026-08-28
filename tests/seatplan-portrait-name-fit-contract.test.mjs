@@ -25,5 +25,9 @@ test('the shared seat-name size reserves vertical room for grade portraits', () 
     app,
     /const portrait = content\.querySelector\([\s\S]*?seat-grade-student-portrait-placeholder[\s\S]*?const portraitHeight = [\s\S]*?const availableHeight = Math\.max\(1, name\.clientHeight - 4 - portraitHeight - portraitGap\);/,
   );
+  assert.match(
+    app,
+    /const maxHeightLimitedSize = portraitHeight > 0\s*\? availableHeight\s*:\s*availableHeight \* 0\.5;/,
+  );
   assert.match(app, /const sharedSize = Math\.min\(\.\.\.fitted\.map\(item => item\.size\)\);/);
 });
