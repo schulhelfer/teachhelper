@@ -131,8 +131,6 @@ test('the shared course beats a plain restore but yields to lesson bound work', 
 });
 
 test('cancelling the unlock after a tab switch does not bounce the user back to planning', () => {
-  // Der Rücksprung hängt am Typ "grades-navigation"; ein Kurskontext nutzt bewusst einen
-  // eigenen Typ, damit ein abgebrochenes Entsperren den Tab nicht wechselt.
   const close = gradesApp.match(/\n  closeGradeVaultDialog\(\) \{([\s\S]*?)\n  \}/)?.[1] || '';
   assert.match(close, /cancelledLockedGradesNavigation = continuation\?\.type === "grades-navigation"/);
   assert.doesNotMatch(close, /continuation\?\.type === "course-context"/);

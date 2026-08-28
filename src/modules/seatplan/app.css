@@ -1317,11 +1317,6 @@
           flex: 1
         }
 
-        .divider {
-          border: 0;
-          border-top: 1px solid rgba(255, 255, 255, 0.1);
-          margin: 16px 0
-        }
 
         .list {
           margin-top: 10px;
@@ -1579,130 +1574,10 @@
 
 
 
-        .merge-bridge.persistent {
-          opacity: 0.32;
-          animation: none;
-          transform: translate(-50%, -50%) rotate(var(--angle, 0deg)) scaleX(1) scaleY(1);
-          box-shadow: 0 6px 12px rgba(255, 184, 140, 0.2);
-          filter: drop-shadow(0 5px 10px rgba(255, 170, 120, 0.16));
-        }
 
-        .seat.merge-anim {
-          animation: seatMergePulse 620ms cubic-bezier(.25, .8, .25, 1);
-        }
 
-        @keyframes seatMergePulse {
-          0% {
-            transform: scale(1);
-            filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
-          }
 
-          35% {
-            transform: scale(1.08);
-            filter: drop-shadow(0 8px 18px rgba(255, 200, 160, 0.35));
-          }
 
-          60% {
-            transform: scale(0.97);
-            filter: drop-shadow(0 4px 10px rgba(255, 200, 160, 0.2));
-          }
-
-          85% {
-            transform: scale(1.02);
-            filter: drop-shadow(0 6px 12px rgba(255, 200, 160, 0.22));
-          }
-
-          100% {
-            transform: scale(1);
-            filter: drop-shadow(0 0 0 rgba(255, 255, 255, 0));
-          }
-        }
-
-        @keyframes mergeBridgeBase {
-          0% {
-            opacity: 0.14;
-            transform: translate(-50%, -50%) rotate(var(--angle, 0deg)) scaleX(0.65) scaleY(0.6);
-            filter: blur(6px);
-          }
-
-          40% {
-            opacity: 0.38;
-            transform: translate(-50%, -50%) rotate(var(--angle, 0deg)) scaleX(1) scaleY(1);
-            filter: blur(4px);
-          }
-
-          70% {
-            opacity: 0.24;
-            transform: translate(-50%, -50%) rotate(var(--angle, 0deg)) scaleX(0.95) scaleY(0.92);
-            filter: blur(5px);
-          }
-
-          100% {
-            opacity: 0;
-            transform: translate(-50%, -50%) rotate(var(--angle, 0deg)) scaleX(1.1) scaleY(0.82);
-            filter: blur(9px);
-          }
-        }
-
-        @keyframes mergeBubbleLeft {
-          0% {
-            left: 0%;
-            transform: translate(-55%, -50%) scale(0.78);
-            opacity: 0.85;
-            filter: blur(6px);
-          }
-
-          45% {
-            left: 35%;
-            transform: translate(-25%, -50%) scale(1.04);
-            opacity: 0.95;
-            filter: blur(4px);
-          }
-
-          80% {
-            left: 50%;
-            transform: translate(-50%, -50%) scale(1.08);
-            opacity: 0.6;
-            filter: blur(6px);
-          }
-
-          100% {
-            left: 50%;
-            transform: translate(-50%, -50%) scale(1.25);
-            opacity: 0;
-            filter: blur(10px);
-          }
-        }
-
-        @keyframes mergeBubbleRight {
-          0% {
-            right: 0%;
-            transform: translate(55%, -50%) scale(0.78);
-            opacity: 0.85;
-            filter: blur(6px);
-          }
-
-          45% {
-            right: 35%;
-            transform: translate(25%, -50%) scale(1.04);
-            opacity: 0.95;
-            filter: blur(4px);
-          }
-
-          80% {
-            right: 50%;
-            transform: translate(50%, -50%) scale(1.08);
-            opacity: 0.6;
-            filter: blur(6px);
-          }
-
-          100% {
-            right: 50%;
-            transform: translate(50%, -50%) scale(1.25);
-            opacity: 0;
-            filter: blur(10px);
-          }
-        }
 
         @keyframes mergeUnderlayIn {
           0% {
@@ -3104,17 +2979,8 @@
           flex-wrap: wrap;
         }
 
-        .criteria-score.score-good {
-          color: var(--ok);
-        }
 
-        .criteria-score.score-bad {
-          color: var(--danger);
-        }
 
-        .criteria-score.score-neutral {
-          color: var(--text-on-overlay-secondary);
-        }
 
         .criteria-score-inline {
           font-weight: 700;
@@ -3657,15 +3523,6 @@
           text-align: center;
         }
 
-        @keyframes suggestProgressFillLinear {
-          from {
-            transform: scaleX(0);
-          }
-
-          to {
-            transform: scaleX(1);
-          }
-        }
 
         @media (max-width:760px) {
           .app {

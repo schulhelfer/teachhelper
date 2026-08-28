@@ -34,9 +34,6 @@ const pageSources = new Map(
 );
 
 test('pdf.js falls back to its blob: worker wrapper in opaque-origin module frames', () => {
-  // Module-iframes ohne allow-same-origin dürfen keinen Worker von einer https:-URL
-  // starten. Ohne diese Umschaltung fällt pdf.js still auf den Main-Thread-Fake-Worker
-  // zurück und blockiert die UI beim Rendern jeder PDF-Seite.
   assert.match(pdfVendorSource, /window\.origin === "null"/);
   assert.match(pdfVendorSource, /pdfjsLib\.PDFWorker\._isSameOrigin = \(\) => false;/);
 });

@@ -76,8 +76,6 @@ function createApp(overrides = {}) {
   return Object.assign(app, gradesMethods);
 }
 
-// Die Zeitfensterprüfung stammt aus validateLessonTimes/parseLessonTimeMinutes im Modul; hier
-// werden nur bereits normalisierte Zeiten gebraucht, deshalb die schlanken Ersatzfunktionen.
 globalThis.validateLessonTimes = (lessonTimes) => ({
   valid: true,
   hasAnyValue: true,
@@ -179,8 +177,6 @@ test('the timetable auto selection never opens the vault dialog on a tab switch'
     apply,
     /if \(!this\.canAccessGradeVault\(\)\) \{[\s\S]*?canReplaceGradeVaultContinuationWithCourseContext\(\)[\s\S]*?type: "course-context"[\s\S]*?return false;/,
   );
-  // Die Auswahl ist keine Kurswahl des Nutzers und darf deshalb nicht als geteilter
-  // Kurskontext zurück in die Planung wandern.
   assert.match(
     apply,
     /navigateToGradesOverviewCourse\(selection\.courseId, \{ shareCourseContext: false \}\)/,

@@ -3118,28 +3118,6 @@
           font-size: calc(1.25rem * var(--week-table-scale, 1));
         }
 
-        .lesson-block .lesson-block-performance-entry-status {
-          position: absolute;
-          right: calc(0.02rem * var(--week-table-scale, 1));
-          bottom: calc(0.04rem * var(--week-table-scale, 1));
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          width: calc(1.12rem * var(--week-table-scale, 1));
-          min-width: calc(1.12rem * var(--week-table-scale, 1));
-          height: calc(1.12rem * var(--week-table-scale, 1));
-          min-height: calc(1.12rem * var(--week-table-scale, 1));
-          border-radius: 999px;
-          background: rgba(236, 253, 245, 0.94);
-          box-shadow: 0 1px 3px rgba(15, 23, 42, 0.3);
-          color: #166534;
-          font-size: calc(0.84rem * var(--week-table-scale, 1));
-          font-weight: 800;
-          line-height: 1;
-          pointer-events: none;
-          text-shadow:
-            none;
-        }
 
         .grade-vault-lock-icon {
           display: block;
@@ -5538,10 +5516,6 @@
         
 
 
-        .course-dialog-tab.active {
-          background: rgba(82, 150, 255, 0.25);
-          border-color: rgba(82, 150, 255, 0.7);
-        }
 
         .course-dialog-panel {
           display: grid;

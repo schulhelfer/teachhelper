@@ -659,12 +659,6 @@ html:not([data-shell-collapsed="true"]) .main {
 
 
 
-.split-mode-card.active .split-mode-card-copy,
-.split-mode-card:has(input[type="radio"]:checked) .split-mode-card-copy {
-  border-color: rgba(34, 211, 238, 0.58);
-  background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(14, 165, 233, 0.22));
-  transform: translateY(-1px);
-}
 
 
 
@@ -674,15 +668,7 @@ html:not([data-shell-collapsed="true"]) .main {
 
 
 
-.split-marker-button.active {
-  border-color: rgba(34, 211, 238, 0.58);
-  background: linear-gradient(135deg, rgba(34, 211, 238, 0.18), rgba(14, 165, 233, 0.22));
-  transform: translateY(-1px);
-}
 
-.split-marker-button.active::before {
-  color: var(--accent);
-}
 
 
 
@@ -709,12 +695,6 @@ html:not([data-shell-collapsed="true"]) .main {
   cursor: not-allowed;
 }
 
-.split-workspace.options-disabled .split-mode-card-copy,
-.split-workspace.options-disabled .split-config-card,
-.split-workspace.options-disabled .split-result-row,
-.split-workspace.options-disabled .split-marker-button {
-  filter: saturate(0.82);
-}
 
 .section-title {
   margin: 0;

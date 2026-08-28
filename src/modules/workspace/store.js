@@ -189,23 +189,6 @@ function dayOfWeekIso(iso) {
 
 
 
-function weekStartFor(iso) {
-  const value = parseIsoDate(iso);
-  const weekday = dayOfWeekIso(iso);
-  value.setDate(value.getDate() - (weekday - 1));
-  return toIsoDate(value);
-}
-
-function currentWeekStartForDisplay(now = new Date()) {
-  const weekday = now.getDay() === 0 ? 7 : now.getDay();
-  const dateIso = toIsoDate(now);
-  let start = weekStartFor(dateIso);
-  if (weekday > 5 || (weekday === 5 && now.getHours() >= 18)) {
-    start = addDays(start, 7);
-  }
-  return start;
-}
-
 function iterIsoDates(startIso, endIso, callback) {
   let current = startIso;
   while (current <= endIso) {

@@ -2138,14 +2138,6 @@ async function prepareGradeStudentPortrait(file) {
 }
 
 
-function buildGradeStudentPerformanceFlairBadgeMarkup(student) {
-  const performanceFlair = normalizeGradePerformanceFlair(student && student.performanceFlair);
-  if (!performanceFlair) {
-    return "";
-  }
-  return `<span class="grades-student-flair" aria-label="Flair ${escapeHtml(performanceFlair)}">${escapeHtml(performanceFlair)}</span>`;
-}
-
 function createGradeExpectationHorizonCommentIndicatorElement() {
   const indicator = document.createElement("span");
   indicator.className = "grade-expectation-horizon-comment-indicator";

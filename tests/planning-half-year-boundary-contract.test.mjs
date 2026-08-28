@@ -121,7 +121,6 @@ function createHarness({ freeRanges = [], specialDays = [], settings = {}, year 
   };
 }
 
-// Niedersachsen 2025/26: Halbjahresferien Mo 02.02. + Di 03.02.2026.
 const defaultRanges = [
   { label: 'Herbstferien', startDate: '2025-10-13', endDate: '2025-10-25' },
   { label: 'Weihnachtsferien', startDate: '2025-12-22', endDate: '2026-01-05' },

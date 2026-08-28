@@ -1490,22 +1490,8 @@
       min-width: 0 !important;
     }
 
-    .app.app-tab-seatplan #seatplan-main-host .main-header {
-      transition: opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration-medium) var(--chrome-transition-ease), visibility 0s linear var(--chrome-transition-duration-short);
-    }
 
-    .app.is-collapsing.app-tab-seatplan #seatplan-main-host .main-header,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-seatplan #seatplan-main-host .main-header {
-      opacity: 0 !important;
-      visibility: hidden !important;
-      pointer-events: none !important;
-      transform: translateY(-10px) !important;
-    }
 
-    .app.chrome-collapsed:not(.is-expanding).app-tab-seatplan #seatplan-main-host .main-header {
-      display: none !important;
-      margin: 0 !important;
-    }
 
     .app.app-tab-seatplan>.main {
       background: transparent;
@@ -3037,11 +3023,6 @@
       margin: -18px 0 clamp(8px, 1vh, 16px);
     }
 
-    .app.is-collapsing.app-tab-work-phase .work-order-body,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .work-order-body {
-      font-size: clamp(24px, 2.7vw, 40px);
-      line-height: 1.45;
-    }
 
     .app.is-collapsing.app-tab-work-phase .timer-display-region,
     .app.chrome-collapsed:not(.is-expanding).app-tab-work-phase .timer-display-region {
@@ -3408,10 +3389,6 @@
 
 
 
-    .monitor-assignment-text.is-placeholder {
-      color: #94a3b8;
-      font-weight: 600;
-    }
 
     .monitor-controls {
       display: grid;
@@ -5146,11 +5123,6 @@
       flex: 1
     }
 
-    .divider {
-      border: 0;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      margin: 16px 0
-    }
 
     .list {
       margin-top: 10px;

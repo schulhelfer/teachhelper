@@ -161,10 +161,6 @@ function randomId() {
 }
 
 
-function isRecord(value) {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
-
 function cloneJsonValue(value, fallback = null) {
   try {
     return JSON.parse(JSON.stringify(value));

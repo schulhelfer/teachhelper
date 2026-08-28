@@ -520,8 +520,6 @@ if main_path.exists() and dom_path.exists():
     if path.suffix not in {'.html', '.js'}:
       continue
     if path == main_path:
-      # main.js only references anchors; counting it as a declaration would
-      # let a typo satisfy the check against itself.
       continue
     body = path.read_text(encoding='utf-8', errors='ignore')
     declared_anchors.update(re.findall(r'data-tutorial-anchor=["\']([^"\']+)["\']', body))

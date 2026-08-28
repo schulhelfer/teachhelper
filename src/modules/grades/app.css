@@ -3460,23 +3460,9 @@
           text-align: center;
         }
 
-        .course-grade-entry-trigger.is-missing-assessment {
-          color: #93c5fd;
-        }
 
-        .course-grade-entry-trigger.has-existing-assessment {
-          color: #86efac;
-        }
 
-        .course-grade-entry-trigger.is-missing-assessment:hover,
-        .course-grade-entry-trigger.is-missing-assessment:focus-visible {
-          color: #dbeafe;
-        }
 
-        .course-grade-entry-trigger.has-existing-assessment:hover,
-        .course-grade-entry-trigger.has-existing-assessment:focus-visible {
-          color: #dcfce7;
-        }
 
         .course-notes-wrap {
           display: flex;
@@ -5946,9 +5932,6 @@
           min-width: var(--grades-master-override-col-min-width);
         }
 
-        .grades-total-table th.grade-total-col {
-          background: var(--surface-week-header);
-        }
 
         .grade-block-table th.grade-partial-col,
         .grade-block-table td.grade-partial-col {
@@ -7034,12 +7017,6 @@
           border-bottom: 0;
         }
 
-        .grades-group.compact {
-          gap: 0.45rem;
-          padding: 0.6rem;
-          border-radius: 14px;
-          background: rgba(18, 24, 34, 0.5);
-        }
 
         .grades-group-toggle {
           display: grid;
@@ -7063,10 +7040,6 @@
           background: rgba(82, 150, 255, 0.1);
         }
 
-        .grades-group.compact>.grades-group-toggle {
-          padding: 0.55rem 0.7rem;
-          border-radius: 12px;
-        }
 
 
 
@@ -8600,10 +8573,6 @@
         }
 
 
-        .course-dialog-tab.active {
-          background: rgba(82, 150, 255, 0.25);
-          border-color: rgba(82, 150, 255, 0.7);
-        }
 
         .course-dialog-panel {
           display: grid;
