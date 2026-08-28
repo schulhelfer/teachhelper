@@ -5,6 +5,12 @@ import { createHelpCenter } from './app/help-center.js';
 import { createPlanningSeatplanBridge } from './app/planning-seatplan-bridge.js';
 import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createPwaInstallPrompt } from './app/pwa-install-prompt.js';
+import {
+  isTearOffTab,
+  openModuleWindow,
+  readModuleWindowRequest,
+} from './app/module-window.js';
+import { createTabTearOff } from './app/tab-tear-off.js';
 import { createShellController } from './app/shell.js';
 import { reportError } from './shared/error-reporting.js';
 import { createMessageApi } from './shared/messages.js';
@@ -2879,9 +2885,26 @@ import {
     };
   };
 
+  function applyModuleWindowChrome() {
+    if (els.app) els.app.dataset.moduleWindow = 'true';
+    if (els.sidebarManualSaveBtn) {
+      els.sidebarManualSaveBtn.disabled = true;
+      els.sidebarManualSaveBtn.title = 'Im eigenen Fenster nicht verfügbar';
+    }
+  }
+
+  function tearOffTabToWindow(tabKey, placement) {
+    if (!isTearOffTab(tabKey)) return false;
+    return Boolean(openModuleWindow(tabKey, placement));
+  }
+
   function bindTabNavigation() {
     if (tabNavigationBound) return;
     tabNavigationBound = true;
+    createTabTearOff({
+      els,
+      onTearOff: tearOffTabToWindow,
+    });
     [
       [els.tabMerger, TAB_MERGER],
       [els.tabPlanning, TAB_PLANNING],
@@ -2894,7 +2917,13 @@ import {
       [els.tabWorkPhase, TAB_WORK_PHASE],
       [els.tabQr, TAB_QR],
     ].forEach(([button, tabKey]) => {
-      button?.addEventListener('click', () => {
+      button?.addEventListener('click', (event) => {
+        if (event.altKey && tearOffTabToWindow(tabKey, {
+          screenX: event.screenX,
+          screenY: event.screenY,
+        })) {
+          return;
+        }
         if (firstRunTutorial?.isActive?.() && getActiveTab() !== tabKey) {
           firstRunTutorial.finish();
         }
@@ -8838,8 +8867,15 @@ import {
   bindBackgroundDrop(els.groupsGrid);
   bindBackgroundDrop(els.groupsGridWrap, { ignoreInsideGrid: true });
 
+  const moduleWindowRequest = readModuleWindowRequest(window.location);
   try {
     setActiveTab(TAB_PLANNING);
+    if (moduleWindowRequest.tab) {
+      setActiveTabImmediate(moduleWindowRequest.tab);
+    }
+    if (moduleWindowRequest.isModuleWindow) {
+      applyModuleWindowChrome();
+    }
   } catch (error) {
     reportAppError(error, 'Planung konnte beim Start nicht geladen werden. Gruppenansicht als Fallback geöffnet.', {
       scope: 'app-init',
@@ -8869,7 +8905,9 @@ import {
   syncChromeState();
   updateMonitorAmpelSizing();
   els.app?.classList.add('app-js-ready');
-  pwaInstallPrompt.showIfNeeded();
+  if (!moduleWindowRequest.isModuleWindow) {
+    pwaInstallPrompt.showIfNeeded();
+  }
   firstRunTutorial = createFirstRunTutorial({
     els,
     getContextualSteps: getCurrentModuleTutorialSteps,

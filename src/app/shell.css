@@ -810,6 +810,96 @@
       background: transparent;
     }
 
+    .tab-nav.is-tearing-tab {
+      cursor: grabbing;
+    }
+
+    .tab-nav.is-tearing-tab::after {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      z-index: 0;
+      border: 1px dashed var(--accent);
+      border-radius: 10px;
+      opacity: 0.55;
+      pointer-events: none;
+    }
+
+    .tab-button.is-tearing {
+      opacity: 0.4;
+    }
+
+    .tab-tear-ghost {
+      position: fixed;
+      top: 0;
+      left: -10000px;
+      z-index: 120;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      width: 260px;
+      height: 172px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      border-radius: 12px;
+      background: var(--surface-overlay);
+      box-shadow: var(--shadow-overlay);
+      color: var(--text);
+      pointer-events: none;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    .tab-tear-ghost-bar {
+      display: flex;
+      flex: 0 0 30px;
+      align-items: center;
+      gap: 8px;
+      padding: 0 10px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    .tab-tear-ghost-dots {
+      display: flex;
+      flex: 0 0 auto;
+      gap: 4px;
+    }
+
+    .tab-tear-ghost-dots i {
+      display: block;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: rgba(148, 163, 184, 0.5);
+    }
+
+    .tab-tear-ghost-name {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      padding: 6px 14px;
+      background: var(--module-surface);
+      font-size: var(--tear-name-size, 40px);
+      font-weight: 800;
+      line-height: 1.05;
+      letter-spacing: -0.01em;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .app[data-module-window='true']>.app-header {
+      display: none;
+    }
+
+    .app[data-module-window='true'] #sidebar-manual-save-btn {
+      display: none;
+    }
+
     .side,
     .main {
       background: var(--shell-bg);

@@ -1,8 +1,11 @@
 import { installWorkspaceController } from '../modules/workspace/index.js';
+import { readModuleWindowRequest } from './module-window.js';
 import { createShellActionDialog } from './shell-action-dialog.js';
 
 const shellActionDialog = createShellActionDialog(document);
+const moduleWindowRequest = readModuleWindowRequest(window.location);
 installWorkspaceController(window, {
+  ephemeral: moduleWindowRequest.isModuleWindow,
   confirmLargeFile: ({ label, formattedSize }) => shellActionDialog?.confirm({
     title: 'Große Datei laden?',
     message: `${label} ist ${formattedSize} groß. Das Laden kann viel Arbeitsspeicher beanspruchen und den Browser verlangsamen. Trotzdem laden?`,
