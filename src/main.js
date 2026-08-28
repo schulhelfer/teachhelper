@@ -8869,9 +8869,10 @@ import {
 
   const moduleWindowRequest = readModuleWindowRequest(window.location);
   try {
-    setActiveTab(TAB_PLANNING);
     if (moduleWindowRequest.tab) {
       setActiveTabImmediate(moduleWindowRequest.tab);
+    } else {
+      setActiveTab(TAB_PLANNING);
     }
     if (moduleWindowRequest.isModuleWindow) {
       applyModuleWindowChrome();

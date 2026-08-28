@@ -5,11 +5,12 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
   .then((source) => source.split('\r\n').join('\n'));
 
-const [moduleWindow, tearOff, bootstrap, main, shellCss, serviceWorker, tabsSource] = await Promise.all([
+const [moduleWindow, tearOff, bootstrap, main, shell, shellCss, serviceWorker, tabsSource] = await Promise.all([
   read('../src/app/module-window.js'),
   read('../src/app/tab-tear-off.js'),
   read('../src/app/bootstrap.js'),
   read('../src/main.js'),
+  read('../src/app/shell.js'),
   read('../src/app/shell.css'),
   read('../sw.js'),
   read('../src/shell/tabs.js'),
@@ -230,10 +231,84 @@ test('der Geist ist ein Fenster mit Titelleiste und grossem Namen', () => {
   assert.doesNotMatch(ghost, /display: none|visibility: hidden/, 'sonst rastert der Browser ein leeres Bild');
 });
 
-test('die Leiste zeigt waehrend des Ziehens ihre Abbruchzone', () => {
-  assert.match(shellCss, /\.tab-nav\.is-tearing-tab::after \{/);
+test('die Leiste bekommt beim Ziehen keinen Rahmen, nur der Quelltab blasst ab', () => {
   assert.match(shellCss, /\.tab-button\.is-tearing \{/);
+  assert.doesNotMatch(shellCss, /is-tearing-tab/, 'der gestrichelte Kasten um die Leiste ist weg');
+  assert.doesNotMatch(tearOff, /is-tearing-tab/);
   assert.match(shellCss, /\.app\[data-module-window='true'\] #sidebar-manual-save-btn \{\s+display: none;/);
+});
+
+test('die Seite nimmt den Drop an, sonst zeigt der Zeiger ein Verbotsschild', () => {
+  const dragover = tearOff.match(/document\.addEventListener\('dragover'[\s\S]*?\n  \}\);/)?.[0] || '';
+  assert.match(dragover, /event\.preventDefault\(\);/);
+  assert.match(dragover, /event\.dataTransfer\.dropEffect = 'move';/);
+  assert.match(
+    tearOff,
+    /document\.addEventListener\('dragenter', \(event\) => \{\s+if \(!dragState\) return;\s+event\.preventDefault\(\);/,
+  );
+  assert.match(
+    tearOff,
+    /document\.addEventListener\('drop', \(event\) => \{\s+if \(!dragState\) return;\s+event\.preventDefault\(\);/,
+  );
+  assert.match(dragover, /if \(!dragState\) return;/, 'fremde Datei-Drops bleiben unberuehrt');
+});
+
+test('eine Ablageschicht faengt die Drag-Events ueber den Modul-iframes ab', () => {
+  assert.match(tearOff, /state\.dropLayer\?\.remove\(\);/, 'die Schicht darf den Drag nicht ueberleben');
+
+  const dragstart = tearOff.match(/nav\.addEventListener\('dragstart'[\s\S]*?\n  \}\);/)?.[0] || '';
+  assert.match(dragstart, /dropLayer: null,/);
+  assert.doesNotMatch(
+    dragstart,
+    /ensureDropLayer|document\.body\.append\(layer\)/,
+    'Chrome bricht den Drag ab, wenn dragstart den DOM umbaut - die Schicht kommt erst beim ersten dragover',
+  );
+  assert.match(tearOff, /if \(!dragState\) return;\s+ensureDropLayer\(dragState\);/);
+
+  const layer = shellCss.match(/\.tab-tear-drop-layer \{[\s\S]*?\n    \}/)?.[0] || '';
+  assert.match(layer, /position: fixed;/);
+  assert.match(layer, /inset: 0;/);
+  assert.doesNotMatch(
+    layer,
+    /pointer-events: none/,
+    'ohne Trefferflaeche gingen die Events wieder an den opaken iframe',
+  );
+
+  const layerZ = Number(layer.match(/z-index: (\d+);/)?.[1]);
+  const ghost = shellCss.match(/\.tab-tear-ghost \{[\s\S]*?\n    \}/)?.[0] || '';
+  const ghostZ = Number(ghost.match(/z-index: (\d+);/)?.[1]);
+  assert.ok(layerZ > ghostZ, `Ablageschicht ${layerZ} muss ueber allem liegen`);
+});
+
+test('das Modulfenster behaelt einen Ziehbereich fuer die Fenstersteuerung', () => {
+  const header = shellCss.match(
+    /\.app\[data-module-window='true'\]>\.app-header \{[\s\S]*?\n    \}/,
+  )?.[0] || '';
+  assert.doesNotMatch(
+    header,
+    /display: none/,
+    'app-region: drag haengt an .app-header - ohne sie laesst sich das Fenster nicht verschieben',
+  );
+  assert.match(header, /height: var\(--window-controls-height, 0px\);/);
+  assert.match(header, /min-height: 0;/, 'die Basisregel setzt sonst 46px Mindesthoehe');
+  assert.match(shellCss, /\.app\[data-module-window='true'\]>\.app-header>\* \{\s+display: none;/);
+
+  const wco = shellCss.slice(shellCss.indexOf('@media (display-mode: window-controls-overlay)'));
+  assert.match(wco, /\.app-header \{[\s\S]*?app-region: drag;/);
+  assert.match(wco, /--window-controls-height: env\(titlebar-area-height, 0px\);/);
+});
+
+test('das Modulfenster fragt beim Schliessen nie nach ungespeicherten Aenderungen', () => {
+  const handler = shell.match(/function handleBeforeUnload\(event\) \{[\s\S]*?\n  \}/)?.[0] || '';
+  assert.match(
+    handler,
+    /if \(els\.app\?\.dataset\.moduleWindow === 'true'\) \{\s+return;/,
+    'ein ephemeres Fenster hat keine Datenbank, in die es speichern koennte',
+  );
+  assert.ok(
+    handler.indexOf('moduleWindow') < handler.indexOf('planningUnsavedState'),
+    'die Abkuerzung muss vor der Dirty-Pruefung greifen',
+  );
 });
 
 test('das Modulfenster haengt sich nie an die Datenbank', () => {
@@ -243,10 +318,11 @@ test('das Modulfenster haengt sich nie an die Datenbank', () => {
   );
 });
 
-test('der Start bleibt bei Planung und schwenkt nur danach auf das Modul', () => {
+test('das Modulfenster startet direkt im Modul, ohne Planung zu mounten', () => {
   assert.match(
     main,
-    /try \{\s+setActiveTab\(TAB_PLANNING\);\s+if \(moduleWindowRequest\.tab\) \{\s+setActiveTabImmediate\(moduleWindowRequest\.tab\);/,
+    /try \{\s+if \(moduleWindowRequest\.tab\) \{\s+setActiveTabImmediate\(moduleWindowRequest\.tab\);\s+\} else \{\s+setActiveTab\(TAB_PLANNING\);\s+\}/,
+    'ein Umweg ueber Planung wuerde das Modul samt iframe unnoetig laden',
   );
   assert.match(
     main,
@@ -259,7 +335,7 @@ test('der Start bleibt bei Planung und schwenkt nur danach auf das Modul', () =>
     /setChromeCollapsed/,
     'der Chrome-Collapse wuerde auch die Sidebar einklappen',
   );
-  assert.match(shellCss, /\.app\[data-module-window='true'\]>\.app-header \{\s+display: none;/);
+  assert.match(shellCss, /\.app\[data-module-window='true'\]>\.app-header>\* \{\s+display: none;/);
   assert.doesNotMatch(
     shellCss,
     /\.app\[data-module-window='true'\][^{]*\.side[^{]*\{/,

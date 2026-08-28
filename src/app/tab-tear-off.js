@@ -57,6 +57,15 @@ export function createTabTearOff({ els, onTearOff } = {}) {
     return ghost;
   };
 
+  const ensureDropLayer = (state) => {
+    if (state.dropLayer) return;
+    const layer = document.createElement('div');
+    layer.className = 'tab-tear-drop-layer';
+    layer.setAttribute('aria-hidden', 'true');
+    document.body.append(layer);
+    state.dropLayer = layer;
+  };
+
   const isTornOff = (clientX, clientY) => {
     if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
     if (
@@ -84,8 +93,8 @@ export function createTabTearOff({ els, onTearOff } = {}) {
   );
 
   const endDrag = (state) => {
+    state.dropLayer?.remove();
     state.button.classList.remove('is-tearing');
-    nav.classList.remove('is-tearing-tab');
     dragState = null;
   };
 
@@ -100,6 +109,7 @@ export function createTabTearOff({ els, onTearOff } = {}) {
   });
 
   nav.addEventListener('dragstart', (event) => {
+    if (dragState) endDrag(dragState);
     const button = resolveTabButton(event.target);
     if (!button || !event.dataTransfer) {
       event.preventDefault();
@@ -114,21 +124,34 @@ export function createTabTearOff({ els, onTearOff } = {}) {
     dragState = {
       button,
       tab,
+      dropLayer: null,
       lastClientX: event.clientX,
       lastClientY: event.clientY,
       lastScreenX: event.screenX,
       lastScreenY: event.screenY,
     };
     button.classList.add('is-tearing');
-    nav.classList.add('is-tearing-tab');
+  });
+
+  document.addEventListener('dragenter', (event) => {
+    if (!dragState) return;
+    event.preventDefault();
   });
 
   document.addEventListener('dragover', (event) => {
     if (!dragState) return;
+    ensureDropLayer(dragState);
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
     dragState.lastClientX = event.clientX;
     dragState.lastClientY = event.clientY;
     dragState.lastScreenX = event.screenX;
     dragState.lastScreenY = event.screenY;
+  });
+
+  document.addEventListener('drop', (event) => {
+    if (!dragState) return;
+    event.preventDefault();
   });
 
   nav.addEventListener('dragend', (event) => {

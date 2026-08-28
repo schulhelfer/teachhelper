@@ -1603,6 +1603,9 @@ export function createShellController({
   initializeSidebarResize();
 
   function handleBeforeUnload(event) {
+    if (els.app?.dataset.moduleWindow === 'true') {
+      return;
+    }
     if (!state.planningUnsavedState?.dirty) {
       return;
     }

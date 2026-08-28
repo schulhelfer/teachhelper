@@ -810,23 +810,15 @@
       background: transparent;
     }
 
-    .tab-nav.is-tearing-tab {
-      cursor: grabbing;
-    }
-
-    .tab-nav.is-tearing-tab::after {
-      content: '';
-      position: absolute;
-      inset: -4px;
-      z-index: 0;
-      border: 1px dashed var(--accent);
-      border-radius: 10px;
-      opacity: 0.55;
-      pointer-events: none;
-    }
-
     .tab-button.is-tearing {
       opacity: 0.4;
+    }
+
+    .tab-tear-drop-layer {
+      position: fixed;
+      inset: 0;
+      z-index: 130;
+      background: transparent;
     }
 
     .tab-tear-ghost {
@@ -893,6 +885,16 @@
     }
 
     .app[data-module-window='true']>.app-header {
+      min-height: 0;
+      height: var(--window-controls-height, 0px);
+      max-height: var(--window-controls-height, 0px);
+      padding: 0;
+      border-bottom: 0;
+      background: var(--bg);
+      overflow: hidden;
+    }
+
+    .app[data-module-window='true']>.app-header>* {
       display: none;
     }
 
