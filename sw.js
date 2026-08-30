@@ -25,6 +25,7 @@ const APP_SHELL = [
   './src/shared/toast.css',
   './src/app/shell.js',
   './src/shared/theme.css',
+  './src/shared/module-standalone-guard.js',
   './src/shared/theme-preload.js',
   './src/shared/theme.js',
   './src/shared/theme-bridge.js',
@@ -113,11 +114,11 @@ const DEFERRED_ASSETS = [
   './src/modules/qr/vendor/jsQR.js',
   './src/vendor/jszip/3.10.1/jszip.min.js',
   './src/vendor/jszip/3.10.1/LICENSE.markdown',
-  './src/vendor/pdf-lib/1.17.1/pdf-lib.min.js',
-  './src/vendor/pdf-lib/1.17.1/LICENSE.md',
-  './src/vendor/pdfjs-dist/6.2.108/build/pdf.mjs',
-  './src/vendor/pdfjs-dist/6.2.108/build/pdf.worker.mjs',
-  './src/vendor/pdfjs-dist/6.2.108/LICENSE',
+  './src/vendor/cantoo-pdf-lib/2.9.1/pdf-lib.min.js',
+  './src/vendor/cantoo-pdf-lib/2.9.1/LICENSE.md',
+  './src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs',
+  './src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs',
+  './src/vendor/pdfjs-dist/6.3.289/LICENSE',
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
 

@@ -813,7 +813,7 @@ class PlanningApp {
     this.workspaceController = getParentWorkspaceController()
       || createWorkspaceController({
         eventTarget: window,
-        ephemeral: Boolean(this.tutorialDemoMode)
+        ephemeral: true
       });
     this.workspaceClient = this.workspaceController
       ? createWorkspaceClient(this.workspaceController, "planning", `planning-frame:${randomId()}`)
@@ -3994,7 +3994,7 @@ class PlanningApp {
     if (this.refs.topicDialogCoursePill) {
       this.refs.topicDialogCoursePill.textContent = courseName || "Kurs";
       this.refs.topicDialogCoursePill.style.backgroundColor = courseColor;
-      this.refs.topicDialogCoursePill.style.color = readableTextColor(courseColor);
+      this.refs.topicDialogCoursePill.style.color = "#000000";
     }
     if (this.refs.topicDialogContext) {
       this.refs.topicDialogContext.textContent = contextParts.join(" · ");

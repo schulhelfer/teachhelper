@@ -104,6 +104,11 @@ function sampleContainer(overrides = {}) {
   });
 }
 
+test('THDB lehnt übergroße JSON-Köpfe vor dem Parsen ab', () => {
+  const oversizedHeader = bytes(`${thdb.THDB_MAGIC}\n${' '.repeat((1024 * 1024) + 1)}\n`);
+  assert.equal(thdb.parseThdb1ContainerBytes(oversizedHeader), null);
+});
+
 test('synchronous SHA-256 matches standard vectors and Node crypto', () => {
   assert.equal(
     thdb.sha256HexBytes(new Uint8Array()),
@@ -123,6 +128,34 @@ test('synchronous SHA-256 matches standard vectors and Node crypto', () => {
       `SHA-256 mismatch at ${length} bytes`,
     );
   }
+});
+
+test('asynchronous SHA-256 agrees with the synchronous fallback and Node crypto', async () => {
+  const payloads = [
+    new Uint8Array(),
+    bytes('abc'),
+    bytes('gleich lang, aber anderer Inhalt: äöü — '.repeat(100)),
+    ...[1, 55, 56, 63, 64, 65, 127, 128, 129, 4096].map(
+      (length) => Uint8Array.from({ length }, (_, index) => (index * 37 + 11) & 0xff),
+    ),
+  ];
+  for (const payload of payloads) {
+    const expected = createHash('sha256').update(payload).digest('hex');
+    assert.equal(await thdb.sha256HexBytesAsync(payload), expected, `async SHA-256 mismatch at ${payload.length} bytes`);
+    assert.equal(thdb.sha256HexBytes(payload), expected, `sync SHA-256 mismatch at ${payload.length} bytes`);
+  }
+
+  const offsetPayload = new Uint8Array([9, 9, 9, 1, 2, 3, 4, 9, 9]).subarray(3, 7);
+  assert.equal(
+    await thdb.sha256HexBytesAsync(offsetPayload),
+    createHash('sha256').update(Uint8Array.from([1, 2, 3, 4])).digest('hex'),
+  );
+});
+
+test('the async file hash matches the synchronous one', async () => {
+  const built = sampleContainer();
+  assert.equal(await thdb.getThdb1FileHashAsync(built.bytes), thdb.getThdb1FileHash(built.bytes));
+  assert.match(await thdb.getThdb1FileHashAsync(built.bytes), /^sha256:[0-9a-f]{64}$/);
 });
 
 test('new containers carry offsets-independent hashes for every segment', () => {

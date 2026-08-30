@@ -896,7 +896,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	    }
 	  }
 
-	  function readZipEntryCapped(entry, maxBytes, timeoutMs) {
+	  function readZipEntryCapped(entry, maxBytes, timeoutMs, options = {}) {
 	    return new Promise((resolve, reject) => {
 	      let stream;
 	      try {
@@ -932,7 +932,10 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	          if (settled) return;
 	          total += chunk.length;
 	          if (total > maxBytes) {
-	            fail(new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(maxBytes)}.`));
+	            fail(new Error(
+	              options.overflowMessage
+	              || `"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(maxBytes)}.`
+	            ));
 	            return;
 	          }
 	          chunks.push(chunk);
@@ -1266,6 +1269,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 
 	    const rootPrefix = getCommonRootPrefix(entries);
 	    const records = [];
+	    let inflatedTotal = 0;
 	    for (let index = 0; index < entries.length; index += 1) {
 	      if (token !== analysisToken) return null;
 	      ensureZipAnalysisWithinDeadline(deadlineMs);
@@ -1277,11 +1281,21 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	      const knownSize = getZipEntrySize(entry, 'uncompressedSize');
 	      if (shouldReadBytes) {
 	        const remainingMs = Math.max(1, deadlineMs - Date.now());
+	        const remainingTotalBytes = Math.max(0, FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES - inflatedTotal);
+	        if (remainingTotalBytes <= 0) {
+	          throw new Error(`Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`);
+	        }
 	        const maxBytes = Math.min(
 	          knownSize ?? FILE_LIMITS.ZIP_ENTRY_BYTES,
-	          FILE_LIMITS.ZIP_ENTRY_BYTES
+	          FILE_LIMITS.ZIP_ENTRY_BYTES,
+	          remainingTotalBytes
 	        );
-	        bytes = await readZipEntryCapped(entry, maxBytes, remainingMs);
+	        bytes = await readZipEntryCapped(entry, maxBytes, remainingMs, {
+	          overflowMessage: maxBytes === remainingTotalBytes && remainingTotalBytes < FILE_LIMITS.ZIP_ENTRY_BYTES
+	            ? `Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`
+	            : null,
+	        });
+	        inflatedTotal += bytes.byteLength;
 	        visualSignature = await createVisualSignature(bytes, name);
 	      }
 	      records.push({

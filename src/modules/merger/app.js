@@ -1746,6 +1746,13 @@ export function createMergerApp({
               }
             }
 
+            if (inputBytes.length > FILE_LIMITS.PDF_FALLBACK_PARSE_BYTES) {
+              throw new Error(
+                "Lokale PDF-Library fehlt und diese PDF ist fuer die eingebaute Fallback-Verarbeitung zu gross. " +
+                "Bitte App neu laden oder Installation pruefen, damit pdf-lib lokal geladen werden kann."
+              );
+            }
+
             const detected = detectUnsupportedLegacyFeatures(inputBytes);
             if (detected.length) {
               throw new Error(

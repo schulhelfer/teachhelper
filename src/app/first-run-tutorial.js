@@ -466,7 +466,7 @@ export function createFirstRunTutorial({
   function setSidebarHelpButtonLabel(label) {
     if (!els.firstRunTutorialStart) return;
     els.firstRunTutorialStart.setAttribute('aria-label', label);
-    els.firstRunTutorialStart.dataset.tooltip = label;
+    els.firstRunTutorialStart.dataset.tooltip = 'Hilfe';
     els.firstRunTutorialStart.removeAttribute('title');
   }
 

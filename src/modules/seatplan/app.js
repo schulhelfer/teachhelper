@@ -1,4 +1,9 @@
 import { createMessageApi } from '../../shared/messages.js';
+import {
+  assertFileSizeAtMost,
+  assertJsonNestingAtMost,
+  FILE_LIMITS,
+} from '../../shared/file-guards.js';
 
         (function () {
           const appShellTemplate = document.getElementById('app-shell');
@@ -971,12 +976,8 @@ import { createMessageApi } from '../../shared/messages.js';
             els.gradeRosterImportMenu.append(row);
           }
 
-          function getGradeRosterPillTextColor(color) {
-            const hex = String(color || '').trim().replace('#', '');
-            if (!/^[\da-f]{6}$/i.test(hex)) return '#ffffff';
-            const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
-            const brightness = (red * 299) + (green * 587) + (blue * 114);
-            return brightness >= 150000 ? '#0f172a' : '#ffffff';
+          function getGradeRosterPillTextColor() {
+            return '#000000';
           }
 
           function requestGradeRosterCourses({ interactive = false, unlock = false } = {}) {
@@ -4930,8 +4931,10 @@ import { createMessageApi } from '../../shared/messages.js';
 
           async function importPlanFromFile(file, handle) {
             if (!file) return;
+            assertFileSizeAtMost(file, FILE_LIMITS.JSON_BYTES, 'JSON-Datei');
             const rawText = await file.text();
             const text = stripJsonWarning(rawText);
+            assertJsonNestingAtMost(text);
             let data;
             try {
               data = JSON.parse(text);
@@ -4985,6 +4988,7 @@ import { createMessageApi } from '../../shared/messages.js';
               showMessage('Die Namensliste kommt in diesem Kurs-Sitzplan aus dem Notenmodul.', 'info');
               return;
             }
+            assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
             renderCsvStatus(file.name);
             const text = await file.text();
             let rows = parseCSV(text);
@@ -7978,9 +7982,22 @@ import { createMessageApi } from '../../shared/messages.js';
           }
           function parseCSV(text) {
             const delim = detectDelimiter(text); state.delim = delim;
+            const maxRows = FILE_LIMITS.CSV_MAX_ROWS;
+            const maxColumns = FILE_LIMITS.CSV_MAX_COLUMNS;
+            const maxCellChars = FILE_LIMITS.CSV_MAX_CELL_CHARS;
             const rows = [];
-            let i = 0, cur = '', inQ = false; const out = []; const push = () => { out.push(cur); cur = '' };
-            const flush = () => { rows.push(out.slice()); out.length = 0 };
+            let i = 0, cur = '', inQ = false; const out = [];
+            const push = () => {
+              if (cur.length > maxCellChars) throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
+              if (out.length >= maxColumns) throw new Error(`CSV enthält zu viele Spalten: maximal ${maxColumns}.`);
+              out.push(cur);
+              cur = '';
+            };
+            const flush = () => {
+              if (rows.length >= maxRows) throw new Error(`CSV enthält zu viele Zeilen: maximal ${maxRows}.`);
+              rows.push(out.slice());
+              out.length = 0;
+            };
             while (i < text.length) {
               const ch = text[i++];
               if (ch === '"') {
@@ -7989,7 +8006,10 @@ import { createMessageApi } from '../../shared/messages.js';
               } else if (ch === delim && !inQ) { push(); }
               else if ((ch === '\n') && !inQ) { push(); flush(); }
               else if ((ch === '\r') && !inQ) { }
-              else { cur += ch; }
+              else {
+                cur += ch;
+                if (cur.length > maxCellChars) throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
+              }
             }
             if (cur.length > 0 || out.length > 0) { push(); flush(); }
             return rows;

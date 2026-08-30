@@ -4811,6 +4811,14 @@
 
     .help-entry-form { padding: 16px; }
 
+    .help-entry-description {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+      text-align: center;
+    }
+
     .help-dialog-form {
       display: flex;
       flex-direction: column;

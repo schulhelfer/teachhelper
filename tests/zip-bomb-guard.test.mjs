@@ -12,7 +12,7 @@ const docxTemplateUrl = `data:text/javascript;base64,${Buffer.from(
   docxTemplateSource.replace('"./file-guards.js"', JSON.stringify(fileGuardsUrl)),
 ).toString('base64')}`;
 
-const { exceedsZipCompressionRatio, FILE_LIMITS } = await import(fileGuardsUrl);
+const { assertJsonNestingAtMost, exceedsZipCompressionRatio, FILE_LIMITS } = await import(fileGuardsUrl);
 const { prepareDocxTemplate } = await import(docxTemplateUrl);
 
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
@@ -59,6 +59,8 @@ function buildSingleEntryZip({ name, compressed, declaredUncompressedSize }) {
 
 const BOMB_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
 const bombPayload = deflateRawSync(Buffer.alloc(BOMB_UNCOMPRESSED_BYTES));
+const RATIO_UNCOMPRESSED_BYTES = 4 * 1024 * 1024;
+const ratioPayload = deflateRawSync(Buffer.alloc(RATIO_UNCOMPRESSED_BYTES));
 
 test('ein gelogener uncompressedSize-Header bricht das Entpacken ab', async () => {
   const zip = buildSingleEntryZip({
@@ -94,13 +96,27 @@ test('uncompressedSize = 0 umgeht die Konsistenzprüfung nicht', async () => {
 });
 
 test('ein ehrlich deklarierter Eintrag mit absurder Kompressionsrate wird abgelehnt', async () => {
+  assert.ok(
+    RATIO_UNCOMPRESSED_BYTES <= FILE_LIMITS.DOCX_ENTRY_BYTES,
+    'Der Testeintrag muss unter dem Eintragslimit bleiben, damit die Ratenprüfung greift.'
+  );
   const zip = buildSingleEntryZip({
     name: 'word/document.xml',
+    compressed: ratioPayload,
+    declaredUncompressedSize: RATIO_UNCOMPRESSED_BYTES,
+  });
+
+  await assert.rejects(() => prepareDocxTemplate(zip), /verdächtig stark komprimiert/);
+});
+
+test('ein Eintrag oberhalb des DOCX-Eintragslimits wird vor dem Entpacken abgelehnt', async () => {
+  const zip = buildSingleEntryZip({
+    name: 'word/media/riesig.png',
     compressed: bombPayload,
     declaredUncompressedSize: BOMB_UNCOMPRESSED_BYTES,
   });
 
-  await assert.rejects(() => prepareDocxTemplate(zip), /verdächtig stark komprimiert/);
+  await assert.rejects(() => prepareDocxTemplate(zip), /entpackt zu groß/);
 });
 
 test('ein unauffälliger Deflate-Eintrag wird weiterhin korrekt gelesen', async () => {
@@ -142,4 +158,14 @@ test('die Kompressionsraten-Heuristik verschont kleine, gut komprimierbare Datei
     true
   );
   assert.equal(exceedsZipCompressionRatio(null, 10 * 1024 * 1024), false);
+});
+
+test('der JSON-Schutz begrenzt Tiefe und die Größe einzelner Container', () => {
+  const deeplyNested = `${'['.repeat(FILE_LIMITS.JSON_MAX_NESTING + 1)}0${']'.repeat(FILE_LIMITS.JSON_MAX_NESTING + 1)}`;
+  assert.throws(() => assertJsonNestingAtMost(deeplyNested), /tief verschachtelt/);
+
+  const oversizedList = `[${Array(FILE_LIMITS.JSON_MAX_CONTAINER_ITEMS + 1).fill('0').join(',')}]`;
+  assert.throws(() => assertJsonNestingAtMost(oversizedList), /zu viele Einträge/);
+
+  assert.doesNotThrow(() => assertJsonNestingAtMost('{"text":"[{},]","items":[1,2,3]}'));
 });

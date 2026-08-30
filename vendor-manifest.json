@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-07-30",
+  "updated": "2026-08-30",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -26,22 +26,22 @@
       ]
     },
     {
-      "name": "pdf-lib",
-      "version": "1.17.1",
+      "name": "@cantoo/pdf-lib",
+      "version": "2.9.1",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/pdf-lib/v/1.17.1",
+      "source": "https://www.npmjs.com/package/@cantoo/pdf-lib/v/2.9.1",
       "registry": "npm",
-      "package": "pdf-lib",
-      "purl": "pkg:npm/pdf-lib@1.17.1",
-      "updateNotes": "Fetch the matching npm package release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py.",
+      "package": "@cantoo/pdf-lib",
+      "purl": "pkg:npm/%40cantoo/pdf-lib@2.9.1",
+      "updateNotes": "Maintained fork of pdf-lib (cantoo-scribe/pdf-lib); the vendored UMD build dist/pdf-lib.min.js still exposes the global PDFLib. Fetch the matching npm package release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py.",
       "files": [
         {
-          "path": "src/vendor/pdf-lib/1.17.1/pdf-lib.min.js",
+          "path": "src/vendor/cantoo-pdf-lib/2.9.1/pdf-lib.min.js",
           "role": "runtime",
-          "sha256": "0f9a5cad07941f0826586c94e089d89b918c46e5c17cf2d5a3c6f666e3bc694f"
+          "sha256": "cef98e842b76fe08012193dde3bf165e7e03384feabd20c107a5ea016ab4d5f2"
         },
         {
-          "path": "src/vendor/pdf-lib/1.17.1/LICENSE.md",
+          "path": "src/vendor/cantoo-pdf-lib/2.9.1/LICENSE.md",
           "role": "license",
           "sha256": "f2c9fc00fdb66eb99ac156ba52d734af66d8d309f65753ae809ad34ee2883bcb"
         }
@@ -49,26 +49,26 @@
     },
     {
       "name": "pdfjs-dist",
-      "version": "6.2.108",
+      "version": "6.3.289",
       "license": "Apache-2.0",
-      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.2.108",
+      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.3.289",
       "registry": "npm",
       "package": "pdfjs-dist",
-      "purl": "pkg:npm/pdfjs-dist@6.2.108",
-      "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows.",
+      "purl": "pkg:npm/pdfjs-dist@6.3.289",
+      "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows. Re-check that PDFWorker._isSameOrigin still exists, because src/shared/pdf-vendor.js overrides it for opaque-origin module frames.",
       "files": [
         {
-          "path": "src/vendor/pdfjs-dist/6.2.108/build/pdf.mjs",
+          "path": "src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs",
           "role": "runtime",
-          "sha256": "487bde1bcf89e041f791173d0509a1dc18d0feb6655d78395e1611f9da0de17d"
+          "sha256": "495588717f62303a839e91a5343deebf1b41f52e2f9f6361e73dee6ea6a4355e"
         },
         {
-          "path": "src/vendor/pdfjs-dist/6.2.108/build/pdf.worker.mjs",
+          "path": "src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs",
           "role": "runtime-worker",
-          "sha256": "1a7607f28cfbc63f0e4e0a41927c89f991e353e4f3fb4565ecfd621ac5975089"
+          "sha256": "f2870db902eaff8397442c912b69459980ac91f6f4b5ed827167b12cf7057930"
         },
         {
-          "path": "src/vendor/pdfjs-dist/6.2.108/LICENSE",
+          "path": "src/vendor/pdfjs-dist/6.3.289/LICENSE",
           "role": "license",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
         }

@@ -22,25 +22,26 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
   - `src/vendor/jszip/3.10.1/LICENSE.markdown`
 - Upstream NOTICE: none published in the npm package.
 
-## pdf-lib
+## @cantoo/pdf-lib
 
-- Version: 1.17.1
+- Version: 2.9.1
 - License: MIT
-- Source: https://www.npmjs.com/package/pdf-lib/v/1.17.1
+- Source: https://www.npmjs.com/package/@cantoo/pdf-lib/v/2.9.1
 - Local files:
-  - `src/vendor/pdf-lib/1.17.1/pdf-lib.min.js`
-  - `src/vendor/pdf-lib/1.17.1/LICENSE.md`
+  - `src/vendor/cantoo-pdf-lib/2.9.1/pdf-lib.min.js`
+  - `src/vendor/cantoo-pdf-lib/2.9.1/LICENSE.md`
 - Upstream NOTICE: none published in the npm package.
+- Maintained fork of `pdf-lib` (Copyright (c) 2019 Andrew Dillon, MIT) at https://github.com/cantoo-scribe/pdf-lib; the vendored UMD build still exposes the global `PDFLib`.
 
 ## pdfjs-dist
 
-- Version: 6.2.108
+- Version: 6.3.289
 - License: Apache-2.0
-- Source: https://www.npmjs.com/package/pdfjs-dist/v/6.2.108
+- Source: https://www.npmjs.com/package/pdfjs-dist/v/6.3.289
 - Local files:
-  - `src/vendor/pdfjs-dist/6.2.108/build/pdf.mjs`
-  - `src/vendor/pdfjs-dist/6.2.108/build/pdf.worker.mjs`
-  - `src/vendor/pdfjs-dist/6.2.108/LICENSE`
+  - `src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs`
+  - `src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs`
+  - `src/vendor/pdfjs-dist/6.3.289/LICENSE`
 - Upstream NOTICE: none published in the npm package.
 
 ## qrcode.min.js

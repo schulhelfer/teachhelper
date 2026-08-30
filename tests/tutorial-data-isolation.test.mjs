@@ -87,13 +87,14 @@ test('seatplan tutorial data cannot sync back to the real roster', () => {
 test('planning and grades demos cannot overwrite real sync metadata', () => {
   for (const source of [planningSource, gradesSource]) {
     assert.match(source, /if \(TUTORIAL_DEMO_MODE \|\| typeof window === "undefined"/);
-    assert.match(source, /getParentWorkspaceController\(\)[\s\S]{0,180}?createWorkspaceController\(\{[\s\S]{0,120}?ephemeral: Boolean\(this\.tutorialDemoMode\)/);
+    assert.match(source, /getParentWorkspaceController\(\)[\s\S]{0,180}?createWorkspaceController\(\{[\s\S]{0,120}?ephemeral: true/);
   }
 });
 
-test('tutorial workspaces disable persistent handle hydration', () => {
+test('workspaces ohne Shell-Parent deaktivieren persistente Handles', () => {
   for (const source of [planningSource, gradesSource]) {
-    assert.match(source, /ephemeral: Boolean\(this\.tutorialDemoMode\)/);
+    assert.match(source, /ephemeral: true/);
+    assert.doesNotMatch(source, /ephemeral: Boolean\(this\.tutorialDemoMode\)/);
   }
 });
 

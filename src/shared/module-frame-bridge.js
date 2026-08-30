@@ -13,12 +13,9 @@ export const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-re
 const MODULE_FRAME_NONCE_PARAM = 'moduleFrameNonce';
 
 function createModuleFrameNonce() {
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    const values = new Uint32Array(4);
-    crypto.getRandomValues(values);
-    return [...values].map((value) => value.toString(36)).join('');
-  }
-  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}`;
+  const values = new Uint32Array(4);
+  crypto.getRandomValues(values);
+  return [...values].map((value) => value.toString(36)).join('');
 }
 
 function resolveSandboxTokens(sandbox) {

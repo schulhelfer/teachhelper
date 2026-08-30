@@ -1,13 +1,27 @@
 export const BYTES_PER_MIB = 1024 * 1024;
 
 export const FILE_LIMITS = Object.freeze({
+  CSV_BYTES: 5 * BYTES_PER_MIB,
+  CSV_MAX_ROWS: 1000,
+  CSV_MAX_COLUMNS: 64,
+  CSV_MAX_CELL_CHARS: 4096,
+  JSON_BYTES: 5 * BYTES_PER_MIB,
+  JSON_MAX_NESTING: 64,
+  JSON_MAX_CONTAINER_ITEMS: 10000,
+  IMAGE_BYTES: 25 * BYTES_PER_MIB,
+  LATEX_BYTES: 5 * BYTES_PER_MIB,
   PDF_BYTES: 100 * BYTES_PER_MIB,
-  PDF_MERGE_TOTAL_BYTES: 300 * BYTES_PER_MIB,
+  PDF_MERGE_TOTAL_BYTES: 150 * BYTES_PER_MIB,
+  PDF_RESULT_OPEN_BYTES: 150 * BYTES_PER_MIB,
+  PDF_FALLBACK_PARSE_BYTES: 10 * BYTES_PER_MIB,
   ZIP_BYTES: 250 * BYTES_PER_MIB,
   THDB_BYTES: 250 * BYTES_PER_MIB,
-  DOCX_TEMPLATE_BYTES: 50 * BYTES_PER_MIB,
-  ZIP_ENTRY_BYTES: 100 * BYTES_PER_MIB,
-  ZIP_TOTAL_UNCOMPRESSED_BYTES: 750 * BYTES_PER_MIB,
+  DOCX_TEMPLATE_BYTES: 15 * BYTES_PER_MIB,
+  DOCX_ENTRY_BYTES: 25 * BYTES_PER_MIB,
+  DOCX_TOTAL_UNCOMPRESSED_BYTES: 100 * BYTES_PER_MIB,
+  DOCX_MAX_ENTRIES: 256,
+  ZIP_ENTRY_BYTES: 25 * BYTES_PER_MIB,
+  ZIP_TOTAL_UNCOMPRESSED_BYTES: 300 * BYTES_PER_MIB,
   ZIP_MAX_ENTRIES: 2000,
   ZIP_MAX_COMPRESSION_RATIO: 200,
   ZIP_RATIO_CHECK_MIN_BYTES: BYTES_PER_MIB,
@@ -15,6 +29,7 @@ export const FILE_LIMITS = Object.freeze({
 
 export const FILE_TIMEOUTS = Object.freeze({
   READ_MS: 15_000,
+  QR_DECODE_MS: 8_000,
   PDF_PROBE_MS: 25_000,
   PDF_OPERATION_MS: 60_000,
   ZIP_LOAD_MS: 45_000,
@@ -135,6 +150,50 @@ export function assertTotalSizeAtMost(files, limitBytes, label) {
     throw createFileValidationError(
       `${label} ist zu groß: max. ${formatFileSize(limitBytes)} gesamt.`
     );
+  }
+}
+
+export function assertJsonNestingAtMost(text, maxNesting = FILE_LIMITS.JSON_MAX_NESTING, label = "JSON-Datei") {
+  const source = String(text ?? "");
+  const limit = Math.max(1, Number(maxNesting) || FILE_LIMITS.JSON_MAX_NESTING);
+  const maxContainerItems = FILE_LIMITS.JSON_MAX_CONTAINER_ITEMS;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  const containers = [];
+
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === "\\") {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+    } else if (char === "{" || char === "[") {
+      depth += 1;
+      if (depth > limit) {
+        throw createFileValidationError(`${label} ist zu tief verschachtelt: maximal ${limit} Ebenen.`);
+      }
+      containers.push({ commas: 0 });
+    } else if (char === ",") {
+      const container = containers[containers.length - 1];
+      if (container) {
+        container.commas += 1;
+        if (container.commas >= maxContainerItems) {
+          throw createFileValidationError(`${label} enthält zu viele Einträge in einem Objekt oder einer Liste: maximal ${maxContainerItems}.`);
+        }
+      }
+    } else if (char === "}" || char === "]") {
+      depth = Math.max(0, depth - 1);
+      containers.pop();
+    }
   }
 }
 

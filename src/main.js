@@ -30,7 +30,12 @@ import {
   hasTutorialEntryHintBeenSeen,
   TUTORIAL_ENTRY_HINT_SYNC_EVENT,
 } from './shared/tutorial-entry-state.js';
-import { FILE_LIMITS } from './shared/file-guards.js';
+import {
+  assertFileSizeAtMost,
+  assertJsonNestingAtMost,
+  FILE_LIMITS,
+  formatFileSize,
+} from './shared/file-guards.js';
 import { createSharedRosterStore } from './shared/roster-store.js';
 import {
   STUDENTS_SYNC_SOURCE_GRADES,
@@ -385,7 +390,14 @@ import {
   const openModuleResultPdf = (detail) => {
     const buffer = detail?.bytes;
     if (!(buffer instanceof ArrayBuffer) || !buffer.byteLength) return;
-    if (buffer.byteLength > FILE_LIMITS.PDF_BYTES) return;
+    if (buffer.byteLength > FILE_LIMITS.PDF_RESULT_OPEN_BYTES) {
+      showMessage(
+        `Das Ergebnis ist zu groß für die Vorschau (max. ${formatFileSize(FILE_LIMITS.PDF_RESULT_OPEN_BYTES)}). Bitte die Datei herunterladen.`,
+        'warn',
+        { presentation: 'toast' }
+      );
+      return;
+    }
     const url = URL.createObjectURL(new Blob([buffer], { type: 'application/pdf' }));
     window.open(url, '_blank', 'noopener,noreferrer');
     setTimeout(() => URL.revokeObjectURL(url), 120_000);
@@ -5107,9 +5119,11 @@ import {
       return;
     }
     if (!file) return;
+    assertFileSizeAtMost(file, FILE_LIMITS.JSON_BYTES, 'JSON-Datei');
     const planLabelFromFile = sanitizeExportFileName(stripFileExtension(file.name || ''));
     const rawText = await file.text();
     const text = stripJsonWarning(rawText);
+    assertJsonNestingAtMost(text);
     let data;
     try {
       data = JSON.parse(text);
@@ -6618,9 +6632,22 @@ import {
   }
   function parseCSV(text) {
     const delim = detectDelimiter(text); state.delim = delim;
+    const maxRows = FILE_LIMITS.CSV_MAX_ROWS;
+    const maxColumns = FILE_LIMITS.CSV_MAX_COLUMNS;
+    const maxCellChars = FILE_LIMITS.CSV_MAX_CELL_CHARS;
     const rows = [];
-    let i = 0, cur = '', inQ = false; const out = []; const push = () => { out.push(cur); cur = '' };
-    const flush = () => { rows.push(out.slice()); out.length = 0 };
+    let i = 0, cur = '', inQ = false; const out = [];
+    const push = () => {
+      if (cur.length > maxCellChars) throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
+      if (out.length >= maxColumns) throw new Error(`CSV enthält zu viele Spalten: maximal ${maxColumns}.`);
+      out.push(cur);
+      cur = '';
+    };
+    const flush = () => {
+      if (rows.length >= maxRows) throw new Error(`CSV enthält zu viele Zeilen: maximal ${maxRows}.`);
+      rows.push(out.slice());
+      out.length = 0;
+    };
     while (i < text.length) {
       const ch = text[i++];
       if (ch === '"') {
@@ -6629,7 +6656,10 @@ import {
       } else if (ch === delim && !inQ) { push(); }
       else if ((ch === '\n') && !inQ) { push(); flush(); }
       else if ((ch === '\r') && !inQ) { }
-      else { cur += ch; }
+      else {
+        cur += ch;
+        if (cur.length > maxCellChars) throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
+      }
     }
     if (cur.length > 0 || out.length > 0) { push(); flush(); }
     return rows;
@@ -6857,13 +6887,7 @@ import {
     row.textContent = message;
     els.gradeRosterImportMenu.append(row);
   };
-  const getGradeRosterPillTextColor = (color) => {
-    const hex = String(color || '').trim().replace('#', '');
-    if (!/^[\da-f]{6}$/i.test(hex)) return '#ffffff';
-    const [red, green, blue] = [0, 2, 4].map((offset) => parseInt(hex.slice(offset, offset + 2), 16));
-    const brightness = (red * 299) + (green * 587) + (blue * 114);
-    return brightness >= 150000 ? '#0f172a' : '#ffffff';
-  };
+  const getGradeRosterPillTextColor = () => '#000000';
   const requestGradeRosterCourses = ({ interactive = false, unlock = false } = {}) => {
     if (!interactive && pendingGradeRosterCoursesRequestId) return;
     const requestId = createGradeRosterRequestId();
@@ -7120,6 +7144,7 @@ import {
       return;
     }
     if (!file) return;
+    assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
     const guessedLabel = sanitizeExportFileName(stripFileExtension(file.name));
     state.csvName = guessedLabel || state.csvName;
     updateCsvStatusDisplay();

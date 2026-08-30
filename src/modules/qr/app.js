@@ -5,6 +5,7 @@ import {
   TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
 } from '../../shared/module-frame-bridge.js';
+import { assertFileSizeAtMost, FILE_LIMITS, FILE_TIMEOUTS } from '../../shared/file-guards.js';
 
 export function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
@@ -835,7 +836,20 @@ export function createQrApp({ root = document } = {}) {
     return variantCanvas;
   }
 
-  async function decodeCanvasContent(canvas, { thorough = false, useNative = true, dotRepair = false } = {}) {
+  function yieldToBrowser() {
+    return new Promise((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => resolve());
+        return;
+      }
+      setTimeout(resolve, 0);
+    });
+  }
+
+  async function decodeCanvasContent(canvas, { thorough = false, useNative = true, dotRepair = false, budgetMs = 0 } = {}) {
+    const deadline = budgetMs > 0 ? performance.now() + budgetMs : 0;
+    const isExpired = () => deadline > 0 && performance.now() > deadline;
+
     const directCode = readQrFromCanvas(canvas);
     if (directCode?.data) return directCode;
 
@@ -878,6 +892,9 @@ export function createQrApp({ root = document } = {}) {
 
     const attempted = new Set();
     for (const variant of variants) {
+      if (isExpired()) {
+        throw new Error('Die Analyse des Bildes hat zu lange gedauert. Bitte ein kleineres oder schärferes Bild verwenden.');
+      }
       const preparedCanvas = prepareDecodeVariant(canvas, variant);
       if (!preparedCanvas) continue;
       const key = `${preparedCanvas.width}x${preparedCanvas.height}:${JSON.stringify(variant)}`;
@@ -885,6 +902,9 @@ export function createQrApp({ root = document } = {}) {
       attempted.add(key);
       const code = readQrFromCanvas(preparedCanvas);
       if (code?.data) return code;
+      if (deadline) {
+        await yieldToBrowser();
+      }
     }
 
     return null;
@@ -948,10 +968,20 @@ export function createQrApp({ root = document } = {}) {
     }
     stopCamera();
     try {
+      assertFileSizeAtMost(blob, FILE_LIMITS.IMAGE_BYTES, 'Das Bild');
+    } catch (error) {
+      showMessage(error?.message || 'Das Bild ist zu groß.', 'Bild prüfen');
+      return;
+    }
+    try {
       const bitmap = await createDrawableFromBlob(blob);
       try {
         await drawImageSourceToCanvas(bitmap);
-        const code = await decodeCanvasContent(imageCanvas, { thorough: true, useNative: true });
+        const code = await decodeCanvasContent(imageCanvas, {
+          thorough: true,
+          useNative: true,
+          budgetMs: FILE_TIMEOUTS.QR_DECODE_MS,
+        });
         if (!code || !code.data) {
           showMessage('In diesem Bild wurde kein QR-Code gefunden.', 'Nicht erkannt');
           return;

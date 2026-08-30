@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const serviceWorkerSource = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
+const vendorManifest = JSON.parse(
+  await readFile(new URL('../vendor-manifest.json', import.meta.url), 'utf8'),
+);
+const vendoredAssets = vendorManifest.packages.flatMap((pkg) => pkg.files.map((file) => `./${file.path}`));
 
 function assetList(name) {
   const match = serviceWorkerSource.match(
@@ -166,14 +170,8 @@ test('heavy optional assets are precached after the start, not during install', 
   const appShell = assetList('APP_SHELL');
   const deferred = assetList('DEFERRED_ASSETS');
 
-  for (const asset of [
-    './src/vendor/pdfjs-dist/6.2.108/build/pdf.worker.mjs',
-    './src/vendor/pdfjs-dist/6.2.108/build/pdf.mjs',
-    './src/vendor/pdf-lib/1.17.1/pdf-lib.min.js',
-    './src/vendor/jszip/3.10.1/jszip.min.js',
-    './src/modules/qr/vendor/jsQR.js',
-    './src/modules/seatplan/gender-names.js',
-  ]) {
+  assert.ok(vendoredAssets.length > 0, 'the vendor manifest must list vendored files');
+  for (const asset of [...vendoredAssets, './src/modules/seatplan/gender-names.js']) {
     assert.ok(deferred.includes(asset), `${asset} must be deferred`);
     assert.ok(!appShell.includes(asset), `${asset} must not block install`);
   }

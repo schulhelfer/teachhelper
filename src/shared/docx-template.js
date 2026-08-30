@@ -33,10 +33,10 @@ let crcTable = null;
 const preparedTemplateCache = new WeakMap();
 
 const DEFAULT_DOCX_READ_LIMITS = Object.freeze({
-  maxEntries: FILE_LIMITS.ZIP_MAX_ENTRIES,
+  maxEntries: FILE_LIMITS.DOCX_MAX_ENTRIES,
   maxCompressedBytes: FILE_LIMITS.DOCX_TEMPLATE_BYTES,
-  maxUncompressedEntryBytes: FILE_LIMITS.ZIP_ENTRY_BYTES,
-  maxTotalUncompressedBytes: FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES,
+  maxUncompressedEntryBytes: FILE_LIMITS.DOCX_ENTRY_BYTES,
+  maxTotalUncompressedBytes: FILE_LIMITS.DOCX_TOTAL_UNCOMPRESSED_BYTES,
   inflateTimeoutMs: FILE_TIMEOUTS.ZIP_LOAD_MS,
 });
 
@@ -118,7 +118,7 @@ async function inflateRaw(bytes, options = {}) {
   }
   const maxBytes = Number.isFinite(options.maxBytes) && options.maxBytes >= 0
     ? options.maxBytes
-    : FILE_LIMITS.ZIP_ENTRY_BYTES;
+    : FILE_LIMITS.DOCX_ENTRY_BYTES;
   const timeoutMs = options.timeoutMs ?? FILE_TIMEOUTS.ZIP_LOAD_MS;
   const deadline = Date.now() + timeoutMs;
   const reader = stream.getReader();

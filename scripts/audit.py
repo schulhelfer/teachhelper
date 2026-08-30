@@ -477,6 +477,62 @@ for path in iter_source_files():
   if not re.search(rf'\bsandbox\s*:\s*(?:{sandbox_profile_pattern})\b', body):
     errors.append(f'new module frames must use a known module sandbox profile or be explicitly allowlisted: {rel(path)}')
 
+standalone_guard_path = ROOT / 'src' / 'shared' / 'module-standalone-guard.js'
+standalone_guard_deep_link_tabs = {'merger', 'duplicate-check', 'qr'}
+module_page_tabs = {
+  'grades': 'grades',
+  'planning': 'planning',
+  'seatplan': 'seatplan',
+  'name-learning': 'name-learning',
+  'merger': 'merger',
+  'duplicate-check': 'duplicate-check',
+  'qr': 'qr',
+}
+
+if not standalone_guard_path.exists():
+  errors.append('missing src/shared/module-standalone-guard.js')
+else:
+  guard_body = standalone_guard_path.read_text(encoding='utf-8', errors='ignore')
+  if not re.search(r'window\.top\s*&&\s*window\.top\s*!==\s*window', guard_body):
+    errors.append('module standalone guard must detect top-level documents via window.top')
+  if 'document.documentElement.remove()' not in guard_body:
+    errors.append('module standalone guard must stop the page build via documentElement.remove()')
+  guard_tabs = re.search(r'const DEEP_LINK_TABS = new Set\(\[([^\]]*)\]\)', guard_body)
+  if not guard_tabs:
+    errors.append('module standalone guard must declare DEEP_LINK_TABS')
+  elif set(re.findall(r"'([^']+)'", guard_tabs.group(1))) != standalone_guard_deep_link_tabs:
+    errors.append('module standalone guard deep link tabs must match the tear-off tool modules')
+
+for module_name, expected_tab in sorted(module_page_tabs.items()):
+  page_path = ROOT / 'src' / 'modules' / module_name / 'app.html'
+  if not page_path.exists():
+    errors.append(f'missing module page: {rel(page_path)}')
+    continue
+  page_body = page_path.read_text(encoding='utf-8', errors='ignore')
+  first_script = re.search(r'<script\b[^>]*>', page_body, flags=re.IGNORECASE)
+  if not first_script:
+    errors.append(f'{rel(page_path)} must load the module standalone guard')
+    continue
+  if 'module-standalone-guard.js' not in first_script.group(0):
+    errors.append(f'the module standalone guard must be the first script in {rel(page_path)}')
+  if f'data-module-tab="{expected_tab}"' not in first_script.group(0):
+    errors.append(f'{rel(page_path)} must declare data-module-tab="{expected_tab}"')
+
+for module_name in ('grades', 'planning'):
+  app_path = ROOT / 'src' / 'modules' / module_name / 'app.js'
+  if not app_path.exists():
+    continue
+  app_body = app_path.read_text(encoding='utf-8', errors='ignore')
+  fallback = re.search(
+    r'getParentWorkspaceController\(\)\s*\|\|\s*createWorkspaceController\(\{.*?\}\)',
+    app_body,
+    flags=re.DOTALL,
+  )
+  if not fallback:
+    errors.append(f'missing workspace controller fallback in {rel(app_path)}')
+  elif not re.search(r'ephemeral:\s*true', fallback.group(0)):
+    errors.append(f'standalone workspace fallback must stay ephemeral in {rel(app_path)}')
+
 camera_allow_allowed_paths = {bridge_path, qr_index_path}
 for path in iter_source_files():
   body = path.read_text(encoding='utf-8', errors='ignore')

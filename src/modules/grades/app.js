@@ -25,9 +25,12 @@ import {
 import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
 import { installTouchLongPress } from "../../shared/touch-long-press.js";
 import {
+  assertFileSizeAtMost,
+  FILE_LIMITS,
   FILE_TIMEOUTS,
   readFileArrayBufferWithTimeout,
-  validateDocxTemplateFile
+  validateDocxTemplateFile,
+  withTimeout
 } from "../../shared/file-guards.js";
 import { ensurePdfLibLoaded } from "../../shared/pdf-vendor.js";
 import {
@@ -111,6 +114,15 @@ async function readValidatedDocxTemplateFile(file) {
     timeoutMs: FILE_TIMEOUTS.READ_MS,
     timeoutMessage: "DOCX-Vorlage konnte nicht rechtzeitig gelesen werden."
   }));
+}
+
+async function readValidatedLatexFileText(file) {
+  assertFileSizeAtMost(file, FILE_LIMITS.LATEX_BYTES, "Die LaTeX-Datei");
+  return withTimeout(
+    () => file.text(),
+    FILE_TIMEOUTS.READ_MS,
+    "LaTeX-Datei konnte nicht rechtzeitig gelesen werden."
+  );
 }
 
 const HOURS_PER_DAY_DEFAULT = 8;
@@ -2679,7 +2691,7 @@ class GradesApp {
     this.workspaceController = getParentWorkspaceController()
       || createWorkspaceController({
         eventTarget: window,
-        ephemeral: Boolean(this.tutorialDemoMode)
+        ephemeral: true
       });
     this.workspaceClient = this.workspaceController
       ? createWorkspaceClient(this.workspaceController, "grades", `grades-frame:${randomId()}`)
@@ -8773,15 +8785,27 @@ class GradesApp {
   parseGradeCsv(text, delimiter) {
     const rows = [];
     const delim = delimiter || this.detectGradeCsvDelimiter(text);
+    const maxRows = FILE_LIMITS.CSV_MAX_ROWS;
+    const maxColumns = FILE_LIMITS.CSV_MAX_COLUMNS;
+    const maxCellChars = FILE_LIMITS.CSV_MAX_CELL_CHARS;
     let i = 0;
     let cur = "";
     let inQuotes = false;
     const out = [];
     const push = () => {
+      if (cur.length > maxCellChars) {
+        throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
+      }
+      if (out.length >= maxColumns) {
+        throw new Error(`CSV enthält zu viele Spalten: maximal ${maxColumns}.`);
+      }
       out.push(cur);
       cur = "";
     };
     const flush = () => {
+      if (rows.length >= maxRows) {
+        throw new Error(`CSV enthält zu viele Zeilen: maximal ${maxRows}.`);
+      }
       rows.push(out.slice());
       out.length = 0;
     };
@@ -8802,6 +8826,9 @@ class GradesApp {
       } else if (ch === "\r" && !inQuotes) {
       } else {
         cur += ch;
+        if (cur.length > maxCellChars) {
+          throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
+        }
       }
     }
     if (cur.length > 0 || out.length > 0) {
@@ -8922,6 +8949,7 @@ class GradesApp {
       return;
     }
     try {
+      assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, "CSV-Datei");
       const text = await file.text();
       const delimiter = this.detectGradeCsvDelimiter(text);
       const rows = this.parseGradeCsv(text, delimiter);
@@ -9030,7 +9058,7 @@ class GradesApp {
       button.className = "course-dialog-roster-pill";
       button.textContent = course.name;
       button.style.background = course.color;
-      button.style.color = readableTextColor(course.color);
+      button.style.color = "#000000";
       button.dataset.rosterImportCourse = String(course.id);
       button.title = `Teilnehmende aus „${course.name}“ hinzufügen (${course.count})`;
       button.setAttribute("aria-label", `Teilnehmende aus ${course.name} hinzufügen`);
@@ -17330,7 +17358,7 @@ class GradesApp {
     }
     try {
       this.setCompetenceExpectationsStatus("Lese LaTeX-Datei...");
-      const parsed = this.parseCompetenceExpectationsLatexBlock(await file.text());
+      const parsed = this.parseCompetenceExpectationsLatexBlock(await readValidatedLatexFileText(file));
       if (!parsed.ok) {
         this.setCompetenceExpectationsStatus(parsed.message, "error");
         return false;
@@ -18155,7 +18183,7 @@ class GradesApp {
     }
     try {
       this.setExpectationHorizonStatus("Lese LaTeX-Datei...");
-      const latexText = await file.text();
+      const latexText = await readValidatedLatexFileText(file);
       const taskEntries = this.extractExpectationHorizonLatexTaskEntries(latexText);
       if (!taskEntries.length) {
         this.setExpectationHorizonStatus("In der LaTeX-Datei wurden keine nicht auskommentierten Aufgabe-Umgebungen gefunden.", "error");

@@ -1,6 +1,6 @@
 import {
   buildThdb1ContainerBytes,
-  getThdb1FileHash,
+  getThdb1FileHashAsync,
   parseThdb1ContainerBytes,
 } from '../../shared/school-data/thdb.js';
 import { FILE_LIMITS, formatFileSize } from '../../shared/file-guards.js';
@@ -1429,7 +1429,7 @@ export class WorkspaceRuntime {
     this.vault.kdf = config.kdf;
     this.store.state.settings.gradeVaultEncryptionEnabled = this.vault.encryptionEnabled;
     this.knownRevision = Math.max(0, Number(parsed.header.revision) || 0);
-    this.knownFileHash = getThdb1FileHash(view);
+    this.knownFileHash = await getThdb1FileHashAsync(view);
     this.publicDirty = false;
     this.manualDirty = false;
     this.clearGradeVaultAutoLockWarning();
@@ -1518,10 +1518,11 @@ export class WorkspaceRuntime {
       ...options,
       schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
     });
+    const builtHash = await getThdb1FileHashAsync(built.bytes);
     const writeResult = await writeAndVerifyFileBytes(
       handle,
       built.bytes,
-      (persisted) => getThdb1FileHash(persisted) === getThdb1FileHash(built.bytes),
+      async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
     );
     if (!writeResult.ok) throw writeResult.error || new Error('Leere Datenbankdatei konnte nicht verifiziert werden.');
     if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
@@ -1596,7 +1597,7 @@ export class WorkspaceRuntime {
     if (!this.fileHandle) return false;
     if (this.knownFileHash) {
       const remote = await this.readHandleBytes(this.fileHandle);
-      const remoteHash = getThdb1FileHash(remote);
+      const remoteHash = await getThdb1FileHashAsync(remote);
       if (remoteHash && remoteHash !== this.knownFileHash) {
         const error = new Error('Die Datenbankdatei wurde außerhalb dieses Workspace geändert.');
         error.code = WORKSPACE_ERROR_PERSISTENCE_CONFLICT;
@@ -1604,14 +1605,15 @@ export class WorkspaceRuntime {
       }
     }
     const built = await this.buildContainer(reason);
+    const builtHash = await getThdb1FileHashAsync(built.bytes);
     const writeResult = await writeAndVerifyFileBytes(
       this.fileHandle,
       built.bytes,
-      (persisted) => getThdb1FileHash(persisted) === getThdb1FileHash(built.bytes),
+      async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
     );
     if (!writeResult.ok) throw writeResult.error || new Error('Datenbankdatei konnte nicht verifiziert werden.');
     this.knownRevision = built.header.revision;
-    this.knownFileHash = getThdb1FileHash(built.bytes);
+    this.knownFileHash = builtHash;
     this.commitPersistedVaultContainer(built.bytes);
     this.publicDirty = false;
     this.dirtyCourseIds.clear();
@@ -1686,10 +1688,11 @@ export class WorkspaceRuntime {
     const built = await this.buildContainer(`backup-${mode}`);
     const stamp = new Date().toISOString().slice(0, 10);
     const handle = await this.backupDirectoryHandle.getFileHandle(`TeachHelper-Backup-${stamp}.json`, { create: true });
+    const builtHash = await getThdb1FileHashAsync(built.bytes);
     const writeResult = await writeAndVerifyFileBytes(
       handle,
       built.bytes,
-      (persisted) => getThdb1FileHash(persisted) === getThdb1FileHash(built.bytes),
+      async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
     );
     if (!writeResult.ok) {
       const error = writeResult.error || new Error('Backup konnte nicht verifiziert werden.');

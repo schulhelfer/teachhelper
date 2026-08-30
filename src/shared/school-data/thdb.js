@@ -4,6 +4,8 @@ export const THDB_CHECKSUM_ALGORITHM = 'SHA-256';
 
 const SHA256_PREFIX = 'sha256:';
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/i;
+const THDB_MAX_HEADER_BYTES = 1024 * 1024;
+const THDB_MAX_GRADE_COURSE_SEGMENTS = 2000;
 const SHA256_ROUND_CONSTANTS = new Uint32Array([
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5,
   0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -122,8 +124,26 @@ export function sha256HexBytes(value) {
     .join('');
 }
 
+export async function sha256HexBytesAsync(value) {
+  const bytes = asUint8Array(value);
+  const subtle = globalThis.crypto?.subtle;
+  if (typeof subtle?.digest !== 'function') return sha256HexBytes(bytes);
+  try {
+    const digest = await subtle.digest('SHA-256', bytes);
+    return [...new Uint8Array(digest)]
+      .map((part) => part.toString(16).padStart(2, '0'))
+      .join('');
+  } catch {
+    return sha256HexBytes(bytes);
+  }
+}
+
 function hashBytes(value) {
   return `${SHA256_PREFIX}${sha256HexBytes(value)}`;
+}
+
+async function hashBytesAsync(value) {
+  return `${SHA256_PREFIX}${await sha256HexBytesAsync(value)}`;
 }
 
 function normalizeContentHash(value) {
@@ -141,8 +161,9 @@ function normalizePositiveInteger(value) {
   return Number.isSafeInteger(normalized) && normalized > 0 ? normalized : null;
 }
 
-function lineFeedIndex(bytes, start = 0) {
-  for (let index = Math.max(0, Number(start) || 0); index < bytes.length; index += 1) {
+function lineFeedIndex(bytes, start = 0, end = bytes.length) {
+  const endIndex = Math.max(0, Math.min(bytes.length, Number(end) || 0));
+  for (let index = Math.max(0, Number(start) || 0); index < endIndex; index += 1) {
     if (bytes[index] === 10) return index;
   }
   return -1;
@@ -287,11 +308,15 @@ export function getThdb1ContentHash({
 
 export function parseThdb1Header(bytes, { schemas = [] } = {}) {
   const view = asUint8Array(bytes);
-  const firstEnd = lineFeedIndex(view);
-  const secondEnd = firstEnd < 0 ? -1 : lineFeedIndex(view, firstEnd + 1);
+  const firstEnd = lineFeedIndex(view, 0, THDB_MAGIC.length + 2);
+  const headerStart = firstEnd + 1;
+  const secondEnd = firstEnd < 0
+    ? -1
+    : lineFeedIndex(view, headerStart, headerStart + THDB_MAX_HEADER_BYTES + 1);
   if (firstEnd < 0 || secondEnd < 0 || utf8Text(view.slice(0, firstEnd)).replace(/\r$/, '').trim() !== THDB_MAGIC) {
     return null;
   }
+  if (secondEnd - headerStart > THDB_MAX_HEADER_BYTES) return null;
   let raw;
   try {
     raw = JSON.parse(utf8Text(view.slice(firstEnd + 1, secondEnd)).replace(/\r$/, ''));
@@ -316,6 +341,7 @@ export function parseThdb1Header(bytes, { schemas = [] } = {}) {
     || gradeVaultConfigOffset === null
     || gradeVaultConfigLength === null
     || (raw.gradeCourseSegments !== undefined && !Array.isArray(raw.gradeCourseSegments))
+    || (Array.isArray(raw.gradeCourseSegments) && raw.gradeCourseSegments.length > THDB_MAX_GRADE_COURSE_SEGMENTS)
   ) return null;
   const gradeCourseSegments = (raw.gradeCourseSegments || []).map(normalizeDescriptor);
   if (gradeCourseSegments.some((descriptor) => !descriptor)) return null;
@@ -487,6 +513,14 @@ export function getThdb1SegmentContentHash(bytes, locator) {
 export function getThdb1FileHash(bytes) {
   try {
     return hashBytes(asUint8Array(bytes));
+  } catch {
+    return '';
+  }
+}
+
+export async function getThdb1FileHashAsync(bytes) {
+  try {
+    return await hashBytesAsync(asUint8Array(bytes));
   } catch {
     return '';
   }

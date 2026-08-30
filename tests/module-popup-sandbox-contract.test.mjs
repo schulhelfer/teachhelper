@@ -58,6 +58,6 @@ test('the shell revalidates module open requests instead of trusting the frame',
 
   const pdfHelper = main.match(/const openModuleResultPdf = \([\s\S]*?\n  \};/)?.[0] || '';
   assert.match(pdfHelper, /instanceof ArrayBuffer/);
-  assert.match(pdfHelper, /FILE_LIMITS\.PDF_BYTES/);
+  assert.match(pdfHelper, /FILE_LIMITS\.PDF_RESULT_OPEN_BYTES/);
   assert.match(pdfHelper, /type: 'application\/pdf'/);
 });
