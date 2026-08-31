@@ -91,6 +91,21 @@ function randomId() {
     || `workspace-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
+export function formatLocalBackupTimestamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, '0');
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+  ].join('-');
+}
+
+function buildBackupFileName(date = new Date()) {
+  return `TeachHelper-Backup-${formatLocalBackupTimestamp(date)}.json`;
+}
+
 function emptyGradeState(store) {
   return store.normalizeGradeVaultState(null);
 }
@@ -186,6 +201,7 @@ function buildStartupShell(publicState, configured, gradeEntryCount = null) {
       noLesson: Boolean(course.noLesson),
       noGrades: Boolean(course.noGrades),
       hiddenInSidebar: Boolean(course.hiddenInSidebar),
+      hiddenInNameLearning: Boolean(course.hiddenInNameLearning),
       sortOrder: Number(course.sortOrder || 0),
     })),
     gradeVaultConfigured: Boolean(configured),
@@ -288,11 +304,13 @@ export class WorkspaceRuntime {
     eventTarget = globalThis.window || new EventTarget(),
     ephemeral = false,
     confirmLargeFile = null,
+    now = () => new Date(),
   } = {}) {
     this.store = store;
     this.eventTarget = eventTarget;
     this.ephemeral = Boolean(ephemeral);
     this.confirmLargeFile = typeof confirmLargeFile === 'function' ? confirmLargeFile : null;
+    this.now = typeof now === 'function' ? now : () => new Date();
     this.controller = null;
     this.clients = new Map();
     this.ready = true;
@@ -1686,8 +1704,7 @@ export class WorkspaceRuntime {
   async createLatestWebBackup(mode = 'manual', silent = false) {
     if (!this.backupDirectoryHandle) return false;
     const built = await this.buildContainer(`backup-${mode}`);
-    const stamp = new Date().toISOString().slice(0, 10);
-    const handle = await this.backupDirectoryHandle.getFileHandle(`TeachHelper-Backup-${stamp}.json`, { create: true });
+    const handle = await this.backupDirectoryHandle.getFileHandle(buildBackupFileName(this.now()), { create: true });
     const builtHash = await getThdb1FileHashAsync(built.bytes);
     const writeResult = await writeAndVerifyFileBytes(
       handle,
@@ -1736,7 +1753,7 @@ export class WorkspaceRuntime {
 
   async exportBackup() {
     const built = await this.buildContainer('backup-export');
-    downloadBytes(built.bytes, `TeachHelper-Backup-${new Date().toISOString().slice(0, 10)}.json`);
+    downloadBytes(built.bytes, buildBackupFileName(this.now()));
     return true;
   }
 
@@ -1930,6 +1947,9 @@ export class WorkspaceRuntime {
       const value = (name, fallback) => Object.prototype.hasOwnProperty.call(fields, name) ? fields[name] : fallback;
       if (!this.store.updateCourse(schoolYearId, courseId, value('name', current.name), value('color', current.color), value('noLesson', current.noLesson), value('hiddenInSidebar', current.hiddenInSidebar), value('subject', current.subject), value('gradeLevel', current.gradeLevel))) {
         throw new Error('Kurs konnte nicht aktualisiert werden.');
+      }
+      if (Object.prototype.hasOwnProperty.call(fields, 'hiddenInNameLearning')) {
+        this.store.setCourseNameLearningHidden(schoolYearId, courseId, Boolean(fields.hiddenInNameLearning));
       }
       if (Object.prototype.hasOwnProperty.call(fields, 'noGrades')) {
         this.store.setCourseNoGrades(schoolYearId, courseId, Boolean(fields.noGrades));

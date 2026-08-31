@@ -23,10 +23,14 @@
   const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:grades-name-learning-data-result';
   const NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:grades-name-learning-review-request';
   const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:grades-name-learning-review-result';
+  const NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT = 'classroom:grades-name-learning-course-visibility-request';
+  const NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT = 'classroom:grades-name-learning-student-search-request';
+  const NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT = 'classroom:grades-name-learning-student-search-result';
   const READY_EVENT = 'classroom:grades-ready';
   const SHELL_LAYOUT_EVENT = 'classroom:grades-shell-layout';
   const VIEW_REQUEST_EVENT = 'classroom:grades-view-request';
   const TUTORIAL_COMMAND_EVENT = 'classroom:grades-tutorial-command';
+  const CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss';
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     SHELL_LAYOUT_EVENT,
@@ -42,6 +46,9 @@
     GRADE_ROSTER_IMPORT_REQUEST_EVENT,
     NAME_LEARNING_DATA_REQUEST_EVENT,
     NAME_LEARNING_REVIEW_REQUEST_EVENT,
+    NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT,
+    NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT,
+    CONTEXT_MENU_DISMISS_EVENT,
   ]);
 
   function withGradesTutorialApi(callback, attempt = 0) {
@@ -63,6 +70,10 @@
     if (data.type === SHELL_LAYOUT_EVENT) {
       const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
       document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
+      return;
+    }
+    if (data.type === CONTEXT_MENU_DISMISS_EVENT) {
+      window.dispatchEvent(new CustomEvent(CONTEXT_MENU_DISMISS_EVENT));
       return;
     }
     if (data.type === TAB_LEAVE_REQUEST_EVENT) {
@@ -134,7 +145,12 @@
       }));
       return;
     }
-    if (data.type === NAME_LEARNING_DATA_REQUEST_EVENT || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT) {
+    if (
+      data.type === NAME_LEARNING_DATA_REQUEST_EVENT
+      || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT
+      || data.type === NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT
+      || data.type === NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT
+    ) {
       window.dispatchEvent(new CustomEvent(data.type, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
       }));
@@ -220,6 +236,7 @@
   const COURSE_CONTEXT_EVENT = 'classroom:grades-course-context';
   const NAME_LEARNING_DATA_RESULT_EVENT = 'classroom:grades-name-learning-data-result';
   const NAME_LEARNING_REVIEW_RESULT_EVENT = 'classroom:grades-name-learning-review-result';
+  const NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT = 'classroom:grades-name-learning-student-search-result';
   const TRUSTED_PARENT_ORIGIN = window.location.origin;
   const pendingNavigations = [];
   let navigationFlushTimer = 0;
@@ -254,7 +271,7 @@
     pendingNavigations.push(data.detail && typeof data.detail === 'object' ? data.detail : {});
     if (!navigationFlushTimer) flushNavigations();
   });
-  [NAME_LEARNING_DATA_RESULT_EVENT, NAME_LEARNING_REVIEW_RESULT_EVENT].forEach((type) => {
+  [NAME_LEARNING_DATA_RESULT_EVENT, NAME_LEARNING_REVIEW_RESULT_EVENT, NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT].forEach((type) => {
     window.addEventListener(type, (event) => {
       if (!window.parent || window.parent === window) return;
       window.parent.postMessage({ type, detail: event instanceof CustomEvent ? event.detail : null }, TRUSTED_PARENT_ORIGIN);

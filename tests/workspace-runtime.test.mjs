@@ -36,7 +36,7 @@ for (const [path, url] of [
   ['../../shared/name-learning-due-summary.js', nameLearningDueSummaryUrl],
 ]) runtimeSource = runtimeSource.replace(path, url);
 
-const [{ WorkspaceRuntime }, messages, workspaceCrypto, thdb] = await Promise.all([
+const [{ WorkspaceRuntime, formatLocalBackupTimestamp }, messages, workspaceCrypto, thdb] = await Promise.all([
   import(dataUrl(runtimeSource)),
   import(messagesUrl),
   import(cryptoUrl),
@@ -1209,6 +1209,55 @@ test('latest directory backup is selected and loaded by the workspace', async ()
   assert.deepEqual(loaded, [{ bytes: [3], source: 'backup' }]);
 });
 
+test('backup timestamps use the local date and time down to the minute', () => {
+  assert.equal(
+    formatLocalBackupTimestamp(new Date(2026, 7, 31, 14, 5)),
+    '2026-08-31-14-05',
+  );
+});
+
+test('backups created in the same minute use one filename and overwrite its content', async () => {
+  const files = new Map();
+  const requestedNames = [];
+  const runtime = new WorkspaceRuntime(new FakeStore(), {
+    eventTarget: new EventTarget(),
+    now: () => new Date(2026, 7, 31, 14, 5),
+  });
+  runtime.buildContainer = async (mode) => ({
+    bytes: Uint8Array.of(mode === 'backup-first' ? 1 : 2),
+  });
+  runtime.backupDirectoryHandle = {
+    async getFileHandle(name) {
+      requestedNames.push(name);
+      if (!files.has(name)) {
+        let bytes = new Uint8Array();
+        files.set(name, {
+          async getFile() {
+            return { async arrayBuffer() { return bytes.buffer.slice(0); } };
+          },
+          async createWritable() {
+            return {
+              async write(nextBytes) { bytes = new Uint8Array(nextBytes); },
+              async close() {},
+            };
+          },
+        });
+      }
+      return files.get(name);
+    },
+  };
+
+  assert.equal(await runtime.createLatestWebBackup('first'), true);
+  assert.equal(await runtime.createLatestWebBackup('second'), true);
+  assert.deepEqual(requestedNames, [
+    'TeachHelper-Backup-2026-08-31-14-05.json',
+    'TeachHelper-Backup-2026-08-31-14-05.json',
+  ]);
+  assert.equal(files.size, 1);
+  const [file] = files.values();
+  assert.deepEqual([...new Uint8Array(await (await file.getFile()).arrayBuffer())], [2]);
+});
+
 test('large database files require confirmation and oversized files are rejected before reading', async () => {
   const confirmations = [];
   const runtime = new WorkspaceRuntime(new FakeStore(), {
@@ -1264,8 +1313,9 @@ test('large database files are read only after the app confirmation', async () =
 });
 
 test('new backups use the TeachHelper backup filename while legacy backups remain restorable', () => {
-  assert.match(runtimeSource, /TeachHelper-Backup-\$\{stamp\}\.json/);
-  assert.match(runtimeSource, /TeachHelper-Backup-\$\{new Date\(\)\.toISOString\(\)\.slice\(0, 10\)\}\.json/);
+  assert.match(runtimeSource, /function buildBackupFileName\(date = new Date\(\)\)/);
+  assert.match(runtimeSource, /getFileHandle\(buildBackupFileName\(this\.now\(\)\), \{ create: true \}\)/);
+  assert.match(runtimeSource, /downloadBytes\(built\.bytes, buildBackupFileName\(this\.now\(\)\)\)/);
   assert.match(runtimeSource, /\^\(\?:Planung-Backup-\|TeachHelper-Backup-\)/);
 });
 

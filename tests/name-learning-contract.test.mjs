@@ -32,7 +32,7 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(bridge, /mountNameLearning/);
   assert.match(bridge, /GRADES_NAME_LEARNING_DATA_REQUEST_EVENT/);
   assert.match(bridge, /GRADES_NAME_LEARNING_REVIEW_REQUEST_EVENT/);
-  assert.match(gradesApp, /type === "name-learning-data" \|\| type === "name-learning-review"/);
+  assert.match(gradesApp, /type === "name-learning-data"[\s\S]*?\|\| type === "name-learning-review"/);
   assert.match(gradesApp, /handleNameLearningDataRequest\(action\.detail\)/);
   assert.match(gradesApp, /error\.code = "NAME_LEARNING_STUDENT_MISSING"/);
   assert.doesNotMatch(gradesApp, /!student \|\| !normalizeGradeStudentPortrait\(student\.portrait\)/);
@@ -119,6 +119,44 @@ test('name learning clears sensitive cards while the grade vault is locked', () 
   assert.match(nameLearningApp, /tutorialPreviousState = null/);
   assert.match(nameLearningApp, /event\.data\.detail\?\.unlockCancelled === true \|\| gradeVaultLocked/);
   assert.match(nameLearningCss, /\.app\.is-grade-vault-locked \.tool-sidebar-panel,[\s\S]*?\.app\.is-grade-vault-locked \.main/);
+});
+
+test('name learning course actions use a dedicated persistent visibility setting and safe grades navigation', () => {
+  assert.match(tabs, /NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT = 'classroom:name-learning-course-visibility-request'/);
+  assert.match(tabs, /NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT = 'classroom:name-learning-manage-students-request'/);
+  assert.match(tabs, /GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT/);
+  assert.match(store, /hiddenInNameLearning: false/);
+  assert.match(store, /setCourseNameLearningHidden\(schoolYearId, courseId, hiddenInNameLearning = true\)/);
+  assert.match(runtime, /hiddenInNameLearning: Boolean\(course\.hiddenInNameLearning\)/);
+  assert.match(gradesApp, /const hiddenInNameLearning = Boolean\(course\.hiddenInNameLearning\)/);
+  assert.match(gradesApp, /handleNameLearningCourseVisibilityRequest/);
+  assert.match(gradesApp, /visibilityChange: \{ courseId, hidden \}/);
+  assert.match(gradesApp, /navigation\.action === "manage-students" && courseId/);
+  assert.match(gradesApp, /await this\.openCourseStudentsDialog\(courseId\)/);
+  assert.match(bridge, /GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT/);
+  assert.match(main, /NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT/);
+  assert.match(main, /action: 'manage-students'/);
+  assert.match(nameLearningHtml, /id="course-context-menu"[\s\S]*?Aus „Namen lernen“ ausblenden[\s\S]*?Teilnehmende verwalten/);
+  assert.match(nameLearningApp, /course\.hidden \? 'In „Namen lernen“ einblenden' : 'Aus „Namen lernen“ ausblenden'/);
+  assert.match(nameLearningHtml, /id="sidebar-context-menu"[\s\S]*?role="menuitemcheckbox"[\s\S]*?data-sidebar-context-action="show-hidden"/);
+  assert.match(nameLearningApp, /\$\{showHiddenCourses \? '✓ ' : ''\}Ausgeblendete Kurse anzeigen/);
+  assert.match(nameLearningApp, /setAttribute\('aria-checked', showHiddenCourses \? 'true' : 'false'\)/);
+  assert.match(nameLearningApp, /document\.addEventListener\('contextmenu', \(event\) => event\.preventDefault\(\)\)/);
+  assert.match(nameLearningApp, /label\.addEventListener\('contextmenu', \(event\) => openCourseContextMenu/);
+  assert.match(nameLearningApp, /COURSE_VISIBILITY_REQUEST/);
+  assert.match(nameLearningApp, /MANAGE_STUDENTS_REQUEST/);
+  assert.match(nameLearningApp, /visibilityChange\?\.hidden === false/);
+  assert.match(nameLearningCss, /\.course-context-menu/);
+  assert.match(nameLearningCss, /\.course-context-menu\[hidden\] \{ display: none; \}/);
+  assert.match(nameLearningCss, /\.course-list-separator/);
+  assert.match(nameLearningApp, /showHiddenCourses = !showHiddenCourses/);
+  assert.match(defaults, /SHOW_HIDDEN_NAME_LEARNING_COURSES_DEFAULT = false/);
+  assert.match(store, /showHiddenNameLearningCourses: SHOW_HIDDEN_NAME_LEARNING_COURSES_DEFAULT/);
+  assert.match(gradesApp, /showHiddenCourses: Boolean\([\s\S]*?getSetting\("showHiddenNameLearningCourses"/);
+  assert.match(gradesApp, /setSetting\("showHiddenNameLearningCourses", showHiddenCourses\)/);
+  assert.match(nameLearningApp, /requestShowHiddenCourses\(showHiddenCourses\)/);
+  assert.match(nameLearningApp, /showHiddenCourses = event\.data\.detail\.showHiddenCourses/);
+  assert.match(nameLearningApp, /refs\.side\?\.addEventListener\('contextmenu'/);
 });
 
 test('only compact progress data is stored in encrypted grade course segments', () => {

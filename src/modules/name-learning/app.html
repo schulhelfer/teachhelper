@@ -9,6 +9,7 @@
   <script src="../../shared/module-standalone-guard.js" data-module-tab="name-learning"></script>
   <script src="../../shared/theme-preload.js"></script>
   <link rel="stylesheet" href="./app.css">
+  <link rel="stylesheet" href="../../shared/learner-search-dialog.css">
   <link rel="stylesheet" href="../../shared/app-tooltips.css">
   <link rel="stylesheet" href="../../shared/theme.css">
 </head>
@@ -28,6 +29,11 @@
           <section class="sidebar-section" aria-label="Kurse">
             <h2 class="sidebar-section-title">Kurse</h2>
             <div id="courses" class="course-list"></div>
+          </section>
+          <section class="learner-search-sidebar-action" aria-label="Lernendensuche">
+            <h2 class="sidebar-section-title">Lernendensuche</h2>
+            <button id="learner-search-btn" class="learner-search-nav-btn" type="button"
+              aria-label="Lernendensuche" title="Lernendensuche">🧑‍🎓🔍</button>
           </section>
           <section id="setup" class="sidebar-section sidebar-mode" hidden>
             <h2 class="sidebar-section-title">Lernmodus</h2>
@@ -72,6 +78,13 @@
         </section>
       </main>
     </div>
+  </div>
+  <div id="course-context-menu" class="course-context-menu" role="menu" aria-label="Kursaktionen" hidden>
+    <button type="button" role="menuitem" data-course-context-action="hide">Aus „Namen lernen“ ausblenden</button>
+    <button type="button" role="menuitem" data-course-context-action="manage-students">Teilnehmende verwalten</button>
+  </div>
+  <div id="sidebar-context-menu" class="course-context-menu" role="menu" aria-label="Kurslistenoptionen" hidden>
+    <button type="button" role="menuitemcheckbox" aria-checked="false" data-sidebar-context-action="show-hidden"></button>
   </div>
   <script src="../../shared/theme-bridge.js"></script>
   <script type="module" src="./app.js"></script>

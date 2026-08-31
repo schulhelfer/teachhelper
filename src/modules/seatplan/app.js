@@ -624,6 +624,7 @@ import {
           const GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:grades-grade-roster-import-result';
           const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
           const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
+          const MODULE_CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss';
           const COURSE_GRADE_DISPLAY_POINTS = 'points15';
           const COURSE_GRADE_DISPLAY_SCHOOL = 'school';
           const COURSE_GRADE_SCHOOL_LABELS = ['6', '5-', '5', '5+', '4-', '4', '4+', '3-', '3', '3+', '2-', '2', '2+', '1-', '1', '1+'];
@@ -641,6 +642,7 @@ import {
             GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
             GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
             GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+            MODULE_CONTEXT_MENU_DISMISS_EVENT,
           ]);
           let lastStudentsSyncTimestamp = 0;
           let pendingGradeRosterCoursesRequestId = '';
@@ -3514,6 +3516,10 @@ import {
             const data = event?.data;
             if (!data || typeof data !== 'object') return;
             if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
+            if (data.type === MODULE_CONTEXT_MENU_DISMISS_EVENT) {
+              closeGradeRosterImportMenu();
+              return;
+            }
             if (data.type === SEATPLAN_SHELL_LAYOUT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
@@ -10471,6 +10477,12 @@ import {
             if (event.target instanceof Element && !event.target.closest('.grade-roster-import')) {
               closeGradeRosterImportMenu();
             }
+          });
+
+          document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape' || els.gradeRosterImportMenu?.hidden !== false) return;
+            closeGradeRosterImportMenu();
+            els.gradeRosterImportTrigger?.focus();
           });
 
           if (els.adjustGrid) {

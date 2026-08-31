@@ -5599,6 +5599,9 @@ class PlanningApp {
         }));
       });
     }
+    window.addEventListener("classroom:module-context-menu-dismiss", () => {
+      this.hideContextMenu();
+    });
     document.addEventListener("contextmenu", (event) => {
       this.contextMenuClickGuard = {
         target: event.target,

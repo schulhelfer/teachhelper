@@ -49,7 +49,10 @@ import {
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   NAME_LEARNING_DATA_REQUEST_EVENT,
+  NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT,
+  NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT,
   NAME_LEARNING_REVIEW_REQUEST_EVENT,
+  NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT,
   GRADES_COURSE_CONTEXT_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
   GRADES_NAVIGATE_EVENT,
@@ -57,6 +60,7 @@ import {
   GRADES_VIEW_REQUEST_EVENT,
   MERGER_OPEN_RESULT_REQUEST_EVENT,
   MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
+  MODULE_CONTEXT_MENU_DISMISS_EVENT,
   PLANNING_COURSE_CONTEXT_EVENT,
   PLANNING_COURSE_SEATPLAN_OPEN_EVENT,
   PLANNING_TUTORIAL_START_REQUEST_EVENT,
@@ -364,18 +368,28 @@ import {
     || null
   );
   const getNameLearningFrame = () => els.nameLearningHost?.querySelector('iframe') || null;
+  const getModuleFrames = () => [
+    getPlanningFrame(),
+    getGradesFrame(),
+    getMergerFrame(),
+    getDuplicateCheckFrame(),
+    getQrFrame(),
+    getSeatplanFrame(),
+    getNameLearningFrame(),
+  ].filter(Boolean);
+  const dismissModuleContextMenus = () => {
+    getModuleFrames().forEach((frame) => postToModule(frame, {
+      type: MODULE_CONTEXT_MENU_DISMISS_EVENT,
+    }));
+  };
+  document.addEventListener('pointerdown', dismissModuleContextMenus, true);
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') dismissModuleContextMenus();
+  }, true);
   const getDuplicateCheckController = () => els.duplicateCheckHost?._duplicateCheckController || null;
   const getQrController = () => els.qrHost?._qrController || null;
   const getModuleFrameForMessage = (event) => (
-    [
-      getPlanningFrame(),
-      getGradesFrame(),
-      getMergerFrame(),
-      getDuplicateCheckFrame(),
-      getQrFrame(),
-      getSeatplanFrame(),
-      getNameLearningFrame(),
-    ].find((frame) => isTrustedModuleMessage(event, frame)) || null
+    getModuleFrames().find((frame) => isTrustedModuleMessage(event, frame)) || null
   );
   const openExternalUrlForModule = (value) => {
     let url;
@@ -3094,12 +3108,33 @@ import {
         window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, { detail }));
         return;
       }
-      if (data.type === NAME_LEARNING_DATA_REQUEST_EVENT || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT) {
+      if (
+        data.type === NAME_LEARNING_DATA_REQUEST_EVENT
+        || data.type === NAME_LEARNING_REVIEW_REQUEST_EVENT
+        || data.type === NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT
+        || data.type === NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT
+      ) {
         if (frame !== getNameLearningFrame()) return;
         window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
         document.dispatchEvent(new CustomEvent(data.type, {
           detail: data.detail && typeof data.detail === 'object' ? data.detail : {},
         }));
+        return;
+      }
+      if (data.type === NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT) {
+        if (frame !== getNameLearningFrame()) return;
+        const courseId = Number(data.detail?.courseId || 0);
+        const studentId = Number(data.detail?.studentId || 0);
+        if (!courseId) return;
+        suppressGradesCourseAutoSelect();
+        bridgeController?.dispatchGradesNavigation?.({
+          courseId,
+          action: 'manage-students',
+          ...(studentId ? { studentId } : {}),
+          subview: 'overview',
+          source: 'name-learning',
+        });
+        setActiveTab(TAB_GRADES);
         return;
       }
       if (data.type === THEME_PREFERENCE_CHANGE_EVENT) {

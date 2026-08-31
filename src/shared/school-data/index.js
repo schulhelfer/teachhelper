@@ -131,6 +131,7 @@ export function normalizePublicSchoolData(rawState = null, options = {}) {
         noLesson,
         noGrades: Boolean(item.noGrades),
         hiddenInSidebar: Boolean(item.hiddenInSidebar),
+        hiddenInNameLearning: Boolean(item.hiddenInNameLearning),
         sortOrder: Number(item.sortOrder || 0),
       };
     }) : [],

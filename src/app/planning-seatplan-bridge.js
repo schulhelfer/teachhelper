@@ -19,8 +19,11 @@ import {
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_NAME_LEARNING_DATA_REQUEST_EVENT,
   GRADES_NAME_LEARNING_DATA_RESULT_EVENT,
+  GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT,
   GRADES_NAME_LEARNING_REVIEW_REQUEST_EVENT,
   GRADES_NAME_LEARNING_REVIEW_RESULT_EVENT,
+  GRADES_NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT,
+  GRADES_NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT,
   GRADES_MANUAL_SAVE_REQUEST_EVENT,
   GRADES_READY_EVENT,
   GRADES_TAB_LEAVE_REQUEST_EVENT,
@@ -576,6 +579,24 @@ export function createPlanningSeatplanBridge({
     return true;
   }
 
+  function requestNameLearningCourseVisibility(detail = null) {
+    if (!isWorkspaceReady()) return false;
+    ensureTabInitialized(TAB_GRADES);
+    if (gradesController?.frame?.loading === 'lazy') {
+      gradesController.frame.loading = 'eager';
+    }
+    gradesController?.post?.(GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT, withWorkspaceRevision(detail));
+    return true;
+  }
+
+  function requestNameLearningStudentSearch(detail = null) {
+    if (!isWorkspaceReady()) return false;
+    ensureTabInitialized(TAB_GRADES);
+    if (gradesController?.frame?.loading === 'lazy') gradesController.frame.loading = 'eager';
+    gradesController?.post?.(GRADES_NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT, withWorkspaceRevision(detail));
+    return true;
+  }
+
   function requestManualSave() {
     if (!isWorkspaceReady()) return false;
     ensureTabInitialized(TAB_GRADES);
@@ -686,6 +707,14 @@ export function createPlanningSeatplanBridge({
     requestNameLearningReview(event.detail);
   });
 
+  documentBus.addEventListener('classroom:name-learning-course-visibility-request', (event) => {
+    requestNameLearningCourseVisibility(event.detail);
+  });
+
+  documentBus.addEventListener('classroom:name-learning-student-search-request', (event) => {
+    requestNameLearningStudentSearch(event.detail);
+  });
+
   seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
@@ -751,6 +780,12 @@ export function createPlanningSeatplanBridge({
     nameLearningController?.post?.({ type: 'classroom:name-learning-review-result', detail });
   });
 
+  saveResultTarget.addEventListener(GRADES_NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    nameLearningController?.post?.({ type: 'classroom:name-learning-student-search-result', detail });
+  });
+
   saveResultTarget.addEventListener(GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
     const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
     setNameLearningGradeVaultState({
@@ -809,6 +844,7 @@ export function createPlanningSeatplanBridge({
     requestGradeRosterImport,
     requestNameLearningData,
     requestNameLearningReview,
+    requestNameLearningStudentSearch,
     requestManualSave,
     requestGradeVault,
     requestGradesTabLeaveConfirmation,

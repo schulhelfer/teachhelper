@@ -72,6 +72,10 @@ button:focus-visible, input:focus-visible { outline: none; border-color: var(--f
 .module-tutorial-button:hover,
 .module-tutorial-button:focus-visible { background: rgba(60, 72, 92, .98); border-color: rgba(130, 190, 255, .95); color: #fff; transform: translateY(-1px); }
 .tool-sidebar-panel { display: grid; gap: 14px; margin: 12px 0 0 22px; }
+.learner-search-sidebar-action { display: grid; gap: 8px; }
+.learner-search-sidebar-action .sidebar-section-title { text-align: center; }
+.learner-search-nav-btn { justify-self: center; width: auto; min-width: 40px; min-height: 40px; padding: 0.3rem 0.6rem; font-size: 1.4rem; font-weight: 720; background: var(--surface-control-glass); color: var(--text-strong); }
+.learner-search-nav-btn:hover:not(:disabled), .learner-search-nav-btn:focus-visible:not(:disabled) { background: rgba(60, 72, 92, .98); border-color: var(--focus-border); color: #fff; }
 .sidebar-section-title, .section-title { margin: 0; font-size: .86rem; font-weight: 720; letter-spacing: .01em; color: var(--text-secondary, #cbd5e1); }
 .sidebar-section { display: grid; gap: 8px; }
 .mode-actions { display: grid; gap: 8px; }
@@ -84,6 +88,13 @@ button:focus-visible, input:focus-visible { outline: none; border-color: var(--f
 .course-list label { display: flex; align-items: center; gap: 10px; min-height: 42px; padding: 9px 11px; border: 1px solid color-mix(in srgb, var(--course-color, #334155) 74%, white); border-radius: 10px; background: var(--course-color, #334155); color: #111827; font-weight: 720; box-shadow: 0 5px 12px rgba(2, 6, 23, .2); cursor: pointer; }
 .course-list label:hover { border-color: rgba(255, 255, 255, .92); filter: brightness(1.08); transform: translateY(-1px); }
 .course-list input { width: 16px; height: 16px; accent-color: #0f172a; }
+.course-list-separator { height: 1px; margin: 4px 0 2px; background: var(--sidebar-border); }
+.course-list label.is-hidden-course { opacity: .62; }
+.course-list label.is-hidden-course input { pointer-events: none; }
+.course-context-menu { position: fixed; z-index: 20; display: grid; min-width: 224px; padding: 5px; border: 1px solid var(--module-surface-border); border-radius: 12px; background: var(--surface-control, rgba(28, 36, 48, .98)); box-shadow: 0 14px 30px rgba(2, 6, 23, .38); }
+.course-context-menu[hidden] { display: none; }
+.course-context-menu button { min-height: 38px; border: 0; border-radius: 8px; background: transparent; box-shadow: none; text-align: left; }
+.course-context-menu button:hover, .course-context-menu button:focus-visible { background: rgba(96, 165, 250, .2); }
 
 .main { display: flex; align-items: center; min-width: 0; min-height: 0; height: 100%; padding: var(--app-content-top-space, clamp(12px, 1.5vh, 18px)) 3px 3px; overflow: auto; }
 .tool-panel { width: min(900px, 100%); margin: 0 auto; padding: 4px 18px 28px; }

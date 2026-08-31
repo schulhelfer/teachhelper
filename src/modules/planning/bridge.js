@@ -12,6 +12,7 @@
   const COURSE_SEATPLAN_OPEN_EVENT = 'classroom:planning-course-seatplan-open';
   const COURSE_CONTEXT_EVENT = 'classroom:planning-course-context';
   const SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
+  const CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss';
 
   const incomingEvents = new Set([
     VIEW_REQUEST_EVENT,
@@ -19,6 +20,7 @@
     TAB_LEAVE_REQUEST_EVENT,
     SHELL_LAYOUT_EVENT,
     TUTORIAL_COMMAND_EVENT,
+    CONTEXT_MENU_DISMISS_EVENT,
   ]);
   const outgoingEvents = new Set([
     MANUAL_SAVE_STATE_EVENT,

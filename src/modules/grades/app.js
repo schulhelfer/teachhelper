@@ -76,6 +76,7 @@ import {
 import {
   GRADE_VAULT_UNLOCKED_ICON
 } from "../../shared/grade-vault-lock-icons.js";
+import { createLearnerSearchDialog, LEARNER_SEARCH_MESSAGES } from "../../shared/learner-search-dialog.js";
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const COMPETENCE_EXPECTATIONS_TEMPLATE_URL = new URL("./competence-expectations-template.docx", import.meta.url);
@@ -133,6 +134,7 @@ const BACKUP_INTERVAL_DEFAULT_DAYS = 7;
 const SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT = false;
 const SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT = false;
 const SHOW_NAME_LEARNING_MODULE_DEFAULT = false;
+const SHOW_HIDDEN_NAME_LEARNING_COURSES_DEFAULT = false;
 const GRADE_STUDENT_PORTRAIT_MIME = "image/webp";
 const GRADE_STUDENT_PORTRAIT_SIZE = 512;
 const GRADE_STUDENT_PORTRAIT_MAX_BYTES = 150 * 1024;
@@ -2746,10 +2748,13 @@ class GradesApp {
     this.gradeExpectationHorizonCommentDialogState = null;
     this.boundGradesEntryTableScroll = null;
     this.syncingGradesEntryTableStickyScrollbar = false;
+    this.learnerSearch = null;
+    this.learnerSearchStudentFocusId = 0;
 
     this.refs = {
 
       viewGradesEntryBtn: document.querySelector("#view-grades-entry-btn"),
+      learnerSearchBtn: document.querySelector("#learner-search-btn"),
       viewTutorialBtn: document.querySelector("#view-tutorial-btn"),
       viewSettingsBtn: document.querySelector("#view-settings-btn"),
       sidebarTitle: document.querySelector("#sidebar-title"),
@@ -4591,7 +4596,12 @@ class GradesApp {
       } else {
         this.dispatchGradeRosterImportResult(result);
       }
-    } else if (continuation?.type === "name-learning-data" || continuation?.type === "name-learning-review") {
+    } else if (
+      continuation?.type === "name-learning-data"
+      || continuation?.type === "name-learning-review"
+      || continuation?.type === "name-learning-course-visibility"
+      || continuation?.type === 'name-learning-student-search'
+    ) {
       const detail = continuation.detail && typeof continuation.detail === "object" ? continuation.detail : {};
       const result = {
         requestId: String(detail.requestId || ""),
@@ -4599,7 +4609,9 @@ class GradesApp {
         unlockCancelled: true,
         message: "Entsperren wurde abgebrochen."
       };
-      if (continuation.type === "name-learning-data") {
+      if (continuation.type === 'name-learning-student-search') {
+        window.dispatchEvent(new CustomEvent('classroom:grades-name-learning-student-search-result', { detail: { ...result, students: [] } }));
+      } else if (continuation.type === "name-learning-data" || continuation.type === "name-learning-course-visibility") {
         this.dispatchNameLearningDataResult(result);
       } else {
         this.dispatchNameLearningReviewResult(result);
@@ -4812,7 +4824,12 @@ class GradesApp {
       this.pendingGradeVaultContinuation = { type, detail };
       return;
     }
-    if (type === "name-learning-data" || type === "name-learning-review") {
+    if (
+      type === "name-learning-data"
+      || type === "name-learning-review"
+      || type === "name-learning-course-visibility"
+      || type === 'name-learning-student-search'
+    ) {
       const detail = action.detail && typeof action.detail === "object" ? action.detail : {};
       this.pendingGradeVaultContinuation = { type, detail };
       return;
@@ -4875,6 +4892,14 @@ class GradesApp {
     }
     if (action.type === "name-learning-review") {
       void this.handleNameLearningReviewRequest(action.detail);
+      return true;
+    }
+    if (action.type === "name-learning-course-visibility") {
+      void this.handleNameLearningCourseVisibilityRequest(action.detail);
+      return true;
+    }
+    if (action.type === 'name-learning-student-search') {
+      void this.handleNameLearningStudentSearchRequest(action.detail);
       return true;
     }
     if (action.type === "grades-navigation" || action.type === "course-context") {
@@ -6855,6 +6880,8 @@ class GradesApp {
         const portraitUrl = this.getGradeStudentPortraitUrl(student);
         const row = document.createElement("div");
         row.className = "course-dialog-student-row";
+        row.dataset.gradeStudentId = String(Number(student?.id || 0));
+        row.classList.toggle('is-learner-search-highlight', Number(student?.id || 0) === this.learnerSearchStudentFocusId);
         const grid = document.createElement("div");
         grid.className = "course-dialog-student-grid";
 
@@ -8497,7 +8524,7 @@ class GradesApp {
     this.renderAll();
   }
 
-  async openCourseStudentsDialog(courseId) {
+  async openCourseStudentsDialog(courseId, options = null) {
     const year = this.activeSchoolYear;
     const id = Number(courseId || 0);
     if (!year || !id || !this.refs.courseStudentsDialog) {
@@ -8524,11 +8551,19 @@ class GradesApp {
       );
       return;
     }
+    this.learnerSearchStudentFocusId = Number(options?.studentId || 0);
     this.refs.courseStudentsDialogId.value = String(course.id);
     this.courseStudentsDialogInitialSignature = this.getCourseStudentsDialogSignature();
     this.resetCourseDialogRosterImport();
     this.renderCourseDialogStudents();
     this.openDialog(this.refs.courseStudentsDialog);
+    if (this.learnerSearchStudentFocusId) {
+      requestAnimationFrame(() => {
+        const row = this.refs.courseDialogStudentsList?.querySelector('[data-grade-student-id="' + this.learnerSearchStudentFocusId + '"]');
+        row?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+        row?.querySelector('input[data-student-field="lastName"]')?.focus({ preventScroll: true });
+      });
+    }
     void this.refreshCourseDialogRosterImportCourses();
   }
 
@@ -8537,6 +8572,7 @@ class GradesApp {
     this.resetCourseDialogRosterImport();
     this.closeIservGroupPopulateDialog();
     this.courseDialogDraft = null;
+    this.learnerSearchStudentFocusId = 0;
     this.closeGroupPhotoExtractionDialog();
     this.revokeGradeStudentPortraitObjectUrls();
     this.closeDialog(this.refs.courseStudentsDialog);
@@ -11229,7 +11265,18 @@ class GradesApp {
         const detail = event instanceof CustomEvent ? event.detail : null;
         void this.handleNameLearningReviewRequest(detail);
       });
+      window.addEventListener("classroom:grades-name-learning-course-visibility-request", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleNameLearningCourseVisibilityRequest(detail);
+      });
+      window.addEventListener('classroom:grades-name-learning-student-search-request', (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleNameLearningStudentSearchRequest(detail);
+      });
     }
+    window.addEventListener("classroom:module-context-menu-dismiss", () => {
+      this.hideContextMenu();
+    });
     document.addEventListener("contextmenu", (event) => {
       this.contextMenuClickGuard = {
         target: event.target,
@@ -11271,6 +11318,9 @@ class GradesApp {
 
     this.refs.viewGradesEntryBtn?.addEventListener("click", () => {
       void this.requestGradesEntryView();
+    });
+    this.refs.learnerSearchBtn?.addEventListener('click', () => {
+      void this.openLearnerSearchDialog();
     });
     this.refs.gradesEmptyUnlock?.addEventListener("click", () => {
       this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
@@ -28314,6 +28364,9 @@ class GradesApp {
       hasField("subject") ? String(fields.subject || "") : String(course.subject || ""),
       hasField("gradeLevel") ? fields.gradeLevel : course.gradeLevel
     );
+    if (updated && hasField("hiddenInNameLearning")) {
+      this.store.setCourseNameLearningHidden(year.id, id, Boolean(fields.hiddenInNameLearning));
+    }
     if (updated && hasField("noGrades")) {
       this.store.setCourseNoGrades(year.id, id, Boolean(fields.noGrades));
     }
@@ -28384,6 +28437,16 @@ class GradesApp {
     }
     if (loadGeneration && !this.isGradeCourseNavigationLoadCurrent(loadGeneration)) {
       return false;
+    }
+    if (navigation.action === "manage-students" && courseId) {
+      await this.openGradesOverviewForCourse(courseId, {
+        assessmentId,
+        lessonId,
+        lessonDate: String(navigation.lessonDate || lesson?.lessonDate || ""),
+        commit: false
+      });
+      await this.openCourseStudentsDialog(courseId, { studentId: Number(navigation.studentId || 0) });
+      return true;
     }
     if (subview === "overview") {
       if (courseId) {
@@ -28889,15 +28952,17 @@ class GradesApp {
       if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
       const year = this.activeSchoolYear;
       const cards = [];
+      const nameLearningCourses = [];
       const courses = year ? this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course)) : [];
       const workspaceOwner = this.getWorkspaceOwnerApp();
       for (const course of courses) {
         const state = await workspaceOwner?.getGradeCourseStateSnapshot?.(course.id);
         const progressByStudentId = new Map((state?.gradeNameLearning || []).map((row) => [Number(row.studentId), row]));
+        const courseCards = [];
         (state?.gradeStudents || []).forEach((student) => {
           const portrait = normalizeGradeStudentPortrait(student?.portrait);
           if (!portrait || Number(student?.id) <= 0) return;
-          cards.push({
+          courseCards.push({
             courseId: Number(course.id),
             courseName: String(course.name || "Kurs"),
             courseColor: normalizeCourseColor(course.color, Boolean(course.noLesson)),
@@ -28907,11 +28972,148 @@ class GradesApp {
             progress: progressByStudentId.get(Number(student.id)) || null
           });
         });
+        if (!courseCards.length) continue;
+        const hiddenInNameLearning = Boolean(course.hiddenInNameLearning);
+        nameLearningCourses.push({
+          id: Number(course.id),
+          name: String(course.name || "Kurs"),
+          color: normalizeCourseColor(course.color, Boolean(course.noLesson)),
+          hidden: hiddenInNameLearning,
+        });
+        if (!hiddenInNameLearning) cards.push(...courseCards);
       }
-      this.dispatchNameLearningDataResult({ requestId, ok: true, cards });
+      this.dispatchNameLearningDataResult({
+        requestId,
+        ok: true,
+        cards,
+        courses: nameLearningCourses,
+        showHiddenCourses: Boolean(
+          this.store.getSetting("showHiddenNameLearningCourses", SHOW_HIDDEN_NAME_LEARNING_COURSES_DEFAULT)
+        ),
+        visibilityChange: detail?.visibilityChange && typeof detail.visibilityChange === "object"
+          ? detail.visibilityChange
+          : null,
+      });
       return true;
     } catch (error) {
-      this.dispatchNameLearningDataResult({ requestId, ok: false, cards: [], message: error instanceof Error ? error.message : "Namenslerndaten konnten nicht geladen werden." });
+      this.dispatchNameLearningDataResult({ requestId, ok: false, cards: [], courses: [], message: error instanceof Error ? error.message : "Namenslerndaten konnten nicht geladen werden." });
+      return false;
+    }
+  }
+
+  async collectLearnerSearchRoster() {
+    if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
+    const year = this.activeSchoolYear;
+    const courses = year ? this.store.listCourses(year.id).filter((course) => !course.noLesson) : [];
+    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const roster = [];
+    for (const course of courses) {
+      const state = await workspaceOwner?.getGradeCourseStateSnapshot?.(course.id);
+      const students = state?.gradeStudents || [];
+      students.forEach((student) => {
+        if (student?.isPlaceholder || Number(student?.id || 0) <= 0) return;
+        roster.push({
+          studentId: Number(student.id),
+          courseId: Number(course.id),
+          courseName: String(course.name || 'Kurs'),
+          courseColor: normalizeCourseColor(course.color, Boolean(course.noLesson)),
+          firstName: String(student.firstName || ''),
+          lastName: String(student.lastName || ''),
+          rufname: String(student.rufname || ''),
+        });
+      });
+    }
+    return roster;
+  }
+
+  getLearnerSearchDialog() {
+    if (!this.learnerSearch) {
+      this.learnerSearch = createLearnerSearchDialog({
+        onSelectCourse: (course) => {
+          void this.navigateGrades({ courseId: course.courseId, studentId: course.studentId, action: 'manage-students', subview: 'overview', source: 'learner-search' });
+        },
+      });
+    }
+    return this.learnerSearch;
+  }
+
+  async openLearnerSearchDialog() {
+    if (!this.canAccessGradeVault()) {
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? 'unlock' : 'setup');
+      return;
+    }
+    const learnerSearch = this.getLearnerSearchDialog();
+    learnerSearch.open();
+    try {
+      learnerSearch.setRoster(await this.collectLearnerSearchRoster());
+    } catch (error) {
+      learnerSearch.setStatus(error instanceof Error ? error.message : LEARNER_SEARCH_MESSAGES.failed);
+    }
+  }
+
+  async handleNameLearningStudentSearchRequest(detail = null) {
+    const requestId = String(detail?.requestId || '');
+    if (!this.canAccessGradeVault()) {
+      this.queueGradeVaultContinuation({ type: 'name-learning-student-search', detail });
+      this.gradeVaultOverlayPreserveSourceTab = true;
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? 'unlock' : 'setup');
+      this.notifyParentGradeVaultOverlay(true);
+      return true;
+    }
+    try {
+      const students = await this.collectLearnerSearchRoster();
+      window.dispatchEvent(new CustomEvent('classroom:grades-name-learning-student-search-result', { detail: { requestId, ok: true, students } }));
+      return true;
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('classroom:grades-name-learning-student-search-result', { detail: { requestId, ok: false, students: [], message: error instanceof Error ? error.message : 'Lernende konnten nicht geladen werden.' } }));
+      return false;
+    }
+  }
+
+  async handleNameLearningCourseVisibilityRequest(detail = null) {
+    const requestId = String(detail?.requestId || "");
+    const courseId = Number(detail?.courseId || 0);
+    const hidden = detail?.hidden === true;
+    const showHiddenCourses = typeof detail?.showHiddenCourses === "boolean" ? detail.showHiddenCourses : null;
+    if (!courseId && showHiddenCourses === null) {
+      this.dispatchNameLearningDataResult({ requestId, ok: false, cards: [], courses: [], message: "Kurs ist ungültig." });
+      return false;
+    }
+    if (!this.canAccessGradeVault()) {
+      this.queueGradeVaultContinuation({ type: "name-learning-course-visibility", detail });
+      this.gradeVaultOverlayPreserveSourceTab = true;
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      this.notifyParentGradeVaultOverlay(true);
+      return true;
+    }
+    try {
+      if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
+      if (showHiddenCourses !== null) {
+        this.store.setSetting("showHiddenNameLearningCourses", showHiddenCourses);
+      }
+      if (courseId) {
+        const year = this.activeSchoolYear;
+        const course = year && this.store.listCourses(year.id).find((item) => Number(item.id) === courseId);
+        if (!course || !this.courseAllowsGrades(course)) {
+          throw new Error("Kurs wurde nicht gefunden.");
+        }
+        if (!await this.updateCourseFields(courseId, { hiddenInNameLearning: hidden })) {
+          throw new Error("Kurs konnte nicht aktualisiert werden.");
+        }
+      }
+      await this.handleNameLearningDataRequest({
+        requestId,
+        ...(courseId ? { visibilityChange: { courseId, hidden } } : {}),
+      });
+      return true;
+    } catch (error) {
+      this.dispatchNameLearningDataResult({
+        requestId,
+        ok: false,
+        cards: [],
+        courses: [],
+        message: error instanceof Error ? error.message : "Kurs konnte nicht aktualisiert werden.",
+      });
       return false;
     }
   }
@@ -30155,6 +30357,7 @@ class GradesApp {
       this.refs.viewGradesEntryBtn.disabled = this.locked;
       this.refs.viewGradesEntryBtn.classList.toggle("active", isEntry);
     }
+    if (this.refs.learnerSearchBtn) this.refs.learnerSearchBtn.disabled = this.locked;
     if (this.refs.viewSettingsBtn) {
       this.refs.viewSettingsBtn.disabled = this.locked;
       this.refs.viewSettingsBtn.classList.toggle("active", isSettings);

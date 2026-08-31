@@ -41,6 +41,7 @@ import {
   SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT,
   SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
   SHOW_NAME_LEARNING_MODULE_DEFAULT,
+  SHOW_HIDDEN_NAME_LEARNING_COURSES_DEFAULT,
   WRITTEN_EXAM_TOPIC
 } from "../../shared/school-data/defaults.js";
 
@@ -1628,6 +1629,7 @@ function createInitialState() {
       showHalfYearBoundaryMarkers: SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT,
       showGradeStudentPortraits: SHOW_GRADE_STUDENT_PORTRAITS_DEFAULT,
       showNameLearningModule: SHOW_NAME_LEARNING_MODULE_DEFAULT,
+      showHiddenNameLearningCourses: SHOW_HIDDEN_NAME_LEARNING_COURSES_DEFAULT,
       gradesPrivacyGraphThreshold: GRADES_PRIVACY_GRAPH_THRESHOLD_DEFAULT,
       gradeTestScaleSettings: buildDefaultGradeTestScaleSettings(),
       gradeOccurrenceCategories: normalizeGradeOccurrenceCategories(),
@@ -1769,6 +1771,7 @@ export class WorkspaceStore {
       course.noLesson = isNoLesson;
       course.noGrades = Boolean(course.noGrades);
       course.hiddenInSidebar = Boolean(course.hiddenInSidebar);
+      course.hiddenInNameLearning = Boolean(course.hiddenInNameLearning);
       if (isNoLesson) {
         course.previousColor = normalizeHexColor(
           course.previousColor,
@@ -2207,6 +2210,7 @@ export class WorkspaceStore {
       noLesson: courseNoLesson,
       noGrades: false,
       hiddenInSidebar: Boolean(hiddenInSidebar),
+      hiddenInNameLearning: false,
       sortOrder: this.listCourses(yearId).length + 1
     };
     this.state.courses.push(course);
@@ -2244,6 +2248,7 @@ export class WorkspaceStore {
     } else {
       course.hiddenInSidebar = Boolean(hiddenInSidebar);
     }
+    course.hiddenInNameLearning = Boolean(course.hiddenInNameLearning);
     if (courseNoLesson) {
       const backupColor = normalizeCourseColor(
         color || course.previousColor || course.color,
@@ -2271,6 +2276,18 @@ export class WorkspaceStore {
       return false;
     }
     course.hiddenInSidebar = Boolean(hiddenInSidebar);
+    this._save();
+    return true;
+  }
+
+  setCourseNameLearningHidden(schoolYearId, courseId, hiddenInNameLearning = true) {
+    const yearId = Number(schoolYearId);
+    const id = Number(courseId);
+    const course = this.state.courses.find((item) => item.id === id && item.schoolYearId === yearId);
+    if (!course) {
+      return false;
+    }
+    course.hiddenInNameLearning = Boolean(hiddenInNameLearning);
     this._save();
     return true;
   }
