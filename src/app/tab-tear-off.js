@@ -1,7 +1,7 @@
 import { isTearOffTab } from './module-window.js';
 
-const TEAR_OFF_DISTANCE = 48;
-const TEAR_DRAG_MIME = 'application/x-teachhelper-tab';
+const DRAG_ACTIVATION_DISTANCE_PX = 6;
+const WINDOW_EDGE_THRESHOLD_PX = 1;
 const DRAG_IMAGE_ANCHOR_X = 130;
 const DRAG_IMAGE_ANCHOR_Y = 16;
 
@@ -32,11 +32,19 @@ export function createTabTearOff({ els, onTearOff } = {}) {
     return isTearOffTab(button.dataset.tabTarget) ? button : null;
   };
 
-  const createDragImage = (button) => {
+  const updateLastPoint = (state, event) => {
+    state.lastScreenX = event.screenX;
+    state.lastScreenY = event.screenY;
+    if (state.preview) {
+      state.preview.style.transform = `translate3d(${event.clientX - DRAG_IMAGE_ANCHOR_X}px, ${event.clientY - DRAG_IMAGE_ANCHOR_Y}px, 0)`;
+    }
+  };
+
+  const createDragPreview = (button) => {
     const label = (button.textContent || '').trim();
-    const ghost = document.createElement('div');
-    ghost.className = 'tab-tear-ghost';
-    ghost.setAttribute('aria-hidden', 'true');
+    const preview = document.createElement('div');
+    preview.className = 'tab-tear-ghost';
+    preview.setAttribute('aria-hidden', 'true');
 
     const bar = document.createElement('div');
     bar.className = 'tab-tear-ghost-bar';
@@ -52,117 +60,122 @@ export function createTabTearOff({ els, onTearOff } = {}) {
     name.style.setProperty('--tear-name-size', `${resolveTearNameFontSize(label)}px`);
     name.textContent = label;
 
-    ghost.append(bar, name);
-    document.body.append(ghost);
-    return ghost;
+    preview.append(bar, name);
+    document.body.append(preview);
+    return preview;
   };
 
-  const ensureDropLayer = (state) => {
-    if (state.dropLayer) return;
+  const createPointerLayer = () => {
     const layer = document.createElement('div');
-    layer.className = 'tab-tear-drop-layer';
+    layer.className = 'tab-tear-pointer-layer';
     layer.setAttribute('aria-hidden', 'true');
     document.body.append(layer);
-    state.dropLayer = layer;
+    return layer;
   };
 
-  const isTornOff = (clientX, clientY) => {
-    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) return false;
-    if (
-      clientX < 0
-      || clientY < 0
-      || clientX > window.innerWidth
-      || clientY > window.innerHeight
-    ) {
-      return true;
-    }
-    const bounds = nav.getBoundingClientRect();
-    return clientY > bounds.bottom + TEAR_OFF_DISTANCE
-      || clientY < bounds.top - TEAR_OFF_DISTANCE;
+  const hasMovedFarEnough = (state, event) => {
+    const distanceX = event.clientX - state.startClientX;
+    const distanceY = event.clientY - state.startClientY;
+    return (distanceX ** 2) + (distanceY ** 2) >= DRAG_ACTIVATION_DISTANCE_PX ** 2;
   };
 
-  const readDropPoint = (state, event) => (
-    event.clientX === 0 && event.clientY === 0
-      ? { clientX: state.lastClientX, clientY: state.lastClientY, screenX: state.lastScreenX, screenY: state.lastScreenY }
-      : {
-        clientX: event.clientX,
-        clientY: event.clientY,
-        screenX: event.screenX,
-        screenY: event.screenY,
-      }
+  const hasLeftPwaWindow = (event) => (
+    event.clientX <= 0
+    || event.clientY <= 0
+    || event.clientX >= window.innerWidth
+    || event.clientY >= window.innerHeight
   );
 
-  const endDrag = (state) => {
-    state.dropLayer?.remove();
+  const isAtPwaWindowEdge = (event) => (
+    event.clientX <= WINDOW_EDGE_THRESHOLD_PX
+    || event.clientY <= WINDOW_EDGE_THRESHOLD_PX
+    || event.clientX >= window.innerWidth - WINDOW_EDGE_THRESHOLD_PX
+    || event.clientY >= window.innerHeight - WINDOW_EDGE_THRESHOLD_PX
+  );
+
+  const endDrag = (state, { suppressClick = false } = {}) => {
+    state.pointerLayer?.remove();
+    state.preview?.remove();
     state.button.classList.remove('is-tearing');
     dragState = null;
+    if (suppressClick) suppressNextClick = true;
+  };
+
+  const tearOffAtLastPoint = (state, event) => {
+    updateLastPoint(state, event);
+    endDrag(state, { suppressClick: true });
+    onTearOff(state.tab, { screenX: state.lastScreenX, screenY: state.lastScreenY });
   };
 
   nav.querySelectorAll('.tab-button[data-tab-target]').forEach((button) => {
     if (isTearOffTab(button.dataset.tabTarget)) {
-      button.draggable = true;
+      button.classList.add('is-tearable');
     }
   });
 
-  nav.addEventListener('mousedown', () => {
+  nav.addEventListener('pointerdown', (event) => {
     suppressNextClick = false;
-  });
-
-  nav.addEventListener('dragstart', (event) => {
-    if (dragState) endDrag(dragState);
-    const button = resolveTabButton(event.target);
-    if (!button || !event.dataTransfer) {
-      event.preventDefault();
+    if (!event.isPrimary || !['mouse', 'pen'].includes(event.pointerType) || event.button !== 0) {
       return;
     }
-    const tab = button.dataset.tabTarget;
-    event.dataTransfer.effectAllowed = 'move';
-    event.dataTransfer.setData(TEAR_DRAG_MIME, tab);
-    const ghost = createDragImage(button);
-    event.dataTransfer.setDragImage(ghost, DRAG_IMAGE_ANCHOR_X, DRAG_IMAGE_ANCHOR_Y);
-    window.setTimeout(() => ghost.remove(), 0);
+    const button = resolveTabButton(event.target);
+    if (!button) return;
+    if (dragState) endDrag(dragState);
     dragState = {
       button,
-      tab,
-      dropLayer: null,
-      lastClientX: event.clientX,
-      lastClientY: event.clientY,
+      tab: button.dataset.tabTarget,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
       lastScreenX: event.screenX,
       lastScreenY: event.screenY,
+      hasMoved: false,
+      preview: null,
+      pointerLayer: null,
     };
-    button.classList.add('is-tearing');
   });
 
-  document.addEventListener('dragenter', (event) => {
-    if (!dragState) return;
-    event.preventDefault();
-  });
-
-  document.addEventListener('dragover', (event) => {
-    if (!dragState) return;
-    ensureDropLayer(dragState);
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-    dragState.lastClientX = event.clientX;
-    dragState.lastClientY = event.clientY;
-    dragState.lastScreenX = event.screenX;
-    dragState.lastScreenY = event.screenY;
-  });
-
-  document.addEventListener('drop', (event) => {
-    if (!dragState) return;
-    event.preventDefault();
-  });
-
-  nav.addEventListener('dragend', (event) => {
+  window.addEventListener('pointermove', (event) => {
     const state = dragState;
-    if (!state) return;
-    endDrag(state);
-    suppressNextClick = true;
-    const point = readDropPoint(state, event);
-    if (!isTornOff(point.clientX, point.clientY)) return;
-    onTearOff(state.tab, { screenX: point.screenX, screenY: point.screenY });
+    if (!state || event.pointerId !== state.pointerId) return;
+    updateLastPoint(state, event);
+    if (!state.hasMoved && hasMovedFarEnough(state, event)) {
+      state.hasMoved = true;
+      state.button.classList.add('is-tearing');
+      state.pointerLayer = createPointerLayer();
+      state.preview = createDragPreview(state.button);
+      updateLastPoint(state, event);
+    }
+    if (state.hasMoved && isAtPwaWindowEdge(event)) {
+      tearOffAtLastPoint(state, event);
+    }
   });
+
+  window.addEventListener('pointerout', (event) => {
+    const state = dragState;
+    if (
+      !state
+      || event.pointerId !== state.pointerId
+      || !state.hasMoved
+      || event.relatedTarget
+      || !hasLeftPwaWindow(event)
+    ) return;
+    tearOffAtLastPoint(state, event);
+  });
+
+  window.addEventListener('pointerleave', (event) => {
+    const state = dragState;
+    if (!state || event.pointerId !== state.pointerId || !state.hasMoved) return;
+    tearOffAtLastPoint(state, event);
+  });
+
+  const finishPointerDrag = (event) => {
+    const state = dragState;
+    if (!state || event.pointerId !== state.pointerId) return;
+    endDrag(state, { suppressClick: state.hasMoved });
+  };
+  window.addEventListener('pointerup', finishPointerDrag);
+  window.addEventListener('pointercancel', finishPointerDrag);
 
   nav.addEventListener('click', (event) => {
     if (!suppressNextClick) return;

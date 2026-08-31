@@ -3672,9 +3672,23 @@
           max-width: 460px;
         }
 
-        #grade-vault-dialog-form {
+        .grade-vault-dialog-content {
           display: grid;
           gap: 0.9rem;
+          padding: 0.9rem;
+        }
+
+        .grade-vault-dialog .grade-vault-dialog-form {
+          display: none;
+          margin: 0;
+          padding: 0;
+          gap: 0.9rem;
+        }
+
+        .grade-vault-dialog[data-grade-vault-mode="unlock"] #grade-vault-unlock-form,
+        .grade-vault-dialog[data-grade-vault-mode="setup"] #grade-vault-setup-form,
+        .grade-vault-dialog[data-grade-vault-mode="change"] #grade-vault-change-form {
+          display: grid;
         }
 
         .grade-vault-dialog-fields {
@@ -3692,12 +3706,6 @@
           clip: rect(0, 0, 0, 0);
           white-space: nowrap;
           border: 0;
-        }
-
-        .grade-vault-dialog[data-grade-vault-mode="unlock"] #grade-vault-dialog-password-row,
-        .grade-vault-dialog[data-grade-vault-mode="unlock"] #grade-vault-dialog-confirm-row,
-        .grade-vault-dialog[data-grade-vault-mode="setup"] #grade-vault-dialog-current-row {
-          display: none;
         }
 
         .grade-vault-dialog-hint {
@@ -3736,6 +3744,10 @@
           aspect-ratio: 1 / 1;
           font-size: 46px;
           border-radius: 14px;
+        }
+
+        .grade-vault-dialog-submit .grade-vault-lock-icon {
+          transform: translateX(4px);
         }
 
         .grades-subview-panel {

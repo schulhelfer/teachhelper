@@ -1099,7 +1099,7 @@
 
   <dialog id="grade-vault-dialog" class="app-dialog grade-vault-dialog" data-grade-vault-mode="unlock"
     aria-labelledby="grade-vault-dialog-title">
-    <form id="grade-vault-dialog-form" class="form-grid" method="post" action="" autocomplete="on" spellcheck="false">
+    <div class="grade-vault-dialog-content">
       <div class="dialog-header">
         <h3 id="grade-vault-dialog-title" class="dialog-title">Notenmodul schützen</h3>
         <div class="dialog-actions-top app-action-group">
@@ -1108,72 +1108,82 @@
         </div>
       </div>
       <p id="grade-vault-dialog-text" class="message-dialog-text"></p>
+      <form id="grade-vault-unlock-form" class="form-grid grade-vault-dialog-form" method="post" action="./app.html"
+        autocomplete="on" spellcheck="false">
       <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
-        Benutzername
-        <input id="grade-vault-dialog-username" name="username" type="text"
-          autocomplete="section-teachhelper-vault username" tabindex="-1">
+        Technische Kennung für den Kennwortmanager
+        <input id="grade-vault-unlock-username" name="username" type="text" autocomplete="username" tabindex="-1"
+          data-grade-vault-autofill-username>
       </label>
-      <div id="grade-vault-dialog-fields" class="grade-vault-dialog-fields">
-        <label id="grade-vault-dialog-current-row">
-          <span id="grade-vault-dialog-current-label">Aktuelles Passwort</span>
-          <input id="grade-vault-dialog-current-password" name="current-password" type="password" minlength="10"
-            autocomplete="section-teachhelper-vault current-password" autocapitalize="off" autocorrect="off"
-            spellcheck="false">
-        </label>
-        <label id="grade-vault-dialog-password-row">
+      <div class="grade-vault-dialog-fields">
+        <label>
           Passwort
-          <input id="grade-vault-dialog-password" name="new-password" type="password" minlength="12"
-            autocomplete="section-teachhelper-vault new-password" autocapitalize="off" autocorrect="off"
-            spellcheck="false">
-        </label>
-        <label id="grade-vault-dialog-confirm-row">
-          Passwort wiederholen
-          <input id="grade-vault-dialog-confirm-password" name="confirm-password" type="password" minlength="12"
-            autocomplete="section-teachhelper-vault new-password" autocapitalize="off" autocorrect="off"
+          <input id="grade-vault-unlock-password" name="password" type="password" minlength="10" required
+            autocomplete="current-password" autocapitalize="off" autocorrect="off"
             spellcheck="false">
         </label>
       </div>
-      <p id="grade-vault-dialog-hint" class="grade-vault-dialog-hint"></p>
-      <p id="grade-vault-dialog-error" class="grade-vault-dialog-error" aria-live="polite"></p>
       <div class="grade-vault-dialog-submit-row">
         <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
-          title="Bestätigen">
-          <svg class="grade-vault-lock-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1em" height="1em" fill="none" aria-hidden="true" focusable="false">
-            <defs>
-              <linearGradient id="grade-vault-unlocked-body" x1="125" y1="382" x2="766" y2="927" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#FFE66A"/><stop offset="0.35" stop-color="#FFC54E"/><stop offset="0.72" stop-color="#FFA34B"/><stop offset="1" stop-color="#FF8550"/>
-              </linearGradient>
-              <radialGradient id="grade-vault-unlocked-body-glow" cx="0" cy="0" r="1" gradientTransform="translate(361 423) rotate(47) scale(480 425)" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#FFF5A4" stop-opacity="0.78"/><stop offset="1" stop-color="#FFF5A4" stop-opacity="0"/>
-              </radialGradient>
-              <linearGradient id="grade-vault-unlocked-shackle" x1="645" y1="94" x2="970" y2="348" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#F7F7FA"/><stop offset="0.28" stop-color="#C9C7D2"/><stop offset="0.57" stop-color="#EFEFF3"/><stop offset="0.83" stop-color="#B486C9"/><stop offset="1" stop-color="#9B63BB"/>
-              </linearGradient>
-              <linearGradient id="grade-vault-unlocked-rim" x1="431" y1="350" x2="431" y2="969" gradientUnits="userSpaceOnUse">
-                <stop stop-color="#FFF09A" stop-opacity="0.84"/><stop offset="0.78" stop-color="#F58A60" stop-opacity="0"/><stop offset="1" stop-color="#E96768" stop-opacity="0.65"/>
-              </linearGradient>
-            </defs>
-            <rect x="96" y="374" width="680" height="588" rx="102" fill="#432A37" opacity="0.24"/>
-            <path d="M624 354V263C624 139 706 64 804 64C902 64 982 142 982 260V306" stroke="#D8D5DF" stroke-width="92" stroke-linecap="round"/>
-            <path d="M624 354V263C624 139 706 64 804 64C902 64 982 142 982 260V306" stroke="url(#grade-vault-unlocked-shackle)" stroke-width="80" stroke-linecap="round"/>
-            <g>
-              <rect x="80" y="354" width="704" height="606" rx="102" fill="#FFB44A"/>
-              <rect x="80" y="354" width="704" height="606" rx="102" fill="url(#grade-vault-unlocked-body)"/>
-              <rect x="80" y="354" width="704" height="606" rx="102" fill="url(#grade-vault-unlocked-body-glow)"/>
-              <rect x="84" y="358" width="696" height="598" rx="98" stroke="url(#grade-vault-unlocked-rim)" stroke-width="8"/>
-            </g>
-            <g fill="#A34E36" opacity="0.22">
-              <circle cx="454" cy="604" r="83"/>
-              <path d="M409 662H499V784C499 809 479 829 454 829C429 829 409 809 409 784V662Z"/>
-            </g>
-            <g fill="#4D3B72">
-              <circle cx="432" cy="580" r="83"/>
-              <path d="M387 638H477V760C477 785 457 805 432 805C407 805 387 785 387 760V638Z"/>
-            </g>
-          </svg>
-        </button>
+          title="Bestätigen"></button>
       </div>
-    </form>
+      </form>
+      <form id="grade-vault-setup-form" class="form-grid grade-vault-dialog-form" method="post" action="./app.html"
+        autocomplete="on" spellcheck="false">
+        <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
+          Technische Kennung für den Kennwortmanager
+          <input id="grade-vault-setup-username" name="username" type="text" autocomplete="username" tabindex="-1"
+            data-grade-vault-autofill-username>
+        </label>
+        <div class="grade-vault-dialog-fields">
+          <label>
+            Passwort
+            <input id="grade-vault-setup-password" name="new-password" type="password" minlength="12" required
+              autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </label>
+          <label>
+            Passwort wiederholen
+            <input id="grade-vault-setup-confirm-password" name="confirm-password" type="password" minlength="12" required
+              autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </label>
+        </div>
+        <div class="grade-vault-dialog-submit-row">
+          <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
+            title="Bestätigen"></button>
+        </div>
+      </form>
+      <form id="grade-vault-change-form" class="form-grid grade-vault-dialog-form" method="post" action="./app.html"
+        autocomplete="on" spellcheck="false">
+        <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
+          Technische Kennung für den Kennwortmanager
+          <input id="grade-vault-change-username" name="username" type="text" autocomplete="username" tabindex="-1"
+            data-grade-vault-autofill-username>
+        </label>
+        <div class="grade-vault-dialog-fields">
+          <label>
+            Aktuelles Passwort
+            <input id="grade-vault-change-current-password" name="current-password" type="password" minlength="10" required
+              autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </label>
+          <label>
+            Neues Passwort
+            <input id="grade-vault-change-password" name="new-password" type="password" minlength="12" required
+              autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </label>
+          <label>
+            Passwort wiederholen
+            <input id="grade-vault-change-confirm-password" name="confirm-password" type="password" minlength="12" required
+              autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </label>
+        </div>
+        <div class="grade-vault-dialog-submit-row">
+          <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
+            title="Bestätigen"></button>
+        </div>
+      </form>
+      <p id="grade-vault-dialog-hint" class="grade-vault-dialog-hint"></p>
+      <p id="grade-vault-dialog-error" class="grade-vault-dialog-error" aria-live="polite"></p>
+    </div>
   </dialog>
 
   <div id="grade-picker" class="grade-picker" hidden></div>

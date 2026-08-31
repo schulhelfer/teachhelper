@@ -812,20 +812,26 @@
 
     .tab-button.is-tearing {
       opacity: 0.4;
+      cursor: grabbing;
     }
 
-    .tab-tear-drop-layer {
+    .tab-button.is-tearable {
+      cursor: grab;
+    }
+
+    .tab-tear-pointer-layer {
       position: fixed;
       inset: 0;
       z-index: 130;
       background: transparent;
+      cursor: grabbing;
     }
 
     .tab-tear-ghost {
       position: fixed;
       top: 0;
-      left: -10000px;
-      z-index: 120;
+      left: 0;
+      z-index: 131;
       display: flex;
       flex-direction: column;
       overflow: hidden;
@@ -839,6 +845,7 @@
       pointer-events: none;
       user-select: none;
       -webkit-user-select: none;
+      will-change: transform;
     }
 
     .tab-tear-ghost-bar {
@@ -1253,6 +1260,11 @@
       box-shadow: none;
       background: transparent;
       display: block;
+    }
+
+    .name-learning-host[data-grade-vault-locked="true"] > .name-learning-frame {
+      visibility: hidden;
+      pointer-events: none;
     }
 
     #groups-main-host,

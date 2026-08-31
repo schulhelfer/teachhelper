@@ -10139,7 +10139,7 @@ class PlanningApp {
     chip.className = "lesson-block";
     chip.dataset.lessonId = String(block.firstLessonId);
     chip.dataset.noLesson = block.isNoLesson ? "1" : "0";
-    chip.title = block.selectable ? "Linksklick: Thema bearbeiten / Rechtsklick: Weitere Aktionen" : "Nicht bearbeitbar";
+    chip.title = block.selectable ? "Linksklick: Thema bearbeiten\nRechtsklick: Weitere Aktionen" : "Nicht bearbeitbar";
     chip.style.background = block.background;
     chip.style.color = "#000000";
     chip.style.gridRow = `${block.startHour} / span ${block.endHour - block.startHour + 1}`;
@@ -10673,9 +10673,7 @@ class PlanningApp {
           }
           chip.dataset.lessonId = String(block.firstLessonId);
           if (block.selectable) {
-            chip.title = block.hasNotes
-              ? "Linksklick: Thema bearbeiten / Rechtsklick: Weitere Aktionen"
-              : "Linksklick: Thema bearbeiten / Rechtsklick: Weitere Aktionen";
+            chip.title = "Linksklick: Thema bearbeiten\nRechtsklick: Weitere Aktionen";
           } else {
             chip.title = "Nicht bearbeitbar";
           }

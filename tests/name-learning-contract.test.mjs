@@ -105,6 +105,22 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningCss, /\.main \{ display: flex; align-items: center;/);
 });
 
+test('name learning clears sensitive cards while the grade vault is locked', () => {
+  assert.match(bridge, /nameLearningGradeVaultState/);
+  assert.match(bridge, /const setNameLearningGradeVaultState/);
+  assert.match(bridge, /getSnapshot\?\.\('shell'\)\?\.vault/);
+  assert.match(bridge, /host\.dataset\.gradeVaultLocked = 'true'/);
+  assert.match(bridge, /type: 'classroom:name-learning-access-state'/);
+  assert.match(bridge, /locked: detail\.encryptionEnabled === true && detail\.unlocked !== true/);
+  assert.match(nameLearningApp, /const ACCESS_STATE = 'classroom:name-learning-access-state'/);
+  assert.match(nameLearningApp, /function clearSensitiveLearningState\(\)/);
+  assert.match(nameLearningApp, /cards = \[\];[\s\S]*?selectedCourses\.clear\(\);[\s\S]*?queue = \[\];/);
+  assert.match(nameLearningApp, /portrait\.removeAttribute\('src'\)/);
+  assert.match(nameLearningApp, /tutorialPreviousState = null/);
+  assert.match(nameLearningApp, /event\.data\.detail\?\.unlockCancelled === true \|\| gradeVaultLocked/);
+  assert.match(nameLearningCss, /\.app\.is-grade-vault-locked \.tool-sidebar-panel,[\s\S]*?\.app\.is-grade-vault-locked \.main/);
+});
+
 test('only compact progress data is stored in encrypted grade course segments', () => {
   assert.match(store, /gradeNameLearning: Array\.isArray\(source\.gradeNameLearning\)/);
   assert.match(runtime, /gradeNameLearning: \(Array\.isArray\(state\.gradeNameLearning\)/);

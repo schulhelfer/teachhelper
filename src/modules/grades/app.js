@@ -194,8 +194,7 @@ const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
 const GRADE_ACCOMMODATION_TEXT_MAX_LENGTH = 500;
 const GRADE_EXPECTATION_HORIZON_COMMENT_MAX_LENGTH = 500;
 const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;
-const GRADE_VAULT_AUTOFILL_SECTION = "section-teachhelper-vault";
-const GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES = 8;
+const GRADE_VAULT_DIALOG_FOCUS_MAX_FRAMES = 8;
 const GRADE_VAULT_AUTO_LOCK_ACTIVITY_EVENTS = ["pointerdown", "keydown", "input", "wheel", "touchstart"];
 const EXPECTATION_HORIZON_TEMPLATE_STORAGE_KEY = "expectation-horizon-template";
 const COMPETENCE_EXPECTATIONS_TEMPLATE_STORAGE_KEY = "competence-expectations-template";
@@ -293,8 +292,7 @@ function getGradeVaultAutofillMetadata() {
     basePath = `${basePath}/`;
   }
   return {
-    identity: `gradevault@${origin.replace(/^https?:\/\//, "")}${basePath}`,
-    sectionToken: GRADE_VAULT_AUTOFILL_SECTION
+    identity: `gradevault@${origin.replace(/^https?:\/\//, "")}${basePath}`
   };
 }
 
@@ -2841,18 +2839,20 @@ class GradesApp {
       gradePicker: document.querySelector("#grade-picker"),
       gradesTitleDatePicker: document.querySelector("#grades-title-date-picker"),
       gradeVaultDialog: document.querySelector("#grade-vault-dialog"),
-      gradeVaultDialogForm: document.querySelector("#grade-vault-dialog-form"),
-      gradeVaultDialogUsername: document.querySelector("#grade-vault-dialog-username"),
+      gradeVaultDialogForms: {
+        unlock: document.querySelector("#grade-vault-unlock-form"),
+        setup: document.querySelector("#grade-vault-setup-form"),
+        change: document.querySelector("#grade-vault-change-form")
+      },
+      gradeVaultDialogUsernameInputs: document.querySelectorAll("[data-grade-vault-autofill-username]"),
       gradeVaultDialogTitle: document.querySelector("#grade-vault-dialog-title"),
       gradeVaultDialogText: document.querySelector("#grade-vault-dialog-text"),
-      gradeVaultDialogFields: document.querySelector("#grade-vault-dialog-fields"),
-      gradeVaultDialogCurrentRow: document.querySelector("#grade-vault-dialog-current-row"),
-      gradeVaultDialogCurrentLabel: document.querySelector("#grade-vault-dialog-current-label"),
-      gradeVaultDialogCurrentPassword: document.querySelector("#grade-vault-dialog-current-password"),
-      gradeVaultDialogPasswordRow: document.querySelector("#grade-vault-dialog-password-row"),
-      gradeVaultDialogPassword: document.querySelector("#grade-vault-dialog-password"),
-      gradeVaultDialogConfirmRow: document.querySelector("#grade-vault-dialog-confirm-row"),
-      gradeVaultDialogConfirmPassword: document.querySelector("#grade-vault-dialog-confirm-password"),
+      gradeVaultDialogUnlockPassword: document.querySelector("#grade-vault-unlock-password"),
+      gradeVaultDialogSetupPassword: document.querySelector("#grade-vault-setup-password"),
+      gradeVaultDialogSetupConfirmPassword: document.querySelector("#grade-vault-setup-confirm-password"),
+      gradeVaultDialogChangeCurrentPassword: document.querySelector("#grade-vault-change-current-password"),
+      gradeVaultDialogChangePassword: document.querySelector("#grade-vault-change-password"),
+      gradeVaultDialogChangeConfirmPassword: document.querySelector("#grade-vault-change-confirm-password"),
       gradeVaultDialogHint: document.querySelector("#grade-vault-dialog-hint"),
       gradeVaultDialogError: document.querySelector("#grade-vault-dialog-error"),
       gradeVaultDialogCancel: document.querySelector("#grade-vault-dialog-cancel"),
@@ -3058,6 +3058,7 @@ class GradesApp {
 
 
     };
+    this.syncGradeVaultDialogAutofillIdentity();
     this.themePreference = readThemePreference();
     window.addEventListener(THEME_APPLY_EVENT, (event) => {
       this.themePreference = normalizeThemePreference(event.detail?.preference);
@@ -4444,14 +4445,20 @@ class GradesApp {
       workspaceOwner.openGradeVaultDialog(mode);
       return;
     }
-    if (!this.refs.gradeVaultDialog || !this.refs.gradeVaultDialogForm) {
+    if (!this.refs.gradeVaultDialog || !this.getGradeVaultDialogForm(mode)) {
       return;
     }
-    const submitButton = this.refs.gradeVaultDialog.querySelector(".grade-vault-dialog-submit");
-    if (submitButton) {
-      submitButton.innerHTML = GRADE_VAULT_UNLOCKED_ICON;
-    }
     const normalizedMode = ["setup", "unlock", "change"].includes(mode) ? mode : "unlock";
+    const activeForm = this.getGradeVaultDialogForm(normalizedMode);
+    if (!activeForm) {
+      return;
+    }
+    Object.entries(this.refs.gradeVaultDialogForms || {}).forEach(([formMode, form]) => {
+      const button = form?.querySelector(".grade-vault-dialog-submit");
+      if (button) {
+        button.innerHTML = formMode === normalizedMode ? GRADE_VAULT_UNLOCKED_ICON : "";
+      }
+    });
     if (this.refs.gradeVaultDialog.open && this.pendingGradeVaultDialogMode === normalizedMode) {
       return;
     }
@@ -4463,9 +4470,6 @@ class GradesApp {
     this.refs.gradeVaultDialog.dataset.gradeVaultMode = normalizedMode;
     if (this.refs.gradeVaultDialogError) {
       this.refs.gradeVaultDialogError.textContent = "";
-    }
-    if (this.refs.gradeVaultDialogCurrentLabel) {
-      this.refs.gradeVaultDialogCurrentLabel.textContent = isUnlockMode ? "Passwort" : "Aktuelles Passwort";
     }
     if (isSetupMode) {
       this.refs.gradeVaultDialogTitle.textContent = "Passwort für Noten-Verschlüsselung";
@@ -4484,17 +4488,62 @@ class GradesApp {
       this.notifyParentGradeVaultOverlay(true);
     }
     this.openDialog(this.refs.gradeVaultDialog);
-    this.armGradeVaultDialogAutofill(normalizedMode);
+    this.focusGradeVaultDialogFieldWhenVisible(normalizedMode);
   }
 
-  armGradeVaultDialogAutofill(mode, attempt = 0) {
+  getGradeVaultDialogForm(mode) {
+    const normalizedMode = ["setup", "unlock", "change"].includes(mode) ? mode : "unlock";
+    return this.refs.gradeVaultDialogForms?.[normalizedMode] || null;
+  }
+
+  getGradeVaultDialogFields(mode) {
+    const normalizedMode = ["setup", "unlock", "change"].includes(mode) ? mode : "unlock";
+    if (normalizedMode === "setup") {
+      return {
+        currentPassword: null,
+        password: this.refs.gradeVaultDialogSetupPassword,
+        confirmPassword: this.refs.gradeVaultDialogSetupConfirmPassword
+      };
+    }
+    if (normalizedMode === "change") {
+      return {
+        currentPassword: this.refs.gradeVaultDialogChangeCurrentPassword,
+        password: this.refs.gradeVaultDialogChangePassword,
+        confirmPassword: this.refs.gradeVaultDialogChangeConfirmPassword
+      };
+    }
+    return {
+      currentPassword: this.refs.gradeVaultDialogUnlockPassword,
+      password: this.refs.gradeVaultDialogUnlockPassword,
+      confirmPassword: null
+    };
+  }
+
+  getGradeVaultDialogPasswordInputs() {
+    return [
+      this.refs.gradeVaultDialogUnlockPassword,
+      this.refs.gradeVaultDialogSetupPassword,
+      this.refs.gradeVaultDialogSetupConfirmPassword,
+      this.refs.gradeVaultDialogChangeCurrentPassword,
+      this.refs.gradeVaultDialogChangePassword,
+      this.refs.gradeVaultDialogChangeConfirmPassword
+    ].filter(Boolean);
+  }
+
+  syncGradeVaultDialogAutofillIdentity() {
+    const identity = getGradeVaultAutofillMetadata().identity;
+    this.refs.gradeVaultDialogUsernameInputs?.forEach((input) => {
+      input.value = identity;
+    });
+  }
+
+  focusGradeVaultDialogFieldWhenVisible(mode, attempt = 0) {
     const dialog = this.refs.gradeVaultDialog;
-    const form = this.refs.gradeVaultDialogForm;
-    if (!dialog || !form || this.pendingGradeVaultDialogMode !== mode) {
+    if (!dialog || !this.getGradeVaultDialogForm(mode) || this.pendingGradeVaultDialogMode !== mode) {
       return;
     }
-    if (!isElementRendered(dialog) && attempt < GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES) {
-      const retry = () => this.armGradeVaultDialogAutofill(mode, attempt + 1);
+    if (!isElementRendered(dialog) && attempt < GRADE_VAULT_DIALOG_FOCUS_MAX_FRAMES) {
+      const retry = () => this.focusGradeVaultDialogFieldWhenVisible(mode, attempt + 1);
       if (typeof requestAnimationFrame === "function") {
         requestAnimationFrame(retry);
       } else {
@@ -4502,69 +4551,8 @@ class GradesApp {
       }
       return;
     }
-    const isUnlockMode = mode === "unlock";
-    const isSetupMode = mode === "setup";
-    const autofillMetadata = getGradeVaultAutofillMetadata();
-    if (!this.refs.gradeVaultDialogFields) {
-      this.refs.gradeVaultDialogFields = form.querySelector(".grade-vault-dialog-fields");
-    }
-    form.setAttribute("autocomplete", "on");
-    form.setAttribute("method", "post");
-    form.setAttribute("action", new URL("./app.html", import.meta.url).href);
-    this.refs.gradeVaultDialogUsername = this.rebuildGradeVaultDialogInput(
-      this.refs.gradeVaultDialogUsername,
-      (input) => {
-        input.setAttribute("autocomplete", `${autofillMetadata.sectionToken} username`);
-        input.setAttribute("name", "username");
-        input.disabled = false;
-        input.readOnly = false;
-        input.value = autofillMetadata.identity;
-      }
-    );
-    const rows = [
-      {
-        row: this.refs.gradeVaultDialogCurrentRow,
-        ref: "gradeVaultDialogCurrentPassword",
-        name: "current-password",
-        token: "current-password",
-        active: !isSetupMode
-      },
-      {
-        row: this.refs.gradeVaultDialogPasswordRow,
-        ref: "gradeVaultDialogPassword",
-        name: "new-password",
-        token: "new-password",
-        active: !isUnlockMode
-      },
-      {
-        row: this.refs.gradeVaultDialogConfirmRow,
-        ref: "gradeVaultDialogConfirmPassword",
-        name: "confirm-password",
-        token: "new-password",
-        active: !isUnlockMode
-      }
-    ];
-    rows.forEach((entry) => {
-      if (!entry.row) {
-        return;
-      }
-      entry.row.setAttribute("aria-hidden", entry.active ? "false" : "true");
-      if (!entry.active) {
-        entry.row.remove();
-        return;
-      }
-      this.refs.gradeVaultDialogFields?.append(entry.row);
-      this.refs[entry.ref] = this.rebuildGradeVaultDialogInput(this.refs[entry.ref], (input) => {
-        input.setAttribute("autocomplete", `${autofillMetadata.sectionToken} ${entry.token}`);
-        input.setAttribute("name", entry.name);
-        input.disabled = false;
-        input.required = true;
-        input.value = "";
-      });
-    });
-    const focusTarget = isSetupMode
-      ? this.refs.gradeVaultDialogPassword
-      : this.refs.gradeVaultDialogCurrentPassword;
+    const fields = this.getGradeVaultDialogFields(mode);
+    const focusTarget = mode === "setup" ? fields.password : fields.currentPassword;
     if (!focusTarget) {
       return;
     }
@@ -4582,21 +4570,6 @@ class GradesApp {
       requestAnimationFrame(refocus);
     }
     window.setTimeout(refocus, 60);
-  }
-
-  rebuildGradeVaultDialogInput(input, configure) {
-    if (!input) {
-      return input;
-    }
-    const parent = input.parentNode;
-    if (!parent || typeof input.cloneNode !== "function") {
-      configure(input);
-      return input;
-    }
-    const fresh = input.cloneNode(false);
-    configure(fresh);
-    parent.replaceChild(fresh, input);
-    return fresh;
   }
 
   closeGradeVaultDialog() {
@@ -4673,14 +4646,8 @@ class GradesApp {
   }
 
   clearGradeVaultDialogSecrets() {
-    [
-      this.refs.gradeVaultDialogCurrentPassword,
-      this.refs.gradeVaultDialogPassword,
-      this.refs.gradeVaultDialogConfirmPassword
-    ].forEach((input) => {
-      if (input) {
-        input.value = "";
-      }
+    this.getGradeVaultDialogPasswordInputs().forEach((input) => {
+      input.value = "";
     });
   }
 
@@ -4702,7 +4669,7 @@ class GradesApp {
     if (mode === "setup") {
       return;
     }
-    const field = this.refs.gradeVaultDialogCurrentPassword;
+    const field = this.getGradeVaultDialogFields(mode).currentPassword;
     if (!field) {
       return;
     }
@@ -4710,7 +4677,7 @@ class GradesApp {
     focusGradeVaultDialogField(field);
   }
 
-  async storeGradeVaultCredential(password) {
+  async storeGradeVaultCredential(mode, password) {
     if (typeof window === "undefined" || !password) {
       return false;
     }
@@ -4719,9 +4686,21 @@ class GradesApp {
       return false;
     }
     try {
+      const form = this.getGradeVaultDialogForm(mode);
+      let credentialId = getGradeVaultAutofillMetadata().identity;
+      let credentialPassword = password;
+      if (form) {
+        try {
+          const formCredential = new CredentialCtor(form);
+          credentialId = String(formCredential?.id || credentialId);
+          credentialPassword = String(formCredential?.password || credentialPassword);
+        } catch (_error) {
+          // Der objektbasierte Fallback unterstützt ältere Chromium-Versionen.
+        }
+      }
       await window.navigator.credentials.store(new CredentialCtor({
-        id: getGradeVaultAutofillMetadata().identity,
-        password,
+        id: credentialId,
+        password: credentialPassword,
         name: "Noten-Datenbank"
       }));
       return true;
@@ -4960,9 +4939,10 @@ class GradesApp {
 
   async submitGradeVaultDialog() {
     const mode = this.pendingGradeVaultDialogMode || this.getGradeVaultStatusMode();
-    const currentPassword = String(this.refs.gradeVaultDialogCurrentPassword?.value || "");
-    const password = String(this.refs.gradeVaultDialogPassword?.value || "");
-    const confirmPassword = String(this.refs.gradeVaultDialogConfirmPassword?.value || "");
+    const fields = this.getGradeVaultDialogFields(mode);
+    const currentPassword = String(fields.currentPassword?.value || "");
+    const password = String(fields.password?.value || "");
+    const confirmPassword = String(fields.confirmPassword?.value || "");
     const setError = (message) => {
       if (this.refs.gradeVaultDialogError) this.refs.gradeVaultDialogError.textContent = String(message || "");
     };
@@ -4989,7 +4969,7 @@ class GradesApp {
         this.discardRejectedGradeVaultPassword(mode);
         throw error;
       }
-      await this.storeGradeVaultCredential(mode === "unlock" ? currentPassword : password);
+      await this.storeGradeVaultCredential(mode, mode === "unlock" ? currentPassword : password);
       this.closeDialog(this.refs.gradeVaultDialog);
       this.notifyParentGradeVaultOverlay(false);
       this.scheduleGradeVaultDialogSecretClear();
@@ -11298,9 +11278,6 @@ class GradesApp {
     if (this.refs.gradesEmptyUnlock) {
       this.refs.gradesEmptyUnlock.innerHTML = GRADE_VAULT_UNLOCKED_ICON;
     }
-    if (this.refs.gradeVaultDialog?.querySelector(".grade-vault-dialog-submit")) {
-      this.refs.gradeVaultDialog.querySelector(".grade-vault-dialog-submit").innerHTML = GRADE_VAULT_UNLOCKED_ICON;
-    }
     this.refs.gradeVaultToggleBtn?.addEventListener("click", () => {
       const mode = this.getGradeVaultStatusMode();
       if (mode !== "ready") {
@@ -11906,9 +11883,11 @@ class GradesApp {
       });
     }
 
-    this.refs.gradeVaultDialogForm?.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      await this.submitGradeVaultDialog();
+    Object.values(this.refs.gradeVaultDialogForms || {}).forEach((form) => {
+      form?.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        await this.submitGradeVaultDialog();
+      });
     });
     this.refs.gradeVaultDialogCancel?.addEventListener("click", () => {
       this.closeGradeVaultDialog();

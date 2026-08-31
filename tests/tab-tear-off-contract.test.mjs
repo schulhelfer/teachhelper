@@ -29,10 +29,6 @@ const {
   isTearOffTab,
   readModuleWindowRequest,
 } = await import(moduleWindowUrl);
-const { resolveTearNameFontSize } = await import(
-  toModuleUrl(tearOff.replace("'./module-window.js'", JSON.stringify(moduleWindowUrl)))
-);
-
 test('nur datenbankfreie Werkzeuge lassen sich ausklinken', () => {
   assert.deepEqual(
     [...TEAR_OFF_TABS].sort(),
@@ -156,64 +152,60 @@ test('das Modulfenster oeffnet ohne noopener, damit es wiederverwendet werden ka
   assert.match(moduleWindow, /'popup=yes'/);
 });
 
-test('der Drag laeuft nativ, damit das Bild auch ausserhalb des Fensters folgt', () => {
-  assert.match(tearOff, /button\.draggable = true/);
-  assert.match(tearOff, /nav\.addEventListener\('dragstart'/);
-  assert.match(tearOff, /nav\.addEventListener\('dragend'/);
-  assert.match(tearOff, /document\.addEventListener\('dragover'/);
-  assert.match(tearOff, /event\.dataTransfer\.setDragImage\(ghost, DRAG_IMAGE_ANCHOR_X, DRAG_IMAGE_ANCHOR_Y\)/);
-  assert.doesNotMatch(tearOff, /pointerdown|pointermove|setPointerCapture/, 'der Pointer-Drag ist abgeloest');
+test('der Ausriss verwendet Pointer-Tracking statt nativen Desktop-Drag', () => {
+  assert.match(tearOff, /nav\.addEventListener\('pointerdown'/);
+  assert.match(tearOff, /window\.addEventListener\('pointermove'/);
+  assert.match(tearOff, /window\.addEventListener\('pointerout'/);
+  assert.match(tearOff, /window\.addEventListener\('pointerleave'/);
+  assert.match(tearOff, /window\.addEventListener\('pointerup'/);
+  assert.match(tearOff, /window\.addEventListener\('pointercancel'/);
+  for (const nativeDragApi of ['draggable', 'dataTransfer', 'dragstart', 'dragend', 'dragover', 'dragenter', 'setDragImage']) {
+    assert.doesNotMatch(tearOff, new RegExp(nativeDragApi), `${nativeDragApi} darf nicht mehr aktiv sein`);
+  }
 });
 
-test('nur ausklinkbare Tabs werden ueberhaupt ziehbar', () => {
+test('nur ausklinkbare Tabs erhalten die Ausriss-Geste', () => {
   assert.match(
     tearOff,
-    /nav\.querySelectorAll\('\.tab-button\[data-tab-target\]'\)[\s\S]*?if \(isTearOffTab\(button\.dataset\.tabTarget\)\) \{\s+button\.draggable = true;/,
+    /nav\.querySelectorAll\('\.tab-button\[data-tab-target\]'\)[\s\S]*?if \(isTearOffTab\(button\.dataset\.tabTarget\)\) \{\s+button\.classList\.add\('is-tearable'\);/,
   );
-  assert.match(tearOff, /if \(!button \|\| !event\.dataTransfer\) \{\s+event\.preventDefault\(\);/);
+  assert.match(tearOff, /return isTearOffTab\(button\.dataset\.tabTarget\) \? button : null;/);
+  assert.match(shellCss, /\.tab-button\.is-tearable \{\s+cursor: grab;/);
 });
 
-test('die Drag-Nutzlast landet nicht als Text in fremden Zielen', () => {
-  assert.match(tearOff, /const TEAR_DRAG_MIME = 'application\/x-teachhelper-tab'/);
-  assert.doesNotMatch(tearOff, /setData\('text\//);
+test('nur ein echter primärer Maus- oder Stift-Drag startet den Ausriss', () => {
+  assert.match(tearOff, /!event\.isPrimary/);
+  assert.match(tearOff, /\['mouse', 'pen'\]\.includes\(event\.pointerType\)/);
+  assert.match(tearOff, /event\.button !== 0/);
+  assert.match(tearOff, /const DRAG_ACTIVATION_DISTANCE_PX = 6;/);
+  assert.match(tearOff, /state\.hasMoved && hasMovedFarEnough\(state, event\)/);
+  assert.match(tearOff, /state\.button\.classList\.add\('is-tearing'\);/);
 });
 
-test('das Drag-Bild wird nach dem Rastern wieder abgeraeumt', () => {
-  assert.match(tearOff, /document\.body\.append\(ghost\)/);
-  assert.match(tearOff, /window\.setTimeout\(\(\) => ghost\.remove\(\), 0\)/);
-  assert.doesNotMatch(tearOff, /insertBefore|append\(state\.button|\.sort\(/);
+test('das Modulfenster öffnet beim Verlassen des PWA-Fensters', () => {
+  const pointerOut = tearOff.match(/window\.addEventListener\('pointerout'[\s\S]*?\n  \}\);/)?.[0] || '';
+  assert.match(pointerOut, /event\.relatedTarget/);
+  assert.match(pointerOut, /hasLeftPwaWindow\(event\)/);
+  assert.match(tearOff, /event\.clientX <= 0[\s\S]*?event\.clientY >= window\.innerHeight/);
+  assert.match(pointerOut, /tearOffAtLastPoint\(state, event\);/);
+  assert.match(tearOff, /const tearOffAtLastPoint = \(state, event\) => \{[\s\S]*?endDrag\(state, \{ suppressClick: true \}\);[\s\S]*?onTearOff\(state\.tab, \{ screenX: state\.lastScreenX, screenY: state\.lastScreenY \}\);/);
+  assert.match(tearOff, /if \(state\.hasMoved && isAtPwaWindowEdge\(event\)\) \{\s+tearOffAtLastPoint\(state, event\);/);
 });
 
-test('unbrauchbare dragend-Koordinaten fallen auf den letzten dragover zurueck', () => {
-  const reader = tearOff.match(/const readDropPoint = \([\s\S]*?\n  \);/)?.[0] || '';
-  assert.match(reader, /event\.clientX === 0 && event\.clientY === 0/);
-  assert.match(reader, /state\.lastScreenX/);
-  assert.match(reader, /state\.lastScreenY/);
+test('der Quelltab zeigt beim Ziehen den Greifcursor und wird anschließend bereinigt', () => {
+  assert.match(shellCss, /\.tab-button\.is-tearing \{/);
+  assert.match(shellCss, /\.tab-button\.is-tearing \{\s+opacity: 0\.4;\s+cursor: grabbing;/);
+  assert.doesNotMatch(shellCss, /is-tearing-tab/, 'der gestrichelte Kasten um die Leiste ist weg');
+  assert.doesNotMatch(tearOff, /is-tearing-tab/);
+  assert.match(tearOff, /state\.button\.classList\.remove\('is-tearing'\);/);
+  assert.match(shellCss, /\.app\[data-module-window='true'\] #sidebar-manual-save-btn \{\s+display: none;/);
 });
 
-test('der Modulname fuellt das Fenster und passt auch beim laengsten Label', () => {
-  assert.equal(resolveTearNameFontSize('QR'), 64, 'kurze Namen laufen in die Obergrenze');
-  assert.equal(resolveTearNameFontSize('Gruppen'), 49);
-  assert.equal(resolveTearNameFontSize('DuplikatCheck'), 26);
-
-  const labels = ['QR', 'Picker', 'Gruppen', 'PDF-Tools', 'Arbeitsphase', 'DuplikatCheck'];
-  for (const label of labels) {
-    const size = resolveTearNameFontSize(label);
-    assert.ok(size >= 24 && size <= 64, `${label} -> ${size}px`);
-    assert.ok(size * 0.62 * label.length <= 232, `${label} passt nicht in die Fensterbreite`);
-  }
-  assert.ok(
-    resolveTearNameFontSize('Picker') > resolveTearNameFontSize('Arbeitsphase'),
-    'kuerzere Namen werden groesser gesetzt',
-  );
-  assert.equal(resolveTearNameFontSize(''), 24);
-  assert.equal(resolveTearNameFontSize(null), 24);
-  assert.match(shellCss, /font-size: var\(--tear-name-size, \d+px\);/);
-});
-
-test('der Geist ist ein Fenster mit Titelleiste und grossem Namen', () => {
-  assert.doesNotMatch(tearOff, /MODULE_PREVIEW_PARTS|data-tear-preview/, 'die stilisierte Vorschau ist weg');
-  assert.doesNotMatch(shellCss, /data-tear-preview/);
+test('ein Pointer-Drag zeigt die Modulminiatur und räumt sie wieder ab', () => {
+  assert.match(tearOff, /state\.pointerLayer = createPointerLayer\(\);/);
+  assert.match(tearOff, /state\.pointerLayer\?\.remove\(\);/);
+  assert.match(tearOff, /state\.preview = createDragPreview\(state\.button\);/);
+  assert.match(tearOff, /state\.preview\?\.remove\(\);/);
   for (const className of [
     'tab-tear-ghost',
     'tab-tear-ghost-bar',
@@ -223,61 +215,18 @@ test('der Geist ist ein Fenster mit Titelleiste und grossem Namen', () => {
     assert.match(tearOff, new RegExp(`'${className}'`), className);
     assert.match(shellCss, new RegExp(`\\.${className}[\\s.,>[{]`), `${className} fehlt im Stylesheet`);
   }
-  const ghost = shellCss.slice(
-    shellCss.indexOf('.tab-tear-ghost {'),
-    shellCss.indexOf('.tab-tear-ghost-bar {'),
-  );
-  assert.match(ghost, /left: -10000px;/, 'das Drag-Bild muss ausserhalb des Sichtfelds gerastert werden');
-  assert.doesNotMatch(ghost, /display: none|visibility: hidden/, 'sonst rastert der Browser ein leeres Bild');
+  assert.match(tearOff, /preview\.style\.transform = `translate3d\(\$\{event\.clientX - DRAG_IMAGE_ANCHOR_X\}px, \$\{event\.clientY - DRAG_IMAGE_ANCHOR_Y\}px, 0\)`/);
+  assert.match(shellCss, /\.tab-tear-ghost \{[\s\S]*?pointer-events: none;/);
+  const pointerLayer = shellCss.match(/\.tab-tear-pointer-layer \{[\s\S]*?\n    \}/)?.[0] || '';
+  assert.match(pointerLayer, /position: fixed;/);
+  assert.match(pointerLayer, /inset: 0;/);
+  assert.match(pointerLayer, /cursor: grabbing;/);
+  assert.doesNotMatch(pointerLayer, /pointer-events: none/);
 });
 
-test('die Leiste bekommt beim Ziehen keinen Rahmen, nur der Quelltab blasst ab', () => {
-  assert.match(shellCss, /\.tab-button\.is-tearing \{/);
-  assert.doesNotMatch(shellCss, /is-tearing-tab/, 'der gestrichelte Kasten um die Leiste ist weg');
-  assert.doesNotMatch(tearOff, /is-tearing-tab/);
-  assert.match(shellCss, /\.app\[data-module-window='true'\] #sidebar-manual-save-btn \{\s+display: none;/);
-});
-
-test('die Seite nimmt den Drop an, sonst zeigt der Zeiger ein Verbotsschild', () => {
-  const dragover = tearOff.match(/document\.addEventListener\('dragover'[\s\S]*?\n  \}\);/)?.[0] || '';
-  assert.match(dragover, /event\.preventDefault\(\);/);
-  assert.match(dragover, /event\.dataTransfer\.dropEffect = 'move';/);
-  assert.match(
-    tearOff,
-    /document\.addEventListener\('dragenter', \(event\) => \{\s+if \(!dragState\) return;\s+event\.preventDefault\(\);/,
-  );
-  assert.match(
-    tearOff,
-    /document\.addEventListener\('drop', \(event\) => \{\s+if \(!dragState\) return;\s+event\.preventDefault\(\);/,
-  );
-  assert.match(dragover, /if \(!dragState\) return;/, 'fremde Datei-Drops bleiben unberuehrt');
-});
-
-test('eine Ablageschicht faengt die Drag-Events ueber den Modul-iframes ab', () => {
-  assert.match(tearOff, /state\.dropLayer\?\.remove\(\);/, 'die Schicht darf den Drag nicht ueberleben');
-
-  const dragstart = tearOff.match(/nav\.addEventListener\('dragstart'[\s\S]*?\n  \}\);/)?.[0] || '';
-  assert.match(dragstart, /dropLayer: null,/);
-  assert.doesNotMatch(
-    dragstart,
-    /ensureDropLayer|document\.body\.append\(layer\)/,
-    'Chrome bricht den Drag ab, wenn dragstart den DOM umbaut - die Schicht kommt erst beim ersten dragover',
-  );
-  assert.match(tearOff, /if \(!dragState\) return;\s+ensureDropLayer\(dragState\);/);
-
-  const layer = shellCss.match(/\.tab-tear-drop-layer \{[\s\S]*?\n    \}/)?.[0] || '';
-  assert.match(layer, /position: fixed;/);
-  assert.match(layer, /inset: 0;/);
-  assert.doesNotMatch(
-    layer,
-    /pointer-events: none/,
-    'ohne Trefferflaeche gingen die Events wieder an den opaken iframe',
-  );
-
-  const layerZ = Number(layer.match(/z-index: (\d+);/)?.[1]);
-  const ghost = shellCss.match(/\.tab-tear-ghost \{[\s\S]*?\n    \}/)?.[0] || '';
-  const ghostZ = Number(ghost.match(/z-index: (\d+);/)?.[1]);
-  assert.ok(layerZ > ghostZ, `Ablageschicht ${layerZ} muss ueber allem liegen`);
+test('ein Drag im Fenster unterdrückt nur den nachfolgenden Tab-Klick', () => {
+  assert.match(tearOff, /endDrag\(state, \{ suppressClick: state\.hasMoved \}\);/);
+  assert.match(tearOff, /event\.preventDefault\(\);\s+event\.stopImmediatePropagation\(\);/);
 });
 
 test('das Modulfenster behaelt einen Ziehbereich fuer die Fenstersteuerung', () => {

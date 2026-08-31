@@ -76,6 +76,7 @@ export function createPlanningSeatplanBridge({
   let planningTabLeaveRequestSequence = 0;
   let seatplanController = null;
   let nameLearningController = null;
+  let nameLearningGradeVaultState = null;
   let cancelDeferredGradesMount = null;
   const tabInitState = {
     [TAB_MERGER]: false,
@@ -92,6 +93,22 @@ export function createPlanningSeatplanBridge({
   const getWorkspaceController = () => (
     typeof window !== 'undefined' ? window.__teachhelperWorkspaceController || null : null
   );
+
+  const setNameLearningGradeVaultState = (detail = null, host = els.nameLearningHost) => {
+    const nextState = detail && typeof detail === 'object' ? { locked: detail.locked === true } : null;
+    nameLearningGradeVaultState = nextState;
+    if (host) {
+      if (nextState?.locked) {
+        host.dataset.gradeVaultLocked = 'true';
+      } else {
+        delete host.dataset.gradeVaultLocked;
+      }
+    }
+    nameLearningController?.post?.({
+      type: 'classroom:name-learning-access-state',
+      detail: nextState || { locked: false },
+    });
+  };
 
   const refreshWorkspaceLifecycle = () => {
     const controller = getWorkspaceController();
@@ -248,8 +265,19 @@ export function createPlanningSeatplanBridge({
 
   const initNameLearningTab = (host = els.nameLearningHost) => {
     if (!host || host.dataset.initialized === '1') return;
+    if (!nameLearningGradeVaultState) {
+      const vault = getWorkspaceController()?.getSnapshot?.('shell')?.vault;
+      if (vault) {
+        setNameLearningGradeVaultState({
+          locked: vault.encryptionEnabled === true && vault.unlocked !== true,
+        }, host);
+      }
+    }
     nameLearningController = mountNameLearning({ host });
     nameLearningController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    if (nameLearningGradeVaultState) {
+      setNameLearningGradeVaultState(nameLearningGradeVaultState, host);
+    }
   };
 
   function dispatchPlanningViewRequest(view) {
@@ -725,6 +753,9 @@ export function createPlanningSeatplanBridge({
 
   saveResultTarget.addEventListener(GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
     const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
+    setNameLearningGradeVaultState({
+      locked: detail.encryptionEnabled === true && detail.unlocked !== true,
+    });
     if (detail.encryptionEnabled && !detail.unlocked) {
       seatplanController?.sendGradeRosterImportResult?.({ clearGradeStudentPortraits: true });
       return;

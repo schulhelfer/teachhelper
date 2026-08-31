@@ -11,30 +11,48 @@ const [html, css, appSource, shellHtml, shellSource, mainSource] = await Promise
   readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
 ]);
 
-test('das Entsperrformular ist semantisch sichtbar und wird nur per Modus-CSS umgeschaltet', () => {
+test('die drei Passwortabläufe haben feste, getrennte Browserformulare', () => {
   assert.match(
     html,
     /id="grade-vault-dialog"[^>]*data-grade-vault-mode="unlock"/,
   );
-  assert.match(html, /<label id="grade-vault-dialog-current-row">/);
-  assert.match(html, /<label id="grade-vault-dialog-confirm-row">/);
-  assert.doesNotMatch(html, /id="grade-vault-dialog-(?:current|password|confirm)-row"[^>]*\shidden(?:\s|>)/);
+  assert.match(html, /<form id="grade-vault-unlock-form"[^>]*action="\.\/app\.html"/);
+  assert.match(html, /<form id="grade-vault-setup-form"[^>]*action="\.\/app\.html"/);
+  assert.match(html, /<form id="grade-vault-change-form"[^>]*action="\.\/app\.html"/);
+  assert.match(html, /id="grade-vault-unlock-password"[^>]*autocomplete="current-password"/);
+  assert.match(html, /id="grade-vault-setup-password"[^>]*autocomplete="new-password"/);
+  assert.match(html, /id="grade-vault-change-current-password"[^>]*autocomplete="current-password"/);
+  assert.match(html, /id="grade-vault-change-password"[^>]*autocomplete="new-password"/);
+  assert.match(html, /<form id="grade-vault-unlock-form"[\s\S]*?<button type="submit" class="dialog-icon-button grade-vault-dialog-submit"/);
+  assert.match(html, /<form id="grade-vault-setup-form"[\s\S]*?<button type="submit" class="dialog-icon-button grade-vault-dialog-submit"/);
+  assert.match(html, /<form id="grade-vault-change-form"[\s\S]*?<button type="submit" class="dialog-icon-button grade-vault-dialog-submit"/);
+  assert.match(html, /data-grade-vault-autofill-username/);
 
   assert.match(
     css,
-    /\.grade-vault-dialog\[data-grade-vault-mode="unlock"\] #grade-vault-dialog-password-row/,
+    /\.grade-vault-dialog\[data-grade-vault-mode="unlock"\] #grade-vault-unlock-form/,
   );
+  assert.match(css, /\.grade-vault-dialog\[data-grade-vault-mode="setup"\] #grade-vault-setup-form/);
+  assert.match(css, /\.grade-vault-dialog\[data-grade-vault-mode="change"\] #grade-vault-change-form/);
+  assert.match(css, /\.grade-vault-dialog-content\s*\{[\s\S]*?padding:\s*0\.9rem/);
+  assert.match(css, /\.grade-vault-dialog \.grade-vault-dialog-form\s*\{[\s\S]*?padding:\s*0/);
   assert.match(appSource, /gradeVaultDialog\.dataset\.gradeVaultMode = normalizedMode/);
-  assert.doesNotMatch(appSource, /gradeVaultDialog(?:Current|Password|Confirm)Row\.hidden\s*=/);
+  const vaultStart = appSource.indexOf('  openGradeVaultDialog(mode = "unlock")');
+  const vaultEnd = appSource.indexOf('\n  closeGradeVaultDialog()', vaultStart);
+  assert.ok(vaultStart >= 0 && vaultEnd > vaultStart, 'der Vault-Dialog-Code muss vorhanden sein');
+  const vaultDialogSource = appSource.slice(vaultStart, vaultEnd);
+  assert.doesNotMatch(vaultDialogSource, /rebuildGradeVaultDialogInput|\.cloneNode\(false\)/);
 });
 
 test('neue Vault-Passwörter müssen mindestens zwölf Zeichen haben', async () => {
   const runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
 
   assert.match(appSource, /const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;/);
-  assert.match(html, /id="grade-vault-dialog-current-password"[^>]*minlength="10"/);
-  assert.match(html, /id="grade-vault-dialog-password"[^>]*minlength="12"/);
-  assert.match(html, /id="grade-vault-dialog-confirm-password"[^>]*minlength="12"/);
+  assert.match(html, /id="grade-vault-unlock-password"[^>]*minlength="10"/);
+  assert.match(html, /id="grade-vault-setup-password"[^>]*minlength="12"/);
+  assert.match(html, /id="grade-vault-setup-confirm-password"[^>]*minlength="12"/);
+  assert.match(html, /id="grade-vault-change-password"[^>]*minlength="12"/);
+  assert.match(html, /id="grade-vault-change-confirm-password"[^>]*minlength="12"/);
   assert.match(runtimeSource, /String\(password \|\| ''\)\.length < 12/);
 });
 
@@ -115,46 +133,42 @@ const vaultSource = (fromMarker, toMarker) => {
   return appSource.slice(start, end);
 };
 
-test('die Autofill-Felder werden erst aufgebaut, wenn der Dialog offen ist', () => {
+test('der sichtbare Dialog verwendet die festen Formulare ohne Passwortfeld-Mutationen', () => {
   const openSource = vaultSource(
     '  openGradeVaultDialog(mode = "unlock")',
-    '  armGradeVaultDialogAutofill(mode, attempt = 0)',
+    '  getGradeVaultDialogForm(mode)',
   );
   const dialogIndex = openSource.indexOf('this.openDialog(this.refs.gradeVaultDialog)');
-  const armIndex = openSource.indexOf('this.armGradeVaultDialogAutofill(normalizedMode)');
+  const focusIndex = openSource.indexOf('this.focusGradeVaultDialogFieldWhenVisible(normalizedMode)');
 
-  assert.ok(dialogIndex >= 0 && armIndex > dialogIndex, 'das Scharfschalten folgt auf das Öffnen');
-  assert.doesNotMatch(openSource, /setAttribute\(\s*"autocomplete"/);
-  assert.doesNotMatch(openSource, /\.focus\(/);
+  assert.match(openSource, /Object\.entries\(this\.refs\.gradeVaultDialogForms \|\| \{\}\)\.forEach/);
+  assert.match(openSource, /formMode === normalizedMode \? GRADE_VAULT_UNLOCKED_ICON : ""/);
+  assert.ok(dialogIndex >= 0 && focusIndex > dialogIndex, 'der Fokus folgt auf das Öffnen');
+  assert.doesNotMatch(openSource, /cloneNode|replaceChild|\.remove\(\)/);
 });
 
-test('das Scharfschalten wartet auf das Rendern und hängt die Felder frisch ein', () => {
-  const armSource = vaultSource(
-    '  armGradeVaultDialogAutofill(mode, attempt = 0)',
-    '  rebuildGradeVaultDialogInput(input, configure)',
+test('die technische Kennung wird einmalig in feste Formularfelder gesetzt', () => {
+  const identitySource = vaultSource(
+    '  syncGradeVaultDialogAutofillIdentity()',
+    '  focusGradeVaultDialogFieldWhenVisible(mode, attempt = 0)',
   );
 
-  assert.match(armSource, /isElementRendered\(dialog\)/);
-  assert.match(armSource, /attempt < GRADE_VAULT_AUTOFILL_ARM_MAX_FRAMES/);
-  assert.match(armSource, /this\.rebuildGradeVaultDialogInput\(\s*this\.refs\.gradeVaultDialogUsername/);
-  assert.match(armSource, /this\.refs\[entry\.ref\] = this\.rebuildGradeVaultDialogInput\(/);
-  assert.match(armSource, /entry\.row\.remove\(\)/);
-  assert.doesNotMatch(armSource, /\.disabled = is(?:Unlock|Setup)Mode/);
-  assert.match(armSource, /document\.activeElement === focusTarget/);
+  assert.match(identitySource, /getGradeVaultAutofillMetadata\(\)\.identity/);
+  assert.match(identitySource, /gradeVaultDialogUsernameInputs\?\.forEach/);
+  assert.match(identitySource, /input\.value = identity/);
+  assert.doesNotMatch(identitySource, /store\.set|localStorage|indexedDB|this\.store/);
 });
 
-test('ein neu eingehängtes Feld ist beim Einhängen bereits fertig konfiguriert', () => {
-  const rebuildSource = vaultSource(
-    '  rebuildGradeVaultDialogInput(input, configure)',
+test('der Fokus wartet auf den sichtbaren Dialog, ohne Formularfelder zu verändern', () => {
+  const focusSource = vaultSource(
+    '  focusGradeVaultDialogFieldWhenVisible(mode, attempt = 0)',
     '\n  closeGradeVaultDialog()',
   );
-  const cloneIndex = rebuildSource.indexOf('const fresh = input.cloneNode(false)');
-  const configureIndex = rebuildSource.indexOf('configure(fresh)');
-  const insertIndex = rebuildSource.indexOf('parent.replaceChild(fresh, input)');
 
-  assert.ok(cloneIndex >= 0, 'das Feld wird als frischer Knoten erzeugt');
-  assert.ok(configureIndex > cloneIndex, 'der Klon wird konfiguriert');
-  assert.ok(insertIndex > configureIndex, 'erst danach wird er eingehängt');
+  assert.match(focusSource, /isElementRendered\(dialog\)/);
+  assert.match(focusSource, /attempt < GRADE_VAULT_DIALOG_FOCUS_MAX_FRAMES/);
+  assert.match(focusSource, /document\.activeElement === focusTarget/);
+  assert.doesNotMatch(focusSource, /cloneNode|replaceChild|\.remove\(/);
 });
 
 test('ein erfolgreicher Vault-Vorgang meldet die Zugangsdaten explizit an den Browser', () => {
@@ -167,14 +181,17 @@ test('ein erfolgreicher Vault-Vorgang meldet die Zugangsdaten explizit an den Br
 
   assert.ok(storeIndex >= 0, 'der Erfolgspfad meldet die Zugangsdaten');
   assert.ok(closeIndex > storeIndex, 'die Meldung erfolgt, solange der Dialog noch offen ist');
-  assert.match(submitSource, /storeGradeVaultCredential\(mode === "unlock" \? currentPassword : password\)/);
+  assert.match(submitSource, /storeGradeVaultCredential\(mode, mode === "unlock" \? currentPassword : password\)/);
 
   const storeSource = vaultSource(
-    '  async storeGradeVaultCredential(password)',
+    '  async storeGradeVaultCredential(mode, password)',
     '\n  hasUnsavedGradeVaultRuntimeChanges()',
   );
 
-  assert.match(storeSource, /id: getGradeVaultAutofillMetadata\(\)\.identity/);
+  assert.match(storeSource, /const form = this\.getGradeVaultDialogForm\(mode\)/);
+  assert.match(storeSource, /new CredentialCtor\(form\)/);
+  assert.match(storeSource, /let credentialId = getGradeVaultAutofillMetadata\(\)\.identity/);
+  assert.match(storeSource, /name: "Noten-Datenbank"/);
   assert.match(storeSource, /typeof CredentialCtor !== "function"/);
   assert.match(storeSource, /typeof window\.navigator\?\.credentials\?\.store !== "function"/);
   assert.match(storeSource, /catch \(_error\) \{\s*return false;/);
@@ -219,12 +236,12 @@ test('ein vom Vault abgelehntes Passwort bleibt nicht im Feld stehen', () => {
 
   const discardSource = vaultSource(
     '  discardRejectedGradeVaultPassword(mode)',
-    '\n  async storeGradeVaultCredential(password)',
+    '\n  async storeGradeVaultCredential(mode, password)',
   );
   assert.match(discardSource, /if \(mode === "setup"\)/);
-  assert.match(discardSource, /this\.refs\.gradeVaultDialogCurrentPassword/);
+  assert.match(discardSource, /this\.getGradeVaultDialogFields\(mode\)\.currentPassword/);
   assert.match(discardSource, /focusGradeVaultDialogField\(field\)/);
-  assert.doesNotMatch(discardSource, /gradeVaultDialog(?:Password|ConfirmPassword)/);
+  assert.doesNotMatch(discardSource, /gradeVaultDialog(?:Setup|Change|Unlock)Password/);
 });
 
 test('Sitzplan, Gruppen und Picker verwenden keinen hidden-Vorfahren für das Vault-Formular', () => {

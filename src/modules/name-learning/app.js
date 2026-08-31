@@ -8,6 +8,7 @@ const DATA_REQUEST = 'classroom:name-learning-data-request';
 const DATA_RESULT = 'classroom:name-learning-data-result';
 const REVIEW_REQUEST = 'classroom:name-learning-review-request';
 const REVIEW_RESULT = 'classroom:name-learning-review-result';
+const ACCESS_STATE = 'classroom:name-learning-access-state';
 const TUTORIAL_START_REQUEST = 'classroom:help-entry-request';
 const TUTORIAL_COMMAND_EVENT = 'classroom:name-learning-tutorial-command';
 const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
@@ -15,6 +16,7 @@ const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-resp
 const REVIEW_FEEDBACK_DISPLAY_MS = 2250;
 const CARD_FLIP_FALLBACK_MS = 550;
 const refs = {
+  root: document.querySelector('.app'),
   status: document.getElementById('status'), setup: document.getElementById('setup'), courses: document.getElementById('courses'),
   startDue: document.getElementById('start-due'), startDueLabel: document.getElementById('start-due-label'), startRandom: document.getElementById('start-random'),
   practice: document.getElementById('practice'), portrait: document.getElementById('portrait'), portraitReverse: document.getElementById('portrait-reverse'),
@@ -35,6 +37,7 @@ let cancelNextCardTransition = null;
 let reviewFeedbackActive = false;
 let tutorialDemoActive = false;
 let tutorialPreviousState = null;
+let gradeVaultLocked = false;
 
 function post(type, detail = {}) {
   window.parent?.postMessage({
@@ -96,10 +99,50 @@ function hideAll() { refs.practice.hidden = true; refs.empty.hidden = true; }
 function courseName(card) { return String(card.courseName || 'Kurs'); }
 function cardsForSelection() { return cards.filter((card) => selectedCourses.has(Number(card.courseId))); }
 function renderSidebarStatus() {
+  if (gradeVaultLocked) {
+    refs.status.hidden = true;
+    return;
+  }
   refs.status.hidden = true;
 }
 
+function clearSensitiveLearningState() {
+  revokePortrait();
+  resetReviewFeedback();
+  clearNextCardTransitionTimer();
+  cards = [];
+  selectedCourses.clear();
+  queue = [];
+  mode = 'due';
+  tutorialDemoActive = false;
+  tutorialPreviousState = null;
+  refs.courses.textContent = '';
+  refs.setup.hidden = true;
+  refs.portrait.removeAttribute('src');
+  refs.portraitReverse.removeAttribute('src');
+  refs.answer.textContent = '';
+  refs.course.textContent = '';
+  refs.known.disabled = true;
+  refs.unknown.disabled = true;
+  hideAll();
+}
+
+function setGradeVaultLocked(locked) {
+  const nextLocked = Boolean(locked);
+  const wasLocked = gradeVaultLocked;
+  gradeVaultLocked = nextLocked;
+  refs.root?.classList.toggle('is-grade-vault-locked', nextLocked);
+  if (nextLocked) {
+    clearSensitiveLearningState();
+    return;
+  }
+  if (wasLocked && !tutorialDemoActive) {
+    post(DATA_REQUEST, {});
+  }
+}
+
 function renderCourses() {
+  if (gradeVaultLocked) return;
   refs.courses.textContent = '';
   const courses = new Map();
   cards.forEach((card) => {
@@ -118,6 +161,7 @@ function renderCourses() {
 }
 
 function renderSetup() {
+  if (gradeVaultLocked) return;
   resetReviewFeedback(); hideAll(); refs.setup.hidden = false; renderCourses();
   renderModeControls();
   renderSidebarStatus();
@@ -136,6 +180,7 @@ function renderModeControls() {
 }
 
 function showEmpty() {
+  if (gradeVaultLocked) return;
   revokePortrait(); hideAll(); refs.empty.hidden = false;
   refs.emptyTitle.textContent = mode === 'due' ? 'Keine Karten fällig' : 'Keine Karten verfügbar';
   refs.emptyCopy.textContent = mode === 'due' ? 'Du kannst stattdessen zufällig mit den ausgewählten Kursen üben.' : 'Für die ausgewählten Kurse gibt es keine verwendbaren Fotos.';
@@ -144,6 +189,7 @@ function showEmpty() {
 }
 
 function start(nextMode) {
+  if (gradeVaultLocked) return;
   resetReviewFeedback();
   mode = nextMode;
   queue = mode === 'due' ? buildDueQueue(cards, selected()) : buildRandomQueue(cards, selected());
@@ -152,6 +198,7 @@ function start(nextMode) {
 }
 
 function renderCard() {
+  if (gradeVaultLocked) return;
   clearNextCardTransitionTimer();
   const card = queue[0];
   if (!card) { if (mode === 'due') { start('due'); } else { showEmpty(); } return; }
@@ -198,6 +245,7 @@ function renderNextCardAfterFlip() {
 }
 
 function reveal() {
+  if (gradeVaultLocked) return;
   if (refs.flashcard.classList.contains('is-revealed')) return;
   refs.practice.classList.remove('is-ready-to-reveal');
   refs.flashcard.classList.add('is-revealed');
@@ -208,6 +256,7 @@ function reveal() {
   requestAnimationFrame(() => refs.known.focus());
 }
 function review(known) {
+  if (gradeVaultLocked) return;
   const card = queue.shift();
   if (!card) return;
   if (mode === 'random') { renderNextCardAfterFlip(); return; }
@@ -253,6 +302,7 @@ function buildTutorialDemoCards(now = Date.now()) {
 }
 
 function activateTutorialDemo() {
+  if (gradeVaultLocked) return;
   if (tutorialDemoActive) return;
   tutorialPreviousState = {
     cards,
@@ -278,6 +328,10 @@ function cleanupTutorialDemo() {
   selectedCourses = new Set(previous?.selectedCourses || []);
   queue = Array.isArray(previous?.queue) ? previous.queue : [];
   mode = previous?.mode || 'due';
+  if (gradeVaultLocked) {
+    clearSensitiveLearningState();
+    return;
+  }
   if (!cards.length) {
     mode = 'random';
     showEmpty();
@@ -400,7 +454,16 @@ window.addEventListener('message', (event) => {
     handleTutorialCommand(event.data.detail && typeof event.data.detail === 'object' ? event.data.detail : {});
     return;
   }
+  if (event.data.type === ACCESS_STATE) {
+    const detail = event.data.detail && typeof event.data.detail === 'object' ? event.data.detail : {};
+    setGradeVaultLocked(detail.locked === true);
+    return;
+  }
   if (event.data.type === DATA_RESULT) {
+    if (event.data.detail?.unlockCancelled === true || gradeVaultLocked) {
+      setGradeVaultLocked(true);
+      return;
+    }
     const nextCards = Array.isArray(event.data.detail?.cards) ? event.data.detail.cards : [];
     if (tutorialDemoActive) {
       tutorialPreviousState = {

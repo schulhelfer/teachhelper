@@ -23,7 +23,7 @@ test('grade vault lock icons are inline SVGs with independent gradients', () => 
 test('grade vault controls use SVG icons instead of lock emoji text', () => {
   assert.match(shellSource, /innerHTML = locked \? GRADE_VAULT_LOCKED_ICON : GRADE_VAULT_UNLOCKED_ICON/);
   assert.match(gradesSource, /GRADE_VAULT_UNLOCKED_ICON/);
-  assert.match(gradesSource, /submitButton\.innerHTML = GRADE_VAULT_UNLOCKED_ICON/);
+  assert.match(gradesSource, /button\.innerHTML = formMode === normalizedMode \? GRADE_VAULT_UNLOCKED_ICON : ""/);
   assert.doesNotMatch(indexHtml, /tab-grades-unlock[\s\S]*?🔒/);
   assert.doesNotMatch(gradesHtml, /grades-empty-unlock[\s\S]*?🔓/);
   assert.doesNotMatch(gradesHtml, /grade-vault-dialog-submit[\s\S]*?🔓/);
