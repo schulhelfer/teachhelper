@@ -166,15 +166,14 @@ function isStaticAssetRequest(request, url) {
 
 async function preCacheAppShell() {
   const cache = await caches.open(PRECACHE_NAME);
-  const cached = await Promise.all(APP_SHELL.map((asset) => cache.match(asset)));
-  if (cached.every(Boolean)) return;
-  const results = await Promise.allSettled(APP_SHELL.map((asset) => cache.add(asset)));
-  const failedAssets = results
-    .map((result, index) => (result.status === 'rejected' ? APP_SHELL[index] : null))
-    .filter(Boolean);
-  if (failedAssets.length > 0) {
-    console.warn('TeachHelper SW precache skipped assets:', failedAssets);
-  }
+  const entries = await Promise.all(APP_SHELL.map(async (asset) => {
+    const response = await fetch(new Request(asset, { cache: 'no-cache' }));
+    if (!shouldCacheResponse(response)) {
+      throw new Error(`TeachHelper SW: App-Shell-Asset nicht cachebar: ${asset}`);
+    }
+    return [asset, response];
+  }));
+  await Promise.all(entries.map(([asset, response]) => cache.put(asset, response)));
 }
 
 async function waitForRequestIdle() {

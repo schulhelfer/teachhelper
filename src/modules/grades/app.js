@@ -3427,9 +3427,9 @@ class GradesApp {
     this.gradeVaultAutoLockNoticeHandledId = notice.id;
     this.gradeVaultAutoLockNoticePending = null;
     await this.showConfirmMessage(
-      "Die Noten-Datenbank wurde aus Sicherheitsgründen automatisch gesperrt.",
+      "Der Notenbereich wurde aus Sicherheitsgründen automatisch gesperrt.",
       {
-        title: "Noten-Datenbank automatisch gesperrt",
+        title: "Notenbereich automatisch gesperrt",
         okText: "Jetzt entsperren",
         cancelText: "Später",
         onConfirm: () => {
@@ -4441,7 +4441,7 @@ class GradesApp {
       : "in zehn Minuten";
     banner.innerHTML = `
       <div>
-        <strong>Noten-Datenbank weiterhin entsperrt</strong>
+        <strong>Notenbereich weiterhin entsperrt</strong>
         <p>${escapeHtml(warning.message)} Bitte speichere die Noten. Nächster Sperrversuch: ${escapeHtml(retryLabel)}.</p>
       </div>
       <div class="button-row">
@@ -4455,7 +4455,7 @@ class GradesApp {
   updateGradeVaultActionButtons() {
     const mode = this.getGradeVaultStatusMode();
     if (this.refs.gradeVaultToggleBtn) {
-      this.refs.gradeVaultToggleBtn.textContent = "Noten-Datenbank entsperren";
+      this.refs.gradeVaultToggleBtn.textContent = "Notenbereich entsperren";
       this.refs.gradeVaultToggleBtn.disabled = false;
       this.refs.gradeVaultToggleBtn.hidden = mode === "ready" || mode === "off";
     }
@@ -4502,16 +4502,16 @@ class GradesApp {
       this.refs.gradeVaultDialogError.textContent = "";
     }
     if (isSetupMode) {
-      this.refs.gradeVaultDialogTitle.textContent = "Passwort für Noten-Verschlüsselung";
-      this.refs.gradeVaultDialogText.textContent = "Vergib ein Passwort, damit Notendaten verschlüsselt werden.";
+      this.refs.gradeVaultDialogTitle.textContent = "Passwort für Notenverschlüsselung";
+      this.refs.gradeVaultDialogText.textContent = "Vergib ein Passwort, damit Notendaten und zugehörige Daten im Notenmodul verschlüsselt werden. Andere Inhalte der Datenbank werden nicht verschlüsselt.";
       this.refs.gradeVaultDialogHint.textContent = `Mindestens ${GRADE_VAULT_PASSWORD_MIN_LENGTH} Zeichen. Es gibt keine Wiederherstellungsfunktion.`;
     } else if (isChangeMode) {
       this.refs.gradeVaultDialogTitle.textContent = "Passwort ändern";
       this.refs.gradeVaultDialogText.textContent = "Gib zuerst das aktuelle Passwort ein. Danach wird der geschützte Bereich mit neuem Salt und neuem IV vollständig neu verschlüsselt.";
       this.refs.gradeVaultDialogHint.textContent = `Mindestens ${GRADE_VAULT_PASSWORD_MIN_LENGTH} Zeichen. Ohne aktuelles Passwort ist keine Änderung möglich.`;
     } else {
-      this.refs.gradeVaultDialogTitle.textContent = "Noten-Datenbank entsperren";
-      this.refs.gradeVaultDialogText.textContent = "Gib das Passwort zum Öffnen der verschlüsselten Noten-Datenbank ein.";
+      this.refs.gradeVaultDialogTitle.textContent = "Notenbereich entsperren";
+      this.refs.gradeVaultDialogText.textContent = "Gib das Passwort ein, um die verschlüsselten Notendaten und zugehörigen Daten im Notenmodul zu öffnen.";
       this.refs.gradeVaultDialogHint.textContent = "";
     }
     if (isUnlockMode) {
@@ -4738,7 +4738,7 @@ class GradesApp {
       await window.navigator.credentials.store(new CredentialCtor({
         id: credentialId,
         password: credentialPassword,
-        name: "Noten-Datenbank"
+        name: "TeachHelper Notenmodul"
       }));
       return true;
     } catch (_error) {
@@ -4780,7 +4780,7 @@ class GradesApp {
 
   async resolveDirtyGradeVaultLock() {
     const choice = await this.showChoiceMessage(
-      "Die Noten-Datenbank enthält ungespeicherte Änderungen.",
+      "Der Notenbereich enthält ungespeicherte Änderungen.",
       {
         title: "Noten speichern",
         okText: "Speichern & sperren",
@@ -4795,7 +4795,7 @@ class GradesApp {
         const saved = await this.saveGradeVaultChanges();
         if (!saved) {
           await this.showInfoMessage(
-            "Die Noten konnten nicht gespeichert werden. Die Noten-Datenbank bleibt entsperrt.",
+            "Die Noten konnten nicht gespeichert werden. Der Notenbereich bleibt entsperrt.",
             "Noten speichern"
           );
           return false;
@@ -4812,8 +4812,8 @@ class GradesApp {
       await this.showInfoMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Die Noten-Datenbank konnte nicht gesperrt werden.",
-        "Noten-Datenbank sperren"
+          : "Der Notenbereich konnte nicht gesperrt werden.",
+        "Notenbereich sperren"
       );
       return false;
     }
@@ -11237,8 +11237,8 @@ class GradesApp {
                 await this.showInfoMessage(
                   error instanceof Error && error.message
                     ? error.message
-                    : "Die Noten-Datenbank konnte nicht gesperrt werden.",
-                  "Noten-Datenbank sperren"
+                    : "Der Notenbereich konnte nicht gesperrt werden.",
+                  "Notenbereich sperren"
                 );
               }
             } finally {
@@ -13486,7 +13486,7 @@ class GradesApp {
       this.activeGradeOverrideContext = null;
       this.clearPrivacyFocusedGradeStudent();
       this.hideGradePrivacyOverlay();
-      this.setGradesOverviewEmptyState("Noten-Datenbank verschlüsselt", "", {
+      this.setGradesOverviewEmptyState("Notendaten verschlüsselt", "", {
         showUnlockButton: true
       });
       return;
@@ -14350,7 +14350,7 @@ class GradesApp {
       if (this.isGradeVaultEncryptionEnabled() && !this.hasGradeVaultUnlockConfig()) {
         this.renderGradesEntryEmptyState(
           "Passwort erforderlich",
-          "Zum Verwenden des Notenmoduls ist es erforderlich, ein Passwort für das Verschlüsseln der Noten-Datenbank festzulegen.",
+          "Zum Verwenden des Notenmoduls ist es erforderlich, ein Passwort zum Verschlüsseln von Notendaten und zugehörigen Daten festzulegen.",
           { showUnlockButton: true }
         );
         return;
@@ -14367,7 +14367,7 @@ class GradesApp {
     if (!canAccessVault) {
       this.clearActiveGradeAssessment();
       this.renderGradesEntryEmptyState(
-        "Noten-Datenbank verschlüsselt",
+        "Notendaten verschlüsselt",
         "",
         { showUnlockButton: true }
       );

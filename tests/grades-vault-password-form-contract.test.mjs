@@ -191,7 +191,7 @@ test('ein erfolgreicher Vault-Vorgang meldet die Zugangsdaten explizit an den Br
   assert.match(storeSource, /const form = this\.getGradeVaultDialogForm\(mode\)/);
   assert.match(storeSource, /new CredentialCtor\(form\)/);
   assert.match(storeSource, /let credentialId = getGradeVaultAutofillMetadata\(\)\.identity/);
-  assert.match(storeSource, /name: "Noten-Datenbank"/);
+  assert.match(storeSource, /name: "TeachHelper Notenmodul"/);
   assert.match(storeSource, /typeof CredentialCtor !== "function"/);
   assert.match(storeSource, /typeof window\.navigator\?\.credentials\?\.store !== "function"/);
   assert.match(storeSource, /catch \(_error\) \{\s*return false;/);

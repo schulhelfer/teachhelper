@@ -148,22 +148,26 @@ test('the app version is stamped only after successful local checks', async () =
   assert.doesNotMatch(stampScript, /write-tree/);
 });
 
-test('a complete precache is left alone while an incomplete one is refilled entirely', () => {
+test('an install never reuses an existing precache without revalidating it', () => {
   const precacheBody = serviceWorkerSource.match(/async function preCacheAppShell\([\s\S]*?\n\}/);
   assert.ok(precacheBody, 'service worker must declare preCacheAppShell');
-  assert.match(
-    precacheBody[0],
-    /const cached = await Promise\.all\(APP_SHELL\.map\(\(asset\) => cache\.match\(asset\)\)\);\s*if \(cached\.every\(Boolean\)\) return;/,
-  );
+  assert.doesNotMatch(precacheBody[0], /cached\.every\(Boolean\)/);
+  assert.doesNotMatch(precacheBody[0], /cache\.add\(/);
 });
 
-test('precaching the app shell does not bypass the HTTP cache', () => {
-  assert.match(
-    serviceWorkerSource,
-    /APP_SHELL\.map\(\(asset\) => cache\.add\(asset\)\)/,
-  );
+test('the app shell is revalidated against the server on install instead of trusting the HTTP cache', () => {
+  const precacheBody = serviceWorkerSource.match(/async function preCacheAppShell\([\s\S]*?\n\}/);
+  assert.ok(precacheBody, 'service worker must declare preCacheAppShell');
+  assert.match(precacheBody[0], /new Request\(asset, \{ cache: 'no-cache' \}\)/);
   assert.doesNotMatch(serviceWorkerSource, /\{ cache: 'reload' \}/);
-  assert.doesNotMatch(serviceWorkerSource, /cache\.add\(new Request\(/);
+});
+
+test('a failed app shell asset aborts the install instead of activating a partial shell', () => {
+  const precacheBody = serviceWorkerSource.match(/async function preCacheAppShell\([\s\S]*?\n\}/);
+  assert.ok(precacheBody, 'service worker must declare preCacheAppShell');
+  assert.doesNotMatch(precacheBody[0], /allSettled/);
+  assert.match(precacheBody[0], /shouldCacheResponse\(response\)/);
+  assert.match(precacheBody[0], /throw new Error\(/);
 });
 
 test('heavy optional assets are precached after the start, not during install', () => {

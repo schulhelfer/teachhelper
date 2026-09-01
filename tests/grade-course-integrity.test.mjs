@@ -221,7 +221,7 @@ test('editing existing and new assessments in course B keeps course A and both r
   const reloaded = thdb.parseThdb1ContainerBytes(built.bytes, {
     schemas: ['test-two-courses-v2'],
     includeGradeCourseSegments: true,
-    requireIntegrity: true,
+    requireChecksums: true,
   });
   assert.ok(reloaded);
   const reloadedByCourse = new Map(

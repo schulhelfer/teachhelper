@@ -136,7 +136,8 @@ test('ordnet die weiteren Touren vollständig und aufgabenorientiert', () => {
 });
 
 test('benennt Gesten, Berechtigungen und Sicherheitsfolgen eindeutig', () => {
-  assert.match(cases.grades, /Ohne Passwort lassen sie sich nicht wiederherstellen\./);
+  assert.match(cases.grades, /Andere Inhalte der Datenbank werden nicht verschlüsselt\./);
+  assert.match(cases.grades, /Ohne Passwort lassen sich die geschützten Daten nicht wiederherstellen\./);
   assert.match(cases.grades, /Rechtsklick auf eine Leistungsspalte/);
   assert.match(cases.planning, /Doppelklicke eine freie Zelle/);
   assert.match(cases.groups, /Doppelklick sperrt eine Gruppe/);

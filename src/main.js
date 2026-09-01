@@ -253,7 +253,7 @@ import {
       ? new Date(retryAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
       : 'in zehn Minuten';
     showMessage(
-      `Die Noten-Datenbank konnte nicht automatisch gesperrt werden, weil ungespeicherte Noten vorhanden sind. Bitte speichere die Noten. Nächster Sperrversuch: ${retryLabel}.`,
+      `Der Notenbereich konnte nicht automatisch gesperrt werden, weil ungespeicherte Noten vorhanden sind. Bitte speichere die Noten. Nächster Sperrversuch: ${retryLabel}.`,
       'warn',
       { enqueue: true }
     );
@@ -978,7 +978,7 @@ import {
               ),
               gradesStep(
                 'Noten verschlüsseln',
-                'Schütze den Notenbereich mit einem Passwort. Ohne Passwort lassen sie sich nicht wiederherstellen.',
+                'Schütze Notendaten und zugehörige Daten im Notenmodul mit einem Passwort. Andere Inhalte der Datenbank werden nicht verschlüsselt. Ohne Passwort lassen sich die geschützten Daten nicht wiederherstellen.',
                 '[data-tutorial-anchor="grades-encryption"]',
                 'gradesEncryption',
                 'right'

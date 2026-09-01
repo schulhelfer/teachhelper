@@ -187,8 +187,8 @@ test('nutzt nach Bestätigung des Auto-Lock-Hinweises den Entsperrpfad des Vorde
 
   assert.equal(captureGradeVaultAutoLockNotice.call(app, { id: 'auto-lock-1' }), true);
   assert.equal(await presentGradeVaultAutoLockNotice.call(app), true);
-  assert.equal(noticeCalls[0][0], 'Die Noten-Datenbank wurde aus Sicherheitsgründen automatisch gesperrt.');
-  assert.equal(noticeCalls[0][1].title, 'Noten-Datenbank automatisch gesperrt');
+  assert.equal(noticeCalls[0][0], 'Der Notenbereich wurde aus Sicherheitsgründen automatisch gesperrt.');
+  assert.equal(noticeCalls[0][1].title, 'Notenbereich automatisch gesperrt');
   assert.equal(noticeCalls[0][1].okText, 'Jetzt entsperren');
   assert.equal(noticeCalls[0][1].cancelText, 'Später');
   assert.equal(typeof noticeCalls[0][1].onConfirm, 'function');

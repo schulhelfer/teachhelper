@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [html, css, appSource] = await Promise.all([
+const [html, css, appSource, helpCenterSource] = await Promise.all([
   readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/help-center.js', import.meta.url), 'utf8'),
 ]);
 
 test('der Verschlüsselungs-Tab gruppiert Verschlüsselung, Sperre und Passwort klar', () => {
@@ -19,6 +20,13 @@ test('der Verschlüsselungs-Tab gruppiert Verschlüsselung, Sperre und Passwort 
   assert.match(html, /id="grade-vault-settings-action-btn" type="button">Passwort ändern</);
   assert.doesNotMatch(html, /grade-vault-settings-(?:status|hint)/);
   assert.doesNotMatch(appSource, /gradeVaultSettings(?:Status|Hint)/);
+});
+
+test('dokumentiert den begrenzten Verschlüsselungsumfang in Einstellungen und Hilfe', () => {
+  const scopeHint = 'Die Verschlüsselung schützt Notendaten und zugehörige Daten im Notenmodul. Andere Inhalte der Datenbank werden nicht verschlüsselt.';
+  assert.match(html, /Die Verschlüsselung schützt Notendaten und zugehörige Daten im\s+Notenmodul\. Andere Inhalte der Datenbank werden nicht verschlüsselt\./);
+  assert.match(helpCenterSource, new RegExp(scopeHint));
+  assert.match(css, /\.grade-vault-scope-hint\s*\{/);
 });
 
 test('abhängige Vault-Einstellungen folgen dem ungespeicherten Verschlüsselungsentwurf', () => {

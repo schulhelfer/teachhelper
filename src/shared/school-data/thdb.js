@@ -181,7 +181,7 @@ function normalizeDescriptor(raw) {
   return { courseId, offset, length, contentHash };
 }
 
-function normalizeIntegrity(raw) {
+function normalizeChecksums(raw) {
   if (!raw || typeof raw !== 'object') return null;
   const version = normalizePositiveInteger(raw.version);
   const algorithm = String(raw.algorithm || '').toUpperCase();
@@ -207,7 +207,7 @@ function normalizeIntegrity(raw) {
   };
 }
 
-function canonicalContentHash({
+function canonicalContentChecksum({
   schema,
   startupShellHash,
   planningPublicHash,
@@ -240,7 +240,7 @@ function canonicalContentHash({
   })));
 }
 
-function buildContentIntegrity({
+function buildContentChecksums({
   schema,
   startupShellBytes,
   planningPublicBytes,
@@ -260,7 +260,7 @@ function buildContentIntegrity({
     startupShellHash,
     planningPublicHash,
     gradeVaultConfigHash,
-    contentHash: canonicalContentHash({
+    contentHash: canonicalContentChecksum({
       schema,
       startupShellHash,
       planningPublicHash,
@@ -272,7 +272,7 @@ function buildContentIntegrity({
 }
 
 
-export function getThdb1ContentHash({
+export function getThdb1ContentChecksum({
   schema,
   startupShellText,
   planningPublicText = '',
@@ -297,7 +297,7 @@ export function getThdb1ContentHash({
     seenCourseIds.add(courseId);
     return { courseId, bytes: utf8Bytes(text) };
   });
-  return buildContentIntegrity({
+  return buildContentChecksums({
     schema: normalizedSchema,
     startupShellBytes: utf8Bytes(shellText),
     planningPublicBytes: utf8Bytes(String(planningPublicText ?? '')),
@@ -345,9 +345,10 @@ export function parseThdb1Header(bytes, { schemas = [] } = {}) {
   ) return null;
   const gradeCourseSegments = (raw.gradeCourseSegments || []).map(normalizeDescriptor);
   if (gradeCourseSegments.some((descriptor) => !descriptor)) return null;
-  const declaresIntegrity = Object.prototype.hasOwnProperty.call(raw, 'integrity');
-  const integrity = declaresIntegrity ? normalizeIntegrity(raw.integrity) : null;
-  if (declaresIntegrity && !integrity) return null;
+  const declaresChecksums = Object.prototype.hasOwnProperty.call(raw, 'integrity');
+  const rawChecksums = raw.integrity;
+  const checksums = declaresChecksums ? normalizeChecksums(rawChecksums) : null;
+  if (declaresChecksums && !checksums) return null;
   const header = {
     schema,
     revision,
@@ -361,7 +362,7 @@ export function parseThdb1Header(bytes, { schemas = [] } = {}) {
     gradeVaultConfigOffset,
     gradeVaultConfigLength,
     gradeCourseSegments,
-    integrity,
+    integrity: checksums,
   };
   return { header, headerBytesLength: secondEnd + 1 };
 }
@@ -414,9 +415,9 @@ function inspectContainerLayout(bytes, { schemas = [] } = {}) {
   return { ok: true, view, header, headerBytesLength };
 }
 
-function computeLayoutIntegrity(layout) {
+function computeLayoutChecksums(layout) {
   const { view, header } = layout;
-  return buildContentIntegrity({
+  return buildContentChecksums({
     schema: header.schema,
     startupShellBytes: view.slice(header.startupShellOffset, header.startupShellOffset + header.startupShellLength),
     planningPublicBytes: view.slice(header.planningPublicOffset, header.planningPublicOffset + header.planningPublicLength),
@@ -435,20 +436,21 @@ function computeLayoutIntegrity(layout) {
 
 
 
-export function verifyThdb1ContainerIntegrity(bytes, { schemas = [], requireIntegrity = false } = {}) {
+export function verifyThdb1ContainerChecksums(bytes, { schemas = [], requireChecksums = false } = {}) {
   const layout = inspectContainerLayout(bytes, { schemas });
   if (!layout.ok) {
     return { ok: false, legacy: false, reason: layout.reason, contentHash: '' };
   }
-  const computed = computeLayoutIntegrity(layout);
+  const computed = computeLayoutChecksums(layout);
   const { header } = layout;
+  const declaredChecksums = header.integrity;
   const descriptorHashes = header.gradeCourseSegments.map((descriptor) => descriptor.contentHash);
-  if (!header.integrity) {
+  if (!declaredChecksums) {
     if (descriptorHashes.some(Boolean)) {
-      return { ok: false, legacy: false, reason: 'partial-integrity', contentHash: computed.contentHash };
+      return { ok: false, legacy: false, reason: 'partial-checksums', contentHash: computed.contentHash };
     }
-    if (requireIntegrity) {
-      return { ok: false, legacy: true, reason: 'missing-integrity', contentHash: computed.contentHash };
+    if (requireChecksums) {
+      return { ok: false, legacy: true, reason: 'missing-checksums', contentHash: computed.contentHash };
     }
     return {
       ok: true,
@@ -462,7 +464,7 @@ export function verifyThdb1ContainerIntegrity(bytes, { schemas = [], requireInte
     };
   }
   if (descriptorHashes.some((hash) => !hash)) {
-    return { ok: false, legacy: false, reason: 'partial-integrity', contentHash: computed.contentHash };
+    return { ok: false, legacy: false, reason: 'partial-checksums', contentHash: computed.contentHash };
   }
   const computedByCourseId = new Map(
     computed.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
@@ -471,17 +473,17 @@ export function verifyThdb1ContainerIntegrity(bytes, { schemas = [], requireInte
     (descriptor) => computedByCourseId.get(descriptor.courseId) !== descriptor.contentHash,
   );
   if (courseMismatch) {
-    return { ok: false, legacy: false, reason: 'grade-course-integrity-mismatch', contentHash: computed.contentHash };
+    return { ok: false, legacy: false, reason: 'grade-course-checksum-mismatch', contentHash: computed.contentHash };
   }
   if (
-    header.integrity.startupShellHash !== computed.startupShellHash
-    || header.integrity.planningPublicHash !== computed.planningPublicHash
-    || header.integrity.gradeVaultConfigHash !== computed.gradeVaultConfigHash
+    declaredChecksums.startupShellHash !== computed.startupShellHash
+    || declaredChecksums.planningPublicHash !== computed.planningPublicHash
+    || declaredChecksums.gradeVaultConfigHash !== computed.gradeVaultConfigHash
   ) {
-    return { ok: false, legacy: false, reason: 'segment-integrity-mismatch', contentHash: computed.contentHash };
+    return { ok: false, legacy: false, reason: 'segment-checksum-mismatch', contentHash: computed.contentHash };
   }
-  if (header.integrity.contentHash !== computed.contentHash) {
-    return { ok: false, legacy: false, reason: 'container-integrity-mismatch', contentHash: computed.contentHash };
+  if (declaredChecksums.contentHash !== computed.contentHash) {
+    return { ok: false, legacy: false, reason: 'container-checksum-mismatch', contentHash: computed.contentHash };
   }
   return {
     ok: true,
@@ -496,7 +498,7 @@ export function verifyThdb1ContainerIntegrity(bytes, { schemas = [], requireInte
 }
 
 
-export function getThdb1SegmentContentHash(bytes, locator) {
+export function getThdb1SegmentChecksum(bytes, locator) {
   let view;
   try {
     view = asUint8Array(bytes);
@@ -560,7 +562,7 @@ export function buildThdb1ContainerBytes({
     seenCourseIds.add(courseId);
     return { courseId, text, bytes: utf8Bytes(text) };
   }).sort((left, right) => left.courseId - right.courseId);
-  const integrity = buildContentIntegrity({
+  const checksums = buildContentChecksums({
     schema: normalizedSchema,
     startupShellBytes: shellBytes,
     planningPublicBytes: publicBytes,
@@ -568,8 +570,16 @@ export function buildThdb1ContainerBytes({
     gradeCourseSegments: courses,
   });
   const courseHashes = new Map(
-    integrity.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
+    checksums.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
   );
+  const serializedChecksums = {
+    version: checksums.version,
+    algorithm: checksums.algorithm,
+    startupShellHash: checksums.startupShellHash,
+    planningPublicHash: checksums.planningPublicHash,
+    gradeVaultConfigHash: checksums.gradeVaultConfigHash,
+    contentHash: checksums.contentHash,
+  };
   let header = {
     schema: normalizedSchema,
     revision: normalizedRevision,
@@ -588,14 +598,7 @@ export function buildThdb1ContainerBytes({
       length: course.bytes.length,
       contentHash: courseHashes.get(course.courseId),
     })),
-    integrity: {
-      version: integrity.version,
-      algorithm: integrity.algorithm,
-      startupShellHash: integrity.startupShellHash,
-      planningPublicHash: integrity.planningPublicHash,
-      gradeVaultConfigHash: integrity.gradeVaultConfigHash,
-      contentHash: integrity.contentHash,
-    },
+    integrity: serializedChecksums,
   };
   let stable = false;
   for (let guard = 0; guard < 16; guard += 1) {
@@ -644,7 +647,7 @@ export function buildThdb1ContainerBytes({
     startupShellText: shellText,
     planningPublicText: publicText,
     gradeVaultConfigText: configText,
-    contentHash: integrity.contentHash,
+    contentHash: checksums.contentHash,
   };
 }
 
@@ -652,15 +655,15 @@ export function parseThdb1ContainerBytes(bytes, {
   schemas = [],
   includePlanningPublic = true,
   includeGradeCourseSegments = false,
-  requireIntegrity = false,
+  requireChecksums = false,
 } = {}) {
   const layout = inspectContainerLayout(bytes, { schemas });
   if (!layout.ok) return null;
-  const integrity = verifyThdb1ContainerIntegrity(layout.view, { schemas, requireIntegrity });
-  if (!integrity.ok) return null;
+  const checksums = verifyThdb1ContainerChecksums(layout.view, { schemas, requireChecksums });
+  if (!checksums.ok) return null;
   const { view, header } = layout;
   const actualCourseHashes = new Map(
-    integrity.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
+    checksums.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
   );
   const directory = {};
   for (const descriptor of header.gradeCourseSegments) {
@@ -678,8 +681,8 @@ export function parseThdb1ContainerBytes(bytes, {
   const read = (offset, length) => utf8Text(view.slice(offset, offset + length));
   return {
     header,
-    integrity,
-    contentHash: integrity.contentHash,
+    checksums,
+    contentHash: checksums.contentHash,
     startupShellText: read(header.startupShellOffset, header.startupShellLength),
     planningPublicText: includePlanningPublic
       ? read(header.planningPublicOffset, header.planningPublicLength)
@@ -688,7 +691,7 @@ export function parseThdb1ContainerBytes(bytes, {
       ? {
         offset: header.planningPublicOffset,
         length: header.planningPublicLength,
-        contentHash: integrity.planningPublicHash,
+        contentHash: checksums.planningPublicHash,
       }
       : null,
     gradeVaultConfigText: read(header.gradeVaultConfigOffset, header.gradeVaultConfigLength),
@@ -696,7 +699,7 @@ export function parseThdb1ContainerBytes(bytes, {
       ? {
         offset: header.gradeVaultConfigOffset,
         length: header.gradeVaultConfigLength,
-        contentHash: integrity.gradeVaultConfigHash,
+        contentHash: checksums.gradeVaultConfigHash,
       }
       : null,
     gradeCourseDirectory: directory,

@@ -220,6 +220,7 @@ export const HELP_ARTICLES = [
     { title: 'Ergebnisse prüfen', text: 'Nach der Eingabe zeigt die Übersicht Werte, Gewichtungen und Verteilungen. Kontrolliere Ausreißer und fehlende Werte vor dem Speichern; Korrekturen gehören in den jeweiligen Leistungseintrag.' },
   ]),
   article('grades-protection', 'grades', 'Schutz sensibler Notendaten', 'Passwortschutz, Privatsphäre und Sicherung der Notendaten.', ['passwort', 'schutz', 'datenschutz', 'privacy', 'verschluesselung', 'backup'], [
+    { title: 'Umfang der Verschlüsselung', text: 'Die Verschlüsselung schützt Notendaten und zugehörige Daten im Notenmodul. Andere Inhalte der Datenbank werden nicht verschlüsselt.' },
     { title: 'Vertraulich arbeiten', text: 'Sperre den Notenbereich, sobald du den Arbeitsplatz verlässt. Verwende ein Passwort, das nicht mit anderen Zugängen geteilt wird, und zeige Übersichten nur Personen, die sie sehen dürfen.' },
     { title: 'Vor Änderungen sichern', text: 'Bei verbundenem Backup-Ordner erstellt TeachHelper vor bestimmten Abläufen eine Sicherung. Prüfe dennoch nach umfangreichen Änderungen, ob die Datenbankdatei und die Sicherung am erwarteten Ort liegen.' },
   ]),

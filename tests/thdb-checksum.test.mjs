@@ -173,7 +173,7 @@ test('new containers carry offsets-independent hashes for every segment', () => 
   assert.match(first.contentHash, /^sha256:[0-9a-f]{64}$/);
   assert.equal(first.header.integrity.contentHash, first.contentHash);
   assert.equal(thdb.getThdb1FileHash(first.bytes), `sha256:${createHash('sha256').update(first.bytes).digest('hex')}`);
-  assert.equal(thdb.getThdb1ContentHash({
+  assert.equal(thdb.getThdb1ContentChecksum({
     schema: 'test-db-v2',
     startupShellText: '{"shell":true}',
     planningPublicText: '{"courses":[1,2]}',
@@ -185,16 +185,18 @@ test('new containers carry offsets-independent hashes for every segment', () => 
   }), first.contentHash);
   assert.ok(first.header.gradeCourseSegments.every((segment) => /^sha256:[0-9a-f]{64}$/.test(segment.contentHash)));
 
-  const verified = thdb.verifyThdb1ContainerIntegrity(first.bytes, { schemas: ['test-db-v2'] });
+  const verified = thdb.verifyThdb1ContainerChecksums(first.bytes, { schemas: ['test-db-v2'] });
   assert.equal(verified.ok, true);
   assert.equal(verified.legacy, false);
   assert.equal(verified.contentHash, first.contentHash);
   const parsed = thdb.parseThdb1ContainerBytes(first.bytes, {
     schemas: ['test-db-v2'],
     includeGradeCourseSegments: true,
-    requireIntegrity: true,
+    requireChecksums: true,
   });
   assert.ok(parsed);
+  assert.ok(parsed.checksums);
+  assert.equal(parsed.integrity, undefined);
   assert.equal(parsed.contentHash, first.contentHash);
   assert.deepEqual(parsed.gradeCourseSegments.map((segment) => segment.courseId), [1, 2]);
   assert.ok(parsed.gradeCourseSegments.every((segment) => segment.locator.contentHash));
@@ -204,14 +206,14 @@ test('same-length data changes are detected instead of being confused by locator
   const built = sampleContainer();
   const changed = built.bytes.slice();
   const course = built.header.gradeCourseSegments.find((segment) => segment.courseId === 2);
-  const originalHash = thdb.getThdb1SegmentContentHash(changed, course);
+  const originalHash = thdb.getThdb1SegmentChecksum(changed, course);
   changed[course.offset + course.length - 3] ^= 1;
 
   assert.equal(changed.length, built.bytes.length);
-  assert.notEqual(thdb.getThdb1SegmentContentHash(changed, course), originalHash);
-  const verified = thdb.verifyThdb1ContainerIntegrity(changed);
+  assert.notEqual(thdb.getThdb1SegmentChecksum(changed, course), originalHash);
+  const verified = thdb.verifyThdb1ContainerChecksums(changed);
   assert.equal(verified.ok, false);
-  assert.equal(verified.reason, 'grade-course-integrity-mismatch');
+  assert.equal(verified.reason, 'grade-course-checksum-mismatch');
   assert.equal(thdb.parseThdb1ContainerBytes(changed), null);
 });
 
@@ -221,7 +223,7 @@ test('selective reads still verify every segment and the complete physical file'
     schemas: ['test-db-v2'],
     includePlanningPublic: false,
     includeGradeCourseSegments: [1],
-    requireIntegrity: true,
+    requireChecksums: true,
   });
   assert.ok(selected);
   assert.equal(selected.planningPublicText, '');
@@ -240,7 +242,7 @@ test('selective reads still verify every segment and the complete physical file'
   assert.equal(thdb.parseThdb1ContainerBytes(tamperedUnrequestedPublicData, {
     includePlanningPublic: false,
     includeGradeCourseSegments: [1],
-  }), null, 'excluded public data must still be integrity-checked');
+  }), null, 'excluded public data must still be checksum-checked');
 
   const anotherRevision = sampleContainer({ revision: built.header.revision + 1 });
   assert.equal(anotherRevision.contentHash, built.contentHash);
@@ -251,24 +253,24 @@ test('selective reads still verify every segment and the complete physical file'
   );
 });
 
-test('legacy containers remain readable but can be rejected when integrity is mandatory', () => {
+test('legacy containers remain readable but can be rejected when checksums are mandatory', () => {
   const legacy = buildLegacyContainer({
     gradeCourseSegments: [
       { courseId: 1, text: '{"students":[1]}' },
       { courseId: 2, text: '{"students":[2]}' },
     ],
   });
-  const verified = thdb.verifyThdb1ContainerIntegrity(legacy, { schemas: ['test-db-v1'] });
+  const verified = thdb.verifyThdb1ContainerChecksums(legacy, { schemas: ['test-db-v1'] });
   assert.equal(verified.ok, true);
   assert.equal(verified.legacy, true);
   assert.match(verified.contentHash, /^sha256:[0-9a-f]{64}$/);
   assert.ok(thdb.parseThdb1ContainerBytes(legacy, { includeGradeCourseSegments: true }));
 
-  const strict = thdb.verifyThdb1ContainerIntegrity(legacy, { requireIntegrity: true });
+  const strict = thdb.verifyThdb1ContainerChecksums(legacy, { requireChecksums: true });
   assert.equal(strict.ok, false);
   assert.equal(strict.legacy, true);
-  assert.equal(strict.reason, 'missing-integrity');
-  assert.equal(thdb.parseThdb1ContainerBytes(legacy, { requireIntegrity: true }), null);
+  assert.equal(strict.reason, 'missing-checksums');
+  assert.equal(thdb.parseThdb1ContainerBytes(legacy, { requireChecksums: true }), null);
 });
 
 test('malformed, duplicated, partial, and trailing container data fails closed', () => {
@@ -293,7 +295,7 @@ test('malformed, duplicated, partial, and trailing container data fails closed',
       { courseId: 1, text: 'second' },
     ],
   });
-  assert.equal(thdb.verifyThdb1ContainerIntegrity(duplicate).ok, false);
+  assert.equal(thdb.verifyThdb1ContainerChecksums(duplicate).ok, false);
   assert.equal(thdb.parseThdb1ContainerBytes(duplicate), null);
 
   const partial = buildLegacyContainer({
@@ -303,15 +305,15 @@ test('malformed, duplicated, partial, and trailing container data fails closed',
       contentHash: `sha256:${'0'.repeat(64)}`,
     }),
   });
-  const partialResult = thdb.verifyThdb1ContainerIntegrity(partial);
+  const partialResult = thdb.verifyThdb1ContainerChecksums(partial);
   assert.equal(partialResult.ok, false);
-  assert.equal(partialResult.reason, 'partial-integrity');
+  assert.equal(partialResult.reason, 'partial-checksums');
 
   const valid = sampleContainer().bytes;
   const withTrailingByte = new Uint8Array(valid.length + 1);
   withTrailingByte.set(valid);
   withTrailingByte[withTrailingByte.length - 1] = 10;
-  const trailingResult = thdb.verifyThdb1ContainerIntegrity(withTrailingByte);
+  const trailingResult = thdb.verifyThdb1ContainerChecksums(withTrailingByte);
   assert.equal(trailingResult.ok, false);
   assert.equal(trailingResult.reason, 'unexpected-trailing-or-missing-bytes');
 });
@@ -328,7 +330,7 @@ test('declared hashes are bound to course IDs and header metadata cannot disguis
   const changed = built.bytes.slice();
   changed.set(replacement, built.bytes.indexOf(10) + 1);
 
-  const result = thdb.verifyThdb1ContainerIntegrity(changed);
+  const result = thdb.verifyThdb1ContainerChecksums(changed);
   assert.equal(result.ok, false);
-  assert.equal(result.reason, 'grade-course-integrity-mismatch');
+  assert.equal(result.reason, 'grade-course-checksum-mismatch');
 });

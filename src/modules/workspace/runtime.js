@@ -551,7 +551,7 @@ export class WorkspaceRuntime {
         }
         const locked = await this.lockGradeVaultSession({ autoLock: true });
         if (locked || !this.isGradeVaultUnlocked()) return locked;
-        throw new Error('Die Noten-Datenbank konnte nicht automatisch gesperrt werden.');
+        throw new Error('Der Notenbereich konnte nicht automatisch gesperrt werden.');
       };
       const promise = this.operationTail.then(autoLock, autoLock);
       this.operationTail = promise.catch(() => undefined);
@@ -585,7 +585,7 @@ export class WorkspaceRuntime {
     }
     const saved = await this.saveToConnectedFile('grade-vault-auto-lock');
     if (!saved || this.dirtyCourseIds.size > 0) {
-      throw new Error('Die Noten-Datenbank konnte vor dem automatischen Sperren nicht vollständig gespeichert werden.');
+      throw new Error('Die Notendaten konnten vor dem automatischen Sperren nicht vollständig gespeichert werden.');
     }
     return true;
   }
