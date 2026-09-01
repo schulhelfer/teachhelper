@@ -2,6 +2,7 @@ import {
   buildThdb1ContainerBytes,
   getThdb1FileHashAsync,
   parseThdb1ContainerBytes,
+  parseThdb1Header,
 } from '../../shared/school-data/thdb.js';
 import { FILE_LIMITS, formatFileSize } from '../../shared/file-guards.js';
 import { writeAndVerifyFileBytes } from '../../shared/school-data/sync-safety.js';
@@ -23,6 +24,8 @@ import {
   WORKSPACE_COMMAND_REORDER_COURSES,
   WORKSPACE_COMMAND_UPDATE_COURSE,
   WORKSPACE_ERROR_PERSISTENCE_CONFLICT,
+  WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS,
+  WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE,
   WORKSPACE_ERROR_VAULT_DIRTY,
   WORKSPACE_ERROR_VAULT_LOCKED,
 } from '../../shared/school-data/messages.js';
@@ -149,6 +152,36 @@ function gradeStateHasPersistedStructure(state, courseId) {
     Array.isArray(periodCategories[period])
     && periodCategories[period].some((category) => Number(category?.id || 0) > 0)
   ));
+}
+
+function buildCourseContentSignature(state, courseId) {
+  const id = Number(courseId) || 0;
+  const rowsForCourse = (key) => (Array.isArray(state?.[key]) ? state[key] : [])
+    .filter((entry) => Number(entry?.courseId) === id);
+  const students = rowsForCourse('gradeStudents');
+  const assessments = rowsForCourse('gradeAssessments');
+  const studentIds = new Set(students.map((student) => Number(student?.id) || 0).filter(Boolean));
+  const assessmentIds = new Set(assessments.map((assessment) => Number(assessment?.id) || 0).filter(Boolean));
+  const entries = (Array.isArray(state?.gradeEntries) ? state.gradeEntries : []).filter((entry) => (
+    studentIds.has(Number(entry?.studentId)) || assessmentIds.has(Number(entry?.assessmentId))
+  ));
+  const counts = {
+    structure: gradeStateHasPersistedStructure(state, id) ? 1 : 0,
+    assessments: assessments.length,
+    entries: entries.length,
+    overrides: rowsForCourse('gradeOverrides').length,
+    imports: rowsForCourse('gradeImports').length,
+    seatPlans: rowsForCourse('gradeSeatPlans').length,
+    accommodations: rowsForCourse('gradeAccommodations').length,
+    nameLearning: rowsForCourse('gradeNameLearning').length,
+  };
+  const hasOtherContent = Object.values(counts).some((count) => count > 0);
+  return {
+    studentIds,
+    counts,
+    hasOtherContent,
+    hasMeaningfulContent: studentIds.size > 0 || hasOtherContent,
+  };
 }
 
 function normalizeVaultConfig(raw = null) {
@@ -323,6 +356,12 @@ export class WorkspaceRuntime {
     this.fileName = '';
     this.knownRevision = 0;
     this.knownFileHash = '';
+    this.databaseLoaded = false;
+    this.loadGeneration = 0;
+    this.persistedCourseIds = new Set();
+    this.deletedCourseIds = new Set();
+    this.confirmedStudentRemovalsByCourse = new Map();
+    this.persistenceFailure = null;
     this.deviceId = randomId();
     this.manualLoaded = false;
     this.manualDirty = false;
@@ -429,6 +468,17 @@ export class WorkspaceRuntime {
     const end = Number.isFinite(parsedEnd) && parsedEnd > 0 ? parsedEnd : start + 1;
     const short = (value) => String(Math.trunc(value) % 100).padStart(2, '0');
     return `TeachHelper-Datenbank-${short(start)}-${short(end)}.json`;
+  }
+
+  buildNewDatabaseSuggestedName(fileName = this.fileName || this.fileHandle?.name || '') {
+    const fallback = this.buildSyncFileSuggestedName();
+    const source = String(fileName || fallback).trim() || fallback;
+    const extensionMatch = source.match(/(\.[^./\\]+)$/);
+    const extension = extensionMatch?.[1] || '.json';
+    const stem = (extensionMatch ? source.slice(0, -extension.length) : source)
+      .replace(/\s+\(neu\)$/i, '')
+      .trim() || 'TeachHelper-Datenbank';
+    return `${stem} (neu)${extension}`;
   }
 
   registerFeatureClient(scope, client) {
@@ -581,8 +631,9 @@ export class WorkspaceRuntime {
         backupConnected: Boolean(this.backupDirectoryHandle),
         backupDirectoryName: String(this.backupDirectoryHandle?.name || ''),
         pendingBackupDirectoryName: String(this.storedBackupDirectoryHandle?.name || ''),
-        statusText: '',
-        statusError: false,
+        statusText: String(this.persistenceFailure?.message || ''),
+        statusError: Boolean(this.persistenceFailure),
+        statusAt: Number(this.persistenceFailure?.at) || 0,
       },
       unsaved: {
         dirty: Boolean(this.publicDirty || this.dirtyCourseIds.size),
@@ -643,11 +694,40 @@ export class WorkspaceRuntime {
   }
 
   isExternalFileSyncPresentationSupported() {
-    return typeof globalThis.showOpenFilePicker === 'function' && typeof globalThis.showSaveFilePicker === 'function';
+    return typeof globalThis.showOpenFilePicker === 'function' && typeof globalThis.showDirectoryPicker === 'function';
   }
 
   isManualPersistenceMode() {
     return !this.isExternalFileSyncPresentationSupported();
+  }
+
+  isPersistenceReady() {
+    return !this.fileHandle || this.databaseLoaded;
+  }
+
+  clearPersistenceFailure() {
+    if (!this.persistenceFailure) return false;
+    this.persistenceFailure = null;
+    return true;
+  }
+
+  recordPersistenceFailure(error) {
+    this.persistenceFailure = {
+      code: String(error?.code || ''),
+      message: error instanceof Error && error.message
+        ? error.message
+        : 'Die Datenbankdatei konnte nicht gespeichert werden.',
+      at: Date.now(),
+    };
+    this.controller?.markChanged?.('shell');
+    return false;
+  }
+
+  rememberPersistedCourseIds(segments) {
+    this.persistedCourseIds = new Set(
+      (Array.isArray(segments) ? segments : []).map((segment) => Number(segment?.courseId) || 0).filter(Boolean),
+    );
+    return this.persistedCourseIds;
   }
 
   isManualPersistencePresentationMode() {
@@ -794,11 +874,12 @@ export class WorkspaceRuntime {
     if (next) return false;
     if (!this.isGradeVaultUnlocked()) throw new Error('Der geschützte Notenbereich muss zuerst entsperrt sein.');
     await this.loadAllPersistedGradeCoursesForCryptoRewrite();
+    const persistedCryptoKey = this.vault.cryptoKey;
     this.vault.encryptionEnabled = false;
     this.vault.configured = false;
     this.vault.unlocked = false;
     this.vault.config = normalizeVaultConfig(null);
-    this.vault.persistedCryptoKey = null;
+    this.vault.persistedCryptoKey = persistedCryptoKey;
     this.vault.cryptoKey = null;
     this.vault.kdf = null;
     this.clearGradeVaultAutoLockTimer();
@@ -851,6 +932,7 @@ export class WorkspaceRuntime {
     this.seatplanPresenceCache.clear();
     this.courseRevisions.clear();
     this.dirtyCourseIds.clear();
+    this.confirmedStudentRemovalsByCourse.clear();
     this.store.replaceGradeVaultState(emptyGradeState(this.store));
     this.loadedCourseId = null;
     this.manualDirty = Boolean(this.publicDirty);
@@ -1058,7 +1140,9 @@ export class WorkspaceRuntime {
   }
 
   setGradeCourseStudentCounts(counts = null) {
+    if (!this.isPersistenceReady()) return false;
     const source = counts && typeof counts === 'object' ? counts : {};
+    if (!Array.isArray(this.store.state?.courses) || this.store.state.courses.length === 0) return false;
     const validCourseIds = this.store.state.courses
       .map((course) => String(Number(course.id) || 0))
       .filter((courseId) => courseId !== '0');
@@ -1228,7 +1312,29 @@ export class WorkspaceRuntime {
     }
   }
 
-  async runGradeCourseMutation(courseId, operation, { preserveRoster = false, skipAutoSave = false } = {}) {
+  rememberConfirmedStudentRemovals(courseId, previousStudentIds, nextStudentIds, confirmedStudentIds = []) {
+    const id = Number(courseId) || 0;
+    if (!id) return false;
+    const next = new Set((Array.isArray(nextStudentIds) ? nextStudentIds : []).map(Number).filter(Boolean));
+    const removed = (Array.isArray(previousStudentIds) ? previousStudentIds : [])
+      .map(Number)
+      .filter((studentId) => studentId > 0 && !next.has(studentId));
+    if (!removed.length) return false;
+    const confirmed = new Set(
+      (Array.isArray(confirmedStudentIds) ? confirmedStudentIds : []).map(Number).filter(Boolean),
+    );
+    if (removed.some((studentId) => !confirmed.has(studentId))) return false;
+    const known = this.confirmedStudentRemovalsByCourse.get(id) || new Set();
+    for (const studentId of removed) known.add(studentId);
+    this.confirmedStudentRemovalsByCourse.set(id, known);
+    return true;
+  }
+
+  async runGradeCourseMutation(courseId, operation, {
+    preserveRoster = false,
+    skipAutoSave = false,
+    confirmedRemovedStudentIds = [],
+  } = {}) {
     const id = Number(courseId) || 0;
     const run = async () => {
       await this.ensureGradeCourseLoaded(id, { publish: false });
@@ -1239,14 +1345,15 @@ export class WorkspaceRuntime {
       try {
         const result = await operation({ courseId: id });
         const after = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
+        const nextRoster = after.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
         if (preserveRoster) {
-          const nextRoster = after.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
           if (JSON.stringify(roster) !== JSON.stringify(nextRoster)) throw new Error('Die Kursliste wurde während der Mutation verändert.');
         }
         this.store.replaceGradeVaultState(after);
         this.courseCache.set(id, after);
         this.rememberPerformanceIndex(id, after);
         this.updateNameLearningDueSummaryForCourse(id, after);
+        this.rememberConfirmedStudentRemovals(id, roster, nextRoster, confirmedRemovedStudentIds);
         this.dirtyCourseIds.add(id);
         this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
         this.manualDirty = true;
@@ -1339,6 +1446,99 @@ export class WorkspaceRuntime {
     return this.buildPerformanceIndex(ids);
   }
 
+  async decodeCourseSegmentForPlausibility(courseId, text, { persisted = false } = {}) {
+    const parsed = parseCourseSegment(text);
+    if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
+    let rawState = parsed.state;
+    if (parsed.encrypted) {
+      const cryptoKey = persisted
+        ? this.vault.persistedCryptoKey || this.vault.cryptoKey
+        : this.vault.cryptoKey;
+      if (!cryptoKey) {
+        const error = new Error('Das Notensegment kann für die Sicherheitsprüfung nicht entschlüsselt werden.');
+        error.code = WORKSPACE_ERROR_VAULT_LOCKED;
+        throw error;
+      }
+      const plaintext = await decryptWorkspaceVaultText(
+        parsed.envelope,
+        cryptoKey,
+        parsed.envelope?.kdf || this.vault.kdf,
+        { type: 'course', courseId },
+      );
+      rawState = JSON.parse(plaintext);
+    }
+    return runtimeCourseFromPersisted(this.store, courseId, rawState);
+  }
+
+  async getCourseContentSignature(courseId, text, options = {}) {
+    return buildCourseContentSignature(
+      await this.decodeCourseSegmentForPlausibility(courseId, text, options),
+      courseId,
+    );
+  }
+
+  async assertCourseContentIsPlausible(segments = []) {
+    const candidateTexts = new Map(
+      (Array.isArray(segments) ? segments : []).map((segment) => [
+        Number(segment?.courseId) || 0,
+        String(segment?.text || ''),
+      ]),
+    );
+    const unexpectedRosterLosses = [];
+    const emptiedCourseIds = [];
+    for (const [courseId, persistedText] of this.segmentTexts.entries()) {
+      if (this.deletedCourseIds.has(courseId)) continue;
+      const candidateText = candidateTexts.get(courseId);
+      if (!candidateText || candidateText === persistedText) continue;
+      let previous;
+      let next;
+      try {
+        previous = await this.getCourseContentSignature(courseId, persistedText, { persisted: true });
+        next = await this.getCourseContentSignature(courseId, candidateText);
+      } catch (cause) {
+        const error = new Error(`Speichern abgebrochen: Der Inhalt von Kurs ${courseId} konnte nicht sicher geprüft werden. Die Datenbankdatei wurde nicht verändert.`);
+        error.code = WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS;
+        error.cause = cause;
+        throw error;
+      }
+      const approvedStudentRemovals = this.confirmedStudentRemovalsByCourse.get(courseId) || new Set();
+      const unconfirmedStudentIds = [...previous.studentIds].filter((studentId) => (
+        !next.studentIds.has(studentId) && !approvedStudentRemovals.has(studentId)
+      ));
+      if (unconfirmedStudentIds.length > 0) {
+        unexpectedRosterLosses.push({ courseId, studentIds: unconfirmedStudentIds });
+      }
+      const onlyConfirmedRosterRemoval = (
+        previous.studentIds.size > 0
+        && !previous.hasOtherContent
+        && next.studentIds.size === 0
+        && !next.hasOtherContent
+        && unconfirmedStudentIds.length === 0
+      );
+      if (
+        previous.hasMeaningfulContent
+        && !next.hasMeaningfulContent
+        && !onlyConfirmedRosterRemoval
+      ) {
+        emptiedCourseIds.push(courseId);
+      }
+    }
+    if (unexpectedRosterLosses.length > 0) {
+      const details = unexpectedRosterLosses
+        .map(({ courseId, studentIds }) => `${courseId} (${studentIds.join(', ')})`)
+        .join('; ');
+      const error = new Error(`Speichern abgebrochen: Teilnehmende würden ohne ausdrückliche Löschbestätigung entfernt (Kurs-IDs und Teilnehmenden-IDs: ${details}). Die Datenbankdatei wurde nicht verändert.`);
+      error.code = WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS;
+      throw error;
+    }
+    if (emptiedCourseIds.length > 0) {
+      const error = new Error(`Speichern abgebrochen: Die Notendaten der Kurssegmente ${emptiedCourseIds.join(', ')} wären nach dem Speichern inhaltlich leer. Die Datenbankdatei wurde nicht verändert.`);
+      error.code = WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS;
+      throw error;
+    }
+    return true;
+  }
+
   async buildContainer(reason = 'save') {
     if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
     const courseIds = new Set([
@@ -1346,7 +1546,10 @@ export class WorkspaceRuntime {
       ...this.courseCache.keys(),
       ...this.dirtyCourseIds,
     ]);
-    const existingCourses = new Set(this.store.state.courses.map((course) => Number(course.id)));
+    const publicCourses = Array.isArray(this.store.state?.courses)
+      ? this.store.state.courses
+      : (this.store.exportPublicStateSnapshot?.().courses || []);
+    const existingCourses = new Set(publicCourses.map((course) => Number(course.id)));
     if (this.isGradeVaultEncryptionEnabled() && !this.isGradeVaultUnlocked()) {
       const hasRewrite = [...courseIds].some((id) => this.dirtyCourseIds.has(id) || !this.segmentTexts.has(id));
       if (hasRewrite) throw new Error('Der geschützte Notenbereich muss vor dem Speichern entsperrt sein.');
@@ -1354,7 +1557,11 @@ export class WorkspaceRuntime {
     const segments = [];
     let entryCount = 0;
     for (const courseId of [...courseIds].sort((a, b) => a - b)) {
-      if (!existingCourses.has(courseId)) continue;
+      if (
+        !existingCourses.has(courseId)
+        && !this.persistedCourseIds.has(courseId)
+        && !this.dirtyCourseIds.has(courseId)
+      ) continue;
       const rewrite = this.dirtyCourseIds.has(courseId) || !this.segmentTexts.has(courseId);
       if (!rewrite && this.segmentTexts.has(courseId)) {
         segments.push({ courseId, text: this.segmentTexts.get(courseId) });
@@ -1373,6 +1580,14 @@ export class WorkspaceRuntime {
         : JSON.stringify(persisted);
       segments.push({ courseId, text });
     }
+    const writtenCourseIds = new Set(segments.map((segment) => Number(segment.courseId)));
+    const droppedCourseIds = [...this.persistedCourseIds].filter((courseId) => !writtenCourseIds.has(courseId));
+    if (droppedCourseIds.length > 0) {
+      const error = new Error(`Speichern abgebrochen: Die Notendaten von ${droppedCourseIds.length} Kurs(en) fehlen im Schreibvorgang (Kurs-IDs ${droppedCourseIds.join(', ')}). Die Datenbankdatei wurde nicht verändert.`);
+      error.code = WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE;
+      throw error;
+    }
+    await this.assertCourseContentIsPlausible(segments);
     const publicState = this.store.exportPublicStateSnapshot();
     const config = this.isGradeVaultEncryptionEnabled() ? this.vault.config : normalizeVaultConfig(null);
     return buildThdb1ContainerBytes({
@@ -1394,11 +1609,14 @@ export class WorkspaceRuntime {
       Number(segment.courseId),
       String(segment.text || ''),
     ]) || []);
+    this.rememberPersistedCourseIds(parsed?.gradeCourseSegments);
+    this.confirmedStudentRemovalsByCourse.clear();
     this.vault.persistedConfig = clone(this.vault.config, normalizeVaultConfig(null));
     this.vault.persistedCryptoKey = null;
   }
 
   async loadBytes(bytes, source = 'manual') {
+    this.loadGeneration += 1;
     const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
     const parsed = parseThdb1ContainerBytes(view, {
       schemas: [APP_DB_SCHEMA, APP_DB_SCHEMA_LEGACY],
@@ -1430,6 +1648,9 @@ export class WorkspaceRuntime {
       allowEmpty: isEmptyDatabase,
     });
     this.segmentTexts = new Map(parsed.gradeCourseSegments.map((segment) => [Number(segment.courseId), String(segment.text || '')]));
+    this.rememberPersistedCourseIds(parsed.gradeCourseSegments);
+    this.deletedCourseIds.clear();
+    this.confirmedStudentRemovalsByCourse.clear();
     this.courseCache.clear();
     this.performanceIndexCache.clear();
     this.seatplanPresenceCache.clear();
@@ -1452,11 +1673,30 @@ export class WorkspaceRuntime {
     this.manualDirty = false;
     this.clearGradeVaultAutoLockWarning();
     this.manualLoaded = true;
+    this.databaseLoaded = true;
     this.ready = true;
+    this.clearPersistenceFailure();
     if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
     this.controller?.markChanged?.('planning');
     this.controller?.publish?.('grades');
     return { ok: true, source };
+  }
+
+  readPersistedCourseIds(bytes) {
+    const prefix = parseThdb1Header(bytes, { schemas: [APP_DB_SCHEMA, APP_DB_SCHEMA_LEGACY] });
+    return (prefix?.header?.gradeCourseSegments || []).map((descriptor) => Number(descriptor.courseId) || 0).filter(Boolean);
+  }
+
+  assertContainerKeepsPersistedCourses(built, knownCourseIds) {
+    const writtenCourseIds = new Set(
+      (built?.header?.gradeCourseSegments || []).map((descriptor) => Number(descriptor.courseId) || 0),
+    );
+    const droppedCourseIds = [...new Set(knownCourseIds)]
+      .filter((courseId) => !writtenCourseIds.has(courseId) && !this.deletedCourseIds.has(courseId));
+    if (droppedCourseIds.length === 0) return true;
+    const error = new Error(`Speichern abgebrochen: Die Notendaten von ${droppedCourseIds.length} Kurs(en) fehlen im Schreibvorgang (Kurs-IDs ${droppedCourseIds.join(', ')}). Die Datenbankdatei wurde nicht verändert.`);
+    error.code = WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE;
+    throw error;
   }
 
   async readHandleBytes(handle) {
@@ -1524,14 +1764,61 @@ export class WorkspaceRuntime {
     }
   }
 
-  async connectEmptyWorkspaceFile(handle, options = {}) {
+  enqueueFileOperation(operation) {
+    const queued = this.operationTail.then(operation, operation);
+    this.operationTail = queued.catch(() => undefined);
+    return queued;
+  }
+
+  async getNewWorkspaceFileHandleInDirectory(directoryHandle, fileName) {
+    if (!directoryHandle || typeof directoryHandle.getFileHandle !== 'function') {
+      throw new Error('Der Zielordner konnte nicht geöffnet werden.');
+    }
+    try {
+      await directoryHandle.getFileHandle(fileName);
+    } catch (error) {
+      if (String(error?.name || '') === 'NotFoundError') {
+        return directoryHandle.getFileHandle(fileName, { create: true });
+      }
+      throw error;
+    }
+    throw new Error(`Die Datei „${fileName}“ existiert bereits. Bitte benenne oder verschiebe sie, bevor eine neue leere Datenbank angelegt wird.`);
+  }
+
+  async assertEmptyWorkspaceDatabaseTarget(handle, fileName) {
+    const file = await handle?.getFile?.();
+    if (!file || typeof file.arrayBuffer !== 'function') {
+      throw new Error('Die neue Datenbankdatei konnte nicht gelesen werden.');
+    }
+    const size = Number(file.size);
+    const containsData = Number.isFinite(size)
+      ? size > 0
+      : (await file.arrayBuffer()).byteLength > 0;
+    if (containsData) {
+      throw new Error(`Die Datei „${fileName || handle?.name || ''}“ enthält bereits Daten. Die neue leere Datenbank wurde nicht angelegt.`);
+    }
+    return true;
+  }
+
+  async createEmptyWorkspaceFileInDirectory(directoryHandle, options = {}) {
+    if (!directoryHandle) return false;
+    if (!await this.ensureHandleReadWritePermission(directoryHandle)) {
+      throw new Error('Für den Zielordner wurde keine Schreibberechtigung erteilt.');
+    }
+    return this.enqueueFileOperation(() => this.createEmptyWorkspaceFileInDirectoryNow(directoryHandle, options));
+  }
+
+  async createEmptyWorkspaceFileInDirectoryNow(directoryHandle, options = {}) {
+    const fileName = this.buildNewDatabaseSuggestedName();
+    const handle = await this.getNewWorkspaceFileHandleInDirectory(directoryHandle, fileName);
+    return this.connectEmptyWorkspaceFileNow(handle, options, { fileName });
+  }
+
+  async connectEmptyWorkspaceFileNow(handle, options = {}, { fileName = '' } = {}) {
     if (await this.isCurrentWorkspaceFileHandle(handle)) {
       throw new Error('Bitte wähle für die neue leere Datenbank eine andere Datei.');
     }
-    if (!await this.ensureHandleReadWritePermission(handle)) {
-      throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
-    }
-    await this.operationTail;
+    await this.assertEmptyWorkspaceDatabaseTarget(handle, fileName);
     const built = this.buildEmptyDatabaseContainer('create-empty', {
       ...options,
       schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
@@ -1541,12 +1828,19 @@ export class WorkspaceRuntime {
       handle,
       built.bytes,
       async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
+      { validateOriginal: async (original) => original.length === 0 },
     );
-    if (!writeResult.ok) throw writeResult.error || new Error('Leere Datenbankdatei konnte nicht verifiziert werden.');
+    if (!writeResult.ok) {
+      if (writeResult.stage === 'precondition') {
+        throw new Error(`Die Datei „${fileName || handle?.name || ''}“ wurde vor dem Schreiben geändert. Die neue leere Datenbank wurde nicht angelegt.`);
+      }
+      throw writeResult.error || new Error('Leere Datenbankdatei konnte nicht verifiziert werden.');
+    }
     if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
       throw new Error('Die Auswahl der Datenbankdatei konnte nicht dauerhaft gespeichert werden.');
     }
 
+    this.databaseLoaded = false;
     this.fileHandle = handle;
     this.storedFileHandle = handle;
     this.fileName = String(handle.name || this.buildSyncFileSuggestedName());
@@ -1561,18 +1855,27 @@ export class WorkspaceRuntime {
   async acceptWorkspaceSyncFileHandle(handle, mode = 'existing', options = {}) {
     if (!handle) return false;
     if (String(mode || '') === 'new-empty') {
-      return this.connectEmptyWorkspaceFile(handle, options);
+      throw new Error('Für eine neue leere Datenbank wähle bitte einen Zielordner.');
     }
     if (!await this.ensureHandleReadWritePermission(handle)) {
       throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
     }
+    return this.enqueueFileOperation(() => this.acceptWorkspaceSyncFileHandleNow(handle, mode, options));
+  }
+
+  async acceptWorkspaceSyncFileHandleNow(handle, mode = 'existing', _options = {}) {
     const preserveBackupDirectory = String(mode || '') === 'reconnect';
     const previousBackupDirectoryHandle = this.backupDirectoryHandle;
     const previousStoredBackupDirectoryHandle = this.storedBackupDirectoryHandle;
+    const previousFileHandle = this.fileHandle;
+    const previousStoredFileHandle = this.storedFileHandle;
+    const previousFileName = this.fileName;
+    const previousDatabaseLoaded = this.databaseLoaded;
     if (!preserveBackupDirectory) {
       this.backupDirectoryHandle = null;
       this.storedBackupDirectoryHandle = null;
     }
+    this.databaseLoaded = false;
     this.fileHandle = handle;
     this.storedFileHandle = handle;
     this.fileName = String(handle.name || this.buildSyncFileSuggestedName());
@@ -1586,6 +1889,10 @@ export class WorkspaceRuntime {
         this.backupDirectoryHandle = previousBackupDirectoryHandle;
         this.storedBackupDirectoryHandle = previousStoredBackupDirectoryHandle;
       }
+      this.fileHandle = previousFileHandle;
+      this.storedFileHandle = previousStoredFileHandle;
+      this.fileName = previousFileName;
+      this.databaseLoaded = previousDatabaseLoaded;
       throw error;
     }
     if (!preserveBackupDirectory) {
@@ -1613,30 +1920,60 @@ export class WorkspaceRuntime {
 
   async saveToConnectedFile(reason = 'save') {
     if (!this.fileHandle) return false;
-    if (this.knownFileHash) {
-      const remote = await this.readHandleBytes(this.fileHandle);
+    if (!this.databaseLoaded) return false;
+    const fileHandle = this.fileHandle;
+    const generation = this.loadGeneration;
+    const expectedFileHash = this.knownFileHash;
+    const isCurrentSaveTarget = () => (
+      this.fileHandle === fileHandle
+      && this.databaseLoaded
+      && this.loadGeneration === generation
+    );
+    const remote = await this.readHandleBytes(fileHandle);
+    if (!isCurrentSaveTarget()) return false;
+    if (expectedFileHash) {
       const remoteHash = await getThdb1FileHashAsync(remote);
-      if (remoteHash && remoteHash !== this.knownFileHash) {
+      if (!isCurrentSaveTarget()) return false;
+      if (remoteHash && remoteHash !== expectedFileHash) {
         const error = new Error('Die Datenbankdatei wurde außerhalb dieses Workspace geändert.');
         error.code = WORKSPACE_ERROR_PERSISTENCE_CONFLICT;
         throw error;
       }
     }
+    const remoteCourseIds = this.readPersistedCourseIds(remote);
     const built = await this.buildContainer(reason);
+    if (!isCurrentSaveTarget()) return false;
+    this.assertContainerKeepsPersistedCourses(built, remoteCourseIds);
     const builtHash = await getThdb1FileHashAsync(built.bytes);
+    if (!isCurrentSaveTarget()) return false;
     const writeResult = await writeAndVerifyFileBytes(
-      this.fileHandle,
+      fileHandle,
       built.bytes,
       async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
+      {
+        validateOriginal: expectedFileHash
+          ? async (original) => (await getThdb1FileHashAsync(original)) === expectedFileHash
+          : null,
+      },
     );
-    if (!writeResult.ok) throw writeResult.error || new Error('Datenbankdatei konnte nicht verifiziert werden.');
+    if (!writeResult.ok) {
+      if (writeResult.stage === 'precondition') {
+        const error = new Error('Die Datenbankdatei wurde außerhalb dieses Workspace geändert.');
+        error.code = WORKSPACE_ERROR_PERSISTENCE_CONFLICT;
+        throw error;
+      }
+      throw writeResult.error || new Error('Datenbankdatei konnte nicht verifiziert werden.');
+    }
+    if (!isCurrentSaveTarget()) return false;
     this.knownRevision = built.header.revision;
     this.knownFileHash = builtHash;
     this.commitPersistedVaultContainer(built.bytes);
     this.publicDirty = false;
     this.dirtyCourseIds.clear();
+    this.deletedCourseIds.clear();
     this.manualDirty = false;
     this.clearGradeVaultAutoLockWarning();
+    this.clearPersistenceFailure();
     this.controller?.markChanged?.('shell');
     return true;
   }
@@ -1652,11 +1989,14 @@ export class WorkspaceRuntime {
   queueSyncSave(reason = 'auto-save') {
     if (this.isManualPersistenceMode() || !this.fileHandle) return false;
     const operation = this.enqueueConnectedFileSave(reason);
-    void operation.catch(() => undefined);
+    void operation.catch((error) => this.recordPersistenceFailure(error));
     return true;
   }
 
   async saveManualDatabase() {
+    if (!this.isPersistenceReady()) {
+      throw new Error('Die verbundene Datenbankdatei wurde noch nicht vollständig geladen.');
+    }
     if (
       !this.manualLoaded
       && Array.isArray(this.store.state?.schoolYears)
@@ -1687,7 +2027,7 @@ export class WorkspaceRuntime {
       ...options,
       schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
     });
-    const fileName = this.buildSyncFileSuggestedName();
+    const fileName = this.buildNewDatabaseSuggestedName();
     downloadBytes(built.bytes, fileName);
     this.fileName = fileName;
     await this.loadBytes(built.bytes, 'manual-create-empty');
@@ -1702,7 +2042,7 @@ export class WorkspaceRuntime {
   }
 
   async createLatestWebBackup(mode = 'manual', silent = false) {
-    if (!this.backupDirectoryHandle) return false;
+    if (!this.backupDirectoryHandle || !this.isPersistenceReady()) return false;
     const built = await this.buildContainer(`backup-${mode}`);
     const handle = await this.backupDirectoryHandle.getFileHandle(buildBackupFileName(this.now()), { create: true });
     const builtHash = await getThdb1FileHashAsync(built.bytes);
@@ -1752,6 +2092,9 @@ export class WorkspaceRuntime {
   }
 
   async exportBackup() {
+    if (!this.isPersistenceReady()) {
+      throw new Error('Die verbundene Datenbankdatei wurde noch nicht vollständig geladen.');
+    }
     const built = await this.buildContainer('backup-export');
     downloadBytes(built.bytes, buildBackupFileName(this.now()));
     return true;
@@ -1965,6 +2308,9 @@ export class WorkspaceRuntime {
       this.store.deleteCourse(courseId);
       this.removeNameLearningDueSummaryForCourse(courseId);
       this.segmentTexts.delete(courseId);
+      this.persistedCourseIds.delete(courseId);
+      this.deletedCourseIds.add(courseId);
+      this.confirmedStudentRemovalsByCourse.delete(courseId);
       this.courseCache.delete(courseId);
       this.performanceIndexCache.delete(courseId);
       this.seatplanPresenceCache.delete(courseId);
@@ -2013,6 +2359,7 @@ export class WorkspaceRuntime {
     if (name === 'manual-create-empty') return { changed: await this.createEmptyManualDatabase(detail), scope: 'shell' };
     if (name === 'manual-load') return { changed: await this.loadManualDatabaseFromFile(detail?.file), scope: 'shell' };
     if (name === 'sync-connect') return { changed: await this.acceptWorkspaceSyncFileHandle(detail?.handle, detail?.mode), scope: 'shell' };
+    if (name === 'sync-create-empty') return { changed: await this.createEmptyWorkspaceFileInDirectory(detail?.directoryHandle, detail), scope: 'shell' };
     if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
     if (name === 'backup-directory-connect') return { changed: await this.acceptWorkspaceBackupDirectoryHandle(detail?.handle), scope: 'shell' };
     if (name === 'backup-directory-reconnect') return { changed: await this.ensureBackupDirectoryReady({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };

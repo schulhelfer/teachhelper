@@ -3211,6 +3211,7 @@ class GradesApp {
     this.groupPhotoExtractionState = null;
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
+    this.persistenceFailureNoticeAt = 0;
     this.gradeCourseOperationTail = Promise.resolve();
     this.gradeCourseOperationActive = false;
     this.gradeCourseMutationActiveCourseId = null;
@@ -3327,6 +3328,9 @@ class GradesApp {
     this.captureGradeVaultAutoLockNotice(
       detail.snapshot?.vault?.autoLockNotice || detail.snapshot?.status?.vault?.autoLockNotice
     );
+    this.applyWorkspacePersistenceStatus(
+      detail.snapshot?.persistence || detail.snapshot?.status?.persistence
+    );
     const previousRevision = Number(this.workspaceRevision) || 0;
     this.workspaceRevision = Number(detail.revision) || 0;
     this.workspaceHydrated = Boolean(detail.hydrated && detail.ready);
@@ -3368,6 +3372,27 @@ class GradesApp {
         this.renderDatabaseSection();
       }
     }
+  }
+
+  applyWorkspacePersistenceStatus(persistence = null) {
+    if (!persistence || typeof persistence !== "object") return false;
+    const at = Number(persistence.statusAt) || 0;
+    if (!persistence.statusError) {
+      if (this.persistenceFailureNoticeAt) {
+        this.persistenceFailureNoticeAt = 0;
+        this.setSyncStatus("");
+      }
+      return false;
+    }
+    this.setSyncStatus(String(persistence.statusText || ""), true);
+    if (at && at !== this.persistenceFailureNoticeAt) {
+      this.persistenceFailureNoticeAt = at;
+      void this.showInfoMessage(
+        String(persistence.statusText || "Die Datenbankdatei konnte nicht gespeichert werden."),
+        "Speichern fehlgeschlagen"
+      );
+    }
+    return true;
   }
 
   captureGradeVaultAutoLockNotice(notice = null) {
@@ -3572,7 +3597,7 @@ class GradesApp {
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
-    if (summaries.every(([, count]) => count !== null)) {
+    if (summaries.length > 0 && summaries.every(([, count]) => count !== null)) {
       workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
     }
     const nextCounts = new Map(summaries.filter(([, count]) => Number(count) > 0));
@@ -5255,18 +5280,17 @@ class GradesApp {
     const owner = this.getWorkspaceOwnerApp();
     if (!owner?.acceptWorkspaceSyncFileHandle) return false;
     try {
-      let handle;
       if (mode === "new-empty") {
-        handle = await window.showSaveFilePicker({
-          suggestedName: owner.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
-          types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
-        });
-      } else {
-        [handle] = await window.showOpenFilePicker({
-          multiple: false,
-          types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
-        });
+        if (typeof window.showDirectoryPicker !== "function") {
+          throw new Error("Der Browser unterstützt keine sichere Ordnerauswahl für eine neue Datenbank.");
+        }
+        const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        return owner.createEmptyWorkspaceFileInDirectory(directoryHandle, options);
       }
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
+      });
       return owner.acceptWorkspaceSyncFileHandle(handle, mode, options);
     } catch (error) {
       if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.");
@@ -8628,6 +8652,8 @@ class GradesApp {
           expectedStudentIds: this.courseDialogDraft.baseStudentIds || [],
           confirmedRemovedStudentIds: this.courseDialogDraft.confirmedRemovedStudentIds || []
         });
+      }, {
+        confirmedRemovedStudentIds: this.courseDialogDraft.confirmedRemovedStudentIds || []
       });
     } catch (error) {
       const message = typeof error?.message === "string" ? error.message.trim() : "";
@@ -12292,9 +12318,8 @@ class GradesApp {
     }
 
     if (this.refs.dbBackupNowBtn) {
-      this.refs.dbBackupNowBtn?.addEventListener("click", () => {
-        this.createLatestWebBackup("manual");
-        this.renderBackupSection();
+      this.refs.dbBackupNowBtn?.addEventListener("click", async () => {
+        await this.createManualWebBackup();
       });
     }
 
@@ -12727,7 +12752,7 @@ class GradesApp {
       return true;
     }
     return this.showConfirmMessage(
-      "Die bisherige Datenbankdatei bleibt unverändert. Danach arbeitest du mit einer neuen leeren Datenbank.",
+      "Die bisherige Datenbankdatei bleibt unverändert. Wähle danach ihren Ordner; dort wird eine separate Datei mit dem Zusatz „(neu)“ angelegt.",
       { title: "Neue leere Datenbank", okText: "Neu starten", dangerOk: true }
     );
   }
@@ -12749,6 +12774,23 @@ class GradesApp {
 
   async createLatestWebBackup(mode = "manual", silent = false) {
     return this.getWorkspaceOwnerApp()?.createLatestWebBackup?.(mode, silent) || false;
+  }
+
+  async createManualWebBackup() {
+    try {
+      const created = await this.createLatestWebBackup("manual");
+      this.notifyParentToast(
+        created ? "Backup erstellt." : "Backup konnte nicht erstellt werden.",
+        created ? "success" : "error"
+      );
+      return created;
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
+      this.notifyParentToast(`Backup konnte nicht erstellt werden.${detail}`, "error");
+      return false;
+    } finally {
+      this.renderBackupSection();
+    }
   }
 
   renderDatabaseSection() {
@@ -28492,6 +28534,24 @@ class GradesApp {
         type: "classroom:grades-view-request",
         detail: {
           view: requestedView,
+          source: "iframe"
+        }
+      }, window.location.origin);
+    } catch (_error) {
+
+    }
+  }
+
+  notifyParentToast(message, variant = "success") {
+    if (typeof window === "undefined" || !window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:toast-request",
+        detail: {
+          message: String(message || ""),
+          variant: variant === "error" ? "error" : "success",
           source: "iframe"
         }
       }, window.location.origin);

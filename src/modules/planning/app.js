@@ -1094,6 +1094,7 @@ class PlanningApp {
     this.seatplanCourseIds = new Set();
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
+    this.persistenceFailureNoticeAt = 0;
     this.appVersion = "";
     this.weekCalendarMonthIso = null;
     this.weekCalendarHoverWeekStart = null;
@@ -1210,6 +1211,9 @@ class PlanningApp {
       this.settingsDraft = this.buildSettingsDraftFromStore();
       this.settingsDraftRevision = this.workspaceRevision;
     }
+    this.applyWorkspacePersistenceStatus(
+      detail.snapshot?.persistence || detail.snapshot?.status?.persistence
+    );
     if (detail.scope === "planning" && Array.isArray(detail.snapshot?.assessmentIndex)) {
       this.replacePerformanceIndex(
         detail.snapshot.assessmentIndex,
@@ -1246,6 +1250,27 @@ class PlanningApp {
     }
   }
 
+  applyWorkspacePersistenceStatus(persistence = null) {
+    if (!persistence || typeof persistence !== "object") return false;
+    const at = Number(persistence.statusAt) || 0;
+    if (!persistence.statusError) {
+      if (this.persistenceFailureNoticeAt) {
+        this.persistenceFailureNoticeAt = 0;
+        this.setSyncStatus("");
+      }
+      return false;
+    }
+    this.setSyncStatus(String(persistence.statusText || ""), true);
+    if (at && at !== this.persistenceFailureNoticeAt) {
+      this.persistenceFailureNoticeAt = at;
+      void this.showInfoMessage(
+        String(persistence.statusText || "Die Datenbankdatei konnte nicht gespeichert werden."),
+        "Speichern fehlgeschlagen"
+      );
+    }
+    return true;
+  }
+
   getWorkspaceRuntime() {
     return this.workspaceController?.getOwner?.() || null;
   }
@@ -1271,7 +1296,7 @@ class PlanningApp {
       }
     }));
     if (refreshToken !== this.courseStudentCountsRefreshToken) return;
-    if (summaries.every(([, count]) => count !== null)) {
+    if (summaries.length > 0 && summaries.every(([, count]) => count !== null)) {
       workspaceOwner.setGradeCourseStudentCounts?.(Object.fromEntries(summaries));
     }
     const nextCounts = new Map(summaries.filter(([, count]) => Number(count) > 0));
@@ -1786,14 +1811,15 @@ class PlanningApp {
   async selectSyncFile(mode = "existing", options = {}) {
     if (!this.workspaceController || this.isStandaloneWorkspace) return false;
     try {
+      if (mode === "new-empty") {
+        if (typeof window.showDirectoryPicker !== "function") {
+          throw new Error("Der Browser unterstützt keine sichere Ordnerauswahl für eine neue Datenbank.");
+        }
+        const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
+        return this.createEmptyWorkspaceFileInDirectory(directoryHandle, options);
+      }
       let handle = null;
-      if (mode === "new-empty" && typeof window.showSaveFilePicker === "function") {
-        const owner = this.workspaceController.getOwner?.();
-        handle = await window.showSaveFilePicker({
-          suggestedName: owner?.buildSyncFileSuggestedName?.() || "TeachHelper-Datenbank.json",
-          types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
-        });
-      } else if (typeof window.showOpenFilePicker === "function") {
+      if (typeof window.showOpenFilePicker === "function") {
         [handle] = await window.showOpenFilePicker({
           multiple: false,
           types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
@@ -1810,6 +1836,11 @@ class PlanningApp {
 
   async acceptWorkspaceSyncFileHandle(handle, mode = "existing", options = {}) {
     const result = await this.executeWorkspaceAction("sync-connect", { handle, mode, ...options });
+    return Boolean(result.changed);
+  }
+
+  async createEmptyWorkspaceFileInDirectory(directoryHandle, options = {}) {
+    const result = await this.executeWorkspaceAction("sync-create-empty", { directoryHandle, ...options });
     return Boolean(result.changed);
   }
 
@@ -6500,9 +6531,8 @@ class PlanningApp {
     }
 
     if (this.refs.backupNowBtn) {
-      this.refs.backupNowBtn.addEventListener("click", () => {
-        this.createLatestWebBackup("manual");
-        this.renderBackupSection();
+      this.refs.backupNowBtn.addEventListener("click", async () => {
+        await this.createManualWebBackup();
       });
     }
 
@@ -6529,9 +6559,8 @@ class PlanningApp {
     }
 
     if (this.refs.dbBackupNowBtn) {
-      this.refs.dbBackupNowBtn.addEventListener("click", () => {
-        this.createLatestWebBackup("manual");
-        this.renderBackupSection();
+      this.refs.dbBackupNowBtn.addEventListener("click", async () => {
+        await this.createManualWebBackup();
       });
     }
 
@@ -7279,7 +7308,7 @@ class PlanningApp {
       return true;
     }
     return this.showConfirmMessage(
-      "Die bisherige Datenbankdatei bleibt unverändert. Danach arbeitest du mit einer neuen leeren Datenbank.",
+      "Die bisherige Datenbankdatei bleibt unverändert. Wähle danach ihren Ordner; dort wird eine separate Datei mit dem Zusatz „(neu)“ angelegt.",
       { title: "Neue leere Datenbank", okText: "Neu starten", dangerOk: true }
     );
   }
@@ -7303,6 +7332,23 @@ class PlanningApp {
   async createLatestWebBackup(mode = "manual", silent = false) {
     const result = await this.executeWorkspaceAction("backup-create", { mode, silent });
     return Boolean(result.changed);
+  }
+
+  async createManualWebBackup() {
+    try {
+      const created = await this.createLatestWebBackup("manual");
+      this.notifyParentToast(
+        created ? "Backup erstellt." : "Backup konnte nicht erstellt werden.",
+        created ? "success" : "error"
+      );
+      return created;
+    } catch (error) {
+      const detail = error instanceof Error && error.message ? ` ${error.message}` : "";
+      this.notifyParentToast(`Backup konnte nicht erstellt werden.${detail}`, "error");
+      return false;
+    } finally {
+      this.renderBackupSection();
+    }
   }
 
   async maybeRunAutomaticWebBackup() {
@@ -8936,6 +8982,24 @@ class PlanningApp {
       }, window.location.origin);
     } catch (_error) {
       
+    }
+  }
+
+  notifyParentToast(message, variant = "success") {
+    if (typeof window === "undefined" || !window.parent || window.parent === window) {
+      return;
+    }
+    try {
+      window.parent.postMessage({
+        type: "classroom:toast-request",
+        detail: {
+          message: String(message || ""),
+          variant: variant === "error" ? "error" : "success",
+          source: "iframe"
+        }
+      }, window.location.origin);
+    } catch (_error) {
+
     }
   }
 

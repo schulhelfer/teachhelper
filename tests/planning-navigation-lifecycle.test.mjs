@@ -56,6 +56,7 @@ test('shell status updates do not rebuild an unchanged planning view', () => {
     currentView: 'week',
     activeSettingsTab: 'dayoff',
     refs: { sidebarCourseList: {} },
+    applyWorkspacePersistenceStatus() {},
     updateAccessLock() {},
     updateSidebarArchiveButtonState() { calls.archive += 1; },
     renderSidebarFooterActions() { calls.footer += 1; },

@@ -18,8 +18,11 @@ test('eine neue leere Datenbank ersetzt den aktiven Stand in beiden Persistenzmo
   assert.match(storeSource, /const allowEmpty = options\?\.allowEmpty === true;[\s\S]*?if \(!allowEmpty\) this\.ensureDefaultSchoolYear\(\);/);
   assert.match(storeSource, /buildNewDatabasePublicState\(startYear\)[\s\S]*?sourceYear[\s\S]*?sourceFreeRanges[\s\S]*?sourceSpecialDays[\s\S]*?freeRange: publicState\.freeRanges\.length \+ 1/);
   assert.match(runtimeSource, /this\.store\.buildNewDatabasePublicState\(startYear\)/);
-  assert.match(runtimeSource, /async connectEmptyWorkspaceFile\(handle, options = \{\}\)[\s\S]*?isCurrentWorkspaceFileHandle\(handle\)[\s\S]*?writeAndVerifyFileBytes[\s\S]*?await this\.loadBytes\(built\.bytes, 'new-empty'\)/);
-  assert.match(runtimeSource, /async createEmptyManualDatabase\(options = \{\}\) \{[\s\S]*?downloadBytes\(built\.bytes, fileName\);[\s\S]*?await this\.loadBytes\(built\.bytes, 'manual-create-empty'\)/);
+  assert.match(runtimeSource, /buildNewDatabaseSuggestedName\(fileName = this\.fileName \|\| this\.fileHandle\?\.name \|\| ''\)/);
+  assert.match(runtimeSource, /async createEmptyWorkspaceFileInDirectory\(directoryHandle, options = \{\}\)[\s\S]*?createEmptyWorkspaceFileInDirectoryNow/);
+  assert.match(runtimeSource, /getNewWorkspaceFileHandleInDirectory\(directoryHandle, fileName\)[\s\S]*?getFileHandle\(fileName, \{ create: true \}\)/);
+  assert.match(runtimeSource, /assertEmptyWorkspaceDatabaseTarget\(handle, fileName\)[\s\S]*?validateOriginal: async \(original\) => original\.length === 0/);
+  assert.match(runtimeSource, /async createEmptyManualDatabase\(options = \{\}\) \{[\s\S]*?const fileName = this\.buildNewDatabaseSuggestedName\(\);[\s\S]*?downloadBytes\(built\.bytes, fileName\);[\s\S]*?await this\.loadBytes\(built\.bytes, 'manual-create-empty'\)/);
   assert.match(planningSource, /dbManualSaveBtn\.addEventListener\("click", \(\) => \{\s+void this\.startEmptyDatabase\(\);/);
   assert.match(gradesSource, /dbManualSaveBtn\?\.addEventListener\("click", \(\) => \{\s+void this\.startEmptyDatabase\(\);/);
   assert.match(planningSource, /alternateText: "Verwerfen & neu starten"/);
@@ -28,4 +31,7 @@ test('eine neue leere Datenbank ersetzt den aktiven Stand in beiden Persistenzmo
   assert.match(gradesSource, /chooseInitialDatabaseSchoolYear\(\)[\s\S]*?showSelectMessage\([\s\S]*?selectOptions:/);
   assert.match(planningSource, /selectSyncFile\("new-empty", \{ schoolYearStart \}\)/);
   assert.match(gradesSource, /selectSyncFile\("new-empty", \{ schoolYearStart \}\)/);
+  assert.match(planningSource, /window\.showDirectoryPicker\(\{ mode: "readwrite" \}\)/);
+  assert.match(gradesSource, /window\.showDirectoryPicker\(\{ mode: "readwrite" \}\)/);
+  assert.match(gradesSource, /runGradeCourseMutation\(id, \(\) => \{[\s\S]*?confirmedRemovedStudentIds: this\.courseDialogDraft\.confirmedRemovedStudentIds \|\| \[\][\s\S]*?\}, \{\s+confirmedRemovedStudentIds: this\.courseDialogDraft\.confirmedRemovedStudentIds \|\| \[\]/);
 });

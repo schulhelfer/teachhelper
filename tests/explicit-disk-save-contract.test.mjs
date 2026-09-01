@@ -24,14 +24,16 @@ test('eine gemeinsame Disketten-Persistenz exportiert nur im manuellen Modus', (
   assert.match(workspaceSource, /'explicit-save'/);
 });
 
-test('ein abgebrochener Datenbank-Dateidialog wird still behandelt', () => {
+test('ein abgebrochener Datenbank-Datei- oder Ordnerdialog wird still behandelt', () => {
   const planningStart = planningSource.indexOf('  async selectSyncFile(mode = "existing", options = {})');
   const planningEnd = planningSource.indexOf('\n  async acceptWorkspaceSyncFileHandle', planningStart);
   assert.ok(planningStart >= 0 && planningEnd > planningStart);
   const planningPicker = planningSource.slice(planningStart, planningEnd);
   assert.match(planningPicker, /mode === "new-empty"/);
-  assert.match(planningPicker, /const owner = this\.workspaceController\.getOwner\?\.\(\);[\s\S]*?owner\?\.buildSyncFileSuggestedName\?\.\(\)/);
+  assert.match(planningPicker, /window\.showDirectoryPicker\(\{ mode: "readwrite" \}\)/);
+  assert.match(planningPicker, /this\.createEmptyWorkspaceFileInDirectory\(directoryHandle, options\)/);
   assert.match(planningPicker, /error\?\.name !== "AbortError"/);
+  assert.match(workspaceSource, /'sync-create-empty'/);
   assert.match(planningSource, /dbCreateNewBtn\.addEventListener\("click", async \(\) => \{\s+await this\.startEmptyDatabase\(\);/);
   assert.match(planningSource, /async startEmptyDatabase\(\)[\s\S]*?selectSyncFile\("new-empty", \{ schoolYearStart \}\)/);
 });

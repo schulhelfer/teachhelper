@@ -357,6 +357,7 @@ import {
   const SIDEBAR_WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
   const SIDEBAR_COLLAPSE_REQUEST_EVENT = 'classroom:sidebar-collapse-request';
   const MORE_TOOLS_DISMISS_EVENT = 'classroom:more-tools-dismiss';
+  const TOAST_REQUEST_EVENT = 'classroom:toast-request';
   const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getGradesFrame = () => gradesTutorialDemoFrame || els.gradesHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
@@ -3140,6 +3141,16 @@ import {
       if (data.type === THEME_PREFERENCE_CHANGE_EVENT) {
         if (frame !== getPlanningFrame() && frame !== getGradesFrame()) return;
         themeController.setPreference(data.detail?.preference);
+        return;
+      }
+      if (data.type === TOAST_REQUEST_EVENT) {
+        if (frame !== getPlanningFrame() && frame !== getGradesFrame()) return;
+        const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+        if (!detail || detail.source !== 'iframe') return;
+        const message = String(detail.message || '').trim();
+        if (!message) return;
+        const variant = detail.variant === 'error' ? 'error' : 'success';
+        showMessage(message, variant, { presentation: 'toast' });
         return;
       }
       if (data.type === MORE_TOOLS_DISMISS_EVENT) {

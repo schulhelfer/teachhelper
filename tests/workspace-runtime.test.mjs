@@ -55,7 +55,7 @@ class FakeStore {
     this.publicState = { settings: { activeSchoolYearId: 1 }, schoolYears: [{ id: 1 }], courses: [{ id: 7, name: '7a' }] };
     this.gradeState = emptyGrades();
     this.settings = new Map();
-    this.state = { settings: { ...this.publicState.settings } };
+    this.state = { settings: { ...this.publicState.settings }, courses: this.publicState.courses };
   }
   setAfterSaveHooks(hooks) { this.hooks = hooks; }
   _suspendSaveHooks() {}
@@ -99,7 +99,7 @@ class FakeStore {
   importDatabaseState(publicState, gradeState, options = {}) {
     this.publicState = this.normalizePublicState(publicState);
     this.gradeState = this.normalizeGradeVaultState(gradeState);
-    this.state = { settings: { ...this.publicState.settings } };
+    this.state = { settings: { ...this.publicState.settings }, courses: this.publicState.courses };
     this.importOptions = options;
   }
   replaceGradeVaultState(state) { this.gradeState = this.normalizeGradeVaultState(state); }
@@ -126,6 +126,17 @@ class FakeStore {
   getBackupEnabled() { return this.settings.get('backupEnabled') !== false; }
   getBackupIntervalDays() { return Number(this.settings.get('backupIntervalDays')) || 7; }
 }
+
+test('new database filenames add the suffix once before the extension', () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.buildSyncFileSuggestedName = () => 'TeachHelper-Datenbank-26-27.json';
+
+  assert.equal(runtime.buildNewDatabaseSuggestedName('Klasse-7a.json'), 'Klasse-7a (neu).json');
+  assert.equal(runtime.buildNewDatabaseSuggestedName('Klasse-7a (neu).json'), 'Klasse-7a (neu).json');
+  assert.equal(runtime.buildNewDatabaseSuggestedName('Klasse-7a'), 'Klasse-7a (neu).json');
+  assert.equal(runtime.buildNewDatabaseSuggestedName('Klasse-7a.thdb'), 'Klasse-7a (neu).thdb');
+  assert.equal(runtime.buildNewDatabaseSuggestedName(), 'TeachHelper-Datenbank-26-27 (neu).json');
+});
 
 test('workspace runtime emits strictly scoped snapshots', () => {
   const store = new FakeStore();
