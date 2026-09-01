@@ -127,6 +127,41 @@ class FakeStore {
   getBackupIntervalDays() { return Number(this.settings.get('backupIntervalDays')) || 7; }
 }
 
+async function buildAuthenticatedVaultContainer(password = 'ein-ausreichend-langes-passwort') {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const kdf = workspaceCrypto.createWorkspaceVaultKdf({ iterations: 100000 });
+  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey(password, kdf);
+  const validation = await workspaceCrypto.encryptWorkspaceVaultText(
+    'teachhelper-grade-vault-v1',
+    cryptoKey,
+    kdf,
+    { type: 'validation' },
+  );
+  runtime.vault = {
+    ...runtime.vault,
+    encryptionEnabled: true,
+    configured: true,
+    unlocked: true,
+    config: { configured: true, kdf, validation },
+    persistedConfig: { configured: true, kdf, validation },
+    cryptoKey,
+    kdf,
+    containerAuthenticationStatus: 'legacy',
+  };
+  runtime.courseCache.set(7, emptyGrades());
+  runtime.dirtyCourseIds.add(7);
+  const built = await runtime.buildContainer('authentication-test');
+  return { password, built };
+}
+
+function disableVaultKdfUpgrade(runtime) {
+  runtime.upgradeGradeVaultKdf = async () => false;
+  runtime.refreshNameLearningDueSummary = async () => false;
+  runtime.recordGradeVaultActivity = () => {};
+  return runtime;
+}
+
 test('new database filenames add the suffix once before the extension', () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   runtime.buildSyncFileSuggestedName = () => 'TeachHelper-Datenbank-26-27.json';
@@ -165,6 +200,7 @@ test('workspace runtime emits strictly scoped snapshots', () => {
   assert.equal('password' in shell, false);
   assert.equal(shell.vault.showGradeStudentPortraits, true);
   assert.equal(shell.vault.showNameLearningModule, true);
+  assert.equal(shell.vault.containerAuthenticationStatus, 'not-applicable');
 
   const grades = runtime.createWorkspaceSnapshot('grades');
   assert.equal(grades.activeCourseId, 7);
@@ -1016,6 +1052,114 @@ test('grade-vault crypto rejects hostile KDF and AES-GCM parameters before WebCr
     );
   }
   assert.equal(cryptoCalls, 0);
+});
+
+test('the vault container authentication accepts the original payload and rejects modifications', async () => {
+  const password = 'ein-ausreichend-langes-passwort';
+  const kdf = workspaceCrypto.createWorkspaceVaultKdf({ iterations: 100000 });
+  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey(password, kdf);
+  const authentication = await workspaceCrypto.createWorkspaceVaultContainerAuthentication('originaler-container', cryptoKey);
+
+  assert.equal(
+    await workspaceCrypto.verifyWorkspaceVaultContainerAuthentication(authentication, 'originaler-container', cryptoKey),
+    true,
+  );
+  await assert.rejects(
+    () => workspaceCrypto.verifyWorkspaceVaultContainerAuthentication(authentication, 'veränderter-container', cryptoKey),
+    /verändert|beschädigt/,
+  );
+  await assert.rejects(
+    () => workspaceCrypto.verifyWorkspaceVaultContainerAuthentication({ ...authentication, tag: 'AAAAAAAAAAAAAAAAAAAAAA==' }, 'originaler-container', cryptoKey),
+    /verändert|beschädigt/,
+  );
+});
+
+test('encrypted THDB containers are authenticated after unlock and legacy containers migrate on save', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  assert.ok(built.header.authentication);
+
+  const loaded = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await loaded.loadBytes(built.bytes, 'test');
+  assert.equal(loaded.vault.containerAuthenticationStatus, 'unverified');
+  assert.equal(await loaded.unlockGradeVault(password), true);
+  assert.equal(loaded.vault.containerAuthenticationStatus, 'verified');
+
+  const parsed = thdb.parseThdb1ContainerBytes(built.bytes, { includePlanningPublic: true, includeGradeCourseSegments: true });
+  const legacy = thdb.buildThdb1ContainerBytes({
+    schema: parsed.header.schema,
+    startupShellText: parsed.startupShellText,
+    planningPublicText: parsed.planningPublicText,
+    gradeVaultConfigText: parsed.gradeVaultConfigText,
+    gradeCourseSegments: parsed.gradeCourseSegments.map(({ courseId, text }) => ({ courseId, text })),
+    revision: parsed.header.revision,
+    updatedAt: parsed.header.updatedAt,
+    deviceId: parsed.header.deviceId,
+    reason: parsed.header.reason,
+  });
+  const legacyRuntime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await legacyRuntime.loadBytes(legacy.bytes, 'test');
+  assert.equal(legacyRuntime.vault.containerAuthenticationStatus, 'legacy');
+  await legacyRuntime.unlockGradeVault(password);
+  const migrated = await legacyRuntime.buildContainer('legacy-migration');
+  assert.ok(migrated.header.authentication);
+});
+
+test('recomputed but unauthenticated container changes prevent vault unlock', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  const parsed = thdb.parseThdb1ContainerBytes(built.bytes, { includePlanningPublic: true, includeGradeCourseSegments: true });
+  const containerOptions = {
+    schema: parsed.header.schema,
+    startupShellText: parsed.startupShellText,
+    planningPublicText: parsed.planningPublicText,
+    gradeVaultConfigText: parsed.gradeVaultConfigText,
+    gradeCourseSegments: parsed.gradeCourseSegments.map(({ courseId, text }) => ({ courseId, text })),
+    revision: parsed.header.revision,
+    updatedAt: parsed.header.updatedAt,
+    deviceId: parsed.header.deviceId,
+    reason: parsed.header.reason,
+    authentication: parsed.header.authentication,
+  };
+  const variants = [
+    ['öffentliche Daten', { planningPublicText: `${parsed.planningPublicText} ` }],
+    ['Vault-Konfiguration', { gradeVaultConfigText: `${parsed.gradeVaultConfigText} ` }],
+    ['Kurssegment', {
+      gradeCourseSegments: parsed.gradeCourseSegments.map(({ courseId, text }, index) => ({
+        courseId,
+        text: index === 0 ? `${text} ` : text,
+      })),
+    }],
+    ['Header-Metadaten', { reason: 'tampered-metadata' }],
+  ];
+
+  for (const [label, changes] of variants) {
+    const tampered = thdb.buildThdb1ContainerBytes({ ...containerOptions, ...changes });
+    const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+    await runtime.loadBytes(tampered.bytes, 'test');
+
+    await assert.rejects(() => runtime.unlockGradeVault(password), /verändert|beschädigt/, label);
+    assert.equal(runtime.vault.containerAuthenticationStatus, 'failed', label);
+    assert.equal(runtime.isGradeVaultUnlocked(), false, label);
+  }
+
+  const failedRuntime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await failedRuntime.loadBytes(thdb.buildThdb1ContainerBytes({
+    ...containerOptions,
+    planningPublicText: `${parsed.planningPublicText} `,
+  }).bytes, 'test');
+  await assert.rejects(() => failedRuntime.unlockGradeVault(password), /verändert|beschädigt/);
+  await assert.rejects(() => failedRuntime.unlockGradeVault(password), /verändert|beschädigt/);
+  assert.equal(failedRuntime.isGradeVaultUnlocked(), false);
+  await assert.rejects(() => failedRuntime.buildContainer('blocked-save'), /authentifiziert werden kann/);
+});
+
+test('unencrypted THDB containers keep the previous authentication-free behavior', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const built = await runtime.buildContainer('plain');
+  assert.equal(built.header.authentication, undefined);
+
+  await runtime.loadBytes(built.bytes, 'test');
+  assert.equal(runtime.vault.containerAuthenticationStatus, 'not-applicable');
+  await assert.doesNotReject(() => runtime.buildContainer('plain-resave'));
 });
 
 test('import rejects a vault configuration with excessive PBKDF2 work before it can be unlocked', async () => {

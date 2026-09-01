@@ -159,7 +159,7 @@ test('die technische Kennung wird einmalig in feste Formularfelder gesetzt', () 
   assert.doesNotMatch(identitySource, /store\.set|localStorage|indexedDB|this\.store/);
 });
 
-test('der Fokus wartet auf den sichtbaren Dialog, ohne Formularfelder zu verändern', () => {
+test('der Fokus wartet auf den sichtbaren Dialog und erfolgt nur einmal, ohne Formularfelder zu verändern', () => {
   const focusSource = vaultSource(
     '  focusGradeVaultDialogFieldWhenVisible(mode, attempt = 0)',
     '\n  closeGradeVaultDialog()',
@@ -167,7 +167,9 @@ test('der Fokus wartet auf den sichtbaren Dialog, ohne Formularfelder zu veränd
 
   assert.match(focusSource, /isElementRendered\(dialog\)/);
   assert.match(focusSource, /attempt < GRADE_VAULT_DIALOG_FOCUS_MAX_FRAMES/);
-  assert.match(focusSource, /document\.activeElement === focusTarget/);
+  assert.match(focusSource, /focusGradeVaultDialogField\(focusTarget\)/);
+  assert.doesNotMatch(focusSource, /document\.activeElement/);
+  assert.doesNotMatch(focusSource, /requestAnimationFrame\(refocus\)|setTimeout\(refocus, 60\)/);
   assert.doesNotMatch(focusSource, /cloneNode|replaceChild|\.remove\(/);
 });
 

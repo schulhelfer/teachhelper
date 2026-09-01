@@ -70,5 +70,6 @@ test('planning provides a break-only dialog and renders pause overlays at hour b
   assert.match(planningCss, /content: "👀"/);
   assert.match(planningCss, /transform: translate\(-50%, -50%\) scale\(1\.3\)/);
   assert.match(planningCss, /width: calc\(3rem \* var\(--week-table-scale, 1\)\)/);
+  assert.match(planningCss, /clip-path: polygon\([\s\S]*?100% 50%,[\s\S]*?calc\(50% \+ \(0\.625rem \* var\(--week-table-scale, 1\)\)\) 100%,[\s\S]*?calc\(50% - \(0\.625rem \* var\(--week-table-scale, 1\)\)\) 100%,[\s\S]*?0 50%/);
   assert.match(planningCss, /\.week-day-break-target:hover:not\(:disabled\)/);
 });

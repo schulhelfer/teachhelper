@@ -231,10 +231,10 @@ async function putInRuntimeCache(request, response) {
 
 async function matchCached(request) {
   const runtime = await caches.open(RUNTIME_NAME);
-  const runtimeMatch = await runtime.match(request, { ignoreSearch: true });
+  const runtimeMatch = await runtime.match(request);
   if (runtimeMatch) return runtimeMatch;
   const precache = await caches.open(PRECACHE_NAME);
-  return precache.match(request, { ignoreSearch: true });
+  return precache.match(request);
 }
 
 async function networkFirst(request, {

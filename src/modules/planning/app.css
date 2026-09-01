@@ -2639,6 +2639,16 @@
           box-shadow: none;
           appearance: none;
           -webkit-appearance: none;
+          clip-path: polygon(
+            0 0,
+            100% 0,
+            100% 50%,
+            calc(50% + (0.625rem * var(--week-table-scale, 1))) 50%,
+            calc(50% + (0.625rem * var(--week-table-scale, 1))) 100%,
+            calc(50% - (0.625rem * var(--week-table-scale, 1))) 100%,
+            calc(50% - (0.625rem * var(--week-table-scale, 1))) 50%,
+            0 50%
+          );
           cursor: pointer;
         }
 

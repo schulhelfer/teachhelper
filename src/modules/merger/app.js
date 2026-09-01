@@ -3228,7 +3228,6 @@ export function createMergerApp({
 
 	              const loadingTask = pdfjsLib.getDocument({
 	                data: await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS }),
-	                isEvalSupported: false,
 	                useWasm: false,
 	              });
 	              rotateState.activePreviewLoadingTask = loadingTask;
@@ -3327,7 +3326,6 @@ export function createMergerApp({
 
 	              const loadingTask = pdfjsLib.getDocument({
 	                data: await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS }),
-	                isEvalSupported: false,
 	                useWasm: false,
 	              });
 	              splitState.activePreviewLoadingTask = loadingTask;

@@ -4127,6 +4127,14 @@ class GradesApp {
     };
   }
 
+  getGradeVaultContainerAuthenticationStatus() {
+    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
+    const status = String(snapshot?.vault?.containerAuthenticationStatus || "");
+    return ["not-applicable", "unverified", "verified", "legacy", "failed"].includes(status)
+      ? status
+      : "not-applicable";
+  }
+
   async resolveUnsavedSettingsNavigation() {
     if (this.currentView !== "settings" || !this.settingsDirty) {
       return true;
@@ -4433,23 +4441,50 @@ class GradesApp {
     banner.hidden = true;
     banner.removeAttribute("role");
     const warning = this.getGradeVaultAutoLockWarning();
-    if (!warning) {
+    if (warning) {
+      const retryLabel = warning.retryAt
+        ? new Date(warning.retryAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
+        : "in zehn Minuten";
+      banner.innerHTML = `
+        <div>
+          <strong>Notenbereich weiterhin entsperrt</strong>
+          <p>${escapeHtml(warning.message)} Bitte speichere die Noten. Nächster Sperrversuch: ${escapeHtml(retryLabel)}.</p>
+        </div>
+        <div class="button-row">
+          <button type="button" class="ghost" data-grade-vault-banner-action="save">Jetzt speichern</button>
+        </div>
+      `;
+      banner.setAttribute("role", "alert");
+      banner.hidden = false;
       return;
     }
-    const retryLabel = warning.retryAt
-      ? new Date(warning.retryAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
-      : "in zehn Minuten";
-    banner.innerHTML = `
-      <div>
-        <strong>Notenbereich weiterhin entsperrt</strong>
-        <p>${escapeHtml(warning.message)} Bitte speichere die Noten. Nächster Sperrversuch: ${escapeHtml(retryLabel)}.</p>
-      </div>
-      <div class="button-row">
-        <button type="button" class="ghost" data-grade-vault-banner-action="save">Jetzt speichern</button>
-      </div>
-    `;
-    banner.setAttribute("role", "alert");
-    banner.hidden = false;
+    const authenticationStatus = this.getGradeVaultContainerAuthenticationStatus();
+    if (authenticationStatus === "unverified") {
+      banner.innerHTML = `
+        <div>
+          <strong>Dateischutz noch nicht geprüft</strong>
+          <p>Der zusätzliche Dateischutz wird beim Entsperren geprüft.</p>
+        </div>
+        <div class="button-row">
+          <button type="button" class="ghost" data-grade-vault-banner-action="unlock">Entsperren</button>
+        </div>
+      `;
+      banner.hidden = false;
+      return;
+    }
+    if (authenticationStatus === "legacy") {
+      const unlocked = this.isGradeVaultUnlocked();
+      banner.innerHTML = `
+        <div>
+          <strong>Zusätzlicher Dateischutz wird ergänzt</strong>
+          <p>Der zusätzliche Dateischutz wird beim nächsten Entsperren und Speichern ergänzt.</p>
+        </div>
+        <div class="button-row">
+          <button type="button" class="ghost" data-grade-vault-banner-action="${unlocked ? "save" : "unlock"}">${unlocked ? "Jetzt speichern" : "Entsperren"}</button>
+        </div>
+      `;
+      banner.hidden = false;
+    }
   }
 
   updateGradeVaultActionButtons() {
@@ -4587,19 +4622,6 @@ class GradesApp {
       return;
     }
     focusGradeVaultDialogField(focusTarget);
-    const refocus = () => {
-      if (this.pendingGradeVaultDialogMode !== mode) {
-        return;
-      }
-      if (document.activeElement === focusTarget) {
-        return;
-      }
-      focusGradeVaultDialogField(focusTarget);
-    };
-    if (typeof requestAnimationFrame === "function") {
-      requestAnimationFrame(refocus);
-    }
-    window.setTimeout(refocus, 60);
   }
 
   closeGradeVaultDialog() {

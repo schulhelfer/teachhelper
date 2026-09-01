@@ -33,10 +33,15 @@ test('background revalidation asks the server instead of trusting the HTTP cache
 });
 
 test('reads the runtime cache before the precache so refreshed files win', () => {
-  assert.match(
-    serviceWorkerSource,
-    /async function matchCached\(request\) \{[\s\S]*?caches\.open\(RUNTIME_NAME\)[\s\S]*?caches\.open\(PRECACHE_NAME\)[\s\S]*?\}/,
+  const matchCachedBody = serviceWorkerSource.match(
+    /async function matchCached\(request\) \{[\s\S]*?\n\}/,
   );
+  assert.ok(matchCachedBody, 'service worker must declare matchCached');
+  assert.match(
+    matchCachedBody[0],
+    /caches\.open\(RUNTIME_NAME\)[\s\S]*?runtime\.match\(request\)[\s\S]*?caches\.open\(PRECACHE_NAME\)[\s\S]*?precache\.match\(request\)/,
+  );
+  assert.doesNotMatch(matchCachedBody[0], /ignoreSearch/);
   assert.match(
     serviceWorkerSource,
     /async function staleWhileRevalidate[\s\S]*?const cached = await matchCached\(request\);/,
@@ -65,6 +70,11 @@ test('files of this version are pinned to the versioned precache', () => {
   );
   assert.ok(precacheFirstBody, 'service worker must declare precacheFirst');
   assert.match(precacheFirstBody[0], /caches\.open\(PRECACHE_NAME\)/);
+  assert.match(
+    precacheFirstBody[0],
+    /precache\.match\(request, \{ ignoreSearch: true \}\)/,
+    'pinned assets with query strings must resolve to their precached version',
+  );
   assert.doesNotMatch(
     precacheFirstBody[0],
     /putInRuntimeCache|staleWhileRevalidate/,
