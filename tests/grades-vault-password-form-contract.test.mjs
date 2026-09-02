@@ -167,10 +167,19 @@ test('der Fokus wartet auf den sichtbaren Dialog und erfolgt nur einmal, ohne Fo
 
   assert.match(focusSource, /isElementRendered\(dialog\)/);
   assert.match(focusSource, /attempt < GRADE_VAULT_DIALOG_FOCUS_MAX_FRAMES/);
+  assert.match(focusSource, /!this\.gradeVaultDialogAutoFocusPending/);
+  assert.match(focusSource, /this\.gradeVaultDialogAutoFocusPending = false;\s*focusGradeVaultDialogField\(focusTarget\)/);
   assert.match(focusSource, /focusGradeVaultDialogField\(focusTarget\)/);
   assert.doesNotMatch(focusSource, /document\.activeElement/);
   assert.doesNotMatch(focusSource, /requestAnimationFrame\(refocus\)|setTimeout\(refocus, 60\)/);
   assert.doesNotMatch(focusSource, /cloneNode|replaceChild|\.remove\(/);
+});
+
+test('eine Dialoginteraktion bricht nur den noch ausstehenden Autofokus ab', () => {
+  assert.match(appSource, /this\.gradeVaultDialogAutoFocusPending = true;\s*this\.gradeVaultSession\.promptPending = false;/);
+  assert.match(appSource, /const cancelGradeVaultDialogAutoFocus = \(\) => \{\s*this\.gradeVaultDialogAutoFocusPending = false;\s*\};/);
+  assert.match(appSource, /\["pointerover", "pointermove", "pointerdown", "keydown", "touchstart"\]\.forEach/);
+  assert.match(appSource, /addEventListener\(eventName, cancelGradeVaultDialogAutoFocus, \{ capture: true \}\)/);
 });
 
 test('ein erfolgreicher Vault-Vorgang meldet die Zugangsdaten explizit an den Browser', () => {

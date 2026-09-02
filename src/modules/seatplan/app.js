@@ -4,6 +4,7 @@ import {
   assertJsonNestingAtMost,
   FILE_LIMITS,
 } from '../../shared/file-guards.js';
+import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
         (function () {
           const appShellTemplate = document.getElementById('app-shell');
@@ -2525,13 +2526,52 @@ import {
               .filter(input => input instanceof HTMLInputElement && !input.disabled);
           }
 
-          function focusNextCourseGradeInput(currentInput) {
+          function getCourseGradeInputIndex(inputs, input) {
+            const directIndex = inputs.indexOf(input);
+            if (directIndex >= 0) return directIndex;
+            const studentId = String(input?.dataset?.studentId || '');
+            return studentId
+              ? inputs.findIndex(candidate => String(candidate.dataset.studentId || '') === studentId)
+              : -1;
+          }
+
+          function getCourseGradeInputSeatId(input) {
+            return String(input?.closest?.('.seat')?.dataset?.seat || '');
+          }
+
+          function findNextCourseGradeInput(currentInput) {
             const inputs = getCourseGradeInputOrder();
-            if (!inputs.length) return;
-            const index = inputs.indexOf(currentInput);
-            const next = inputs[index >= 0 && index < inputs.length - 1 ? index + 1 : 0];
-            const wrapped = index >= inputs.length - 1;
-            if (wrapped) {
+            if (!inputs.length) return null;
+            const currentIndex = getCourseGradeInputIndex(inputs, currentInput);
+            const current = inputs[currentIndex] || null;
+            const currentSeatId = getCourseGradeInputSeatId(current);
+            const inputBySeatId = new Map(
+              inputs
+                .map(input => [getCourseGradeInputSeatId(input), input])
+                .filter(([seatId]) => Boolean(seatId))
+            );
+            const visitedStudentIds = state.courseGradeVisitedStudentIds instanceof Set
+              ? state.courseGradeVisitedStudentIds
+              : new Set();
+            const visitedSeatIds = new Set(
+              inputs
+                .filter(input => visitedStudentIds.has(String(input.dataset.studentId || '')))
+                .map(getCourseGradeInputSeatId)
+                .filter(Boolean)
+            );
+            const nextSeat = findNextCourseGradeSeat({
+              currentSeatId,
+              seatIds: inputs.map(getCourseGradeInputSeatId),
+              visitedSeatIds,
+            });
+            const nextInput = nextSeat ? inputBySeatId.get(nextSeat.seatId) : null;
+            return nextInput ? { input: nextInput, completedPass: nextSeat.completedPass } : null;
+          }
+
+          function focusNextCourseGradeInput(currentInput) {
+            const nextState = findNextCourseGradeInput(currentInput);
+            if (!nextState?.input) return;
+            if (nextState.completedPass) {
               if (
                 checkCourseGradeCompletionPrompt({ allowOpen: true })
                 || state.courseGradeCompletionPromptShown
@@ -2539,24 +2579,23 @@ import {
                 return;
               }
             }
+            const next = nextState.input;
             if (next) {
               next.focus({ preventScroll: false });
-              if (
-                els.courseGradePicker?.hidden
-                || String(state.courseGradePickerStudentId || '') !== String(next.dataset.studentId || '')
-              ) {
-                openCourseGradePicker(next);
-              }
+              // Do not depend on the focus event here. During a layout update the
+              // focused control may have been replaced, which otherwise leaves the
+              // picker closed after the first entered grade.
+              openCourseGradePicker(next);
             }
           }
 
           function advanceCourseGradeInput(currentInput, options = {}) {
-            if (!(currentInput instanceof HTMLInputElement) || !currentInput.isConnected) return false;
+            if (!(currentInput instanceof HTMLInputElement)) return false;
             if (options.closePicker) {
               hideCourseGradePicker();
             }
             const moveFocus = () => {
-              if (!isCourseGradeMode() || !currentInput.isConnected) return;
+              if (!isCourseGradeMode()) return;
               focusNextCourseGradeInput(currentInput);
             };
             if (typeof requestAnimationFrame === 'function') {

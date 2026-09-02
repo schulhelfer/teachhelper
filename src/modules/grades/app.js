@@ -3103,6 +3103,7 @@ class GradesApp {
     this.pendingEntfallLessonId = null;
     this.pendingTopicLessonId = null;
     this.pendingGradeVaultDialogMode = "";
+    this.gradeVaultDialogAutoFocusPending = false;
     this.pendingGradeVaultContinuation = null;
     this.gradeVaultOverlayPreserveSourceTab = null;
     this.pendingGradeVaultEncryptionDisable = false;
@@ -4531,6 +4532,7 @@ class GradesApp {
     const isChangeMode = normalizedMode === "change";
     const isSetupMode = normalizedMode === "setup";
     this.pendingGradeVaultDialogMode = normalizedMode;
+    this.gradeVaultDialogAutoFocusPending = true;
     this.gradeVaultSession.promptPending = false;
     this.refs.gradeVaultDialog.dataset.gradeVaultMode = normalizedMode;
     if (this.refs.gradeVaultDialogError) {
@@ -4604,7 +4606,12 @@ class GradesApp {
 
   focusGradeVaultDialogFieldWhenVisible(mode, attempt = 0) {
     const dialog = this.refs.gradeVaultDialog;
-    if (!dialog || !this.getGradeVaultDialogForm(mode) || this.pendingGradeVaultDialogMode !== mode) {
+    if (
+      !dialog
+      || !this.gradeVaultDialogAutoFocusPending
+      || !this.getGradeVaultDialogForm(mode)
+      || this.pendingGradeVaultDialogMode !== mode
+    ) {
       return;
     }
     if (!isElementRendered(dialog) && attempt < GRADE_VAULT_DIALOG_FOCUS_MAX_FRAMES) {
@@ -4621,6 +4628,7 @@ class GradesApp {
     if (!focusTarget) {
       return;
     }
+    this.gradeVaultDialogAutoFocusPending = false;
     focusGradeVaultDialogField(focusTarget);
   }
 
@@ -4683,6 +4691,7 @@ class GradesApp {
     }
     this.gradeVaultSession.lastPromptMode = this.pendingGradeVaultDialogMode || this.gradeVaultSession.lastPromptMode || "";
     this.pendingGradeVaultDialogMode = "";
+    this.gradeVaultDialogAutoFocusPending = false;
     this.pendingGradeVaultContinuation = null;
     this.pendingGradeVaultEncryptionDisable = false;
     if (cancelledGradeVaultEncryptionDisable) {
@@ -5046,6 +5055,7 @@ class GradesApp {
       this.notifyParentGradeVaultOverlay(false);
       this.scheduleGradeVaultDialogSecretClear();
       this.pendingGradeVaultDialogMode = "";
+      this.gradeVaultDialogAutoFocusPending = false;
       if (mode === "setup") {
         this.gradeVaultEncryptionDraft = null;
         let saved = false;
@@ -11993,6 +12003,12 @@ class GradesApp {
     this.refs.gradeVaultDialog?.addEventListener("cancel", (event) => {
       event.preventDefault();
       this.closeGradeVaultDialog();
+    });
+    const cancelGradeVaultDialogAutoFocus = () => {
+      this.gradeVaultDialogAutoFocusPending = false;
+    };
+    ["pointerover", "pointermove", "pointerdown", "keydown", "touchstart"].forEach((eventName) => {
+      this.refs.gradeVaultDialog?.addEventListener(eventName, cancelGradeVaultDialogAutoFocus, { capture: true });
     });
 
     if (this.refs.messageDialogCancel) {
