@@ -64,7 +64,6 @@ export function createPlanningSeatplanBridge({
   getChromeCollapsed,
   rosterStore,
   documentBus = document,
-  onCourseGradeSaveSuccess = null,
 } = {}) {
   let mergerController = null;
   let duplicateCheckController = null;
@@ -823,13 +822,6 @@ export function createPlanningSeatplanBridge({
       pendingCourseGradeSaveRequest = null;
     }
     seatplanController?.sendCourseGradeSaveResult?.(detail);
-    if (
-      matchesPendingRequest
-      && detail.ok === true
-      && typeof onCourseGradeSaveSuccess === 'function'
-    ) {
-      onCourseGradeSaveSuccess(detail);
-    }
   });
 
   return {

@@ -2868,9 +2868,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (isCourseGradeOccurrenceMode()) {
               return isCourseGradeStudentChecked(sid);
             }
-            const value = state.courseGradeEntries[sid];
-            const hasGrade = Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 15;
-            return hasGrade || Boolean(state.courseGradeVisitedStudentIds?.has(sid));
+            return Boolean(state.courseGradeVisitedStudentIds?.has(sid));
           }
 
           function getCourseGradeProgress() {

@@ -60,7 +60,7 @@ test('der Modus-Text überschreibt den Chevron nicht', () => {
   assert.doesNotMatch(seatplanApp, /els\.courseGradeEntryModeButton\.textContent =/);
 });
 
-test('Zähler und Abschluss-Dialog teilen sich dieselbe Definition von "durchgegangen"', () => {
+test('Zähler und Abschluss-Dialog verlangen, dass jeder Schüler tatsächlich durchgegangen wurde', () => {
   assert.match(
     seatplanApp,
     /function getCourseGradeProgress\(\) \{[\s\S]*?getSeatedCourseGradeStudentIds\(\)[\s\S]*?seatedIds\.filter\(isCourseGradeStudentDone\)\.length/,
@@ -71,7 +71,7 @@ test('Zähler und Abschluss-Dialog teilen sich dieselbe Definition von "durchgeg
   );
   assert.match(
     seatplanApp,
-    /function isCourseGradeStudentDone\(studentId\) \{[\s\S]*?isCourseGradeOccurrenceMode\(\)[\s\S]*?isCourseGradeStudentChecked\(sid\)[\s\S]*?courseGradeVisitedStudentIds\?\.has\(sid\)/,
+    /function isCourseGradeStudentDone\(studentId\) \{[\s\S]*?isCourseGradeOccurrenceMode\(\)[\s\S]*?isCourseGradeStudentChecked\(sid\)[\s\S]*?return Boolean\(state\.courseGradeVisitedStudentIds\?\.has\(sid\)\);/,
   );
 });
 
