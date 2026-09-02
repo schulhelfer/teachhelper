@@ -373,6 +373,7 @@ export class WorkspaceRuntime {
     this.deletedCourseIds = new Set();
     this.confirmedStudentRemovalsByCourse = new Map();
     this.persistenceFailure = null;
+    this.pendingSave = null;
     this.containerAuthenticationPayload = '';
     this.deviceId = randomId();
     this.manualLoaded = false;
@@ -395,7 +396,9 @@ export class WorkspaceRuntime {
       config: normalizeVaultConfig(null),
       persistedConfig: normalizeVaultConfig(null),
       persistedCryptoKey: null,
+      persistedContainerSigningKey: null,
       cryptoKey: null,
+      containerSigningKey: null,
       kdf: null,
       lastActivityAt: 0,
       autoLockTimer: 0,
@@ -648,6 +651,14 @@ export class WorkspaceRuntime {
         statusText: String(this.persistenceFailure?.message || ''),
         statusError: Boolean(this.persistenceFailure),
         statusAt: Number(this.persistenceFailure?.at) || 0,
+        pendingSave: this.pendingSave
+          ? {
+            active: true,
+            reason: String(this.pendingSave.reason || ''),
+            blockReason: String(this.pendingSave.blockReason || ''),
+            since: Number(this.pendingSave.since) || 0,
+          }
+          : { active: false, reason: '', blockReason: '', since: 0 },
       },
       unsaved: {
         dirty: Boolean(this.publicDirty || this.dirtyCourseIds.size),
@@ -726,7 +737,39 @@ export class WorkspaceRuntime {
     return true;
   }
 
+  getSaveBlockReason() {
+    return this.isGradeVaultEncryptionEnabled() && !this.canSignContainer() ? 'vault-locked' : '';
+  }
+
+  clearPendingSave() {
+    if (!this.pendingSave) return false;
+    this.pendingSave = null;
+    return true;
+  }
+
+  deferSave(reason = 'auto-save', blockReason = 'vault-locked') {
+    this.pendingSave = {
+      reason: String(reason || 'auto-save'),
+      blockReason: String(blockReason || 'vault-locked'),
+      since: Number(this.pendingSave?.since) || Date.now(),
+    };
+    this.clearPersistenceFailure();
+    this.controller?.markChanged?.('shell');
+    return false;
+  }
+
+  flushDeferredSave() {
+    const pending = this.pendingSave;
+    if (!pending || this.getSaveBlockReason()) return false;
+    this.pendingSave = null;
+    this.controller?.markChanged?.('shell');
+    return this.queueSyncSave(pending.reason);
+  }
+
   recordPersistenceFailure(error) {
+    if (String(error?.code || '') === WORKSPACE_ERROR_VAULT_LOCKED) {
+      return this.deferSave(this.pendingSave?.reason || 'auto-save');
+    }
     this.persistenceFailure = {
       code: String(error?.code || ''),
       message: error instanceof Error && error.message
@@ -769,6 +812,28 @@ export class WorkspaceRuntime {
     return !this.isGradeVaultEncryptionEnabled() || this.isGradeVaultUnlocked();
   }
 
+  canSignContainer() {
+    return !this.isGradeVaultEncryptionEnabled() || Boolean(this.vault.containerSigningKey);
+  }
+
+  applyGradeVaultKeys(cryptoKey, signingKey) {
+    this.vault.cryptoKey = cryptoKey || null;
+    this.vault.containerSigningKey = signingKey || null;
+    return true;
+  }
+
+  dropGradeVaultSessionKey() {
+    this.vault.cryptoKey = null;
+    return true;
+  }
+
+  forgetGradeVaultKeys() {
+    this.applyGradeVaultKeys(null, null);
+    this.vault.persistedCryptoKey = null;
+    this.vault.persistedContainerSigningKey = null;
+    return true;
+  }
+
   hasGradeVaultUnlockConfig() {
     return Boolean(this.vault.configured && this.vault.config?.kdf && this.vault.config?.validation);
   }
@@ -785,6 +850,7 @@ export class WorkspaceRuntime {
       await this.loadAllPersistedGradeCoursesForCryptoRewrite();
     }
     const previousCryptoKey = this.vault.cryptoKey;
+    const previousSigningKey = this.vault.containerSigningKey;
     if (
       this.vault.persistedConfig?.configured
       && this.vault.config?.configured
@@ -792,9 +858,10 @@ export class WorkspaceRuntime {
       && !this.vault.persistedCryptoKey
     ) {
       this.vault.persistedCryptoKey = previousCryptoKey;
+      this.vault.persistedContainerSigningKey = previousSigningKey;
     }
     const kdf = createWorkspaceVaultKdf();
-    const { cryptoKey } = await deriveWorkspaceVaultKey(password, kdf);
+    const { cryptoKey, signingKey } = await deriveWorkspaceVaultKey(password, kdf);
     const validation = await encryptWorkspaceVaultText(VAULT_VALIDATION_TOKEN, cryptoKey, kdf, { type: 'validation' });
     this.vault = {
       ...this.vault,
@@ -803,6 +870,7 @@ export class WorkspaceRuntime {
       unlocked: true,
       config: { schema: GRADE_VAULT_CONFIG_SCHEMA, configured: true, kdf, validation },
       cryptoKey,
+      containerSigningKey: signingKey,
       kdf,
       containerAuthentication: null,
       containerAuthenticationStatus: 'legacy',
@@ -812,6 +880,7 @@ export class WorkspaceRuntime {
     await this.refreshNameLearningDueSummary();
     this.recordGradeVaultActivity();
     this.controller?.markChanged?.('grades');
+    this.flushDeferredSave();
     return true;
   }
 
@@ -822,7 +891,7 @@ export class WorkspaceRuntime {
       }
       throw new Error('Der geschützte Notenbereich ist nicht vollständig eingerichtet.');
     }
-    const { cryptoKey, kdf } = await deriveWorkspaceVaultKey(password, this.vault.config.kdf);
+    const { cryptoKey, signingKey, kdf } = await deriveWorkspaceVaultKey(password, this.vault.config.kdf);
     const validation = await decryptWorkspaceVaultText(this.vault.config.validation, cryptoKey, kdf, { type: 'validation' });
     if (validation !== VAULT_VALIDATION_TOKEN) throw new Error('Passwort falsch oder Notendaten beschädigt.');
     if (this.vault.containerAuthenticationStatus === 'failed') {
@@ -838,14 +907,14 @@ export class WorkspaceRuntime {
       } catch (error) {
         this.vault.containerAuthenticationStatus = 'failed';
         this.vault.unlocked = false;
-        this.vault.cryptoKey = null;
+        this.applyGradeVaultKeys(null, null);
         this.controller?.markChanged?.('grades');
         throw error;
       }
       this.vault.containerAuthenticationStatus = 'verified';
     }
     this.vault.unlocked = true;
-    this.vault.cryptoKey = cryptoKey;
+    this.applyGradeVaultKeys(cryptoKey, signingKey);
     this.vault.kdf = kdf;
     this.vault.autoLockNotice = null;
     try {
@@ -855,6 +924,7 @@ export class WorkspaceRuntime {
     await this.refreshNameLearningDueSummary();
     this.recordGradeVaultActivity();
     this.controller?.markChanged?.('grades');
+    this.flushDeferredSave();
     return true;
   }
 
@@ -878,7 +948,7 @@ export class WorkspaceRuntime {
     }
 
     const nextKdf = createWorkspaceVaultKdf();
-    const { cryptoKey: nextCryptoKey } = await deriveWorkspaceVaultKey(password, nextKdf);
+    const { cryptoKey: nextCryptoKey, signingKey: nextSigningKey } = await deriveWorkspaceVaultKey(password, nextKdf);
     const validation = await encryptWorkspaceVaultText(
       VAULT_VALIDATION_TOKEN,
       nextCryptoKey,
@@ -887,13 +957,14 @@ export class WorkspaceRuntime {
     );
 
     this.vault.persistedCryptoKey = this.vault.cryptoKey;
+    this.vault.persistedContainerSigningKey = this.vault.containerSigningKey;
     this.vault.config = {
       schema: GRADE_VAULT_CONFIG_SCHEMA,
       configured: true,
       kdf: nextKdf,
       validation,
     };
-    this.vault.cryptoKey = nextCryptoKey;
+    this.applyGradeVaultKeys(nextCryptoKey, nextSigningKey);
     this.vault.kdf = nextKdf;
     this.vault.containerAuthentication = null;
     this.vault.containerAuthenticationStatus = 'legacy';
@@ -919,12 +990,14 @@ export class WorkspaceRuntime {
     if (!this.isGradeVaultUnlocked()) throw new Error('Der geschützte Notenbereich muss zuerst entsperrt sein.');
     await this.loadAllPersistedGradeCoursesForCryptoRewrite();
     const persistedCryptoKey = this.vault.cryptoKey;
+    const persistedContainerSigningKey = this.vault.containerSigningKey;
     this.vault.encryptionEnabled = false;
     this.vault.configured = false;
     this.vault.unlocked = false;
     this.vault.config = normalizeVaultConfig(null);
     this.vault.persistedCryptoKey = persistedCryptoKey;
-    this.vault.cryptoKey = null;
+    this.vault.persistedContainerSigningKey = persistedContainerSigningKey;
+    this.applyGradeVaultKeys(null, null);
     this.vault.kdf = null;
     this.vault.containerAuthentication = null;
     this.vault.containerAuthenticationStatus = 'not-applicable';
@@ -936,6 +1009,7 @@ export class WorkspaceRuntime {
     this.store.setGradeVaultEncryptionEnabled(false);
     await this.refreshNameLearningDueSummary();
     this.controller?.markChanged?.('grades');
+    this.flushDeferredSave();
     return true;
   }
 
@@ -953,8 +1027,9 @@ export class WorkspaceRuntime {
     this.courseCache.clear();
     this.loadedCourseId = null;
     this.vault.unlocked = false;
-    this.vault.cryptoKey = null;
+    this.dropGradeVaultSessionKey();
     this.vault.persistedCryptoKey = null;
+    this.vault.persistedContainerSigningKey = null;
     this.vault.kdf = this.vault.config?.kdf || null;
     this.clearGradeVaultAutoLockTimer();
     this.clearGradeVaultBackgroundAutoLockTimer();
@@ -989,7 +1064,10 @@ export class WorkspaceRuntime {
       this.vault.config = persistedConfig;
       this.vault.configured = Boolean(persistedConfig.configured);
       this.vault.encryptionEnabled = Boolean(persistedConfig.configured);
-      this.vault.cryptoKey = persistedConfig.configured ? this.vault.persistedCryptoKey : null;
+      this.applyGradeVaultKeys(
+        persistedConfig.configured ? this.vault.persistedCryptoKey : null,
+        persistedConfig.configured ? this.vault.persistedContainerSigningKey : null,
+      );
       this.vault.kdf = persistedConfig.kdf;
       this.store.setGradeVaultEncryptionEnabled(Boolean(persistedConfig.configured));
     }
@@ -1597,8 +1675,10 @@ export class WorkspaceRuntime {
       ? this.store.state.courses
       : (this.store.exportPublicStateSnapshot?.().courses || []);
     const existingCourses = new Set(publicCourses.map((course) => Number(course.id)));
-    if (this.isGradeVaultEncryptionEnabled() && !this.isGradeVaultUnlocked()) {
-      throw new Error('Der geschützte Notenbereich muss vor dem Speichern entsperrt sein, damit die Datenbank authentifiziert werden kann.');
+    if (this.isGradeVaultEncryptionEnabled() && !this.canSignContainer()) {
+      const error = new Error('Der geschützte Notenbereich muss in dieser Sitzung einmal entsperrt werden, bevor die Datenbank gespeichert werden kann.');
+      error.code = WORKSPACE_ERROR_VAULT_LOCKED;
+      throw error;
     }
     const segments = [];
     let entryCount = 0;
@@ -1612,6 +1692,11 @@ export class WorkspaceRuntime {
       if (!rewrite && this.segmentTexts.has(courseId)) {
         segments.push({ courseId, text: this.segmentTexts.get(courseId) });
         continue;
+      }
+      if (this.isGradeVaultEncryptionEnabled() && !this.isGradeVaultUnlocked()) {
+        const error = new Error('Ungespeicherte Notenänderungen können erst nach dem Entsperren des Notenbereichs gespeichert werden.');
+        error.code = WORKSPACE_ERROR_VAULT_LOCKED;
+        throw error;
       }
       const state = this.courseCache.get(courseId) || emptyGradeState(this.store);
       entryCount += state.gradeEntries?.length || 0;
@@ -1656,7 +1741,7 @@ export class WorkspaceRuntime {
     });
     const authentication = await createWorkspaceVaultContainerAuthentication(
       getThdb1ContainerAuthenticationPayload(prepared.header),
-      this.vault.cryptoKey,
+      this.vault.containerSigningKey,
     );
     return buildThdb1ContainerBytes({ ...containerOptions, authentication });
   }
@@ -1734,7 +1819,8 @@ export class WorkspaceRuntime {
     this.vault.config = config;
     this.vault.persistedConfig = clone(config, normalizeVaultConfig(null));
     this.vault.persistedCryptoKey = null;
-    this.vault.cryptoKey = null;
+    this.vault.persistedContainerSigningKey = null;
+    this.applyGradeVaultKeys(null, null);
     this.vault.kdf = config.kdf;
     this.vault.containerAuthentication = parsed.header.authentication || null;
     this.vault.containerAuthenticationStatus = this.vault.encryptionEnabled
@@ -1753,6 +1839,7 @@ export class WorkspaceRuntime {
     this.databaseLoaded = true;
     this.ready = true;
     this.clearPersistenceFailure();
+    this.clearPendingSave();
     if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
     this.controller?.markChanged?.('planning');
     this.controller?.publish?.('grades');
@@ -2051,6 +2138,7 @@ export class WorkspaceRuntime {
     this.manualDirty = false;
     this.clearGradeVaultAutoLockWarning();
     this.clearPersistenceFailure();
+    this.clearPendingSave();
     this.controller?.markChanged?.('shell');
     return true;
   }
@@ -2065,6 +2153,8 @@ export class WorkspaceRuntime {
 
   queueSyncSave(reason = 'auto-save') {
     if (this.isManualPersistenceMode() || !this.fileHandle) return false;
+    const blockReason = this.getSaveBlockReason();
+    if (blockReason) return this.deferSave(reason, blockReason);
     const operation = this.enqueueConnectedFileSave(reason);
     void operation.catch((error) => this.recordPersistenceFailure(error));
     return true;
@@ -2095,6 +2185,7 @@ export class WorkspaceRuntime {
     this.publicDirty = false;
     this.dirtyCourseIds.clear();
     this.clearGradeVaultAutoLockWarning();
+    this.clearPendingSave();
     this.controller?.markChanged?.('shell');
     return true;
   }
@@ -2120,6 +2211,7 @@ export class WorkspaceRuntime {
 
   async createLatestWebBackup(mode = 'manual', silent = false) {
     if (!this.backupDirectoryHandle || !this.isPersistenceReady()) return false;
+    if (silent && this.getSaveBlockReason()) return false;
     const built = await this.buildContainer(`backup-${mode}`);
     const handle = await this.backupDirectoryHandle.getFileHandle(buildBackupFileName(this.now()), { create: true });
     const builtHash = await getThdb1FileHashAsync(built.bytes);
@@ -2440,7 +2532,11 @@ export class WorkspaceRuntime {
     if (name === 'sync-reconnect') return { changed: await this.tryReconnectStoredSyncFile({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
     if (name === 'backup-directory-connect') return { changed: await this.acceptWorkspaceBackupDirectoryHandle(detail?.handle), scope: 'shell' };
     if (name === 'backup-directory-reconnect') return { changed: await this.ensureBackupDirectoryReady({ allowPrompt: detail?.allowPrompt === true }), scope: 'shell' };
-    if (name === 'sync-save') return { changed: await this.enqueueConnectedFileSave(detail?.reason), scope: 'shell' };
+    if (name === 'sync-save') {
+      const blockReason = this.getSaveBlockReason();
+      if (blockReason) return { changed: this.deferSave(detail?.reason || 'sync-save', blockReason), scope: 'shell' };
+      return { changed: await this.enqueueConnectedFileSave(detail?.reason), scope: 'shell' };
+    }
     if (name === 'backup-create') return { changed: await this.createLatestWebBackup(detail?.mode, detail?.silent), scope: 'shell' };
     if (name === 'backup-auto') return { changed: await this.maybeRunAutomaticWebBackup(), scope: 'shell' };
     if (name === 'backup-restore') return { changed: await this.restoreLatestWebBackup(), scope: 'shell' };

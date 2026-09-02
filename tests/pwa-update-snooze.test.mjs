@@ -4,6 +4,8 @@ import test from 'node:test';
 
 const source = await readFile(new URL('../src/app/pwa-updates.js', import.meta.url), 'utf8');
 const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+const htmlSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
+const shellCss = await readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8');
 const {
   AUTOMATIC_UPDATE_CHECK_MIN_INTERVAL_MS,
   UPDATE_ACTIVATION_TIMEOUT_MS,
@@ -456,5 +458,28 @@ test('the shell tells the user about a still installing update', () => {
     mainSource,
     /case 'update-installing':\s*\n\s*break;/,
     'a still installing update must not fall through silently',
+  );
+});
+
+test('the version number is a control before any script runs', () => {
+  const versionElement = htmlSource.match(/<span id="app-header-version"[\s\S]*?>/)?.[0];
+  assert.ok(versionElement, 'index.html must ship the header version element');
+  assert.match(versionElement, /role="button"/);
+  assert.match(versionElement, /tabindex="0"/);
+  assert.doesNotMatch(
+    mainSource,
+    /headerVersion\.(?:set|remove)Attribute\('(?:role|tabindex)'/,
+    'the window controls overlay carves the drag region out before the boot script runs, '
+    + 'so role and tabindex must not depend on it',
+  );
+});
+
+test('the version number stays clickable inside the window drag region', () => {
+  const wco = shellCss.slice(shellCss.indexOf('@media (display-mode: window-controls-overlay)'));
+  assert.ok(wco, 'shell.css must style the window controls overlay');
+  assert.match(
+    wco,
+    /\.app-header-version \{[^}]*app-region: no-drag;/,
+    'without its own no-drag rule the header drag region swallows every mouse event on it',
   );
 });

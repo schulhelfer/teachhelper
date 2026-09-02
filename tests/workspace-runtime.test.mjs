@@ -131,7 +131,7 @@ async function buildAuthenticatedVaultContainer(password = 'ein-ausreichend-lang
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   const kdf = workspaceCrypto.createWorkspaceVaultKdf({ iterations: 100000 });
-  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey(password, kdf);
+  const { cryptoKey, signingKey } = await workspaceCrypto.deriveWorkspaceVaultKey(password, kdf);
   const validation = await workspaceCrypto.encryptWorkspaceVaultText(
     'teachhelper-grade-vault-v1',
     cryptoKey,
@@ -146,6 +146,7 @@ async function buildAuthenticatedVaultContainer(password = 'ein-ausreichend-lang
     config: { configured: true, kdf, validation },
     persistedConfig: { configured: true, kdf, validation },
     cryptoKey,
+    containerSigningKey: signingKey,
     kdf,
     containerAuthenticationStatus: 'legacy',
   };
@@ -1149,7 +1150,192 @@ test('recomputed but unauthenticated container changes prevent vault unlock', as
   await assert.rejects(() => failedRuntime.unlockGradeVault(password), /verändert|beschädigt/);
   await assert.rejects(() => failedRuntime.unlockGradeVault(password), /verändert|beschädigt/);
   assert.equal(failedRuntime.isGradeVaultUnlocked(), false);
-  await assert.rejects(() => failedRuntime.buildContainer('blocked-save'), /authentifiziert werden kann/);
+  await assert.rejects(
+    () => failedRuntime.buildContainer('blocked-save'),
+    (error) => error.code === 'VAULT_LOCKED',
+  );
+});
+
+function createMemoryFileHandle(initialBytes, name = 'schule.thdb') {
+  let bytes = initialBytes instanceof Uint8Array ? initialBytes.slice() : new Uint8Array();
+  return {
+    name,
+    kind: 'file',
+    read: () => bytes.slice(),
+    async getFile() {
+      const current = bytes;
+      return { name, size: current.length, async arrayBuffer() { return current.slice().buffer; } };
+    },
+    async createWritable() {
+      const chunks = [];
+      return {
+        async write(chunk) { chunks.push(chunk instanceof Uint8Array ? chunk : new Uint8Array(chunk)); },
+        async close() {
+          const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
+          const merged = new Uint8Array(total);
+          let offset = 0;
+          for (const chunk of chunks) { merged.set(chunk, offset); offset += chunk.length; }
+          bytes = merged;
+        },
+        async abort() {},
+      };
+    },
+  };
+}
+
+async function assertContainerAuthenticates(bytes, password) {
+  const parsed = thdb.parseThdb1ContainerBytes(bytes, { includePlanningPublic: true, includeGradeCourseSegments: true });
+  assert.ok(parsed.header.authentication, 'container carries an authentication tag');
+  const config = JSON.parse(parsed.gradeVaultConfigText);
+  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey(password, config.kdf);
+  assert.equal(
+    await workspaceCrypto.verifyWorkspaceVaultContainerAuthentication(
+      parsed.header.authentication,
+      thdb.getThdb1ContainerAuthenticationPayload(parsed.header),
+      cryptoKey,
+    ),
+    true,
+  );
+  return parsed;
+}
+
+test('the container signing key survives the auto-lock so planning data saves while the vault is locked', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  const handle = createMemoryFileHandle(built.bytes);
+  await runtime.loadBytes(built.bytes, 'test');
+  runtime.fileHandle = handle;
+  runtime.fileName = handle.name;
+  runtime.isManualPersistenceMode = () => false;
+
+  await runtime.unlockGradeVault(password);
+  assert.equal(await runtime.lockGradeVaultSession({ autoLock: true }), true);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
+  assert.equal(runtime.vault.cryptoKey, null);
+  assert.equal(runtime.canSignContainer(), true);
+
+  runtime.store.publicState.courses.push({ id: 8, name: '8b' });
+  runtime.onPublicChanged();
+  await runtime.operationTail;
+
+  assert.equal(runtime.persistenceFailure, null);
+  assert.equal(runtime.pendingSave, null);
+  const saved = await assertContainerAuthenticates(handle.read(), password);
+  assert.ok(JSON.parse(saved.planningPublicText).courses.some((course) => course.id === 8));
+
+  const reloaded = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await reloaded.loadBytes(handle.read(), 'test');
+  assert.equal(reloaded.vault.containerAuthenticationStatus, 'unverified');
+  assert.equal(await reloaded.unlockGradeVault(password), true);
+  assert.equal(reloaded.vault.containerAuthenticationStatus, 'verified');
+});
+
+test('the container signing key can only encrypt, never decrypt grade segments', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await runtime.loadBytes(built.bytes, 'test');
+  await runtime.unlockGradeVault(password);
+
+  const usages = [...runtime.vault.containerSigningKey.usages];
+  assert.deepEqual(usages, ['encrypt']);
+  assert.equal(usages.includes('decrypt'), false);
+  assert.equal(runtime.vault.cryptoKey.usages.includes('decrypt'), true);
+});
+
+test('a never-unlocked vault defers the save instead of reporting a failure', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  const handle = createMemoryFileHandle(built.bytes);
+  await runtime.loadBytes(built.bytes, 'test');
+  runtime.fileHandle = handle;
+  runtime.fileName = handle.name;
+  runtime.isManualPersistenceMode = () => false;
+
+  assert.equal(runtime.canSignContainer(), false);
+  runtime.store.publicState.courses.push({ id: 9, name: '9c' });
+  runtime.onPublicChanged();
+  await runtime.operationTail;
+
+  assert.equal(runtime.persistenceFailure, null);
+  assert.equal(runtime.pendingSave?.blockReason, 'vault-locked');
+  assert.equal(runtime.pendingSave?.reason, 'planning-auto-save');
+  const snapshot = runtime.createWorkspaceSnapshot('shell');
+  assert.equal(snapshot.persistence.pendingSave.active, true);
+  assert.equal(snapshot.persistence.statusError, false);
+  assert.deepEqual(thdb.parseThdb1ContainerBytes(handle.read(), { includePlanningPublic: true }).header.revision, built.header.revision);
+
+  await runtime.unlockGradeVault(password);
+  await runtime.operationTail;
+
+  assert.equal(runtime.pendingSave, null);
+  assert.equal(runtime.createWorkspaceSnapshot('shell').persistence.pendingSave.active, false);
+  const saved = await assertContainerAuthenticates(handle.read(), password);
+  assert.ok(JSON.parse(saved.planningPublicText).courses.some((course) => course.id === 9));
+});
+
+test('the planning sync-save action defers instead of rejecting while the vault is locked', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  const handle = createMemoryFileHandle(built.bytes);
+  await runtime.loadBytes(built.bytes, 'test');
+  runtime.fileHandle = handle;
+  runtime.fileName = handle.name;
+  runtime.isManualPersistenceMode = () => false;
+
+  const deferred = await runtime.handleWorkspaceAction('sync-save', { reason: 'planning-client' });
+  assert.equal(deferred.changed, false);
+  assert.equal(runtime.pendingSave?.reason, 'planning-client');
+  assert.equal(runtime.persistenceFailure, null);
+
+  await runtime.unlockGradeVault(password);
+  await runtime.operationTail;
+  assert.equal(runtime.pendingSave, null);
+  await assertContainerAuthenticates(handle.read(), password);
+});
+
+test('unsaved grade changes still require an unlocked vault before the container is built', async () => {
+  const { password, built } = await buildAuthenticatedVaultContainer();
+  const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await runtime.loadBytes(built.bytes, 'test');
+  await runtime.unlockGradeVault(password);
+  await runtime.lockGradeVaultSession();
+
+  runtime.courseCache.set(7, emptyGrades());
+  runtime.dirtyCourseIds.add(7);
+
+  await assert.rejects(
+    () => runtime.buildContainer('locked-grade-save'),
+    (error) => error.code === messages.WORKSPACE_ERROR_VAULT_LOCKED && /entsperren/i.test(error.message),
+  );
+});
+
+test('a changed vault password stays consistent with the container signature', async () => {
+  const password = 'ein-ausreichend-langes-passwort';
+  const nextPassword = 'ein-noch-viel-laengeres-passwort';
+  const { built } = await buildAuthenticatedVaultContainer(password);
+  const runtime = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  const handle = createMemoryFileHandle(built.bytes);
+  await runtime.loadBytes(built.bytes, 'test');
+  runtime.fileHandle = handle;
+  runtime.fileName = handle.name;
+  runtime.isManualPersistenceMode = () => false;
+
+  await runtime.unlockGradeVault(password);
+  await runtime.changeGradeVaultPassword(password, nextPassword);
+  assert.equal(await runtime.saveToConnectedFile('password-change'), true);
+  await runtime.lockGradeVaultSession();
+
+  runtime.store.publicState.courses.push({ id: 11, name: '11d' });
+  runtime.onPublicChanged();
+  await runtime.operationTail;
+
+  assert.equal(runtime.persistenceFailure, null);
+  await assertContainerAuthenticates(handle.read(), nextPassword);
+
+  const reloaded = disableVaultKdfUpgrade(new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() }));
+  await reloaded.loadBytes(handle.read(), 'test');
+  assert.equal(await reloaded.unlockGradeVault(nextPassword), true);
+  assert.equal(reloaded.vault.containerAuthenticationStatus, 'verified');
 });
 
 test('unencrypted THDB containers keep the previous authentication-free behavior', async () => {

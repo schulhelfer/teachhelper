@@ -130,13 +130,17 @@ export async function deriveWorkspaceVaultKey(password, kdfConfig, cryptoProvide
     false,
     ['deriveKey'],
   );
-  const cryptoKey = await cryptoProvider.subtle.deriveKey({
+  const algorithm = {
     name: 'PBKDF2',
     hash: 'SHA-256',
     iterations: kdf.iterations,
     salt: base64ToBytes(kdf.salt),
-  }, baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
-  return { cryptoKey, kdf };
+  };
+  const [cryptoKey, signingKey] = await Promise.all([
+    cryptoProvider.subtle.deriveKey(algorithm, baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']),
+    cryptoProvider.subtle.deriveKey(algorithm, baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']),
+  ]);
+  return { cryptoKey, signingKey, kdf };
 }
 
 export async function encryptWorkspaceVaultText(

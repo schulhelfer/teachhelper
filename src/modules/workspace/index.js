@@ -107,7 +107,11 @@ function redactWorkspaceSecrets(value, seen = new WeakSet()) {
   }
   for (const key of Object.keys(value)) {
     const normalized = key.toLowerCase();
-    if (normalized.includes('password') || ['cryptokey', 'secretkey', 'vaultkey'].includes(normalized)) {
+    if (
+      normalized.includes('password')
+      || normalized.includes('signingkey')
+      || ['cryptokey', 'secretkey', 'vaultkey'].includes(normalized)
+    ) {
       delete value[key];
       continue;
     }
@@ -457,6 +461,7 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
     dispose() {
       disposed = true;
       runtimeService?.lockGradeVaultSession?.();
+      runtimeService?.forgetGradeVaultKeys?.();
       runtimeService = null;
       runtimeOwner = null;
       store = null;

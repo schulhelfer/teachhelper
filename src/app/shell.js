@@ -165,6 +165,7 @@ export function createShellController({
   let tabIndicatorSettleTimer = 0;
   let lastRenderedActiveTab = null;
   let tabNavResizeObserver = null;
+  let pendingSaveActive = false;
   let moreToolsSyncFrame = 0;
   let viewportResizeTimer = 0;
   let lastViewportSignature = '';
@@ -1245,6 +1246,13 @@ export function createShellController({
     els.sidebarManualSaveBtn.setAttribute('aria-label', ariaLabel);
   }
 
+  function setPendingSaveState(pendingSave = null) {
+    const active = Boolean(pendingSave?.active);
+    if (active === pendingSaveActive) return;
+    pendingSaveActive = active;
+    renderPlanningGradeVaultUnlockButton();
+  }
+
   function renderPlanningGradeVaultUnlockButton() {
     if (!els.tabGradesUnlock) return;
     const planningGradeVaultState = state.planningGradeVaultState || {};
@@ -1271,7 +1279,9 @@ export function createShellController({
       && (locked || unlocked)
       && state.tabTransitionState === 'idle'
       && state.chromeTransitionState === 'idle';
-    const actionLabel = locked ? 'Notenmodul entsperren' : 'Notenmodul sperren';
+    const actionLabel = locked
+      ? (pendingSaveActive ? 'Notenmodul entsperren – Speichern wartet' : 'Notenmodul entsperren')
+      : 'Notenmodul sperren';
     const label = locked ? 'Notenmodul gesperrt' : 'Notenmodul entsperrt';
     els.tabGradesUnlock.innerHTML = locked ? GRADE_VAULT_LOCKED_ICON : GRADE_VAULT_UNLOCKED_ICON;
     els.tabGradesUnlock.title = canRequestToggle ? actionLabel : label;
@@ -1279,6 +1289,7 @@ export function createShellController({
     els.tabGradesUnlock.hidden = false;
     els.tabGradesUnlock.style.display = 'inline-flex';
     els.tabGradesUnlock.classList.toggle('is-reserved', !shouldShow);
+    els.tabGradesUnlock.classList.toggle('is-attention', shouldShow && locked && pendingSaveActive);
     els.tabGradesUnlock.disabled = !canRequestToggle;
     els.tabGradesUnlock.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
     if (shouldShow) {
@@ -1606,7 +1617,7 @@ export function createShellController({
     if (els.app?.dataset.moduleWindow === 'true') {
       return;
     }
-    if (!state.planningUnsavedState?.dirty) {
+    if (!state.planningUnsavedState?.dirty && !pendingSaveActive) {
       return;
     }
     event.preventDefault();
@@ -1635,6 +1646,7 @@ export function createShellController({
     if (detail.snapshot.unsaved) {
       setPlanningUnsavedState(detail.snapshot.unsaved);
     }
+    setPendingSaveState(detail.snapshot.persistence?.pendingSave);
     const vault = detail.snapshot.vault;
     if (vault && typeof vault === 'object') {
       setPlanningGradeVaultState({

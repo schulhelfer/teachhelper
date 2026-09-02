@@ -199,14 +199,11 @@ import {
     if (els.headerVersion) {
       const safeVersion = String(version || '').trim();
       els.headerVersion.textContent = safeVersion ? `(v${safeVersion})` : '';
+      els.headerVersion.hidden = !safeVersion;
       if (safeVersion) {
-        els.headerVersion.setAttribute('role', 'button');
-        els.headerVersion.setAttribute('tabindex', '0');
         els.headerVersion.setAttribute('title', 'Auf Updates prüfen');
         els.headerVersion.setAttribute('aria-label', `Version v${safeVersion}. Auf Updates prüfen`);
       } else {
-        els.headerVersion.removeAttribute('role');
-        els.headerVersion.removeAttribute('tabindex');
         els.headerVersion.removeAttribute('title');
         els.headerVersion.removeAttribute('aria-label');
       }
