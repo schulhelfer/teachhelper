@@ -4128,14 +4128,6 @@ class GradesApp {
     };
   }
 
-  getGradeVaultContainerAuthenticationStatus() {
-    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
-    const status = String(snapshot?.vault?.containerAuthenticationStatus || "");
-    return ["not-applicable", "unverified", "verified", "legacy", "failed"].includes(status)
-      ? status
-      : "not-applicable";
-  }
-
   async resolveUnsavedSettingsNavigation() {
     if (this.currentView !== "settings" || !this.settingsDirty) {
       return true;
@@ -4456,34 +4448,6 @@ class GradesApp {
         </div>
       `;
       banner.setAttribute("role", "alert");
-      banner.hidden = false;
-      return;
-    }
-    const authenticationStatus = this.getGradeVaultContainerAuthenticationStatus();
-    if (authenticationStatus === "unverified") {
-      banner.innerHTML = `
-        <div>
-          <strong>Dateischutz noch nicht geprüft</strong>
-          <p>Der zusätzliche Dateischutz wird beim Entsperren geprüft.</p>
-        </div>
-        <div class="button-row">
-          <button type="button" class="ghost" data-grade-vault-banner-action="unlock">Entsperren</button>
-        </div>
-      `;
-      banner.hidden = false;
-      return;
-    }
-    if (authenticationStatus === "legacy") {
-      const unlocked = this.isGradeVaultUnlocked();
-      banner.innerHTML = `
-        <div>
-          <strong>Zusätzlicher Dateischutz wird ergänzt</strong>
-          <p>Der zusätzliche Dateischutz wird beim nächsten Entsperren und Speichern ergänzt.</p>
-        </div>
-        <div class="button-row">
-          <button type="button" class="ghost" data-grade-vault-banner-action="${unlocked ? "save" : "unlock"}">${unlocked ? "Jetzt speichern" : "Entsperren"}</button>
-        </div>
-      `;
       banner.hidden = false;
     }
   }
@@ -30615,13 +30579,13 @@ class GradesApp {
       button.disabled = this.locked || Boolean(course.noLesson);
       if (course.noLesson) {
         button.classList.add("disabled-course");
-        button.title = "Unterrichtsfrei-Kurs · Rechtsklick: Kursaktionen";
+        button.title = "Unterrichtsfrei-Kurs\nRechtsklick: Kursaktionen";
         li.title = "Rechtsklick: Kursaktionen";
       } else if (isNoGradesInGradesView) {
-        button.title = "Kurs ohne Noten · Rechtsklick: Kursaktionen";
+        button.title = "Kurs ohne Noten\nRechtsklick: Kursaktionen";
         li.title = "Rechtsklick: Kursaktionen";
       } else {
-        button.title = "Linksklick: Kursansicht / Rechtsklick: Kursaktionen / Ziehen: Reihenfolge in Randleiste";
+        button.title = "Linksklick: Kursansicht\nRechtsklick: Kursaktionen\nZiehen: Reihenfolge in Randleiste";
       }
       if ((this.currentView === "course" || isGradesCourseOverview) && course.id === this.selectedCourseId) {
         button.classList.add("active");

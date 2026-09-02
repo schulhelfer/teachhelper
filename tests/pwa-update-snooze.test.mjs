@@ -394,3 +394,67 @@ test('a successful beforeReloadForUpdate runs before the waiting worker is activ
     assert.equal(dialogs.updateDialog.open, false);
   });
 });
+
+test('a manual check reports a still installing update instead of claiming the app is current', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    registration.waiting = null;
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+    registration.update = async () => {
+      registration.updateCount += 1;
+      registration.installing = new WorkerStub('installing');
+      registration.dispatch('updatefound');
+    };
+
+    const result = await updates.checkForUpdates({ force: true });
+    assert.equal(
+      result.status,
+      'update-installing',
+      'update() resolves while the new worker installs, so waiting is still empty',
+    );
+    assert.equal(dialogs.updateDialog.showModalCount, 0);
+
+    registration.waiting = registration.installing;
+    registration.installing.state = 'installed';
+    registration.waiting.dispatch('statechange');
+    assert.equal(
+      dialogs.updateDialog.showModalCount,
+      1,
+      'the dialog opens as soon as the update finished installing',
+    );
+  });
+});
+
+test('a manual check clears the snooze even while the update is still installing', async () => {
+  await withEnvironment(async ({ registration, localStorage }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({ ...dialogs, serviceWorkerUrl: './sw.js' });
+    await updates.checkForUpdates();
+    dialogs.updateDialogLater.dispatch('click');
+    assert.ok(localStorage.getItem(UPDATE_SNOOZE_STORAGE_KEY));
+
+    registration.waiting = null;
+    registration.installing = new WorkerStub('installing');
+    const result = await updates.checkForUpdates({ force: true });
+    assert.equal(result.status, 'update-installing');
+    assert.equal(
+      localStorage.getItem(UPDATE_SNOOZE_STORAGE_KEY),
+      null,
+      'the snooze must not outlive a manual check just because waiting is still empty',
+    );
+
+    registration.waiting = new WorkerStub('installed');
+    registration.installing = null;
+    await updates.checkForUpdates();
+    assert.equal(dialogs.updateDialog.showModalCount, 2);
+  });
+});
+
+test('the shell tells the user about a still installing update', () => {
+  assert.match(mainSource, /case 'update-installing':/);
+  assert.doesNotMatch(
+    mainSource,
+    /case 'update-installing':\s*\n\s*break;/,
+    'a still installing update must not fall through silently',
+  );
+});

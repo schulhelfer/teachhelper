@@ -9466,11 +9466,9 @@ class PlanningApp {
       button.dataset.tutorialAnchor = "planning-course";
       button.dataset.noLesson = course.noLesson ? "1" : "0";
       button.disabled = this.locked;
+      button.title = "Linksklick: Kursansicht\nRechtsklick: Kursaktionen\nZiehen: Reihenfolge in Randleiste";
       if (course.noLesson) {
-        button.title = "Linksklick: Kursansicht / Rechtsklick: Kursaktionen / Ziehen: Reihenfolge in Randleiste";
         li.title = button.title;
-      } else {
-        button.title = "Linksklick: Kursansicht / Rechtsklick: Kursaktionen / Ziehen: Reihenfolge in Randleiste";
       }
       if (this.currentView === "course" && course.id === this.selectedCourseId) {
         button.classList.add("active");

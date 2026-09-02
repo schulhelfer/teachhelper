@@ -9011,6 +9011,9 @@ import {
         switch (result?.status) {
           case 'update-available':
             break;
+          case 'update-installing':
+            showMessage('Update wird geladen. Der Neu-laden-Hinweis erscheint automatisch.', 'info', { presentation: 'toast' });
+            break;
           case 'up-to-date':
             showMessage('TeachHelper ist aktuell.', 'info', { presentation: 'toast' });
             break;

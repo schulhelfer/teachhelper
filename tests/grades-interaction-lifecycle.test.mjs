@@ -71,7 +71,7 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
   });
 });
 
-test('der Vault-Banner erklärt unbestätigten und Legacy-Dateischutz, ohne die Auto-Lock-Warnung zu verdrängen', () => {
+test('der Vault-Banner zeigt nur die Auto-Lock-Warnung', () => {
   const renderGradeVaultBanner = Function(
     `"use strict"; const escapeHtml = (value) => String(value); return ({${extractClassMethod('renderGradeVaultBanner')}}).renderGradeVaultBanner;`,
   )();
@@ -85,25 +85,18 @@ test('der Vault-Banner erklärt unbestätigten und Legacy-Dateischutz, ohne die 
     refs: { gradesVaultBanner: banner },
     isGradesTopTabActive() { return true; },
     getGradeVaultAutoLockWarning() { return null; },
-    getGradeVaultContainerAuthenticationStatus() { return 'unverified'; },
-    isGradeVaultUnlocked() { return false; },
   };
 
   renderGradeVaultBanner.call(harness);
-  assert.equal(banner.hidden, false);
-  assert.match(banner.innerHTML, /Der zusätzliche Dateischutz wird beim Entsperren geprüft\./);
-  assert.match(banner.innerHTML, /data-grade-vault-banner-action="unlock"/);
-
-  harness.getGradeVaultContainerAuthenticationStatus = () => 'legacy';
-  harness.isGradeVaultUnlocked = () => true;
-  renderGradeVaultBanner.call(harness);
-  assert.match(banner.innerHTML, /Der zusätzliche Dateischutz wird beim nächsten Entsperren und Speichern ergänzt\./);
-  assert.match(banner.innerHTML, /data-grade-vault-banner-action="save"/);
+  assert.equal(banner.hidden, true);
+  assert.equal(banner.innerHTML, '');
 
   harness.getGradeVaultAutoLockWarning = () => ({ message: 'Bitte speichern', retryAt: 0 });
   renderGradeVaultBanner.call(harness);
+  assert.equal(banner.hidden, false);
   assert.match(banner.innerHTML, /Notenbereich weiterhin entsperrt/);
-  assert.doesNotMatch(banner.innerHTML, /Zusätzlicher Dateischutz wird ergänzt/);
+  assert.match(banner.innerHTML, /data-grade-vault-banner-action="save"/);
+  assert.doesNotMatch(banner.innerHTML, /Dateischutz/);
 });
 
 test('grade workspace changes still rebuild the visible grades data once', () => {

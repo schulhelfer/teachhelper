@@ -129,6 +129,13 @@ test('the service worker and app share the numeric app version', async () => {
     /globalThis\.TEACHHELPER_APP_VERSION\s*=\s*'\d+';/,
     'app-version.js must provide the one shared numeric version',
   );
+
+  const stampedVersion = serviceWorkerSource.match(/^\/\/ teachhelper-app-version: (\d+)\n/)?.[1];
+  assert.equal(
+    stampedVersion,
+    appVersionSource.match(/TEACHHELPER_APP_VERSION\s*=\s*'(\d+)'/)?.[1],
+    'sw.js must carry the current version stamp so its own bytes change with every release',
+  );
   assert.match(htmlSource, /<script src="\.\/src\/shared\/app-version\.js"><\/script>\s*<script type="module" src="\.\/src\/app\/bootstrap\.js">/);
   assert.match(bootstrapSource, /globalThis\.TEACHHELPER_APP_VERSION/);
   assert.match(mainSource, /globalThis\.TEACHHELPER_APP_VERSION/);
@@ -154,7 +161,8 @@ test('the app version is stamped only after successful local checks', async () =
   assert.match(audit, /service worker must import src\/shared\/app-version\.js before configuring caches/);
   assert.match(stampScript, /git\('add', '--', appVersionPath\)/);
   assert.match(stampScript, /BigInt\(appVersionMatch\[1\]\) \+ 1n/);
-  assert.doesNotMatch(stampScript, /sw\.js/);
+  assert.match(stampScript, /git\('add', '--', serviceWorkerPath\)/);
+  assert.match(stampScript, /SERVICE_WORKER_VERSION_MARKER/);
   assert.doesNotMatch(stampScript, /write-tree/);
 });
 

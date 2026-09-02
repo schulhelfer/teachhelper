@@ -3637,6 +3637,7 @@
     }
 
     .tone-toggle-button {
+      position: relative;
       width: 100%;
       min-width: 0;
       min-height: 42px;
@@ -3654,7 +3655,18 @@
       transition: color 160ms ease, opacity 160ms ease;
     }
 
+    .tone-toggle-button::before {
+      content: '';
+      position: absolute;
+      inset: 1px -8px;
+      border-radius: 10px;
+      background-color: transparent;
+      transition: background-color 160ms ease;
+      pointer-events: none;
+    }
+
     .tone-toggle-label {
+      position: relative;
       font-size: 15px;
       font-weight: 700;
       white-space: normal;
@@ -3696,16 +3708,40 @@
         transform 260ms cubic-bezier(0.18, 0.82, 0.24, 1);
     }
 
-    .tone-toggle-button:hover {
+    .tone-toggle-button:hover:not(:disabled) {
       transform: none;
       filter: none;
       box-shadow: none;
-      color: #ffffff;
+      background: transparent;
+      border-color: transparent;
+      color: var(--text);
     }
 
-    .tone-toggle-button:active {
+    .tone-toggle-button:hover:not(:disabled)::before {
+      background-color: var(--surface-segment-hover);
+    }
+
+    .tone-toggle-button:hover:not(:disabled) .tone-toggle-switch {
+      border-color: var(--focus-border);
+    }
+
+    .tone-toggle-button:active:not(:disabled) {
       transform: none;
       filter: none;
+    }
+
+    .tone-toggle-button:active:not(:disabled)::before {
+      background-color: var(--surface-control-hover);
+    }
+
+    .tone-toggle-button:focus-visible {
+      outline: none;
+      box-shadow: none;
+    }
+
+    .tone-toggle-button:focus-visible::before {
+      background-color: var(--surface-segment-hover);
+      box-shadow: var(--focus-ring);
     }
 
     .tone-toggle-switch::after {
@@ -5033,6 +5069,33 @@
       color: var(--text-on-overlay);
       border-color: var(--button-border);
       box-shadow: var(--button-shadow);
+    }
+
+    #monitor-mic-start:hover:not(:disabled),
+    #monitor-mic-stop:hover:not(:disabled),
+    #timer-work-order-start:hover:not(:disabled),
+    #timer-work-order-stop:hover:not(:disabled) {
+      transform: none;
+      filter: none;
+      background: var(--button-bg-hover);
+      border-color: var(--focus-border);
+      box-shadow: var(--button-shadow);
+    }
+
+    #monitor-mic-start.is-running:hover:not(:disabled),
+    #monitor-mic-stop.is-running:hover:not(:disabled),
+    #timer-work-order-start.is-running:hover:not(:disabled),
+    #timer-work-order-stop.is-running:hover:not(:disabled) {
+      background: linear-gradient(180deg, #1d4ed8, #1e3a8a);
+      border-color: rgba(147, 197, 253, 0.72);
+      box-shadow: 0 8px 20px rgba(29, 78, 216, 0.35);
+    }
+
+    #monitor-mic-start:active:not(:disabled),
+    #monitor-mic-stop:active:not(:disabled),
+    #timer-work-order-start:active:not(:disabled),
+    #timer-work-order-stop:active:not(:disabled) {
+      transform: scale(0.98);
     }
 
     .bar {
@@ -7321,6 +7384,7 @@
       .random-picker-wheel,
       .random-picker-card,
       .random-picker-button,
+      .tone-toggle-button::before,
       .tone-toggle-switch,
       .tone-toggle-switch::before,
       .tone-toggle-switch::after,

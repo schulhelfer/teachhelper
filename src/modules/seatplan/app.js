@@ -7393,7 +7393,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 node.dataset.merged = '1';
                 node.classList.add('merged');
                 node.setAttribute('draggable', 'true');
-                node.title = 'Ziehen: Zweiertisch verschieben / Klicken: Verbindung lösen';
+                node.title = 'Ziehen: Zweiertisch verschieben\nKlicken: Verbindung lösen';
                 addMergedTableDragHandlers(node);
                 enableTouchDragSource(node, () => {
                   const table = getMergedTableDescriptor(aId);

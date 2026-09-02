@@ -125,12 +125,11 @@ export function registerServiceWorkerUpdates({
     activeRegistration = registration || activeRegistration;
     notifyUpdateAvailability(activeRegistration);
     if (!hadControllerOnLoad) return;
-    if (!activeRegistration?.waiting) return;
     if (force) {
       clearUpdateSnooze();
-    } else if (isUpdateSnoozed()) {
-      return;
     }
+    if (!activeRegistration?.waiting) return;
+    if (!force && isUpdateSnoozed()) return;
     openUpdateDialog();
   };
 
@@ -163,9 +162,13 @@ export function registerServiceWorkerUpdates({
       }
     }
     maybePromptForUpdate(activeRegistration, { force });
-    return activeRegistration?.waiting
-      ? { status: 'update-available' }
-      : { status: 'up-to-date' };
+    if (activeRegistration?.waiting) {
+      return { status: 'update-available' };
+    }
+    if (activeRegistration?.installing) {
+      return { status: 'update-installing' };
+    }
+    return { status: 'up-to-date' };
   };
 
   const ensureInitialized = async () => {

@@ -215,7 +215,8 @@ def check_service_worker_app_version():
 
   app_version_source = app_version_path.read_text(encoding='utf-8', errors='ignore')
   service_worker_source = sw_path.read_text(encoding='utf-8', errors='ignore')
-  if not re.search(r"\bglobalThis\.TEACHHELPER_APP_VERSION\s*=\s*'\d+'\s*;", app_version_source):
+  app_version_match = re.search(r"\bglobalThis\.TEACHHELPER_APP_VERSION\s*=\s*'(\d+)'\s*;", app_version_source)
+  if not app_version_match:
     errors.append('app version must declare a numeric TEACHHELPER_APP_VERSION in src/shared/app-version.js')
   if not re.search(
     r"^importScripts\(['\"]\./src/shared/app-version\.js['\"]\);",
@@ -225,6 +226,13 @@ def check_service_worker_app_version():
     errors.append('service worker must import src/shared/app-version.js before configuring caches')
   if 'self.TEACHHELPER_APP_VERSION' not in service_worker_source:
     errors.append('service worker cache version must derive from TEACHHELPER_APP_VERSION')
+  marker_match = re.match(r"// teachhelper-app-version: (\d+)\n", service_worker_source)
+  if not marker_match:
+    errors.append('service worker must start with the // teachhelper-app-version: <number> stamp so its own bytes change per release')
+  elif app_version_match and marker_match.group(1) != app_version_match.group(1):
+    errors.append(
+      f'service worker stamp {marker_match.group(1)} does not match app version {app_version_match.group(1)}'
+    )
 
 
 check_service_worker_app_version()
