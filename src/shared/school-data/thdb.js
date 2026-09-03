@@ -1,15 +1,9 @@
 export const THDB_MAGIC = 'THDB1';
 export const THDB_CHECKSUM_VERSION = 1;
 export const THDB_CHECKSUM_ALGORITHM = 'SHA-256';
-export const THDB_AUTHENTICATION_SCHEMA = 'teachhelper-thdb-auth-v1';
-export const THDB_AUTHENTICATION_ALGORITHM = 'AES-GCM';
-export const THDB_AUTHENTICATION_IV_BYTES = 12;
-export const THDB_AUTHENTICATION_TAG_BYTES = 16;
-export const THDB_AUTHENTICATION_TAG_LENGTH = 128;
 
 const SHA256_PREFIX = 'sha256:';
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/i;
-const BASE64_PATTERN = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
 const THDB_MAX_HEADER_BYTES = 1024 * 1024;
 const THDB_MAX_GRADE_COURSE_SEGMENTS = 2000;
 const SHA256_ROUND_CONSTANTS = new Uint32Array([
@@ -46,21 +40,6 @@ function utf8Bytes(value) {
 
 function utf8Text(bytes) {
   return new TextDecoder().decode(asUint8Array(bytes));
-}
-
-function base64LengthForBytes(length) {
-  return Math.ceil(Math.max(0, Number(length) || 0) / 3) * 4;
-}
-
-function isCanonicalFixedBase64(value, byteLength) {
-  const encoded = typeof value === 'string' ? value : '';
-  if (encoded.length !== base64LengthForBytes(byteLength) || !BASE64_PATTERN.test(encoded)) return false;
-  try {
-    const decoded = atob(encoded);
-    return decoded.length === byteLength && btoa(decoded) === encoded;
-  } catch {
-    return false;
-  }
 }
 
 function rotateRight(value, count) {
@@ -228,87 +207,6 @@ function normalizeChecksums(raw) {
   };
 }
 
-function normalizeAuthentication(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-  const version = normalizePositiveInteger(raw.version);
-  const schema = String(raw.schema || '');
-  const algorithm = String(raw.algorithm || '');
-  const iv = String(raw.iv || '');
-  const tagLength = normalizePositiveInteger(raw.tagLength);
-  const tag = String(raw.tag || '');
-  if (
-    version !== 1
-    || schema !== THDB_AUTHENTICATION_SCHEMA
-    || algorithm !== THDB_AUTHENTICATION_ALGORITHM
-    || tagLength !== THDB_AUTHENTICATION_TAG_LENGTH
-    || !isCanonicalFixedBase64(iv, THDB_AUTHENTICATION_IV_BYTES)
-    || !isCanonicalFixedBase64(tag, THDB_AUTHENTICATION_TAG_BYTES)
-  ) return null;
-  return {
-    version,
-    schema: THDB_AUTHENTICATION_SCHEMA,
-    algorithm: THDB_AUTHENTICATION_ALGORITHM,
-    iv,
-    tagLength: THDB_AUTHENTICATION_TAG_LENGTH,
-    tag,
-  };
-}
-
-export function getThdb1ContainerAuthenticationPayload(header) {
-  const source = header && typeof header === 'object' ? header : null;
-  const integrity = normalizeChecksums(source?.integrity);
-  const segments = Array.isArray(source?.gradeCourseSegments)
-    ? source.gradeCourseSegments.map(normalizeDescriptor)
-    : null;
-  if (
-    !source
-    || !String(source.schema || '')
-    || normalizeNonnegativeInteger(source.revision) === null
-    || normalizeNonnegativeInteger(source.startupShellOffset) === null
-    || normalizeNonnegativeInteger(source.startupShellLength) === null
-    || normalizeNonnegativeInteger(source.planningPublicOffset) === null
-    || normalizeNonnegativeInteger(source.planningPublicLength) === null
-    || normalizeNonnegativeInteger(source.gradeVaultConfigOffset) === null
-    || normalizeNonnegativeInteger(source.gradeVaultConfigLength) === null
-    || !integrity
-    || !segments
-    || segments.some((segment) => !segment)
-  ) {
-    throw new Error('THDB-Authentifizierungsnachricht kann nicht aus einem ungültigen Header gebildet werden.');
-  }
-  return JSON.stringify({
-    schema: THDB_AUTHENTICATION_SCHEMA,
-    header: {
-      schema: String(source.schema),
-      revision: normalizeNonnegativeInteger(source.revision),
-      updatedAt: String(source.updatedAt || ''),
-      deviceId: String(source.deviceId || ''),
-      reason: String(source.reason || ''),
-      startupShellOffset: normalizeNonnegativeInteger(source.startupShellOffset),
-      startupShellLength: normalizeNonnegativeInteger(source.startupShellLength),
-      planningPublicOffset: normalizeNonnegativeInteger(source.planningPublicOffset),
-      planningPublicLength: normalizeNonnegativeInteger(source.planningPublicLength),
-      gradeVaultConfigOffset: normalizeNonnegativeInteger(source.gradeVaultConfigOffset),
-      gradeVaultConfigLength: normalizeNonnegativeInteger(source.gradeVaultConfigLength),
-      gradeCourseSegments: segments.map((segment) => ({
-        courseId: segment.courseId,
-        offset: segment.offset,
-        length: segment.length,
-        contentHash: segment.contentHash,
-      })),
-      integrity: {
-        version: integrity.version,
-        algorithm: integrity.algorithm,
-        startupShellHash: integrity.startupShellHash,
-        planningPublicHash: integrity.planningPublicHash,
-        gradeVaultConfigHash: integrity.gradeVaultConfigHash,
-        contentHash: integrity.contentHash,
-      },
-    },
-    contentHash: integrity.contentHash,
-  });
-}
-
 function canonicalContentChecksum({
   schema,
   startupShellHash,
@@ -451,9 +349,6 @@ export function parseThdb1Header(bytes, { schemas = [] } = {}) {
   const rawChecksums = raw.integrity;
   const checksums = declaresChecksums ? normalizeChecksums(rawChecksums) : null;
   if (declaresChecksums && !checksums) return null;
-  const declaresAuthentication = Object.prototype.hasOwnProperty.call(raw, 'authentication');
-  const authentication = declaresAuthentication ? normalizeAuthentication(raw.authentication) : null;
-  if (declaresAuthentication && !authentication) return null;
   const header = {
     schema,
     revision,
@@ -468,7 +363,6 @@ export function parseThdb1Header(bytes, { schemas = [] } = {}) {
     gradeVaultConfigLength,
     gradeCourseSegments,
     integrity: checksums,
-    authentication,
   };
   return { header, headerBytesLength: secondEnd + 1 };
 }
@@ -644,18 +538,12 @@ export function buildThdb1ContainerBytes({
   updatedAt = '',
   deviceId = '',
   reason = '',
-  authentication = null,
 } = {}) {
   const normalizedSchema = String(schema || '');
   const shellText = String(startupShellText ?? '');
   if (!normalizedSchema || !shellText) throw new Error('THDB-Schema und Startup-Shell sind erforderlich.');
   const normalizedRevision = normalizeNonnegativeInteger(revision);
   if (normalizedRevision === null) throw new Error('Die THDB-Revision muss eine nichtnegative ganze Zahl sein.');
-  const hasAuthentication = authentication !== null && authentication !== undefined;
-  const normalizedAuthentication = hasAuthentication ? normalizeAuthentication(authentication) : null;
-  if (hasAuthentication && !normalizedAuthentication) {
-    throw new Error('Die THDB-Authentifizierung ist ungültig.');
-  }
   if (!Array.isArray(gradeCourseSegments)) {
     throw new Error('THDB-Kurssegmente müssen als Liste übergeben werden.');
   }
@@ -711,7 +599,6 @@ export function buildThdb1ContainerBytes({
       contentHash: courseHashes.get(course.courseId),
     })),
     integrity: serializedChecksums,
-    ...(normalizedAuthentication ? { authentication: normalizedAuthentication } : {}),
   };
   let stable = false;
   for (let guard = 0; guard < 16; guard += 1) {

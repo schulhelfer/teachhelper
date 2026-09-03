@@ -3213,7 +3213,6 @@ class GradesApp {
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
     this.persistenceFailureNoticeAt = 0;
-    this.pendingSaveNoticeActive = false;
     this.gradeCourseOperationTail = Promise.resolve();
     this.gradeCourseOperationActive = false;
     this.gradeCourseMutationActiveCourseId = null;
@@ -3379,18 +3378,6 @@ class GradesApp {
   applyWorkspacePersistenceStatus(persistence = null) {
     if (!persistence || typeof persistence !== "object") return false;
     const at = Number(persistence.statusAt) || 0;
-    if (persistence.pendingSave?.active) {
-      this.persistenceFailureNoticeAt = 0;
-      this.pendingSaveNoticeActive = true;
-      this.setSyncStatus(
-        "Speichern wartet – bitte den Notenbereich entsperren."
-      );
-      return true;
-    }
-    if (this.pendingSaveNoticeActive) {
-      this.pendingSaveNoticeActive = false;
-      this.setSyncStatus("");
-    }
     if (!persistence.statusError) {
       if (this.persistenceFailureNoticeAt) {
         this.persistenceFailureNoticeAt = 0;
@@ -11985,7 +11972,7 @@ class GradesApp {
       this.gradeVaultDialogAutoFocusPending = false;
     };
     ["pointerover", "pointermove", "pointerdown", "keydown", "touchstart"].forEach((eventName) => {
-      this.refs.gradeVaultDialog?.addEventListener(eventName, cancelGradeVaultDialogAutoFocus, { capture: true });
+      this.refs.gradeVaultDialog?.addEventListener(eventName, cancelGradeVaultDialogAutoFocus, { capture: true, passive: true });
     });
 
     if (this.refs.messageDialogCancel) {

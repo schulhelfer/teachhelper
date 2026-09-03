@@ -1095,7 +1095,6 @@ class PlanningApp {
     this.courseStudentCounts = new Map();
     this.courseStudentCountsRefreshToken = 0;
     this.persistenceFailureNoticeAt = 0;
-    this.pendingSaveNoticeActive = false;
     this.appVersion = "";
     this.weekCalendarMonthIso = null;
     this.weekCalendarHoverWeekStart = null;
@@ -1254,20 +1253,6 @@ class PlanningApp {
   applyWorkspacePersistenceStatus(persistence = null) {
     if (!persistence || typeof persistence !== "object") return false;
     const at = Number(persistence.statusAt) || 0;
-    const pendingSaveActive = Boolean(persistence.pendingSave?.active);
-    this.beforeUnloadWarningEnabled = pendingSaveActive;
-    if (pendingSaveActive) {
-      this.persistenceFailureNoticeAt = 0;
-      this.pendingSaveNoticeActive = true;
-      this.setSyncStatus(
-        "Speichern wartet – bitte den Notenbereich entsperren (Schloss-Symbol oben)."
-      );
-      return true;
-    }
-    if (this.pendingSaveNoticeActive) {
-      this.pendingSaveNoticeActive = false;
-      this.setSyncStatus("");
-    }
     if (!persistence.statusError) {
       if (this.persistenceFailureNoticeAt) {
         this.persistenceFailureNoticeAt = 0;

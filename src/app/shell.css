@@ -763,22 +763,6 @@
       pointer-events: none;
     }
 
-    .tab-unlock-button.is-attention {
-      border-color: currentColor;
-      animation: tab-unlock-attention 1.6s ease-in-out infinite;
-    }
-
-    @keyframes tab-unlock-attention {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.45; }
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      .tab-unlock-button.is-attention {
-        animation: none;
-      }
-    }
-
     @media (max-width:1180px) {
       .app-header {
         grid-template-columns: 1fr;

@@ -104,18 +104,6 @@ function sampleContainer(overrides = {}) {
   });
 }
 
-function sampleAuthentication(overrides = {}) {
-  return {
-    version: 1,
-    schema: thdb.THDB_AUTHENTICATION_SCHEMA,
-    algorithm: thdb.THDB_AUTHENTICATION_ALGORITHM,
-    iv: Buffer.alloc(thdb.THDB_AUTHENTICATION_IV_BYTES, 3).toString('base64'),
-    tagLength: thdb.THDB_AUTHENTICATION_TAG_LENGTH,
-    tag: Buffer.alloc(thdb.THDB_AUTHENTICATION_TAG_BYTES, 7).toString('base64'),
-    ...overrides,
-  };
-}
-
 test('THDB lehnt übergroße JSON-Köpfe vor dem Parsen ab', () => {
   const oversizedHeader = bytes(`${thdb.THDB_MAGIC}\n${' '.repeat((1024 * 1024) + 1)}\n`);
   assert.equal(thdb.parseThdb1ContainerBytes(oversizedHeader), null);
@@ -212,35 +200,6 @@ test('new containers carry offsets-independent hashes for every segment', () => 
   assert.equal(parsed.contentHash, first.contentHash);
   assert.deepEqual(parsed.gradeCourseSegments.map((segment) => segment.courseId), [1, 2]);
   assert.ok(parsed.gradeCourseSegments.every((segment) => segment.locator.contentHash));
-});
-
-test('THDB authentication binds canonical header metadata but excludes its own tag', () => {
-  const first = sampleContainer({ authentication: sampleAuthentication() });
-  const second = sampleContainer({ authentication: sampleAuthentication({ tag: Buffer.alloc(16, 9).toString('base64') }) });
-  const firstPayload = thdb.getThdb1ContainerAuthenticationPayload(first.header);
-  const secondPayload = thdb.getThdb1ContainerAuthenticationPayload(second.header);
-
-  assert.deepEqual(first.header.authentication, sampleAuthentication());
-  assert.equal(firstPayload, secondPayload, 'the authentication value itself must not create a circular payload');
-  assert.deepEqual(
-    [first.header.startupShellOffset, first.header.planningPublicOffset, first.header.gradeVaultConfigOffset, first.header.gradeCourseSegments],
-    [second.header.startupShellOffset, second.header.planningPublicOffset, second.header.gradeVaultConfigOffset, second.header.gradeCourseSegments],
-    'gleich lange Platzhalter- und echte Tags müssen dieselben stabilen Locatorwerte ergeben',
-  );
-  assert.notEqual(
-    firstPayload,
-    thdb.getThdb1ContainerAuthenticationPayload({ ...first.header, revision: first.header.revision + 1 }),
-    'container metadata must be authenticated',
-  );
-  assert.throws(
-    () => sampleContainer({ authentication: sampleAuthentication({ tagLength: 96 }) }),
-    /Authentifizierung/,
-  );
-  assert.equal(
-    thdb.parseThdb1Header(bytes(decoder.decode(first.bytes).replace('"tagLength":128', '"tagLength":96'))),
-    null,
-    'eine vorhandene Authentifizierung muss vollständig dem festen Schema entsprechen',
-  );
 });
 
 test('same-length data changes are detected instead of being confused by locators', () => {

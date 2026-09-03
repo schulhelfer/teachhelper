@@ -6,9 +6,6 @@ export const WORKSPACE_VAULT_KDF_MAX_ITERATIONS = 2000000;
 export const WORKSPACE_VAULT_SALT_BYTES = 16;
 export const WORKSPACE_VAULT_IV_BYTES = 12;
 export const WORKSPACE_VAULT_TAG_LENGTH = 128;
-export const WORKSPACE_VAULT_CONTAINER_AUTH_SCHEMA = 'teachhelper-thdb-auth-v1';
-export const WORKSPACE_VAULT_CONTAINER_AUTH_ALGORITHM = 'AES-GCM';
-export const WORKSPACE_VAULT_CONTAINER_AUTH_TAG_BYTES = 16;
 
 function bytesToBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
@@ -47,27 +44,6 @@ function randomBytes(length, cryptoProvider = globalThis.crypto) {
   const bytes = new Uint8Array(Math.max(0, Number(length) || 0));
   cryptoProvider.getRandomValues(bytes);
   return bytes;
-}
-
-function buildWorkspaceVaultContainerAuthenticationAad(payload) {
-  return new TextEncoder().encode(String(payload || ''));
-}
-
-function validateWorkspaceVaultContainerAuthentication(authentication) {
-  const source = authentication && typeof authentication === 'object' ? authentication : null;
-  if (
-    !source
-    || Number(source.version) !== 1
-    || String(source.schema || '') !== WORKSPACE_VAULT_CONTAINER_AUTH_SCHEMA
-    || String(source.algorithm || '') !== WORKSPACE_VAULT_CONTAINER_AUTH_ALGORITHM
-    || Number(source.tagLength) !== WORKSPACE_VAULT_TAG_LENGTH
-  ) {
-    throw new Error('Die THDB-Authentifizierung ist ungültig.');
-  }
-  return {
-    iv: decodeFixedBase64(source.iv, WORKSPACE_VAULT_IV_BYTES, 'Der THDB-Authentifizierungs-IV'),
-    tag: decodeFixedBase64(source.tag, WORKSPACE_VAULT_CONTAINER_AUTH_TAG_BYTES, 'Der THDB-Authentifizierungs-Tag'),
-  };
 }
 
 export function normalizeWorkspaceVaultKdf(raw = null) {
@@ -130,17 +106,13 @@ export async function deriveWorkspaceVaultKey(password, kdfConfig, cryptoProvide
     false,
     ['deriveKey'],
   );
-  const algorithm = {
+  const cryptoKey = await cryptoProvider.subtle.deriveKey({
     name: 'PBKDF2',
     hash: 'SHA-256',
     iterations: kdf.iterations,
     salt: base64ToBytes(kdf.salt),
-  };
-  const [cryptoKey, signingKey] = await Promise.all([
-    cryptoProvider.subtle.deriveKey(algorithm, baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']),
-    cryptoProvider.subtle.deriveKey(algorithm, baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt']),
-  ]);
-  return { cryptoKey, signingKey, kdf };
+  }, baseKey, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  return { cryptoKey, kdf };
 }
 
 export async function encryptWorkspaceVaultText(
@@ -201,54 +173,5 @@ export async function decryptWorkspaceVaultText(
     return new TextDecoder().decode(new Uint8Array(plaintext));
   } catch {
     throw new Error('Passwort falsch oder Notendaten beschädigt.');
-  }
-}
-
-export async function createWorkspaceVaultContainerAuthentication(
-  payload,
-  cryptoKey,
-  cryptoProvider = globalThis.crypto,
-) {
-  const iv = randomBytes(WORKSPACE_VAULT_IV_BYTES, cryptoProvider);
-  const tag = await cryptoProvider.subtle.encrypt({
-    name: 'AES-GCM',
-    iv,
-    additionalData: buildWorkspaceVaultContainerAuthenticationAad(payload),
-    tagLength: WORKSPACE_VAULT_TAG_LENGTH,
-  }, cryptoKey, new Uint8Array());
-  const tagBytes = new Uint8Array(tag);
-  if (tagBytes.length !== WORKSPACE_VAULT_CONTAINER_AUTH_TAG_BYTES) {
-    throw new Error('Der THDB-Authentifizierungs-Tag hat eine ungültige Länge.');
-  }
-  return {
-    version: 1,
-    schema: WORKSPACE_VAULT_CONTAINER_AUTH_SCHEMA,
-    algorithm: WORKSPACE_VAULT_CONTAINER_AUTH_ALGORITHM,
-    iv: bytesToBase64(iv),
-    tagLength: WORKSPACE_VAULT_TAG_LENGTH,
-    tag: bytesToBase64(tagBytes),
-  };
-}
-
-export async function verifyWorkspaceVaultContainerAuthentication(
-  authentication,
-  payload,
-  cryptoKey,
-  cryptoProvider = globalThis.crypto,
-) {
-  const { iv, tag } = validateWorkspaceVaultContainerAuthentication(authentication);
-  try {
-    const plaintext = await cryptoProvider.subtle.decrypt({
-      name: 'AES-GCM',
-      iv,
-      additionalData: buildWorkspaceVaultContainerAuthenticationAad(payload),
-      tagLength: WORKSPACE_VAULT_TAG_LENGTH,
-    }, cryptoKey, tag);
-    if (new Uint8Array(plaintext).length !== 0) {
-      throw new Error('Der THDB-Authentifizierungs-Tag enthält unerwartete Daten.');
-    }
-    return true;
-  } catch {
-    throw new Error('Die THDB-Datei wurde verändert oder ist beschädigt.');
   }
 }

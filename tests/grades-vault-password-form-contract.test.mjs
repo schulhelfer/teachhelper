@@ -179,7 +179,7 @@ test('eine Dialoginteraktion bricht nur den noch ausstehenden Autofokus ab', () 
   assert.match(appSource, /this\.gradeVaultDialogAutoFocusPending = true;\s*this\.gradeVaultSession\.promptPending = false;/);
   assert.match(appSource, /const cancelGradeVaultDialogAutoFocus = \(\) => \{\s*this\.gradeVaultDialogAutoFocusPending = false;\s*\};/);
   assert.match(appSource, /\["pointerover", "pointermove", "pointerdown", "keydown", "touchstart"\]\.forEach/);
-  assert.match(appSource, /addEventListener\(eventName, cancelGradeVaultDialogAutoFocus, \{ capture: true \}\)/);
+  assert.match(appSource, /addEventListener\(eventName, cancelGradeVaultDialogAutoFocus, \{ capture: true, passive: true \}\)/);
 });
 
 test('ein erfolgreicher Vault-Vorgang meldet die Zugangsdaten explizit an den Browser', () => {
