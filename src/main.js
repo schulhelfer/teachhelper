@@ -2967,49 +2967,49 @@ import {
     helpCenter?.openEntry({ module: getActiveTab() });
   }
 
-  async function createBackupBeforeTutorialStart() {
+  function isGuardBackupPossible() {
     const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
     const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
     const backupDirectoryConnected = Boolean(workspaceOwner?.backupState?.directoryHandle);
-    if (!databaseConnected || !backupDirectoryConnected) return true;
+    return databaseConnected && backupDirectoryConnected;
+  }
+
+  function describeBackupStatus() {
+    return isGuardBackupPossible()
+      ? ''
+      : 'Kein Backup-Ordner verbunden – das Update läuft ohne Sicherung.';
+  }
+
+  async function runGuardBackup(mode) {
+    const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
+    if (!isGuardBackupPossible()) {
+      return { ok: true, skipped: true, reason: '' };
+    }
     try {
-      const created = await workspaceOwner.createLatestWebBackup?.('tutorial', true);
-      if (created) return true;
-      showMessage('Vor dem Tutorial konnte kein Backup erstellt werden.', 'error');
-      return false;
+      const created = await workspaceOwner.createLatestWebBackup?.(mode, false);
+      if (created) return { ok: true, skipped: false, reason: '' };
+      return { ok: false, skipped: false, reason: '' };
     } catch (error) {
-      const detail = error instanceof Error && error.message
-        ? ` ${error.message}`
-        : '';
-      showMessage(`Vor dem Tutorial konnte kein Backup erstellt werden.${detail}`, 'error');
-      return false;
+      return {
+        ok: false,
+        skipped: false,
+        reason: error instanceof Error && error.message ? error.message : '',
+      };
     }
   }
 
-  async function createBackupBeforeUpdateReload() {
-    const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
-    const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
-    const backupDirectoryConnected = Boolean(workspaceOwner?.backupState?.directoryHandle);
-    if (!databaseConnected || !backupDirectoryConnected) return true;
-    try {
-      const created = await workspaceOwner.createLatestWebBackup?.('update', true);
-      if (created) return true;
-      showMessage('Vor dem Update konnte kein Backup erstellt werden.', 'error');
-      return false;
-    } catch (error) {
-      const detail = error instanceof Error && error.message
-        ? ` ${error.message}`
-        : '';
-      showMessage(`Vor dem Update konnte kein Backup erstellt werden.${detail}`, 'error');
-      return false;
-    }
+  async function createBackupBeforeTutorialStart() {
+    const result = await runGuardBackup('tutorial');
+    if (result.ok) return true;
+    const detail = result.reason ? ` ${result.reason}` : '';
+    showMessage(`Vor dem Tutorial konnte kein Backup erstellt werden.${detail}`, 'error');
+    return false;
   }
 
   async function beforeReloadForUpdate() {
-    const backupCreated = await createBackupBeforeUpdateReload();
-    if (!backupCreated) return false;
-    markVersionUpdateHintPending();
-    return true;
+    const result = await runGuardBackup('update');
+    if (result.ok) markVersionUpdateHintPending();
+    return result;
   }
 
   let sharedCourseContextId = 0;
@@ -8992,7 +8992,10 @@ import {
     updateDialog: els.updateDialog,
     updateDialogLater: els.updateDialogLater,
     updateDialogReload: els.updateDialogReload,
+    updateDialogForce: els.updateDialogForce,
+    updateDialogStatus: els.updateDialogStatus,
     beforeReloadForUpdate,
+    describeBackupStatus,
     onUpdateAvailabilityChange: setVersionUpdateAvailability,
     serviceWorkerUrl: './sw.js',
   });

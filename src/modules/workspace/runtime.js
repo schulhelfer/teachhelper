@@ -1222,11 +1222,19 @@ export class WorkspaceRuntime {
       .filter((course) => !course.noLesson && !course.noGrades)
       .map((course) => Number(course.id))
       .filter((courseId) => courseId > 0);
+    let complete = true;
     for (const courseId of courseIds) {
-      const state = await this.getGradeCourseStateSnapshot(courseId);
+      let state;
+      try {
+        state = await this.getGradeCourseStateSnapshot(courseId);
+      } catch (error) {
+        console.warn(`[TeachHelper] Kurs ${courseId} konnte für die Namenslern-Übersicht nicht gelesen werden.`, error);
+        complete = false;
+        continue;
+      }
       courses[String(courseId)] = buildNameLearningDueBuckets(state, courseId);
     }
-    return this.saveNameLearningDueSummary({ complete: true, courses });
+    return this.saveNameLearningDueSummary({ complete, courses });
   }
 
   async getOccurrenceCategoryUsage(categoryId) {
@@ -1565,7 +1573,7 @@ export class WorkspaceRuntime {
         segments.push({ courseId, text: this.segmentTexts.get(courseId) });
         continue;
       }
-      if (this.isGradeVaultEncryptionEnabled() && !this.isGradeVaultUnlocked()) {
+      if (this.isGradeVaultConfigured() && !this.isGradeVaultUnlocked()) {
         const error = new Error('Ungespeicherte Notenänderungen können erst nach dem Entsperren des Notenbereichs gespeichert werden.');
         error.code = WORKSPACE_ERROR_VAULT_LOCKED;
         throw error;
@@ -1573,7 +1581,7 @@ export class WorkspaceRuntime {
       const state = this.courseCache.get(courseId) || emptyGradeState(this.store);
       entryCount += state.gradeEntries?.length || 0;
       const persisted = persistedCourseFromState(this.store, courseId, state);
-      const text = this.isGradeVaultEncryptionEnabled()
+      const text = this.isGradeVaultUnlocked()
         ? JSON.stringify(await encryptWorkspaceVaultText(
           JSON.stringify(persisted),
           this.vault.cryptoKey,
@@ -1661,10 +1669,8 @@ export class WorkspaceRuntime {
     this.dirtyCourseIds.clear();
     this.loadedCourseId = null;
     this.store.replaceGradeVaultState(emptyGradeState(this.store));
-    const encrypted = [...this.segmentTexts.values()].some((text) => parseCourseSegment(text)?.encrypted);
     this.vault.encryptionEnabled = Boolean(
       config.configured
-      || encrypted
       || publicState?.settings?.gradeVaultEncryptionEnabled,
     );
     this.vault.configured = Boolean(config.configured);
@@ -2050,9 +2056,31 @@ export class WorkspaceRuntime {
   }
 
   async createLatestWebBackup(mode = 'manual', silent = false) {
-    if (!this.backupDirectoryHandle || !this.isPersistenceReady()) return false;
+    if (!this.backupDirectoryHandle) return false;
+    if (!this.isPersistenceReady()) {
+      if (silent) return false;
+      throw new Error('Die verbundene Datenbankdatei wurde noch nicht vollständig geladen.');
+    }
+    if (!await this.ensureHandleReadWritePermission(this.backupDirectoryHandle, { allowPrompt: !silent })) {
+      if (silent) return false;
+      throw new Error('Der Backup-Ordner ist nicht mehr zum Schreiben freigegeben. Bitte verbinde ihn in den Einstellungen neu.');
+    }
     const built = await this.buildContainer(`backup-${mode}`);
-    const handle = await this.backupDirectoryHandle.getFileHandle(buildBackupFileName(this.now()), { create: true });
+    let handle;
+    try {
+      handle = await this.backupDirectoryHandle.getFileHandle(buildBackupFileName(this.now()), { create: true });
+    } catch (cause) {
+      if (silent) {
+        console.warn('[TeachHelper] Hintergrund-Backup fehlgeschlagen.', cause);
+        return false;
+      }
+      const detail = String(cause?.name || '') === 'NotAllowedError'
+        ? 'Zugriff verweigert'
+        : String(cause?.message || cause?.name || 'unbekannter Fehler');
+      const error = new Error(`Der Backup-Ordner ist nicht mehr erreichbar. Bitte verbinde ihn in den Einstellungen neu. (${detail})`);
+      error.cause = cause;
+      throw error;
+    }
     const builtHash = await getThdb1FileHashAsync(built.bytes);
     const writeResult = await writeAndVerifyFileBytes(
       handle,
@@ -2060,7 +2088,8 @@ export class WorkspaceRuntime {
       async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
     );
     if (!writeResult.ok) {
-      const error = writeResult.error || new Error('Backup konnte nicht verifiziert werden.');
+      const error = writeResult.error
+        || new Error(`Backup konnte nicht verifiziert werden (Schritt: ${writeResult.stage || 'unbekannt'}).`);
       if (silent) {
         console.warn('[TeachHelper] Hintergrund-Backup fehlgeschlagen.', error);
         return false;

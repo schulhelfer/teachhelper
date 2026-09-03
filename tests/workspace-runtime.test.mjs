@@ -1567,3 +1567,93 @@ test('explicit database selection requires a fresh backup directory, while start
   assert.match(runtimeSource, /await this\.removeStoredHandle\(HANDLE_BACKUP_KEY\);[\s\S]*?this\.controller\?\.markChanged\?\.\('shell'\);/);
   assert.match(runtimeSource, /return this\.acceptWorkspaceSyncFileHandle\(handle, 'reconnect'\);/);
 });
+
+async function buildOrphanedVaultDatabase() {
+  const kdf = workspaceCrypto.createWorkspaceVaultKdf();
+  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey('ein-ausreichend-langes-passwort', kdf);
+  const envelope = await workspaceCrypto.encryptWorkspaceVaultText(
+    JSON.stringify({ gradeEntries: [] }),
+    cryptoKey,
+    kdf,
+    { type: 'course', courseId: 7 },
+  );
+  const encryptedText = JSON.stringify(envelope);
+  const bytes = thdb.buildThdb1ContainerBytes({
+    schema: 'teachhelper-db-v2',
+    startupShellText: JSON.stringify({ courses: [] }),
+    planningPublicText: JSON.stringify({
+      settings: { activeSchoolYearId: 1, gradeVaultEncryptionEnabled: false },
+      schoolYears: [{ id: 1 }],
+      courses: [{ id: 7, name: '7a' }],
+      slots: [], freeRanges: [], specialDays: [], lessons: [],
+    }),
+    gradeVaultConfigText: JSON.stringify({ configured: false }),
+    gradeCourseSegments: [{ courseId: 7, text: encryptedText }],
+    revision: 1,
+    updatedAt: new Date().toISOString(),
+    deviceId: 'test',
+    reason: 'test',
+  }).bytes;
+  return { bytes, encryptedText };
+}
+
+test('ein verwaistes Notensegment ohne Vault-Konfiguration blockiert Speichern und Backup nicht', async () => {
+  const { bytes, encryptedText } = await buildOrphanedVaultDatabase();
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  await runtime.loadBytes(bytes, 'manual');
+
+  assert.equal(
+    runtime.isGradeVaultEncryptionEnabled(),
+    false,
+    'ohne KDF und Validierung gibt es kein Passwort mehr - die Verschluesselung darf nicht reaktiviert werden',
+  );
+  assert.equal(runtime.canAccessGradeVault(), true, 'sonst waere der Notenbereich dauerhaft unerreichbar');
+
+  const built = await runtime.buildContainer('backup-update');
+  const parsed = thdb.parseThdb1ContainerBytes(built.bytes, { includeGradeCourseSegments: true });
+  assert.equal(
+    parsed.gradeCourseSegments.find((segment) => Number(segment.courseId) === 7)?.text,
+    encryptedText,
+    'das unlesbare Segment muss unveraendert erhalten bleiben',
+  );
+});
+
+test('ein unlesbares Notensegment darf beim Speichern nicht durch leere Daten ersetzt werden', async () => {
+  const { bytes } = await buildOrphanedVaultDatabase();
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  await runtime.loadBytes(bytes, 'manual');
+
+  runtime.dirtyCourseIds.add(7);
+  runtime.courseCache.set(7, store.normalizeGradeVaultState(null));
+
+  await assert.rejects(
+    () => runtime.buildContainer('save'),
+    (error) => error.code === messages.WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS,
+  );
+});
+
+test('ein eingerichteter, aber gesperrter Notenbereich blockiert das Schreiben weiterhin', () => {
+  assert.match(
+    runtimeSource,
+    /if \(this\.isGradeVaultConfigured\(\) && !this\.isGradeVaultUnlocked\(\)\) \{[\s\S]*?WORKSPACE_ERROR_VAULT_LOCKED/,
+    'ein echtes Passwort-Schloss bleibt eine Schreibsperre - nur der unentsperrbare Zustand nicht',
+  );
+  assert.match(
+    runtimeSource,
+    /const text = this\.isGradeVaultUnlocked\(\)\s*\?\s*JSON\.stringify\(await encryptWorkspaceVaultText\(/,
+    'verschluesselt wird nur mit einem tatsaechlich vorhandenen Schluessel',
+  );
+});
+
+test('ein unlesbarer Kurs bricht die Namenslern-Uebersicht nicht ab', async () => {
+  const { bytes } = await buildOrphanedVaultDatabase();
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  await runtime.loadBytes(bytes, 'manual');
+  await assert.doesNotReject(() => runtime.refreshNameLearningDueSummary());
+  assert.match(
+    runtimeSource,
+    /complete = false;\s*continue;/,
+    'eine Uebersicht mit uebersprungenem Kurs darf sich nicht als vollstaendig ausgeben',
+  );
+});

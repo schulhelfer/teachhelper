@@ -527,7 +527,7 @@
         </div>
       </form>
     </dialog>
-    <dialog id="update-dialog" aria-labelledby="update-dialog-title">
+    <dialog id="update-dialog" aria-labelledby="update-dialog-title" aria-describedby="update-dialog-status">
       <form method="dialog" class="dialog-form">
         <div class="dialog-header">
           <h2 id="update-dialog-title" class="dialog-title">Neue Version verfügbar</h2>
@@ -536,8 +536,10 @@
           Lade die App neu, um das Update zu übernehmen. Mit „Später“ arbeitest du in der aktuellen
           Version weiter – das Update wartet dann auf einen Klick auf die Versionsnummer.
         </p>
+        <p id="update-dialog-status" class="dialog-status" role="status" aria-live="polite" hidden></p>
         <div class="dialog-actions">
           <button type="button" id="update-dialog-later" class="ghost">Später</button>
+          <button type="button" id="update-dialog-force" class="ghost" hidden>Ohne Backup aktualisieren</button>
           <button type="button" id="update-dialog-reload" class="primary">Neu laden</button>
         </div>
       </form>

@@ -160,11 +160,33 @@ async function withEnvironment(run, { hostname = 'teachhelper.example' } = {}) {
   }
 }
 
+class ElementStub extends EventTargetStub {
+  constructor() {
+    super();
+    this.textContent = '';
+    this.hidden = false;
+    const classes = new Set();
+    this.classList = {
+      add: (name) => classes.add(name),
+      remove: (name) => classes.delete(name),
+      contains: (name) => classes.has(name),
+    };
+  }
+}
+
 function createDialogSetup() {
   const updateDialog = new DialogStub();
   const updateDialogLater = new EventTargetStub();
-  const updateDialogReload = new EventTargetStub();
-  return { updateDialog, updateDialogLater, updateDialogReload };
+  const updateDialogReload = new ElementStub();
+  const updateDialogForce = new ElementStub();
+  const updateDialogStatus = new ElementStub();
+  return {
+    updateDialog,
+    updateDialogLater,
+    updateDialogReload,
+    updateDialogForce,
+    updateDialogStatus,
+  };
 }
 
 test('"Später" silences the update dialog instead of only closing it', async () => {
@@ -274,13 +296,13 @@ test('the manual version check in the shell forces the dialog', () => {
   assert.match(mainSource, /serviceWorkerUpdates\.checkForUpdates\(\{ force: true \}\)/);
 });
 
-test('a failing beforeReloadForUpdate blocks the update instead of skipping waiting', async () => {
+test('a failing beforeReloadForUpdate blocks the update and explains why inside the dialog', async () => {
   await withEnvironment(async ({ registration }) => {
     const dialogs = createDialogSetup();
     const updates = registerServiceWorkerUpdates({
       ...dialogs,
       serviceWorkerUrl: './sw.js',
-      beforeReloadForUpdate: async () => false,
+      beforeReloadForUpdate: async () => ({ ok: false, reason: 'Der Backup-Ordner ist nicht mehr erreichbar.' }),
     });
     await updates.checkForUpdates();
     assert.equal(dialogs.updateDialog.open, true);
@@ -294,7 +316,144 @@ test('a failing beforeReloadForUpdate blocks the update instead of skipping wait
       'a blocked update must not skip waiting',
     );
     assert.equal(dialogs.updateDialog.open, true, 'the dialog stays open when the backup fails');
+    assert.match(
+      dialogs.updateDialogStatus.textContent,
+      /Der Backup-Ordner ist nicht mehr erreichbar\./,
+      'the concrete reason must be readable inside the modal dialog',
+    );
+    assert.equal(dialogs.updateDialogStatus.hidden, false);
+    assert.equal(dialogs.updateDialogStatus.classList.contains('is-error'), true);
+    assert.equal(dialogs.updateDialogForce.hidden, false, 'the escape hatch must appear');
+    assert.equal(dialogs.updateDialogReload.textContent, 'Nochmal versuchen');
   });
+});
+
+test('a throwing beforeReloadForUpdate blocks the update instead of waving it through', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({
+      ...dialogs,
+      serviceWorkerUrl: './sw.js',
+      beforeReloadForUpdate: async () => {
+        throw new Error('Notenbereich ist gesperrt.');
+      },
+    });
+    await updates.checkForUpdates();
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      false,
+      'a thrown hook must never activate the waiting worker without a backup',
+    );
+    assert.match(dialogs.updateDialogStatus.textContent, /Notenbereich ist gesperrt\./);
+  });
+});
+
+test('"Ohne Backup aktualisieren" updates without consulting the backup hook again', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    let hookCalls = 0;
+    const updates = registerServiceWorkerUpdates({
+      ...dialogs,
+      serviceWorkerUrl: './sw.js',
+      beforeReloadForUpdate: async () => {
+        hookCalls += 1;
+        return { ok: false, reason: 'Kein Platz auf dem Laufwerk.' };
+      },
+    });
+    await updates.checkForUpdates();
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    assert.equal(hookCalls, 1);
+
+    dialogs.updateDialogForce.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.equal(hookCalls, 1, 'the forced path must not run the backup again');
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      true,
+      'the forced path must activate the waiting worker',
+    );
+    assert.equal(dialogs.updateDialog.open, false);
+  });
+});
+
+test('"Nochmal versuchen" retries the backup and updates once it succeeds', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    let hookCalls = 0;
+    const updates = registerServiceWorkerUpdates({
+      ...dialogs,
+      serviceWorkerUrl: './sw.js',
+      beforeReloadForUpdate: async () => {
+        hookCalls += 1;
+        return hookCalls === 1
+          ? { ok: false, reason: 'Zugriff verweigert' }
+          : { ok: true, skipped: false, reason: '' };
+      },
+    });
+    await updates.checkForUpdates();
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      false,
+    );
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.equal(hookCalls, 2);
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      true,
+      'a successful retry must activate the waiting worker',
+    );
+  });
+});
+
+test('a missing backup folder is announced when the dialog opens, not while it closes', async () => {
+  await withEnvironment(async ({ registration }) => {
+    const dialogs = createDialogSetup();
+    const updates = registerServiceWorkerUpdates({
+      ...dialogs,
+      serviceWorkerUrl: './sw.js',
+      describeBackupStatus: () => 'Kein Backup-Ordner verbunden – das Update läuft ohne Sicherung.',
+      beforeReloadForUpdate: async () => ({ ok: true, skipped: true, reason: '' }),
+    });
+    await updates.checkForUpdates();
+
+    assert.equal(dialogs.updateDialog.open, true);
+    assert.match(dialogs.updateDialogStatus.textContent, /ohne Sicherung/);
+    assert.equal(dialogs.updateDialogStatus.hidden, false);
+    assert.equal(
+      dialogs.updateDialogForce.hidden,
+      true,
+      'a hint is not a failure, so the escape hatch stays hidden',
+    );
+
+    dialogs.updateDialogReload.dispatch('click');
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
+
+    assert.equal(
+      registration.waiting.messages.some((message) => message.type === 'SKIP_WAITING'),
+      true,
+      'a skipped backup must not block the update',
+    );
+  });
+});
+
+test('the update dialog markup carries the status line and the escape hatch', () => {
+  assert.match(htmlSource, /id="update-dialog-status"[^>]*role="status"/);
+  assert.match(htmlSource, /id="update-dialog-force"[^>]*hidden/);
+  assert.match(htmlSource, /id="update-dialog"[^>]*aria-describedby="update-dialog-status"/);
+  assert.match(shellCss, /\.dialog-status\.is-error \{/);
 });
 
 test('ESC counts as "Später" instead of silencing the dialog for good', async () => {

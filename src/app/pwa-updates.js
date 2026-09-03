@@ -7,7 +7,10 @@ export function registerServiceWorkerUpdates({
   updateDialog,
   updateDialogLater,
   updateDialogReload,
+  updateDialogForce,
+  updateDialogStatus,
   beforeReloadForUpdate,
+  describeBackupStatus,
   onUpdateAvailabilityChange,
   serviceWorkerUrl = './sw.js',
 } = {}) {
@@ -89,8 +92,23 @@ export function registerServiceWorkerUpdates({
     }
   };
 
+  const setUpdateDialogStatus = (text = '', variant = '') => {
+    if (updateDialogStatus) {
+      updateDialogStatus.textContent = text;
+      updateDialogStatus.hidden = !text;
+      updateDialogStatus.classList?.[variant === 'error' ? 'add' : 'remove']?.('is-error');
+    }
+    if (updateDialogForce) updateDialogForce.hidden = variant !== 'error';
+    if (updateDialogReload) {
+      updateDialogReload.textContent = variant === 'error' ? 'Nochmal versuchen' : 'Neu laden';
+    }
+  };
+
   const openUpdateDialog = () => {
     if (!updateDialog || updateDialog.open) return;
+    setUpdateDialogStatus(
+      typeof describeBackupStatus === 'function' ? String(describeBackupStatus() || '') : '',
+    );
     if (typeof updateDialog.showModal === 'function') {
       updateDialog.showModal();
     } else {
@@ -119,6 +137,45 @@ export function registerServiceWorkerUpdates({
       if (!reloadRequestedForUpdate) return;
       window.location.reload();
     }, UPDATE_ACTIVATION_TIMEOUT_MS);
+  };
+
+  const activateWaitingWorker = () => {
+    reloadRequestedForUpdate = true;
+    clearUpdateSnooze();
+    notifyUpdateAvailability(null);
+    closeUpdateDialog();
+    const waitingWorker = activeRegistration?.waiting;
+    if (waitingWorker) {
+      postUpdateActivationToken(waitingWorker);
+      waitingWorker.postMessage({ type: 'SKIP_WAITING', token: updateActivationToken });
+      scheduleUpdateReloadFallback();
+      return;
+    }
+    window.location.reload();
+  };
+
+  const attemptUpdate = async ({ skipBackup = false } = {}) => {
+    if (!skipBackup && typeof beforeReloadForUpdate === 'function') {
+      let result;
+      try {
+        result = await beforeReloadForUpdate();
+      } catch (error) {
+        result = {
+          ok: false,
+          reason: error instanceof Error && error.message ? error.message : '',
+        };
+      }
+      const failed = result === false || (result && typeof result === 'object' && result.ok === false);
+      if (failed) {
+        const reason = typeof result === 'object' && result?.reason ? ` ${result.reason}` : '';
+        setUpdateDialogStatus(
+          `Vor dem Update konnte kein Backup erstellt werden.${reason}`,
+          'error',
+        );
+        return;
+      }
+    }
+    activateWaitingWorker();
   };
 
   const maybePromptForUpdate = (registration, { force = false } = {}) => {
@@ -196,29 +253,10 @@ export function registerServiceWorkerUpdates({
         snoozeUpdate();
       });
       updateDialogReload?.addEventListener('click', () => {
-        void (async () => {
-          if (typeof beforeReloadForUpdate === 'function') {
-            let allowed = true;
-            try {
-              allowed = await beforeReloadForUpdate();
-            } catch {
-              allowed = true;
-            }
-            if (allowed === false) return;
-          }
-          reloadRequestedForUpdate = true;
-          clearUpdateSnooze();
-          notifyUpdateAvailability(null);
-          closeUpdateDialog();
-          const waitingWorker = activeRegistration?.waiting;
-          if (waitingWorker) {
-            postUpdateActivationToken(waitingWorker);
-            waitingWorker.postMessage({ type: 'SKIP_WAITING', token: updateActivationToken });
-            scheduleUpdateReloadFallback();
-            return;
-          }
-          window.location.reload();
-        })();
+        void attemptUpdate();
+      });
+      updateDialogForce?.addEventListener('click', () => {
+        void attemptUpdate({ skipBackup: true });
       });
 
       try {

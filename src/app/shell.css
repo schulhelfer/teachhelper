@@ -5926,12 +5926,17 @@
       -webkit-backdrop-filter: blur(8px);
     }
 
-    .pwa-install-dialog-status {
+    .pwa-install-dialog-status,
+    .dialog-status {
       min-height: 1.3em;
       margin: 0;
       color: var(--muted);
       font-size: 13px;
       line-height: 1.4;
+    }
+
+    .dialog-status.is-error {
+      color: var(--danger, #f87171);
     }
 
     .pwa-install-dialog .dialog-actions {

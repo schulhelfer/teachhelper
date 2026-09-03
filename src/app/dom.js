@@ -77,6 +77,8 @@ export function createAppDom(doc = document) {
     updateDialog: doc.getElementById('update-dialog'),
     updateDialogLater: doc.getElementById('update-dialog-later'),
     updateDialogReload: doc.getElementById('update-dialog-reload'),
+    updateDialogForce: doc.getElementById('update-dialog-force'),
+    updateDialogStatus: doc.getElementById('update-dialog-status'),
     pwaInstallDialog: doc.getElementById('pwa-install-dialog'),
     pwaInstallDialogCopy: doc.getElementById('pwa-install-dialog-copy'),
     pwaInstallDialogStatus: doc.getElementById('pwa-install-dialog-status'),

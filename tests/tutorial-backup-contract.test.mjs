@@ -9,9 +9,17 @@ const [mainSource, tutorialSource] = await Promise.all([
 
 test('ein Tutorial erstellt bei eingerichteter Persistenz zuerst ein Backup', () => {
   assert.match(mainSource, /async function createBackupBeforeTutorialStart\(\)/);
-  assert.match(mainSource, /if \(!databaseConnected \|\| !backupDirectoryConnected\) return true;/);
-  assert.match(mainSource, /createLatestWebBackup\?\.\('tutorial', true\)/);
+  assert.match(mainSource, /const result = await runGuardBackup\('tutorial'\);/);
   assert.match(mainSource, /beforeStart: createBackupBeforeTutorialStart/);
+});
+
+test('der Backup-Gate überspringt nur ohne Persistenz und meldet sonst den Grund', () => {
+  assert.match(mainSource, /if \(!isGuardBackupPossible\(\)\) \{\s+return \{ ok: true, skipped: true, reason: '' \};/);
+  assert.match(
+    mainSource,
+    /createLatestWebBackup\?\.\(mode, false\)/,
+    'der Gate darf nicht im silent-Modus laufen, sonst geht der Fehlergrund verloren',
+  );
 });
 
 test('der zentrale Tutorial-Einstieg wartet auf seine Vorbereitung', () => {
