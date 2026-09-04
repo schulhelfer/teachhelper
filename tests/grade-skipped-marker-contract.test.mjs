@@ -59,15 +59,23 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
     'empty-value branch',
   );
   assert.doesNotMatch(emptyBranch, /clearCourseGradeStudentSkipped/);
+  // Same trap for "handled": the empty branch also runs on the blur of a seat that was
+  // only looked at, so it must not count that student as done either.
+  assert.doesNotMatch(emptyBranch, /markCourseGradeStudentHandled/);
 
   assert.match(
     setter,
-    /\} else \{\n\s*state\.courseGradeEntries\[sid\] = parsed\.value;\n\s*state\.courseGradeDeletedStudentIds\.delete\(sid\);\n[\s\S]*?clearCourseGradeStudentSkipped\(sid\);\n\s*\}/,
+    /\} else \{\n\s*state\.courseGradeEntries\[sid\] = parsed\.value;\n\s*state\.courseGradeDeletedStudentIds\.delete\(sid\);\n[\s\S]*?clearCourseGradeStudentSkipped\(sid\);\n[\s\S]*?markCourseGradeStudentHandled\(sid\);\n\s*\}/,
   );
   assert.equal(
     setter.split('clearCourseGradeStudentSkipped(').length - 1,
     1,
     'the marker may only be dropped on an actual grade assignment',
+  );
+  assert.equal(
+    setter.split('markCourseGradeStudentHandled(').length - 1,
+    1,
+    'a student may only be counted as done on an actual grade assignment',
   );
 
   // The central refresh runs on every path, so an empty blur restores the marker.
