@@ -192,6 +192,7 @@ const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_DEFICIT_FOLLOWUP_TOOLTIP = "Gelb = Nachbereitung erforderlich";
 const GRADE_RATIO_TOOLTIP = "Orange = Kurz vor besserer Note";
 const GRADE_SIDEBAR_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
+const GRADE_SKIPPED_PLACEHOLDER = "--";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
 const GRADE_ACCOMMODATION_TEXT_MAX_LENGTH = 500;
 const GRADE_EXPECTATION_HORIZON_COMMENT_MAX_LENGTH = 500;
@@ -3182,6 +3183,7 @@ class GradesApp {
       values: Array.from({ length: 16 }, (_, index) => 15 - index),
       activeIndex: -1
     };
+    this.skippedGradeEntries = new Set();
     this.gradeTestScaleTooltipState = {
       portal: null,
       anchor: null
@@ -21461,6 +21463,9 @@ class GradesApp {
     }
     this.hideGradePicker();
     this.activeGradeOverrideContext = null;
+    if (Number(this.activeGradeAssessmentId || 0) !== Number(id || 0)) {
+      this.skippedGradeEntries.clear();
+    }
     this.activeGradeAssessmentId = id;
     this.activeGradeStudentId = nextStudentId;
     this.renderGradesView();
@@ -22527,6 +22532,9 @@ class GradesApp {
       const rawValue = entry && entry.value !== null ? entry.value : null;
       const existingInputValue = rawValue === null ? "" : formatGradeInputForSystem(rawValue, displaySystem);
       const showExistingValueAsPlaceholder = Boolean(options.existingValueAsPlaceholder && existingInputValue);
+      const showSkippedPlaceholder = !showExistingValueAsPlaceholder
+        && !existingInputValue
+        && this.isGradeEntrySkipped(assessment.id, student.id, assessment.courseId);
       const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
       return `
           <input
@@ -22545,6 +22553,7 @@ class GradesApp {
             data-subcategory-id="${subcategoryId}"
             ${showExistingValueAsPlaceholder ? `data-grade-original-value="${escapeHtml(existingInputValue)}"` : ""}
             ${showExistingValueAsPlaceholder ? `placeholder="${escapeHtml(existingInputValue)}"` : ""}
+            ${showSkippedPlaceholder ? `placeholder="${escapeHtml(GRADE_SKIPPED_PLACEHOLDER)}"` : ""}
             value="${showExistingValueAsPlaceholder ? "" : escapeHtml(existingInputValue)}"
             aria-label="Note für ${escapeHtml(studentName)}"
             ${isDeficit ? `title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}
@@ -22664,6 +22673,11 @@ class GradesApp {
           : { value: null, checked: null };
         const isDraftDeficit = isGradeValueBelowThreshold(draftEntry.value, this.gradeDeficitThreshold);
         const draftDeficitTitle = isDraftDeficit ? ` title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : "";
+        const draftSkippedPlaceholder = draftEntry.value === null || draftEntry.value === undefined
+          ? (this.isGradeEntrySkipped(assessment?.id, student.id, course.id)
+            ? ` placeholder="${escapeHtml(GRADE_SKIPPED_PLACEHOLDER)}"`
+            : "")
+          : "";
         gradeCell.innerHTML = entryMode === "homework"
           ? this.buildHomeworkCheckboxMarkup(
             studentName,
@@ -22674,7 +22688,7 @@ class GradesApp {
               positive: this.getGradeOccurrenceCategoryPolarity(draft?.occurrenceCategoryId || assessment?.occurrenceCategoryId) === "positive"
             }
           )
-          : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="${displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"}" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-course-id="${course.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : ""} data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInputForSystem(draftEntry.value, displaySystem)}" aria-label="Einzelnote für ${escapeHtml(studentName)}"${draftDeficitTitle}>`;
+          : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="${displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"}" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-course-id="${course.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : ""} data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInputForSystem(draftEntry.value, displaySystem)}"${draftSkippedPlaceholder} aria-label="Einzelnote für ${escapeHtml(studentName)}"${draftDeficitTitle}>`;
       }
       tr.append(gradeCell);
       tbody.append(tr);
@@ -26842,6 +26856,13 @@ class GradesApp {
     }
     input.classList.remove("invalid");
     input.value = parsed.value === null ? "" : this.formatCurrentGradeInput(parsed.value);
+    // Nur eine echte Note hebt die Auslassen-Markierung auf. Ein leerer Wert darf sie
+    // nicht anfassen: nach dem Auslassen läuft der Blur des Feldes genau hier durch
+    // und würde die gerade gesetzte Markierung sofort wieder löschen.
+    if (parsed.value !== null) {
+      this.clearGradeEntrySkipped(assessmentId, studentId, courseId);
+    }
+    this.applyGradeSkippedPlaceholder(input);
     this.syncGradeInputLowValueClass(input, parsed.value);
     if (isDraftInput) {
       const draft = this.getGradesEntryDraft(this.selectedCourseId);
@@ -27294,11 +27315,70 @@ class GradesApp {
     return true;
   }
 
+  getSkippedGradeEntryKey(assessmentId, studentId, courseId = 0) {
+    const student = Number(studentId || 0);
+    if (!student) {
+      return "";
+    }
+    const assessment = Number(assessmentId || 0);
+    if (assessment) {
+      return `a${assessment}:${student}`;
+    }
+    // Entwurfszeilen einer noch nicht angelegten Einzelleistung haben keine
+    // assessmentId; dort bindet der Kurs die Markierung an den Durchgang.
+    const course = Number(courseId || 0);
+    return course ? `c${course}:${student}` : "";
+  }
+
+  getSkippedGradeEntryKeyForInput(input) {
+    if (!(input instanceof HTMLInputElement)) {
+      return "";
+    }
+    return this.getSkippedGradeEntryKey(
+      input.dataset.assessmentId,
+      input.dataset.studentId,
+      input.dataset.courseId
+    );
+  }
+
+  isGradeEntrySkipped(assessmentId, studentId, courseId = 0) {
+    const key = this.getSkippedGradeEntryKey(assessmentId, studentId, courseId);
+    return Boolean(key) && this.skippedGradeEntries.has(key);
+  }
+
+  markGradeEntrySkipped(input) {
+    const key = this.getSkippedGradeEntryKeyForInput(input);
+    if (!key) {
+      return false;
+    }
+    this.skippedGradeEntries.add(key);
+    return true;
+  }
+
+  clearGradeEntrySkipped(assessmentId, studentId, courseId = 0) {
+    const key = this.getSkippedGradeEntryKey(assessmentId, studentId, courseId);
+    return Boolean(key) && this.skippedGradeEntries.delete(key);
+  }
+
+  applyGradeSkippedPlaceholder(input) {
+    if (!(input instanceof HTMLInputElement)) {
+      return;
+    }
+    if (Object.prototype.hasOwnProperty.call(input.dataset, "gradeOriginalValue")) {
+      return;
+    }
+    const key = this.getSkippedGradeEntryKeyForInput(input);
+    const skipped = !input.value && Boolean(key) && this.skippedGradeEntries.has(key);
+    input.placeholder = skipped ? GRADE_SKIPPED_PLACEHOLDER : "";
+  }
+
   advanceGradePickerToNextStudent() {
     const input = this.gradePickerState.input;
     if (!input) {
       return;
     }
+    this.markGradeEntrySkipped(input);
+    this.applyGradeSkippedPlaceholder(input);
     this.hideGradePicker();
     this.focusNextStudentGradeInput(input);
   }
@@ -28108,6 +28188,9 @@ class GradesApp {
     this.gradesSubView = "entry";
     this.selectedGradesEntryAssessmentId = id;
     this.confirmedGradesEntryModeChangeKey = "";
+    if (Number(this.activeGradeAssessmentId || 0) !== id) {
+      this.skippedGradeEntries.clear();
+    }
     this.activeGradeAssessmentId = id;
     this.activeGradeStudentId = targetStudentId;
     this.pendingGradesEntryCourseAutoSelect = false;

@@ -604,7 +604,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             courseGradePickerStudentId: '',
             courseGradeCompletionPromptShown: false,
             courseGradeCompletionPromptArmed: false,
-            courseGradeVisitedStudentIds: new Set(),
+            courseGradeHandledStudentIds: new Set(),
+            courseGradeSkippedStudentIds: new Set(),
             courseGradeEntryMode: 'grade',
             courseGradeOccurrenceCategoryId: null,
             courseGradeCheckedEntries: {},
@@ -625,6 +626,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           const GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:grades-grade-roster-import-result';
           const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
           const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
+          const SEATPLAN_CHROME_REQUEST_EVENT = 'classroom:seatplan-chrome-request';
+          const COURSE_GRADE_SKIPPED_PLACEHOLDER = '--';
           const MODULE_CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss';
           const COURSE_GRADE_DISPLAY_POINTS = 'points15';
           const COURSE_GRADE_DISPLAY_SCHOOL = 'school';
@@ -1216,6 +1219,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.pendingCourseGradeConfigRequest = null;
             state.pendingCourseGradeSaveRequestId = '';
             state.pendingCourseGradeSaveRequest = null;
+            if (isCourseGradeMode()) requestShellChromeCollapsed(false);
             resetCourseGradeMode();
             gradeRosterSelectedCourseId = 0;
             gradeRosterSelectedCourseName = '';
@@ -1636,6 +1640,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.pendingCourseGradeConfigRequest = null;
             state.pendingCourseGradeSaveRequestId = '';
             state.pendingCourseGradeSaveRequest = null;
+            const wasCourseGradeMode = isCourseGradeMode();
             resetCourseGradeMode();
             applyCoursePlanData(detail.plan && typeof detail.plan === 'object' ? detail.plan : null, state.courseContext.students);
             if (gradeConfig && courseGradeConfigMatchesContext(gradeConfig, state.courseContext)) {
@@ -1649,6 +1654,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             } else if (gradeConfig) {
               showMessage('Der Notenkontext ist nicht mehr aktuell. Bitte die Noteneingabe erneut öffnen.', 'warn');
             }
+            if (wasCourseGradeMode && !isCourseGradeMode()) requestShellChromeCollapsed(false);
             updateCourseSeatplanUi();
             setCourseSeatplanBaseline();
             markPlanSavedAction();
@@ -2017,7 +2023,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             } else {
               delete state.courseGradeCheckedEntries[sid];
             }
-            markCourseGradeStudentVisited(sid);
+            markCourseGradeStudentHandled(sid);
             return true;
           }
 
@@ -2192,7 +2198,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.pendingCourseGradeStudentId = '';
             state.courseGradeCompletionPromptShown = false;
             state.courseGradeCompletionPromptArmed = false;
-            state.courseGradeVisitedStudentIds = new Set();
+            state.courseGradeHandledStudentIds = new Set();
+            state.courseGradeSkippedStudentIds = new Set();
             state.courseGradeEntryMode = COURSE_GRADE_ENTRY_MODE_GRADE;
             state.courseGradeOccurrenceCategoryId = null;
             state.courseGradeCheckedEntries = {};
@@ -2306,6 +2313,14 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             };
           }
 
+          function requestShellChromeCollapsed(collapsed) {
+            if (TUTORIAL_DEMO_MODE || !window.parent || window.parent === window) return;
+            window.parent.postMessage({
+              type: SEATPLAN_CHROME_REQUEST_EVENT,
+              detail: { collapsed: Boolean(collapsed), source: 'iframe' },
+            }, TRUSTED_PARENT_ORIGIN);
+          }
+
           function startCourseGradeMode(values, options = {}) {
             if (!values || typeof values !== 'object') {
               showMessage('Noteneingabe konnte nicht vorbereitet werden.', 'error');
@@ -2363,13 +2378,15 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.courseGradePickerStudentId = '';
             state.courseGradeCompletionPromptShown = false;
             state.courseGradeCompletionPromptArmed = false;
-            state.courseGradeVisitedStudentIds = new Set();
+            state.courseGradeHandledStudentIds = new Set();
+            state.courseGradeSkippedStudentIds = new Set();
             if (isOccurrenceMode) {
               hideCourseGradePicker();
             }
             updateCourseSeatplanUi();
             renderSeats();
             refreshUnseated();
+            requestShellChromeCollapsed(true);
             if (isOccurrenceMode) {
               state.pendingCourseGradeStudentId = '';
               return true;
@@ -2466,13 +2483,38 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             } else {
               state.courseGradeEntries[sid] = parsed.value;
               state.courseGradeDeletedStudentIds.delete(sid);
+              // Nur eine echte Note hebt die Auslassen-Markierung auf. Der Leerwert-Zweig
+              // darf sie nicht anfassen: nach dem Auslassen läuft der Blur des Feldes
+              // genau hier durch und würde die gerade gesetzte Markierung sofort löschen.
+              clearCourseGradeStudentSkipped(sid);
+              // Eine echte Note gilt als erledigt. Der Leerwert-Zweig darf das nicht
+              // setzen: er läuft auch beim Blur eines Feldes durch, das nur angesehen
+              // und wieder verlassen wurde.
+              markCourseGradeStudentHandled(sid);
             }
+            updateCourseGradeSkippedInputsForStudent(sid);
             if (options.armCompletion === true || options.prompt === true) {
               state.courseGradeCompletionPromptArmed = true;
             }
             syncCourseGradeOverlay();
             checkCourseGradeCompletionPrompt({ allowOpen: Boolean(options.prompt) });
             return true;
+          }
+
+          function applyCourseGradeSkippedState(input) {
+            if (!(input instanceof HTMLInputElement)) return;
+            const sid = String(input.dataset.studentId || '');
+            const skipped = Boolean(sid) && !input.value && isCourseGradeStudentSkipped(sid);
+            input.placeholder = skipped ? COURSE_GRADE_SKIPPED_PLACEHOLDER : '';
+          }
+
+          function updateCourseGradeSkippedInputsForStudent(studentId) {
+            const sid = String(studentId || '');
+            if (!sid) return;
+            document.querySelectorAll("input[data-course-grade-input='1']").forEach(input => {
+              if (String(input.dataset.studentId || '') !== sid) return;
+              applyCourseGradeSkippedState(input);
+            });
           }
 
           function updateCourseGradeInputsForStudent(studentId) {
@@ -2482,6 +2524,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               const value = state.courseGradeEntries[sid];
               input.value = value === undefined ? '' : formatCourseGradeValue(value);
               input.classList.remove('invalid');
+              applyCourseGradeSkippedState(input);
             });
           }
 
@@ -2495,14 +2538,36 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             });
           }
 
-          function markCourseGradeStudentVisited(studentId) {
+          function markCourseGradeStudentHandled(studentId) {
             const sid = String(studentId || '').trim();
             if (!sid) return false;
-            if (!(state.courseGradeVisitedStudentIds instanceof Set)) {
-              state.courseGradeVisitedStudentIds = new Set();
+            if (!(state.courseGradeHandledStudentIds instanceof Set)) {
+              state.courseGradeHandledStudentIds = new Set();
             }
-            state.courseGradeVisitedStudentIds.add(sid);
+            state.courseGradeHandledStudentIds.add(sid);
             return true;
+          }
+
+          function markCourseGradeStudentSkipped(studentId) {
+            const sid = String(studentId || '').trim();
+            if (!sid) return false;
+            if (!(state.courseGradeSkippedStudentIds instanceof Set)) {
+              state.courseGradeSkippedStudentIds = new Set();
+            }
+            state.courseGradeSkippedStudentIds.add(sid);
+            return true;
+          }
+
+          function clearCourseGradeStudentSkipped(studentId) {
+            const sid = String(studentId || '').trim();
+            if (!sid) return false;
+            return Boolean(state.courseGradeSkippedStudentIds?.delete(sid));
+          }
+
+          function isCourseGradeStudentSkipped(studentId) {
+            const sid = String(studentId || '').trim();
+            if (!sid) return false;
+            return Boolean(state.courseGradeSkippedStudentIds?.has(sid));
           }
 
           function formatCourseGradeInputDisplay(input, options = {}) {
@@ -2550,19 +2615,22 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 .map(input => [getCourseGradeInputSeatId(input), input])
                 .filter(([seatId]) => Boolean(seatId))
             );
-            const visitedStudentIds = state.courseGradeVisitedStudentIds instanceof Set
-              ? state.courseGradeVisitedStudentIds
+            const handledStudentIds = state.courseGradeHandledStudentIds instanceof Set
+              ? state.courseGradeHandledStudentIds
               : new Set();
-            const visitedSeatIds = new Set(
+            // Nur erledigte Sitze (benotet oder per Auslassen-Button übersprungen) werden
+            // übergangen. Wer nur angeklickt und wieder verlassen wurde, wird erneut
+            // angesteuert - sonst bliebe er unerreichbar und der Durchgang nie vollständig.
+            const handledSeatIds = new Set(
               inputs
-                .filter(input => visitedStudentIds.has(String(input.dataset.studentId || '')))
+                .filter(input => handledStudentIds.has(String(input.dataset.studentId || '')))
                 .map(getCourseGradeInputSeatId)
                 .filter(Boolean)
             );
             const nextSeat = findNextCourseGradeSeat({
               currentSeatId,
               seatIds: inputs.map(getCourseGradeInputSeatId),
-              visitedSeatIds,
+              visitedSeatIds: handledSeatIds,
             });
             const nextInput = nextSeat ? inputBySeatId.get(nextSeat.seatId) : null;
             return nextInput ? { input: nextInput, completedPass: nextSeat.completedPass } : null;
@@ -2868,7 +2936,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (isCourseGradeOccurrenceMode()) {
               return isCourseGradeStudentChecked(sid);
             }
-            return Boolean(state.courseGradeVisitedStudentIds?.has(sid));
+            return Boolean(state.courseGradeHandledStudentIds?.has(sid));
           }
 
           function getCourseGradeProgress() {
@@ -3064,7 +3132,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!isCourseGradeMode() || !els.courseGradePicker || !(input instanceof HTMLInputElement)) return;
             const studentId = String(input.dataset.studentId || '');
             if (!studentId) return;
-            markCourseGradeStudentVisited(studentId);
             selectStudentForCourseGrade(studentId);
             state.courseGradePickerStudentId = studentId;
             updateCourseGradeActiveStudentHighlight();
@@ -3113,6 +3180,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             skipButton.addEventListener('mousedown', event => event.preventDefault());
             skipButton.addEventListener('click', event => {
               event.stopPropagation();
+              markCourseGradeStudentHandled(input.dataset.studentId || '');
+              markCourseGradeStudentSkipped(input.dataset.studentId || '');
+              applyCourseGradeSkippedState(input);
               state.courseGradeCompletionPromptArmed = true;
               advanceCourseGradeInput(input, { closePicker: true });
             });
@@ -3131,6 +3201,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             input.dataset.courseGradeInput = '1';
             input.dataset.studentId = sid;
             input.value = state.courseGradeEntries[sid] === undefined ? '' : formatCourseGradeValue(state.courseGradeEntries[sid]);
+            applyCourseGradeSkippedState(input);
             input.setAttribute('aria-label', `Bewertung für ${label || sid}`);
             input.addEventListener('mousedown', event => event.stopPropagation());
             input.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
@@ -3472,6 +3543,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 });
                 return;
               }
+              requestShellChromeCollapsed(false);
               returnToPlanningAfterCourseGradeSave(detail.message || 'Noten im Notenmodul gespeichert.');
               return;
             }
@@ -3559,8 +3631,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             }
             if (data.type === SEATPLAN_SHELL_LAYOUT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
-              document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
-              scheduleCourseGradePickerPosition();
+              const nextShellCollapsed = detail && detail.collapsed ? 'true' : 'false';
+              const shellCollapsedChanged = document.documentElement.dataset.shellCollapsed !== nextShellCollapsed;
+              document.documentElement.dataset.shellCollapsed = nextShellCollapsed;
+              scheduleCourseGradePickerPosition(shellCollapsedChanged ? { requireStable: true } : {});
               if (detail?.activeTab === 'seatplan') {
                 if (!seatplanTabWasActive) {
                   seatplanTabWasActive = true;
@@ -3569,6 +3643,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                   if (isCourseGradeMode() && !preserveCourseGradeMode) {
                     const hadUnsavedChanges = hasCourseGradeUnsavedChanges();
                     const wasOccurrenceMode = isCourseGradeOccurrenceMode();
+                    requestShellChromeCollapsed(false);
                     resetCourseGradeMode();
                     updateCourseSeatplanUi();
                     renderSeats();
@@ -3585,6 +3660,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                   requestAnimationFrame(() => renderGradeRosterPills());
                 });
               } else {
+                if (seatplanTabWasActive && isCourseGradeMode()) {
+                  requestShellChromeCollapsed(false);
+                }
                 seatplanTabWasActive = false;
               }
               return;

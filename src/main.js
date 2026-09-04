@@ -315,7 +315,7 @@ import {
   const getChromeTransitionState = () => (
     shellController ? shellController.getChromeTransitionState() : shellState.chromeTransitionState
   );
-  const setChromeCollapsed = (collapsed) => shellController?.setChromeCollapsed(collapsed);
+  const setChromeCollapsed = (collapsed, options) => shellController?.setChromeCollapsed(collapsed, options);
   const toggleChromeCollapsed = () => shellController?.toggleChromeCollapsed();
   const setActiveTab = (tab, options = {}) => {
     firstRunTutorial?.clearContextHelpPrompt?.();
@@ -353,6 +353,7 @@ import {
   const SIDEBAR_WIDTH_SYNC_EVENT = 'classroom:sidebar-width-sync';
   const SIDEBAR_WIDTH_COMMIT_EVENT = 'classroom:sidebar-width-commit';
   const SIDEBAR_COLLAPSE_REQUEST_EVENT = 'classroom:sidebar-collapse-request';
+  const SEATPLAN_CHROME_REQUEST_EVENT = 'classroom:seatplan-chrome-request';
   const MORE_TOOLS_DISMISS_EVENT = 'classroom:more-tools-dismiss';
   const TOAST_REQUEST_EVENT = 'classroom:toast-request';
   const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
@@ -3051,6 +3052,43 @@ import {
     }
   };
 
+  let pendingSeatplanChromeCollapsed = null;
+  let pendingSeatplanChromeFrame = 0;
+
+  const applyPendingSeatplanChrome = (attempt = 0) => {
+    pendingSeatplanChromeFrame = 0;
+    if (pendingSeatplanChromeCollapsed === null) return;
+    if (getChromeTransitionState() === 'idle') {
+      const collapsed = pendingSeatplanChromeCollapsed;
+      pendingSeatplanChromeCollapsed = null;
+      setChromeCollapsed(collapsed, { resetSidebarWidth: false });
+      return;
+    }
+    if (attempt >= 60) {
+      pendingSeatplanChromeCollapsed = null;
+      return;
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      pendingSeatplanChromeFrame = requestAnimationFrame(() => applyPendingSeatplanChrome(attempt + 1));
+      return;
+    }
+    if (typeof setTimeout === 'function') {
+      pendingSeatplanChromeFrame = setTimeout(() => applyPendingSeatplanChrome(attempt + 1), 16);
+    }
+  };
+
+  const requestSeatplanChromeCollapsed = (collapsed) => {
+    pendingSeatplanChromeCollapsed = Boolean(collapsed);
+    if (pendingSeatplanChromeFrame) return;
+    if (typeof requestAnimationFrame === 'function') {
+      pendingSeatplanChromeFrame = requestAnimationFrame(() => applyPendingSeatplanChrome());
+      return;
+    }
+    if (typeof setTimeout === 'function') {
+      pendingSeatplanChromeFrame = setTimeout(() => applyPendingSeatplanChrome(), 16);
+    }
+  };
+
   function suppressGradesCourseAutoSelect() {
     gradesCourseAutoSelectSuppressedUntil = Date.now() + 2000;
   }
@@ -3218,6 +3256,15 @@ import {
           : SIDEBAR_WIDTH_SCOPE_OTHER;
         if (requestedScope !== getSidebarWidthScopeForTab(getActiveTab())) return;
         setChromeCollapsed(true);
+        return;
+      }
+      if (data.type === SEATPLAN_CHROME_REQUEST_EVENT) {
+        if (frame !== getSeatplanFrame()) return;
+        const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+        if (!detail || detail.source !== 'iframe') return;
+        const collapsed = detail.collapsed === true;
+        if (collapsed && getActiveTab() !== TAB_SEATPLAN) return;
+        requestSeatplanChromeCollapsed(collapsed);
         return;
       }
       if (data.type === TUTORIAL_ENTRY_HINT_SYNC_EVENT) {

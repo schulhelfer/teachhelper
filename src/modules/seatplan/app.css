@@ -2082,6 +2082,12 @@
           box-shadow: 0 0 0 2px rgba(239, 68, 68, 0.22);
         }
 
+        .course-grade-input::placeholder {
+          color: var(--text-muted);
+          -webkit-text-fill-color: var(--text-muted);
+          opacity: 1;
+        }
+
         .course-grade-bar {
           flex: 0 0 auto;
           align-self: center;

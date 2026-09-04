@@ -19,6 +19,7 @@ test('Planung exposes no-lesson terms while omitting grade controls', () => {
   assert.match(planningSource, /const selectableCourses = courses;/);
   assert.ok(planningSource.includes('${course.noLesson ? "" : "<th>Noten</th>"}'));
   assert.match(planningSource, /const editable = !allCanceled;/);
-  assert.match(planningSource, /disabled: !slotId \|\| isNoLesson/);
+  // Serien von Terminen ohne Unterricht bleiben anpassbar; nur die schriftliche Arbeit entfaellt.
+  assert.match(planningSource, /label: "Serie anpassen",\s*\n\s*separatorBefore: true,\s*\n\s*disabled: !slotId,/);
   assert.match(planningSource, /disabled: !editable \|\| isNoLesson/);
 });

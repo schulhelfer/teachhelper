@@ -1,4 +1,4 @@
-// teachhelper-app-version: 72
+// teachhelper-app-version: 73
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
