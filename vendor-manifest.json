@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-08-30",
+  "updated": "2026-09-05",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -105,6 +105,97 @@
           "path": "src/modules/qr/vendor/jsQR.js",
           "role": "runtime",
           "sha256": "bc40c8a15196236b2314db0856f72ca0b49980cd5413b8c852a7349f5fee0859"
+        }
+      ]
+    },
+    {
+      "name": "tesseract.js",
+      "version": "7.0.0",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/tesseract.js/v/7.0.0",
+      "registry": "npm",
+      "package": "tesseract.js",
+      "purl": "pkg:npm/tesseract.js@7.0.0",
+      "updateNotes": "Fetch the pinned npm release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py and the offline OCR browser checks. Keep Tesseract.js and core versions aligned.",
+      "files": [
+        {
+          "path": "src/vendor/tesseract.js/7.0.0/LICENSE.md",
+          "role": "license",
+          "sha256": "b40930bbcf80744c86c46a12bc9da056641d722716c378f5659b9e555ef833e1"
+        },
+        {
+          "path": "src/vendor/tesseract.js/7.0.0/tesseract.min.js",
+          "role": "runtime",
+          "sha256": "000c27d9cd0def655f77b36c72a389c0ab13793aa31cb4d7aab56d09c0afbc7e"
+        },
+        {
+          "path": "src/vendor/tesseract.js/7.0.0/tesseract.min.js.LICENSE.txt",
+          "role": "license",
+          "sha256": "cdf963ced7d25a0f98901a547647b4d6e2dbe0197fd78c87a059a87b0e542fe2"
+        },
+        {
+          "path": "src/vendor/tesseract.js/7.0.0/worker.min.js",
+          "role": "runtime-worker",
+          "sha256": "576b7df7e3393e137e51849357c9adb53fe7ac1bb69bfa06cf3d61520f182c6d"
+        },
+        {
+          "path": "src/vendor/tesseract.js/7.0.0/worker.min.js.LICENSE.txt",
+          "role": "license",
+          "sha256": "45f54171aeaa1d10c0c1a66f374b7bba1f02472b1487fbe892eec04f840002ac"
+        }
+      ]
+    },
+    {
+      "name": "tesseract.js-core",
+      "version": "7.0.0",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/tesseract.js-core/v/7.0.0",
+      "registry": "npm",
+      "package": "tesseract.js-core",
+      "purl": "pkg:npm/tesseract.js-core@7.0.0",
+      "updateNotes": "Fetch the pinned npm release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py and the offline OCR browser checks. Keep Tesseract.js and core versions aligned. Only LSTM, SIMD-LSTM and Relaxed-SIMD-LSTM builds are used (OEM 1, no legacy engine). The selected .wasm.js distributions embed their WASM binaries; do not duplicate them as separate .wasm files. Version 7.0.0 is required by Tesseract.js 7 even while the npm latest tag still points to 6.1.2.",
+      "files": [
+        {
+          "path": "src/vendor/tesseract.js-core/7.0.0/LICENSE",
+          "role": "license",
+          "sha256": "c6596eb7be8581c18be736c846fb9173b69eccf6ef94c5135893ec56bd92ba08"
+        },
+        {
+          "path": "src/vendor/tesseract.js-core/7.0.0/tesseract-core-lstm.wasm.js",
+          "role": "runtime",
+          "sha256": "eef5f8b2f8e20e150680b20adaec4a60babafee3adbe8a94583c81fee46e8680"
+        },
+        {
+          "path": "src/vendor/tesseract.js-core/7.0.0/tesseract-core-relaxedsimd-lstm.wasm.js",
+          "role": "runtime",
+          "sha256": "861a536cf9ef8e63cb644d57bab39c388f37f7d6b6f60024b741c5f6b39a59b3"
+        },
+        {
+          "path": "src/vendor/tesseract.js-core/7.0.0/tesseract-core-simd-lstm.wasm.js",
+          "role": "runtime",
+          "sha256": "c58b46a4c796c0b8afccf77591d5b875b6896b45d402bbce8caa6f5362447b38"
+        }
+      ]
+    },
+    {
+      "name": "@tesseract.js-data/deu",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/@tesseract.js-data/deu/v/1.0.0",
+      "registry": "npm",
+      "package": "@tesseract.js-data/deu",
+      "purl": "pkg:npm/%40tesseract.js-data/deu@1.0.0",
+      "updateNotes": "Use 4.0.0_best_int/deu.traineddata.gz from this npm release. The npm package metadata declares MIT but contains no license file; the trained model derives from Apache-2.0 Tesseract language data. LICENSE is copied from https://github.com/tesseract-ocr/tessdata/blob/4.1.0/LICENSE. Refresh hashes and run scripts/audit.py and offline OCR checks.",
+      "files": [
+        {
+          "path": "src/vendor/tesseract.js-data-deu/1.0.0/LICENSE",
+          "role": "license",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "src/vendor/tesseract.js-data-deu/1.0.0/deu.traineddata.gz",
+          "role": "language-model",
+          "sha256": "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b"
         }
       ]
     }

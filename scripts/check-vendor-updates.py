@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import json
+import re
 import sys
 import urllib.error
 import urllib.parse
@@ -8,6 +9,17 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MANIFEST_PATH = ROOT / 'vendor-manifest.json'
+
+
+def version_status(current, latest):
+  if current == latest:
+    return 'ok'
+  # An upstream may leave npm's latest tag on an older release line.
+  # Only compare plain stable versions; other differences still need review.
+  if re.fullmatch(r'\d+\.\d+\.\d+', current) and re.fullmatch(r'\d+\.\d+\.\d+', latest):
+    if tuple(map(int, current.split('.'))) > tuple(map(int, latest.split('.'))):
+      return 'newer-than-latest'
+  return 'outdated'
 
 
 def npm_latest_version(package_name):
@@ -44,9 +56,9 @@ def main():
       print(f'could not check {package_name}: {error}', file=sys.stderr)
       return 2
     checked += 1
-    status = 'ok' if latest_version == current_version else 'outdated'
+    status = version_status(current_version, str(latest_version or ''))
     print(f'{package_name}: current {current_version}, latest {latest_version} [{status}]')
-    if latest_version != current_version:
+    if status == 'outdated':
       outdated.append((package_name, current_version, latest_version))
 
   if not checked:

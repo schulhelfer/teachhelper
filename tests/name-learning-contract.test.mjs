@@ -178,8 +178,11 @@ test('a card removed from the roster does not interrupt name-learning feedback',
 
 test('participant portraits can be added from the clipboard', () => {
   assert.match(gradesApp, /dataAttribute: "student-portrait-paste"/);
-  assert.match(gradesApp, /async pasteCourseDialogStudentPortrait\(index\)/);
-  assert.match(gradesApp, /navigator\.clipboard\.read\(\)/);
-  assert.match(gradesApp, /prepareGradeStudentPortrait\(file\)/);
-  assert.match(gradesApp, /In der Zwischenablage wurde kein JPEG-, PNG- oder WebP-Bild gefunden/);
+  const start = gradesApp.indexOf('\n  async pasteCourseDialogStudentPortrait(index) {');
+  const end = gradesApp.indexOf('\n  async pasteGroupPhotoExtractionImage(', start);
+  assert.ok(start >= 0 && end > start, 'pasteCourseDialogStudentPortrait must exist before pasteGroupPhotoExtractionImage');
+  const pasteMethod = gradesApp.slice(start, end);
+  assert.match(pasteMethod, /navigator\.clipboard\.read\(\)/);
+  assert.match(pasteMethod, /prepareGradeStudentPortrait\(file\)/);
+  assert.match(pasteMethod, /In der Zwischenablage wurde keine passende Datei gefunden/);
 });

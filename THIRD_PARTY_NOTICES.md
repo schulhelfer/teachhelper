@@ -1,6 +1,6 @@
 # Third-Party Notices
 
-Teachhelper vendors the following third-party JavaScript libraries for offline use.
+Teachhelper vendors the following third-party libraries and OCR language data for offline use.
 
 Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 
@@ -61,3 +61,32 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 - Local files:
   - `src/modules/qr/vendor/jsQR.js`
 - Upstream NOTICE: none published in the npm package.
+
+## Tesseract.js
+
+- Version: 7.0.0
+- License: Apache-2.0; bundled dependency notices are retained alongside both JavaScript bundles.
+- Source: https://www.npmjs.com/package/tesseract.js/v/7.0.0
+- Local directory: `src/vendor/tesseract.js/7.0.0/` (`tesseract.min.js`, `worker.min.js`, `LICENSE.md`, and both `.LICENSE.txt` files).
+- Upstream NOTICE: no separate NOTICE published in the npm package.
+
+## Tesseract.js Core
+
+- Version: 7.0.0
+- License: Apache-2.0
+- Source: https://www.npmjs.com/package/tesseract.js-core/v/7.0.0
+- Local directory: `src/vendor/tesseract.js-core/7.0.0/` (LSTM, SIMD-LSTM and Relaxed-SIMD-LSTM `.wasm.js` builds with embedded WASM binaries, and `LICENSE`).
+- Upstream NOTICE: none published in the npm package.
+- Only the LSTM engine is enabled; legacy engine builds are not required.
+
+## German Tesseract language model
+
+- Package: `@tesseract.js-data/deu`, version 1.0.0; model variant `4.0.0_best_int`.
+- Source: https://www.npmjs.com/package/@tesseract.js-data/deu/v/1.0.0
+- Model provenance: https://github.com/naptha/tessdata and https://github.com/tesseract-ocr/tessdata
+- License: Apache-2.0 for the Tesseract language data. The npm wrapper declares MIT but ships no license file; no wrapper code is included.
+- Local files: `src/vendor/tesseract.js-data-deu/1.0.0/deu.traineddata.gz` and `LICENSE`.
+- License source: https://github.com/tesseract-ocr/tessdata/blob/4.1.0/LICENSE
+- Upstream NOTICE: none published in the npm package.
+
+OCR assets are loaded exclusively from local URLs and included in the deferred offline cache. Updating OCR requires refreshing all manifest hashes and checking recognition with networking disabled. User images and OCR results are never included in these caches.

@@ -1,4 +1,4 @@
-// teachhelper-app-version: 72
+// teachhelper-app-version: 73
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -62,6 +62,8 @@ const APP_SHELL = [
   './src/shared/sidebar-resize.js',
   './src/shared/touch-long-press.js',
   './src/shared/pdf-vendor.js',
+  './src/shared/ocr-vendor.js',
+  './src/shared/ocr-worker.js',
   './src/shared/student-sync-bus.js',
   './src/shared/timer-store.js',
   './src/shell/tabs.js',
@@ -76,6 +78,9 @@ const APP_SHELL = [
   './src/modules/grades/app.js',
   './src/modules/grades/bridge.js',
   './src/modules/grades/percentile-rank.js',
+  './src/modules/grades/roster-ocr-dialog.js',
+  './src/modules/grades/roster-ocr-data.js',
+  './src/modules/grades/roster-ocr-pdf.js',
   './src/modules/grades/expectation-horizon-template.docx',
   './src/modules/grades/competence-expectations-template.docx',
   './src/modules/workspace/index.js',
@@ -123,6 +128,17 @@ const DEFERRED_ASSETS = [
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs',
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs',
   './src/vendor/pdfjs-dist/6.3.289/LICENSE',
+  './src/vendor/tesseract.js/7.0.0/LICENSE.md',
+  './src/vendor/tesseract.js/7.0.0/tesseract.min.js',
+  './src/vendor/tesseract.js/7.0.0/tesseract.min.js.LICENSE.txt',
+  './src/vendor/tesseract.js/7.0.0/worker.min.js',
+  './src/vendor/tesseract.js/7.0.0/worker.min.js.LICENSE.txt',
+  './src/vendor/tesseract.js-core/7.0.0/LICENSE',
+  './src/vendor/tesseract.js-core/7.0.0/tesseract-core-lstm.wasm.js',
+  './src/vendor/tesseract.js-core/7.0.0/tesseract-core-relaxedsimd-lstm.wasm.js',
+  './src/vendor/tesseract.js-core/7.0.0/tesseract-core-simd-lstm.wasm.js',
+  './src/vendor/tesseract.js-data-deu/1.0.0/LICENSE',
+  './src/vendor/tesseract.js-data-deu/1.0.0/deu.traineddata.gz',
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
 

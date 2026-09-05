@@ -36,7 +36,7 @@ function objectKeysIn(body, marker) {
   throw new Error(`the object literal after ${marker} is incomplete`);
 }
 
-test('step 2 of the participant dialog offers both import surfaces side by side', () => {
+test('step 2 of the participant dialog offers three import surfaces side by side', () => {
   const rowStart = gradesHtml.indexOf('id="course-students-import-row"');
   assert.notEqual(rowStart, -1, 'the roster import step must group its surfaces in one row');
   const row = gradesHtml.slice(rowStart, gradesHtml.indexOf('</section>', rowStart));
@@ -44,6 +44,7 @@ test('step 2 of the participant dialog offers both import surfaces side by side'
   assert.ok(row.includes('id="course-dialog-students-dropzone"'));
   assert.ok(row.includes('id="course-dialog-roster-import"'));
   assert.ok(row.includes('id="course-dialog-roster-pills"'));
+  assert.ok(row.includes('id="course-dialog-ocr-open"'));
 
   const box = gradesCss.slice(
     gradesCss.indexOf('.course-dialog-roster-import {'),
@@ -66,17 +67,19 @@ test('the course pills only offer rosters that can be imported', () => {
 
 test('a roster taken from another course is added to the list, never swapped in', () => {
   const courseImport = extractGradesMethod('async importCourseDialogStudentsFromCourse(courseId)');
+  const append = extractGradesMethod('appendCourseDialogStudents(sourceStudents)');
   const persisted = objectKeysIn(
     extractGradesMethod('validateCourseDialogStudents(students)'),
     '(student) => ({',
   );
 
-  assert.deepEqual(objectKeysIn(courseImport, 'students.push({'), persisted);
+  assert.deepEqual(objectKeysIn(append, 'students.push({'), persisted);
 
-  assert.match(courseImport, /this\.courseDialogDraft\.students\.slice\(\)/);
-  assert.doesNotMatch(courseImport, /replacesExisting/);
+  assert.match(courseImport, /this\.appendCourseDialogStudents\(sourceStudents\)/);
+  assert.match(append, /this\.courseDialogDraft\.students\.slice\(\)/);
+  assert.doesNotMatch(append, /replacesExisting/);
 
-  assert.match(courseImport, /if \(knownNameKeys\.has\(key\)\) \{\s*return;/);
+  assert.match(append, /if \(knownNameKeys\.has\(key\)\) \{\s*return;/);
 
-  assert.match(courseImport, /performanceFlair: ""/);
+  assert.match(append, /performanceFlair: ""/);
 });

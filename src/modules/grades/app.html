@@ -276,8 +276,7 @@
                       <h3 id="settings-grade-structure-h1-title" class="settings-grade-structure-period-title">1.
                         Halbjahr</h3>
                       <div class="course-dialog-structure-row settings-grade-structure-row">
-                        <div class="course-dialog-structure-list"
-                          data-default-grade-structure-list="h1"></div>
+                        <div class="course-dialog-structure-list" data-default-grade-structure-list="h1"></div>
                         <button type="button" class="sidebar-add-btn" data-default-grade-structure-add-category="h1"
                           aria-label="Kategorie für das 1. Halbjahr hinzufügen" title="Kategorie hinzufügen">
                           <span class="sidebar-add-plus" aria-hidden="true"></span>
@@ -295,8 +294,7 @@
                         </button>
                       </div>
                       <div class="course-dialog-structure-row settings-grade-structure-row">
-                        <div class="course-dialog-structure-list"
-                          data-default-grade-structure-list="h2"></div>
+                        <div class="course-dialog-structure-list" data-default-grade-structure-list="h2"></div>
                         <button type="button" class="sidebar-add-btn" data-default-grade-structure-add-category="h2"
                           aria-label="Kategorie für das 2. Halbjahr hinzufügen" title="Kategorie hinzufügen">
                           <span class="sidebar-add-plus" aria-hidden="true"></span>
@@ -568,8 +566,8 @@
         <div class="dialog-actions-top app-action-group">
           <button type="button" id="course-color-dialog-cancel" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
-          <button type="submit" class="dialog-icon-button app-action-icon"
-            aria-label="Speichern" data-tooltip="Speichern">💾</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Speichern"
+            data-tooltip="Speichern">💾</button>
         </div>
       </div>
       <input type="hidden" id="course-color-dialog-id">
@@ -612,6 +610,8 @@
             <div id="course-dialog-roster-pills" class="course-dialog-roster-pills"
               aria-label="Teilnehmende aus einem anderen Kurs hinzufügen"></div>
           </div>
+          <button id="course-dialog-ocr-open" type="button" class="course-dialog-ocr-open">Aus gedruckter Liste
+            importieren</button>
         </div>
         <p><strong id="course-students-dialog-step-title">3. Verwalte die Teilnehmenden (Anzahl: 0)</strong></p>
         <div id="course-dialog-students-list" class="course-dialog-students-list"></div>
@@ -632,18 +632,80 @@
     </form>
   </dialog>
 
+  <dialog id="course-ocr-dialog" class="app-dialog course-ocr-dialog" aria-labelledby="course-ocr-title">
+    <form class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="course-ocr-title" class="dialog-title">Namen aus gedruckter Liste importieren</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" data-ocr="close" class="ghost dialog-icon-button app-action-icon" aria-label="Abbrechen"
+            data-tooltip="Abbrechen">❌</button>
+          <button type="submit" data-ocr="confirm" class="dialog-icon-button app-action-icon"
+            aria-label="Namen übernehmen" data-tooltip="Namen übernehmen" disabled>✔️</button>
+        </div>
+      </div>
+      <input data-ocr="file" type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf" hidden>
+      <p class="course-ocr-hint">Passend zuschneiden</p>
+      <div class="course-ocr-stage-wrap">
+        <div data-ocr="stage" class="course-ocr-stage" role="button" tabindex="0"
+          aria-label="Datei auswählen oder ablegen" data-state="empty">
+          <div data-ocr="frame" class="course-ocr-frame" hidden>
+            <canvas data-ocr="canvas" aria-label="Ausgewählte Bilddatei"></canvas>
+            <div data-ocr="crop" class="course-ocr-crop" tabindex="0" aria-label="Listenausschnitt"></div>
+          </div>
+          <div data-ocr="drop" class="course-ocr-drop-content">
+            <strong>Datei hier ablegen</strong>
+            <div>oder klicken zum Auswählen</div>
+          </div>
+        </div>
+        <div class="course-ocr-stage-tools">
+          <button type="button" data-ocr="paste" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Datei aus Zwischenablage einfügen"
+            data-tooltip="Datei aus Zwischenablage einfügen">📋</button>
+          <button type="button" data-ocr="rotate" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Datei um 90° drehen" data-tooltip="Datei um 90° drehen" disabled>↻</button>
+        </div>
+      </div>
+      <div class="button-row">
+        <label data-ocr="pdf-pages" hidden>PDF-Seite
+          <input data-ocr="pdf-page" type="number" min="1" step="1" value="1" aria-label="PDF-Seite auswählen">
+          <span data-ocr="pdf-count"></span>
+        </label>
+        <div class="course-ocr-order-section sidebar-grade-action-section">
+          <div class="sidebar-grade-action-title">Struktur der gedruckten Liste</div>
+          <div data-ocr="order" class="sidebar-grade-segment-control" role="radiogroup"
+            aria-label="Struktur der gedruckten Liste">
+            <label class="sidebar-grade-segment-option">
+              <input type="radio" name="course-ocr-name-order" data-ocr="order-input" value="first-last">
+              <span>Vorname<br>Nachname</span>
+            </label>
+            <label class="sidebar-grade-segment-option">
+              <input type="radio" name="course-ocr-name-order" data-ocr="order-input" value="last-first" checked>
+              <span>Nachname,<br>Vorname</span>
+            </label>
+          </div>
+        </div>
+        <button type="button" data-ocr="recognize" disabled>Namen erkennen</button>
+        <button type="button" data-ocr="stop" class="ghost" hidden>Verarbeitung abbrechen</button>
+      </div>
+      <progress data-ocr="progress" max="1" value="0" hidden aria-label="Fortschritt der Texterkennung"></progress>
+      <p data-ocr="status" role="status" aria-live="polite"></p>
+      <section data-ocr="review" hidden aria-label="Erkannte Namen prüfen">
+        <div data-ocr="rows" class="course-ocr-rows"></div>
+      </section>
+    </form>
+  </dialog>
+
   <dialog id="course-group-photo-dialog" class="app-dialog course-group-photo-dialog"
     aria-label="Bilder aus Gruppenfoto extrahieren">
     <form id="course-group-photo-dialog-form" class="form-grid" method="dialog">
       <div class="dialog-header">
         <h3 class="dialog-title">Bilder aus Gruppenfoto extrahieren</h3>
         <div class="dialog-actions-top app-action-group">
-          <button type="button" id="course-group-photo-rotate" class="ghost dialog-icon-button app-action-icon"
-            aria-label="Foto um 90° drehen" data-tooltip="Foto um 90° drehen" disabled>↻</button>
           <button type="button" id="course-group-photo-cancel" class="ghost dialog-icon-button app-action-icon"
             aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
-          <button type="submit" class="dialog-icon-button app-action-icon"
-            aria-label="Bilder übernehmen" data-tooltip="Bilder übernehmen">💾</button>
+          <button type="submit" class="dialog-icon-button app-action-icon" aria-label="Bilder übernehmen"
+            data-tooltip="Bilder übernehmen">💾</button>
         </div>
       </div>
       <input id="course-group-photo-file" type="file" accept="image/jpeg,image/png,image/webp" hidden>
@@ -655,9 +717,13 @@
         <div class="course-group-photo-stage-wrap">
           <div id="course-group-photo-stage" class="course-group-photo-stage" role="button" tabindex="0"
             aria-label="Gruppenfoto auswählen oder ablegen"></div>
-          <button type="button" id="course-group-photo-paste"
-            class="ghost dialog-icon-button app-action-icon course-group-photo-paste-button"
-            aria-label="Bild aus Zwischenablage einfügen" data-tooltip="Bild aus Zwischenablage einfügen">📋</button>
+          <div class="course-group-photo-stage-tools">
+            <button type="button" id="course-group-photo-paste"
+              class="ghost dialog-icon-button app-action-icon"
+              aria-label="Bild aus Zwischenablage einfügen" data-tooltip="Bild aus Zwischenablage einfügen">📋</button>
+            <button type="button" id="course-group-photo-rotate" class="ghost dialog-icon-button app-action-icon"
+              aria-label="Foto um 90° drehen" data-tooltip="Foto um 90° drehen" disabled>↻</button>
+          </div>
           <div class="course-group-photo-zoom-controls">
             <button type="button" id="course-group-photo-zoom-out" class="ghost dialog-icon-button app-action-icon"
               aria-label="Verkleinern" data-tooltip="Verkleinern" disabled>−</button>
@@ -1118,23 +1184,22 @@
       <p id="grade-vault-dialog-text" class="message-dialog-text"></p>
       <form id="grade-vault-unlock-form" class="form-grid grade-vault-dialog-form" method="post" action="./app.html"
         autocomplete="on" spellcheck="false">
-      <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
-        Technische Kennung für den Kennwortmanager
-        <input id="grade-vault-unlock-username" name="username" type="text" autocomplete="username" tabindex="-1"
-          data-grade-vault-autofill-username>
-      </label>
-      <div class="grade-vault-dialog-fields">
-        <label>
-          Passwort
-          <input id="grade-vault-unlock-password" name="password" type="password" minlength="10" required
-            autocomplete="current-password" autocapitalize="off" autocorrect="off"
-            spellcheck="false">
+        <label class="grade-vault-dialog-assistive-field" aria-hidden="true">
+          Technische Kennung für den Kennwortmanager
+          <input id="grade-vault-unlock-username" name="username" type="text" autocomplete="username" tabindex="-1"
+            data-grade-vault-autofill-username>
         </label>
-      </div>
-      <div class="grade-vault-dialog-submit-row">
-        <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
-          title="Bestätigen"></button>
-      </div>
+        <div class="grade-vault-dialog-fields">
+          <label>
+            Passwort
+            <input id="grade-vault-unlock-password" name="password" type="password" minlength="10" required
+              autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+          </label>
+        </div>
+        <div class="grade-vault-dialog-submit-row">
+          <button type="submit" class="dialog-icon-button grade-vault-dialog-submit" aria-label="Bestätigen"
+            title="Bestätigen"></button>
+        </div>
       </form>
       <form id="grade-vault-setup-form" class="form-grid grade-vault-dialog-form" method="post" action="./app.html"
         autocomplete="on" spellcheck="false">
@@ -1151,8 +1216,8 @@
           </label>
           <label>
             Passwort wiederholen
-            <input id="grade-vault-setup-confirm-password" name="confirm-password" type="password" minlength="12" required
-              autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <input id="grade-vault-setup-confirm-password" name="confirm-password" type="password" minlength="12"
+              required autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
           </label>
         </div>
         <div class="grade-vault-dialog-submit-row">
@@ -1170,8 +1235,8 @@
         <div class="grade-vault-dialog-fields">
           <label>
             Aktuelles Passwort
-            <input id="grade-vault-change-current-password" name="current-password" type="password" minlength="10" required
-              autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <input id="grade-vault-change-current-password" name="current-password" type="password" minlength="10"
+              required autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false">
           </label>
           <label>
             Neues Passwort
@@ -1180,8 +1245,8 @@
           </label>
           <label>
             Passwort wiederholen
-            <input id="grade-vault-change-confirm-password" name="confirm-password" type="password" minlength="12" required
-              autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
+            <input id="grade-vault-change-confirm-password" name="confirm-password" type="password" minlength="12"
+              required autocomplete="new-password" autocapitalize="off" autocorrect="off" spellcheck="false">
           </label>
         </div>
         <div class="grade-vault-dialog-submit-row">

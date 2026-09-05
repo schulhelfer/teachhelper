@@ -149,7 +149,7 @@ for path in [ROOT / 'src' / 'main.js', ROOT / 'sw.js']:
       errors.append(f'missing shell id target: {ref}')
 
 for path in ROOT.rglob('*'):
-  if path.suffix not in {'.html', '.js'}:
+  if not path.is_file() or path.suffix not in {'.html', '.js'}:
     continue
   body = path.read_text(encoding='utf-8', errors='ignore')
   if '-source-template' in body:
@@ -240,6 +240,8 @@ check_service_worker_app_version()
 
 def iter_source_files():
   for path in ROOT.rglob('*'):
+    if not path.is_file():
+      continue
     if path.suffix in {'.html', '.js'}:
       yield path
 
@@ -315,7 +317,7 @@ def check_vendor_manifest():
   discovered_vendor_js = set()
   vendor_root = ROOT / 'src' / 'vendor'
   if vendor_root.exists():
-    discovered_vendor_js.update(rel(path) for path in vendor_root.rglob('*.js'))
+    discovered_vendor_js.update(rel(path) for path in vendor_root.rglob('*.js') if path.is_file())
   modules_root = ROOT / 'src' / 'modules'
   if modules_root.exists():
     discovered_vendor_js.update(rel(path) for path in modules_root.glob('*/vendor/**/*.js'))
@@ -581,7 +583,7 @@ if main_path.exists() and dom_path.exists():
 
   declared_anchors = set()
   for path in ROOT.rglob('*'):
-    if path.suffix not in {'.html', '.js'}:
+    if not path.is_file() or path.suffix not in {'.html', '.js'}:
       continue
     if path == main_path:
       continue

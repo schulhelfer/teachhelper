@@ -1,3 +1,4 @@
+import { createRosterOcrDialog } from "./roster-ocr-dialog.js";
 import {
   createDocxFromPreparedTemplate,
   createZipArchive,
@@ -6901,7 +6902,8 @@ class GradesApp {
         const row = document.createElement("div");
         row.className = "course-dialog-student-row";
         row.dataset.gradeStudentId = String(Number(student?.id || 0));
-        row.classList.toggle('is-learner-search-highlight', Number(student?.id || 0) === this.learnerSearchStudentFocusId);
+        const studentId = Number(student?.id || 0);
+        row.classList.toggle('is-learner-search-highlight', studentId > 0 && studentId === this.learnerSearchStudentFocusId);
         const grid = document.createElement("div");
         grid.className = "course-dialog-student-grid";
 
@@ -7299,15 +7301,15 @@ class GradesApp {
         this.renderCourseDialogStudents();
         return;
       }
-      await this.showInfoMessage("In der Zwischenablage wurde kein JPEG-, PNG- oder WebP-Bild gefunden.");
+      await this.showInfoMessage("In der Zwischenablage wurde keine passende Datei gefunden.");
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Bild konnte nicht aus der Zwischenablage gelesen werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Datei konnte nicht aus der Zwischenablage gelesen werden.");
     }
   }
 
   async pasteGroupPhotoExtractionImage() {
     if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
-      await this.showInfoMessage("Dieser Browser kann keine Bilder aus der Zwischenablage lesen.");
+      await this.showInfoMessage("Dieser Browser kann keine Dateien aus der Zwischenablage lesen.");
       return;
     }
     try {
@@ -7321,9 +7323,9 @@ class GradesApp {
         await this.loadGroupPhotoExtractionFile(file);
         return;
       }
-      await this.showInfoMessage("In der Zwischenablage wurde kein JPEG-, PNG- oder WebP-Bild gefunden.");
+      await this.showInfoMessage("In der Zwischenablage wurde keine passende Datei gefunden.");
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Bild konnte nicht aus der Zwischenablage gelesen werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Datei konnte nicht aus der Zwischenablage gelesen werden.");
     }
   }
 
@@ -8004,8 +8006,7 @@ class GradesApp {
       this.revokeGradeStudentPortraitObjectUrls();
       this.renderCourseDialogStudents();
       const lines = [
-        `${imported} von ${targets.length} fehlenden Bildern übernommen aus: ${
-          [...sourceLabels].sort((left, right) => left.localeCompare(right, "de")).join(", ")
+        `${imported} von ${targets.length} fehlenden Bildern übernommen aus: ${[...sourceLabels].sort((left, right) => left.localeCompare(right, "de")).join(", ")
         }.`
       ];
       if (ambiguous > 0) {
@@ -8588,6 +8589,7 @@ class GradesApp {
   }
 
   closeCourseStudentsDialog() {
+    this.courseOcrDialog?.close();
     this.courseStudentsDialogInitialSignature = "";
     this.resetCourseDialogRosterImport();
     this.closeIservGroupPopulateDialog();
@@ -9127,6 +9129,38 @@ class GradesApp {
     return this.withTemporaryGradeCourse(id, () => this.store.listGradeStudents(id));
   }
 
+  appendCourseDialogStudents(sourceStudents) {
+    const students = Array.isArray(this.courseDialogDraft.students)
+      ? this.courseDialogDraft.students.slice()
+      : [];
+    const previousCount = students.length;
+    const knownNameKeys = new Set(students.map((student) => buildGradeStudentNameMatchKey(
+      normalizeGradeTextPart(student?.lastName),
+      normalizeGradeTextPart(student?.firstName)
+    )));
+    sourceStudents.forEach((student) => {
+      const lastName = normalizeGradeTextPart(student?.lastName);
+      const firstName = normalizeGradeTextPart(student?.firstName);
+      const key = buildGradeStudentNameMatchKey(lastName, firstName);
+      if (knownNameKeys.has(key)) {
+        return;
+      }
+      knownNameKeys.add(key);
+      students.push({
+        id: 0,
+        lastName,
+        firstName,
+        rufname: normalizeGradeTextPart(student?.rufname),
+        performanceFlair: "",
+        portrait: normalizeGradeStudentPortrait(student?.portrait)
+      });
+    });
+    const added = students.length - previousCount;
+    const skipped = sourceStudents.length - added;
+    this.courseDialogDraft.students = students.sort(compareGradeStudents);
+    return { added, skipped };
+  }
+
   async importCourseDialogStudentsFromCourse(courseId) {
     const id = Number(courseId || 0);
     if (!id || !this.courseDialogDraft || this.courseDialogRosterImportBusy) {
@@ -9140,6 +9174,7 @@ class GradesApp {
     if (!course) {
       return;
     }
+    const draft = this.courseDialogDraft;
     const courseName = String(course.name || "Kurs");
     this.courseDialogRosterImportBusy = true;
     this.renderCourseDialogRosterImport();
@@ -9148,38 +9183,12 @@ class GradesApp {
         !student?.isPlaceholder
         && Boolean(normalizeGradeTextPart(student?.lastName) || normalizeGradeTextPart(student?.firstName))
       ));
+      if (this.courseDialogDraft !== draft) return;
       if (sourceStudents.length === 0) {
         await this.showInfoMessage(`„${courseName}“ enthält keine Teilnehmenden.`);
         return;
       }
-      const students = Array.isArray(this.courseDialogDraft.students)
-        ? this.courseDialogDraft.students.slice()
-        : [];
-      const previousCount = students.length;
-      const knownNameKeys = new Set(students.map((student) => buildGradeStudentNameMatchKey(
-        normalizeGradeTextPart(student?.lastName),
-        normalizeGradeTextPart(student?.firstName)
-      )));
-      sourceStudents.forEach((student) => {
-        const lastName = normalizeGradeTextPart(student?.lastName);
-        const firstName = normalizeGradeTextPart(student?.firstName);
-        const key = buildGradeStudentNameMatchKey(lastName, firstName);
-        if (knownNameKeys.has(key)) {
-          return;
-        }
-        knownNameKeys.add(key);
-        students.push({
-          id: 0,
-          lastName,
-          firstName,
-          rufname: normalizeGradeTextPart(student?.rufname),
-          performanceFlair: "",
-          portrait: normalizeGradeStudentPortrait(student?.portrait)
-        });
-      });
-      const added = students.length - previousCount;
-      const skipped = sourceStudents.length - added;
-      this.courseDialogDraft.students = students.sort(compareGradeStudents);
+      const { added, skipped } = this.appendCourseDialogStudents(sourceStudents);
       this.courseDialogRosterImportedCourseIds.add(id);
       this.revokeGradeStudentPortraitObjectUrls();
       this.renderCourseDialogStudents();
@@ -10760,8 +10769,8 @@ class GradesApp {
             courseDefaults
               ? courseDefaults.testPredicateSuffixes
               : (activeAssessment
-              ? normalizeGradeTestPredicateSuffixes(latestDraft.testPredicateSuffixes, true)
-              : getDefaultGradeTestPredicateSuffixes(testScale))
+                ? normalizeGradeTestPredicateSuffixes(latestDraft.testPredicateSuffixes, true)
+                : getDefaultGradeTestPredicateSuffixes(testScale))
           )
           : true,
         yearLevel: courseDefaults?.yearLevel ?? latestDraft.yearLevel,
@@ -11661,6 +11670,31 @@ class GradesApp {
 
     this.refs.courseDialogDelete?.addEventListener("click", async () => {
       await this.deleteCourseFromDialog();
+    });
+
+    document.querySelector("#course-dialog-ocr-open")?.addEventListener("click", () => {
+      const draft = this.courseDialogDraft;
+      if (!draft || !this.canAccessGradeVault()) return;
+      const ocrDialog = document.querySelector("#course-ocr-dialog");
+      if (!this.courseOcrDialog) {
+        this.courseOcrDialog = createRosterOcrDialog({
+          dialog: ocrDialog,
+          openDialog: (dialog) => this.openDialog(dialog),
+          closeDialog: (dialog) => this.closeDialog(dialog),
+          onImported: ({ added, skipped }) => {
+            void this.showInfoMessage(`${added} Teilnehmende hinzugefügt. ${skipped} bereits vorhandene Namen übersprungen. Speichere anschließend den Teilnehmendendialog.`);
+          }
+        });
+      }
+      this.courseOcrDialog.open((names) => {
+        if (this.courseDialogDraft !== draft || !this.canAccessGradeVault()) {
+          throw new Error("Der Kurs ist nicht mehr zur Bearbeitung geöffnet. Bitte den Import erneut öffnen.");
+        }
+        const result = this.appendCourseDialogStudents(names);
+        this.renderCourseDialogStudents();
+        return result;
+      });
+      this.syncSegmentControlSlideStates(ocrDialog);
     });
 
     this.refs.courseDialogStudentsTemplate?.addEventListener("click", (event) => {
@@ -13499,8 +13533,8 @@ class GradesApp {
       this.clearPrivacyFocusedGradeStudent();
       this.hideGradePrivacyOverlay();
       this.setGradesOverviewEmptyState(
-        "Keine Teilnehmenden zugeordnet",
-        "Diesem Kurs sind aktuell keine Teilnehmenden zugeordnet. Füge Teilnehmende hinzu, um die Kursübersicht zu nutzen.",
+        "Keine Teilnehmenden",
+        "Diesem Kurs sind aktuell keine Teilnehmenden zugeordnet.",
         {
           primaryAction: "manageStudents"
         }
@@ -14413,7 +14447,6 @@ class GradesApp {
       this.clearActiveGradeAssessment();
       this.renderGradesEntryEmptyState(
         "Noch keine Teilnehmenden eingetragen",
-        "Füge Teilnehmende hinzu, um die Noteneingabe zu nutzen.",
         { primaryAction: "manageStudents" }
       );
       return;
@@ -23471,8 +23504,8 @@ class GradesApp {
       testPredicateSuffixes: courseDefaults
         ? courseDefaults.testPredicateSuffixes
         : (Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
-        ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(testScale))
-        : getDefaultGradeTestPredicateSuffixes(testScale)),
+          ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(testScale))
+          : getDefaultGradeTestPredicateSuffixes(testScale)),
       testTasks: normalizeGradeTestTasks(previous.testTasks, { ensureDefault: false }),
       competenceExpectations: normalizeGradeAssessmentMode(previous.mode) === "test"
         ? normalizeGradeCompetenceExpectations(previous.competenceExpectations)
