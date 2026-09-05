@@ -1,4 +1,4 @@
-// teachhelper-app-version: 73
+// teachhelper-app-version: 75
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -195,7 +195,7 @@ async function preCacheAppShell() {
 
 async function waitForRequestIdle() {
   const deadline = Date.now() + DEFERRED_MAX_WAIT_MS;
-  for (;;) {
+  for (; ;) {
     const quietFor = Date.now() - lastRequestAt;
     if (quietFor >= DEFERRED_IDLE_MS) return;
     const waitMs = Math.min(DEFERRED_IDLE_MS - quietFor, Math.max(0, deadline - Date.now()));

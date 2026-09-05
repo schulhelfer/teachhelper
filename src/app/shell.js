@@ -1288,12 +1288,12 @@ export function createShellController({
     }
   }
 
-  function setChromeCollapsed(collapsed) {
+  function setChromeCollapsed(collapsed, { resetSidebarWidth = true } = {}) {
     const nextCollapsed = Boolean(collapsed);
     if (state.chromeTransitionState !== 'idle') {
       return;
     }
-    if (!nextCollapsed && state.chromeCollapsed) {
+    if (resetSidebarWidth && !nextCollapsed && state.chromeCollapsed) {
       setShellSidebarWidth(getSidebarWidthScope(), getDefaultShellSidebarWidth(getSidebarWidthScope()), { persist: true });
     }
     if (

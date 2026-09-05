@@ -25,13 +25,15 @@ test('actual grade work arms the completion prompt', () => {
   assert.match(source, /skipButton\.addEventListener\('click',[\s\S]*?courseGradeCompletionPromptArmed = true;/);
 });
 
-test('existing grades do not replace visiting every student during the current pass', () => {
+test('existing grades do not replace handling every student during the current pass', () => {
   assert.match(
     source,
-    /function isCourseGradeStudentDone\(studentId\) \{[\s\S]*?if \(isCourseGradeOccurrenceMode\(\)\) \{[\s\S]*?return isCourseGradeStudentChecked\(sid\);[\s\S]*?\}\s+return Boolean\(state\.courseGradeVisitedStudentIds\?\.has\(sid\)\);/,
+    /function isCourseGradeStudentDone\(studentId\) \{[\s\S]*?if \(isCourseGradeOccurrenceMode\(\)\) \{[\s\S]*?return isCourseGradeStudentChecked\(sid\);[\s\S]*?\}\s+return Boolean\(state\.courseGradeHandledStudentIds\?\.has\(sid\)\);/,
   );
+  // Merely opening the picker - e.g. by clicking a student out of order - must not
+  // count as handled, otherwise the counter and the save prompt overstate the pass.
   assert.match(
     source,
-    /function openCourseGradePicker\(input\) \{[\s\S]*?markCourseGradeStudentVisited\(studentId\);/,
+    /function openCourseGradePicker\(input\) \{[\s\S]*?if \(!studentId\) return;\n\s*selectStudentForCourseGrade\(studentId\);/,
   );
 });

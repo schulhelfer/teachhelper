@@ -8113,7 +8113,7 @@ class PlanningApp {
           {
             label: "Serie anpassen",
             separatorBefore: true,
-            disabled: !slotId || isNoLesson,
+            disabled: !slotId,
             handler: async () => {
               const slot = this.store.getSlot(slotId);
               if (!slot) {
