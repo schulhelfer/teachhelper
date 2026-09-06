@@ -22,7 +22,6 @@ const sliceBetween = (source, startNeedle, endNeedle, label) => {
 test('the seatplan tracks skipped students separately from handled ones', () => {
   assert.match(seatplan, /courseGradeHandledStudentIds: new Set\(\),\n\s*courseGradeSkippedStudentIds: new Set\(\),/);
 
-  // Both places that reset the handled set must reset the skipped set too.
   const resets = seatplan.match(/state\.courseGradeHandledStudentIds = new Set\(\);\n\s*state\.courseGradeSkippedStudentIds = new Set\(\);/g) || [];
   assert.equal(resets.length, 2, 'resetCourseGradeMode and startCourseGradeMode must both clear the skipped set');
 
@@ -50,8 +49,6 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
     'setCourseGradeEntry',
   );
 
-  // Skipping blurs the input one frame later, which runs setCourseGradeEntry(sid, '').
-  // If the empty branch cleared the marker, it would erase itself on every skip.
   const emptyBranch = sliceBetween(
     setter,
     'if (parsed.value === null) {',
@@ -59,8 +56,6 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
     'empty-value branch',
   );
   assert.doesNotMatch(emptyBranch, /clearCourseGradeStudentSkipped/);
-  // Same trap for "handled": the empty branch also runs on the blur of a seat that was
-  // only looked at, so it must not count that student as done either.
   assert.doesNotMatch(emptyBranch, /markCourseGradeStudentHandled/);
 
   assert.match(
@@ -78,7 +73,6 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
     'a student may only be counted as done on an actual grade assignment',
   );
 
-  // The central refresh runs on every path, so an empty blur restores the marker.
   assert.match(setter, /updateCourseGradeSkippedInputsForStudent\(sid\);\n[\s\S]*?syncCourseGradeOverlay\(\);/);
 });
 
@@ -95,8 +89,6 @@ test('the seatplan renders the skipped marker as a placeholder, never as a value
   assert.match(helper, /input\.placeholder = skipped \? COURSE_GRADE_SKIPPED_PLACEHOLDER : '';/);
   assert.doesNotMatch(helper, /input\.value =/, 'the marker must never be written into the input value');
 
-  // Survives a full renderSeats(), and the picker path re-applies it after it
-  // rewrites input.value (which the central refresh could not have seen yet).
   assert.match(seatplan, /input\.value = state\.courseGradeEntries\[sid\] === undefined \? '' : formatCourseGradeValue\(state\.courseGradeEntries\[sid\]\);\n\s*applyCourseGradeSkippedState\(input\);/);
   assert.match(seatplan, /input\.classList\.remove\('invalid'\);\n\s*applyCourseGradeSkippedState\(input\);/);
 });
@@ -111,8 +103,6 @@ test('the seatplan placeholder stays readable in every browser', () => {
 test('the grades table marks skipped entries per assessment and student', () => {
   assert.match(grades, /const GRADE_SKIPPED_PLACEHOLDER = "--";/);
   assert.match(grades, /this\.skippedGradeEntries = new Set\(\);/);
-  // Draft rows of a not-yet-created assessment carry no assessment id, so the key
-  // must fall back to the course instead of silently collapsing to "".
   assert.match(grades, /getSkippedGradeEntryKey\(assessmentId, studentId, courseId = 0\) \{[\s\S]*?return `a\$\{assessment\}:\$\{student\}`;[\s\S]*?return course \? `c\$\{course\}:\$\{student\}` : "";/);
   assert.match(grades, /getSkippedGradeEntryKeyForInput\(input\) \{[\s\S]*?input\.dataset\.assessmentId,\s+input\.dataset\.studentId,\s+input\.dataset\.courseId/);
 
@@ -125,7 +115,6 @@ test('the grades table marks skipped entries per assessment and student', () => 
   assert.match(advance, /this\.markGradeEntrySkipped\(input\);/);
   assert.match(advance, /this\.applyGradeSkippedPlaceholder\(input\);/);
 
-  // "Nächste errechnete Note" is not a student skip.
   const overrideAdvance = sliceBetween(
     grades,
     'advanceGradePickerToNextOverrideTarget() {',
@@ -136,8 +125,6 @@ test('the grades table marks skipped entries per assessment and student', () => 
 });
 
 test('only a real grades table entry drops the skipped marker, never an empty value', () => {
-  // Same trap as the seatplan: skipping blurs the cell, which runs commitGradeCellInput
-  // with an empty value. Clearing unconditionally would erase the marker on every skip.
   assert.match(
     grades,
     /input\.value = parsed\.value === null \? "" : this\.formatCurrentGradeInput\(parsed\.value\);\n[\s\S]*?if \(parsed\.value !== null\) \{\n\s*this\.clearGradeEntrySkipped\(assessmentId, studentId, courseId\);\n\s*\}\n\s*this\.applyGradeSkippedPlaceholder\(input\);/,
@@ -154,7 +141,6 @@ test('the grades table marker never overwrites the existing-value placeholder', 
     grades,
     /const showSkippedPlaceholder = !showExistingValueAsPlaceholder\s+&& !existingInputValue\s+&& this\.isGradeEntrySkipped\(assessment\.id, student\.id, assessment\.courseId\);/,
   );
-  // The draft-entry row is a second template and needs the marker too.
   assert.match(
     grades,
     /const draftSkippedPlaceholder = draftEntry\.value === null \|\| draftEntry\.value === undefined\s+\? \(this\.isGradeEntrySkipped\(assessment\?\.id, student\.id, course\.id\)/,

@@ -1,4 +1,4 @@
-// teachhelper-app-version: 75
+// teachhelper-app-version: 77
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -16,6 +16,8 @@ const APP_SHELL = [
   './src/app/dom.js',
   './src/app/first-run-tutorial.js',
   './src/app/help-center.js',
+  './src/app/help-preview.js',
+  './src/app/help-visuals.js',
   './src/app/module-window.js',
   './src/app/planning-seatplan-bridge.js',
   './src/app/pwa-install-prompt.js',
@@ -60,6 +62,8 @@ const APP_SHELL = [
   './src/shared/school-data/sync-safety.js',
   './src/shared/school-data/thdb.js',
   './src/shared/sidebar-resize.js',
+  './src/shared/dialog-resize.js',
+  './src/shared/dialog-resize.css',
   './src/shared/touch-long-press.js',
   './src/shared/pdf-vendor.js',
   './src/shared/ocr-vendor.js',

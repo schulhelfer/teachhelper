@@ -49,7 +49,7 @@ test('zeigt den Hinweis nur bis ein Tutorial in einem beliebigen Modul gestartet
   assert.match(tutorialSource, /persistUntilInteraction: true/);
   assert.match(tooltipSource, /show: \(anchor, options\) => showTooltip\(anchor, options\)/);
   assert.match(tooltipSource, /function handlePointerOver\(event\) \{\s+if \(persistentAnchor\) return;/);
-  assert.match(tooltipSource, /if \(persistentAnchor\) return;\s+if \(anchor\) showTooltip\(anchor\);/);
+  assert.match(tooltipSource, /function handleFocusIn\(event\) \{[\s\S]*?if \(persistentAnchor\) return;/);
   assert.match(tooltipSource, /function handleKeyDown\(event\) \{\s+if \(persistentAnchor\) \{\s+return;/);
   assert.match(tooltipSource, /function handleFocusOut\(event\) \{[\s\S]*?if \(persistentAnchor === anchor\) return;/);
 });

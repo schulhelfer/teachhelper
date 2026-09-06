@@ -1,4 +1,5 @@
 import { installAppTooltips } from "../../shared/app-tooltips.js";
+import { createMessageApi } from "../../shared/messages.js";
 import {
   applyDocumentTheme,
   normalizeThemePreference,
@@ -39,6 +40,8 @@ import {
   WORKSPACE_COMMAND_UPDATE_COURSE,
   WORKSPACE_ERROR_STALE_STATE
 } from "../../shared/school-data/messages.js";
+
+const { showMessage: showModuleToast } = createMessageApi(document);
 
 const DAYS_SHORT = ["Mo", "Di", "Mi", "Do", "Fr"];
 const REQUIRED_HOLIDAYS = [
@@ -2324,7 +2327,7 @@ class PlanningApp {
     const startYear = Number(String(year.startDate).slice(0, 4));
     const defaults = defaultHolidayRangesForYear(startYear);
     if (!defaults || Object.keys(defaults).length === 0) {
-      await this.showInfoMessage("Für dieses Schuljahr sind keine Standard-Ferienwerte hinterlegt.");
+      await this.showInfoMessage("Für dieses Schuljahr sind keine Standard-Ferienwerte hinterlegt.", "Hinweis", { toast: true, variant: "warn" });
       return false;
     }
     this.store.applyHolidayDefaultsForYear(year.id, overwrite);
@@ -3075,7 +3078,11 @@ class PlanningApp {
     });
   }
 
-  async showInfoMessage(message, title = "Hinweis") {
+  async showInfoMessage(message, title = "Hinweis", options = {}) {
+    if (options.toast) {
+      showModuleToast(String(message || ""), options.variant || "info", { presentation: "toast" });
+      return;
+    }
     await this.showMessageDialog({
       mode: "alert",
       title,
@@ -5108,7 +5115,7 @@ class PlanningApp {
       return;
     }
     if (!this.populateSlotDialogCourseSelect(this.selectedCourseId)) {
-      await this.showInfoMessage("Erst Kurs anlegen.");
+      await this.showInfoMessage("Erst Kurs anlegen.", "Hinweis", { toast: true, variant: "warn" });
       return;
     }
     this.setSlotDialogMode("lesson");
@@ -5203,7 +5210,7 @@ class PlanningApp {
     }
     const isBreak = slot.placement === "break";
     if (!isBreak && !this.populateSlotDialogCourseSelect(slot.courseId)) {
-      await this.showInfoMessage("Erst Kurs anlegen.");
+      await this.showInfoMessage("Erst Kurs anlegen.", "Hinweis", { toast: true, variant: "warn" });
       return;
     }
     this.setSlotDialogMode(isBreak ? "break" : "lesson", slot.startHour);

@@ -287,7 +287,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           }
           function showMessage(text, variant = 'info', options = {}) {
             if (!text) return;
-            if (options.presentation === 'toast') {
+            const presentation = options.presentation || (variant === 'success' ? 'toast' : 'modal');
+            if (presentation === 'toast') {
               return showSharedToast(text, variant, options);
             }
             const host = ensureMessageHost();
@@ -1580,7 +1581,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const courseName = String(detail?.courseName || 'Kurs');
             const plan = detail?.plan && typeof detail.plan === 'object' ? detail.plan : null;
             if (!plan) {
-              showMessage(`„${courseName}“ hat noch keinen gespeicherten Sitzplan.`, 'warn');
+              showMessage(`„${courseName}“ hat noch keinen gespeicherten Sitzplan.`, 'warn', { presentation: 'toast' });
               updateCourseSeatplanUi();
               return;
             }
@@ -2483,13 +2484,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             } else {
               state.courseGradeEntries[sid] = parsed.value;
               state.courseGradeDeletedStudentIds.delete(sid);
-              // Nur eine echte Note hebt die Auslassen-Markierung auf. Der Leerwert-Zweig
-              // darf sie nicht anfassen: nach dem Auslassen läuft der Blur des Feldes
-              // genau hier durch und würde die gerade gesetzte Markierung sofort löschen.
               clearCourseGradeStudentSkipped(sid);
-              // Eine echte Note gilt als erledigt. Der Leerwert-Zweig darf das nicht
-              // setzen: er läuft auch beim Blur eines Feldes durch, das nur angesehen
-              // und wieder verlassen wurde.
               markCourseGradeStudentHandled(sid);
             }
             updateCourseGradeSkippedInputsForStudent(sid);
@@ -2618,9 +2613,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const handledStudentIds = state.courseGradeHandledStudentIds instanceof Set
               ? state.courseGradeHandledStudentIds
               : new Set();
-            // Nur erledigte Sitze (benotet oder per Auslassen-Button übersprungen) werden
-            // übergangen. Wer nur angeklickt und wieder verlassen wurde, wird erneut
-            // angesteuert - sonst bliebe er unerreichbar und der Durchgang nie vollständig.
             const handledSeatIds = new Set(
               inputs
                 .filter(input => handledStudentIds.has(String(input.dataset.studentId || '')))
@@ -2650,9 +2642,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const next = nextState.input;
             if (next) {
               next.focus({ preventScroll: false });
-              // Do not depend on the focus event here. During a layout update the
-              // focused control may have been replaced, which otherwise leaves the
-              // picker closed after the first entered grade.
               openCourseGradePicker(next);
             }
           }
@@ -3919,7 +3908,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           async function startRandomPickerSpin() {
             const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
             if (!allCandidates.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             const candidates = allCandidates.filter((entry) => entry.weight > 0);
@@ -4102,7 +4091,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 els.preferencesGuessHint.title = 'Keine Lernenden für den Geschlechtervorschlag vorhanden.';
                 fitPreferencesHintText();
               } else {
-                showMessage('Keine Lernenden für den Geschlechtervorschlag vorhanden.', 'warn');
+                showMessage('Keine Lernenden für den Geschlechtervorschlag vorhanden.', 'warn', { presentation: 'toast' });
               }
               return;
             }
@@ -4579,7 +4568,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function createPlanSnapshot() {
             if (!state.activeSeats.size) {
-              showMessage('Keine aktiven Sitzplätze vorhanden.', 'warn');
+              showMessage('Keine aktiven Sitzplätze vorhanden.', 'warn', { presentation: 'toast' });
               return null;
             }
             const activeIds = Array.from(state.activeSeats);
@@ -4816,7 +4805,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function printSeatPlan() {
             if (typeof window === 'undefined' || typeof window.print !== 'function') {
-              showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn');
+              showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn', { presentation: 'toast' });
               return;
             }
             if (els.printPlanTitle) {
@@ -5106,7 +5095,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!file) return;
             if (isCourseSeatplanMode()) {
               updateCourseSeatplanUi();
-              showMessage('Die Namensliste kommt in diesem Kurs-Sitzplan aus dem Notenmodul.', 'info');
+              showMessage('Die Namensliste kommt in diesem Kurs-Sitzplan aus dem Notenmodul.', 'info', { presentation: 'toast' });
               return;
             }
             assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
@@ -5114,7 +5103,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const text = await file.text();
             let rows = parseCSV(text);
             if (!rows.length) {
-              showMessage('Keine Daten gefunden.', 'warn');
+              showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' });
               return;
             }
             const isSeparatorRow = (row) => {
@@ -5127,13 +5116,13 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             };
             rows = rows.filter(row => !isSeparatorRow(row));
             if (!rows.length) {
-              showMessage('Keine Daten gefunden.', 'warn');
+              showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' });
               return;
             }
             state.csvName = extractPlanLabelFromRows(rows) || '';
             const firstNonEmptyIdx = rows.findIndex(r => Array.isArray(r) && r.some(x => String(x || '').trim() !== ''));
             if (firstNonEmptyIdx === -1) {
-              showMessage('Nur leere Zeilen gefunden.', 'warn');
+              showMessage('Nur leere Zeilen gefunden.', 'warn', { presentation: 'toast' });
               return;
             }
             const headers = rows[firstNonEmptyIdx] || [];
@@ -5211,7 +5200,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!unique.length) {
               showMessage(
                 label ? `Es konnten keine Plätze für das Muster ${label} aktiviert werden.` : 'Es konnten keine Plätze aktiviert werden.',
-                'warn'
+                'warn',
+                { presentation: 'toast' }
               );
               return;
             }
@@ -5228,11 +5218,11 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function activatePiPattern() {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             if (!state.gridRows || !state.gridCols) {
-              showMessage('Das Raster enthält keine Plätze.', 'warn');
+              showMessage('Das Raster enthält keine Plätze.', 'warn', { presentation: 'toast' });
               return;
             }
             const n = Math.max(1, Math.ceil(state.students.length * 0.333) + 1);
@@ -5264,7 +5254,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function activateEPattern() {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             const count = state.students.length;
@@ -5305,7 +5295,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function activateBars3Pattern() {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             const n = Math.max(1, Math.ceil(state.students.length * 0.333));
@@ -5325,7 +5315,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function activateBars4Pattern() {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             const n = Math.max(1, Math.ceil(state.students.length * 0.25));
@@ -5344,7 +5334,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function activateBars3GangPattern() {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             const n = Math.max(1, Math.ceil(state.students.length * 0.333));
@@ -5370,7 +5360,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function activateBars4GangPattern() {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             const n = Math.max(1, Math.ceil(state.students.length * 0.25));
@@ -5420,7 +5410,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function minimizeGridToActiveBounds() {
             if (!state.activeSeats.size) {
-              showMessage('Keine aktiven Sitzplätze zum Minimieren.', 'warn');
+              showMessage('Keine aktiven Sitzplätze zum Minimieren.', 'warn', { presentation: 'toast' });
               return;
             }
             const coords = [];
@@ -5433,7 +5423,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               }
             });
             if (!coords.length) {
-              showMessage('Keine gültigen Sitzplatzkoordinaten gefunden.', 'warn');
+              showMessage('Keine gültigen Sitzplatzkoordinaten gefunden.', 'warn', { presentation: 'toast' });
               return;
             }
             let minRow = Infinity;
@@ -9525,7 +9515,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               const droppedFiles = Array.from(e.dataTransfer?.files || []);
               const csvFile = droppedFiles.find(isCsvFile);
               if (!csvFile) {
-                showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn');
+                showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn', { presentation: 'toast' });
                 return;
               }
               try {
@@ -9559,9 +9549,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!jsonFile) {
               const csvFile = droppedFiles.find(isCsvFile);
               if (csvFile) {
-                showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn');
+                showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn', { presentation: 'toast' });
               } else {
-                showMessage('Hier kann nur ein Sitzplan als JSON geladen werden.', 'warn');
+                showMessage('Hier kann nur ein Sitzplan als JSON geladen werden.', 'warn', { presentation: 'toast' });
               }
               return;
             }
@@ -9740,7 +9730,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           }
           els.seatPreferences?.addEventListener('click', () => {
             if (!state.students.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn');
+              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
               return;
             }
             buildSeatPreferencesTable();
@@ -9879,13 +9869,13 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
 
           els.random.addEventListener('click', () => {
-            if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
+            if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' }); return; }
             const activeIds = Array.from(state.activeSeats);
-            if (!activeIds.length) { showMessage('Bitte zuerst Platzraster einrichten.', 'warn'); return; }
+            if (!activeIds.length) { showMessage('Bitte zuerst Platzraster einrichten.', 'warn', { presentation: 'toast' }); return; }
             const teacherSeat = Object.entries(state.seats).find(([, sid]) => sid === 'TEACHER');
             const teacherSeatId = teacherSeat ? teacherSeat[0] : null;
             const targetSeats = activeIds.filter(id => id !== teacherSeatId);
-            if (!targetSeats.length) { showMessage('Keine freien aktiven Plätze verfügbar.', 'warn'); return; }
+            if (!targetSeats.length) { showMessage('Keine freien aktiven Plätze verfügbar.', 'warn', { presentation: 'toast' }); return; }
             const shuffled = state.students.slice();
             for (let i = shuffled.length - 1; i > 0; i--) {
               const j = Math.floor(Math.random() * (i + 1));
@@ -9903,10 +9893,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           });
 
           els.suggest.addEventListener('click', () => {
-            if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
+            if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' }); return; }
             const seatSorter = (a, b) => { const [ar, ac] = a.split('-').map(Number); const [br, bc] = b.split('-').map(Number); return ar === br ? ac - bc : ar - br; };
             const activeIds = Array.from(state.activeSeats).sort(seatSorter);
-            if (!activeIds.length) { showMessage('Bitte zuerst Plätze aktivieren.', 'warn'); return; }
+            if (!activeIds.length) { showMessage('Bitte zuerst Plätze aktivieren.', 'warn', { presentation: 'toast' }); return; }
             const hadAssignments = Object.values(state.seats).some(sid => sid && sid !== 'TEACHER');
             if (hadAssignments) {
               showMessage('Beachte, dass das Vorschlagstool nur die Lernenden betrachtet, die noch keinem Sitzplatz im Raster zugewiesen wurden (nutze ggf. "Belegung zurücksetzen").', 'info');
@@ -9944,7 +9934,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                     const freed = activeIds.filter(id => id !== teacherSeatId);
                     availableSet = new Set(freed);
                     fixedSeats.clear();
-                  } else { showMessage('Keine freien aktiven Plätze verfügbar.', 'warn'); return; }
+                  } else { showMessage('Keine freien aktiven Plätze verfügbar.', 'warn', { presentation: 'toast' }); return; }
                 }
 
                 const studentById = new Map(state.students.map(s => [s.id, s]));
@@ -10528,11 +10518,11 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                   const confAfter = countConflicts(new Map(Object.entries(state.seats)), activeSet, new Map(state.students.map(s => [s.id, s])), mergedPairs);
                   if (confAfter > 0) {
                     console.warn(`${unplaced.length} Lernende mussten vorläufig gesetzt werden; ${confAfter} Konflikte verbleiben.`);
-                    showMessage(`${unplaced.length} Lernende mussten vorläufig gesetzt werden. Es bestehen noch ${confAfter} Konflikte.`, 'warn', { duration: 7000 });
+                    showMessage(`${unplaced.length} Lernende mussten vorläufig gesetzt werden. Es bestehen noch ${confAfter} Konflikte.`, 'warn', { presentation: 'toast', durationMs: 7000 });
                   }
                 }
                 if (teacherDistanceConds.length && !teacherDistanceSatisfied) {
-                  showMessage('Die Bedingung zum maximalen Abstand zur Lehrkraft konnte nicht vollständig erfüllt werden.', 'warn', { duration: 7000 });
+                  showMessage('Die Bedingung zum maximalen Abstand zur Lehrkraft konnte nicht vollständig erfüllt werden.', 'warn', { presentation: 'toast', durationMs: 7000 });
                 }
               } finally {
                 fadeOutSuggestProgress();

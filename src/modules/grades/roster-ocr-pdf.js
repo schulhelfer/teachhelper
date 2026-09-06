@@ -2,7 +2,6 @@ import { ensurePdfJsLoaded } from "../../shared/pdf-vendor.js";
 import { validatePdfFile, readFileArrayBufferWithTimeout, withTimeout, FILE_TIMEOUTS } from "../../shared/file-guards.js";
 import { ocrOutputSize } from "./roster-ocr-data.js";
 
-// One local PDF document and one rasterized page, owned by the import dialog.
 export function createOcrPdfSession({ createCanvas, loadPdfJs = ensurePdfJsLoaded }) {
   let loadingTask = null;
   let document = null;
@@ -22,7 +21,6 @@ export function createOcrPdfSession({ createCanvas, loadPdfJs = ensurePdfJsLoade
     if (disposed) return;
     disposed = true;
     clearPage();
-    // The loading task also owns the PDF worker and the loaded document.
     void loadingTask?.destroy().catch(() => {});
     loadingTask = null;
     document = null;

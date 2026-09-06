@@ -18,6 +18,7 @@ import {
   withTimeout,
 } from '../../shared/file-guards.js';
 import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
+import { createMessageApi } from '../../shared/messages.js';
 
 export function createMergerApp({
   sideRoot = null,
@@ -47,6 +48,7 @@ export function createMergerApp({
   ]);
   const standalone = !sideRoot || !mainRoot || !sideHost || !mainHost;
   const domRoots = standalone ? [root] : [sideRoot, mainRoot];
+  const mergerToastApi = createMessageApi(root.ownerDocument || root);
 
   const getElementById = (id) => {
     const escapedId = typeof CSS !== "undefined" && typeof CSS.escape === "function"
@@ -554,6 +556,10 @@ export function createMergerApp({
           function maybeShowMacOSPermissionHint(error) {
             if (!isFileAccessRestrictionError(error)) return false;
             return showMacOSPermissionHint();
+          }
+
+          function showResultToast(message, variant = "success") {
+            mergerToastApi.showMessage(String(message || ""), variant, { presentation: "toast" });
           }
 
           function showResultDialog(message, tone = "warn", title = "Hinweis", openPayload = null) {
@@ -3791,7 +3797,7 @@ export function createMergerApp({
             const url = URL.createObjectURL(new Blob([archiveBytes], { type: "application/zip" }));
             triggerDownload(url, archiveName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
-            showResultDialog(`${outputs.length} PDFs als ZIP-Download erstellt.`, "ok", "");
+            showResultToast(`${outputs.length} PDFs als ZIP-Download erstellt.`, "success");
           }
 
           async function deliverSinglePdf(bytes, outputName, successMessage) {
@@ -3802,7 +3808,7 @@ export function createMergerApp({
               if (shareResult.status === "cancelled") {
                 showResultDialog(`PDF wurde erstellt, Teilen wurde abgebrochen.\n${outputName}`, "warn", "Hinweis");
               } else {
-                showResultDialog(successMessage, "ok", "");
+                showResultToast(successMessage, "success");
               }
               return;
             }

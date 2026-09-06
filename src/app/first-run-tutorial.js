@@ -132,6 +132,7 @@ export function createFirstRunTutorial({
   let contentGhost = null;
   let contextHelpPromptTimer = 0;
   let tutorialStartPending = false;
+  let previewTargetResolveAttempts = 0;
   const opaqueTargetRects = new WeakMap();
   const pendingOpaqueTargetRequests = new Set();
   let opaqueTargetRequestSequence = 0;
@@ -969,7 +970,8 @@ export function createFirstRunTutorial({
       const target = await waitForStepTarget(
         step,
         currentRenderToken,
-        skipIfMissing ? TARGET_RESOLVE_ATTEMPTS : REQUIRED_TARGET_RESOLVE_ATTEMPTS
+        previewTargetResolveAttempts
+          || (skipIfMissing ? TARGET_RESOLVE_ATTEMPTS : REQUIRED_TARGET_RESOLVE_ATTEMPTS)
       );
       if (!active || currentRenderToken !== renderToken) return;
       if (!target) {
@@ -1019,7 +1021,7 @@ export function createFirstRunTutorial({
     }
   }
 
-  function startTutorial() {
+  function startTutorial({ focusControls = true } = {}) {
     if (active) {
       removeDemoChoiceDialog();
       runSessionCleanup();
@@ -1041,7 +1043,7 @@ export function createFirstRunTutorial({
         activateDemoDefinition(contextualDefinition);
         ensureNodes();
         renderStep();
-        nextButton?.focus({ preventScroll: true });
+        if (focusControls) nextButton?.focus({ preventScroll: true });
         return true;
       }
       showDemoChoice(contextualDefinition);
@@ -1050,13 +1052,42 @@ export function createFirstRunTutorial({
     activateContextualDefinition(contextualDefinition);
     ensureNodes();
     renderStep();
-    nextButton?.focus({ preventScroll: true });
+    if (focusControls) nextButton?.focus({ preventScroll: true });
     return true;
+  }
+
+  function startPreview() {
+    previewTargetResolveAttempts = 360;
+    const started = startTutorial({ focusControls: false });
+    if (!started) previewTargetResolveAttempts = 0;
+    return started ? activeSteps.map((step) => step?.title || '') : [];
+  }
+
+  function showPreviewStep(stepTitle) {
+    if (!active || !stepTitle) return false;
+    const index = activeSteps.findIndex((step) => step?.title === stepTitle);
+    if (index < 0) return false;
+    stepIndex = index;
+    renderStep();
+    return true;
+  }
+
+  function getPreviewTargetRect(stepTitle) {
+    if (!active || titleNode?.textContent !== stepTitle || !highlight || highlight.hidden) return null;
+    const rect = highlight.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
   }
 
   function finish() {
     if (!active) return;
     active = false;
+    previewTargetResolveAttempts = 0;
     renderToken += 1;
     removeDemoChoiceDialog();
     removeNodes();
@@ -1107,6 +1138,9 @@ export function createFirstRunTutorial({
   return {
     start,
     startFromEntry,
+    startPreview,
+    showPreviewStep,
+    getPreviewTargetRect,
     finish,
     showContextHelp,
     clearContextHelpPrompt: () => {

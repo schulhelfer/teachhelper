@@ -14,6 +14,7 @@ import {
   renderPercentileRankPng
 } from "./percentile-rank.js";
 import { installAppTooltips } from "../../shared/app-tooltips.js";
+import { createMessageApi } from "../../shared/messages.js";
 import {
   applyDocumentTheme,
   normalizeThemePreference,
@@ -78,6 +79,8 @@ import {
   GRADE_VAULT_UNLOCKED_ICON
 } from "../../shared/grade-vault-lock-icons.js";
 import { createLearnerSearchDialog, LEARNER_SEARCH_MESSAGES } from "../../shared/learner-search-dialog.js";
+
+const { showMessage: showModuleToast } = createMessageApi(document);
 
 const EXPECTATION_HORIZON_TEMPLATE_URL = new URL("./expectation-horizon-template.docx", import.meta.url);
 const COMPETENCE_EXPECTATIONS_TEMPLATE_URL = new URL("./competence-expectations-template.docx", import.meta.url);
@@ -184,10 +187,10 @@ const GRADE_DISPLAY_SYSTEM_SCHOOL = "school";
 const GRADE_DISPLAY_SYSTEM_SCHOOL_LABELS = ["6", "5-", "5", "5+", "4-", "4", "4+", "3-", "3", "3+", "2-", "2", "2+", "1-", "1", "1+"];
 const COURSE_SEATPLAN_ENTRY_MODE_GRADE = "grade";
 const COURSE_SEATPLAN_ENTRY_MODE_OCCURRENCE = "occurrence";
-const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager/AbiWeb-Import";
-const ISERV_GROUP_POPULATE_BOOKMARKLET_NAME = "IServ-Gruppe bevölkern";
-const ISERV_GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(()=>{const f=document.createElement('input');f.type='file';f.accept='.csv,.txt,text/csv,text/plain';f.style.display='none';document.body.appendChild(f);const csv=(s,d)=>{s=s.replace(/^\uFEFF/,'');let a=[],r=[],v='',q=false;for(let i=0;i<s.length;i++){let c=s[i];if(q){if(c=='"'){if(s[i+1]=='"'){v+='"';i++}else q=false}else v+=c}else if(c=='"')q=true;else if(c==d){r.push(v.trim());v=''}else if(c=='\r'||c=='\n'){if(c=='\r'&&s[i+1]=='\n')i++;r.push(v.trim());a.push(r);r=[];v=''}else v+=c}if(v.length||r.length){r.push(v.trim());a.push(r)}return a},score=a=>{let x=a.filter(r=>r.some(v=>String(v).trim())).slice(0,30),m=new Map;if(!x.length)return-Infinity;for(const r of x)m.set(r.length,(m.get(r.length)||0)+1);let n=0,c=0;for(const[k,v]of m)if(v>c||(v==c&&k>n)){n=k;c=v}return n<2?-1e9+c:c*1000+n*10-x.reduce((s,r)=>s+Math.abs(r.length-n),0)*100},cell=s=>{let m=String(s||%27%27).trim().match(/^([A-Z]+)([1-9]\d*)$/i);if(!m)return null;let c=0;for(const x of m[1].toUpperCase())c=c*26+x.charCodeAt()-64;return{c:c-1,r:+m[2]-1,l:m[1].toUpperCase()+m[2]}},ask=(t,d)=>{for(;;){let v=prompt(t,d);if(v===null)return null;let p=cell(v);if(p)return p;alert(%27Ungültige Position: %27+v)}};f.onchange=async()=>{try{let file=f.files[0];if(!file)return;let raw=await file.text();if(!raw.trim()){alert(%27Die Datei ist leer.%27);return}let a=csv(raw,%27,%27),b=csv(raw,%27;%27),sep=score(b)>score(a)?%27;%27:%27,%27,rows=sep==%27;%27?b:a,first=ask(%27Position Vorname:%27,%27C2%27);if(!first)return;let last=ask(%27Position Nachname:%27,%27B2%27);if(!last)return;let list=[],n=Math.max(rows.length-first.r,rows.length-last.r);for(let i=0;i<n;i++){let x=((rows[first.r+i]?.[first.c]||%27%27)+%27 %27+(rows[last.r+i]?.[last.c]||%27%27)).trim();if(x)list.push(x)}if(!list.length){alert(%27Keine gültigen Einträge gefunden.%27);return}let input=document.querySelector(%27#manage_group_users_add-selectized');if(!input){alert('IServ-Suchfeld nicht gefunden.');return}if(!confirm(list.length+' Einträge gefunden.\nTrennzeichen: '+(sep==';'?'Semikolon':'Komma')+'\nVorname: '+first.l+', Nachname: '+last.l+'\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nVerarbeitung starten?'))return;let sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),set=v=>{input.focus();let s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},opts=()=>{let id=input.getAttribute('aria-owns'),box=id?document.getElementById(id):null;return box?[...box.querySelectorAll('[data-selectable]')].filter(e=>{let r=e.getBoundingClientRect();return r.width&&r.height}):[]},match=(e,q)=>norm(q).split(' ').filter(Boolean).every(x=>norm(e.textContent||'').includes(x)),clear=async()=>{let t=Date.now();while(Date.now()-t<2000){if(!opts().length)return;await sleep(50)}},find=async q=>{let t=Date.now(),last=null,s=0;while(Date.now()-t<5000){let e=opts().find(x=>match(x,q));if(e){if(e===last)s++;else{last=e;s=0}if(s>=2)return e}else{last=null;s=0}await sleep(100)}return null},gone=async e=>{let t=Date.now();while(Date.now()-t<3000){if(!e.isConnected||!opts().includes(e))return;await sleep(100)}};let done=0;for(const name of list){set('');await clear();set(name);let e=await find(name);if(!e){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}e.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));e.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));e.click();done++;await gone(e);await sleep(done===list.length?500:100)}alert('Fertig: '+done+' Einträge hinzugefügt.')}finally{f.remove()}};f.click()})()`;
-const ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR = "body > app-root > app-course-detail > div > div > div:nth-child(2) > table > tbody > tr > td.text-center.cursor-pointer";
+const GRADE_TRANSFER_BOOKMARKLET_NAME = "Schulmanager/AbiWeb-Import";
+const GROUP_POPULATE_BOOKMARKLET_NAME = "IServ-Gruppe bevölkern";
+const GROUP_POPULATE_BOOKMARKLET_CODE = String.raw`javascript:(async()=>{try{let c=await navigator.clipboard.readText();if(!c.trim())throw new Error('Die TeachHelper-Namensliste ist leer. Kopiere die Namen zuerst im TeachHelper-Dialog in die Zwischenablage.');let list=c.split(';').map(s=>s.trim()).filter(Boolean);if(!list.length)throw new Error('Die TeachHelper-Namensliste ist leer.');let input=document.querySelector('#manage_group_users_add-selectized');if(!input)throw new Error('IServ-Suchfeld nicht gefunden. Bist Du auf der Seite Gruppe > Bearbeiten > Mitglieder?');if(!confirm(list.length+' Namen aus TeachHelper in die IServ-Gruppe übernehmen?\n\nBeispiel: '+list.slice(0,3).join(', ')+'\n\nZielseite: '+location.origin))return;let sleep=ms=>new Promise(r=>setTimeout(r,ms)),norm=s=>s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/\s+/g,' ').trim(),set=v=>{input.focus();let s=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;s?s.call(input,v):input.value=v;input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));input.dispatchEvent(new KeyboardEvent('keyup',{key:v.slice(-1)||'a',bubbles:true}))},box=()=>{let id=input.getAttribute('aria-owns');return id?document.getElementById(id):null},opts=()=>{let b=box();return b?[...b.querySelectorAll('[data-selectable]')].filter(e=>{let r=e.getBoundingClientRect();return r.width&&r.height}):[]},empty=()=>{let b=box();if(!b)return false;if(b.querySelector('.no-results,.selectize-no-results,[data-no-results]'))return true;let t=norm(b.textContent||'');return t?/keine (ergebnisse|treffer|eintraege|benutzer)|no results|nichts gefunden/.test(t):false},match=(e,q)=>norm(q).split(' ').filter(Boolean).every(x=>norm(e.textContent||'').includes(x)),clear=async()=>{let t=Date.now();while(Date.now()-t<2000){if(!opts().length)return;await sleep(50)}},find=async q=>{let t=Date.now(),last=null,s=0,gap=0;while(Date.now()-t<3000){let o=opts(),e=o.find(x=>match(x,q));if(e){if(e===last)s++;else{last=e;s=0}if(s>=2)return e;gap=0}else{last=null;s=0;if(empty())return null;gap=o.length?0:gap+1;if(gap>=4&&Date.now()-t>=600)return null}await sleep(100)}return null},gone=async e=>{let t=Date.now();while(Date.now()-t<3000){if(!e.isConnected||!opts().includes(e))return;await sleep(100)}};let done=0;for(const name of list){set('');await clear();set(name);let e=await find(name);if(!e){alert('Kein Treffer für: '+name+'\n\nAbgebrochen.\nErfolgreich: '+done+' von '+list.length);return}e.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true,view:window}));e.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true,view:window}));e.click();done++;await gone(e);await sleep(done===list.length?500:100)}alert('Fertig: '+done+' Einträge hinzugefügt.')}catch(e){alert('Fehler: '+e.message)}})()`;
+const POPUP_TABLE_GRADE_FIELD_SELECTOR = "body > app-root > app-course-detail > div > div > div:nth-child(2) > table > tbody > tr > td.text-center.cursor-pointer";
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_DEFICIT_FOLLOWUP_TOOLTIP = "Gelb = Nachbereitung erforderlich";
@@ -654,6 +657,7 @@ function buildGradeStudentNameMatchKey(lastName, firstName) {
 
 const GRADE_STUDENT_EMPTY_NAME_MATCH_KEY = buildGradeStudentNameMatchKey("", "");
 const PORTRAIT_IMPORT_DIALOG_TITLE = "Bilder aus anderen Kursen";
+const ROSTER_OCR_IMPORT_DIALOG_TITLE = "Namen aus gedruckter Liste importieren";
 
 
 function compareGradeStudents(a, b) {
@@ -2709,14 +2713,13 @@ class GradesApp {
     this.gradesSubView = "overview";
     this.gradeOverviewDisplaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
     this.gradeOverviewPredicateSuffixes = true;
-    this.schoolmanagerTransferDialogState = {
+    this.gradeTransferDialogState = {
       nameOrder: "last",
       displaySystem: GRADE_DISPLAY_SYSTEM_DEFAULT,
       predicateSuffixes: true,
       firstGradeFieldIndex: 7,
       transferColumnKey: ""
     };
-    this.courseStudentsDialogInitialSignature = "";
     this._gradesReadySignalToken = 0;
     this.activeSettingsTab = "gradeTestScales";
     this.settingsSourceView = "grades";
@@ -2896,19 +2899,20 @@ class GradesApp {
       messageDialogOkTop: document.querySelector("#message-dialog-ok-top"),
       messageDialogDiscardTop: document.querySelector("#message-dialog-discard-top"),
       messageDialogActionsBottom: document.querySelector("#message-dialog-actions-bottom"),
-      schoolmanagerTransferDialog: document.querySelector("#schoolmanager-transfer-dialog"),
-      schoolmanagerTransferDialogForm: document.querySelector("#schoolmanager-transfer-dialog-form"),
-      schoolmanagerTransferDialogCancel: document.querySelector("#schoolmanager-transfer-dialog-cancel"),
-      schoolmanagerTransferNameOrderInputs: document.querySelectorAll("[data-schoolmanager-transfer-name-order]"),
-      schoolmanagerTransferDisplaySystemInputs: document.querySelectorAll("[data-schoolmanager-transfer-display-system]"),
-      schoolmanagerTransferPredicateSuffixInputs: document.querySelectorAll("[data-schoolmanager-transfer-predicate-suffixes]"),
-      schoolmanagerTransferFirstGradeField: document.querySelector("#schoolmanager-transfer-first-grade-field"),
-      schoolmanagerTransferBookmarkletLink: document.querySelector("#schoolmanager-transfer-bookmarklet-link"),
-      schoolmanagerTransferSubmit: document.querySelector("#schoolmanager-transfer-submit"),
-      iservGroupPopulateDialog: document.querySelector("#iserv-group-populate-dialog"),
-      iservGroupPopulateDialogForm: document.querySelector("#iserv-group-populate-dialog-form"),
-      iservGroupPopulateDialogCancel: document.querySelector("#iserv-group-populate-dialog-cancel"),
-      iservGroupPopulateBookmarkletLink: document.querySelector("#iserv-group-populate-bookmarklet-link"),
+      gradeTransferDialog: document.querySelector("#grade-transfer-dialog"),
+      gradeTransferDialogForm: document.querySelector("#grade-transfer-dialog-form"),
+      gradeTransferDialogCancel: document.querySelector("#grade-transfer-dialog-cancel"),
+      gradeTransferNameOrderInputs: document.querySelectorAll("[data-grade-transfer-name-order]"),
+      gradeTransferDisplaySystemInputs: document.querySelectorAll("[data-grade-transfer-display-system]"),
+      gradeTransferPredicateSuffixInputs: document.querySelectorAll("[data-grade-transfer-predicate-suffixes]"),
+      gradeTransferFirstGradeField: document.querySelector("#grade-transfer-first-grade-field"),
+      gradeTransferBookmarkletLink: document.querySelector("#grade-transfer-bookmarklet-link"),
+      gradeTransferSubmit: document.querySelector("#grade-transfer-submit"),
+      groupPopulateDialog: document.querySelector("#group-populate-dialog"),
+      groupPopulateDialogForm: document.querySelector("#group-populate-dialog-form"),
+      groupPopulateDialogCancel: document.querySelector("#group-populate-dialog-cancel"),
+      groupPopulateBookmarkletLink: document.querySelector("#group-populate-bookmarklet-link"),
+      groupPopulateSubmit: document.querySelector("#group-populate-submit"),
       gradeSimulationDialog: document.querySelector("#grade-simulation-dialog"),
       gradeSimulationDialogForm: document.querySelector("#grade-simulation-dialog-form"),
       gradeSimulationDialogClose: document.querySelector("#grade-simulation-dialog-close"),
@@ -3001,7 +3005,7 @@ class GradesApp {
       courseStudentsDialogTitle: document.querySelector("#course-students-dialog-title"),
       courseStudentsDialogStepTitle: document.querySelector("#course-students-dialog-step-title"),
       courseStudentsDialogId: document.querySelector("#course-students-dialog-id"),
-      courseStudentsIservPopulate: document.querySelector("#course-students-iserv-populate"),
+      courseStudentsGroupPopulate: document.querySelector("#course-students-group-populate"),
       courseStructureDialog: document.querySelector("#course-structure-dialog"),
       courseStructureDialogForm: document.querySelector("#course-structure-dialog-form"),
       courseStructureDialogTitle: document.querySelector("#course-structure-dialog-title"),
@@ -3010,7 +3014,6 @@ class GradesApp {
       courseDialogStructureFlairSelect: document.querySelector("#course-dialog-structure-flair-select"),
       courseDialogCopyH1ToH2: document.querySelector("#course-dialog-copy-h1-to-h2"),
       courseDialogStudentsFile: document.querySelector("#course-dialog-students-file"),
-      courseDialogStudentsTemplate: document.querySelector("#course-dialog-students-template"),
       courseDialogStudentsAdd: document.querySelector("#course-dialog-students-add"),
       courseDialogStudentsDropzone: document.querySelector("#course-dialog-students-dropzone"),
       courseStudentsImportRow: document.querySelector("#course-students-import-row"),
@@ -4730,7 +4733,6 @@ class GradesApp {
           credentialId = String(formCredential?.id || credentialId);
           credentialPassword = String(formCredential?.password || credentialPassword);
         } catch (_error) {
-          // Der objektbasierte Fallback unterstützt ältere Chromium-Versionen.
         }
       }
       await window.navigator.credentials.store(new CredentialCtor({
@@ -6055,7 +6057,11 @@ class GradesApp {
     });
   }
 
-  async showInfoMessage(message, title = "Hinweis") {
+  async showInfoMessage(message, title = "Hinweis", options = {}) {
+    if (options.toast) {
+      showModuleToast(String(message || ""), options.variant || "info", { presentation: "toast" });
+      return;
+    }
     await this.showMessageDialog({
       mode: "alert",
       title,
@@ -6117,205 +6123,246 @@ class GradesApp {
     });
   }
 
-  openSchoolmanagerTransferDialog(options = {}) {
+  openGradeTransferDialog(options = {}) {
     const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
-    this.schoolmanagerTransferDialogState = {
+    this.gradeTransferDialogState = {
       nameOrder: "last",
       displaySystem,
       predicateSuffixes: this.gradeOverviewPredicateSuffixes !== false,
       firstGradeFieldIndex: 7,
       transferColumnKey: String(options.transferColumnKey || "").trim()
     };
-    this.syncSchoolmanagerTransferDialogControls();
-    this.resetSchoolmanagerTransferSubmitButton();
-    this.openDialog(this.refs.schoolmanagerTransferDialog);
-    this.syncSegmentControlSlideStates(this.refs.schoolmanagerTransferDialog);
+    this.syncGradeTransferDialogControls();
+    this.resetGradeTransferSubmitButton();
+    this.openDialog(this.refs.gradeTransferDialog);
+    this.syncSegmentControlSlideStates(this.refs.gradeTransferDialog);
   }
 
-  closeSchoolmanagerTransferDialog() {
-    this.closeDialog(this.refs.schoolmanagerTransferDialog);
+  closeGradeTransferDialog() {
+    this.closeDialog(this.refs.gradeTransferDialog);
   }
 
-  openIservGroupPopulateDialog() {
-    if (!this.isCourseStudentsDialogPristine()) {
-      this.updateCourseStudentsIservPopulateButton();
-      return;
-    }
-    this.updateIservGroupPopulateBookmarkletCode();
-    this.openDialog(this.refs.iservGroupPopulateDialog);
+  openGroupPopulateDialog() {
+    this.updateGroupPopulateBookmarkletCode();
+    this.resetGroupPopulateSubmitButton();
+    this.openDialog(this.refs.groupPopulateDialog);
   }
 
-  closeIservGroupPopulateDialog() {
-    this.closeDialog(this.refs.iservGroupPopulateDialog);
+  closeGroupPopulateDialog() {
+    this.closeDialog(this.refs.groupPopulateDialog);
   }
 
-  updateIservGroupPopulateBookmarkletCode() {
-    const link = this.refs.iservGroupPopulateBookmarkletLink;
+  updateGroupPopulateBookmarkletCode() {
+    const link = this.refs.groupPopulateBookmarkletLink;
     if (!link) {
       return;
     }
-    link.dataset.bookmarkletCode = ISERV_GROUP_POPULATE_BOOKMARKLET_CODE;
-    link.setAttribute("href", ISERV_GROUP_POPULATE_BOOKMARKLET_CODE);
-    link.setAttribute("aria-label", `${ISERV_GROUP_POPULATE_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
-    link.title = `${ISERV_GROUP_POPULATE_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`;
+    link.dataset.bookmarkletCode = GROUP_POPULATE_BOOKMARKLET_CODE;
+    link.setAttribute("href", GROUP_POPULATE_BOOKMARKLET_CODE);
+    link.setAttribute("aria-label", `${GROUP_POPULATE_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
+    link.title = `${GROUP_POPULATE_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`;
   }
 
-  async copyIservGroupPopulateBookmarkletCode() {
+  async copyGroupPopulateBookmarkletCode() {
     try {
-      await navigator.clipboard.writeText(ISERV_GROUP_POPULATE_BOOKMARKLET_CODE);
+      await navigator.clipboard.writeText(GROUP_POPULATE_BOOKMARKLET_CODE);
       await this.showInfoMessage(
         "Bookmarklet-Code wurde in die Zwischenablage kopiert.",
-        ISERV_GROUP_POPULATE_BOOKMARKLET_NAME
+        GROUP_POPULATE_BOOKMARKLET_NAME
       );
     } catch (_error) {
       await this.showInfoMessage(
         "Bookmarklet-Code konnte nicht automatisch kopiert werden.",
-        ISERV_GROUP_POPULATE_BOOKMARKLET_NAME
+        GROUP_POPULATE_BOOKMARKLET_NAME
       );
     }
   }
 
-  async submitSchoolmanagerTransferDialog() {
-    const input = this.refs.schoolmanagerTransferFirstGradeField;
-    const parsedIndex = this.getSchoolmanagerTransferFirstGradeFieldIndex();
-    this.schoolmanagerTransferDialogState = {
-      ...this.schoolmanagerTransferDialogState,
+  buildGroupPopulateNames() {
+    const students = Array.isArray(this.courseDialogDraft?.students) ? this.courseDialogDraft.students : [];
+    return this.getSortedGradeStudentsForNameOrder(students, "last")
+      .filter((student) => !student?.isPlaceholder)
+      .map((student) => [
+        String(student?.firstName || "").trim(),
+        String(student?.lastName || "").trim()
+      ].filter(Boolean).join(" "))
+      .filter(Boolean);
+  }
+
+  resetGroupPopulateSubmitButton() {
+    const button = this.refs.groupPopulateSubmit;
+    if (!button) {
+      return;
+    }
+    button.textContent = "Namen in Zwischenablage kopieren";
+    button.setAttribute("aria-label", "Namen in Zwischenablage kopieren");
+    button.title = "";
+  }
+
+  markGroupPopulateSubmitCopied() {
+    const button = this.refs.groupPopulateSubmit;
+    if (!button) {
+      return;
+    }
+    button.textContent = "✔️";
+    button.setAttribute("aria-label", "Namen in die Zwischenablage kopiert");
+    button.title = "Namen in die Zwischenablage kopiert";
+  }
+
+  async submitGroupPopulateDialog() {
+    const names = this.buildGroupPopulateNames();
+    if (!names.length) {
+      await this.showInfoMessage(
+        "Für diesen Kurs sind keine Teilnehmenden vorhanden.",
+        GROUP_POPULATE_BOOKMARKLET_NAME
+      );
+      return;
+    }
+    await this.writeClipboardText(names.join(";"));
+    this.markGroupPopulateSubmitCopied();
+  }
+
+  async submitGradeTransferDialog() {
+    const input = this.refs.gradeTransferFirstGradeField;
+    const parsedIndex = this.getGradeTransferFirstGradeFieldIndex();
+    this.gradeTransferDialogState = {
+      ...this.gradeTransferDialogState,
       firstGradeFieldIndex: parsedIndex
     };
     if (input) {
       input.value = String(parsedIndex);
     }
-    this.updateSchoolmanagerTransferBookmarkletCode();
-    const values = this.buildSchoolmanagerTransferColumnClipboardValues(this.schoolmanagerTransferDialogState);
+    this.updateGradeTransferBookmarkletCode();
+    const values = this.buildGradeTransferColumnClipboardValues(this.gradeTransferDialogState);
     await this.writeClipboardText(values.join(";"));
-    this.markSchoolmanagerTransferSubmitCopied();
+    this.markGradeTransferSubmitCopied();
   }
 
-  setSchoolmanagerTransferNameOrder(value) {
+  setGradeTransferNameOrder(value) {
     const nameOrder = normalizeGradeStudentNameOrder(value || "last");
-    this.schoolmanagerTransferDialogState = {
-      ...this.schoolmanagerTransferDialogState,
+    this.gradeTransferDialogState = {
+      ...this.gradeTransferDialogState,
       nameOrder
     };
-    this.syncSchoolmanagerTransferDialogControls();
-    this.resetSchoolmanagerTransferSubmitButton();
+    this.syncGradeTransferDialogControls();
+    this.resetGradeTransferSubmitButton();
   }
 
-  setSchoolmanagerTransferDisplaySystem(value) {
+  setGradeTransferDisplaySystem(value) {
     const displaySystem = normalizeGradeDisplaySystem(value);
-    this.schoolmanagerTransferDialogState = {
-      ...this.schoolmanagerTransferDialogState,
+    this.gradeTransferDialogState = {
+      ...this.gradeTransferDialogState,
       displaySystem
     };
-    this.syncSchoolmanagerTransferDialogControls();
-    this.resetSchoolmanagerTransferSubmitButton();
+    this.syncGradeTransferDialogControls();
+    this.resetGradeTransferSubmitButton();
   }
 
-  setSchoolmanagerTransferPredicateSuffixes(value) {
-    const state = this.schoolmanagerTransferDialogState || {};
+  setGradeTransferPredicateSuffixes(value) {
+    const state = this.gradeTransferDialogState || {};
     if (normalizeGradeDisplaySystem(state.displaySystem) !== GRADE_DISPLAY_SYSTEM_SCHOOL) {
-      this.syncSchoolmanagerTransferDialogControls();
+      this.syncGradeTransferDialogControls();
       return;
     }
-    this.schoolmanagerTransferDialogState = {
+    this.gradeTransferDialogState = {
       ...state,
       predicateSuffixes: String(value) !== "false"
     };
-    this.syncSchoolmanagerTransferDialogControls();
-    this.resetSchoolmanagerTransferSubmitButton();
+    this.syncGradeTransferDialogControls();
+    this.resetGradeTransferSubmitButton();
   }
 
-  syncSchoolmanagerTransferDialogControls() {
-    const state = this.schoolmanagerTransferDialogState || {};
+  syncGradeTransferDialogControls() {
+    const state = this.gradeTransferDialogState || {};
     const nameOrder = normalizeGradeStudentNameOrder(state.nameOrder || "last");
     const displaySystem = normalizeGradeDisplaySystem(state.displaySystem);
     const isSchoolDisplay = displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL;
     const predicateSuffixes = state.predicateSuffixes !== false;
 
-    this.refs.schoolmanagerTransferNameOrderInputs?.forEach((input) => {
+    this.refs.gradeTransferNameOrderInputs?.forEach((input) => {
       input.checked = normalizeGradeStudentNameOrder(input.value) === nameOrder;
     });
-    this.refs.schoolmanagerTransferDisplaySystemInputs?.forEach((input) => {
+    this.refs.gradeTransferDisplaySystemInputs?.forEach((input) => {
       input.checked = normalizeGradeDisplaySystem(input.value) === displaySystem;
     });
-    this.refs.schoolmanagerTransferPredicateSuffixInputs?.forEach((input) => {
+    this.refs.gradeTransferPredicateSuffixInputs?.forEach((input) => {
       input.disabled = !isSchoolDisplay;
       input.checked = (input.value !== "false") === predicateSuffixes;
     });
 
-    const input = this.refs.schoolmanagerTransferFirstGradeField;
+    const input = this.refs.gradeTransferFirstGradeField;
     if (input) {
       input.value = String(clamp(Math.round(Number(state.firstGradeFieldIndex || 7) || 7), 1, 99));
     }
-    this.updateSchoolmanagerTransferBookmarkletCode();
+    this.updateGradeTransferBookmarkletCode();
   }
 
-  getSchoolmanagerTransferFirstGradeFieldIndex() {
-    const input = this.refs.schoolmanagerTransferFirstGradeField;
+  getGradeTransferFirstGradeFieldIndex() {
+    const input = this.refs.gradeTransferFirstGradeField;
     return clamp(Math.round(Number(input?.value || 7) || 7), 1, 99);
   }
 
-  syncSchoolmanagerTransferFirstGradeFieldFromInput() {
-    this.schoolmanagerTransferDialogState = {
-      ...this.schoolmanagerTransferDialogState,
-      firstGradeFieldIndex: this.getSchoolmanagerTransferFirstGradeFieldIndex()
+  syncGradeTransferFirstGradeFieldFromInput() {
+    this.gradeTransferDialogState = {
+      ...this.gradeTransferDialogState,
+      firstGradeFieldIndex: this.getGradeTransferFirstGradeFieldIndex()
     };
-    this.updateSchoolmanagerTransferBookmarkletCode();
-    this.resetSchoolmanagerTransferSubmitButton();
+    this.updateGradeTransferBookmarkletCode();
+    this.resetGradeTransferSubmitButton();
   }
 
-  buildSchoolmanagerTransferTargetAdapterCode(startIndex) {
+  buildInputFieldTransferAdapterCode(startIndex) {
     return `async()=>{let all=[...document.querySelectorAll('input,textarea')].filter(e=>e.offsetParent&&!e.disabled&&!e.readOnly&&!['hidden','submit','button','checkbox','radio'].includes(e.type)),f=all.slice(${startIndex});if(!f.length)throw new Error('Diese Seite hat '+all.length+' ausfüllbare Eingabefelder, die ersten ${startIndex} sollen übersprungen werden. Es bleibt keines zum Befüllen übrig — vermutlich ist das nicht die Noteneingabe. Abgebrochen, es wurde nichts geändert.');let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),n=Math.min(v.length,f.length),m=(v.length===f.length?v.length+' Punktwerte nach Schulmanager übertragen?':'Anzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, Schulmanager zeigt '+f.length+' Eingabefelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?')+'\\n\\nZielseite: '+location.origin;if(!confirm(m))return;for(let i=0;i<n;i++){let e=f[i];e.value=v[i];e.dispatchEvent(new Event('input',{bubbles:true}));e.dispatchEvent(new Event('change',{bubbles:true}))}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
   }
 
-  buildAbiWebTransferTargetAdapterCode() {
-    return `async()=>{let f=[...document.querySelectorAll('${ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR}')];if(!f.length)throw new Error('Auf dieser Seite wurden keine AbiWeb-Notenfelder gefunden. Abgebrochen, es wurde nichts geändert.');let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),n=Math.min(v.length,f.length),m=(v.length===f.length?v.length+' Punktwerte nach AbiWeb übertragen?':'Anzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, AbiWeb zeigt '+f.length+' Notenfelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?')+'\\n\\nZielseite: '+location.origin;if(!confirm(m))return;let w=(p,m)=>new Promise((r,j)=>{if(p()){r();return}let o=new MutationObserver(()=>{if(p()){clearTimeout(t);o.disconnect();r()}}),t=setTimeout(()=>{o.disconnect();j(new Error(m))},5000);o.observe(document.documentElement,{childList:true,subtree:true})});for(let i=0;i<n;i++){f[i].click();await w(()=>document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geöffnet.');let p=document.querySelector('.points-selector-popup'),d=[...p.querySelectorAll('td')].find(e=>e.textContent.trim()===v[i]);if(!d)throw new Error('Punktwert '+v[i]+' für Eintrag '+(i+1)+' von '+n+' wurde im AbiWeb-Auswahlfenster nicht gefunden.');d.click();await w(()=>!document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geschlossen.')}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
+  buildPopupTableTransferAdapterCode() {
+    return `async()=>{let f=[...document.querySelectorAll('${POPUP_TABLE_GRADE_FIELD_SELECTOR}')];if(!f.length)throw new Error('Auf dieser Seite wurden keine AbiWeb-Notenfelder gefunden. Abgebrochen, es wurde nichts geändert.');let c=await navigator.clipboard.readText();if(!c.length)throw new Error('Die TeachHelper-Punkteliste ist leer.');let v=c.split(';'),n=Math.min(v.length,f.length),m=(v.length===f.length?v.length+' Punktwerte nach AbiWeb übertragen?':'Anzahl stimmt nicht überein: TeachHelper enthält '+v.length+' Werte, AbiWeb zeigt '+f.length+' Notenfelder. Nur '+n+' Punktwerte werden übertragen. Fortfahren?')+'\\n\\nZielseite: '+location.origin;if(!confirm(m))return;let w=(p,m)=>new Promise((r,j)=>{if(p()){r();return}let o=new MutationObserver(()=>{if(p()){clearTimeout(t);o.disconnect();r()}}),t=setTimeout(()=>{o.disconnect();j(new Error(m))},5000);o.observe(document.documentElement,{childList:true,subtree:true})});for(let i=0;i<n;i++){f[i].click();await w(()=>document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geöffnet.');let p=document.querySelector('.points-selector-popup'),d=[...p.querySelectorAll('td')].find(e=>e.textContent.trim()===v[i]);if(!d)throw new Error('Punktwert '+v[i]+' für Eintrag '+(i+1)+' von '+n+' wurde im AbiWeb-Auswahlfenster nicht gefunden.');d.click();await w(()=>!document.querySelector('.points-selector-popup'),'Das AbiWeb-Auswahlfenster für Eintrag '+(i+1)+' von '+n+' ('+v[i]+') wurde nicht innerhalb von 5 Sekunden geschlossen.')}if(n&&confirm('Clipboard nach erfolgreicher Übertragung leeren?'))await navigator.clipboard.writeText('')}`;
   }
 
-  buildSchoolmanagerTransferBookmarkletCode() {
+  buildGradeTransferBookmarkletCode() {
     const firstFieldIndex = clamp(
-      Math.round(Number(this.schoolmanagerTransferDialogState?.firstGradeFieldIndex || 7) || 7),
+      Math.round(Number(this.gradeTransferDialogState?.firstGradeFieldIndex || 7) || 7),
       1,
       99
     );
     const startIndex = Math.max(0, firstFieldIndex - 1);
-    const schoolmanagerAdapter = this.buildSchoolmanagerTransferTargetAdapterCode(startIndex);
-    const abiWebAdapter = this.buildAbiWebTransferTargetAdapterCode();
-    return `javascript:(async()=>{try{let a='${ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR}';if(document.querySelector(a))await(${abiWebAdapter})();else await(${schoolmanagerAdapter})()}catch(e){alert('Fehler: '+e.message)}})()`;
+    const inputFieldAdapter = this.buildInputFieldTransferAdapterCode(startIndex);
+    const popupTableAdapter = this.buildPopupTableTransferAdapterCode();
+    return `javascript:(async()=>{try{let a='${POPUP_TABLE_GRADE_FIELD_SELECTOR}';if(document.querySelector(a))await(${popupTableAdapter})();else await(${inputFieldAdapter})()}catch(e){alert('Fehler: '+e.message)}})()`;
   }
 
-  updateSchoolmanagerTransferBookmarkletCode() {
-    const code = this.buildSchoolmanagerTransferBookmarkletCode();
-    const link = this.refs.schoolmanagerTransferBookmarkletLink;
+  updateGradeTransferBookmarkletCode() {
+    const code = this.buildGradeTransferBookmarkletCode();
+    const link = this.refs.gradeTransferBookmarkletLink;
     if (link) {
       link.dataset.bookmarkletCode = code;
       link.setAttribute("href", code);
-      link.setAttribute("aria-label", `${SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
-      link.title = `${SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`;
+      link.setAttribute("aria-label", `${GRADE_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`);
+      link.title = `${GRADE_TRANSFER_BOOKMARKLET_NAME} in die Lesezeichenleiste ziehen`;
     }
   }
 
-  getSchoolmanagerTransferBookmarkletCode() {
-    return this.refs.schoolmanagerTransferBookmarkletLink?.dataset.bookmarkletCode
-      || this.buildSchoolmanagerTransferBookmarkletCode();
+  getGradeTransferBookmarkletCode() {
+    return this.refs.gradeTransferBookmarkletLink?.dataset.bookmarkletCode
+      || this.buildGradeTransferBookmarkletCode();
   }
 
-  async copySchoolmanagerTransferBookmarkletCode() {
-    const code = this.getSchoolmanagerTransferBookmarkletCode();
+  async copyGradeTransferBookmarkletCode() {
+    const code = this.getGradeTransferBookmarkletCode();
     if (!code) {
       return;
     }
 
     try {
       await navigator.clipboard.writeText(code);
-      await this.showInfoMessage("Bookmarklet-Code wurde in die Zwischenablage kopiert.", SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME);
+      await this.showInfoMessage("Bookmarklet-Code wurde in die Zwischenablage kopiert.", GRADE_TRANSFER_BOOKMARKLET_NAME);
     } catch (_error) {
-      await this.showInfoMessage("Bookmarklet-Code konnte nicht automatisch kopiert werden.", SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME);
+      await this.showInfoMessage("Bookmarklet-Code konnte nicht automatisch kopiert werden.", GRADE_TRANSFER_BOOKMARKLET_NAME);
     }
   }
 
-  resetSchoolmanagerTransferSubmitButton() {
-    const button = this.refs.schoolmanagerTransferSubmit;
+  resetGradeTransferSubmitButton() {
+    const button = this.refs.gradeTransferSubmit;
     if (!button) {
       return;
     }
@@ -6324,8 +6371,8 @@ class GradesApp {
     button.title = "";
   }
 
-  markSchoolmanagerTransferSubmitCopied() {
-    const button = this.refs.schoolmanagerTransferSubmit;
+  markGradeTransferSubmitCopied() {
+    const button = this.refs.gradeTransferSubmit;
     if (!button) {
       return;
     }
@@ -6334,7 +6381,7 @@ class GradesApp {
     button.title = "Noten in die Zwischenablage kopiert";
   }
 
-  getSchoolmanagerTransferCourse() {
+  getGradeTransferCourse() {
     const year = this.activeSchoolYear;
     const courseId = Number(this.selectedCourseId || 0);
     if (!year || !courseId) {
@@ -6346,7 +6393,7 @@ class GradesApp {
     )) || null;
   }
 
-  resolveSchoolmanagerTransferColumn(course, columnKey) {
+  resolveGradeTransferColumn(course, columnKey) {
     const normalizedKey = String(columnKey || "").trim();
     if (!course || !normalizedKey) {
       return null;
@@ -6365,7 +6412,7 @@ class GradesApp {
     return model.columns.find((column) => this.getGradesOverviewColumnKey(column) === normalizedKey) || null;
   }
 
-  formatSchoolmanagerTransferGradeValue(value, state = {}) {
+  formatGradeTransferGradeValue(value, state = {}) {
     if (getRoundedGradeDisplayValue(value) === null) {
       return "";
     }
@@ -6375,30 +6422,30 @@ class GradesApp {
     return formatGradeDisplayForSystem(value, displaySystem, { predicateSuffixes });
   }
 
-  getSchoolmanagerTransferCellValue(course, student, column, state = {}) {
+  getGradeTransferCellValue(course, student, column, state = {}) {
     if (!course || !student || !column) {
       return "";
     }
     if (column.type === "total") {
-      return this.formatSchoolmanagerTransferGradeValue(
+      return this.formatGradeTransferGradeValue(
         this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year"),
         state
       );
     }
     if (column.type === "period-total") {
-      return this.formatSchoolmanagerTransferGradeValue(
+      return this.formatGradeTransferGradeValue(
         this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period),
         state
       );
     }
     if (column.type === "category-collapsed" || column.type === "category-partial") {
-      return this.formatSchoolmanagerTransferGradeValue(
+      return this.formatGradeTransferGradeValue(
         this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
         state
       );
     }
     if (column.type === "subcategory-collapsed" || column.type === "subcategory-partial") {
-      return this.formatSchoolmanagerTransferGradeValue(
+      return this.formatGradeTransferGradeValue(
         this.store.calculateGradeForStudentInSubcategoryPeriod(
           student.id,
           course.id,
@@ -6425,21 +6472,21 @@ class GradesApp {
       if (this.isHomeworkAssessment(column.assessment)) {
         return entry?.checked === true ? "fehlt" : "";
       }
-      return this.formatSchoolmanagerTransferGradeValue(entry && entry.value !== null ? entry.value : null, state);
+      return this.formatGradeTransferGradeValue(entry && entry.value !== null ? entry.value : null, state);
     }
     return "";
   }
 
-  buildSchoolmanagerTransferColumnClipboardValues(state = {}) {
-    const course = this.getSchoolmanagerTransferCourse();
-    const column = this.resolveSchoolmanagerTransferColumn(course, state.transferColumnKey);
+  buildGradeTransferColumnClipboardValues(state = {}) {
+    const course = this.getGradeTransferCourse();
+    const column = this.resolveGradeTransferColumn(course, state.transferColumnKey);
     if (!course || !column || !this.canAccessGradeVault() || !this.isGradeCourseLoaded(course.id)) {
       return [];
     }
     return this
       .getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(course.id), state.nameOrder || "last")
       .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0)
-      .map((student) => this.getSchoolmanagerTransferCellValue(course, student, column, state));
+      .map((student) => this.getGradeTransferCellValue(course, student, column, state));
   }
 
   _courseDialogExistingColors(excludeCourseId = null) {
@@ -6832,43 +6879,6 @@ class GradesApp {
     return card;
   }
 
-  getCourseStudentsDialogSignature() {
-    const draft = this.courseDialogDraft;
-    const students = Array.isArray(draft?.students) ? draft.students : [];
-    return JSON.stringify({
-      students: students.map((student) => ({
-        id: Number(student?.id || 0),
-        lastName: String(student?.lastName || ""),
-        firstName: String(student?.firstName || ""),
-        rufname: String(student?.rufname || ""),
-        performanceFlair: normalizeGradePerformanceFlair(student?.performanceFlair),
-        portrait: normalizeGradeStudentPortrait(student?.portrait)
-      })),
-      importMeta: draft?.importMeta || null,
-      confirmedRemovedStudentIds: [...(draft?.confirmedRemovedStudentIds || [])]
-        .map((studentId) => Number(studentId) || 0)
-        .filter((studentId) => studentId > 0)
-        .sort((left, right) => left - right)
-    });
-  }
-
-  isCourseStudentsDialogPristine() {
-    return Boolean(this.courseDialogDraft)
-      && this.courseStudentsDialogInitialSignature === this.getCourseStudentsDialogSignature();
-  }
-
-  updateCourseStudentsIservPopulateButton() {
-    const button = this.refs.courseStudentsIservPopulate;
-    if (!button) {
-      return;
-    }
-    const pristine = this.isCourseStudentsDialogPristine();
-    button.disabled = !pristine;
-    button.title = pristine
-      ? "IServ-Gruppe bevölkern"
-      : "Bitte Teilnehmendenliste zuerst speichern oder Änderungen verwerfen";
-  }
-
   renderCourseDialogStudents() {
     if (!this.refs.courseDialogStudentsList || !this.courseDialogDraft) {
       return;
@@ -6893,9 +6903,8 @@ class GradesApp {
       this.refs.courseStudentsDialogTitle.textContent = "Teilnehmende verwalten";
     }
     if (this.refs.courseStudentsDialogStepTitle) {
-      this.refs.courseStudentsDialogStepTitle.textContent = `3. Verwalte die Teilnehmenden (Anzahl: ${participantCount})`;
+      this.refs.courseStudentsDialogStepTitle.textContent = `2. Teilnehmendenverwaltung (Anzahl: ${participantCount})`;
     }
-    this.updateCourseStudentsIservPopulateButton();
     this.refs.courseDialogStudentsList.innerHTML = "";
     if (students.length > 0) {
       students.forEach((student, index) => {
@@ -7186,7 +7195,6 @@ class GradesApp {
       input.value = student[field];
       input.classList.toggle("has-flair", Boolean(student[field]));
     }
-    this.updateCourseStudentsIservPopulateButton();
   }
 
   async handleCourseDialogStudentListClick(event) {
@@ -8576,7 +8584,6 @@ class GradesApp {
     }
     this.learnerSearchStudentFocusId = Number(options?.studentId || 0);
     this.refs.courseStudentsDialogId.value = String(course.id);
-    this.courseStudentsDialogInitialSignature = this.getCourseStudentsDialogSignature();
     this.resetCourseDialogRosterImport();
     this.renderCourseDialogStudents();
     this.openDialog(this.refs.courseStudentsDialog);
@@ -8592,9 +8599,8 @@ class GradesApp {
 
   closeCourseStudentsDialog() {
     this.courseOcrDialog?.close();
-    this.courseStudentsDialogInitialSignature = "";
     this.resetCourseDialogRosterImport();
-    this.closeIservGroupPopulateDialog();
+    this.closeGroupPopulateDialog();
     this.courseDialogDraft = null;
     this.learnerSearchStudentFocusId = 0;
     this.closeGroupPhotoExtractionDialog();
@@ -11684,7 +11690,16 @@ class GradesApp {
           openDialog: (dialog) => this.openDialog(dialog),
           closeDialog: (dialog) => this.closeDialog(dialog),
           onImported: ({ added, skipped }) => {
-            void this.showInfoMessage(`${added} Teilnehmende hinzugefügt. ${skipped} bereits vorhandene Namen übersprungen. Speichere anschließend den Teilnehmendendialog.`);
+            const addedLabel = added === 1 ? "Name" : "Namen";
+            const skippedLabel = skipped === 1 ? "Name" : "Namen";
+            void this.showInfoMessage([
+              `${added} ${addedLabel} hinzugefügt.`,
+              `${skipped} bereits vorhandene ${skippedLabel} übersprungen.`,
+              "",
+              "Neue Daten werden erst fest übernommen, wenn im folgenden Verwaltungsdialog gespeichert wird.",
+              "",
+              "Tipp: Überprüfen der Schreibweisen mit dem Tool „IServ-Gruppe bevölkern“"
+            ].join("\n"), ROSTER_OCR_IMPORT_DIALOG_TITLE);
           }
         });
       }
@@ -11699,10 +11714,6 @@ class GradesApp {
       this.syncSegmentControlSlideStates(ocrDialog);
     });
 
-    this.refs.courseDialogStudentsTemplate?.addEventListener("click", (event) => {
-      event.preventDefault();
-      this.downloadGradeCsvTemplate();
-    });
     this.refs.courseDialogStudentsAdd?.addEventListener("click", () => {
       this.addCourseDialogStudentDraft();
     });
@@ -12039,62 +12050,66 @@ class GradesApp {
       });
     }
 
-    this.refs.schoolmanagerTransferDialogForm?.addEventListener("submit", async (event) => {
+    this.refs.gradeTransferDialogForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      await this.submitSchoolmanagerTransferDialog();
+      await this.submitGradeTransferDialog();
     });
-    this.refs.schoolmanagerTransferDialogCancel?.addEventListener("click", () => {
-      this.closeSchoolmanagerTransferDialog();
+    this.refs.gradeTransferDialogCancel?.addEventListener("click", () => {
+      this.closeGradeTransferDialog();
     });
-    this.refs.schoolmanagerTransferDialog?.addEventListener("cancel", (event) => {
+    this.refs.gradeTransferDialog?.addEventListener("cancel", (event) => {
       event.preventDefault();
-      this.closeSchoolmanagerTransferDialog();
+      this.closeGradeTransferDialog();
     });
-    this.refs.schoolmanagerTransferNameOrderInputs?.forEach((input) => {
+    this.refs.gradeTransferNameOrderInputs?.forEach((input) => {
       input.addEventListener("change", () => {
         if (input.checked) {
-          this.setSchoolmanagerTransferNameOrder(input.value);
+          this.setGradeTransferNameOrder(input.value);
         }
       });
     });
-    this.refs.schoolmanagerTransferDisplaySystemInputs?.forEach((input) => {
+    this.refs.gradeTransferDisplaySystemInputs?.forEach((input) => {
       input.addEventListener("change", () => {
         if (input.checked) {
-          this.setSchoolmanagerTransferDisplaySystem(input.value);
+          this.setGradeTransferDisplaySystem(input.value);
         }
       });
     });
-    this.refs.schoolmanagerTransferPredicateSuffixInputs?.forEach((input) => {
+    this.refs.gradeTransferPredicateSuffixInputs?.forEach((input) => {
       input.addEventListener("change", () => {
         if (input.checked) {
-          this.setSchoolmanagerTransferPredicateSuffixes(input.value);
+          this.setGradeTransferPredicateSuffixes(input.value);
         }
       });
     });
-    this.refs.schoolmanagerTransferFirstGradeField?.addEventListener("input", () => {
-      this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
+    this.refs.gradeTransferFirstGradeField?.addEventListener("input", () => {
+      this.syncGradeTransferFirstGradeFieldFromInput();
     });
-    this.refs.schoolmanagerTransferFirstGradeField?.addEventListener("change", () => {
-      this.syncSchoolmanagerTransferFirstGradeFieldFromInput();
+    this.refs.gradeTransferFirstGradeField?.addEventListener("change", () => {
+      this.syncGradeTransferFirstGradeFieldFromInput();
     });
-    this.refs.schoolmanagerTransferBookmarkletLink?.addEventListener("click", (event) => {
+    this.refs.gradeTransferBookmarkletLink?.addEventListener("click", (event) => {
       event.preventDefault();
-      this.copySchoolmanagerTransferBookmarkletCode();
+      this.copyGradeTransferBookmarkletCode();
     });
 
-    this.refs.courseStudentsIservPopulate?.addEventListener("click", () => {
-      this.openIservGroupPopulateDialog();
+    this.refs.courseStudentsGroupPopulate?.addEventListener("click", () => {
+      this.openGroupPopulateDialog();
     });
-    this.refs.iservGroupPopulateDialogCancel?.addEventListener("click", () => {
-      this.closeIservGroupPopulateDialog();
-    });
-    this.refs.iservGroupPopulateDialog?.addEventListener("cancel", (event) => {
+    this.refs.groupPopulateDialogForm?.addEventListener("submit", async (event) => {
       event.preventDefault();
-      this.closeIservGroupPopulateDialog();
+      await this.submitGroupPopulateDialog();
     });
-    this.refs.iservGroupPopulateBookmarkletLink?.addEventListener("click", (event) => {
+    this.refs.groupPopulateDialogCancel?.addEventListener("click", () => {
+      this.closeGroupPopulateDialog();
+    });
+    this.refs.groupPopulateDialog?.addEventListener("cancel", (event) => {
       event.preventDefault();
-      this.copyIservGroupPopulateBookmarkletCode();
+      this.closeGroupPopulateDialog();
+    });
+    this.refs.groupPopulateBookmarkletLink?.addEventListener("click", (event) => {
+      event.preventDefault();
+      this.copyGroupPopulateBookmarkletCode();
     });
 
 
@@ -13229,16 +13244,16 @@ class GradesApp {
     const assessment = assessmentCandidate && Number(assessmentCandidate.courseId || 0) === courseId
       ? assessmentCandidate
       : null;
-    const disableSchoolmanagerTransfer = !transferColumnKey
+    const disableGradeTransfer = !transferColumnKey
       || (assessmentId > 0 && !assessment)
       || transferColumnKey.startsWith("homework:")
       || this.isHomeworkAssessment(assessment);
     const items = [
       {
         label: "In Schulmanager/AbiWeb übertragen",
-        disabled: disableSchoolmanagerTransfer,
+        disabled: disableGradeTransfer,
         handler: () => {
-          this.openSchoolmanagerTransferDialog({ transferColumnKey });
+          this.openGradeTransferDialog({ transferColumnKey });
         }
       }
     ];
@@ -26889,9 +26904,6 @@ class GradesApp {
     }
     input.classList.remove("invalid");
     input.value = parsed.value === null ? "" : this.formatCurrentGradeInput(parsed.value);
-    // Nur eine echte Note hebt die Auslassen-Markierung auf. Ein leerer Wert darf sie
-    // nicht anfassen: nach dem Auslassen läuft der Blur des Feldes genau hier durch
-    // und würde die gerade gesetzte Markierung sofort wieder löschen.
     if (parsed.value !== null) {
       this.clearGradeEntrySkipped(assessmentId, studentId, courseId);
     }
@@ -27357,8 +27369,6 @@ class GradesApp {
     if (assessment) {
       return `a${assessment}:${student}`;
     }
-    // Entwurfszeilen einer noch nicht angelegten Einzelleistung haben keine
-    // assessmentId; dort bindet der Kurs die Markierung an den Durchgang.
     const course = Number(courseId || 0);
     return course ? `c${course}:${student}` : "";
   }
@@ -27728,7 +27738,7 @@ class GradesApp {
 
   getSegmentControlSelector() {
     return [
-      ".schoolmanager-transfer-segment-control",
+      ".grade-transfer-segment-control",
       ".sidebar-grade-segment-control",
       ".assessment-mode-toggle",
       ".grades-entry-distribution-toggle",

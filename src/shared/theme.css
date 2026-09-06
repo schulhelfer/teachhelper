@@ -277,6 +277,7 @@
   --focus-outline: rgba(0, 122, 255, 0.84);
   --highlight-neutral: rgba(60, 60, 67, 0.66);
   --highlight-neutral-soft: rgba(60, 60, 67, 0.1);
+  --help-mark-bg: rgba(250, 204, 21, 0.45);
   --module-surface: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(242, 242, 247, 0.7));
   --module-surface-strong: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(242, 242, 247, 0.82));
   --module-surface-border: rgba(60, 60, 67, 0.32);

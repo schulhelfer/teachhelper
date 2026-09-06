@@ -30,8 +30,6 @@ test('existing grades do not replace handling every student during the current p
     source,
     /function isCourseGradeStudentDone\(studentId\) \{[\s\S]*?if \(isCourseGradeOccurrenceMode\(\)\) \{[\s\S]*?return isCourseGradeStudentChecked\(sid\);[\s\S]*?\}\s+return Boolean\(state\.courseGradeHandledStudentIds\?\.has\(sid\)\);/,
   );
-  // Merely opening the picker - e.g. by clicking a student out of order - must not
-  // count as handled, otherwise the counter and the save prompt overstate the pass.
   assert.match(
     source,
     /function openCourseGradePicker\(input\) \{[\s\S]*?if \(!studentId\) return;\n\s*selectStudentForCourseGrade\(studentId\);/,

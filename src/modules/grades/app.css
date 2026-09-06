@@ -529,7 +529,6 @@
 
         #course-dialog .dialog-actions,
         #course-color-dialog .dialog-actions,
-        #course-students-dialog .dialog-actions,
         #course-structure-dialog .dialog-actions {
           display: flex;
           flex-wrap: wrap;
@@ -539,18 +538,8 @@
 
         #course-dialog .dialog-actions>button,
         #course-color-dialog .dialog-actions>button,
-        #course-students-dialog .dialog-actions>button,
         #course-structure-dialog .dialog-actions>button {
           min-width: 140px;
-        }
-
-        #course-students-dialog .dialog-actions {
-          justify-content: space-between;
-          align-items: flex-end;
-        }
-
-        #course-students-dialog #course-students-dialog-cancel {
-          margin-right: auto;
         }
 
         #course-dialog .dialog-actions {
@@ -613,36 +602,26 @@
           max-width: 440px;
         }
 
-        #schoolmanager-transfer-dialog.app-dialog {
+        #grade-transfer-dialog.app-dialog {
           width: min(620px, calc(100vw - 24px));
           max-width: 620px;
         }
 
-        #iserv-group-populate-dialog.app-dialog {
+        #group-populate-dialog.app-dialog {
           width: min(620px, calc(100vw - 24px));
           max-width: 620px;
         }
 
-        .course-students-import-step {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-        }
-
-        .course-students-import-step .dialog-icon-button {
-          flex: 0 0 auto;
-        }
-
-        .schoolmanager-transfer-form {
+        .grade-transfer-form {
           gap: 1rem;
         }
 
-        .schoolmanager-transfer-steps {
+        .grade-transfer-steps {
           display: grid;
           gap: 1rem;
         }
 
-        .schoolmanager-transfer-setup {
+        .grade-transfer-setup {
           display: grid;
           gap: 0.72rem;
           margin: 0;
@@ -654,7 +633,7 @@
           box-shadow: var(--shadow-inset);
         }
 
-        .schoolmanager-transfer-setup-title {
+        .grade-transfer-setup-title {
           margin: 0;
           color: var(--text-secondary);
           font-size: 0.76rem;
@@ -664,7 +643,7 @@
           text-transform: uppercase;
         }
 
-        .schoolmanager-transfer-step {
+        .grade-transfer-step {
           display: grid;
           gap: 0.48rem;
           margin: 0;
@@ -672,14 +651,14 @@
           min-width: 0;
         }
 
-        .schoolmanager-transfer-step p {
+        .grade-transfer-step p {
           margin: 0;
           color: var(--text-strong);
           font-size: 0.92rem;
           line-height: 1.35;
         }
 
-        .schoolmanager-transfer-warning {
+        .grade-transfer-warning {
           margin: 0.45rem 0 0;
           color: #f87171;
           font-size: 0.92rem;
@@ -688,7 +667,7 @@
           text-align: center;
         }
 
-        .schoolmanager-transfer-segment-control {
+        .grade-transfer-segment-control {
           position: relative;
           isolation: isolate;
           contain: layout paint;
@@ -713,7 +692,7 @@
           overflow: hidden;
         }
 
-        .schoolmanager-transfer-segment-option {
+        .grade-transfer-segment-option {
           position: relative;
           display: block;
           min-width: 0;
@@ -721,7 +700,7 @@
           cursor: pointer;
         }
 
-        .schoolmanager-transfer-segment-option input {
+        .grade-transfer-segment-option input {
           appearance: none;
           -webkit-appearance: none;
           position: absolute;
@@ -739,15 +718,15 @@
           pointer-events: none;
         }
 
-        .schoolmanager-transfer-segment-option input:focus,
-        .schoolmanager-transfer-segment-option input:focus-visible {
+        .grade-transfer-segment-option input:focus,
+        .grade-transfer-segment-option input:focus-visible {
           outline: none;
           background: transparent;
           border-color: transparent;
           box-shadow: none;
         }
 
-        .schoolmanager-transfer-segment-option span {
+        .grade-transfer-segment-option span {
           position: relative;
           z-index: 1;
           display: flex;
@@ -768,8 +747,8 @@
             box-shadow 0.18s ease;
         }
 
-        .schoolmanager-transfer-segment-option:hover input:not(:disabled)+span,
-        .schoolmanager-transfer-segment-option input:focus-visible+span {
+        .grade-transfer-segment-option:hover input:not(:disabled)+span,
+        .grade-transfer-segment-option input:focus-visible+span {
           color: #ffffff;
           background:
             linear-gradient(180deg, rgba(248, 250, 252, 0.12), rgba(148, 163, 184, 0.08)),
@@ -777,7 +756,7 @@
           box-shadow: inset 0 0 0 1px rgba(226, 232, 240, 0.12);
         }
 
-        .schoolmanager-transfer-segment-option input:checked+span {
+        .grade-transfer-segment-option input:checked+span {
           background:
             linear-gradient(180deg, rgba(255, 255, 255, 0.34), rgba(203, 213, 225, 0.16) 46%, rgba(71, 85, 105, 0.2)),
             rgba(148, 163, 184, 0.3);
@@ -789,14 +768,14 @@
             0 8px 18px rgba(2, 6, 23, 0.2);
         }
 
-        .schoolmanager-transfer-segment-option input:disabled+span {
+        .grade-transfer-segment-option input:disabled+span {
           color: rgba(148, 163, 184, 0.54);
           cursor: not-allowed;
           opacity: 0.72;
         }
 
-        @supports selector(.schoolmanager-transfer-segment-control:has(input:checked)) {
-          .schoolmanager-transfer-segment-control::before {
+        @supports selector(.grade-transfer-segment-control:has(input:checked)) {
+          .grade-transfer-segment-control::before {
             content: "";
             position: absolute;
             box-sizing: border-box;
@@ -821,7 +800,7 @@
               background-color 220ms ease;
           }
 
-          .schoolmanager-transfer-segment-control::after {
+          .grade-transfer-segment-control::after {
             content: "";
             position: absolute;
             z-index: 0;
@@ -840,32 +819,32 @@
             pointer-events: none;
           }
 
-          .schoolmanager-transfer-segment-control:has(.schoolmanager-transfer-segment-option:nth-of-type(2) input:checked)::before {
+          .grade-transfer-segment-control:has(.grade-transfer-segment-option:nth-of-type(2) input:checked)::before {
             transform: translateX(calc(100% + 0.28rem));
           }
 
-          .schoolmanager-transfer-segment-control:has(.schoolmanager-transfer-segment-option:nth-of-type(2) input:checked)::after {
+          .grade-transfer-segment-control:has(.grade-transfer-segment-option:nth-of-type(2) input:checked)::after {
             transform: translateX(calc(100% + 0.28rem)) scaleX(0.92);
             opacity: 0.42;
           }
 
-          .schoolmanager-transfer-segment-option input:checked+span {
+          .grade-transfer-segment-option input:checked+span {
             background: transparent;
             box-shadow: none;
           }
         }
 
-        .schoolmanager-transfer-number-row>span {
+        .grade-transfer-number-row>span {
           color: var(--text-strong);
           font-size: 0.92rem;
           line-height: 1.35;
         }
 
-        .schoolmanager-transfer-number-row input {
+        .grade-transfer-number-row input {
           width: 7rem;
         }
 
-        .schoolmanager-transfer-bookmarklet-actions {
+        .grade-transfer-bookmarklet-actions {
           margin: 0;
           padding-left: 2.2rem;
           color: var(--text-strong);
@@ -875,17 +854,17 @@
           text-align: left;
         }
 
-        .schoolmanager-transfer-bookmarklet-actions li+li {
+        .grade-transfer-bookmarklet-actions li+li {
           margin-top: 0.42rem;
         }
 
-        .schoolmanager-transfer-bookmarklet-link-row {
+        .grade-transfer-bookmarklet-link-row {
           display: flex;
           justify-content: center;
           width: 100%;
         }
 
-        .schoolmanager-transfer-bookmarklet-link {
+        .grade-transfer-bookmarklet-link {
           display: inline-flex;
           align-items: center;
           justify-content: center;
@@ -907,29 +886,29 @@
           white-space: nowrap;
         }
 
-        .schoolmanager-transfer-bookmarklet-link:hover,
-        .schoolmanager-transfer-bookmarklet-link:focus-visible {
+        .grade-transfer-bookmarklet-link:hover,
+        .grade-transfer-bookmarklet-link:focus-visible {
           border-color: rgba(147, 197, 253, 0.84);
           background: rgba(37, 99, 235, 0.3);
           color: #fff;
           outline: none;
         }
 
-        .schoolmanager-transfer-bookmarklet-link:active {
+        .grade-transfer-bookmarklet-link:active {
           cursor: grabbing;
         }
 
-        .schoolmanager-transfer-bookmarklet-link::before {
+        .grade-transfer-bookmarklet-link::before {
           content: "🎓";
           font-size: 1.35rem;
           line-height: 1;
         }
 
-        .iserv-group-populate-bookmarklet-link::before {
+        .group-populate-bookmarklet-link::before {
           display: none;
         }
 
-        .schoolmanager-transfer-dialog .dialog-actions {
+        .grade-transfer-dialog .dialog-actions {
           justify-content: center;
         }
 
@@ -5355,13 +5334,13 @@
 
         @media (prefers-reduced-motion: reduce) {
 
-          .schoolmanager-transfer-segment-control::before,
-          .schoolmanager-transfer-segment-control::after,
+          .grade-transfer-segment-control::before,
+          .grade-transfer-segment-control::after,
           .sidebar-grade-segment-control::before,
           .sidebar-grade-segment-control::after,
           .course-dialog-structure-period-toggle::before,
           .course-dialog-structure-period-toggle::after,
-          .schoolmanager-transfer-segment-option span,
+          .grade-transfer-segment-option span,
           .sidebar-grade-segment-option span,
           .course-dialog-structure-period-option span,
           .grades-entry-distribution-overlay,
@@ -8643,8 +8622,40 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .course-students-import-col {
+          display: grid;
+          grid-template-rows: auto 1fr;
+          gap: 0.35rem;
+          min-width: 0;
+          height: 100%;
+          text-align: center;
+        }
+
+        .course-students-import-col[data-import-source="group-list"] {
+          grid-template-rows: auto auto 1fr;
+        }
+
+        #course-students-dialog p:has(> #course-students-dialog-step-title) {
+          margin-top: 0.9rem;
+        }
+
+        .course-students-import-col-title {
+          margin: 0;
+          font-size: 0.9rem;
+          font-weight: 700;
+        }
+
+        .course-students-source-path {
+          margin: 0;
+          font-size: 0.8rem;
+          line-height: 1.25;
+          color: var(--muted);
+          text-align: center;
+        }
+
         .course-students-import-row .course-dialog-dropzone {
           display: flex;
+          min-height: 58px;
           align-items: center;
           justify-content: center;
         }
@@ -8663,7 +8674,7 @@
           overflow: auto;
         }
 
-        .course-students-import-row.roster-import-unavailable .course-dialog-roster-import {
+        .course-students-import-row.roster-import-unavailable .course-students-import-col[data-import-source="courses"] {
           display: none;
         }
 
@@ -8735,19 +8746,17 @@
           margin-top: 0.15rem;
         }
 
-        #course-students-dialog .course-dialog-students-manual-row #course-dialog-group-photo-open {
-          grid-column: 1;
-          justify-self: start;
-        }
-
         #course-students-dialog .course-dialog-students-manual-row #course-dialog-students-add {
           grid-column: 2;
           justify-self: center;
         }
 
-        #course-students-dialog .course-dialog-students-manual-row #course-dialog-portrait-import {
-          grid-column: 3;
-          justify-self: end;
+        #course-students-dialog .course-dialog-students-portrait-row {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.4rem;
+          justify-content: space-between;
+          align-items: center;
         }
 
         .course-group-photo-dialog {
@@ -9610,7 +9619,7 @@
           line-height: 1;
         }
 
-        .schoolmanager-transfer-segment-control,
+        .grade-transfer-segment-control,
         .sidebar-grade-segment-control,
         .assessment-mode-toggle,
         .grades-entry-distribution-toggle,
@@ -9687,7 +9696,7 @@
           box-shadow: none;
         }
 
-        .schoolmanager-transfer-segment-option span,
+        .grade-transfer-segment-option span,
         .sidebar-grade-segment-option span,
         .assessment-mode-option span,
         .grades-entry-distribution-option span,
@@ -9723,8 +9732,8 @@
           box-shadow: none;
         }
 
-        .schoolmanager-transfer-segment-option:hover input:not(:disabled)+span,
-        .schoolmanager-transfer-segment-option input:focus-visible+span,
+        .grade-transfer-segment-option:hover input:not(:disabled)+span,
+        .grade-transfer-segment-option input:focus-visible+span,
         .sidebar-grade-segment-option:hover input:not(:disabled)+span,
         .sidebar-grade-segment-option input:focus-visible+span,
         .assessment-mode-option:hover span,
@@ -9739,7 +9748,7 @@
           box-shadow: var(--shadow-segment-hover);
         }
 
-        .schoolmanager-transfer-segment-option input:checked+span,
+        .grade-transfer-segment-option input:checked+span,
         .sidebar-grade-segment-option input:checked+span,
         .assessment-mode-option input:checked+span,
         .grades-entry-distribution-option input:checked+span,
@@ -9750,7 +9759,7 @@
           box-shadow: var(--shadow-segment-active);
         }
 
-        .schoolmanager-transfer-segment-option input:disabled+span,
+        .grade-transfer-segment-option input:disabled+span,
         .sidebar-grade-segment-option input:disabled+span,
         .assessment-mode-option input:disabled+span,
         .grades-entry-distribution-option input:disabled+span,
@@ -9762,7 +9771,7 @@
 
         @supports selector(.assessment-mode-toggle:has(input:checked)) {
 
-          .schoolmanager-transfer-segment-control::before,
+          .grade-transfer-segment-control::before,
           .sidebar-grade-segment-control::before,
           .assessment-mode-toggle::before,
           .course-dialog-structure-period-toggle::before {
@@ -9791,7 +9800,7 @@
             border-color: transparent;
           }
 
-          .schoolmanager-transfer-segment-control::after,
+          .grade-transfer-segment-control::after,
           .sidebar-grade-segment-control::after,
           .assessment-mode-toggle::after,
           .course-dialog-structure-period-toggle::after {
@@ -9803,14 +9812,14 @@
             pointer-events: none;
           }
 
-          .schoolmanager-transfer-segment-control:has(.schoolmanager-transfer-segment-option:nth-of-type(2) input:checked)::before,
+          .grade-transfer-segment-control:has(.grade-transfer-segment-option:nth-of-type(2) input:checked)::before,
           .sidebar-grade-segment-control:has(.sidebar-grade-segment-option:nth-of-type(2) input:checked)::before,
           .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
           .course-dialog-structure-period-toggle:has(.course-dialog-structure-period-option:nth-of-type(2) input:checked)::before {
             transform: translateX(calc(100% + var(--liquid-segment-gap)));
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-index-0::before,
+          .grade-transfer-segment-control.is-segment-index-0::before,
           .sidebar-grade-segment-control.is-segment-index-0::before,
           .assessment-mode-toggle.is-segment-index-0::before,
           .grades-entry-distribution-toggle.is-segment-index-0::before,
@@ -9818,7 +9827,7 @@
             transform: translateX(0) !important;
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-index-1::before,
+          .grade-transfer-segment-control.is-segment-index-1::before,
           .sidebar-grade-segment-control.is-segment-index-1::before,
           .assessment-mode-toggle.is-segment-index-1::before,
           .grades-entry-distribution-toggle.is-segment-index-1::before,
@@ -9826,7 +9835,7 @@
             transform: translateX(calc(100% + var(--liquid-segment-gap))) !important;
           }
 
-          .schoolmanager-transfer-segment-control:has(.schoolmanager-transfer-segment-option:nth-of-type(2) input:checked)::after,
+          .grade-transfer-segment-control:has(.grade-transfer-segment-option:nth-of-type(2) input:checked)::after,
           .sidebar-grade-segment-control:has(.sidebar-grade-segment-option:nth-of-type(2) input:checked)::after,
           .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after,
           .course-dialog-structure-period-toggle:has(.course-dialog-structure-period-option:nth-of-type(2) input:checked)::after {
@@ -9834,7 +9843,7 @@
             opacity: 0.34;
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-index-0::after,
+          .grade-transfer-segment-control.is-segment-index-0::after,
           .sidebar-grade-segment-control.is-segment-index-0::after,
           .assessment-mode-toggle.is-segment-index-0::after,
           .grades-entry-distribution-toggle.is-segment-index-0::after,
@@ -9842,7 +9851,7 @@
             transform: translateX(0) scaleX(0.72) !important;
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-index-1::after,
+          .grade-transfer-segment-control.is-segment-index-1::after,
           .sidebar-grade-segment-control.is-segment-index-1::after,
           .assessment-mode-toggle.is-segment-index-1::after,
           .grades-entry-distribution-toggle.is-segment-index-1::after,
@@ -9858,8 +9867,8 @@
             transform: translateX(var(--liquid-segment-step-2)) !important;
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-syncing::before,
-          .schoolmanager-transfer-segment-control.is-segment-syncing::after,
+          .grade-transfer-segment-control.is-segment-syncing::before,
+          .grade-transfer-segment-control.is-segment-syncing::after,
           .sidebar-grade-segment-control.is-segment-syncing::before,
           .sidebar-grade-segment-control.is-segment-syncing::after,
           .assessment-mode-toggle.is-segment-syncing::before,
@@ -9880,7 +9889,7 @@
             transform: translateX(var(--liquid-segment-step-2)) scaleX(0.92) !important;
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-positioned::before,
+          .grade-transfer-segment-control.is-segment-positioned::before,
           .sidebar-grade-segment-control.is-segment-positioned::before,
           .assessment-mode-toggle.is-segment-positioned::before,
           .grades-entry-distribution-toggle.is-segment-positioned::before,
@@ -9888,7 +9897,7 @@
             transform: var(--segment-control-indicator-transform) !important;
           }
 
-          .schoolmanager-transfer-segment-control.is-segment-positioned::after,
+          .grade-transfer-segment-control.is-segment-positioned::after,
           .sidebar-grade-segment-control.is-segment-positioned::after,
           .assessment-mode-toggle.is-segment-positioned::after,
           .grades-entry-distribution-toggle.is-segment-positioned::after,
@@ -9896,7 +9905,7 @@
             transform: var(--segment-control-glint-transform) !important;
           }
 
-          .schoolmanager-transfer-segment-option input:checked+span,
+          .grade-transfer-segment-option input:checked+span,
           .sidebar-grade-segment-option input:checked+span,
           .assessment-mode-option input:checked+span,
           .grades-entry-distribution-option input:checked+span,
@@ -9959,8 +9968,8 @@
 
         @media (prefers-reduced-motion: reduce) {
 
-          .schoolmanager-transfer-segment-control::before,
-          .schoolmanager-transfer-segment-control::after,
+          .grade-transfer-segment-control::before,
+          .grade-transfer-segment-control::after,
           .sidebar-grade-segment-control::before,
           .sidebar-grade-segment-control::after,
           .assessment-mode-toggle::before,
@@ -9984,7 +9993,7 @@
             transition: none !important;
           }
 
-          .schoolmanager-transfer-segment-option span,
+          .grade-transfer-segment-option span,
           .sidebar-grade-segment-option span,
           .assessment-mode-option span,
           .grades-entry-distribution-option span,
@@ -10237,16 +10246,32 @@ html[data-module-role="planning"] #view-grades-entry-btn {
   display: none !important;
 }
 
-/* Local roster OCR: the selection always uses normalized image coordinates. */
 .course-dialog-ocr-open {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
   min-width: 0;
   min-height: 58px;
-  border: 2px dashed var(--dropzone-border);
+  padding: 0.4rem;
+  border: 1px solid var(--module-surface-border);
   border-radius: var(--dropzone-radius);
   background: var(--dropzone-bg);
   box-shadow: var(--dropzone-shadow);
   color: var(--text);
+  font-size: clamp(3rem, 6vw, 5rem);
+  line-height: 1;
   white-space: normal;
+  cursor: pointer;
+  transition: border-color 0.12s ease, background-color 0.12s ease, transform 0.12s ease;
+}
+
+.course-dialog-ocr-open:hover,
+.course-dialog-ocr-open:focus-visible {
+  border-color: var(--focus-border);
+  background: var(--dropzone-bg-hover);
+  transform: translateY(-1px);
 }
 .course-ocr-dialog { width: min(900px, calc(100vw - 2rem)); }
 .course-ocr-dialog [hidden] { display: none !important; }
@@ -10327,7 +10352,6 @@ html[data-module-role="planning"] #view-grades-entry-btn {
   top: 0;
   z-index: 1;
   padding: 0.1rem 0.2rem 0.3rem;
-  background: var(--module-surface-strong);
   color: var(--muted);
   font-size: 0.78rem;
   font-weight: 700;

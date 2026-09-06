@@ -1,11 +1,13 @@
 import { installWorkspaceController } from '../modules/workspace/index.js';
 import { readModuleWindowRequest } from './module-window.js';
+import { readHelpPreviewRequest } from './help-preview.js';
 import { createShellActionDialog } from './shell-action-dialog.js';
 
 const shellActionDialog = createShellActionDialog(document);
 const moduleWindowRequest = readModuleWindowRequest(window.location);
+const helpPreviewRequest = readHelpPreviewRequest(window.location);
 installWorkspaceController(window, {
-  ephemeral: moduleWindowRequest.isModuleWindow,
+  ephemeral: moduleWindowRequest.isModuleWindow || Boolean(helpPreviewRequest),
   confirmLargeFile: ({ label, formattedSize }) => shellActionDialog?.confirm({
     title: 'Große Datei laden?',
     message: `${label} ist ${formattedSize} groß. Das Laden kann viel Arbeitsspeicher beanspruchen und den Browser verlangsamen. Trotzdem laden?`,
@@ -14,7 +16,7 @@ installWorkspaceController(window, {
 });
 
 const isLocalDevelopmentHost = ['localhost', '127.0.0.1', '[::1]'].includes(window.location.hostname);
-if (isLocalDevelopmentHost) {
+if (isLocalDevelopmentHost && !helpPreviewRequest) {
   if ('serviceWorker' in navigator) {
     const registrations = await navigator.serviceWorker.getRegistrations();
     await Promise.all(registrations.map((registration) => registration.unregister()));

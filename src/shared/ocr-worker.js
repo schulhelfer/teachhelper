@@ -1,6 +1,3 @@
-// Classic worker: the browser bundle can run here with absolute asset URLs.
-// Keep this worker local (no blob wrapper) so the document's strict script CSP
-// does not get inherited by the WASM execution context.
 const vendorUrl = (path) => new URL(`../vendor/${path}`, self.location.href).href;
 self.onmessage = async ({ data }) => {
   self.onmessage = null;
@@ -15,8 +12,6 @@ self.onmessage = async ({ data }) => {
       cacheMethod: "none",
       gzip: true,
       logger: ({ status, progress }) => self.postMessage({ type: "progress", status, progress }),
-      // Tesseract does not reject createWorker() for every initialization error.
-      // Report those immediately so the supervisor can terminate the whole tree.
       errorHandler: () => self.postMessage({ type: "error" }),
     });
     await worker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });

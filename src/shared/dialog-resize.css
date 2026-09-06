@@ -1,0 +1,104 @@
+dialog.has-dialog-resize {
+  position: relative;
+}
+
+dialog.is-dialog-resized {
+  box-sizing: border-box;
+}
+
+dialog.is-dialog-resizing,
+dialog.is-dialog-resizing * {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.dialog-resize-grip {
+  position: absolute;
+  z-index: 3;
+  right: 0;
+  bottom: 0;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+  color: var(--text-on-overlay-secondary);
+  cursor: nwse-resize;
+  touch-action: none;
+  opacity: 0;
+  transition: opacity 200ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.dialog-resize-grip:hover:not(:disabled),
+.dialog-resize-grip:active:not(:disabled),
+.dialog-resize-grip:focus-visible {
+  border: 0;
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  filter: none;
+  transform: none;
+}
+
+.dialog-resize-grip::after {
+  content: '';
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 18px;
+  height: 18px;
+  border-right: 2.5px solid currentColor;
+  border-bottom: 2.5px solid currentColor;
+  border-bottom-right-radius: 16px;
+  transform: scale(0.8);
+  transform-origin: 100% 100%;
+  transition:
+    transform 220ms cubic-bezier(0.32, 0.72, 0, 1),
+    border-color 220ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+dialog.has-dialog-resize:hover .dialog-resize-grip,
+.dialog-resize-grip:hover,
+.dialog-resize-grip:focus-visible,
+dialog.is-dialog-resizing .dialog-resize-grip {
+  opacity: 1;
+}
+
+.dialog-resize-grip:hover::after,
+.dialog-resize-grip:focus-visible::after,
+dialog.is-dialog-resizing .dialog-resize-grip::after {
+  transform: scale(1);
+}
+
+.dialog-resize-grip:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.dialog-resize-grip:focus-visible::after {
+  border-color: var(--border-focus);
+  transform: scale(1.12);
+}
+
+@media (hover: none) {
+  .dialog-resize-grip {
+    opacity: 0.55;
+  }
+
+  .dialog-resize-grip::after {
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog-resize-grip,
+  .dialog-resize-grip::after {
+    transition: none;
+  }
+}

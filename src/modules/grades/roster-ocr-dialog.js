@@ -281,7 +281,6 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
     stop();
     const token = generation;
     try {
-      // Read immediately in the click handler to preserve browser user activation.
       const items = await navigator.clipboard.read();
       if (token !== generation || !dialog.open) return;
       for (const item of items) {

@@ -2,6 +2,12 @@ import { createAppDom } from './app/dom.js';
 import { createShellActionDialog } from './app/shell-action-dialog.js';
 import { createFirstRunTutorial } from './app/first-run-tutorial.js';
 import { createHelpCenter } from './app/help-center.js';
+import {
+  HELP_PREVIEW_COMMAND_EVENT,
+  HELP_PREVIEW_STATE_EVENT,
+  getHelpPreviewFrameNonce,
+  readHelpPreviewRequest,
+} from './app/help-preview.js';
 import { createPlanningSeatplanBridge } from './app/planning-seatplan-bridge.js';
 import { registerServiceWorkerUpdates } from './app/pwa-updates.js';
 import { createPwaInstallPrompt } from './app/pwa-install-prompt.js';
@@ -82,6 +88,8 @@ import {
   if (!appEl) {
     return;
   }
+  const helpPreviewRequest = readHelpPreviewRequest(window.location);
+  if (helpPreviewRequest) appEl.dataset.helpPreview = 'true';
   const shellActionDialog = createShellActionDialog(document);
   const themeController = createThemeController();
   const applyThemeToFrame = (frame, detail) => {
@@ -479,17 +487,31 @@ import {
   };
   const postPlanningTutorialCommand = (command, detail = null, frame = getPlanningFrame()) => {
     if (!frame) return false;
-    return postToModule(frame, {
+    const payload = {
       type: PLANNING_TUTORIAL_COMMAND_EVENT,
       detail: { command, detail },
-    });
+    };
+    if (planningTutorialDemoActive && frame === planningTutorialDemoFrame && !planningTutorialDemoFrameReady) {
+      frame.addEventListener('load', () => {
+        if (planningTutorialDemoFrame === frame) postToModule(frame, payload);
+      }, { once: true });
+      return true;
+    }
+    return postToModule(frame, payload);
   };
   const postGradesTutorialCommand = (command, detail = null, frame = getGradesFrame()) => {
     if (!frame) return false;
-    return postToModule(frame, {
+    const payload = {
       type: GRADES_TUTORIAL_COMMAND_EVENT,
       detail: { command, detail },
-    });
+    };
+    if (gradesTutorialDemoActive && frame === gradesTutorialDemoFrame && !gradesTutorialDemoFrameReady) {
+      frame.addEventListener('load', () => {
+        if (gradesTutorialDemoFrame === frame) postToModule(frame, payload);
+      }, { once: true });
+      return true;
+    }
+    return postToModule(frame, payload);
   };
   const preparePlanningTutorialSurface = (surface) => {
     postPlanningTutorialCommand('showSurface', { surface });
@@ -2968,6 +2990,80 @@ import {
     helpCenter?.openEntry({ module: getActiveTab() });
   }
 
+  function startHelpPreview() {
+    if (!helpPreviewRequest || !firstRunTutorial) return;
+    const { articleId, config } = helpPreviewRequest;
+    const frameNonce = getHelpPreviewFrameNonce(window.location);
+    const trustedParentOrigin = window.location.origin === 'null' ? '*' : window.location.origin;
+    const postState = (state, detail = {}) => {
+      if (window.parent === window) return;
+      window.parent.postMessage({
+        type: HELP_PREVIEW_STATE_EVENT,
+        ...(frameNonce ? { frameNonce } : {}),
+        detail: { articleId, state, ...detail },
+      }, trustedParentOrigin);
+    };
+    let previewFrameSequence = 0;
+    const publishTarget = (stepTitle, sequence, attempts = 0) => {
+      if (sequence !== previewFrameSequence) return;
+      const rect = firstRunTutorial.getPreviewTargetRect(stepTitle);
+      if (!rect) {
+        if (attempts < 420) {
+          window.setTimeout(() => publishTarget(stepTitle, sequence, attempts + 1), 50);
+          return;
+        }
+        postState('target-missing', { stepTitle });
+        return;
+      }
+      postState('frame', {
+        stepTitle,
+        rect: {
+          left: rect.left,
+          top: rect.top,
+          width: rect.width,
+          height: rect.height,
+        },
+      });
+    };
+    const showFrame = (stepTitle) => {
+      const sequence = ++previewFrameSequence;
+      if (!firstRunTutorial.showPreviewStep(stepTitle)) {
+        postState('target-missing', { stepTitle });
+        return;
+      }
+      // Modul-Demos laden in eigenen Frames. Wiederhole nur die flüchtige
+      // Oberflächenwahl, bis auch ein frisch gestartetes Modul sie empfangen kann.
+      [320, 900, 1800, 3200].forEach((delay) => window.setTimeout(() => {
+        if (sequence === previewFrameSequence) firstRunTutorial.showPreviewStep(stepTitle);
+      }, delay));
+      publishTarget(stepTitle, sequence);
+    };
+    const onPreviewCommand = (event) => {
+      const message = event.data;
+      if (
+        event.source !== window.parent
+        || !message
+        || message.type !== HELP_PREVIEW_COMMAND_EVENT
+        || (frameNonce
+          ? message.frameNonce !== frameNonce
+          : event.origin !== trustedParentOrigin)
+      ) return;
+      const stepTitle = String(message.detail?.stepTitle || '');
+      if (message.detail?.action === 'show-frame' && stepTitle) showFrame(stepTitle);
+    };
+    window.addEventListener('message', onPreviewCommand);
+    window.addEventListener('pagehide', () => window.removeEventListener('message', onPreviewCommand), { once: true });
+
+    setActiveTabForTutorial(config.tab);
+    const availableSteps = firstRunTutorial.startPreview();
+    if (!availableSteps.length) {
+      postState('error');
+      return;
+    }
+    postState('ready', { availableSteps });
+    window.setTimeout(() => showFrame(config.frames[0]?.stepTitle), 0);
+  }
+
   function isGuardBackupPossible() {
     const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
     const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
@@ -3826,7 +3922,7 @@ import {
   }
   const guardGroupInput = () => {
     if (!state.students.length) {
-      showMessage('Importiere zuerst die Namensliste!', 'warn');
+      showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
       return false;
     }
     return true;
@@ -4205,12 +4301,12 @@ import {
   async function startRandomPickerSpin() {
     const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
     if (!allCandidates.length) {
-      showMessage('Importiere zuerst die Namensliste!', 'warn');
+      showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
       return;
     }
     const candidates = allCandidates.filter((entry) => entry.weight > 0);
     if (!candidates.length) {
-      showMessage('Für den Picker ist aktuell kein Name auf „normal“, „doppelt“, „dreifach“ oder „sicher“ gesetzt.', 'warn');
+      showMessage('Für den Picker ist aktuell kein Name auf „normal“, „doppelt“, „dreifach“ oder „sicher“ gesetzt.', 'warn', { presentation: 'toast' });
       return;
     }
     const displayNames = allCandidates.map((entry) => entry.name);
@@ -4764,7 +4860,7 @@ import {
   }
   function createPlanSnapshot() {
     if (!state.activeSeats.size) {
-      showMessage('Keine aktiven Gruppenfelder vorhanden.', 'warn');
+      showMessage('Keine aktiven Gruppenfelder vorhanden.', 'warn', { presentation: 'toast' });
       return null;
     }
     const orderedActiveIds = Array.isArray(state.activeSeatOrder)
@@ -4912,7 +5008,7 @@ import {
 
   function downloadCsvTemplate() {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Downloads sind für Beispieldaten deaktiviert.', 'info');
+      showMessage('Demo: Downloads sind für Beispieldaten deaktiviert.', 'info', { presentation: 'toast' });
       return;
     }
     const blob = new Blob([TEMPLATE_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' });
@@ -4927,7 +5023,7 @@ import {
 
   async function downloadSeatPlan() {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Speichern und Exportieren ist für Beispieldaten deaktiviert.', 'info');
+      showMessage('Demo: Speichern und Exportieren ist für Beispieldaten deaktiviert.', 'info', { presentation: 'toast' });
       return;
     }
     const snapshot = createPlanSnapshot();
@@ -4964,11 +5060,11 @@ import {
 
   function printSeatPlan() {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Drucken ist für Beispieldaten deaktiviert.', 'info');
+      showMessage('Demo: Drucken ist für Beispieldaten deaktiviert.', 'info', { presentation: 'toast' });
       return;
     }
     if (typeof window === 'undefined' || typeof window.print !== 'function') {
-      showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn');
+      showMessage('Drucken wird vom Browser nicht unterstützt.', 'warn', { presentation: 'toast' });
       return;
     }
     if (els.printPlanTitle) {
@@ -5198,7 +5294,7 @@ import {
 
   async function importPlanFromFile(file, handle) {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
       return;
     }
     if (!file) return;
@@ -6422,12 +6518,12 @@ import {
     const limit = MAX_GRID_SIZE * MAX_GRID_SIZE;
     const currentCount = state.activeSeats.size || (state.gridRows * state.gridCols);
     if (currentCount >= limit) {
-      showMessage('Maximale Anzahl an Gruppen erreicht.', 'warn');
+      showMessage('Maximale Anzahl an Gruppen erreicht.', 'warn', { presentation: 'toast' });
       return false;
     }
     const slot = nextSeatSlot();
     if (!slot || !slot.id) {
-      showMessage('Keine weitere Gruppe kann angelegt werden.', 'warn');
+      showMessage('Keine weitere Gruppe kann angelegt werden.', 'warn', { presentation: 'toast' });
       return false;
     }
     state.gridRows = slot.rows;
@@ -6502,7 +6598,7 @@ import {
     if (state.lockedSeats.has(targetId)) return false;
     const limit = clampMaxGroupSize(state.maxGroupSize);
     if (!targetStudentId && getSeatList(targetId).length >= limit && sourceSeatId !== targetId) {
-      showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn');
+      showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn', { presentation: 'toast' });
       return false;
     }
     if (sourceSeatId && targetStudentId) {
@@ -6520,7 +6616,7 @@ import {
         removeStudentFromSeat(targetId, targetStudentId);
       }
       if (getSeatList(targetId).length >= limit) {
-        showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn');
+        showMessage(`Gruppe ist voll (max. ${limit}).`, 'warn', { presentation: 'toast' });
         return false;
       }
       if (sourceSeatId) {
@@ -7223,7 +7319,7 @@ import {
 
   async function importCsvFromFile(file) {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
       return;
     }
     if (!file) return;
@@ -7233,7 +7329,7 @@ import {
     updateCsvStatusDisplay();
     const text = await file.text();
     let rows = parseCSV(text);
-    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn'); return; }
+    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' }); return; }
     const isSeparatorRow = (row) => {
       if (!Array.isArray(row)) return false;
       const normalized = row
@@ -7243,9 +7339,9 @@ import {
       return /^sep\s*=/.test(normalized);
     };
     rows = rows.filter(row => !isSeparatorRow(row));
-    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn'); return; }
+    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' }); return; }
     const firstNonEmptyIdx = rows.findIndex(r => Array.isArray(r) && r.some(x => String(x || '').trim() !== ''));
-    if (firstNonEmptyIdx === -1) { showMessage('Nur leere Zeilen gefunden.', 'warn'); return; }
+    if (firstNonEmptyIdx === -1) { showMessage('Nur leere Zeilen gefunden.', 'warn', { presentation: 'toast' }); return; }
 
     const headers = rows[firstNonEmptyIdx] || [];
     const dataStartIdx = firstNonEmptyIdx + 1;
@@ -7305,7 +7401,7 @@ import {
 
   async function handlePlanImportAction() {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
       return;
     }
     const picked = await pickPlanFileWithPicker();
@@ -7397,7 +7493,7 @@ import {
       const droppedFiles = Array.from(e.dataTransfer?.files || []);
       const csvFile = droppedFiles.find(isCsvFile);
       if (!csvFile) {
-        showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn');
+        showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn', { presentation: 'toast' });
         return;
       }
       try {
@@ -7433,9 +7529,9 @@ import {
     if (!jsonFile) {
       const csvFile = droppedFiles.find(isCsvFile);
       if (csvFile) {
-        showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn');
+        showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn', { presentation: 'toast' });
       } else {
-        showMessage('Hier können nur Gruppen als JSON geladen werden.', 'warn');
+        showMessage('Hier können nur Gruppen als JSON geladen werden.', 'warn', { presentation: 'toast' });
       }
       return;
     }
@@ -7478,7 +7574,7 @@ import {
   [els.groupSeatPreferences].filter(Boolean).forEach((button) => {
     button.addEventListener('click', () => {
       if (!state.students.length) {
-        showMessage('Importiere zuerst die Namensliste!', 'warn');
+        showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
         return;
       }
       if (isRandomPickerTabActive()) {
@@ -7542,7 +7638,7 @@ import {
     const trimmed = String(target.value || '').trim();
     const parsed = Number.parseInt(trimmed, 10);
     if (!/^[0-9]+$/.test(trimmed) || parsed < 2 || parsed > MAX_PERFORMANCE_FLAIR_COUNT) {
-      showMessage(`Bitte eine Zahl zwischen 2 und ${MAX_PERFORMANCE_FLAIR_COUNT} eingeben.`, 'warn');
+      showMessage(`Bitte eine Zahl zwischen 2 und ${MAX_PERFORMANCE_FLAIR_COUNT} eingeben.`, 'warn', { presentation: 'toast' });
       target.value = String(clampPerformanceFlairCount(state.performanceFlairCount));
       target.focus();
       target.select();
@@ -7581,7 +7677,7 @@ import {
   function startWorkOrderTimer() {
     const duration = applyTimerDurationFromInput({ preserveStart: false });
     if (!duration) {
-      showMessage('Bitte eine Arbeitsdauer festlegen, bevor die Arbeitszeit gestartet wird.', 'warn');
+      showMessage('Bitte eine Arbeitsdauer festlegen, bevor die Arbeitszeit gestartet wird.', 'warn', { presentation: 'toast' });
       return;
     }
     SharedTimerStore.setWorkOrder({
@@ -8090,7 +8186,7 @@ import {
           const hasAudioInput = Array.isArray(devices) && devices.some((device) => device?.kind === 'audioinput');
           if (!hasAudioInput) {
             setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
-            showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn');
+            showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn', { presentation: 'toast' });
             setActiveLight(null);
             return;
           }
@@ -8132,7 +8228,7 @@ import {
           setMicUiState(MIC_UI_STATE.ERROR, 'Zugriff verweigert');
         } else if (noMicFound) {
           setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
-          showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn');
+          showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn', { presentation: 'toast' });
         } else {
           setMicUiState(MIC_UI_STATE.ERROR, 'nicht verfügbar');
         }
@@ -8192,8 +8288,8 @@ import {
   })();
   function assignStudentsEvenly(options = {}) {
     const { shuffle = true } = options;
-    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
-    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn'); return; }
+    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' }); return; }
+    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn', { presentation: 'toast' }); return; }
     syncGroupSizeInputs();
     const maxSize = clampMaxGroupSize(state.maxGroupSize);
     const minSize = clampMinGroupSize(state.minGroupSize);
@@ -8207,7 +8303,7 @@ import {
     });
     const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
     if (!freeSeats.length) {
-      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn');
+      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn', { presentation: 'toast' });
       return;
     }
     const capacity = activeIds.length * maxSize;
@@ -8666,8 +8762,8 @@ import {
   }
 
   async function assignWithPreferences() {
-    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn'); return; }
-    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn'); return; }
+    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' }); return; }
+    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn', { presentation: 'toast' }); return; }
     if (groupSuggestInProgress) return;
     syncGroupSizeInputs();
     const maxSize = clampMaxGroupSize(state.maxGroupSize);
@@ -8682,7 +8778,7 @@ import {
     });
     const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
     if (!freeSeats.length) {
-      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn');
+      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn', { presentation: 'toast' });
       return;
     }
     const capacity = activeIds.length * maxSize;
@@ -8858,7 +8954,7 @@ import {
   });
   els.randomPickerImport?.addEventListener('click', () => {
     if (classroomTutorialDemoActive) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info');
+      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
       return;
     }
     if (!els.file) return;
@@ -8977,7 +9073,9 @@ import {
 
   const moduleWindowRequest = readModuleWindowRequest(window.location);
   try {
-    if (moduleWindowRequest.tab) {
+    if (helpPreviewRequest) {
+      setActiveTabImmediate(helpPreviewRequest.config.tab, { skipUnsavedPrompt: true });
+    } else if (moduleWindowRequest.tab) {
       setActiveTabImmediate(moduleWindowRequest.tab);
     } else {
       setActiveTab(TAB_PLANNING);
@@ -9014,7 +9112,7 @@ import {
   syncChromeState();
   updateMonitorAmpelSizing();
   els.app?.classList.add('app-js-ready');
-  if (!moduleWindowRequest.isModuleWindow) {
+  if (!moduleWindowRequest.isModuleWindow && !helpPreviewRequest) {
     pwaInstallPrompt.showIfNeeded();
   }
   firstRunTutorial = createFirstRunTutorial({
@@ -9032,10 +9130,11 @@ import {
     els,
     onStartTutorial: startTutorialFromEntry,
   });
-  firstRunTutorial.showContextHelp({ prompt: true });
+  if (helpPreviewRequest) startHelpPreview();
+  else firstRunTutorial.showContextHelp({ prompt: true });
   window.addEventListener('resize', positionWorkOrderHintOverlay);
   window.addEventListener('scroll', positionWorkOrderHintOverlay, true);
-  const serviceWorkerUpdates = registerServiceWorkerUpdates({
+  const serviceWorkerUpdates = helpPreviewRequest ? null : registerServiceWorkerUpdates({
     updateDialog: els.updateDialog,
     updateDialogLater: els.updateDialogLater,
     updateDialogReload: els.updateDialogReload,

@@ -76,15 +76,11 @@ test('Zähler und Abschluss-Dialog verlangen, dass jeder Schüler tatsächlich d
 });
 
 test('nur eine Note oder der Auslassen-Button zaehlen als erledigt', () => {
-  // Das blosse Anklicken einer Person darf den Zaehler nicht bewegen: zwischen der
-  // Studenten-Pruefung und der Auswahl darf nichts als erledigt markiert werden.
   assert.match(
     seatplanApp,
     /function openCourseGradePicker\(input\) \{[\s\S]*?if \(!studentId\) return;\n\s*selectStudentForCourseGrade\(studentId\);/,
   );
 
-  // Erledigt wird ausschliesslich an drei Stellen gesetzt: echte Note, Auslassen-Button
-  // und die Vorkommnis-Erfassung.
   assert.equal(seatplanApp.split('markCourseGradeStudentHandled(').length - 1, 4);
   assert.match(
     seatplanApp,

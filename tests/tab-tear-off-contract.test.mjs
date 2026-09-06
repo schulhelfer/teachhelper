@@ -263,14 +263,14 @@ test('das Modulfenster fragt beim Schliessen nie nach ungespeicherten Aenderunge
 test('das Modulfenster haengt sich nie an die Datenbank', () => {
   assert.match(
     bootstrap,
-    /const moduleWindowRequest = readModuleWindowRequest\(window\.location\);[\s\S]*?installWorkspaceController\(window, \{\s*ephemeral: moduleWindowRequest\.isModuleWindow,/,
+    /const moduleWindowRequest = readModuleWindowRequest\(window\.location\);[\s\S]*?const helpPreviewRequest = readHelpPreviewRequest\(window\.location\);[\s\S]*?installWorkspaceController\(window, \{\s*ephemeral: moduleWindowRequest\.isModuleWindow \|\| Boolean\(helpPreviewRequest\),/,
   );
 });
 
 test('das Modulfenster startet direkt im Modul, ohne Planung zu mounten', () => {
   assert.match(
     main,
-    /try \{\s+if \(moduleWindowRequest\.tab\) \{\s+setActiveTabImmediate\(moduleWindowRequest\.tab\);\s+\} else \{\s+setActiveTab\(TAB_PLANNING\);\s+\}/,
+    /try \{\s+if \(helpPreviewRequest\) \{\s+setActiveTabImmediate\(helpPreviewRequest\.config\.tab, \{ skipUnsavedPrompt: true \}\);\s+\} else if \(moduleWindowRequest\.tab\) \{\s+setActiveTabImmediate\(moduleWindowRequest\.tab\);\s+\} else \{\s+setActiveTab\(TAB_PLANNING\);\s+\}/,
     'ein Umweg ueber Planung wuerde das Modul samt iframe unnoetig laden',
   );
   assert.match(
@@ -292,7 +292,7 @@ test('das Modulfenster startet direkt im Modul, ohne Planung zu mounten', () => 
   );
   assert.match(
     main,
-    /if \(!moduleWindowRequest\.isModuleWindow\) \{\s+pwaInstallPrompt\.showIfNeeded\(\);/,
+    /if \(!moduleWindowRequest\.isModuleWindow && !helpPreviewRequest\) \{\s+pwaInstallPrompt\.showIfNeeded\(\);/,
   );
 });
 

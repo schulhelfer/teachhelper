@@ -1,5 +1,13 @@
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
+const NAME_EDGE_NOISE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+
+const cleanNamePart = (value) => clean(value)
+  .split(" ")
+  .map((word) => word.replace(NAME_EDGE_NOISE, ""))
+  .filter(Boolean)
+  .join(" ");
+
 export function parseOcrNames(text, order = "last-first") {
   return String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((raw) => {
     const line = raw.replace(/^\d+[.)\s]+/, "").trim();
@@ -8,8 +16,8 @@ export function parseOcrNames(text, order = "last-first") {
       const words = line.split(/\s+/);
       parts.splice(0, parts.length, words.shift() || "", words.join(" "));
     }
-    const left = clean(parts[0]);
-    const right = clean(parts.slice(1).join(" "));
+    const left = cleanNamePart(parts[0]);
+    const right = cleanNamePart(parts.slice(1).join(" "));
     const lastName = order === "last-first" ? left : right;
     const firstName = order === "last-first" ? right : left;
     return { raw, lastName, firstName };

@@ -6,6 +6,7 @@ import {
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
 } from '../../shared/module-frame-bridge.js';
 import { assertFileSizeAtMost, FILE_LIMITS, FILE_TIMEOUTS } from '../../shared/file-guards.js';
+import { createMessageApi } from '../../shared/messages.js';
 
 export function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
@@ -13,6 +14,7 @@ export function createQrApp({ root = document } = {}) {
     : window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
+  const toastApi = createMessageApi(root);
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     TUTORIAL_COMMAND_EVENT,
     QR_SHELL_LAYOUT_EVENT,
@@ -167,6 +169,10 @@ export function createQrApp({ root = document } = {}) {
 
   function getQrDecoder() {
     return window.jsQR;
+  }
+
+  function showToastMessage(message, variant = 'info') {
+    toastApi.showMessage(String(message || ''), variant, { presentation: 'toast' });
   }
 
   function showMessage(message, title = 'Hinweis') {
@@ -436,7 +442,7 @@ export function createQrApp({ root = document } = {}) {
       await navigator.clipboard.write([
         new ClipboardItem({ [blob.type || 'image/png']: blob }),
       ]);
-      showMessage('QR-Code wurde in die Zwischenablage kopiert.', 'Kopiert');
+      showToastMessage('QR-Code wurde in die Zwischenablage kopiert.', 'success');
     } catch (error) {
       showMessage(error?.message || 'QR-Code konnte nicht in die Zwischenablage kopiert werden.', 'Fehler');
     }
@@ -983,7 +989,7 @@ export function createQrApp({ root = document } = {}) {
           budgetMs: FILE_TIMEOUTS.QR_DECODE_MS,
         });
         if (!code || !code.data) {
-          showMessage('In diesem Bild wurde kein QR-Code gefunden.', 'Nicht erkannt');
+          showToastMessage('In diesem Bild wurde kein QR-Code gefunden.', 'warn');
           return;
         }
         setDecoderFileSummary({ name: label || 'QR-Code-Bild' });
@@ -1017,7 +1023,7 @@ export function createQrApp({ root = document } = {}) {
         await decodeBlob(blob, 'Bild aus Zwischenablage');
         return;
       }
-      showMessage('In der Zwischenablage wurde kein Bild gefunden.', 'Zwischenablage');
+      showToastMessage('In der Zwischenablage wurde kein Bild gefunden.', 'warn');
     } catch (error) {
       showMessage(error?.message || 'Bild konnte nicht aus der Zwischenablage gelesen werden.', 'Fehler');
     }
@@ -1103,7 +1109,7 @@ export function createQrApp({ root = document } = {}) {
     }
     try {
       await navigator.clipboard.writeText(decodedValue);
-      showMessage('Ergebnis wurde in die Zwischenablage kopiert.', 'Kopiert');
+      showToastMessage('Ergebnis wurde in die Zwischenablage kopiert.', 'success');
     } catch (error) {
       showMessage(error?.message || 'Ergebnis konnte nicht kopiert werden.', 'Fehler');
     }

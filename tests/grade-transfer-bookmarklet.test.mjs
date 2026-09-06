@@ -19,7 +19,7 @@ function getBookmarkletAdapterCode(methodName, replacements = {}) {
 
 const TARGET_ORIGIN = 'https://beispiel.test';
 
-async function runSchoolmanagerAdapter(valueCount, fieldCount, startIndex = 0) {
+async function runInputFieldAdapter(valueCount, fieldCount, startIndex = 0) {
   const fields = Array.from({ length: fieldCount }, () => ({
     offsetParent: true,
     disabled: false,
@@ -60,7 +60,7 @@ async function runSchoolmanagerAdapter(valueCount, fieldCount, startIndex = 0) {
       return true;
     },
   };
-  const code = getBookmarkletAdapterCode('buildSchoolmanagerTransferTargetAdapterCode', {
+  const code = getBookmarkletAdapterCode('buildInputFieldTransferAdapterCode', {
     '${startIndex}': String(startIndex),
   });
   let error = null;
@@ -72,7 +72,7 @@ async function runSchoolmanagerAdapter(valueCount, fieldCount, startIndex = 0) {
   return { confirms, fields, clipboardReads, error };
 }
 
-async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
+async function runPopupTableAdapter(valueCount, fieldCount, clearClipboard = true) {
   const values = Array.from({ length: valueCount }, (_, index) => String(index + 1));
   const selectedValues = [];
   const clipboardWrites = [];
@@ -124,8 +124,8 @@ async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
       return confirms.length === 1 || clearClipboard;
     },
   };
-  const code = getBookmarkletAdapterCode('buildAbiWebTransferTargetAdapterCode', {
-    '${ABIWEB_TRANSFER_GRADE_FIELD_SELECTOR}': '.abi-fields',
+  const code = getBookmarkletAdapterCode('buildPopupTableTransferAdapterCode', {
+    '${POPUP_TABLE_GRADE_FIELD_SELECTOR}': '.abi-fields',
   });
   let error = null;
   try {
@@ -139,28 +139,28 @@ async function runAbiWebAdapter(valueCount, fieldCount, clearClipboard = true) {
 test('the universal bookmarklet has a native link label for bookmark titles', () => {
   assert.match(
     html,
-    /<a id="schoolmanager-transfer-bookmarklet-link"[\s\S]*?>Schulmanager\/AbiWeb-Import<\/a>/,
+    /<a id="grade-transfer-bookmarklet-link"[\s\S]*?>Schulmanager\/AbiWeb-Import<\/a>/,
   );
-  assert.match(source, /const SCHOOLMANAGER_TRANSFER_BOOKMARKLET_NAME = "Schulmanager\/AbiWeb-Import";/);
+  assert.match(source, /const GRADE_TRANSFER_BOOKMARKLET_NAME = "Schulmanager\/AbiWeb-Import";/);
   assert.match(source, /link\.setAttribute\("href", code\);/);
   assert.match(source, /const startIndex = Math\.max\(0, firstFieldIndex - 1\);/);
   assert.match(source, /\.slice\(\$\{startIndex\}\)/);
 });
 
-test('the Schoolmanager bookmarklet keeps browser-native link dragging enabled', () => {
+test('the grade-transfer bookmarklet keeps browser-native link dragging enabled', () => {
   assert.match(
     html,
-    /id="schoolmanager-transfer-bookmarklet-link"[\s\S]*?draggable="true"/,
+    /id="grade-transfer-bookmarklet-link"[\s\S]*?draggable="true"/,
   );
-  assert.doesNotMatch(source, /setSchoolmanagerTransferBookmarkletDragData/);
+  assert.doesNotMatch(source, /setGradeTransferBookmarkletDragData/);
 });
 
-test('the universal bookmarklet dispatches to AbiWeb before the Schoolmanager fallback', () => {
-  assert.match(source, /buildSchoolmanagerTransferTargetAdapterCode\(startIndex\)/);
-  assert.match(source, /buildAbiWebTransferTargetAdapterCode\(\)/);
+test('the universal bookmarklet dispatches to the popup-table adapter before the input-field fallback', () => {
+  assert.match(source, /buildInputFieldTransferAdapterCode\(startIndex\)/);
+  assert.match(source, /buildPopupTableTransferAdapterCode\(\)/);
   assert.match(
     source,
-    /if\(document\.querySelector\(a\)\)await\(\$\{abiWebAdapter\}\)\(\);else await\(\$\{schoolmanagerAdapter\}\)\(\)/,
+    /if\(document\.querySelector\(a\)\)await\(\$\{popupTableAdapter\}\)\(\);else await\(\$\{inputFieldAdapter\}\)\(\)/,
   );
   assert.match(source, /document\.querySelectorAll\('input,textarea'\)/);
   assert.match(source, /Clipboard nach erfolgreicher Übertragung leeren\?/);
@@ -174,9 +174,9 @@ test('both adapters warn about count mismatches and transfer only the shared amo
   assert.match(source, /for\(let i=0;i<n;i\+\+\)\{f\[i\]\.click\(\);await w/);
 });
 
-test('the Schoolmanager adapter transfers only the shared amount for either count mismatch', async () => {
+test('the input-field adapter transfers only the shared amount for either count mismatch', async () => {
   for (const [valueCount, fieldCount] of [[3, 2], [2, 3]]) {
-    const { confirms, fields } = await runSchoolmanagerAdapter(valueCount, fieldCount);
+    const { confirms, fields } = await runInputFieldAdapter(valueCount, fieldCount);
     const sharedCount = Math.min(valueCount, fieldCount);
     assert.match(confirms[0], new RegExp(`TeachHelper enthält ${valueCount} Werte`));
     assert.match(confirms[0], new RegExp(`Schulmanager zeigt ${fieldCount} Eingabefelder`));
@@ -186,9 +186,9 @@ test('the Schoolmanager adapter transfers only the shared amount for either coun
   }
 });
 
-test('the AbiWeb adapter transfers only the shared amount for either count mismatch', async () => {
+test('the popup-table adapter transfers only the shared amount for either count mismatch', async () => {
   for (const [valueCount, fieldCount] of [[3, 2], [2, 3]]) {
-    const { clipboardWrites, confirms, selectedValues } = await runAbiWebAdapter(valueCount, fieldCount);
+    const { clipboardWrites, confirms, selectedValues } = await runPopupTableAdapter(valueCount, fieldCount);
     const sharedCount = Math.min(valueCount, fieldCount);
     assert.match(confirms[0], new RegExp(`TeachHelper enthält ${valueCount} Werte`));
     assert.match(confirms[0], new RegExp(`AbiWeb zeigt ${fieldCount} Notenfelder`));
@@ -201,13 +201,13 @@ test('the AbiWeb adapter transfers only the shared amount for either count misma
   }
 });
 
-test('the AbiWeb adapter leaves the clipboard intact when clearing is declined', async () => {
-  const { clipboardWrites, selectedValues } = await runAbiWebAdapter(2, 2, false);
+test('the popup-table adapter leaves the clipboard intact when clearing is declined', async () => {
+  const { clipboardWrites, selectedValues } = await runPopupTableAdapter(2, 2, false);
   assert.equal(selectedValues.length, 2);
   assert.deepEqual(clipboardWrites, []);
 });
 
-test('the AbiWeb adapter uses stable selectors and transfers points sequentially', () => {
+test('the popup-table adapter uses stable selectors and transfers points sequentially', () => {
   assert.match(
     source,
     /body > app-root > app-course-detail > div > div > div:nth-child\(2\) > table > tbody > tr > td\.text-center\.cursor-pointer/,
@@ -219,7 +219,7 @@ test('the AbiWeb adapter uses stable selectors and transfers points sequentially
   assert.doesNotMatch(source, /_ngcontent-/);
 });
 
-test('the AbiWeb adapter validates input and reports actionable transfer messages', () => {
+test('the popup-table adapter validates input and reports actionable transfer messages', () => {
   assert.match(source, /Die TeachHelper-Punkteliste ist leer\./);
   assert.doesNotMatch(source, /if\(f\.length!==v\.length\)throw new Error\('Schülerzahl stimmt nicht überein:/);
   assert.match(source, /v\.length===f\.length\?v\.length\+' Punktwerte nach AbiWeb übertragen\?'/);
@@ -229,8 +229,8 @@ test('the AbiWeb adapter validates input and reports actionable transfer message
   assert.match(source, /setTimeout\(\(\)=>\{o\.disconnect\(\);j\(new Error\(m\)\)\},5000\)/);
 });
 
-test('the Schoolmanager adapter aborts before touching the clipboard when the page lacks fields', async () => {
-  const { error, clipboardReads, confirms, fields } = await runSchoolmanagerAdapter(5, 4, 6);
+test('the input-field adapter aborts before touching the clipboard when the page lacks fields', async () => {
+  const { error, clipboardReads, confirms, fields } = await runInputFieldAdapter(5, 4, 6);
 
   assert.ok(error, 'der Adapter muss abbrechen');
   assert.match(error.message, /Diese Seite hat 4 ausfüllbare Eingabefelder/);
@@ -240,8 +240,8 @@ test('the Schoolmanager adapter aborts before touching the clipboard when the pa
   assert.deepEqual(fields.map((field) => field.value), Array(4).fill(undefined));
 });
 
-test('the Schoolmanager adapter still transfers when enough fields remain after the skip', async () => {
-  const { error, confirms, fields } = await runSchoolmanagerAdapter(2, 5, 3);
+test('the input-field adapter still transfers when enough fields remain after the skip', async () => {
+  const { error, confirms, fields } = await runInputFieldAdapter(2, 5, 3);
 
   assert.equal(error, null);
   assert.equal(confirms.length, 2);
@@ -249,8 +249,8 @@ test('the Schoolmanager adapter still transfers when enough fields remain after 
   assert.deepEqual(fields.slice(3).map((field) => field.value), ['1', '2']);
 });
 
-test('the AbiWeb adapter aborts before touching the clipboard when no grade fields exist', async () => {
-  const { error, clipboardReads, confirms, selectedValues } = await runAbiWebAdapter(3, 0);
+test('the popup-table adapter aborts before touching the clipboard when no grade fields exist', async () => {
+  const { error, clipboardReads, confirms, selectedValues } = await runPopupTableAdapter(3, 0);
 
   assert.ok(error, 'der Adapter muss abbrechen');
   assert.match(error.message, /keine AbiWeb-Notenfelder gefunden/);
@@ -261,19 +261,19 @@ test('the AbiWeb adapter aborts before touching the clipboard when no grade fiel
 });
 
 test('both adapters name the target page in the transfer confirmation', async () => {
-  const schoolmanager = await runSchoolmanagerAdapter(2, 2);
-  const abiWeb = await runAbiWebAdapter(2, 2);
+  const inputField = await runInputFieldAdapter(2, 2);
+  const popupTable = await runPopupTableAdapter(2, 2);
 
-  assert.match(schoolmanager.confirms[0], new RegExp(`Zielseite: ${TARGET_ORIGIN}$`));
-  assert.match(abiWeb.confirms[0], new RegExp(`Zielseite: ${TARGET_ORIGIN}$`));
-  assert.match(schoolmanager.confirms[0], /^2 Punktwerte nach Schulmanager übertragen\?/);
-  assert.match(abiWeb.confirms[0], /^2 Punktwerte nach AbiWeb übertragen\?/);
+  assert.match(inputField.confirms[0], new RegExp(`Zielseite: ${TARGET_ORIGIN}$`));
+  assert.match(popupTable.confirms[0], new RegExp(`Zielseite: ${TARGET_ORIGIN}$`));
+  assert.match(inputField.confirms[0], /^2 Punktwerte nach Schulmanager übertragen\?/);
+  assert.match(popupTable.confirms[0], /^2 Punktwerte nach AbiWeb übertragen\?/);
 });
 
 test('the structural precondition runs before the clipboard read in both adapters', () => {
   for (const method of [
-    'buildSchoolmanagerTransferTargetAdapterCode',
-    'buildAbiWebTransferTargetAdapterCode',
+    'buildInputFieldTransferAdapterCode',
+    'buildPopupTableTransferAdapterCode',
   ]) {
     const code = getBookmarkletAdapterCode(method);
     const guard = code.indexOf('Abgebrochen, es wurde nichts geändert.');

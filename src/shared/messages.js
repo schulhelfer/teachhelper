@@ -129,6 +129,11 @@ export function createMessageApi(doc = document) {
     return node;
   }
 
+  // Toast (options.presentation === 'toast'), wenn alle vier zutreffen: keine Entscheidung
+  // nötig, kein Datenverlust, höchstens ein Satz, die Arbeit geht weiter.
+  // Modal, sobald eines zutrifft: harter Stopp, destruktive Folge, mehr als ein Absatz,
+  // Bestätigung nötig bevor sich Zustand ändert (options.enqueue), oder es ist gerade ein
+  // <dialog> offen — ein showModal()-Dialog liegt im Top Layer und verdeckt jeden Toast.
   function showMessage(text, variant = 'info', options = {}) {
     const presentation = options.presentation || (variant === 'success' ? 'toast' : 'modal');
     if (presentation === 'toast') {

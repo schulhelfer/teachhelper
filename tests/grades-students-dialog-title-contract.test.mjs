@@ -27,6 +27,6 @@ test('the participant dialog step reports the current non-empty participant coun
   assert.match(method, /const participantCount = students\.filter/);
   assert.match(method, /!student\?\.isPlaceholder/);
   assert.match(appHtml, /<h3 id="course-students-dialog-title" class="dialog-title">Teilnehmende verwalten<\/h3>/);
-  assert.match(appHtml, /<strong id="course-students-dialog-step-title">3\. Verwalte die Teilnehmenden \(Anzahl: 0\)<\/strong>/);
-  assert.match(method, /3\. Verwalte die Teilnehmenden \(Anzahl: \$\{participantCount\}\)/);
+  assert.match(appHtml, /<strong id="course-students-dialog-step-title">2\. Teilnehmendenverwaltung \(Anzahl: 0\)<\/strong>/);
+  assert.match(method, /2\. Teilnehmendenverwaltung \(Anzahl: \$\{participantCount\}\)/);
 });

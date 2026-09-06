@@ -7,6 +7,7 @@ export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
 export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const DUPLICATE_CHECK_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads';
+export const HELP_PREVIEW_FRAME_SANDBOX = 'allow-scripts allow-same-origin';
 export const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
 export const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-response';
 
@@ -22,6 +23,26 @@ function resolveSandboxTokens(sandbox) {
   if (!sandbox) return '';
   if (Array.isArray(sandbox)) return sandbox.filter(Boolean).join(' ');
   return String(sandbox).trim();
+}
+
+function isHelpPreviewContext() {
+  try {
+    return new URLSearchParams(window.location.search).has('help-preview');
+  } catch {
+    return false;
+  }
+}
+
+function resolvePreviewSandboxTokens(sandboxTokens) {
+  if (
+    !sandboxTokens
+    || sandboxTokens.split(/\s+/).includes('allow-same-origin')
+    || !isHelpPreviewContext()
+  ) return sandboxTokens;
+  // Die verschachtelten PWA-Module enthalten ES-Module. Im ausschließlich
+  // flüchtigen Handbuch-Preview dürfen sie deshalb dieselbe Origin nutzen,
+  // damit sie ohne CORS-Serverkonfiguration gestartet werden können.
+  return `${sandboxTokens} allow-same-origin`;
 }
 
 function appendFrameParameters(src, { nonce = '', theme = '' } = {}) {
@@ -55,7 +76,7 @@ export function createModuleFrame({
   sandbox = '',
 } = {}) {
   const frame = document.createElement('iframe');
-  const sandboxTokens = resolveSandboxTokens(sandbox);
+  const sandboxTokens = resolvePreviewSandboxTokens(resolveSandboxTokens(sandbox));
   const usesOpaqueOriginSandbox = Boolean(sandboxTokens && !sandboxTokens.split(/\s+/).includes('allow-same-origin'));
   const frameNonce = usesOpaqueOriginSandbox ? createModuleFrameNonce() : '';
   if (className) frame.className = className;

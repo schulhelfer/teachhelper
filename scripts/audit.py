@@ -396,6 +396,8 @@ seatplan_index_path = ROOT / 'src' / 'modules' / 'seatplan' / 'index.js'
 name_learning_index_path = ROOT / 'src' / 'modules' / 'name-learning' / 'index.js'
 merger_index_path = ROOT / 'src' / 'modules' / 'merger' / 'index.js'
 duplicate_check_index_path = ROOT / 'src' / 'modules' / 'duplicate-check' / 'index.js'
+help_visuals_path = ROOT / 'src' / 'app' / 'help-visuals.js'
+bootstrap_path = ROOT / 'src' / 'app' / 'bootstrap.js'
 isolated_tool_module_sandbox_profiles = {
   name_learning_index_path: 'ISOLATED_MODULE_SANDBOX',
   qr_index_path: 'QR_MODULE_SANDBOX',
@@ -479,9 +481,35 @@ unsandboxed_module_frame_allowed_paths = {
   grades_index_path,
   seatplan_index_path,
 }
+same_origin_frame_profiles = {
+  help_visuals_path: 'HELP_PREVIEW_FRAME_SANDBOX',
+}
+help_preview_frame_sandbox_tokens = {'allow-scripts', 'allow-same-origin'}
+if bridge_path.exists():
+  help_preview_sandbox_match = re.search(
+    r'export\s+const\s+HELP_PREVIEW_FRAME_SANDBOX\s*=\s*([\'"])(?P<tokens>.*?)\1',
+    bridge_path.read_text(encoding='utf-8', errors='ignore'),
+  )
+  if not help_preview_sandbox_match:
+    errors.append('missing HELP_PREVIEW_FRAME_SANDBOX in src/shared/module-frame-bridge.js')
+  elif set(help_preview_sandbox_match.group('tokens').split()) != help_preview_frame_sandbox_tokens:
+    errors.append(
+      'HELP_PREVIEW_FRAME_SANDBOX tokens must be '
+      f'{", ".join(sorted(help_preview_frame_sandbox_tokens))}; '
+      f'got {help_preview_sandbox_match.group("tokens")}'
+    )
+
 for path in iter_source_files():
   body = path.read_text(encoding='utf-8', errors='ignore')
   if 'createModuleFrame' not in body or path in unsandboxed_module_frame_allowed_paths:
+    continue
+  allowed_same_origin_profile = same_origin_frame_profiles.get(path)
+  if allowed_same_origin_profile:
+    if not re.search(rf'\bsandbox\s*:\s*{allowed_same_origin_profile}\b', body):
+      errors.append(f'{rel(path)} must request its frame with {allowed_same_origin_profile}')
+    bootstrap_body = bootstrap_path.read_text(encoding='utf-8', errors='ignore') if bootstrap_path.exists() else ''
+    if not re.search(r'ephemeral\s*:[^,]*helpPreviewRequest', bootstrap_body):
+      errors.append('help preview frames require the ephemeral workspace guard in src/app/bootstrap.js')
     continue
   sandbox_profile_pattern = '|'.join(sorted(isolated_sandbox_profile_names))
   if not re.search(rf'\bsandbox\s*:\s*(?:{sandbox_profile_pattern})\b', body):

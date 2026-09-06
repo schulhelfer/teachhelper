@@ -450,7 +450,13 @@ export function installAppTooltips(root = document, options = {}) {
   function handleFocusIn(event) {
     const anchor = findAnchor(event.target);
     if (persistentAnchor) return;
-    if (anchor) showTooltip(anchor);
+    if (!anchor) return;
+    try {
+      if (!anchor.matches(":focus-visible")) return;
+    } catch (error) {
+      /* noop */
+    }
+    showTooltip(anchor);
   }
 
   function handleFocusOut(event) {

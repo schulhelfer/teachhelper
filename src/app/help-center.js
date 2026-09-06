@@ -1,3 +1,5 @@
+import { createHelpVisual, hasHelpPreview } from './help-visuals.js';
+
 const MODULE_LABELS = {
   allgemein: 'Allgemein',
   grades: 'Noten',
@@ -12,16 +14,37 @@ const MODULE_LABELS = {
   qr: 'QR',
 };
 
-function article(id, module, title, summary, keywords, sections) {
+const MODULE_PRACTICE_TIPS = {
+  allgemein: 'Notiere wichtige Speicherorte und prüfe Änderungen bewusst, bevor du den Arbeitsstand weiterverwendest.',
+  grades: 'Arbeite bei personenbezogenen Noten möglichst in einer geschützten Ansicht und prüfe Änderungen direkt im betroffenen Kurs.',
+  planning: 'Halte Informationen an der passenden Stunde fest, damit sie bei Rückblick, Vertretung und Anschlussplanung verständlich bleiben.',
+  seatplan: 'Ein Vorschlag ist ein Ausgangspunkt: Prüfe ihn immer gegen die aktuelle pädagogische Situation und speichere bewährte Varianten.',
+  'name-learning': 'Nutze nur abgesprochene Porträts und korrigiere unklare Zuordnungen, bevor du mit einer Übungsrunde startest.',
+  groups: 'Kontrolliere Vorschläge vor dem Einsatz und halte nur die Bedingungen fest, die für die Lerngruppe wirklich hilfreich sind.',
+  'random-picker': 'Mache Auswahlbedingungen transparent, damit Zufall und mögliche Gewichtungen für die Lerngruppe nachvollziehbar bleiben.',
+  merger: 'Öffne erzeugte Dateien vor dem Drucken oder Weitergeben, damit Seitenfolge und Lesbarkeit geprüft sind.',
+  'duplicate-check': 'Behandle technische Treffer als Hinweis und bewerte sie immer zusammen mit Aufgabe, Vorlage und erlaubter Zusammenarbeit.',
+  'work-phase': 'Stimme sichtbare Zeit- und Lautstärkehilfen mit der Lerngruppe ab und passe sie an die konkrete Unterrichtssituation an.',
+  qr: 'Prüfe erzeugte oder gelesene Inhalte, bevor du sie veröffentlichst oder einen darin enthaltenen Link öffnest.',
+};
+
+function article(id, module, title, summary, keywords, sections, options = {}) {
+  const guidance = ARTICLE_GUIDANCE[id] || {};
+  const tags = options.tags || ARTICLE_TAGS[id] || [];
+  const enrichedSections = sections.length >= 3
+    ? sections
+    : [...sections, { title: 'Praxis-Tipp', text: MODULE_PRACTICE_TIPS[module] }];
   return {
     id,
     module,
     title,
     summary,
     keywords,
-    sections,
-    steps: ARTICLE_GUIDANCE[id]?.steps || [],
-    relatedArticleIds: ARTICLE_GUIDANCE[id]?.relatedArticleIds || [],
+    tags: [...new Set(tags)].slice(0, 5),
+    visualId: options.visualId || module,
+    sections: enrichedSections,
+    steps: options.steps || guidance.steps || [],
+    relatedArticleIds: options.relatedArticleIds || guidance.relatedArticleIds || [],
   };
 }
 
@@ -190,6 +213,50 @@ const ARTICLE_GUIDANCE = {
     steps: ['Decoder öffnen und Kamerazugriff bewusst erlauben.', 'QR-Code ruhig und gut beleuchtet in das Kamerabild halten.', 'Scan beenden, Ergebnis kontrollieren und bei Problemen ein Bild verwenden.'],
     relatedArticleIds: ['qr-image-scan', 'qr-create-share'],
   },
+};
+
+const ARTICLE_TAGS = {
+  'data-backup': ['Datenbank', 'Sicherung', 'Wiederherstellung'],
+  'settings-theme': ['Einstellungen', 'Darstellung', 'Bedienung'],
+  'database-setup': ['Datenbank', 'Speicherort', 'Einrichtung'],
+  'data-import-export': ['Import', 'Export', 'Dateien'],
+  'grades-start': ['Notenkurs', 'Lernende', 'Einrichtung'],
+  'grades-entry': ['Leistungen', 'Noteneingabe', 'Kontrolle'],
+  'grades-protection': ['Datenschutz', 'Verschlüsselung', 'Sperren'],
+  'grades-structure': ['Bewertung', 'Gewichtung', 'Skala'],
+  'grades-reports': ['Auswertung', 'Übersicht', 'Ausgabe'],
+  'planning-week': ['Wochenansicht', 'Unterricht', 'Verlauf'],
+  'planning-series': ['Kursserie', 'Kalender', 'Ausfälle'],
+  'planning-courses': ['Kurse', 'Termine', 'Zuordnung'],
+  'planning-content': ['Inhalte', 'Material', 'Nachbereitung'],
+  'planning-archive': ['Archiv', 'Verlauf', 'Sicherung'],
+  'seatplan-create': ['Sitzordnung', 'Platzierung', 'Varianten'],
+  'seatplan-suggestions': ['Sitzvorschlag', 'Kriterien', 'Pädagogik'],
+  'seatplan-room': ['Raumraster', 'Sitzplätze', 'Lehrkraft'],
+  'seatplan-print': ['Druckansicht', 'Ausgabe', 'Vertretung'],
+  'name-learning-practice': ['Karteikarten', 'Wiederholung', 'Kurse'],
+  'name-learning-photos': ['Porträts', 'Datenschutz', 'Lernende'],
+  'name-learning-modes': ['Fälligkeiten', 'Zufall', 'Übungsmodus'],
+  'groups-create': ['Gruppenbildung', 'Gruppengröße', 'Vorschlag'],
+  'groups-import': ['Namenslisten', 'Import', 'Lerngruppe'],
+  'groups-edit': ['Gruppen ändern', 'Sperren', 'Themen'],
+  'random-picker': ['Zufallsauswahl', 'Gewichtung', 'Fairness'],
+  'picker-conditions': ['Verfügbarkeit', 'Gewichtung', 'Auswahl'],
+  'picker-storage': ['Speicherstand', 'Wiederverwenden', 'Bedingungen'],
+  'merger-pdf': ['PDF', 'Dateien', 'Seiten'],
+  'pdf-layout': ['Drucklayout', 'Seiten pro Blatt', 'Ausgabe'],
+  'pdf-rotate': ['Drehen', 'Seitenauswahl', 'Ausrichtung'],
+  'pdf-split': ['Aufteilen', 'Seitengruppen', 'Dateiausgabe'],
+  'duplicate-check': ['ZIP-Abgaben', 'Duplikate', 'Prüfung'],
+  'duplicate-rules': ['Prüfkriterien', 'Bildähnlichkeit', 'Dateien'],
+  'duplicate-results': ['Treffergruppen', 'Vergleich', 'Bewertung'],
+  'work-phase': ['Arbeitsauftrag', 'Timer', 'Lautstärkeampel'],
+  'work-phase-timer': ['Dauer', 'Zwischenwarnung', 'Endzeit'],
+  'work-phase-monitor': ['Ampel', 'Mikrofon', 'Präsentation'],
+  qr: ['QR-Code', 'Generator', 'Decoder'],
+  'qr-create-share': ['Erzeugen', 'Teilen', 'Prüfung'],
+  'qr-image-scan': ['Bildscan', 'Zwischenablage', 'Decoder'],
+  'qr-camera': ['Kamera', 'Berechtigung', 'Scan'],
 };
 
 export const SEARCH_SYNONYM_GROUPS = [
@@ -368,6 +435,94 @@ export const HELP_ARTICLES = [
     { title: 'Kamera starten', text: 'Erlaube den Zugriff nur, wenn du die Kamera verwenden möchtest. Richte den QR-Code bei ausreichendem Licht möglichst gerade im Bild aus.' },
     { title: 'Wenn es nicht klappt', text: 'Verändere Abstand und Beleuchtung oder beende den Scan. Als Alternative kann der QR-Code als Bilddatei oder aus der Zwischenablage gelesen werden.' },
   ]),
+  article('data-privacy-local', 'allgemein', 'Datenschutz, lokale Verarbeitung und Berechtigungen', 'Einordnen, welche Daten TeachHelper verarbeitet und welche Freigaben bewusst erteilt werden.', ['datenschutz', 'lokal', 'berechtigung', 'kamera', 'mikrofon', 'datei'], [
+    { title: 'Lokaler Arbeitsbereich', text: 'Arbeitsdateien und die Verarbeitung der Werkzeuge bleiben auf dem verwendeten Gerät. Teile Dateien nur über Wege, die für die jeweilige Lerngruppe und Schule vorgesehen sind.' },
+    { title: 'Berechtigungen bewusst wählen', text: 'Kamera, Mikrofon oder Dateiauswahl werden nur für die angeforderte Funktion benötigt. Erlaube sie nur, wenn du die Funktion tatsächlich verwenden möchtest, und beende sie danach.' },
+  ], { tags: ['Datenschutz', 'Lokale Verarbeitung', 'Berechtigungen'], steps: ['Vor dem Einsatz prüfen, welche personenbezogenen Angaben in der Ansicht sichtbar sind.', 'Eine angeforderte Berechtigung nur für die gewünschte Funktion freigeben.', 'Dateien, Freigaben und offene Ansichten nach dem Einsatz bewusst schließen.'], relatedArticleIds: ['grades-protection', 'qr-camera', 'data-backup'] }),
+  article('data-offline-update', 'allgemein', 'Offline arbeiten, Updates und Wiederherstellung', 'Arbeitsfähig bleiben, wenn die Verbindung fehlt oder eine neue App-Version bereitsteht.', ['offline', 'update', 'version', 'wiederherstellen', 'app', 'cache'], [
+    { title: 'Offline weiterarbeiten', text: 'Die installierte App hält ihre Bestandteile für die lokale Nutzung bereit. Prüfe trotzdem vor einem längeren Einsatz, dass die benötigte Datenbankdatei erreichbar ist und der aktuelle Arbeitsstand gespeichert wurde.' },
+    { title: 'Updates sicher übernehmen', text: 'Wenn eine neue Version bereitsteht, speichere offene Änderungen und lade die App erst danach neu. Falls ein Arbeitsstand fehlt, nutze die zuletzt geprüfte Datenbankdatei oder Sicherung zur Wiederherstellung.' },
+  ], { tags: ['Offline', 'Updates', 'Wiederherstellung'], steps: ['Vor einer Unterbrechung den Arbeitsstand sichern.', 'Eine verfügbare Aktualisierung erst nach dem Speichern übernehmen.', 'Bei Problemen Speicherort und Sicherung prüfen, bevor weitergearbeitet wird.'], relatedArticleIds: ['data-backup', 'database-setup', 'settings-theme'] }),
+  article('grades-roster-transfer', 'grades', 'Lernende importieren, pflegen und weiterverwenden', 'Kurslisten sauber führen und sie für Sitzplan und Namenlernen konsistent nutzen.', ['lernende', 'kursliste', 'import', 'sitzplan', 'namenlernen', 'teilnehmende'], [
+    { title: 'Eine verlässliche Kursliste', text: 'Übernimm Namen sorgfältig und korrigiere Schreibweisen im Notenkurs. Diese Liste ist die Grundlage für weitere Funktionen, die mit derselben Lerngruppe arbeiten.' },
+    { title: 'Verknüpfte Nutzung', text: 'Kurslisten können für Sitzplan und Namenlernen bereitgestellt werden. Prüfe vor dem Wechsel, ob Kursname und Teilnehmendenzahl der gewünschten Lerngruppe entsprechen.' },
+  ], { tags: ['Lernende', 'Kurslisten', 'Übernehmen'], steps: ['Den Notenkurs öffnen und Teilnehmende kontrollieren.', 'Fehlende oder doppelte Einträge vor der weiteren Nutzung korrigieren.', 'Die passende Kursliste im Zielmodul bewusst auswählen.'], relatedArticleIds: ['grades-start', 'seatplan-create', 'name-learning-photos'] }),
+  article('grades-scales-expectations', 'grades', 'Skalen, Erwartungshorizont und Kommentare', 'Bewertungsvorgaben nachvollziehbar vorbereiten, bevor einzelne Leistungen eingetragen werden.', ['notenskala', 'erwartungshorizont', 'kommentar', 'punkte', 'grenze', 'bewertung'], [
+    { title: 'Skalen vorab klären', text: 'Lege Punktebereiche und Bewertungslogik fest, bevor die erste Leistung eingetragen wird. Teste die Einstellungen mit Beispielwerten, damit Grenzfälle nachvollziehbar bleiben.' },
+    { title: 'Rückmeldung einordnen', text: 'Erwartungshorizonte und Kommentare helfen bei einer einheitlichen Rückmeldung. Prüfe Formulierungen und individuelle Ergänzungen, bevor sie ausgegeben oder übertragen werden.' },
+  ], { tags: ['Notenskalen', 'Erwartungshorizont', 'Kommentare'], steps: ['Bewertungsstruktur und Skala im passenden Kurs öffnen.', 'Grenzen mit einer Beispielbewertung kontrollieren.', 'Erwartungshorizont oder Kommentar vor der Ausgabe auf Vollständigkeit prüfen.'], relatedArticleIds: ['grades-structure', 'grades-entry', 'grades-reports'] }),
+  article('planning-exceptions', 'planning', 'Einzeltermine, Ausfälle und Vertretungen planen', 'Regelmäßige Planung gezielt ergänzen, ohne den verlässlichen Wochenverlauf zu verlieren.', ['einzeltermin', 'ausfall', 'vertretung', 'ferien', 'sondertag', 'kalender'], [
+    { title: 'Regel und Ausnahme trennen', text: 'Kursserien erzeugen wiederkehrende Stunden. Besondere Termine, Ausfälle und Vertretungen werden anschließend gezielt geprüft oder angepasst, damit die Regel verständlich bleibt.' },
+    { title: 'Kalender aktuell halten', text: 'Ferien, Feiertage und Sondertage verhindern falsche Regeltermine. Kontrolliere die betroffene Woche nach einer Änderung, bevor du Inhalte daran planst.' },
+  ], { tags: ['Einzeltermine', 'Ausfälle', 'Vertretung'], steps: ['Die betroffene Woche und den Kurs öffnen.', 'Termin, Ausfall oder Vertretung gezielt prüfen beziehungsweise anpassen.', 'Den Verlauf kontrollieren, damit keine reguläre Stunde doppelt geplant bleibt.'], relatedArticleIds: ['planning-series', 'planning-week', 'planning-courses'] }),
+  article('planning-material-richtext', 'planning', 'Material, Links und Unterrichtsverlauf dokumentieren', 'Planungsnotizen so strukturieren, dass sie vor, während und nach der Stunde nützlich bleiben.', ['material', 'link', 'formatierung', 'notiz', 'unterrichtsverlauf', 'dokumentation'], [
+    { title: 'Vor der Stunde', text: 'Halte Ziele, Material und Arbeitsaufträge im passenden Termin fest. Beschreibe Links so, dass ihr Zweck später ohne erneutes Öffnen erkennbar ist.' },
+    { title: 'Nach der Stunde', text: 'Ergänze den tatsächlichen Verlauf und offene Anschlussschritte. So wird aus der Vorbereitung eine belastbare Dokumentation für Rückblick und Weiterplanung.' },
+  ], { tags: ['Material', 'Links', 'Unterrichtsverlauf'], steps: ['Die konkrete Unterrichtsstunde öffnen.', 'Material, Aufgaben und Hinweise verständlich ergänzen.', 'Nach der Stunde Verlauf und nächste Schritte aktualisieren.'], relatedArticleIds: ['planning-content', 'planning-week', 'planning-archive'] }),
+  article('seatplan-course-binding', 'seatplan', 'Kurslisten aus Noten übernehmen und Bindungen lösen', 'Eine verknüpfte Kursliste gezielt für den Sitzplan nutzen oder wieder in eine eigene Liste überführen.', ['notenkurs', 'kursliste', 'uebernehmen', 'übernehmen', 'bindung', 'teilnehmende'], [
+    { title: 'Kursliste übernehmen', text: 'Wähle einen passenden Notenkurs, wenn die Sitzordnung dieselben Teilnehmenden verwenden soll. Die Bindung vermeidet unterschiedliche Namensstände in beiden Modulen.' },
+    { title: 'Eigenständig weiterarbeiten', text: 'Löse die Kursbindung nur, wenn ein unabhängiger Sitzplan nötig ist. Prüfe danach, ob alle benötigten Namen und Plätze weiterhin vorhanden sind.' },
+  ], { tags: ['Kursbindung', 'Notenkurse', 'Teilnehmende'], steps: ['Den gewünschten Kurs im Sitzplan auswählen.', 'Die übernommene Liste und Anzahl der Lernenden prüfen.', 'Eine Bindung nur bei Bedarf lösen und die eigene Liste anschließend kontrollieren.'], relatedArticleIds: ['grades-roster-transfer', 'seatplan-create', 'seatplan-room'] }),
+  article('seatplan-variants-output', 'seatplan', 'Sitzplanvarianten prüfen und ausgeben', 'Bewährte Sitzordnungen behalten, Änderungen vergleichen und eine klare Ansicht weitergeben.', ['variante', 'sitzplan', 'drucken', 'ausgabe', 'vertretung', 'speichern'], [
+    { title: 'Varianten sinnvoll nutzen', text: 'Speichere einen geprüften Plan, bevor du eine neue Anordnung ausprobierst. Varianten helfen, unterschiedliche Phasen oder Lerngruppensituationen nachvollziehbar zu trennen.' },
+    { title: 'Für andere lesbar machen', text: 'Kontrolliere Namen, Raumraster und Perspektive vor der Ausgabe. Eine reduzierte, klare Ansicht ist für Vertretungen hilfreicher als ein ungeprüfter Zwischenstand.' },
+  ], { tags: ['Varianten', 'Ausgabe', 'Vertretung'], steps: ['Die gewünschte Sitzplanvariante laden.', 'Namen und Raumdarstellung prüfen.', 'Erst danach drucken oder eine geprüfte Variante weitergeben.'], relatedArticleIds: ['seatplan-create', 'seatplan-print', 'seatplan-suggestions'] }),
+  article('name-learning-selection-progress', 'name-learning', 'Kurse auswählen und Wiederholungen verstehen', 'Übungsumfang und Rückmeldungen so wählen, dass unsichere Namen gezielt wiederkehren.', ['kursauswahl', 'faellig', 'fällig', 'fortschritt', 'wiederholung', 'karteikarte'], [
+    { title: 'Passende Kurse wählen', text: 'Wähle nur die Lerngruppen aus, die du gerade üben möchtest. Eine kleine, regelmäßige Auswahl ist oft hilfreicher als eine lange Runde mit vielen unbekannten Karten.' },
+    { title: 'Rückmeldungen nutzen', text: 'Markiere Namen ehrlich als gewusst oder unsicher. Die Wiederholung orientiert sich an dieser Rückmeldung und macht Übungsbedarf sichtbar.' },
+  ], { tags: ['Kursauswahl', 'Fälligkeiten', 'Fortschritt'], steps: ['Die gewünschten Kurse auswählen.', 'Fällige oder zufällige Karten passend zur Situation starten.', 'Nach jeder Antwort die Rückmeldung setzen und die nächste Karte öffnen.'], relatedArticleIds: ['name-learning-practice', 'name-learning-modes', 'name-learning-photos'] }),
+  article('name-learning-photo-privacy', 'name-learning', 'Porträts fürs Namenlernen verantwortungsvoll einsetzen', 'Bilddaten nur mit passender Grundlage verwenden und verständlich für die Übung vorbereiten.', ['portrait', 'porträt', 'foto', 'datenschutz', 'einwilligung', 'lernende'], [
+    { title: 'Geeignete Bilder', text: 'Nutze nur Porträts, deren Verwendung abgesprochen und zulässig ist. Ein klar erkennbares, aktuelles Bild unterstützt das Lernen besser als ein unpassender Ausschnitt.' },
+    { title: 'Vor der Übung prüfen', text: 'Kontrolliere die Zuordnung von Name und Bild im Notenkurs. Fehlende oder unklare Porträts werden im Namenlernen nicht durch echte Daten ersetzt.' },
+  ], { tags: ['Porträts', 'Datenschutz', 'Zuordnung'], steps: ['Die Kursliste im Notenbereich öffnen.', 'Bild und Namenszuordnung prüfen oder korrigieren.', 'Die Karteikartenansicht erst danach für die Übung verwenden.'], relatedArticleIds: ['name-learning-photos', 'grades-protection', 'name-learning-practice'] }),
+  article('groups-conditions-performance', 'groups', 'Bedingungen, Leistungsklassen und Partnerwünsche', 'Gruppenvorschläge mit transparenten Regeln vorbereiten und pädagogisch einordnen.', ['bedingungen', 'leistungsklasse', 'partnerwuensche', 'partnerwünsche', 'gruppe', 'kriterien'], [
+    { title: 'Bedingungen bewusst setzen', text: 'Leistungsklassen sowie gute oder schwierige Gruppenpartner können einen Vorschlag beeinflussen. Pflege nur Informationen, die aktuell, nachvollziehbar und für die Aufgabe sinnvoll sind.' },
+    { title: 'Vorschläge verantwortlich prüfen', text: 'Ein berechnetes Ergebnis kennt nicht jede Tagesform oder Konfliktsituation. Passe Gruppen manuell an, wenn deine pädagogische Einschätzung etwas anderes nahelegt.' },
+  ], { tags: ['Bedingungen', 'Leistungsklassen', 'Partnerwünsche'], steps: ['Lerngruppe und Gruppengrößen kontrollieren.', 'Hilfreiche Bedingungen gezielt ergänzen.', 'Den Vorschlag prüfen und bei Bedarf manuell anpassen.'], relatedArticleIds: ['groups-create', 'groups-edit', 'seatplan-suggestions'] }),
+  article('groups-save-share', 'groups', 'Gruppeneinteilungen sichern und ausgeben', 'Geprüfte Einteilungen wiederverwenden und für die Unterrichtssituation klar bereitstellen.', ['speichern', 'export', 'ausgabe', 'gruppe', 'wiederverwenden', 'einteilung'], [
+    { title: 'Geprüfte Stände behalten', text: 'Speichere eine Einteilung erst, wenn Gruppengrößen, Themen und Sperren stimmen. So kannst du später nachvollziehen, welche Variante im Einsatz war.' },
+    { title: 'Ausgabe vorbereiten', text: 'Kontrolliere vor einer Ausgabe, welche Informationen die Lerngruppe wirklich benötigt. Eine klare Darstellung der Gruppen und Themen vermeidet Rückfragen zu Beginn der Arbeitsphase.' },
+  ], { tags: ['Einteilungen', 'Speichern', 'Ausgabe'], steps: ['Die fertige Gruppeneinteilung öffnen.', 'Gruppen, Themen und gesperrte Entscheidungen prüfen.', 'Den Stand sichern oder in der passenden Form ausgeben.'], relatedArticleIds: ['groups-edit', 'groups-create', 'work-phase'] }),
+  article('picker-availability-source', 'random-picker', 'Namenslisten und Verfügbarkeit im Picker steuern', 'Die Auswahlmenge vor einer Ziehung prüfen und Änderungen nachvollziehbar halten.', ['namensliste', 'verfuegbar', 'verfügbar', 'kursliste', 'picker', 'teilnahme'], [
+    { title: 'Auswahlmenge kontrollieren', text: 'Prüfe vor der Ziehung, welche Namen verfügbar sind und ob die Liste zur aktuellen Lerngruppe passt. Nicht teilnehmende Personen sollten nur für die konkrete Situation deaktiviert werden.' },
+    { title: 'Quelle bewusst wählen', text: 'Eine aktuelle gemeinsame Namensliste verhindert Überraschungen bei der Ziehung. Übernimm Änderungen erst, nachdem die Namen und Gewichte kontrolliert wurden.' },
+  ], { tags: ['Namenslisten', 'Verfügbarkeit', 'Teilnahme'], steps: ['Die aktuelle Namensliste im Picker öffnen.', 'Verfügbarkeit und Gewichtungen kontrollieren.', 'Die Auswahl erst dann starten oder den Zustand speichern.'], relatedArticleIds: ['picker-conditions', 'picker-storage', 'random-picker'] }),
+  article('picker-repeat-fairness', 'random-picker', 'Ziehungen wiederholen und fair erklären', 'Automatische Deaktivierung, Gewichtungen und Wiederholungen transparent einsetzen.', ['fairness', 'wiederholung', 'deaktivieren', 'gewichtung', 'zufall', 'auswahl'], [
+    { title: 'Wiederholung entscheiden', text: 'Lege vor der Ziehung fest, ob gewählte Namen für die nächste Runde weiter verfügbar bleiben. Die automatische Deaktivierung passt vor allem zu einer Runde ohne Wiederholung.' },
+    { title: 'Fairness erklären', text: 'Gewichtungen verändern Wahrscheinlichkeiten. Wenn du sie einsetzt, erkläre das Prinzip und kontrolliere den Zustand, bevor die Lerngruppe die Ziehung sieht.' },
+  ], { tags: ['Fairness', 'Wiederholung', 'Gewichtungen'], steps: ['Auswahlbedingungen vor der Runde sichtbar prüfen.', 'Die Ziehung starten und das Ergebnis benennen.', 'Verfügbarkeit für die nächste Runde bewusst zurücksetzen oder beibehalten.'], relatedArticleIds: ['random-picker', 'picker-conditions', 'picker-storage'] }),
+  article('pdf-merge-order', 'merger', 'PDFs verbinden und die Seitenfolge prüfen', 'Mehrere Dateien in einer kontrollierten Reihenfolge zu einem Material zusammenführen.', ['pdf', 'verbinden', 'reihenfolge', 'seiten', 'datei', 'zusammenfuegen'], [
+    { title: 'Dateien vorbereiten', text: 'Wähle nur die Dateien aus, die gemeinsam gebraucht werden. Kontrolliere ihre Reihenfolge und Seitenzahl, bevor das neue Dokument erzeugt wird.' },
+    { title: 'Ergebnis absichern', text: 'Das Werkzeug erstellt eine neue Datei; die Originale bleiben unverändert. Öffne das Ergebnis und prüfe Übergänge, Deckblätter und die letzte Seite vor der Weitergabe.' },
+  ], { tags: ['PDF verbinden', 'Seitenfolge', 'Dateien'], steps: ['Das Werkzeug zum Verbinden öffnen.', 'Dateien hinzufügen und die Reihenfolge kontrollieren.', 'Die erzeugte Datei öffnen und vollständig prüfen.'], relatedArticleIds: ['merger-pdf', 'pdf-layout', 'pdf-split'] }),
+  article('pdf-local-results', 'merger', 'PDF-Ergebnisse lokal prüfen und weitergeben', 'Erzeugte Materialien sorgfältig kontrollieren, bevor sie gedruckt oder geteilt werden.', ['lokal', 'pdf', 'ergebnis', 'drucken', 'weitergeben', 'datei'], [
+    { title: 'Lokale Verarbeitung verstehen', text: 'Die PDF-Werkzeuge erzeugen Ergebnisse auf dem verwendeten Gerät. Behalte trotzdem im Blick, welche Dateien du öffnest, speicherst oder über einen anderen Weg weitergibst.' },
+    { title: 'Sichtprüfung vor Ausgabe', text: 'Öffne jede erzeugte Datei und kontrolliere Lesbarkeit, Seitenfolge und Inhalt. Besonders bei Arbeitsblättern fallen so leere oder falsch gedrehte Seiten rechtzeitig auf.' },
+  ], { tags: ['Lokale Verarbeitung', 'PDF-Ergebnis', 'Sichtprüfung'], steps: ['Die erzeugte PDF lokal öffnen.', 'Inhalt und Seitenfolge stichprobenartig oder vollständig prüfen.', 'Erst danach drucken oder über den vorgesehenen Weg weitergeben.'], relatedArticleIds: ['merger-pdf', 'pdf-layout', 'pdf-rotate'] }),
+  article('duplicate-zip-limits', 'duplicate-check', 'ZIP-Abgaben vorbereiten und Grenzen der Prüfung kennen', 'Eine passende Eingabedatei wählen und technische Hinweise nicht überinterpretieren.', ['zip', 'abgaben', 'grenzen', 'datei', 'pruefung', 'prüfung'], [
+    { title: 'ZIP-Datei vorbereiten', text: 'Lege die zu vergleichenden Abgaben in einer klaren ZIP-Datei bereit. Eine nachvollziehbare Ordnerstruktur erleichtert es, Treffer später im richtigen Kontext zu öffnen.' },
+    { title: 'Aussagekraft begrenzen', text: 'Ähnliche Dateinamen, Größen oder Bilder können durch Vorlagen und erlaubte Zusammenarbeit entstehen. Die Prüfung kann auffällige Stellen zeigen, aber keine Täuschungsabsicht feststellen.' },
+  ], { tags: ['ZIP-Abgaben', 'Prüfgrenzen', 'Kontext'], steps: ['Eine übersichtliche ZIP-Datei mit den Abgaben auswählen.', 'Nur passende Prüfkriterien aktivieren.', 'Hinweise anschließend mit Aufgabe und Dateien im Kontext vergleichen.'], relatedArticleIds: ['duplicate-check', 'duplicate-rules', 'duplicate-results'] }),
+  article('duplicate-evidence-review', 'duplicate-check', 'Treffer vergleichen und verantwortungsvoll dokumentieren', 'Auffälligkeiten sachlich prüfen, statt technische Ähnlichkeit vorschnell zu bewerten.', ['treffer', 'vergleich', 'dokumentation', 'beweis', 'bewertung', 'abgabe'], [
+    { title: 'Dateien vergleichen', text: 'Öffne die betroffenen Dateien einzeln und lies die angezeigten Treffergründe. Berücksichtige Arbeitsauftrag, Vorlagen und mögliche gemeinsame Quellen.' },
+    { title: 'Ergebnis einordnen', text: 'Halte nur nachvollziehbare Beobachtungen fest und vermeide voreilige Schlussfolgerungen. Für pädagogische Entscheidungen zählen immer der vollständige Kontext und die geltenden Regeln.' },
+  ], { tags: ['Treffervergleich', 'Dokumentation', 'Einordnung'], steps: ['Eine Treffergruppe öffnen.', 'Dateien und Gründe im Kontext vergleichen.', 'Die Beobachtung sachlich einordnen oder Regeln passend anpassen.'], relatedArticleIds: ['duplicate-results', 'duplicate-rules', 'duplicate-zip-limits'] }),
+  article('work-phase-presentation', 'work-phase', 'Arbeitsauftrag und Zeit im Raum präsentieren', 'Eine klare, gut lesbare Arbeitsphase für die Lerngruppe vorbereiten.', ['praesentation', 'präsentation', 'arbeitsauftrag', 'timer', 'raum', 'anzeige'], [
+    { title: 'Auftrag sichtbar formulieren', text: 'Formuliere den Arbeitsauftrag kurz, konkret und so, dass die Lerngruppe ihn ohne zusätzliche Erklärung wiederfindet. Ergänze eine realistische Dauer und kontrolliere die Anzeige vor dem Start.' },
+    { title: 'Raumansicht nutzen', text: 'Die Präsentationsansicht hebt Auftrag und Zeit für den Raum hervor. Beende oder aktualisiere die Arbeitsphase bewusst, damit keine veralteten Hinweise sichtbar bleiben.' },
+  ], { tags: ['Präsentation', 'Arbeitsauftrag', 'Raumansicht'], steps: ['Arbeitsauftrag und Dauer eintragen.', 'Die Ansicht aus der Lerngruppenperspektive prüfen.', 'Timer starten und die Anzeige nach Abschluss aktualisieren.'], relatedArticleIds: ['work-phase', 'work-phase-timer', 'work-phase-monitor'] }),
+  article('work-phase-signals', 'work-phase', 'Warnungen, Ton und Ampel verantwortungsvoll nutzen', 'Zeit- und Lautstärkehinweise verständlich und mit transparenter Absprache einsetzen.', ['warnung', 'ton', 'ampel', 'mikrofon', 'lautstaerke', 'lautstärke'], [
+    { title: 'Signale dosieren', text: 'Zwischenwarnungen und Endsignale helfen bei der Zeitstruktur, wenn sie vorher erklärt wurden. Wähle sie so zurückhaltend, dass sie Arbeitsphasen unterstützen und nicht unnötig unterbrechen.' },
+    { title: 'Ampel transparent einsetzen', text: 'Eine Mikrofonüberwachung braucht eine klare Absprache. Die Ampel ist eine Orientierung für die Gruppe und ersetzt weder Aufsicht noch pädagogische Rückmeldung.' },
+  ], { tags: ['Warnsignale', 'Lautstärkeampel', 'Transparenz'], steps: ['Warnungen und Ampelschwellen passend einstellen.', 'Die Bedeutung der Signale mit der Lerngruppe klären.', 'Überwachung und Ton nach der Arbeitsphase bewusst beenden.'], relatedArticleIds: ['work-phase-monitor', 'work-phase-timer', 'work-phase-presentation'] }),
+  article('qr-share-safely', 'qr', 'QR-Codes sicher teilen und vorab testen', 'Erzeugte Codes als Material bereitstellen, ohne falsche oder ungeprüfte Ziele zu verbreiten.', ['qr', 'teilen', 'testscan', 'link', 'herunterladen', 'material'], [
+    { title: 'Ziel vorab prüfen', text: 'Kontrolliere Link oder Text vor dem Erzeugen. Bei Links ist ein Test auf dem vorgesehenen Gerät sinnvoll, besonders wenn der Zugang von einem Schulnetz abhängt.' },
+    { title: 'Material bereitstellen', text: 'Lade den QR-Code erst nach dem Test herunter oder kopiere ihn in dein Material. Ein sichtbarer Hinweis zum Ziel hilft, wenn Lernende den Code später erneut verwenden.' },
+  ], { tags: ['Teilen', 'Testscan', 'Linkprüfung'], steps: ['Link oder Text vollständig eingeben.', 'QR-Code erzeugen und mit einem Testscan prüfen.', 'Den geprüften Code für Druck oder digitale Kanäle bereitstellen.'], relatedArticleIds: ['qr-create-share', 'qr', 'qr-image-scan'] }),
+  article('qr-result-safety', 'qr', 'Scan-Ergebnisse und Links sicher beurteilen', 'Gelesene Inhalte erst verstehen und dann kopieren oder öffnen.', ['qr', 'scan', 'link', 'sicherheit', 'decoder', 'zwischenablage'], [
+    { title: 'Ergebnis lesen', text: 'Prüfe, ob der gelesene Inhalt ein Link oder freier Text ist. Bei unbekannten Links hilft es, Ziel und Schreibweise zu kontrollieren, statt direkt zu öffnen.' },
+    { title: 'Sicher weiterarbeiten', text: 'Kopiere einen geprüften Inhalt bei Bedarf in die Zwischenablage. Kamera und Decoder können anschließend geschlossen werden, wenn sie nicht mehr benötigt werden.' },
+  ], { tags: ['Scan-Ergebnis', 'Linksicherheit', 'Decoder'], steps: ['QR-Code aus Bild, Zwischenablage oder Kamera lesen.', 'Das erkannte Ergebnis sorgfältig prüfen.', 'Inhalt kopieren oder einen Link erst nach der Kontrolle öffnen.'], relatedArticleIds: ['qr-image-scan', 'qr-camera', 'qr-share-safely'] }),
 ];
 
 export function normalizeHelpSearch(value) {
@@ -380,12 +535,94 @@ export function normalizeHelpSearch(value) {
     .trim();
 }
 
+export function normalizeHelpSearchWithMap(value) {
+  const source = String(value || '');
+  const characters = [];
+  const map = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const decomposed = source[index]
+      .toLocaleLowerCase('de')
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/ß/g, 'ss');
+    for (const character of decomposed) {
+      if (/[a-z0-9]/.test(character)) {
+        characters.push(character);
+        map.push(index);
+      } else if (characters.length && characters[characters.length - 1] !== ' ') {
+        characters.push(' ');
+        map.push(index);
+      }
+    }
+  }
+  while (characters.length && characters[characters.length - 1] === ' ') {
+    characters.pop();
+    map.pop();
+  }
+  map.push(source.length);
+  return { normalized: characters.join(''), map };
+}
+
+export function collectHighlightTerms(query) {
+  return [...new Set(tokenize(query))].sort((left, right) => right.length - left.length);
+}
+
+export function findHighlightRanges(text, terms) {
+  if (!text || !terms?.length) return [];
+  const { normalized, map } = normalizeHelpSearchWithMap(text);
+  if (!normalized) return [];
+  const ranges = [];
+  terms.forEach((term) => {
+    if (!term) return;
+    let from = 0;
+    for (;;) {
+      const start = normalized.indexOf(term, from);
+      if (start === -1) break;
+      from = start + 1;
+      if (start > 0 && normalized[start - 1] !== ' ') continue;
+      ranges.push({ start: map[start], end: map[start + term.length] });
+    }
+  });
+  ranges.sort((left, right) => left.start - right.start || left.end - right.end);
+  return ranges.reduce((merged, range) => {
+    const previous = merged[merged.length - 1];
+    if (previous && range.start <= previous.end) {
+      previous.end = Math.max(previous.end, range.end);
+      return merged;
+    }
+    merged.push({ ...range });
+    return merged;
+  }, []);
+}
+
+export function applyHighlight(element, text, terms) {
+  const value = String(text ?? '');
+  const ranges = findHighlightRanges(value, terms);
+  if (!ranges.length) {
+    element.textContent = value;
+    return;
+  }
+  const nodes = [];
+  let cursor = 0;
+  ranges.forEach(({ start, end }) => {
+    if (start > cursor) nodes.push(document.createTextNode(value.slice(cursor, start)));
+    const marker = document.createElement('mark');
+    marker.className = 'help-mark';
+    marker.textContent = value.slice(start, end);
+    nodes.push(marker);
+    cursor = end;
+  });
+  if (cursor < value.length) nodes.push(document.createTextNode(value.slice(cursor)));
+  element.replaceChildren(...nodes);
+}
+
 function searchableText(articleItem) {
   return normalizeHelpSearch([
     articleItem.title,
     articleItem.summary,
     articleItem.module,
     MODULE_LABELS[articleItem.module],
+    ...(articleItem.tags || []),
     ...(articleItem.keywords || []),
     ...(articleItem.sections || []).flatMap((section) => [section.title, section.text]),
   ].join(' '));
@@ -398,6 +635,7 @@ function tokenize(value) {
 function getSearchFields(articleItem) {
   return {
     title: normalizeHelpSearch(articleItem.title),
+    tags: normalizeHelpSearch((articleItem.tags || []).join(' ')),
     keywords: normalizeHelpSearch((articleItem.keywords || []).join(' ')),
     summary: normalizeHelpSearch(articleItem.summary),
     body: normalizeHelpSearch((articleItem.sections || [])
@@ -470,6 +708,7 @@ function getFieldMatchScore(fields, { term, variants, kind }) {
       : 0;
   };
   return scoreFor(fields.title, 120, 70)
+    + scoreFor(fields.tags, 92, 58)
     + scoreFor(fields.keywords, 100, 55)
     + scoreFor(fields.summary, 60, 32)
     + scoreFor(fields.body, 35, 18);
@@ -488,6 +727,49 @@ export function searchHelpArticles(query, articles = HELP_ARTICLES) {
     .map(({ articleItem }) => articleItem);
 }
 
+function normalizedTagSet(articleItem) {
+  return new Set((articleItem?.tags || []).map(normalizeHelpSearch).filter(Boolean));
+}
+
+export function resolveRelatedArticles(articleItem, articles = HELP_ARTICLES, limit = 3) {
+  if (!articleItem || !Array.isArray(articles) || limit <= 0) return [];
+  const byId = new Map(articles.map((candidate) => [candidate.id, candidate]));
+  const related = [];
+  const seen = new Set([articleItem.id]);
+  (articleItem.relatedArticleIds || []).forEach((relatedId) => {
+    const candidate = byId.get(relatedId);
+    if (!candidate || seen.has(candidate.id) || related.length >= limit) return;
+    seen.add(candidate.id);
+    related.push(candidate);
+  });
+  if (related.length >= limit) return related;
+
+  const sourceTags = normalizedTagSet(articleItem);
+  const suggestions = articles
+    .filter((candidate) => !seen.has(candidate.id))
+    .map((candidate) => {
+      const sharedTags = [...normalizedTagSet(candidate)].filter((tag) => sourceTags.has(tag));
+      const sameModule = candidate.module === articleItem.module;
+      if (!sharedTags.length || (!sameModule && sharedTags.length < 2)) return null;
+      return {
+        candidate,
+        score: sharedTags.length * 100 + (sameModule ? 25 : 0),
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => (
+      right.score - left.score
+      || left.candidate.title.localeCompare(right.candidate.title, 'de')
+    ));
+  suggestions.some(({ candidate }) => {
+    if (related.length >= limit) return true;
+    seen.add(candidate.id);
+    related.push(candidate);
+    return false;
+  });
+  return related;
+}
+
 function openDialog(dialog) {
   if (!dialog) return;
   if (typeof dialog.showModal === 'function' && !dialog.open) dialog.showModal();
@@ -503,9 +785,16 @@ function closeDialog(dialog) {
 export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } = {}) {
   let selectedArticleId = '';
   let resultsAnimationFrame = 0;
+  let visualCleanup = null;
 
   const moduleLabel = (module) => MODULE_LABELS[module] || MODULE_LABELS.allgemein;
   const selectedArticle = () => HELP_ARTICLES.find((item) => item.id === selectedArticleId) || null;
+  const activeTerms = () => collectHighlightTerms(els.helpSearch?.value || '');
+  const clearVisual = () => {
+    const cleanup = visualCleanup;
+    visualCleanup = null;
+    cleanup?.();
+  };
 
   function animateResults() {
     if (!els.helpResults) return;
@@ -529,16 +818,19 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
       if (animate) animateResults();
       return;
     }
+    const terms = activeTerms();
     results.forEach((articleItem) => {
       const button = document.createElement('button');
       button.type = 'button';
       button.className = 'help-result-card';
       button.dataset.helpArticleId = articleItem.id;
       const title = document.createElement('strong');
-      title.textContent = articleItem.title;
+      applyHighlight(title, articleItem.title, terms);
       const meta = document.createElement('span');
       meta.className = 'help-result-meta';
-      meta.textContent = `${moduleLabel(articleItem.module)} · ${articleItem.summary}`;
+      const summary = document.createElement('span');
+      applyHighlight(summary, articleItem.summary, terms);
+      meta.append(document.createTextNode(`${moduleLabel(articleItem.module)} · `), summary);
       button.append(title, meta);
       button.addEventListener('click', () => openArticle(articleItem.id));
       container.append(button);
@@ -546,24 +838,34 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
     if (animate) animateResults();
   }
 
-  function openArticle(id, { focusTarget = 'back' } = {}) {
+  function openArticle(id, { focusTarget = 'title' } = {}) {
     selectedArticleId = id;
     const articleItem = selectedArticle();
     if (!articleItem || !els.helpDetail) return;
+    clearVisual();
     els.helpDetail.replaceChildren();
+    const terms = activeTerms();
     const label = document.createElement('p');
     label.className = 'help-article-module';
     label.textContent = moduleLabel(articleItem.module);
     const title = document.createElement('h3');
     title.className = 'help-article-title';
-    title.textContent = articleItem.title;
-    els.helpDetail.append(label, title);
+    applyHighlight(title, articleItem.title, terms);
+    const summary = document.createElement('p');
+    summary.className = 'help-article-summary';
+    applyHighlight(summary, articleItem.summary, terms);
+    els.helpDetail.append(label, title, summary);
+    if (hasHelpPreview(articleItem.id)) {
+      const visual = createHelpVisual(articleItem, { doc: els.helpDetail.ownerDocument || document });
+      if (visual.element) els.helpDetail.append(visual.element);
+      visualCleanup = visual.destroy;
+    }
     articleItem.sections.forEach((section) => {
       const sectionNode = document.createElement('section');
       const sectionTitle = document.createElement('h4');
-      sectionTitle.textContent = section.title;
+      applyHighlight(sectionTitle, section.title, terms);
       const copy = document.createElement('p');
-      copy.textContent = section.text;
+      applyHighlight(copy, section.text, terms);
       sectionNode.append(sectionTitle, copy);
       els.helpDetail.append(sectionNode);
     });
@@ -576,15 +878,13 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
       steps.className = 'help-article-steps';
       articleItem.steps.forEach((step) => {
         const item = document.createElement('li');
-        item.textContent = step;
+        applyHighlight(item, step, terms);
         steps.append(item);
       });
       stepsSection.append(stepsTitle, steps);
       els.helpDetail.append(stepsSection);
     }
-    const relatedArticles = articleItem.relatedArticleIds
-      .map((relatedId) => HELP_ARTICLES.find((candidate) => candidate.id === relatedId))
-      .filter(Boolean);
+    const relatedArticles = resolveRelatedArticles(articleItem);
     if (relatedArticles.length) {
       const relatedSection = document.createElement('section');
       relatedSection.className = 'help-related-section';
@@ -597,7 +897,7 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
         button.type = 'button';
         button.className = 'ghost help-related-button';
         button.textContent = relatedArticle.title;
-        button.addEventListener('click', () => openArticle(relatedArticle.id, { focusTarget: 'title' }));
+        button.addEventListener('click', () => openArticle(relatedArticle.id));
         relatedList.append(button);
       });
       relatedSection.append(relatedTitle, relatedList);
@@ -605,21 +905,23 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
     }
     els.helpResults.hidden = true;
     els.helpDetail.hidden = false;
+    els.helpDetail.scrollTop = 0;
     els.helpBackButton.hidden = false;
-    if (focusTarget === 'title') {
+    if (focusTarget === 'back') {
+      els.helpBackButton.focus();
+    } else {
       title.tabIndex = -1;
       title.focus();
-    } else {
-      els.helpBackButton.focus();
     }
   }
 
-  function showResults({ focusSearch = false } = {}) {
+  function showResults({ focusSearch = false, render = true } = {}) {
     selectedArticleId = '';
+    clearVisual();
     if (els.helpResults) els.helpResults.hidden = false;
     if (els.helpDetail) els.helpDetail.hidden = true;
     if (els.helpBackButton) els.helpBackButton.hidden = true;
-    renderResults();
+    if (render) renderResults();
     if (focusSearch) els.helpSearch?.focus();
   }
 
@@ -646,10 +948,12 @@ export function createHelpCenter({ els = {}, onStartTutorial = async () => {} } 
   els.helpCloseButton?.addEventListener('click', () => closeDialog(els.helpDialog));
   els.helpBackButton?.addEventListener('click', () => showResults({ focusSearch: true }));
   els.helpSearch?.addEventListener('input', () => {
-    if (!selectedArticleId) renderResults({ animate: true });
+    if (selectedArticleId) showResults({ render: false });
+    renderResults({ animate: true });
   });
   els.helpDialog?.addEventListener('close', () => {
     selectedArticleId = '';
+    clearVisual();
   });
 
   return { openEntry, openHelp, showResults };

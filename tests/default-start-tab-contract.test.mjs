@@ -12,8 +12,8 @@ test('planning is the default module at application startup', () => {
   assert.match(mainSource, /const shellState = \{\s+activeTab: TAB_PLANNING,/);
   assert.match(
     mainSource,
-    /try \{\s+if \(moduleWindowRequest\.tab\) \{\s+setActiveTabImmediate\(moduleWindowRequest\.tab\);\s+\} else \{\s+setActiveTab\(TAB_PLANNING\);\s+\}[\s\S]*?tab: TAB_PLANNING,/,
-    'planning bleibt der Start, ausser ein Modulfenster fordert ausdruecklich ein anderes Modul an',
+    /try \{\s+if \(helpPreviewRequest\) \{\s+setActiveTabImmediate\(helpPreviewRequest\.config\.tab, \{ skipUnsavedPrompt: true \}\);\s+\} else if \(moduleWindowRequest\.tab\) \{\s+setActiveTabImmediate\(moduleWindowRequest\.tab\);\s+\} else \{\s+setActiveTab\(TAB_PLANNING\);\s+\}[\s\S]*?tab: TAB_PLANNING,/,
+    'Planung bleibt der Start; nur isolierte Vorschauen und Modulfenster wählen ausdrücklich ein anderes Modul',
   );
   assert.match(htmlSource, /<div class="app app-tab-planning" id="app">/);
   assert.match(htmlSource, /<div id="groups-main-host" hidden>/);

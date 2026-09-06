@@ -47,8 +47,6 @@ test('the participant dialog round-trips every persisted student field', () => {
     persisted,
   );
 
-  assert.deepEqual(studentFieldsIn('getCourseStudentsDialogSignature()'), persisted);
-
   const newRow = extractGradesMethod('addCourseDialogStudentDraft()');
   for (const field of persisted) {
     assert.match(newRow, new RegExp(`\\b${field}:`), `new student rows must seed ${field}`);

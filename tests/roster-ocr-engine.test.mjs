@@ -1,5 +1,3 @@
-// Runs the real vendored worker/WASM pipeline in simulated worker globals.
-// This verifies local asset resolution; it does not replace browser/CSP testing.
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -23,7 +21,6 @@ class LocalWorker {
     this.children = [];
     this.dead = false;
     const worker = this;
-    // No IndexedDB, CacheStorage or other persistent storage is supplied.
     const sandbox = {
       console, URL, Blob, File, ArrayBuffer, DataView, WebAssembly,
       Uint8Array, Uint8ClampedArray, Uint16Array, Uint32Array,

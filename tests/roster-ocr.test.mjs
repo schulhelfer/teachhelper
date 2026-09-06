@@ -10,7 +10,7 @@ const { parseOcrNames, importableOcrNames, boundCrop, changeCrop, cropPixels, oc
 const { recognizeLocalNames } = await loadModule('../src/shared/ocr-vendor.js');
 const { buildStudentNameMatchKey } = await loadModule('../src/shared/school-data/seatplan-transfer.js');
 
-test('OCR preserves name parts, punctuation and order and keeps every recognized line for review', () => {
+test('OCR preserves name parts and order and keeps every recognized line for review', () => {
   const rows = parseOcrNames('Nachname  Vorname\n1. Müller-Schön, Anna Maria\n2 van der Meer\tLéa\n\nO’Neill  Max\nSolo\n123');
   assert.equal(rows.length, 6);
   assert.deepEqual(importableOcrNames(rows), [
@@ -24,6 +24,22 @@ test('OCR preserves name parts, punctuation and order and keeps every recognized
   assert.deepEqual(importableOcrNames(parseOcrNames('Anna Maria  von Berg\nMax Mustermann', 'first-last')), [
     { firstName: 'Anna Maria', lastName: 'von Berg' },
     { firstName: 'Max', lastName: 'Mustermann' },
+  ]);
+});
+
+test('recognized names lose stray punctuation but keep hyphens and apostrophes inside a name', () => {
+  assert.deepEqual(
+    importableOcrNames(parseOcrNames('Müller,  Anna .\n• Bauer   Max\n|Lang:   Lea\nSt. Clair  Tom')),
+    [
+      { lastName: 'Müller', firstName: 'Anna' },
+      { lastName: 'Bauer', firstName: 'Max' },
+      { lastName: 'Lang', firstName: 'Lea' },
+      { lastName: 'St Clair', firstName: 'Tom' },
+    ],
+  );
+  assert.deepEqual(importableOcrNames(parseOcrNames('Müller-Schön  Anna\nO’Neill  Max')), [
+    { lastName: 'Müller-Schön', firstName: 'Anna' },
+    { lastName: 'O’Neill', firstName: 'Max' },
   ]);
 });
 

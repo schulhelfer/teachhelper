@@ -61,12 +61,10 @@ test('a successful grade save leaves fullscreen before returning to the planning
 });
 
 test('every other way out of the grade mode also leaves fullscreen', () => {
-  // "Kursbindung lösen"
   assert.match(
     seatplan,
     /if \(isCourseGradeMode\(\)\) requestShellChromeCollapsed\(false\);\n\s*resetCourseGradeMode\(\);\n\s*gradeRosterSelectedCourseId = 0;/,
   );
-  // A fresh course context that does not start a new grade mode
   assert.match(
     seatplan,
     /const wasCourseGradeMode = isCourseGradeMode\(\);\n\s*resetCourseGradeMode\(\);/,
@@ -75,12 +73,10 @@ test('every other way out of the grade mode also leaves fullscreen', () => {
     seatplan,
     /if \(wasCourseGradeMode && !isCourseGradeMode\(\)\) requestShellChromeCollapsed\(false\);/,
   );
-  // Returning to the seatplan tab discards the grade mode
   assert.match(
     seatplan,
     /if \(isCourseGradeMode\(\) && !preserveCourseGradeMode\) \{[\s\S]*?requestShellChromeCollapsed\(false\);\n\s*resetCourseGradeMode\(\);/,
   );
-  // Leaving the seatplan tab while the grade mode is still open
   assert.match(
     seatplan,
     /\} else \{\n\s*if \(seatplanTabWasActive && isCourseGradeMode\(\)\) \{\n\s*requestShellChromeCollapsed\(false\);\n\s*\}\n\s*seatplanTabWasActive = false;/,

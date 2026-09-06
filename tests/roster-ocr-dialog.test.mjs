@@ -69,7 +69,6 @@ function installImage(t, decode = () => Promise.resolve()) {
   return revoked;
 }
 
-// Image is absent in Node; make the replaceable test global explicit.
 if (!('Image' in globalThis)) globalThis.Image = undefined;
 
 test('the dialog crops the original coordinates and commits the corrected rows that were not deleted', async (t) => {
@@ -80,7 +79,6 @@ test('the dialog crops the original coordinates and commits the corrected rows t
   await selectImage(state.refs);
   assert.equal(revoked.mock.callCount(), 1);
   assert.equal(state.refs.recognize.disabled, false);
-  // Draw a new rectangle from (10%, 20%) to (60%, 80%).
   state.refs.stage.fire('pointerdown', { isPrimary: true, button: 0, pointerId: 1, clientX: 100, clientY: 100, target: state.refs.canvas });
   state.refs.stage.fire('pointermove', { pointerId: 1, clientX: 600, clientY: 400 });
   state.refs.stage.fire('pointerup', { pointerId: 1 });
