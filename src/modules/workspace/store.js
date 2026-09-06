@@ -3647,10 +3647,20 @@ export class WorkspaceStore {
     slot.courseId = targetCourse ? targetCourse.id : 0;
     slot.schoolYearId = targetCourse ? targetCourse.schoolYearId : targetYear.id;
     slot.label = normalizedPlacement === "break" ? String(label || "").trim() : "";
-    slot.dayOfWeek = Number(dayOfWeek);
+    const nextDayOfWeek = Number(dayOfWeek);
+    const weekdayChanged = Number(slot.dayOfWeek) !== nextDayOfWeek;
+    let nextStartDate = startDate || null;
+    if (weekdayChanged && nextStartDate && dayOfWeekIso(nextStartDate) !== nextDayOfWeek) {
+      const aligned = addDays(nextStartDate, -((dayOfWeekIso(nextStartDate) - nextDayOfWeek + 7) % 7));
+      const yearStart = this.getSchoolYear(Number(slot.schoolYearId))?.startDate || null;
+      if (!yearStart || aligned >= yearStart) {
+        nextStartDate = aligned;
+      }
+    }
+    slot.dayOfWeek = nextDayOfWeek;
     slot.startHour = Number(startHour);
     slot.duration = Math.max(1, Number(duration));
-    slot.startDate = startDate || null;
+    slot.startDate = nextStartDate;
     slot.endDate = endDate || null;
     slot.weekParity = Number(weekParity) || 0;
     slot.placement = normalizedPlacement;
@@ -4129,6 +4139,33 @@ export class WorkspaceStore {
     this._save();
   }
 
+  realignSlotStartDates(schoolYearId = null) {
+    const targetYearId = schoolYearId === null ? null : Number(schoolYearId);
+    const repaired = [];
+    for (const slot of this.state.slots) {
+      if (targetYearId !== null && Number(slot.schoolYearId) !== targetYearId) {
+        continue;
+      }
+      const startDate = slot.startDate;
+      const dayOfWeek = Number(slot.dayOfWeek);
+      if (!startDate || !dayOfWeek || dayOfWeek < 1 || dayOfWeek > 7) {
+        continue;
+      }
+      const startWeekday = dayOfWeekIso(startDate);
+      if (startWeekday <= dayOfWeek) {
+        continue;
+      }
+      const aligned = addDays(startDate, (dayOfWeek - startWeekday + 7) % 7);
+      const limit = slot.endDate || this.getSchoolYear(Number(slot.schoolYearId))?.endDate || null;
+      if (limit && aligned > limit) {
+        continue;
+      }
+      slot.startDate = aligned;
+      repaired.push({ slotId: slot.id, from: startDate, to: aligned });
+    }
+    return repaired;
+  }
+
   applyDayOffs(schoolYearId) {
     const yearId = Number(schoolYearId);
     const ranges = this.listFreeRanges(yearId);
@@ -4602,10 +4639,16 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
     return { ok: false, message: "Das Enddatum muss nach dem Startdatum liegen." };
   }
 
+  const weekdayOffset = (Number(dayOfWeek) - dayOfWeekIso(fromDate) + 7) % 7;
+  const cutDate = weekdayOffset === 0 ? fromDate : addDays(fromDate, weekdayOffset);
+  if (cutDate > targetEnd || cutDate > oldEnd) {
+    return { ok: false, message: "Das Enddatum muss nach dem Startdatum liegen." };
+  }
+
   const sourceRows = this.state.lessons
     .filter((lesson) => lesson.schoolYearId === Number(schoolYearId))
     .filter((lesson) => lesson.slotId === Number(slotId))
-    .filter((lesson) => lesson.lessonDate >= fromDate)
+    .filter((lesson) => lesson.lessonDate >= cutDate)
     .filter((lesson) => !lesson.canceled)
     .sort((a, b) => {
       if (a.lessonDate !== b.lessonDate) {
@@ -4621,7 +4664,7 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
       isWrittenExam: Boolean(lesson.isWrittenExam)
     }));
 
-  oldSlot.endDate = addDays(fromDate, -1);
+  oldSlot.endDate = addDays(cutDate, -1);
 
   const newSlot = {
     id: this._nextId("slot"),
@@ -4631,7 +4674,7 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
     dayOfWeek: Number(dayOfWeek),
     startHour: Number(startHour),
     duration: Math.max(1, Number(duration)),
-    startDate: fromDate,
+    startDate: cutDate,
     endDate: targetEnd || null,
     weekParity: Number(weekParity) || 0,
     placement: normalizedPlacement
@@ -4643,7 +4686,7 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
   const targetRows = this.state.lessons
     .filter((lesson) => lesson.schoolYearId === Number(schoolYearId))
     .filter((lesson) => lesson.slotId === newSlot.id)
-    .filter((lesson) => lesson.lessonDate >= fromDate)
+    .filter((lesson) => lesson.lessonDate >= cutDate)
     .filter((lesson) => !lesson.canceled)
     .sort((a, b) => {
       if (a.lessonDate !== b.lessonDate) {
@@ -4981,8 +5024,14 @@ WorkspaceStore.prototype.importDatabaseState = function (publicState, gradeVault
       }
 
       const yearIds = this.state.schoolYears.map((item) => item.id);
+      const realignedSlots = this.realignSlotStartDates();
+      const realignedYearIds = new Set(
+        realignedSlots
+          .map((entry) => Number(this.getSlot(entry.slotId)?.schoolYearId || 0))
+          .filter((yearId) => yearId > 0)
+      );
       for (const yearId of yearIds) {
-        if (rebuildLessons || !importedLessonYearIds.has(yearId)) {
+        if (rebuildLessons || realignedYearIds.has(yearId) || !importedLessonYearIds.has(yearId)) {
           this.generateLessonsForYear(yearId);
         } else {
           this.applyDayOffs(yearId);
