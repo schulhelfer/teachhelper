@@ -20,6 +20,18 @@ run_python_checks() {
     return "$status"
   fi
 
+  echo "Running Python regression tests..."
+  for python_test in tests/*.test.py; do
+    if "$@" "$python_test"; then
+      :
+    else
+      status=$?
+      echo "Pre-Commit abgebrochen: $python_test ist fehlgeschlagen." >&2
+      echo "Details erneut anzeigen: $* $python_test" >&2
+      return "$status"
+    fi
+  done
+
   echo "Checking vendored package updates..."
   if "$@" scripts/check-vendor-updates.py; then
     :

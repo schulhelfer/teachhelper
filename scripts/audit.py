@@ -26,6 +26,22 @@ def rel(path):
   return path.relative_to(ROOT).as_posix()
 
 
+VENDOR_DIRECTORY_NAME = 'vendor'
+
+
+def is_vendor_path(path):
+  return VENDOR_DIRECTORY_NAME in path.relative_to(ROOT).parts
+
+
+def iter_vendor_js_files():
+  vendor_root = ROOT / 'src' / VENDOR_DIRECTORY_NAME
+  if vendor_root.exists():
+    yield from (path for path in vendor_root.rglob('*.js') if path.is_file())
+  modules_root = ROOT / 'src' / 'modules'
+  if modules_root.exists():
+    yield from modules_root.glob(f'*/{VENDOR_DIRECTORY_NAME}/**/*.js')
+
+
 def parse_html_attrs(tag):
   attrs = {}
   for match in re.finditer(
@@ -246,6 +262,20 @@ def iter_source_files():
       yield path
 
 
+FIRST_PARTY_SOURCE_SUFFIXES = {'.html', '.js', '.css'}
+
+
+def iter_first_party_files():
+  for path in sorted(ROOT.rglob('*')):
+    if not path.is_file():
+      continue
+    if path.suffix not in FIRST_PARTY_SOURCE_SUFFIXES:
+      continue
+    if is_vendor_path(path):
+      continue
+    yield path
+
+
 def sha256_file(path):
   digest = hashlib.sha256()
   with path.open('rb') as handle:
@@ -314,18 +344,30 @@ def check_vendor_manifest():
           f'(expected {expected_hash}, got {actual_hash})'
         )
 
-  discovered_vendor_js = set()
-  vendor_root = ROOT / 'src' / 'vendor'
-  if vendor_root.exists():
-    discovered_vendor_js.update(rel(path) for path in vendor_root.rglob('*.js') if path.is_file())
-  modules_root = ROOT / 'src' / 'modules'
-  if modules_root.exists():
-    discovered_vendor_js.update(rel(path) for path in modules_root.glob('*/vendor/**/*.js'))
+  discovered_vendor_js = {rel(path) for path in iter_vendor_js_files()}
   for file_path in sorted(discovered_vendor_js - manifest_js_files):
     errors.append(f'unmanifested vendored JavaScript file: {file_path}')
 
 
 check_vendor_manifest()
+
+
+def check_vendor_directory_locations():
+  for path in ROOT.rglob(VENDOR_DIRECTORY_NAME):
+    if not path.is_dir():
+      continue
+    relative_path = rel(path)
+    if relative_path == 'src/vendor':
+      continue
+    if re.fullmatch(r'src/modules/[^/]+/vendor', relative_path):
+      continue
+    errors.append(
+      f'vendor directory outside src/vendor and src/modules/*/vendor: {relative_path} '
+      f'(move it, or extend check_vendor_directory_locations in scripts/audit.py)'
+    )
+
+
+check_vendor_directory_locations()
 
 
 def check_service_worker_update_activation():
@@ -385,6 +427,198 @@ def check_required_precache_assets():
 
 
 check_required_precache_assets()
+
+
+FORBIDDEN_FIRST_PARTY_IDENTIFIERS = {
+  'eval': r'(?<![.\w$])eval\s*\(',
+  'new Function': r'\bnew\s+Function\s*\(',
+  'Function constructor': r'(?<![.\w$])(?<!new\s)Function\s*\(\s*[\'"`]',
+  'WebSocket': r'\bWebSocket\b',
+  'EventSource': r'\bEventSource\b',
+  'sendBeacon': r'\bsendBeacon\b',
+  'XMLHttpRequest': r'\bXMLHttpRequest\b',
+  'importScripts': r'\bimportScripts\s*\(',
+}
+
+FORBIDDEN_IDENTIFIER_ALLOWLIST = {
+  ('src/shared/ocr-worker.js', 'importScripts'),
+  ('sw.js', 'importScripts'),
+}
+
+ALLOWED_EXTERNAL_HOSTS = {
+  'www.w3.org',
+  'schemas.openxmlformats.org',
+  'www.mk.niedersachsen.de',
+  'www.tagesschau.de',
+  'www.schure.de',
+}
+
+EXTERNAL_URL_PATTERN = re.compile(r'https?://([A-Za-z0-9](?:[A-Za-z0-9.-]*[A-Za-z0-9])?)')
+HOSTNAME_PATTERN = re.compile(r'(?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,}')
+
+SAFE_URL_CONSTANT_PATTERN = re.compile(
+  r'\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*new\s+URL\(\s*[\'"`](?!https?:|//)'
+)
+SAFE_URL_FACTORY_PATTERN = re.compile(
+  r'\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\([^)]*\)\s*=>\s*new\s+URL\(\s*[\'"`](?!https?:|//)'
+)
+SCRIPT_ELEMENT_PATTERN = re.compile(
+  r'\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*document\.createElement\(\s*[\'"`]script[\'"`]'
+)
+RELATIVE_LITERAL_PATTERN = re.compile(r'[\'"](?!https?:|//|data:)[^\'"]*[\'"]')
+
+DYNAMIC_SCRIPT_URL_ALLOWLIST = {
+  ('src/shared/pdf-vendor.js', 'url.href'),
+}
+
+
+def line_number_at(body, index):
+  return body.count('\n', 0, index) + 1
+
+
+def find_forbidden_identifier_issues(relative_path, body):
+  issues = []
+  for label, pattern in sorted(FORBIDDEN_FIRST_PARTY_IDENTIFIERS.items()):
+    if (relative_path, label) in FORBIDDEN_IDENTIFIER_ALLOWLIST:
+      continue
+    match = re.search(pattern, body)
+    if not match:
+      continue
+    issues.append(
+      f'forbidden first-party API {label} in {relative_path}:{line_number_at(body, match.start())} '
+      f'(remove it, or add ("{relative_path}", "{label}") to '
+      f'FORBIDDEN_IDENTIFIER_ALLOWLIST in scripts/audit.py)'
+    )
+  return issues
+
+
+def find_external_host_issues(relative_path, body):
+  issues = []
+  seen_hosts = set()
+  for match in EXTERNAL_URL_PATTERN.finditer(body):
+    host = match.group(1).lower()
+    if not HOSTNAME_PATTERN.fullmatch(host):
+      continue
+    if host in ALLOWED_EXTERNAL_HOSTS or host in seen_hosts:
+      continue
+    seen_hosts.add(host)
+    issues.append(
+      f'external host not allowlisted: {relative_path}:{line_number_at(body, match.start())} -> {host} '
+      f'(add it to ALLOWED_EXTERNAL_HOSTS in scripts/audit.py if it is an inert '
+      f'namespace or a user-visible link)'
+    )
+  return issues
+
+
+def collect_safe_url_expressions(body):
+  safe = set()
+  for name in SAFE_URL_CONSTANT_PATTERN.findall(body):
+    safe.add(name)
+    safe.add(f'{name}.href')
+    safe.add(f'{name}.pathname')
+  return safe
+
+
+def collect_safe_url_factories(body):
+  return set(SAFE_URL_FACTORY_PATTERN.findall(body))
+
+
+def read_call_argument(body, open_paren_index):
+  depth = 0
+  index = open_paren_index
+  while index < len(body):
+    character = body[index]
+    if character in '([{':
+      depth += 1
+    elif character in ')]}':
+      depth -= 1
+      if depth == 0:
+        return body[open_paren_index + 1:index], index
+    index += 1
+  return None, open_paren_index
+
+
+def read_assignment_expression(body, equals_index):
+  depth = 0
+  index = equals_index + 1
+  while index < len(body):
+    character = body[index]
+    if character in '([{':
+      depth += 1
+    elif character in ')]}':
+      if depth == 0:
+        break
+      depth -= 1
+    elif character == ';' and depth == 0:
+      break
+    elif character == '\n' and depth == 0:
+      break
+    index += 1
+  return body[equals_index + 1:index]
+
+
+def is_relative_url_literal(expression):
+  expression = expression.strip()
+  if RELATIVE_LITERAL_PATTERN.fullmatch(expression):
+    return True
+  if expression.startswith('`') and expression.endswith('`'):
+    return not re.match(r'`\s*(?:https?:|//)', expression)
+  return False
+
+
+def is_safe_script_url_expression(expression, safe_expressions, safe_factories):
+  expression = expression.strip().rstrip(';').strip()
+  if is_relative_url_literal(expression):
+    return True
+  factory_call = re.fullmatch(
+    r'([A-Za-z_$][\w$]*)\((.*)\)(?:\.[\w$]+)?', expression, flags=re.DOTALL
+  )
+  if factory_call and factory_call.group(1) in safe_factories:
+    return is_relative_url_literal(factory_call.group(2))
+  return expression in safe_expressions
+
+
+def find_dynamic_script_url_issues(relative_path, body):
+  issues = []
+  safe_expressions = collect_safe_url_expressions(body)
+  safe_factories = collect_safe_url_factories(body)
+  script_names = set(SCRIPT_ELEMENT_PATTERN.findall(body)) | {'script'}
+  names_pattern = '|'.join(sorted(re.escape(name) for name in script_names))
+  candidates = []
+  for match in re.finditer(rf'\b(?:{names_pattern})\.src\s*(=)\s*', body):
+    candidates.append((match.start(), read_assignment_expression(body, match.start(1))))
+  for match in re.finditer(r'(?<![.\w$])(?:import|importScripts)\s*(\()', body):
+    argument, _ = read_call_argument(body, match.start(1))
+    if argument is not None:
+      candidates.append((match.start(), argument))
+  for start_index, expression in sorted(candidates):
+    expression = expression.strip()
+    if is_safe_script_url_expression(expression, safe_expressions, safe_factories):
+      continue
+    if (relative_path, expression) in DYNAMIC_SCRIPT_URL_ALLOWLIST:
+      continue
+    issues.append(
+      f'dynamic script URL is not a relative literal or a local new URL(...) constant: '
+      f'{relative_path}:{line_number_at(body, start_index)} -> {expression} '
+      f"(bind it to a const NAME = new URL('../relative/path', import.meta.url) "
+      f'in the same file, or add ("{relative_path}", "{expression}") to '
+      f'DYNAMIC_SCRIPT_URL_ALLOWLIST in scripts/audit.py)'
+    )
+  return issues
+
+
+def check_first_party_code():
+  for path in iter_first_party_files():
+    relative_path = rel(path)
+    body = path.read_text(encoding='utf-8', errors='ignore')
+    errors.extend(find_external_host_issues(relative_path, body))
+    if path.suffix == '.css':
+      continue
+    errors.extend(find_forbidden_identifier_issues(relative_path, body))
+    errors.extend(find_dynamic_script_url_issues(relative_path, body))
+
+
+check_first_party_code()
 
 
 bridge_path = ROOT / 'src' / 'shared' / 'module-frame-bridge.js'
@@ -650,8 +884,9 @@ if main_path.exists() and dom_path.exists():
         f'missing tutorial selector in {module_dir.relative_to(ROOT)}: #{selector_id}'
       )
 
-if errors:
-  print('\n'.join(errors))
-  sys.exit(1)
+if __name__ == '__main__':
+  if errors:
+    print('\n'.join(errors))
+    sys.exit(1)
 
-print('audit ok')
+  print('audit ok')
