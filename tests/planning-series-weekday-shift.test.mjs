@@ -109,12 +109,13 @@ test('Rückwärts-Verschiebung (Do auf Di) lässt keine Lücke in der Übergangs
   const oldDates = lessonDatesForSlot(store, slotId);
   const newDates = lessonDatesForSlot(store, result.newSlotId);
 
-  assert.equal(oldDates.at(-1), clicked);
-  assert.equal(newDates[0], '2025-09-16');
+  assert.equal(oldDates.at(-1), '2025-09-04');
+  assert.equal(newDates[0], '2025-09-09');
 
   const week = ['2025-09-08', '2025-09-09', '2025-09-10', '2025-09-11', '2025-09-12'];
   const inWeek = [...oldDates, ...newDates].filter((date) => week.includes(date));
-  assert.deepEqual(inWeek, [clicked]);
+  assert.deepEqual(inWeek, ['2025-09-09']);
+  assert.ok(!inWeek.includes(clicked));
 });
 
 test('Vorwärts-Verschiebung (Di auf Do) greift weiterhin in derselben Woche', () => {
@@ -153,7 +154,7 @@ test('gleicher Wochentag schneidet unverändert exakt am gewählten Datum', () =
 test('Themen wandern ohne Versatz an die neuen Termine', () => {
   const { store, yearId, courseId, slotId } = setupSeries(4);
   const clicked = '2025-09-11';
-  setTopics(store, slotId, '2025-09-18', ['Thema A', 'Thema B', 'Thema C']);
+  setTopics(store, slotId, '2025-09-11', ['Thema A', 'Thema B', 'Thema C']);
 
   const result = store.splitSlotFromDate(yearId, slotId, clicked, courseId, 2, 3, 1, SERIES_END, 0);
   assert.equal(result.ok, true);
@@ -165,9 +166,9 @@ test('Themen wandern ohne Versatz an die neuen Termine', () => {
   assert.deepEqual(
     newRows.slice(0, 3).map((row) => [row.lessonDate, row.topic]),
     [
-      ['2025-09-16', 'Thema A'],
-      ['2025-09-23', 'Thema B'],
-      ['2025-09-30', 'Thema C'],
+      ['2025-09-09', 'Thema A'],
+      ['2025-09-16', 'Thema B'],
+      ['2025-09-23', 'Thema C'],
     ],
   );
 });
@@ -271,4 +272,93 @@ test('beim Laden einer Datenbank wird ein schiefer Slot repariert', () => {
   assert.equal(loaded.getSlot(slotId).startDate, '2025-09-11');
   assert.equal(lessonDatesForSlot(loaded, slotId)[0], '2025-09-11');
   assert.ok(yearId);
+});
+
+function firstWeekdayOnOrAfter(fromIso, targetDayOfWeek) {
+  const [year, month, day] = fromIso.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  const current = value.getUTCDay() === 0 ? 7 : value.getUTCDay();
+  value.setUTCDate(value.getUTCDate() + ((targetDayOfWeek - current + 7) % 7));
+  return value.toISOString().slice(0, 10);
+}
+
+function sameWeekWeekday(iso, targetDayOfWeek) {
+  const [year, month, day] = iso.split('-').map(Number);
+  const value = new Date(Date.UTC(year, month - 1, day));
+  const current = value.getUTCDay() === 0 ? 7 : value.getUTCDay();
+  value.setUTCDate(value.getUTCDate() + (targetDayOfWeek - current));
+  return value.toISOString().slice(0, 10);
+}
+
+test('ein Wochentagswechsel am Serienanfang trifft jede Richtung korrekt', () => {
+  const failures = [];
+  for (let fromDay = 1; fromDay <= 5; fromDay += 1) {
+    for (let toDay = 1; toDay <= 5; toDay += 1) {
+      if (fromDay === toDay) continue;
+      const store = createStore();
+      const year = store.createSchoolYear(2025);
+      store.setActiveSchoolYear(year.id);
+      store.state.freeRanges = [];
+      store.state.specialDays = [];
+      const courseId = store.createCourse(year.id, 'Mathe');
+      const start = firstWeekdayOnOrAfter('2025-09-15', fromDay);
+      const slotId = store.createSlot(courseId, fromDay, 3, 1, start, '2026-06-30', 0, 'lesson', year.id);
+
+      store.updateSlot(slotId, courseId, toDay, 3, 1, start, '2026-06-30', 0, 'lesson', year.id);
+
+      const expected = sameWeekWeekday(start, toDay);
+      const dates = lessonDatesForSlot(store, slotId);
+      const oldRemains = store.state.lessons.some((lesson) => lesson.lessonDate === start);
+      if (dates[0] !== expected || oldRemains) {
+        failures.push(`${fromDay}->${toDay}: erwartet ${expected}, bekommen ${dates[0]}, alt bleibt ${oldRemains}`);
+      }
+    }
+  }
+  assert.deepEqual(failures, []);
+});
+
+test('"Serie anpassen" ersetzt den angeklickten Termin in derselben Woche', () => {
+  const store = createStore();
+  const year = store.createSchoolYear(2026)
+    || store.state.schoolYears.find((item) => item.startDate.startsWith('2026'));
+  store.setActiveSchoolYear(year.id);
+  store.state.freeRanges = [];
+  store.state.specialDays = [];
+  const courseId = store.createCourse(year.id, 'Mathe');
+  const slotId = store.createSlot(courseId, 2, 3, 1, '2027-01-05', '2027-06-30', 0, 'lesson', year.id);
+  const clicked = '2027-02-16';
+
+  const result = store.splitSlotFromDate(year.id, slotId, clicked, courseId, 1, 3, 1, '2027-06-30', 0);
+  assert.equal(result.ok, true);
+
+  assert.equal(lessonDatesForSlot(store, result.newSlotId)[0], '2027-02-15');
+  assert.equal(store.state.lessons.some((lesson) => lesson.lessonDate === clicked), false);
+  assert.equal(lessonDatesForSlot(store, slotId).at(-1), '2027-02-09');
+});
+
+test('ein Wochentagswechsel per Split trifft jede Richtung in derselben Woche', () => {
+  const failures = [];
+  for (let fromDay = 1; fromDay <= 5; fromDay += 1) {
+    for (let toDay = 1; toDay <= 5; toDay += 1) {
+      if (fromDay === toDay) continue;
+      const { store, yearId, courseId, slotId } = setupSeries(fromDay);
+      const clicked = firstWeekdayOnOrAfter('2025-10-06', fromDay);
+
+      const result = store.splitSlotFromDate(yearId, slotId, clicked, courseId, toDay, 3, 1, SERIES_END, 0);
+      if (!result.ok) {
+        failures.push(`${fromDay}->${toDay}: ${result.message}`);
+        continue;
+      }
+      const expected = sameWeekWeekday(clicked, toDay);
+      const first = lessonDatesForSlot(store, result.newSlotId)[0];
+      const oldRemains = store.state.lessons.some((lesson) => lesson.lessonDate === clicked);
+      // Der angeklickte Termin darf nur bestehen bleiben, wenn der neue Wochentag
+      // spaeter in derselben Woche liegt - dann ersetzt er ihn erst danach.
+      const mayRemain = toDay > fromDay;
+      if (first !== expected || oldRemains !== mayRemain) {
+        failures.push(`${fromDay}->${toDay}: erwartet ${expected}, bekommen ${first}, alt bleibt ${oldRemains}`);
+      }
+    }
+  }
+  assert.deepEqual(failures, []);
 });

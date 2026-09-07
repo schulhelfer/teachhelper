@@ -974,6 +974,8 @@ class PlanningApp {
       slotDialogBreakRow: document.querySelector("#slot-dialog-break-row"),
       slotDialogBreakAfter: document.querySelector("#slot-dialog-break-after"),
       slotDialogStart: document.querySelector("#slot-dialog-start"),
+      slotDialogStartText: document.querySelector("#slot-dialog-start-text"),
+      slotDialogStartLabel: document.querySelector("#slot-dialog-start-label"),
       slotDialogEnd: document.querySelector("#slot-dialog-end"),
       slotDialogParity: document.querySelector("#slot-dialog-parity"),
       slotDialogEditInfo: document.querySelector("#slot-dialog-edit-info"),
@@ -4897,6 +4899,21 @@ class PlanningApp {
     this.refs.slotDialogEndHour.value = String(endHour);
   }
 
+  setSlotDialogStartStatic(isStatic) {
+    if (!this.refs.slotDialogStartText || !this.refs.slotDialogStart) {
+      return;
+    }
+    this.refs.slotDialogStart.hidden = Boolean(isStatic);
+    this.refs.slotDialogStart.required = !isStatic;
+    this.refs.slotDialogStartText.hidden = !isStatic;
+    this.refs.slotDialogStartText.textContent = isStatic
+      ? formatDate(this.refs.slotDialogStart.value || "")
+      : "";
+    if (this.refs.slotDialogStartLabel) {
+      this.refs.slotDialogStartLabel.textContent = isStatic ? "Ab Termin" : "Startdatum";
+    }
+  }
+
   syncSlotDialogEditTools() {
     if (!this.refs.slotDialogId) {
       return;
@@ -4910,12 +4927,14 @@ class PlanningApp {
       this.refs.slotDialogEditScope.value = "all";
       this.refs.slotDialogEditFromDate.value = "";
       this.refs.slotDialogStart.disabled = false;
+      this.setSlotDialogStartStatic(false);
     } else {
       const fromScope = this.refs.slotDialogEditScope.value === "from" && Boolean(this.refs.slotDialogEditFromDate.value);
       this.refs.slotDialogStart.disabled = fromScope;
       if (fromScope) {
         this.refs.slotDialogStart.value = this.refs.slotDialogEditFromDate.value;
       }
+      this.setSlotDialogStartStatic(fromScope);
     }
     this.refs.slotDialogEnd.disabled = recurrenceNone;
     this.refs.slotDialogDay.disabled = recurrenceNone;
@@ -4939,16 +4958,8 @@ class PlanningApp {
     }
 
     if (this.refs.slotDialogEditInfo) {
-      if (!isEditing) {
-        this.refs.slotDialogEditInfo.hidden = true;
-        this.refs.slotDialogEditInfo.textContent = "";
-      } else {
-        const fromScope = this.refs.slotDialogEditScope.value === "from" && Boolean(this.refs.slotDialogEditFromDate.value);
-        const dateLabel = fromScope ? formatDate(this.refs.slotDialogEditFromDate.value) : "–";
-        this.refs.slotDialogEditInfo.textContent =
-          `Serie wird ab dem ausgewählten Termin verändert (${dateLabel})`;
-        this.refs.slotDialogEditInfo.hidden = false;
-      }
+      this.refs.slotDialogEditInfo.hidden = true;
+      this.refs.slotDialogEditInfo.textContent = "";
     }
   }
 

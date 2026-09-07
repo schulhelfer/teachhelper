@@ -454,11 +454,18 @@
         }
 
         .app-context-menu .context-item.separator-before {
-          margin-top: 6px;
-          padding-top: 0.62rem;
+          position: relative;
+          margin-top: 9px;
+        }
+
+        .app-context-menu .context-item.separator-before::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: -6px;
           border-top: 1px solid var(--border-subtle);
-          border-top-left-radius: 0;
-          border-top-right-radius: 0;
+          pointer-events: none;
         }
 
         .app-dialog {
@@ -595,6 +602,20 @@
         #slot-dialog-form .slot-dialog-row>span {
           color: var(--text-secondary);
           font-size: 0.89rem;
+        }
+
+        #slot-dialog-form .slot-dialog-row>#slot-dialog-start,
+        #slot-dialog-form .slot-dialog-row>.slot-dialog-static {
+          grid-column: 2;
+        }
+
+        #slot-dialog-form .slot-dialog-row>.slot-dialog-static {
+          display: flex;
+          align-items: center;
+          min-height: var(--control-height);
+          padding: 0.5rem 0;
+          font-size: inherit;
+          color: var(--text);
         }
 
         .app-dialog::backdrop {

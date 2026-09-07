@@ -3651,9 +3651,13 @@ export class WorkspaceStore {
     const weekdayChanged = Number(slot.dayOfWeek) !== nextDayOfWeek;
     let nextStartDate = startDate || null;
     if (weekdayChanged && nextStartDate && dayOfWeekIso(nextStartDate) !== nextDayOfWeek) {
-      const aligned = addDays(nextStartDate, -((dayOfWeekIso(nextStartDate) - nextDayOfWeek + 7) % 7));
+      let aligned = addDays(nextStartDate, nextDayOfWeek - dayOfWeekIso(nextStartDate));
       const yearStart = this.getSchoolYear(Number(slot.schoolYearId))?.startDate || null;
-      if (!yearStart || aligned >= yearStart) {
+      if (yearStart && aligned < yearStart) {
+        aligned = addDays(aligned, 7);
+      }
+      const limit = endDate || null;
+      if (!limit || aligned <= limit) {
         nextStartDate = aligned;
       }
     }
@@ -4639,8 +4643,10 @@ WorkspaceStore.prototype.splitSlotFromDate = function (
     return { ok: false, message: "Das Enddatum muss nach dem Startdatum liegen." };
   }
 
-  const weekdayOffset = (Number(dayOfWeek) - dayOfWeekIso(fromDate) + 7) % 7;
-  const cutDate = weekdayOffset === 0 ? fromDate : addDays(fromDate, weekdayOffset);
+  let cutDate = addDays(fromDate, Number(dayOfWeek) - dayOfWeekIso(fromDate));
+  if (cutDate <= oldStart) {
+    cutDate = addDays(cutDate, 7);
+  }
   if (cutDate > targetEnd || cutDate > oldEnd) {
     return { ok: false, message: "Das Enddatum muss nach dem Startdatum liegen." };
   }

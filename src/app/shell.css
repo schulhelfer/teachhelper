@@ -7716,12 +7716,13 @@
     --chrome-floating-top: calc(env(safe-area-inset-top, 0px) + var(--app-shell-padding) + var(--app-header-padding-y) + var(--macos-window-controls-top-clearance));
   }
 
-  .app-header button,
-  .app-header [role='button'] {
-    -webkit-app-region: no-drag;
-    app-region: no-drag;
+  .app-header-actions {
+    padding-left: calc(var(--window-controls-left) + var(--planning-menu-start-x) - var(--chrome-overlay-clearance) + var(--manual-save-menu-offset));
   }
 
+  .app-header button,
+  .app-header [role='button'],
+  .app-header-title-label,
   .app-header-version {
     -webkit-app-region: no-drag;
     app-region: no-drag;

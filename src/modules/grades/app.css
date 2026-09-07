@@ -467,11 +467,18 @@
         }
 
         .app-context-menu .context-item.separator-before {
-          margin-top: 6px;
-          padding-top: 0.62rem;
+          position: relative;
+          margin-top: 9px;
+        }
+
+        .app-context-menu .context-item.separator-before::before {
+          content: '';
+          position: absolute;
+          left: 0;
+          right: 0;
+          top: -6px;
           border-top: 1px solid var(--border-subtle);
-          border-top-left-radius: 0;
-          border-top-right-radius: 0;
+          pointer-events: none;
         }
 
         .app-dialog {
