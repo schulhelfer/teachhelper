@@ -116,6 +116,8 @@ class FakeStore {
   }
   getGradeVaultAutoLockOnBackground() { return Boolean(this.settings.get('gradeVaultAutoLockOnBackground')); }
   setGradeVaultAutoLockOnBackground(value) { this.settings.set('gradeVaultAutoLockOnBackground', Boolean(value)); }
+  getGradeVaultAutoSaveBeforeLock() { return this.settings.get('gradeVaultAutoSaveBeforeLock') === true; }
+  setGradeVaultAutoSaveBeforeLock(value) { this.settings.set('gradeVaultAutoSaveBeforeLock', value === true); }
   getSetting(key, fallback = null) { return this.settings.has(key) ? this.settings.get(key) : fallback; }
   setSetting(key, value) { this.settings.set(key, structuredClone(value)); }
   setHoursPerDay(value) { this.settings.set('hoursPerDay', Number(value)); }
@@ -705,8 +707,30 @@ test('discarding dirty grade changes restores a lockable persisted vault state',
   assert.equal(runtime.vault.persistedCryptoKey, null);
 });
 
+for (const enabled of [undefined, false]) {
+  test(`auto-lock does not save dirty grades when the option is ${String(enabled)}`, async () => {
+    const store = new FakeStore();
+    if (enabled !== undefined) store.setGradeVaultAutoSaveBeforeLock(enabled);
+    const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+    runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true, cryptoKey: { opaque: true } };
+    runtime.fileHandle = { name: 'noten.thdb' };
+    runtime.isManualPersistenceMode = () => false;
+    runtime.dirtyCourseIds.add(7);
+    runtime.saveToConnectedFile = async () => assert.fail('saving requires explicit opt-in');
+    let retryDelay = 0;
+    runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+
+    assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
+    assert.equal(runtime.isGradeVaultUnlocked(), true);
+    assert.equal(runtime.dirtyCourseIds.has(7), true);
+    assert.match(runtime.vault.autoLockWarning.message, /ausgeschaltet/);
+    assert.equal(retryDelay, 10 * 60 * 1000);
+  });
+}
+
 test('auto-lock keeps dirty grades unlocked in manual download mode, publishes a warning, and retries after ten minutes', async () => {
   const store = new FakeStore();
+  store.setGradeVaultAutoSaveBeforeLock(true);
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   runtime.vault = {
     ...runtime.vault,
@@ -738,6 +762,14 @@ test('auto-lock keeps dirty grades unlocked in manual download mode, publishes a
 
 test('auto-lock saves every dirty grade course to a connected database before locking', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.store.setGradeVaultAutoSaveBeforeLock(true);
+  const draft = { courseId: 7, title: 'Noch nicht übernommen' };
+  const client = {
+    gradesEntryDraft: draft,
+    gradesEntryDraftDirty: true,
+    saveCurrentGradesEntry() { assert.fail('open input drafts must not be adopted'); },
+  };
+  runtime.registerFeatureClient('grades', client);
   runtime.vault = {
     ...runtime.vault,
     encryptionEnabled: true,
@@ -766,25 +798,30 @@ test('auto-lock saves every dirty grade course to a connected database before lo
   assert.deepEqual(order, ['save:grade-vault-auto-lock', 'lock']);
   assert.equal(runtime.dirtyCourseIds.size, 0);
   assert.equal(runtime.isGradeVaultUnlocked(), false);
+  assert.equal(client.gradesEntryDraft, draft);
+  assert.equal(client.gradesEntryDraftDirty, true);
 });
 
-test('auto-lock locks a clean vault without saving', async () => {
-  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
-  runtime.vault = {
-    ...runtime.vault,
-    encryptionEnabled: true,
-    configured: true,
-    unlocked: true,
-    cryptoKey: { opaque: true },
-    config: { kdf: { salt: 'x' } },
-  };
-  let saveCalls = 0;
-  runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
+for (const enabled of [false, true]) {
+  test(`auto-lock locks a clean vault without saving with option ${enabled}`, async () => {
+    const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+    runtime.store.setGradeVaultAutoSaveBeforeLock(enabled);
+    runtime.vault = {
+      ...runtime.vault,
+      encryptionEnabled: true,
+      configured: true,
+      unlocked: true,
+      cryptoKey: { opaque: true },
+      config: { kdf: { salt: 'x' } },
+    };
+    let saveCalls = 0;
+    runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
 
-  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
-  assert.equal(saveCalls, 0);
-  assert.equal(runtime.isGradeVaultUnlocked(), false);
-});
+    assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+    assert.equal(saveCalls, 0);
+    assert.equal(runtime.isGradeVaultUnlocked(), false);
+  });
+}
 
 test('only a successful auto-lock publishes an in-memory unlock notice', async () => {
   const store = new FakeStore();
@@ -811,6 +848,7 @@ test('only a successful auto-lock publishes an in-memory unlock notice', async (
 
 test('auto-lock leaves dirty grades unlocked when automatic saving fails', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.store.setGradeVaultAutoSaveBeforeLock(true);
   runtime.vault = {
     ...runtime.vault,
     encryptionEnabled: true,
@@ -837,6 +875,7 @@ test('auto-lock leaves dirty grades unlocked when automatic saving fails', async
 
 test('auto-lock leaves dirty grades unlocked when no database file is connected', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  runtime.store.setGradeVaultAutoSaveBeforeLock(true);
   runtime.vault = {
     ...runtime.vault,
     encryptionEnabled: true,
@@ -961,6 +1000,7 @@ test('disabling an unlocked vault clears its encryption configuration', async ()
 
 test('unlocking a legacy PBKDF2 vault upgrades its KDF and stages every course for rewrite', async () => {
   const store = new FakeStore();
+  store.setGradeVaultAutoSaveBeforeLock(true);
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   const password = 'ein-ausreichend-langes-passwort';
   const legacyKdf = workspaceCrypto.createWorkspaceVaultKdf({ iterations: 250000 });
@@ -1427,10 +1467,16 @@ test('workspace settings operations reject fields from the wrong client group', 
   await runtime.handleWorkspaceCommand({
     client: 'grades',
     command: messages.WORKSPACE_COMMAND_APPLY_SETTINGS,
-    payload: { settings: { gradeVaultAutoLockMinutes: 15, gradeVaultAutoLockOnBackground: true } },
+    payload: { settings: { gradeVaultAutoLockMinutes: 15, gradeVaultAutoLockOnBackground: true, gradeVaultAutoSaveBeforeLock: true } },
   });
   assert.equal(store.getGradeVaultAutoLockMinutes(), 15);
   assert.equal(store.getGradeVaultAutoLockOnBackground(), true);
+  assert.equal(store.getGradeVaultAutoSaveBeforeLock(), true);
+  await assert.rejects(runtime.handleWorkspaceCommand({
+    client: 'planning',
+    command: messages.WORKSPACE_COMMAND_APPLY_SETTINGS,
+    payload: { settings: { gradeVaultAutoSaveBeforeLock: false } },
+  }), /Unzulässige Einstellungsfelder/);
 });
 
 test('latest directory backup is selected and loaded by the workspace', async () => {

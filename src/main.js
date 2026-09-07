@@ -258,7 +258,7 @@ import {
       ? new Date(retryAt).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
       : 'in zehn Minuten';
     showMessage(
-      `Der Notenbereich konnte nicht automatisch gesperrt werden, weil ungespeicherte Noten vorhanden sind. Bitte speichere die Noten. Nächster Sperrversuch: ${retryLabel}.`,
+      `Der Notenbereich konnte nicht automatisch gesperrt werden. ${String(warning.message || 'Bitte speichere die Noten.')} Nächster Sperrversuch: ${retryLabel}.`,
       'warn',
       { enqueue: true }
     );

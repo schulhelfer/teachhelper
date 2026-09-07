@@ -199,6 +199,56 @@ async function seedDatabase({ name = 'schule.thdb', courseNames = ['5a', '7b', '
   return { handle, courseIds, bytes: handle.read(), store, runtime };
 }
 
+test('autosave before locking is off for old databases and survives a container roundtrip as a boolean', async () => {
+  for (const enabled of [undefined, false, true]) {
+    const { store, runtime } = createRuntime();
+    assert.equal(store.getGradeVaultAutoSaveBeforeLock(), false);
+    if (enabled === undefined) delete store.state.settings.gradeVaultAutoSaveBeforeLock;
+    else store.setGradeVaultAutoSaveBeforeLock(enabled);
+    const built = await runtime.buildContainer('settings-roundtrip');
+    const target = createRuntime();
+    await target.runtime.loadBytes(built.bytes);
+    assert.equal(target.store.getGradeVaultAutoSaveBeforeLock(), enabled === true);
+    assert.equal(target.store.exportPublicStateSnapshot().settings.gradeVaultAutoSaveBeforeLock, enabled === true);
+  }
+});
+
+test('opted-in auto-lock persists every changed encrypted course before clearing the unlocked session', async () => {
+  const { handle, courseIds, store, runtime } = await seedDatabase({ courseNames: ['5a', '7b'] });
+  const password = 'autosave-before-lock-test';
+  try {
+    await runtime.setupGradeVault(password);
+    store.setGradeVaultAutoSaveBeforeLock(true);
+    await settle(runtime);
+    for (const courseId of courseIds) {
+      await runtime.runGradeCourseMutation(courseId, () => {
+        store.gradeVaultState.gradeStudents[0].firstName = `Geändert-${courseId}`;
+        store._saveGradeVault();
+      }, { skipAutoSave: true });
+    }
+    assert.equal(runtime.dirtyCourseIds.size, courseIds.length);
+    assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+    assert.equal(runtime.isGradeVaultUnlocked(), false);
+    assert.equal(runtime.courseCache.size, 0);
+    const parsed = parseContainer(handle.read());
+    assert.ok(parsed.gradeCourseSegments.every((segment) => JSON.parse(segment.text).schema === 'teachhelper-grade-vault-v1'));
+    const target = createRuntime();
+    try {
+      await target.runtime.loadBytes(handle.read());
+      await target.runtime.unlockGradeVault(password);
+      assert.equal(target.store.getGradeVaultAutoSaveBeforeLock(), true);
+      for (const courseId of courseIds) {
+        await target.runtime.ensureGradeCourseLoaded(courseId);
+        assert.equal(target.store.gradeVaultState.gradeStudents[0].firstName, `Geändert-${courseId}`);
+      }
+    } finally {
+      target.runtime.clearGradeVaultAutoLockTimer();
+    }
+  } finally {
+    runtime.clearGradeVaultAutoLockTimer();
+  }
+});
+
 test('an auto-save fired before the database finished loading never truncates the file', async () => {
   const { handle, courseIds, bytes } = await seedDatabase();
   const { store, runtime } = createRuntime();

@@ -34,6 +34,7 @@ import {
   GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
   GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS,
   GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT,
+  GRADE_VAULT_AUTO_SAVE_BEFORE_LOCK_DEFAULT,
   HOURS_PER_DAY_DEFAULT,
   NO_LESSON_COLOR,
   REQUIRED_HOLIDAYS,
@@ -1642,6 +1643,7 @@ function createInitialState() {
       gradeVaultEncryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
       gradeVaultAutoLockMinutes: GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
       gradeVaultAutoLockOnBackground: GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT,
+      gradeVaultAutoSaveBeforeLock: GRADE_VAULT_AUTO_SAVE_BEFORE_LOCK_DEFAULT,
       backupEnabled: BACKUP_ENABLED_DEFAULT,
       backupIntervalDays: BACKUP_INTERVAL_DEFAULT_DAYS,
       lastAutoBackupAt: null
@@ -1958,6 +1960,16 @@ export class WorkspaceStore {
     this.state.settings.gradeVaultAutoLockOnBackground = Boolean(enabled);
     this._save();
     return this.getGradeVaultAutoLockOnBackground();
+  }
+
+  getGradeVaultAutoSaveBeforeLock() {
+    return this.getSetting("gradeVaultAutoSaveBeforeLock", GRADE_VAULT_AUTO_SAVE_BEFORE_LOCK_DEFAULT) === true;
+  }
+
+  setGradeVaultAutoSaveBeforeLock(enabled) {
+    this.state.settings.gradeVaultAutoSaveBeforeLock = enabled === true;
+    this._save();
+    return this.getGradeVaultAutoSaveBeforeLock();
   }
 
   getGradeDisplaySystem() {

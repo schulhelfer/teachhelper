@@ -2829,6 +2829,7 @@ class GradesApp {
       gradeVaultAutoLockSettings: document.querySelector("#grade-vault-auto-lock-settings"),
       gradeVaultAutoLockMinutes: document.querySelector("#grade-vault-auto-lock-minutes"),
       gradeVaultAutoLockOnBackground: document.querySelector("#grade-vault-auto-lock-on-background"),
+      gradeVaultAutoSaveBeforeLock: document.querySelector("#grade-vault-auto-save-before-lock"),
       gradeVaultPasswordSettings: document.querySelector("#grade-vault-password-settings"),
       gradeVaultSettingsActionBtn: document.querySelector("#grade-vault-settings-action-btn"),
       gradesOverviewPanel: document.querySelector("#grades-overview-panel"),
@@ -3115,6 +3116,7 @@ class GradesApp {
     this.gradeVaultEncryptionDraft = null;
     this.gradeVaultAutoLockMinutesDraft = null;
     this.gradeVaultAutoLockOnBackgroundDraft = null;
+    this.gradeVaultAutoSaveBeforeLockDraft = null;
     this.inlineTopicLessonId = null;
     this.inlineTopicDraft = "";
     this.courseDialogDraft = null;
@@ -3931,7 +3933,8 @@ class GradesApp {
       backupEnabled: this.store.getBackupEnabled(),
       backupIntervalDays: this.store.getBackupIntervalDays(),
       gradeVaultAutoLockMinutes: this.store.getGradeVaultAutoLockMinutes(),
-      gradeVaultAutoLockOnBackground: this.store.getGradeVaultAutoLockOnBackground()
+      gradeVaultAutoLockOnBackground: this.store.getGradeVaultAutoLockOnBackground(),
+      gradeVaultAutoSaveBeforeLock: this.store.getGradeVaultAutoSaveBeforeLock()
     };
   }
 
@@ -5156,7 +5159,9 @@ class GradesApp {
   async applyGradeVaultEncryptionSettingsDraft() {
     const desired = this.gradeVaultEncryptionDraft;
     const encryptionChanged = desired !== null && desired !== this.isGradeVaultEncryptionEnabled();
-    const hasAutoLockDraft = this.gradeVaultAutoLockMinutesDraft != null || this.gradeVaultAutoLockOnBackgroundDraft != null;
+    const hasAutoLockDraft = this.gradeVaultAutoLockMinutesDraft != null
+      || this.gradeVaultAutoLockOnBackgroundDraft != null
+      || this.gradeVaultAutoSaveBeforeLockDraft != null;
     if (!hasAutoLockDraft) {
       if (!encryptionChanged) {
         this.gradeVaultEncryptionDraft = null;
@@ -5173,12 +5178,15 @@ class GradesApp {
     const hasAutoLockChanges = this.isGradeVaultEncryptionEnabled() && (
       this.gradeVaultAutoLockMinutesDraft != null
       || this.gradeVaultAutoLockOnBackgroundDraft != null
+      || this.gradeVaultAutoSaveBeforeLockDraft != null
     );
     if (hasAutoLockChanges) {
       const settings = {
         gradeVaultAutoLockMinutes: this.gradeVaultAutoLockMinutesDraft ?? this.store.getGradeVaultAutoLockMinutes(),
         gradeVaultAutoLockOnBackground: this.gradeVaultAutoLockOnBackgroundDraft
-          ?? this.store.getGradeVaultAutoLockOnBackground()
+          ?? this.store.getGradeVaultAutoLockOnBackground(),
+        gradeVaultAutoSaveBeforeLock: this.gradeVaultAutoSaveBeforeLockDraft
+          ?? this.store.getGradeVaultAutoSaveBeforeLock()
       };
       const result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_APPLY_SETTINGS, {
         settings
@@ -5195,6 +5203,7 @@ class GradesApp {
     this.gradeVaultEncryptionDraft = null;
     this.gradeVaultAutoLockMinutesDraft = null;
     this.gradeVaultAutoLockOnBackgroundDraft = null;
+    this.gradeVaultAutoSaveBeforeLockDraft = null;
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.refreshSettingsDirtyState();
     this.renderGradeVaultSettings();
@@ -5630,6 +5639,8 @@ class GradesApp {
         && Number(this.gradeVaultAutoLockMinutesDraft) !== Number(this.store.getGradeVaultAutoLockMinutes()))
       || (this.gradeVaultAutoLockOnBackgroundDraft != null
         && Boolean(this.gradeVaultAutoLockOnBackgroundDraft) !== Boolean(this.store.getGradeVaultAutoLockOnBackground()))
+      || (this.gradeVaultAutoSaveBeforeLockDraft != null
+        && Boolean(this.gradeVaultAutoSaveBeforeLockDraft) !== this.store.getGradeVaultAutoSaveBeforeLock())
       || Number(draft.gradesPrivacyGraphThreshold) !== Number(this.store.getGradesPrivacyGraphThreshold())
       || Boolean(draft.showHiddenSidebarCourses) !== Boolean(
         this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT)
@@ -5730,6 +5741,7 @@ class GradesApp {
     this.gradeVaultEncryptionDraft = null;
     this.gradeVaultAutoLockMinutesDraft = null;
     this.gradeVaultAutoLockOnBackgroundDraft = null;
+    this.gradeVaultAutoSaveBeforeLockDraft = null;
     this.settingsDirty = false;
     this.settingsDraftRevision = Number(this.workspaceController?.getRevision?.()) || this.workspaceRevision || 0;
     this.switchSettingsTab(this.activeSettingsTab);
@@ -11398,6 +11410,10 @@ class GradesApp {
       this.gradeVaultAutoLockOnBackgroundDraft = Boolean(this.refs.gradeVaultAutoLockOnBackground.checked);
       this.refreshSettingsDirtyState();
     });
+    this.refs.gradeVaultAutoSaveBeforeLock?.addEventListener("change", () => {
+      this.gradeVaultAutoSaveBeforeLockDraft = Boolean(this.refs.gradeVaultAutoSaveBeforeLock.checked);
+      this.refreshSettingsDirtyState();
+    });
     this.refs.gradeVaultSettingsActionBtn?.addEventListener("click", () => {
       const mode = this.getGradeVaultStatusMode();
       if (mode !== "off") {
@@ -13003,6 +13019,13 @@ class GradesApp {
           "is-disabled",
           autoLockSettingsDisabled
         );
+      }
+      if (this.refs.gradeVaultAutoSaveBeforeLock) {
+        const autoSaveDisabled = autoLockSettingsDisabled || unsupported || !persistenceSyncState.fileHandle;
+        this.refs.gradeVaultAutoSaveBeforeLock.checked = this.gradeVaultAutoSaveBeforeLockDraft
+          ?? this.store.getGradeVaultAutoSaveBeforeLock();
+        this.refs.gradeVaultAutoSaveBeforeLock.disabled = autoSaveDisabled;
+        this.refs.gradeVaultAutoSaveBeforeLock.closest("label")?.classList.toggle("is-disabled", autoSaveDisabled);
       }
       if (this.refs.gradeVaultSettingsActionBtn) {
         this.refs.gradeVaultSettingsActionBtn.textContent = mode === "setup"

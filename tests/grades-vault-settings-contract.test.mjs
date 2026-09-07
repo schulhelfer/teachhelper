@@ -9,6 +9,14 @@ const [html, css, appSource, helpCenterSource] = await Promise.all([
   readFile(new URL('../src/app/help-center.js', import.meta.url), 'utf8'),
 ]);
 
+function gradeMethod(name) {
+  const start = appSource.search(new RegExp(`\\n  (?:async )?${name}\\(`)) + 1;
+  assert.ok(start > 0, `${name} must exist`);
+  const next = appSource.slice(start).search(/\n  (?:async )?\w+\(/);
+  assert.ok(next > 0, `${name} must have a following method`);
+  return Function('WORKSPACE_COMMAND_APPLY_SETTINGS', `return ({${appSource.slice(start, start + next)}}).${name};`)('apply-settings');
+}
+
 test('der Verschlüsselungs-Tab gruppiert Verschlüsselung, Sperre und Passwort klar', () => {
   assert.match(html, /id="grade-vault-encryption-title"[^>]*>\s*Verschlüsselung\s*</);
   assert.match(html, /<fieldset id="grade-vault-auto-lock-settings" class="grade-vault-settings-group">/);
@@ -17,9 +25,98 @@ test('der Verschlüsselungs-Tab gruppiert Verschlüsselung, Sperre und Passwort 
   assert.match(html, /id="grade-vault-password-title" class="grade-vault-settings-group-title">Passwort</);
   assert.match(html, /id="grade-vault-encryption-enabled" type="checkbox" role="switch"/);
   assert.match(html, /id="grade-vault-auto-lock-on-background" type="checkbox" role="switch"/);
+  assert.match(html, /id="grade-vault-auto-save-before-lock" type="checkbox" role="switch"/);
   assert.match(html, /id="grade-vault-settings-action-btn" type="button">Passwort ändern</);
   assert.doesNotMatch(html, /grade-vault-settings-(?:status|hint)/);
   assert.doesNotMatch(appSource, /gradeVaultSettings(?:Status|Hint)/);
+});
+
+test('autosave before locking requires a direct connection and explains which changes it saves', () => {
+  const toggle = html.match(/<input id="grade-vault-auto-save-before-lock"[^>]*>/)?.[0];
+  assert.ok(toggle);
+  assert.doesNotMatch(toggle, /\bchecked\b/);
+  assert.match(toggle, /aria-describedby="grade-vault-auto-save-before-lock-hint"/);
+  assert.match(html, /Offene Eingabeentwürfe werden\s+nicht übernommen/);
+  assert.match(appSource, /const autoSaveDisabled = autoLockSettingsDisabled \|\| unsupported \|\| !persistenceSyncState\.fileHandle;/);
+  assert.match(appSource, /gradeVaultAutoSaveBeforeLock\.disabled = autoSaveDisabled/);
+});
+
+test('applying only the autosave toggle saves the setting and leaves grade input drafts untouched', async () => {
+  const apply = gradeMethod('applyGradeVaultEncryptionSettingsDraft');
+  const commands = [];
+  let saved = 0;
+  let persistedOption = false;
+  const inputDraft = { title: 'Offener Entwurf' };
+  const app = {
+    gradeVaultEncryptionDraft: null,
+    gradeVaultAutoLockMinutesDraft: null,
+    gradeVaultAutoLockOnBackgroundDraft: null,
+    gradeVaultAutoSaveBeforeLockDraft: true,
+    gradesEntryDraft: inputDraft,
+    gradesEntryDraftDirty: true,
+    settingsDraftRevision: 4,
+    isGradeVaultEncryptionEnabled: () => true,
+    store: {
+      getGradeVaultAutoLockMinutes: () => 30,
+      getGradeVaultAutoLockOnBackground: () => false,
+      getGradeVaultAutoSaveBeforeLock: () => persistedOption,
+    },
+    async executeWorkspaceCommand(command, payload, options) {
+      commands.push({ command, payload, options });
+      persistedOption = payload.settings.gradeVaultAutoSaveBeforeLock;
+      return { ok: true, revision: 5 };
+    },
+    async persistExplicitDatabaseSave() { saved += 1; },
+    buildSettingsDraftFromStore: () => ({ gradeVaultAutoSaveBeforeLock: persistedOption }),
+    refreshSettingsDirtyState() {},
+    renderGradeVaultSettings() {},
+    saveCurrentGradesEntry() { assert.fail('open inputs must not be adopted'); },
+  };
+  assert.equal(await apply.call(app), true);
+  assert.deepEqual(commands, [{
+    command: 'apply-settings',
+    payload: { settings: { gradeVaultAutoLockMinutes: 30, gradeVaultAutoLockOnBackground: false, gradeVaultAutoSaveBeforeLock: true } },
+    options: { baseRevision: 4 },
+  }]);
+  assert.equal(saved, 1);
+  assert.equal(app.gradeVaultAutoSaveBeforeLockDraft, null);
+  assert.equal(app.settingsDraft.gradeVaultAutoSaveBeforeLock, true);
+  assert.equal(app.gradesEntryDraft, inputDraft);
+  assert.equal(app.gradesEntryDraftDirty, true);
+
+  app.gradeVaultAutoSaveBeforeLockDraft = false;
+  app.executeWorkspaceCommand = async () => ({ ok: false, message: 'Datenstand geändert' });
+  app.showInfoMessage = async (message) => assert.equal(message, 'Datenstand geändert');
+  assert.equal(await apply.call(app), false);
+  assert.equal(app.gradeVaultAutoSaveBeforeLockDraft, false);
+  assert.equal(persistedOption, true);
+  assert.equal(saved, 1);
+});
+
+test('the autosave draft marks settings dirty and can be discarded without writing', () => {
+  const isDirty = gradeMethod('isSettingsDraftDirty');
+  const cancel = gradeMethod('cancelSettingsDraftChanges');
+  const app = {
+    settingsDraft: {},
+    settingsDirty: true,
+    gradeVaultEncryptionDraft: null,
+    gradeVaultAutoLockMinutesDraft: null,
+    gradeVaultAutoLockOnBackgroundDraft: null,
+    gradeVaultAutoSaveBeforeLockDraft: true,
+    activeSettingsTab: 'encryption',
+    workspaceRevision: 3,
+    store: { getGradeVaultAutoSaveBeforeLock: () => false },
+    buildSettingsDraftFromStore: () => ({ gradeVaultAutoSaveBeforeLock: false }),
+    switchSettingsTab(tab) { assert.equal(tab, 'encryption'); },
+    updateSettingsActionButtons() {},
+    dispatchGradesUnsavedState() {},
+  };
+  assert.equal(isDirty.call(app), true);
+  cancel.call(app);
+  assert.equal(app.gradeVaultAutoSaveBeforeLockDraft, null);
+  assert.equal(app.settingsDraft.gradeVaultAutoSaveBeforeLock, false);
+  assert.equal(app.settingsDirty, false);
+  assert.equal(app.settingsDraftRevision, 3);
 });
 
 test('dokumentiert den begrenzten Verschlüsselungsumfang in Einstellungen und Hilfe', () => {

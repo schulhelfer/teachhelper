@@ -28,6 +28,7 @@ import {
   WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE,
   WORKSPACE_ERROR_VAULT_DIRTY,
   WORKSPACE_ERROR_VAULT_LOCKED,
+  WORKSPACE_ERROR_VAULT_PLAINTEXT_SEGMENT,
 } from '../../shared/school-data/messages.js';
 import { getDefaultSchoolYearStartYear } from './store.js';
 import {
@@ -75,6 +76,7 @@ const GRADES_SETTING_KEYS = new Set([
   'backupIntervalDays',
   'gradeVaultAutoLockMinutes',
   'gradeVaultAutoLockOnBackground',
+  'gradeVaultAutoSaveBeforeLock',
 ]);
 
 function clone(value, fallback = null) {
@@ -211,6 +213,13 @@ function parseCourseSegment(text = '') {
   } catch {
   }
   return null;
+}
+
+function assertCourseSegmentEncryption(parsed, courseId, encryptionRequired) {
+  if (!encryptionRequired || parsed.encrypted) return parsed;
+  const error = new Error(`Notensegment für Kurs ${courseId} liegt unverschlüsselt in einer geschützten Datenbank vor und wurde abgelehnt.`);
+  error.code = WORKSPACE_ERROR_VAULT_PLAINTEXT_SEGMENT;
+  throw error;
 }
 
 function buildStartupShell(publicState, configured, gradeEntryCount = null) {
@@ -577,6 +586,9 @@ export class WorkspaceRuntime {
 
   async saveDirtyGradeVaultChangesForAutoLock() {
     if (this.dirtyCourseIds.size === 0) return false;
+    if (!this.store.getGradeVaultAutoSaveBeforeLock?.()) {
+      throw new Error('Ungespeicherte Noten verhindern das automatische Sperren. Automatisches Speichern vor der Sperre ist ausgeschaltet. Bitte speichere die Noten manuell.');
+    }
     if (this.isManualPersistenceMode()) {
       throw new Error('Automatisches Speichern ist im manuellen Download-Modus nicht möglich. Bitte speichere die Noten manuell.');
     }
@@ -1023,6 +1035,7 @@ export class WorkspaceRuntime {
   async decodeCourse(courseId, text) {
     const parsed = parseCourseSegment(text);
     if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
+    assertCourseSegmentEncryption(parsed, courseId, this.isGradeVaultConfigured());
     let persisted = parsed.state;
     if (parsed.encrypted) {
       if (!this.isGradeVaultUnlocked()) {
@@ -1459,6 +1472,11 @@ export class WorkspaceRuntime {
   async decodeCourseSegmentForPlausibility(courseId, text, { persisted = false } = {}) {
     const parsed = parseCourseSegment(text);
     if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
+    assertCourseSegmentEncryption(
+      parsed,
+      courseId,
+      persisted ? Boolean(this.vault.persistedConfig?.configured) : this.isGradeVaultConfigured(),
+    );
     let rawState = parsed.state;
     if (parsed.encrypted) {
       const cryptoKey = persisted
@@ -2375,11 +2393,16 @@ export class WorkspaceRuntime {
         else if (key === 'gradeOccurrenceCategories') this.store.setGradeOccurrenceCategories(value);
         else if (key === 'gradeVaultAutoLockMinutes') this.store.setGradeVaultAutoLockMinutes(value);
         else if (key === 'gradeVaultAutoLockOnBackground') this.store.setGradeVaultAutoLockOnBackground(value);
+        else if (key === 'gradeVaultAutoSaveBeforeLock') this.store.setGradeVaultAutoSaveBeforeLock(value);
         else this.store.setSetting?.(key, clone(value));
       }
       if (
         request.client === 'grades'
-        && (Object.hasOwn(settings, 'gradeVaultAutoLockMinutes') || Object.hasOwn(settings, 'gradeVaultAutoLockOnBackground'))
+        && (
+          Object.hasOwn(settings, 'gradeVaultAutoLockMinutes')
+          || Object.hasOwn(settings, 'gradeVaultAutoLockOnBackground')
+          || Object.hasOwn(settings, 'gradeVaultAutoSaveBeforeLock')
+        )
         && this.isGradeVaultUnlocked()
       ) this.scheduleGradeVaultAutoLock();
       return { changed: true, scope: request.client === 'grades' ? 'grades' : 'planning' };

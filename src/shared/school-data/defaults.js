@@ -34,6 +34,7 @@ export const GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT = false;
 export const GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT = 30;
 export const GRADE_VAULT_AUTO_LOCK_MINUTES_OPTIONS = Object.freeze([5, 15, 30, 45]);
 export const GRADE_VAULT_AUTO_LOCK_ON_BACKGROUND_DEFAULT = false;
+export const GRADE_VAULT_AUTO_SAVE_BEFORE_LOCK_DEFAULT = false;
 export const SYNC_HANDLE_DB_NAME = "teachhelper-sync-handles-v1";
 export const SYNC_HANDLE_STORE_NAME = "handles";
 export const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
