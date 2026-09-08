@@ -14,8 +14,6 @@ MANIFEST_PATH = ROOT / 'vendor-manifest.json'
 def version_status(current, latest):
   if current == latest:
     return 'ok'
-  # An upstream may leave npm's latest tag on an older release line.
-  # Only compare plain stable versions; other differences still need review.
   if re.fullmatch(r'\d+\.\d+\.\d+', current) and re.fullmatch(r'\d+\.\d+\.\d+', latest):
     if tuple(map(int, current.split('.'))) > tuple(map(int, latest.split('.'))):
       return 'newer-than-latest'

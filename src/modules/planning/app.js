@@ -4384,6 +4384,7 @@ class PlanningApp {
   executeTopicDialogRichTextCommand(command, value = "") {
     const editor = this.refs.topicDialogNotes;
     if (!editor) return;
+    if (!["fontSize", "insertUnorderedList", "insertOrderedList", "insertTable", "bold", "italic", "underline"].includes(command)) return;
     let changed = false;
     if (command === "fontSize") {
       this.ensureTopicDialogNotesSelection();
@@ -9664,10 +9665,27 @@ class PlanningApp {
 
       const actions = document.createElement("div");
       actions.className = "item-actions";
-      actions.innerHTML = `
-        <button type="button" class="ghost" data-action="edit" data-id="${slot.id}">Bearbeiten</button>
-        <button type="button" class="delete" data-action="delete" data-id="${slot.id}">Löschen</button>
-      `;
+      actions.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const ghost1 = document.createElement("button");
+        ghost1.setAttribute("type", "button");
+        ghost1.className = "ghost";
+        ghost1.dataset.action = "edit";
+        ghost1.dataset.id = String(slot.id);
+        ghost1.textContent = "Bearbeiten";
+        fragment.append(ghost1);
+        fragment.append("\n");
+        const delete2 = document.createElement("button");
+        delete2.setAttribute("type", "button");
+        delete2.className = "delete";
+        delete2.dataset.action = "delete";
+        delete2.dataset.id = String(slot.id);
+        delete2.textContent = "Löschen";
+        fragment.append(delete2);
+        fragment.append("\n");
+        return fragment;
+      })());
       li.append(main, actions);
       this.refs.slotList.append(li);
     }
@@ -9744,17 +9762,52 @@ class PlanningApp {
     lessonTimes.forEach((entry) => {
       const row = document.createElement("div");
       row.className = "lesson-times-row";
-      row.innerHTML = `
-        <div class="lesson-times-row-label">${entry.lesson}. Stunde</div>
-        <label class="lesson-times-field">
-          <span>Start</span>
-          <input type="time" name="lesson-start-${entry.lesson}" value="${escapeHtml(entry.start || "")}" data-lesson="${entry.lesson}" data-lesson-time="start">
-        </label>
-        <label class="lesson-times-field">
-          <span>Ende</span>
-          <input type="time" name="lesson-end-${entry.lesson}" value="${escapeHtml(entry.end || "")}" data-lesson="${entry.lesson}" data-lesson-time="end">
-        </label>
-      `;
+      row.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const lessonTimesRowLabel3 = document.createElement("div");
+        lessonTimesRowLabel3.className = "lesson-times-row-label";
+        lessonTimesRowLabel3.textContent = String(entry.lesson) + ". Stunde";
+        fragment.append(lessonTimesRowLabel3);
+        fragment.append("\n");
+        const lessonTimesField4 = document.createElement("label");
+        lessonTimesField4.className = "lesson-times-field";
+        lessonTimesField4.append("\n");
+        const span5 = document.createElement("span");
+        span5.textContent = "Start";
+        lessonTimesField4.append(span5);
+        lessonTimesField4.append("\n");
+        const input6 = document.createElement("input");
+        input6.setAttribute("type", "time");
+        input6.setAttribute("name", "lesson-start-" + String(entry.lesson));
+        input6.setAttribute("value", String(entry.start || ""));
+        input6.value = String(entry.start || "");
+        input6.dataset.lesson = String(entry.lesson);
+        input6.dataset.lessonTime = "start";
+        lessonTimesField4.append(input6);
+        lessonTimesField4.append("\n");
+        fragment.append(lessonTimesField4);
+        fragment.append("\n");
+        const lessonTimesField7 = document.createElement("label");
+        lessonTimesField7.className = "lesson-times-field";
+        lessonTimesField7.append("\n");
+        const span8 = document.createElement("span");
+        span8.textContent = "Ende";
+        lessonTimesField7.append(span8);
+        lessonTimesField7.append("\n");
+        const input9 = document.createElement("input");
+        input9.setAttribute("type", "time");
+        input9.setAttribute("name", "lesson-end-" + String(entry.lesson));
+        input9.setAttribute("value", String(entry.end || ""));
+        input9.value = String(entry.end || "");
+        input9.dataset.lesson = String(entry.lesson);
+        input9.dataset.lessonTime = "end";
+        lessonTimesField7.append(input9);
+        lessonTimesField7.append("\n");
+        fragment.append(lessonTimesField7);
+        fragment.append("\n");
+        return fragment;
+      })());
       fragment.append(row);
     });
     this.refs.lessonTimesList.append(fragment);
@@ -10424,7 +10477,18 @@ class PlanningApp {
       }
       const dayOff = dayOffByIso.get(dayIso);
       if (dayOff) th.classList.add("day-off-head", dayOff.kind === "holiday" ? "holiday" : "special");
-      th.innerHTML = `<span class="day-name">${DAYS_SHORT[index]}</span><span class="day-date">${formatDate(dayIso).slice(0, 6)}</span>`;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        const dayName10 = document.createElement("span");
+        dayName10.className = "day-name";
+        dayName10.textContent = String(DAYS_SHORT[index]);
+        fragment.append(dayName10);
+        const dayDate11 = document.createElement("span");
+        dayDate11.className = "day-date";
+        dayDate11.textContent = String(formatDate(dayIso).slice(0, 6));
+        fragment.append(dayDate11);
+        return fragment;
+      })());
       headerRow.append(th);
     });
     thead.append(headerRow);
@@ -10690,10 +10754,21 @@ class PlanningApp {
         th.classList.add("day-off-head");
         th.classList.add(dayOff.kind === "holiday" ? "holiday" : "special");
       }
-      th.innerHTML = `
-        <span class="day-name">${DAYS_SHORT[index]}</span>
-        <span class="day-date">${formatDate(dayIso).slice(0, 5)}</span>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const dayName12 = document.createElement("span");
+        dayName12.className = "day-name";
+        dayName12.textContent = String(DAYS_SHORT[index]);
+        fragment.append(dayName12);
+        fragment.append("\n");
+        const dayDate13 = document.createElement("span");
+        dayDate13.className = "day-date";
+        dayDate13.textContent = String(formatDate(dayIso).slice(0, 5));
+        fragment.append(dayDate13);
+        fragment.append("\n");
+        return fragment;
+      })());
       headerRow.append(th);
     });
     thead.append(headerRow);
@@ -11131,16 +11206,43 @@ class PlanningApp {
     const performanceLookup = this.buildWeekPerformanceLookup(lessons);
 
     const thead = document.createElement("thead");
-    thead.innerHTML = `
-      <tr>
-        <th>Datum</th>
-        <th>Tag</th>
-        <th>Dauer</th>
-        ${course.noLesson ? "" : "<th>Noten</th>"}
-        <th>Details</th>
-        <th>Thema</th>
-      </tr>
-    `;
+    thead.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const tr14 = document.createElement("tr");
+      tr14.append("\n");
+      const th15 = document.createElement("th");
+      th15.textContent = "Datum";
+      tr14.append(th15);
+      tr14.append("\n");
+      const th16 = document.createElement("th");
+      th16.textContent = "Tag";
+      tr14.append(th16);
+      tr14.append("\n");
+      const th17 = document.createElement("th");
+      th17.textContent = "Dauer";
+      tr14.append(th17);
+      tr14.append("\n");
+      if (course.noLesson) {
+
+      } else {
+        const th18 = document.createElement("th");
+        th18.textContent = "Noten";
+        tr14.append(th18);
+      }
+      tr14.append("\n");
+      const th19 = document.createElement("th");
+      th19.textContent = "Details";
+      tr14.append(th19);
+      tr14.append("\n");
+      const th20 = document.createElement("th");
+      th20.textContent = "Thema";
+      tr14.append(th20);
+      tr14.append("\n");
+      fragment.append(tr14);
+      fragment.append("\n");
+      return fragment;
+    })());
 
     const tbody = document.createElement("tbody");
     const todayIso = toIsoDate(new Date());

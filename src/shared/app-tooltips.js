@@ -454,7 +454,6 @@ export function installAppTooltips(root = document, options = {}) {
     try {
       if (!anchor.matches(":focus-visible")) return;
     } catch (error) {
-      /* noop */
     }
     showTooltip(anchor);
   }

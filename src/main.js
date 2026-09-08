@@ -3031,8 +3031,6 @@ import {
         postState('target-missing', { stepTitle });
         return;
       }
-      // Modul-Demos laden in eigenen Frames. Wiederhole nur die flüchtige
-      // Oberflächenwahl, bis auch ein frisch gestartetes Modul sie empfangen kann.
       [320, 900, 1800, 3200].forEach((delay) => window.setTimeout(() => {
         if (sequence === previewFrameSequence) firstRunTutorial.showPreviewStep(stepTitle);
       }, delay));
@@ -6298,7 +6296,33 @@ import {
       seat.className = 'seat';
       seat.dataset.seat = id;
       const label = `${++groupCounter}`;
-      seat.innerHTML = `<div class="seat-header">${label}</div><button type="button" class="seat-delete-button" data-seat-delete="${id}" aria-label="Gruppe löschen" title="Gruppe löschen">🗑️</button><input class="seat-topic" type="text" name="seat-topic-${id}" placeholder="Thema" data-default-placeholder="Thema" aria-label="Thema"><div class="name"></div>`;
+      seat.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        const seatHeader1 = document.createElement("div");
+        seatHeader1.className = "seat-header";
+        seatHeader1.textContent = String(label);
+        fragment.append(seatHeader1);
+        const seatDeleteButton2 = document.createElement("button");
+        seatDeleteButton2.setAttribute("type", "button");
+        seatDeleteButton2.className = "seat-delete-button";
+        seatDeleteButton2.dataset.seatDelete = String(id);
+        seatDeleteButton2.setAttribute("aria-label", "Gruppe löschen");
+        seatDeleteButton2.setAttribute("title", "Gruppe löschen");
+        seatDeleteButton2.textContent = "🗑️";
+        fragment.append(seatDeleteButton2);
+        const seatTopic3 = document.createElement("input");
+        seatTopic3.className = "seat-topic";
+        seatTopic3.setAttribute("type", "text");
+        seatTopic3.setAttribute("name", "seat-topic-" + String(id));
+        seatTopic3.setAttribute("placeholder", "Thema");
+        seatTopic3.dataset.defaultPlaceholder = "Thema";
+        seatTopic3.setAttribute("aria-label", "Thema");
+        fragment.append(seatTopic3);
+        const name4 = document.createElement("div");
+        name4.className = "name";
+        fragment.append(name4);
+        return fragment;
+      })());
       seat.classList.add('active');
       if (state.lockedSeats.has(id)) {
         seat.classList.add('locked');

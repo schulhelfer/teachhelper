@@ -7706,6 +7706,11 @@
     app-region: drag;
   }
 
+  .app-header > * {
+    -webkit-app-region: none;
+    app-region: none;
+  }
+
   #toggle-chrome {
     left: calc(var(--window-controls-left) + var(--app-header-padding-x));
   }

@@ -7,8 +7,6 @@ const preview = (tab, steps) => Object.freeze({
   frames: Object.freeze(steps.map((stepTitle) => Object.freeze({ stepTitle, label: stepTitle }))),
 });
 
-// Die Titel stammen aus den echten Tutorialschritten. Damit zeigt jede
-// Handbuchseite denselben Modulzustand, den das interaktive Tutorial verwendet.
 export const HELP_PREVIEW_CONFIGS = Object.freeze({
   'data-backup': preview('planning', ['Datenbank', 'Backup', 'Speichern und weiterarbeiten']),
   'settings-theme': preview('planning', ['Einstellungen öffnen', 'Erscheinungsbild wählen', 'Einstellungen übernehmen']),

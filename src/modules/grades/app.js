@@ -731,13 +731,20 @@ function formatGradeAssessmentDisplayTitle(title) {
   return text;
 }
 
-function buildGradeAssessmentDisplayTitleMarkup(title) {
+function createGradeAssessmentDisplayTitle(title) {
   const displayTitle = formatGradeAssessmentDisplayTitle(title);
   const dateMatch = displayTitle.match(/^(\d{2}\.)(\d{2}\.)$/);
   if (dateMatch) {
-    return `${escapeHtml(dateMatch[1])}<br>${escapeHtml(dateMatch[2])}`;
+    return (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append(dateMatch[1]);
+      const br172 = document.createElement("br");
+      fragment.append(br172);
+      fragment.append(dateMatch[2]);
+      return fragment;
+    })();
   }
-  return escapeHtml(displayTitle);
+  return document.createTextNode(displayTitle);
 }
 
 function shouldShowGradeWeight(weight) {
@@ -754,17 +761,30 @@ function formatGradeWeightPercentSuffix(weight) {
     : "";
 }
 
-function buildGradeAssessmentWeightMarkup(weight, mode = "grade") {
+function createGradeAssessmentWeight(weight, mode = "grade") {
   if (normalizeGradeAssessmentMode(mode) === "homework") {
     return "";
   }
   if (!shouldShowGradeWeight(weight)) {
     return "";
   }
-  return `<span class="grade-assessment-meta"><span class="grade-assessment-weight-icon" aria-hidden="true">⚖️</span> ${escapeHtml(formatGradeWeightValue(weight))}</span>`;
+  return (() => {
+    const fragment = document.createDocumentFragment();
+    const gradeAssessmentMeta173 = document.createElement("span");
+    gradeAssessmentMeta173.className = "grade-assessment-meta";
+    const gradeAssessmentWeightIcon174 = document.createElement("span");
+    gradeAssessmentWeightIcon174.className = "grade-assessment-weight-icon";
+    gradeAssessmentWeightIcon174.setAttribute("aria-hidden", "true");
+    gradeAssessmentWeightIcon174.textContent = "⚖️";
+    gradeAssessmentMeta173.append(gradeAssessmentWeightIcon174);
+    gradeAssessmentMeta173.append(" ");
+    gradeAssessmentMeta173.append(formatGradeWeightValue(weight));
+    fragment.append(gradeAssessmentMeta173);
+    return fragment;
+  })();
 }
 
-function buildGradeAssessmentOccurrenceEmojiMarkup(mode, emoji) {
+function createGradeAssessmentOccurrenceEmoji(mode, emoji) {
   if (normalizeGradeAssessmentMode(mode) !== "homework") {
     return "";
   }
@@ -772,7 +792,18 @@ function buildGradeAssessmentOccurrenceEmojiMarkup(mode, emoji) {
   if (!normalizedEmoji) {
     return "";
   }
-  return `<span class="grade-assessment-meta"><span class="grade-assessment-occurrence-icon" aria-hidden="true">${escapeHtml(normalizedEmoji)}</span></span>`;
+  return (() => {
+    const fragment = document.createDocumentFragment();
+    const gradeAssessmentMeta175 = document.createElement("span");
+    gradeAssessmentMeta175.className = "grade-assessment-meta";
+    const gradeAssessmentOccurrenceIcon176 = document.createElement("span");
+    gradeAssessmentOccurrenceIcon176.className = "grade-assessment-occurrence-icon";
+    gradeAssessmentOccurrenceIcon176.setAttribute("aria-hidden", "true");
+    gradeAssessmentOccurrenceIcon176.textContent = String(normalizedEmoji);
+    gradeAssessmentMeta175.append(gradeAssessmentOccurrenceIcon176);
+    fragment.append(gradeAssessmentMeta175);
+    return fragment;
+  })();
 }
 
 function isWeightedGradeAssessmentMode(mode) {
@@ -1296,14 +1327,39 @@ function normalizeGradeTestTasks(tasks = [], options = {}) {
   }));
 }
 
-function buildGradeTestAfbOptionsMarkup(selectedValue = "") {
+function createGradeTestAfbOptions(selectedValue = "") {
   const selectedAfb = normalizeGradeTestAfb(selectedValue);
-  return [
-    `<option value=""${selectedAfb ? "" : " selected"}></option>`,
+  return (() => { const fragment = document.createDocumentFragment(); fragment.append(...[
+    (() => {
+      const fragment = document.createDocumentFragment();
+      const option179 = document.createElement("option");
+      option179.setAttribute("value", "");
+      option179.value = "";
+      if (selectedAfb) {
+
+      } else {
+        option179.selected = true;
+        option179.defaultSelected = true;
+      }
+      fragment.append(option179);
+      return fragment;
+    })(),
     ...GRADE_TEST_AFB_OPTIONS.map((option) => (
-      `<option value="${escapeHtml(option)}"${selectedAfb === option ? " selected" : ""}>${escapeHtml(option)}</option>`
+      (() => {
+      const fragment = document.createDocumentFragment();
+      const option180 = document.createElement("option");
+      option180.setAttribute("value", String(option));
+      option180.value = String(option);
+      if (selectedAfb === option) {
+        option180.selected = true;
+        option180.defaultSelected = true;
+      }
+      option180.textContent = String(option);
+      fragment.append(option180);
+      return fragment;
+    })()
     ))
-  ].join("");
+  ]); return fragment; })();
 }
 
 function getNextGradeTestTaskId(tasks = []) {
@@ -1495,7 +1551,7 @@ function getGradeTestScaleTooltipRows(thresholds = [], predicateSuffixes = true)
   }));
 }
 
-function buildGradeTestScaleTooltipMarkup(scaleOrTemplate = GRADE_TEST_SCALE_DEFAULT, settings = null, options = {}) {
+function createGradeTestScaleTooltip(scaleOrTemplate = GRADE_TEST_SCALE_DEFAULT, settings = null, options = {}) {
   const template = scaleOrTemplate && typeof scaleOrTemplate === "object"
     ? normalizeGradeTestScaleSnapshot(scaleOrTemplate, scaleOrTemplate.id, settings)
     : buildGradeTestScaleSnapshot(settings, scaleOrTemplate);
@@ -1505,24 +1561,68 @@ function buildGradeTestScaleTooltipMarkup(scaleOrTemplate = GRADE_TEST_SCALE_DEF
   const maxBeSum = Object.prototype.hasOwnProperty.call(options, "maxBeSum")
     ? Number(options.maxBeSum)
     : calculateGradeTestMaxBeSum(options.testTasks);
-  return `
-            <div class="grade-test-scale-tooltip" role="tooltip" aria-hidden="true">
-              <table>
-                <thead>
-                  <tr><th>Grenze</th><th>Note</th>${showBeColumn ? "<th>BE</th>" : ""}</tr>
-                </thead>
-                <tbody>
-                  ${rows.map((row) => `
-                    <tr>
-                      <td>${Math.round(Number(row.threshold || 0) * 100)}%</td>
-                      <td>${escapeHtml(row.label)}</td>
-                      ${showBeColumn ? `<td>${formatGradeTestRequiredBeForThreshold(row.threshold, row.grade, maxBeSum)}</td>` : ""}
-                    </tr>
-                  `).join("")}
-                </tbody>
-              </table>
-            </div>
-          `;
+  return (() => {
+    const fragment = document.createDocumentFragment();
+    fragment.append("\n");
+    const gradeTestScaleTooltip181 = document.createElement("div");
+    gradeTestScaleTooltip181.className = "grade-test-scale-tooltip";
+    gradeTestScaleTooltip181.setAttribute("role", "tooltip");
+    gradeTestScaleTooltip181.setAttribute("aria-hidden", "true");
+    gradeTestScaleTooltip181.append("\n");
+    const table182 = document.createElement("table");
+    table182.append("\n");
+    const thead183 = document.createElement("thead");
+    thead183.append("\n");
+    const tr184 = document.createElement("tr");
+    const th185 = document.createElement("th");
+    th185.textContent = "Grenze";
+    tr184.append(th185);
+    const th186 = document.createElement("th");
+    th186.textContent = "Note";
+    tr184.append(th186);
+    if (showBeColumn) {
+      const th187 = document.createElement("th");
+      th187.textContent = "BE";
+      tr184.append(th187);
+    }
+    thead183.append(tr184);
+    thead183.append("\n");
+    table182.append(thead183);
+    table182.append("\n");
+    const tbody188 = document.createElement("tbody");
+    tbody188.append("\n");
+    tbody188.append(...rows.map((row) => (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const tr189 = document.createElement("tr");
+      tr189.append("\n");
+      const td190 = document.createElement("td");
+      td190.textContent = String(Math.round(Number(row.threshold || 0) * 100)) + "%";
+      tr189.append(td190);
+      tr189.append("\n");
+      const td191 = document.createElement("td");
+      td191.textContent = String(row.label);
+      tr189.append(td191);
+      tr189.append("\n");
+      if (showBeColumn) {
+        const td192 = document.createElement("td");
+        td192.textContent = String(formatGradeTestRequiredBeForThreshold(row.threshold, row.grade, maxBeSum));
+        tr189.append(td192);
+      }
+      tr189.append("\n");
+      fragment.append(tr189);
+      fragment.append("\n");
+      return fragment;
+    })()));
+    tbody188.append("\n");
+    table182.append(tbody188);
+    table182.append("\n");
+    gradeTestScaleTooltip181.append(table182);
+    gradeTestScaleTooltip181.append("\n");
+    fragment.append(gradeTestScaleTooltip181);
+    fragment.append("\n");
+    return fragment;
+  })();
 }
 
 function calculateGradeTestValue(tasks = [], scores = {}, scale = GRADE_TEST_SCALE_DEFAULT, settings = null, predicateSuffixes = true) {
@@ -4447,15 +4547,35 @@ class GradesApp {
       const retryLabel = warning.retryAt
         ? new Date(warning.retryAt).toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })
         : "in zehn Minuten";
-      banner.innerHTML = `
-        <div>
-          <strong>Notenbereich weiterhin entsperrt</strong>
-          <p>${escapeHtml(warning.message)} Bitte speichere die Noten. Nächster Sperrversuch: ${escapeHtml(retryLabel)}.</p>
-        </div>
-        <div class="button-row">
-          <button type="button" class="ghost" data-grade-vault-banner-action="save">Jetzt speichern</button>
-        </div>
-      `;
+      banner.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const div1 = document.createElement("div");
+        div1.append("\n");
+        const strong2 = document.createElement("strong");
+        strong2.textContent = "Notenbereich weiterhin entsperrt";
+        div1.append(strong2);
+        div1.append("\n");
+        const p3 = document.createElement("p");
+        p3.textContent = String(warning.message) + " Bitte speichere die Noten. Nächster Sperrversuch: " + String(retryLabel) + ".";
+        div1.append(p3);
+        div1.append("\n");
+        fragment.append(div1);
+        fragment.append("\n");
+        const buttonRow4 = document.createElement("div");
+        buttonRow4.className = "button-row";
+        buttonRow4.append("\n");
+        const ghost5 = document.createElement("button");
+        ghost5.setAttribute("type", "button");
+        ghost5.className = "ghost";
+        ghost5.dataset.gradeVaultBannerAction = "save";
+        ghost5.textContent = "Jetzt speichern";
+        buttonRow4.append(ghost5);
+        buttonRow4.append("\n");
+        fragment.append(buttonRow4);
+        fragment.append("\n");
+        return fragment;
+      })());
       banner.setAttribute("role", "alert");
       banner.hidden = false;
     }
@@ -13615,22 +13735,66 @@ class GradesApp {
     const offsetTopThird = true;
     this.refs.gradesEntryContent.classList.add("is-empty-state");
     this.refs.gradesEntryContent.classList.toggle("has-offset-empty-state", offsetTopThird);
-    this.refs.gradesEntryContent.innerHTML = `
-        <div class="grades-empty-state empty-state-box">
-          <h3 class="empty-state-title">${escapeHtml(title)}</h3>
-          <p class="empty-state-copy">${escapeHtml(text)}</p>
-          ${(showPrimaryButton || showUnlockButton) ? `
-            <div class="button-row empty-state-actions">
-              ${showPrimaryButton ? `
-                <button type="button" class="sidebar-add-btn" data-grades-entry-primary-action="${escapeHtml(primaryAction)}" aria-label="${escapeHtml(primaryButtonLabel)}" title="${escapeHtml(primaryButtonLabel)}">
-                  <span class="sidebar-add-plus" aria-hidden="true"></span>
-                </button>
-              ` : ""}
-              ${showUnlockButton ? `<button type="button" class="ghost grades-vault-unlock-button" data-grades-entry-unlock="1" aria-label="${escapeHtml(unlockButtonLabel)}" title="${escapeHtml(unlockButtonLabel)}">${GRADE_VAULT_UNLOCKED_ICON}</button>` : ""}
-            </div>
-          ` : ""}
-        </div>
-      `;
+    this.refs.gradesEntryContent.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradesEmptyState6 = document.createElement("div");
+      gradesEmptyState6.className = "grades-empty-state empty-state-box";
+      gradesEmptyState6.append("\n");
+      const emptyStateTitle7 = document.createElement("h3");
+      emptyStateTitle7.className = "empty-state-title";
+      emptyStateTitle7.textContent = String(title);
+      gradesEmptyState6.append(emptyStateTitle7);
+      gradesEmptyState6.append("\n");
+      const emptyStateCopy8 = document.createElement("p");
+      emptyStateCopy8.className = "empty-state-copy";
+      emptyStateCopy8.textContent = String(text);
+      gradesEmptyState6.append(emptyStateCopy8);
+      gradesEmptyState6.append("\n");
+      if (showPrimaryButton || showUnlockButton) {
+        gradesEmptyState6.append("\n");
+        const buttonRow9 = document.createElement("div");
+        buttonRow9.className = "button-row empty-state-actions";
+        buttonRow9.append("\n");
+        if (showPrimaryButton) {
+          buttonRow9.append("\n");
+          const sidebarAddBtn10 = document.createElement("button");
+          sidebarAddBtn10.setAttribute("type", "button");
+          sidebarAddBtn10.className = "sidebar-add-btn";
+          sidebarAddBtn10.dataset.gradesEntryPrimaryAction = String(primaryAction);
+          sidebarAddBtn10.setAttribute("aria-label", String(primaryButtonLabel));
+          sidebarAddBtn10.setAttribute("title", String(primaryButtonLabel));
+          sidebarAddBtn10.append("\n");
+          const sidebarAddPlus11 = document.createElement("span");
+          sidebarAddPlus11.className = "sidebar-add-plus";
+          sidebarAddPlus11.setAttribute("aria-hidden", "true");
+          sidebarAddBtn10.append(sidebarAddPlus11);
+          sidebarAddBtn10.append("\n");
+          buttonRow9.append(sidebarAddBtn10);
+          buttonRow9.append("\n");
+        }
+        buttonRow9.append("\n");
+        if (showUnlockButton) {
+          const ghost12 = document.createElement("button");
+          ghost12.setAttribute("type", "button");
+          ghost12.className = "ghost grades-vault-unlock-button";
+          ghost12.dataset.gradesEntryUnlock = "1";
+          ghost12.setAttribute("aria-label", String(unlockButtonLabel));
+          ghost12.setAttribute("title", String(unlockButtonLabel));
+          const iconTemplate13 = document.createElement("template");
+          iconTemplate13.innerHTML = GRADE_VAULT_UNLOCKED_ICON;
+          ghost12.append(iconTemplate13.content);
+          buttonRow9.append(ghost12);
+        }
+        buttonRow9.append("\n");
+        gradesEmptyState6.append(buttonRow9);
+        gradesEmptyState6.append("\n");
+      }
+      gradesEmptyState6.append("\n");
+      fragment.append(gradesEmptyState6);
+      fragment.append("\n");
+      return fragment;
+    })());
     this.boundGradesEntryTableScroll = null;
     this.updateGradesEntryTableStickyScrollbar();
     if (showPrimaryButton) {
@@ -14109,85 +14273,237 @@ class GradesApp {
         bar.style.setProperty("--grade-distribution-bar-height", `${bar.dataset.gradeDistributionBarHeight}%`);
       });
     };
-    const buildDistributionToggleMarkup = (inputName) => `
-                <div class="grades-entry-distribution-toggle" role="radiogroup" aria-label="Verteilungsanzeige">
-                  <label class="grades-entry-distribution-option">
-                    <input type="radio" name="${escapeHtml(inputName)}" data-grades-entry-distribution-view="1" value="points"${isLevelView ? "" : " checked"}>
-                    <span>Notenpunkte</span>
-                  </label>
-                  <label class="grades-entry-distribution-option">
-                    <input type="radio" name="${escapeHtml(inputName)}" data-grades-entry-distribution-view="1" value="levels"${isLevelView ? " checked" : ""}>
-                    <span>Notenstufen</span>
-                  </label>
-                </div>
-              `;
-    const buildDistributionChartMarkup = (options = {}) => {
+    const createDistributionToggle = (inputName) => (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradesEntryDistributionToggle204 = document.createElement("div");
+      gradesEntryDistributionToggle204.className = "grades-entry-distribution-toggle";
+      gradesEntryDistributionToggle204.setAttribute("role", "radiogroup");
+      gradesEntryDistributionToggle204.setAttribute("aria-label", "Verteilungsanzeige");
+      gradesEntryDistributionToggle204.append("\n");
+      const gradesEntryDistributionOption205 = document.createElement("label");
+      gradesEntryDistributionOption205.className = "grades-entry-distribution-option";
+      gradesEntryDistributionOption205.append("\n");
+      const input206 = document.createElement("input");
+      input206.setAttribute("type", "radio");
+      input206.setAttribute("name", String(inputName));
+      input206.dataset.gradesEntryDistributionView = "1";
+      input206.setAttribute("value", "points");
+      input206.value = "points";
+      if (isLevelView) {
+
+      } else {
+        input206.checked = true;
+        input206.defaultChecked = true;
+      }
+      gradesEntryDistributionOption205.append(input206);
+      gradesEntryDistributionOption205.append("\n");
+      const span207 = document.createElement("span");
+      span207.textContent = "Notenpunkte";
+      gradesEntryDistributionOption205.append(span207);
+      gradesEntryDistributionOption205.append("\n");
+      gradesEntryDistributionToggle204.append(gradesEntryDistributionOption205);
+      gradesEntryDistributionToggle204.append("\n");
+      const gradesEntryDistributionOption208 = document.createElement("label");
+      gradesEntryDistributionOption208.className = "grades-entry-distribution-option";
+      gradesEntryDistributionOption208.append("\n");
+      const input209 = document.createElement("input");
+      input209.setAttribute("type", "radio");
+      input209.setAttribute("name", String(inputName));
+      input209.dataset.gradesEntryDistributionView = "1";
+      input209.setAttribute("value", "levels");
+      input209.value = "levels";
+      if (isLevelView) {
+        input209.checked = true;
+        input209.defaultChecked = true;
+      }
+      gradesEntryDistributionOption208.append(input209);
+      gradesEntryDistributionOption208.append("\n");
+      const span210 = document.createElement("span");
+      span210.textContent = "Notenstufen";
+      gradesEntryDistributionOption208.append(span210);
+      gradesEntryDistributionOption208.append("\n");
+      gradesEntryDistributionToggle204.append(gradesEntryDistributionOption208);
+      gradesEntryDistributionToggle204.append("\n");
+      fragment.append(gradesEntryDistributionToggle204);
+      fragment.append("\n");
+      return fragment;
+    })();
+    const createDistributionChart = (options = {}) => {
       const isOverlay = Boolean(options.overlay);
       const chartClass = `grades-entry-distribution-chart${isLevelView ? " is-level-view" : ""}${showDeficitRange ? " has-deficit-range" : ""}${isOverlay ? " is-overlay-chart" : ""}`;
-      const actionAttrs = isOverlay
-        ? `role="button" tabindex="0" data-grades-entry-distribution-close="1" aria-label="Verteilung verkleinern" title="Verteilung verkleinern"`
-        : `role="button" tabindex="0" data-grades-entry-distribution-open="1" aria-label="Verteilung vergrößern" title="Verteilung vergrößern"`;
-      return `
-              <div class="${chartClass}" ${actionAttrs} aria-description="Säulendiagramm ${escapeHtml(tableCaption)}; Defizitanteil ${escapeHtml(formatGradeDeficitShare(deficitShare))}">
-                ${rows.map((row, index) => {
+      return (() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const div211 = document.createElement("div");
+        div211.className = String(chartClass);
+        if (isOverlay) {
+          div211.setAttribute("role", "button");
+          div211.setAttribute("tabindex", "0");
+          div211.dataset.gradesEntryDistributionClose = "1";
+          div211.setAttribute("aria-label", "Verteilung verkleinern");
+          div211.setAttribute("title", "Verteilung verkleinern");
+        } else {
+          div211.setAttribute("role", "button");
+          div211.setAttribute("tabindex", "0");
+          div211.dataset.gradesEntryDistributionOpen = "1";
+          div211.setAttribute("aria-label", "Verteilung vergrößern");
+          div211.setAttribute("title", "Verteilung vergrößern");
+        }
+        div211.setAttribute("aria-description", "Säulendiagramm " + String(tableCaption) + "; Defizitanteil " + String(formatGradeDeficitShare(deficitShare)));
+        div211.append("\n");
+        div211.append(...rows.map((row, index) => {
         const deficitClass = showDeficitRange && row.isDeficitRange
           ? ` is-deficit-range${index === firstDeficitIndex ? " is-deficit-start" : ""}${index === lastDeficitIndex ? " is-deficit-end" : ""}`
           : "";
-        return `
-                    <div class="grades-entry-distribution-chart-item${deficitClass}">
-                      <strong>${row.count}</strong>
-                      <div class="grades-entry-distribution-bar-wrap" aria-hidden="true">
-                        <div class="grades-entry-distribution-bar${row.count ? "" : " is-empty"}" data-grade-distribution-bar-height="${row.height}"></div>
-                      </div>
-                      <span>${escapeHtml(row.label)}</span>
-                    </div>
-                  `;
-      }).join("")}
-                ${showDeficitRange ? `<div class="grades-entry-distribution-deficit-bracket" aria-hidden="true"></div>` : ""}
-                <div class="grades-entry-distribution-deficit-label${showDeficitRange ? "" : " is-empty"}">Defizit: ${escapeHtml(formatGradeDeficitShare(deficitShare))}</div>
-              </div>
-            `;
+        return (() => {
+            const fragment = document.createDocumentFragment();
+            fragment.append("\n");
+            const gradesEntryDistributionChartItem212 = document.createElement("div");
+            gradesEntryDistributionChartItem212.className = "grades-entry-distribution-chart-item" + String(deficitClass);
+            gradesEntryDistributionChartItem212.append("\n");
+            const strong213 = document.createElement("strong");
+            strong213.textContent = String(row.count);
+            gradesEntryDistributionChartItem212.append(strong213);
+            gradesEntryDistributionChartItem212.append("\n");
+            const gradesEntryDistributionBarWrap214 = document.createElement("div");
+            gradesEntryDistributionBarWrap214.className = "grades-entry-distribution-bar-wrap";
+            gradesEntryDistributionBarWrap214.setAttribute("aria-hidden", "true");
+            gradesEntryDistributionBarWrap214.append("\n");
+            const gradesEntryDistributionBar215 = document.createElement("div");
+            gradesEntryDistributionBar215.className = "grades-entry-distribution-bar" + String(row.count ? "" : " is-empty");
+            gradesEntryDistributionBar215.dataset.gradeDistributionBarHeight = String(row.height);
+            gradesEntryDistributionBarWrap214.append(gradesEntryDistributionBar215);
+            gradesEntryDistributionBarWrap214.append("\n");
+            gradesEntryDistributionChartItem212.append(gradesEntryDistributionBarWrap214);
+            gradesEntryDistributionChartItem212.append("\n");
+            const span216 = document.createElement("span");
+            span216.textContent = String(row.label);
+            gradesEntryDistributionChartItem212.append(span216);
+            gradesEntryDistributionChartItem212.append("\n");
+            fragment.append(gradesEntryDistributionChartItem212);
+            fragment.append("\n");
+            return fragment;
+          })();
+      }));
+        div211.append("\n");
+        if (showDeficitRange) {
+          const gradesEntryDistributionDeficitBracket217 = document.createElement("div");
+          gradesEntryDistributionDeficitBracket217.className = "grades-entry-distribution-deficit-bracket";
+          gradesEntryDistributionDeficitBracket217.setAttribute("aria-hidden", "true");
+          div211.append(gradesEntryDistributionDeficitBracket217);
+        }
+        div211.append("\n");
+        const gradesEntryDistributionDeficitLabel218 = document.createElement("div");
+        gradesEntryDistributionDeficitLabel218.className = "grades-entry-distribution-deficit-label" + String(showDeficitRange ? "" : " is-empty");
+        gradesEntryDistributionDeficitLabel218.textContent = "Defizit: " + String(formatGradeDeficitShare(deficitShare));
+        div211.append(gradesEntryDistributionDeficitLabel218);
+        div211.append("\n");
+        fragment.append(div211);
+        fragment.append("\n");
+        return fragment;
+      })();
     };
-    const buildAfbCheckMarkup = () => {
+    const createAfbCheck = () => {
       if (!afbShareState) {
         return "";
       }
-      return `
-              <div class="grades-entry-afb-check${afbShareState.ok ? " is-ok" : " has-warning"}" aria-label="AFB-Pruefung">
-                <div class="grades-entry-afb-check-head">
-                  <h4>Kerncurriculare AFB-Vorgaben</h4>
-                  <span>${afbShareState.ok ? "erfüllt" : "nicht erfüllt"}</span>
-                </div>
-                <div class="grades-entry-afb-check-grid">
-                  ${afbShareState.rows.map((row) => `
-                    <div class="grades-entry-afb-check-item${row.ok ? " is-ok" : " has-warning"}">
-                      <span>AFB ${escapeHtml(row.afb)}</span>
-                      <strong>${escapeHtml(formatGradeTestPercentDisplay({ percent: row.percent }))}</strong>
-                    </div>
-                  `).join("")}
-                </div>
-                <ul class="grades-entry-afb-check-rules">
-                  ${afbShareState.rules.map((rule) => `
-                    <li class="${rule.ok ? "is-ok" : "has-warning"}">${escapeHtml(rule.label)}</li>
-                  `).join("")}
-                </ul>
-              </div>
-            `;
+      return (() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradesEntryAfbCheck230 = document.createElement("div");
+        gradesEntryAfbCheck230.className = "grades-entry-afb-check" + String(afbShareState.ok ? " is-ok" : " has-warning");
+        gradesEntryAfbCheck230.setAttribute("aria-label", "AFB-Pruefung");
+        gradesEntryAfbCheck230.append("\n");
+        const gradesEntryAfbCheckHead231 = document.createElement("div");
+        gradesEntryAfbCheckHead231.className = "grades-entry-afb-check-head";
+        gradesEntryAfbCheckHead231.append("\n");
+        const h4232 = document.createElement("h4");
+        h4232.textContent = "Kerncurriculare AFB-Vorgaben";
+        gradesEntryAfbCheckHead231.append(h4232);
+        gradesEntryAfbCheckHead231.append("\n");
+        const span233 = document.createElement("span");
+        span233.textContent = String(afbShareState.ok ? "erfüllt" : "nicht erfüllt");
+        gradesEntryAfbCheckHead231.append(span233);
+        gradesEntryAfbCheckHead231.append("\n");
+        gradesEntryAfbCheck230.append(gradesEntryAfbCheckHead231);
+        gradesEntryAfbCheck230.append("\n");
+        const gradesEntryAfbCheckGrid234 = document.createElement("div");
+        gradesEntryAfbCheckGrid234.className = "grades-entry-afb-check-grid";
+        gradesEntryAfbCheckGrid234.append("\n");
+        gradesEntryAfbCheckGrid234.append(...afbShareState.rows.map((row) => (() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const gradesEntryAfbCheckItem235 = document.createElement("div");
+          gradesEntryAfbCheckItem235.className = "grades-entry-afb-check-item" + String(row.ok ? " is-ok" : " has-warning");
+          gradesEntryAfbCheckItem235.append("\n");
+          const span236 = document.createElement("span");
+          span236.textContent = "AFB " + String(row.afb);
+          gradesEntryAfbCheckItem235.append(span236);
+          gradesEntryAfbCheckItem235.append("\n");
+          const strong237 = document.createElement("strong");
+          strong237.textContent = String(formatGradeTestPercentDisplay({ percent: row.percent }));
+          gradesEntryAfbCheckItem235.append(strong237);
+          gradesEntryAfbCheckItem235.append("\n");
+          fragment.append(gradesEntryAfbCheckItem235);
+          fragment.append("\n");
+          return fragment;
+        })()));
+        gradesEntryAfbCheckGrid234.append("\n");
+        gradesEntryAfbCheck230.append(gradesEntryAfbCheckGrid234);
+        gradesEntryAfbCheck230.append("\n");
+        const gradesEntryAfbCheckRules238 = document.createElement("ul");
+        gradesEntryAfbCheckRules238.className = "grades-entry-afb-check-rules";
+        gradesEntryAfbCheckRules238.append("\n");
+        gradesEntryAfbCheckRules238.append(...afbShareState.rules.map((rule) => (() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const li239 = document.createElement("li");
+          li239.className = String(rule.ok ? "is-ok" : "has-warning");
+          li239.textContent = String(rule.label);
+          fragment.append(li239);
+          fragment.append("\n");
+          return fragment;
+        })()));
+        gradesEntryAfbCheckRules238.append("\n");
+        gradesEntryAfbCheck230.append(gradesEntryAfbCheckRules238);
+        gradesEntryAfbCheck230.append("\n");
+        fragment.append(gradesEntryAfbCheck230);
+        fragment.append("\n");
+        return fragment;
+      })();
     };
     if (overlayOnly) {
       const overlay = document.createElement("div");
       overlay.className = "grades-entry-distribution-overlay";
       overlay.dataset.gradesEntryDistributionBackdrop = "1";
       overlay.setAttribute("role", "presentation");
-      overlay.innerHTML = `
-                <div class="grades-entry-distribution-overlay-card" role="dialog" aria-modal="true" aria-label="Verteilung">
-                  <div class="grades-entry-distribution-head">
-                    <h3>Verteilung</h3>
-                    ${buildDistributionToggleMarkup("grades-entry-distribution-overlay-view")}
-                  </div>
-                  ${buildDistributionChartMarkup({ overlay: true })}
-                </div>
-              `;
+      overlay.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradesEntryDistributionOverlayCard14 = document.createElement("div");
+        gradesEntryDistributionOverlayCard14.className = "grades-entry-distribution-overlay-card";
+        gradesEntryDistributionOverlayCard14.setAttribute("role", "dialog");
+        gradesEntryDistributionOverlayCard14.setAttribute("aria-modal", "true");
+        gradesEntryDistributionOverlayCard14.setAttribute("aria-label", "Verteilung");
+        gradesEntryDistributionOverlayCard14.append("\n");
+        const gradesEntryDistributionHead15 = document.createElement("div");
+        gradesEntryDistributionHead15.className = "grades-entry-distribution-head";
+        gradesEntryDistributionHead15.append("\n");
+        const h316 = document.createElement("h3");
+        h316.textContent = "Verteilung";
+        gradesEntryDistributionHead15.append(h316);
+        gradesEntryDistributionHead15.append("\n");
+        gradesEntryDistributionHead15.append(createDistributionToggle("grades-entry-distribution-overlay-view"));
+        gradesEntryDistributionHead15.append("\n");
+        gradesEntryDistributionOverlayCard14.append(gradesEntryDistributionHead15);
+        gradesEntryDistributionOverlayCard14.append("\n");
+        gradesEntryDistributionOverlayCard14.append(createDistributionChart({ overlay: true }));
+        gradesEntryDistributionOverlayCard14.append("\n");
+        fragment.append(gradesEntryDistributionOverlayCard14);
+        fragment.append("\n");
+        return fragment;
+      })());
       applyDistributionChartStyles(overlay);
       return overlay;
     }
@@ -14198,20 +14514,31 @@ class GradesApp {
     const distributionPanel = document.createElement("section");
     distributionPanel.className = "table-panel grades-entry-distribution";
     distributionPanel.setAttribute("aria-label", "Notenverteilung");
-    distributionPanel.innerHTML = `
-              <div class="grades-entry-distribution-head">
-                <h3>Verteilung</h3>
-                ${buildDistributionToggleMarkup("grades-entry-distribution-view")}
-              </div>
-              ${buildDistributionChartMarkup()}
-            `;
+    distributionPanel.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradesEntryDistributionHead17 = document.createElement("div");
+      gradesEntryDistributionHead17.className = "grades-entry-distribution-head";
+      gradesEntryDistributionHead17.append("\n");
+      const h318 = document.createElement("h3");
+      h318.textContent = "Verteilung";
+      gradesEntryDistributionHead17.append(h318);
+      gradesEntryDistributionHead17.append("\n");
+      gradesEntryDistributionHead17.append(createDistributionToggle("grades-entry-distribution-view"));
+      gradesEntryDistributionHead17.append("\n");
+      fragment.append(gradesEntryDistributionHead17);
+      fragment.append("\n");
+      fragment.append(createDistributionChart());
+      fragment.append("\n");
+      return fragment;
+    })());
     applyDistributionChartStyles(distributionPanel);
     panelGroup.append(distributionPanel);
     if (afbShareState) {
       const afbPanel = document.createElement("section");
       afbPanel.className = "table-panel grades-entry-afb-check-panel";
       afbPanel.setAttribute("aria-label", "Kerncurriculare AFB-Vorgaben");
-      afbPanel.innerHTML = buildAfbCheckMarkup();
+      afbPanel.replaceChildren(createAfbCheck());
       panelGroup.append(afbPanel);
     }
     return panelGroup;
@@ -14538,9 +14865,20 @@ class GradesApp {
     };
     const editorMode = normalizeGradeAssessmentMode(editorState.mode);
     const occurrenceCategories = this.getGradeOccurrenceCategories();
-    const occurrenceCategoryOptionsMarkup = occurrenceCategories
-      .map((category) => `<option value="${Number(category.id)}"${Number(category.id) === Number(editorState.occurrenceCategoryId) ? " selected" : ""}>${escapeHtml(this.getGradeOccurrenceCategoryDisplayName(category.id))}</option>`)
-      .join("");
+    const occurrenceCategoryOptions = occurrenceCategories
+      .map((category) => (() => {
+      const fragment = document.createDocumentFragment();
+      const option283 = document.createElement("option");
+      option283.setAttribute("value", String(Number(category.id)));
+      option283.value = String(Number(category.id));
+      if (Number(category.id) === Number(editorState.occurrenceCategoryId)) {
+        option283.selected = true;
+        option283.defaultSelected = true;
+      }
+      option283.textContent = String(this.getGradeOccurrenceCategoryDisplayName(category.id));
+      fragment.append(option283);
+      return fragment;
+    })());
     const deficitThresholdDefault = getGradeDeficitThresholdDefaultForScale(
       editorMode === "test" ? editorState.testScale : GRADE_TEST_SCALE_DEFAULT
     );
@@ -14551,9 +14889,8 @@ class GradesApp {
       editorState.testPredicateSuffixes,
       selectedAssessment ? true : getDefaultGradeTestPredicateSuffixes(editorState.testScale)
     );
-    const testScaleOptionsMarkup = this.buildGradeTestScaleOptionsMarkup({
+    const testScaleOptions = this.createGradeTestScaleOptions({
       inputName: "grades-entry-test-scale",
-      dataAttribute: "data-grades-entry-test-scale=\"1\"",
       selectedScale: editorState.testScale,
       selectedSnapshot: editorState.testScaleSnapshot || null,
       disabled: editorMode !== "test",
@@ -14565,209 +14902,734 @@ class GradesApp {
     const editorCourseLevel = normalizeGradeAssessmentCourseLevel(editorState.courseLevel, editorYearLevel);
     const courseLevelDisabled = isGradeAssessmentCourseLevelDisabled(editorYearLevel);
     const courseLevelValue = courseLevelDisabled ? "" : editorCourseLevel;
-    const gradeYearLevelOptionsMarkup = [
-      `<option value=""${editorYearLevel === null ? " selected" : ""}></option>`,
+    const gradeYearLevelOptions = [
+      (() => {
+      const fragment = document.createDocumentFragment();
+      const option284 = document.createElement("option");
+      option284.setAttribute("value", "");
+      option284.value = "";
+      if (editorYearLevel === null) {
+        option284.selected = true;
+        option284.defaultSelected = true;
+      }
+      fragment.append(option284);
+      return fragment;
+    })(),
       ...Array.from({ length: 9 }, (_item, index) => {
         const yearLevel = index + 5;
-        return `<option value="${yearLevel}"${editorYearLevel === yearLevel ? " selected" : ""}>${yearLevel}</option>`;
+        return (() => {
+        const fragment = document.createDocumentFragment();
+        const option285 = document.createElement("option");
+        option285.setAttribute("value", String(yearLevel));
+        option285.value = String(yearLevel);
+        if (editorYearLevel === yearLevel) {
+          option285.selected = true;
+          option285.defaultSelected = true;
+        }
+        option285.textContent = String(yearLevel);
+        fragment.append(option285);
+        return fragment;
+      })();
       })
-    ].join("");
+    ];
     const editor = document.createElement("section");
     editor.className = "grades-entry-editor";
     editor.dataset.tutorialAnchor = "grades-entry-editor";
-    editor.innerHTML = `
-        <div class="grades-entry-layout">
-          <div class="table-panel grades-entry-config" data-tutorial-anchor="grades-entry-config">
-            <div class="grades-entry-form">
-              <label class="grades-entry-field grades-entry-course-field">
-                <span>Kurs</span>
-                <select name="grades-entry-course" data-grades-entry-course="1">
-                  ${availableCourses.map((item) => `<option value="${item.id}"${Number(item.id) === Number(course.id) ? " selected" : ""}>${escapeHtml(item.name)}</option>`).join("")}
-                </select>
-              </label>
-              <div class="grades-entry-actions" data-tutorial-anchor="grades-entry-save">
-                <div class="grades-entry-actions-danger">
-                  <button type="button" class="ghost danger-action dialog-icon-button app-action-icon" data-grades-entry-delete="1" data-course-id="${course.id}" aria-label="Leistung löschen" data-tooltip="${selectedAssessment ? "Leistung löschen" : "Neue Leistung noch nicht gespeichert"}"${selectedAssessment ? "" : " disabled"}>🗑️</button>
-                </div>
-                <div class="grades-entry-actions-main app-action-group">
-                  <button type="button" class="dialog-icon-button app-action-icon" data-grades-entry-save="1" aria-label="Speichern" data-tooltip="Speichern">💾</button>
-                  <button type="button" class="ghost dialog-icon-button app-action-icon" data-grades-entry-cancel="1" aria-label="Abbrechen" data-tooltip="Abbrechen">❌</button>
-                </div>
-              </div>
-              <label class="grades-entry-field is-wide" data-tutorial-anchor="grades-entry-title">
-                <span>Leistungstitel</span>
-                <input type="text" name="grades-entry-title" data-grades-entry-title="1" value="${escapeHtml(editorState.title || "")}" placeholder="Leistungsname">
-              </label>
-              <fieldset class="grades-entry-field grades-entry-mode-field is-wide" data-tutorial-anchor="grades-entry-mode">
-                <legend>Modus</legend>
-                <div class="assessment-mode-toggle segment-control segment-control--three" role="radiogroup" aria-label="Leistungsmodus">
-                  <label class="assessment-mode-option segment-control__option">
-                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="grade" aria-label="Einzelnote"${normalizeGradeAssessmentMode(editorState.mode) === "grade" ? " checked" : ""}>
-                    <span class="grades-entry-mode-label">Einzel&shy;note</span>
-                  </label>
-                  <label class="assessment-mode-option segment-control__option">
-                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="test" aria-label="Bewertungseinheiten"${normalizeGradeAssessmentMode(editorState.mode) === "test" ? " checked" : ""}>
-                    <span class="grades-entry-mode-label">Bewertungs&shy;einheiten</span>
-                  </label>
-                  <label class="assessment-mode-option segment-control__option">
-                    <input type="radio" name="grades-entry-mode" data-grades-entry-mode="1" value="homework" aria-label="Vorkommnis"${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? " checked" : ""}>
-                    <span class="grades-entry-mode-label">Vorkommnis</span>
-                  </label>
-                </div>
-              </fieldset>
-              ${occurrenceCategories.length > 1 ? `
-                <label class="grades-entry-field grades-entry-occurrence-category-field is-wide${editorMode === "homework" ? "" : " is-hidden"}">
-                  <span>Vorkommniskategorie</span>
-                  <select name="grades-entry-occurrence-category" data-grades-entry-occurrence-category="1"${editorMode === "homework" ? "" : " disabled"}>
-                    ${occurrenceCategoryOptionsMarkup}
-                  </select>
-                </label>
-              ` : ""}
-              <fieldset class="grades-entry-field grades-entry-test-scale-field is-wide${editorMode === "test" ? "" : " is-hidden"}">
-                <legend>Prozentgrenzen</legend>
-                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prozentgrenzen">
-                  ${testScaleOptionsMarkup}
-                </div>
-              </fieldset>
-              <fieldset class="grades-entry-field grades-entry-test-predicate-field is-wide${editorMode === "test" ? "" : " is-hidden"}">
-                <legend>Prädikatsanhängsel</legend>
-                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Prädikatsanhängsel">
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-test-predicate-suffixes" data-grades-entry-test-predicate-suffixes="1" value="true"${testPredicateSuffixes ? " checked" : ""}${editorMode === "test" ? "" : " disabled"}>
-                    <span>Ja</span>
-                  </label>
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-test-predicate-suffixes" data-grades-entry-test-predicate-suffixes="1" value="false"${testPredicateSuffixes ? "" : " checked"}${editorMode === "test" ? "" : " disabled"}>
-                    <span>Nein</span>
-                  </label>
-                </div>
-              </fieldset>
-              <fieldset class="grades-entry-field grades-entry-halfyear-field is-wide" data-tutorial-anchor="grades-entry-assignment">
-                <legend>Halbjahr</legend>
-                <div class="assessment-mode-toggle" role="radiogroup" aria-label="Halbjahr">
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-halfyear" data-grades-entry-halfyear="1" value="h1"${editorState.halfYear === "h1" ? " checked" : ""}>
-                    <span>HJ1</span>
-                  </label>
-                  <label class="assessment-mode-option">
-                    <input type="radio" name="grades-entry-halfyear" data-grades-entry-halfyear="1" value="h2"${editorState.halfYear === "h2" ? " checked" : ""}>
-                    <span>HJ2</span>
-                  </label>
-                </div>
-              </fieldset>
-              <label class="grades-entry-field${editorMode === "homework" ? " is-hidden" : ""}">
-                <span>Gewichtung</span>
-                <input
-                  type="number"
-                  name="grades-entry-weight"
-                  data-grades-entry-weight="1"
-                  min="1"
-                  step="1"
-                  inputmode="numeric"
-                  value="${normalizeGradeInteger(editorState.weight, 1)}"
-                  ${normalizeGradeAssessmentMode(editorState.mode) === "homework" ? "disabled" : ""}
-                >
-              </label>
-              <label class="grades-entry-field${editorMode === "homework" ? " is-hidden" : ""}">
-                <span>Defizitgrenze</span>
-                <input
-                  type="number"
-                  name="grades-entry-deficit-threshold"
-                  data-grades-entry-deficit-threshold="1"
-                  min="1"
-                  max="15"
-                  step="1"
-                  inputmode="numeric"
-                  value="${deficitThreshold}"
-                  title="Noten bis einschließlich diesem Wert zählen als Defizit"
-                >
-              </label>
-              <div class="grades-entry-be-options is-wide${editorMode === "test" ? "" : " is-hidden"}">
-                <label class="grades-entry-field grades-entry-year-level-field">
-                  <span>Jahrgangsstufe</span>
-                  <select name="grades-entry-year-level" data-grades-entry-year-level="1"${editorMode === "test" ? "" : " disabled"}>
-                    ${gradeYearLevelOptionsMarkup}
-                  </select>
-                </label>
-                <fieldset class="grades-entry-field grades-entry-course-level-field${courseLevelDisabled ? " is-disabled" : ""}">
-                  <legend>Anforderungsniveau</legend>
-                  <div class="assessment-mode-toggle" role="radiogroup" aria-label="Anforderungsniveau">
-                    <label class="assessment-mode-option">
-                      <input type="radio" name="grades-entry-course-level" data-grades-entry-course-level="1" value="gk"${courseLevelValue === "gk" ? " checked" : ""}${editorMode === "test" && !courseLevelDisabled ? "" : " disabled"}>
-                      <span>GK</span>
-                    </label>
-                    <label class="assessment-mode-option" title="Keine Auswahl">
-                      <input type="radio" name="grades-entry-course-level" data-grades-entry-course-level="1" value=""${courseLevelValue ? "" : " checked"}${editorMode === "test" && !courseLevelDisabled ? "" : " disabled"}>
-                      <span>-</span>
-                    </label>
-                    <label class="assessment-mode-option">
-                      <input type="radio" name="grades-entry-course-level" data-grades-entry-course-level="1" value="lk"${courseLevelValue === "lk" ? " checked" : ""}${editorMode === "test" && !courseLevelDisabled ? "" : " disabled"}>
-                      <span>LK</span>
-                    </label>
-                  </div>
-                </fieldset>
-              </div>
-              <div class="grades-entry-topic-row is-wide${editorMode === "test" ? "" : " is-hidden"}">
-                <label class="grades-entry-field grades-entry-topic-field">
-                  <span>Thema</span>
-                  <input
-                    type="text"
-                    name="grades-entry-topic"
-                    data-grades-entry-topic="1"
-                    value="${escapeHtml(normalizeGradeAssessmentTopic(editorState.topic))}"
-                    placeholder="Lineare Funktionen"
-                    ${editorMode === "test" ? "" : "disabled"}
-                  >
-                </label>
-                <label class="grades-entry-field grades-entry-number-field">
-                  <span>Nummer</span>
-                  <input
-                    type="text"
-                    name="grades-entry-number"
-                    data-grades-entry-number="1"
-                    inputmode="numeric"
-                    pattern="\\d{0,2}"
-                    maxlength="2"
-                    value="${escapeHtml(formatGradeAssessmentNumber(editorState.assessmentNumber))}"
-                    placeholder="1"
-                    ${editorMode === "test" ? "" : "disabled"}
-                  >
-                </label>
-                <label class="grades-entry-field grades-entry-exam-duration-field">
-                  <span>Prüfungszeit [min]</span>
-                  <input
-                    type="text"
-                    name="grades-entry-exam-duration"
-                    data-grades-entry-exam-duration="1"
-                    inputmode="numeric"
-                    pattern="\\d{0,3}"
-                    maxlength="3"
-                    value="${escapeHtml(normalizeGradeAssessmentExamDurationMinutes(editorState.examDurationMinutes) ?? "")}"
-                    placeholder="45"
-                    ${editorMode === "test" ? "" : "disabled"}
-                  >
-                </label>
-              </div>
-              <label class="grades-entry-field is-wide">
-                <span>Kategorie</span>
-                <select name="grades-entry-category" data-grades-entry-category="1">
-                  ${categories.map((category) => `<option value="${category.id}"${Number(category.id) === Number(editorState.categoryId || 0) ? " selected" : ""}>${escapeHtml(`${category.name}${formatGradeWeightPercentSuffix(category.weight)}`)}</option>`).join("")}
-                </select>
-              </label>
-              ${subcategories.length > 0 ? `
-                <label class="grades-entry-field is-wide">
-                  <span>Unterkategorie</span>
-                  <select name="grades-entry-subcategory" data-grades-entry-subcategory="1">
-                    ${subcategories.map((subcategory) => `<option value="${subcategory.id}"${Number(subcategory.id) === Number(editorState.subcategoryId || 0) ? " selected" : ""}>${escapeHtml(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`)}</option>`).join("")}
-                  </select>
-                </label>
-              ` : `
-                <p class="grades-entry-field is-wide muted">Leistungen werden direkt der ausgewählten Kategorie zugeordnet.</p>
-              `}
-            </div>
-          </div>
-        </div>
-      `;
+    editor.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradesEntryLayout19 = document.createElement("div");
+      gradesEntryLayout19.className = "grades-entry-layout";
+      gradesEntryLayout19.append("\n");
+      const tablePanel20 = document.createElement("div");
+      tablePanel20.className = "table-panel grades-entry-config";
+      tablePanel20.dataset.tutorialAnchor = "grades-entry-config";
+      tablePanel20.append("\n");
+      const gradesEntryForm21 = document.createElement("div");
+      gradesEntryForm21.className = "grades-entry-form";
+      gradesEntryForm21.append("\n");
+      const gradesEntryField22 = document.createElement("label");
+      gradesEntryField22.className = "grades-entry-field grades-entry-course-field";
+      gradesEntryField22.append("\n");
+      const span23 = document.createElement("span");
+      span23.textContent = "Kurs";
+      gradesEntryField22.append(span23);
+      gradesEntryField22.append("\n");
+      const select24 = document.createElement("select");
+      select24.setAttribute("name", "grades-entry-course");
+      select24.dataset.gradesEntryCourse = "1";
+      select24.append("\n");
+      select24.append(...availableCourses.map((item) => (() => {
+        const fragment = document.createDocumentFragment();
+        const option25 = document.createElement("option");
+        option25.setAttribute("value", String(item.id));
+        option25.value = String(item.id);
+        if (Number(item.id) === Number(course.id)) {
+          option25.selected = true;
+          option25.defaultSelected = true;
+        }
+        option25.textContent = String(item.name);
+        fragment.append(option25);
+        return fragment;
+      })()));
+      select24.append("\n");
+      gradesEntryField22.append(select24);
+      gradesEntryField22.append("\n");
+      gradesEntryForm21.append(gradesEntryField22);
+      gradesEntryForm21.append("\n");
+      const gradesEntryActions26 = document.createElement("div");
+      gradesEntryActions26.className = "grades-entry-actions";
+      gradesEntryActions26.dataset.tutorialAnchor = "grades-entry-save";
+      gradesEntryActions26.append("\n");
+      const gradesEntryActionsDanger27 = document.createElement("div");
+      gradesEntryActionsDanger27.className = "grades-entry-actions-danger";
+      gradesEntryActionsDanger27.append("\n");
+      const ghost28 = document.createElement("button");
+      ghost28.setAttribute("type", "button");
+      ghost28.className = "ghost danger-action dialog-icon-button app-action-icon";
+      ghost28.dataset.gradesEntryDelete = "1";
+      ghost28.dataset.courseId = String(course.id);
+      ghost28.setAttribute("aria-label", "Leistung löschen");
+      ghost28.dataset.tooltip = String(selectedAssessment ? "Leistung löschen" : "Neue Leistung noch nicht gespeichert");
+      if (selectedAssessment) {
+
+      } else {
+        ghost28.disabled = true;
+      }
+      ghost28.textContent = "🗑️";
+      gradesEntryActionsDanger27.append(ghost28);
+      gradesEntryActionsDanger27.append("\n");
+      gradesEntryActions26.append(gradesEntryActionsDanger27);
+      gradesEntryActions26.append("\n");
+      const gradesEntryActionsMain29 = document.createElement("div");
+      gradesEntryActionsMain29.className = "grades-entry-actions-main app-action-group";
+      gradesEntryActionsMain29.append("\n");
+      const dialogIconButton30 = document.createElement("button");
+      dialogIconButton30.setAttribute("type", "button");
+      dialogIconButton30.className = "dialog-icon-button app-action-icon";
+      dialogIconButton30.dataset.gradesEntrySave = "1";
+      dialogIconButton30.setAttribute("aria-label", "Speichern");
+      dialogIconButton30.dataset.tooltip = "Speichern";
+      dialogIconButton30.textContent = "💾";
+      gradesEntryActionsMain29.append(dialogIconButton30);
+      gradesEntryActionsMain29.append("\n");
+      const ghost31 = document.createElement("button");
+      ghost31.setAttribute("type", "button");
+      ghost31.className = "ghost dialog-icon-button app-action-icon";
+      ghost31.dataset.gradesEntryCancel = "1";
+      ghost31.setAttribute("aria-label", "Abbrechen");
+      ghost31.dataset.tooltip = "Abbrechen";
+      ghost31.textContent = "❌";
+      gradesEntryActionsMain29.append(ghost31);
+      gradesEntryActionsMain29.append("\n");
+      gradesEntryActions26.append(gradesEntryActionsMain29);
+      gradesEntryActions26.append("\n");
+      gradesEntryForm21.append(gradesEntryActions26);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField32 = document.createElement("label");
+      gradesEntryField32.className = "grades-entry-field is-wide";
+      gradesEntryField32.dataset.tutorialAnchor = "grades-entry-title";
+      gradesEntryField32.append("\n");
+      const span33 = document.createElement("span");
+      span33.textContent = "Leistungstitel";
+      gradesEntryField32.append(span33);
+      gradesEntryField32.append("\n");
+      const input34 = document.createElement("input");
+      input34.setAttribute("type", "text");
+      input34.setAttribute("name", "grades-entry-title");
+      input34.dataset.gradesEntryTitle = "1";
+      input34.setAttribute("value", String(editorState.title || ""));
+      input34.value = String(editorState.title || "");
+      input34.setAttribute("placeholder", "Leistungsname");
+      gradesEntryField32.append(input34);
+      gradesEntryField32.append("\n");
+      gradesEntryForm21.append(gradesEntryField32);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField35 = document.createElement("fieldset");
+      gradesEntryField35.className = "grades-entry-field grades-entry-mode-field is-wide";
+      gradesEntryField35.dataset.tutorialAnchor = "grades-entry-mode";
+      gradesEntryField35.append("\n");
+      const legend36 = document.createElement("legend");
+      legend36.textContent = "Modus";
+      gradesEntryField35.append(legend36);
+      gradesEntryField35.append("\n");
+      const assessmentModeToggle37 = document.createElement("div");
+      assessmentModeToggle37.className = "assessment-mode-toggle segment-control segment-control--three";
+      assessmentModeToggle37.setAttribute("role", "radiogroup");
+      assessmentModeToggle37.setAttribute("aria-label", "Leistungsmodus");
+      assessmentModeToggle37.append("\n");
+      const assessmentModeOption38 = document.createElement("label");
+      assessmentModeOption38.className = "assessment-mode-option segment-control__option";
+      assessmentModeOption38.append("\n");
+      const input39 = document.createElement("input");
+      input39.setAttribute("type", "radio");
+      input39.setAttribute("name", "grades-entry-mode");
+      input39.dataset.gradesEntryMode = "1";
+      input39.setAttribute("value", "grade");
+      input39.value = "grade";
+      input39.setAttribute("aria-label", "Einzelnote");
+      if (normalizeGradeAssessmentMode(editorState.mode) === "grade") {
+        input39.checked = true;
+        input39.defaultChecked = true;
+      }
+      assessmentModeOption38.append(input39);
+      assessmentModeOption38.append("\n");
+      const gradesEntryModeLabel40 = document.createElement("span");
+      gradesEntryModeLabel40.className = "grades-entry-mode-label";
+      gradesEntryModeLabel40.textContent = "Einzel­note";
+      assessmentModeOption38.append(gradesEntryModeLabel40);
+      assessmentModeOption38.append("\n");
+      assessmentModeToggle37.append(assessmentModeOption38);
+      assessmentModeToggle37.append("\n");
+      const assessmentModeOption41 = document.createElement("label");
+      assessmentModeOption41.className = "assessment-mode-option segment-control__option";
+      assessmentModeOption41.append("\n");
+      const input42 = document.createElement("input");
+      input42.setAttribute("type", "radio");
+      input42.setAttribute("name", "grades-entry-mode");
+      input42.dataset.gradesEntryMode = "1";
+      input42.setAttribute("value", "test");
+      input42.value = "test";
+      input42.setAttribute("aria-label", "Bewertungseinheiten");
+      if (normalizeGradeAssessmentMode(editorState.mode) === "test") {
+        input42.checked = true;
+        input42.defaultChecked = true;
+      }
+      assessmentModeOption41.append(input42);
+      assessmentModeOption41.append("\n");
+      const gradesEntryModeLabel43 = document.createElement("span");
+      gradesEntryModeLabel43.className = "grades-entry-mode-label";
+      gradesEntryModeLabel43.textContent = "Bewertungs­einheiten";
+      assessmentModeOption41.append(gradesEntryModeLabel43);
+      assessmentModeOption41.append("\n");
+      assessmentModeToggle37.append(assessmentModeOption41);
+      assessmentModeToggle37.append("\n");
+      const assessmentModeOption44 = document.createElement("label");
+      assessmentModeOption44.className = "assessment-mode-option segment-control__option";
+      assessmentModeOption44.append("\n");
+      const input45 = document.createElement("input");
+      input45.setAttribute("type", "radio");
+      input45.setAttribute("name", "grades-entry-mode");
+      input45.dataset.gradesEntryMode = "1";
+      input45.setAttribute("value", "homework");
+      input45.value = "homework";
+      input45.setAttribute("aria-label", "Vorkommnis");
+      if (normalizeGradeAssessmentMode(editorState.mode) === "homework") {
+        input45.checked = true;
+        input45.defaultChecked = true;
+      }
+      assessmentModeOption44.append(input45);
+      assessmentModeOption44.append("\n");
+      const gradesEntryModeLabel46 = document.createElement("span");
+      gradesEntryModeLabel46.className = "grades-entry-mode-label";
+      gradesEntryModeLabel46.textContent = "Vorkommnis";
+      assessmentModeOption44.append(gradesEntryModeLabel46);
+      assessmentModeOption44.append("\n");
+      assessmentModeToggle37.append(assessmentModeOption44);
+      assessmentModeToggle37.append("\n");
+      gradesEntryField35.append(assessmentModeToggle37);
+      gradesEntryField35.append("\n");
+      gradesEntryForm21.append(gradesEntryField35);
+      gradesEntryForm21.append("\n");
+      if (occurrenceCategories.length > 1) {
+        gradesEntryForm21.append("\n");
+        const gradesEntryField47 = document.createElement("label");
+        gradesEntryField47.className = "grades-entry-field grades-entry-occurrence-category-field is-wide" + String(editorMode === "homework" ? "" : " is-hidden");
+        gradesEntryField47.append("\n");
+        const span48 = document.createElement("span");
+        span48.textContent = "Vorkommniskategorie";
+        gradesEntryField47.append(span48);
+        gradesEntryField47.append("\n");
+        const select49 = document.createElement("select");
+        select49.setAttribute("name", "grades-entry-occurrence-category");
+        select49.dataset.gradesEntryOccurrenceCategory = "1";
+        if (editorMode === "homework") {
+
+        } else {
+          select49.disabled = true;
+        }
+        select49.append("\n");
+        select49.append(...occurrenceCategoryOptions);
+        select49.append("\n");
+        gradesEntryField47.append(select49);
+        gradesEntryField47.append("\n");
+        gradesEntryForm21.append(gradesEntryField47);
+        gradesEntryForm21.append("\n");
+      }
+      gradesEntryForm21.append("\n");
+      const gradesEntryField50 = document.createElement("fieldset");
+      gradesEntryField50.className = "grades-entry-field grades-entry-test-scale-field is-wide" + String(editorMode === "test" ? "" : " is-hidden");
+      gradesEntryField50.append("\n");
+      const legend51 = document.createElement("legend");
+      legend51.textContent = "Prozentgrenzen";
+      gradesEntryField50.append(legend51);
+      gradesEntryField50.append("\n");
+      const assessmentModeToggle52 = document.createElement("div");
+      assessmentModeToggle52.className = "assessment-mode-toggle";
+      assessmentModeToggle52.setAttribute("role", "radiogroup");
+      assessmentModeToggle52.setAttribute("aria-label", "Prozentgrenzen");
+      assessmentModeToggle52.append("\n");
+      assessmentModeToggle52.append(testScaleOptions);
+      assessmentModeToggle52.append("\n");
+      gradesEntryField50.append(assessmentModeToggle52);
+      gradesEntryField50.append("\n");
+      gradesEntryForm21.append(gradesEntryField50);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField53 = document.createElement("fieldset");
+      gradesEntryField53.className = "grades-entry-field grades-entry-test-predicate-field is-wide" + String(editorMode === "test" ? "" : " is-hidden");
+      gradesEntryField53.append("\n");
+      const legend54 = document.createElement("legend");
+      legend54.textContent = "Prädikatsanhängsel";
+      gradesEntryField53.append(legend54);
+      gradesEntryField53.append("\n");
+      const assessmentModeToggle55 = document.createElement("div");
+      assessmentModeToggle55.className = "assessment-mode-toggle";
+      assessmentModeToggle55.setAttribute("role", "radiogroup");
+      assessmentModeToggle55.setAttribute("aria-label", "Prädikatsanhängsel");
+      assessmentModeToggle55.append("\n");
+      const assessmentModeOption56 = document.createElement("label");
+      assessmentModeOption56.className = "assessment-mode-option";
+      assessmentModeOption56.append("\n");
+      const input57 = document.createElement("input");
+      input57.setAttribute("type", "radio");
+      input57.setAttribute("name", "grades-entry-test-predicate-suffixes");
+      input57.dataset.gradesEntryTestPredicateSuffixes = "1";
+      input57.setAttribute("value", "true");
+      input57.value = "true";
+      if (testPredicateSuffixes) {
+        input57.checked = true;
+        input57.defaultChecked = true;
+      }
+      if (editorMode === "test") {
+
+      } else {
+        input57.disabled = true;
+      }
+      assessmentModeOption56.append(input57);
+      assessmentModeOption56.append("\n");
+      const span58 = document.createElement("span");
+      span58.textContent = "Ja";
+      assessmentModeOption56.append(span58);
+      assessmentModeOption56.append("\n");
+      assessmentModeToggle55.append(assessmentModeOption56);
+      assessmentModeToggle55.append("\n");
+      const assessmentModeOption59 = document.createElement("label");
+      assessmentModeOption59.className = "assessment-mode-option";
+      assessmentModeOption59.append("\n");
+      const input60 = document.createElement("input");
+      input60.setAttribute("type", "radio");
+      input60.setAttribute("name", "grades-entry-test-predicate-suffixes");
+      input60.dataset.gradesEntryTestPredicateSuffixes = "1";
+      input60.setAttribute("value", "false");
+      input60.value = "false";
+      if (testPredicateSuffixes) {
+
+      } else {
+        input60.checked = true;
+        input60.defaultChecked = true;
+      }
+      if (editorMode === "test") {
+
+      } else {
+        input60.disabled = true;
+      }
+      assessmentModeOption59.append(input60);
+      assessmentModeOption59.append("\n");
+      const span61 = document.createElement("span");
+      span61.textContent = "Nein";
+      assessmentModeOption59.append(span61);
+      assessmentModeOption59.append("\n");
+      assessmentModeToggle55.append(assessmentModeOption59);
+      assessmentModeToggle55.append("\n");
+      gradesEntryField53.append(assessmentModeToggle55);
+      gradesEntryField53.append("\n");
+      gradesEntryForm21.append(gradesEntryField53);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField62 = document.createElement("fieldset");
+      gradesEntryField62.className = "grades-entry-field grades-entry-halfyear-field is-wide";
+      gradesEntryField62.dataset.tutorialAnchor = "grades-entry-assignment";
+      gradesEntryField62.append("\n");
+      const legend63 = document.createElement("legend");
+      legend63.textContent = "Halbjahr";
+      gradesEntryField62.append(legend63);
+      gradesEntryField62.append("\n");
+      const assessmentModeToggle64 = document.createElement("div");
+      assessmentModeToggle64.className = "assessment-mode-toggle";
+      assessmentModeToggle64.setAttribute("role", "radiogroup");
+      assessmentModeToggle64.setAttribute("aria-label", "Halbjahr");
+      assessmentModeToggle64.append("\n");
+      const assessmentModeOption65 = document.createElement("label");
+      assessmentModeOption65.className = "assessment-mode-option";
+      assessmentModeOption65.append("\n");
+      const input66 = document.createElement("input");
+      input66.setAttribute("type", "radio");
+      input66.setAttribute("name", "grades-entry-halfyear");
+      input66.dataset.gradesEntryHalfyear = "1";
+      input66.setAttribute("value", "h1");
+      input66.value = "h1";
+      if (editorState.halfYear === "h1") {
+        input66.checked = true;
+        input66.defaultChecked = true;
+      }
+      assessmentModeOption65.append(input66);
+      assessmentModeOption65.append("\n");
+      const span67 = document.createElement("span");
+      span67.textContent = "HJ1";
+      assessmentModeOption65.append(span67);
+      assessmentModeOption65.append("\n");
+      assessmentModeToggle64.append(assessmentModeOption65);
+      assessmentModeToggle64.append("\n");
+      const assessmentModeOption68 = document.createElement("label");
+      assessmentModeOption68.className = "assessment-mode-option";
+      assessmentModeOption68.append("\n");
+      const input69 = document.createElement("input");
+      input69.setAttribute("type", "radio");
+      input69.setAttribute("name", "grades-entry-halfyear");
+      input69.dataset.gradesEntryHalfyear = "1";
+      input69.setAttribute("value", "h2");
+      input69.value = "h2";
+      if (editorState.halfYear === "h2") {
+        input69.checked = true;
+        input69.defaultChecked = true;
+      }
+      assessmentModeOption68.append(input69);
+      assessmentModeOption68.append("\n");
+      const span70 = document.createElement("span");
+      span70.textContent = "HJ2";
+      assessmentModeOption68.append(span70);
+      assessmentModeOption68.append("\n");
+      assessmentModeToggle64.append(assessmentModeOption68);
+      assessmentModeToggle64.append("\n");
+      gradesEntryField62.append(assessmentModeToggle64);
+      gradesEntryField62.append("\n");
+      gradesEntryForm21.append(gradesEntryField62);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField71 = document.createElement("label");
+      gradesEntryField71.className = "grades-entry-field" + String(editorMode === "homework" ? " is-hidden" : "");
+      gradesEntryField71.append("\n");
+      const span72 = document.createElement("span");
+      span72.textContent = "Gewichtung";
+      gradesEntryField71.append(span72);
+      gradesEntryField71.append("\n");
+      const input73 = document.createElement("input");
+      input73.setAttribute("type", "number");
+      input73.setAttribute("name", "grades-entry-weight");
+      input73.dataset.gradesEntryWeight = "1";
+      input73.setAttribute("min", "1");
+      input73.setAttribute("step", "1");
+      input73.setAttribute("inputmode", "numeric");
+      input73.setAttribute("value", String(normalizeGradeInteger(editorState.weight, 1)));
+      input73.value = String(normalizeGradeInteger(editorState.weight, 1));
+      if (normalizeGradeAssessmentMode(editorState.mode) === "homework") {
+        input73.disabled = true;
+      }
+      gradesEntryField71.append(input73);
+      gradesEntryField71.append("\n");
+      gradesEntryForm21.append(gradesEntryField71);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField74 = document.createElement("label");
+      gradesEntryField74.className = "grades-entry-field" + String(editorMode === "homework" ? " is-hidden" : "");
+      gradesEntryField74.append("\n");
+      const span75 = document.createElement("span");
+      span75.textContent = "Defizitgrenze";
+      gradesEntryField74.append(span75);
+      gradesEntryField74.append("\n");
+      const input76 = document.createElement("input");
+      input76.setAttribute("type", "number");
+      input76.setAttribute("name", "grades-entry-deficit-threshold");
+      input76.dataset.gradesEntryDeficitThreshold = "1";
+      input76.setAttribute("min", "1");
+      input76.setAttribute("max", "15");
+      input76.setAttribute("step", "1");
+      input76.setAttribute("inputmode", "numeric");
+      input76.setAttribute("value", String(deficitThreshold));
+      input76.value = String(deficitThreshold);
+      input76.setAttribute("title", "Noten bis einschließlich diesem Wert zählen als Defizit");
+      gradesEntryField74.append(input76);
+      gradesEntryField74.append("\n");
+      gradesEntryForm21.append(gradesEntryField74);
+      gradesEntryForm21.append("\n");
+      const gradesEntryBeOptions77 = document.createElement("div");
+      gradesEntryBeOptions77.className = "grades-entry-be-options is-wide" + String(editorMode === "test" ? "" : " is-hidden");
+      gradesEntryBeOptions77.append("\n");
+      const gradesEntryField78 = document.createElement("label");
+      gradesEntryField78.className = "grades-entry-field grades-entry-year-level-field";
+      gradesEntryField78.append("\n");
+      const span79 = document.createElement("span");
+      span79.textContent = "Jahrgangsstufe";
+      gradesEntryField78.append(span79);
+      gradesEntryField78.append("\n");
+      const select80 = document.createElement("select");
+      select80.setAttribute("name", "grades-entry-year-level");
+      select80.dataset.gradesEntryYearLevel = "1";
+      if (editorMode === "test") {
+
+      } else {
+        select80.disabled = true;
+      }
+      select80.append("\n");
+      select80.append(...gradeYearLevelOptions);
+      select80.append("\n");
+      gradesEntryField78.append(select80);
+      gradesEntryField78.append("\n");
+      gradesEntryBeOptions77.append(gradesEntryField78);
+      gradesEntryBeOptions77.append("\n");
+      const gradesEntryField81 = document.createElement("fieldset");
+      gradesEntryField81.className = "grades-entry-field grades-entry-course-level-field" + String(courseLevelDisabled ? " is-disabled" : "");
+      gradesEntryField81.append("\n");
+      const legend82 = document.createElement("legend");
+      legend82.textContent = "Anforderungsniveau";
+      gradesEntryField81.append(legend82);
+      gradesEntryField81.append("\n");
+      const assessmentModeToggle83 = document.createElement("div");
+      assessmentModeToggle83.className = "assessment-mode-toggle";
+      assessmentModeToggle83.setAttribute("role", "radiogroup");
+      assessmentModeToggle83.setAttribute("aria-label", "Anforderungsniveau");
+      assessmentModeToggle83.append("\n");
+      const assessmentModeOption84 = document.createElement("label");
+      assessmentModeOption84.className = "assessment-mode-option";
+      assessmentModeOption84.append("\n");
+      const input85 = document.createElement("input");
+      input85.setAttribute("type", "radio");
+      input85.setAttribute("name", "grades-entry-course-level");
+      input85.dataset.gradesEntryCourseLevel = "1";
+      input85.setAttribute("value", "gk");
+      input85.value = "gk";
+      if (courseLevelValue === "gk") {
+        input85.checked = true;
+        input85.defaultChecked = true;
+      }
+      if (editorMode === "test" && !courseLevelDisabled) {
+
+      } else {
+        input85.disabled = true;
+      }
+      assessmentModeOption84.append(input85);
+      assessmentModeOption84.append("\n");
+      const span86 = document.createElement("span");
+      span86.textContent = "GK";
+      assessmentModeOption84.append(span86);
+      assessmentModeOption84.append("\n");
+      assessmentModeToggle83.append(assessmentModeOption84);
+      assessmentModeToggle83.append("\n");
+      const assessmentModeOption87 = document.createElement("label");
+      assessmentModeOption87.className = "assessment-mode-option";
+      assessmentModeOption87.setAttribute("title", "Keine Auswahl");
+      assessmentModeOption87.append("\n");
+      const input88 = document.createElement("input");
+      input88.setAttribute("type", "radio");
+      input88.setAttribute("name", "grades-entry-course-level");
+      input88.dataset.gradesEntryCourseLevel = "1";
+      input88.setAttribute("value", "");
+      input88.value = "";
+      if (courseLevelValue) {
+
+      } else {
+        input88.checked = true;
+        input88.defaultChecked = true;
+      }
+      if (editorMode === "test" && !courseLevelDisabled) {
+
+      } else {
+        input88.disabled = true;
+      }
+      assessmentModeOption87.append(input88);
+      assessmentModeOption87.append("\n");
+      const span89 = document.createElement("span");
+      span89.textContent = "-";
+      assessmentModeOption87.append(span89);
+      assessmentModeOption87.append("\n");
+      assessmentModeToggle83.append(assessmentModeOption87);
+      assessmentModeToggle83.append("\n");
+      const assessmentModeOption90 = document.createElement("label");
+      assessmentModeOption90.className = "assessment-mode-option";
+      assessmentModeOption90.append("\n");
+      const input91 = document.createElement("input");
+      input91.setAttribute("type", "radio");
+      input91.setAttribute("name", "grades-entry-course-level");
+      input91.dataset.gradesEntryCourseLevel = "1";
+      input91.setAttribute("value", "lk");
+      input91.value = "lk";
+      if (courseLevelValue === "lk") {
+        input91.checked = true;
+        input91.defaultChecked = true;
+      }
+      if (editorMode === "test" && !courseLevelDisabled) {
+
+      } else {
+        input91.disabled = true;
+      }
+      assessmentModeOption90.append(input91);
+      assessmentModeOption90.append("\n");
+      const span92 = document.createElement("span");
+      span92.textContent = "LK";
+      assessmentModeOption90.append(span92);
+      assessmentModeOption90.append("\n");
+      assessmentModeToggle83.append(assessmentModeOption90);
+      assessmentModeToggle83.append("\n");
+      gradesEntryField81.append(assessmentModeToggle83);
+      gradesEntryField81.append("\n");
+      gradesEntryBeOptions77.append(gradesEntryField81);
+      gradesEntryBeOptions77.append("\n");
+      gradesEntryForm21.append(gradesEntryBeOptions77);
+      gradesEntryForm21.append("\n");
+      const gradesEntryTopicRow93 = document.createElement("div");
+      gradesEntryTopicRow93.className = "grades-entry-topic-row is-wide" + String(editorMode === "test" ? "" : " is-hidden");
+      gradesEntryTopicRow93.append("\n");
+      const gradesEntryField94 = document.createElement("label");
+      gradesEntryField94.className = "grades-entry-field grades-entry-topic-field";
+      gradesEntryField94.append("\n");
+      const span95 = document.createElement("span");
+      span95.textContent = "Thema";
+      gradesEntryField94.append(span95);
+      gradesEntryField94.append("\n");
+      const input96 = document.createElement("input");
+      input96.setAttribute("type", "text");
+      input96.setAttribute("name", "grades-entry-topic");
+      input96.dataset.gradesEntryTopic = "1";
+      input96.setAttribute("value", String(normalizeGradeAssessmentTopic(editorState.topic)));
+      input96.value = String(normalizeGradeAssessmentTopic(editorState.topic));
+      input96.setAttribute("placeholder", "Lineare Funktionen");
+      if (editorMode === "test") {
+
+      } else {
+        input96.disabled = true;
+      }
+      gradesEntryField94.append(input96);
+      gradesEntryField94.append("\n");
+      gradesEntryTopicRow93.append(gradesEntryField94);
+      gradesEntryTopicRow93.append("\n");
+      const gradesEntryField97 = document.createElement("label");
+      gradesEntryField97.className = "grades-entry-field grades-entry-number-field";
+      gradesEntryField97.append("\n");
+      const span98 = document.createElement("span");
+      span98.textContent = "Nummer";
+      gradesEntryField97.append(span98);
+      gradesEntryField97.append("\n");
+      const input99 = document.createElement("input");
+      input99.setAttribute("type", "text");
+      input99.setAttribute("name", "grades-entry-number");
+      input99.dataset.gradesEntryNumber = "1";
+      input99.setAttribute("inputmode", "numeric");
+      input99.setAttribute("pattern", "\\d{0,2}");
+      input99.setAttribute("maxlength", "2");
+      input99.setAttribute("value", String(formatGradeAssessmentNumber(editorState.assessmentNumber)));
+      input99.value = String(formatGradeAssessmentNumber(editorState.assessmentNumber));
+      input99.setAttribute("placeholder", "1");
+      if (editorMode === "test") {
+
+      } else {
+        input99.disabled = true;
+      }
+      gradesEntryField97.append(input99);
+      gradesEntryField97.append("\n");
+      gradesEntryTopicRow93.append(gradesEntryField97);
+      gradesEntryTopicRow93.append("\n");
+      const gradesEntryField100 = document.createElement("label");
+      gradesEntryField100.className = "grades-entry-field grades-entry-exam-duration-field";
+      gradesEntryField100.append("\n");
+      const span101 = document.createElement("span");
+      span101.textContent = "Prüfungszeit [min]";
+      gradesEntryField100.append(span101);
+      gradesEntryField100.append("\n");
+      const input102 = document.createElement("input");
+      input102.setAttribute("type", "text");
+      input102.setAttribute("name", "grades-entry-exam-duration");
+      input102.dataset.gradesEntryExamDuration = "1";
+      input102.setAttribute("inputmode", "numeric");
+      input102.setAttribute("pattern", "\\d{0,3}");
+      input102.setAttribute("maxlength", "3");
+      input102.setAttribute("value", String(normalizeGradeAssessmentExamDurationMinutes(editorState.examDurationMinutes) ?? ""));
+      input102.value = String(normalizeGradeAssessmentExamDurationMinutes(editorState.examDurationMinutes) ?? "");
+      input102.setAttribute("placeholder", "45");
+      if (editorMode === "test") {
+
+      } else {
+        input102.disabled = true;
+      }
+      gradesEntryField100.append(input102);
+      gradesEntryField100.append("\n");
+      gradesEntryTopicRow93.append(gradesEntryField100);
+      gradesEntryTopicRow93.append("\n");
+      gradesEntryForm21.append(gradesEntryTopicRow93);
+      gradesEntryForm21.append("\n");
+      const gradesEntryField103 = document.createElement("label");
+      gradesEntryField103.className = "grades-entry-field is-wide";
+      gradesEntryField103.append("\n");
+      const span104 = document.createElement("span");
+      span104.textContent = "Kategorie";
+      gradesEntryField103.append(span104);
+      gradesEntryField103.append("\n");
+      const select105 = document.createElement("select");
+      select105.setAttribute("name", "grades-entry-category");
+      select105.dataset.gradesEntryCategory = "1";
+      select105.append("\n");
+      select105.append(...categories.map((category) => (() => {
+        const fragment = document.createDocumentFragment();
+        const option106 = document.createElement("option");
+        option106.setAttribute("value", String(category.id));
+        option106.value = String(category.id);
+        if (Number(category.id) === Number(editorState.categoryId || 0)) {
+          option106.selected = true;
+          option106.defaultSelected = true;
+        }
+        option106.textContent = String(`${category.name}${formatGradeWeightPercentSuffix(category.weight)}`);
+        fragment.append(option106);
+        return fragment;
+      })()));
+      select105.append("\n");
+      gradesEntryField103.append(select105);
+      gradesEntryField103.append("\n");
+      gradesEntryForm21.append(gradesEntryField103);
+      gradesEntryForm21.append("\n");
+      if (subcategories.length > 0) {
+        gradesEntryForm21.append("\n");
+        const gradesEntryField107 = document.createElement("label");
+        gradesEntryField107.className = "grades-entry-field is-wide";
+        gradesEntryField107.append("\n");
+        const span108 = document.createElement("span");
+        span108.textContent = "Unterkategorie";
+        gradesEntryField107.append(span108);
+        gradesEntryField107.append("\n");
+        const select109 = document.createElement("select");
+        select109.setAttribute("name", "grades-entry-subcategory");
+        select109.dataset.gradesEntrySubcategory = "1";
+        select109.append("\n");
+        select109.append(...subcategories.map((subcategory) => (() => {
+          const fragment = document.createDocumentFragment();
+          const option110 = document.createElement("option");
+          option110.setAttribute("value", String(subcategory.id));
+          option110.value = String(subcategory.id);
+          if (Number(subcategory.id) === Number(editorState.subcategoryId || 0)) {
+            option110.selected = true;
+            option110.defaultSelected = true;
+          }
+          option110.textContent = String(`${subcategory.name}${formatGradeWeightPercentSuffix(subcategory.weight)}`);
+          fragment.append(option110);
+          return fragment;
+        })()));
+        select109.append("\n");
+        gradesEntryField107.append(select109);
+        gradesEntryField107.append("\n");
+        gradesEntryForm21.append(gradesEntryField107);
+        gradesEntryForm21.append("\n");
+      } else {
+        gradesEntryForm21.append("\n");
+        const gradesEntryField111 = document.createElement("p");
+        gradesEntryField111.className = "grades-entry-field is-wide muted";
+        gradesEntryField111.textContent = "Leistungen werden direkt der ausgewählten Kategorie zugeordnet.";
+        gradesEntryForm21.append(gradesEntryField111);
+        gradesEntryForm21.append("\n");
+      }
+      gradesEntryForm21.append("\n");
+      tablePanel20.append(gradesEntryForm21);
+      tablePanel20.append("\n");
+      gradesEntryLayout19.append(tablePanel20);
+      gradesEntryLayout19.append("\n");
+      fragment.append(gradesEntryLayout19);
+      fragment.append("\n");
+      return fragment;
+    })());
     if (selectedAssessment) {
       this.activeGradeAssessmentId = selectedAssessment.id;
     } else {
@@ -15772,10 +16634,39 @@ class GradesApp {
 
     const previousStudentId = this.getGradePrivacyNavigationStudentId("previous");
     const nextStudentId = this.getGradePrivacyNavigationStudentId("next");
-    overlay.innerHTML = `
-        <button type="button" class="grade-privacy-nav-button is-previous" data-grade-privacy-nav="previous" aria-label="Vorherige Person im Datenschutzmodus anzeigen" title="Vorherige Person" ${previousStudentId ? "" : "disabled"}>▲</button>
-        <button type="button" class="grade-privacy-nav-button is-next" data-grade-privacy-nav="next" aria-label="Nächste Person im Datenschutzmodus anzeigen" title="Nächste Person" ${nextStudentId ? "" : "disabled"}>▼</button>
-      `;
+    overlay.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradePrivacyNavButton112 = document.createElement("button");
+      gradePrivacyNavButton112.setAttribute("type", "button");
+      gradePrivacyNavButton112.className = "grade-privacy-nav-button is-previous";
+      gradePrivacyNavButton112.dataset.gradePrivacyNav = "previous";
+      gradePrivacyNavButton112.setAttribute("aria-label", "Vorherige Person im Datenschutzmodus anzeigen");
+      gradePrivacyNavButton112.setAttribute("title", "Vorherige Person");
+      if (previousStudentId) {
+
+      } else {
+        gradePrivacyNavButton112.disabled = true;
+      }
+      gradePrivacyNavButton112.textContent = "▲";
+      fragment.append(gradePrivacyNavButton112);
+      fragment.append("\n");
+      const gradePrivacyNavButton113 = document.createElement("button");
+      gradePrivacyNavButton113.setAttribute("type", "button");
+      gradePrivacyNavButton113.className = "grade-privacy-nav-button is-next";
+      gradePrivacyNavButton113.dataset.gradePrivacyNav = "next";
+      gradePrivacyNavButton113.setAttribute("aria-label", "Nächste Person im Datenschutzmodus anzeigen");
+      gradePrivacyNavButton113.setAttribute("title", "Nächste Person");
+      if (nextStudentId) {
+
+      } else {
+        gradePrivacyNavButton113.disabled = true;
+      }
+      gradePrivacyNavButton113.textContent = "▼";
+      fragment.append(gradePrivacyNavButton113);
+      fragment.append("\n");
+      return fragment;
+    })());
     this.positionGradePrivacyNavigationOverlay();
     requestAnimationFrame(() => {
       this.positionGradePrivacyNavigationOverlay();
@@ -22003,11 +22894,34 @@ class GradesApp {
     });
     const header = document.createElement("div");
     header.className = "grades-title-date-picker-header";
-    header.innerHTML = `
-              <button type="button" class="ghost grades-title-date-picker-nav" data-grades-title-date-nav="-1" aria-label="Vorheriger Monat" title="Monat zurück">‹</button>
-              <div class="grades-title-date-picker-title">${escapeHtml(monthLabel)}</div>
-              <button type="button" class="ghost grades-title-date-picker-nav" data-grades-title-date-nav="1" aria-label="Nächster Monat" title="Monat vor">›</button>
-            `;
+    header.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const ghost114 = document.createElement("button");
+      ghost114.setAttribute("type", "button");
+      ghost114.className = "ghost grades-title-date-picker-nav";
+      ghost114.dataset.gradesTitleDateNav = "-1";
+      ghost114.setAttribute("aria-label", "Vorheriger Monat");
+      ghost114.setAttribute("title", "Monat zurück");
+      ghost114.textContent = "‹";
+      fragment.append(ghost114);
+      fragment.append("\n");
+      const gradesTitleDatePickerTitle115 = document.createElement("div");
+      gradesTitleDatePickerTitle115.className = "grades-title-date-picker-title";
+      gradesTitleDatePickerTitle115.textContent = String(monthLabel);
+      fragment.append(gradesTitleDatePickerTitle115);
+      fragment.append("\n");
+      const ghost116 = document.createElement("button");
+      ghost116.setAttribute("type", "button");
+      ghost116.className = "ghost grades-title-date-picker-nav";
+      ghost116.dataset.gradesTitleDateNav = "1";
+      ghost116.setAttribute("aria-label", "Nächster Monat");
+      ghost116.setAttribute("title", "Monat vor");
+      ghost116.textContent = "›";
+      fragment.append(ghost116);
+      fragment.append("\n");
+      return fragment;
+    })());
     [...header.querySelectorAll("button[data-grades-title-date-nav]")].forEach((button) => {
       button.addEventListener("mousedown", (event) => {
         event.preventDefault();
@@ -22408,9 +23322,8 @@ class GradesApp {
     return templates;
   }
 
-  buildGradeTestScaleOptionsMarkup({
+  createGradeTestScaleOptions({
     inputName,
-    dataAttribute,
     selectedScale = GRADE_TEST_SCALE_DEFAULT,
     selectedSnapshot = null,
     disabled = false,
@@ -22423,47 +23336,90 @@ class GradesApp {
     const tooltipMaxBeSum = maxBeSum !== null
       ? Number(maxBeSum)
       : calculateGradeTestMaxBeSum(testTasks);
-    return this.getGradeTestScaleTemplatesForEditor(normalizedSelected, selectedSnapshot)
+    return (() => { const fragment = document.createDocumentFragment(); fragment.append(...this.getGradeTestScaleTemplatesForEditor(normalizedSelected, selectedSnapshot)
       .map((template) => {
         const scale = normalizeGradeTestScale(template.id);
         const label = String(template.label || getGradeTestScaleDefaultLabel(scale) || "Eigener Modus").trim();
-        return `
-                  <label class="assessment-mode-option grade-test-scale-option">
-                    <input type="radio" name="${escapeHtml(inputName)}" ${dataAttribute} value="${escapeHtml(scale)}"${scale === normalizedSelected ? " checked" : ""}${disabled ? " disabled" : ""}>
-                    <span>${escapeHtml(label)}</span>
-                    ${buildGradeTestScaleTooltipMarkup(template, null, { showBeColumn, maxBeSum: tooltipMaxBeSum, predicateSuffixes })}
-                  </label>
-                `;
-      }).join("");
+        return (() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const assessmentModeOption251 = document.createElement("label");
+          assessmentModeOption251.className = "assessment-mode-option grade-test-scale-option";
+          assessmentModeOption251.append("\n");
+          const input252 = document.createElement("input");
+          input252.setAttribute("type", "radio");
+          input252.setAttribute("name", String(inputName));
+          input252.dataset.gradesEntryTestScale = "1";
+          input252.setAttribute("value", String(scale));
+          input252.value = String(scale);
+          if (scale === normalizedSelected) {
+            input252.checked = true;
+            input252.defaultChecked = true;
+          }
+          if (disabled) {
+            input252.disabled = true;
+          }
+          assessmentModeOption251.append(input252);
+          assessmentModeOption251.append("\n");
+          const span253 = document.createElement("span");
+          span253.textContent = String(label);
+          assessmentModeOption251.append(span253);
+          assessmentModeOption251.append("\n");
+          assessmentModeOption251.append(createGradeTestScaleTooltip(template, null, { showBeColumn, maxBeSum: tooltipMaxBeSum, predicateSuffixes }));
+          assessmentModeOption251.append("\n");
+          fragment.append(assessmentModeOption251);
+          fragment.append("\n");
+          return fragment;
+        })();
+      })); return fragment; })();
   }
 
-  buildHomeworkCheckboxMarkup(studentName, checked, attributes = "", options = {}) {
+  createHomeworkCheckbox(studentName, checked, configureInput = () => {}, options = {}) {
     const disabled = Boolean(options.disabled);
     const positive = options.positive === true;
     const wrapperClass = `grade-checkbox-input-wrap${checked ? " is-checked" : ""}${disabled ? " is-disabled" : ""}${positive ? " is-positive-occurrence" : ""}`;
     const ariaLabel = positive
       ? `Positives Vorkommnis für ${studentName}`
       : `Vorkommnis fehlt bei ${studentName}`;
-    return `
-          <span class="grade-checkbox-cell-shell">
-            <label class="${wrapperClass}">
-              <input
-                type="checkbox"
-                class="grade-checkbox-input"
-                data-grade-input="1"
-                data-grade-checkbox="1"
-                aria-label="${escapeHtml(ariaLabel)}"
-                ${checked ? "checked" : ""}
-                ${disabled ? "disabled" : ""}
-                ${attributes}
-              >
-              <span class="grade-checkbox-indicator" aria-hidden="true"></span>
-            </label>
-          </span>
-        `;
+    return (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradeCheckboxCellShell254 = document.createElement("span");
+      gradeCheckboxCellShell254.className = "grade-checkbox-cell-shell";
+      gradeCheckboxCellShell254.append("\n");
+      const label255 = document.createElement("label");
+      label255.className = String(wrapperClass);
+      label255.append("\n");
+      const gradeCheckboxInput256 = document.createElement("input");
+      gradeCheckboxInput256.setAttribute("type", "checkbox");
+      gradeCheckboxInput256.className = "grade-checkbox-input";
+      gradeCheckboxInput256.dataset.gradeInput = "1";
+      gradeCheckboxInput256.dataset.gradeCheckbox = "1";
+      gradeCheckboxInput256.setAttribute("aria-label", String(ariaLabel));
+      if (checked) {
+        gradeCheckboxInput256.checked = true;
+        gradeCheckboxInput256.defaultChecked = true;
+      }
+      if (disabled) {
+        gradeCheckboxInput256.disabled = true;
+      }
+      configureInput(gradeCheckboxInput256);
+      label255.append(gradeCheckboxInput256);
+      label255.append("\n");
+      const gradeCheckboxIndicator257 = document.createElement("span");
+      gradeCheckboxIndicator257.className = "grade-checkbox-indicator";
+      gradeCheckboxIndicator257.setAttribute("aria-hidden", "true");
+      label255.append(gradeCheckboxIndicator257);
+      label255.append("\n");
+      gradeCheckboxCellShell254.append(label255);
+      gradeCheckboxCellShell254.append("\n");
+      fragment.append(gradeCheckboxCellShell254);
+      fragment.append("\n");
+      return fragment;
+    })();
   }
 
-  buildHomeworkDisplayButtonMarkup(assessment, student, rowIndex, checked, options = {}) {
+  createHomeworkDisplayButton(assessment, student, rowIndex, checked, options = {}) {
     const disabled = Boolean(options.disabled);
     const positive = options.positive === true;
     const stateClass = `${checked ? " is-checked" : " is-empty"}${positive ? " is-positive-occurrence" : ""}`;
@@ -22471,25 +23427,38 @@ class GradesApp {
     const ariaLabel = positive
       ? `Positives Vorkommnis für ${studentName} in ${assessment.title} bearbeiten`
       : `Vorkommnis fehlt für ${studentName} in ${assessment.title} bearbeiten`;
-    return `
-          <span class="grade-checkbox-cell-shell">
-            <button
-              type="button"
-              class="grade-checkbox-display-button${stateClass}"
-              data-grade-activate-assessment="${assessment.id}"
-              data-course-id="${assessment.courseId}"
-              data-row-index="${rowIndex}"
-              data-student-id="${student.id}"
-              ${disabled ? "disabled" : ""}
-              aria-label="${escapeHtml(ariaLabel)}"
-            >
-              <span class="grade-checkbox-indicator" aria-hidden="true"></span>
-            </button>
-          </span>
-        `;
+    return (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradeCheckboxCellShell258 = document.createElement("span");
+      gradeCheckboxCellShell258.className = "grade-checkbox-cell-shell";
+      gradeCheckboxCellShell258.append("\n");
+      const gradeCheckboxDisplayButton259 = document.createElement("button");
+      gradeCheckboxDisplayButton259.setAttribute("type", "button");
+      gradeCheckboxDisplayButton259.className = "grade-checkbox-display-button" + String(stateClass);
+      gradeCheckboxDisplayButton259.dataset.gradeActivateAssessment = String(assessment.id);
+      gradeCheckboxDisplayButton259.dataset.courseId = String(assessment.courseId);
+      gradeCheckboxDisplayButton259.dataset.rowIndex = String(rowIndex);
+      gradeCheckboxDisplayButton259.dataset.studentId = String(student.id);
+      if (disabled) {
+        gradeCheckboxDisplayButton259.disabled = true;
+      }
+      gradeCheckboxDisplayButton259.setAttribute("aria-label", String(ariaLabel));
+      gradeCheckboxDisplayButton259.append("\n");
+      const gradeCheckboxIndicator260 = document.createElement("span");
+      gradeCheckboxIndicator260.className = "grade-checkbox-indicator";
+      gradeCheckboxIndicator260.setAttribute("aria-hidden", "true");
+      gradeCheckboxDisplayButton259.append(gradeCheckboxIndicator260);
+      gradeCheckboxDisplayButton259.append("\n");
+      gradeCheckboxCellShell258.append(gradeCheckboxDisplayButton259);
+      gradeCheckboxCellShell258.append("\n");
+      fragment.append(gradeCheckboxCellShell258);
+      fragment.append("\n");
+      return fragment;
+    })();
   }
 
-  buildGradeOverrideButtonMarkup(studentId, courseId, scope, value, options = {}) {
+  createGradeOverrideButton(studentId, courseId, scope, value, options = {}) {
     const normalizedScope = normalizeGradeOverrideScope(scope);
     const studentKey = Number(studentId) || 0;
     const courseKey = Number(courseId) || 0;
@@ -22502,10 +23471,6 @@ class GradesApp {
     const lowClass = !state.overridden && isGradeValueBelowThreshold(state.value === null ? value : state.value, this.gradeDeficitThreshold)
       ? " is-grade-low"
       : "";
-    const disabledAttr = disabled ? " disabled" : "";
-    const categoryAttr = categoryKey ? ` data-category-id="${categoryKey}"` : "";
-    const subcategoryAttr = subcategoryKey ? ` data-subcategory-id="${subcategoryKey}"` : "";
-    const periodAttr = ` data-period="${period}"`;
     const displaySystem = normalizeGradeDisplaySystem(options.displaySystem);
     const predicateSuffixes = options.predicateSuffixes !== false;
     const periodLabel = getGradePeriodLabel(period);
@@ -22522,48 +23487,84 @@ class GradesApp {
       const computedPlaceholderValue = state.computedValue === null || state.computedValue === undefined
         ? ""
         : formatGradeInputForSystem(state.computedValue, displaySystem);
-      return `
-          <div class="grade-override-cell-editor${state.overridden ? " is-overridden" : ""}" data-grade-override-editor="1">
-            <input
-              type="text"
-              class="grade-cell-input grade-override-cell-input${invalidClass}"
-              inputmode="${schoolInput ? "text" : "decimal"}"
-              maxlength="${schoolInput ? "2" : "4"}"
-              data-grade-input="1"
-              data-grade-override-input="1"
-              data-grade-original-value="${activeContext?.originalValue ?? ""}"
-              data-student-id="${studentKey}"
-              data-course-id="${courseKey}"
-              data-scope="${normalizedScope}"
-              data-period="${period}"${categoryAttr}${subcategoryAttr}
-              ${computedPlaceholderValue ? `placeholder="${escapeHtml(computedPlaceholderValue)}"` : ""}
-              value="${escapeHtml(draftValue)}"
-              aria-label="${scopeLabel} manuell setzen"
-              autocomplete="off"
-            >
-          </div>
-        `;
+      return (() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradeOverrideCellEditor261 = document.createElement("div");
+        gradeOverrideCellEditor261.className = "grade-override-cell-editor" + String(state.overridden ? " is-overridden" : "");
+        gradeOverrideCellEditor261.dataset.gradeOverrideEditor = "1";
+        gradeOverrideCellEditor261.append("\n");
+        const gradeCellInput262 = document.createElement("input");
+        gradeCellInput262.setAttribute("type", "text");
+        gradeCellInput262.className = "grade-cell-input grade-override-cell-input" + String(invalidClass);
+        gradeCellInput262.setAttribute("inputmode", String(schoolInput ? "text" : "decimal"));
+        gradeCellInput262.setAttribute("maxlength", String(schoolInput ? "2" : "4"));
+        gradeCellInput262.dataset.gradeInput = "1";
+        gradeCellInput262.dataset.gradeOverrideInput = "1";
+        gradeCellInput262.dataset.gradeOriginalValue = String(activeContext?.originalValue ?? "");
+        gradeCellInput262.dataset.studentId = String(studentKey);
+        gradeCellInput262.dataset.courseId = String(courseKey);
+        gradeCellInput262.dataset.scope = String(normalizedScope);
+        gradeCellInput262.dataset.period = String(period);
+        if (categoryKey) {
+          gradeCellInput262.dataset.categoryId = String(categoryKey);
+        }
+        if (subcategoryKey) {
+          gradeCellInput262.dataset.subcategoryId = String(subcategoryKey);
+        }
+        if (computedPlaceholderValue) {
+          gradeCellInput262.setAttribute("placeholder", String(computedPlaceholderValue));
+        }
+        gradeCellInput262.setAttribute("value", String(draftValue));
+        gradeCellInput262.value = String(draftValue);
+        gradeCellInput262.setAttribute("aria-label", String(scopeLabel) + " manuell setzen");
+        gradeCellInput262.setAttribute("autocomplete", "off");
+        gradeOverrideCellEditor261.append(gradeCellInput262);
+        gradeOverrideCellEditor261.append("\n");
+        fragment.append(gradeOverrideCellEditor261);
+        fragment.append("\n");
+        return fragment;
+      })();
     }
     const displayValue = state.value === null ? value : state.value;
-    const tooltipAttr = (displayValue === null || displayValue === undefined || displayValue === "")
-      ? ""
-      : `data-grade-tooltip="${escapeHtml(this.getGradeOverrideTooltip(displayValue))}"`;
-    return `
-          <button
-            type="button"
-            class="grade-total-button${overriddenClass}${lowClass}"
-            data-tutorial-anchor="grades-total-override"
-            data-grade-open-override="1"
-            data-student-id="${studentKey}"
-            data-course-id="${courseKey}"
-            data-scope="${normalizedScope}"${periodAttr}${categoryAttr}${subcategoryAttr}${disabledAttr}
-            aria-label="${scopeLabel} manuell setzen"
-            ${tooltipAttr}
-          ><span class="grade-total-value">${formatGradeDisplayForSystem(displayValue, displaySystem, { predicateSuffixes })}</span></button>
-        `;
+    return (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradeTotalButton263 = document.createElement("button");
+      gradeTotalButton263.setAttribute("type", "button");
+      gradeTotalButton263.className = "grade-total-button" + String(overriddenClass) + String(lowClass);
+      gradeTotalButton263.dataset.tutorialAnchor = "grades-total-override";
+      gradeTotalButton263.dataset.gradeOpenOverride = "1";
+      gradeTotalButton263.dataset.studentId = String(studentKey);
+      gradeTotalButton263.dataset.courseId = String(courseKey);
+      gradeTotalButton263.dataset.scope = String(normalizedScope);
+      gradeTotalButton263.dataset.period = String(period);
+      if (categoryKey) {
+        gradeTotalButton263.dataset.categoryId = String(categoryKey);
+      }
+      if (subcategoryKey) {
+        gradeTotalButton263.dataset.subcategoryId = String(subcategoryKey);
+      }
+      if (disabled) {
+        gradeTotalButton263.disabled = true;
+      }
+      gradeTotalButton263.setAttribute("aria-label", String(scopeLabel) + " manuell setzen");
+      if (displayValue === null || displayValue === undefined || displayValue === "") {
+
+      } else {
+        gradeTotalButton263.dataset.gradeTooltip = String(this.getGradeOverrideTooltip(displayValue));
+      }
+      const gradeTotalValue264 = document.createElement("span");
+      gradeTotalValue264.className = "grade-total-value";
+      gradeTotalValue264.textContent = String(formatGradeDisplayForSystem(displayValue, displaySystem, { predicateSuffixes }));
+      gradeTotalButton263.append(gradeTotalValue264);
+      fragment.append(gradeTotalButton263);
+      fragment.append("\n");
+      return fragment;
+    })();
   }
 
-  buildGradeAssessmentCellMarkup(student, assessment, rowIndex, columnIndex, subcategoryId, options = {}) {
+  createGradeAssessmentCell(student, assessment, rowIndex, columnIndex, subcategoryId, options = {}) {
     const studentName = this.getGradeStudentDisplayName(student);
     const entry = this.store.getGradeEntry(student.id, assessment.id);
     const disabled = Boolean(options.disabled);
@@ -22577,26 +23578,44 @@ class GradesApp {
       const emptyClass = displayValue === "—" ? " is-empty" : "";
       const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
       const lowClass = isDeficit ? " is-grade-low" : "";
-      return `
-          <button
-            type="button"
-            class="grade-cell-display-button${emptyClass}${lowClass}"
-            data-grade-edit-assessment="${assessment.id}"
-            data-course-id="${assessment.courseId}"
-            data-row-index="${rowIndex}"
-            data-student-id="${student.id}"
-            ${disabled ? "disabled" : ""}
-            aria-label="Bewertungseinheiten ${escapeHtml(assessment.title)} bearbeiten"
-            ${isDeficit ? `title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}
-          >${displayValue}</button>
-        `;
+      return (() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradeCellDisplayButton265 = document.createElement("button");
+        gradeCellDisplayButton265.setAttribute("type", "button");
+        gradeCellDisplayButton265.className = "grade-cell-display-button" + String(emptyClass) + String(lowClass);
+        gradeCellDisplayButton265.dataset.gradeEditAssessment = String(assessment.id);
+        gradeCellDisplayButton265.dataset.courseId = String(assessment.courseId);
+        gradeCellDisplayButton265.dataset.rowIndex = String(rowIndex);
+        gradeCellDisplayButton265.dataset.studentId = String(student.id);
+        if (disabled) {
+          gradeCellDisplayButton265.disabled = true;
+        }
+        gradeCellDisplayButton265.setAttribute("aria-label", "Bewertungseinheiten " + String(assessment.title) + " bearbeiten");
+        if (isDeficit) {
+          gradeCellDisplayButton265.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+        }
+        gradeCellDisplayButton265.textContent = String(displayValue);
+        fragment.append(gradeCellDisplayButton265);
+        fragment.append("\n");
+        return fragment;
+      })();
     }
     if (Number(this.activeGradeAssessmentId || 0) === Number(assessment.id)) {
       if (isHomework) {
-        return this.buildHomeworkCheckboxMarkup(
+        return this.createHomeworkCheckbox(
           studentName,
           entry?.checked === true,
-          `name="grade-${assessment.id}-${student.id}" data-student-id="${student.id}" data-course-id="${assessment.courseId}" data-grade-course-revision="${this.getGradeCourseRevision(assessment.courseId)}" data-assessment-id="${assessment.id}" data-row-index="${rowIndex}" data-col-index="${columnIndex}" data-subcategory-id="${subcategoryId}"`,
+          (input) => {
+          input.setAttribute("name", "grade-" + String(assessment.id) + "-" + String(student.id));
+          input.dataset.studentId = String(student.id);
+          input.dataset.courseId = String(assessment.courseId);
+          input.dataset.gradeCourseRevision = String(this.getGradeCourseRevision(assessment.courseId));
+          input.dataset.assessmentId = String(assessment.id);
+          input.dataset.rowIndex = String(rowIndex);
+          input.dataset.colIndex = String(columnIndex);
+          input.dataset.subcategoryId = String(subcategoryId);
+        },
           { disabled, positive: this.isPositiveOccurrenceAssessment(assessment) }
         );
       }
@@ -22607,33 +23626,48 @@ class GradesApp {
         && !existingInputValue
         && this.isGradeEntrySkipped(assessment.id, student.id, assessment.courseId);
       const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
-      return `
-          <input
-            type="text"
-            name="grade-${assessment.id}-${student.id}"
-            class="grade-cell-input${isDeficit ? " is-grade-low" : ""}"
-            inputmode="${displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"}"
-            maxlength="2"
-            data-grade-input="1"
-            data-student-id="${student.id}"
-            data-course-id="${assessment.courseId}"
-            data-grade-course-revision="${this.getGradeCourseRevision(assessment.courseId)}"
-            data-assessment-id="${assessment.id}"
-            data-row-index="${rowIndex}"
-            data-col-index="${columnIndex}"
-            data-subcategory-id="${subcategoryId}"
-            ${showExistingValueAsPlaceholder ? `data-grade-original-value="${escapeHtml(existingInputValue)}"` : ""}
-            ${showExistingValueAsPlaceholder ? `placeholder="${escapeHtml(existingInputValue)}"` : ""}
-            ${showSkippedPlaceholder ? `placeholder="${escapeHtml(GRADE_SKIPPED_PLACEHOLDER)}"` : ""}
-            value="${showExistingValueAsPlaceholder ? "" : escapeHtml(existingInputValue)}"
-            aria-label="Note für ${escapeHtml(studentName)}"
-            ${isDeficit ? `title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}
-            ${disabled ? "disabled" : ""}
-          >
-        `;
+      return (() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradeCellInput266 = document.createElement("input");
+        gradeCellInput266.setAttribute("type", "text");
+        gradeCellInput266.setAttribute("name", "grade-" + String(assessment.id) + "-" + String(student.id));
+        gradeCellInput266.className = "grade-cell-input" + String(isDeficit ? " is-grade-low" : "");
+        gradeCellInput266.setAttribute("inputmode", String(displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"));
+        gradeCellInput266.setAttribute("maxlength", "2");
+        gradeCellInput266.dataset.gradeInput = "1";
+        gradeCellInput266.dataset.studentId = String(student.id);
+        gradeCellInput266.dataset.courseId = String(assessment.courseId);
+        gradeCellInput266.dataset.gradeCourseRevision = String(this.getGradeCourseRevision(assessment.courseId));
+        gradeCellInput266.dataset.assessmentId = String(assessment.id);
+        gradeCellInput266.dataset.rowIndex = String(rowIndex);
+        gradeCellInput266.dataset.colIndex = String(columnIndex);
+        gradeCellInput266.dataset.subcategoryId = String(subcategoryId);
+        if (showExistingValueAsPlaceholder) {
+          gradeCellInput266.dataset.gradeOriginalValue = String(existingInputValue);
+        }
+        if (showExistingValueAsPlaceholder) {
+          gradeCellInput266.setAttribute("placeholder", String(existingInputValue));
+        }
+        if (showSkippedPlaceholder) {
+          gradeCellInput266.setAttribute("placeholder", String(GRADE_SKIPPED_PLACEHOLDER));
+        }
+        gradeCellInput266.setAttribute("value", String(showExistingValueAsPlaceholder ? "" : existingInputValue));
+        gradeCellInput266.value = String(showExistingValueAsPlaceholder ? "" : existingInputValue);
+        gradeCellInput266.setAttribute("aria-label", "Note für " + String(studentName));
+        if (isDeficit) {
+          gradeCellInput266.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+        }
+        if (disabled) {
+          gradeCellInput266.disabled = true;
+        }
+        fragment.append(gradeCellInput266);
+        fragment.append("\n");
+        return fragment;
+      })();
     }
     if (isHomework) {
-      return this.buildHomeworkDisplayButtonMarkup(assessment, student, rowIndex, entry?.checked === true, {
+      return this.createHomeworkDisplayButton(assessment, student, rowIndex, entry?.checked === true, {
         disabled,
         positive: this.isPositiveOccurrenceAssessment(assessment)
       });
@@ -22643,19 +23677,28 @@ class GradesApp {
     const emptyClass = displayValue === "—" ? " is-empty" : "";
     const isDeficit = isGradeValueBelowThreshold(rawValue, this.gradeDeficitThreshold);
     const lowClass = isDeficit ? " is-grade-low" : "";
-    return `
-          <button
-            type="button"
-            class="grade-cell-display-button${emptyClass}${lowClass}"
-            data-grade-activate-assessment="${assessment.id}"
-            data-course-id="${assessment.courseId}"
-            data-row-index="${rowIndex}"
-            data-student-id="${student.id}"
-            ${disabled ? "disabled" : ""}
-            aria-label="Note für ${escapeHtml(studentName)} in ${escapeHtml(assessment.title)} bearbeiten"
-            ${isDeficit ? `title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}
-          >${displayValue}</button>
-        `;
+    return (() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradeCellDisplayButton267 = document.createElement("button");
+      gradeCellDisplayButton267.setAttribute("type", "button");
+      gradeCellDisplayButton267.className = "grade-cell-display-button" + String(emptyClass) + String(lowClass);
+      gradeCellDisplayButton267.dataset.gradeActivateAssessment = String(assessment.id);
+      gradeCellDisplayButton267.dataset.courseId = String(assessment.courseId);
+      gradeCellDisplayButton267.dataset.rowIndex = String(rowIndex);
+      gradeCellDisplayButton267.dataset.studentId = String(student.id);
+      if (disabled) {
+        gradeCellDisplayButton267.disabled = true;
+      }
+      gradeCellDisplayButton267.setAttribute("aria-label", "Note für " + String(studentName) + " in " + String(assessment.title) + " bearbeiten");
+      if (isDeficit) {
+        gradeCellDisplayButton267.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+      }
+      gradeCellDisplayButton267.textContent = String(displayValue);
+      fragment.append(gradeCellDisplayButton267);
+      fragment.append("\n");
+      return fragment;
+    })();
   }
 
   buildGradesEntryTable(course, students, assessment = null) {
@@ -22743,23 +23786,53 @@ class GradesApp {
           ? normalizeGradeDraftEntry(draftEntries[student.id])
           : { value: null, checked: null };
         const isDraftDeficit = isGradeValueBelowThreshold(draftEntry.value, this.gradeDeficitThreshold);
-        const draftDeficitTitle = isDraftDeficit ? ` title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : "";
-        const draftSkippedPlaceholder = draftEntry.value === null || draftEntry.value === undefined
-          ? (this.isGradeEntrySkipped(assessment?.id, student.id, course.id)
-            ? ` placeholder="${escapeHtml(GRADE_SKIPPED_PLACEHOLDER)}"`
-            : "")
-          : "";
-        gradeCell.innerHTML = entryMode === "homework"
-          ? this.buildHomeworkCheckboxMarkup(
+        gradeCell.replaceChildren(entryMode === "homework" ? this.createHomeworkCheckbox(
             studentName,
             draftEntry.checked === true,
-            `name="grade-draft-${student.id}" data-grade-draft-input="1" data-course-id="${course.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : ""} data-student-id="${student.id}" data-row-index="${rowIndex}"`,
+            (input) => {
+          input.setAttribute("name", "grade-draft-" + String(student.id));
+          input.dataset.gradeDraftInput = "1";
+          input.dataset.courseId = String(course.id);
+          if (assessment) {
+            input.dataset.assessmentId = String(assessment.id);
+          }
+          input.dataset.studentId = String(student.id);
+          input.dataset.rowIndex = String(rowIndex);
+        },
             {
               disabled: false,
               positive: this.getGradeOccurrenceCategoryPolarity(draft?.occurrenceCategoryId || assessment?.occurrenceCategoryId) === "positive"
             }
-          )
-          : `<input type="text" name="grade-draft-${student.id}" class="grade-cell-input${isDraftDeficit ? " is-grade-low" : ""}" inputmode="${displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"}" maxlength="2" data-grade-input="1" data-grade-draft-input="1" data-course-id="${course.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : ""} data-student-id="${student.id}" data-row-index="${rowIndex}" value="${draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInputForSystem(draftEntry.value, displaySystem)}"${draftSkippedPlaceholder} aria-label="Einzelnote für ${escapeHtml(studentName)}"${draftDeficitTitle}>`;
+          ) : (() => {
+          const fragment = document.createDocumentFragment();
+          const gradeCellInput117 = document.createElement("input");
+          gradeCellInput117.setAttribute("type", "text");
+          gradeCellInput117.setAttribute("name", "grade-draft-" + String(student.id));
+          gradeCellInput117.className = "grade-cell-input" + String(isDraftDeficit ? " is-grade-low" : "");
+          gradeCellInput117.setAttribute("inputmode", String(displaySystem === GRADE_DISPLAY_SYSTEM_SCHOOL ? "text" : "numeric"));
+          gradeCellInput117.setAttribute("maxlength", "2");
+          gradeCellInput117.dataset.gradeInput = "1";
+          gradeCellInput117.dataset.gradeDraftInput = "1";
+          gradeCellInput117.dataset.courseId = String(course.id);
+          if (assessment) {
+            gradeCellInput117.dataset.assessmentId = String(assessment.id);
+          }
+          gradeCellInput117.dataset.studentId = String(student.id);
+          gradeCellInput117.dataset.rowIndex = String(rowIndex);
+          gradeCellInput117.setAttribute("value", String(draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInputForSystem(draftEntry.value, displaySystem)));
+          gradeCellInput117.value = String(draftEntry.value === null || draftEntry.value === undefined ? "" : formatGradeInputForSystem(draftEntry.value, displaySystem));
+          if (draftEntry.value === null || draftEntry.value === undefined) {
+            if (this.isGradeEntrySkipped(assessment?.id, student.id, course.id)) {
+              gradeCellInput117.setAttribute("placeholder", String(GRADE_SKIPPED_PLACEHOLDER));
+            }
+          }
+          gradeCellInput117.setAttribute("aria-label", "Einzelnote für " + String(studentName));
+          if (isDraftDeficit) {
+            gradeCellInput117.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+          }
+          fragment.append(gradeCellInput117);
+          return fragment;
+        })());
       }
       tr.append(gradeCell);
       tbody.append(tr);
@@ -22778,7 +23851,23 @@ class GradesApp {
       const averageGradeCell = document.createElement("td");
       averageGradeCell.className = "grade-assessment-col";
       const isAverageDeficit = isGradeValueBelowThreshold(averageValue, this.gradeDeficitThreshold);
-      averageGradeCell.innerHTML = `<div class="grade-total-value grade-entry-average-value${isAverageDeficit ? " is-grade-low" : ""}" data-grade-entry-average="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-draft-average=\"1\""}${isAverageDeficit ? ` title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}>${averageValue === null || averageValue === undefined ? "—" : escapeHtml(formatGradeDisplayForSystem(averageValue, displaySystem, { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }))}</div>`;
+      averageGradeCell.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        const gradeTotalValue118 = document.createElement("div");
+        gradeTotalValue118.className = "grade-total-value grade-entry-average-value" + String(isAverageDeficit ? " is-grade-low" : "");
+        gradeTotalValue118.dataset.gradeEntryAverage = "1";
+        if (assessment) {
+          gradeTotalValue118.dataset.assessmentId = String(assessment.id);
+        } else {
+          gradeTotalValue118.dataset.gradeDraftAverage = "1";
+        }
+        if (isAverageDeficit) {
+          gradeTotalValue118.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+        }
+        gradeTotalValue118.textContent = String(averageValue === null || averageValue === undefined ? "—" : formatGradeDisplayForSystem(averageValue, displaySystem, { predicateSuffixes: this.getCurrentGradeOverviewPredicateSuffixes() }));
+        fragment.append(gradeTotalValue118);
+        return fragment;
+      })());
       averageRow.append(averageGradeCell);
       tbody.append(averageRow);
     }
@@ -23090,11 +24179,11 @@ class GradesApp {
       const scale = normalizeGradeTestScale(input?.value);
       const template = templateByScale.get(scale) || this.store.buildGradeTestScaleSnapshot(scale);
       const wrapper = document.createElement("div");
-      wrapper.innerHTML = buildGradeTestScaleTooltipMarkup(template, null, {
+      wrapper.replaceChildren(createGradeTestScaleTooltip(template, null, {
         showBeColumn: true,
         maxBeSum,
         predicateSuffixes: editorValues?.testPredicateSuffixes
-      }).trim();
+      }).trim());
       const nextTooltip = wrapper.firstElementChild;
       const currentTooltip = option.querySelector(".grade-test-scale-tooltip:not(.grade-test-scale-tooltip-portal)");
       if (nextTooltip && currentTooltip) {
@@ -23213,24 +24302,93 @@ class GradesApp {
       );
       const taskHead = document.createElement("th");
       taskHead.className = "grade-test-task-col";
-      taskHead.innerHTML = `
-                <div class="grade-test-task-head">
-                  <div class="grade-test-task-title" aria-label="${escapeHtml(taskLabel)}">${index + 1}</div>
-                  <label class="grade-test-task-max">
-                    <span>BE1</span>
-                    <input type="text" inputmode="decimal" maxlength="5" data-grade-test-task-field="maxBe" data-task-id="${escapeHtml(task.id)}" value="${escapeHtml(formatGradeBeValue(task.maxBe))}" class="${hasTaskMaxBe ? "" : "invalid"}" aria-label="Erreichbare BE1 fuer ${escapeHtml(taskLabel)}" aria-invalid="${hasTaskMaxBe ? "false" : "true"}">
-                  </label>
-                  <label class="grade-test-task-afb">
-                    <span>AFB</span>
-                    <select data-grade-test-task-field="afb" data-task-id="${escapeHtml(task.id)}" aria-label="AFB fuer ${escapeHtml(taskLabel)}">
-                      ${buildGradeTestAfbOptionsMarkup(task.afb)}
-                    </select>
-                  </label>
-                  <button type="button" class="ghost grade-test-task-deficit-followup${hasDeficitFollowUp ? " is-active" : ""}" data-grade-test-deficit-followup="1" data-task-id="${escapeHtml(task.id)}" aria-label="Nachbereitung vorschlagen für ${escapeHtml(taskLabel)}" aria-pressed="${hasDeficitFollowUp ? "true" : "false"}" title="Nachbereitung vorschlagen">🛠️</button>
-                  <button type="button" class="ghost grade-test-task-competence${hasTaskCompetences ? " has-competences" : ""}" data-grade-test-competence="1" data-task-id="${escapeHtml(task.id)}" aria-label="Kompetenzen zuordnen für ${escapeHtml(taskLabel)}" title="Kompetenzen zuordnen">💪</button>
-                  <button type="button" class="ghost danger-action grade-test-task-remove" data-grade-test-remove-task="1" data-task-id="${escapeHtml(task.id)}" aria-label="${escapeHtml(taskLabel)} entfernen" title="Aufgabe entfernen">🗑️</button>
-                </div>
-              `;
+      taskHead.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradeTestTaskHead119 = document.createElement("div");
+        gradeTestTaskHead119.className = "grade-test-task-head";
+        gradeTestTaskHead119.append("\n");
+        const gradeTestTaskTitle120 = document.createElement("div");
+        gradeTestTaskTitle120.className = "grade-test-task-title";
+        gradeTestTaskTitle120.setAttribute("aria-label", String(taskLabel));
+        gradeTestTaskTitle120.textContent = String(index + 1);
+        gradeTestTaskHead119.append(gradeTestTaskTitle120);
+        gradeTestTaskHead119.append("\n");
+        const gradeTestTaskMax121 = document.createElement("label");
+        gradeTestTaskMax121.className = "grade-test-task-max";
+        gradeTestTaskMax121.append("\n");
+        const span122 = document.createElement("span");
+        span122.textContent = "BE1";
+        gradeTestTaskMax121.append(span122);
+        gradeTestTaskMax121.append("\n");
+        const input123 = document.createElement("input");
+        input123.setAttribute("type", "text");
+        input123.setAttribute("inputmode", "decimal");
+        input123.setAttribute("maxlength", "5");
+        input123.dataset.gradeTestTaskField = "maxBe";
+        input123.dataset.taskId = String(task.id);
+        input123.setAttribute("value", String(formatGradeBeValue(task.maxBe)));
+        input123.value = String(formatGradeBeValue(task.maxBe));
+        input123.className = String(hasTaskMaxBe ? "" : "invalid");
+        input123.setAttribute("aria-label", "Erreichbare BE1 fuer " + String(taskLabel));
+        input123.setAttribute("aria-invalid", String(hasTaskMaxBe ? "false" : "true"));
+        gradeTestTaskMax121.append(input123);
+        gradeTestTaskMax121.append("\n");
+        gradeTestTaskHead119.append(gradeTestTaskMax121);
+        gradeTestTaskHead119.append("\n");
+        const gradeTestTaskAfb124 = document.createElement("label");
+        gradeTestTaskAfb124.className = "grade-test-task-afb";
+        gradeTestTaskAfb124.append("\n");
+        const span125 = document.createElement("span");
+        span125.textContent = "AFB";
+        gradeTestTaskAfb124.append(span125);
+        gradeTestTaskAfb124.append("\n");
+        const select126 = document.createElement("select");
+        select126.dataset.gradeTestTaskField = "afb";
+        select126.dataset.taskId = String(task.id);
+        select126.setAttribute("aria-label", "AFB fuer " + String(taskLabel));
+        select126.append("\n");
+        select126.append(createGradeTestAfbOptions(task.afb));
+        select126.append("\n");
+        gradeTestTaskAfb124.append(select126);
+        gradeTestTaskAfb124.append("\n");
+        gradeTestTaskHead119.append(gradeTestTaskAfb124);
+        gradeTestTaskHead119.append("\n");
+        const ghost127 = document.createElement("button");
+        ghost127.setAttribute("type", "button");
+        ghost127.className = "ghost grade-test-task-deficit-followup" + String(hasDeficitFollowUp ? " is-active" : "");
+        ghost127.dataset.gradeTestDeficitFollowup = "1";
+        ghost127.dataset.taskId = String(task.id);
+        ghost127.setAttribute("aria-label", "Nachbereitung vorschlagen für " + String(taskLabel));
+        ghost127.setAttribute("aria-pressed", String(hasDeficitFollowUp ? "true" : "false"));
+        ghost127.setAttribute("title", "Nachbereitung vorschlagen");
+        ghost127.textContent = "🛠️";
+        gradeTestTaskHead119.append(ghost127);
+        gradeTestTaskHead119.append("\n");
+        const ghost128 = document.createElement("button");
+        ghost128.setAttribute("type", "button");
+        ghost128.className = "ghost grade-test-task-competence" + String(hasTaskCompetences ? " has-competences" : "");
+        ghost128.dataset.gradeTestCompetence = "1";
+        ghost128.dataset.taskId = String(task.id);
+        ghost128.setAttribute("aria-label", "Kompetenzen zuordnen für " + String(taskLabel));
+        ghost128.setAttribute("title", "Kompetenzen zuordnen");
+        ghost128.textContent = "💪";
+        gradeTestTaskHead119.append(ghost128);
+        gradeTestTaskHead119.append("\n");
+        const ghost129 = document.createElement("button");
+        ghost129.setAttribute("type", "button");
+        ghost129.className = "ghost danger-action grade-test-task-remove";
+        ghost129.dataset.gradeTestRemoveTask = "1";
+        ghost129.dataset.taskId = String(task.id);
+        ghost129.setAttribute("aria-label", String(taskLabel) + " entfernen");
+        ghost129.setAttribute("title", "Aufgabe entfernen");
+        ghost129.textContent = "🗑️";
+        gradeTestTaskHead119.append(ghost129);
+        gradeTestTaskHead119.append("\n");
+        fragment.append(gradeTestTaskHead119);
+        fragment.append("\n");
+        return fragment;
+      })());
       headRow.append(taskHead);
     });
     const addHead = document.createElement("th");
@@ -23265,7 +24423,23 @@ class GradesApp {
       resultCell.className = "grade-test-result-col";
       const resultValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, testPredicateSuffixes);
       const isResultDeficit = isGradeValueBelowThreshold(resultValue, this.gradeDeficitThreshold);
-      resultCell.innerHTML = `<div class="grade-total-value${isResultDeficit ? " is-grade-low" : ""}" data-grade-test-result-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-result=\"1\""}${isResultDeficit ? ` title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}>${formatGradeDisplayForSystem(resultValue, displaySystem, { predicateSuffixes: displayPredicateSuffixes })}</div>`;
+      resultCell.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        const gradeTotalValue130 = document.createElement("div");
+        gradeTotalValue130.className = "grade-total-value" + String(isResultDeficit ? " is-grade-low" : "");
+        gradeTotalValue130.dataset.gradeTestResultStudent = String(student.id);
+        if (assessment) {
+          gradeTotalValue130.dataset.assessmentId = String(assessment.id);
+        } else {
+          gradeTotalValue130.dataset.gradeTestDraftResult = "1";
+        }
+        if (isResultDeficit) {
+          gradeTotalValue130.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+        }
+        gradeTotalValue130.textContent = String(formatGradeDisplayForSystem(resultValue, displaySystem, { predicateSuffixes: displayPredicateSuffixes }));
+        fragment.append(gradeTotalValue130);
+        return fragment;
+      })());
       tr.append(resultCell);
       const ratioCell = document.createElement("td");
       ratioCell.className = "grade-test-ratio-col";
@@ -23277,7 +24451,24 @@ class GradesApp {
         testPredicateSuffixes
       );
       const ratioClass = isRatioNearBetterGrade ? " is-grade-near-better" : "";
-      ratioCell.innerHTML = `<div class="grade-test-ratio-value${ratioClass}" data-grade-test-ratio-student="${student.id}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-ratio=\"1\""}${isRatioNearBetterGrade ? ` data-grade-tooltip="${escapeHtml(GRADE_RATIO_TOOLTIP)}" data-app-tooltip-tone="near-better"` : ""}>${escapeHtml(formatGradeTestRatioDisplay(ratioState))}</div>`;
+      ratioCell.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        const gradeTestRatioValue131 = document.createElement("div");
+        gradeTestRatioValue131.className = "grade-test-ratio-value" + String(ratioClass);
+        gradeTestRatioValue131.dataset.gradeTestRatioStudent = String(student.id);
+        if (assessment) {
+          gradeTestRatioValue131.dataset.assessmentId = String(assessment.id);
+        } else {
+          gradeTestRatioValue131.dataset.gradeTestDraftRatio = "1";
+        }
+        if (isRatioNearBetterGrade) {
+          gradeTestRatioValue131.dataset.gradeTooltip = String(GRADE_RATIO_TOOLTIP);
+          gradeTestRatioValue131.dataset.appTooltipTone = "near-better";
+        }
+        gradeTestRatioValue131.textContent = String(formatGradeTestRatioDisplay(ratioState));
+        fragment.append(gradeTestRatioValue131);
+        return fragment;
+      })());
       tr.append(ratioCell);
       tasks.forEach((task, columnIndex) => {
         const taskLabel = `Aufgabe ${columnIndex + 1}`;
@@ -23291,29 +24482,44 @@ class GradesApp {
           const taskMaxBe = Number(task.maxBe || 0);
           const isInvalidScore = value !== null && taskMaxBe > 0 && Number(value || 0) > taskMaxBe;
           const isDeficitFollowUpLow = !isInvalidScore && isGradeTestDeficitFollowUpScore(task, value);
-          td.innerHTML = `
-                    <input
-                      type="text"
-                      name="grade-test-${escapeHtml(String(assessment?.id || "draft"))}-${escapeHtml(task.id)}-${student.id}"
-                      class="grade-cell-input grade-test-score-input${isInvalidScore ? " invalid" : ""}${isDeficitFollowUpLow ? " is-deficit-followup-low" : ""}"
-                      inputmode="decimal"
-                      maxlength="5"
-                      data-grade-input="1"
-                      data-grade-test-score="1"
-                      data-student-id="${student.id}"
-                      data-grade-draft-input="1"
-                      data-course-id="${course.id}"
-                      ${assessment ? `data-assessment-id="${assessment.id}"` : ""}
-                      data-task-id="${escapeHtml(task.id)}"
-                      data-row-index="${rowIndex}"
-                      data-col-index="${columnIndex}"
-                      value="${escapeHtml(formatGradeBeValue(value))}"
-                      aria-label="BE 2 fuer ${escapeHtml(studentName)} in ${escapeHtml(taskLabel)}"
-                      aria-invalid="${isInvalidScore ? "true" : "false"}"
-                      ${isDeficitFollowUpLow ? `data-grade-deficit-followup-tooltip="1" title="${escapeHtml(GRADE_DEFICIT_FOLLOWUP_TOOLTIP)}"` : ""}
-                      ${hasTaskMaxBe ? "" : `disabled title="BE1 zuerst eintragen"`}
-                    >
-                  `;
+          td.replaceChildren((() => {
+            const fragment = document.createDocumentFragment();
+            fragment.append("\n");
+            const gradeCellInput132 = document.createElement("input");
+            gradeCellInput132.setAttribute("type", "text");
+            gradeCellInput132.setAttribute("name", "grade-test-" + String(String(assessment?.id || "draft")) + "-" + String(task.id) + "-" + String(student.id));
+            gradeCellInput132.className = "grade-cell-input grade-test-score-input" + String(isInvalidScore ? " invalid" : "") + String(isDeficitFollowUpLow ? " is-deficit-followup-low" : "");
+            gradeCellInput132.setAttribute("inputmode", "decimal");
+            gradeCellInput132.setAttribute("maxlength", "5");
+            gradeCellInput132.dataset.gradeInput = "1";
+            gradeCellInput132.dataset.gradeTestScore = "1";
+            gradeCellInput132.dataset.studentId = String(student.id);
+            gradeCellInput132.dataset.gradeDraftInput = "1";
+            gradeCellInput132.dataset.courseId = String(course.id);
+            if (assessment) {
+              gradeCellInput132.dataset.assessmentId = String(assessment.id);
+            }
+            gradeCellInput132.dataset.taskId = String(task.id);
+            gradeCellInput132.dataset.rowIndex = String(rowIndex);
+            gradeCellInput132.dataset.colIndex = String(columnIndex);
+            gradeCellInput132.setAttribute("value", String(formatGradeBeValue(value)));
+            gradeCellInput132.value = String(formatGradeBeValue(value));
+            gradeCellInput132.setAttribute("aria-label", "BE 2 fuer " + String(studentName) + " in " + String(taskLabel));
+            gradeCellInput132.setAttribute("aria-invalid", String(isInvalidScore ? "true" : "false"));
+            if (isDeficitFollowUpLow) {
+              gradeCellInput132.dataset.gradeDeficitFollowupTooltip = "1";
+              gradeCellInput132.setAttribute("title", String(GRADE_DEFICIT_FOLLOWUP_TOOLTIP));
+            }
+            if (hasTaskMaxBe) {
+
+            } else {
+              gradeCellInput132.disabled = true;
+              gradeCellInput132.setAttribute("title", "BE1 zuerst eintragen");
+            }
+            fragment.append(gradeCellInput132);
+            fragment.append("\n");
+            return fragment;
+          })());
         }
         tr.append(td);
       });
@@ -23336,18 +24542,60 @@ class GradesApp {
     const averageResultCell = document.createElement("td");
     averageResultCell.className = "grade-test-result-col";
     const isAverageResultDeficit = isGradeValueBelowThreshold(averageState.gradeValue, this.gradeDeficitThreshold);
-    averageResultCell.innerHTML = `<div class="grade-total-value${isAverageResultDeficit ? " is-grade-low" : ""}" data-grade-test-average-result="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-result=\"1\""}${isAverageResultDeficit ? ` title="${escapeHtml(GRADE_DEFICIT_TOOLTIP)}"` : ""}>${formatGradeDisplayForSystem(averageState.gradeValue, displaySystem, { predicateSuffixes: displayPredicateSuffixes })}</div>`;
+    averageResultCell.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      const gradeTotalValue133 = document.createElement("div");
+      gradeTotalValue133.className = "grade-total-value" + String(isAverageResultDeficit ? " is-grade-low" : "");
+      gradeTotalValue133.dataset.gradeTestAverageResult = "1";
+      if (assessment) {
+        gradeTotalValue133.dataset.assessmentId = String(assessment.id);
+      } else {
+        gradeTotalValue133.dataset.gradeTestDraftAverageResult = "1";
+      }
+      if (isAverageResultDeficit) {
+        gradeTotalValue133.setAttribute("title", String(GRADE_DEFICIT_TOOLTIP));
+      }
+      gradeTotalValue133.textContent = String(formatGradeDisplayForSystem(averageState.gradeValue, displaySystem, { predicateSuffixes: displayPredicateSuffixes }));
+      fragment.append(gradeTotalValue133);
+      return fragment;
+    })());
     averageRow.append(averageResultCell);
     const averageRatioCell = document.createElement("td");
     averageRatioCell.className = "grade-test-ratio-col";
-    averageRatioCell.innerHTML = `<div class="grade-test-ratio-value" data-grade-test-average-ratio="1"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-ratio=\"1\""}>${escapeHtml(formatGradeTestAverageRatioDisplay(averageState.ratioState))}</div>`;
+    averageRatioCell.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      const gradeTestRatioValue134 = document.createElement("div");
+      gradeTestRatioValue134.className = "grade-test-ratio-value";
+      gradeTestRatioValue134.dataset.gradeTestAverageRatio = "1";
+      if (assessment) {
+        gradeTestRatioValue134.dataset.assessmentId = String(assessment.id);
+      } else {
+        gradeTestRatioValue134.dataset.gradeTestDraftAverageRatio = "1";
+      }
+      gradeTestRatioValue134.textContent = String(formatGradeTestAverageRatioDisplay(averageState.ratioState));
+      fragment.append(gradeTestRatioValue134);
+      return fragment;
+    })());
     averageRow.append(averageRatioCell);
     tasks.forEach((task) => {
       const averageTaskCell = document.createElement("td");
       averageTaskCell.className = "grade-test-task-col";
       const averageValue = averageState.taskAverages[task.id];
       const averageClass = String(averageState.taskAverageClasses?.[task.id] || "");
-      averageTaskCell.innerHTML = `<div class="grade-test-task-average-value${averageClass ? ` ${escapeHtml(averageClass)}` : ""}" data-grade-test-average-task="${escapeHtml(task.id)}"${assessment ? ` data-assessment-id="${assessment.id}"` : " data-grade-test-draft-average-task=\"1\""}>${averageValue === null || averageValue === undefined ? "—" : escapeHtml(formatGradeBeAverageValue(averageValue))}</div>`;
+      averageTaskCell.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        const gradeTestTaskAverageValue135 = document.createElement("div");
+        gradeTestTaskAverageValue135.className = "grade-test-task-average-value" + String(averageClass ? ` ${averageClass}` : "");
+        gradeTestTaskAverageValue135.dataset.gradeTestAverageTask = String(task.id);
+        if (assessment) {
+          gradeTestTaskAverageValue135.dataset.assessmentId = String(assessment.id);
+        } else {
+          gradeTestTaskAverageValue135.dataset.gradeTestDraftAverageTask = "1";
+        }
+        gradeTestTaskAverageValue135.textContent = String(averageValue === null || averageValue === undefined ? "—" : formatGradeBeAverageValue(averageValue));
+        fragment.append(gradeTestTaskAverageValue135);
+        return fragment;
+      })());
       averageRow.append(averageTaskCell);
     });
     const averageAddCell = document.createElement("td");
@@ -24325,12 +25573,24 @@ class GradesApp {
 
     if (cell.type === "student") {
       th.className = "student-col grades-student-count-head";
-      th.innerHTML = `
-        <div class="grades-student-count-label">
-          <span>Lernendenanzahl:</span>
-          <strong>${studentCount}</strong>
-        </div>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradesStudentCountLabel136 = document.createElement("div");
+        gradesStudentCountLabel136.className = "grades-student-count-label";
+        gradesStudentCountLabel136.append("\n");
+        const span137 = document.createElement("span");
+        span137.textContent = "Lernendenanzahl:";
+        gradesStudentCountLabel136.append(span137);
+        gradesStudentCountLabel136.append("\n");
+        const strong138 = document.createElement("strong");
+        strong138.textContent = String(studentCount);
+        gradesStudentCountLabel136.append(strong138);
+        gradesStudentCountLabel136.append("\n");
+        fragment.append(gradesStudentCountLabel136);
+        fragment.append("\n");
+        return fragment;
+      })());
       return th;
     }
 
@@ -24340,14 +25600,37 @@ class GradesApp {
       applyBoundaryClasses();
       applyNonAssessmentTooltip();
       th.dataset.gradeTogglePeriod = cell.period || "year";
-      th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-period="${escapeHtml(cell.period || "year")}" aria-expanded="${isExpanded ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
-          <span class="grades-master-group-label">
-            <span class="grades-master-group-caret${isExpanded ? " is-expanded" : ""}" aria-hidden="true">▸</span>
-            <span class="grades-master-group-title">${escapeHtml(cell.label || getGradePeriodLabel(cell.period))}</span>
-          </span>
-        </button>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradesMasterGroupButton139 = document.createElement("button");
+        gradesMasterGroupButton139.setAttribute("type", "button");
+        gradesMasterGroupButton139.className = "grades-master-group-button";
+        gradesMasterGroupButton139.dataset.tutorialAnchor = "grades-group-toggle";
+        gradesMasterGroupButton139.dataset.gradeTogglePeriod = String(cell.period || "year");
+        gradesMasterGroupButton139.setAttribute("aria-expanded", String(isExpanded ? "true" : "false"));
+        gradesMasterGroupButton139.setAttribute("title", String(nonAssessmentTooltip));
+        gradesMasterGroupButton139.append("\n");
+        const gradesMasterGroupLabel140 = document.createElement("span");
+        gradesMasterGroupLabel140.className = "grades-master-group-label";
+        gradesMasterGroupLabel140.append("\n");
+        const gradesMasterGroupCaret141 = document.createElement("span");
+        gradesMasterGroupCaret141.className = "grades-master-group-caret" + String(isExpanded ? " is-expanded" : "");
+        gradesMasterGroupCaret141.setAttribute("aria-hidden", "true");
+        gradesMasterGroupCaret141.textContent = "▸";
+        gradesMasterGroupLabel140.append(gradesMasterGroupCaret141);
+        gradesMasterGroupLabel140.append("\n");
+        const gradesMasterGroupTitle142 = document.createElement("span");
+        gradesMasterGroupTitle142.className = "grades-master-group-title";
+        gradesMasterGroupTitle142.textContent = String(cell.label || getGradePeriodLabel(cell.period));
+        gradesMasterGroupLabel140.append(gradesMasterGroupTitle142);
+        gradesMasterGroupLabel140.append("\n");
+        gradesMasterGroupButton139.append(gradesMasterGroupLabel140);
+        gradesMasterGroupButton139.append("\n");
+        fragment.append(gradesMasterGroupButton139);
+        fragment.append("\n");
+        return fragment;
+      })());
       return th;
     }
 
@@ -24378,25 +25661,70 @@ class GradesApp {
       th.dataset.gradeToggleCategory = String(cell.category.id);
       th.dataset.period = cell.period || "year";
       if (cell.type === "category-collapsed") {
-        const tooltip = escapeHtml(cell.category.name);
+        const tooltip = cell.category.name;
         applyColumnSelection();
-        th.innerHTML = `
-        <button type="button" class="grades-master-group-button is-collapsed-header" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
-          <span class="grades-master-group-label">
-            <span class="grades-master-group-caret" aria-hidden="true">▸</span>
-          </span>
-        </button>
-      `;
+        th.replaceChildren((() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const gradesMasterGroupButton143 = document.createElement("button");
+          gradesMasterGroupButton143.setAttribute("type", "button");
+          gradesMasterGroupButton143.className = "grades-master-group-button is-collapsed-header";
+          gradesMasterGroupButton143.dataset.tutorialAnchor = "grades-group-toggle";
+          gradesMasterGroupButton143.dataset.gradeToggleCategory = String(cell.category.id);
+          gradesMasterGroupButton143.dataset.period = String(cell.period);
+          gradesMasterGroupButton143.setAttribute("aria-expanded", "false");
+          gradesMasterGroupButton143.setAttribute("aria-label", String(tooltip) + " ausklappen");
+          gradesMasterGroupButton143.setAttribute("title", String(nonAssessmentTooltip));
+          gradesMasterGroupButton143.append("\n");
+          const gradesMasterGroupLabel144 = document.createElement("span");
+          gradesMasterGroupLabel144.className = "grades-master-group-label";
+          gradesMasterGroupLabel144.append("\n");
+          const gradesMasterGroupCaret145 = document.createElement("span");
+          gradesMasterGroupCaret145.className = "grades-master-group-caret";
+          gradesMasterGroupCaret145.setAttribute("aria-hidden", "true");
+          gradesMasterGroupCaret145.textContent = "▸";
+          gradesMasterGroupLabel144.append(gradesMasterGroupCaret145);
+          gradesMasterGroupLabel144.append("\n");
+          gradesMasterGroupButton143.append(gradesMasterGroupLabel144);
+          gradesMasterGroupButton143.append("\n");
+          fragment.append(gradesMasterGroupButton143);
+          fragment.append("\n");
+          return fragment;
+        })());
         return th;
       }
-      th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-category="${cell.category.id}" data-period="${cell.period}" aria-expanded="true" title="${escapeHtml(nonAssessmentTooltip)}">
-          <span class="grades-master-group-label">
-            <span class="grades-master-group-caret is-expanded" aria-hidden="true">▸</span>
-            <span class="grades-master-group-title">${escapeHtml(cell.category.name)}${escapeHtml(formatGradeWeightPercentSuffix(cell.category.weight))}</span>
-          </span>
-        </button>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradesMasterGroupButton146 = document.createElement("button");
+        gradesMasterGroupButton146.setAttribute("type", "button");
+        gradesMasterGroupButton146.className = "grades-master-group-button";
+        gradesMasterGroupButton146.dataset.tutorialAnchor = "grades-group-toggle";
+        gradesMasterGroupButton146.dataset.gradeToggleCategory = String(cell.category.id);
+        gradesMasterGroupButton146.dataset.period = String(cell.period);
+        gradesMasterGroupButton146.setAttribute("aria-expanded", "true");
+        gradesMasterGroupButton146.setAttribute("title", String(nonAssessmentTooltip));
+        gradesMasterGroupButton146.append("\n");
+        const gradesMasterGroupLabel147 = document.createElement("span");
+        gradesMasterGroupLabel147.className = "grades-master-group-label";
+        gradesMasterGroupLabel147.append("\n");
+        const gradesMasterGroupCaret148 = document.createElement("span");
+        gradesMasterGroupCaret148.className = "grades-master-group-caret is-expanded";
+        gradesMasterGroupCaret148.setAttribute("aria-hidden", "true");
+        gradesMasterGroupCaret148.textContent = "▸";
+        gradesMasterGroupLabel147.append(gradesMasterGroupCaret148);
+        gradesMasterGroupLabel147.append("\n");
+        const gradesMasterGroupTitle149 = document.createElement("span");
+        gradesMasterGroupTitle149.className = "grades-master-group-title";
+        gradesMasterGroupTitle149.textContent = String(cell.category.name) + String(formatGradeWeightPercentSuffix(cell.category.weight));
+        gradesMasterGroupLabel147.append(gradesMasterGroupTitle149);
+        gradesMasterGroupLabel147.append("\n");
+        gradesMasterGroupButton146.append(gradesMasterGroupLabel147);
+        gradesMasterGroupButton146.append("\n");
+        fragment.append(gradesMasterGroupButton146);
+        fragment.append("\n");
+        return fragment;
+      })());
       return th;
     }
 
@@ -24418,25 +25746,68 @@ class GradesApp {
       applyNonAssessmentTooltip();
       th.dataset.gradeToggleSubcategory = `${cell.period}:${cell.category.id}:${cell.subcategory.id}`;
       if (cell.type === "subcategory-collapsed") {
-        const tooltip = escapeHtml(cell.subcategory.name);
+        const tooltip = cell.subcategory.name;
         applyColumnSelection();
-        th.innerHTML = `
-        <button type="button" class="grades-master-group-button is-collapsed-header" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="false" aria-label="${tooltip} ausklappen" title="${escapeHtml(nonAssessmentTooltip)}">
-          <span class="grades-master-group-label">
-            <span class="grades-master-group-caret" aria-hidden="true">▸</span>
-          </span>
-        </button>
-      `;
+        th.replaceChildren((() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const gradesMasterGroupButton150 = document.createElement("button");
+          gradesMasterGroupButton150.setAttribute("type", "button");
+          gradesMasterGroupButton150.className = "grades-master-group-button is-collapsed-header";
+          gradesMasterGroupButton150.dataset.tutorialAnchor = "grades-group-toggle";
+          gradesMasterGroupButton150.dataset.gradeToggleSubcategory = String(cell.period) + ":" + String(cell.category.id) + ":" + String(cell.subcategory.id);
+          gradesMasterGroupButton150.setAttribute("aria-expanded", "false");
+          gradesMasterGroupButton150.setAttribute("aria-label", String(tooltip) + " ausklappen");
+          gradesMasterGroupButton150.setAttribute("title", String(nonAssessmentTooltip));
+          gradesMasterGroupButton150.append("\n");
+          const gradesMasterGroupLabel151 = document.createElement("span");
+          gradesMasterGroupLabel151.className = "grades-master-group-label";
+          gradesMasterGroupLabel151.append("\n");
+          const gradesMasterGroupCaret152 = document.createElement("span");
+          gradesMasterGroupCaret152.className = "grades-master-group-caret";
+          gradesMasterGroupCaret152.setAttribute("aria-hidden", "true");
+          gradesMasterGroupCaret152.textContent = "▸";
+          gradesMasterGroupLabel151.append(gradesMasterGroupCaret152);
+          gradesMasterGroupLabel151.append("\n");
+          gradesMasterGroupButton150.append(gradesMasterGroupLabel151);
+          gradesMasterGroupButton150.append("\n");
+          fragment.append(gradesMasterGroupButton150);
+          fragment.append("\n");
+          return fragment;
+        })());
         return th;
       }
-      th.innerHTML = `
-        <button type="button" class="grades-master-group-button" data-tutorial-anchor="grades-group-toggle" data-grade-toggle-subcategory="${cell.period}:${cell.category.id}:${cell.subcategory.id}" aria-expanded="${cell.type === "subcategory-open" ? "true" : "false"}" title="${escapeHtml(nonAssessmentTooltip)}">
-          <span class="grades-master-group-label">
-            <span class="grades-master-group-caret${cell.type === "subcategory-open" ? " is-expanded" : ""}" aria-hidden="true">▸</span>
-            <span class="grades-master-group-title">${escapeHtml(cell.subcategory.name)}${escapeHtml(formatGradeWeightPercentSuffix(cell.subcategory.weight))}</span>
-          </span>
-        </button>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradesMasterGroupButton153 = document.createElement("button");
+        gradesMasterGroupButton153.setAttribute("type", "button");
+        gradesMasterGroupButton153.className = "grades-master-group-button";
+        gradesMasterGroupButton153.dataset.tutorialAnchor = "grades-group-toggle";
+        gradesMasterGroupButton153.dataset.gradeToggleSubcategory = String(cell.period) + ":" + String(cell.category.id) + ":" + String(cell.subcategory.id);
+        gradesMasterGroupButton153.setAttribute("aria-expanded", String(cell.type === "subcategory-open" ? "true" : "false"));
+        gradesMasterGroupButton153.setAttribute("title", String(nonAssessmentTooltip));
+        gradesMasterGroupButton153.append("\n");
+        const gradesMasterGroupLabel154 = document.createElement("span");
+        gradesMasterGroupLabel154.className = "grades-master-group-label";
+        gradesMasterGroupLabel154.append("\n");
+        const gradesMasterGroupCaret155 = document.createElement("span");
+        gradesMasterGroupCaret155.className = "grades-master-group-caret" + String(cell.type === "subcategory-open" ? " is-expanded" : "");
+        gradesMasterGroupCaret155.setAttribute("aria-hidden", "true");
+        gradesMasterGroupCaret155.textContent = "▸";
+        gradesMasterGroupLabel154.append(gradesMasterGroupCaret155);
+        gradesMasterGroupLabel154.append("\n");
+        const gradesMasterGroupTitle156 = document.createElement("span");
+        gradesMasterGroupTitle156.className = "grades-master-group-title";
+        gradesMasterGroupTitle156.textContent = String(cell.subcategory.name) + String(formatGradeWeightPercentSuffix(cell.subcategory.weight));
+        gradesMasterGroupLabel154.append(gradesMasterGroupTitle156);
+        gradesMasterGroupLabel154.append("\n");
+        gradesMasterGroupButton153.append(gradesMasterGroupLabel154);
+        gradesMasterGroupButton153.append("\n");
+        fragment.append(gradesMasterGroupButton153);
+        fragment.append("\n");
+        return fragment;
+      })());
       return th;
     }
 
@@ -24476,17 +25847,45 @@ class GradesApp {
       const assessmentLabelClass = (shouldShowGradeWeight(cell.assessment.weight) && !this.isHomeworkAssessment(cell.assessment))
         ? `grade-assessment-label${assessmentModeClass}`
         : `grade-assessment-label is-weightless${assessmentModeClass}`;
-      th.innerHTML = `
-        <div class="grade-assessment-head">
-          <button type="button" class="grade-assessment-drag-handle" draggable="true" data-grade-drag-assessment="${cell.assessment.id}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} zum Anordnen ziehen" title="Spalte innerhalb dieser Kategorie anordnen">
-          </button>
-          <button type="button" class="${assessmentLabelClass}" data-grade-edit-assessment="${cell.assessment.id}" data-course-id="${cell.assessment.courseId}" aria-label="Leistung ${escapeHtml(cell.assessment.title)} in der Eingabe bearbeiten" title="${escapeHtml(assessmentTooltip)}">
-            <span class="grade-assessment-title">${buildGradeAssessmentDisplayTitleMarkup(cell.assessment.title)}</span>
-            ${buildGradeAssessmentWeightMarkup(cell.assessment.weight, cell.assessment.mode)}
-            ${buildGradeAssessmentOccurrenceEmojiMarkup(cell.assessment.mode, this.getGradeOccurrenceCategoryEmoji(cell.assessment.occurrenceCategoryId))}
-          </button>
-        </div>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradeAssessmentHead157 = document.createElement("div");
+        gradeAssessmentHead157.className = "grade-assessment-head";
+        gradeAssessmentHead157.append("\n");
+        const gradeAssessmentDragHandle158 = document.createElement("button");
+        gradeAssessmentDragHandle158.setAttribute("type", "button");
+        gradeAssessmentDragHandle158.className = "grade-assessment-drag-handle";
+        gradeAssessmentDragHandle158.setAttribute("draggable", "true");
+        gradeAssessmentDragHandle158.dataset.gradeDragAssessment = String(cell.assessment.id);
+        gradeAssessmentDragHandle158.setAttribute("aria-label", "Leistung " + String(cell.assessment.title) + " zum Anordnen ziehen");
+        gradeAssessmentDragHandle158.setAttribute("title", "Spalte innerhalb dieser Kategorie anordnen");
+        gradeAssessmentDragHandle158.textContent = "\n          ";
+        gradeAssessmentHead157.append(gradeAssessmentDragHandle158);
+        gradeAssessmentHead157.append("\n");
+        const button159 = document.createElement("button");
+        button159.setAttribute("type", "button");
+        button159.className = String(assessmentLabelClass);
+        button159.dataset.gradeEditAssessment = String(cell.assessment.id);
+        button159.dataset.courseId = String(cell.assessment.courseId);
+        button159.setAttribute("aria-label", "Leistung " + String(cell.assessment.title) + " in der Eingabe bearbeiten");
+        button159.setAttribute("title", String(assessmentTooltip));
+        button159.append("\n");
+        const gradeAssessmentTitle160 = document.createElement("span");
+        gradeAssessmentTitle160.className = "grade-assessment-title";
+        gradeAssessmentTitle160.append(createGradeAssessmentDisplayTitle(cell.assessment.title));
+        button159.append(gradeAssessmentTitle160);
+        button159.append("\n");
+        button159.append(createGradeAssessmentWeight(cell.assessment.weight, cell.assessment.mode));
+        button159.append("\n");
+        button159.append(createGradeAssessmentOccurrenceEmoji(cell.assessment.mode, this.getGradeOccurrenceCategoryEmoji(cell.assessment.occurrenceCategoryId)));
+        button159.append("\n");
+        gradeAssessmentHead157.append(button159);
+        gradeAssessmentHead157.append("\n");
+        fragment.append(gradeAssessmentHead157);
+        fragment.append("\n");
+        return fragment;
+      })());
       return th;
     }
 
@@ -24494,11 +25893,28 @@ class GradesApp {
       th.className = `grade-add-col${cell.subcategory ? " is-subcategory-child" : ""}`;
       applyBoundaryClasses();
       const targetName = cell.subcategory?.name || cell.category?.name || "Kategorie";
-      th.innerHTML = `
-        <button type="button" class="sidebar-add-btn" data-grade-add-assessment="${Number(cell.subcategory?.id || 0)}" data-grade-category-id="${Number(cell.category?.id || cell.categoryId || 0)}" data-grade-half-year="${cell.period}" data-course-id="${Number(options.courseId || 0)}" aria-label="Neue Leistung in ${escapeHtml(targetName)} anlegen" title="Neue Leistung anlegen">
-          <span class="sidebar-add-plus" aria-hidden="true"></span>
-        </button>
-      `;
+      th.replaceChildren((() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const sidebarAddBtn161 = document.createElement("button");
+        sidebarAddBtn161.setAttribute("type", "button");
+        sidebarAddBtn161.className = "sidebar-add-btn";
+        sidebarAddBtn161.dataset.gradeAddAssessment = String(Number(cell.subcategory?.id || 0));
+        sidebarAddBtn161.dataset.gradeCategoryId = String(Number(cell.category?.id || cell.categoryId || 0));
+        sidebarAddBtn161.dataset.gradeHalfYear = String(cell.period);
+        sidebarAddBtn161.dataset.courseId = String(Number(options.courseId || 0));
+        sidebarAddBtn161.setAttribute("aria-label", "Neue Leistung in " + String(targetName) + " anlegen");
+        sidebarAddBtn161.setAttribute("title", "Neue Leistung anlegen");
+        sidebarAddBtn161.append("\n");
+        const sidebarAddPlus162 = document.createElement("span");
+        sidebarAddPlus162.className = "sidebar-add-plus";
+        sidebarAddPlus162.setAttribute("aria-hidden", "true");
+        sidebarAddBtn161.append(sidebarAddPlus162);
+        sidebarAddBtn161.append("\n");
+        fragment.append(sidebarAddBtn161);
+        fragment.append("\n");
+        return fragment;
+      })());
       return th;
     }
 
@@ -24607,13 +26023,13 @@ class GradesApp {
             "is-grade-override-editing",
             this.isGradeOverrideEditorActive(student.id, course.id, "course", null, null, "year")
           );
-          td.innerHTML = this.buildGradeOverrideButtonMarkup(
+          td.replaceChildren(this.createGradeOverrideButton(
             student.id,
             course.id,
             "course",
             this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, "year"),
             { period: "year", disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -24625,13 +26041,13 @@ class GradesApp {
             "is-grade-override-editing",
             this.isGradeOverrideEditorActive(student.id, course.id, "course", null, null, column.period)
           );
-          td.innerHTML = this.buildGradeOverrideButtonMarkup(
+          td.replaceChildren(this.createGradeOverrideButton(
             student.id,
             course.id,
             "course",
             this.store.calculateGradeForStudentInCoursePeriod(student.id, course.id, column.period),
             { period: column.period, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -24643,13 +26059,13 @@ class GradesApp {
             "is-grade-override-editing",
             this.isGradeOverrideEditorActive(student.id, course.id, "category", column.categoryId, null, column.period)
           );
-          td.innerHTML = this.buildGradeOverrideButtonMarkup(
+          td.replaceChildren(this.createGradeOverrideButton(
             student.id,
             course.id,
             "category",
             this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
             { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -24668,13 +26084,13 @@ class GradesApp {
               column.period
             )
           );
-          td.innerHTML = this.buildGradeOverrideButtonMarkup(
+          td.replaceChildren(this.createGradeOverrideButton(
             student.id,
             course.id,
             "subcategory",
             this.store.calculateGradeForStudentInSubcategoryPeriod(student.id, course.id, column.categoryId, column.subcategoryId, column.period),
             { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -24686,13 +26102,13 @@ class GradesApp {
             "is-grade-override-editing",
             this.isGradeOverrideEditorActive(student.id, course.id, "category", column.categoryId, null, column.period)
           );
-          td.innerHTML = this.buildGradeOverrideButtonMarkup(
+          td.replaceChildren(this.createGradeOverrideButton(
             student.id,
             course.id,
             "category",
             this.store.calculateGradeForStudentInCategoryPeriod(student.id, course.id, column.categoryId, column.period),
             { period: column.period, categoryId: column.categoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -24711,13 +26127,13 @@ class GradesApp {
               column.period
             )
           );
-          td.innerHTML = this.buildGradeOverrideButtonMarkup(
+          td.replaceChildren(this.createGradeOverrideButton(
             student.id,
             course.id,
             "subcategory",
             this.store.calculateGradeForStudentInSubcategoryPeriod(student.id, course.id, column.categoryId, column.subcategoryId, column.period),
             { period: column.period, categoryId: column.categoryId, subcategoryId: column.subcategoryId, disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -24735,7 +26151,23 @@ class GradesApp {
               column.occurrenceCategoryId
             )
           );
-          td.innerHTML = `<div class="grade-homework-summary-value" data-grade-homework-summary="1" data-student-id="${student.id}" data-course-id="${course.id}" data-category-id="${column.categoryId}" data-subcategory-id="${column.subcategoryId || ""}" data-occurrence-category-id="${column.occurrenceCategoryId}" data-period="${column.period}" data-homework-checked="${homeworkSummary.checked}" data-homework-total="${homeworkSummary.total}">${this.formatDisplayedHomeworkSummary(homeworkSummary)}</div>`;
+          td.replaceChildren((() => {
+            const fragment = document.createDocumentFragment();
+            const gradeHomeworkSummaryValue163 = document.createElement("div");
+            gradeHomeworkSummaryValue163.className = "grade-homework-summary-value";
+            gradeHomeworkSummaryValue163.dataset.gradeHomeworkSummary = "1";
+            gradeHomeworkSummaryValue163.dataset.studentId = String(student.id);
+            gradeHomeworkSummaryValue163.dataset.courseId = String(course.id);
+            gradeHomeworkSummaryValue163.dataset.categoryId = String(column.categoryId);
+            gradeHomeworkSummaryValue163.dataset.subcategoryId = String(column.subcategoryId || "");
+            gradeHomeworkSummaryValue163.dataset.occurrenceCategoryId = String(column.occurrenceCategoryId);
+            gradeHomeworkSummaryValue163.dataset.period = String(column.period);
+            gradeHomeworkSummaryValue163.dataset.homeworkChecked = String(homeworkSummary.checked);
+            gradeHomeworkSummaryValue163.dataset.homeworkTotal = String(homeworkSummary.total);
+            gradeHomeworkSummaryValue163.textContent = String(this.formatDisplayedHomeworkSummary(homeworkSummary));
+            fragment.append(gradeHomeworkSummaryValue163);
+            return fragment;
+          })());
           tr.append(td);
           return;
         }
@@ -24760,14 +26192,14 @@ class GradesApp {
             td.dataset.rowIndex = String(rowIndex);
             td.dataset.studentId = String(student.id);
           }
-          td.innerHTML = this.buildGradeAssessmentCellMarkup(
+          td.replaceChildren(this.createGradeAssessmentCell(
             student,
             column.assessment,
             rowIndex,
             columnIndex,
             column.subcategoryId,
             { disabled: isPrivacyBlurred, displaySystem: gradeDisplaySystem, predicateSuffixes, existingValueAsPlaceholder: true }
-          );
+          ));
           tr.append(td);
           return;
         }
@@ -25042,15 +26474,42 @@ class GradesApp {
         <p class="empty-state-copy">Wechsle zu Eingabe oder verwalte die Notenstruktur.</p>
       `;
       } else {
-        empty.innerHTML = `
-        <div class="empty-state-title">Noch keine Leistungen</div>
-        <p class="empty-state-copy">Die Notenstruktur enthält noch keine zugeordneten Leistungen.</p>
-        <div class="button-row empty-state-actions">
-          <button type="button" class="sidebar-add-btn" data-grade-add-assessment="0" data-grade-half-year="${this.getDefaultGradeAssessmentHalfYear()}" data-course-id="${Number(course?.id || 0)}" aria-label="Erste Leistung anlegen" title="Erste Leistung anlegen">
-            <span class="sidebar-add-plus" aria-hidden="true"></span>
-          </button>
-        </div>
-      `;
+        empty.replaceChildren((() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const emptyStateTitle164 = document.createElement("div");
+          emptyStateTitle164.className = "empty-state-title";
+          emptyStateTitle164.textContent = "Noch keine Leistungen";
+          fragment.append(emptyStateTitle164);
+          fragment.append("\n");
+          const emptyStateCopy165 = document.createElement("p");
+          emptyStateCopy165.className = "empty-state-copy";
+          emptyStateCopy165.textContent = "Die Notenstruktur enthält noch keine zugeordneten Leistungen.";
+          fragment.append(emptyStateCopy165);
+          fragment.append("\n");
+          const buttonRow166 = document.createElement("div");
+          buttonRow166.className = "button-row empty-state-actions";
+          buttonRow166.append("\n");
+          const sidebarAddBtn167 = document.createElement("button");
+          sidebarAddBtn167.setAttribute("type", "button");
+          sidebarAddBtn167.className = "sidebar-add-btn";
+          sidebarAddBtn167.dataset.gradeAddAssessment = "0";
+          sidebarAddBtn167.dataset.gradeHalfYear = String(this.getDefaultGradeAssessmentHalfYear());
+          sidebarAddBtn167.dataset.courseId = String(Number(course?.id || 0));
+          sidebarAddBtn167.setAttribute("aria-label", "Erste Leistung anlegen");
+          sidebarAddBtn167.setAttribute("title", "Erste Leistung anlegen");
+          sidebarAddBtn167.append("\n");
+          const sidebarAddPlus168 = document.createElement("span");
+          sidebarAddPlus168.className = "sidebar-add-plus";
+          sidebarAddPlus168.setAttribute("aria-hidden", "true");
+          sidebarAddBtn167.append(sidebarAddPlus168);
+          sidebarAddBtn167.append("\n");
+          buttonRow166.append(sidebarAddBtn167);
+          buttonRow166.append("\n");
+          fragment.append(buttonRow166);
+          fragment.append("\n");
+          return fragment;
+        })());
       }
       this.refs.gradesTable.append(empty);
       this.removeGradePrivacyNavigationOverlay();
@@ -30824,47 +32283,124 @@ class GradesApp {
       return;
     }
     const settings = this.getGradeTestScaleSettingsDraft();
-    const renderThresholdRows = (scale) => GRADE_TEST_SCALE_GRADES.map((grade) => {
+    const renderThresholdRows = (scale) => (() => { const fragment = document.createDocumentFragment(); fragment.append(...GRADE_TEST_SCALE_GRADES.map((grade) => {
       const percent = this.getGradeTestScaleDraftThresholdPercent(settings, scale, grade);
       const isZeroGrade = grade === 0;
-      return `
-                <label class="grade-test-scale-threshold-row">
-                  <span>${formatGradeInteger(grade)}</span>
-                  <input type="number" min="0" max="100" step="1" inputmode="numeric" data-grade-test-scale-threshold="${escapeHtml(scale)}" data-grade-test-scale-grade="${grade}" value="${percent}" ${isZeroGrade ? "readonly" : ""} aria-label="Prozentgrenze für Note ${formatGradeInteger(grade)}">
-                </label>
-              `;
-    }).join("");
+      return (() => {
+          const fragment = document.createDocumentFragment();
+          fragment.append("\n");
+          const gradeTestScaleThresholdRow271 = document.createElement("label");
+          gradeTestScaleThresholdRow271.className = "grade-test-scale-threshold-row";
+          gradeTestScaleThresholdRow271.append("\n");
+          const span272 = document.createElement("span");
+          span272.textContent = String(formatGradeInteger(grade));
+          gradeTestScaleThresholdRow271.append(span272);
+          gradeTestScaleThresholdRow271.append("\n");
+          const input273 = document.createElement("input");
+          input273.setAttribute("type", "number");
+          input273.setAttribute("min", "0");
+          input273.setAttribute("max", "100");
+          input273.setAttribute("step", "1");
+          input273.setAttribute("inputmode", "numeric");
+          input273.dataset.gradeTestScaleThreshold = String(scale);
+          input273.dataset.gradeTestScaleGrade = String(grade);
+          input273.setAttribute("value", String(percent));
+          input273.value = String(percent);
+          if (isZeroGrade) {
+            input273.readOnly = true;
+          }
+          input273.setAttribute("aria-label", "Prozentgrenze für Note " + String(formatGradeInteger(grade)));
+          gradeTestScaleThresholdRow271.append(input273);
+          gradeTestScaleThresholdRow271.append("\n");
+          fragment.append(gradeTestScaleThresholdRow271);
+          fragment.append("\n");
+          return fragment;
+        })();
+    })); return fragment; })();
     const renderScaleCard = (scale) => {
       const template = getGradeTestScaleTemplate(settings, scale);
       const isCustom = normalizeGradeTestScale(scale) === GRADE_TEST_SCALE_CUSTOM;
       const title = String(template.label || getGradeTestScaleDefaultLabel(scale));
-      return `
-                <section class="grade-test-scale-settings-card" data-grade-test-scale-card="${escapeHtml(scale)}">
-                  <div class="grade-test-scale-settings-card-head">
-                    ${isCustom ? `
-                      <input class="grade-test-scale-custom-name-input" type="text" maxlength="40"
-                        data-grade-test-scale-custom-name="1" value="${escapeHtml(template.label || "")}" placeholder="Eigener Modus"
-                        aria-label="Name des eigenen Modus">
-                    ` : `<h3 class="settings-panel-title grade-test-scale-settings-card-title">${escapeHtml(title)}</h3>`}
-                  </div>
-                  <div class="grade-test-scale-threshold-grid">
-                    <div class="grade-test-scale-threshold-header">Note</div>
-                    <div class="grade-test-scale-threshold-header">Ab Prozent</div>
-                    ${renderThresholdRows(scale)}
-                  </div>
-                </section>
-              `;
+      return (() => {
+        const fragment = document.createDocumentFragment();
+        fragment.append("\n");
+        const gradeTestScaleSettingsCard274 = document.createElement("section");
+        gradeTestScaleSettingsCard274.className = "grade-test-scale-settings-card";
+        gradeTestScaleSettingsCard274.dataset.gradeTestScaleCard = String(scale);
+        gradeTestScaleSettingsCard274.append("\n");
+        const gradeTestScaleSettingsCardHead275 = document.createElement("div");
+        gradeTestScaleSettingsCardHead275.className = "grade-test-scale-settings-card-head";
+        gradeTestScaleSettingsCardHead275.append("\n");
+        if (isCustom) {
+          gradeTestScaleSettingsCardHead275.append("\n");
+          const gradeTestScaleCustomNameInput276 = document.createElement("input");
+          gradeTestScaleCustomNameInput276.className = "grade-test-scale-custom-name-input";
+          gradeTestScaleCustomNameInput276.setAttribute("type", "text");
+          gradeTestScaleCustomNameInput276.setAttribute("maxlength", "40");
+          gradeTestScaleCustomNameInput276.dataset.gradeTestScaleCustomName = "1";
+          gradeTestScaleCustomNameInput276.setAttribute("value", String(template.label || ""));
+          gradeTestScaleCustomNameInput276.value = String(template.label || "");
+          gradeTestScaleCustomNameInput276.setAttribute("placeholder", "Eigener Modus");
+          gradeTestScaleCustomNameInput276.setAttribute("aria-label", "Name des eigenen Modus");
+          gradeTestScaleSettingsCardHead275.append(gradeTestScaleCustomNameInput276);
+          gradeTestScaleSettingsCardHead275.append("\n");
+        } else {
+          const settingsPanelTitle277 = document.createElement("h3");
+          settingsPanelTitle277.className = "settings-panel-title grade-test-scale-settings-card-title";
+          settingsPanelTitle277.textContent = String(title);
+          gradeTestScaleSettingsCardHead275.append(settingsPanelTitle277);
+        }
+        gradeTestScaleSettingsCardHead275.append("\n");
+        gradeTestScaleSettingsCard274.append(gradeTestScaleSettingsCardHead275);
+        gradeTestScaleSettingsCard274.append("\n");
+        const gradeTestScaleThresholdGrid278 = document.createElement("div");
+        gradeTestScaleThresholdGrid278.className = "grade-test-scale-threshold-grid";
+        gradeTestScaleThresholdGrid278.append("\n");
+        const gradeTestScaleThresholdHeader279 = document.createElement("div");
+        gradeTestScaleThresholdHeader279.className = "grade-test-scale-threshold-header";
+        gradeTestScaleThresholdHeader279.textContent = "Note";
+        gradeTestScaleThresholdGrid278.append(gradeTestScaleThresholdHeader279);
+        gradeTestScaleThresholdGrid278.append("\n");
+        const gradeTestScaleThresholdHeader280 = document.createElement("div");
+        gradeTestScaleThresholdHeader280.className = "grade-test-scale-threshold-header";
+        gradeTestScaleThresholdHeader280.textContent = "Ab Prozent";
+        gradeTestScaleThresholdGrid278.append(gradeTestScaleThresholdHeader280);
+        gradeTestScaleThresholdGrid278.append("\n");
+        gradeTestScaleThresholdGrid278.append(renderThresholdRows(scale));
+        gradeTestScaleThresholdGrid278.append("\n");
+        gradeTestScaleSettingsCard274.append(gradeTestScaleThresholdGrid278);
+        gradeTestScaleSettingsCard274.append("\n");
+        fragment.append(gradeTestScaleSettingsCard274);
+        fragment.append("\n");
+        return fragment;
+      })();
     };
-    root.innerHTML = `
-              <div class="grade-test-scale-settings-intro">
-                <p class="muted">Änderungen gelten für neue Bewertungseinheiten. Bestehende Bewertungseinheiten behalten ihre gespeicherten Grenzen.</p>
-              </div>
-              <div class="grade-test-scale-settings-grid">
-                ${renderScaleCard("sek1")}
-                ${renderScaleCard("sek2")}
-                ${renderScaleCard(GRADE_TEST_SCALE_CUSTOM)}
-              </div>
-            `;
+    root.replaceChildren((() => {
+      const fragment = document.createDocumentFragment();
+      fragment.append("\n");
+      const gradeTestScaleSettingsIntro169 = document.createElement("div");
+      gradeTestScaleSettingsIntro169.className = "grade-test-scale-settings-intro";
+      gradeTestScaleSettingsIntro169.append("\n");
+      const muted170 = document.createElement("p");
+      muted170.className = "muted";
+      muted170.textContent = "Änderungen gelten für neue Bewertungseinheiten. Bestehende Bewertungseinheiten behalten ihre gespeicherten Grenzen.";
+      gradeTestScaleSettingsIntro169.append(muted170);
+      gradeTestScaleSettingsIntro169.append("\n");
+      fragment.append(gradeTestScaleSettingsIntro169);
+      fragment.append("\n");
+      const gradeTestScaleSettingsGrid171 = document.createElement("div");
+      gradeTestScaleSettingsGrid171.className = "grade-test-scale-settings-grid";
+      gradeTestScaleSettingsGrid171.append("\n");
+      gradeTestScaleSettingsGrid171.append(renderScaleCard("sek1"));
+      gradeTestScaleSettingsGrid171.append("\n");
+      gradeTestScaleSettingsGrid171.append(renderScaleCard("sek2"));
+      gradeTestScaleSettingsGrid171.append("\n");
+      gradeTestScaleSettingsGrid171.append(renderScaleCard(GRADE_TEST_SCALE_CUSTOM));
+      gradeTestScaleSettingsGrid171.append("\n");
+      fragment.append(gradeTestScaleSettingsGrid171);
+      fragment.append("\n");
+      return fragment;
+    })());
     this.updateSettingsActionButtons();
   }
 

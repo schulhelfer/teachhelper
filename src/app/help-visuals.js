@@ -87,8 +87,6 @@ export function createHelpVisual(articleItem, { doc = document } = {}) {
   const canvas = makeElement(doc, 'div', 'help-visual-canvas');
   const stage = makeElement(doc, 'div', 'help-visual-stage');
   stage.setAttribute('aria-hidden', 'true');
-  // ESM-Module der PWA benötigen im eingebetteten Dokument eine gleiche Origin.
-  // Die Isolation der Daten erfolgt daher im expliziten, ephemeren Preview-Modus.
   const frame = createModuleFrame({
     className: 'help-preview-frame',
     loading: 'eager',

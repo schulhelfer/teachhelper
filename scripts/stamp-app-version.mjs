@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 
-export const SERVICE_WORKER_VERSION_MARKER = /^\/\/ teachhelper-app-version: (\d+)\n/;
+export const SERVICE_WORKER_VERSION_MARKER = /^const TEACHHELPER_APP_VERSION_STAMP = '(\d+)';\n/;
 
 export function stampAppVersion({
   git,
@@ -33,11 +33,11 @@ export function stampAppVersion({
 
   const serviceWorkerSource = readFile(serviceWorkerPath);
   if (!SERVICE_WORKER_VERSION_MARKER.test(serviceWorkerSource)) {
-    throw new Error(`${serviceWorkerPath} muss mit // teachhelper-app-version: <Zahl> beginnen, damit sich sein Inhalt pro Release ändert.`);
+    throw new Error(`${serviceWorkerPath} muss mit const TEACHHELPER_APP_VERSION_STAMP = '<Zahl>'; beginnen, damit sich sein Inhalt pro Release ändert.`);
   }
   const nextServiceWorkerSource = serviceWorkerSource.replace(
     SERVICE_WORKER_VERSION_MARKER,
-    `// teachhelper-app-version: ${appVersion}\n`,
+    `const TEACHHELPER_APP_VERSION_STAMP = '${appVersion}';\n`,
   );
   if (serviceWorkerSource !== nextServiceWorkerSource) {
     writeFile(serviceWorkerPath, nextServiceWorkerSource);

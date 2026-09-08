@@ -17,7 +17,7 @@ test('Termine ohne Unterricht clear subjects when created, updated, and normaliz
 
 test('Planung exposes no-lesson terms while omitting grade controls', () => {
   assert.match(planningSource, /const selectableCourses = courses;/);
-  assert.ok(planningSource.includes('${course.noLesson ? "" : "<th>Noten</th>"}'));
+  assert.match(planningSource, /if \(course\.noLesson\) \{\s*\} else \{[\s\S]*?textContent = "Noten"/);
   assert.match(planningSource, /const editable = !allCanceled;/);
   assert.match(planningSource, /label: "Serie anpassen",\s*\n\s*separatorBefore: true,\s*\n\s*disabled: !slotId,/);
   assert.match(planningSource, /disabled: !editable \|\| isNoLesson/);

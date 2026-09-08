@@ -12,8 +12,8 @@ test('the custom percent-boundary mode uses a placeholder input aligned with the
   const renderEnd = app.indexOf('\n  readGradeTestScaleSettingsFromDom()', renderStart);
   const render = app.slice(renderStart, renderEnd);
 
-  assert.match(render, /class="grade-test-scale-custom-name-input"[\s\S]*?placeholder="Eigener Modus"/);
-  assert.match(render, /class="settings-panel-title grade-test-scale-settings-card-title"/);
+  assert.match(render, /className = "grade-test-scale-custom-name-input"[\s\S]*?setAttribute\("placeholder", "Eigener Modus"\)/);
+  assert.match(render, /className = "settings-panel-title grade-test-scale-settings-card-title"/);
   assert.doesNotMatch(render, /grade-test-scale-name-field/);
   assert.match(css, /\.grade-test-scale-settings-card-title\s*\{[\s\S]*?font-size:\s*1\.15rem/);
   assert.match(css, /\.grade-test-scale-custom-name-input\s*\{[\s\S]*?min-height:\s*2\.1rem/);

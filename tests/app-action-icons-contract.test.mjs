@@ -33,6 +33,6 @@ test('direct dialog actions use app tooltips and place cancellation before the p
 test('embedded and dynamic editors retain their event hooks while adopting the shared action design', () => {
   assert.match(planningHtml, /form="slot-form" class="dialog-icon-button app-action-icon"[\s\S]*data-tooltip="Slot speichern"/);
   assert.match(planningHtml, /id="slot-reset" class="ghost dialog-icon-button app-action-icon"/);
-  assert.match(gradesJs, /data-grades-entry-save="1" aria-label="Speichern" data-tooltip="Speichern">💾/);
-  assert.match(gradesJs, /data-grades-entry-cancel="1" aria-label="Abbrechen" data-tooltip="Abbrechen">❌/);
+  assert.match(gradesJs, /dataset\.gradesEntrySave = "1";[\s\S]*?setAttribute\("aria-label", "Speichern"\);[\s\S]*?dataset\.tooltip = "Speichern";[\s\S]*?textContent = "💾"/);
+  assert.match(gradesJs, /dataset\.gradesEntryCancel = "1";[\s\S]*?setAttribute\("aria-label", "Abbrechen"\);[\s\S]*?dataset\.tooltip = "Abbrechen";[\s\S]*?textContent = "❌"/);
 });

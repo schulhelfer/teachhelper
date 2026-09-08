@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-05",
+  "updated": "2026-09-08",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -27,21 +27,21 @@
     },
     {
       "name": "@cantoo/pdf-lib",
-      "version": "2.9.1",
+      "version": "2.9.2",
       "license": "MIT",
-      "source": "https://www.npmjs.com/package/@cantoo/pdf-lib/v/2.9.1",
+      "source": "https://www.npmjs.com/package/@cantoo/pdf-lib/v/2.9.2",
       "registry": "npm",
       "package": "@cantoo/pdf-lib",
-      "purl": "pkg:npm/%40cantoo/pdf-lib@2.9.1",
+      "purl": "pkg:npm/%40cantoo/pdf-lib@2.9.2",
       "updateNotes": "Maintained fork of pdf-lib (cantoo-scribe/pdf-lib); the vendored UMD build dist/pdf-lib.min.js still exposes the global PDFLib. Fetch the matching npm package release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py.",
       "files": [
         {
-          "path": "src/vendor/cantoo-pdf-lib/2.9.1/pdf-lib.min.js",
+          "path": "src/vendor/cantoo-pdf-lib/2.9.2/pdf-lib.min.js",
           "role": "runtime",
-          "sha256": "cef98e842b76fe08012193dde3bf165e7e03384feabd20c107a5ea016ab4d5f2"
+          "sha256": "babc848961baa4057d78fd8a24a1644c9a4259993cb97d7fb3c7dd10ca29f70b"
         },
         {
-          "path": "src/vendor/cantoo-pdf-lib/2.9.1/LICENSE.md",
+          "path": "src/vendor/cantoo-pdf-lib/2.9.2/LICENSE.md",
           "role": "license",
           "sha256": "f2c9fc00fdb66eb99ac156ba52d734af66d8d309f65753ae809ad34ee2883bcb"
         }

@@ -72,15 +72,21 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
 });
 
 test('der Vault-Banner zeigt nur die Auto-Lock-Warnung', () => {
+  const createNode = () => ({
+    children: [], dataset: {}, textContent: '', hidden: true,
+    append(...nodes) { this.children.push(...nodes); },
+    replaceChildren(...nodes) { this.children = nodes; },
+    set innerHTML(value) { assert.equal(value, ''); this.children = []; },
+    removeAttribute() {}, setAttribute() {},
+  });
+  const document = { createElement: createNode, createDocumentFragment: createNode };
+  const descendants = (node) => typeof node === 'string' ? [] : [node, ...node.children.flatMap(descendants)];
+  const text = (node) => typeof node === 'string' ? node : node.textContent + node.children.map(text).join('');
   const renderGradeVaultBanner = Function(
-    `"use strict"; const escapeHtml = (value) => String(value); return ({${extractClassMethod('renderGradeVaultBanner')}}).renderGradeVaultBanner;`,
-  )();
-  const banner = {
-    innerHTML: '',
-    hidden: true,
-    removeAttribute() {},
-    setAttribute() {},
-  };
+    'document',
+    `"use strict"; return ({${extractClassMethod('renderGradeVaultBanner')}}).renderGradeVaultBanner;`,
+  )(document);
+  const banner = createNode();
   const harness = {
     refs: { gradesVaultBanner: banner },
     isGradesTopTabActive() { return true; },
@@ -89,14 +95,18 @@ test('der Vault-Banner zeigt nur die Auto-Lock-Warnung', () => {
 
   renderGradeVaultBanner.call(harness);
   assert.equal(banner.hidden, true);
-  assert.equal(banner.innerHTML, '');
+  assert.equal(text(banner), '');
 
   harness.getGradeVaultAutoLockWarning = () => ({ message: 'Bitte speichern', retryAt: 0 });
   renderGradeVaultBanner.call(harness);
   assert.equal(banner.hidden, false);
-  assert.match(banner.innerHTML, /Notenbereich weiterhin entsperrt/);
-  assert.match(banner.innerHTML, /data-grade-vault-banner-action="save"/);
-  assert.doesNotMatch(banner.innerHTML, /Dateischutz/);
+  assert.match(text(banner), /Notenbereich weiterhin entsperrt/);
+  assert.ok(descendants(banner).some((node) => node.dataset.gradeVaultBannerAction === 'save'));
+  assert.doesNotMatch(text(banner), /Dateischutz/);
+  harness.getGradeVaultAutoLockWarning = () => null;
+  renderGradeVaultBanner.call(harness);
+  assert.equal(text(banner), '');
+  assert.equal(banner.hidden, true);
 });
 
 test('grade workspace changes still rebuild the visible grades data once', () => {

@@ -352,8 +352,6 @@ test('ein Wochentagswechsel per Split trifft jede Richtung in derselben Woche', 
       const expected = sameWeekWeekday(clicked, toDay);
       const first = lessonDatesForSlot(store, result.newSlotId)[0];
       const oldRemains = store.state.lessons.some((lesson) => lesson.lessonDate === clicked);
-      // Der angeklickte Termin darf nur bestehen bleiben, wenn der neue Wochentag
-      // spaeter in derselben Woche liegt - dann ersetzt er ihn erst danach.
       const mayRemain = toDay > fromDay;
       if (first !== expected || oldRemains !== mayRemain) {
         failures.push(`${fromDay}->${toDay}: erwartet ${expected}, bekommen ${first}, alt bleibt ${oldRemains}`);

@@ -130,7 +130,7 @@ test('the service worker and app share the numeric app version', async () => {
     'app-version.js must provide the one shared numeric version',
   );
 
-  const stampedVersion = serviceWorkerSource.match(/^\/\/ teachhelper-app-version: (\d+)\n/)?.[1];
+  const stampedVersion = serviceWorkerSource.match(/^const TEACHHELPER_APP_VERSION_STAMP = '(\d+)';\n/)?.[1];
   assert.equal(
     stampedVersion,
     appVersionSource.match(/TEACHHELPER_APP_VERSION\s*=\s*'(\d+)'/)?.[1],

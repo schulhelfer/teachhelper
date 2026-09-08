@@ -8,15 +8,16 @@ const [appSource, cssSource] = await Promise.all([
 ]);
 
 test('the assessment mode control uses compact descriptive labels', () => {
-  assert.match(appSource, /value="grade" aria-label="Einzelnote"[\s\S]*?<span class="grades-entry-mode-label">Einzel&shy;note<\/span>/);
-  assert.match(appSource, /value="test" aria-label="Bewertungseinheiten"[\s\S]*?<span class="grades-entry-mode-label">Bewertungs&shy;einheiten<\/span>/);
-  assert.match(appSource, /value="homework" aria-label="Vorkommnis"[\s\S]*?<span class="grades-entry-mode-label">Vorkommnis<\/span>/);
+  assert.match(appSource, /value = "grade";[\s\S]*?setAttribute\("aria-label", "Einzelnote"\)[\s\S]*?textContent = "Einzel\u00adnote"/);
+  assert.match(appSource, /value = "test";[\s\S]*?setAttribute\("aria-label", "Bewertungseinheiten"\)[\s\S]*?textContent = "Bewertungs\u00adeinheiten"/);
+  assert.match(appSource, /value = "homework";[\s\S]*?setAttribute\("aria-label", "Vorkommnis"\)[\s\S]*?textContent = "Vorkommnis"/);
   assert.match(cssSource, /\.grades-entry-mode-field \.assessment-mode-option \.grades-entry-mode-label \{[\s\S]*?font-size: 0\.76rem;[\s\S]*?hyphens: manual;/);
   const modeControl = appSource.slice(
-    appSource.indexOf('<fieldset class="grades-entry-field grades-entry-mode-field'),
-    appSource.indexOf('</fieldset>', appSource.indexOf('<fieldset class="grades-entry-field grades-entry-mode-field')),
+    appSource.indexOf('.className = "grades-entry-field grades-entry-mode-field'),
+    appSource.indexOf('if (occurrenceCategories.length > 1)'),
   );
-  assert.doesNotMatch(modeControl, /\btitle=/);
+  assert.ok(modeControl.length > 0);
+  assert.doesNotMatch(modeControl, /setAttribute\("title"|\.title =/);
 });
 
 test('the standard grade-entry table reads only its declared draft entries', () => {

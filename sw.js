@@ -1,4 +1,4 @@
-// teachhelper-app-version: 81
+const TEACHHELPER_APP_VERSION_STAMP = '82';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -127,8 +127,8 @@ const DEFERRED_ASSETS = [
   './src/modules/qr/vendor/jsQR.js',
   './src/vendor/jszip/3.10.1/jszip.min.js',
   './src/vendor/jszip/3.10.1/LICENSE.markdown',
-  './src/vendor/cantoo-pdf-lib/2.9.1/pdf-lib.min.js',
-  './src/vendor/cantoo-pdf-lib/2.9.1/LICENSE.md',
+  './src/vendor/cantoo-pdf-lib/2.9.2/pdf-lib.min.js',
+  './src/vendor/cantoo-pdf-lib/2.9.2/LICENSE.md',
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs',
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs',
   './src/vendor/pdfjs-dist/6.3.289/LICENSE',

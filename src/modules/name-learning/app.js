@@ -22,6 +22,7 @@ const REVIEW_FEEDBACK_DISPLAY_MS = 2250;
 const CARD_FLIP_FALLBACK_MS = 550;
 const refs = {
   root: document.querySelector('.app'), side: document.querySelector('.side'),
+  main: document.querySelector('.main'),
   status: document.getElementById('status'), setup: document.getElementById('setup'), courses: document.getElementById('courses'),
   startDue: document.getElementById('start-due'), startDueLabel: document.getElementById('start-due-label'), startRandom: document.getElementById('start-random'),
   practice: document.getElementById('practice'), portrait: document.getElementById('portrait'), portraitReverse: document.getElementById('portrait-reverse'),
@@ -29,6 +30,7 @@ const refs = {
   answer: document.getElementById('answer'), course: document.getElementById('course'), known: document.getElementById('known'), unknown: document.getElementById('unknown'),
   empty: document.getElementById('empty'), emptyTitle: document.getElementById('empty-title'), emptyCopy: document.getElementById('empty-copy'), emptyRandom: document.getElementById('empty-random'),
   reviewFeedback: document.getElementById('review-feedback'),
+  previousReview: document.getElementById('previous-review'),
   courseContextMenu: document.getElementById('course-context-menu'), sidebarContextMenu: document.getElementById('sidebar-context-menu'),
   learnerSearchBtn: document.getElementById('learner-search-btn'),
   tutorialButton: document.getElementById('tutorialButton'),
@@ -43,6 +45,7 @@ let reviewFeedbackTimer = 0;
 let nextCardTransitionTimer = 0;
 let cancelNextCardTransition = null;
 let reviewFeedbackActive = false;
+let previousReview = null;
 let tutorialDemoActive = false;
 let tutorialPreviousState = null;
 let gradeVaultLocked = false;
@@ -67,6 +70,17 @@ function clearNextCardTransitionTimer() {
   nextCardTransitionTimer = 0;
   cancelNextCardTransition?.();
   cancelNextCardTransition = null;
+}
+function clearPreviousReview() {
+  previousReview = null;
+  refs.previousReview.disabled = true;
+}
+function updatePreviousReviewButton() {
+  refs.previousReview.disabled = !(mode === 'due' && previousReview && !reviewFeedbackActive);
+}
+function isSameReviewCard(left, right) {
+  return Number(left?.courseId) === Number(right?.courseId)
+    && Number(left?.studentId) === Number(right?.studentId);
 }
 function resetReviewFeedback() {
   clearReviewFeedbackTimer();
@@ -98,6 +112,7 @@ function showReviewFeedback(progress, now, afterHidden) {
   refs.reviewFeedback.hidden = false;
   refs.reviewFeedback.textContent = nextReviewMessage(progress, now);
   reviewFeedbackActive = true;
+  refs.previousReview.disabled = true;
   refs.practice.classList.add('is-awaiting-next-card');
   refs.flashcard.classList.add('is-awaiting-next-card');
   requestAnimationFrame(() => refs.reviewFeedback.classList.add('is-visible'));
@@ -216,6 +231,7 @@ function clearSensitiveLearningState() {
   courses = [];
   selectedCourses.clear();
   queue = [];
+  clearPreviousReview();
   mode = 'due';
   tutorialDemoActive = false;
   tutorialPreviousState = null;
@@ -274,6 +290,7 @@ function renderCourses() {
 
 function renderSetup() {
   if (gradeVaultLocked) return;
+  clearPreviousReview();
   resetReviewFeedback(); hideAll(); refs.setup.hidden = false; renderCourses();
   renderModeControls();
   renderSidebarStatus();
@@ -297,11 +314,13 @@ function showEmpty() {
   refs.emptyTitle.textContent = mode === 'due' ? 'Keine Karten fällig' : 'Keine Karten verfügbar';
   refs.emptyCopy.textContent = mode === 'due' ? 'Du kannst stattdessen zufällig mit den ausgewählten Kursen üben.' : 'Für die ausgewählten Kurse gibt es keine verwendbaren Fotos.';
   refs.emptyRandom.hidden = mode !== 'due' || cardsForSelection().length === 0;
+  updatePreviousReviewButton();
   renderSidebarStatus();
 }
 
-function start(nextMode) {
+function start(nextMode, preservePreviousReview = false) {
   if (gradeVaultLocked) return;
+  if (!preservePreviousReview) clearPreviousReview();
   resetReviewFeedback();
   mode = nextMode;
   queue = mode === 'due' ? buildDueQueue(cards, selected()) : buildRandomQueue(cards, selected());
@@ -313,7 +332,7 @@ function renderCard() {
   if (gradeVaultLocked) return;
   clearNextCardTransitionTimer();
   const card = queue[0];
-  if (!card) { if (mode === 'due') { start('due'); } else { showEmpty(); } return; }
+  if (!card) { if (mode === 'due') { start('due', true); } else { showEmpty(); } return; }
   resetReviewFeedback(); revokePortrait(); hideAll(); refs.practice.hidden = false;
   refs.practice.classList.add('is-ready-to-reveal');
   refs.flashcard.classList.remove('is-revealed');
@@ -329,6 +348,7 @@ function renderCard() {
     refs.portrait.src = objectUrl;
     refs.portraitReverse.src = objectUrl;
   } catch { queue.shift(); renderCard(); return; }
+  updatePreviousReviewButton();
   renderModeControls();
   renderSidebarStatus();
 }
@@ -371,10 +391,12 @@ function review(known) {
   if (gradeVaultLocked) return;
   const card = queue.shift();
   if (!card) return;
-  if (mode === 'random') { renderNextCardAfterFlip(); return; }
+  if (mode === 'random') { clearPreviousReview(); renderNextCardAfterFlip(); return; }
   const now = Date.now();
+  const previousProgress = card.progress ? { ...card.progress } : null;
   const progress = applyReview(card.progress, known, now);
   card.progress = progress;
+  previousReview = { card, progress: previousProgress };
   refs.known.disabled = true;
   refs.unknown.disabled = true;
   showReviewFeedback(progress, now, () => renderNextCardAfterFlip());
@@ -383,6 +405,16 @@ function review(known) {
   }
   renderModeControls();
   renderSidebarStatus();
+}
+
+function restorePreviousReview() {
+  if (gradeVaultLocked || mode !== 'due' || reviewFeedbackActive || !previousReview) return;
+  const previous = previousReview;
+  previousReview = null;
+  previous.card.progress = previous.progress ? { ...previous.progress } : null;
+  if (!isSameReviewCard(queue[0], previous.card)) queue.unshift(previous.card);
+  renderCard();
+  reveal();
 }
 
 function tutorialDemoPortrait(initials, color) {
@@ -534,15 +566,15 @@ function handleTutorialCommand(detail) {
 }
 
 refs.startDue.addEventListener('click', () => start('due')); refs.startRandom.addEventListener('click', () => start('random')); refs.emptyRandom.addEventListener('click', () => start('random')); refs.flipCard.addEventListener('click', reveal);
-refs.practice.addEventListener('click', () => {
-  if (reviewFeedbackActive) {
-    advanceAfterReviewFeedback();
-    return;
-  }
-  reveal();
+refs.main.addEventListener('click', (event) => {
+  if (!reviewFeedbackActive) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest('#known, #unknown, #previous-review')) return;
+  advanceAfterReviewFeedback();
 });
 refs.known.addEventListener('click', (event) => { event.stopPropagation(); review(true); });
 refs.unknown.addEventListener('click', (event) => { event.stopPropagation(); review(false); });
+refs.previousReview.addEventListener('click', (event) => { event.stopPropagation(); restorePreviousReview(); });
 refs.learnerSearchBtn?.addEventListener('click', openLearnerSearchDialog);
 refs.tutorialButton?.addEventListener('click', () => post(TUTORIAL_START_REQUEST, { source: 'iframe', module: 'name-learning' }));
 refs.courseContextMenu?.addEventListener('click', (event) => {

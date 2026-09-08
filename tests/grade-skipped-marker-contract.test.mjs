@@ -143,12 +143,12 @@ test('the grades table marker never overwrites the existing-value placeholder', 
   );
   assert.match(
     grades,
-    /const draftSkippedPlaceholder = draftEntry\.value === null \|\| draftEntry\.value === undefined\s+\? \(this\.isGradeEntrySkipped\(assessment\?\.id, student\.id, course\.id\)/,
+    /if \(draftEntry\.value === null \|\| draftEntry\.value === undefined\) \{\s+if \(this\.isGradeEntrySkipped\(assessment\?\.id, student\.id, course\.id\)\)/,
   );
-  assert.match(grades, /\}"\$\{draftSkippedPlaceholder\} aria-label="Einzelnote für /);
+  assert.match(grades, /setAttribute\("placeholder", String\(GRADE_SKIPPED_PLACEHOLDER\)\)/);
   assert.match(
     grades,
-    /\$\{showSkippedPlaceholder \? `placeholder="\$\{escapeHtml\(GRADE_SKIPPED_PLACEHOLDER\)\}"` : ""\}/,
+    /if \(showSkippedPlaceholder\) \{\s+\w+\.setAttribute\("placeholder", String\(GRADE_SKIPPED_PLACEHOLDER\)\);/,
   );
 
   const helper = sliceBetween(

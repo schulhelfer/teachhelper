@@ -10,7 +10,7 @@ const SERVICE_WORKER_BODY = "importScripts('./src/shared/app-version.js');\n";
 function createSources(version = '44') {
   return new Map([
     [APP_VERSION_PATH, `globalThis.TEACHHELPER_APP_VERSION = '${version}';\n`],
-    [SERVICE_WORKER_PATH, `// teachhelper-app-version: ${version}\n${SERVICE_WORKER_BODY}`],
+    [SERVICE_WORKER_PATH, `const TEACHHELPER_APP_VERSION_STAMP = '${version}';\n${SERVICE_WORKER_BODY}`],
   ]);
 }
 
@@ -44,7 +44,7 @@ test('stamps the service worker so its own bytes change with the release', () =>
 
   assert.equal(
     sources.get(SERVICE_WORKER_PATH),
-    `// teachhelper-app-version: 45\n${SERVICE_WORKER_BODY}`,
+    `const TEACHHELPER_APP_VERSION_STAMP = '45';\n${SERVICE_WORKER_BODY}`,
   );
 });
 
@@ -80,6 +80,6 @@ test('refuses a service worker without the version stamp', () => {
       readFile: (path) => sources.get(path),
       writeFile: (path, source) => sources.set(path, source),
     }),
-    /muss mit \/\/ teachhelper-app-version/,
+    /muss mit const TEACHHELPER_APP_VERSION_STAMP/,
   );
 });

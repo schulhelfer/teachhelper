@@ -1,5 +1,3 @@
-// A supervising worker owns Tesseract and its child worker. Terminating this tree
-// also cancels createWorker(), before Tesseract exposes its initialized worker.
 export function recognizeLocalNames(image, { signal, onProgress, workerFactory = (url) => new Worker(url) } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {

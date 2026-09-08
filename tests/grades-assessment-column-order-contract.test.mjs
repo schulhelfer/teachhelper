@@ -78,7 +78,7 @@ test('the store rejects incomplete and cross-group reorder requests without muta
 });
 
 test('the overview exposes a constrained drag handle and visible insertion state', () => {
-  assert.match(appSource, /data-grade-drag-assessment=/);
+  assert.match(appSource, /dataset\.gradeDragAssessment = String\(cell\.assessment\.id\)/);
   assert.match(appSource, /handleGradeAssessmentColumnDragOver\(event\)/);
   assert.match(appSource, /getGradeAssessmentColumnOrderGroupKey\(target\.assessment\) !== drag\.groupKey/);
   assert.match(appSource, /this\.store\.reorderGradeAssessments\(sourceAssessment\.courseId, orderedIds\)/);

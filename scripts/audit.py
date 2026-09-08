@@ -242,9 +242,9 @@ def check_service_worker_app_version():
     errors.append('service worker must import src/shared/app-version.js before configuring caches')
   if 'self.TEACHHELPER_APP_VERSION' not in service_worker_source:
     errors.append('service worker cache version must derive from TEACHHELPER_APP_VERSION')
-  marker_match = re.match(r"// teachhelper-app-version: (\d+)\n", service_worker_source)
+  marker_match = re.match(r"const TEACHHELPER_APP_VERSION_STAMP = '(\d+)';\n", service_worker_source)
   if not marker_match:
-    errors.append('service worker must start with the // teachhelper-app-version: <number> stamp so its own bytes change per release')
+    errors.append("service worker must start with the TEACHHELPER_APP_VERSION_STAMP constant so its own bytes change per release")
   elif app_version_match and marker_match.group(1) != app_version_match.group(1):
     errors.append(
       f'service worker stamp {marker_match.group(1)} does not match app version {app_version_match.group(1)}'

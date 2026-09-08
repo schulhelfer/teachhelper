@@ -39,9 +39,6 @@ function resolvePreviewSandboxTokens(sandboxTokens) {
     || sandboxTokens.split(/\s+/).includes('allow-same-origin')
     || !isHelpPreviewContext()
   ) return sandboxTokens;
-  // Die verschachtelten PWA-Module enthalten ES-Module. Im ausschließlich
-  // flüchtigen Handbuch-Preview dürfen sie deshalb dieselbe Origin nutzen,
-  // damit sie ohne CORS-Serverkonfiguration gestartet werden können.
   return `${sandboxTokens} allow-same-origin`;
 }
 

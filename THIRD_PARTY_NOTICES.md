@@ -24,12 +24,12 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 
 ## @cantoo/pdf-lib
 
-- Version: 2.9.1
+- Version: 2.9.2
 - License: MIT
-- Source: https://www.npmjs.com/package/@cantoo/pdf-lib/v/2.9.1
+- Source: https://www.npmjs.com/package/@cantoo/pdf-lib/v/2.9.2
 - Local files:
-  - `src/vendor/cantoo-pdf-lib/2.9.1/pdf-lib.min.js`
-  - `src/vendor/cantoo-pdf-lib/2.9.1/LICENSE.md`
+  - `src/vendor/cantoo-pdf-lib/2.9.2/pdf-lib.min.js`
+  - `src/vendor/cantoo-pdf-lib/2.9.2/LICENSE.md`
 - Upstream NOTICE: none published in the npm package.
 - Maintained fork of `pdf-lib` (Copyright (c) 2019 Andrew Dillon, MIT) at https://github.com/cantoo-scribe/pdf-lib; the vendored UMD build still exposes the global `PDFLib`.
 

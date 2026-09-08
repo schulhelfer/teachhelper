@@ -18,7 +18,7 @@ test('empty grade entry views keep enough layout height for their message and ad
   assert.match(method, /classList\.add\("is-empty-state"\)/);
   assert.doesNotMatch(method, /classList\.toggle\("is-empty-state", showUnlockButton\)/);
   assert.match(method, /primaryAction === "createCourse" \|\| primaryAction === "manageStudents"/);
-  assert.match(method, /class="sidebar-add-btn"[\s\S]*sidebar-add-plus/);
+  assert.match(method, /className = "sidebar-add-btn"[\s\S]*sidebar-add-plus/);
   assert.match(appCss, /\.grades-entry-content\.is-empty-state\s*\{[\s\S]*?min-height:\s*100%/);
 });
 

@@ -32,6 +32,16 @@ run_python_checks() {
     fi
   done
 
+  echo "Checking vendored package security advisories..."
+  if "$@" scripts/check-vendor-security.py; then
+    :
+  else
+    status=$?
+    echo "Pre-Commit abgebrochen: Die Sicherheits-Advisory-Prüfung ist fehlgeschlagen." >&2
+    echo "Details erneut anzeigen: $* scripts/check-vendor-security.py" >&2
+    return "$status"
+  fi
+
   echo "Checking vendored package updates..."
   if "$@" scripts/check-vendor-updates.py; then
     :
