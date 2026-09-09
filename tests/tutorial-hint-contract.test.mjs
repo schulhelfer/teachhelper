@@ -31,17 +31,60 @@ const [
     'utf8',
   )),
 ]);
+const tutorialState = await import(`data:text/javascript,${encodeURIComponent(tutorialStateSource)}`);
 
 test('merkt gestartete Einführungen dauerhaft und modulübergreifend', () => {
   assert.match(tutorialStateSource, /TUTORIAL_ENTRY_HINT_SEEN_STORAGE_KEY = 'teachhelper:tutorial-entry-hint-seen:v1'/);
   assert.match(tutorialStateSource, /hasTutorialEntryHintBeenSeen/);
   assert.match(tutorialStateSource, /markTutorialEntryHintSeen/);
+  assert.match(tutorialStateSource, /subscribeToTutorialEntryHintSeen/);
   assert.match(tutorialStateSource, /teachhelper:tutorial-started-tabs:v1/);
   assert.match(tutorialStateSource, /teachhelper:module-sidebar-tutorial-started-tabs:v1/);
   assert.match(tutorialSource, /function startFromEntry\(\) \{\s+return start\(\{ markStarted: true \}\);/);
   assert.match(tutorialSource, /if \(markStarted\) markTutorialStarted\(\);/);
   assert.match(moduleHintSource, /hasTutorialEntryHintBeenSeen\(\)/);
   assert.match(moduleHintSource, /markTutorialEntryHintSeen\(\)/);
+  assert.match(moduleHintSource, /detail: \{ action: 'seen' \}/);
+  assert.match(moduleHintSource, /subscribeToTutorialEntryHintSeen\(clearHint\)/);
+});
+
+test('synchronisiert einen aktivierten Hinweis direkt an offene Module und Fenster', () => {
+  assert.match(mainSource, /data\.detail\?\.action === 'seen'/);
+  assert.match(mainSource, /markTutorialEntryHintSeen\(\);\s+firstRunTutorial\?\.clearContextHelpPrompt\?\.\(\);\s+syncTutorialEntryHintToModules\(\);/);
+  assert.match(mainSource, /onEntrySeen: syncTutorialEntryHintToModules/);
+  assert.match(tutorialSource, /els\.firstRunTutorialStart\?\.addEventListener\('click', \(\) => \{\s+markTutorialStarted\(\);/);
+  assert.match(tutorialSource, /subscribeToTutorialEntryHintSeen\(\(\) => \{\s+clearContextHelpPromptTimer\(\);/);
+});
+
+test('reagiert in anderen Fenstern auf den persistierten Hinweisstatus', () => {
+  const handlers = new Map();
+  const windowRef = {
+    addEventListener(type, callback) {
+      handlers.set(type, callback);
+    },
+    removeEventListener(type, callback) {
+      if (handlers.get(type) === callback) handlers.delete(type);
+    },
+  };
+  let calls = 0;
+  const unsubscribe = tutorialState.subscribeToTutorialEntryHintSeen(() => {
+    calls += 1;
+  }, windowRef);
+
+  handlers.get('storage')?.({
+    key: tutorialState.TUTORIAL_ENTRY_HINT_SEEN_STORAGE_KEY,
+    newValue: '1',
+  });
+  assert.equal(calls, 1);
+
+  handlers.get('storage')?.({
+    key: tutorialState.TUTORIAL_ENTRY_HINT_SEEN_STORAGE_KEY,
+    newValue: '0',
+  });
+  assert.equal(calls, 1);
+
+  unsubscribe();
+  assert.equal(handlers.has('storage'), false);
 });
 
 test('zeigt den Hinweis nur bis ein Tutorial in einem beliebigen Modul gestartet wurde', () => {

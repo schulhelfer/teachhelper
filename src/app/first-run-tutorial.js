@@ -7,6 +7,7 @@ import {
 import {
   hasTutorialEntryHintBeenSeen,
   markTutorialEntryHintSeen,
+  subscribeToTutorialEntryHintSeen,
 } from '../shared/tutorial-entry-state.js';
 
 const VIEWPORT_MARGIN = 14;
@@ -103,6 +104,7 @@ export function createFirstRunTutorial({
   tooltipController = null,
   beforeStart = async () => true,
   onEntryRequest = null,
+  onEntrySeen = null,
 } = {}) {
   let activeSteps = [];
   let active = false;
@@ -202,8 +204,10 @@ export function createFirstRunTutorial({
     clearContextHelpPromptTimer();
     els.firstRunTutorialStart?.classList.remove('tutorial-attention-pulse');
     tooltipController?.hide?.();
-    if (hasTutorialEntryHintBeenSeen()) return;
+    if (hasTutorialEntryHintBeenSeen()) return false;
     markTutorialEntryHintSeen();
+    onEntrySeen?.();
+    return true;
   }
 
   const clearRepositionTimer = () => {
@@ -1123,6 +1127,7 @@ export function createFirstRunTutorial({
   }
 
   els.firstRunTutorialStart?.addEventListener('click', () => {
+    markTutorialStarted();
     if (typeof onEntryRequest === 'function') {
       onEntryRequest();
       return;
@@ -1131,8 +1136,14 @@ export function createFirstRunTutorial({
   });
   els.firstRunTutorialStart?.addEventListener('pointerenter', showContextHelp);
   els.firstRunTutorialStart?.addEventListener('focus', showContextHelp);
+  const unsubscribeFromHintSeen = subscribeToTutorialEntryHintSeen(() => {
+    clearContextHelpPromptTimer();
+    els.firstRunTutorialStart?.classList.remove('tutorial-attention-pulse');
+    tooltipController?.hide?.();
+  });
 
   window.addEventListener('pagehide', runSessionCleanup);
+  window.addEventListener('pagehide', unsubscribeFromHintSeen, { once: true });
   window.addEventListener('beforeunload', runSessionCleanup);
 
   return {

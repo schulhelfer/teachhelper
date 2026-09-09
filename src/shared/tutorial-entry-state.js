@@ -36,3 +36,13 @@ export function markTutorialEntryHintSeen() {
     
   }
 }
+
+export function subscribeToTutorialEntryHintSeen(callback, windowRef = window) {
+  if (typeof callback !== 'function' || !windowRef?.addEventListener) return () => {};
+  const handleStorage = (event) => {
+    if (event?.key !== TUTORIAL_ENTRY_HINT_SEEN_STORAGE_KEY || event.newValue !== '1') return;
+    callback();
+  };
+  windowRef.addEventListener('storage', handleStorage);
+  return () => windowRef.removeEventListener('storage', handleStorage);
+}

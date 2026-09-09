@@ -2,6 +2,7 @@ import { installAppTooltips } from './app-tooltips.js';
 import {
   hasTutorialEntryHintBeenSeen,
   markTutorialEntryHintSeen,
+  subscribeToTutorialEntryHintSeen,
   TUTORIAL_ENTRY_HINT_SYNC_EVENT,
 } from './tutorial-entry-state.js';
 
@@ -26,6 +27,17 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
     button.classList.remove('tutorial-attention-pulse');
     tooltips?.hide?.();
   };
+  const notifyParentHintSeen = () => {
+    if (!embedded) return;
+    try {
+      window.parent.postMessage({
+        type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
+        detail: { action: 'seen' },
+        ...(moduleFrameNonce ? { frameNonce: moduleFrameNonce } : {}),
+      }, parentMessageTarget);
+    } catch {
+    }
+  };
   const isTrustedParentMessage = (event) => (
     embedded
     && event?.source === window.parent
@@ -39,6 +51,8 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
     clearHint();
   };
   window.addEventListener('message', handleParentHintSync);
+  const unsubscribeFromHintSeen = subscribeToTutorialEntryHintSeen(clearHint);
+  window.addEventListener('pagehide', unsubscribeFromHintSeen, { once: true });
   if (embedded) {
     try {
       window.parent.postMessage({
@@ -66,5 +80,6 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
   button.addEventListener('click', () => {
     markTutorialEntryHintSeen();
     clearHint();
+    notifyParentHintSeen();
   }, { once: true });
 }
