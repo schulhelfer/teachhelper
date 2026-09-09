@@ -97,7 +97,7 @@ class DynamicScriptUrlTests(unittest.TestCase):
 
     def test_relative_url_constant_is_trusted(self):
         source = (
-            'const JSZIP_URL = new URL("../../vendor/jszip/3.10.1/jszip.min.js", import.meta.url);\n'
+            'const JSZIP_URL = new URL("../../vendor/jszip/3.10.2/jszip.min.js", import.meta.url);\n'
             'const script = document.createElement("script");\n'
             'script.src = JSZIP_URL.href;'
         )

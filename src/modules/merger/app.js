@@ -36,7 +36,7 @@ export function createMergerApp({
   const TOOL_LAYOUT = "layout";
   const TOOL_ROTATE = "rotate";
   const TOOL_SPLIT = "split";
-  const JSZIP_URL = new URL("../../vendor/jszip/3.10.1/jszip.min.js", import.meta.url);
+  const JSZIP_URL = new URL("../../vendor/jszip/3.10.2/jszip.min.js", import.meta.url);
   const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
     ? new URL(import.meta.url).origin
     : window.location.origin;

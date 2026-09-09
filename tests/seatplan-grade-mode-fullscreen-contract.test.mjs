@@ -20,7 +20,7 @@ test('the seatplan posts chrome requests only to a trusted parent and never acce
   assert.match(helper, /if \(TUTORIAL_DEMO_MODE \|\| !window\.parent \|\| window\.parent === window\) return;/);
   assert.match(helper, /type: SEATPLAN_CHROME_REQUEST_EVENT,/);
   assert.match(helper, /detail: \{ collapsed: Boolean\(collapsed\), source: 'iframe' \},/);
-  assert.match(helper, /\}, TRUSTED_PARENT_ORIGIN\);/);
+  assert.match(helper, /\}\), PARENT_MESSAGE_TARGET\);/);
 
   const allowlistStart = seatplan.indexOf('const ALLOWED_PARENT_MESSAGE_TYPES = new Set([');
   assert.ok(allowlistStart >= 0, 'the inbound allowlist must exist');

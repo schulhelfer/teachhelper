@@ -24,7 +24,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     DUPLICATE_CHECK_SHELL_LAYOUT_EVENT,
     TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   ]);
-  const JSZIP_URL = new URL('../../vendor/jszip/3.10.1/jszip.min.js', import.meta.url);
+  const JSZIP_URL = new URL('../../vendor/jszip/3.10.2/jszip.min.js', import.meta.url);
   const HASH_WIDTH = 17;
   const HASH_HEIGHT = 16;
   const IMAGE_HASH_SIZE = (HASH_WIDTH - 1) * HASH_HEIGHT;

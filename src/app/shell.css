@@ -7706,9 +7706,11 @@
     app-region: drag;
   }
 
-  .app-header > * {
-    -webkit-app-region: none;
-    app-region: none;
+  .app-header-title,
+  .app-header-actions,
+  .tab-nav {
+    -webkit-app-region: drag;
+    app-region: drag;
   }
 
   #toggle-chrome {
@@ -7727,6 +7729,7 @@
 
   .app-header button,
   .app-header [role='button'],
+  .app-header .more-tools-menu,
   .app-header-title-label,
   .app-header-version {
     -webkit-app-region: no-drag;

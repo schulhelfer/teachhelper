@@ -14,12 +14,12 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 
 ## JSZip
 
-- Version: 3.10.1
+- Version: 3.10.2
 - License: (MIT OR GPL-3.0-or-later)
-- Source: https://www.npmjs.com/package/jszip/v/3.10.1
+- Source: https://www.npmjs.com/package/jszip/v/3.10.2
 - Local files:
-  - `src/vendor/jszip/3.10.1/jszip.min.js`
-  - `src/vendor/jszip/3.10.1/LICENSE.markdown`
+  - `src/vendor/jszip/3.10.2/jszip.min.js`
+  - `src/vendor/jszip/3.10.2/LICENSE.markdown`
 - Upstream NOTICE: none published in the npm package.
 
 ## @cantoo/pdf-lib

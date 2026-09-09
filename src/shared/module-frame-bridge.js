@@ -7,7 +7,7 @@ export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
 export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const DUPLICATE_CHECK_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads';
-export const HELP_PREVIEW_FRAME_SANDBOX = 'allow-scripts allow-same-origin';
+export const HELP_PREVIEW_FRAME_SANDBOX = 'allow-scripts';
 export const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
 export const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-response';
 
@@ -25,21 +25,12 @@ function resolveSandboxTokens(sandbox) {
   return String(sandbox).trim();
 }
 
-function isHelpPreviewContext() {
+function isOpaqueOriginContext() {
   try {
-    return new URLSearchParams(window.location.search).has('help-preview');
+    return window.origin === 'null' || window.location.origin === 'null';
   } catch {
     return false;
   }
-}
-
-function resolvePreviewSandboxTokens(sandboxTokens) {
-  if (
-    !sandboxTokens
-    || sandboxTokens.split(/\s+/).includes('allow-same-origin')
-    || !isHelpPreviewContext()
-  ) return sandboxTokens;
-  return `${sandboxTokens} allow-same-origin`;
 }
 
 function appendFrameParameters(src, { nonce = '', theme = '' } = {}) {
@@ -73,19 +64,18 @@ export function createModuleFrame({
   sandbox = '',
 } = {}) {
   const frame = document.createElement('iframe');
-  const sandboxTokens = resolvePreviewSandboxTokens(resolveSandboxTokens(sandbox));
-  const usesOpaqueOriginSandbox = Boolean(sandboxTokens && !sandboxTokens.split(/\s+/).includes('allow-same-origin'));
-  const frameNonce = usesOpaqueOriginSandbox ? createModuleFrameNonce() : '';
+  const sandboxTokens = resolveSandboxTokens(sandbox);
+  const usesOpaqueOriginSandbox = isOpaqueOriginContext()
+    || Boolean(sandboxTokens && !sandboxTokens.split(/\s+/).includes('allow-same-origin'));
+  const frameNonce = createModuleFrameNonce();
   if (className) frame.className = className;
   frame.loading = loading;
   frame.referrerPolicy = 'no-referrer';
   if (title) frame.title = title;
   applyModulePermissions(frame, allow);
   if (sandboxTokens) frame.setAttribute('sandbox', sandboxTokens);
-  if (frameNonce) {
-    frame.dataset.moduleOpaqueOrigin = '1';
-    frame.dataset.moduleFrameNonce = frameNonce;
-  }
+  if (usesOpaqueOriginSandbox) frame.dataset.moduleOpaqueOrigin = '1';
+  frame.dataset.moduleFrameNonce = frameNonce;
   if (src) {
     const initialTheme = document.documentElement?.dataset?.theme;
     frame.src = appendFrameParameters(src, { nonce: frameNonce, theme: initialTheme });
@@ -97,8 +87,22 @@ export function getModuleFrameNonce(frame) {
   return frame?.dataset?.moduleFrameNonce || '';
 }
 
+function hasOpaqueContentOrigin(frame) {
+  const contentWindow = frame?.contentWindow;
+  if (!contentWindow) return false;
+  try {
+    return contentWindow.origin === 'null';
+  } catch {
+    return false;
+  }
+}
+
 export function isOpaqueOriginModuleFrame(frame) {
-  return frame?.dataset?.moduleOpaqueOrigin === '1';
+  if (!frame) return false;
+  if (frame.dataset?.moduleOpaqueOrigin === '1') return true;
+  if (!hasOpaqueContentOrigin(frame)) return false;
+  if (frame.dataset) frame.dataset.moduleOpaqueOrigin = '1';
+  return true;
 }
 
 export function getModuleFrameOrigin(frame) {
@@ -122,7 +126,7 @@ export function isTrustedModuleMessage(event, frame) {
       && event
       && frameNonce
       && event.source === frame.contentWindow
-      && event.origin === 'null'
+      && (event.origin === 'null' || event.origin === origin)
       && data
       && typeof data === 'object'
       && data.frameNonce === frameNonce
@@ -143,6 +147,11 @@ export function postToModule(frame, payload) {
   if (!origin) return false;
   const frameNonce = getModuleFrameNonce(frame);
   const message = frameNonce ? { ...payload, frameNonce } : payload;
-  frame.contentWindow.postMessage(message, isOpaqueOriginModuleFrame(frame) ? '*' : origin);
+  const targetOrigin = isOpaqueOriginModuleFrame(frame) ? '*' : origin;
+  try {
+    frame.contentWindow.postMessage(message, targetOrigin);
+  } catch {
+    return false;
+  }
   return true;
 }

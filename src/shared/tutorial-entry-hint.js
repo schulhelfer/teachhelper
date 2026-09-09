@@ -13,6 +13,7 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
   const moduleFrameNonce = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const moduleOrigin = new URL(import.meta.url).origin;
   const parentOrigin = window.location.origin === 'null' ? moduleOrigin : window.location.origin;
+  const parentMessageTarget = (window.origin === 'null' || moduleFrameNonce) ? '*' : parentOrigin;
   const embedded = window.parent && window.parent !== window;
   const label = `Tutorial oder Hilfe für das Modul ${moduleName}`;
   button.setAttribute('aria-label', label);
@@ -44,7 +45,7 @@ export function installTutorialEntryHint(button, moduleKey, moduleName, root = d
         type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
         detail: { action: 'request' },
         ...(moduleFrameNonce ? { frameNonce: moduleFrameNonce } : {}),
-      }, parentOrigin);
+      }, parentMessageTarget);
     } catch {
     }
   }

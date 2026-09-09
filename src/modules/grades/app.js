@@ -24183,7 +24183,7 @@ class GradesApp {
         showBeColumn: true,
         maxBeSum,
         predicateSuffixes: editorValues?.testPredicateSuffixes
-      }).trim());
+      }));
       const nextTooltip = wrapper.firstElementChild;
       const currentTooltip = option.querySelector(".grade-test-scale-tooltip:not(.grade-test-scale-tooltip-portal)");
       if (nextTooltip && currentTooltip) {

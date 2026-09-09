@@ -13,6 +13,7 @@
     ? new URL(document.currentScript?.src || window.location.href).origin
     : window.location.origin;
   const moduleFrameNonce = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
+  const PARENT_MESSAGE_TARGET = (window.origin === 'null' || moduleFrameNonce) ? '*' : TRUSTED_PARENT_ORIGIN;
 
   function getScope(app) {
     const declaredScope = app?.dataset.sidebarWidthScope;
@@ -44,7 +45,7 @@
   function postToShell(type, detail) {
     if (!window.parent || window.parent === window) return;
     try {
-      window.parent.postMessage(withModuleFrameNonce({ type, detail }), TRUSTED_PARENT_ORIGIN);
+      window.parent.postMessage(withModuleFrameNonce({ type, detail }), PARENT_MESSAGE_TARGET);
     } catch {
       
     }

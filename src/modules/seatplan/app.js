@@ -637,8 +637,19 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           const COURSE_GRADE_ENTRY_MODE_OCCURRENCE = 'occurrence';
           const COURSE_GRADE_INITIAL_PICKER_RETRY_LIMIT = 90;
           const STUDENTS_SYNC_SOURCE = 'seatplan';
-          const TRUSTED_PARENT_ORIGIN = window.location.origin;
+          const TRUSTED_PARENT_ORIGIN = (window.origin === 'null' || window.location.origin === 'null')
+            ? new URL(import.meta.url).origin
+            : window.location.origin;
+          const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
+          const PARENT_MESSAGE_TARGET = (window.origin === 'null' || window.location.origin === 'null') ? '*' : TRUSTED_PARENT_ORIGIN;
+          const EXPECTED_PARENT_ORIGIN = MODULE_FRAME_NONCE ? '' : TRUSTED_PARENT_ORIGIN;
+          const withModuleFrameNonce = (message) => (
+            MODULE_FRAME_NONCE ? { ...message, frameNonce: MODULE_FRAME_NONCE } : message
+          );
+          const TUTORIAL_TARGET_RECT_REQUEST_EVENT = 'classroom:tutorial-target-rect-request';
+          const TUTORIAL_TARGET_RECT_RESPONSE_EVENT = 'classroom:tutorial-target-rect-response';
           const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
+            TUTORIAL_TARGET_RECT_REQUEST_EVENT,
             SEATPLAN_SHELL_LAYOUT_EVENT,
             STUDENTS_UPDATED_EVENT,
             SEATPLAN_COURSE_CONTEXT_EVENT,
@@ -996,10 +1007,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               gradeRosterCoursesState = 'loading';
               renderGradeRosterPills();
             }
-            window.parent.postMessage({
+            window.parent.postMessage(withModuleFrameNonce({
               type: SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
               detail: { requestId, returnTab: 'seatplan', interactive, unlock, restoreTabAfterUnlock: true }
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           function startGradeRosterImport(courseId) {
@@ -1007,10 +1018,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
             pendingGradeRosterImportRequestId = requestId;
             updateCourseSeatplanUi();
-            window.parent.postMessage({
+            window.parent.postMessage(withModuleFrameNonce({
               type: SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
               detail: { requestId, courseId: Number(courseId || 0), returnTab: 'seatplan' }
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           async function importGradeRosterCourse(courseId) {
@@ -1143,7 +1154,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const requestId = `seatplan-course-plan-${createRequestId()}`;
             pendingGradeRosterImportRequestId = requestId;
             updateCourseSeatplanUi();
-            window.parent.postMessage({
+            window.parent.postMessage(withModuleFrameNonce({
               type: SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
               detail: {
                 requestId,
@@ -1152,7 +1163,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 mode: 'plan',
                 returnTab: 'seatplan',
               },
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           function closeCourseRosterResetDialog(returnValue = '') {
@@ -1725,7 +1736,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.pendingCourseSaveRequestId = requestId;
             state.pendingCourseSaveRequest = { requestId, courseId, contextToken, rosterToken };
             updateCourseSeatplanUi();
-            window.parent?.postMessage({
+            window.parent?.postMessage(withModuleFrameNonce({
               type: SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
               detail: {
                 requestId,
@@ -1735,7 +1746,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 rosterToken,
                 plan,
               }
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
             return true;
           }
 
@@ -2240,7 +2251,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               state.courseGradeConfig = null;
             }
             updateCourseSeatplanUi();
-            window.parent?.postMessage({
+            window.parent?.postMessage(withModuleFrameNonce({
               type: SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
               detail: {
                 requestId,
@@ -2251,7 +2262,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 entryMode,
                 occurrenceCategoryId: occurrenceCategoryId || null,
               }
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           function openPendingCourseGradePicker() {
@@ -2316,10 +2327,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function requestShellChromeCollapsed(collapsed) {
             if (TUTORIAL_DEMO_MODE || !window.parent || window.parent === window) return;
-            window.parent.postMessage({
+            window.parent.postMessage(withModuleFrameNonce({
               type: SEATPLAN_CHROME_REQUEST_EVENT,
               detail: { collapsed: Boolean(collapsed), source: 'iframe' },
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           function startCourseGradeMode(values, options = {}) {
@@ -3478,7 +3489,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.pendingCourseGradeSaveRequestId = requestId;
             state.pendingCourseGradeSaveRequest = { requestId, courseId, contextToken, rosterToken };
             updateCourseSeatplanUi();
-            window.parent?.postMessage({
+            window.parent?.postMessage(withModuleFrameNonce({
               type: SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
               detail: {
                 requestId,
@@ -3492,7 +3503,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 assessment: { ...state.courseGradeDraft },
                 changes: delta.changes,
               }
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
             return true;
           }
 
@@ -3542,21 +3553,21 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function returnToPlanningAfterCourseGradeSave(message) {
             if (!window.parent || window.parent === window) return;
-            window.parent.postMessage({
+            window.parent.postMessage(withModuleFrameNonce({
               type: 'classroom:planning-view-request',
               detail: {
                 view: 'course',
                 source: 'iframe',
                 returnNotice: String(message || ''),
               },
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           function publishStudentsUpdatedFromSeatplan() {
             if (TUTORIAL_DEMO_MODE || !window.parent || window.parent === window) return;
             const importedAt = Date.now();
             lastStudentsSyncTimestamp = Math.max(lastStudentsSyncTimestamp, importedAt);
-            window.parent.postMessage({
+            window.parent.postMessage(withModuleFrameNonce({
               type: STUDENTS_UPDATED_EVENT,
               detail: {
                 source: STUDENTS_SYNC_SOURCE,
@@ -3569,7 +3580,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 delim: typeof state.delim === 'string' ? state.delim : ',',
                 importedAt,
               }
-            }, TRUSTED_PARENT_ORIGIN);
+            }), PARENT_MESSAGE_TARGET);
           }
 
           function applySyncedStudents(detail) {
@@ -3608,12 +3619,53 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             renderSeats();
           }
 
+          function isVisibleTutorialTarget(candidate) {
+            if (!(candidate instanceof HTMLElement) || candidate.hidden) return false;
+            const rect = candidate.getBoundingClientRect();
+            const style = window.getComputedStyle(candidate);
+            return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+          }
+
+          function respondWithTutorialTargetRect(detail) {
+            const requestId = String(detail?.requestId || '');
+            if (!requestId) return;
+            const selectors = Array.isArray(detail?.selectors) ? detail.selectors : [];
+            const element = selectors
+              .map((selector) => (typeof selector === 'string' && selector ? document.querySelector(selector) : null))
+              .find(isVisibleTutorialTarget);
+            if (element && detail?.reveal) {
+              const bounds = element.getBoundingClientRect();
+              if (bounds.top < 0 || bounds.left < 0 || bounds.bottom > window.innerHeight || bounds.right > window.innerWidth) {
+                element.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'auto' });
+              }
+            }
+            const rect = element?.getBoundingClientRect();
+            window.parent.postMessage(withModuleFrameNonce({
+              type: TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
+              detail: {
+                requestId,
+                rect: rect ? {
+                  left: rect.left,
+                  top: rect.top,
+                  width: rect.width,
+                  height: rect.height,
+                  viewportWidth: window.innerWidth,
+                  viewportHeight: window.innerHeight,
+                } : null,
+              },
+            }), PARENT_MESSAGE_TARGET);
+          }
+
           window.addEventListener('message', (event) => {
             if (!window.parent || event.source !== window.parent) return;
-            if (event.origin !== TRUSTED_PARENT_ORIGIN) return;
+            if ((EXPECTED_PARENT_ORIGIN && event.origin !== EXPECTED_PARENT_ORIGIN)) return;
             const data = event?.data;
             if (!data || typeof data !== 'object') return;
             if (!ALLOWED_PARENT_MESSAGE_TYPES.has(data.type)) return;
+            if (data.type === TUTORIAL_TARGET_RECT_REQUEST_EVENT) {
+              respondWithTutorialTargetRect(data.detail && typeof data.detail === 'object' ? data.detail : {});
+              return;
+            }
             if (data.type === MODULE_CONTEXT_MENU_DISMISS_EVENT) {
               closeGradeRosterImportMenu();
               return;

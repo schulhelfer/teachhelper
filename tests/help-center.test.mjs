@@ -81,7 +81,7 @@ test('dynamische Beispielansichten laden die echte PWA isoliert statt einer Symb
   assert.match(helpVisualSource, /createElementNS/);
   assert.match(helpVisualSource, /createModuleFrame/);
   assert.match(helpVisualSource, /HELP_PREVIEW_FRAME_SANDBOX/);
-  assert.match(moduleFrameBridgeSource, /HELP_PREVIEW_FRAME_SANDBOX = 'allow-scripts allow-same-origin'/);
+  assert.match(moduleFrameBridgeSource, /HELP_PREVIEW_FRAME_SANDBOX = 'allow-scripts'/);
   assert.match(helpVisualSource, /\.\.\/\.\.\/index\.html/);
   assert.match(helpVisualSource, /HELP_PREVIEW_COMMAND_EVENT/);
   assert.match(helpVisualSource, /HELP_PREVIEW_STATE_EVENT/);
@@ -119,8 +119,9 @@ test('der Vorschaumodus bleibt flüchtig, nicht bedienbar und ohne PWA-Nebeneffe
   assert.match(shellCssSource, /#app\[data-help-preview='true'\] \{\s+pointer-events: none;/);
   assert.match(shellCssSource, /\.help-preview-frame \{[\s\S]*?pointer-events: none;/);
   assert.match(helpVisualSource, /sandbox: HELP_PREVIEW_FRAME_SANDBOX/);
-  assert.match(moduleFrameBridgeSource, /function isHelpPreviewContext\(\)/);
-  assert.match(moduleFrameBridgeSource, /return `\$\{sandboxTokens\} allow-same-origin`/);
+  assert.doesNotMatch(moduleFrameBridgeSource, /function isHelpPreviewContext\(\)/);
+  assert.doesNotMatch(moduleFrameBridgeSource, /resolvePreviewSandboxTokens/);
+  assert.match(moduleFrameBridgeSource, /function isOpaqueOriginContext\(\)/);
   assert.doesNotMatch(helpVisualSource, /allow-downloads|allow-forms|allow-popups|allow-top-navigation/);
   assert.doesNotMatch(shellCssSource, /\.help-visual-app \{|\.help-visual-preview/);
 });

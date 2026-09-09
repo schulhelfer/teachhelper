@@ -670,6 +670,12 @@ if bridge_path.exists():
       flags=re.DOTALL,
     )
   }
+  help_preview_profile_match = re.search(
+    r"export\s+const\s+(?P<name>HELP_PREVIEW_FRAME_SANDBOX)\s*=\s*(?P<q>['\"])(?P<tokens>.*?)(?P=q)",
+    bridge_body,
+  )
+  if help_preview_profile_match:
+    sandbox_profiles[help_preview_profile_match.group('name')] = help_preview_profile_match.group('tokens').split()
   for profile_name, tokens in sorted(sandbox_profiles.items()):
     if 'allow-same-origin' in tokens:
       errors.append(f'{profile_name} must not include allow-same-origin')
@@ -718,7 +724,7 @@ unsandboxed_module_frame_allowed_paths = {
 same_origin_frame_profiles = {
   help_visuals_path: 'HELP_PREVIEW_FRAME_SANDBOX',
 }
-help_preview_frame_sandbox_tokens = {'allow-scripts', 'allow-same-origin'}
+help_preview_frame_sandbox_tokens = {'allow-scripts'}
 if bridge_path.exists():
   help_preview_sandbox_match = re.search(
     r'export\s+const\s+HELP_PREVIEW_FRAME_SANDBOX\s*=\s*([\'"])(?P<tokens>.*?)\1',

@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '86';
+const TEACHHELPER_APP_VERSION_STAMP = '87';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -125,8 +125,8 @@ const DEFERRED_ASSETS = [
   './src/modules/qr/app.js',
   './src/modules/qr/vendor/qrcode.min.js',
   './src/modules/qr/vendor/jsQR.js',
-  './src/vendor/jszip/3.10.1/jszip.min.js',
-  './src/vendor/jszip/3.10.1/LICENSE.markdown',
+  './src/vendor/jszip/3.10.2/jszip.min.js',
+  './src/vendor/jszip/3.10.2/LICENSE.markdown',
   './src/vendor/cantoo-pdf-lib/2.9.2/pdf-lib.min.js',
   './src/vendor/cantoo-pdf-lib/2.9.2/LICENSE.md',
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs',

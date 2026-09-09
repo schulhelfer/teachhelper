@@ -1,25 +1,25 @@
 {
   "version": 1,
-  "updated": "2026-09-08",
+  "updated": "2026-09-09",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
       "name": "jszip",
-      "version": "3.10.1",
+      "version": "3.10.2",
       "license": "MIT OR GPL-3.0-or-later",
-      "source": "https://www.npmjs.com/package/jszip/v/3.10.1",
+      "source": "https://www.npmjs.com/package/jszip/v/3.10.2",
       "registry": "npm",
       "package": "jszip",
-      "purl": "pkg:npm/jszip@3.10.1",
+      "purl": "pkg:npm/jszip@3.10.2",
       "updateNotes": "Fetch the matching npm package release, replace local runtime and license files, refresh SHA-256 hashes, then run scripts/audit.py.",
       "files": [
         {
-          "path": "src/vendor/jszip/3.10.1/jszip.min.js",
+          "path": "src/vendor/jszip/3.10.2/jszip.min.js",
           "role": "runtime",
-          "sha256": "acc7e41455a80765b5fd9c7ee1b8078a6d160bbbca455aeae854de65c947d59e"
+          "sha256": "7f839b2d4688b845c105ebf5d2f9803075f91ea0fe72bdaac176c3a04dd3d2c1"
         },
         {
-          "path": "src/vendor/jszip/3.10.1/LICENSE.markdown",
+          "path": "src/vendor/jszip/3.10.2/LICENSE.markdown",
           "role": "license",
           "sha256": "566c953c6090b1218ca6217dd7359d45dde46581968586dc607d59a78af6a9c4"
         }

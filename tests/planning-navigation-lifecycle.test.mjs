@@ -120,7 +120,7 @@ test('a shell view message reaches planning exactly once without a parent postMe
     }
   }
   const fakeWindow = {
-    location: { origin: 'https://teachhelper.test' },
+    location: { origin: 'https://teachhelper.test', href: 'https://teachhelper.test/', hash: '' },
     parent,
     addEventListener(type, listener) {
       const registered = listeners.get(type) || [];
@@ -136,6 +136,8 @@ test('a shell view message reaches planning exactly once without a parent postMe
     window: fakeWindow,
     document: { documentElement: { dataset: {} } },
     CustomEvent: FakeCustomEvent,
+    URL,
+    URLSearchParams,
   });
 
   let deliveredViewRequests = 0;
@@ -167,7 +169,7 @@ test('planning bridge applies the shell fullscreen state to its document', () =>
     }
   }
   const fakeWindow = {
-    location: { origin: 'https://teachhelper.test' },
+    location: { origin: 'https://teachhelper.test', href: 'https://teachhelper.test/', hash: '' },
     parent,
     addEventListener(type, listener) {
       const registered = listeners.get(type) || [];
@@ -183,6 +185,8 @@ test('planning bridge applies the shell fullscreen state to its document', () =>
     window: fakeWindow,
     document: { documentElement },
     CustomEvent: FakeCustomEvent,
+    URL,
+    URLSearchParams,
   });
 
   const sendShellLayout = (collapsed) => fakeWindow.dispatchEvent({

@@ -60,7 +60,7 @@ test('an explicit course pick in grades is reported to the shell', () => {
   );
   assert.match(gradesApp, /this\.selectedCourseId = nextCourseId;\s*this\.notifyParentCourseContext\(nextCourseId\)/);
   assert.match(gradesBridge, /COURSE_CONTEXT_EVENT = 'classroom:grades-course-context'/);
-  assert.match(gradesBridge, /window\.addEventListener\(COURSE_CONTEXT_EVENT[\s\S]*?postMessage\(\{ type: COURSE_CONTEXT_EVENT/);
+  assert.match(gradesBridge, /window\.addEventListener\(COURSE_CONTEXT_EVENT[\s\S]*?postMessage\(withModuleFrameNonce\(\{ type: COURSE_CONTEXT_EVENT/);
   assert.match(gradesIndex, /\[GRADES_COURSE_CONTEXT_EVENT, GRADES_COURSE_CONTEXT_EVENT\]/);
 });
 

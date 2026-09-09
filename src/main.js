@@ -2994,7 +2994,7 @@ import {
     if (!helpPreviewRequest || !firstRunTutorial) return;
     const { articleId, config } = helpPreviewRequest;
     const frameNonce = getHelpPreviewFrameNonce(window.location);
-    const trustedParentOrigin = window.location.origin === 'null' ? '*' : window.location.origin;
+    const trustedParentOrigin = (window.origin === 'null' || window.location.origin === 'null') ? '*' : window.location.origin;
     const postState = (state, detail = {}) => {
       if (window.parent === window) return;
       window.parent.postMessage({
