@@ -2,6 +2,7 @@
 import importlib.util
 import io
 import json
+import sys
 import tempfile
 import unittest
 import urllib.error
@@ -11,7 +12,12 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_PATH = ROOT / 'scripts' / 'check-vendor-security.py'
 SPEC = importlib.util.spec_from_file_location('check_vendor_security', SCRIPT_PATH)
 security = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(security)
+_PREVIOUS_DONT_WRITE_BYTECODE = sys.dont_write_bytecode
+sys.dont_write_bytecode = True
+try:
+  SPEC.loader.exec_module(security)
+finally:
+  sys.dont_write_bytecode = _PREVIOUS_DONT_WRITE_BYTECODE
 
 
 def manifest(packages):
