@@ -33,8 +33,13 @@ test('die Kopfzeilen-Container geben ihren Leerraum als Ziehfläche frei', () =>
     /\.tab-nav/,
     'der freie Platz rechts der Tabs gehoert zur .tab-nav - ohne drag laesst sich das Fenster dort nicht verschieben',
   );
-  assert.match(dragSelectors, /\.app-header-actions/);
   assert.match(dragSelectors, /\.app-header-title/);
+  assert.doesNotMatch(
+    dragSelectors,
+    /\.app-header-actions/,
+    'der Leerraum der Aktionsleiste ist schon ueber .app-header ziehbar - eine eigene Ziehflaeche '
+    + 'legt sich als volle Header-Zeile wieder ueber die no-drag-Aussparung der Versionsnummer',
+  );
 });
 
 test('kein pauschaler Reset nimmt den Kindern der Kopfzeile die Ziehfläche', () => {

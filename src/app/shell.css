@@ -7707,7 +7707,6 @@
   }
 
   .app-header-title,
-  .app-header-actions,
   .tab-nav {
     -webkit-app-region: drag;
     app-region: drag;

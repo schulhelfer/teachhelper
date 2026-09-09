@@ -49,3 +49,29 @@ test('die Versionsnummer bleibt eine Schaltfläche im Titel-Label', () => {
     /class="app-header-title-label"[\s\S]*?id="app-header-version"[\s\S]*?role="button"/,
   );
 });
+
+test('kein spaeteres Element im Header ueberzieht die Versionsnummer wieder mit einer Ziehflaeche', () => {
+  const block = windowControlsOverlayBlock();
+  const dragSelectors = [...block.matchAll(/([^{}]+)\{[^{}]*[^-]app-region:\s*drag[^{}]*\}/g)]
+    .map((match) => match[1])
+    .join(',');
+  assert.doesNotMatch(
+    dragSelectors,
+    /\.app-header-actions/,
+    'die Aktionsleiste liegt als volle Header-Zeile hinter dem Titel und steht im DOM nach der '
+    + 'Versionsnummer – als Ziehflaeche hebt sie deren no-drag-Aussparung wieder auf',
+  );
+});
+
+test('die Aktionsleiste bleibt eine volle Header-Zeile hinter dem Titel', () => {
+  assert.match(
+    shellCss,
+    /\.app-header-actions \{[^}]*grid-column: 1 \/ -1;[^}]*\}/,
+    'die Annahme des Ziehflaechen-Tests haengt an dieser Ueberlappung',
+  );
+  assert.match(
+    indexHtml,
+    /id="app-header-version"[\s\S]*?class="app-header-actions"/,
+    'die Versionsnummer muss vor der Aktionsleiste im DOM stehen',
+  );
+});
