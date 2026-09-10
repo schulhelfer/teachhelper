@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '96';
+const TEACHHELPER_APP_VERSION_STAMP = '97';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
