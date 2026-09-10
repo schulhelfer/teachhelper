@@ -288,7 +288,7 @@ test('planning, group metadata, file names and shared errors cross the DOM bound
     assertSafe(table.content);
     document.execCommand = originalCommand;
 
-    const source = await (await fetch('/src/main.js')).text();
+    const source = await (await fetch('/src/modules/groups/app.js')).text();
     const begin = source.indexOf('  function buildGrid() {');
     const end = source.indexOf('\n  function renderSeats()', begin);
     check(begin >= 0 && end > begin, 'Group renderer found');
@@ -300,7 +300,7 @@ test('planning, group metadata, file names and shared errors cross the DOM bound
       deleteGroupSeat: (id) => { hooks.deleted = id; }, getSeatList: () => [], renderSeats() {},
       addPlaceholderDropHandlers() {}, createNewSeatAndAssign() {}, requestGroupGridLayoutRefresh() {},
     };
-    const buildGrid = Function('state', 'els', ...Object.keys(hooks), `${source.slice(begin, end)}; return buildGrid;`)(state, els, ...Object.values(hooks));
+    const buildGrid = Function('state', 'els', 'doc', ...Object.keys(hooks), `${source.slice(begin, end)}; return buildGrid;`)(state, els, document, ...Object.values(hooks));
     buildGrid();
     assertSafe(els.groupsGrid);
     const topic = els.groupsGrid.querySelector('.seat-topic');

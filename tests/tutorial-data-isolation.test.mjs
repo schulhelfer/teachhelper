@@ -14,6 +14,7 @@ const [
   qrSource,
   frameBridgeSource,
   workPhaseSource,
+  groupsSource,
 ] = await Promise.all([
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
@@ -26,6 +27,7 @@ const [
   readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/module-frame-bridge.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/work-phase/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/groups/app.js', import.meta.url), 'utf8'),
 ]);
 
 test('automatic tutorial demos replace the step set and retain their cleanup', () => {
@@ -117,11 +119,14 @@ test('work phase tutorial restores the complete previous timer snapshot', () => 
 
 test('groups and picker restore both the visible roster and the shared roster store', () => {
   assert.match(mainSource, /const previousRosterState = SharedRosterStore\.getState\(\)/);
+  assert.match(mainSource, /const previousGroupsState = groupsController\?\.getStateSnapshot\(\)/);
   assert.match(
     mainSource,
-    /SharedRosterStore\.replace\(previousRosterState\);\s+classroomTutorialDemoActive = false;\s+state = realClassroomState;/
+    /SharedRosterStore\.replace\(previousRosterState\);\s+classroomTutorialDemoActive = false;\s+state = realClassroomState;\s+groupsController\?\.replaceState\(previousGroupsState\);/
   );
   assert.match(mainSource, /if \(classroomTutorialDemoActive\) return SharedRosterStore\.getState\(\)/);
+  assert.match(groupsSource, /getStateSnapshot\(\) \{/);
+  assert.match(groupsSource, /replaceState\(nextState\) \{/);
 });
 
 test('duplicate check demo restores records, rules, and file summary', () => {
