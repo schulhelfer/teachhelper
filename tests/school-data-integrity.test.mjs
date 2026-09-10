@@ -33,6 +33,7 @@ function states() {
       ],
       gradeImports: [{ courseId: 1 }, { courseId: 2 }],
       gradeSeatPlans: [{ courseId: 1 }, { courseId: 2 }],
+      gradePickerConfigs: [{ courseId: 1 }, { courseId: 2 }],
       gradeAccommodations: [{ studentId: 1001, courseId: 1 }, { studentId: 2001, courseId: 2 }],
       unrelated: { preserved: true },
     },
@@ -54,6 +55,7 @@ test('an explicit course deletion removes exactly that course cascade', () => {
     override: gradeState.gradeOverrides[0],
     importRow: gradeState.gradeImports[0],
     seatPlan: gradeState.gradeSeatPlans[0],
+    pickerConfig: gradeState.gradePickerConfigs[0],
     accommodation: gradeState.gradeAccommodations[0],
   });
 
@@ -75,6 +77,7 @@ test('an explicit course deletion removes exactly that course cascade', () => {
   assert.deepEqual(gradeState.gradeOverrides, [gradeCourseA.override]);
   assert.deepEqual(gradeState.gradeImports, [gradeCourseA.importRow]);
   assert.deepEqual(gradeState.gradeSeatPlans, [gradeCourseA.seatPlan]);
+  assert.deepEqual(gradeState.gradePickerConfigs, [gradeCourseA.pickerConfig]);
   assert.deepEqual(gradeState.gradeAccommodations, [gradeCourseA.accommodation]);
   assert.deepEqual(publicState.unrelated, { preserved: true });
   assert.deepEqual(gradeState.unrelated, { preserved: true });

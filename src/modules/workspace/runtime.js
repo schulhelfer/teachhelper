@@ -124,6 +124,7 @@ function gradeStateContainsCourseData(state, courseId) {
     'gradeStudents',
     'gradeImports',
     'gradeSeatPlans',
+    'gradePickerConfigs',
     'gradeAccommodations',
     'gradeNameLearning',
   ].some((key) => (
@@ -174,6 +175,7 @@ function buildCourseContentSignature(state, courseId) {
     overrides: rowsForCourse('gradeOverrides').length,
     imports: rowsForCourse('gradeImports').length,
     seatPlans: rowsForCourse('gradeSeatPlans').length,
+    pickerConfigs: rowsForCourse('gradePickerConfigs').length,
     accommodations: rowsForCourse('gradeAccommodations').length,
     nameLearning: rowsForCourse('gradeNameLearning').length,
   };
@@ -295,6 +297,11 @@ function persistedCourseFromState(store, courseId, rawState = null) {
       if (copy.plan && typeof copy.plan === 'object') delete copy.plan.students;
       return copy;
     }),
+    gradePickerConfigs: (Array.isArray(state.gradePickerConfigs) ? state.gradePickerConfigs : []).filter((row) => Number(row.courseId) === id).map((row) => {
+      const copy = clone(row, {});
+      delete copy.courseId;
+      return copy;
+    }),
     gradeAccommodations: state.gradeAccommodations.filter((row) => Number(row.courseId) === id).map((row) => {
       const copy = clone(row, {});
       delete copy.courseId;
@@ -323,6 +330,7 @@ function runtimeCourseFromPersisted(store, courseId, persisted) {
     gradeOverrides: withCourse(persisted.gradeOverrides),
     gradeImports: withCourse(persisted.gradeImports),
     gradeSeatPlans: withCourse(persisted.gradeSeatPlans),
+    gradePickerConfigs: withCourse(persisted.gradePickerConfigs),
     gradeAccommodations: withCourse(persisted.gradeAccommodations),
     gradeNameLearning: withCourse(persisted.gradeNameLearning),
   });
@@ -1241,6 +1249,7 @@ export class WorkspaceRuntime {
       try {
         state = await this.getGradeCourseStateSnapshot(courseId);
       } catch (error) {
+        if (error?.code === WORKSPACE_ERROR_VAULT_LOCKED || !this.canAccessGradeVault()) return false;
         console.warn(`[TeachHelper] Kurs ${courseId} konnte für die Namenslern-Übersicht nicht gelesen werden.`, error);
         complete = false;
         continue;

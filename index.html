@@ -237,7 +237,7 @@
 
       <div class="row sitzplan-row random-picker-sidebar-plan-actions">
         <button id="random-picker-import" class="primary flex-1" type="button"
-          title="Namensliste importieren">Liste<br>wählen</button>
+          title="Gespeicherten Pickerstand laden">Picker<br>laden</button>
         <button id="random-picker-export" class="primary flex-1" type="button"
           title="Aktuellen Picker als Datei speichern">Picker<br>speichern</button>
       </div>
@@ -245,6 +245,21 @@
       <div class="row mt-md random-picker-sidebar-start-row">
         <button id="random-picker-start" class="random-picker-button" type="button"
           data-random-picker-start="1">Start</button>
+      </div>
+      <div class="row mt-md random-picker-course-reset-row" hidden>
+        <button id="random-picker-course-reset" class="ghost random-picker-course-reset-button" type="button"
+          aria-label="Kursbindung lösen" title="Kursbindung lösen und eine eigene Liste verwenden">
+          <svg class="app-action-reset-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+            <path d="M20 11a8 8 0 0 0-14.8-4.2L3 9" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M3 4.5V9h4.5" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M4 13a8 8 0 0 0 14.8 4.2L21 15" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" />
+            <path d="M21 19.5V15h-4.5" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </button>
       </div>
 
       <div class="row mt-md groups-sidebar-action-row">

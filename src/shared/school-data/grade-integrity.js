@@ -5,6 +5,7 @@ const COURSE_COLLECTIONS = Object.freeze([
   'gradeOverrides',
   'gradeImports',
   'gradeSeatPlans',
+  'gradePickerConfigs',
   'gradeAccommodations',
   'gradeNameLearning',
 ]);

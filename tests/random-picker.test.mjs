@@ -22,8 +22,8 @@ test('random picker weight normalization preserves the existing boundaries', () 
   assert.equal(normalizeRandomPickerWeight(-3), 0);
   assert.equal(normalizeRandomPickerWeight(0), 0);
   assert.equal(normalizeRandomPickerWeight(1), 1);
-  assert.equal(normalizeRandomPickerWeight(2), 1);
-  assert.equal(normalizeRandomPickerWeight(3), 1);
+  assert.equal(normalizeRandomPickerWeight(2), 2);
+  assert.equal(normalizeRandomPickerWeight(3), 3);
   assert.equal(normalizeRandomPickerWeight(4), 4);
   assert.equal(normalizeRandomPickerWeight(9), 4);
   assert.equal(normalizeRandomPickerWeight('invalid'), 1);

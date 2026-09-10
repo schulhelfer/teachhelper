@@ -31,6 +31,7 @@ function courseState(courseId = 2) {
     gradeOverrides: [{ studentId: 201, courseId, scope: 'year', value: 13 }],
     gradeImports: [],
     gradeSeatPlans: [],
+    gradePickerConfigs: [],
     gradeAccommodations: [{ studentId: 202, courseId, text: 'Zeitverlängerung' }],
   };
 }
@@ -59,6 +60,7 @@ test('foreign cached rows fail closed instead of being filtered into an empty co
     'gradeOverrides',
     'gradeImports',
     'gradeSeatPlans',
+    'gradePickerConfigs',
     'gradeAccommodations',
   ]) {
     const state = courseState();

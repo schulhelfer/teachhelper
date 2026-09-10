@@ -155,6 +155,55 @@ function createRuntime() {
   return { store, runtime };
 }
 
+test('Picker-Konfigurationen werden kursweise normalisiert, exportiert und beim Löschen entfernt', () => {
+  const store = new WorkspaceStore();
+  store._save = () => {};
+  store._saveGradeVault = () => {};
+  const year = store.getActiveSchoolYear();
+  const firstCourseId = store.createCourse(year.id, '5a', '#3CB44B', false, false, 'Mathe');
+  const secondCourseId = store.createCourse(year.id, '6a', '#3CB44B', false, false, 'Mathe');
+
+  assert.equal(store.getGradePickerConfig(firstCourseId), null);
+  store.saveGradePickerConfig(firstCourseId, {
+    weightsByStudentId: { 11: 1.6, 12: 9, invalid: 2 },
+    autoDisableSelected: true,
+  });
+  store.saveGradePickerConfig(secondCourseId, {
+    weightsByStudentId: { 21: -4 },
+    autoDisableSelected: false,
+  });
+  store.replaceGradeVaultState({
+    ...store.exportGradeVaultStateSnapshot(),
+    gradePickerConfigs: [
+      { courseId: firstCourseId, config: { weightsByStudentId: { 11: 2 }, autoDisableSelected: false }, updatedAt: '2026-09-09T10:00:00.000Z' },
+      { courseId: firstCourseId, config: { weightsByStudentId: { 12: 4 }, autoDisableSelected: true }, updatedAt: '2026-09-10T10:00:00.000Z' },
+      { courseId: secondCourseId, config: { weightsByStudentId: { 21: 0 }, autoDisableSelected: false }, updatedAt: '2026-09-10T10:00:00.000Z' },
+    ],
+  });
+
+  assert.deepEqual(store.getGradePickerConfig(firstCourseId), {
+    weightsByStudentId: { 12: 4 },
+    autoDisableSelected: true,
+  });
+  const exportedPublic = store.exportPublicStateSnapshot();
+  const exportedVault = store.exportGradeVaultStateSnapshot();
+  const imported = new WorkspaceStore();
+  imported._save = () => {};
+  imported._saveGradeVault = () => {};
+  imported.importDatabaseState(exportedPublic, exportedVault);
+  assert.deepEqual(imported.getGradePickerConfig(firstCourseId), {
+    weightsByStudentId: { 12: 4 },
+    autoDisableSelected: true,
+  });
+
+  imported.deleteCourse(firstCourseId);
+  assert.equal(imported.getGradePickerConfig(firstCourseId), null);
+  assert.deepEqual(imported.getGradePickerConfig(secondCourseId), {
+    weightsByStudentId: { 21: 0 },
+    autoDisableSelected: false,
+  });
+});
+
 const portrait = (seed) => ({ mime: 'image/webp', data: Buffer.alloc(8 * 1024, seed % 250).toString('base64') });
 
 const parseContainer = (bytes) => parseThdb1ContainerBytes(bytes, {
@@ -535,6 +584,7 @@ test('a save refuses a course segment that is unexpectedly emptied in memory', a
     'gradeOverrides',
     'gradeImports',
     'gradeSeatPlans',
+    'gradePickerConfigs',
     'gradeAccommodations',
     'gradeNameLearning',
   ];

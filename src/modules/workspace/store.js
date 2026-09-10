@@ -100,6 +100,7 @@ function createInitialGradeVaultState() {
     gradeOverrides: [],
     gradeImports: [],
     gradeSeatPlans: [],
+    gradePickerConfigs: [],
     gradeAccommodations: [],
     gradeNameLearning: []
   };
@@ -2808,6 +2809,42 @@ export class WorkspaceStore {
     return cloneJsonValue(row, null);
   }
 
+  getGradePickerConfig(courseId) {
+    const id = Number(courseId);
+    if (!id) return null;
+    const row = this.gradeVaultState.gradePickerConfigs.find((item) => Number(item.courseId) === id);
+    if (!row || !row.config || typeof row.config !== "object") return null;
+    return cloneJsonValue(row.config, null);
+  }
+
+  saveGradePickerConfig(courseId, config) {
+    const id = Number(courseId);
+    if (!id || !config || typeof config !== "object") return null;
+    const sourceWeights = config.weightsByStudentId && typeof config.weightsByStudentId === "object"
+      ? config.weightsByStudentId
+      : {};
+    const weightsByStudentId = Object.fromEntries(Object.entries(sourceWeights)
+      .map(([studentId, weight]) => [Number(studentId), Math.round(Number(weight))])
+      .filter(([studentId, weight]) => Number.isSafeInteger(studentId) && studentId > 0 && Number.isFinite(weight))
+      .map(([studentId, weight]) => [String(studentId), Math.min(4, Math.max(0, weight))]));
+    const row = {
+      courseId: id,
+      config: {
+        weightsByStudentId,
+        autoDisableSelected: config.autoDisableSelected === true,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    const existing = this.gradeVaultState.gradePickerConfigs.find((item) => Number(item.courseId) === id);
+    if (existing) {
+      Object.assign(existing, row);
+    } else {
+      this.gradeVaultState.gradePickerConfigs.push(row);
+    }
+    this._saveGradeVault();
+    return cloneJsonValue(row, null);
+  }
+
   listGradeAssessments(courseId) {
     const id = Number(courseId);
     return this.gradeVaultState.gradeAssessments
@@ -4885,6 +4922,23 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         updatedAt: String(item.updatedAt || "")
       };
     }) : [],
+    gradePickerConfigs: Array.isArray(source.gradePickerConfigs) ? source.gradePickerConfigs.map((raw) => {
+      const item = asObject(raw);
+      const sourceConfig = asObject(item.config);
+      const sourceWeights = asObject(sourceConfig.weightsByStudentId);
+      const weightsByStudentId = Object.fromEntries(Object.entries(sourceWeights)
+        .map(([studentId, weight]) => [Number(studentId), Math.round(Number(weight))])
+        .filter(([studentId, weight]) => Number.isSafeInteger(studentId) && studentId > 0 && Number.isFinite(weight))
+        .map(([studentId, weight]) => [String(studentId), Math.min(4, Math.max(0, weight))]));
+      return {
+        courseId: Number(item.courseId),
+        config: {
+          weightsByStudentId,
+          autoDisableSelected: sourceConfig.autoDisableSelected === true,
+        },
+        updatedAt: String(item.updatedAt || ""),
+      };
+    }) : [],
     gradeAccommodations: Array.isArray(source.gradeAccommodations) ? source.gradeAccommodations.map((raw) => {
       const item = asObject(raw);
       return {
@@ -4929,6 +4983,15 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
     .filter((item) => item.courseId > 0);
   normalized.gradeSeatPlans = normalized.gradeSeatPlans
     .filter((item) => item.courseId > 0 && item.plan && typeof item.plan === "object");
+  const pickerConfigsByCourseId = new Map();
+  normalized.gradePickerConfigs.forEach((item) => {
+    if (item.courseId <= 0 || !item.config || typeof item.config !== "object") return;
+    const existing = pickerConfigsByCourseId.get(item.courseId);
+    if (!existing || String(existing.updatedAt || "") <= String(item.updatedAt || "")) {
+      pickerConfigsByCourseId.set(item.courseId, item);
+    }
+  });
+  normalized.gradePickerConfigs = [...pickerConfigsByCourseId.values()];
   const validGradeStudentKeys = new Set(
     normalized.gradeStudents.map((student) => `${Number(student.courseId) || 0}:${Number(student.id) || 0}`)
   );

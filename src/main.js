@@ -55,12 +55,14 @@ import {
   normalizeRandomPickerAutoDisableSelected,
   normalizeRandomPickerWeight,
 } from './modules/random-picker/index.js';
+import { mountWorkPhase } from './modules/work-phase/index.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
   GRADES_GRADE_VAULT_ACTIVITY_EVENT,
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
+  GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT,
   NAME_LEARNING_DATA_REQUEST_EVENT,
   NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT,
   NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT,
@@ -91,7 +93,7 @@ import {
 } from './shell/tabs.js';
 
 (function () {
-  const { appEl, els, monitorLights } = createAppDom(document);
+  const { appEl, els } = createAppDom(document);
   if (!appEl) {
     return;
   }
@@ -129,7 +131,6 @@ import {
   appEl.addEventListener('contextmenu', (event) => {
     event.preventDefault();
   }, true);
-  const monitorLightNodes = Object.values(monitorLights).filter(Boolean);
   const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
   const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
   const UPDATE_APPLIED_HINT_SESSION_KEY = 'teachhelper:update-applied-hint';
@@ -316,10 +317,11 @@ import {
     tabTransitionTimer: 0,
     pendingTabTransitionTarget: null,
   };
-  const TIMER_DURATION_RANGE_DEFAULT = 45;
-  const TIMER_DURATION_RANGE_MAX = 180;
   let bridgeController = null;
   let shellController = null;
+  let workPhaseController = null;
+  const renderWorkOrder = () => workPhaseController?.render();
+  const positionWorkOrderHintOverlay = () => workPhaseController?.positionHintOverlay();
   const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
   const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : shellState.chromeCollapsed);
   const getChromeTransitionState = () => (
@@ -2208,8 +2210,8 @@ import {
               createModuleTutorialStep({
                 tab: TAB_RANDOM_PICKER,
                 title: 'Gemeinsame Namensliste',
-                copy: 'Gruppen-Modul und Picker nutzen dieselbe Namensliste. „Liste wählen“ ersetzt sie – auch in den Gruppen.',
-                target: (nodes) => nodes.randomPickerImport || nodes.csvDropZone,
+                copy: 'Gruppen-Modul und Picker nutzen dieselbe Namensliste. Eine CSV importierst du über die Dropzone im Gruppen-Modul.',
+                target: (nodes) => nodes.csvDropZone || nodes.randomPickerImport,
                 placement: 'right',
               }),
               createModuleTutorialStep({
@@ -2272,7 +2274,7 @@ import {
               createModuleTutorialStep({
                 tab: TAB_RANDOM_PICKER,
                 title: 'Pickerstand laden',
-                copy: 'Über „Liste wählen“ lädst du einen gespeicherten Pickerstand wieder ein und setzt die Runde genau dort fort.',
+                copy: 'Über „Picker laden“ lädst du einen gespeicherten Pickerstand wieder ein und setzt die Runde genau dort fort.',
                 target: (nodes) => nodes.randomPickerImport || nodes.randomPickerPlanActions,
                 placement: 'right',
               }),
@@ -3458,10 +3460,6 @@ import {
     minGroupSize: 2,
     maxGroupSize: 4,
     seatTopics: {},
-    workOrder: '',
-    workOrderDurationMinutes: null,
-    workOrderStartISO: null,
-    workOrderAlarmed: false,
     csvName: '',
     lastDirectoryHandle: null,
     performanceFlairCount: 4,
@@ -3469,7 +3467,6 @@ import {
   };
   const realClassroomState = state;
   let classroomTutorialDemoActive = false;
-  let workPhaseTutorialDemoActive = false;
   function activateClassroomTutorialDemo(tab) {
     if (classroomTutorialDemoActive) {
       const current = getCurrentModuleTutorialSteps({ activeTab: tab });
@@ -3570,12 +3567,7 @@ import {
       .filter(Boolean);
   };
 
-  const SharedTimerStore = createSharedTimerStore({
-    workOrderText: state.workOrder,
-    durationMinutes: state.workOrderDurationMinutes,
-    startISO: state.workOrderStartISO,
-    alarmState: state.workOrderAlarmed,
-  });
+  const SharedTimerStore = createSharedTimerStore();
   const SharedRosterStore = createSharedRosterStore({
     documentBus: document,
     initialDetail: {
@@ -3602,56 +3594,8 @@ import {
     };
     return SharedRosterStore.dispatch(detail);
   };
-  const MIC_UI_STATE = Object.freeze({
-    READY: 'ready',
-    STARTING: 'starting',
-    ACTIVE: 'active',
-    UNSUPPORTED: 'unsupported',
-    ERROR: 'error',
-  });
-  const TIMER_UI_STATE = Object.freeze({
-    READY: 'ready',
-    RUNNING: 'running',
-    ALARM: 'alarm',
-  });
-  let timerUiState = TIMER_UI_STATE.READY;
-  const syncStateFromTimerStore = (timerState = SharedTimerStore.getState()) => {
-    state.workOrder = timerState.workOrderText;
-    state.workOrderDurationMinutes = timerState.durationMinutes;
-    state.workOrderStartISO = timerState.startISO;
-    state.workOrderAlarmed = timerState.alarmState;
-    renderWorkOrderTimerButtonsState();
-  };
-  const replaceTimerState = (next) => {
-    SharedTimerStore.replace(next);
-    syncStateFromTimerStore();
-  };
   function activateWorkPhaseTutorialDemo() {
-    if (workPhaseTutorialDemoActive) {
-      const current = getCurrentModuleTutorialSteps({ activeTab: TAB_WORK_PHASE });
-      return { steps: Array.isArray(current) ? current : current.steps, cleanup: () => { } };
-    }
-    const previousTimerState = SharedTimerStore.getState();
-    workPhaseTutorialDemoActive = true;
-    stopWorkOrderAlarmSound();
-    replaceTimerState({
-      workOrderText: 'Bearbeitet die Beispielaufgabe zu zweit und haltet eure Ergebnisse fest.',
-      durationMinutes: 20,
-      startISO: null,
-      alarmState: false,
-    });
-    renderWorkOrder();
-    const cleanup = () => {
-      if (!workPhaseTutorialDemoActive) return;
-      workPhaseTutorialDemoActive = false;
-      stopWorkOrderAlarmSound();
-      clearTimerVisualWarnings();
-      replaceTimerState(previousTimerState);
-      renderWorkOrder();
-      if (previousTimerState.alarmState) {
-        updateWorkOrderAlert(true);
-      }
-    };
+    const cleanup = workPhaseController?.activateTutorialDemo() || (() => {});
     try {
       const current = getCurrentModuleTutorialSteps({ activeTab: TAB_WORK_PHASE });
       return { steps: Array.isArray(current) ? current : current.steps, cleanup };
@@ -3660,10 +3604,6 @@ import {
       throw error;
     }
   }
-  syncStateFromTimerStore();
-  SharedTimerStore.subscribe((timerState) => {
-    syncStateFromTimerStore(timerState);
-  });
   bridgeController = createPlanningSeatplanBridge({
     els,
     getChromeCollapsed: isChromeCollapsed,
@@ -3698,13 +3638,7 @@ import {
     }
     state.seats = {};
     state.seatTopics = {};
-    SharedTimerStore.setWorkOrder({
-      workOrderText: '',
-      durationMinutes: null,
-      startISO: null,
-    });
-    SharedTimerStore.stop();
-    syncStateFromTimerStore();
+    workPhaseController?.reset();
     state.lockedSeats.clear();
     syncGroupSizeInputs();
     els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
@@ -3785,14 +3719,6 @@ import {
   const supportsTouchDrag = typeof window !== 'undefined'
     && (('ontouchstart' in window) || touchPoints > 0);
   let touchDragState = null;
-  let workOrderTimerId = null;
-  let workOrderAlarmIntervalId = null;
-  let workOrderAudioCtx = null;
-  let timerVisualWarningTimeoutId = null;
-  let timerWarningToneEnabled = { end: true, half: true, quarter: true };
-  let timerMilestoneTriggered = { half: false, quarter: false };
-  let timerLastRemainingRatio = null;
-  let timerShowSeconds = true;
   function initSeatTopicInput(input) {
     if (!input) return;
     const defaultPlaceholder = input.getAttribute('data-default-placeholder') || input.getAttribute('placeholder') || 'Thema';
@@ -4456,7 +4382,11 @@ import {
     activeIds.forEach(id => {
       seatSnapshot[id] = getSeatList(id);
     });
-    const storedDuration = parseWorkOrderDuration(state.workOrderDurationMinutes);
+    const workPhasePlanState = workPhaseController?.getPlanState() || {
+      workOrder: '',
+      workOrderDurationMinutes: null,
+      workOrderStartISO: null,
+    };
     return {
       version: 1,
       generatedAt: new Date().toISOString(),
@@ -4470,9 +4400,7 @@ import {
         }
         return acc;
       }, {}),
-      workOrder: typeof state.workOrder === 'string' ? state.workOrder : '',
-      workOrderDurationMinutes: storedDuration,
-      workOrderStartISO: hasWorkOrderTiming() ? state.workOrderStartISO : null,
+      ...workPhasePlanState,
       students: state.students,
       performanceFlairCount: clampPerformanceFlairCount(state.performanceFlairCount),
       randomPickerAutoDisableSelected: normalizeRandomPickerAutoDisableSelected(
@@ -4850,23 +4778,7 @@ import {
       }
     });
     state.seatTopics = topics;
-    const importedWorkOrder = typeof data.workOrder === 'string' ? data.workOrder : '';
-    const incomingStart = typeof data.workOrderStartISO === 'string'
-      ? data.workOrderStartISO
-      : (typeof data.workOrderStart === 'string' ? data.workOrderStart : null);
-    const incomingDuration = parseWorkOrderDuration(
-      data.workOrderDurationMinutes ?? data.workOrderDuration
-    );
-    const nextStart = importedWorkOrder.trim() && incomingDuration && incomingStart && Number.isFinite(Date.parse(incomingStart))
-      ? incomingStart
-      : null;
-    replaceTimerState({
-      ...SharedTimerStore.getState(),
-      workOrderText: importedWorkOrder,
-      durationMinutes: incomingDuration,
-      startISO: nextStart,
-      alarmState: false,
-    });
+    workPhaseController?.restorePlanState(data);
     enforceGridBounds();
     buildGrid();
     if (!restoreSeatAssignments) {
@@ -4940,540 +4852,6 @@ import {
       els.unseated.appendChild(createStudentNode(s));
     });
     syncGroupSizeInputs();
-  }
-
-  function parseWorkOrderDuration(value) {
-    if (value === null || value === undefined) return null;
-    const parsed = Math.floor(Number(value));
-    if (!Number.isFinite(parsed) || parsed <= 0) return null;
-    return parsed;
-  }
-  function syncTimerDurationRange(durationValue) {
-    const range = els.workOrderDurationRange;
-    if (!range) return;
-    const duration = parseWorkOrderDuration(durationValue);
-    const rangeValue = duration ?? TIMER_DURATION_RANGE_DEFAULT;
-    const nextMax = Math.max(TIMER_DURATION_RANGE_MAX, rangeValue);
-    if (range.max !== String(nextMax)) {
-      range.max = String(nextMax);
-    }
-    if (range.value !== String(rangeValue)) {
-      range.value = String(rangeValue);
-    }
-    range.setAttribute('aria-valuetext', `${rangeValue} Minuten`);
-  }
-  function getTimerPlaceholder() {
-    return timerShowSeconds ? '--:--:--' : '--:--';
-  }
-  function formatDurationHMS(minutes) {
-    if (!Number.isFinite(minutes) || minutes <= 0) return getTimerPlaceholder();
-    const totalMinutes = Math.floor(minutes);
-    const totalSeconds = totalMinutes * 60;
-    const hours = Math.floor(totalSeconds / 3600);
-    const mins = Math.floor((totalSeconds % 3600) / 60);
-    if (timerShowSeconds) {
-      const seconds = totalSeconds % 60;
-      return [hours, mins, seconds].map(v => String(v).padStart(2, '0')).join(':');
-    }
-    return [hours, mins].map(v => String(v).padStart(2, '0')).join(':');
-  }
-  function formatRemainingDuration(remainingMs) {
-    const safeRemaining = Math.max(0, remainingMs);
-    if (timerShowSeconds) {
-      const remainingSeconds = Math.ceil(safeRemaining / 1000);
-      const hours = Math.floor(remainingSeconds / 3600);
-      const mins = Math.floor((remainingSeconds % 3600) / 60);
-      const seconds = remainingSeconds % 60;
-      return [hours, mins, seconds].map(v => String(Math.max(0, v)).padStart(2, '0')).join(':');
-    }
-    const remainingMinutes = Math.ceil(safeRemaining / 60000);
-    const hours = Math.floor(remainingMinutes / 60);
-    const mins = remainingMinutes % 60;
-    return [hours, mins].map(v => String(Math.max(0, v)).padStart(2, '0')).join(':');
-  }
-  function positionWorkOrderHintOverlay() {
-    const overlay = els.workOrderHintOverlay;
-    const target = els.workOrderRestClock;
-    if (!overlay || !target) return;
-    if (!overlay.classList.contains('visible')) return;
-    const rect = target.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return;
-    const overlayRect = overlay.getBoundingClientRect();
-    const width = overlayRect.width || overlay.offsetWidth || 0;
-    const height = overlayRect.height || overlay.offsetHeight || 0;
-    const offsetParentRect = overlay.offsetParent && typeof overlay.offsetParent.getBoundingClientRect === 'function'
-      ? overlay.offsetParent.getBoundingClientRect()
-      : null;
-    const containerRect = offsetParentRect
-      || (els.workOrderShell && !els.workOrderShell.hidden ? els.workOrderShell.getBoundingClientRect() : null)
-      || els.mainPanel?.getBoundingClientRect();
-    const containerWidth = containerRect?.width || window.innerWidth || document.documentElement.clientWidth || width;
-    const containerHeight = containerRect?.height || window.innerHeight || document.documentElement.clientHeight || height;
-    const containerLeft = containerRect?.left || 0;
-    const containerTop = containerRect?.top || 0;
-    const inset = 12;
-    const horizontalCenter = (rect.left - containerLeft) + (rect.width / 2);
-    const maxLeft = Math.max(inset, containerWidth - width - inset);
-    const desiredLeft = horizontalCenter - (width / 2);
-    const clampedLeft = Math.min(Math.max(desiredLeft, inset), maxLeft);
-    let top = (rect.top - containerTop) - height - inset;
-    let positionFlag = 'above';
-    if (top < inset) {
-      top = (rect.bottom - containerTop) + inset;
-      positionFlag = 'below';
-    }
-    const maxTop = Math.max(inset, containerHeight - height - inset);
-    const clampedTop = Math.min(Math.max(top, inset), maxTop);
-    overlay.style.left = `${clampedLeft}px`;
-    overlay.style.top = `${clampedTop}px`;
-    overlay.setAttribute('data-position', positionFlag);
-  }
-  function hasWorkOrderTiming() {
-    const duration = Number(state.workOrderDurationMinutes);
-    if (!Number.isFinite(duration) || duration <= 0) return false;
-    const startIso = typeof state.workOrderStartISO === 'string' ? state.workOrderStartISO.trim() : '';
-    if (!startIso) return false;
-    return Number.isFinite(Date.parse(startIso));
-  }
-  function renderControlStatus(el, status, text) {
-    if (!el) return;
-    const normalized = typeof status === 'string' && status.trim() ? status.trim() : 'ready';
-    el.textContent = text || 'Status: bereit';
-    el.className = `control-status is-${normalized}`;
-  }
-  function renderWorkOrderTimerButtonsState() {
-    timerUiState = state.workOrderAlarmed
-      ? TIMER_UI_STATE.ALARM
-      : (hasWorkOrderTiming() ? TIMER_UI_STATE.RUNNING : TIMER_UI_STATE.READY);
-    const active = timerUiState !== TIMER_UI_STATE.READY;
-    const hasDuration = Boolean(parseWorkOrderDuration(state.workOrderDurationMinutes));
-    appEl.classList.toggle('work-order-timer-inactive', !hasDuration);
-    const startButtons = [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean);
-    const stopButtons = [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean);
-    startButtons.forEach((button) => {
-      button.disabled = active;
-      button.textContent = '⏰';
-      button.classList.toggle('is-running', false);
-      button.classList.toggle('is-off', false);
-      button.setAttribute('aria-label', 'Arbeitszeit starten');
-      button.setAttribute('title', 'Arbeitszeit starten');
-    });
-    stopButtons.forEach((button) => {
-      button.disabled = !active;
-      button.textContent = '⏰';
-      button.classList.toggle('is-running', active);
-      button.classList.toggle('is-off', true);
-      button.setAttribute('aria-label', 'Arbeitszeit stoppen');
-      button.setAttribute('title', 'Arbeitszeit stoppen');
-    });
-    const timerStatusText = timerUiState === TIMER_UI_STATE.ALARM
-      ? 'Status: alarm'
-      : (timerUiState === TIMER_UI_STATE.RUNNING ? 'Status: läuft' : 'Status: bereit');
-    renderControlStatus(els.timerControlStatus, timerUiState, timerStatusText);
-  }
-  function resetWorkOrderTimerDisplay() {
-    if (els.workOrderCountdown) {
-      els.workOrderCountdown.textContent = getTimerPlaceholder();
-    }
-    if (els.workOrderEndtime) {
-      els.workOrderEndtime.textContent = '--:--';
-    }
-  }
-  function resetTimerWarningMilestones(lastRatio = null) {
-    timerMilestoneTriggered = { half: false, quarter: false };
-    if (Number.isFinite(lastRatio)) {
-      timerLastRemainingRatio = Math.max(0, Math.min(1, Number(lastRatio)));
-    } else {
-      timerLastRemainingRatio = null;
-    }
-  }
-  function isTimerWarningToneEnabled(toneKey) {
-    if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return false;
-    return Boolean(timerWarningToneEnabled[toneKey]);
-  }
-  function getTimerWarningToneLabel(toneKey) {
-    if (toneKey === 'half') return 'Warnton nach 50%';
-    if (toneKey === 'quarter') return 'Warnton nach 75%';
-    return 'Warnton bei Ende';
-  }
-  function getTimerWarningMessage(level) {
-    if (level === 'half') return '50 % erreicht';
-    if (level === 'quarter') return '75 % erreicht';
-    return 'Zeit abgelaufen';
-  }
-  function clearTimerWarningBanner() {
-    const banner = els.timerWarningBanner;
-    if (!banner) return;
-    banner.hidden = true;
-    banner.textContent = '';
-    banner.classList.remove('visible', 'level-half', 'level-quarter', 'level-end');
-  }
-  function showTimerWarningBanner(level) {
-    const banner = els.timerWarningBanner;
-    if (!banner) return;
-    const normalizedLevel = level === 'end' ? 'end' : (level === 'quarter' ? 'quarter' : 'half');
-    banner.hidden = false;
-    banner.textContent = getTimerWarningMessage(normalizedLevel);
-    banner.classList.remove('level-half', 'level-quarter', 'level-end');
-    banner.classList.add(`level-${normalizedLevel}`);
-    banner.classList.remove('visible');
-    void banner.offsetWidth;
-    banner.classList.add('visible');
-  }
-  function clearTimerVisualWarnings() {
-    if (!els.timerShell) return;
-    els.timerShell.classList.remove('timer-warning-half', 'timer-warning-quarter', 'timer-warning-end');
-    clearTimerWarningBanner();
-  }
-  function triggerTimerVisualWarning(level, { persistent = false } = {}) {
-    if (!els.timerShell) return;
-    clearTimerVisualWarnings();
-    const tone = level === 'end' ? 'end' : (level === 'quarter' ? 'quarter' : 'half');
-    els.timerShell.classList.add(`timer-warning-${tone}`);
-    showTimerWarningBanner(tone);
-    if (timerVisualWarningTimeoutId) {
-      clearTimeout(timerVisualWarningTimeoutId);
-      timerVisualWarningTimeoutId = null;
-    }
-    if (persistent) return;
-    const durationMs = tone === 'quarter' ? 2600 : 2000;
-    timerVisualWarningTimeoutId = setTimeout(() => {
-      timerVisualWarningTimeoutId = null;
-      if (state.workOrderAlarmed) return;
-      clearTimerVisualWarnings();
-    }, durationMs);
-  }
-  function ensureWorkOrderAudioContext({ resume = false } = {}) {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!workOrderAudioCtx || workOrderAudioCtx.state === 'closed') {
-      workOrderAudioCtx = new AudioCtx();
-    }
-    const ctx = workOrderAudioCtx;
-    if (resume && ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-      const resumePromise = ctx.resume();
-      if (resumePromise && typeof resumePromise.catch === 'function') {
-        resumePromise.catch((error) => {
-          reportAppError(error, '', {
-            scope: 'timer-audio',
-            action: 'resume-audio-context',
-          });
-        });
-      }
-    }
-    return ctx;
-  }
-  function closeWorkOrderAudioContext() {
-    if (!workOrderAudioCtx || workOrderAudioCtx.state === 'closed' || typeof workOrderAudioCtx.close !== 'function') {
-      workOrderAudioCtx = null;
-      return;
-    }
-    const ctx = workOrderAudioCtx;
-    workOrderAudioCtx = null;
-    const closePromise = ctx.close();
-    if (closePromise && typeof closePromise.catch === 'function') {
-      closePromise.catch((error) => {
-        reportAppError(error, '', {
-          scope: 'timer-audio',
-          action: 'close-audio-context',
-        });
-      });
-    }
-  }
-  function scheduleTimerMilestoneTone(ctx, toneKey) {
-    if (!ctx || ctx.state === 'closed') return;
-    const pulses = toneKey === 'quarter'
-      ? [
-        { frequency: 1180, gain: 0.16, durationMs: 150, offsetMs: 0, type: 'triangle' },
-        { frequency: 900, gain: 0.14, durationMs: 150, offsetMs: 180, type: 'triangle' },
-        { frequency: 1180, gain: 0.16, durationMs: 150, offsetMs: 360, type: 'triangle' },
-      ]
-      : [
-        { frequency: 1040, gain: 0.13, durationMs: 170, offsetMs: 0, type: 'triangle' },
-        { frequency: 780, gain: 0.12, durationMs: 160, offsetMs: 180, type: 'triangle' },
-      ];
-    pulses.forEach(({ frequency, gain, durationMs, offsetMs, type }) => {
-      const startTime = ctx.currentTime + (offsetMs / 1000);
-      const endTime = startTime + (durationMs / 1000);
-      const oscillator = ctx.createOscillator();
-      const gainNode = ctx.createGain();
-      oscillator.type = type || 'sine';
-      oscillator.frequency.setValueAtTime(frequency, startTime);
-      gainNode.gain.setValueAtTime(0.0001, startTime);
-      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.01);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-      oscillator.connect(gainNode);
-      gainNode.connect(ctx.destination);
-      oscillator.start(startTime);
-      oscillator.stop(endTime + 0.015);
-    });
-  }
-  function playTimerMilestoneTone(toneKey) {
-    try {
-      const ctx = ensureWorkOrderAudioContext();
-      if (!ctx) return;
-      if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-        const resumePromise = ctx.resume();
-        if (resumePromise && typeof resumePromise.then === 'function') {
-          resumePromise
-            .then(() => scheduleTimerMilestoneTone(ctx, toneKey))
-            .catch((error) => {
-              reportAppError(error, '', {
-                scope: 'timer-audio',
-                action: 'play-milestone-tone',
-                toneKey,
-              });
-            });
-          return;
-        }
-      }
-      scheduleTimerMilestoneTone(ctx, toneKey);
-    } catch (error) {
-      reportAppError(error, '', {
-        scope: 'timer-audio',
-        action: 'schedule-milestone-tone',
-        toneKey,
-      });
-    }
-  }
-  function handleTimerMilestones(remainingMs, totalDurationMs) {
-    if (!Number.isFinite(totalDurationMs) || totalDurationMs <= 0) return;
-    const ratio = Math.max(0, Math.min(1, remainingMs / totalDurationMs));
-    if (!Number.isFinite(timerLastRemainingRatio)) {
-      timerLastRemainingRatio = ratio;
-      return;
-    }
-    const crossedThreshold = (threshold) => timerLastRemainingRatio > threshold && ratio <= threshold;
-    if (!timerMilestoneTriggered.half && crossedThreshold(0.5)) {
-      timerMilestoneTriggered.half = true;
-      triggerTimerVisualWarning('half');
-      if (isTimerWarningToneEnabled('half')) {
-        playTimerMilestoneTone('half');
-      }
-    }
-    if (!timerMilestoneTriggered.quarter && crossedThreshold(0.25)) {
-      timerMilestoneTriggered.quarter = true;
-      triggerTimerVisualWarning('quarter');
-      if (isTimerWarningToneEnabled('quarter')) {
-        playTimerMilestoneTone('quarter');
-      }
-    }
-    timerLastRemainingRatio = ratio;
-  }
-  function stopWorkOrderTimer() {
-    if (workOrderTimerId !== null) {
-      clearInterval(workOrderTimerId);
-      workOrderTimerId = null;
-    }
-    updateWorkOrderAlert(false);
-  }
-  function startWorkOrderAlarmSound() {
-    if (!isTimerWarningToneEnabled('end')) return;
-    if (workOrderAlarmIntervalId !== null) return;
-    triggerWorkOrderBell();
-    workOrderAlarmIntervalId = setInterval(triggerWorkOrderBell, 900);
-  }
-  function stopWorkOrderAlarmSound() {
-    if (workOrderAlarmIntervalId !== null) {
-      clearInterval(workOrderAlarmIntervalId);
-      workOrderAlarmIntervalId = null;
-    }
-  }
-  function triggerWorkOrderBell() {
-    try {
-      const ctx = ensureWorkOrderAudioContext();
-      if (!ctx) return;
-      if (ctx.state === 'suspended' && typeof ctx.resume === 'function') {
-        const resumePromise = ctx.resume();
-        if (resumePromise && typeof resumePromise.then === 'function') {
-          resumePromise
-            .then(() => triggerWorkOrderBell())
-            .catch((error) => {
-              reportAppError(error, '', {
-                scope: 'timer-audio',
-                action: 'trigger-bell-resume',
-              });
-            });
-          return;
-        }
-      }
-      const duration = 1.5;
-      const base = ctx.createOscillator();
-      const overtone = ctx.createOscillator();
-      const gain = ctx.createGain();
-      base.type = 'sine';
-      overtone.type = 'sine';
-      base.frequency.setValueAtTime(420, ctx.currentTime);
-      overtone.frequency.setValueAtTime(840, ctx.currentTime);
-      gain.gain.setValueAtTime(0.28, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + duration);
-      base.connect(gain);
-      overtone.connect(gain);
-      gain.connect(ctx.destination);
-      base.start();
-      overtone.start();
-      base.stop(ctx.currentTime + duration);
-      overtone.stop(ctx.currentTime + duration);
-    } catch (err) {
-      reportAppError(err, '', {
-        scope: 'timer-audio',
-        action: 'trigger-bell',
-      });
-    }
-  }
-  function updateWorkOrderAlert(active) {
-    if (!els.workOrderRestClock) return;
-    els.workOrderRestClock.classList.toggle('alert', Boolean(active));
-    if (els.workOrderHintOverlay) {
-      if (active) {
-        els.workOrderHintOverlay.classList.add('visible');
-        positionWorkOrderHintOverlay();
-      } else {
-        els.workOrderHintOverlay.classList.remove('visible');
-      }
-    }
-    if (!active) {
-      if (state.workOrderAlarmed) {
-        clearTimerVisualWarnings();
-        replaceTimerState({
-          ...SharedTimerStore.getState(),
-          alarmState: false,
-        });
-      } else if (!hasWorkOrderTiming()) {
-        clearTimerVisualWarnings();
-      }
-      stopWorkOrderAlarmSound();
-    } else if (state.workOrderAlarmed) {
-      triggerTimerVisualWarning('end', { persistent: true });
-      startWorkOrderAlarmSound();
-    }
-    renderWorkOrderTimerButtonsState();
-  }
-  function getTimerSecondsToggleLabel() {
-    return 'Sekunden anzeigen';
-  }
-  function renderTimerWarningToneState() {
-    els.timerWarningToneButtons?.forEach((button) => {
-      const toneKey = button.dataset.timerWarningToneToggle;
-      if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
-      const label = getTimerWarningToneLabel(toneKey);
-      button.setAttribute('aria-checked', String(isTimerWarningToneEnabled(toneKey)));
-      button.setAttribute('aria-label', label);
-    });
-    els.timerWarningToneLabels?.forEach((labelElement) => {
-      const toneKey = labelElement.dataset.timerWarningToneLabel;
-      if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
-      labelElement.textContent = getTimerWarningToneLabel(toneKey);
-    });
-  }
-  function renderTimerSecondsToggleState() {
-    const label = getTimerSecondsToggleLabel();
-    els.timerSecondsToggleButtons?.forEach((button) => {
-      button.setAttribute('aria-checked', String(timerShowSeconds));
-      button.setAttribute('aria-label', label);
-    });
-    els.timerSecondsToggleLabels?.forEach((labelElement) => {
-      labelElement.textContent = label;
-    });
-  }
-  function updateWorkOrderCountdown() {
-    if (!hasWorkOrderTiming()) {
-      resetTimerWarningMilestones(null);
-      resetWorkOrderTimerDisplay();
-      stopWorkOrderTimer();
-      return;
-    }
-    const startMs = Date.parse(state.workOrderStartISO);
-    const durationMinutes = Number(state.workOrderDurationMinutes);
-    if (!Number.isFinite(startMs) || !Number.isFinite(durationMinutes)) {
-      resetTimerWarningMilestones(null);
-      resetWorkOrderTimerDisplay();
-      stopWorkOrderTimer();
-      return;
-    }
-    const totalDurationMs = durationMinutes * 60000;
-    const endMs = startMs + totalDurationMs;
-    const now = Date.now();
-    const remaining = Math.max(0, endMs - now);
-    handleTimerMilestones(remaining, totalDurationMs);
-    if (els.workOrderCountdown) {
-      els.workOrderCountdown.textContent = formatRemainingDuration(remaining);
-    }
-    if (els.workOrderEndtime) {
-      const endDate = new Date(endMs);
-      els.workOrderEndtime.textContent = endDate.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    }
-    if (remaining <= 0) {
-      timerLastRemainingRatio = 0;
-      stopWorkOrderTimer();
-      if (!state.workOrderAlarmed) {
-        replaceTimerState({
-          ...SharedTimerStore.getState(),
-          alarmState: true,
-        });
-        updateWorkOrderAlert(true);
-        startWorkOrderAlarmSound();
-      }
-    } else {
-      updateWorkOrderAlert(false);
-    }
-  }
-  function refreshWorkOrderTimer() {
-    stopWorkOrderTimer();
-    if (!hasWorkOrderTiming()) {
-      resetTimerWarningMilestones(null);
-      resetWorkOrderTimerDisplay();
-      return;
-    }
-    updateWorkOrderCountdown();
-    workOrderTimerId = setInterval(updateWorkOrderCountdown, 1000);
-  }
-
-  function renderWorkOrder() {
-    const container = els.workOrderDisplay;
-    if (!container) return;
-    const text = typeof state.workOrder === 'string' ? state.workOrder : '';
-    const hasContent = text.trim().length > 0;
-    appEl.classList.toggle('work-order-empty', !hasContent);
-    if (els.workOrderTextarea && document.activeElement !== els.workOrderTextarea && els.workOrderTextarea.value !== text) {
-      els.workOrderTextarea.value = text;
-    }
-    if (els.workOrderBody) {
-      els.workOrderBody.textContent = hasContent ? text : '';
-    }
-    container.hidden = false;
-    const durationValue = parseWorkOrderDuration(state.workOrderDurationMinutes);
-    const durationText = durationValue ? String(durationValue) : '';
-    if (els.workOrderDurationInput && document.activeElement !== els.workOrderDurationInput
-      && els.workOrderDurationInput.value !== durationText) {
-      els.workOrderDurationInput.value = durationText;
-    }
-    syncTimerDurationRange(durationValue);
-    const showTiming = Number.isFinite(durationValue) && durationValue > 0;
-    if (els.workOrderMeta) {
-      els.workOrderMeta.hidden = false;
-      els.workOrderMeta.classList.add('visible');
-    }
-    if (!showTiming) {
-      resetTimerWarningMilestones(null);
-      stopWorkOrderTimer();
-      resetWorkOrderTimerDisplay();
-      updateWorkOrderAlert(false);
-      return;
-    }
-    if (showTiming && hasWorkOrderTiming()) {
-      refreshWorkOrderTimer();
-    } else {
-      resetTimerWarningMilestones(null);
-      stopWorkOrderTimer();
-      if (els.workOrderCountdown) {
-        els.workOrderCountdown.textContent = formatDurationHMS(durationValue);
-      }
-      if (els.workOrderEndtime) {
-        els.workOrderEndtime.textContent = '--:--';
-      }
-      updateWorkOrderAlert(false);
-    }
   }
 
   const GROUP_GRID_LAYOUT = Object.freeze({
@@ -6662,6 +6040,9 @@ import {
   let gradeRosterHasAvailableCourses = true;
   let gradeRosterSelectedCourseId = 0;
   let gradeRosterSelectedCourseName = '';
+  let gradePickerBinding = null;
+  let gradePickerSaveSequence = 0;
+  const pendingGradePickerSaveRequestIds = new Set();
   const createGradeRosterRequestId = () => `shell-grade-roster-${Date.now()}-${++gradeRosterRequestSequence}`;
   const closeGradeRosterImportMenu = () => {
     if (!els.gradeRosterImportMenu) return;
@@ -6704,7 +6085,40 @@ import {
     bridgeController?.requestGradeRosterImport?.({
       requestId,
       courseId: Number(courseId || 0),
+      mode: isRandomPickerTabActive() ? 'picker' : 'roster',
       returnTab: getActiveTab(),
+    });
+  };
+  const updateGradePickerBindingUi = () => {
+    const bound = Boolean(gradePickerBinding);
+    if (els.randomPickerCourseResetRow) els.randomPickerCourseResetRow.hidden = !bound;
+    if (els.randomPickerCourseReset) {
+      els.randomPickerCourseReset.title = bound
+        ? `Kursbindung zu „${gradePickerBinding.courseName}“ lösen`
+        : 'Kursbindung lösen';
+    }
+  };
+  const getGradePickerConfig = () => {
+    if (!gradePickerBinding) return null;
+    return {
+      weightsByStudentId: Object.fromEntries(gradePickerBinding.students.map((student) => [
+        String(student.id),
+        normalizeRandomPickerWeight(student.randomWeight),
+      ])),
+      autoDisableSelected: Boolean(gradePickerBinding.autoDisableSelected),
+    };
+  };
+  const saveGradePickerConfig = () => {
+    const binding = gradePickerBinding;
+    const config = getGradePickerConfig();
+    if (!binding || !config) return;
+    const requestId = `shell-grade-picker-${Date.now()}-${++gradePickerSaveSequence}`;
+    pendingGradePickerSaveRequestIds.add(requestId);
+    bridgeController?.requestGradePickerConfigSave?.({
+      requestId,
+      courseId: binding.courseId,
+      rosterToken: binding.rosterToken,
+      config,
     });
   };
   const syncGradeRosterImportHeight = () => {
@@ -6792,7 +6206,9 @@ import {
       button.style.background = color;
       button.style.color = getGradeRosterPillTextColor(color);
       const courseName = String(course?.name || '').trim();
-      const isSelected = Number(course?.id || 0) === gradeRosterSelectedCourseId
+      const isSelected = (isRandomPickerTabActive() && gradePickerBinding
+        ? Number(course?.id || 0) === gradePickerBinding.courseId
+        : Number(course?.id || 0) === gradeRosterSelectedCourseId)
         || (gradeRosterSelectedCourseName && courseName === gradeRosterSelectedCourseName)
         || state.csvName === `${courseName} (Notenmodul)`;
       button.classList.toggle('is-imported', isSelected);
@@ -6898,11 +6314,34 @@ import {
       requestGradeRosterCourses();
       return;
     }
-    gradeRosterSelectedCourseId = Number(detail.courseId || 0);
-    gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
+    if (detail.mode === 'picker') {
+      const storedConfig = detail.pickerConfig && typeof detail.pickerConfig === 'object'
+        ? detail.pickerConfig
+        : {};
+      const storedWeights = storedConfig.weightsByStudentId && typeof storedConfig.weightsByStudentId === 'object'
+        ? storedConfig.weightsByStudentId
+        : {};
+      gradePickerBinding = {
+        courseId: Number(detail.courseId || 0),
+        courseName: String(detail.courseName || '').trim(),
+        rosterToken: String(detail.rosterToken || ''),
+        autoDisableSelected: storedConfig.autoDisableSelected === true,
+        students: (Array.isArray(detail.students) ? detail.students : []).map((student) => ({
+          ...student,
+          randomWeight: normalizeRandomPickerWeight(storedWeights[String(student?.id || '')]),
+        })),
+      };
+      updateGradePickerBindingUi();
+      randomPickerController?.render();
+    } else {
+      gradeRosterSelectedCourseId = Number(detail.courseId || 0);
+      gradeRosterSelectedCourseName = String(detail.courseName || '').trim();
+    }
     renderGradeRosterPills();
     closeGradeRosterImportMenu();
-    showMessage(`${Number(detail.students?.length || 0)} Lernende aus „${detail.courseName}“ importiert.`, 'success', { presentation: 'toast' });
+    showMessage(detail.mode === 'picker'
+      ? `Picker mit „${detail.courseName}“ verbunden.`
+      : `${Number(detail.students?.length || 0)} Lernende aus „${detail.courseName}“ importiert.`, 'success', { presentation: 'toast' });
     requestGradeRosterCourses();
   });
 
@@ -6915,6 +6354,12 @@ import {
   };
   document.addEventListener(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, restoreGradeRosterReturnTab);
   document.addEventListener(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, restoreGradeRosterReturnTab);
+  document.addEventListener(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, (event) => {
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    if (!detail || !pendingGradePickerSaveRequestIds.delete(String(detail.requestId || ''))) return;
+    if (detail.ok || detail.unlockRequired || detail.unlockCancelled) return;
+    showMessage(detail.message || 'Picker-Konfiguration konnte nicht gespeichert werden.', 'warn');
+  });
 
   if (typeof ResizeObserver === 'function' && els.csvDropZone) {
     const observer = new ResizeObserver(() => renderGradeRosterPills());
@@ -6962,13 +6407,7 @@ import {
     state.students = readStudents(dataRows, headers);
     state.seats = {};
     state.seatTopics = {};
-    SharedTimerStore.setWorkOrder({
-      workOrderText: '',
-      durationMinutes: null,
-      startISO: null,
-    });
-    SharedTimerStore.stop();
-    syncStateFromTimerStore();
+    workPhaseController?.reset();
     state.lockedSeats.clear();
     syncGroupGridFromSizeInputs({ forceCapacity: true });
 
@@ -7184,34 +6623,44 @@ import {
 
   randomPickerController = mountRandomPicker({
     doc: document,
-    getStudents: () => state.students,
+    getStudents: () => gradePickerBinding?.students || state.students,
     formatStudentLabel,
-    getAutoDisableSelected: () => state.randomPickerAutoDisableSelected,
-    setAutoDisableSelected: (value) => {
-      state.randomPickerAutoDisableSelected = value;
+    getAutoDisableSelected: () => gradePickerBinding?.autoDisableSelected ?? state.randomPickerAutoDisableSelected,
+    setAutoDisableSelected: (value, { deferSave = false } = {}) => {
+      if (gradePickerBinding) {
+        gradePickerBinding.autoDisableSelected = value;
+        if (!deferSave) saveGradePickerConfig();
+      } else {
+        state.randomPickerAutoDisableSelected = value;
+      }
     },
-    setStudentWeight: (student, weight) => {
+    setStudentWeight: (student, weight, { deferSave = false } = {}) => {
       student.randomWeight = weight;
+      if (gradePickerBinding && !deferSave) saveGradePickerConfig();
     },
+    onConditionsSaved: () => saveGradePickerConfig(),
     sanitizeStudent: sanitizeRandomPickerStudent,
     showMessage,
     onImport: () => {
-      if (classroomTutorialDemoActive) {
-        showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
-        return;
-      }
-      if (!els.file) return;
-      els.file.value = '';
-      els.file.click();
+      void handlePlanImportAction();
     },
     onExport: () => {
       void downloadSeatPlan();
     },
   });
+  els.randomPickerCourseReset?.addEventListener('click', () => {
+    gradePickerBinding = null;
+    updateGradePickerBindingUi();
+    renderRandomPicker();
+    renderGradeRosterPills();
+  });
 
   [els.groupSeatPreferences].filter(Boolean).forEach((button) => {
     button.addEventListener('click', () => {
-      if (!state.students.length) {
+      const preferenceStudents = isRandomPickerTabActive()
+        ? (gradePickerBinding?.students || state.students)
+        : state.students;
+      if (!preferenceStudents.length) {
         showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
         return;
       }
@@ -7288,630 +6737,15 @@ import {
     els.preferencesDialog?.removeAttribute('open');
   });
 
-  function applyTimerDurationFromInput({ preserveStart = true } = {}) {
-    const duration = parseWorkOrderDuration(els.workOrderDurationInput?.value);
-    SharedTimerStore.setWorkOrder({
-      workOrderText: state.workOrder,
-      durationMinutes: duration,
-      startISO: preserveStart ? state.workOrderStartISO : null,
-    });
-    resetTimerWarningMilestones(null);
-    syncStateFromTimerStore();
-    renderWorkOrder();
-    return duration;
-  }
-  function startWorkOrderTimer() {
-    const duration = applyTimerDurationFromInput({ preserveStart: false });
-    if (!duration) {
-      showMessage('Bitte eine Arbeitsdauer festlegen, bevor die Arbeitszeit gestartet wird.', 'warn', { presentation: 'toast' });
-      return;
-    }
-    SharedTimerStore.setWorkOrder({
-      workOrderText: state.workOrder,
-      durationMinutes: duration,
-      startISO: null,
-    });
-    SharedTimerStore.start(new Date().toISOString());
-    resetTimerWarningMilestones(1);
-    ensureWorkOrderAudioContext({ resume: true });
-    syncStateFromTimerStore();
-    updateWorkOrderAlert(false);
-    renderWorkOrder();
-  }
-  function stopWorkOrderSession() {
-    stopWorkOrderTimer();
-    closeWorkOrderAudioContext();
-    SharedTimerStore.stop();
-    syncStateFromTimerStore();
-    resetTimerWarningMilestones(null);
-    resetWorkOrderTimerDisplay();
-    updateWorkOrderAlert(false);
-    renderWorkOrder();
-  }
-  [els.timerWorkOrderStart, els.workPhaseTimerStartCollapsed].filter(Boolean).forEach((button) => {
-    button.addEventListener('click', () => {
-      startWorkOrderTimer();
-    });
+  workPhaseController = mountWorkPhase({
+    doc: document,
+    view: window,
+    appEl,
+    timerStore: SharedTimerStore,
+    showMessage,
+    reportError: reportAppError,
   });
-  [els.timerWorkOrderStop, els.workPhaseTimerStopCollapsed].filter(Boolean).forEach((button) => {
-    button.addEventListener('click', () => {
-      stopWorkOrderSession();
-    });
-  });
-  const toggleTimerWarningTone = (toneKey) => {
-    if (toneKey !== 'end' && toneKey !== 'half' && toneKey !== 'quarter') return;
-    timerWarningToneEnabled = {
-      ...timerWarningToneEnabled,
-      [toneKey]: !isTimerWarningToneEnabled(toneKey),
-    };
-    renderTimerWarningToneState();
-    if (toneKey === 'end' && !isTimerWarningToneEnabled('end')) {
-      stopWorkOrderAlarmSound();
-      return;
-    }
-    if (toneKey === 'end' && state.workOrderAlarmed) {
-      startWorkOrderAlarmSound();
-    }
-  };
-  els.timerWarningToneButtons?.forEach((button) => {
-    button.addEventListener('click', () => {
-      toggleTimerWarningTone(button.dataset.timerWarningToneToggle);
-    });
-  });
-  const toggleTimerSeconds = () => {
-    timerShowSeconds = !timerShowSeconds;
-    renderTimerSecondsToggleState();
-    renderWorkOrder();
-  };
-  els.timerSecondsToggleButtons?.forEach((button) => {
-    button.addEventListener('click', toggleTimerSeconds);
-  });
-  const saveTimerDurationFromInput = () => {
-    applyTimerDurationFromInput({ preserveStart: true });
-  };
 
-  const adjustTimerDuration = (stepDelta) => {
-    if (!els.workOrderDurationInput) return;
-    const parsedStep = Math.trunc(Number(stepDelta));
-    if (!Number.isFinite(parsedStep) || parsedStep === 0) return;
-    const inputDuration = parseWorkOrderDuration(els.workOrderDurationInput.value);
-    const stateDuration = parseWorkOrderDuration(state.workOrderDurationMinutes);
-    const baseDuration = inputDuration ?? stateDuration ?? 1;
-    const nextDuration = Math.max(1, baseDuration + parsedStep);
-    els.workOrderDurationInput.value = String(nextDuration);
-    applyTimerDurationFromInput({ preserveStart: true });
-  };
-
-  els.workOrderDurationInput?.addEventListener('input', saveTimerDurationFromInput);
-  els.workOrderDurationInput?.addEventListener('change', () => {
-    saveTimerDurationFromInput();
-  });
-  els.workOrderDurationRange?.addEventListener('input', () => {
-    if (!els.workOrderDurationInput || !els.workOrderDurationRange) return;
-    els.workOrderDurationInput.value = els.workOrderDurationRange.value;
-    applyTimerDurationFromInput({ preserveStart: true });
-  });
-  els.workOrderDurationStepButtons?.forEach((button) => {
-    button.addEventListener('click', () => {
-      adjustTimerDuration(button.dataset.durationStep);
-    });
-  });
-  els.chromeToggle?.addEventListener('click', toggleChromeCollapsed);
-  els.chromeOverlayToggle?.addEventListener('click', toggleChromeCollapsed);
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (!isChromeCollapsed() || getChromeTransitionState() !== 'idle') return;
-    if (document.querySelector('dialog[open]')) return;
-    setChromeCollapsed(false);
-  });
-  const dismissWorkOrderAlarm = () => {
-    if (state.workOrderAlarmed) {
-      updateWorkOrderAlert(false);
-    }
-  };
-  els.workOrderRestClock?.addEventListener('click', dismissWorkOrderAlarm);
-  els.workOrderMeta?.addEventListener('click', dismissWorkOrderAlarm);
-  els.workOrderHintOverlay?.addEventListener('click', dismissWorkOrderAlarm);
-  const saveWorkOrderFromTextarea = () => {
-    const raw = els.workOrderTextarea?.value || '';
-    const normalized = raw.replace(/\s+$/, '');
-    const trimmed = normalized.trim();
-    const nextWorkOrder = trimmed ? normalized : '';
-    SharedTimerStore.setWorkOrder({
-      workOrderText: nextWorkOrder,
-      durationMinutes: state.workOrderDurationMinutes,
-      startISO: state.workOrderStartISO,
-    });
-    syncStateFromTimerStore();
-    renderWorkOrder();
-  };
-  els.workOrderTextarea?.addEventListener('input', saveWorkOrderFromTextarea);
-  els.workOrderTextarea?.addEventListener('change', saveWorkOrderFromTextarea);
-  renderTimerWarningToneState();
-  renderTimerSecondsToggleState();
-  const MonitorModule = (() => {
-    const WARNING_TONES = Object.freeze({
-      yellow: {
-        intervalMs: 1200,
-        pulses: [
-          { frequency: 1480, gain: 0.085, durationMs: 170, offsetMs: 0, type: 'triangle' },
-          { frequency: 1320, gain: 0.075, durationMs: 150, offsetMs: 180, type: 'triangle' },
-        ],
-      },
-      red: {
-        intervalMs: 520,
-        pulses: [
-          { frequency: 900, gain: 0.15, durationMs: 130, offsetMs: 0, type: 'square' },
-          { frequency: 700, gain: 0.14, durationMs: 130, offsetMs: 145, type: 'square' },
-          { frequency: 900, gain: 0.15, durationMs: 130, offsetMs: 290, type: 'square' },
-        ],
-      },
-    });
-    const AVERAGE_WINDOW_MS = 2000;
-    const DB_FLOOR = 30;
-    const DB_CEILING = 100;
-    const DB_OFFSET = 90;
-    const DEFAULT_THRESHOLDS = Object.freeze({ yellow: 60, red: 70 });
-    const MIN_THRESHOLD_GAP = 1;
-    const MONITOR_ASSIGNMENT_PLACEHOLDER = 'Arbeitsauftrag';
-
-    let thresholds = { ...DEFAULT_THRESHOLDS };
-    let audioContext;
-    let analyser;
-    let source;
-    let stream;
-    let rafId;
-    let running = false;
-    let starting = false;
-    let windowStartMs = 0;
-    let windowLevelSum = 0;
-    let windowSampleCount = 0;
-    let currentLightColor = null;
-    let warningToneEnabled = { yellow: true, red: true };
-    let warningToneTimerId;
-    let warningToneLoopToken = 0;
-    let monitorTickId;
-    let micUiState = MIC_UI_STATE.READY;
-    let micUiDetail = '';
-    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-
-    const formatTimerText = (timerState) => {
-      const duration = parseWorkOrderDuration(timerState.durationMinutes);
-      if (!duration) return getTimerPlaceholder();
-      if (!timerState.startISO) return formatDurationHMS(duration);
-      const startMs = Date.parse(timerState.startISO);
-      if (!Number.isFinite(startMs)) return formatDurationHMS(duration);
-      const remaining = Math.max(0, (startMs + duration * 60000) - Date.now());
-      return formatRemainingDuration(remaining);
-    };
-
-    const updateTimerColor = (timerState) => {
-      if (!els.monitorCountdownDisplay) return;
-      const duration = parseWorkOrderDuration(timerState.durationMinutes);
-      if (!duration || !timerState.startISO) {
-        els.monitorCountdownDisplay.style.color = 'var(--text)';
-        return;
-      }
-      const startMs = Date.parse(timerState.startISO);
-      if (!Number.isFinite(startMs)) {
-        els.monitorCountdownDisplay.style.color = 'var(--text)';
-        return;
-      }
-      const endMs = startMs + duration * 60000;
-      const remaining = Math.max(0, endMs - Date.now());
-      const progress = Math.max(0, Math.min(1, remaining / (duration * 60000)));
-      const hue = Math.round(120 * progress);
-      els.monitorCountdownDisplay.style.color = `hsl(${hue} 85% 58%)`;
-    };
-
-    const renderTimer = () => {
-      const timerState = SharedTimerStore.getState();
-      if (els.monitorCountdownDisplay) {
-        els.monitorCountdownDisplay.textContent = formatTimerText(timerState);
-      }
-      updateTimerColor(timerState);
-      if (els.monitorAssignmentDisplay) {
-        const text = typeof timerState.workOrderText === 'string' ? timerState.workOrderText : '';
-        const hasText = text.trim().length > 0;
-        els.monitorAssignmentDisplay.textContent = hasText ? text : MONITOR_ASSIGNMENT_PLACEHOLDER;
-        els.monitorAssignmentDisplay.classList.toggle('is-placeholder', !hasText);
-      }
-    };
-
-    const toEstimatedDb = (rms) => {
-      if (rms <= 0) return DB_FLOOR;
-      const dbFs = 20 * Math.log10(rms);
-      const estimatedDb = dbFs + DB_OFFSET;
-      return Math.round(Math.max(DB_FLOOR, Math.min(DB_CEILING, estimatedDb)));
-    };
-
-    const setActiveLight = (color) => {
-      const nextColor = color || null;
-      const colorChanged = currentLightColor !== nextColor;
-      currentLightColor = nextColor;
-      Object.entries(monitorLights).forEach(([key, element]) => {
-        if (element) {
-          element.classList.toggle('active', key === color);
-        }
-      });
-      if (colorChanged) {
-        syncWarningToneLoop();
-      }
-      if (els.monitorShell) {
-        els.monitorShell.classList.toggle('monitor-warning-yellow', nextColor === 'yellow');
-        els.monitorShell.classList.toggle('monitor-warning-red', nextColor === 'red');
-      }
-    };
-
-    const classifyLevel = (level) => {
-      if (level >= thresholds.red) return 'red';
-      if (level >= thresholds.yellow) return 'yellow';
-      return 'green';
-    };
-
-    const resetAverageWindow = () => {
-      windowStartMs = performance.now();
-      windowLevelSum = 0;
-      windowSampleCount = 0;
-    };
-
-    const playTonePulse = ({ frequency, gain, durationMs, offsetMs, type = 'sine' }) => {
-      if (!audioContext) return;
-      const startTime = audioContext.currentTime + offsetMs / 1000;
-      const endTime = startTime + durationMs / 1000;
-      const oscillator = audioContext.createOscillator();
-      const gainNode = audioContext.createGain();
-      oscillator.type = type;
-      oscillator.frequency.setValueAtTime(frequency, startTime);
-      gainNode.gain.setValueAtTime(0.0001, startTime);
-      gainNode.gain.linearRampToValueAtTime(gain, startTime + 0.012);
-      gainNode.gain.exponentialRampToValueAtTime(0.0001, endTime);
-      oscillator.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-      oscillator.start(startTime);
-      oscillator.stop(endTime + 0.015);
-      oscillator.onended = () => {
-        oscillator.disconnect();
-        gainNode.disconnect();
-      };
-    };
-
-    const playWarningTone = async (color) => {
-      if (!audioContext) return;
-      const config = WARNING_TONES[color];
-      if (!config) return;
-      if (audioContext.state === 'suspended') {
-        try {
-          await audioContext.resume();
-        } catch {
-          return;
-        }
-      }
-      config.pulses.forEach(playTonePulse);
-    };
-
-    const stopWarningToneLoop = () => {
-      warningToneLoopToken += 1;
-      if (warningToneTimerId) {
-        window.clearTimeout(warningToneTimerId);
-        warningToneTimerId = undefined;
-      }
-    };
-
-    const isWarningToneEnabled = (toneKey) => {
-      if (toneKey !== 'yellow' && toneKey !== 'red') return false;
-      return Boolean(warningToneEnabled[toneKey]);
-    };
-
-    const getWarningToneLabel = (toneKey) => {
-      const toneName = toneKey === 'red' ? 'Rot' : 'Gelb';
-      return `Warnton ${toneName}`;
-    };
-
-    const renderWarningToneState = () => {
-      els.monitorWarningToneButtons?.forEach((button) => {
-        const toneKey = button.dataset.monitorWarningToneToggle;
-        if (toneKey !== 'yellow' && toneKey !== 'red') return;
-        const label = getWarningToneLabel(toneKey);
-        button.setAttribute('aria-checked', String(isWarningToneEnabled(toneKey)));
-        button.setAttribute('aria-label', label);
-      });
-      els.monitorWarningToneLabels?.forEach((labelElement) => {
-        const toneKey = labelElement.dataset.monitorWarningToneLabel;
-        if (toneKey !== 'yellow' && toneKey !== 'red') return;
-        labelElement.textContent = getWarningToneLabel(toneKey);
-      });
-    };
-
-    const isMicSupported = () => Boolean(
-      navigator.mediaDevices
-      && navigator.mediaDevices.getUserMedia
-      && AudioContextClass
-    );
-
-    const setMicUiState = (nextState, detail = '') => {
-      micUiState = nextState;
-      micUiDetail = typeof detail === 'string' ? detail.trim() : '';
-      renderMicControlState();
-    };
-
-    const getEffectiveMicUiState = () => {
-      if (!isMicSupported()) return MIC_UI_STATE.UNSUPPORTED;
-      if (starting) return MIC_UI_STATE.STARTING;
-      if (running) return MIC_UI_STATE.ACTIVE;
-      return micUiState === MIC_UI_STATE.ERROR ? MIC_UI_STATE.ERROR : MIC_UI_STATE.READY;
-    };
-
-    const getMicStatusText = (stateKey) => {
-      if (stateKey === MIC_UI_STATE.STARTING) return 'Status: startet...';
-      if (stateKey === MIC_UI_STATE.ACTIVE) return 'Status: aktiv';
-      if (stateKey === MIC_UI_STATE.UNSUPPORTED) return 'Status: nicht-unterstützt';
-      if (stateKey === MIC_UI_STATE.ERROR) {
-        return micUiDetail ? `Status: fehler (${micUiDetail})` : 'Status: fehler';
-      }
-      return 'Status: bereit';
-    };
-
-    const renderMicControlState = () => {
-      const effectiveState = getEffectiveMicUiState();
-      const activeMic = effectiveState === MIC_UI_STATE.ACTIVE;
-      const busyMic = effectiveState === MIC_UI_STATE.STARTING;
-      const unsupportedMic = effectiveState === MIC_UI_STATE.UNSUPPORTED;
-      const startButtons = [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean);
-      const stopButtons = [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean);
-      startButtons.forEach((button) => {
-        button.textContent = '🚦';
-        button.classList.toggle('is-running', false);
-        button.classList.toggle('is-off', false);
-        button.disabled = unsupportedMic || busyMic || activeMic;
-        button.setAttribute('aria-label', 'Lautstärkeüberwachung starten');
-        button.setAttribute('title', 'Lautstärkeüberwachung starten');
-      });
-      stopButtons.forEach((button) => {
-        button.textContent = '🚦';
-        button.classList.toggle('is-running', activeMic);
-        button.classList.toggle('is-off', true);
-        button.disabled = unsupportedMic || busyMic || !activeMic;
-        button.setAttribute('aria-label', 'Lautstärkeüberwachung stoppen');
-        button.setAttribute('title', 'Lautstärkeüberwachung stoppen');
-      });
-      renderControlStatus(els.monitorControlStatus, effectiveState, getMicStatusText(effectiveState));
-    };
-
-    const syncWarningToneLoop = () => {
-      stopWarningToneLoop();
-      if (currentLightColor !== 'yellow' && currentLightColor !== 'red') {
-        return;
-      }
-      if (!isWarningToneEnabled(currentLightColor)) {
-        return;
-      }
-      const loopToken = warningToneLoopToken;
-      const loop = async () => {
-        if (loopToken !== warningToneLoopToken) return;
-        if (currentLightColor !== 'yellow' && currentLightColor !== 'red') return;
-        if (!isWarningToneEnabled(currentLightColor)) return;
-        const config = WARNING_TONES[currentLightColor];
-        if (!config) return;
-        await playWarningTone(currentLightColor);
-        if (loopToken !== warningToneLoopToken) return;
-        if (currentLightColor !== 'yellow' && currentLightColor !== 'red') return;
-        if (!isWarningToneEnabled(currentLightColor)) return;
-        warningToneTimerId = window.setTimeout(loop, config.intervalMs);
-      };
-      void loop();
-    };
-
-    const clampThresholdValue = (value, min, max, fallback) => {
-      const parsed = Math.round(Number(value));
-      if (!Number.isFinite(parsed)) return fallback;
-      return Math.min(Math.max(parsed, min), max);
-    };
-
-    const renderThresholdControls = () => {
-      if (els.monitorYellowThresholdInput) {
-        els.monitorYellowThresholdInput.value = String(thresholds.yellow);
-      }
-      if (els.monitorRedThresholdInput) {
-        els.monitorRedThresholdInput.value = String(thresholds.red);
-      }
-      if (els.monitorYellowThresholdValue) {
-        els.monitorYellowThresholdValue.textContent = `${thresholds.yellow} dB`;
-      }
-      if (els.monitorRedThresholdValue) {
-        els.monitorRedThresholdValue.textContent = `${thresholds.red} dB`;
-      }
-    };
-
-    const setMonitorThreshold = (thresholdKey, value) => {
-      if (thresholdKey === 'yellow') {
-        const yellow = clampThresholdValue(value, DB_FLOOR, DB_CEILING - MIN_THRESHOLD_GAP, DEFAULT_THRESHOLDS.yellow);
-        thresholds = {
-          yellow,
-          red: Math.max(thresholds.red, yellow + MIN_THRESHOLD_GAP),
-        };
-      } else if (thresholdKey === 'red') {
-        const red = clampThresholdValue(value, DB_FLOOR + MIN_THRESHOLD_GAP, DB_CEILING, DEFAULT_THRESHOLDS.red);
-        thresholds = {
-          yellow: Math.min(thresholds.yellow, red - MIN_THRESHOLD_GAP),
-          red,
-        };
-      }
-      renderThresholdControls();
-    };
-
-    const monitorLevel = () => {
-      if (!analyser || !running) return;
-      const data = new Uint8Array(analyser.fftSize);
-      analyser.getByteTimeDomainData(data);
-      let sumSquares = 0;
-      for (const sample of data) {
-        const normalized = (sample - 128) / 128;
-        sumSquares += normalized * normalized;
-      }
-      const rms = Math.sqrt(sumSquares / data.length);
-      const level = toEstimatedDb(rms);
-      const now = performance.now();
-      windowLevelSum += level;
-      windowSampleCount += 1;
-      if ((now - windowStartMs) >= AVERAGE_WINDOW_MS && windowSampleCount > 0) {
-        const avg = Math.round(windowLevelSum / windowSampleCount);
-        setActiveLight(classifyLevel(avg));
-        windowStartMs = now;
-        windowLevelSum = 0;
-        windowSampleCount = 0;
-      }
-      rafId = requestAnimationFrame(monitorLevel);
-    };
-
-    const stopMeasurement = async ({ silent = false } = {}) => {
-      stopWarningToneLoop();
-      if (rafId) {
-        cancelAnimationFrame(rafId);
-        rafId = null;
-      }
-      try {
-        source?.disconnect?.();
-      } catch { }
-      try {
-        analyser?.disconnect?.();
-      } catch { }
-      if (stream) {
-        stream.getTracks().forEach((track) => {
-          try {
-            track.stop();
-          } catch { }
-        });
-      }
-      stream = null;
-      source = null;
-      analyser = null;
-      if (audioContext) {
-        try {
-          await audioContext.close();
-        } catch { }
-      }
-      audioContext = null;
-      running = false;
-      starting = false;
-      resetAverageWindow();
-      setActiveLight(null);
-      setMicUiState(MIC_UI_STATE.READY, silent ? '' : 'gestoppt');
-    };
-
-    const startMeasurement = async () => {
-      if (running || starting) return;
-      if (!isMicSupported()) {
-        setMicUiState(MIC_UI_STATE.UNSUPPORTED);
-        setActiveLight(null);
-        return;
-      }
-      if (typeof navigator.mediaDevices.enumerateDevices === 'function') {
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const hasAudioInput = Array.isArray(devices) && devices.some((device) => device?.kind === 'audioinput');
-          if (!hasAudioInput) {
-            setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
-            showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn', { presentation: 'toast' });
-            setActiveLight(null);
-            return;
-          }
-        } catch {
-
-        }
-      }
-      starting = true;
-      setMicUiState(MIC_UI_STATE.STARTING);
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-        });
-        audioContext = new AudioContextClass();
-        analyser = audioContext.createAnalyser();
-        analyser.fftSize = 2048;
-        analyser.smoothingTimeConstant = 0.8;
-        source = audioContext.createMediaStreamSource(stream);
-        source.connect(analyser);
-        running = true;
-        setActiveLight(null);
-        resetAverageWindow();
-        monitorLevel();
-        setMicUiState(MIC_UI_STATE.ACTIVE);
-      } catch (error) {
-        setActiveLight(null);
-        const errorName = typeof error?.name === 'string' ? error.name : '';
-        const errorMessage = typeof error?.message === 'string' ? error.message : '';
-        const noMicFound = (
-          errorName === 'NotFoundError'
-          || errorName === 'DevicesNotFoundError'
-          || /no\s+audio\s+input|no\s+input\s+device|device.*not\s*found|kein.*mikrofon/i.test(errorMessage)
-        );
-        if (errorName === 'NotAllowedError' || errorName === 'SecurityError') {
-          setMicUiState(MIC_UI_STATE.ERROR, 'Zugriff verweigert');
-        } else if (noMicFound) {
-          setMicUiState(MIC_UI_STATE.ERROR, 'kein Mikrofon gefunden');
-          showMessage('Kein Mikrofon angeschlossen. Bitte Mikrofon verbinden und erneut starten.', 'warn', { presentation: 'toast' });
-        } else {
-          setMicUiState(MIC_UI_STATE.ERROR, 'nicht verfügbar');
-        }
-      } finally {
-        starting = false;
-        renderMicControlState();
-      }
-    };
-
-    const init = () => {
-      renderThresholdControls();
-      renderWarningToneState();
-      renderMicControlState();
-      renderTimer();
-      setActiveLight(null);
-      SharedTimerStore.subscribe(() => {
-        renderTimer();
-      });
-      if (monitorTickId) {
-        window.clearInterval(monitorTickId);
-      }
-      monitorTickId = window.setInterval(renderTimer, 250);
-      els.monitorThresholdInputs?.forEach((input) => {
-        input.addEventListener('input', () => {
-          setMonitorThreshold(input.dataset.monitorThreshold, input.value);
-        });
-      });
-      els.monitorWarningToneButtons?.forEach((button) => {
-        button.addEventListener('click', () => {
-          const toneKey = button.dataset.monitorWarningToneToggle;
-          if (toneKey !== 'yellow' && toneKey !== 'red') return;
-          warningToneEnabled = {
-            ...warningToneEnabled,
-            [toneKey]: !isWarningToneEnabled(toneKey),
-          };
-          renderWarningToneState();
-          syncWarningToneLoop();
-        });
-      });
-      [els.monitorMicStartButton, els.workPhaseMonitorStartCollapsed].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          void startMeasurement();
-        });
-      });
-      [els.monitorMicStopButton, els.workPhaseMonitorStopCollapsed].filter(Boolean).forEach((button) => {
-        button.addEventListener('click', () => {
-          void stopMeasurement();
-        });
-      });
-    };
-
-    return Object.freeze({
-      init,
-      startMeasurement,
-      stopMeasurement,
-    });
-  })();
   function assignStudentsEvenly(options = {}) {
     const { shuffle = true } = options;
     if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' }); return; }
@@ -8573,53 +7407,18 @@ import {
     });
   });
 
-  const updateMonitorAmpelSizing = () => {
-    const ampel = els.monitorAmpel;
-    if (!ampel || !monitorLightNodes.length) return;
-
-    const rect = ampel.getBoundingClientRect();
-    if (rect.width <= 0 || rect.height <= 0) {
-      ampel.style.removeProperty('--monitor-light-fit-size');
-      return;
-    }
-
-    const computed = window.getComputedStyle(ampel);
-    const paddingInline = (parseFloat(computed.paddingLeft) || 0) + (parseFloat(computed.paddingRight) || 0);
-    const paddingBlock = (parseFloat(computed.paddingTop) || 0) + (parseFloat(computed.paddingBottom) || 0);
-    const gap = parseFloat(computed.rowGap || computed.gap) || 0;
-    const innerWidth = Math.max(0, rect.width - paddingInline);
-    const innerHeight = Math.max(0, rect.height - paddingBlock);
-    const lightCount = monitorLightNodes.length;
-    if (!innerWidth || !innerHeight || !lightCount) {
-      ampel.style.removeProperty('--monitor-light-fit-size');
-      return;
-    }
-
-    const sizeByWidth = innerWidth;
-    const sizeByHeight = (innerHeight - (gap * (lightCount - 1))) / lightCount;
-    const fitSize = Math.floor(Math.max(0, Math.min(sizeByWidth, sizeByHeight)));
-
-    if (fitSize > 0) {
-      ampel.style.setProperty('--monitor-light-fit-size', `${fitSize}px`);
-      return;
-    }
-    ampel.style.removeProperty('--monitor-light-fit-size');
-  };
-
   const handleViewportChange = () => {
     if (getActiveTab() === TAB_GROUPS) {
       requestGroupGridLayoutRefresh();
     }
-    updateMonitorAmpelSizing();
-    positionWorkOrderHintOverlay();
+    workPhaseController?.refreshLayout();
     if (typeof requestAnimationFrame === 'function') {
       if (isIOSDevice) {
         requestAnimationFrame(() => {
           if (getActiveTab() === TAB_GROUPS) {
             requestGroupGridLayoutRefresh();
           }
-          updateMonitorAmpelSizing();
-          positionWorkOrderHintOverlay();
+          workPhaseController?.refreshLayout();
         });
         return;
       }
@@ -8628,8 +7427,7 @@ import {
           if (getActiveTab() === TAB_GROUPS) {
             requestGroupGridLayoutRefresh();
           }
-          updateMonitorAmpelSizing();
-          positionWorkOrderHintOverlay();
+          workPhaseController?.refreshLayout();
         });
       });
     }
@@ -8640,6 +7438,9 @@ import {
       activeTab: getActiveTab(),
       isIOSDevice,
     });
+    if (getActiveTab() === TAB_RANDOM_PICKER) {
+      randomPickerController?.refreshLayout?.();
+    }
     if (getActiveTab() === TAB_GROUPS || getActiveTab() === TAB_RANDOM_PICKER) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
@@ -8668,13 +7469,6 @@ import {
       groupGridObserver.observe(els.groupsMainHost);
     }
   }
-  if (typeof ResizeObserver === 'function' && els.monitorAmpel) {
-    const monitorAmpelObserver = new ResizeObserver(() => {
-      updateMonitorAmpelSizing();
-    });
-    monitorAmpelObserver.observe(els.monitorAmpel);
-    els.monitorAmpel.parentElement && monitorAmpelObserver.observe(els.monitorAmpel.parentElement);
-  }
   bindTabNavigation();
   bindBackgroundDrop(els.groupsGrid);
   bindBackgroundDrop(els.groupsGridWrap, { ignoreInsideGrid: true });
@@ -8700,14 +7494,6 @@ import {
     setActiveTabImmediate(TAB_GROUPS);
   }
   try {
-    MonitorModule.init();
-  } catch (error) {
-    reportAppError(error, 'Lautstärke-Feedback konnte nicht initialisiert werden.', {
-      scope: 'app-init',
-      action: 'init-monitor-module',
-    });
-  }
-  try {
     buildGrid();
     refreshUnseated();
     renderWorkOrder();
@@ -8718,7 +7504,7 @@ import {
     });
   }
   syncChromeState();
-  updateMonitorAmpelSizing();
+  workPhaseController?.refreshLayout();
   els.app?.classList.add('app-js-ready');
   if (!moduleWindowRequest.isModuleWindow && !helpPreviewRequest) {
     pwaInstallPrompt.showIfNeeded();
@@ -8741,8 +7527,6 @@ import {
   });
   if (helpPreviewRequest) startHelpPreview();
   else firstRunTutorial.showContextHelp({ prompt: true });
-  window.addEventListener('resize', positionWorkOrderHintOverlay);
-  window.addEventListener('scroll', positionWorkOrderHintOverlay, true);
   const serviceWorkerUpdates = helpPreviewRequest ? null : registerServiceWorkerUpdates({
     updateDialog: els.updateDialog,
     updateDialogLater: els.updateDialogLater,

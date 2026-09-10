@@ -61,6 +61,7 @@ test('the random picker preserves its cards, controls, conditions, and callbacks
     let autoDisable = false;
     let imports = 0;
     let exports = 0;
+    let conditionSaves = 0;
     const messages = [];
     const delays = [];
     let runningSnapshot = null;
@@ -72,6 +73,7 @@ test('the random picker preserves its cards, controls, conditions, and callbacks
       getAutoDisableSelected: () => autoDisable,
       setAutoDisableSelected: (value) => { autoDisable = value; },
       setStudentWeight: (student, weight) => { student.randomWeight = weight; },
+      onConditionsSaved: () => { conditionSaves += 1; },
       showMessage: (...args) => messages.push(args),
       onImport: () => { imports += 1; },
       onExport: () => { exports += 1; },
@@ -177,6 +179,7 @@ test('the random picker preserves its cards, controls, conditions, and callbacks
       initialCards,
       imports,
       exports,
+      conditionSaves,
       conditionLabels,
       choicesAfterCertain,
       savedWeights,
@@ -200,6 +203,7 @@ test('the random picker preserves its cards, controls, conditions, and callbacks
   assert.ok(result.initialCards.every(({ hidden }) => hidden === null));
   assert.equal(result.imports, 1);
   assert.equal(result.exports, 1);
+  assert.equal(result.conditionSaves, 1);
   assert.deepEqual(result.conditionLabels, [
     'unmöglich', 'normal', 'doppelt', 'dreifach', 'sicher',
     'unmöglich', 'normal', 'doppelt', 'dreifach', 'sicher',

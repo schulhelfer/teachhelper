@@ -11,6 +11,8 @@
   const COURSE_SEATPLAN_OPEN_EVENT = 'classroom:grades-course-seatplan-open';
   const COURSE_SEATPLAN_SAVE_REQUEST_EVENT = 'classroom:grades-course-seatplan-save-request';
   const COURSE_SEATPLAN_SAVE_RESULT_EVENT = 'classroom:grades-course-seatplan-save-result';
+  const COURSE_PICKER_CONFIG_SAVE_REQUEST_EVENT = 'classroom:grades-course-picker-config-save-request';
+  const COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT = 'classroom:grades-course-picker-config-save-result';
   const COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:grades-course-grade-config-request';
   const COURSE_GRADE_CONFIG_RESULT_EVENT = 'classroom:grades-course-grade-config-result';
   const COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:grades-course-grade-save-request';
@@ -50,6 +52,7 @@
     MANUAL_SAVE_REQUEST_EVENT,
     GRADE_VAULT_REQUEST_EVENT,
     COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
+    COURSE_PICKER_CONFIG_SAVE_REQUEST_EVENT,
     COURSE_GRADE_CONFIG_REQUEST_EVENT,
     COURSE_GRADE_SAVE_REQUEST_EVENT,
     GRADE_ROSTER_COURSES_REQUEST_EVENT,
@@ -173,6 +176,12 @@
       }));
       return;
     }
+    if (data.type === COURSE_PICKER_CONFIG_SAVE_REQUEST_EVENT) {
+      window.dispatchEvent(new CustomEvent(COURSE_PICKER_CONFIG_SAVE_REQUEST_EVENT, {
+        detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
+      }));
+      return;
+    }
     if (data.type === COURSE_GRADE_CONFIG_REQUEST_EVENT) {
       window.dispatchEvent(new CustomEvent(COURSE_GRADE_CONFIG_REQUEST_EVENT, {
         detail: data.detail && typeof data.detail === 'object' ? data.detail : null,
@@ -249,6 +258,12 @@
     if (!window.parent || window.parent === window) return;
     const detail = event instanceof CustomEvent ? event.detail : null;
     window.parent.postMessage(withModuleFrameNonce({ type: COURSE_SEATPLAN_SAVE_RESULT_EVENT, detail }), PARENT_MESSAGE_TARGET);
+  });
+
+  window.addEventListener(COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, (event) => {
+    if (!window.parent || window.parent === window) return;
+    const detail = event instanceof CustomEvent ? event.detail : null;
+    window.parent.postMessage(withModuleFrameNonce({ type: COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, detail }), PARENT_MESSAGE_TARGET);
   });
 
   window.addEventListener(COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {

@@ -12,9 +12,9 @@ const [main, picker, index, serviceWorker] = await Promise.all([
 test('main mounts the picker against the shared state through explicit adapters', () => {
   assert.match(main, /from '\.\/modules\/random-picker\/index\.js'/);
   assert.match(main, /randomPickerController = mountRandomPicker\(\{/);
-  assert.match(main, /getStudents: \(\) => state\.students/);
-  assert.match(main, /getAutoDisableSelected: \(\) => state\.randomPickerAutoDisableSelected/);
-  assert.match(main, /setStudentWeight: \(student, weight\) => \{\s*student\.randomWeight = weight;/);
+  assert.match(main, /getStudents: \(\) => gradePickerBinding\?\.students \|\| state\.students/);
+  assert.match(main, /getAutoDisableSelected: \(\) => gradePickerBinding\?\.autoDisableSelected \?\? state\.randomPickerAutoDisableSelected/);
+  assert.match(main, /setStudentWeight: \(student, weight, \{ deferSave = false \} = \{\}\) => \{\s*student\.randomWeight = weight;/);
   assert.doesNotMatch(main, /function (?:getRandomPickerCandidates|pickWeightedRandomPickerCandidate|updateRandomPickerCards|startRandomPickerSpin|buildRandomPickerConditionsTable)\(/);
 });
 

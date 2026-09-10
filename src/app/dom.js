@@ -39,6 +39,8 @@ export function createAppDom(doc = document) {
     randomPickerCards: doc.querySelectorAll('[data-random-slot]'),
     randomPickerImport: doc.getElementById('random-picker-import'),
     randomPickerStart: doc.getElementById('random-picker-start'),
+    randomPickerCourseReset: doc.getElementById('random-picker-course-reset'),
+    randomPickerCourseResetRow: doc.querySelector('.random-picker-course-reset-row'),
     randomPickerStartButtons: doc.querySelectorAll('[data-random-picker-start]'),
     randomPickerExport: doc.getElementById('random-picker-export'),
     randomPickerPlanActions: doc.querySelector('.random-picker-sidebar-plan-actions'),

@@ -3,14 +3,14 @@ export const RANDOM_PICKER_MAX_WEIGHT = 4;
 export const RANDOM_PICKER_DEFAULT_WEIGHT = 1;
 export const RANDOM_PICKER_CERTAIN_WEIGHT = 4;
 export const RANDOM_PICKER_SPIN_DURATION_MS = 4000;
+export const RANDOM_PICKER_WINNER_HIGHLIGHT_MS = 2200;
 
 export function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed)) return fallback;
   if (parsed <= RANDOM_PICKER_MIN_WEIGHT) return RANDOM_PICKER_MIN_WEIGHT;
   if (parsed >= RANDOM_PICKER_CERTAIN_WEIGHT) return RANDOM_PICKER_CERTAIN_WEIGHT;
-  if (parsed >= RANDOM_PICKER_MAX_WEIGHT) return RANDOM_PICKER_MAX_WEIGHT;
-  return RANDOM_PICKER_DEFAULT_WEIGHT;
+  return parsed;
 }
 
 export function normalizeRandomPickerAutoDisableSelected(value) {
@@ -66,6 +66,7 @@ export function mountRandomPicker({
   setStudentWeight = (student, weight) => {
     if (student && typeof student === 'object') student.randomWeight = weight;
   },
+  onConditionsSaved = () => {},
   sanitizeStudent = (student) => {
     if (student && typeof student === 'object') {
       student.randomWeight = normalizeRandomPickerWeight(student.randomWeight);
@@ -169,8 +170,17 @@ export function mountRandomPicker({
     return measuredWidth;
   }
 
+  function refreshLayout() {
+    const labels = getCandidates({ includeZeroWeight: true }).map((entry) => entry.name);
+    return refreshWheelWidth(labels);
+  }
+
   function getStartButtons() {
     return Array.from(dom.startButtons || []).filter(Boolean);
+  }
+
+  function waitForWinnerHighlight() {
+    return new Promise((resolve) => view.setTimeout(resolve, RANDOM_PICKER_WINNER_HIGHLIGHT_MS));
   }
 
   function setStartButtons({ disabled, text } = {}) {
@@ -321,6 +331,10 @@ export function mountRandomPicker({
       updateCards(winnerIndex, { final: true });
       const shouldDisableWinner = getAutoDisableSelected() && winner?.id;
       if (shouldDisableWinner) {
+        if (dom.resultNote) {
+          dom.resultNote.textContent = 'Die Hervorhebung endet gleich. Danach wird der ausgewählte Name auf „unmöglich“ gesetzt.';
+        }
+        await waitForWinnerHighlight();
         const winnerStudent = readStudents().find((student) => student?.id === winner.id);
         if (winnerStudent) {
           setStudentWeight(winnerStudent, RANDOM_PICKER_MIN_WEIGHT);
@@ -443,16 +457,20 @@ export function mountRandomPicker({
       if (certainStudentId) {
         setStudentWeight(student, student.id === certainStudentId
           ? RANDOM_PICKER_CERTAIN_WEIGHT
-          : RANDOM_PICKER_MIN_WEIGHT);
+          : RANDOM_PICKER_MIN_WEIGHT, { deferSave: true });
         return;
       }
       setStudentWeight(student, weightsById.has(student.id)
         ? weightsById.get(student.id)
-        : normalizeRandomPickerWeight(student.randomWeight));
+        : normalizeRandomPickerWeight(student.randomWeight), { deferSave: true });
     });
     if (dom.randomPickerAutoDisableSelected) {
-      setAutoDisableSelected(normalizeRandomPickerAutoDisableSelected(dom.randomPickerAutoDisableSelected.checked));
+      setAutoDisableSelected(
+        normalizeRandomPickerAutoDisableSelected(dom.randomPickerAutoDisableSelected.checked),
+        { deferSave: true },
+      );
     }
+    onConditionsSaved();
     render();
   }
 
@@ -496,6 +514,7 @@ export function mountRandomPicker({
 
   return {
     render,
+    refreshLayout,
     start,
     isSpinning() {
       return spinInProgress;

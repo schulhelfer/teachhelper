@@ -1893,6 +1893,10 @@
       display: none !important;
     }
 
+    .random-picker-course-reset-row {
+      display: none !important;
+    }
+
     .random-picker-sidebar-action-label {
       display: none !important;
     }
@@ -1909,6 +1913,32 @@
     .app.app-tab-random-picker .random-picker-sidebar-start-row {
       display: flex !important;
       margin-top: 12px;
+    }
+
+    .app.app-tab-random-picker .random-picker-course-reset-row:not([hidden]) {
+      display: flex !important;
+      justify-content: flex-end;
+      margin-top: 8px;
+    }
+
+    .random-picker-course-reset-button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      width: 26px;
+      min-width: 26px;
+      height: 22px;
+      min-height: 22px;
+      padding: 0;
+      border-radius: 7px;
+      box-shadow: 0 2px 7px rgba(15, 23, 42, 0.22);
+    }
+
+    .random-picker-course-reset-button .app-action-reset-icon {
+      width: 14px;
+      height: 14px;
+      flex: 0 0 auto;
     }
 
     .app.app-tab-random-picker .random-picker-sidebar-plan-actions button.primary {
@@ -2092,7 +2122,7 @@
 
     .random-picker-card.is-final {
       font-weight: 900;
-      animation: random-picker-winner-glow 1680ms cubic-bezier(0.18, 0.82, 0.24, 1);
+      animation: random-picker-winner-glow 2400ms cubic-bezier(0.18, 0.82, 0.24, 1);
     }
 
     .random-picker-card.is-empty-state {
@@ -2131,7 +2161,7 @@
       background-size: contain;
       filter: drop-shadow(0 0 18px rgba(251, 191, 36, 0.58)) drop-shadow(0 0 36px rgba(251, 146, 60, 0.46));
       pointer-events: none;
-      animation: random-picker-winner-arrow 900ms ease-out;
+      animation: random-picker-winner-arrow 2200ms cubic-bezier(0.18, 0.82, 0.24, 1) both;
     }
 
     .random-picker-card.is-final::before {
@@ -2684,33 +2714,33 @@
       gap: 16px;
       min-width: 0;
       min-height: 0;
-      width: min(100%, 700px);
+      width: min(100%, 1080px);
       transform: translateY(-2px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-machine,
     .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-machine {
-      width: min(100%, calc(var(--random-picker-wheel-static-width, 560px) + var(--random-picker-arrow-clearance) + 28px));
+      width: min(100%, calc(var(--random-picker-wheel-static-width, 720px) + var(--random-picker-arrow-clearance) + 48px));
       min-height: fit-content;
       height: auto;
-      padding: 14px;
+      padding: 20px;
       justify-self: center;
       transform: translateY(-3px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-wheel,
     .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-wheel {
-      min-height: min(340px, calc(100dvh - 260px));
-      padding: 22px 16px;
-      gap: 10px;
+      min-height: min(620px, calc(100dvh - 180px));
+      padding: 30px 28px;
+      gap: 14px;
       transform: translateY(-2px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-card,
     .app.chrome-collapsed:not(.is-expanding).app-tab-random-picker .random-picker-card {
-      min-height: 52px;
-      padding: 10px 14px;
-      font-size: clamp(15px, 1.8vw, 21px);
+      min-height: clamp(64px, 9vh, 96px);
+      padding: 16px 24px;
+      font-size: clamp(24px, 3.2vw, 46px);
     }
 
     .app.is-collapsing.app-tab-random-picker .random-picker-button,

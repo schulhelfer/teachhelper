@@ -4764,7 +4764,7 @@ class GradesApp {
       } else {
         this.dispatchNameLearningReviewResult(result);
       }
-    } else if (["seatplan-grade-config", "seatplan-grade-save", "seatplan-save"].includes(continuation?.type)) {
+    } else if (["seatplan-grade-config", "seatplan-grade-save", "seatplan-save", "picker-config-save"].includes(continuation?.type)) {
       const detail = continuation.detail && typeof continuation.detail === "object" ? continuation.detail : {};
       const result = {
         requestId: String(detail.requestId || ""),
@@ -4778,6 +4778,8 @@ class GradesApp {
         this.dispatchCourseSeatplanGradeConfigResult(result);
       } else if (continuation.type === "seatplan-grade-save") {
         this.dispatchCourseSeatplanGradeSaveResult(result);
+      } else if (continuation.type === "picker-config-save") {
+        this.dispatchCoursePickerConfigSaveResult(result);
       } else {
         this.dispatchCourseSeatplanSaveResult(result);
       }
@@ -4982,7 +4984,7 @@ class GradesApp {
       this.pendingGradeVaultContinuation = { type, detail };
       return;
     }
-    if (["seatplan-grade-config", "seatplan-grade-save", "seatplan-save"].includes(type)) {
+    if (["seatplan-grade-config", "seatplan-grade-save", "seatplan-save", "picker-config-save"].includes(type)) {
       const detail = action.detail && typeof action.detail === "object" ? action.detail : null;
       if (!String(detail?.requestId || "")) {
         this.pendingGradeVaultContinuation = null;
@@ -5064,6 +5066,10 @@ class GradesApp {
     }
     if (action.type === "seatplan-save") {
       void this.handleCourseSeatplanSaveRequest(action.detail);
+      return true;
+    }
+    if (action.type === "picker-config-save") {
+      void this.handleCoursePickerConfigSaveRequest(action.detail);
       return true;
     }
     return false;
@@ -11411,6 +11417,10 @@ class GradesApp {
       window.addEventListener("classroom:grades-course-seatplan-save-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
         void this.handleCourseSeatplanSaveRequest(detail);
+      });
+      window.addEventListener("classroom:grades-course-picker-config-save-request", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        void this.handleCoursePickerConfigSaveRequest(detail);
       });
       window.addEventListener("classroom:grades-course-grade-config-request", (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
@@ -30328,6 +30338,13 @@ class GradesApp {
     }));
   }
 
+  dispatchCoursePickerConfigSaveResult(detail) {
+    if (typeof window === "undefined" || typeof window.dispatchEvent !== "function") return;
+    window.dispatchEvent(new CustomEvent("classroom:grades-course-picker-config-save-result", {
+      detail: detail && typeof detail === "object" ? detail : null,
+    }));
+  }
+
   async handleGradeRosterCoursesRequest(detail = null) {
     const requestId = String(detail?.requestId || "");
     const responseContext = {
@@ -30421,7 +30438,7 @@ class GradesApp {
   async handleGradeRosterImportRequest(detail = null) {
     const requestId = String(detail?.requestId || "");
     const courseId = Number(detail?.courseId || 0);
-    const mode = detail?.mode === "plan" ? "plan" : "roster";
+    const mode = detail?.mode === "plan" ? "plan" : (detail?.mode === "picker" ? "picker" : "roster");
     const responseContext = {
       mode,
       returnTab: String(detail?.returnTab || ""),
@@ -30469,9 +30486,13 @@ class GradesApp {
           const seatPlan = Array.isArray(courseState.gradeSeatPlans)
             ? courseState.gradeSeatPlans.find((item) => Number(item?.courseId) === Number(course.id))?.plan || null
             : null;
+          const pickerConfig = Array.isArray(courseState.gradePickerConfigs)
+            ? courseState.gradePickerConfigs.find((item) => Number(item?.courseId) === Number(course.id))?.config || null
+            : null;
           return {
             students,
             plan: seatPlan,
+            pickerConfig,
             contextToken: contextState.contextToken,
             rosterToken: contextState.rosterToken
           };
@@ -30482,6 +30503,7 @@ class GradesApp {
           return {
             students,
             plan: this.store.getGradeSeatPlan(course.id),
+            pickerConfig: this.store.getGradePickerConfig(course.id),
             contextToken: contextState.contextToken,
             rosterToken: contextState.rosterToken
           };
@@ -30499,6 +30521,7 @@ class GradesApp {
         students: importPayload.students,
         showGradeStudentPortraits: this.shouldShowGradeStudentPortraits(),
         plan: importPayload.plan,
+        pickerConfig: mode === "picker" ? importPayload.pickerConfig : null,
         contextToken: importPayload.contextToken,
         rosterToken: importPayload.rosterToken,
         performanceFlairCount: 4,
@@ -31603,6 +31626,78 @@ class GradesApp {
         ok: false,
         stale: error?.code === "STALE_GRADE_CONTEXT",
         message: error instanceof Error && error.message ? error.message : "Noten konnten nicht gespeichert werden."
+      });
+      return false;
+    }
+  }
+
+  async handleCoursePickerConfigSaveRequest(detail = null) {
+    const requestId = String(detail?.requestId || "");
+    const courseId = Number(detail?.courseId || 0);
+    const rosterToken = String(detail?.rosterToken || "");
+    const config = detail?.config && typeof detail.config === "object" ? detail.config : null;
+    if (!requestId || !courseId || !rosterToken || !config) {
+      this.dispatchCoursePickerConfigSaveResult({
+        requestId,
+        courseId,
+        rosterToken,
+        ok: false,
+        stale: true,
+        message: "Picker-Konfiguration konnte nicht gespeichert werden.",
+      });
+      return false;
+    }
+    if (!this.courseAllowsSeatplanRoster(this.getCourseForSeatplan(courseId))) {
+      this.dispatchCoursePickerConfigSaveResult({
+        requestId,
+        courseId,
+        rosterToken,
+        ok: false,
+        message: "Dieser Kurs unterstützt keinen Picker.",
+      });
+      return false;
+    }
+    if (!this.canAccessGradeVault()) {
+      this.queueGradeVaultContinuation({ type: "picker-config-save", detail });
+      this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
+      this.notifyParentGradeVaultOverlay(true);
+      return true;
+    }
+    try {
+      const workspaceOwner = this.getWorkspaceOwnerApp();
+      if (!workspaceOwner?.store) throw new Error("Notenkursdienst ist nicht verfügbar.");
+      const saved = await this.runGradeCourseMutation(courseId, () => {
+        const currentRosterToken = this.buildCourseSeatplanRosterToken(
+          courseId,
+          workspaceOwner.store.listGradeStudents(courseId),
+        );
+        if (currentRosterToken !== rosterToken) {
+          const staleError = new Error("Der Kurs oder seine Teilnehmendenliste wurde zwischenzeitlich geändert. Bitte den Picker neu öffnen.");
+          staleError.code = "STALE_GRADE_CONTEXT";
+          throw staleError;
+        }
+        const result = workspaceOwner.store.saveGradePickerConfig(courseId, config);
+        if (!result) throw new Error("Picker-Konfiguration konnte nicht sicher gespeichert werden.");
+        return result;
+      }, { preserveRoster: true });
+      this.dispatchCoursePickerConfigSaveResult({
+        requestId,
+        courseId,
+        rosterToken,
+        ok: true,
+        updatedAt: saved?.updatedAt || new Date().toISOString(),
+      });
+      return true;
+    } catch (error) {
+      this.dispatchCoursePickerConfigSaveResult({
+        requestId,
+        courseId,
+        rosterToken,
+        ok: false,
+        stale: error?.code === "STALE_GRADE_CONTEXT",
+        message: error instanceof Error && error.message
+          ? error.message
+          : "Picker-Konfiguration konnte nicht im Notenmodul gespeichert werden.",
       });
       return false;
     }

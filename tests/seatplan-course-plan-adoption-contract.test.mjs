@@ -75,7 +75,7 @@ test('die Übernahme holt nur den Plan und behält die eigene Kursbindung', () =
 
 test('das Notenmodul spiegelt den Modus und schickt keine fremde Namensliste', () => {
   const request = gradesMethod('async handleGradeRosterImportRequest');
-  assert.match(request, /detail\?\.mode === "plan" \? "plan" : "roster"/);
+  assert.match(request, /detail\?\.mode === "plan" \? "plan" : \(detail\?\.mode === "picker" \? "picker" : "roster"\)/);
   assert.match(request, /const responseContext = \{\s*mode,/);
   assert.match(request, /respondWithAdoptedCourseSeatPlan\(\{/);
 

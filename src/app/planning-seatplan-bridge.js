@@ -11,6 +11,8 @@ import {
   GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
   GRADES_COURSE_SEATPLAN_SAVE_REQUEST_EVENT,
   GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT,
+  GRADES_COURSE_PICKER_CONFIG_SAVE_REQUEST_EVENT,
+  GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT,
   GRADES_GRADE_ROSTER_COURSES_REQUEST_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
@@ -558,6 +560,15 @@ export function createPlanningSeatplanBridge({
     return true;
   }
 
+  function requestGradePickerConfigSave(detail = null) {
+    if (!isWorkspaceReady()) {
+      return dispatchBlockedResult(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, detail);
+    }
+    ensureTabInitialized(TAB_GRADES);
+    gradesController?.post?.(GRADES_COURSE_PICKER_CONFIG_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
+    return true;
+  }
+
   function requestNameLearningData(detail = null) {
     if (!isWorkspaceReady()) return false;
     ensureTabInitialized(TAB_GRADES);
@@ -751,6 +762,12 @@ export function createPlanningSeatplanBridge({
     seatplanController?.sendCourseSaveResult?.(detail);
   });
 
+  saveResultTarget.addEventListener(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, (event) => {
+    const detail = event.detail;
+    if (!detail || typeof detail !== 'object') return;
+    documentBus.dispatchEvent(new CustomEvent(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, { detail }));
+  });
+
   saveResultTarget.addEventListener(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
@@ -763,7 +780,7 @@ export function createPlanningSeatplanBridge({
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendGradeRosterImportResult?.(detail);
     documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, { detail }));
-    if (!detail.ok || !Array.isArray(detail.students)) return;
+    if (!detail.ok || detail.mode === 'picker' || !Array.isArray(detail.students)) return;
     rosterStore?.dispatch?.(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GRADES, Date.now(), detail));
   });
 
@@ -834,6 +851,7 @@ export function createPlanningSeatplanBridge({
     sendCourseSeatplanContext,
     requestGradeRosterCourses,
     requestGradeRosterImport,
+    requestGradePickerConfigSave,
     requestNameLearningData,
     requestNameLearningReview,
     requestNameLearningStudentSearch,

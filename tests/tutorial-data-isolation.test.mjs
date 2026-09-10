@@ -13,6 +13,7 @@ const [
   duplicateSource,
   qrSource,
   frameBridgeSource,
+  workPhaseSource,
 ] = await Promise.all([
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
@@ -24,6 +25,7 @@ const [
   readFile(new URL('../src/modules/duplicate-check/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/module-frame-bridge.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/work-phase/app.js', import.meta.url), 'utf8'),
 ]);
 
 test('automatic tutorial demos replace the step set and retain their cleanup', () => {
@@ -108,9 +110,9 @@ test('grades demo seeds learners, a persisted structure, and an assigned assessm
 });
 
 test('work phase tutorial restores the complete previous timer snapshot', () => {
-  assert.match(mainSource, /const previousTimerState = SharedTimerStore\.getState\(\)/);
-  assert.match(mainSource, /replaceTimerState\(previousTimerState\)/);
-  assert.match(mainSource, /if \(previousTimerState\.alarmState\) \{\s+updateWorkOrderAlert\(true\)/);
+  assert.match(workPhaseSource, /const previousTimerState = getTimerState\(\)/);
+  assert.match(workPhaseSource, /replaceTimerState\(previousTimerState\)/);
+  assert.match(workPhaseSource, /if \(previousTimerState\.alarmState\) \{\s+updateWorkOrderAlert\(true\)/);
 });
 
 test('groups and picker restore both the visible roster and the shared roster store', () => {

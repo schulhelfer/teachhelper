@@ -1696,6 +1696,14 @@ export function createShellController({
       requestManualSave();
     });
   }
+  els.chromeToggle?.addEventListener('click', toggleChromeCollapsed);
+  els.chromeOverlayToggle?.addEventListener('click', toggleChromeCollapsed);
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return;
+    if (!state.chromeCollapsed || state.chromeTransitionState !== 'idle') return;
+    if (document.querySelector('dialog[open]')) return;
+    setChromeCollapsed(false);
+  });
   if (els.moreToolsTrigger) {
     els.moreToolsTrigger.addEventListener('click', () => {
       setMoreToolsMenuOpen(els.moreToolsMenu?.hidden !== false);

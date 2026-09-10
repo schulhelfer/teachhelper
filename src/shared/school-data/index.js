@@ -267,6 +267,7 @@ export function normalizeGradeCourseRelations(rawState = null) {
     'gradeOverrides',
     'gradeImports',
     'gradeSeatPlans',
+    'gradePickerConfigs',
     'gradeAccommodations',
   ];
   for (const key of arrays) {
@@ -318,6 +319,7 @@ export function deleteCourseCascadeInPlace(publicState, gradeState, courseId) {
     'gradeStudents',
     'gradeImports',
     'gradeSeatPlans',
+    'gradePickerConfigs',
     'gradeAccommodations',
   ];
   for (const key of courseRows) {

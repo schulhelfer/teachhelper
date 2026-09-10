@@ -46,7 +46,7 @@ const [{ WorkspaceRuntime, formatLocalBackupTimestamp }, messages, workspaceCryp
 function emptyGrades() {
   return {
     counters: {}, gradeStructures: [], gradeAssessments: [], gradeStudents: [],
-    gradeEntries: [], gradeOverrides: [], gradeImports: [], gradeSeatPlans: [], gradeAccommodations: [],
+    gradeEntries: [], gradeOverrides: [], gradeImports: [], gradeSeatPlans: [], gradePickerConfigs: [], gradeAccommodations: [],
   };
 }
 
@@ -1701,5 +1701,12 @@ test('ein unlesbarer Kurs bricht die Namenslern-Uebersicht nicht ab', async () =
     runtimeSource,
     /complete = false;\s*continue;/,
     'eine Uebersicht mit uebersprungenem Kurs darf sich nicht als vollstaendig ausgeben',
+  );
+});
+
+test('eine während der Aktualisierung gesperrte Notendatenbank erzeugt keine Kurswarnung', () => {
+  assert.match(
+    runtimeSource,
+    /if \(error\?\.code === WORKSPACE_ERROR_VAULT_LOCKED \|\| !this\.canAccessGradeVault\(\)\) return false;/,
   );
 });
