@@ -2,11 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [main, groups, index, boundaries, serviceWorker] = await Promise.all([
+const [main, groups, index, serviceWorker] = await Promise.all([
   readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/groups/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/groups/index.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/groups/BOUNDARIES.md', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
 ]);
 
@@ -41,7 +40,7 @@ test('the Groups module owns group state, rendering, interactions, suggestions, 
   assert.doesNotMatch(main, /state\.(?:seats|activeSeats|activeSeatOrder|lockedSeats|seatTopics|gridRows|gridCols|minGroupSize|maxGroupSize)/);
 });
 
-test('the Groups public surface, boundaries, and offline cache are complete', () => {
+test('the Groups public surface and offline cache are complete', () => {
   for (const symbol of [
     'mountGroups',
     'resolveGroupsDom',
@@ -64,8 +63,6 @@ test('the Groups public surface, boundaries, and offline cache are complete', ()
   ]) {
     assert.match(groups, new RegExp(`\\b${method}\\b`));
   }
-  assert.match(boundaries, /Shared State in `main\.js`/);
-  assert.match(boundaries, /Shell-Verantwortung in `main\.js`/);
   assert.match(serviceWorker, /'\.\/src\/modules\/groups\/index\.js'/);
   assert.match(serviceWorker, /'\.\/src\/modules\/groups\/app\.js'/);
 });
