@@ -33,7 +33,7 @@ function findBrowserBinary() {
   throw new Error('No Chrome-compatible browser found. Install Chrome, Chromium, or Microsoft Edge, or set CHROME_BIN to its executable path.');
 }
 
-export async function openDomBrowser(t) {
+export async function openDomBrowser(t, options = {}) {
   const root = resolve(fileURLToPath(new URL('../../', import.meta.url)));
   const server = createServer(async (request, response) => {
     try {
@@ -118,6 +118,17 @@ export async function openDomBrowser(t) {
   const { targetId } = await command('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await command('Target.attachToTarget', { targetId, flatten: true });
   await command('Page.enable', {}, sessionId);
+  const viewport = options?.viewport;
+  if (Number.isFinite(viewport?.width) && Number.isFinite(viewport?.height)) {
+    await command('Emulation.setDeviceMetricsOverride', {
+      width: Math.max(1, Math.round(viewport.width)),
+      height: Math.max(1, Math.round(viewport.height)),
+      deviceScaleFactor: Number.isFinite(viewport.deviceScaleFactor)
+        ? Math.max(0.1, viewport.deviceScaleFactor)
+        : 1,
+      mobile: Boolean(viewport.mobile),
+    }, sessionId);
+  }
   const origin = `http://127.0.0.1:${server.address().port}`;
   await command('Page.navigate', { url: origin }, sessionId);
   return async function evaluate(fn, argument) {

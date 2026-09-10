@@ -129,6 +129,38 @@ test('Groups preserves CSV sharing, sizing, group metadata, and drag interaction
   assert.ok(result.pickerNames.includes('Anna Adler'));
 });
 
+test('main parses quoted CSV names with BOM, CRLF, delimiters, and escaped quotes', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t);
+  assert.equal(await bootGroups(evaluate, `csv-parser-${Date.now()}`), true);
+  const result = await evaluate(async () => {
+    const csv = [
+      '\uFEFFsep=;',
+      'Nachname;Vorname',
+      '"Meyer;Schmidt";Anna',
+      '"O""Neil";Bob',
+    ].join('\r\n');
+    const input = document.getElementById('csv');
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([csv], 'Parser-Fall.csv', { type: 'text/csv' }));
+    input.files = transfer.files;
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    await new Promise(done => window.setTimeout(done, 80));
+    document.getElementById('group-seat-preferences').click();
+    await Promise.resolve();
+    return {
+      status: document.getElementById('csv-status').textContent,
+      names: [...document.querySelectorAll('#preferences-tbody .name-cell')].map(node => node.textContent),
+      rows: document.querySelectorAll('#preferences-tbody tr').length,
+    };
+  });
+
+  assert.deepEqual(result, {
+    status: 'Parser-Fall',
+    names: ['Anna Meyer;Schmidt', 'Bob O"Neil'],
+    rows: 2,
+  });
+});
+
 test('Groups preserves preferences and the complete shared plan payload', { timeout: 60000 }, async (t) => {
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {
@@ -197,6 +229,7 @@ test('Groups preserves preferences and the complete shared plan payload', { time
     document.getElementById('tab-work-phase').click();
     await new Promise(done => window.setTimeout(done, 450));
     return {
+      inputPlan: plan,
       preferences,
       topics: [...document.querySelectorAll('#groups-grid .seat-topic')].map(node => node.value),
       locked: document.querySelector('#groups-grid .seat')?.classList.contains('locked'),
@@ -209,12 +242,11 @@ test('Groups preserves preferences and the complete shared plan payload', { time
   assert.deepEqual(result.preferences, { rows: 4, buddy: '02', flair: 'B' });
   assert.deepEqual(result.topics, ['Quellen', 'Präsentation']);
   assert.equal(result.locked, true);
-  assert.deepEqual(result.exported.activeSeats, ['1-1', '1-2']);
-  assert.deepEqual(result.exported.lockedSeats, ['1-1']);
-  assert.deepEqual(result.exported.seats, { '1-1': ['01', '02'], '1-2': ['03', '04'] });
-  assert.deepEqual(result.exported.seatTopics, { '1-1': 'Quellen', '1-2': 'Präsentation' });
-  assert.equal(result.exported.randomPickerAutoDisableSelected, true);
-  assert.equal(result.exported.workOrder, 'Erstellt ein Plakat.');
+  assert.ok(Number.isFinite(Date.parse(result.exported.generatedAt)));
+  assert.deepEqual(
+    { ...result.exported, generatedAt: '<generated>' },
+    { ...result.inputPlan, generatedAt: '<generated>' },
+  );
   assert.equal(result.workOrder, 'Erstellt ein Plakat.');
   assert.equal(result.duration, '15');
 });

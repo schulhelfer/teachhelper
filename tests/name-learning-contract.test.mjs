@@ -45,7 +45,8 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(runtime, /await this\.refreshNameLearningDueSummary\(\);/);
   assert.doesNotMatch(bridge, /refreshNameLearningDueCount/);
   assert.match(shell, /\[data-name-learning-due-count\]/);
-  assert.match(main, /shellController\?\.setPlanningGradeVaultState\?\.\(/);
+  assert.match(shell, /window\.addEventListener\(WORKSPACE_STATE_EVENT,[\s\S]*?setPlanningGradeVaultState\(\{/);
+  assert.match(main, /const initialWorkspaceSnapshot = window\.__teachhelperWorkspaceController\?\.getSnapshot\?\.\('shell'\);[\s\S]*?shellController\.setPlanningGradeVaultState\(\{/);
 });
 
 test('name learning uses the shared module shell with its own sidebar', () => {

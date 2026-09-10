@@ -27908,6 +27908,12 @@ class GradesApp {
       return;
     }
     window.setTimeout(() => {
+      const activeRoot = this.currentView === "grades"
+        ? this.getActiveGradeInputRoot()
+        : null;
+      if (!input.isConnected || !activeRoot?.contains(input)) {
+        return;
+      }
       if (this.gradeInputBlurCommitSkip?.has(input)) {
         this.gradeInputBlurCommitSkip.delete(input);
         return;

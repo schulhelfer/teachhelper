@@ -31,6 +31,7 @@ function extractClassMethod(name) {
 const methods = Function(
   `"use strict"; return ({${[
     '_resolveMessageDialog',
+    'handleGradesTableBlur',
     'resolveUnsavedGradesEntryNavigation',
   ].map(extractClassMethod).join(',\n')}});`,
 )();
@@ -111,4 +112,106 @@ test('the synchronous navigation guard does not open a second unsaved-changes di
   const guard = extractClassMethod('guardUnsavedGradesEntryNavigation');
 
   assert.doesNotMatch(guard, /showInfoMessage|Ungespeicherte Änderungen/);
+});
+
+test('stale blur callbacks cannot dirty reset occurrence or single-grade drafts', async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { setTimeout };
+  try {
+    for (const mode of ['homework', 'grade']) {
+      const input = {
+        disabled: false,
+        isConnected: true,
+        dataset: {},
+        closest() {
+          return this;
+        },
+      };
+      const draft = { mode, entries: {}, dirty: false };
+      let commits = 0;
+      const harness = {
+        currentView: 'grades',
+        gradePickerState: {},
+        isGradeCourseNavigationEventBlocked() {
+          return false;
+        },
+        getActiveGradeInputRoot() {
+          return { contains: () => false };
+        },
+        isTestGradeInput() {
+          return false;
+        },
+        isSegmentControlInteractionPending() {
+          return false;
+        },
+        commitGradeCellInput() {
+          commits += 1;
+          draft.dirty = true;
+          if (mode === 'homework') {
+            draft.entries[7] = { checked: true };
+          }
+        },
+      };
+
+      methods.handleGradesTableBlur.call(harness, { target: input });
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      assert.equal(commits, 0);
+      assert.equal(draft.dirty, false);
+      assert.deepEqual(draft.entries, {});
+    }
+  } finally {
+    if (previousWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = previousWindow;
+    }
+  }
+});
+
+test('blur callbacks still commit inputs from the active grade surface once', async () => {
+  const previousWindow = globalThis.window;
+  globalThis.window = { setTimeout };
+  try {
+    const input = {
+      disabled: false,
+      isConnected: true,
+      dataset: {},
+      closest() {
+        return this;
+      },
+    };
+    let commits = 0;
+    const harness = {
+      currentView: 'grades',
+      gradePickerState: {},
+      isGradeCourseNavigationEventBlocked() {
+        return false;
+      },
+      getActiveGradeInputRoot() {
+        return { contains: (candidate) => candidate === input };
+      },
+      isTestGradeInput() {
+        return false;
+      },
+      isSegmentControlInteractionPending() {
+        return false;
+      },
+      commitGradeCellInput(candidate) {
+        assert.equal(candidate, input);
+        commits += 1;
+      },
+    };
+
+    methods.handleGradesTableBlur.call(harness, { target: input });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    assert.equal(commits, 1);
+  } finally {
+    if (previousWindow === undefined) {
+      delete globalThis.window;
+    } else {
+      globalThis.window = previousWindow;
+    }
+  }
 });

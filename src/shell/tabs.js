@@ -33,7 +33,6 @@ export const GRADES_TAB_LEAVE_REQUEST_EVENT = 'classroom:grades-tab-leave-reques
 export const GRADES_TAB_LEAVE_RESULT_EVENT = 'classroom:grades-tab-leave-result';
 export const GRADES_VIEW_REQUEST_EVENT = 'classroom:grades-view-request';
 export const GRADES_NAVIGATE_EVENT = 'classroom:grades-navigate';
-export const GRADES_TUTORIAL_START_REQUEST_EVENT = 'classroom:grades-tutorial-start-request';
 export const GRADES_READY_EVENT = 'classroom:grades-ready';
 export const GRADES_GRADE_VAULT_STATE_EVENT = 'classroom:grades-grade-vault-state';
 export const GRADES_GRADE_VAULT_REQUEST_EVENT = 'classroom:grades-grade-vault-request';

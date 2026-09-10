@@ -9529,7 +9529,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           const isEventInsideMergerDropZone = (event) => {
             const target = event?.target;
             if (!(target instanceof Element)) return false;
-            return Boolean(target.closest('#merger-host') || target.closest('#dropZone'));
+            return Boolean(target.closest('#merger-host'));
           };
 
           if (els.csvDropZone) {

@@ -77,7 +77,6 @@ import {
   GRADES_COURSE_CONTEXT_EVENT,
   GRADES_COURSE_SEATPLAN_OPEN_EVENT,
   GRADES_NAVIGATE_EVENT,
-  GRADES_TUTORIAL_START_REQUEST_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
   MERGER_OPEN_RESULT_REQUEST_EVENT,
   MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
@@ -254,11 +253,6 @@ import {
   window.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
     const detail = event instanceof CustomEvent ? event.detail : null;
     if (!detail || detail.scope !== 'shell' || !detail.snapshot) return;
-    const vault = detail.snapshot.vault;
-    shellController?.setPlanningGradeVaultState?.({
-      ...vault,
-      ready: Boolean(detail.snapshot.ready),
-    });
     const warning = detail.snapshot?.vault?.autoLockWarning;
     if (warning?.active !== true) {
       displayedGradeVaultAutoLockWarningId = '';
@@ -327,7 +321,6 @@ import {
   let shellController = null;
   let groupsController = null;
   let workPhaseController = null;
-  const renderWorkOrder = () => workPhaseController?.render();
   const positionWorkOrderHintOverlay = () => workPhaseController?.positionHintOverlay();
   const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
   const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : shellState.chromeCollapsed);
@@ -530,24 +523,6 @@ import {
   const prepareGradesTutorialSurface = (surface) => {
     postGradesTutorialCommand('showSurface', { surface });
   };
-  const activatePlanningTutorialPresentation = () => {
-    const frame = getPlanningFrame();
-    postPlanningTutorialCommand('activate', null, frame);
-    return {
-      cleanup: () => {
-        postPlanningTutorialCommand('cleanup', null, frame);
-      },
-    };
-  };
-  const activateGradesTutorialPresentation = () => {
-    const frame = getGradesFrame();
-    postGradesTutorialCommand('activate', null, frame);
-    return {
-      cleanup: () => {
-        postGradesTutorialCommand('cleanup', null, frame);
-      },
-    };
-  };
   const openPlanningSettingsForTutorial = (settingsTab = 'dayoff') => {
     if (planningTutorialDemoActive) {
       dispatchPlanningTutorialDemoView({
@@ -563,32 +538,6 @@ import {
       view: 'settings',
       settingsTab,
       settingsContext: 'planning',
-      source: 'tutorial',
-    });
-  };
-  const openPlanningDatabaseSettingsForTutorial = () => openPlanningSettingsForTutorial('database');
-  const openPlanningDayOffSettingsForTutorial = () => openPlanningSettingsForTutorial('dayoff');
-  const openPlanningDisplaySettingsForTutorial = () => openPlanningSettingsForTutorial('display');
-  const openPlanningLessonTimesForTutorial = () => openPlanningSettingsForTutorial('lessonTimes');
-  const openPlanningWeekForTutorial = () => {
-    if (planningTutorialDemoActive) {
-      dispatchPlanningTutorialDemoView({ view: 'week', source: 'tutorial' });
-      return;
-    }
-    bridgeController?.ensureTabInitialized(TAB_PLANNING);
-    bridgeController?.dispatchPlanningViewRequest({
-      view: 'week',
-      source: 'tutorial',
-    });
-  };
-  const openPlanningCourseForTutorial = () => {
-    if (planningTutorialDemoActive) {
-      dispatchPlanningTutorialDemoView({ view: 'course', source: 'tutorial' });
-      return;
-    }
-    bridgeController?.ensureTabInitialized(TAB_PLANNING);
-    bridgeController?.dispatchPlanningViewRequest({
-      view: 'course',
       source: 'tutorial',
     });
   };
@@ -694,13 +643,6 @@ import {
     steps.forEach((step) => {
       if (step && typeof step === 'object') step.section = section;
     });
-    return steps;
-  };
-  const addTutorialContinuationHint = (steps, prerequisite) => {
-    const lastStep = steps[steps.length - 1];
-    if (lastStep && typeof lastStep.copy === 'string') {
-      lastStep.copy = `${lastStep.copy} Sobald du ${prerequisite} hast, kannst du das Tutorial über 🛟 fortsetzen.`;
-    }
     return steps;
   };
   const TUTORIAL_OPAQUE_FRAME_TABS = new Set([
@@ -2055,7 +1997,6 @@ import {
         }
       case TAB_GROUPS:
         {
-          const groupFallback = () => null;
           const steps = [
             ...withSection('Namen laden', [
               createModuleTutorialStep({
@@ -3427,7 +3368,6 @@ import {
       setActiveTab(detail.view === 'planning' ? TAB_PLANNING : TAB_GRADES);
     });
     window.addEventListener(PLANNING_TUTORIAL_START_REQUEST_EVENT, openHelpEntry);
-    window.addEventListener(GRADES_TUTORIAL_START_REQUEST_EVENT, openHelpEntry);
     const openCourseSeatplan = (event) => {
       const detail = event instanceof CustomEvent ? event.detail : null;
       if (!detail || typeof detail !== 'object') {
@@ -3522,7 +3462,6 @@ import {
       updateCsvStatusDisplay();
       groupsController?.render({ resetViewport: true });
       renderRandomPicker();
-      renderWorkOrder();
     };
     try {
       const current = getCurrentModuleTutorialSteps({ activeTab: tab });
@@ -3634,7 +3573,6 @@ import {
     groupsController?.handleRosterReplacement();
     els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
     renderRandomPicker();
-    renderWorkOrder();
     renderGradeRosterPills();
   });
   shellController = createShellController({
@@ -3928,7 +3866,6 @@ import {
       els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
     }
     renderRandomPicker();
-    renderWorkOrder();
   }
 
   async function importPlanFromFile(file, handle) {
@@ -4405,7 +4342,7 @@ import {
       trigger.hidden = false;
     }
   };
-  const renderGradeRosterImportCourses = (courses, requestId) => {
+  const renderGradeRosterImportCourses = (courses) => {
     if (!els.gradeRosterImportMenu) return;
     els.gradeRosterImportMenu.replaceChildren();
     if (!Array.isArray(courses) || courses.length === 0) {
@@ -4438,7 +4375,7 @@ import {
     els.gradeRosterImportMenu.hidden = false;
     els.gradeRosterImportTrigger.setAttribute('aria-expanded', 'true');
     if (gradeRosterCoursesState === 'ready' && gradeRosterCourses.length) {
-      renderGradeRosterImportCourses(gradeRosterCourses, 'cached');
+      renderGradeRosterImportCourses(gradeRosterCourses);
       return;
     }
     showGradeRosterImportMessage('Notenkurse werden geladen …');
@@ -4589,7 +4526,6 @@ import {
 
     els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
     renderRandomPicker();
-    renderWorkOrder();
     syncSharedRosterState(STUDENTS_SYNC_SOURCE_GROUPS);
     const importedCount = state.students.length;
     const importedLabel = importedCount === 1 ? 'Name' : 'Namen';
@@ -4678,7 +4614,7 @@ import {
   const isEventInsideMergerDropZone = (event) => {
     const target = event?.target;
     if (!(target instanceof Element)) return false;
-    return Boolean(target.closest('#merger-host') || target.closest('#dropZone'));
+    return Boolean(target.closest('#merger-host'));
   };
 
   if (els.csvDropZone) {
@@ -4904,8 +4840,8 @@ import {
     reportError: reportAppError,
   });
 
-  const handleViewportChange = () => {
-    if (getActiveTab() === TAB_GROUPS) {
+  const handleViewportChange = (options = {}) => {
+    if (!options?.skipImmediateGroupRefresh && getActiveTab() === TAB_GROUPS) {
       groupsController?.refreshLayout();
     }
     workPhaseController?.refreshLayout();
@@ -4930,7 +4866,7 @@ import {
     }
   };
   function refreshChromeDependentLayouts() {
-    handleViewportChange();
+    handleViewportChange({ skipImmediateGroupRefresh: true });
     bridgeController?.refreshModuleLayouts({
       activeTab: getActiveTab(),
       isIOSDevice,
@@ -4955,7 +4891,6 @@ import {
   if (window.visualViewport) {
     window.visualViewport.addEventListener('resize', handleViewportChange);
   }
-  bindTabNavigation();
 
   const moduleWindowRequest = readModuleWindowRequest(window.location);
   try {
@@ -4979,7 +4914,6 @@ import {
   }
   try {
     groupsController?.render({ resetViewport: true });
-    renderWorkOrder();
   } catch (error) {
     reportAppError(error, 'Die Hauptansicht konnte nicht vollständig initialisiert werden.', {
       scope: 'app-init',

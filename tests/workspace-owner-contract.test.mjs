@@ -28,9 +28,10 @@ const workspaceSource = (await readFile(
   `from '${messagesUrl}';`,
 ).replace("import { WorkspaceStore } from './store.js';", 'class WorkspaceStore {}')
   .replace("from './runtime.js';", `from '${runtimeUrl}';`);
-const { createWorkspaceController } = await import(
-  `data:text/javascript;base64,${Buffer.from(workspaceSource).toString('base64')}`
-);
+const [{ createWorkspaceController }, { WORKSPACE_STATE_EVENT }] = await Promise.all([
+  import(`data:text/javascript;base64,${Buffer.from(workspaceSource).toString('base64')}`),
+  import(messagesUrl),
+]);
 
 test('the shell exposes a stable owner before any feature frame attaches', () => {
   const controller = createWorkspaceController({ eventTarget: new EventTarget() });
@@ -54,4 +55,53 @@ test('the workspace store and runtime exist before a feature client attaches', (
   assert.ok(controller.getStore());
   assert.equal(controller.getLifecycle().serviceAttached, true);
   assert.equal(controller.isReady(), true);
+});
+
+test('workspace state events are synchronous and feature changes are mirrored to the shell', () => {
+  const target = new EventTarget();
+  const controller = createWorkspaceController({ eventTarget: target });
+  const sequence = [];
+  target.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
+    sequence.push(`event:${event.detail.scope}`);
+  });
+  controller.registerClient('planning-observer', {
+    scope: 'planning',
+    onState: (detail) => sequence.push(`planning:${detail.scope}`),
+  });
+  controller.registerClient('grades-observer', {
+    scope: 'grades',
+    onState: (detail) => sequence.push(`grades:${detail.scope}`),
+  });
+  controller.registerClient('shell-observer', {
+    scope: 'shell',
+    onState: (detail) => sequence.push(`shell:${detail.scope}`),
+  });
+  sequence.length = 0;
+
+  controller.markChanged('grades');
+
+  assert.deepEqual(sequence, [
+    'event:grades',
+    'grades:grades',
+    'event:planning',
+    'planning:planning',
+    'event:shell',
+    'planning:shell',
+    'grades:shell',
+    'shell:shell',
+  ]);
+
+  sequence.length = 0;
+  controller.markChanged('planning');
+
+  assert.deepEqual(sequence, [
+    'event:planning',
+    'planning:planning',
+    'event:grades',
+    'grades:grades',
+    'event:shell',
+    'planning:shell',
+    'grades:shell',
+    'shell:shell',
+  ]);
 });
