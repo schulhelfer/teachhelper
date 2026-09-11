@@ -12,7 +12,7 @@ const docxTemplateUrl = `data:text/javascript;base64,${Buffer.from(
   docxTemplateSource.replace('"./file-guards.js"', JSON.stringify(fileGuardsUrl)),
 ).toString('base64')}`;
 
-const { assertJsonNestingAtMost, exceedsZipCompressionRatio, FILE_LIMITS } = await import(fileGuardsUrl);
+const { assertImageDimensionsAtMost, assertJsonNestingAtMost, exceedsZipCompressionRatio, FILE_LIMITS, fitCanvasSize, readImageDimensions } = await import(fileGuardsUrl);
 const { prepareDocxTemplate } = await import(docxTemplateUrl);
 
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
@@ -158,6 +158,17 @@ test('die Kompressionsraten-Heuristik verschont kleine, gut komprimierbare Datei
     true
   );
   assert.equal(exceedsZipCompressionRatio(null, 10 * 1024 * 1024), false);
+});
+
+test('Bildheader und Arbeits-Canvas bleiben innerhalb des Pixelbudgets', () => {
+  const png = new Uint8Array(24);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  new DataView(png.buffer).setUint32(16, 12_000);
+  new DataView(png.buffer).setUint32(20, 8_000);
+  assert.throws(() => assertImageDimensionsAtMost(readImageDimensions(png, 'image/png')), /zu viele Bildpunkte/);
+  const canvas = fitCanvasSize(12_000, 8_000);
+  assert.ok(canvas.width * canvas.height <= FILE_LIMITS.CANVAS_MAX_PIXELS);
+  assert.ok(Math.max(canvas.width, canvas.height) <= FILE_LIMITS.CANVAS_MAX_EDGE);
 });
 
 test('der JSON-Schutz begrenzt Tiefe und die Größe einzelner Container', () => {

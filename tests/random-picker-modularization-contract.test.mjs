@@ -3,17 +3,17 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const [main, picker, index, serviceWorker] = await Promise.all([
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/random-picker/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/random-picker/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
 ]);
 
 test('main mounts the picker against the shared state through explicit adapters', () => {
-  assert.match(main, /from '\.\/modules\/random-picker\/index\.js'/);
+  assert.match(main, /from '\.\.\/modules\/random-picker\/index\.js'/);
   assert.match(main, /randomPickerController = mountRandomPicker\(\{/);
-  assert.match(main, /getStudents: \(\) => gradePickerBinding\?\.students \|\| state\.students/);
-  assert.match(main, /getAutoDisableSelected: \(\) => gradePickerBinding\?\.autoDisableSelected \?\? state\.randomPickerAutoDisableSelected/);
+  assert.match(main, /getStudents: \(\) => gradeRosterCoordinator\.getPickerStudents\(classroomState\.getState\(\)\.students\)/);
+  assert.match(main, /getAutoDisableSelected: \(\) => gradeRosterCoordinator\.getPickerAutoDisableSelected\([\s\S]*?state\.randomPickerAutoDisableSelected[\s\S]*?\)/);
   assert.match(main, /setStudentWeight: \(student, weight, \{ deferSave = false \} = \{\}\) => \{\s*student\.randomWeight = weight;/);
   assert.doesNotMatch(main, /function (?:getRandomPickerCandidates|pickWeightedRandomPickerCandidate|updateRandomPickerCards|startRandomPickerSpin|buildRandomPickerConditionsTable)\(/);
 });

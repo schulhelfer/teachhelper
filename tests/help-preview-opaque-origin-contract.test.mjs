@@ -148,7 +148,7 @@ test('planning, grades und seatplan beantworten die Tutorial-Rect-Anfrage per po
 test('die Vorschau bleibt flüchtig, damit die opake Origin keine Daten anlegt', async () => {
   const bootstrap = await read('../src/app/bootstrap.js');
   assert.match(bootstrap, /ephemeral: moduleWindowRequest\.isModuleWindow \|\| Boolean\(helpPreviewRequest\)/);
-  const main = await read('../src/main.js');
+  const main = await read('../src/app/app-runtime.js');
   assert.match(main, /const serviceWorkerUpdates = helpPreviewRequest \? null/);
   assert.match(main, /const trustedParentOrigin = \(window\.origin === 'null' \|\| window\.location\.origin === 'null'\) \? '\*' : window\.location\.origin;/);
 });

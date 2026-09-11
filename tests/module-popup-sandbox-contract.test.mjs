@@ -41,16 +41,21 @@ test('qr and merger delegate window opening to the shell instead of opening popu
 });
 
 test('the shell revalidates module open requests instead of trusting the frame', async () => {
-  const main = await read('../src/main.js');
+  const [main, router] = await Promise.all([
+    read('../src/app/app-runtime.js'),
+    read('../src/app/module-message-router.js'),
+  ]);
 
   assert.match(
-    main,
-    /data\.type === MODULE_OPEN_EXTERNAL_REQUEST_EVENT\)\s*\{\s*if \(frame !== getQrFrame\(\)\) return;/,
+    router,
+    /data\.type === MODULE_OPEN_EXTERNAL_REQUEST_EVENT\) \{\s*if \(role !== 'qr'\) return false;/,
   );
   assert.match(
-    main,
-    /data\.type === MERGER_OPEN_RESULT_REQUEST_EVENT\)\s*\{\s*if \(frame !== getMergerFrame\(\)\) return;/,
+    router,
+    /data\.type === MERGER_OPEN_RESULT_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/,
   );
+  assert.match(main, /onOpenExternalRequest: \(detail\) => \{\s*openExternalUrlForModule\(detail\?\.url\);/);
+  assert.match(main, /onMergerOpenResultRequest: \(detail\) => \{\s*openModuleResultPdf\(detail\);/);
 
   const externalHelper = main.match(/const openExternalUrlForModule = \([\s\S]*?\n  \};/)?.[0] || '';
   assert.match(externalHelper, /new URL\(/);

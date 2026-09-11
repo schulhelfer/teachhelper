@@ -3545,6 +3545,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               }
               requestShellChromeCollapsed(false);
               returnToPlanningAfterCourseGradeSave(detail.message || 'Noten im Notenmodul gespeichert.');
+              clearCourseRosterForPlanningReturn();
               return;
             }
             state.pendingCourseGradeModeSwitch = null;
@@ -3561,6 +3562,28 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 returnNotice: String(message || ''),
               },
             }), PARENT_MESSAGE_TARGET);
+          }
+
+          function clearCourseRosterForPlanningReturn() {
+            if (!isCourseSeatplanMode()) return;
+            state.courseContext = null;
+            state.courseSeatplanBaseline = '';
+            state.pendingCourseSwitchCourseId = 0;
+            state.pendingCourseSaveRequestId = '';
+            state.pendingCourseSaveRequest = null;
+            state.pendingCourseGradeConfigRequestId = '';
+            state.pendingCourseGradeConfigRequest = null;
+            state.pendingCourseGradeSaveRequestId = '';
+            state.pendingCourseGradeSaveRequest = null;
+            resetCourseGradeMode();
+            gradeRosterSelectedCourseId = 0;
+            gradeRosterSelectedCourseName = '';
+            state.headers = [];
+            state.delim = ',';
+            state.csvName = '';
+            resetCourseSeatplanForStudents([]);
+            closeGradeRosterImportMenu();
+            updateCourseSeatplanUi();
           }
 
           function publishStudentsUpdatedFromSeatplan() {

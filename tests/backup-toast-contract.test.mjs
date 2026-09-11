@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [planningSource, gradesSource, shellSource] = await Promise.all([
+const [planningSource, gradesSource, shellSource, routerSource] = await Promise.all([
   readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
 ]);
 
 test('manuelle Backups warten in Planung und Noten auf ihr Ergebnis und melden es als Toast', () => {
@@ -18,9 +19,10 @@ test('manuelle Backups warten in Planung und Noten auf ihr Ergebnis und melden e
 });
 
 test('die Shell akzeptiert Toast-Anfragen nur aus dem Planungs- oder Notenmodul', () => {
-  assert.match(shellSource, /const TOAST_REQUEST_EVENT = 'classroom:toast-request';/);
+  assert.match(routerSource, /const TOAST_REQUEST_EVENT = 'classroom:toast-request';/);
   assert.match(
-    shellSource,
-    /if \(data\.type === TOAST_REQUEST_EVENT\) \{[\s\S]*?if \(frame !== getPlanningFrame\(\) && frame !== getGradesFrame\(\)\) return;[\s\S]*?detail\.source !== 'iframe'[\s\S]*?showMessage\(message, variant, \{ presentation: 'toast' \}\);/,
+    routerSource,
+    /if \(data\.type === TOAST_REQUEST_EVENT\) \{[\s\S]*?role !== 'planning' && role !== 'grades'[\s\S]*?detail\.source !== 'iframe'[\s\S]*?invoke\('onToastRequest'/,
   );
+  assert.match(shellSource, /onToastRequest: \(detail\) => \{[\s\S]*?showMessage\(message, variant, \{ presentation: 'toast' \}\);/);
 });

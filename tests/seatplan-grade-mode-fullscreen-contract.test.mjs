@@ -5,10 +5,11 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
   .then((text) => text.replace(/\r\n/g, '\n'));
 
-const [seatplan, main, shell] = await Promise.all([
+const [seatplan, main, shell, router] = await Promise.all([
   read('../src/modules/seatplan/app.js'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
   read('../src/app/shell.js'),
+  read('../src/app/module-message-router.js'),
 ]);
 
 test('the seatplan posts chrome requests only to a trusted parent and never accepts them back', () => {
@@ -84,15 +85,14 @@ test('every other way out of the grade mode also leaves fullscreen', () => {
 });
 
 test('the shell honours seatplan chrome requests only from the seatplan frame, and only collapses on the seatplan tab', () => {
-  assert.match(main, /const SEATPLAN_CHROME_REQUEST_EVENT = 'classroom:seatplan-chrome-request';/);
-
-  const start = main.indexOf('if (data.type === SEATPLAN_CHROME_REQUEST_EVENT) {');
+  assert.match(router, /const SEATPLAN_CHROME_REQUEST_EVENT = 'classroom:seatplan-chrome-request';/);
+  const start = router.indexOf('if (data.type === SEATPLAN_CHROME_REQUEST_EVENT) {');
   assert.ok(start >= 0, 'the shell must handle the seatplan chrome request');
-  const handler = main.slice(start, main.indexOf('\n      }', start));
-  assert.match(handler, /if \(frame !== getSeatplanFrame\(\)\) return;/);
-  assert.match(handler, /if \(!detail \|\| detail\.source !== 'iframe'\) return;/);
-  assert.match(handler, /if \(collapsed && getActiveTab\(\) !== TAB_SEATPLAN\) return;/);
-  assert.match(handler, /requestSeatplanChromeCollapsed\(collapsed\);/);
+  const handler = router.slice(start, router.indexOf('\n    }', start));
+  assert.match(handler, /if \(role !== 'seatplan'\) return false;/);
+  assert.match(handler, /if \(!detail \|\| detail\.source !== 'iframe'\) return false;/);
+  assert.match(handler, /invoke\('onSeatplanChromeRequest', detail, metadata\)/);
+  assert.match(main, /onSeatplanChromeRequest: \(detail\) => \{[\s\S]*?if \(collapsed && getActiveTab\(\) !== TAB_SEATPLAN\) return;[\s\S]*?requestSeatplanChromeCollapsed\(collapsed\);/);
 });
 
 test('a chrome request waits out a running chrome transition without re-checking the tab', () => {
@@ -104,7 +104,7 @@ test('a chrome request waits out a running chrome transition without re-checking
   assert.match(scheduler, /if \(getChromeTransitionState\(\) === 'idle'\) \{/);
   assert.match(scheduler, /setChromeCollapsed\(collapsed, \{ resetSidebarWidth: false \}\);/);
   assert.match(scheduler, /if \(attempt >= \d+\) \{/);
-  assert.match(scheduler, /requestAnimationFrame\(\(\) => applyPendingSeatplanChrome\(attempt \+ 1\)\)/);
+  assert.match(scheduler, /requestRuntimeFrame\(\(\) => applyPendingSeatplanChrome\(attempt \+ 1\)\)/);
   assert.doesNotMatch(
     scheduler,
     /getActiveTab\(\)/,

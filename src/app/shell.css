@@ -1893,7 +1893,7 @@
       display: none !important;
     }
 
-    .random-picker-course-reset-row {
+    .random-picker-course-reset-button {
       display: none !important;
     }
 
@@ -1915,10 +1915,8 @@
       margin-top: 12px;
     }
 
-    .app.app-tab-random-picker .random-picker-course-reset-row:not([hidden]) {
-      display: flex !important;
-      justify-content: flex-end;
-      margin-top: 8px;
+    .app.app-tab-random-picker .random-picker-course-reset-button:not([hidden]) {
+      display: inline-flex !important;
     }
 
     .random-picker-course-reset-button {
@@ -4542,6 +4540,18 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
+    }
+
+    .roster-import-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: nowrap;
+    }
+
+    .roster-import-heading strong {
+      min-width: 0;
     }
 
     .roster-import-row {

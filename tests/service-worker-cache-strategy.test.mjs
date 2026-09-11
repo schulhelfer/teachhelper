@@ -1,12 +1,75 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 const serviceWorkerSource = await readFile(new URL('../sw.js', import.meta.url), 'utf8');
+const hookPath = fileURLToPath(new URL('../scripts/pre-commit-checks.sh', import.meta.url));
+const rootPath = fileURLToPath(new URL('..', import.meta.url));
+const fileGuardsSource = await readFile(new URL('../src/shared/file-guards.js', import.meta.url), 'utf8');
+const fileGuardsUrl = `data:text/javascript;base64,${Buffer.from(fileGuardsSource).toString('base64')}`;
+const fileProcessingClientSource = (await readFile(new URL('../src/shared/file-processing-client.js', import.meta.url), 'utf8'))
+  .replace('"./file-guards.js"', JSON.stringify(fileGuardsUrl))
+  .replaceAll('import.meta.url', JSON.stringify(new URL('../src/shared/file-processing-client.js', import.meta.url).href));
+const { runFileProcessingTask } = await import(`data:text/javascript;base64,${Buffer.from(fileProcessingClientSource).toString('base64')}`);
 const vendorManifest = JSON.parse(
   await readFile(new URL('../vendor-manifest.json', import.meta.url), 'utf8'),
 );
 const vendoredAssets = vendorManifest.packages.flatMap((pkg) => pkg.files.map((file) => `./${file.path}`));
+
+test('pre-commit rejects a Python-free environment before running other checks', () => {
+  const result = spawnSync('/bin/sh', [hookPath], {
+    cwd: rootPath,
+    encoding: 'utf8',
+    env: { ...process.env, PATH: '' },
+  });
+
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /Error: Python 3 not found or not executable/);
+  assert.doesNotMatch(result.stderr, /PWA audit skipped/);
+  assert.doesNotMatch(result.stdout, /Running Node\.js regression tests/);
+  assert.doesNotMatch(result.stdout, /Running PWA audit/);
+  assert.doesNotMatch(result.stdout, /Stamping the app version/);
+});
+
+test('file-processing timeout and abort terminate the active worker', async () => {
+  const workers = [];
+  class FakeWorker {
+    constructor() { workers.push(this); this.terminated = 0; }
+    postMessage() {}
+    terminate() { this.terminated += 1; }
+  }
+  const factory = () => new FakeWorker();
+  await assert.rejects(
+    runFileProcessingTask('test', {}, { workerFactory: factory, timeoutMs: 10 }),
+    /Dateiverarbeitung hat zu lange gedauert/
+  );
+  assert.equal(workers[0].terminated, 1);
+  const controller = new AbortController();
+  const pending = runFileProcessingTask('test', {}, { workerFactory: factory, signal: controller.signal, timeoutMs: 1_000 });
+  controller.abort();
+  await assert.rejects(pending, { name: 'AbortError' });
+  assert.equal(workers[1].terminated, 1);
+});
+
+test('file-processing serializes heavy workers', async () => {
+  const workers = [];
+  class FakeWorker {
+    constructor() { workers.push(this); this.terminated = 0; }
+    postMessage() {}
+    terminate() { this.terminated += 1; }
+  }
+  const factory = () => new FakeWorker();
+  const first = runFileProcessingTask('first', {}, { workerFactory: factory, timeoutMs: 1_000 });
+  const second = runFileProcessingTask('second', {}, { workerFactory: factory, timeoutMs: 1_000 });
+  assert.equal(workers.length, 1);
+  workers[0].onmessage({ data: { type: 'result', value: 'first' } });
+  assert.equal(await first, 'first');
+  assert.equal(workers.length, 2);
+  workers[1].onmessage({ data: { type: 'result', value: 'second' } });
+  assert.equal(await second, 'second');
+});
 
 function assetList(name) {
   const match = serviceWorkerSource.match(

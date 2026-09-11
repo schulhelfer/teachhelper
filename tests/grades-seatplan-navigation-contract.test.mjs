@@ -8,7 +8,7 @@ const [index, app, seatplanApp, seatplanHtml, runtime, shell] = await Promise.al
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
 ]);
 
 test('course seatplan navigation keeps the entry route while crossing the grades frame boundary', () => {
@@ -24,16 +24,18 @@ test('a locked course seatplan request shows the vault dialog as an overlay befo
   assert.match(navigation, /queueGradeVaultContinuation\(\{ type: "grades-navigation", detail: navigation \}\)/);
 });
 
-test('opening a course without a saved plan loads its roster into the seatplan module', () => {
+test('opening a course without a saved plan loads its roster into the seatplan module', async () => {
   const open = app.match(/\n  dispatchCourseSeatplanOpen\(courseId, lesson = null\) \{([\s\S]*?)\n  async activateGradeSeatplanTrigger\(/)?.[1] || '';
+  const courseContext = await readFile(new URL('../src/app/course-context.js', import.meta.url), 'utf8');
 
   assert.match(open, /const plan = this\.store\.getGradeSeatPlan\(courseKey\);/);
   assert.match(open, /const students = this\.buildCourseSeatplanStudents\(courseKey\);/);
   assert.match(open, /courseId: courseKey,[\s\S]*?students,[\s\S]*?plan,[\s\S]*?showGradeStudentPortraits: this\.shouldShowGradeStudentPortraits\(\)/);
   assert.match(
-    shell,
-    /pendingCourseSeatplanContext = detail;[\s\S]*?setActiveTab\(TAB_SEATPLAN\);[\s\S]*?onTabActivating: \(tab\) => \{[\s\S]*?tab === TAB_SEATPLAN[\s\S]*?schedulePendingCourseSeatplanContext\(\)/,
+    courseContext,
+    /pendingSeatplanContext = detail;[\s\S]*?setActiveTab\(TAB_SEATPLAN\);[\s\S]*?tab === TAB_SEATPLAN[\s\S]*?schedulePendingSeatplanContext\(\)/,
   );
+  assert.match(shell, /onTabActivating: \(tab\) => \{\s*courseContext\.handleTabActivating\(tab\);/);
   assert.match(seatplanApp, /applyCoursePlanData\(detail\.plan && typeof detail\.plan === 'object' \? detail\.plan : null, state\.courseContext\.students\);/);
 });
 

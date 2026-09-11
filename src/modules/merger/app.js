@@ -18,6 +18,7 @@ import {
   withTimeout,
 } from '../../shared/file-guards.js';
 import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
+import { runFileProcessingTask } from '../../shared/file-processing-client.js';
 import { createMessageApi } from '../../shared/messages.js';
 
 export function createMergerApp({
@@ -1935,10 +1936,15 @@ export function createMergerApp({
             await validatePdfFile(file, {
               timeoutMs: options.timeoutMs ?? FILE_TIMEOUTS.READ_MS,
             });
-            return new Uint8Array(await readFileArrayBufferWithTimeout(file, {
+            const bytes = new Uint8Array(await readFileArrayBufferWithTimeout(file, {
               timeoutMs: options.timeoutMs ?? FILE_TIMEOUTS.READ_MS,
               timeoutMessage: `"${file.name}" konnte nicht rechtzeitig gelesen werden.`,
             }));
+            await runFileProcessingTask("pdf-page-count", { data: bytes.slice() }, {
+              timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS,
+              timeoutMessage: "Die PDF-Datei konnte nicht rechtzeitig geöffnet werden.",
+            });
+            return bytes;
           }
 
           async function runPdfOperation(task, operationLabel) {
@@ -3973,35 +3979,13 @@ export function createMergerApp({
 
             ui.mergeStartButton.disabled = true;
             try {
-              const PDFLib = await ensurePdfLibForTool("Zusammenführen");
-              const outputDoc = await PDFLib.PDFDocument.create();
-
-	              for (const file of mergeState.files) {
-	                const bytes = await readPdfFileBytes(file);
-	                let sourceDoc;
-	                try {
-	                  sourceDoc = await runPdfOperation(
-	                    () => PDFLib.PDFDocument.load(bytes),
-	                    "Zusammenführen"
-	                  );
-                } catch (_error) {
-                  throw new Error(`"${file.name}" konnte nicht gelesen werden (evtl. beschädigt oder verschlüsselt).`);
-                }
-
-                const copiedPages = await outputDoc.copyPages(sourceDoc, sourceDoc.getPageIndices());
-                for (const page of copiedPages) {
-                  outputDoc.addPage(page);
-                }
-              }
-
-              if (!outputDoc.getPageCount()) {
-                throw new Error("Die ausgewählten PDFs enthalten keine Seiten.");
-              }
-
-	              const outBytes = await runPdfOperation(
-	                () => outputDoc.save({ useObjectStreams: false }),
-	                "Zusammenführen"
-	              );
+              const files = [];
+              for (const file of mergeState.files) files.push(await readPdfFileBytes(file));
+              const result = await runFileProcessingTask("pdf-merge", { files }, {
+                timeoutMs: FILE_TIMEOUTS.PDF_OPERATION_MS,
+                timeoutMessage: "Zusammenführen hat zu lange gedauert. Bitte mit kleineren PDFs erneut versuchen.",
+              });
+              const outBytes = new Uint8Array(result.data);
               const outputName = buildAppendOutputName(mergeState.files);
               await deliverSinglePdf(outBytes, outputName, "PDFs zusammengeführt.");
             } catch (error) {
@@ -4026,24 +4010,15 @@ export function createMergerApp({
 
             ui.rotateStartButton.disabled = true;
             try {
-              const { PDFLib, sourceDoc } = await loadPdfLibDocumentFromFile(rotateState.file, "Drehen");
-              const pageCount = sourceDoc.getPageCount();
-              if (!pageCount) throw new Error("Die PDF enthält keine Seiten.");
-              if (pageCount !== rotateState.pageRotations.length) {
+              const data = await readPdfFileBytes(rotateState.file);
+              if (!rotateState.pageRotations.length) {
                 throw new Error("Die Seitenanzahl hat sich geändert. Bitte die PDF erneut auswählen.");
               }
-
-              rotateState.pageRotations.forEach((degrees, pageIndex) => {
-                const page = sourceDoc.getPage(pageIndex);
-                const nextAngle = normalizeRotationAngle(getPageRotationAngle(page) + degrees);
-                page.setRotation(PDFLib.degrees(nextAngle));
+              const result = await runFileProcessingTask("pdf-rotate", { data, rotations: rotateState.pageRotations }, {
+                timeoutMs: FILE_TIMEOUTS.PDF_OPERATION_MS,
+                timeoutMessage: "Drehen hat zu lange gedauert. Bitte mit kleineren PDFs erneut versuchen.",
               });
-
-	              const outBytes = await runPdfOperation(
-	                () => sourceDoc.save({ useObjectStreams: false }),
-	                "Drehen"
-	              );
-              await deliverSinglePdf(outBytes, buildRotatedOutputName(rotateState.file.name), "PDF gedreht.");
+              await deliverSinglePdf(new Uint8Array(result.data), buildRotatedOutputName(rotateState.file.name), "PDF gedreht.");
             } catch (error) {
               console.error(error);
               if (maybeShowMacOSPermissionHint(error)) return;
@@ -4068,18 +4043,20 @@ export function createMergerApp({
 
             ui.splitStartButton.disabled = true;
             try {
-              const { PDFLib, sourceDoc } = await loadPdfLibDocumentFromFile(splitState.file, "Aufteilen");
-              const pageCount = sourceDoc.getPageCount();
+              const data = await readPdfFileBytes(splitState.file);
+              const pageCount = splitState.pageCount;
               if (!pageCount) throw new Error("Die PDF enthält keine Seiten.");
 
               if (splitState.outputMode === "single") {
                 const groups = getOrderedActiveSplitGroups();
-                const outputs = [];
-                for (let index = 0; index < groups.length; index += 1) {
+                const result = await runFileProcessingTask("pdf-split", { data, groups }, {
+                  timeoutMs: FILE_TIMEOUTS.PDF_OPERATION_MS,
+                  timeoutMessage: "Aufteilen hat zu lange gedauert. Bitte mit kleineren PDFs erneut versuchen.",
+                });
+                const outputs = result.outputs.map((bytes, index) => {
                   const group = groups[index];
-                  const bytes = await createPdfFromPageIndexes(PDFLib, sourceDoc, group);
-                  outputs.push({
-                    bytes,
+                  return {
+                    bytes: new Uint8Array(bytes),
                     name: group.length === 1
                       ? buildSplitSingleOutputName(
                         splitState.file.name,
@@ -4087,13 +4064,16 @@ export function createMergerApp({
                         Math.max(2, String(pageCount).length)
                       )
                       : buildSplitPartOutputName(splitState.file.name, index, groups.length),
-                  });
-                }
+                  };
+                });
                 await deliverMultiplePdfs(outputs, buildSplitArchiveOutputName(splitState.file.name));
               } else {
-                const outBytes = await createPdfFromPageIndexes(PDFLib, sourceDoc, getOrderedActiveSplitPageIndexes());
+                const result = await runFileProcessingTask("pdf-split", { data, groups: [getOrderedActiveSplitPageIndexes()] }, {
+                  timeoutMs: FILE_TIMEOUTS.PDF_OPERATION_MS,
+                  timeoutMessage: "Aufteilen hat zu lange gedauert. Bitte mit kleineren PDFs erneut versuchen.",
+                });
                 await deliverSinglePdf(
-                  outBytes,
+                  new Uint8Array(result.outputs[0]),
                   buildSplitCombinedOutputName(splitState.file.name),
                   "PDF erstellt."
                 );

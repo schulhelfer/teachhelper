@@ -2,18 +2,37 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
-const tutorialSource = await readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8');
-const shellStyles = await readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8');
-
-function moduleCase(tab, nextTab) {
-  const start = mainSource.indexOf(`case ${tab}:`);
-  const end = nextTab
-    ? mainSource.indexOf(`case ${nextTab}:`, start + 1)
-    : mainSource.indexOf('\n      default:', start + 1);
-  assert.ok(start >= 0 && end > start, `Tutorialblock ${tab} fehlt`);
-  return mainSource.slice(start, end);
-}
+const [
+  mainSource,
+  catalogSource,
+  tutorialSource,
+  shellStyles,
+  gradesSource,
+  planningSource,
+  mergerSource,
+  seatplanSource,
+  groupsSource,
+  pickerSource,
+  duplicateSource,
+  workPhaseSource,
+  qrSource,
+  nameLearningSource,
+] = await Promise.all([
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/catalog.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/grades.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/planning.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/merger.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/seatplan.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/groups.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/random-picker.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/duplicate-check.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/work-phase.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/qr.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/name-learning.js', import.meta.url), 'utf8'),
+]);
 
 function assertOrdered(source, labels) {
   let previous = -1;
@@ -33,23 +52,24 @@ function sectionsOf(source) {
 }
 
 const cases = {
-  grades: moduleCase('TAB_GRADES', 'TAB_PLANNING'),
-  planning: moduleCase('TAB_PLANNING', 'TAB_MERGER'),
-  merger: moduleCase('TAB_MERGER', 'TAB_SEATPLAN'),
-  seatplan: moduleCase('TAB_SEATPLAN', 'TAB_GROUPS'),
-  groups: moduleCase('TAB_GROUPS', 'TAB_RANDOM_PICKER'),
-  picker: moduleCase('TAB_RANDOM_PICKER', 'TAB_DUPLICATE_CHECK'),
-  duplicate: moduleCase('TAB_DUPLICATE_CHECK', 'TAB_WORK_PHASE'),
-  workPhase: moduleCase('TAB_WORK_PHASE', 'TAB_QR'),
-  qr: moduleCase('TAB_QR', 'TAB_NAME_LEARNING'),
-  nameLearning: moduleCase('TAB_NAME_LEARNING'),
+  grades: gradesSource,
+  planning: planningSource,
+  merger: mergerSource,
+  seatplan: seatplanSource,
+  groups: groupsSource,
+  picker: pickerSource,
+  duplicate: duplicateSource,
+  workPhase: workPhaseSource,
+  qr: qrSource,
+  nameLearning: nameLearningSource,
 };
 
 test('liefert die ausführlichen Definitionen ohne Budgets oder Komprimierung aus', () => {
-  assert.doesNotMatch(mainSource, /TUTORIAL_STEP_BUDGETS|TUTORIAL_FLOW_STEPS|compactTutorialSteps|applyTutorialStepBudget/);
-  assert.match(mainSource, /const steps = Array\.isArray\(definition\) \? definition : definition\?\.steps;/);
-  assert.match(mainSource, /return \[introStep, \.\.\.definition\];/);
-  assert.match(mainSource, /steps: \[introStep, \.\.\.\(Array\.isArray\(steps\) \? steps : \[\]\)\]/);
+  const catalogFiles = [catalogSource, ...Object.values(cases)].join('\n');
+  assert.doesNotMatch(catalogFiles, /TUTORIAL_STEP_BUDGETS|TUTORIAL_FLOW_STEPS|compactTutorialSteps|applyTutorialStepBudget/);
+  assert.match(catalogSource, /const steps = Array\.isArray\(definition\) \? definition : definition\?\.steps;/);
+  assert.match(catalogSource, /return \[introStep, \.\.\.definition\];/);
+  assert.match(catalogSource, /steps: \[introStep, \.\.\.\(Array\.isArray\(steps\) \? steps : \[\]\)\]/);
 
   const minimumStepDefinitions = {
     grades: [36, /gradesStep\(/g],
@@ -69,8 +89,8 @@ test('liefert die ausführlichen Definitionen ohne Budgets oder Komprimierung au
 });
 
 test('gliedert jede Tour in Arbeitsphasen und zeigt den Fortschritt an', () => {
-  assert.match(mainSource, /const withSection = \(section, steps\) => \{/);
-  assert.match(mainSource, /createModuleTutorialStep\(\{\s+tab: activeTab,\s+section: 'Überblick',/);
+  assert.match(catalogSource, /const withSection = \(section, steps\) => \{/);
+  assert.match(catalogSource, /createModuleTutorialStep\(\{\s+tab: activeTab,\s+section: 'Überblick',/);
 
   const expectedSections = {
     grades: ['Einrichten', 'Kurs aufbauen', 'Leistungen eingeben', 'Auswerten', 'Anzeige und Abschluss'],
@@ -184,7 +204,7 @@ test('behält isolierte Beispieldaten und zustandsabhängige Varianten', () => {
 });
 
 test('verankert opake Module an konkreten sichtbaren Modulzielen', () => {
-  assert.match(mainSource, /const TUTORIAL_OPAQUE_FRAME_TABS = new Set\(\[\s+TAB_MERGER,\s+TAB_DUPLICATE_CHECK,\s+TAB_QR,\s+TAB_NAME_LEARNING,/);
+  assert.match(catalogSource, /const OPAQUE_FRAME_TABS = new Set\(\[\s+TAB_MERGER,\s+TAB_DUPLICATE_CHECK,\s+TAB_QR,\s+TAB_NAME_LEARNING,/);
   for (const selector of ['.tool-tab-bar', '#layoutStartButton', '#mergeStartButton', '#rotateStartButton', '#splitStartButton']) {
     assert.ok(cases.merger.includes(`target: mergerFrameTarget('${selector}')`), `PDF-Tutorialziel fehlt: ${selector}`);
   }
@@ -194,5 +214,19 @@ test('verankert opake Module an konkreten sichtbaren Modulzielen', () => {
   assert.doesNotMatch(cases.duplicate, /contentDocument/);
   assert.doesNotMatch(cases.qr, /contentDocument/);
   assert.doesNotMatch(cases.nameLearning, /contentDocument/);
-  assert.match(mainSource, /const nameLearningFrameTarget = \(/);
+  assert.match(catalogSource, /nameLearningFrameTarget: createFrameTarget\(frames\.getNameLearningFrame\)/);
+});
+
+test('hält Katalog, Engine und Laufzeit-Orchestrierung getrennt', () => {
+  assert.match(mainSource, /import \{ createTutorialCatalog \} from '\.\/tutorials\/catalog\.js';/);
+  assert.match(mainSource, /const tutorialCatalog = createTutorialCatalog\(\{/);
+  assert.match(mainSource, /const getCurrentModuleTutorialSteps = tutorialCatalog\.getDefinition;/);
+  assert.doesNotMatch(mainSource, /const createModuleTutorialStep|const withSection|Noten verschlüsseln|#layoutStartButton/);
+  assert.doesNotMatch(catalogSource, /\bdocument\b|\bwindow\b|first-run-tutorial|src\/modules/);
+  Object.values(cases).forEach((source) => {
+    assert.doesNotMatch(source, /^\s*import\s/m);
+    assert.doesNotMatch(source, /main\.js|first-run-tutorial|src\/modules/);
+  });
+  assert.match(mainSource, /createFirstRunTutorial\(\{/);
+  assert.match(mainSource, /getContextualSteps: getCurrentModuleTutorialSteps/);
 });

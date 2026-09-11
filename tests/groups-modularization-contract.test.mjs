@@ -3,20 +3,20 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const [main, groups, index, serviceWorker] = await Promise.all([
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/groups/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/groups/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
 ]);
 
 test('main mounts Groups against shared state and shell orchestration through explicit adapters', () => {
-  assert.match(main, /from '\.\/modules\/groups\/index\.js'/);
+  assert.match(main, /from '\.\.\/modules\/groups\/index\.js'/);
   assert.match(main, /groupsController = mountGroups\(\{/);
-  assert.match(main, /getStudents: \(\) => state\.students/);
-  assert.match(main, /getPerformanceFlairCount: \(\) => state\.performanceFlairCount/);
-  assert.match(main, /setPerformanceFlairCount: \(value\) => \{\s+state\.performanceFlairCount = value;/);
+  assert.match(main, /getStudents: \(\) => classroomState\.getState\(\)\.students/);
+  assert.match(main, /getPerformanceFlairCount: \(\) => classroomState\.getState\(\)\.performanceFlairCount/);
+  assert.match(main, /setPerformanceFlairCount: \(value\) => \{\s+classroomState\.updateState\(\{ performanceFlairCount: value \}\);/);
   assert.match(main, /groupsController\?\.getPlanState\(\)/);
-  assert.match(main, /groupsController\?\.restorePlanState\(data, \{ restoreSeatAssignments \}\)/);
+  assert.match(main, /groupsController\?\.restorePlanState\(groupsPlanState, \{ restoreSeatAssignments \}\)/);
   assert.match(main, /groupsController\?\.handleRosterReplacement\(\{ rebuildCapacity: true \}\)/);
 });
 

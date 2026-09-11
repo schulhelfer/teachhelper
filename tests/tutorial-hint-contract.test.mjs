@@ -10,6 +10,7 @@ const [
   tooltipStyles,
   shellSource,
   mainSource,
+  routerSource,
   ...moduleDocuments
 ] = await Promise.all([
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
@@ -18,7 +19,8 @@ const [
   readFile(new URL('../src/shared/app-tooltips.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/app-tooltips.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
   ...[
     'planning',
     'grades',
@@ -49,7 +51,8 @@ test('merkt gestartete Einführungen dauerhaft und modulübergreifend', () => {
 });
 
 test('synchronisiert einen aktivierten Hinweis direkt an offene Module und Fenster', () => {
-  assert.match(mainSource, /data\.detail\?\.action === 'seen'/);
+  assert.match(routerSource, /data\.detail\?\.action !== 'seen' && data\.detail\?\.action !== 'request'/);
+  assert.match(routerSource, /invoke\('onTutorialEntryHint', data\.detail, metadata\)/);
   assert.match(mainSource, /markTutorialEntryHintSeen\(\);\s+firstRunTutorial\?\.clearContextHelpPrompt\?\.\(\);\s+syncTutorialEntryHintToModules\(\);/);
   assert.match(mainSource, /onEntrySeen: syncTutorialEntryHintToModules/);
   assert.match(tutorialSource, /els\.firstRunTutorialStart\?\.addEventListener\('click', \(\) => \{\s+markTutorialStarted\(\);/);

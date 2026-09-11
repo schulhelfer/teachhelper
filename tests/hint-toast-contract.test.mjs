@@ -19,7 +19,7 @@ const [
   mergerDocument,
 ] = await Promise.all([
   read('../src/shared/messages.js'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
   read('../src/modules/groups/app.js'),
   read('../src/modules/seatplan/app.js'),
   read('../src/modules/grades/app.js'),

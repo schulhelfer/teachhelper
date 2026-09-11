@@ -61,13 +61,14 @@ test('System aktualisiert das effektive Theme bei einer Medienänderung', () => 
 });
 
 test('stellt Theme-Control, Light-Tokens, frühen Start und Frame-Brücke bereit', async () => {
-  const [indexHtml, planningHtml, gradesHtml, css, gradesCss, mainSource, manifest] = await Promise.all([
+  const [indexHtml, planningHtml, gradesHtml, css, gradesCss, mainSource, routerSource, manifest] = await Promise.all([
     readFile(new URL('../index.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/modules/planning/app.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/shared/theme.css', import.meta.url), 'utf8'),
     readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
-    readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
     readFile(new URL('../manifest.webmanifest', import.meta.url), 'utf8'),
   ]);
   for (const source of [planningHtml, gradesHtml]) {
@@ -82,7 +83,8 @@ test('stellt Theme-Control, Light-Tokens, frühen Start und Frame-Brücke bereit
   assert.match(css, /--text-dialog: #3a3a3c/);
   assert.doesNotMatch(css, /data-theme="light"\] \.segment-control/);
   assert.match(gradesCss, /\.message-dialog-text\s*\{[\s\S]*?color: var\(--text-dialog\)/);
-  assert.match(mainSource, /THEME_PREFERENCE_CHANGE_EVENT/);
+  assert.match(routerSource, /THEME_PREFERENCE_CHANGE_EVENT/);
+  assert.match(mainSource, /onThemePreferenceChange: \(detail\) => \{\s*themeController\.setPreference\(detail\?\.preference\);/);
   for (const source of [indexHtml, planningHtml, gradesHtml]) {
     assert.match(source, /theme-preload\.js/);
     assert.match(source, /theme-color" content="#f5f5f7/);

@@ -5,7 +5,7 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [indexHtml, main, runtime, seatplanHtml, seatplan] = await Promise.all([
   read('../index.html'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
   read('../src/modules/workspace/runtime.js'),
   read('../src/modules/seatplan/app.html'),
   read('../src/modules/seatplan/app.js'),

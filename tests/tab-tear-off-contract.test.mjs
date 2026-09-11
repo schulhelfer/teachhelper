@@ -9,7 +9,7 @@ const [moduleWindow, tearOff, bootstrap, main, shell, shellCss, serviceWorker, t
   read('../src/app/module-window.js'),
   read('../src/app/tab-tear-off.js'),
   read('../src/app/bootstrap.js'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
   read('../src/app/shell.js'),
   read('../src/app/shell.css'),
   read('../sw.js'),

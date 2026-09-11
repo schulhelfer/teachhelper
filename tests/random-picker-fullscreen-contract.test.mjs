@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 const [css, picker, main] = await Promise.all([
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/random-picker/app.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
 ]);
 
 test('the fullscreen picker enlarges names and recalculates their fitted width', () => {

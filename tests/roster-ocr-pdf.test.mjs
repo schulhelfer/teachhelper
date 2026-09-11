@@ -13,10 +13,10 @@ const { createOcrPdfSession } = await import(await moduleUrl(new URL('../src/mod
 const tick = () => new Promise((resolve) => setImmediate(resolve));
 const file = () => new File(['%PDF-1.7\n'], 'liste.pdf', { type: 'application/pdf' });
 
-function setup({ pendingLoad = false, pendingRender = false } = {}) {
+function setup({ pendingLoad = false, pendingRender = false, pageCount = 3 } = {}) {
   const calls = { destroyed: 0, cleaned: 0, pages: [], renders: [], canvases: [] };
   const document = {
-    numPages: 3,
+    numPages: pageCount,
     async getPage(number) {
       calls.pages.push(number);
       return {
@@ -74,6 +74,12 @@ test('invalid PDF signatures are rejected before loading a renderer', async () =
   const { session, calls } = setup();
   await assert.rejects(session.load(new File(['image'], 'bad.pdf', { type: 'application/pdf' })), /keine gültige PDF/);
   assert.equal(calls.options, undefined);
+});
+
+test('PDFs above the page limit are rejected before rendering', async () => {
+  const { session, calls } = setup({ pageCount: 501 });
+  await assert.rejects(session.load(file()), /zu viele Seiten/);
+  assert.equal(calls.destroyed, 1);
 });
 
 test('aborting PDF load releases its worker and ignores a later document', async () => {

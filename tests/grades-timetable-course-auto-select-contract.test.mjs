@@ -4,8 +4,9 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-const [main, planningApp, gradesApp] = await Promise.all([
-  read('../src/main.js'),
+const [main, courseContext, planningApp, gradesApp] = await Promise.all([
+  read('../src/app/app-runtime.js'),
+  read('../src/app/course-context.js'),
   read('../src/modules/planning/app.js'),
   read('../src/modules/grades/app.js'),
 ]);
@@ -156,17 +157,18 @@ test('a hidden course becomes selectable once hidden courses are shown', () => {
 
 test('an open planning course view beats the timetable course on a tab switch', () => {
   assert.match(
-    main,
+    courseContext,
     /planningCourseViewCourseId = event\?\.detail\?\.courseViewOpen && courseId \? courseId : 0/,
   );
   assert.match(
-    main,
-    /if \(planningCourseViewCourseId\) \{\s*bridgeController\?\.dispatchGradesNavigation\?\.\(\{\s*courseId: planningCourseViewCourseId,\s*source: 'course-context',\s*\}\);/,
+    courseContext,
+    /if \(planningCourseViewCourseId\) \{\s*dispatchGradesNavigation\(\{\s*courseId: planningCourseViewCourseId,\s*source: 'course-context',\s*\}\);/,
   );
   assert.match(
-    main,
-    /if \(Date\.now\(\) >= gradesCourseAutoSelectSuppressedUntil\) \{\s*bridgeController\?\.dispatchGradesNavigation\?\.\(\{\s*autoSelectCourse: true,\s*source: 'course-context',\s*\}\);/,
+    courseContext,
+    /now\(\) >= gradesAutoSelectSuppressedUntil[\s\S]*?dispatchGradesNavigation\(\{\s*autoSelectCourse: true,\s*source: 'course-context',/,
   );
+  assert.match(main, /dispatchGradesNavigation: detail => bridgeController\?\.dispatchGradesNavigation\?\.\(detail\)/);
   assert.match(planningApp, /courseViewOpen: normalizedCourseViewOpen/);
 });
 

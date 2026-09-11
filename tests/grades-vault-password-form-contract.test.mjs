@@ -8,7 +8,7 @@ const [html, css, appSource, shellHtml, shellSource, mainSource] = await Promise
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
 ]);
 
 test('die drei Passwortabläufe haben feste, getrennte Browserformulare', () => {

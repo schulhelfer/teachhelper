@@ -5,7 +5,7 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [tabs, main, gradesApp, gradesBridge, planningApp, planningBridge, seatplanApp, nameLearningApp] = await Promise.all([
   read('../src/shell/tabs.js'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
   read('../src/modules/grades/app.js'),
   read('../src/modules/grades/bridge.js'),
   read('../src/modules/planning/app.js'),
@@ -18,7 +18,7 @@ test('the shell dismisses module context menus on outside clicks and Escape', ()
   assert.match(tabs, /MODULE_CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss'/);
   assert.match(main, /const getModuleFrames = \(\) => \[[\s\S]*?getPlanningFrame\(\),[\s\S]*?getGradesFrame\(\),[\s\S]*?getSeatplanFrame\(\),[\s\S]*?getNameLearningFrame\(\),[\s\S]*?\]\.filter\(Boolean\)/);
   assert.match(main, /dismissModuleContextMenus = \(\) => \{[\s\S]*?getModuleFrames\(\)\.forEach[\s\S]*?type: MODULE_CONTEXT_MENU_DISMISS_EVENT/);
-  assert.match(main, /addEventListener\('pointerdown', dismissModuleContextMenus, true\)/);
+  assert.match(main, /bindRuntime\(document, 'pointerdown', dismissModuleContextMenus, true\)/);
   assert.match(main, /if \(event\.key === 'Escape'\) dismissModuleContextMenus\(\)/);
 });
 

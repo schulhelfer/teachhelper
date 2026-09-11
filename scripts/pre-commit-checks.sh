@@ -1,15 +1,6 @@
 #!/bin/sh
 set -e
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "Error: Node.js not found. Install Node.js to run the regression tests." >&2
-  exit 1
-fi
-
-echo "Running Node.js regression tests..."
-node --test tests/*.test.mjs
-
-echo "Running PWA audit..."
 run_python_checks() {
   if "$@" scripts/audit.py; then
     :
@@ -54,17 +45,42 @@ run_python_checks() {
 }
 
 if command -v python3 >/dev/null 2>&1 && python3 -c 'import sys' >/dev/null 2>&1; then
-  run_python_checks python3
+  python_runner=python3
 elif command -v py >/dev/null 2>&1 && py -3 -c 'import sys' >/dev/null 2>&1; then
-  run_python_checks py -3
+  python_runner=py
 elif command -v python >/dev/null 2>&1 && python -c 'import sys' >/dev/null 2>&1; then
-  run_python_checks python
+  python_runner=python
 elif command -v wsl.exe >/dev/null 2>&1 \
   && wsl.exe python3 -c 'import sys' >/dev/null 2>&1; then
-  run_python_checks wsl.exe python3
+  python_runner=wsl
 else
-  echo "Warning: Python 3 not found; PWA audit skipped. Node.js regression tests passed." >&2
+  echo "Error: Python 3 not found or not executable. Install Python 3 to run the required pre-commit checks." >&2
+  exit 1
 fi
+
+if ! command -v node >/dev/null 2>&1; then
+  echo "Error: Node.js not found. Install Node.js to run the regression tests." >&2
+  exit 1
+fi
+
+echo "Running Node.js regression tests..."
+node --test tests/*.test.mjs
+
+echo "Running PWA audit..."
+case "$python_runner" in
+  python3)
+    run_python_checks python3
+    ;;
+  py)
+    run_python_checks py -3
+    ;;
+  python)
+    run_python_checks python
+    ;;
+  wsl)
+    run_python_checks wsl.exe python3
+    ;;
+esac
 
 echo "Stamping the app version..."
 node scripts/stamp-app-version.mjs

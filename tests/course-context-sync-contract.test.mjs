@@ -7,6 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [
   tabs,
   main,
+  courseContext,
   shell,
   planningApp,
   planningBridge,
@@ -16,7 +17,8 @@ const [
   gradesIndex,
 ] = await Promise.all([
   read('../src/shell/tabs.js'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
+  read('../src/app/course-context.js'),
   read('../src/app/shell.js'),
   read('../src/modules/planning/app.js'),
   read('../src/modules/planning/bridge.js'),
@@ -65,17 +67,18 @@ test('an explicit course pick in grades is reported to the shell', () => {
 });
 
 test('the shell remembers the last course and pushes it before the tab transition starts', () => {
-  assert.match(main, /window\.addEventListener\(PLANNING_COURSE_CONTEXT_EVENT, rememberSharedCourseContext\)/);
-  assert.match(main, /window\.addEventListener\(GRADES_COURSE_CONTEXT_EVENT, rememberSharedCourseContext\)/);
+  assert.match(main, /courseContext = createCourseContext\(\{/);
+  assert.match(courseContext, /\[PLANNING_COURSE_CONTEXT_EVENT, rememberSharedCourseContext\]/);
+  assert.match(courseContext, /\[GRADES_COURSE_CONTEXT_EVENT, rememberSharedCourseContext\]/);
   assert.match(
-    main,
-    /function applySharedCourseContext\(nextTab\) \{[\s\S]*?nextTab === TAB_GRADES[\s\S]*?dispatchGradesNavigation\?\.\([\s\S]*?courseId: planningCourseViewCourseId,\s*source: 'course-context'/,
+    courseContext,
+    /const handleTabActivating = \(tab\) => \{[\s\S]*?tab === TAB_GRADES[\s\S]*?dispatchGradesNavigation\(\{[\s\S]*?courseId: planningCourseViewCourseId,\s*source: 'course-context'/,
   );
   assert.match(
-    main,
-    /function applySharedCourseContext\(nextTab\) \{[\s\S]*?nextTab === TAB_PLANNING && sharedCourseContextId[\s\S]*?dispatchPlanningViewRequest\?\.\(\{[\s\S]*?view: 'course'[\s\S]*?source: 'course-context'/,
+    courseContext,
+    /tab === TAB_PLANNING && sharedCourseContextId[\s\S]*?dispatchPlanningViewRequest\(\{[\s\S]*?view: 'course'[\s\S]*?source: 'course-context'/,
   );
-  assert.match(main, /onTabActivating: \(tab\) => \{\s*applySharedCourseContext\(tab\);/);
+  assert.match(main, /onTabActivating: \(tab\) => \{\s*courseContext\.handleTabActivating\(tab\);/);
   assert.match(
     shell,
     /if \(shouldPromptGradeVaultUnlockOnGradesNavigation\(nextTab\)\) \{[\s\S]*?\}\s*if \(nextTab !== state\.activeTab\) \{\s*notifyTabActivating\(nextTab, state\.activeTab\);/,

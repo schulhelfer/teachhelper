@@ -3,9 +3,9 @@ import {
   createDocxFromPreparedTemplate,
   createZipArchive,
   isDocxZipSupported,
-  prepareDocxTemplate,
-  preparedDocxTemplateContainsText
+  preparedDocxTemplateContainsText,
 } from "../../shared/docx-template.js";
+import { prepareDocxTemplateInWorker } from "../../shared/docx-worker-client.js";
 import {
   clampPercentileRank,
   formatPercentileRank,
@@ -19257,7 +19257,7 @@ class GradesApp {
         this.getGradeTestTaskAssignedCompetenceTexts(gradeTasks[index], competenceExpectations)
       ));
       const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
-      const preparedTemplate = await prepareDocxTemplate(templateBytes);
+      const preparedTemplate = await prepareDocxTemplateInWorker(templateBytes);
       const bytes = await createDocxFromPreparedTemplate(preparedTemplate, {}, {
         tableColumnReplacements: this.buildExpectationHorizonTaskTemplateColumnReplacements(gradeTasks).concat([
           {
@@ -20291,7 +20291,7 @@ class GradesApp {
       return null;
     }
     const bytes = await this.getCurrentExpectationHorizonTemplateBytes();
-    const preparedTemplate = await prepareDocxTemplate(bytes);
+    const preparedTemplate = await prepareDocxTemplateInWorker(bytes);
     return {
       bytes: await createDocxFromPreparedTemplate(preparedTemplate, {}, { tableColumnReplacements }),
       fileName: this.getCurrentExpectationHorizonTemplateName()
@@ -20985,11 +20985,12 @@ class GradesApp {
     this.expectationHorizonGenerating = true;
     this.syncExpectationHorizonGenerateState();
     this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
+    let templateInfo = null;
     try {
       await this.yieldToBrowser();
-      const templateInfo = this.getCurrentExpectationHorizonTemplateInfo();
+      templateInfo = this.getCurrentExpectationHorizonTemplateInfo();
       const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
-      const preparedTemplate = await prepareDocxTemplate(templateBytes);
+      const preparedTemplate = await prepareDocxTemplateInWorker(templateBytes);
       const records = await this.buildExpectationHorizonStudentRecords(context, {
         includeExpectedPerformanceCompetences: !this.expectationHorizonTemplateFile,
         includePercentile: this.expectationHorizonIncludePercentile,
@@ -21005,30 +21006,21 @@ class GradesApp {
         throw new Error(this.buildMissingExpectationHorizonPercentilePlaceholderMessage(templateInfo));
       }
       const files = [];
-      const batchSize = 2;
-      for (let index = 0; index < records.length; index += batchSize) {
-        const batch = records.slice(index, index + batchSize);
-        const batchResults = await Promise.all(batch.map(async (record) => {
-          const data = await createDocxFromPreparedTemplate(preparedTemplate, record.replacements, {
+      for (let index = 0; index < records.length; index += 1) {
+        const record = records[index];
+        files.push({
+          name: record.fileName,
+          data: await createDocxFromPreparedTemplate(preparedTemplate, record.replacements, {
             tableColumnReplacements: record.tableColumnReplacements,
-            adjacentBlockPlaceholderGroups: EXPECTATION_HORIZON_ADJACENT_BLOCK_PLACEHOLDER_GROUPS
-          });
-          return {
-            name: record.fileName,
-            data
-          };
-        }));
-        files.push(...batchResults);
+            adjacentBlockPlaceholderGroups: EXPECTATION_HORIZON_ADJACENT_BLOCK_PLACEHOLDER_GROUPS,
+          }),
+        });
         this.setExpectationHorizonStatus(`Erzeuge DOCX-Dateien... ${files.length}/${records.length}`);
         await this.yieldToBrowser();
       }
       this.setExpectationHorizonStatus("Packe ZIP-Datei...");
-      await this.yieldToBrowser();
-      this.downloadExpectationHorizonZip(
-        files,
-        this.buildExpectationHorizonZipFileName(context)
-      );
-      this.setExpectationHorizonStatus(`${files.length} DOCX-Dateien als ZIP-Download gestartet.`, "success");
+      this.downloadExpectationHorizonZip(files, this.buildExpectationHorizonZipFileName(context));
+      this.setExpectationHorizonStatus(`${records.length} DOCX-Dateien als ZIP-Download gestartet.`, "success");
       this.expectationHorizonGenerating = false;
       this.syncExpectationHorizonGenerateState();
       this.closeExpectationHorizonDialog();
@@ -21079,7 +21071,7 @@ class GradesApp {
     try {
       await this.yieldToBrowser();
       const templateBytes = await this.getDefaultCompetenceExpectationsTemplateBytes();
-      const preparedTemplate = await prepareDocxTemplate(templateBytes);
+      const preparedTemplate = await prepareDocxTemplateInWorker(templateBytes);
       const data = await createDocxFromPreparedTemplate(
         preparedTemplate,
         this.buildCompetenceExpectationsReplacements(context, dialogItems.items)

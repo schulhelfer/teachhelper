@@ -2,11 +2,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [mainSource, htmlSource, domSource, pickerSource] = await Promise.all([
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+const [mainSource, htmlSource, domSource, pickerSource, planFormatSource] = await Promise.all([
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/dom.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/random-picker/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/plan-format.js', import.meta.url), 'utf8'),
 ]);
 
 const {
@@ -23,8 +24,8 @@ test('picker defaults to retaining selected names and exposes an accessible swit
 });
 
 test('picker JSON persists the option and legacy plans default it to false', () => {
-  assert.match(mainSource, /randomPickerAutoDisableSelected: normalizeRandomPickerAutoDisableSelected\(\s*state\.randomPickerAutoDisableSelected\s*\)/);
-  assert.match(mainSource, /state\.randomPickerAutoDisableSelected = normalizeRandomPickerAutoDisableSelected\(\s*data\.randomPickerAutoDisableSelected\s*\)/);
+  assert.match(planFormatSource, /autoDisableSelected: pickerState\.autoDisableSelected === true/);
+  assert.match(mainSource, /state\.randomPickerAutoDisableSelected = normalizeRandomPickerAutoDisableSelected\(\s*randomPickerPlanState\.autoDisableSelected\s*\)/);
   assert.equal(normalizeRandomPickerAutoDisableSelected(true), true);
   assert.equal(normalizeRandomPickerAutoDisableSelected(false), false);
   assert.equal(normalizeRandomPickerAutoDisableSelected('true'), false);

@@ -239,6 +239,9 @@ async function readZipEntries(input, options = {}) {
     if (data.length !== uncompressedSize) {
       throw new Error("Die DOCX-Datei konnte nicht vollständig gelesen werden.");
     }
+    if (exceedsZipCompressionRatio(compressedData.length, data.length)) {
+      throw new Error("Ein DOCX-ZIP-Eintrag ist verdächtig stark komprimiert.");
+    }
     totalUncompressedBytes += data.length;
     entries.push({ name, data, flags });
     centralOffset += 46 + nameLength + extraLength + commentLength;

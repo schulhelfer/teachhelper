@@ -3,19 +3,19 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const [main, workPhase, index, serviceWorker] = await Promise.all([
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/work-phase/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/work-phase/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
 ]);
 
 test('main mounts Work Phase against shared services through explicit adapters', () => {
-  assert.match(main, /from '\.\/modules\/work-phase\/index\.js'/);
+  assert.match(main, /from '\.\.\/modules\/work-phase\/index\.js'/);
   assert.match(main, /workPhaseController = mountWorkPhase\(\{/);
   assert.match(main, /timerStore: SharedTimerStore/);
   assert.match(main, /showMessage,\s+reportError: reportAppError/);
   assert.match(main, /workPhaseController\?\.getPlanState\(\)/);
-  assert.match(main, /workPhaseController\?\.restorePlanState\(data\)/);
+  assert.match(main, /workPhaseController\?\.restorePlanState\(workPhasePlanState\)/);
   assert.match(main, /workPhaseController\?\.reset\(\)/);
   assert.match(main, /workPhaseController\?\.activateTutorialDemo\(\)/);
   assert.doesNotMatch(main, /state\.workOrder/);

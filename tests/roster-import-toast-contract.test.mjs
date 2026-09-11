@@ -12,7 +12,7 @@ const [
   seatplanCss,
   seatplanDocument,
 ] = await Promise.all([
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/dom.js', import.meta.url), 'utf8'),
@@ -38,8 +38,9 @@ test('removes the imported-roster scroll hint from groups, picker, and seatplan'
 });
 
 test('shows a pluralized success toast after local CSV imports', () => {
+  assert.match(mainSource, /const importedCount = students\.length;/);
+  assert.match(seatplanSource, /const importedCount = state\.students\.length;/);
   [mainSource, seatplanSource].forEach((source) => {
-    assert.match(source, /const importedCount = state\.students\.length;/);
     assert.match(source, /const importedLabel = importedCount === 1 \? 'Name' : 'Namen';/);
     assert.match(source, /showMessage\(`\$\{importedCount\} \$\{importedLabel\} importiert\.`, 'success', \{ presentation: 'toast' \}\);/);
   });

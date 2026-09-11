@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../src/app/pwa-updates.js', import.meta.url), 'utf8');
-const mainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+const mainSource = await readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8');
 const htmlSource = await readFile(new URL('../index.html', import.meta.url), 'utf8');
 const shellCss = await readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8');
 const {

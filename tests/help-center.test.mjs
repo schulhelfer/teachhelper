@@ -15,7 +15,7 @@ const {
 const helpVisualSource = await readFile(new URL('../src/app/help-visuals.js', import.meta.url), 'utf8');
 const helpPreviewSource = await readFile(new URL('../src/app/help-preview.js', import.meta.url), 'utf8');
 const previewBootstrapSource = await readFile(new URL('../src/app/bootstrap.js', import.meta.url), 'utf8');
-const previewMainSource = await readFile(new URL('../src/main.js', import.meta.url), 'utf8');
+const previewMainSource = await readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8');
 const firstRunTutorialSource = await readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8');
 const moduleFrameBridgeSource = await readFile(new URL('../src/shared/module-frame-bridge.js', import.meta.url), 'utf8');
 const shellCssSource = await readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8');
@@ -261,8 +261,9 @@ test('die Suchbegriffe werden als Textmarker in Treffern und Artikeln gerendert'
 });
 
 test('alle Rettungsringe leiten zur gemeinsamen Hilfeauswahl weiter', async () => {
-  const [mainSource, domSource, firstRunSource, ...moduleSources] = await Promise.all([
-    readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  const [mainSource, routerSource, domSource, firstRunSource, ...moduleSources] = await Promise.all([
+    readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/dom.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
     ...[
@@ -277,7 +278,9 @@ test('alle Rettungsringe leiten zur gemeinsamen Hilfeauswahl weiter', async () =
   ]);
 
   assert.match(mainSource, /createHelpCenter/);
-  assert.match(mainSource, /classroom:help-entry-request/);
+  assert.match(routerSource, /HELP_ENTRY_REQUEST_EVENT = 'classroom:help-entry-request'/);
+  assert.match(routerSource, /invoke\('onHelpEntryRequest'/);
+  assert.match(mainSource, /onHelpEntryRequest: \(\) => \{\s*openHelpEntry\(\);/);
   assert.match(mainSource, /onEntryRequest: openHelpEntry/);
   assert.match(firstRunSource, /onEntryRequest = null/);
   assert.match(firstRunSource, /onEntryRequest\(\)/);

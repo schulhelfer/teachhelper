@@ -178,8 +178,28 @@ if manifest_path.exists():
     check_local_asset_ref(manifest_path, ref)
 
 required_precache_assets = [
+  ROOT / 'src' / 'app' / 'app-runtime.js',
+  ROOT / 'src' / 'app' / 'classroom-state.js',
+  ROOT / 'src' / 'app' / 'course-context.js',
+  ROOT / 'src' / 'app' / 'grade-roster-coordinator.js',
+  ROOT / 'src' / 'app' / 'module-message-router.js',
+  ROOT / 'src' / 'app' / 'plan-format.js',
+  ROOT / 'src' / 'app' / 'plan-persistence.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'catalog.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'duplicate-check.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'grades.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'groups.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'merger.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'name-learning.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'planning.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'qr.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'random-picker.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'seatplan.js',
+  ROOT / 'src' / 'app' / 'tutorials' / 'work-phase.js',
   ROOT / 'src' / 'shared' / 'app-version.js',
+  ROOT / 'src' / 'shared' / 'csv.js',
   ROOT / 'src' / 'shared' / 'file-guards.js',
+  ROOT / 'src' / 'shared' / 'file-io.js',
   ROOT / 'src' / 'shared' / 'roster-store.js',
   ROOT / 'src' / 'modules' / 'grades' / 'index.js',
   ROOT / 'src' / 'modules' / 'grades' / 'app.html',
@@ -623,6 +643,7 @@ check_first_party_code()
 
 bridge_path = ROOT / 'src' / 'shared' / 'module-frame-bridge.js'
 main_path = ROOT / 'src' / 'main.js'
+app_runtime_path = ROOT / 'src' / 'app' / 'app-runtime.js'
 planning_index_path = ROOT / 'src' / 'modules' / 'planning' / 'index.js'
 grades_index_path = ROOT / 'src' / 'modules' / 'grades' / 'index.js'
 qr_index_path = ROOT / 'src' / 'modules' / 'qr' / 'index.js'
@@ -716,7 +737,7 @@ for path, expected_sandbox_profile in isolated_tool_module_sandbox_profiles.item
 
 unsandboxed_module_frame_allowed_paths = {
   bridge_path,
-  main_path,
+  app_runtime_path,
   planning_index_path,
   grades_index_path,
   seatplan_index_path,
@@ -824,25 +845,25 @@ for path in iter_source_files():
         errors.append(f'camera/clipboard iframe allow attribute outside QR: {rel(path)}')
 
 
-def extract_tutorial_case(body, start_case, end_case):
-  start_marker = f'case {start_case}:'
-  end_marker = f'case {end_case}:' if end_case != 'default' else 'default:'
-  start = body.find(start_marker)
-  end = body.find(end_marker, start + len(start_marker))
-  if start < 0 or end < 0:
-    errors.append(f'missing tutorial case boundary: {start_case} -> {end_case}')
-    return ''
-  return body[start:end]
-
-
 main_path = ROOT / 'src' / 'main.js'
 dom_path = ROOT / 'src' / 'app' / 'dom.js'
-if main_path.exists() and dom_path.exists():
-  main_body = main_path.read_text(encoding='utf-8', errors='ignore')
+tutorial_dir = ROOT / 'src' / 'app' / 'tutorials'
+tutorial_paths = [tutorial_dir / name for name in [
+  'catalog.js',
+  'duplicate-check.js',
+  'grades.js',
+  'groups.js',
+  'merger.js',
+  'name-learning.js',
+  'planning.js',
+  'qr.js',
+  'random-picker.js',
+  'seatplan.js',
+  'work-phase.js',
+]]
+if main_path.exists() and dom_path.exists() and all(path.exists() for path in tutorial_paths):
   dom_body = dom_path.read_text(encoding='utf-8', errors='ignore')
-  tutorial_start = main_body.find('const getModuleTutorialDefinition')
-  tutorial_end = main_body.find('function bindTabNavigation', tutorial_start)
-  tutorial_body = main_body[tutorial_start:tutorial_end]
+  tutorial_body = '\n'.join(path.read_text(encoding='utf-8', errors='ignore') for path in tutorial_paths)
 
   tutorial_node_refs = set(re.findall(r'\bnodes\.([A-Za-z_$][\w$]*)', tutorial_body))
   dom_keys = set(re.findall(r'^\s{4}([A-Za-z_$][\w$]*):', dom_body, flags=re.MULTILINE))
@@ -853,7 +874,7 @@ if main_path.exists() and dom_path.exists():
   for path in ROOT.rglob('*'):
     if not path.is_file() or path.suffix not in {'.html', '.js'}:
       continue
-    if path == main_path:
+    if path == main_path or path in tutorial_paths:
       continue
     body = path.read_text(encoding='utf-8', errors='ignore')
     declared_anchors.update(re.findall(r'data-tutorial-anchor=["\']([^"\']+)["\']', body))
@@ -863,17 +884,17 @@ if main_path.exists() and dom_path.exists():
     errors.append(f'missing data-tutorial-anchor target: {anchor}')
 
   tutorial_modules = [
-    ('TAB_GRADES', 'TAB_PLANNING', ROOT / 'src' / 'modules' / 'grades'),
-    ('TAB_PLANNING', 'TAB_MERGER', ROOT / 'src' / 'modules' / 'planning'),
-    ('TAB_MERGER', 'TAB_SEATPLAN', ROOT / 'src' / 'modules' / 'merger'),
-    ('TAB_SEATPLAN', 'TAB_GROUPS', ROOT / 'src' / 'modules' / 'seatplan'),
-    ('TAB_DUPLICATE_CHECK', 'TAB_WORK_PHASE', ROOT / 'src' / 'modules' / 'duplicate-check'),
-    ('TAB_QR', 'TAB_NAME_LEARNING', ROOT / 'src' / 'modules' / 'qr'),
-    ('TAB_NAME_LEARNING', 'default', ROOT / 'src' / 'modules' / 'name-learning'),
+    (tutorial_dir / 'grades.js', ROOT / 'src' / 'modules' / 'grades'),
+    (tutorial_dir / 'planning.js', ROOT / 'src' / 'modules' / 'planning'),
+    (tutorial_dir / 'merger.js', ROOT / 'src' / 'modules' / 'merger'),
+    (tutorial_dir / 'seatplan.js', ROOT / 'src' / 'modules' / 'seatplan'),
+    (tutorial_dir / 'duplicate-check.js', ROOT / 'src' / 'modules' / 'duplicate-check'),
+    (tutorial_dir / 'qr.js', ROOT / 'src' / 'modules' / 'qr'),
+    (tutorial_dir / 'name-learning.js', ROOT / 'src' / 'modules' / 'name-learning'),
   ]
-  for start_case, end_case, module_dir in tutorial_modules:
-    case_body = extract_tutorial_case(main_body, start_case, end_case)
-    selector_ids = set(re.findall(r'#([A-Za-z][\w-]*)', case_body))
+  for tutorial_path, module_dir in tutorial_modules:
+    definition_body = tutorial_path.read_text(encoding='utf-8', errors='ignore')
+    selector_ids = set(re.findall(r'#([A-Za-z][\w-]*)', definition_body))
     module_body = '\n'.join(
       path.read_text(encoding='utf-8', errors='ignore')
       for path in module_dir.iterdir()

@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const [shell, main, workPhase] = await Promise.all([
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/work-phase/app.js', import.meta.url), 'utf8'),
 ]);
 
@@ -34,8 +34,8 @@ test('shell-wide navigation, keyboard, and viewport responsibilities stay outsid
 
 test('app-wide theme and module-overlay dismissal remain explicit shell adapters', () => {
   assert.match(main, /themeController\.subscribe\(\(detail\) => \{\s*document\.querySelectorAll\('iframe'\)\.forEach/);
-  assert.match(main, /document\.addEventListener\('load', \(event\) => \{[\s\S]*?applyThemeToFrame\(frame/);
+  assert.match(main, /bindRuntime\(document, 'load', \(event\) => \{[\s\S]*?applyThemeToFrame\(frame/);
   assert.match(main, /const dismissModuleContextMenus = \(\) => \{[\s\S]*?type: MODULE_CONTEXT_MENU_DISMISS_EVENT/);
-  assert.match(main, /document\.addEventListener\('pointerdown', dismissModuleContextMenus, true\);/);
+  assert.match(main, /bindRuntime\(document, 'pointerdown', dismissModuleContextMenus, true\);/);
   assert.match(main, /if \(event\.key === 'Escape'\) dismissModuleContextMenus\(\);/);
 });

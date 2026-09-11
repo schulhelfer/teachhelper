@@ -4,10 +4,14 @@ import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 import {
   FILE_LIMITS,
   FILE_TIMEOUTS,
+  assertImageDimensionsAtMost,
   exceedsZipCompressionRatio,
+  readFileArrayBufferWithTimeout,
+  readImageDimensions,
   validateZipFile,
   withTimeout,
 } from '../../shared/file-guards.js';
+import { runFileProcessingTask } from '../../shared/file-processing-client.js';
 import {
   TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
@@ -65,6 +69,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   let tutorialDemoActive = false;
   let tutorialPreviousState = null;
   let activePreviewOverlay = null;
+  let activeZipController = null;
 
   function blockBrowserContextMenu(event) {
     event.preventDefault();
@@ -432,14 +437,14 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     const titleRow = document.createElement('div');
     titleRow.className = 'group-title-row';
     titleRow.append(createTextElement('div', `Gruppe ${index} (${group.records.length} Dateien)`, 'group-name'));
-    const previewPairs = getPreviewPairsForGroup(group);
-    if (previewPairs.length) {
+    const previewRecords = getPreviewRecordsForGroup(group);
+    if (previewRecords.length) {
       const compareButton = document.createElement('button');
       compareButton.className = 'compare-button';
       compareButton.type = 'button';
       compareButton.textContent = 'Vergleichen';
       compareButton.addEventListener('click', () => {
-        openCompareDialog(group, 0);
+        openCompareDialog(group);
       });
       titleRow.append(compareButton);
     }
@@ -485,32 +490,19 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     return section;
   }
 
-  function getPreviewPairsForGroup(group) {
-    if (group?.visualPairs?.length) return group.visualPairs;
-    if (!group?.reasons?.name) return [];
+  function getPreviewRecordsForGroup(group) {
+    if (!group?.visualPairs?.length && !group?.reasons?.name) return [];
     const imageRecords = (group.records || [])
       .filter((record) => record.visualSignature)
       .slice()
       .sort((a, b) => a.path.localeCompare(b.path, 'de'));
-    const pairs = [];
-    for (let firstIndex = 0; firstIndex < imageRecords.length - 1; firstIndex += 1) {
-      for (let secondIndex = firstIndex + 1; secondIndex < imageRecords.length; secondIndex += 1) {
-        pairs.push({
-          records: [imageRecords[firstIndex], imageRecords[secondIndex]],
-          score: 0,
-          matchingTiles: 0,
-          variantKeys: [],
-        });
-      }
-    }
-    return pairs;
+    return imageRecords.length > 1 ? imageRecords : [];
   }
 
-  async function openCompareDialog(group, initialPairIndex = 0) {
-    const pairs = getPreviewPairsForGroup(group);
-    if (!pairs.length) return;
+  function openCompareDialog(group) {
+    const previewRecords = getPreviewRecordsForGroup(group);
+    if (!previewRecords.length) return;
 
-    let activePairIndex = Math.min(Math.max(0, initialPairIndex), pairs.length - 1);
     const overlay = document.createElement('div');
     activePreviewOverlay?.remove();
     activePreviewOverlay = overlay;
@@ -526,14 +518,9 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     const title = createTextElement('h2', 'Bildvergleich', 'preview-title');
     const controls = document.createElement('div');
     controls.className = 'preview-controls';
-    const pairLabel = createTextElement('span', '', 'preview-pair-label');
-    const previousButton = createTextElement('button', 'Zurück', 'preview-nav-button');
-    previousButton.type = 'button';
-    const nextButton = createTextElement('button', 'Weiter', 'preview-nav-button');
-    nextButton.type = 'button';
     const closeButton = createTextElement('button', 'Schließen', 'preview-close-button');
     closeButton.type = 'button';
-    controls.append(previousButton, pairLabel, nextButton, closeButton);
+    controls.append(closeButton);
     header.append(title, controls);
 
     const body = document.createElement('div');
@@ -550,34 +537,14 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     const handleKeydown = (event) => {
       if (event.key === 'Escape') close();
     };
-    const renderPair = async () => {
-      const pair = pairs[activePairIndex];
-      const [leftRecord, rightRecord] = pair.records;
-      pairLabel.textContent = `${activePairIndex + 1} / ${pairs.length}`;
-      previousButton.disabled = activePairIndex === 0;
-      nextButton.disabled = activePairIndex === pairs.length - 1;
-      body.replaceChildren(
-        renderPreviewPane('Datei A', leftRecord, getRecordObjectUrl(leftRecord)),
-        renderPreviewPane('Datei B', rightRecord, getRecordObjectUrl(rightRecord))
-      );
-    };
-
-    previousButton.addEventListener('click', () => {
-      if (activePairIndex <= 0) return;
-      activePairIndex -= 1;
-      renderPair();
-    });
-    nextButton.addEventListener('click', () => {
-      if (activePairIndex >= pairs.length - 1) return;
-      activePairIndex += 1;
-      renderPair();
-    });
+    body.append(...previewRecords.map((record, index) => (
+      renderPreviewPane(`Datei ${index + 1}`, record, getRecordObjectUrl(record))
+    )));
     closeButton.addEventListener('click', close);
     overlay.addEventListener('click', (event) => {
       if (event.target === overlay) close();
     });
     window.addEventListener('keydown', handleKeydown);
-    await renderPair();
   }
 
   function renderPreviewPane(label, record, src) {
@@ -827,6 +794,9 @@ export function createDuplicateCheckApp({ root = document } = {}) {
   async function createVisualSignature(bytes, name) {
     const mimeType = getImageMimeType(name);
     if (!mimeType) return null;
+
+    const dimensions = readImageDimensions(bytes, mimeType);
+    if (dimensions) assertImageDimensionsAtMost(dimensions, `"${name}"`);
 
     const blob = new Blob([bytes], { type: mimeType });
     let decoded = null;
@@ -1239,81 +1209,38 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     };
   }
 
-	  async function collectZipRecords(file, token) {
-	    const deadlineMs = Date.now() + FILE_TIMEOUTS.ZIP_ANALYSIS_MS;
-	    let JSZip;
-	    try {
-	      JSZip = await ensureJsZipLoaded();
-    } catch (error) {
-      throw new Error('ZIP-Library konnte nicht geladen werden. Bitte Internetverbindung prüfen oder später erneut versuchen.');
-    }
+	  async function collectZipRecords(file, token, signal) {
+    const data = new Uint8Array(await readFileArrayBufferWithTimeout(file, { signal }));
+    const result = await runFileProcessingTask('zip-analyze', { data }, {
+      signal,
+      timeoutMs: FILE_TIMEOUTS.ZIP_ANALYSIS_MS,
+      timeoutMessage: 'Die ZIP-Analyse hat zu lange gedauert. Bitte mit einem kleineren ZIP erneut versuchen.',
+    });
     if (token !== analysisToken) return null;
-
-	    let zip;
-	    try {
-	      zip = await withTimeout(
-	        () => JSZip.loadAsync(file),
-	        FILE_TIMEOUTS.ZIP_LOAD_MS,
-	        'ZIP konnte nicht rechtzeitig gelesen werden.'
-	      );
-	    } catch (error) {
-	      throw new Error(error?.message || 'Die Datei konnte nicht als ZIP gelesen werden.');
-	    }
-	    if (token !== analysisToken) return null;
-
-	    const entries = Object.values(zip.files || {}).filter((entry) => entry && !entry.dir);
-	    if (!entries.length) {
-	      throw new Error('Das ZIP enthält keine Dateien.');
-	    }
-	    assertZipEntryLimits(entries);
-
-	    const rootPrefix = getCommonRootPrefix(entries);
-	    const records = [];
-	    let inflatedTotal = 0;
-	    for (let index = 0; index < entries.length; index += 1) {
-	      if (token !== analysisToken) return null;
-	      ensureZipAnalysisWithinDeadline(deadlineMs);
-	      const entry = entries[index];
-	      const name = getBasename(entry.name);
-	      const shouldReadBytes = Boolean(enabledRules.visual && getImageMimeType(name));
-	      let bytes = null;
-	      let visualSignature = null;
-	      const knownSize = getZipEntrySize(entry, 'uncompressedSize');
-	      if (shouldReadBytes) {
-	        const remainingMs = Math.max(1, deadlineMs - Date.now());
-	        const remainingTotalBytes = Math.max(0, FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES - inflatedTotal);
-	        if (remainingTotalBytes <= 0) {
-	          throw new Error(`Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`);
-	        }
-	        const maxBytes = Math.min(
-	          knownSize ?? FILE_LIMITS.ZIP_ENTRY_BYTES,
-	          FILE_LIMITS.ZIP_ENTRY_BYTES,
-	          remainingTotalBytes
-	        );
-	        bytes = await readZipEntryCapped(entry, maxBytes, remainingMs, {
-	          overflowMessage: maxBytes === remainingTotalBytes && remainingTotalBytes < FILE_LIMITS.ZIP_ENTRY_BYTES
-	            ? `Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`
-	            : null,
-	        });
-	        inflatedTotal += bytes.byteLength;
-	        visualSignature = await createVisualSignature(bytes, name);
-	      }
-	      records.push({
-	        id: index,
-	        path: entry.name,
-	        displayPath: stripRootPrefix(entry.name, rootPrefix),
-	        name,
-	        nameKey: normalizeNameKey(name),
-	        size: bytes?.byteLength ?? knownSize ?? 0,
-	        bytes,
-	        visualSignature,
-	      });
-	    }
-
+    const entries = result.records || [];
+    const rootPrefix = getCommonRootPrefix(entries);
+    const records = [];
+    for (let index = 0; index < entries.length; index += 1) {
+      const entry = entries[index];
+      const name = getBasename(entry.name);
+      const bytes = enabledRules.visual && entry.mime ? entry.data : null;
+      records.push({
+        id: index,
+        path: entry.name,
+        displayPath: stripRootPrefix(entry.name, rootPrefix),
+        name,
+        nameKey: normalizeNameKey(name),
+        size: entry.size || 0,
+        bytes,
+        visualSignature: bytes ? await createVisualSignature(bytes, name) : null,
+      });
+    }
     return records;
   }
 
   async function handleFile(file) {
+    activeZipController?.abort();
+    activeZipController = new AbortController();
     const token = analysisToken + 1;
     analysisToken = token;
     revokeRecordObjectUrls(lastRecords);
@@ -1324,7 +1251,7 @@ export function createDuplicateCheckApp({ root = document } = {}) {
 	    try {
 	      await validateZipFile(file);
 	      if (token !== analysisToken) return;
-	      const records = await collectZipRecords(file, token);
+	      const records = await collectZipRecords(file, token, activeZipController.signal);
       if (!records || token !== analysisToken) return;
       lastRecords = records;
       renderResultFromLastRecords();
@@ -1334,6 +1261,8 @@ export function createDuplicateCheckApp({ root = document } = {}) {
         ? error.message
         : 'Die ZIP-Analyse ist fehlgeschlagen.';
       renderError(message);
+    } finally {
+      if (token === analysisToken) activeZipController = null;
     }
   }
 

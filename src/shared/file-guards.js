@@ -9,11 +9,16 @@ export const FILE_LIMITS = Object.freeze({
   JSON_MAX_NESTING: 64,
   JSON_MAX_CONTAINER_ITEMS: 10000,
   IMAGE_BYTES: 25 * BYTES_PER_MIB,
+  IMAGE_MAX_PIXELS: 48 * 1024 * 1024,
+  CANVAS_MAX_PIXELS: 4_000_000,
+  CANVAS_MAX_EDGE: 4096,
   LATEX_BYTES: 5 * BYTES_PER_MIB,
   PDF_BYTES: 100 * BYTES_PER_MIB,
   PDF_MERGE_TOTAL_BYTES: 150 * BYTES_PER_MIB,
   PDF_RESULT_OPEN_BYTES: 150 * BYTES_PER_MIB,
   PDF_FALLBACK_PARSE_BYTES: 10 * BYTES_PER_MIB,
+  PDF_MAX_PAGES: 500,
+  HEAVY_PARSER_MAX_PARALLEL: 1,
   ZIP_BYTES: 250 * BYTES_PER_MIB,
   THDB_BYTES: 250 * BYTES_PER_MIB,
   DOCX_TEMPLATE_BYTES: 15 * BYTES_PER_MIB,
@@ -115,6 +120,83 @@ export async function readFileHeader(file, byteLength = 8, options = {}) {
     { signal: options.signal }
   );
   return new Uint8Array(buffer);
+}
+
+export function assertImageDimensionsAtMost(dimensions, label = "Bild") {
+  const width = Math.floor(Number(dimensions?.width) || 0);
+  const height = Math.floor(Number(dimensions?.height) || 0);
+  if (width < 1 || height < 1) {
+    throw createFileValidationError(`${label} konnte nicht gelesen werden.`);
+  }
+  if (width > FILE_LIMITS.CANVAS_MAX_EDGE * 16 || height > FILE_LIMITS.CANVAS_MAX_EDGE * 16 || width * height > FILE_LIMITS.IMAGE_MAX_PIXELS) {
+    throw createFileValidationError(`${label} hat zu viele Bildpunkte. Maximal erlaubt: ${Math.round(FILE_LIMITS.IMAGE_MAX_PIXELS / BYTES_PER_MIB)} Megapixel.`);
+  }
+  return { width, height };
+}
+
+export function fitCanvasSize(width, height, maxPixels = FILE_LIMITS.CANVAS_MAX_PIXELS, maxEdge = FILE_LIMITS.CANVAS_MAX_EDGE) {
+  const sourceWidth = Number(width) || 0;
+  const sourceHeight = Number(height) || 0;
+  if (sourceWidth < 1 || sourceHeight < 1) {
+    throw createFileValidationError("Bildgröße ist ungültig.");
+  }
+  const scale = Math.min(1, maxEdge / sourceWidth, maxEdge / sourceHeight, Math.sqrt(maxPixels / (sourceWidth * sourceHeight)));
+  return {
+    width: Math.max(1, Math.floor(sourceWidth * scale)),
+    height: Math.max(1, Math.floor(sourceHeight * scale)),
+  };
+}
+
+export function readImageDimensions(bytes, mimeType = "") {
+  const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
+  const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  const type = String(mimeType || "").toLowerCase();
+  if ((type === "image/png" || (data[0] === 0x89 && data[1] === 0x50)) && data.length >= 24) {
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if ((type === "image/gif" || (data[0] === 0x47 && data[1] === 0x49)) && data.length >= 10) {
+    return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
+  }
+  if ((type === "image/bmp" || (data[0] === 0x42 && data[1] === 0x4d)) && data.length >= 26) {
+    return { width: Math.abs(view.getInt32(18, true)), height: Math.abs(view.getInt32(22, true)) };
+  }
+  if ((type === "image/webp" || (data[0] === 0x52 && data[1] === 0x49 && data[8] === 0x57)) && data.length >= 30) {
+    const chunk = String.fromCharCode(...data.slice(12, 16));
+    if (chunk === "VP8X") return { width: 1 + data[24] + (data[25] << 8) + (data[26] << 16), height: 1 + data[27] + (data[28] << 8) + (data[29] << 16) };
+    if (chunk === "VP8L" && data.length >= 25) {
+      const value = view.getUint32(21, true);
+      return { width: 1 + (value & 0x3fff), height: 1 + ((value >>> 14) & 0x3fff) };
+    }
+    if (chunk === "VP8 " && data.length >= 30) return { width: view.getUint16(26, true) & 0x3fff, height: view.getUint16(28, true) & 0x3fff };
+  }
+  if (type === "image/jpeg" || (data[0] === 0xff && data[1] === 0xd8)) {
+    for (let offset = 2; offset + 9 < data.length;) {
+      if (data[offset] !== 0xff) { offset += 1; continue; }
+      const marker = data[offset + 1];
+      const length = view.getUint16(offset + 2);
+      if (length < 2 || offset + 2 + length > data.length) break;
+      if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+        return { width: view.getUint16(offset + 7), height: view.getUint16(offset + 5) };
+      }
+      offset += 2 + length;
+    }
+  }
+  if (type === "image/svg+xml") {
+    const text = new TextDecoder().decode(data.slice(0, 64 * 1024));
+    const viewBox = text.match(/\bviewBox\s*=\s*["']\s*[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)/i);
+    if (viewBox) return { width: Number(viewBox[1]), height: Number(viewBox[2]) };
+    const width = text.match(/\bwidth\s*=\s*["']\s*([\d.]+)/i);
+    const height = text.match(/\bheight\s*=\s*["']\s*([\d.]+)/i);
+    if (width && height) return { width: Number(width[1]), height: Number(height[1]) };
+  }
+  return null;
+}
+
+export async function assertImageFilePixelsAtMost(file, options = {}) {
+  const bytes = await readFileHeader(file, Math.min(Number(file?.size) || 0, 512 * 1024), options);
+  const dimensions = readImageDimensions(bytes, options.mimeType || file?.type);
+  if (!dimensions) return null;
+  return assertImageDimensionsAtMost(dimensions, options.label || "Bild");
 }
 
 export function exceedsZipCompressionRatio(compressedSize, uncompressedSize) {

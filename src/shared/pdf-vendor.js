@@ -1,4 +1,4 @@
-const PDF_LIB_URL = new URL("../vendor/cantoo-pdf-lib/2.9.2/pdf-lib.min.js", import.meta.url);
+const PDF_LIB_URL = new URL("../vendor/cantoo-pdf-lib/2.11.0/pdf-lib.min.js", import.meta.url);
 const PDF_JS_URL = new URL("../vendor/pdfjs-dist/6.3.289/build/pdf.mjs", import.meta.url);
 const PDF_JS_WORKER_URL = new URL("../vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs", import.meta.url);
 

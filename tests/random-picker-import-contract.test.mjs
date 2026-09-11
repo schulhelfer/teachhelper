@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const [html, main] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
 ]);
 
 test('the picker reloads saved JSON state instead of replacing the shared CSV roster', () => {
@@ -23,7 +23,7 @@ test('the picker reloads saved JSON state instead of replacing the shared CSV ro
 });
 
 test('the shared CSV roster remains exclusively available through the Groups dropzone', () => {
-  assert.match(main, /els\.csvDropZone\.addEventListener\('drop', async \(e\) => \{/);
+  assert.match(main, /bindRuntime\(els\.csvDropZone, 'drop', async \(e\) => \{/);
   assert.match(main, /const csvFile = droppedFiles\.find\(isCsvFile\);/);
   assert.match(main, /await importCsvFromFile\(csvFile\);/);
 });

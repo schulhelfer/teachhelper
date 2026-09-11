@@ -5,6 +5,7 @@ import test from 'node:test';
 const [
   tutorialSource,
   mainSource,
+  classroomStateSource,
   planningSource,
   planningBridgeSource,
   gradesSource,
@@ -17,7 +18,8 @@ const [
   groupsSource,
 ] = await Promise.all([
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/classroom-state.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/bridge.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
@@ -28,6 +30,15 @@ const [
   readFile(new URL('../src/shared/module-frame-bridge.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/work-phase/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/groups/app.js', import.meta.url), 'utf8'),
+]);
+
+const tutorialDefinitionSources = await Promise.all([
+  readFile(new URL('../src/app/tutorials/grades.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/planning.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/seatplan.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/groups.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/random-picker.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/work-phase.js', import.meta.url), 'utf8'),
 ]);
 
 test('automatic tutorial demos replace the step set and retain their cleanup', () => {
@@ -51,6 +62,7 @@ test('planning tutorial commands reach the planning tutorial presentation', () =
 });
 
 test('data-bearing module tutorials use automatic isolated examples', () => {
+  const definitionSource = tutorialDefinitionSources.join('\n');
   [
     'activateGradesTutorialDemo',
     'activatePlanningTutorialDemo',
@@ -60,7 +72,7 @@ test('data-bearing module tutorials use automatic isolated examples', () => {
     'activateWorkPhaseTutorialDemo',
   ].forEach((activation) => {
     assert.match(
-      mainSource,
+      definitionSource,
       new RegExp(`activate:\\s*(?:\\(\\) => )?${activation}[\\s\\S]{0,80}?auto:\\s*true`)
     );
   });
@@ -118,13 +130,14 @@ test('work phase tutorial restores the complete previous timer snapshot', () => 
 });
 
 test('groups and picker restore both the visible roster and the shared roster store', () => {
-  assert.match(mainSource, /const previousRosterState = SharedRosterStore\.getState\(\)/);
+  assert.match(classroomStateSource, /const previousRosterState = rosterStore\.getState\(\)/);
   assert.match(mainSource, /const previousGroupsState = groupsController\?\.getStateSnapshot\(\)/);
   assert.match(
     mainSource,
-    /SharedRosterStore\.replace\(previousRosterState\);\s+classroomTutorialDemoActive = false;\s+state = realClassroomState;\s+groupsController\?\.replaceState\(previousGroupsState\);/
+    /restoreClassroomState\(\);\s+groupsController\?\.replaceState\(previousGroupsState\);/
   );
-  assert.match(mainSource, /if \(classroomTutorialDemoActive\) return SharedRosterStore\.getState\(\)/);
+  assert.match(classroomStateSource, /if \(demoActive\) return rosterStore\.getState\(\)/);
+  assert.match(classroomStateSource, /rosterStore\.replace\(previousRosterState\);\s+state = realState;\s+demoActive = false;/);
   assert.match(groupsSource, /getStateSnapshot\(\) \{/);
   assert.match(groupsSource, /replaceState\(nextState\) \{/);
 });
@@ -169,7 +182,7 @@ test('the opaque duplicate-check frame uses one fresh revision without storage a
   ]);
   const revision = duplicateIndex.match(/DUPLICATE_CHECK_VERSION = '([^']+)'/)?.[1] || '';
 
-  assert.equal(revision, 'duplicate-check-r6');
+  assert.equal(revision, 'duplicate-check-r7');
   assert.match(duplicateHtml, new RegExp(`app\\.css\\?v=${revision}`));
   assert.match(duplicateHtml, new RegExp(`app\\.js\\?v=${revision}`));
   assert.doesNotMatch(duplicateHtml, /(?:local|session)Storage/);

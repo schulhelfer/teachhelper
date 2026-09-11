@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
-const [defaults, store, runtime, integrity, gradesHtml, gradesApp, tabs, bridge, shell, main, index, nameLearningHtml, nameLearningCss, nameLearningIndex, nameLearningApp] = await Promise.all([
+const [defaults, store, runtime, integrity, gradesHtml, gradesApp, tabs, bridge, shell, main, router, index, nameLearningHtml, nameLearningCss, nameLearningIndex, nameLearningApp] = await Promise.all([
   read('../src/shared/school-data/defaults.js'), read('../src/modules/workspace/store.js'), read('../src/modules/workspace/runtime.js'),
   read('../src/shared/school-data/grade-integrity.js'), read('../src/modules/grades/app.html'), read('../src/modules/grades/app.js'),
-  read('../src/shell/tabs.js'), read('../src/app/planning-seatplan-bridge.js'), read('../src/app/shell.js'), read('../src/main.js'), read('../index.html'),
+  read('../src/shell/tabs.js'), read('../src/app/planning-seatplan-bridge.js'), read('../src/app/shell.js'), read('../src/app/app-runtime.js'), read('../src/app/module-message-router.js'), read('../index.html'),
   read('../src/modules/name-learning/app.html'), read('../src/modules/name-learning/app.css'),
   read('../src/modules/name-learning/index.js'),
   read('../src/modules/name-learning/app.js'),
@@ -28,7 +28,8 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(index, /id="tab-name-learning"[\s\S]*?data-name-learning-due-count hidden/);
   assert.match(index, /data-more-tools-target="name-learning"[\s\S]*?data-name-learning-due-count hidden/);
   assert.match(index, /id="name-learning-host"/);
-  assert.match(main, /NAME_LEARNING_DATA_REQUEST_EVENT/);
+  assert.match(router, /NAME_LEARNING_DATA_REQUEST_EVENT/);
+  assert.match(main, /onNameLearningRequest: \(type, detail\) =>/);
   assert.match(bridge, /mountNameLearning/);
   assert.match(bridge, /GRADES_NAME_LEARNING_DATA_REQUEST_EVENT/);
   assert.match(bridge, /GRADES_NAME_LEARNING_REVIEW_REQUEST_EVENT/);
@@ -146,7 +147,8 @@ test('name learning course actions use a dedicated persistent visibility setting
   assert.match(gradesApp, /navigation\.action === "manage-students" && courseId/);
   assert.match(gradesApp, /await this\.openCourseStudentsDialog\(courseId\)/);
   assert.match(bridge, /GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT/);
-  assert.match(main, /NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT/);
+  assert.match(router, /NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT/);
+  assert.match(main, /onNameLearningManageStudentsRequest: \(detail\) =>/);
   assert.match(main, /action: 'manage-students'/);
   assert.match(nameLearningHtml, /id="course-context-menu"[\s\S]*?Aus „Namen lernen“ ausblenden[\s\S]*?Teilnehmende verwalten/);
   assert.match(nameLearningApp, /course\.hidden \? 'In „Namen lernen“ einblenden' : 'Aus „Namen lernen“ ausblenden'/);

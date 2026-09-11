@@ -5,7 +5,7 @@ import test from 'node:test';
 const [source, htmlSource, mainSource, shellStyles, serviceWorkerSource] = await Promise.all([
   readFile(new URL('../src/app/pwa-install-prompt.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
 ]);
@@ -20,7 +20,7 @@ const {
 test('integrates an accessible, blurred installation dialog into the offline app shell', () => {
   assert.match(htmlSource, /<dialog id="pwa-install-dialog"[\s\S]*aria-labelledby="pwa-install-dialog-title"[\s\S]*aria-describedby="pwa-install-dialog-copy pwa-install-dialog-status"/);
   assert.match(htmlSource, /id="pwa-install-dialog-later"[\s\S]*id="pwa-install-dialog-install"/);
-  assert.match(mainSource, /import \{ createPwaInstallPrompt \} from '\.\/app\/pwa-install-prompt\.js';/);
+  assert.match(mainSource, /import \{ createPwaInstallPrompt \} from '\.\/pwa-install-prompt\.js';/);
   assert.match(mainSource, /pwaInstallPrompt\.showIfNeeded\(\);/);
   assert.match(shellStyles, /dialog\s*\{[\s\S]*?border: 1px solid var\(--module-surface-border\);[\s\S]*?border-radius: var\(--module-surface-radius\);[\s\S]*?background: var\(--module-surface-strong\);[\s\S]*?box-shadow: var\(--module-surface-shadow\);/);
   assert.match(shellStyles, /\.pwa-install-dialog::backdrop[\s\S]*blur\(8px\)/);

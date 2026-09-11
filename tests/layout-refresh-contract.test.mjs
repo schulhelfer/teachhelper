@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [main, shell, bridge, groups, randomPicker, workPhase] = await Promise.all([
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
   read('../src/app/shell.js'),
   read('../src/app/planning-seatplan-bridge.js'),
   read('../src/modules/groups/app.js'),
@@ -49,10 +49,10 @@ test('viewport refreshes preserve immediate, iOS, and settled-frame timing', () 
   const handler = extractFunction(main, 'handleViewportChange');
   assert.equal((handler.match(/groupsController\?\.refreshLayout\(\)/g) || []).length, 3);
   assert.equal((handler.match(/workPhaseController\?\.refreshLayout\(\)/g) || []).length, 3);
-  assert.match(handler, /if \(isIOSDevice\) \{[\s\S]*?requestAnimationFrame\(\(\) => \{/);
-  assert.match(handler, /requestAnimationFrame\(\(\) => \{\s*requestAnimationFrame\(\(\) => \{/);
-  assert.match(main, /window\.addEventListener\('resize', handleViewportChange\)/);
-  assert.match(main, /window\.visualViewport\.addEventListener\('resize', handleViewportChange\)/);
+  assert.match(handler, /if \(isIOSDevice\) \{[\s\S]*?requestRuntimeFrame\(\(\) => \{/);
+  assert.match(handler, /requestRuntimeFrame\(\(\) => \{\s*requestRuntimeFrame\(\(\) => \{/);
+  assert.match(main, /bindRuntime\(window, 'resize', handleViewportChange\)/);
+  assert.match(main, /bindRuntime\(window\.visualViewport, 'resize', handleViewportChange\)/);
 });
 
 test('tab and chrome transitions retain their distinct refresh boundaries', () => {

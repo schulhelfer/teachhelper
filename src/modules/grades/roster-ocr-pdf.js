@@ -1,5 +1,5 @@
 import { ensurePdfJsLoaded } from "../../shared/pdf-vendor.js";
-import { validatePdfFile, readFileArrayBufferWithTimeout, withTimeout, FILE_TIMEOUTS } from "../../shared/file-guards.js";
+import { FILE_LIMITS, validatePdfFile, readFileArrayBufferWithTimeout, withTimeout, FILE_TIMEOUTS } from "../../shared/file-guards.js";
 import { ocrOutputSize } from "./roster-ocr-data.js";
 
 export function createOcrPdfSession({ createCanvas, loadPdfJs = ensurePdfJsLoaded }) {
@@ -41,6 +41,12 @@ export function createOcrPdfSession({ createCanvas, loadPdfJs = ensurePdfJsLoade
         const loaded = await withTimeout(loadingTask.promise, FILE_TIMEOUTS.PDF_PROBE_MS, "Die PDF-Datei konnte nicht rechtzeitig geöffnet werden.", { signal });
         checkActive(signal);
         document = loaded;
+        if (!Number.isInteger(document.numPages) || document.numPages < 1) {
+          throw new Error("Die PDF enthält keine Seiten.");
+        }
+        if (document.numPages > FILE_LIMITS.PDF_MAX_PAGES) {
+          throw new Error(`Die PDF enthält zu viele Seiten. Maximal erlaubt: ${FILE_LIMITS.PDF_MAX_PAGES}.`);
+        }
         return document.numPages;
       } catch (error) {
         destroy();

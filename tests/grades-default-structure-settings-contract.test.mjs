@@ -2,11 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [html, css, appSource, mainSource] = await Promise.all([
+const [html, css, appSource, gradesTutorialSource] = await Promise.all([
   readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/tutorials/grades.js', import.meta.url), 'utf8'),
 ]);
 
 test('die Standard-Notenstruktur zeigt beide Halbjahre gleichzeitig', () => {
@@ -37,5 +37,5 @@ test('Abschnitte und Tutorial verweisen auf den gemeinsamen Halbjahrescontainer'
   assert.match(css, /\.settings-grade-structure-period \+ \.settings-grade-structure-period\s*\{[^}]*padding-top:\s*1rem/);
   assert.doesNotMatch(css, /\.settings-grade-structure-period \+ \.settings-grade-structure-period\s*\{[^}]*border-top:/);
   assert.match(css, /\.settings-grade-structure-period-head\s*\{[^}]*justify-content:\s*flex-start/);
-  assert.match(mainSource, /\['#settings-grade-structure-periods', '#settings-tab-grade-structure'\]/);
+  assert.match(gradesTutorialSource, /\['#settings-grade-structure-periods', '#settings-tab-grade-structure'\]/);
 });

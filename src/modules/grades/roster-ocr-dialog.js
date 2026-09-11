@@ -1,5 +1,5 @@
 import { createOcrPdfSession } from "./roster-ocr-pdf.js";
-import { assertFileSizeAtMost, FILE_LIMITS, FILE_TIMEOUTS, withTimeout } from "../../shared/file-guards.js";
+import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TIMEOUTS, withTimeout } from "../../shared/file-guards.js";
 import { recognizeLocalNames } from "../../shared/ocr-vendor.js";
 import { boundCrop, changeCrop, cropPixels, importableOcrNames, ocrOutputSize, parseOcrNames } from "./roster-ocr-data.js";
 
@@ -212,6 +212,7 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
         throw new Error("Bitte eine JPEG-, PNG-, WebP- oder PDF-Datei auswählen.");
       }
       assertFileSizeAtMost(file, FILE_LIMITS.IMAGE_BYTES, "Bilddatei");
+      await assertImageFilePixelsAtMost(file, { label: "Bilddatei" });
       status("Bild wird geladen …");
       url = URL.createObjectURL(file);
       const image = new Image();

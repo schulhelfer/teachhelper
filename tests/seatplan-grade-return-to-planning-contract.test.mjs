@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [seatplanSource, shellSource] = await Promise.all([
+const [seatplanSource, shellSource, routerSource] = await Promise.all([
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/main.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
 ]);
 
 test('a successful seatplan grade save returns to the planning course view', () => {
@@ -20,8 +21,12 @@ test('a successful seatplan grade save returns to the planning course view', () 
 
 test('the shell accepts this request only from the seatplan frame and presents its success toast', () => {
   assert.match(
+    routerSource,
+    /if \(data\.type === PLANNING_VIEW_REQUEST_EVENT\) \{[\s\S]*?if \(role !== 'seatplan'\) return false;[\s\S]*?detail\.source !== 'iframe'[\s\S]*?invoke\('onPlanningViewRequest', detail, metadata\)/,
+  );
+  assert.match(
     shellSource,
-    /if \(data\.type === PLANNING_VIEW_REQUEST_EVENT\) \{[\s\S]*?if \(frame !== getSeatplanFrame\(\)\) return;[\s\S]*?window\.dispatchEvent\(new CustomEvent\(PLANNING_VIEW_REQUEST_EVENT, \{ detail \}\)\);/,
+    /onPlanningViewRequest: \(detail\) => \{\s+window\.dispatchEvent\(new CustomEvent\(PLANNING_VIEW_REQUEST_EVENT, \{ detail \}\)\);/,
   );
   assert.match(
     shellSource,

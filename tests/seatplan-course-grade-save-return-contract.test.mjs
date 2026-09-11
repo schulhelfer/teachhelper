@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
 
 const [appBridge, main] = await Promise.all([
   read('../src/app/planning-seatplan-bridge.js'),
-  read('../src/main.js'),
+  read('../src/app/app-runtime.js'),
 ]);
 
 test('a successful seatplan grade save is forwarded to the seatplan', () => {
