@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
@@ -18,8 +20,32 @@ const vendorManifest = JSON.parse(
 );
 const vendoredAssets = vendorManifest.packages.flatMap((pkg) => pkg.files.map((file) => `./${file.path}`));
 
-test('pre-commit rejects a Python-free environment before running other checks', () => {
-  const result = spawnSync('/bin/sh', [hookPath], {
+function findShellBinary() {
+  const commandNames = process.platform === 'win32' ? ['sh.exe', 'bash.exe'] : ['sh', 'bash'];
+  const paths = process.env.PATH?.split(delimiter).filter(Boolean) ?? [];
+  for (const command of commandNames) {
+    const directory = paths.find((path) => existsSync(join(path, command)));
+    if (directory) return join(directory, command);
+  }
+  const fallbacks = process.platform === 'win32'
+    ? [
+      process.env.ProgramFiles && join(process.env.ProgramFiles, 'Git/usr/bin/sh.exe'),
+      process.env.ProgramFiles && join(process.env.ProgramFiles, 'Git/bin/sh.exe'),
+      process.env['ProgramFiles(x86)'] && join(process.env['ProgramFiles(x86)'], 'Git/usr/bin/sh.exe'),
+      process.env['ProgramFiles(x86)'] && join(process.env['ProgramFiles(x86)'], 'Git/bin/sh.exe'),
+    ]
+    : ['/bin/sh'];
+  return fallbacks.find((path) => path && existsSync(path)) ?? null;
+}
+
+test('pre-commit rejects a Python-free environment before running other checks', (t) => {
+  const shellPath = findShellBinary();
+  if (!shellPath) {
+    t.skip('POSIX shell not available');
+    return;
+  }
+
+  const result = spawnSync(shellPath, [hookPath], {
     cwd: rootPath,
     encoding: 'utf8',
     env: { ...process.env, PATH: '' },
