@@ -2,33 +2,39 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 
-const [shell, main, workPhase] = await Promise.all([
+const [shell, chromeController, tabController, tabNavLayout, main, workPhase] = await Promise.all([
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/chrome-controller.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/tab-controller.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/tab-nav-layout.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/work-phase/app.js', import.meta.url), 'utf8'),
 ]);
 
 test('the shell binds both fullscreen controls and restores chrome with Escape', () => {
-  assert.match(shell, /els\.chromeToggle\?\.addEventListener\('click', toggleChromeCollapsed\);/);
-  assert.match(shell, /els\.chromeOverlayToggle\?\.addEventListener\('click', toggleChromeCollapsed\);/);
+  assert.match(shell, /createChromeController\(\{/);
+  assert.match(chromeController, /bind\(headerToggle, 'click', toggle\);/);
+  assert.match(chromeController, /bind\(overlayToggle, 'click', toggle\);/);
 
-  const handlerStart = shell.indexOf("document.addEventListener('keydown', (event) => {");
-  assert.ok(handlerStart >= 0, 'the shell must listen for Escape');
-  const handler = shell.slice(handlerStart, shell.indexOf('\n  });', handlerStart) + 6);
+  const handlerStart = chromeController.indexOf('function handleDocumentKeydown(event) {');
+  assert.ok(handlerStart >= 0, 'the chrome controller must listen for Escape');
+  const handler = chromeController.slice(handlerStart, chromeController.indexOf('\n  }', handlerStart) + 4);
   assert.match(handler, /if \(event\.key !== 'Escape'\) return;/);
-  assert.match(handler, /if \(!state\.chromeCollapsed \|\| state\.chromeTransitionState !== 'idle'\) return;/);
-  assert.match(handler, /if \(document\.querySelector\('dialog\[open\]'\)\) return;/);
-  assert.match(handler, /setChromeCollapsed\(false\);/);
+  assert.match(handler, /if \(!collapsed \|\| transitionState !== 'idle'\) return;/);
+  assert.match(handler, /if \(documentRef\?\.querySelector\?\.\('dialog\[open\]'\)\) return;/);
+  assert.match(handler, /setCollapsed\(false\);/);
+  assert.match(chromeController, /bind\(documentRef, 'keydown', handleDocumentKeydown\);/);
 });
 
 test('shell-wide navigation, keyboard, and viewport responsibilities stay outside Work Phase', () => {
-  assert.match(shell, /function setActiveTab\(tab, options = \{\}\) \{[\s\S]*?const nextTab = normalizeTab\(tab\);/);
-  assert.match(shell, /state\.activeTab = nextTab;\s+ensureTabInitialized\(state\.activeTab\);\s+renderTabs\(\);\s+refreshLayouts\(\);/);
-  assert.match(shell, /document\.addEventListener\('pointerdown', \(event\) => \{[\s\S]*?setMoreToolsMenuOpen\(false\);/);
-  assert.match(shell, /document\.addEventListener\('keydown', \(event\) => \{[\s\S]*?els\.moreToolsTrigger\?\.focus\(\);/);
-  assert.match(shell, /window\.addEventListener\('resize', handleViewportResize\);/);
-  assert.match(shell, /document\.addEventListener\('fullscreenchange', handleViewportResize\);/);
-  assert.match(shell, /document\.addEventListener\('webkitfullscreenchange', handleViewportResize\);/);
+  assert.match(tabController, /function setActiveTab\(tab, options = \{\}\) \{[\s\S]*?const nextTab = normalizeTab\(tab\);/);
+  assert.match(tabController, /commitActiveTab\(nextTab\);\s+onEnsureTabInitialized\(activeTab\);\s+render\(\);\s+onRefreshLayouts\(\);/);
+  assert.match(shell, /createTabNavLayoutController\(\{/);
+  assert.match(tabNavLayout, /bind\(documentRef, 'pointerdown', handleDocumentPointerDown\);/);
+  assert.match(tabNavLayout, /bind\(documentRef, 'keydown', handleDocumentKeydown\);/);
+  assert.match(tabNavLayout, /bind\(view, 'resize', handleViewportResize\);/);
+  assert.match(tabNavLayout, /bind\(documentRef, 'fullscreenchange', handleViewportResize\);/);
+  assert.match(tabNavLayout, /bind\(documentRef, 'webkitfullscreenchange', handleViewportResize\);/);
   assert.doesNotMatch(workPhase, /(?:chromeToggle|chromeOverlayToggle|setChromeCollapsed|toggleChromeCollapsed)/);
 });
 

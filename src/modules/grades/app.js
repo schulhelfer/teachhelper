@@ -28,8 +28,10 @@ import { installTutorialEntryHint } from "../../shared/tutorial-entry-hint.js";
 import { installTouchLongPress } from "../../shared/touch-long-press.js";
 import {
   assertFileSizeAtMost,
+  assertImageFilePixelsAtMost,
   FILE_LIMITS,
   FILE_TIMEOUTS,
+  fitCanvasSize,
   readFileArrayBufferWithTimeout,
   validateDocxTemplateFile,
   withTimeout
@@ -2238,11 +2240,13 @@ async function prepareGradeStudentPortrait(file) {
   if (!(file instanceof File) || !GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(file.type)) {
     throw new Error("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.");
   }
+  assertFileSizeAtMost(file, FILE_LIMITS.IMAGE_BYTES, "Das Bild");
+  await assertImageFilePixelsAtMost(file, { label: "Das Bild" });
   const sourceUrl = URL.createObjectURL(file);
   try {
     const image = new Image();
     image.src = sourceUrl;
-    await image.decode();
+    await withTimeout(image.decode(), FILE_TIMEOUTS.READ_MS, "Das Bild konnte nicht rechtzeitig geladen werden.");
     if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Bild konnte nicht gelesen werden.");
     const sourceSize = Math.min(image.naturalWidth, image.naturalHeight);
     const sourceX = Math.floor((image.naturalWidth - sourceSize) / 2);
@@ -3248,11 +3252,6 @@ class GradesApp {
     this.gradesEntryDraftDirty = false;
     this.gradesEntryEditSnapshot = null;
     this.confirmedGradesEntryModeChangeKey = "";
-    this.gradesEntrySaveNotice = "";
-    this.gradesEntrySaveNoticeFading = false;
-    this.gradesEntrySaveNoticeTimer = 0;
-    this.gradesEntrySaveNoticeFadeTimer = 0;
-    this.gradesEntrySaveNoticeOverlay = null;
     this.gradeSimulationState = {
       courseId: null,
       value: 0,
@@ -4182,7 +4181,6 @@ class GradesApp {
     this.clearGradesEntryDraftDirty();
     this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
-    this.queueGradesEntrySaveNotice("");
   }
 
   async resolveUnsavedGradesEntryNavigation({
@@ -7977,11 +7975,14 @@ class GradesApp {
       await this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.");
       return;
     }
-    const url = URL.createObjectURL(file);
+    let url = "";
     try {
+      assertFileSizeAtMost(file, FILE_LIMITS.IMAGE_BYTES, "Das Gruppenfoto");
+      await assertImageFilePixelsAtMost(file, { label: "Das Gruppenfoto" });
+      url = URL.createObjectURL(file);
       const image = new Image();
       image.src = url;
-      await image.decode();
+      await withTimeout(image.decode(), FILE_TIMEOUTS.READ_MS, "Das Gruppenfoto konnte nicht rechtzeitig geladen werden.");
       if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Gruppenfoto konnte nicht gelesen werden.");
       this.clearGroupPhotoExtractionState();
       this.groupPhotoExtractionState = { url, image, selections: [], selectedId: "", drag: null, nextId: 1, zoom: 1 };
@@ -7991,7 +7992,7 @@ class GradesApp {
         this.refs.courseGroupPhotoStage.scrollTop = 0;
       }
     } catch (error) {
-      URL.revokeObjectURL(url);
+      if (url) URL.revokeObjectURL(url);
       await this.showInfoMessage(error instanceof Error ? error.message : "Das Gruppenfoto konnte nicht gelesen werden.");
     }
   }
@@ -8008,10 +8009,13 @@ class GradesApp {
       const oldImage = state.image;
       const oldWidth = oldImage.naturalWidth;
       const oldHeight = oldImage.naturalHeight;
+      const fitted = fitCanvasSize(oldHeight, oldWidth);
+      const scale = fitted.width / oldHeight;
       const canvas = document.createElement("canvas");
-      canvas.width = oldHeight;
-      canvas.height = oldWidth;
+      canvas.width = fitted.width;
+      canvas.height = fitted.height;
       const context = canvas.getContext("2d");
+      context.scale(scale, fitted.height / oldWidth);
       context.translate(oldHeight, 0);
       context.rotate(Math.PI / 2);
       context.drawImage(oldImage, 0, 0);
@@ -8020,14 +8024,15 @@ class GradesApp {
       const url = URL.createObjectURL(blob);
       const image = new Image();
       image.src = url;
-      await image.decode();
+      await withTimeout(image.decode(), FILE_TIMEOUTS.READ_MS, "Das gedrehte Foto konnte nicht rechtzeitig geladen werden.");
       if (state.url) URL.revokeObjectURL(state.url);
       state.url = url;
       state.image = image;
       state.selections = state.selections.map((selection) => ({
         ...selection,
-        x: oldHeight - selection.y - selection.size,
-        y: selection.x
+        x: (oldHeight - selection.y - selection.size) * scale,
+        y: selection.x * scale,
+        size: selection.size * scale
       }));
       state.zoom = 1;
       this.refs.courseGroupPhotoStage?.classList.add("is-photo-rotating");
@@ -9173,7 +9178,7 @@ class GradesApp {
     this.courseDialogRosterImportedCourseIds = new Set();
     this.courseDialogRosterImportBusy = false;
     this.refs.courseDialogRosterPills?.replaceChildren();
-    this.refs.courseStudentsImportRow?.classList.add("roster-import-unavailable");
+    this.refs.courseStudentsImportRow?.classList.remove("roster-import-unavailable");
   }
 
   async refreshCourseDialogRosterImportCourses() {
@@ -9191,8 +9196,7 @@ class GradesApp {
     }
     this.courseDialogRosterImportState = "loading";
     this.renderCourseDialogRosterImport();
-    const courses = [];
-    for (const course of candidates) {
+    const summaries = await Promise.all(candidates.map(async (course) => {
       let count = Number(this.courseStudentCounts.get(Number(course.id)) || 0);
       try {
         const summary = await workspaceOwner.getGradeCourseRosterSummary?.(course.id);
@@ -9201,9 +9205,13 @@ class GradesApp {
         }
       } catch (_error) {
       }
-      if (token !== this.courseDialogRosterImportToken) {
-        return;
-      }
+      return { course, count };
+    }));
+    if (token !== this.courseDialogRosterImportToken) {
+      return;
+    }
+    const courses = [];
+    for (const { course, count } of summaries) {
       if (count > 0) {
         courses.push({
           id: Number(course.id),
@@ -9226,15 +9234,10 @@ class GradesApp {
     pills.replaceChildren();
     const isLoading = this.courseDialogRosterImportState === "loading";
     const courses = isLoading ? [] : (this.courseDialogRosterImportCourses || []);
-    const hasSurface = isLoading || courses.length > 0;
-    this.refs.courseStudentsImportRow?.classList.toggle("roster-import-unavailable", !hasSurface);
-    if (!hasSurface) {
-      return;
-    }
-    if (isLoading) {
+    if (isLoading || courses.length === 0) {
       const note = document.createElement("span");
       note.className = "course-dialog-roster-pills-note";
-      note.textContent = "Kurse werden geladen …";
+      note.textContent = isLoading ? "Kurse werden geladen …" : "Keine anderen Kurse mit Teilnehmenden";
       pills.append(note);
       return;
     }
@@ -9321,6 +9324,7 @@ class GradesApp {
       return;
     }
     const draft = this.courseDialogDraft;
+    const importToken = this.courseDialogRosterImportToken;
     const courseName = String(course.name || "Kurs");
     this.courseDialogRosterImportBusy = true;
     this.renderCourseDialogRosterImport();
@@ -9352,8 +9356,10 @@ class GradesApp {
         : "Die Teilnehmenden konnten nicht importiert werden.";
       await this.showInfoMessage(message);
     } finally {
-      this.courseDialogRosterImportBusy = false;
-      this.renderCourseDialogRosterImport();
+      if (this.courseDialogDraft === draft && importToken === this.courseDialogRosterImportToken) {
+        this.courseDialogRosterImportBusy = false;
+        this.renderCourseDialogRosterImport();
+      }
     }
   }
 
@@ -10156,7 +10162,7 @@ class GradesApp {
 
     const savedImmediately = await this.saveGradesEntryImmediatelyAfterDiskSave();
     if (!savedImmediately) {
-      this.queueGradesEntrySaveNotice("Noten übernommen, Datenbank nicht gespeichert", 3000);
+      this.notifyParentToast("Noten übernommen, Datenbank nicht gespeichert", "error");
       this.gradesEntryDraft = {
         ...sessionDraft,
         assessmentId: assessment.id,
@@ -10172,21 +10178,17 @@ class GradesApp {
       });
       return false;
     }
-    this.queueGradesEntrySaveNotice("Noten gespeichert");
+    this.notifyParentToast("Noten gespeichert");
     const savedCourseId = courseId;
     if (isDraftSave) {
       this.gradesEntryEditSnapshot = null;
       this.resetGradesEntryDraftAfterSave(draftValues);
-      if (!this.openGradesOverviewForCourse(savedCourseId, { assessmentId: assessment.id, commit: false, preserveSaveNotice: true })) {
+      if (!this.openGradesOverviewForCourse(savedCourseId, { assessmentId: assessment.id, commit: false })) {
         this.renderGradesView();
         requestAnimationFrame(() => {
           const firstDraftInput = this.refs.gradesEntryContent?.querySelector("input[data-grade-draft-input='1']");
           firstDraftInput?.focus();
           firstDraftInput?.select();
-        });
-      } else {
-        requestAnimationFrame(() => {
-          this.renderGradesEntrySaveNoticeOverlay();
         });
       }
       return true;
@@ -10194,15 +10196,11 @@ class GradesApp {
     this.clearGradesEntryDraftDirty();
     this.activeGradeAssessmentId = assessment.id;
     this.gradesEntryEditSnapshot = null;
-    if (!this.openGradesOverviewForCourse(savedCourseId, { assessmentId: assessment.id, commit: false, preserveSaveNotice: true })) {
+    if (!this.openGradesOverviewForCourse(savedCourseId, { assessmentId: assessment.id, commit: false })) {
       this.renderGradesView();
       this.refreshOpenExpectationHorizonDialogTemplate();
       requestAnimationFrame(() => {
         this.focusGradeAssessmentInput(assessment.id, 0);
-      });
-    } else {
-      requestAnimationFrame(() => {
-        this.renderGradesEntrySaveNoticeOverlay();
       });
     }
     return true;
@@ -10319,7 +10317,6 @@ class GradesApp {
         || 0
       );
       this.gradesEntryEditSnapshot = null;
-      this.queueGradesEntrySaveNotice("");
       this.hideGradePicker();
       this.selectedGradesEntryAssessmentId = null;
       this.gradesEntryDraft = null;
@@ -13817,128 +13814,6 @@ class GradesApp {
         this.openGradeVaultDialog(this.hasGradeVaultUnlockConfig() ? "unlock" : "setup");
       });
     }
-  }
-
-  ensureGradesEntrySaveNoticeOverlay() {
-    if (typeof document === "undefined" || !document.body) {
-      return null;
-    }
-    if (this.gradesEntrySaveNoticeOverlay?.isConnected) {
-      return this.gradesEntrySaveNoticeOverlay;
-    }
-    const overlay = document.createElement("div");
-    overlay.className = "grades-entry-save-overlay";
-    overlay.setAttribute("aria-hidden", "false");
-    overlay.addEventListener("click", (event) => {
-      if (event.target !== overlay) {
-        return;
-      }
-      event.preventDefault();
-      event.stopPropagation();
-      this.dismissGradesEntrySaveNoticeOverlay();
-    });
-    const dialog = document.createElement("div");
-    dialog.className = "grades-entry-save-dialog";
-    dialog.setAttribute("role", "status");
-    dialog.setAttribute("aria-live", "polite");
-    dialog.setAttribute("aria-atomic", "true");
-    dialog.setAttribute("aria-label", "Speicherhinweis");
-    const content = document.createElement("div");
-    content.className = "grades-entry-save-dialog-content";
-    const icon = document.createElement("span");
-    icon.className = "grades-entry-save-dialog-icon";
-    icon.setAttribute("aria-hidden", "true");
-    icon.textContent = "\u2713";
-    const text = document.createElement("span");
-    text.dataset.gradesEntrySaveNoticeText = "1";
-    content.append(icon, text);
-    const okButton = document.createElement("button");
-    okButton.type = "button";
-    okButton.className = "grades-entry-save-dialog-ok";
-    okButton.textContent = "OK";
-    okButton.addEventListener("click", () => {
-      this.dismissGradesEntrySaveNoticeOverlay();
-    });
-    dialog.append(content, okButton);
-    overlay.append(dialog);
-    document.body.append(overlay);
-    this.gradesEntrySaveNoticeOverlay = overlay;
-    return overlay;
-  }
-
-  renderGradesEntrySaveNoticeOverlay() {
-    const text = String(this.gradesEntrySaveNotice || "").trim();
-    if (!text) {
-      this.removeGradesEntrySaveNoticeOverlay();
-      return;
-    }
-    const overlay = this.ensureGradesEntrySaveNoticeOverlay();
-    if (!overlay) {
-      return;
-    }
-    overlay.classList.toggle("is-fading", Boolean(this.gradesEntrySaveNoticeFading));
-    const textNode = overlay.querySelector("[data-grades-entry-save-notice-text='1']");
-    if (textNode) {
-      textNode.textContent = text;
-    }
-  }
-
-  removeGradesEntrySaveNoticeOverlay() {
-    const overlay = this.gradesEntrySaveNoticeOverlay;
-    if (overlay?.isConnected) {
-      overlay.remove();
-    }
-    this.gradesEntrySaveNoticeOverlay = null;
-  }
-
-  dismissGradesEntrySaveNoticeOverlay() {
-    if (this.gradesEntrySaveNoticeTimer) {
-      window.clearTimeout(this.gradesEntrySaveNoticeTimer);
-      this.gradesEntrySaveNoticeTimer = 0;
-    }
-    if (this.gradesEntrySaveNoticeFadeTimer) {
-      window.clearTimeout(this.gradesEntrySaveNoticeFadeTimer);
-      this.gradesEntrySaveNoticeFadeTimer = 0;
-    }
-    if (!this.gradesEntrySaveNoticeOverlay?.isConnected) {
-      this.gradesEntrySaveNotice = "";
-      this.gradesEntrySaveNoticeFading = false;
-      return;
-    }
-    this.gradesEntrySaveNoticeFading = true;
-    this.renderGradesEntrySaveNoticeOverlay();
-    this.gradesEntrySaveNoticeFadeTimer = window.setTimeout(() => {
-      this.gradesEntrySaveNoticeFadeTimer = 0;
-      this.gradesEntrySaveNotice = "";
-      this.gradesEntrySaveNoticeFading = false;
-      this.removeGradesEntrySaveNoticeOverlay();
-    }, 225);
-  }
-
-  queueGradesEntrySaveNotice(message = "Noten gespeichert", duration = 1500) {
-    const text = String(message || "").trim();
-    if (this.gradesEntrySaveNoticeTimer) {
-      window.clearTimeout(this.gradesEntrySaveNoticeTimer);
-      this.gradesEntrySaveNoticeTimer = 0;
-    }
-    if (this.gradesEntrySaveNoticeFadeTimer) {
-      window.clearTimeout(this.gradesEntrySaveNoticeFadeTimer);
-      this.gradesEntrySaveNoticeFadeTimer = 0;
-    }
-    this.gradesEntrySaveNotice = text;
-    this.gradesEntrySaveNoticeFading = false;
-    if (!text) {
-      this.removeGradesEntrySaveNoticeOverlay();
-      return;
-    }
-    this.renderGradesEntrySaveNoticeOverlay();
-    this.gradesEntrySaveNoticeTimer = window.setTimeout(() => {
-      this.gradesEntrySaveNoticeTimer = 0;
-      if (!this.gradesEntrySaveNotice) {
-        return;
-      }
-      this.dismissGradesEntrySaveNoticeOverlay();
-    }, Math.max(600, Number(duration) || 1500));
   }
 
   resetGradesEntryDraftAfterSave(values = null) {
@@ -29624,9 +29499,6 @@ class GradesApp {
       this.activeGradeOverrideContext = null;
     }
     if (normalized !== "entry") {
-      if (!options.preserveSaveNotice) {
-        this.queueGradesEntrySaveNotice("");
-      }
       this.gradesEntryDraft = null;
       this.gradesEntryEditSnapshot = null;
       this.clearGradesEntryDraftDirty();
@@ -29708,9 +29580,6 @@ class GradesApp {
       return false;
     }
     this.hideGradePicker();
-    if (!options.preserveSaveNotice) {
-      this.queueGradesEntrySaveNotice("");
-    }
     this.clearGradesOverviewAssessmentSpotlight();
     this.clearPrivacyFocusedGradeStudent();
     this.activeGradeOverrideContext = null;
@@ -29775,7 +29644,6 @@ class GradesApp {
       return false;
     }
     this.hideGradePicker();
-    this.queueGradesEntrySaveNotice("");
     this.clearGradesOverviewAssessmentSpotlight();
     this.clearPrivacyFocusedGradeStudent();
     this.activeGradeOverrideContext = null;
@@ -29946,9 +29814,6 @@ class GradesApp {
       return false;
     }
     this.hideGradePicker();
-    if (!options.preserveSaveNotice) {
-      this.queueGradesEntrySaveNotice("");
-    }
     this.clearPrivacyFocusedGradeStudent();
     this.activeGradeOverrideContext = null;
     if (Number(this.selectedCourseId || 0) !== normalizedCourseId) {
@@ -29981,8 +29846,7 @@ class GradesApp {
       };
     }
     const switched = this.switchGradesSubView("overview", {
-      commit: options.commit,
-      preserveSaveNotice: options.preserveSaveNotice
+      commit: options.commit
     });
     if (!switched && Number(this.pendingGradesOverviewAutoScroll?.courseId || 0) === normalizedCourseId) {
       this.clearPendingGradesOverviewAutoScroll();

@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '101';
+const TEACHHELPER_APP_VERSION_STAMP = '102';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -45,6 +45,11 @@ const APP_SHELL = [
   './src/app/shell.css',
   './src/shared/toast.css',
   './src/app/shell.js',
+  './src/app/shell/chrome-controller.js',
+  './src/app/shell/sidebar-resize.js',
+  './src/app/shell/tab-controller.js',
+  './src/app/shell/tab-nav-layout.js',
+  './src/app/shell/workspace-status.js',
   './src/shared/theme.css',
   './src/shared/module-standalone-guard.js',
   './src/shared/theme-preload.js',

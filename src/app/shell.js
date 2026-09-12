@@ -1,12 +1,4 @@
 import {
-  GRADES_MANUAL_SAVE_STATE_EVENT,
-  GRADES_READY_EVENT,
-  GRADES_UNSAVED_STATE_EVENT,
-  GRADES_GRADE_VAULT_STATE_EVENT,
-  normalizeTab,
-  PLANNING_MANUAL_SAVE_STATE_EVENT,
-  PLANNING_READY_EVENT,
-  PLANNING_UNSAVED_STATE_EVENT,
   TAB_GRADES,
   TAB_GROUPS,
   TAB_DUPLICATE_CHECK,
@@ -18,93 +10,22 @@ import {
   TAB_SEATPLAN,
   TAB_WORK_PHASE,
 } from '../shell/tabs.js';
-import { WORKSPACE_STATE_EVENT } from '../shared/school-data/messages.js';
 import {
   GRADE_VAULT_LOCKED_ICON,
   GRADE_VAULT_UNLOCKED_ICON,
 } from '../shared/grade-vault-lock-icons.js';
+import { createChromeController } from './shell/chrome-controller.js';
+import { createSidebarResizeController } from './shell/sidebar-resize.js';
+import { createTabController } from './shell/tab-controller.js';
+import {
+  createTabNavLayoutController,
+  fitTabNavItems,
+} from './shell/tab-nav-layout.js';
+import { createWorkspaceStatusController } from './shell/workspace-status.js';
 
-const CHROME_TOGGLE_EXPAND_ICON = `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M2 6H6V2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M2 2L6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M14 10H10V14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M14 14L10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
+export { fitTabNavItems };
 
-const CHROME_TOGGLE_COLLAPSE_ICON = `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-    <path d="M6 2H2V6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M2 2L6 6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M10 14H14V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-    <path d="M14 14L10 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
-  </svg>`;
-
-const SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING = 'planning';
-const SHELL_SIDEBAR_WIDTH_SCOPE_OTHER = 'other';
-const SHELL_SIDEBAR_WIDTH_STORAGE_KEYS = Object.freeze({
-  [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: 'teachhelper:sidebar-width:planning',
-  [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: 'teachhelper:sidebar-width:other',
-});
-const LEGACY_SHELL_SIDEBAR_WIDTH_STORAGE_KEY = 'teachhelper:shell-sidebar-width';
-const SHELL_SIDEBAR_DEFAULT_WIDTHS = Object.freeze({
-  [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: 220,
-  [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: 360,
-});
-const SHELL_SIDEBAR_FULLSCREEN_THRESHOLD = 160;
-const SHELL_SIDEBAR_DESKTOP_BREAKPOINT = 981;
-const SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DELAY_MS = 350;
-const SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DISTANCE_PX = 24;
-const TAB_NAV_MODE_HYSTERESIS = 8;
-const VIEWPORT_RESIZE_SETTLE_DELAY = 160;
 const PROTECTED_TAB_TARGETS = Object.freeze([TAB_GRADES, TAB_PLANNING]);
-
-export function fitTabNavItems({
-  widths = [],
-  gap = 0,
-  triggerWidth = 0,
-  available = 0,
-  minimumVisibleCount = 0,
-  previousVisibleCount = null,
-  hysteresis = 0,
-} = {}) {
-  const epsilon = 0.5;
-  const floor = Math.min(Math.max(minimumVisibleCount, 0), widths.length);
-  const fitWithin = (budget) => {
-    let used = 0;
-    let count = 0;
-    for (let index = 0; index < widths.length; index += 1) {
-      const next = used + (count > 0 ? gap : 0) + widths[index];
-      if (count >= floor && next > budget + epsilon) break;
-      used = next;
-      count += 1;
-    }
-    return count;
-  };
-  const fitRow = (budget) => (
-    fitWithin(budget) === widths.length
-      ? widths.length
-      : fitWithin(budget - gap - triggerWidth)
-  );
-  let visibleCount = fitRow(available);
-  if (Number.isFinite(previousVisibleCount) && visibleCount > previousVisibleCount) {
-    visibleCount = Math.max(previousVisibleCount, fitRow(available - hysteresis));
-  }
-  return visibleCount;
-}
-
-function parseCssTimeToMs(value) {
-  if (!value) return 0;
-  const normalized = String(value).trim();
-  if (!normalized) return 0;
-  if (normalized.endsWith('ms')) {
-    return Number.parseFloat(normalized) || 0;
-  }
-  if (normalized.endsWith('s')) {
-    return (Number.parseFloat(normalized) || 0) * 1000;
-  }
-  return Number.parseFloat(normalized) || 0;
-}
 
 export function createShellController({
   els,
@@ -123,6 +44,7 @@ export function createShellController({
   onSidebarWidthChange,
   onActiveTabChange,
   onTabActivating,
+  onRegisterCleanup,
 } = {}) {
   const ensureTabInitialized = typeof onEnsureTabInitialized === 'function'
     ? onEnsureTabInitialized
@@ -160,326 +82,48 @@ export function createShellController({
   const notifyTabActivating = typeof onTabActivating === 'function'
     ? onTabActivating
     : (() => {});
+  const registerCleanup = typeof onRegisterCleanup === 'function'
+    ? onRegisterCleanup
+    : (() => {});
   let unsavedTabConfirmPromise = null;
-  let tabIndicatorFrame = 0;
-  let tabIndicatorSettleTimer = 0;
-  let lastRenderedActiveTab = null;
-  let tabNavResizeObserver = null;
-  let moreToolsSyncFrame = 0;
-  let viewportResizeTimer = 0;
-  let lastViewportSignature = '';
-  let tabNavOverflowTargets = new Set();
-  let tabNavLastFit = { itemCount: 0, visibleCount: 0 };
-  let pendingTabTransitionOptions = null;
-  const shellSidebarWidths = {
-    [SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING]: readStoredSidebarWidth(SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING),
-    [SHELL_SIDEBAR_WIDTH_SCOPE_OTHER]: readStoredSidebarWidth(SHELL_SIDEBAR_WIDTH_SCOPE_OTHER),
-  };
-  let sidebarResizeState = null;
-  let lastSidebarResizeTouchTap = null;
+  let chromeController = null;
+  let tabNavLayout = null;
+  let tabController = null;
+  let workspaceStatus = null;
 
-  function getSidebarWidthScope(tab = state.activeTab) {
-    return tab === TAB_PLANNING || tab === TAB_GRADES
-      ? SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING
-      : SHELL_SIDEBAR_WIDTH_SCOPE_OTHER;
+  function getActiveTab() {
+    return tabController?.getActiveTab() ?? state.activeTab;
   }
 
-  function isShellSidebarResizableTab(tab = state.activeTab) {
+  function getTabTransitionState() {
+    return tabController?.getTransitionState() ?? 'idle';
+  }
+
+  function getSidebarWidthScope(tab = getActiveTab()) {
+    return tab === TAB_PLANNING || tab === TAB_GRADES
+      ? 'planning'
+      : 'other';
+  }
+
+  function isShellSidebarResizableTab(tab = getActiveTab()) {
     return tab === TAB_GROUPS || tab === TAB_RANDOM_PICKER || tab === TAB_WORK_PHASE;
   }
 
-  function isSidebarResizeDesktop() {
-    return typeof window !== 'undefined' && window.innerWidth >= SHELL_SIDEBAR_DESKTOP_BREAKPOINT;
-  }
-
-  function normalizeSidebarWidthScope(scope) {
-    return scope === SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING
-      ? SHELL_SIDEBAR_WIDTH_SCOPE_PLANNING
-      : SHELL_SIDEBAR_WIDTH_SCOPE_OTHER;
-  }
-
-  function getDefaultShellSidebarWidth(scope) {
-    return SHELL_SIDEBAR_DEFAULT_WIDTHS[normalizeSidebarWidthScope(scope)];
-  }
-
-  function getMinimumShellSidebarWidth(scope) {
-    return SHELL_SIDEBAR_FULLSCREEN_THRESHOLD;
-  }
-
-  function readStoredSidebarWidth(scope) {
-    const normalizedScope = normalizeSidebarWidthScope(scope);
-    if (typeof window === 'undefined') return getDefaultShellSidebarWidth(normalizedScope);
-    try {
-      const storageKey = SHELL_SIDEBAR_WIDTH_STORAGE_KEYS[normalizedScope];
-      const storedValue = window.localStorage?.getItem(storageKey)
-        ?? (normalizedScope === SHELL_SIDEBAR_WIDTH_SCOPE_OTHER
-          ? window.localStorage?.getItem(LEGACY_SHELL_SIDEBAR_WIDTH_STORAGE_KEY)
-          : null);
-      const stored = Number.parseFloat(storedValue);
-      if (!Number.isFinite(stored) || stored < getMinimumShellSidebarWidth(normalizedScope)) {
-        return getDefaultShellSidebarWidth(normalizedScope);
-      }
-      return Math.round(stored);
-    } catch {
-      return getDefaultShellSidebarWidth(normalizedScope);
-    }
-  }
-
-  function updateShellSidebarWidth(width) {
-    if (!els.app || !Number.isFinite(width)) return;
-    els.app.style.setProperty('--shell-sidebar-width', `${Math.round(width)}px`);
-  }
-
-  function applyActiveShellSidebarWidth() {
-    updateShellSidebarWidth(shellSidebarWidths[getSidebarWidthScope()]);
-  }
-
-  function persistShellSidebarWidth(scope, width) {
-    try {
-      window.localStorage?.setItem(
-        SHELL_SIDEBAR_WIDTH_STORAGE_KEYS[normalizeSidebarWidthScope(scope)],
-        String(Math.round(width))
-      );
-    } catch {
-      
-    }
-  }
-
-  function setShellSidebarWidth(scope, width, { persist = false, notify = persist } = {}) {
-    const normalizedWidth = Math.round(width);
-    if (!Number.isFinite(normalizedWidth)) return;
-    const normalizedScope = normalizeSidebarWidthScope(scope);
-    shellSidebarWidths[normalizedScope] = normalizedWidth;
-    if (getSidebarWidthScope() === normalizedScope) {
-      updateShellSidebarWidth(normalizedWidth);
-    }
-    if (persist) {
-      persistShellSidebarWidth(normalizedScope, normalizedWidth);
-    }
-    if (notify) {
-      notifySidebarWidthChange(normalizedScope, normalizedWidth);
-    }
-    return normalizedWidth;
-  }
-
-  function getMaximumShellSidebarWidth() {
-    if (typeof window === 'undefined') return SHELL_SIDEBAR_DEFAULT_WIDTHS[SHELL_SIDEBAR_WIDTH_SCOPE_OTHER];
-    return Math.floor(window.innerWidth * 0.5);
-  }
-
-  function resetActiveShellSidebarWidth() {
-    const scope = getSidebarWidthScope();
-    setShellSidebarWidth(scope, getDefaultShellSidebarWidth(scope), { persist: true });
-  }
-
-  function handleSidebarResizeTouchTap(event, wasTap) {
-    if (
-      event?.pointerType !== 'touch'
-      || !wasTap
-      || !isSidebarResizeDesktop()
-      || !isShellSidebarResizableTab()
-      || state.chromeCollapsed
-      || state.chromeTransitionState !== 'idle'
-    ) {
-      lastSidebarResizeTouchTap = null;
-      return;
-    }
-    const tap = {
-      at: Date.now(),
-      clientX: Number(event.clientX) || 0,
-      clientY: Number(event.clientY) || 0,
-      scope: getSidebarWidthScope(),
-    };
-    const previousTap = lastSidebarResizeTouchTap;
-    lastSidebarResizeTouchTap = tap;
-    if (
-      !previousTap
-      || previousTap.scope !== tap.scope
-      || tap.at - previousTap.at > SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DELAY_MS
-      || Math.hypot(tap.clientX - previousTap.clientX, tap.clientY - previousTap.clientY)
-        > SHELL_SIDEBAR_TOUCH_DOUBLE_TAP_DISTANCE_PX
-    ) {
-      return;
-    }
-    lastSidebarResizeTouchTap = null;
-    event.preventDefault();
-    resetActiveShellSidebarWidth();
-  }
-
-  function finishSidebarResize(event, { cancelled = false } = {}) {
-    const resizeState = sidebarResizeState;
-    if (!resizeState) return;
-    sidebarResizeState = null;
-    els.app?.classList.remove('is-sidebar-resizing');
-    if (event?.pointerId != null && els.sidebarResizeHandle?.hasPointerCapture?.(event.pointerId)) {
-      els.sidebarResizeHandle.releasePointerCapture(event.pointerId);
-    }
-    if (cancelled) {
-      setShellSidebarWidth(resizeState.scope, resizeState.startWidth, { notify: false });
-      return;
-    }
-    if (!resizeState.hasMoved) {
-      setShellSidebarWidth(resizeState.scope, resizeState.startWidth, { notify: false });
-      return;
-    }
-    if (resizeState.lastRawWidth < SHELL_SIDEBAR_FULLSCREEN_THRESHOLD) {
-      setChromeCollapsed(true);
-      return;
-    }
-    const maximumWidth = getMaximumShellSidebarWidth();
-    const committedWidth = Math.min(
-      maximumWidth,
-      Math.max(SHELL_SIDEBAR_FULLSCREEN_THRESHOLD, resizeState.lastRawWidth)
-    );
-    setShellSidebarWidth(resizeState.scope, committedWidth, { persist: true });
-  }
-
-  function initializeSidebarResize() {
-    applyActiveShellSidebarWidth();
-    const handle = els.sidebarResizeHandle;
-    const sidebar = els.sidePanel;
-    if (!handle || !sidebar || !els.app) return;
-    els.app.append(handle);
-    const syncHandlePosition = () => {
-      const appBounds = els.app.getBoundingClientRect();
-      const sidebarBounds = sidebar.getBoundingClientRect();
-      handle.style.setProperty('--sidebar-resize-left', `${Math.round(sidebarBounds.right - appBounds.left - 7)}px`);
-      handle.style.setProperty('--sidebar-resize-top', `${Math.round(sidebarBounds.top - appBounds.top)}px`);
-      handle.style.setProperty('--sidebar-resize-height', `${Math.round(sidebarBounds.height)}px`);
-    };
-    const scheduleHandlePositionSync = () => {
-      window.requestAnimationFrame(syncHandlePosition);
-    };
-    syncHandlePosition();
-    const handlePositionObserver = new ResizeObserver(scheduleHandlePositionSync);
-    handlePositionObserver.observe(els.app);
-    handlePositionObserver.observe(sidebar);
-    window.addEventListener('resize', scheduleHandlePositionSync);
-    handle.addEventListener('pointerdown', (event) => {
-      if (
-        event.button !== 0
-        || !isSidebarResizeDesktop()
-        || !isShellSidebarResizableTab()
-        || state.chromeCollapsed
-        || state.chromeTransitionState !== 'idle'
-        || !els.app
-      ) {
-        return;
-      }
-      event.preventDefault();
-      const appBounds = els.app.getBoundingClientRect();
-      const sidebarBounds = sidebar.getBoundingClientRect();
-      const scope = getSidebarWidthScope();
-      sidebarResizeState = {
-        pointerId: event.pointerId,
-        appLeft: appBounds.left,
-        scope,
-        startWidth: shellSidebarWidths[scope],
-        pointerOffset: event.clientX - sidebarBounds.right,
-        lastRawWidth: Math.round(sidebarBounds.right - appBounds.left),
-        hasMoved: false,
-      };
-      els.app.classList.add('is-sidebar-resizing');
-      handle.setPointerCapture?.(event.pointerId);
-    });
-    handle.addEventListener('pointermove', (event) => {
-      if (!sidebarResizeState || sidebarResizeState.pointerId !== event.pointerId || !els.app) return;
-      event.preventDefault();
-      const rawWidth = Math.round(
-        event.clientX - sidebarResizeState.appLeft - sidebarResizeState.pointerOffset
-      );
-      sidebarResizeState.hasMoved = sidebarResizeState.hasMoved || rawWidth !== sidebarResizeState.lastRawWidth;
-      const visualWidth = Math.min(getMaximumShellSidebarWidth(), Math.max(0, rawWidth));
-      sidebarResizeState.lastRawWidth = rawWidth;
-      updateShellSidebarWidth(visualWidth);
-    });
-    handle.addEventListener('pointerup', (event) => {
-      if (sidebarResizeState?.pointerId !== event.pointerId) return;
-      const wasTap = !sidebarResizeState.hasMoved;
-      finishSidebarResize(event);
-      handleSidebarResizeTouchTap(event, wasTap);
-    });
-    handle.addEventListener('pointercancel', (event) => {
-      if (sidebarResizeState?.pointerId !== event.pointerId) return;
-      finishSidebarResize(event, { cancelled: true });
-    });
-    handle.addEventListener('lostpointercapture', (event) => {
-      if (sidebarResizeState?.pointerId !== event.pointerId) return;
-      finishSidebarResize(event, { cancelled: true });
-    });
-    handle.addEventListener('dblclick', (event) => {
-      if (!isSidebarResizeDesktop() || !isShellSidebarResizableTab()) return;
-      event.preventDefault();
-      resetActiveShellSidebarWidth();
-    });
-    window.addEventListener('storage', (event) => {
-      const scope = Object.entries(SHELL_SIDEBAR_WIDTH_STORAGE_KEYS)
-        .find(([, storageKey]) => storageKey === event.key)?.[0];
-      if (!scope) return;
-      const nextWidth = Number.parseFloat(event.newValue);
-      if (!Number.isFinite(nextWidth) || nextWidth < getMinimumShellSidebarWidth(scope)) return;
-      setShellSidebarWidth(scope, nextWidth, { notify: false });
-    });
-  }
-  function isPlanningTab(tab) {
-    return tab === TAB_PLANNING || tab === TAB_GRADES;
-  }
-
-  function isOverflowedTab(tab) {
-    return tabNavOverflowTargets.has(tab);
-  }
-
-  function isGradeVaultStatusTab(tab) {
-    return tab === TAB_PLANNING
-      || tab === TAB_GRADES
-      || tab === TAB_SEATPLAN
-      || tab === TAB_NAME_LEARNING
-      || tab === TAB_GROUPS
-      || tab === TAB_RANDOM_PICKER;
-  }
-
-  function canShowNameLearning() {
-    const vault = state.planningGradeVaultState || {};
-    return Boolean(vault.showGradeStudentPortraits && vault.showNameLearningModule);
-  }
-
-  function shouldPromptGradeVaultUnlockOnGradesNavigation(nextTab) {
-    if (nextTab !== TAB_GRADES || state.activeTab !== TAB_PLANNING) return false;
-    const vault = state.planningGradeVaultState || {};
-    return Boolean(vault.ready)
-      && Boolean(vault.dbConnected)
-      && Boolean(vault.configured)
-      && !Boolean(vault.unlocked)
-      && !Boolean(vault.setupRequired)
-      && vault.mode === 'unlock';
-  }
-
-  function getUnsavedAreaLabel() {
-    const unsaved = state.planningUnsavedState || {};
-    if (unsaved.planningDirty && unsaved.gradesDirty) {
-      return 'Planung und Noten';
-    }
-    if (unsaved.planningDirty) {
-      return 'Planung';
-    }
-    if (unsaved.gradesDirty) {
-      return 'Noten';
-    }
-    return 'Planung oder Noten';
-  }
-
-  function shouldConfirmPlanningTabLeave(nextTab, options = {}) {
-    if (options.skipUnsavedPrompt) return false;
-    if (!isPlanningTab(state.activeTab) || isPlanningTab(nextTab)) return false;
-    return Boolean(state.planningUnsavedState?.planningSettingsDirty);
-  }
-
-  function shouldResolveGradesTabLeave(nextTab, options = {}) {
-    if (options.skipUnsavedPrompt) return false;
-    if (state.activeTab !== TAB_GRADES || nextTab === TAB_GRADES) return false;
-    const unsaved = state.planningUnsavedState || {};
-    return Boolean(unsaved.gradesDirty || unsaved.gradesSettingsDirty);
-  }
+  const sidebarResize = createSidebarResizeController({
+    app: els.app,
+    sidebar: els.sidePanel,
+    handle: els.sidebarResizeHandle,
+    view: window,
+    ResizeObserverClass: window.ResizeObserver,
+    getActiveScope: getSidebarWidthScope,
+    isActiveTabResizable: isShellSidebarResizableTab,
+    getChromeCollapsed: () => chromeController?.isCollapsed() ?? Boolean(state.chromeCollapsed),
+    getChromeTransitionState: () => chromeController?.getTransitionState() ?? 'idle',
+    onCollapseRequest: () => chromeController?.setCollapsed(true),
+    onWidthChange: notifySidebarWidthChange,
+    now: Date.now,
+  });
+  registerCleanup(() => sidebarResize.dispose());
 
   function showUnsavedTabLeaveDialog() {
     if (unsavedTabConfirmPromise) {
@@ -489,7 +133,7 @@ export function createShellController({
     if (!dialog) {
       return Promise.resolve(true);
     }
-    const areaLabel = getUnsavedAreaLabel();
+    const areaLabel = workspaceStatus.getUnsavedAreaLabel();
     if (els.unsavedDataDialogText) {
       els.unsavedDataDialogText.textContent = `In ${areaLabel} gibt es ungespeicherte Änderungen. Speichere sie, bevor du die Ansicht verlässt, oder wechsle trotzdem.`;
     }
@@ -535,552 +179,6 @@ export function createShellController({
     return unsavedTabConfirmPromise;
   }
 
-  function updateSeatPreferencesTrigger() {
-    const isPicker = state.activeTab === TAB_RANDOM_PICKER;
-    if (els.seatPreferencesLabel) {
-      els.seatPreferencesLabel.textContent = isPicker
-        ? 'Gib Bedingungen an (optional)'
-        : 'Gib Bedingungen an (optional)';
-    }
-    if (els.groupSeatPreferences) {
-      els.groupSeatPreferences.textContent = isPicker
-        ? 'Bedingungen eingeben'
-        : 'Bedingungen eingeben';
-    }
-  }
-
-  function getMoreToolsMenuItems() {
-    if (!els.moreToolsMenu) return [];
-    return Array.from(els.moreToolsMenu.querySelectorAll('[data-more-tools-target]'));
-  }
-
-  function getFocusableMoreToolsMenuItems() {
-    return getMoreToolsMenuItems().filter((item) => !item.hidden);
-  }
-
-  function setMoreToolsMenuOpen(open, options = {}) {
-    const canOpen = Boolean(
-      open
-      && els.tabNav?.classList.contains('is-tools-condensed')
-      && els.moreToolsTrigger
-      && els.moreToolsMenu
-    );
-    if (els.moreToolsMenu) {
-      els.moreToolsMenu.hidden = !canOpen;
-    }
-    if (els.moreToolsTrigger) {
-      els.moreToolsTrigger.setAttribute('aria-expanded', canOpen ? 'true' : 'false');
-    }
-    if (canOpen && options.focusFirst) {
-      const focusFirst = () => getFocusableMoreToolsMenuItems()[0]?.focus();
-      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(focusFirst);
-      } else {
-        setTimeout(focusFirst, 0);
-      }
-    }
-  }
-
-  function updateMoreToolsNavigationState() {
-    const isCondensed = Boolean(els.tabNav?.classList.contains('is-tools-condensed'));
-    const hasActiveTool = isOverflowedTab(state.activeTab);
-    if (els.moreToolsTrigger) {
-      const isActive = isCondensed && hasActiveTool;
-      els.moreToolsTrigger.classList.toggle('active', isActive);
-      els.moreToolsTrigger.setAttribute('aria-selected', isActive ? 'true' : 'false');
-    }
-    getMoreToolsMenuItems().forEach((item) => {
-      const isActive = item.dataset.moreToolsTarget === state.activeTab;
-      item.classList.toggle('is-active', isActive);
-      item.setAttribute('aria-checked', isActive ? 'true' : 'false');
-      if (isActive) {
-        item.setAttribute('aria-current', 'page');
-      } else {
-        item.removeAttribute('aria-current');
-      }
-    });
-    if (!isCondensed) {
-      setMoreToolsMenuOpen(false);
-    }
-  }
-
-  function clearTabNavOverflowMarkers() {
-    Array.from(els.tabNav.children).forEach((child) => {
-      if (child instanceof HTMLElement) child.removeAttribute('data-tab-overflow');
-    });
-  }
-
-  function measureTabNavFit() {
-    const navStyle = window.getComputedStyle(els.tabNav);
-    const paddingLeft = Number.parseFloat(navStyle.paddingLeft) || 0;
-    const paddingRight = Number.parseFloat(navStyle.paddingRight) || 0;
-    const items = Array.from(els.tabNav.children).filter((child) => (
-      child instanceof HTMLElement
-      && child !== els.tabIndicator
-      && child !== els.moreTools
-      && child.offsetParent !== null
-    ));
-    let minimumVisibleCount = 0;
-    for (let index = 0; index < items.length; index += 1) {
-      const target = items[index].dataset?.tabTarget;
-      if (target && !PROTECTED_TAB_TARGETS.includes(target)) break;
-      minimumVisibleCount = index + 1;
-    }
-    return {
-      items,
-      minimumVisibleCount,
-      gap: Number.parseFloat(navStyle.columnGap) || 0,
-      widths: items.map((item) => item.getBoundingClientRect().width),
-      triggerWidth: els.moreTools ? els.moreTools.getBoundingClientRect().width : 0,
-      available: els.tabNav.clientWidth - paddingLeft - paddingRight,
-    };
-  }
-
-  function applyTabNavOverflow(items, visibleCount) {
-    const overflowTargets = new Set();
-    let focusEscaped = false;
-    items.forEach((item, index) => {
-      const target = item.dataset?.tabTarget;
-      if (target && index >= visibleCount) {
-        if (item === document.activeElement) focusEscaped = true;
-        item.setAttribute('data-tab-overflow', '1');
-        overflowTargets.add(target);
-      } else {
-        item.removeAttribute('data-tab-overflow');
-      }
-    });
-    els.tabNav.classList.toggle('is-tools-condensed', overflowTargets.size > 0);
-    getMoreToolsMenuItems().forEach((menuItem) => {
-      menuItem.hidden = !overflowTargets.has(menuItem.dataset.moreToolsTarget);
-    });
-    return { overflowTargets, focusEscaped };
-  }
-
-  function haveSameTabTargets(before, after) {
-    if (before.size !== after.size) return false;
-    return Array.from(before).every((target) => after.has(target));
-  }
-
-  function syncMoreToolsNavigation() {
-    if (!els.tabNav || els.tabNav.hidden || els.tabNav.clientWidth <= 0) return false;
-    const previousTargets = tabNavOverflowTargets;
-    els.tabNav.classList.add('is-measuring-full-tabs');
-    clearTabNavOverflowMarkers();
-    els.tabNav.getBoundingClientRect();
-    const measurement = measureTabNavFit();
-    const visibleCount = fitTabNavItems({
-      ...measurement,
-      previousVisibleCount: tabNavLastFit.itemCount === measurement.items.length
-        ? tabNavLastFit.visibleCount
-        : null,
-      hysteresis: TAB_NAV_MODE_HYSTERESIS,
-    });
-    const applied = applyTabNavOverflow(measurement.items, visibleCount);
-    els.tabNav.classList.remove('is-measuring-full-tabs');
-    tabNavOverflowTargets = applied.overflowTargets;
-    tabNavLastFit = { itemCount: measurement.items.length, visibleCount };
-    const overflowChanged = !haveSameTabTargets(previousTargets, applied.overflowTargets);
-    if (overflowChanged) setMoreToolsMenuOpen(false);
-    if (applied.focusEscaped) els.moreToolsTrigger?.focus?.({ preventScroll: true });
-    updateMoreToolsNavigationState();
-    return overflowChanged;
-  }
-
-  function runMoreToolsNavigationSync() {
-    moreToolsSyncFrame = 0;
-    const navigationModeChanged = syncMoreToolsNavigation();
-    if (tabIndicatorFrame) {
-      window.cancelAnimationFrame?.(tabIndicatorFrame);
-      tabIndicatorFrame = 0;
-    }
-    positionActiveTabIndicator({
-      instant: navigationModeChanged || state.tabTransitionState === 'idle',
-    });
-  }
-
-  function queueMoreToolsNavigationSync(options = {}) {
-    if (!els.tabNav || typeof window === 'undefined') return;
-    if (moreToolsSyncFrame) {
-      window.cancelAnimationFrame?.(moreToolsSyncFrame);
-      moreToolsSyncFrame = 0;
-    }
-    if (options?.immediate || typeof window.requestAnimationFrame !== 'function') {
-      runMoreToolsNavigationSync();
-      return;
-    }
-    moreToolsSyncFrame = window.requestAnimationFrame(runMoreToolsNavigationSync);
-  }
-
-  function endViewportResizeSession() {
-    viewportResizeTimer = 0;
-    els.app?.classList.remove('is-viewport-resizing');
-  }
-
-  function readViewportSignature() {
-    if (typeof window === 'undefined') return '';
-    const visual = window.visualViewport;
-    return [
-      window.innerWidth,
-      window.innerHeight,
-      visual ? Math.round(visual.width) : '',
-      visual ? Math.round(visual.height) : '',
-    ].join('x');
-  }
-
-  function handleViewportResize() {
-    if (typeof window === 'undefined') return;
-    const signature = readViewportSignature();
-    const viewportChanged = signature !== lastViewportSignature;
-    lastViewportSignature = signature;
-    if (!viewportChanged) {
-      queueMoreToolsNavigationSync();
-      return;
-    }
-    els.app?.classList.add('is-viewport-resizing');
-    if (viewportResizeTimer) {
-      window.clearTimeout?.(viewportResizeTimer);
-    }
-    viewportResizeTimer = window.setTimeout?.(endViewportResizeSession, VIEWPORT_RESIZE_SETTLE_DELAY) || 0;
-    queueMoreToolsNavigationSync({ immediate: true });
-  }
-
-  function positionActiveTabIndicator(options = {}) {
-    if (!els.tabNav || !els.tabIndicator || typeof window === 'undefined') return;
-    const instant = Boolean(options?.instant);
-    const activeButton = Array.from(els.tabNav.querySelectorAll('.tab-button.active'))
-      .find((button) => button instanceof HTMLElement && button.offsetParent !== null);
-    if (!(activeButton instanceof HTMLElement) || els.tabNav.hidden) {
-      els.tabIndicator.classList.remove('is-ready');
-      return;
-    }
-    const useLocalOffsets = activeButton.offsetParent === els.tabNav;
-    const navRect = useLocalOffsets ? null : els.tabNav.getBoundingClientRect();
-    const buttonRect = useLocalOffsets ? null : activeButton.getBoundingClientRect();
-    const width = useLocalOffsets ? activeButton.offsetWidth : buttonRect.width;
-    const height = useLocalOffsets ? activeButton.offsetHeight : buttonRect.height;
-    if (
-      !width
-      || !height
-      || (!useLocalOffsets && (!navRect.width || !navRect.height))
-    ) {
-      els.tabIndicator.classList.remove('is-ready');
-      return;
-    }
-    const x = useLocalOffsets
-      ? activeButton.offsetLeft
-      : buttonRect.left - navRect.left + els.tabNav.scrollLeft;
-    const y = useLocalOffsets
-      ? activeButton.offsetTop
-      : buttonRect.top - navRect.top + els.tabNav.scrollTop;
-    if (instant) {
-      els.tabIndicator.style.transition = 'none';
-      els.tabIndicator.getBoundingClientRect();
-    }
-    els.tabIndicator.style.setProperty('--tab-indicator-x', `${x.toFixed(2)}px`);
-    els.tabIndicator.style.setProperty('--tab-indicator-y', `${y.toFixed(2)}px`);
-    els.tabIndicator.style.setProperty('--tab-indicator-width', `${width.toFixed(2)}px`);
-    els.tabIndicator.style.setProperty('--tab-indicator-height', `${height.toFixed(2)}px`);
-    els.tabIndicator.classList.add('is-ready');
-    if (instant) {
-      els.tabIndicator.getBoundingClientRect();
-      if (typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(() => {
-          els.tabIndicator.style.transition = '';
-        });
-      } else {
-        els.tabIndicator.style.transition = '';
-      }
-    }
-  }
-
-  function queueActiveTabIndicatorUpdate(options = {}) {
-    if (!els.tabIndicator || typeof window === 'undefined') return;
-    const instant = Boolean(options?.instant);
-    if (tabIndicatorFrame) {
-      window.cancelAnimationFrame?.(tabIndicatorFrame);
-    }
-    if (typeof window.requestAnimationFrame !== 'function') {
-      positionActiveTabIndicator({ instant });
-      return;
-    }
-    tabIndicatorFrame = window.requestAnimationFrame(() => {
-      tabIndicatorFrame = 0;
-      positionActiveTabIndicator({ instant });
-    });
-  }
-
-  function queueSettledActiveTabIndicatorUpdate() {
-    if (typeof window === 'undefined') return;
-    if (tabIndicatorFrame) {
-      window.cancelAnimationFrame?.(tabIndicatorFrame);
-      tabIndicatorFrame = 0;
-    }
-    positionActiveTabIndicator({ instant: true });
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(() => {
-          queueActiveTabIndicatorUpdate({ instant: true });
-        });
-      });
-    }
-    if (tabIndicatorSettleTimer) {
-      window.clearTimeout?.(tabIndicatorSettleTimer);
-    }
-    tabIndicatorSettleTimer = window.setTimeout?.(() => {
-      tabIndicatorSettleTimer = 0;
-      queueActiveTabIndicatorUpdate({ instant: true });
-    }, getChromeTransitionDuration()) || 0;
-  }
-
-  function renderTabs() {
-    if (!els.app) return;
-    const enteredPlanningTab = state.activeTab === TAB_PLANNING
-      && lastRenderedActiveTab !== TAB_PLANNING;
-    lastRenderedActiveTab = state.activeTab;
-    applyActiveShellSidebarWidth();
-    updateSeatPreferencesTrigger();
-    els.app.classList.toggle('app-tab-merger', state.activeTab === TAB_MERGER);
-    els.app.classList.toggle('app-tab-duplicate-check', state.activeTab === TAB_DUPLICATE_CHECK);
-    els.app.classList.toggle('app-tab-qr', state.activeTab === TAB_QR);
-    els.app.classList.toggle('app-tab-planning', state.activeTab === TAB_PLANNING);
-    els.app.classList.toggle('app-tab-grades', state.activeTab === TAB_GRADES);
-    els.app.classList.toggle(
-      'planning-initial-paint-pending',
-      state.planningInitialPaintPending && state.activeTab === TAB_PLANNING
-    );
-    els.app.classList.toggle(
-      'grades-initial-paint-pending',
-      state.gradesInitialPaintPending && state.activeTab === TAB_GRADES
-    );
-    els.app.classList.toggle('app-tab-seatplan', state.activeTab === TAB_SEATPLAN);
-    els.app.classList.toggle('app-tab-name-learning', state.activeTab === TAB_NAME_LEARNING);
-    els.app.classList.toggle('app-tab-work-phase', state.activeTab === TAB_WORK_PHASE);
-    els.app.classList.toggle('app-tab-groups', state.activeTab === TAB_GROUPS);
-    els.app.classList.toggle('app-tab-random-picker', state.activeTab === TAB_RANDOM_PICKER);
-    els.app.classList.toggle('app-seatplan-full', state.activeTab === TAB_SEATPLAN);
-    if (els.mergerShell) {
-      els.mergerShell.hidden = state.activeTab !== TAB_MERGER;
-    }
-    if (els.duplicateCheckShell) {
-      els.duplicateCheckShell.hidden = state.activeTab !== TAB_DUPLICATE_CHECK;
-    }
-    if (els.qrShell) {
-      els.qrShell.hidden = state.activeTab !== TAB_QR;
-    }
-    if (els.planningShell) {
-      els.planningShell.hidden = state.activeTab !== TAB_PLANNING;
-    }
-    if (els.nameLearningShell) {
-      els.nameLearningShell.hidden = state.activeTab !== TAB_NAME_LEARNING;
-    }
-    if (els.seatplanSideHost) {
-      els.seatplanSideHost.hidden = true;
-    }
-    if (els.seatplanMainHost) {
-      els.seatplanMainHost.hidden = state.activeTab !== TAB_SEATPLAN;
-    }
-    if (els.groupsMainHost) {
-      const isPlanningBoot = state.activeTab === TAB_PLANNING && !els.app?.classList.contains('app-js-ready');
-      els.groupsMainHost.hidden = isPlanningBoot || state.activeTab === TAB_SEATPLAN || state.activeTab === TAB_RANDOM_PICKER;
-    }
-    if (els.randomPickerHost) {
-      els.randomPickerHost.hidden = state.activeTab !== TAB_RANDOM_PICKER;
-    }
-    if (els.monitorShell) {
-      els.monitorShell.hidden = state.activeTab !== TAB_WORK_PHASE;
-    }
-    if (els.workOrderShell) {
-      els.workOrderShell.hidden = state.activeTab !== TAB_WORK_PHASE;
-    }
-    if (els.timerShell) {
-      els.timerShell.hidden = state.activeTab !== TAB_WORK_PHASE;
-    }
-    [
-      [els.tabGroups, TAB_GROUPS],
-      [els.tabMerger, TAB_MERGER],
-      [els.tabPlanning, TAB_PLANNING],
-      [els.tabGrades, TAB_GRADES],
-      [els.tabSeatplan, TAB_SEATPLAN],
-      [els.tabNameLearning, TAB_NAME_LEARNING],
-      [els.tabRandomPicker, TAB_RANDOM_PICKER],
-      [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
-      [els.tabWorkPhase, TAB_WORK_PHASE],
-      [els.tabQr, TAB_QR],
-    ].forEach(([button, tabKey]) => {
-      if (!button) return;
-      const selected = state.activeTab === tabKey;
-      button.classList.toggle('active', selected);
-      button.setAttribute('aria-selected', selected ? 'true' : 'false');
-    });
-    if (els.tabNameLearning) {
-      els.tabNameLearning.hidden = !canShowNameLearning();
-    }
-    const nameLearningDueCount = Number(state.planningGradeVaultState?.nameLearningDueCount);
-    els.tabNav?.querySelectorAll?.('[data-name-learning-due-count]').forEach((element) => {
-      const hasDueCards = Number.isInteger(nameLearningDueCount) && nameLearningDueCount > 0;
-      element.hidden = !hasDueCards;
-      element.textContent = hasDueCards ? ` (${nameLearningDueCount})` : '';
-    });
-    const navigationModeChanged = syncMoreToolsNavigation();
-    if (navigationModeChanged) {
-      queueSettledActiveTabIndicatorUpdate();
-    } else {
-      queueActiveTabIndicatorUpdate();
-    }
-    if (state.activeTab === TAB_RANDOM_PICKER) {
-      renderRandomPicker();
-    }
-    if (state.activeTab === TAB_WORK_PHASE && els.workOrderHintOverlay?.classList.contains('visible')) {
-      setTimeout(positionWorkOrderHintOverlay, 0);
-    }
-    if (enteredPlanningTab) {
-      dispatchPlanningViewRequest({
-        view: 'week',
-        source: 'shell-tab-entry',
-      });
-    }
-    renderPlanningGradeVaultUnlockButton();
-    renderPlanningManualSaveButton();
-  }
-
-  function clearTabTransitionTimer() {
-    if (!state.tabTransitionTimer || typeof window === 'undefined') return;
-    window.clearTimeout(state.tabTransitionTimer);
-    state.tabTransitionTimer = 0;
-  }
-
-  function getTabSwitchDuration() {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return 100;
-    }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return 1;
-    }
-    const styleHost = els.app || document.documentElement;
-    const computed = window.getComputedStyle(styleHost);
-    return parseCssTimeToMs(computed.getPropertyValue('--tab-switch-duration')) || 100;
-  }
-
-  function collectRenderedTabRegions() {
-    if (!els.app) return [];
-    return Array.from(els.app.children).filter((child) => {
-      if (!(child instanceof HTMLElement)) return false;
-      if (!child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .name-learning-shell, .monitor-shell, .work-order-shell, .timer-shell')) {
-        return false;
-      }
-      if (child.hidden) return false;
-      return window.getComputedStyle(child).display !== 'none';
-    });
-  }
-
-  function collectAllTabRegions() {
-    if (!els.app) return [];
-    return Array.from(els.app.children).filter((child) => (
-      child instanceof HTMLElement
-      && child.matches('.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .name-learning-shell, .monitor-shell, .work-order-shell, .timer-shell')
-    ));
-  }
-
-  function clearTabTransitionClasses(regions = []) {
-    regions.forEach((region) => {
-      region.classList.remove('tab-switch-enter', 'tab-switch-leave');
-    });
-  }
-
-  function finishTabTransition(options = {}) {
-    clearTabTransitionTimer();
-    state.tabTransitionState = 'idle';
-    if (els.app) {
-      els.app.classList.remove('is-tab-switching');
-    }
-    clearTabTransitionClasses(collectAllTabRegions());
-    if (state.pendingTabTransitionTarget && state.pendingTabTransitionTarget !== state.activeTab) {
-      const nextTarget = state.pendingTabTransitionTarget;
-      const nextOptions = pendingTabTransitionOptions || {};
-      state.pendingTabTransitionTarget = null;
-      pendingTabTransitionOptions = null;
-      setActiveTab(nextTarget, nextOptions);
-      return;
-    }
-    state.pendingTabTransitionTarget = null;
-    renderPlanningGradeVaultUnlockButton();
-    if (options.showTutorialHint) {
-      notifyActiveTabChange(state.activeTab);
-    }
-  }
-
-  function clearChromeTransitionTimer() {
-    if (!state.chromeTransitionTimer || typeof window === 'undefined') return;
-    window.clearTimeout(state.chromeTransitionTimer);
-    state.chromeTransitionTimer = 0;
-  }
-
-  function getChromeTransitionDuration() {
-    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
-      return 320;
-    }
-    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-      return 1;
-    }
-    const styleHost = els.app || document.documentElement;
-    const computed = window.getComputedStyle(styleHost);
-    const durations = [
-      computed.getPropertyValue('--chrome-transition-duration'),
-      computed.getPropertyValue('--chrome-transition-duration-medium'),
-      computed.getPropertyValue('--chrome-transition-duration-short'),
-    ].map(parseCssTimeToMs).filter((duration) => duration > 0);
-    const resolved = (durations.length ? Math.max(...durations) : 280) + 40;
-    return resolved;
-  }
-
-  function setChromeRegionVisibility(hidden) {
-    const regions = [els.tabNav, els.sidePanel];
-    regions.forEach((region) => {
-      if (!region) return;
-      region.hidden = Boolean(hidden);
-      if (hidden) {
-        region.setAttribute('aria-hidden', 'true');
-      } else {
-        region.removeAttribute('aria-hidden');
-      }
-      if ('inert' in region) {
-        region.inert = Boolean(hidden);
-      }
-    });
-    if (hidden) {
-      setMoreToolsMenuOpen(false);
-    } else {
-      queueMoreToolsNavigationSync();
-    }
-  }
-
-  function setChromeHeaderVisibility(hidden) {
-    if (!els.appHeader) return;
-    els.appHeader.hidden = Boolean(hidden);
-    if (hidden) {
-      els.appHeader.setAttribute('aria-hidden', 'true');
-      if ('inert' in els.appHeader) {
-        els.appHeader.inert = true;
-      }
-      return;
-    }
-    els.appHeader.removeAttribute('aria-hidden');
-    if ('inert' in els.appHeader) {
-      els.appHeader.inert = false;
-    }
-  }
-
-  function setChromeOverlayVisibility(visible, interactive = visible) {
-    if (!els.chromeOverlayToggle) return;
-    els.chromeOverlayToggle.hidden = !visible;
-    els.chromeOverlayToggle.disabled = !interactive;
-    if (visible) {
-      els.chromeOverlayToggle.removeAttribute('aria-hidden');
-      return;
-    }
-    els.chromeOverlayToggle.setAttribute('aria-hidden', 'true');
-  }
-
   function setTutorialEntryVisibility(visible) {
     const isVisible = Boolean(visible);
     if (els.sidebarFooter) {
@@ -1100,715 +198,260 @@ export function createShellController({
     }
   }
 
-  function focusChromeControl(target) {
-    if (!target || target.hidden || target.disabled) return false;
-    try {
-      target.focus({ preventScroll: true });
-    } catch (_error) {
-      try {
-        target.focus();
-      } catch (_focusError) {
-        return false;
-      }
-    }
-    return document.activeElement === target;
-  }
-
-  function moveFocusOutOfChromeBeforeHide() {
-    const active = document.activeElement;
-    if (!(active instanceof Element)) return;
-    const hiddenContainers = [els.appHeader, els.tabNav, els.sidePanel].filter(Boolean);
-    const shouldMoveFocus = hiddenContainers.some((container) => container.contains(active))
-      || active === els.firstRunTutorialStart
-      || Boolean(els.sidebarFooter?.contains(active));
-    if (!shouldMoveFocus) return;
-    if (focusChromeControl(els.chromeOverlayToggle)) return;
-    active.blur?.();
-  }
-
-  function moveFocusOutOfChromeOverlayBeforeHide() {
-    const active = document.activeElement;
-    if (!(active instanceof Element)) return;
-    if (!els.chromeOverlayToggle?.contains(active) && active !== els.chromeOverlayToggle) return;
-    if (focusChromeControl(els.chromeToggle)) return;
-    active.blur?.();
-  }
-
-  function applyChromeVisibility(collapsed) {
-    if (collapsed) {
-      setChromeOverlayVisibility(true, true);
-      moveFocusOutOfChromeBeforeHide();
-      setTutorialEntryVisibility(false);
-      setChromeRegionVisibility(true);
-      setChromeHeaderVisibility(true);
-      return;
-    }
-    setChromeRegionVisibility(false);
-    setChromeHeaderVisibility(false);
-    setTutorialEntryVisibility(true);
-    moveFocusOutOfChromeOverlayBeforeHide();
-    setChromeOverlayVisibility(false, false);
-  }
-
-  function finalizeChromeTransition(collapsed) {
-    clearChromeTransitionTimer();
-    state.chromeTransitionState = 'idle';
-    const settleChromeLayout = !collapsed && els.app;
-    if (settleChromeLayout) {
-      els.app.classList.add('is-chrome-layout-settling');
-    }
-    if (els.app) {
-      els.app.classList.remove('is-collapsing', 'is-expanding');
-      els.app.classList.toggle('chrome-collapsed', collapsed);
-    }
-    updateChromeToggleUI();
-    applyChromeVisibility(collapsed);
-    renderPlanningGradeVaultUnlockButton();
-    renderPlanningManualSaveButton();
-    refreshLayouts();
-    queueSettledActiveTabIndicatorUpdate();
-    if (settleChromeLayout) {
-      if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
-        window.requestAnimationFrame(() => {
-          els.app?.classList.remove('is-chrome-layout-settling');
-        });
-      } else {
-        els.app.classList.remove('is-chrome-layout-settling');
-      }
-    }
-  }
-
-  function queueChromeTransition(callback) {
-    if (typeof requestAnimationFrame === 'function') {
-      if (isIOSDevice) {
-        requestAnimationFrame(callback);
-        return;
-      }
-      requestAnimationFrame(() => {
-        requestAnimationFrame(callback);
-      });
-      return;
-    }
-    setTimeout(callback, 0);
-  }
-
-  function updateChromeToggleUI({ preserveHeaderIcon = false, preserveOverlayIcon = false } = {}) {
-    const label = state.chromeCollapsed
-      ? 'Randleiste anzeigen'
-      : 'Hauptansicht im Vollbild';
-    [els.chromeToggle, els.chromeOverlayToggle].forEach((button) => {
-      if (!button) return;
-      button.setAttribute('aria-pressed', state.chromeCollapsed ? 'true' : 'false');
-      button.setAttribute('aria-label', label);
-      button.setAttribute('title', label);
-      if (
-        (button === els.chromeToggle && preserveHeaderIcon)
-        || (button === els.chromeOverlayToggle && preserveOverlayIcon)
-      ) {
-        return;
-      }
-      button.innerHTML = state.chromeCollapsed
-        ? CHROME_TOGGLE_EXPAND_ICON
-        : CHROME_TOGGLE_COLLAPSE_ICON;
-    });
-  }
-
   function renderPlanningManualSaveButton() {
     if (!els.sidebarManualSaveBtn) return;
-    const shouldShow = (state.activeTab === TAB_PLANNING || state.activeTab === TAB_GRADES)
-      && state.planningManualSaveState.isManualMode
-      && !shellSupportsExternalFileSync;
-    const hidden = !shouldShow;
+    const controlState = workspaceStatus.getManualSaveControlState();
     if (els.app) {
-      els.app.classList.toggle('app-planning-manual-save-active', shouldShow);
+      els.app.classList.toggle('app-planning-manual-save-active', controlState.shouldShow);
       els.app.classList.toggle(
         'app-planning-manual-save-visible',
-        shouldShow && !state.chromeCollapsed && state.chromeTransitionState === 'idle'
+        controlState.visible
       );
     }
-    els.sidebarManualSaveBtn.hidden = hidden;
-    const hasManualChanges = Boolean(state.planningManualSaveState.dirty);
-    els.sidebarManualSaveBtn.disabled = hidden || !hasManualChanges || state.chromeTransitionState !== 'idle';
-    els.sidebarManualSaveBtn.setAttribute('aria-hidden', hidden ? 'true' : 'false');
-    els.sidebarManualSaveBtn.classList.toggle('attention-pulse', shouldShow && state.planningManualSaveState.dirty);
+    els.sidebarManualSaveBtn.hidden = controlState.hidden;
+    els.sidebarManualSaveBtn.disabled = controlState.disabled;
+    els.sidebarManualSaveBtn.setAttribute('aria-hidden', controlState.hidden ? 'true' : 'false');
+    els.sidebarManualSaveBtn.classList.toggle('attention-pulse', controlState.attention);
     els.sidebarManualSaveBtn.classList.toggle(
       'manual-header-save-btn-collapsed',
-      shouldShow && state.chromeCollapsed && state.chromeTransitionState === 'idle'
+      controlState.collapsed
     );
-    const title = shouldShow && !hasManualChanges
-      ? 'Keine zu speichernden Änderungen'
-      : (state.planningManualSaveState.title || 'Datenbank speichern');
-    const ariaLabel = shouldShow && !hasManualChanges
-      ? 'Keine zu speichernden Änderungen'
-      : (state.planningManualSaveState.ariaLabel || title);
-    els.sidebarManualSaveBtn.title = title;
-    els.sidebarManualSaveBtn.setAttribute('aria-label', ariaLabel);
+    els.sidebarManualSaveBtn.title = controlState.title;
+    els.sidebarManualSaveBtn.setAttribute('aria-label', controlState.ariaLabel);
   }
 
   function renderPlanningGradeVaultUnlockButton() {
     if (!els.tabGradesUnlock) return;
-    const planningGradeVaultState = state.planningGradeVaultState || {};
-    const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'off';
-    const configured = Boolean(planningGradeVaultState.configured);
-    const unlocked = Boolean(planningGradeVaultState.unlocked);
-    const setupRequired = Boolean(planningGradeVaultState.setupRequired);
-    const statusAvailable = isGradeVaultStatusTab(state.activeTab)
-      && Boolean(planningGradeVaultState.ready)
-      && Boolean(planningGradeVaultState.dbConnected);
-    const locked = configured
-      && !unlocked
-      && !setupRequired
-      && mode === 'unlock';
-    const shouldShow = statusAvailable
-      && configured
-      && !setupRequired
-      && (locked || unlocked);
-    const canRequestToggle = isGradeVaultStatusTab(state.activeTab)
-      && Boolean(planningGradeVaultState.ready)
-      && Boolean(planningGradeVaultState.dbConnected)
-      && configured
-      && !setupRequired
-      && (locked || unlocked)
-      && state.tabTransitionState === 'idle'
-      && state.chromeTransitionState === 'idle';
-    const actionLabel = locked ? 'Notenmodul entsperren' : 'Notenmodul sperren';
-    const label = locked ? 'Notenmodul gesperrt' : 'Notenmodul entsperrt';
+    const controlState = workspaceStatus.getVaultControlState();
+    const locked = controlState.locked;
     els.tabGradesUnlock.innerHTML = locked ? GRADE_VAULT_LOCKED_ICON : GRADE_VAULT_UNLOCKED_ICON;
-    els.tabGradesUnlock.title = canRequestToggle ? actionLabel : label;
-    els.tabGradesUnlock.setAttribute('aria-label', canRequestToggle ? actionLabel : label);
+    els.tabGradesUnlock.title = controlState.canRequest
+      ? controlState.actionLabel
+      : controlState.label;
+    els.tabGradesUnlock.setAttribute(
+      'aria-label',
+      controlState.canRequest ? controlState.actionLabel : controlState.label
+    );
     els.tabGradesUnlock.hidden = false;
     els.tabGradesUnlock.style.display = 'inline-flex';
-    els.tabGradesUnlock.classList.toggle('is-reserved', !shouldShow);
-    els.tabGradesUnlock.disabled = !canRequestToggle;
-    els.tabGradesUnlock.setAttribute('aria-hidden', shouldShow ? 'false' : 'true');
-    if (shouldShow) {
+    els.tabGradesUnlock.classList.toggle('is-reserved', !controlState.shouldShow);
+    els.tabGradesUnlock.disabled = !controlState.canRequest;
+    els.tabGradesUnlock.setAttribute('aria-hidden', controlState.shouldShow ? 'false' : 'true');
+    if (controlState.shouldShow) {
       els.tabGradesUnlock.removeAttribute('tabindex');
     } else {
       els.tabGradesUnlock.setAttribute('tabindex', '-1');
     }
   }
 
-  function setChromeCollapsed(collapsed, { resetSidebarWidth = true } = {}) {
-    const nextCollapsed = Boolean(collapsed);
-    if (state.chromeTransitionState !== 'idle') {
-      return;
-    }
-    if (resetSidebarWidth && !nextCollapsed && state.chromeCollapsed) {
-      setShellSidebarWidth(getSidebarWidthScope(), getDefaultShellSidebarWidth(getSidebarWidthScope()), { persist: true });
-    }
-    if (
-      state.chromeCollapsed === nextCollapsed
-      && !els.app?.classList.contains('is-collapsing')
-      && !els.app?.classList.contains('is-expanding')
-    ) {
-      applyChromeVisibility(nextCollapsed);
-      updateChromeToggleUI();
+  function handleWorkspaceStatusChange(change = {}) {
+    if (change.type === 'manual-save') {
       renderPlanningManualSaveButton();
-      refreshLayouts();
       return;
     }
-    state.chromeCollapsed = nextCollapsed;
-    if (!els.app) {
-      updateChromeToggleUI();
-      applyChromeVisibility(nextCollapsed);
-      renderPlanningManualSaveButton();
-      refreshLayouts();
-      return;
-    }
-    updateChromeToggleUI(nextCollapsed
-      ? { preserveHeaderIcon: true }
-      : { preserveOverlayIcon: true });
-    clearChromeTransitionTimer();
-    setChromeRegionVisibility(false);
-    setChromeHeaderVisibility(false);
-    setChromeOverlayVisibility(true, nextCollapsed);
-    setTutorialEntryVisibility(false);
-    renderPlanningManualSaveButton();
-    if (nextCollapsed) {
-      state.chromeTransitionState = 'collapsing';
-      els.app.classList.remove('chrome-collapsed', 'is-expanding');
-      queueChromeTransition(() => {
-        if (state.chromeTransitionState !== 'collapsing' || !els.app) return;
-        els.app.classList.add('is-collapsing');
-        refreshLayouts();
-        state.chromeTransitionTimer = window.setTimeout(
-          () => finalizeChromeTransition(true),
-          getChromeTransitionDuration()
-        );
-      });
-      return;
-    }
-    state.chromeTransitionState = 'expanding';
-    els.app.classList.remove('is-collapsing');
-    els.app.classList.add('chrome-collapsed');
-    queueChromeTransition(() => {
-      if (state.chromeTransitionState !== 'expanding' || !els.app) return;
-      els.app.classList.add('is-expanding');
-      refreshLayouts();
-      state.chromeTransitionTimer = window.setTimeout(
-        () => finalizeChromeTransition(false),
-        getChromeTransitionDuration()
-      );
-    });
-  }
-
-  function toggleChromeCollapsed() {
-    if (state.chromeTransitionState !== 'idle') return;
-    setChromeCollapsed(!state.chromeCollapsed);
-  }
-
-  function setActiveTab(tab, options = {}) {
-    const nextTab = normalizeTab(tab);
-    if (shouldResolveGradesTabLeave(nextTab, options)) {
-      if (unsavedTabConfirmPromise) {
+    if (change.type === 'vault') {
+      if (!workspaceStatus.canShowNameLearning() && getActiveTab() === TAB_NAME_LEARNING) {
+        tabController.setActiveTab(TAB_PLANNING, { skipAnimation: true });
         return;
       }
-      unsavedTabConfirmPromise = Promise.resolve(resolveGradesTabLeave())
-        .then((confirmed) => {
-          if (confirmed) {
-            setActiveTab(nextTab, {
-              skipUnsavedPrompt: true,
-              showTutorialHint: Boolean(options.showTutorialHint),
-            });
-          }
-        }, () => {})
-        .finally(() => {
-          unsavedTabConfirmPromise = null;
-        });
+      tabController.render();
+      renderPlanningGradeVaultUnlockButton();
       return;
     }
-    if (shouldConfirmPlanningTabLeave(nextTab, options)) {
-      if (unsavedTabConfirmPromise) {
-        return;
-      }
-      unsavedTabConfirmPromise = Promise.resolve(resolvePlanningTabLeave())
-        .then((confirmed) => {
-          if (confirmed) {
-            setActiveTab(nextTab, {
-              skipUnsavedPrompt: true,
-              showTutorialHint: Boolean(options.showTutorialHint),
-            });
-          }
-        }, () => {})
-        .finally(() => {
-          unsavedTabConfirmPromise = null;
-        });
-      return;
-    }
-    if (shouldPromptGradeVaultUnlockOnGradesNavigation(nextTab)) {
-      requestGradeVault({ action: 'unlock', overlay: true });
-    }
-    if (nextTab !== state.activeTab) {
-      notifyTabActivating(nextTab, state.activeTab);
-    }
-    if (options.skipAnimation) {
-      state.pendingTabTransitionTarget = null;
-      state.activeTab = nextTab;
-      ensureTabInitialized(state.activeTab);
-      renderTabs();
-      refreshLayouts();
-      finishTabTransition({ showTutorialHint: Boolean(options.showTutorialHint) });
-      return;
-    }
-    if (state.tabTransitionState !== 'idle') {
-      state.pendingTabTransitionTarget = nextTab;
-      pendingTabTransitionOptions = { showTutorialHint: Boolean(options.showTutorialHint) };
-      return;
-    }
-    if (nextTab === state.activeTab) {
-      ensureTabInitialized(state.activeTab);
-      renderTabs();
-      refreshLayouts();
-      return;
-    }
-    const transitionDuration = getTabSwitchDuration();
-    const currentRegions = collectRenderedTabRegions();
-    if (!currentRegions.length || transitionDuration <= 1) {
-      state.activeTab = nextTab;
-      ensureTabInitialized(state.activeTab);
-      renderTabs();
-      refreshLayouts();
-      finishTabTransition({ showTutorialHint: Boolean(options.showTutorialHint) });
-      return;
-    }
-    state.tabTransitionState = 'leaving';
-    state.pendingTabTransitionTarget = null;
-    pendingTabTransitionOptions = null;
-    if (els.app) {
-      els.app.classList.add('is-tab-switching');
-    }
-    clearTabTransitionClasses(currentRegions);
-    currentRegions.forEach((region) => {
-      region.hidden = false;
-      region.classList.add('tab-switch-leave');
-    });
-    state.tabTransitionTimer = window.setTimeout(() => {
-      clearTabTransitionClasses(currentRegions);
-      state.activeTab = nextTab;
-      ensureTabInitialized(state.activeTab);
-      renderTabs();
-      refreshLayouts();
-      const nextRegions = collectRenderedTabRegions();
-      state.tabTransitionState = 'entering';
-      nextRegions.forEach((region) => {
-        region.hidden = false;
-        region.classList.add('tab-switch-enter');
-      });
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            clearTabTransitionClasses(nextRegions);
-          });
-        });
+    if (change.type === 'planning-ready' || change.type === 'grades-ready') {
+      if (change.initialReadyTransition) {
+        tabController.render();
       } else {
-        setTimeout(() => clearTabTransitionClasses(nextRegions), 0);
+        renderPlanningGradeVaultUnlockButton();
       }
-      state.tabTransitionTimer = window.setTimeout(() => {
-        finishTabTransition({ showTutorialHint: Boolean(options.showTutorialHint) });
-      }, transitionDuration);
-    }, transitionDuration);
-  }
-
-  function setActiveTabImmediate(tab, options = {}) {
-    const nextTab = normalizeTab(tab);
-    if (nextTab !== state.activeTab) {
-      notifyTabActivating(nextTab, state.activeTab);
-    }
-    state.activeTab = nextTab;
-    ensureTabInitialized(state.activeTab);
-    renderTabs();
-    if (options.showTutorialHint) {
-      notifyActiveTabChange(state.activeTab);
     }
   }
 
-  function setPlanningManualSaveState(detail = null) {
-    const title = detail && typeof detail.title === 'string' && detail.title.trim()
-      ? detail.title.trim()
-      : 'Datenbank speichern';
-    const ariaLabel = detail && typeof detail.ariaLabel === 'string' && detail.ariaLabel.trim()
-      ? detail.ariaLabel.trim()
-      : title;
-    state.planningManualSaveState = {
-      isManualMode: Boolean(detail && detail.isManualMode),
-      dirty: Boolean(detail && detail.dirty),
-      title,
-      ariaLabel,
-    };
-    renderPlanningManualSaveButton();
-  }
-
-  function setPlanningGradeVaultState(detail = null) {
-    const nextDetail = detail && typeof detail === 'object' ? detail : {};
-    const mode = typeof nextDetail.mode === 'string' ? nextDetail.mode : '';
-    const hasNameLearningDueCount = Object.hasOwn(nextDetail, 'nameLearningDueCount');
-    const previousNameLearningDueCount = state.planningGradeVaultState?.nameLearningDueCount ?? null;
-    state.planningGradeVaultState = {
-      ...state.planningGradeVaultState,
-      ready: Boolean(nextDetail.ready ?? state.planningGradeVaultState?.ready),
-      mode: mode === 'off' || mode === 'unlock' || mode === 'ready' || mode === 'setup' ? mode : 'off',
-      dbConnected: Boolean(nextDetail.dbConnected),
-      backupConnected: Boolean(nextDetail.backupConnected),
-      hasGradeCourse: Boolean(nextDetail.hasGradeCourse),
-      hasGradeStudents: Boolean(nextDetail.hasGradeStudents),
-      configured: Boolean(nextDetail.configured),
-      unlocked: Boolean(nextDetail.unlocked),
-      encryptionEnabled: Boolean(nextDetail.encryptionEnabled),
-      showGradeStudentPortraits: Boolean(nextDetail.showGradeStudentPortraits),
-      showNameLearningModule: Boolean(nextDetail.showNameLearningModule),
-      nameLearningDueCount: hasNameLearningDueCount
-        ? (Number.isInteger(nextDetail.nameLearningDueCount) && nextDetail.nameLearningDueCount >= 0
-          ? nextDetail.nameLearningDueCount
-          : null)
-        : previousNameLearningDueCount,
-      setupRequired: Boolean(nextDetail.setupRequired),
-    };
-    if (!canShowNameLearning() && state.activeTab === TAB_NAME_LEARNING) {
-      setActiveTab(TAB_PLANNING, { skipAnimation: true });
-      return;
-    }
-    renderTabs();
-    renderPlanningGradeVaultUnlockButton();
-  }
-
-  function setPlanningUnsavedState(detail = null) {
-    const nextDetail = detail && typeof detail === 'object' ? detail : {};
-    const planningDirty = Boolean(nextDetail.planningDirty);
-    const gradesDirty = Boolean(nextDetail.gradesDirty);
-    const planningSettingsDirty = Boolean(nextDetail.planningSettingsDirty);
-    const gradesSettingsDirty = Boolean(nextDetail.gradesSettingsDirty);
-    state.planningUnsavedState = {
-      dirty: Boolean(nextDetail.dirty || planningDirty || gradesDirty || planningSettingsDirty || gradesSettingsDirty),
-      planningDirty,
-      planningSettingsDirty,
-      gradesDirty,
-      gradesSettingsDirty,
-      dirtyGradeCourseIds: Array.isArray(nextDetail.dirtyGradeCourseIds)
-        ? nextDetail.dirtyGradeCourseIds.map((id) => String(id)).filter(Boolean)
-        : [],
-    };
-  }
-
-  function markPlanningReady(detail = null) {
-    const nextDetail = detail && typeof detail === 'object' ? detail : {};
-    state.planningGradeVaultState = {
-      ...state.planningGradeVaultState,
-      planningAccessReady: Boolean(nextDetail.planningAccessReady ?? state.planningGradeVaultState?.planningAccessReady),
-      hasPlanningCourse: Boolean(nextDetail.hasPlanningCourse ?? state.planningGradeVaultState?.hasPlanningCourse),
-      hasPlanningSlot: Boolean(nextDetail.hasPlanningSlot ?? state.planningGradeVaultState?.hasPlanningSlot),
-    };
-    if (!state.planningInitialPaintPending) {
-      renderPlanningGradeVaultUnlockButton();
-      return;
-    }
-    state.planningInitialPaintPending = false;
-    renderTabs();
-  }
-
-  function markGradesReady(detail = null) {
-    const nextDetail = detail && typeof detail === 'object' ? detail : {};
-    const mode = typeof nextDetail.gradeVaultMode === 'string' ? nextDetail.gradeVaultMode : '';
-    state.planningGradeVaultState = {
-      ...state.planningGradeVaultState,
-      ready: true,
-      mode: mode === 'off' || mode === 'unlock' || mode === 'ready' || mode === 'setup'
-        ? mode
-        : 'off',
-      dbConnected: Boolean(nextDetail.gradeVaultDbConnected ?? state.planningGradeVaultState?.dbConnected),
-      backupConnected: Boolean(nextDetail.gradeBackupConnected ?? state.planningGradeVaultState?.backupConnected),
-      hasGradeCourse: Boolean(nextDetail.hasGradeCourse ?? state.planningGradeVaultState?.hasGradeCourse),
-      hasGradeStudents: Boolean(nextDetail.hasGradeStudents ?? state.planningGradeVaultState?.hasGradeStudents),
-      configured: Boolean(nextDetail.gradeVaultUnlockConfigured ?? state.planningGradeVaultState?.configured),
-      unlocked: Boolean(nextDetail.gradeVaultUnlocked ?? state.planningGradeVaultState?.unlocked),
-      encryptionEnabled: Boolean(nextDetail.gradeVaultEncryptionEnabled ?? state.planningGradeVaultState?.encryptionEnabled),
-      setupRequired: Boolean(nextDetail.gradeVaultSetupRequired ?? state.planningGradeVaultState?.setupRequired),
-    };
-    if (!state.gradesInitialPaintPending) {
-      renderPlanningGradeVaultUnlockButton();
-      return;
-    }
-    state.gradesInitialPaintPending = false;
-    renderTabs();
-  }
-
-  function syncChromeState() {
-    updateChromeToggleUI();
-    setChromeRegionVisibility(state.chromeCollapsed);
-    setChromeHeaderVisibility(state.chromeCollapsed);
-    setChromeOverlayVisibility(state.chromeCollapsed, state.chromeCollapsed);
-    renderPlanningGradeVaultUnlockButton();
-    renderPlanningManualSaveButton();
-  }
-
-  initializeSidebarResize();
-
-  function handleBeforeUnload(event) {
-    if (els.app?.dataset.moduleWindow === 'true') {
-      return;
-    }
-    if (!state.planningUnsavedState?.dirty) {
-      return;
-    }
-    event.preventDefault();
-    event.returnValue = '';
-  }
-
-  window.addEventListener(PLANNING_MANUAL_SAVE_STATE_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    setPlanningManualSaveState(detail);
+  workspaceStatus = createWorkspaceStatusController({
+    view: window,
+    CustomEventClass: window.CustomEvent,
+    planningTabTarget: TAB_PLANNING,
+    gradesTabTarget: TAB_GRADES,
+    planningTabTargets: [TAB_PLANNING, TAB_GRADES],
+    gradeVaultStatusTabTargets: [
+      TAB_PLANNING,
+      TAB_GRADES,
+      TAB_SEATPLAN,
+      TAB_NAME_LEARNING,
+      TAB_GROUPS,
+      TAB_RANDOM_PICKER,
+    ],
+    getActiveTab,
+    getTabTransitionState,
+    getChromeCollapsed: () => chromeController?.isCollapsed() ?? Boolean(state.chromeCollapsed),
+    getChromeTransitionState: () => chromeController?.getTransitionState() ?? 'idle',
+    supportsExternalFileSync: shellSupportsExternalFileSync,
+    isModuleWindow: () => els.app?.dataset.moduleWindow === 'true',
+    onChange: handleWorkspaceStatusChange,
   });
-  window.addEventListener(GRADES_MANUAL_SAVE_STATE_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    setPlanningManualSaveState(detail);
-  });
-  window.addEventListener(PLANNING_UNSAVED_STATE_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    setPlanningUnsavedState(detail);
-  });
-  window.addEventListener(GRADES_UNSAVED_STATE_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    setPlanningUnsavedState(detail);
-  });
-  window.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    if (!detail || detail.scope !== 'shell' || !detail.snapshot) return;
-    if (detail.snapshot.unsaved) {
-      setPlanningUnsavedState(detail.snapshot.unsaved);
-    }
-    const vault = detail.snapshot.vault;
-    if (vault && typeof vault === 'object') {
-      setPlanningGradeVaultState({
-        ...vault,
-        ready: Boolean(detail.snapshot.ready),
-      });
-    }
-  });
-  window.addEventListener(GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    setPlanningGradeVaultState(detail);
-  });
-  window.addEventListener(PLANNING_READY_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    markPlanningReady(detail);
-  });
-  window.addEventListener(GRADES_READY_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    markGradesReady(detail);
-  });
+  registerCleanup(() => workspaceStatus.dispose());
+
   if (els.tabGradesUnlock) {
     els.tabGradesUnlock.addEventListener('click', () => {
-      const planningGradeVaultState = state.planningGradeVaultState || {};
-      const mode = typeof planningGradeVaultState.mode === 'string' ? planningGradeVaultState.mode : 'off';
-      const configured = Boolean(planningGradeVaultState.configured);
-      const unlocked = Boolean(planningGradeVaultState.unlocked);
-      const setupRequired = Boolean(planningGradeVaultState.setupRequired);
-      const locked = configured
-        && !unlocked
-        && !setupRequired
-        && mode === 'unlock';
-      const shouldAllowRequest = isGradeVaultStatusTab(state.activeTab)
-        && Boolean(planningGradeVaultState.ready)
-        && Boolean(planningGradeVaultState.dbConnected)
-        && configured
-        && !setupRequired
-        && (locked || unlocked)
-        && state.tabTransitionState === 'idle'
-        && state.chromeTransitionState === 'idle';
-      if (!shouldAllowRequest) {
-        return;
-      }
+      const controlState = workspaceStatus.getVaultControlState();
+      if (!controlState.canRequest) return;
       requestGradeVault({
-        action: locked ? 'unlock' : 'lock',
-        overlay: state.activeTab !== TAB_GRADES,
-        preserveSourceTab: state.activeTab !== TAB_GRADES,
+        action: controlState.action,
+        overlay: getActiveTab() !== TAB_GRADES,
+        preserveSourceTab: getActiveTab() !== TAB_GRADES,
       });
     });
   }
   if (els.sidebarManualSaveBtn) {
     els.sidebarManualSaveBtn.addEventListener('click', () => {
-      if (
-        (state.activeTab !== TAB_PLANNING && state.activeTab !== TAB_GRADES)
-        || !state.planningManualSaveState.isManualMode
-        || !state.planningManualSaveState.dirty
-      ) {
-        return;
-      }
+      if (!workspaceStatus.getManualSaveControlState().canRequest) return;
       requestManualSave();
     });
   }
-  els.chromeToggle?.addEventListener('click', toggleChromeCollapsed);
-  els.chromeOverlayToggle?.addEventListener('click', toggleChromeCollapsed);
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape') return;
-    if (!state.chromeCollapsed || state.chromeTransitionState !== 'idle') return;
-    if (document.querySelector('dialog[open]')) return;
-    setChromeCollapsed(false);
+
+  chromeController = createChromeController({
+    app: els.app,
+    header: els.appHeader,
+    tabNav: els.tabNav,
+    sidebar: els.sidePanel,
+    headerToggle: els.chromeToggle,
+    overlayToggle: els.chromeOverlayToggle,
+    documentRef: document,
+    ElementClass: window.Element,
+    additionalCollapseFocusContainers: [els.sidebarFooter],
+    additionalCollapseFocusTargets: [els.firstRunTutorialStart],
+    initialCollapsed: Boolean(state.chromeCollapsed),
+    isIOSDevice,
+    requestAnimationFrame: window.requestAnimationFrame?.bind(window),
+    cancelAnimationFrame: window.cancelAnimationFrame?.bind(window),
+    setTimeout: window.setTimeout?.bind(window),
+    clearTimeout: window.clearTimeout?.bind(window),
+    matchMedia: window.matchMedia?.bind(window),
+    getComputedStyle: window.getComputedStyle?.bind(window),
+    onResetSidebarWidth: () => sidebarResize.resetActiveWidth(),
+    onCloseNavigationMenu: () => tabNavLayout?.closeMenu(),
+    onQueueNavigationLayoutSync: () => tabNavLayout?.queueLayoutSync(),
+    onQueueSettledIndicatorUpdate: () => tabNavLayout?.queueSettledIndicatorUpdate(),
+    onTutorialEntryVisibilityChange: setTutorialEntryVisibility,
+    onRefreshLayouts: refreshLayouts,
+    onRenderManualSaveControl: renderPlanningManualSaveButton,
+    onRenderVaultControl: renderPlanningGradeVaultUnlockButton,
   });
-  if (els.moreToolsTrigger) {
-    els.moreToolsTrigger.addEventListener('click', () => {
-      setMoreToolsMenuOpen(els.moreToolsMenu?.hidden !== false);
-    });
-    els.moreToolsTrigger.addEventListener('keydown', (event) => {
-      if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
-      event.preventDefault();
-      setMoreToolsMenuOpen(true, { focusFirst: true });
-    });
-  }
-  if (els.moreToolsMenu) {
-    els.moreToolsMenu.addEventListener('click', (event) => {
-      const target = event.target instanceof Element
-        ? event.target.closest('[data-more-tools-target]')
-        : null;
-      if (!(target instanceof HTMLElement)) return;
-      const tabTarget = target.dataset.moreToolsTarget;
+  registerCleanup(() => chromeController.dispose());
+
+  tabNavLayout = createTabNavLayoutController({
+    app: els.app,
+    tabNav: els.tabNav,
+    tabIndicator: els.tabIndicator,
+    moreTools: els.moreTools,
+    moreToolsTrigger: els.moreToolsTrigger,
+    moreToolsMenu: els.moreToolsMenu,
+    view: window,
+    documentRef: document,
+    ResizeObserverClass: window.ResizeObserver,
+    HTMLElementClass: window.HTMLElement,
+    ElementClass: window.Element,
+    NodeClass: window.Node,
+    protectedTabTargets: PROTECTED_TAB_TARGETS,
+    getActiveTab,
+    getTabTransitionState,
+    getIndicatorSettleDelay: () => chromeController.getTransitionDuration(),
+    onTabRequest: (tabTarget) => {
       const originalTabButton = Array.from(els.tabNav?.querySelectorAll('[data-tab-target]') || [])
         .find((button) => button.dataset.tabTarget === tabTarget);
-      setMoreToolsMenuOpen(false);
       originalTabButton?.click();
-    });
-    els.moreToolsMenu.addEventListener('keydown', (event) => {
-      const items = getFocusableMoreToolsMenuItems();
-      const currentIndex = items.indexOf(document.activeElement);
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setMoreToolsMenuOpen(false);
-        els.moreToolsTrigger?.focus();
-        return;
-      }
-      if (!items.length || currentIndex < 0) return;
-      let nextIndex = currentIndex;
-      if (event.key === 'ArrowDown') {
-        nextIndex = (currentIndex + 1) % items.length;
-      } else if (event.key === 'ArrowUp') {
-        nextIndex = (currentIndex - 1 + items.length) % items.length;
-      } else if (event.key === 'Home') {
-        nextIndex = 0;
-      } else if (event.key === 'End') {
-        nextIndex = items.length - 1;
-      } else {
-        return;
-      }
-      event.preventDefault();
-      items[nextIndex]?.focus();
-    });
-  }
-  document.addEventListener('pointerdown', (event) => {
-    if (!els.moreToolsMenu || els.moreToolsMenu.hidden) return;
-    if (!(event.target instanceof Node) || !els.moreTools?.contains(event.target)) {
-      setMoreToolsMenuOpen(false);
-    }
+    },
   });
-  document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Escape' || els.moreToolsMenu?.hidden) return;
-    setMoreToolsMenuOpen(false);
-    els.moreToolsTrigger?.focus();
+  registerCleanup(() => tabNavLayout.dispose());
+
+  tabController = createTabController({
+    elements: {
+      app: els.app,
+      tabNav: els.tabNav,
+      tabButtons: [
+        [els.tabGroups, TAB_GROUPS],
+        [els.tabMerger, TAB_MERGER],
+        [els.tabPlanning, TAB_PLANNING],
+        [els.tabGrades, TAB_GRADES],
+        [els.tabSeatplan, TAB_SEATPLAN],
+        [els.tabNameLearning, TAB_NAME_LEARNING],
+        [els.tabRandomPicker, TAB_RANDOM_PICKER],
+        [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
+        [els.tabWorkPhase, TAB_WORK_PHASE],
+        [els.tabQr, TAB_QR],
+      ],
+      mergerShell: els.mergerShell,
+      duplicateCheckShell: els.duplicateCheckShell,
+      qrShell: els.qrShell,
+      planningShell: els.planningShell,
+      nameLearningShell: els.nameLearningShell,
+      seatplanSideHost: els.seatplanSideHost,
+      seatplanMainHost: els.seatplanMainHost,
+      groupsMainHost: els.groupsMainHost,
+      randomPickerHost: els.randomPickerHost,
+      monitorShell: els.monitorShell,
+      workOrderShell: els.workOrderShell,
+      timerShell: els.timerShell,
+      tabNameLearning: els.tabNameLearning,
+      seatPreferencesLabel: els.seatPreferencesLabel,
+      groupSeatPreferences: els.groupSeatPreferences,
+      workOrderHintOverlay: els.workOrderHintOverlay,
+    },
+    initialActiveTab: state.activeTab,
+    view: window,
+    documentRef: document,
+    HTMLElementClass: window.HTMLElement,
+    requestAnimationFrame: window.requestAnimationFrame?.bind(window),
+    cancelAnimationFrame: window.cancelAnimationFrame?.bind(window),
+    setTimeout: window.setTimeout?.bind(window),
+    clearTimeout: window.clearTimeout?.bind(window),
+    matchMedia: window.matchMedia?.bind(window),
+    getComputedStyle: window.getComputedStyle?.bind(window),
+    workspaceStatus,
+    sidebarResize,
+    tabNavLayout,
+    onActiveTabStateChange: (tab) => {
+      state.activeTab = tab;
+    },
+    onEnsureTabInitialized: ensureTabInitialized,
+    onDispatchPlanningViewRequest: dispatchPlanningViewRequest,
+    onRenderRandomPicker: renderRandomPicker,
+    onPositionWorkOrderHintOverlay: positionWorkOrderHintOverlay,
+    onRefreshLayouts: refreshLayouts,
+    onRequestGradeVault: requestGradeVault,
+    onResolveGradesTabLeave: resolveGradesTabLeave,
+    onResolvePlanningTabLeave: resolvePlanningTabLeave,
+    onRenderVaultControl: renderPlanningGradeVaultUnlockButton,
+    onRenderManualSaveControl: renderPlanningManualSaveButton,
+    onActiveTabChange: notifyActiveTabChange,
+    onTabActivating: notifyTabActivating,
   });
-  if (typeof window !== 'undefined') {
-    lastViewportSignature = readViewportSignature();
-    window.addEventListener('resize', handleViewportResize);
-    window.visualViewport?.addEventListener?.('resize', handleViewportResize);
-    document.addEventListener('fullscreenchange', handleViewportResize);
-    document.addEventListener('webkitfullscreenchange', handleViewportResize);
-    if (typeof ResizeObserver === 'function' && els.tabNav) {
-      tabNavResizeObserver = new ResizeObserver(() => queueMoreToolsNavigationSync());
-      tabNavResizeObserver.observe(els.tabNav);
-    }
-    queueMoreToolsNavigationSync();
-  }
-  window.addEventListener('beforeunload', handleBeforeUnload);
+  registerCleanup(() => tabController.dispose());
 
   return {
-    getActiveTab: () => state.activeTab,
-    getSidebarWidth: (scope) => shellSidebarWidths[normalizeSidebarWidthScope(scope)],
-    isChromeCollapsed: () => state.chromeCollapsed,
-    getChromeTransitionState: () => state.chromeTransitionState,
-    closeMoreToolsMenu: () => setMoreToolsMenuOpen(false),
-    isTabOverflowed: (tab) => tabNavOverflowTargets.has(tab),
-    renderTabs,
+    getActiveTab,
+    getSidebarWidth: (scope) => sidebarResize.getWidth(scope),
+    isChromeCollapsed: () => chromeController.isCollapsed(),
+    getChromeTransitionState: () => chromeController.getTransitionState(),
+    closeMoreToolsMenu: () => tabNavLayout.closeMenu(),
+    isTabOverflowed: (tab) => tabNavLayout.isTabOverflowed(tab),
+    renderTabs: () => tabController.render(),
     renderPlanningGradeVaultUnlockButton,
     renderPlanningManualSaveButton,
-    setChromeCollapsed,
-    setSidebarWidth: (scope, width) => {
-      const maximumWidth = getMaximumShellSidebarWidth();
-      const normalizedWidth = Math.min(
-        maximumWidth,
-        Math.max(SHELL_SIDEBAR_FULLSCREEN_THRESHOLD, Math.round(Number(width)))
-      );
-      if (!Number.isFinite(normalizedWidth)) return null;
-      return setShellSidebarWidth(scope, normalizedWidth, { persist: true });
-    },
-    setActiveTab,
-    setActiveTabImmediate,
-    toggleChromeCollapsed,
-    updateChromeToggleUI,
-    setChromeRegionVisibility,
-    setChromeHeaderVisibility,
-    setChromeOverlayVisibility,
-    setPlanningManualSaveState,
-    setPlanningGradeVaultState,
-    setPlanningUnsavedState,
-    markPlanningReady,
-    markGradesReady,
-    syncChromeState,
+    setChromeCollapsed: (collapsed, options) => chromeController.setCollapsed(collapsed, options),
+    setSidebarWidth: (scope, width) => sidebarResize.setWidth(scope, width),
+    setActiveTab: (tab, options) => tabController.setActiveTab(tab, options),
+    setActiveTabImmediate: (tab, options) => tabController.setActiveTabImmediate(tab, options),
+    toggleChromeCollapsed: () => chromeController.toggle(),
+    updateChromeToggleUI: (options) => chromeController.updateToggleUI(options),
+    setChromeRegionVisibility: (hidden) => chromeController.setRegionVisibility(hidden),
+    setChromeHeaderVisibility: (hidden) => chromeController.setHeaderVisibility(hidden),
+    setChromeOverlayVisibility: (visible, interactive) => chromeController.setOverlayVisibility(visible, interactive),
+    setPlanningManualSaveState: (detail) => workspaceStatus.setManualSaveState(detail),
+    setPlanningGradeVaultState: (detail) => workspaceStatus.setVaultState(detail),
+    setPlanningUnsavedState: (detail) => workspaceStatus.setUnsavedState(detail),
+    markPlanningReady: (detail) => workspaceStatus.markPlanningReady(detail),
+    markGradesReady: (detail) => workspaceStatus.markGradesReady(detail),
+    syncChromeState: () => chromeController.sync(),
   };
 }

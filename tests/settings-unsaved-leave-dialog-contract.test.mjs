@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [tabs, shell, bridge, planningIndex, planningBridge, planningApp, planningHtml, gradesApp] = await Promise.all([
+const [tabs, shell, tabController, workspaceStatus, bridge, planningIndex, planningBridge, planningApp, planningHtml, gradesApp] = await Promise.all([
   readFile(new URL('../src/shell/tabs.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/tab-controller.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/workspace-status.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/planning-seatplan-bridge.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/bridge.js', import.meta.url), 'utf8'),
@@ -56,17 +58,19 @@ test('planning exposes the same discard action and tab-leave round trip as grade
   assert.match(planningBridge, /TAB_LEAVE_RESULT_EVENT/);
   assert.match(bridge, /requestPlanningTabLeaveConfirmation/);
   assert.match(shell, /onResolvePlanningTabLeave/);
-  assert.match(shell, /resolvePlanningTabLeave\(\)/);
+  assert.match(shell, /onResolvePlanningTabLeave: resolvePlanningTabLeave,/);
 });
 
 test('the shell routes settings drafts to their active module instead of its generic leave dialog', () => {
-  const planningStart = shell.indexOf('function shouldConfirmPlanningTabLeave');
-  const gradesStart = shell.indexOf('function shouldResolveGradesTabLeave');
-  const genericStart = shell.indexOf('function showUnsavedTabLeaveDialog');
-  const planningMethod = shell.slice(planningStart, gradesStart);
-  const gradesMethod = shell.slice(gradesStart, genericStart);
+  const guardStart = workspaceStatus.indexOf('function getLeaveGuard');
+  const guardEnd = workspaceStatus.indexOf('\n  function shouldPromptVaultUnlock', guardStart);
+  const guard = workspaceStatus.slice(guardStart, guardEnd);
 
-  assert.match(planningMethod, /planningSettingsDirty/);
-  assert.match(gradesMethod, /gradesSettingsDirty/);
-  assert.match(shell, /Promise\.resolve\(resolvePlanningTabLeave\(\)\)/);
+  assert.match(guard, /planningSettingsDirty/);
+  assert.match(guard, /gradesSettingsDirty/);
+  assert.match(guard, /return 'grades'/);
+  assert.match(guard, /return 'planning'/);
+  assert.match(tabController, /workspaceStatus\?\.getLeaveGuard\?\.\(nextTab, options\)/);
+  assert.match(tabController, /leaveGuard === 'grades' \|\| leaveGuard === 'planning'/);
+  assert.match(tabController, /Promise\.resolve\(resolver\(\)\)/);
 });

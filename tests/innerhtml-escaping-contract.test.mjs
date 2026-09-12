@@ -4,8 +4,10 @@ import test from 'node:test';
 
 const REVIEWED = new Map([
   ['src/app/shell.js', new Set([
-    'state.chromeCollapsed ? CHROME_TOGGLE_EXPAND_ICON : CHROME_TOGGLE_COLLAPSE_ICON',
     'locked ? GRADE_VAULT_LOCKED_ICON : GRADE_VAULT_UNLOCKED_ICON',
+  ])],
+  ['src/app/shell/chrome-controller.js', new Set([
+    'collapsed ? CHROME_TOGGLE_EXPAND_ICON : CHROME_TOGGLE_COLLAPSE_ICON',
   ])],
   ['src/modules/grades/app.js', new Set([
     'formMode === normalizedMode ? GRADE_VAULT_UNLOCKED_ICON : ""',

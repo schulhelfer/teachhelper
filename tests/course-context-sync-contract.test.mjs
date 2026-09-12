@@ -8,7 +8,7 @@ const [
   tabs,
   main,
   courseContext,
-  shell,
+  tabController,
   planningApp,
   planningBridge,
   planningIndex,
@@ -19,7 +19,7 @@ const [
   read('../src/shell/tabs.js'),
   read('../src/app/app-runtime.js'),
   read('../src/app/course-context.js'),
-  read('../src/app/shell.js'),
+  read('../src/app/shell/tab-controller.js'),
   read('../src/modules/planning/app.js'),
   read('../src/modules/planning/bridge.js'),
   read('../src/modules/planning/index.js'),
@@ -80,12 +80,12 @@ test('the shell remembers the last course and pushes it before the tab transitio
   );
   assert.match(main, /onTabActivating: \(tab\) => \{\s*courseContext\.handleTabActivating\(tab\);/);
   assert.match(
-    shell,
-    /if \(shouldPromptGradeVaultUnlockOnGradesNavigation\(nextTab\)\) \{[\s\S]*?\}\s*if \(nextTab !== state\.activeTab\) \{\s*notifyTabActivating\(nextTab, state\.activeTab\);/,
+    tabController,
+    /if \(workspaceStatus\?\.shouldPromptVaultUnlock\?\.\(nextTab\)\) \{[\s\S]*?\}\s*if \(nextTab !== activeTab\) onTabActivating\(nextTab, activeTab\);/,
   );
   assert.match(
-    shell,
-    /function setActiveTabImmediate\(tab, options = \{\}\) \{\s*const nextTab = normalizeTab\(tab\);\s*if \(nextTab !== state\.activeTab\) \{\s*notifyTabActivating\(/,
+    tabController,
+    /function setActiveTabImmediate\(tab, options = \{\}\) \{[\s\S]*?const nextTab = normalizeTab\(tab\);\s*if \(nextTab !== activeTab\) onTabActivating\(/,
   );
 });
 

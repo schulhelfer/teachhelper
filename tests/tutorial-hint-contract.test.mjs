@@ -9,6 +9,7 @@ const [
   tooltipSource,
   tooltipStyles,
   shellSource,
+  tabControllerSource,
   mainSource,
   routerSource,
   ...moduleDocuments
@@ -19,6 +20,7 @@ const [
   readFile(new URL('../src/shared/app-tooltips.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/app-tooltips.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/tab-controller.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
   ...[
@@ -102,7 +104,8 @@ test('zeigt den Hinweis nur bis ein Tutorial in einem beliebigen Modul gestartet
 
 test('fordert den Hinweis nur nach nutzerinitiierten Tabwechseln an', () => {
   assert.match(shellSource, /onActiveTabChange/);
-  assert.match(shellSource, /if \(options\.showTutorialHint\) \{\s+notifyActiveTabChange\(state\.activeTab\)/);
+  assert.match(shellSource, /onActiveTabChange: notifyActiveTabChange,/);
+  assert.match(tabControllerSource, /if \(options\.showTutorialHint\) onActiveTabChange\(activeTab\)/);
   assert.match(mainSource, /setActiveTab\(tabKey, \{ showTutorialHint: true \}\)/);
   assert.match(mainSource, /onActiveTabChange: \(\) => firstRunTutorial\?\.showContextHelp\?\.\(\{ prompt: true \}\)/);
   assert.match(mainSource, /firstRunTutorial\.showContextHelp\(\{ prompt: true \}\)/);

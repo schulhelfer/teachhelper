@@ -108,6 +108,23 @@ test('group photo extraction is local, manually assigned, and cleans up its temp
   assert.doesNotMatch(gradesApp, /face(?:\s|-)?recognition|face(?:\s|-)?detection/i);
 });
 
+test('image imports are bounded before decoding and rotation stays canvas-safe', () => {
+  const portrait = extractGradesMethod('async function prepareGradeStudentPortrait(file)');
+  assert.match(portrait, /assertFileSizeAtMost\(file, FILE_LIMITS\.IMAGE_BYTES/);
+  assert.match(portrait, /await assertImageFilePixelsAtMost\(file/);
+  assert.match(portrait, /withTimeout\(image\.decode\(\), FILE_TIMEOUTS\.READ_MS/);
+
+  const groupPhoto = extractGradesMethod('async loadGroupPhotoExtractionFile(file)');
+  assert.match(groupPhoto, /assertFileSizeAtMost\(file, FILE_LIMITS\.IMAGE_BYTES/);
+  assert.match(groupPhoto, /await assertImageFilePixelsAtMost\(file/);
+  assert.match(groupPhoto, /withTimeout\(image\.decode\(\), FILE_TIMEOUTS\.READ_MS/);
+
+  const rotate = extractGradesMethod('async rotateGroupPhotoExtractionImage()');
+  assert.match(rotate, /fitCanvasSize\(oldHeight, oldWidth\)/);
+  assert.doesNotMatch(rotate, /canvas\.width = oldHeight/);
+  assert.match(rotate, /size: selection\.size \* scale/);
+});
+
 test('cross-course portrait import copies whole records and only fills empty portraits', () => {
   assert.match(gradesHtml, /id="course-dialog-portrait-import"/);
   assert.match(gradesApp, /courseDialogPortraitImport\.hidden = !showPortraits/);

@@ -2,27 +2,28 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [shell, shellCss, index, tutorial] = (await Promise.all([
+const [shell, tabNavLayout, shellCss, index, tutorial] = (await Promise.all([
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/tab-nav-layout.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
 ])).map((source) => source.split('\r\n').join('\n'));
 
 function loadFitTabNavItems() {
-  const start = shell.indexOf('export function fitTabNavItems(');
+  const start = tabNavLayout.indexOf('export function fitTabNavItems(');
   assert.ok(start >= 0, 'fitTabNavItems muss exportiert werden');
   let depth = 0;
   let bodyEnd = -1;
-  for (let i = shell.indexOf('{', shell.indexOf(')', start)); i < shell.length; i += 1) {
-    if (shell[i] === '{') depth += 1;
-    else if (shell[i] === '}') {
+  for (let i = tabNavLayout.indexOf('{', tabNavLayout.indexOf(')', start)); i < tabNavLayout.length; i += 1) {
+    if (tabNavLayout[i] === '{') depth += 1;
+    else if (tabNavLayout[i] === '}') {
       depth -= 1;
       if (depth === 0) { bodyEnd = i; break; }
     }
   }
   assert.ok(bodyEnd > start, 'fitTabNavItems muss geschlossen werden');
-  const source = shell.slice(start, bodyEnd + 1).replace('export function', 'function');
+  const source = tabNavLayout.slice(start, bodyEnd + 1).replace('export function', 'function');
   return new Function(`${source}\nreturn fitTabNavItems;`)();
 }
 
@@ -97,7 +98,7 @@ test('ohne bekannten Vorzustand wird ohne Hysterese neu eingepasst', () => {
 });
 
 test('das Ergebnis ist eine Anzahl, die Reihenfolge kann sich also nicht aendern', () => {
-  const source = shell.slice(shell.indexOf('export function fitTabNavItems('));
+  const source = tabNavLayout.slice(tabNavLayout.indexOf('export function fitTabNavItems('));
   assert.doesNotMatch(source.slice(0, source.indexOf('\n}')), /sort|reverse|splice/);
   for (let available = -50; available <= rowWidth(6) + 50; available += 7) {
     const count = fitTabNavItems({ ...BASE, available });
@@ -137,7 +138,8 @@ test('die feste Tool-Gruppe ist restlos verschwunden', () => {
     assert.doesNotMatch(source, /is-tabs-compact/);
   }
   assert.doesNotMatch(shell, /isMoreToolsTab/);
-  assert.match(shell, /function isOverflowedTab\(tab\) \{\s+return tabNavOverflowTargets\.has\(tab\);/);
+  assert.match(tabNavLayout, /function isTabOverflowed\(tab\) \{\s+return overflowTargets\.has\(tab\);/);
+  assert.match(shell, /isTabOverflowed: \(tab\) => tabNavLayout\.isTabOverflowed\(tab\)/);
 });
 
 test('die Ueberlaufregeln stehen im Stylesheet', () => {

@@ -337,43 +337,6 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     && typeof window.showSaveFilePicker === 'function';
   const shellState = {
     activeTab: TAB_PLANNING,
-    planningInitialPaintPending: true,
-    gradesInitialPaintPending: true,
-    planningManualSaveState: {
-      isManualMode: false,
-      dirty: false,
-      title: 'Datenbank speichern',
-      ariaLabel: 'Datenbank speichern',
-    },
-    planningGradeVaultState: {
-      ready: false,
-      mode: 'setup',
-      dbConnected: false,
-      backupConnected: false,
-      hasGradeCourse: false,
-      hasGradeStudents: false,
-      planningAccessReady: false,
-      hasPlanningCourse: false,
-      hasPlanningSlot: false,
-      configured: false,
-      unlocked: false,
-      showGradeStudentPortraits: false,
-      showNameLearningModule: false,
-      nameLearningDueCount: null,
-      setupRequired: false,
-    },
-    planningUnsavedState: {
-      dirty: false,
-      planningDirty: false,
-      gradesDirty: false,
-      dirtyGradeCourseIds: [],
-    },
-    chromeCollapsed: false,
-    chromeTransitionState: 'idle',
-    chromeTransitionTimer: 0,
-    tabTransitionState: 'idle',
-    tabTransitionTimer: 0,
-    pendingTabTransitionTarget: null,
   };
   let bridgeController = null;
   let shellController = null;
@@ -384,9 +347,9 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   let moduleMessageRouter = null;
   const positionWorkOrderHintOverlay = () => workPhaseController?.positionHintOverlay();
   const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
-  const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : shellState.chromeCollapsed);
+  const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : false);
   const getChromeTransitionState = () => (
-    shellController ? shellController.getChromeTransitionState() : shellState.chromeTransitionState
+    shellController ? shellController.getChromeTransitionState() : 'idle'
   );
   const setChromeCollapsed = (collapsed, options) => shellController?.setChromeCollapsed(collapsed, options);
   const toggleChromeCollapsed = () => shellController?.toggleChromeCollapsed();
@@ -685,7 +648,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
       els.sidebarManualSaveBtn.disabled = true;
       els.sidebarManualSaveBtn.title = 'Im Demomodus nicht verfügbar';
     }
-    const demoUrl = new URL('./modules/planning/app.html', import.meta.url);
+    const demoUrl = new URL('../modules/planning/app.html', import.meta.url);
     demoUrl.searchParams.set('tutorial-demo', 'planning');
     const frame = createModuleFrame({
       className: 'planning-frame tutorial-demo-frame',
@@ -747,7 +710,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
       els.sidebarManualSaveBtn.disabled = true;
       els.sidebarManualSaveBtn.title = 'Im Demomodus nicht verfügbar';
     }
-    const demoUrl = new URL('./modules/grades/app.html', import.meta.url);
+    const demoUrl = new URL('../modules/grades/app.html', import.meta.url);
     demoUrl.searchParams.set('tutorial-demo', 'grades');
     const frame = createModuleFrame({
       className: 'grades-frame tutorial-demo-frame',
@@ -804,7 +767,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
       realFrame.hidden = true;
       realFrame.style.display = 'none';
     }
-    const demoUrl = new URL('./modules/seatplan/app.html', import.meta.url);
+    const demoUrl = new URL('../modules/seatplan/app.html', import.meta.url);
     demoUrl.searchParams.set('tutorial-demo', 'seatplan');
     const frame = createModuleFrame({
       className: 'seatplan-frame tutorial-demo-frame',
@@ -1419,6 +1382,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     onTabActivating: (tab) => {
       courseContext.handleTabActivating(tab);
     },
+    onRegisterCleanup: registerCleanup,
   });
   const initialWorkspaceSnapshot = window.__teachhelperWorkspaceController?.getSnapshot?.('shell');
   if (initialWorkspaceSnapshot?.vault) {

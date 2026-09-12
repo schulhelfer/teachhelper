@@ -55,6 +55,7 @@ test('bindet Runtime-Lifecycle und bestehende Controller-Cleanups ohne BFCache-A
   assert.match(runtimeSource, /bindRuntime\(window, 'pagehide', \(event\) => \{\s*if \(event\.persisted !== true\) disposeRuntime\(\);/);
   assert.match(runtimeSource, /const runtimeTimeouts = new Set\(\);[\s\S]*?runtimeTimeouts\.forEach\(\(timeoutId\) => window\.clearTimeout\(timeoutId\)\)/);
   assert.match(runtimeSource, /const runtimeFrames = new Set\(\);[\s\S]*?runtimeFrames\.forEach\(\(frameId\) => window\.cancelAnimationFrame\?\.\(frameId\)\)/);
+  assert.match(runtimeSource, /onRegisterCleanup: registerCleanup,/);
   for (const expression of [
     'themeController.dispose()',
     'appTooltips?.dispose?.()',

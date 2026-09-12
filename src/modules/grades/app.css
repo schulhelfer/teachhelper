@@ -4724,108 +4724,6 @@
           border-radius: 12px;
         }
 
-        .grades-entry-save-overlay {
-          position: fixed;
-          inset: 0;
-          z-index: 2300;
-          display: grid;
-          place-items: center;
-          padding: 24px;
-          background: transparent;
-          backdrop-filter: none;
-          -webkit-backdrop-filter: none;
-          opacity: 1;
-          pointer-events: none;
-          transition: opacity 225ms ease, backdrop-filter 225ms ease, -webkit-backdrop-filter 225ms ease;
-        }
-
-        .grades-entry-save-overlay.is-fading {
-          opacity: 0;
-          backdrop-filter: saturate(100%) blur(0);
-          -webkit-backdrop-filter: saturate(100%) blur(0);
-        }
-
-        .grades-entry-save-dialog {
-          display: grid;
-          justify-items: center;
-          gap: 1rem;
-          width: min(460px, calc(100vw - 24px));
-          min-height: 5.8rem;
-          padding: 1.25rem 1.5rem;
-          border: 1px solid rgba(16, 185, 129, 0.72);
-          border-radius: var(--module-surface-radius);
-          background:
-            linear-gradient(180deg, rgba(30, 41, 59, 0.72), rgba(10, 18, 35, 0.92)),
-            var(--module-surface-strong);
-          box-shadow: var(--module-surface-shadow), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
-          color: var(--text-on-overlay);
-          font-size: 1.16rem;
-          font-weight: 700;
-          line-height: 1.35;
-          text-align: center;
-          pointer-events: auto;
-          transform: translateY(0) scale(1);
-          transition: transform 225ms ease;
-        }
-
-        .grades-entry-save-overlay.is-fading .grades-entry-save-dialog {
-          transform: translateY(-0.8rem) scale(0.98);
-        }
-
-        .grades-entry-save-dialog-content {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          gap: 0.72rem;
-        }
-
-        .grades-entry-save-dialog-icon {
-          display: inline-grid;
-          flex: 0 0 auto;
-          width: 2.45rem;
-          height: 2.45rem;
-          place-items: center;
-          border-radius: 999px;
-          background: rgba(16, 185, 129, 0.2);
-          color: #86efac;
-          box-shadow: 0 0 0 1px rgba(134, 239, 172, 0.24) inset;
-          font-size: 1.22rem;
-          line-height: 1;
-        }
-
-        .grades-entry-save-dialog-ok {
-          min-width: 7.5rem;
-          padding: 0.64rem 1.1rem;
-          border: 1px solid rgba(226, 232, 240, 0.34);
-          border-radius: 12px;
-          background: rgba(248, 250, 252, 0.12);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.08),
-            0 8px 20px rgba(2, 6, 23, 0.28);
-          color: var(--text-on-overlay);
-          cursor: pointer;
-          font: inherit;
-          font-size: 0.95rem;
-          font-weight: 800;
-          line-height: 1.2;
-          transition: background-color 140ms ease, border-color 140ms ease, box-shadow 140ms ease;
-        }
-
-        .grades-entry-save-dialog-ok:hover,
-        .grades-entry-save-dialog-ok:focus-visible {
-          border-color: rgba(134, 239, 172, 0.72);
-          background: rgba(16, 185, 129, 0.18);
-          box-shadow:
-            inset 0 1px 0 rgba(255, 255, 255, 0.1),
-            0 0 0 1px rgba(134, 239, 172, 0.2),
-            0 10px 24px rgba(2, 6, 23, 0.32);
-        }
-
-        .grades-entry-save-dialog-ok:focus-visible {
-          outline: 3px solid rgba(134, 239, 172, 0.42);
-          outline-offset: 3px;
-        }
-
         .grades-entry-table-wrap {
           overflow: visible;
           order: 1;
@@ -5351,9 +5249,7 @@
           .sidebar-grade-segment-option span,
           .course-dialog-structure-period-option span,
           .grades-entry-distribution-overlay,
-          .grades-entry-distribution-overlay-card,
-          .grades-entry-save-overlay,
-          .grades-entry-save-dialog {
+          .grades-entry-distribution-overlay-card {
             animation: none !important;
             transition: none !important;
           }
@@ -8681,10 +8577,6 @@
           overflow: auto;
         }
 
-        .course-students-import-row.roster-import-unavailable .course-students-import-col[data-import-source="courses"] {
-          display: none;
-        }
-
         .course-dialog-roster-pills {
           display: flex;
           flex: 1;
@@ -8737,8 +8629,7 @@
         }
 
         @media (max-width: 560px) {
-          .course-students-import-row,
-          .course-students-import-row.roster-import-unavailable {
+          .course-students-import-row {
             grid-template-columns: minmax(0, 1fr);
           }
         }

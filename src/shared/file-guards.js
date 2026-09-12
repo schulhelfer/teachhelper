@@ -129,7 +129,7 @@ export function assertImageDimensionsAtMost(dimensions, label = "Bild") {
     throw createFileValidationError(`${label} konnte nicht gelesen werden.`);
   }
   if (width > FILE_LIMITS.CANVAS_MAX_EDGE * 16 || height > FILE_LIMITS.CANVAS_MAX_EDGE * 16 || width * height > FILE_LIMITS.IMAGE_MAX_PIXELS) {
-    throw createFileValidationError(`${label} hat zu viele Bildpunkte. Maximal erlaubt: ${Math.round(FILE_LIMITS.IMAGE_MAX_PIXELS / BYTES_PER_MIB)} Megapixel.`);
+    throw createFileValidationError(`${label} hat zu viele Bildpunkte. Maximal erlaubt: ${Math.round(FILE_LIMITS.IMAGE_MAX_PIXELS / 1_000_000)} Megapixel.`);
   }
   return { width, height };
 }

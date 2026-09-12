@@ -55,15 +55,9 @@ test('entry mode is stored before waiting for the visual slide', () => {
   assert.ok(animationWait > stateWrite, 'draft state must be updated before the animation callback');
 });
 
-test('the saved-entry notification does not block sidebar interactions', () => {
-  const createNotice = extractMethod('ensureGradesEntrySaveNoticeOverlay', 'renderGradesEntrySaveNoticeOverlay');
-  const renderNotice = extractMethod('renderGradesEntrySaveNoticeOverlay', 'removeGradesEntrySaveNoticeOverlay');
-  assert.match(createNotice, /dialog\.setAttribute\("role", "status"\)/);
-  assert.doesNotMatch(createNotice, /aria-modal/);
-  assert.doesNotMatch(renderNotice, /\.focus\(/);
-
-  const overlayCss = appCss.match(/\.grades-entry-save-overlay\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
-  const dialogCss = appCss.match(/\.grades-entry-save-dialog\s*\{[\s\S]*?\n\s*\}/)?.[0] || '';
-  assert.match(overlayCss, /pointer-events:\s*none/);
-  assert.match(dialogCss, /pointer-events:\s*auto/);
+test('der Speicher-Hinweis erscheint als Shell-Toast statt als eigenes Overlay', () => {
+  assert.match(app, /this\.notifyParentToast\("Noten gespeichert"\);/);
+  assert.doesNotMatch(app, /queueGradesEntrySaveNotice|gradesEntrySaveNoticeOverlay/);
+  assert.doesNotMatch(app, /preserveSaveNotice/);
+  assert.doesNotMatch(appCss, /grades-entry-save-(overlay|dialog)/);
 });

@@ -5,12 +5,13 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
   .then((source) => source.split('\r\n').join('\n'));
 
-const [moduleWindow, tearOff, bootstrap, main, shell, shellCss, serviceWorker, tabsSource] = await Promise.all([
+const [moduleWindow, tearOff, bootstrap, main, shell, workspaceStatus, shellCss, serviceWorker, tabsSource] = await Promise.all([
   read('../src/app/module-window.js'),
   read('../src/app/tab-tear-off.js'),
   read('../src/app/bootstrap.js'),
   read('../src/app/app-runtime.js'),
   read('../src/app/shell.js'),
+  read('../src/app/shell/workspace-status.js'),
   read('../src/app/shell.css'),
   read('../sw.js'),
   read('../src/shell/tabs.js'),
@@ -248,16 +249,9 @@ test('das Modulfenster behaelt einen Ziehbereich fuer die Fenstersteuerung', () 
 });
 
 test('das Modulfenster fragt beim Schliessen nie nach ungespeicherten Aenderungen', () => {
-  const handler = shell.match(/function handleBeforeUnload\(event\) \{[\s\S]*?\n  \}/)?.[0] || '';
-  assert.match(
-    handler,
-    /if \(els\.app\?\.dataset\.moduleWindow === 'true'\) \{\s+return;/,
-    'ein ephemeres Fenster hat keine Datenbank, in die es speichern koennte',
-  );
-  assert.ok(
-    handler.indexOf('moduleWindow') < handler.indexOf('planningUnsavedState'),
-    'die Abkuerzung muss vor der Dirty-Pruefung greifen',
-  );
+  assert.match(shell, /isModuleWindow: \(\) => els\.app\?\.dataset\.moduleWindow === 'true'/);
+  assert.match(workspaceStatus, /return !isModuleWindow\(\) && unsavedState\.dirty;/);
+  assert.match(workspaceStatus, /bind\(view, 'beforeunload', handleBeforeUnload\);/);
 });
 
 test('das Modulfenster haengt sich nie an die Datenbank', () => {

@@ -5,7 +5,7 @@ import {
   TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
 } from '../../shared/module-frame-bridge.js';
-import { assertFileSizeAtMost, FILE_LIMITS, FILE_TIMEOUTS } from '../../shared/file-guards.js';
+import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TIMEOUTS } from '../../shared/file-guards.js';
 import { createMessageApi } from '../../shared/messages.js';
 
 export function createQrApp({ root = document } = {}) {
@@ -975,6 +975,7 @@ export function createQrApp({ root = document } = {}) {
     stopCamera();
     try {
       assertFileSizeAtMost(blob, FILE_LIMITS.IMAGE_BYTES, 'Das Bild');
+      await assertImageFilePixelsAtMost(blob, { label: 'Das Bild', mimeType: blob.type });
     } catch (error) {
       showMessage(error?.message || 'Das Bild ist zu groß.', 'Bild prüfen');
       return;

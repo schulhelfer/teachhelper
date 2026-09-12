@@ -45,6 +45,10 @@ for (const config of cases) {
       csvInput.files = transfer.files;
       csvInput.dispatchEvent(new Event('change', { bubbles: true }));
       await wait(120);
+      if (document.getElementById('pwa-install-dialog')?.open) {
+        document.getElementById('pwa-install-dialog-later')?.click();
+        await wait(20);
+      }
 
       const activate = async (tab) => {
         document.getElementById(`tab-${tab}`).click();
@@ -55,13 +59,43 @@ for (const config of cases) {
         window.visualViewport?.dispatchEvent(new Event('resize'));
         await wait(320);
       };
+      const chromeStates = [];
       const cycleChrome = async (readMetric) => {
         const expanded = readMetric();
-        document.getElementById('toggle-chrome').click();
+        const app = document.getElementById('app');
+        const header = document.querySelector('.app-header');
+        const tabNav = document.querySelector('.tab-nav');
+        const sidebar = document.querySelector('.side');
+        const headerToggle = document.getElementById('toggle-chrome');
+        const overlayToggle = document.getElementById('toggle-chrome-overlay');
+        headerToggle.focus();
+        headerToggle.click();
         await wait(720);
         const collapsed = readMetric();
-        document.getElementById('toggle-chrome-overlay').click();
+        const collapsedChrome = {
+          appCollapsed: app.classList.contains('chrome-collapsed'),
+          headerHidden: header.hidden,
+          headerAriaHidden: header.getAttribute('aria-hidden'),
+          tabNavHidden: tabNav.hidden,
+          tabNavInert: tabNav.inert,
+          sidebarHidden: sidebar.hidden,
+          overlayHidden: overlayToggle.hidden,
+          overlayDisabled: overlayToggle.disabled,
+          activeElementId: document.activeElement?.id || '',
+        };
+        overlayToggle.click();
         await wait(720);
+        const expandedChrome = {
+          appCollapsed: app.classList.contains('chrome-collapsed'),
+          headerHidden: header.hidden,
+          tabNavHidden: tabNav.hidden,
+          tabNavInert: tabNav.inert,
+          sidebarHidden: sidebar.hidden,
+          overlayHidden: overlayToggle.hidden,
+          overlayDisabled: overlayToggle.disabled,
+          activeElementId: document.activeElement?.id || '',
+        };
+        chromeStates.push({ collapsed: collapsedChrome, expanded: expandedChrome });
         await triggerResize();
         const restored = readMetric();
         return { expanded, collapsed, restored };
@@ -96,6 +130,7 @@ for (const config of cases) {
         iosClass: document.getElementById('app').classList.contains('app-ios-optimized'),
         activeWorkPhase: document.getElementById('app').classList.contains('app-tab-work-phase'),
         chromeRestored: !document.getElementById('app').classList.contains('chrome-collapsed'),
+        chromeStates,
         groups,
         picker,
         workPhase,
@@ -107,6 +142,26 @@ for (const config of cases) {
     assert.equal(result.iosClass, config.ios);
     assert.equal(result.activeWorkPhase, true);
     assert.equal(result.chromeRestored, true);
+    assert.equal(result.chromeStates.length, 3);
+    result.chromeStates.forEach(({ collapsed, expanded }) => {
+      assert.equal(collapsed.appCollapsed, true);
+      assert.equal(collapsed.headerHidden, true);
+      assert.equal(collapsed.headerAriaHidden, 'true');
+      assert.equal(collapsed.tabNavHidden, true);
+      assert.equal(collapsed.tabNavInert, true);
+      assert.equal(collapsed.sidebarHidden, true);
+      assert.equal(collapsed.overlayHidden, false);
+      assert.equal(collapsed.overlayDisabled, false);
+      assert.equal(collapsed.activeElementId, 'toggle-chrome-overlay');
+      assert.equal(expanded.appCollapsed, false);
+      assert.equal(expanded.headerHidden, false);
+      assert.equal(expanded.tabNavHidden, false);
+      assert.equal(expanded.tabNavInert, false);
+      assert.equal(expanded.sidebarHidden, false);
+      assert.equal(expanded.overlayHidden, true);
+      assert.equal(expanded.overlayDisabled, true);
+      assert.notEqual(expanded.activeElementId, 'toggle-chrome-overlay');
+    });
     for (const state of Object.values(result.groups)) {
       assert.ok(Number.parseFloat(state.scale) > 0);
       assert.ok(state.width > 0);

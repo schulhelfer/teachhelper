@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
-const [main, shell, bridge, groups, randomPicker, workPhase] = await Promise.all([
+const [main, chromeController, tabController, bridge, groups, randomPicker, workPhase] = await Promise.all([
   read('../src/app/app-runtime.js'),
-  read('../src/app/shell.js'),
+  read('../src/app/shell/chrome-controller.js'),
+  read('../src/app/shell/tab-controller.js'),
   read('../src/app/planning-seatplan-bridge.js'),
   read('../src/modules/groups/app.js'),
   read('../src/modules/random-picker/app.js'),
@@ -60,13 +61,13 @@ test('tab and chrome transitions retain their distinct refresh boundaries', () =
   assert.match(chrome, /handleViewportChange\([^;]*\);/);
   assert.match(chrome, /randomPickerController\?\.refreshLayout\?\.\(\)/);
   assert.match(chrome, /groupsController\?\.refreshLayout\(\{ resetViewport: true \}\)/);
-  const finalizeChrome = extractFunction(shell, 'finalizeChromeTransition');
-  const setChrome = extractFunction(shell, 'setChromeCollapsed');
-  const setActiveTab = extractFunction(shell, 'setActiveTab');
-  assert.match(finalizeChrome, /refreshLayouts\(\)/);
-  assert.equal((setChrome.match(/refreshLayouts\(\)/g) || []).length, 4);
-  assert.equal((setActiveTab.match(/refreshLayouts\(\)/g) || []).length, 4);
-  assert.match(setChrome, /queueChromeTransition\(\(\) => \{[\s\S]*?refreshLayouts\(\)/);
+  const finalizeChrome = extractFunction(chromeController, 'finalizeTransition');
+  const setChrome = extractFunction(chromeController, 'setCollapsed');
+  const setActiveTab = extractFunction(tabController, 'setActiveTab');
+  assert.match(finalizeChrome, /onRefreshLayouts\(\)/);
+  assert.equal((setChrome.match(/onRefreshLayouts\(\)/g) || []).length, 4);
+  assert.equal((setActiveTab.match(/onRefreshLayouts\(\)/g) || []).length, 4);
+  assert.match(setChrome, /queueTransition\(\(\) => \{[\s\S]*?onRefreshLayouts\(\)/);
 });
 
 test('feature controllers keep their own layout settling responsibilities', () => {

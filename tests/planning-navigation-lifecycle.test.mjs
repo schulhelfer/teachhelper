@@ -8,7 +8,7 @@ const read = async (path) => (
 ).replace(/\r\n/g, '\n');
 
 const planningSource = await read('../src/modules/planning/app.js');
-const shellSource = await read('../src/app/shell.js');
+const tabControllerSource = await read('../src/app/shell/tab-controller.js');
 const planningBridgeSource = await read('../src/modules/planning/bridge.js');
 
 function extractClassMethod(source, name) {
@@ -26,16 +26,16 @@ function extractClassMethod(source, name) {
 }
 
 test('shell requests the planning week only when entering the planning tab', () => {
-  const start = shellSource.indexOf('  function renderTabs()');
-  const end = shellSource.indexOf('  function clearTabTransitionTimer()', start);
-  const renderTabsSource = shellSource.slice(start, end);
+  const start = tabControllerSource.indexOf('  function render()');
+  const end = tabControllerSource.indexOf('  function getTabSwitchDuration()', start);
+  const renderTabsSource = tabControllerSource.slice(start, end);
 
   assert.ok(renderTabsSource.includes('const enteredPlanningTab ='));
   assert.ok(renderTabsSource.includes('lastRenderedActiveTab !== TAB_PLANNING'));
   assert.ok(renderTabsSource.includes('if (enteredPlanningTab)'));
   assert.ok(renderTabsSource.includes("source: 'shell-tab-entry'"));
   assert.equal(
-    renderTabsSource.includes('if (state.activeTab === TAB_PLANNING)'),
+    renderTabsSource.includes('if (activeTab === TAB_PLANNING)'),
     false,
     'ordinary shell renders must not reset the planning subview',
   );

@@ -6,9 +6,11 @@ const read = async (path) => (
   await readFile(new URL(path, import.meta.url), 'utf8')
 ).replace(/\r\n/g, '\n');
 
-const [tabs, shell, appBridge, gradesIndex, gradesBridge, gradesApp] = await Promise.all([
+const [tabs, shell, tabController, workspaceStatus, appBridge, gradesIndex, gradesBridge, gradesApp] = await Promise.all([
   read('../src/shell/tabs.js'),
   read('../src/app/shell.js'),
+  read('../src/app/shell/tab-controller.js'),
+  read('../src/app/shell/workspace-status.js'),
   read('../src/app/planning-seatplan-bridge.js'),
   read('../src/modules/grades/index.js'),
   read('../src/modules/grades/bridge.js'),
@@ -19,8 +21,8 @@ test('leaving a dirty grades tab delegates to the grades three-way dialog', () =
   assert.match(tabs, /GRADES_TAB_LEAVE_REQUEST_EVENT/);
   assert.match(tabs, /GRADES_TAB_LEAVE_RESULT_EVENT/);
   assert.match(shell, /onResolveGradesTabLeave/);
-  assert.match(shell, /shouldResolveGradesTabLeave\(nextTab, options\)/);
-  assert.match(shell, /resolveGradesTabLeave\(\)/);
+  assert.match(tabController, /workspaceStatus\?\.getLeaveGuard\?\.\(nextTab, options\)/);
+  assert.match(shell, /onResolveGradesTabLeave: resolveGradesTabLeave,/);
   assert.match(appBridge, /requestGradesTabLeaveConfirmation/);
   assert.match(appBridge, /requestTabLeave\(\{ requestId \}\)/);
   assert.match(gradesIndex, /requestTabLeave/);
@@ -36,21 +38,21 @@ test('leaving a dirty grades tab delegates to the grades three-way dialog', () =
 });
 
 test('the shell delegates dirty grade entries and settings to the grades dialog', () => {
-  const start = shell.indexOf('function shouldResolveGradesTabLeave');
-  const end = shell.indexOf('\n  function showUnsavedTabLeaveDialog', start);
-  const method = shell.slice(start, end);
+  const start = workspaceStatus.indexOf('function getLeaveGuard');
+  const end = workspaceStatus.indexOf('\n  function shouldPromptVaultUnlock', start);
+  const method = workspaceStatus.slice(start, end);
 
-  assert.match(method, /unsaved\.gradesDirty \|\| unsaved\.gradesSettingsDirty/);
-  assert.doesNotMatch(method, /isPlanningTab\(nextTab\)/);
+  assert.match(method, /nextTab !== gradesTabTarget/);
+  assert.match(method, /unsavedState\.gradesDirty \|\| unsavedState\.gradesSettingsDirty/);
+  assert.ok(method.indexOf("return 'grades'") < method.indexOf('planningTargets.has(activeTab)'));
 });
 
 test('the three-way dialog also protects the transition from grades to planning', () => {
-  const start = shell.indexOf('function setActiveTab');
-  const end = shell.indexOf('\n  function setActiveTabImmediate', start);
-  const method = shell.slice(start, end);
+  const start = tabController.indexOf('function setActiveTab');
+  const end = tabController.indexOf('\n  function setActiveTabImmediate', start);
+  const method = tabController.slice(start, end);
 
-  assert.match(method, /if \(shouldResolveGradesTabLeave\(nextTab, options\)\) \{/);
-  assert.match(method, /if \(shouldConfirmPlanningTabLeave\(nextTab, options\)\) \{/);
+  assert.match(method, /leaveGuard === 'grades' \|\| leaveGuard === 'planning'/);
 });
 
 test('the navigation flush never references a message payload outside its message handler', () => {

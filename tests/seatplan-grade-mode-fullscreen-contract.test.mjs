@@ -5,10 +5,11 @@ import test from 'node:test';
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
   .then((text) => text.replace(/\r\n/g, '\n'));
 
-const [seatplan, main, shell, router] = await Promise.all([
+const [seatplan, main, shell, chromeController, router] = await Promise.all([
   read('../src/modules/seatplan/app.js'),
   read('../src/app/app-runtime.js'),
   read('../src/app/shell.js'),
+  read('../src/app/shell/chrome-controller.js'),
   read('../src/app/module-message-router.js'),
 ]);
 
@@ -113,8 +114,9 @@ test('a chrome request waits out a running chrome transition without re-checking
 });
 
 test('the automatic expand keeps the persisted sidebar width', () => {
-  assert.match(shell, /function setChromeCollapsed\(collapsed, \{ resetSidebarWidth = true \} = \{\}\) \{/);
-  assert.match(shell, /if \(resetSidebarWidth && !nextCollapsed && state\.chromeCollapsed\) \{/);
+  assert.match(chromeController, /function setCollapsed\(nextValue, \{ resetSidebarWidth = true \} = \{\}\) \{/);
+  assert.match(chromeController, /if \(resetSidebarWidth && !nextCollapsed && collapsed\) onResetSidebarWidth\(\);/);
+  assert.match(shell, /onResetSidebarWidth: \(\) => sidebarResize\.resetActiveWidth\(\),/);
   assert.match(main, /const setChromeCollapsed = \(collapsed, options\) => shellController\?\.setChromeCollapsed\(collapsed, options\);/);
 });
 

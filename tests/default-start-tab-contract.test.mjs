@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [mainSource, htmlSource, shellSource] = await Promise.all([
+const [mainSource, htmlSource, tabControllerSource] = await Promise.all([
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/tab-controller.js', import.meta.url), 'utf8'),
 ]);
 
 test('planning is the default module at application startup', () => {
@@ -18,5 +18,5 @@ test('planning is the default module at application startup', () => {
   assert.match(htmlSource, /<div class="app app-tab-planning" id="app">/);
   assert.match(htmlSource, /<div id="groups-main-host" hidden>/);
   assert.match(htmlSource, /id="tab-grades" class="tab-button"[\s\S]*?aria-selected="false">Noten<\/button>[\s\S]*?id="tab-planning" class="tab-button active"[\s\S]*?aria-selected="true">Planung<\/button>/);
-  assert.match(shellSource, /const isPlanningBoot = state\.activeTab === TAB_PLANNING && !els\.app\?\.classList\.contains\('app-js-ready'\);[\s\S]*?els\.groupsMainHost\.hidden = isPlanningBoot/);
+  assert.match(tabControllerSource, /const isPlanningBoot = activeTab === TAB_PLANNING && !app\.classList\.contains\('app-js-ready'\);[\s\S]*?groupsMainHost\.hidden = isPlanningBoot/);
 });

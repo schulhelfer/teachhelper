@@ -166,9 +166,21 @@ test('Bildheader und Arbeits-Canvas bleiben innerhalb des Pixelbudgets', () => {
   new DataView(png.buffer).setUint32(16, 12_000);
   new DataView(png.buffer).setUint32(20, 8_000);
   assert.throws(() => assertImageDimensionsAtMost(readImageDimensions(png, 'image/png')), /zu viele Bildpunkte/);
+  assert.throws(
+    () => assertImageDimensionsAtMost({ width: 12_000, height: 8_000 }),
+    new RegExp(`Maximal erlaubt: ${Math.round(FILE_LIMITS.IMAGE_MAX_PIXELS / 1_000_000)} Megapixel`)
+  );
   const canvas = fitCanvasSize(12_000, 8_000);
   assert.ok(canvas.width * canvas.height <= FILE_LIMITS.CANVAS_MAX_PIXELS);
   assert.ok(Math.max(canvas.width, canvas.height) <= FILE_LIMITS.CANVAS_MAX_EDGE);
+});
+
+test('der QR-Bildimport begrenzt Bytes und Bildpunkte vor dem Decode', async () => {
+  const qr = await readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8');
+  assert.match(qr, /assertImageFilePixelsAtMost/);
+  const decode = qr.slice(qr.indexOf('async function decodeBlob'), qr.indexOf('async function decodeFile'));
+  assert.match(decode, /assertFileSizeAtMost\(blob, FILE_LIMITS\.IMAGE_BYTES/);
+  assert.match(decode, /await assertImageFilePixelsAtMost\(blob/);
 });
 
 test('der JSON-Schutz begrenzt Tiefe und die Größe einzelner Container', () => {

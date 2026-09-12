@@ -13,7 +13,7 @@ function extractClassMethod(name, nextName) {
 }
 
 test('empty grade entry views keep enough layout height for their message and add button', () => {
-  const method = extractClassMethod('renderGradesEntryEmptyState', 'ensureGradesEntrySaveNoticeOverlay');
+  const method = extractClassMethod('renderGradesEntryEmptyState', 'resetGradesEntryDraftAfterSave');
 
   assert.match(method, /classList\.add\("is-empty-state"\)/);
   assert.doesNotMatch(method, /classList\.toggle\("is-empty-state", showUnlockButton\)/);

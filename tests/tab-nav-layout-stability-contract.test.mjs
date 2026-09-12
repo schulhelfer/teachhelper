@@ -2,8 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [shell, shellCss] = (await Promise.all([
-  readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+const [tabNavLayout, shellCss] = (await Promise.all([
+  readFile(new URL('../src/app/shell/tab-nav-layout.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
 ])).map((source) => source.split('\r\n').join('\n'));
 
@@ -14,25 +14,25 @@ function extractFunction(name) {
     `\nfunction ${name}(`,
   ];
   const found = openings
-    .map((opening) => shell.indexOf(opening))
+    .map((opening) => tabNavLayout.indexOf(opening))
     .find((index) => index >= 0);
   assert.ok(typeof found === 'number', `${name} muss existieren`);
   const matchBalanced = (from, open, close) => {
     let depth = 0;
-    for (let index = from; index < shell.length; index += 1) {
-      if (shell[index] === open) depth += 1;
-      else if (shell[index] === close) {
+    for (let index = from; index < tabNavLayout.length; index += 1) {
+      if (tabNavLayout[index] === open) depth += 1;
+      else if (tabNavLayout[index] === close) {
         depth -= 1;
         if (depth === 0) return index;
       }
     }
     return -1;
   };
-  const paramsEnd = matchBalanced(shell.indexOf('(', found), '(', ')');
+  const paramsEnd = matchBalanced(tabNavLayout.indexOf('(', found), '(', ')');
   assert.ok(paramsEnd > found, `${name} muss eine Parameterliste haben`);
-  const bodyEnd = matchBalanced(shell.indexOf('{', paramsEnd), '{', '}');
+  const bodyEnd = matchBalanced(tabNavLayout.indexOf('{', paramsEnd), '{', '}');
   assert.ok(bodyEnd > paramsEnd, `${name} muss geschlossen werden`);
-  return shell.slice(found + 1, bodyEnd + 1);
+  return tabNavLayout.slice(found + 1, bodyEnd + 1);
 }
 
 function extractRule(selector) {
@@ -68,11 +68,11 @@ test('während einer Fenstergrößenänderung folgt die Kopfzeile ohne Nachlauf'
 });
 
 test('die Messung läuft vollständig innerhalb des eingefrorenen Zustands', () => {
-  const sync = extractFunction('syncMoreToolsNavigation');
+  const sync = extractFunction('syncNavigation');
   const measuringOn = sync.indexOf("classList.add('is-measuring-full-tabs')");
-  const cleared = sync.indexOf('clearTabNavOverflowMarkers(');
-  const measured = sync.indexOf('measureTabNavFit(');
-  const applied = sync.indexOf('applyTabNavOverflow(');
+  const cleared = sync.indexOf('clearOverflowMarkers(');
+  const measured = sync.indexOf('measureFit(');
+  const applied = sync.indexOf('applyOverflow(');
   const measuringOff = sync.indexOf("classList.remove('is-measuring-full-tabs')");
   assert.ok(measuringOn >= 0 && cleared > measuringOn, 'zuerst einfrieren, dann Marker lösen');
   assert.ok(measured > cleared, 'gemessen wird die aufgefaltete Leiste');
@@ -81,13 +81,13 @@ test('die Messung läuft vollständig innerhalb des eingefrorenen Zustands', () 
 });
 
 test('die Breitenmessung liest die tatsächlichen Elementbreiten in einem Durchgang', () => {
-  const measure = extractFunction('measureTabNavFit');
-  assert.doesNotMatch(shell, /scrollWidth/);
+  const measure = extractFunction('measureFit');
+  assert.doesNotMatch(tabNavLayout, /scrollWidth/);
   assert.match(measure, /child\.offsetParent !== null/);
-  assert.match(measure, /child !== els\.tabIndicator/);
-  assert.match(measure, /child !== els\.moreTools/);
+  assert.match(measure, /child !== tabIndicator/);
+  assert.match(measure, /child !== moreTools/);
   assert.match(measure, /getBoundingClientRect\(\)\.width/);
-  assert.match(measure, /els\.tabNav\.clientWidth - paddingLeft - paddingRight/);
+  assert.match(measure, /tabNav\.clientWidth - paddingLeft - paddingRight/);
   assert.match(measure, /Number\.parseFloat\(navStyle\.columnGap\)/);
   assert.doesNotMatch(measure, /classList|setAttribute|removeAttribute/);
 });
@@ -96,8 +96,8 @@ test('die Hysterese bremst nur die Rückkehr eines Tabs, nicht sein Verschwinden
   const fit = extractFunction('fitTabNavItems');
   assert.match(fit, /visibleCount > previousVisibleCount/);
   assert.match(fit, /fitRow\(available - hysteresis\)/);
-  assert.match(shell, /const TAB_NAV_MODE_HYSTERESIS = \d+;/);
-  const sync = extractFunction('syncMoreToolsNavigation');
+  assert.match(tabNavLayout, /const TAB_NAV_MODE_HYSTERESIS = \d+;/);
+  const sync = extractFunction('syncNavigation');
   assert.match(sync, /hysteresis: TAB_NAV_MODE_HYSTERESIS/);
 });
 
@@ -108,17 +108,17 @@ test('ein Resize ohne neue Fenstermaße unterbricht den Tabwechsel nicht', () =>
   const guard = handle.indexOf('if (!viewportChanged)');
   const session = handle.indexOf("classList.add('is-viewport-resizing')");
   assert.ok(guard >= 0 && session > guard, 'ohne Maßänderung wird kein Resize-Modus gestartet');
-  assert.match(handle.slice(guard, session), /queueMoreToolsNavigationSync\(\);\s+return;/);
-  assert.match(handle, /queueMoreToolsNavigationSync\(\{ immediate: true \}\)/);
+  assert.match(handle.slice(guard, session), /queueLayoutSync\(\);\s+return;/);
+  assert.match(handle, /queueLayoutSync\(\{ immediate: true \}\)/);
 
   const signature = extractFunction('readViewportSignature');
-  assert.match(signature, /window\.innerWidth/);
-  assert.match(signature, /window\.innerHeight/);
+  assert.match(signature, /view\.innerWidth/);
+  assert.match(signature, /view\.innerHeight/);
 });
 
 test('der Tab-Indikator wird im selben Frame wie die Tableiste gesetzt', () => {
-  const run = extractFunction('runMoreToolsNavigationSync');
-  assert.match(run, /positionActiveTabIndicator\(\{/);
-  assert.doesNotMatch(run, /queueSettledActiveTabIndicatorUpdate/);
+  const run = extractFunction('runLayoutSync');
+  assert.match(run, /positionActiveIndicator\(\{/);
+  assert.doesNotMatch(run, /queueSettledIndicatorUpdate/);
   assert.doesNotMatch(run, /requestAnimationFrame/);
 });

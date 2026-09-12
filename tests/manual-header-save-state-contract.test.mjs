@@ -2,8 +2,9 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [shellSource, shellStyles, planningSource, gradesSource] = await Promise.all([
+const [shellSource, workspaceStatusSource, shellStyles, planningSource, gradesSource] = await Promise.all([
   readFile(new URL('../src/app/shell.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/shell/workspace-status.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
@@ -22,11 +23,13 @@ test('die Menüleiste reserviert im manuellen Speichermodus Platz für den Kopfz
 });
 
 test('der manuelle Kopfzeilen-Speicherbutton ist ohne exportierbare Änderungen gesperrt', () => {
-  assert.match(shellSource, /const hasManualChanges = Boolean\(state\.planningManualSaveState\.dirty\);/);
-  assert.match(shellSource, /disabled = hidden \|\| !hasManualChanges \|\| state\.chromeTransitionState !== 'idle';/);
-  assert.match(shellSource, /'Datenbank speichern'/);
-  assert.match(shellSource, /Keine zu speichernden Änderungen/);
-  assert.match(shellSource, /\|\| !state\.planningManualSaveState\.dirty/);
+  assert.match(shellSource, /workspaceStatus\.getManualSaveControlState\(\)/);
+  assert.match(shellSource, /els\.sidebarManualSaveBtn\.disabled = controlState\.disabled;/);
+  assert.match(workspaceStatusSource, /const hasChanges = manualSaveState\.dirty;/);
+  assert.match(workspaceStatusSource, /disabled: !shouldShow \|\| !hasChanges \|\| !chromeTransitionIdle/);
+  assert.match(workspaceStatusSource, /'Datenbank speichern'/);
+  assert.match(workspaceStatusSource, /Keine zu speichernden Änderungen/);
+  assert.match(workspaceStatusSource, /manualSaveState\.isManualMode\s+&& manualSaveState\.dirty/);
 });
 
 test('Planung und Noten leiten den Kopfzeilen-Zustand vom gemeinsamen manuellen Persistenzstatus ab', () => {

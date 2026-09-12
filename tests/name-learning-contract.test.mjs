@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
-const [defaults, store, runtime, integrity, gradesHtml, gradesApp, tabs, bridge, shell, main, router, index, nameLearningHtml, nameLearningCss, nameLearningIndex, nameLearningApp] = await Promise.all([
+const [defaults, store, runtime, integrity, gradesHtml, gradesApp, tabs, bridge, shell, tabController, workspaceStatus, main, router, index, nameLearningHtml, nameLearningCss, nameLearningIndex, nameLearningApp] = await Promise.all([
   read('../src/shared/school-data/defaults.js'), read('../src/modules/workspace/store.js'), read('../src/modules/workspace/runtime.js'),
   read('../src/shared/school-data/grade-integrity.js'), read('../src/modules/grades/app.html'), read('../src/modules/grades/app.js'),
-  read('../src/shell/tabs.js'), read('../src/app/planning-seatplan-bridge.js'), read('../src/app/shell.js'), read('../src/app/app-runtime.js'), read('../src/app/module-message-router.js'), read('../index.html'),
+  read('../src/shell/tabs.js'), read('../src/app/planning-seatplan-bridge.js'), read('../src/app/shell.js'), read('../src/app/shell/tab-controller.js'), read('../src/app/shell/workspace-status.js'), read('../src/app/app-runtime.js'), read('../src/app/module-message-router.js'), read('../index.html'),
   read('../src/modules/name-learning/app.html'), read('../src/modules/name-learning/app.css'),
   read('../src/modules/name-learning/index.js'),
   read('../src/modules/name-learning/app.js'),
@@ -19,7 +19,7 @@ test('name learning visibility requires both portrait and module settings', () =
   assert.match(runtime, /vault:[\s\S]*showGradeStudentPortraits:[\s\S]*showNameLearningModule:/);
   assert.match(gradesHtml, /id="show-name-learning-module"/);
   assert.match(gradesApp, /showNameLearningModule: Boolean\(this\.store\.getSetting\(/);
-  assert.match(shell, /vault\.showGradeStudentPortraits && vault\.showNameLearningModule/);
+  assert.match(workspaceStatus, /vaultState\.showGradeStudentPortraits && vaultState\.showNameLearningModule/);
 });
 
 test('the module is a registered first-level tab and uses the existing bridge', () => {
@@ -45,8 +45,9 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(runtime, /async refreshNameLearningDueSummary\(\)/);
   assert.match(runtime, /await this\.refreshNameLearningDueSummary\(\);/);
   assert.doesNotMatch(bridge, /refreshNameLearningDueCount/);
-  assert.match(shell, /\[data-name-learning-due-count\]/);
-  assert.match(shell, /window\.addEventListener\(WORKSPACE_STATE_EVENT,[\s\S]*?setPlanningGradeVaultState\(\{/);
+  assert.match(tabController, /\[data-name-learning-due-count\]/);
+  assert.match(workspaceStatus, /bind\(view, WORKSPACE_STATE_EVENT, handleWorkspaceState\);/);
+  assert.match(workspaceStatus, /setVaultState\(\{\s+\.\.\.vault,\s+ready: Boolean\(detail\.snapshot\.ready\),/);
   assert.match(main, /const initialWorkspaceSnapshot = window\.__teachhelperWorkspaceController\?\.getSnapshot\?\.\('shell'\);[\s\S]*?shellController\.setPlanningGradeVaultState\(\{/);
 });
 
@@ -71,7 +72,7 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningCss, /\.mode-actions \{ display: grid; gap: 8px; \}/);
   assert.doesNotMatch(nameLearningHtml, /id="reveal"/);
   assert.match(nameLearningHtml, /id="flip-card"[\s\S]*?aria-label="Name aufdecken"/);
-  assert.match(nameLearningHtml, /id="previous-review" class="previous-review-action" type="button" disabled[\s\S]*?aria-label="Vorherige Abfrage korrigieren" title="Vorherige Abfrage korrigieren">🠔<\/button>/);
+  assert.match(nameLearningHtml, /id="previous-review" class="previous-review-action" type="button" disabled[\s\S]*?aria-label="Vorherige Abfrage korrigieren" title="Vorherige Abfrage korrigieren">⬅️<\/button>/);
   assert.match(nameLearningHtml, /id="portrait-reverse" class="portrait portrait-reverse"/);
   assert.match(nameLearningHtml, /id="flashcard-back"[\s\S]*?id="answer"[\s\S]*?id="course" class="course-pill"[\s\S]*?id="known"[\s\S]*?id="unknown"[\s\S]*?id="review-feedback"/);
   assert.match(nameLearningHtml, /id="review-feedback" class="review-feedback" role="status" aria-live="polite"/);
