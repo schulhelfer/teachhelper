@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '102';
+const TEACHHELPER_APP_VERSION_STAMP = '103';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -146,6 +146,7 @@ const DEFERRED_ASSETS = [
   './src/modules/seatplan/app.html',
   './src/modules/seatplan/app.css',
   './src/modules/seatplan/app.js',
+  './src/modules/seatplan/grade-picker-navigation.js',
   './src/modules/seatplan/gender-names.js',
   './src/modules/seatplan/tooltips.js',
   './src/modules/merger/app.html',

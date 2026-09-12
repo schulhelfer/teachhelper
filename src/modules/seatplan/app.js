@@ -6014,21 +6014,20 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             scheduleCourseGradePickerPosition();
           }
 
-          function seatNameBlockFits(nameBlock, width, height) {
-            if (!nameBlock) {
-              return false;
-            }
-            const linesFit = [...nameBlock.querySelectorAll('.seat-name-line')].every(line => (
-              line.scrollWidth <= Math.max(1, line.clientWidth) + 1
-            ));
-            return linesFit
-              && nameBlock.scrollWidth <= width + 1
-              && nameBlock.scrollHeight <= height + 1;
-          }
-
           function fitSeatTileText() {
             if (!els.grid || typeof getComputedStyle !== 'function') return;
             const contents = [...els.grid.querySelectorAll('.seat .seat-content:not(.teacher)')];
+            contents.forEach(content => {
+              const nameBlock = content.querySelector('.seat-name-lines');
+              content.style.fontSize = '';
+              content.style.lineHeight = '';
+              nameBlock?.style.removeProperty('font-size');
+              nameBlock?.style.removeProperty('line-height');
+            });
+            const canvas = fitSeatTileText._canvas || document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            fitSeatTileText._canvas = canvas;
+            if (!context) return;
             const fitted = [];
             contents.forEach(content => {
               const seat = content.closest('.seat');
@@ -6037,10 +6036,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               if (seat.clientWidth <= 1 || seat.clientHeight <= 1) return;
               const nameBlock = content.querySelector('.seat-name-lines');
               if (!nameBlock) return;
-              content.style.fontSize = '';
-              content.style.lineHeight = '';
-              nameBlock.style.fontSize = '';
-              nameBlock.style.lineHeight = '';
+              const lines = [...nameBlock.querySelectorAll('.seat-name-line')];
+              if (!lines.length) return;
               const nameStyle = getComputedStyle(name);
               const baseSize = parsePx(nameStyle.fontSize, 16);
               const availableWidth = Math.max(1, name.clientWidth - 4);
@@ -6060,24 +6057,21 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 baseSize,
                 Math.min(maxHeightLimitedSize, availableWidth * 0.62)
               )));
-              let low = 4;
-              let high = maxSize;
-              for (let pass = 0; pass < 11; pass += 1) {
-                const mid = (low + high) / 2;
-                content.style.fontSize = `${mid}px`;
-                content.style.lineHeight = mid <= 10 ? '1.08' : '1.12';
-                nameBlock.style.fontSize = `${mid}px`;
-                nameBlock.style.lineHeight = mid <= 10 ? '1.08' : '1.12';
-                if (seatNameBlockFits(nameBlock, availableWidth, availableHeight)) {
-                  low = mid;
-                } else {
-                  high = mid;
-                }
-              }
+              const lineStyle = getComputedStyle(lines[0]);
+              context.font = `${lineStyle.fontStyle} ${lineStyle.fontWeight} 1px ${lineStyle.fontFamily}`;
+              const letterSpacing = parsePx(lineStyle.letterSpacing, 0) / Math.max(1, baseSize);
+              const widestLine = Math.max(...lines.map(line => (
+                context.measureText(line.textContent || '').width
+                  + Math.max(0, (line.textContent || '').length - 1) * letterSpacing
+              )));
+              const widthLimitedSize = availableWidth / Math.max(1, widestLine);
+              const heightFactor = maxSize <= 10 ? 1.2 : 1.24;
+              const heightLimitedSize = availableHeight / Math.max(1, lines.length * heightFactor);
+              const size = Math.max(4, Math.min(maxSize, widthLimitedSize, heightLimitedSize) - 0.25);
               fitted.push({
                 content,
                 nameBlock,
-                size: Math.max(4, low - 0.25)
+                size,
               });
             });
             if (!fitted.length) {

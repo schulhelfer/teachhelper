@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
@@ -21,21 +22,31 @@ const vendorManifest = JSON.parse(
 const vendoredAssets = vendorManifest.packages.flatMap((pkg) => pkg.files.map((file) => `./${file.path}`));
 
 function findShellBinary() {
-  const commandNames = process.platform === 'win32' ? ['sh.exe', 'bash.exe'] : ['sh', 'bash'];
+  if (process.platform !== 'win32') {
+    const paths = process.env.PATH?.split(delimiter).filter(Boolean) ?? [];
+    for (const command of ['sh', 'bash']) {
+      const directory = paths.find((path) => existsSync(join(path, command)));
+      if (directory) return join(directory, command);
+    }
+    return existsSync('/bin/sh') ? '/bin/sh' : null;
+  }
+
+  const gitShells = [process.env.ProgramFiles, process.env['ProgramFiles(x86)']]
+    .filter(Boolean)
+    .flatMap((base) => ['Git/usr/bin/sh.exe', 'Git/bin/sh.exe'].map((suffix) => join(base, suffix)));
+  const gitShell = gitShells.find((path) => existsSync(path));
+  if (gitShell) return gitShell;
+
+  const systemRoot = process.env.SystemRoot || 'C:\\Windows';
   const paths = process.env.PATH?.split(delimiter).filter(Boolean) ?? [];
-  for (const command of commandNames) {
-    const directory = paths.find((path) => existsSync(join(path, command)));
+  for (const command of ['sh.exe', 'bash.exe']) {
+    const directory = paths.find((path) => (
+      !path.toLowerCase().startsWith(join(systemRoot, 'System32').toLowerCase())
+      && existsSync(join(path, command))
+    ));
     if (directory) return join(directory, command);
   }
-  const fallbacks = process.platform === 'win32'
-    ? [
-      process.env.ProgramFiles && join(process.env.ProgramFiles, 'Git/usr/bin/sh.exe'),
-      process.env.ProgramFiles && join(process.env.ProgramFiles, 'Git/bin/sh.exe'),
-      process.env['ProgramFiles(x86)'] && join(process.env['ProgramFiles(x86)'], 'Git/usr/bin/sh.exe'),
-      process.env['ProgramFiles(x86)'] && join(process.env['ProgramFiles(x86)'], 'Git/bin/sh.exe'),
-    ]
-    : ['/bin/sh'];
-  return fallbacks.find((path) => path && existsSync(path)) ?? null;
+  return null;
 }
 
 test('pre-commit rejects a Python-free environment before running other checks', (t) => {
@@ -45,12 +56,15 @@ test('pre-commit rejects a Python-free environment before running other checks',
     return;
   }
 
+  const emptyDirectory = mkdtempSync(join(tmpdir(), 'precommit-no-python-'));
   const result = spawnSync(shellPath, [hookPath], {
     cwd: rootPath,
     encoding: 'utf8',
-    env: { ...process.env, PATH: '' },
+    env: { ...process.env, PATH: emptyDirectory, PATHEXT: '' },
   });
+  rmSync(emptyDirectory, { recursive: true, force: true });
 
+  assert.notEqual(result.status, 127);
   assert.equal(result.status, 1);
   assert.match(result.stderr, /Error: Python 3 not found or not executable/);
   assert.doesNotMatch(result.stderr, /PWA audit skipped/);

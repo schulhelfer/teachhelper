@@ -14,6 +14,13 @@ export function createQrApp({ root = document } = {}) {
     : window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, '')).get('moduleFrameNonce') || '';
   const TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
+  const DECODABLE_IMAGE_TYPES = new Set([
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'image/gif',
+    'image/bmp',
+  ]);
   const toastApi = createMessageApi(root);
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
     TUTORIAL_COMMAND_EVENT,
@@ -967,9 +974,17 @@ export function createQrApp({ root = document } = {}) {
     return loadImageElementFromBlob(blob);
   }
 
+  function isDecodableImageType(type) {
+    return DECODABLE_IMAGE_TYPES.has(String(type || '').trim().toLowerCase());
+  }
+
   async function decodeBlob(blob, label = '') {
     if (!blob || !String(blob.type || '').startsWith('image/')) {
       showMessage('Bitte ein Bild mit QR-Code auswählen.', 'Bild prüfen');
+      return;
+    }
+    if (!isDecodableImageType(blob.type)) {
+      showMessage('Dieses Bildformat wird nicht unterstützt. Bitte PNG, JPEG, WebP, GIF oder BMP verwenden.', 'Bild prüfen');
       return;
     }
     stopCamera();
@@ -1018,7 +1033,7 @@ export function createQrApp({ root = document } = {}) {
     try {
       const items = await navigator.clipboard.read();
       for (const item of items) {
-        const imageType = item.types.find((type) => type.startsWith('image/'));
+        const imageType = item.types.find((type) => isDecodableImageType(type));
         if (!imageType) continue;
         const blob = await item.getType(imageType);
         await decodeBlob(blob, 'Bild aus Zwischenablage');
@@ -1140,7 +1155,7 @@ export function createQrApp({ root = document } = {}) {
       event.preventDefault();
       ui.decoderDropZone?.classList.remove('drag-over');
       const file = [...(event.dataTransfer?.files || [])].find((candidate) => (
-        String(candidate?.type || '').startsWith('image/')
+        isDecodableImageType(candidate?.type)
       ));
       if (!file) {
         showMessage('Bitte ein Bild mit QR-Code ablegen.', 'Bild prüfen');

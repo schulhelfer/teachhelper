@@ -183,6 +183,24 @@ test('der QR-Bildimport begrenzt Bytes und Bildpunkte vor dem Decode', async () 
   assert.match(decode, /await assertImageFilePixelsAtMost\(blob/);
 });
 
+test('der QR-Bildimport akzeptiert nur Formate, deren Maße vorab prüfbar sind', async () => {
+  const qr = await readFile(new URL('../src/modules/qr/app.js', import.meta.url), 'utf8');
+  const allowList = qr.slice(qr.indexOf('const DECODABLE_IMAGE_TYPES'), qr.indexOf('const toastApi'));
+  ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'image/bmp'].forEach((type) => {
+    assert.match(allowList, new RegExp(`'${type}'`));
+  });
+  ['image/avif', 'image/heic', 'image/jxl', 'image/tiff'].forEach((type) => {
+    assert.doesNotMatch(allowList, new RegExp(type));
+  });
+
+  const decode = qr.slice(qr.indexOf('async function decodeBlob'), qr.indexOf('async function decodeFile'));
+  const gateIndex = decode.indexOf('isDecodableImageType(blob.type)');
+  assert.ok(gateIndex > -1);
+  assert.ok(gateIndex < decode.indexOf('createDrawableFromBlob'));
+
+  assert.doesNotMatch(qr.slice(qr.indexOf("addEventListener('drop'")), /startsWith\('image\/'\)/);
+});
+
 test('der JSON-Schutz begrenzt Tiefe und die Größe einzelner Container', () => {
   const deeplyNested = `${'['.repeat(FILE_LIMITS.JSON_MAX_NESTING + 1)}0${']'.repeat(FILE_LIMITS.JSON_MAX_NESTING + 1)}`;
   assert.throws(() => assertJsonNestingAtMost(deeplyNested), /tief verschachtelt/);
