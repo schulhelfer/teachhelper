@@ -147,20 +147,70 @@ export function fitCanvasSize(width, height, maxPixels = FILE_LIMITS.CANVAS_MAX_
   };
 }
 
+function hasImageSignature(data, signature, offset = 0) {
+  return data.length >= offset + signature.length && signature.every((value, index) => data[offset + index] === value);
+}
+
+function detectRasterImageType(data) {
+  if (hasImageSignature(data, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "image/png";
+  if (hasImageSignature(data, [0x47, 0x49, 0x46, 0x38, 0x37, 0x61]) || hasImageSignature(data, [0x47, 0x49, 0x46, 0x38, 0x39, 0x61])) return "image/gif";
+  if (hasImageSignature(data, [0x42, 0x4d])) return "image/bmp";
+  if (hasImageSignature(data, [0x52, 0x49, 0x46, 0x46]) && hasImageSignature(data, [0x57, 0x45, 0x42, 0x50], 8)) return "image/webp";
+  if (hasImageSignature(data, [0xff, 0xd8])) return "image/jpeg";
+  return "";
+}
+
+function isJpegStartOfFrameMarker(marker) {
+  return (marker >= 0xc0 && marker <= 0xc3)
+    || (marker >= 0xc5 && marker <= 0xc7)
+    || (marker >= 0xc9 && marker <= 0xcb)
+    || (marker >= 0xcd && marker <= 0xcf);
+}
+
+function isJpegStandaloneMarker(marker) {
+  return marker === 0x01 || marker === 0xd8 || (marker >= 0xd0 && marker <= 0xd7);
+}
+
+function readJpegDimensions(data, view) {
+  let offset = 2;
+  while (offset < data.length) {
+    if (data[offset] !== 0xff) return null;
+    while (offset < data.length && data[offset] === 0xff) offset += 1;
+    if (offset >= data.length) return null;
+    const marker = data[offset];
+    offset += 1;
+    if (marker === 0x00) return null;
+    if (marker === 0xd9 || marker === 0xda) return null;
+    if (isJpegStandaloneMarker(marker)) continue;
+    if (offset + 2 > data.length) return null;
+    const length = view.getUint16(offset);
+    if (length < 2 || offset + length > data.length) return null;
+    if (isJpegStartOfFrameMarker(marker)) {
+      if (length < 8) return null;
+      const componentCount = data[offset + 7];
+      if (componentCount < 1 || length < 8 + 3 * componentCount) return null;
+      return { width: view.getUint16(offset + 5), height: view.getUint16(offset + 3) };
+    }
+    offset += length;
+  }
+  return null;
+}
+
 export function readImageDimensions(bytes, mimeType = "") {
   const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
   const view = new DataView(data.buffer, data.byteOffset, data.byteLength);
-  const type = String(mimeType || "").toLowerCase();
-  if ((type === "image/png" || (data[0] === 0x89 && data[1] === 0x50)) && data.length >= 24) {
+  const declaredType = String(mimeType || "").toLowerCase();
+  const type = detectRasterImageType(data) || (declaredType === "image/svg+xml" ? declaredType : "");
+  if (type === "image/png" && data.length >= 24) {
     return { width: view.getUint32(16), height: view.getUint32(20) };
   }
-  if ((type === "image/gif" || (data[0] === 0x47 && data[1] === 0x49)) && data.length >= 10) {
+  if (type === "image/gif" && data.length >= 10) {
     return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
   }
-  if ((type === "image/bmp" || (data[0] === 0x42 && data[1] === 0x4d)) && data.length >= 26) {
+  if (type === "image/bmp" && data.length >= 26) {
     return { width: Math.abs(view.getInt32(18, true)), height: Math.abs(view.getInt32(22, true)) };
   }
-  if ((type === "image/webp" || (data[0] === 0x52 && data[1] === 0x49 && data[8] === 0x57)) && data.length >= 30) {
+  if (type === "image/webp" && data.length >= 30) {
     const chunk = String.fromCharCode(...data.slice(12, 16));
     if (chunk === "VP8X") return { width: 1 + data[24] + (data[25] << 8) + (data[26] << 16), height: 1 + data[27] + (data[28] << 8) + (data[29] << 16) };
     if (chunk === "VP8L" && data.length >= 25) {
@@ -169,18 +219,7 @@ export function readImageDimensions(bytes, mimeType = "") {
     }
     if (chunk === "VP8 " && data.length >= 30) return { width: view.getUint16(26, true) & 0x3fff, height: view.getUint16(28, true) & 0x3fff };
   }
-  if (type === "image/jpeg" || (data[0] === 0xff && data[1] === 0xd8)) {
-    for (let offset = 2; offset + 9 < data.length;) {
-      if (data[offset] !== 0xff) { offset += 1; continue; }
-      const marker = data[offset + 1];
-      const length = view.getUint16(offset + 2);
-      if (length < 2 || offset + 2 + length > data.length) break;
-      if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
-        return { width: view.getUint16(offset + 7), height: view.getUint16(offset + 5) };
-      }
-      offset += 2 + length;
-    }
-  }
+  if (type === "image/jpeg") return readJpegDimensions(data, view);
   if (type === "image/svg+xml") {
     const text = new TextDecoder().decode(data.slice(0, 64 * 1024));
     const viewBox = text.match(/\bviewBox\s*=\s*["']\s*[\d.-]+\s+[\d.-]+\s+([\d.]+)\s+([\d.]+)/i);
@@ -194,9 +233,16 @@ export function readImageDimensions(bytes, mimeType = "") {
 
 export async function assertImageFilePixelsAtMost(file, options = {}) {
   const bytes = await readFileHeader(file, Math.min(Number(file?.size) || 0, 512 * 1024), options);
-  const dimensions = readImageDimensions(bytes, options.mimeType || file?.type);
-  if (!dimensions) return null;
-  return assertImageDimensionsAtMost(dimensions, options.label || "Bild");
+  const label = options.label || "Bild";
+  const mimeType = options.mimeType || file?.type;
+  const detectedType = detectRasterImageType(bytes);
+  let dimensions = readImageDimensions(bytes, mimeType);
+  if (!dimensions && detectedType === "image/jpeg" && Number(file?.size) > bytes.length) {
+    assertFileSizeAtMost(file, FILE_LIMITS.IMAGE_BYTES, label);
+    const fullBytes = await readFileHeader(file, Number(file.size), options);
+    dimensions = readImageDimensions(fullBytes, mimeType);
+  }
+  return assertImageDimensionsAtMost(dimensions, label);
 }
 
 export function exceedsZipCompressionRatio(compressedSize, uncompressedSize) {

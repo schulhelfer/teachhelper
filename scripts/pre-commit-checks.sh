@@ -1,4 +1,12 @@
 #!/bin/sh
+
+if ! command -v node >/dev/null 2>&1; then
+  NVM_DIR="${NVM_DIR:-${HOME}/.nvm}"
+  if [ -s "$NVM_DIR/nvm.sh" ]; then
+    . "$NVM_DIR/nvm.sh"
+  fi
+fi
+
 set -e
 
 run_python_checks() {

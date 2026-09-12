@@ -20,6 +20,12 @@ import {
 import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
 import { runFileProcessingTask } from '../../shared/file-processing-client.js';
 import { createMessageApi } from '../../shared/messages.js';
+import {
+  createCanvasPngObjectUrl,
+  createPdfPreviewRenderSpec,
+  replacePdfPreviewUrls,
+  revokePdfPreviewUrls,
+} from './pdf-preview.js';
 
 export function createMergerApp({
   sideRoot = null,
@@ -2078,7 +2084,7 @@ export function createMergerApp({
               rotateState.documentRotation = 0;
               rotateState.pageRotations = [];
               rotateState.previewAnimationFrom = [];
-              rotateState.previewUrls = [];
+              replacePdfPreviewUrls(rotateState, []);
               rotateState.previewLoading = false;
               rotateState.previewLoadError = "";
               renderRotateSelection();
@@ -2091,7 +2097,7 @@ export function createMergerApp({
               splitState.pageCount = 0;
               splitState.pageLoadError = "";
               splitState.loadingPages = false;
-              splitState.previewUrls = [];
+              replacePdfPreviewUrls(splitState, []);
               splitState.previewLoading = false;
               splitState.previewLoadError = "";
               splitState.activePages = new Set();
@@ -3226,68 +3232,97 @@ export function createMergerApp({
 	            await pdfDocument.cleanup();
 	          }
 
-	          async function loadRotatePagePreviews(file) {
-	            cancelActivePdfPreview(rotateState);
-	            const token = ++rotateState.previewSetupToken;
-	            rotateState.previewLoading = true;
-	            rotateState.previewLoadError = "";
-            rotateState.previewUrls = [];
-            renderRotatePagesList();
+	          async function loadPdfPagePreviews(file, state, renderPagesList) {
+	            cancelActivePdfPreview(state);
+	            const token = ++state.previewSetupToken;
+	            const isCurrent = () => token === state.previewSetupToken && state.file === file;
+	            state.previewLoading = true;
+	            state.previewLoadError = "";
+            replacePdfPreviewUrls(state, []);
+            renderPagesList();
 
+            let loadingTask = null;
+            let pdfDocument = null;
+            let generatedPreviewUrls = [];
             try {
               const pdfjsLib = await ensurePdfJsLoaded();
-              if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
+              if (!isCurrent()) return;
 
-	              const loadingTask = pdfjsLib.getDocument({
-	                data: await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS }),
+              const data = await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS });
+              if (!isCurrent()) return;
+	              loadingTask = pdfjsLib.getDocument({
+	                data,
 	                useWasm: false,
 	              });
-	              rotateState.activePreviewLoadingTask = loadingTask;
-	              const pdfDocument = await withTimeout(
+	              state.activePreviewLoadingTask = loadingTask;
+	              pdfDocument = await withTimeout(
 	                () => loadingTask.promise,
 	                FILE_TIMEOUTS.PDF_PROBE_MS,
 	                "PDF-Vorschau konnte nicht rechtzeitig geladen werden."
 	              );
-	              if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-	                await cleanupPdfPreviewDocument(pdfDocument);
-	                return;
-              }
+	              if (!isCurrent()) return;
 
-              const previews = Array.from({ length: pdfDocument.numPages }, () => "");
               for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex += 1) {
                 const page = await pdfDocument.getPage(pageIndex + 1);
-                if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-                  await cleanupPdfPreviewDocument(pdfDocument);
-                  return;
-                }
-                const viewport = page.getViewport({ scale: 0.28 });
+                if (!isCurrent()) return;
+                const { viewport, width, height } = createPdfPreviewRenderSpec(page, pdfDocument.numPages);
                 const canvas = document.createElement("canvas");
+                canvas.width = width;
+                canvas.height = height;
                 const context = canvas.getContext("2d", { alpha: false });
                 if (!context) {
                   throw new Error("Canvas-Kontext für PDF-Vorschau fehlt.");
                 }
-                canvas.width = Math.max(1, Math.round(viewport.width));
-                canvas.height = Math.max(1, Math.round(viewport.height));
-	                await renderPdfPreviewPage(page, canvas, context, viewport, rotateState);
-	                previews[pageIndex] = canvas.toDataURL("image/png");
+                let previewUrl = "";
+                try {
+                  await renderPdfPreviewPage(page, canvas, context, viewport, state);
+                  if (!isCurrent()) return;
+                  previewUrl = await createCanvasPngObjectUrl(canvas);
+                } finally {
+                  canvas.width = 1;
+                  canvas.height = 1;
+                  try {
+                    page.cleanup?.();
+                  } catch (_error) {
+                  }
+                }
+                if (!isCurrent()) {
+                  revokePdfPreviewUrls([previewUrl]);
+                  return;
+	                }
+	                generatedPreviewUrls.push(previewUrl);
 	              }
 
-              if (token !== rotateState.previewSetupToken || rotateState.file !== file) {
-                await cleanupPdfPreviewDocument(pdfDocument);
-                return;
-              }
-              rotateState.previewUrls = previews;
-              await cleanupPdfPreviewDocument(pdfDocument);
+              if (!isCurrent()) return;
+              replacePdfPreviewUrls(state, generatedPreviewUrls);
+              generatedPreviewUrls = [];
 	            } catch (error) {
 	              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
-              if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
-              rotateState.previewLoadError = error && error.message ? error.message : "Vorschau konnte nicht geladen werden.";
+              if (!isCurrent()) return;
+              state.previewLoadError = error && error.message ? error.message : "Vorschau konnte nicht geladen werden.";
 	            } finally {
-	              cancelActivePdfPreview(rotateState);
-	              if (token !== rotateState.previewSetupToken || rotateState.file !== file) return;
-	              rotateState.previewLoading = false;
-	              renderRotatePagesList();
+	              revokePdfPreviewUrls(generatedPreviewUrls);
+	              if (pdfDocument) {
+	                try {
+	                  await cleanupPdfPreviewDocument(pdfDocument);
+	                } catch (_error) {
+	                }
+	              }
+	              try {
+	                await loadingTask?.destroy?.();
+	              } catch (_error) {
+	              }
+	              if (state.activePreviewLoadingTask === loadingTask) {
+	                state.activePreviewLoadingTask = null;
+	              }
+	              if (!isCurrent()) return;
+	              state.previewLoading = false;
+	              renderPagesList();
 	            }
+	          }
+
+	          function loadRotatePagePreviews(file) {
+	            return loadPdfPagePreviews(file, rotateState, renderRotatePagesList);
 	          }
 
           async function initializeSplitPageSelections(file) {
@@ -3324,69 +3359,9 @@ export function createMergerApp({
             }
           }
 
-	          async function loadSplitPagePreviews(file) {
-	            cancelActivePdfPreview(splitState);
-	            const token = ++splitState.previewSetupToken;
-	            splitState.previewLoading = true;
-	            splitState.previewLoadError = "";
-            splitState.previewUrls = [];
-            renderSplitPagesList();
-
-            try {
-              const pdfjsLib = await ensurePdfJsLoaded();
-              if (token !== splitState.previewSetupToken || splitState.file !== file) return;
-
-	              const loadingTask = pdfjsLib.getDocument({
-	                data: await readPdfFileBytes(file, { timeoutMs: FILE_TIMEOUTS.PDF_PROBE_MS }),
-	                useWasm: false,
-	              });
-	              splitState.activePreviewLoadingTask = loadingTask;
-	              const pdfDocument = await withTimeout(
-	                () => loadingTask.promise,
-	                FILE_TIMEOUTS.PDF_PROBE_MS,
-	                "PDF-Vorschau konnte nicht rechtzeitig geladen werden."
-	              );
-              if (token !== splitState.previewSetupToken || splitState.file !== file) {
-                await cleanupPdfPreviewDocument(pdfDocument);
-                return;
-              }
-
-              const previews = Array.from({ length: pdfDocument.numPages }, () => "");
-              for (let pageIndex = 0; pageIndex < pdfDocument.numPages; pageIndex += 1) {
-                const page = await pdfDocument.getPage(pageIndex + 1);
-                if (token !== splitState.previewSetupToken || splitState.file !== file) {
-                  await cleanupPdfPreviewDocument(pdfDocument);
-                  return;
-                }
-                const viewport = page.getViewport({ scale: 0.28 });
-                const canvas = document.createElement("canvas");
-                const context = canvas.getContext("2d", { alpha: false });
-                if (!context) {
-                  throw new Error("Canvas-Kontext für PDF-Vorschau fehlt.");
-                }
-                canvas.width = Math.max(1, Math.round(viewport.width));
-                canvas.height = Math.max(1, Math.round(viewport.height));
-	                await renderPdfPreviewPage(page, canvas, context, viewport, splitState);
-	                previews[pageIndex] = canvas.toDataURL("image/png");
-	              }
-
-              if (token !== splitState.previewSetupToken || splitState.file !== file) {
-                await cleanupPdfPreviewDocument(pdfDocument);
-                return;
-              }
-              splitState.previewUrls = previews;
-              await cleanupPdfPreviewDocument(pdfDocument);
-	            } catch (error) {
-	              console.warn("PDF-Vorschau konnte nicht geladen werden.", error);
-              if (token !== splitState.previewSetupToken || splitState.file !== file) return;
-              splitState.previewLoadError = error && error.message ? error.message : "Vorschau konnte nicht geladen werden.";
-	            } finally {
-	              cancelActivePdfPreview(splitState);
-	              if (token !== splitState.previewSetupToken || splitState.file !== file) return;
-	              splitState.previewLoading = false;
-	              renderSplitPagesList();
-            }
-          }
+	          function loadSplitPagePreviews(file) {
+	            return loadPdfPagePreviews(file, splitState, renderSplitPagesList);
+	          }
 
           async function initializeRotatePageSelections(file) {
             const token = ++rotateState.pageSetupToken;
@@ -4488,6 +4463,11 @@ export function createMergerApp({
             applyShellLayout,
             dispose() {
               unbindBrowserContextMenuBlocker();
+              [rotateState, splitState].forEach((state) => {
+                state.previewSetupToken += 1;
+                cancelActivePdfPreview(state);
+                replacePdfPreviewUrls(state, []);
+              });
               if (messageListener) {
                 window.removeEventListener("message", messageListener);
                 messageListener = null;

@@ -12,7 +12,7 @@ const docxTemplateUrl = `data:text/javascript;base64,${Buffer.from(
   docxTemplateSource.replace('"./file-guards.js"', JSON.stringify(fileGuardsUrl)),
 ).toString('base64')}`;
 
-const { assertImageDimensionsAtMost, assertJsonNestingAtMost, exceedsZipCompressionRatio, FILE_LIMITS, fitCanvasSize, readImageDimensions } = await import(fileGuardsUrl);
+const { assertImageDimensionsAtMost, assertImageFilePixelsAtMost, assertJsonNestingAtMost, exceedsZipCompressionRatio, FILE_LIMITS, fitCanvasSize, readImageDimensions } = await import(fileGuardsUrl);
 const { prepareDocxTemplate } = await import(docxTemplateUrl);
 
 const ZIP_LOCAL_FILE_HEADER = 0x04034b50;
@@ -55,6 +55,22 @@ function buildSingleEntryZip({ name, compressed, declaredUncompressedSize }) {
   eocd.writeUInt32LE(centralOffset, 16);
 
   return new Uint8Array(Buffer.concat([local, compressed, central, eocd]));
+}
+
+function buildJpegWithDelayedSof(width, height) {
+  const segments = [Uint8Array.from([0xff, 0xd8])];
+  for (let index = 0; index < 9; index += 1) {
+    const segment = new Uint8Array(65_537);
+    segment.set([0xff, 0xe1, 0xff, 0xff]);
+    segments.push(segment);
+  }
+  segments.push(Uint8Array.from([
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    (height >>> 8) & 0xff, height & 0xff,
+    (width >>> 8) & 0xff, width & 0xff,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+  ]));
+  return new Blob(segments, { type: 'image/jpeg' });
 }
 
 const BOMB_UNCOMPRESSED_BYTES = 64 * 1024 * 1024;
@@ -173,6 +189,86 @@ test('Bildheader und Arbeits-Canvas bleiben innerhalb des Pixelbudgets', () => {
   const canvas = fitCanvasSize(12_000, 8_000);
   assert.ok(canvas.width * canvas.height <= FILE_LIMITS.CANVAS_MAX_PIXELS);
   assert.ok(Math.max(canvas.width, canvas.height) <= FILE_LIMITS.CANVAS_MAX_EDGE);
+});
+
+test('PNG-, GIF-, BMP- und WebP-Abmessungen werden anhand ihrer Signatur gelesen', () => {
+  const png = new Uint8Array(24);
+  png.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  new DataView(png.buffer).setUint32(16, 1200);
+  new DataView(png.buffer).setUint32(20, 800);
+
+  const gif = new Uint8Array(10);
+  gif.set([0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+  new DataView(gif.buffer).setUint16(6, 1200, true);
+  new DataView(gif.buffer).setUint16(8, 800, true);
+
+  const bmp = new Uint8Array(26);
+  bmp.set([0x42, 0x4d]);
+  new DataView(bmp.buffer).setInt32(18, 1200, true);
+  new DataView(bmp.buffer).setInt32(22, 800, true);
+
+  const webp = new Uint8Array(30);
+  webp.set([0x52, 0x49, 0x46, 0x46]);
+  webp.set([0x57, 0x45, 0x42, 0x50], 8);
+  webp.set([0x56, 0x50, 0x38, 0x58], 12);
+  webp.set([0xaf, 0x04, 0x00, 0x1f, 0x03, 0x00], 24);
+
+  for (const [bytes, type] of [
+    [png, 'image/png'],
+    [gif, 'image/gif'],
+    [bmp, 'image/bmp'],
+    [webp, 'image/webp'],
+  ]) {
+    assert.deepEqual(readImageDimensions(bytes, type), { width: 1200, height: 800 });
+  }
+});
+
+test('ein JPEG mit spätem SOF wird vollständig geprüft und bei zu vielen Bildpunkten abgelehnt', async () => {
+  const jpeg = buildJpegWithDelayedSof(9000, 6000);
+  const prefix = new Uint8Array(await jpeg.slice(0, 512 * 1024).arrayBuffer());
+  assert.equal(readImageDimensions(prefix, jpeg.type), null);
+  await assert.rejects(
+    () => assertImageFilePixelsAtMost(jpeg, { label: 'Das Bild' }),
+    /zu viele Bildpunkte/
+  );
+});
+
+test('ein JPEG mit spätem SOF und zulässigen Abmessungen bleibt erlaubt', async () => {
+  const jpeg = buildJpegWithDelayedSof(4000, 3000);
+  assert.deepEqual(
+    await assertImageFilePixelsAtMost(jpeg, { label: 'Das Bild' }),
+    { width: 4000, height: 3000 }
+  );
+});
+
+test('die Bildprüfung lehnt fehlende, abgeschnittene und ungültige Abmessungen ab', async () => {
+  const missing = new Blob([Uint8Array.from([0xff, 0xd8, 0xff, 0xd9])], { type: 'image/jpeg' });
+  const truncated = new Blob([Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0x00])], { type: 'image/jpeg' });
+  const invalid = new Blob([Uint8Array.from([0xff, 0xd8, 0xff, 0xe1, 0x00, 0x01])], { type: 'image/jpeg' });
+  const earlyScan = new Blob([Uint8Array.from([0xff, 0xd8, 0xff, 0xda, 0x00, 0x08])], { type: 'image/jpeg' });
+  await assert.rejects(() => assertImageFilePixelsAtMost(missing), /konnte nicht gelesen werden/);
+  await assert.rejects(() => assertImageFilePixelsAtMost(truncated), /konnte nicht gelesen werden/);
+  await assert.rejects(() => assertImageFilePixelsAtMost(invalid), /konnte nicht gelesen werden/);
+  await assert.rejects(() => assertImageFilePixelsAtMost(earlyScan), /konnte nicht gelesen werden/);
+});
+
+test('der JPEG-Parser verarbeitet Füllbytes und längenlose Marker vor dem SOF', () => {
+  const jpeg = Uint8Array.from([
+    0xff, 0xd8, 0xff, 0xff, 0x01,
+    0xff, 0xc0, 0x00, 0x11, 0x08,
+    0x0b, 0xb8, 0x0f, 0xa0,
+    0x03, 0x01, 0x11, 0x00, 0x02, 0x11, 0x00, 0x03, 0x11, 0x00,
+  ]);
+  assert.deepEqual(readImageDimensions(jpeg, 'image/jpeg'), { width: 4000, height: 3000 });
+});
+
+test('die Dateisignatur hat bei der Dimensionsprüfung Vorrang vor dem MIME-Typ', async () => {
+  const jpeg = buildJpegWithDelayedSof(9000, 6000);
+  const mislabeled = new Blob([jpeg], { type: 'image/png' });
+  await assert.rejects(
+    () => assertImageFilePixelsAtMost(mislabeled, { mimeType: mislabeled.type }),
+    /zu viele Bildpunkte/
+  );
 });
 
 test('der QR-Bildimport begrenzt Bytes und Bildpunkte vor dem Decode', async () => {

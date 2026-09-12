@@ -14,6 +14,22 @@ const tick = () => new Promise((resolve) => setImmediate(resolve));
 const pct = (value) => Math.round(parseFloat(value) * 1000) / 1000;
 const entryCount = (state) => Math.max(0, state.refs.rows.children.length - 1);
 
+function createPngBytes() {
+  const bytes = new Uint8Array(24);
+  bytes.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+  new DataView(bytes.buffer).setUint32(16, 2000);
+  new DataView(bytes.buffer).setUint32(20, 1000);
+  return bytes;
+}
+
+function createPngFile() {
+  return new File([createPngBytes()], 'liste.png', { type: 'image/png' });
+}
+
+function createPngBlob() {
+  return new Blob([createPngBytes()], { type: 'image/png' });
+}
+
 class Element {
   constructor(tag = 'div') { this.tag = tag; this.children = []; this.listeners = new Map(); this.style = {}; this.dataset = {}; this.value = ''; this.hidden = false; this.attributes = {}; this.draws = []; }
   append(...children) { this.children.push(...children); }
@@ -57,7 +73,7 @@ function setup(recognize, options = {}) {
 }
 
 async function selectImage(refs) {
-  refs.file.files = [new File(['picture'], 'liste.png', { type: 'image/png' })];
+  refs.file.files = [createPngFile()];
   refs.file.fire('change');
   await tick();
 }
@@ -241,7 +257,7 @@ test('the stage is the dropzone: it opens the file picker while empty and accept
   state.refs.stage.fire('keydown', { key: 'Enter' });
   assert.equal(state.refs.file.clicked, 2, 'click and Enter on the empty stage open the file picker');
 
-  const transfer = { types: ['Files'], files: [new File(['picture'], 'liste.png', { type: 'image/png' })] };
+  const transfer = { types: ['Files'], files: [createPngFile()] };
   state.refs.stage.fire('dragenter', { dataTransfer: transfer });
   assert.equal(state.refs.stage.dataset.dragOver, '1');
   state.refs.stage.fire('dragleave', { dataTransfer: transfer });
@@ -266,7 +282,7 @@ test('clipboard image button reads immediately and loads the image without impor
   let reads = 0;
   t.mock.property(navigator, 'clipboard', { read: async () => {
     reads += 1;
-    return [{ types: ['text/plain', 'image/png'], getType: async () => new Blob(['picture'], { type: 'image/png' }) }];
+    return [{ types: ['text/plain', 'image/png'], getType: async () => createPngBlob() }];
   } });
   const state = setup(() => assert.fail('OCR must remain explicit'));
   state.api.open(() => assert.fail('Import must remain explicit'));

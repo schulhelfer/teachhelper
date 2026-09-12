@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '103';
+const TEACHHELPER_APP_VERSION_STAMP = '105';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -152,6 +152,7 @@ const DEFERRED_ASSETS = [
   './src/modules/merger/app.html',
   './src/modules/merger/app.css',
   './src/modules/merger/app.js',
+  './src/modules/merger/pdf-preview.js',
   './src/modules/duplicate-check/app.html',
   './src/modules/duplicate-check/app.css',
   './src/modules/duplicate-check/app.js',
