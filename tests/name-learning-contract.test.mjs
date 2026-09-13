@@ -139,6 +139,7 @@ test('name learning offers a hint with four name tiles on the card front', () =>
   assert.match(nameLearningApp, /refs\.hint\.hidden = true;[\s\S]*?if \(hintOutcome\) return;[\s\S]*?refs\.known\.disabled = false;/);
   assert.match(nameLearningCss, /\.hint-action \{ position: absolute;[\s\S]*?backface-visibility: hidden;/);
   assert.match(nameLearningCss, /\.hint-choices \{ position: absolute; inset: 0;[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(nameLearningCss, /\.hint-choices\[hidden\] \{ display: none; \}/);
   assert.match(nameLearningCss, /\.hint-choice \{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(nameLearningCss, /\.hint-choice\.is-correct/);
   assert.match(nameLearningCss, /\.hint-choice\.is-wrong/);
