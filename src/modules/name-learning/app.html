@@ -55,8 +55,6 @@
                 <button id="flip-card" class="flashcard-face flashcard-front" type="button" aria-label="Name aufdecken">
                   <img id="portrait" class="portrait" alt="Foto der abgefragten Person">
                 </button>
-                <button id="hint" class="hint-action" type="button" hidden>Tipp</button>
-                <div id="hint-choices" class="hint-choices" role="group" aria-label="Namen zur Auswahl" hidden></div>
                 <div id="flashcard-back" class="flashcard-face flashcard-back" aria-hidden="true">
                   <img id="portrait-reverse" class="portrait portrait-reverse" alt="" aria-hidden="true">
                   <div class="flashcard-back-content">
@@ -74,6 +72,10 @@
               </div>
             </div>
           </section>
+          <div class="hint-slot">
+            <button id="hint" class="hint-action" type="button" hidden>Tipp</button>
+            <div id="hint-choices" class="hint-choices" role="group" aria-label="Namen zur Auswahl" hidden></div>
+          </div>
           <section id="empty" class="empty-state-box" hidden>
             <h3 id="empty-title">Keine Karten fällig</h3>
             <p id="empty-copy"></p>

@@ -58,7 +58,7 @@ export function createNameLearningTutorialDefinition(context = {}) {
       ),
       nameLearningStep(
         'Tipp holen',
-        'Fällt dir der Name nicht ein, zeigt „Tipp“ vier Namen zur Auswahl – drei davon aus demselben Kurs. Triffst du den richtigen, sinkt die Stufe nur um eine statt ganz auf Anfang.',
+        'Fällt dir der Name nicht ein, zeigt „Tipp“ unter der Karte vier Namen zur Auswahl – drei davon aus demselben Kurs. Triffst du den richtigen, sinkt die Stufe nur um eine statt ganz auf Anfang.',
         ['#hint', '#hint-choices'],
         'hint',
         'left'

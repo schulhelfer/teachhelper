@@ -121,9 +121,10 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningCss, /\.main \{ position: relative; display: flex; align-items: center;/);
 });
 
-test('name learning offers a hint with four name tiles on the card front', () => {
-  assert.match(nameLearningHtml, /id="flip-card"[\s\S]*?id="hint" class="hint-action" type="button" hidden>Tipp<\/button>[\s\S]*?id="hint-choices" class="hint-choices" role="group" aria-label="Namen zur Auswahl" hidden><\/div>[\s\S]*?id="flashcard-back"/);
-  assert.doesNotMatch(nameLearningHtml, /id="flashcard-back"[\s\S]*?id="hint"/);
+test('name learning offers a hint with four name tiles below the card panel', () => {
+  assert.match(nameLearningHtml, /<\/section>\s*<div class="hint-slot">\s*<button id="hint" class="hint-action" type="button" hidden>Tipp<\/button>\s*<div id="hint-choices" class="hint-choices" role="group" aria-label="Namen zur Auswahl" hidden><\/div>\s*<\/div>/);
+  const practiceCard = nameLearningHtml.slice(nameLearningHtml.indexOf('id="practice"'), nameLearningHtml.indexOf('<div class="hint-slot">'));
+  assert.doesNotMatch(practiceCard, /id="hint"|id="hint-choices"/);
   assert.match(nameLearningApp, /import \{ applyHintedReview, applyReview, buildDueQueue, buildHintChoices, buildRandomQueue, nextReviewMessage \} from '\.\/session\.js';/);
   assert.match(nameLearningApp, /hint: document\.getElementById\('hint'\), hintChoices: document\.getElementById\('hint-choices'\)/);
   assert.match(nameLearningApp, /let hintOutcome = null;/);
@@ -137,14 +138,14 @@ test('name learning offers a hint with four name tiles on the card front', () =>
   assert.match(nameLearningApp, /refs\.hint\.addEventListener\('click', \(event\) => \{ event\.stopPropagation\(\); showHintChoices\(\); \}\);/);
   assert.match(nameLearningApp, /refs\.hintChoices\.addEventListener\('click', \(event\) => \{[\s\S]*?closest\('\[data-hint-name\]'\)[\s\S]*?answerHint\(choice\.dataset\.hintName\);/);
   assert.match(nameLearningApp, /refs\.hint\.hidden = true;[\s\S]*?if \(hintOutcome\) return;[\s\S]*?refs\.known\.disabled = false;/);
-  assert.match(nameLearningCss, /\.hint-action \{ position: absolute;[\s\S]*?backface-visibility: hidden;/);
-  assert.match(nameLearningCss, /\.hint-choices \{ position: absolute; inset: 0;[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(nameLearningCss, /\.hint-slot \{ position: relative;[\s\S]*?min-height: 142px; margin: 16px auto 0; \}/);
+  assert.match(nameLearningCss, /\.hint-action \{ position: absolute; top: 0;[\s\S]*?min-width: 132px;/);
+  assert.match(nameLearningCss, /\.hint-choices \{ position: absolute; inset: 0; display: grid; grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
   assert.match(nameLearningCss, /\.hint-choices\[hidden\] \{ display: none; \}/);
   assert.match(nameLearningCss, /\.hint-choice \{[\s\S]*?overflow-wrap: anywhere/);
   assert.match(nameLearningCss, /\.hint-choice\.is-correct/);
   assert.match(nameLearningCss, /\.hint-choice\.is-wrong/);
-  assert.match(nameLearningCss, /\.flashcard\.is-revealed \.hint-action, \.flashcard\.is-revealed \.hint-choices \{ visibility: hidden; pointer-events: none; \}/);
-  assert.match(nameLearningCss, /@media \(max-width: 460px\)[\s\S]*?\.hint-choices \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+  assert.match(nameLearningCss, /@media \(max-width: 460px\)[\s\S]*?\.hint-slot \{ min-height: 236px; \}[\s\S]*?\.hint-choices \{ grid-template-columns: minmax\(0, 1fr\); grid-template-rows: repeat\(4, minmax\(0, 1fr\)\); \}/);
 });
 
 test('name learning clears sensitive cards while the grade vault is locked', () => {
