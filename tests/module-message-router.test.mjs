@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const [routerFileSource, bridgeSource, themeSource, tutorialStateSource, tabsSource] = await Promise.all([
@@ -235,7 +237,7 @@ test('keeps the router boundary independent and offline', async () => {
   ]);
   assert.match(routerFileSource, /import \{ isTrustedModuleMessage \} from '\.\.\/shared\/module-frame-bridge\.js';/);
   assert.doesNotMatch(routerFileSource, /src\/modules|\.\.\/modules\//);
-  assert.match(mainSource, /createModuleMessageRouter\(\{/);
+  assert.match(coordinatorSource, /createModuleMessageRouter\(\{/);
   assert.doesNotMatch(mainSource, /getModuleFrameForMessage|data\.type === SIDEBAR_WIDTH_REQUEST_EVENT|data\.type === TOAST_REQUEST_EVENT/);
   assert.match(mainSource, /createCourseContext\(\{/);
   assert.match(courseContextSource, /\[PLANNING_COURSE_CONTEXT_EVENT, rememberSharedCourseContext\]/);

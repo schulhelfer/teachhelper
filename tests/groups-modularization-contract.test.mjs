@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const fileActionsSource = await readFile(new URL('../src/app/classroom-file-actions.js', import.meta.url), 'utf8');
+
 const [main, groups, index, serviceWorker] = await Promise.all([
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/groups/app.js', import.meta.url), 'utf8'),
@@ -15,9 +17,9 @@ test('main mounts Groups against shared state and shell orchestration through ex
   assert.match(main, /getStudents: \(\) => classroomState\.getState\(\)\.students/);
   assert.match(main, /getPerformanceFlairCount: \(\) => classroomState\.getState\(\)\.performanceFlairCount/);
   assert.match(main, /setPerformanceFlairCount: \(value\) => \{\s+classroomState\.updateState\(\{ performanceFlairCount: value \}\);/);
-  assert.match(main, /groupsController\?\.getPlanState\(\)/);
-  assert.match(main, /groupsController\?\.restorePlanState\(groupsPlanState, \{ restoreSeatAssignments \}\)/);
-  assert.match(main, /groupsController\?\.handleRosterReplacement\(\{ rebuildCapacity: true \}\)/);
+  assert.match(fileActionsSource, /getGroupsController\(\)\?\.getPlanState\(\)/);
+  assert.match(fileActionsSource, /getGroupsController\(\)\?\.restorePlanState\(groupsPlanState, \{ restoreSeatAssignments \}\)/);
+  assert.match(fileActionsSource, /getGroupsController\(\)\?\.handleRosterReplacement\(\{ rebuildCapacity: true \}\)/);
 });
 
 test('the Groups module owns group state, rendering, interactions, suggestions, and layout', () => {

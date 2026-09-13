@@ -57,6 +57,13 @@ export function createNameLearningTutorialDefinition(context = {}) {
         'left'
       ),
       nameLearningStep(
+        'Tipp holen',
+        'Fällt dir der Name nicht ein, zeigt „Tipp“ vier Namen zur Auswahl – drei davon aus demselben Kurs. Triffst du den richtigen, sinkt die Stufe nur um eine statt ganz auf Anfang.',
+        ['#hint', '#hint-choices'],
+        'hint',
+        'left'
+      ),
+      nameLearningStep(
         'Namen aufdecken',
         'Ein Klick irgendwo auf die Karte dreht sie um – nicht nur das Foto selbst ist anklickbar.',
         '#flashcard',
@@ -72,7 +79,7 @@ export function createNameLearningTutorialDefinition(context = {}) {
       ),
       nameLearningStep(
         'Gewusst oder nicht',
-        'Deine ehrliche Einschätzung steuert den Wiederholungsabstand: „Gewusst“ verlängert ihn, „Nicht gewusst“ setzt die Karte auf sofort zurück.',
+        'Deine ehrliche Einschätzung steuert den Wiederholungsabstand: „Gewusst“ verlängert ihn, „Nicht gewusst“ setzt die Karte auf sofort zurück. Nach einem Tipp ist die Bewertung schon gesetzt.',
         ['#known', '#unknown'],
         'revealed',
         'left'

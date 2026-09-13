@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [tabs, main, router, bridge, gradesBridge, gradesHtml, gradesApp, nameHtml, nameApp, sharedDialog] = await Promise.all([
-  read('../src/shell/tabs.js'), read('../src/app/app-runtime.js'), read('../src/app/module-message-router.js'), read('../src/app/planning-seatplan-bridge.js'), read('../src/modules/grades/bridge.js'),
+  read('../src/shell/tabs.js'), read('../src/app/module-shell-coordinator.js'), read('../src/app/module-message-router.js'), read('../src/app/planning-seatplan-bridge.js'), read('../src/modules/grades/bridge.js'),
   read('../src/modules/grades/app.html'), read('../src/modules/grades/app.js'), read('../src/modules/name-learning/app.html'), read('../src/modules/name-learning/app.js'),
   read('../src/shared/learner-search-dialog.js'),
 ]);

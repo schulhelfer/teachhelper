@@ -1,4 +1,4 @@
-import { applyReview, buildDueQueue, buildRandomQueue, nextReviewMessage } from './session.js';
+import { applyHintedReview, applyReview, buildDueQueue, buildHintChoices, buildRandomQueue, nextReviewMessage } from './session.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
 import { MODULE_CONTEXT_MENU_DISMISS_EVENT, NAME_LEARNING_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 import { createLearnerSearchDialog, LEARNER_SEARCH_MESSAGES } from '../../shared/learner-search-dialog.js';
@@ -28,6 +28,7 @@ const refs = {
   practice: document.getElementById('practice'), portrait: document.getElementById('portrait'), portraitReverse: document.getElementById('portrait-reverse'),
   flashcard: document.getElementById('flashcard'), flashcardInner: document.querySelector('.flashcard-inner'), flipCard: document.getElementById('flip-card'), flashcardBack: document.getElementById('flashcard-back'),
   answer: document.getElementById('answer'), course: document.getElementById('course'), known: document.getElementById('known'), unknown: document.getElementById('unknown'),
+  hint: document.getElementById('hint'), hintChoices: document.getElementById('hint-choices'),
   empty: document.getElementById('empty'), emptyTitle: document.getElementById('empty-title'), emptyCopy: document.getElementById('empty-copy'), emptyRandom: document.getElementById('empty-random'),
   reviewFeedback: document.getElementById('review-feedback'),
   previousReview: document.getElementById('previous-review'),
@@ -46,6 +47,7 @@ let nextCardTransitionTimer = 0;
 let cancelNextCardTransition = null;
 let reviewFeedbackActive = false;
 let previousReview = null;
+let hintOutcome = null;
 let tutorialDemoActive = false;
 let tutorialPreviousState = null;
 let gradeVaultLocked = false;
@@ -126,6 +128,52 @@ function advanceAfterReviewFeedback() {
 function hideAll() { refs.practice.hidden = true; refs.empty.hidden = true; }
 function courseName(card) { return String(card.courseName || 'Kurs'); }
 function cardsForSelection() { return cards.filter((card) => selectedCourses.has(Number(card.courseId))); }
+const HINT_CHOICE_COUNT = 4;
+function hintPool(card) {
+  const sameCourse = cards.filter((entry) => Number(entry.courseId) === Number(card.courseId));
+  if (sameCourse.length >= HINT_CHOICE_COUNT) return sameCourse;
+  const selection = cardsForSelection();
+  return selection.length >= HINT_CHOICE_COUNT ? selection : cards;
+}
+function resetHint() {
+  hintOutcome = null;
+  refs.hintChoices.hidden = true;
+  refs.hintChoices.replaceChildren();
+  refs.hint.hidden = true;
+}
+function showHintChoices() {
+  if (gradeVaultLocked || mode !== 'due' || hintOutcome) return;
+  const card = queue[0];
+  if (!card || refs.flashcard.classList.contains('is-revealed')) return;
+  const choices = buildHintChoices(card, hintPool(card), HINT_CHOICE_COUNT);
+  if (choices.length < HINT_CHOICE_COUNT) return;
+  refs.hintChoices.replaceChildren(...choices.map((name) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'hint-choice';
+    button.dataset.hintName = name;
+    button.textContent = name;
+    return button;
+  }));
+  refs.hint.hidden = true;
+  refs.hintChoices.hidden = false;
+  requestAnimationFrame(() => refs.hintChoices.querySelector('.hint-choice')?.focus());
+}
+function answerHint(name) {
+  if (gradeVaultLocked || hintOutcome) return;
+  const card = queue[0];
+  if (!card) return;
+  const correct = name === String(card.name || '').trim();
+  for (const button of refs.hintChoices.querySelectorAll('.hint-choice')) {
+    const isAnswer = button.dataset.hintName === String(card.name || '').trim();
+    if (isAnswer) button.classList.add('is-correct');
+    else if (button.dataset.hintName === name) button.classList.add('is-wrong');
+    button.disabled = true;
+  }
+  hintOutcome = { correct };
+  reveal();
+  review(correct);
+}
 function renderSidebarStatus() {
   if (gradeVaultLocked) {
     refs.status.hidden = true;
@@ -225,6 +273,7 @@ function openLearnerSearchDialog() {
 function clearSensitiveLearningState() {
   revokePortrait();
   resetReviewFeedback();
+  resetHint();
   clearNextCardTransitionTimer();
   hideCourseContextMenu();
   cards = [];
@@ -310,7 +359,7 @@ function renderModeControls() {
 
 function showEmpty() {
   if (gradeVaultLocked) return;
-  revokePortrait(); hideAll(); refs.empty.hidden = false;
+  revokePortrait(); resetHint(); hideAll(); refs.empty.hidden = false;
   refs.emptyTitle.textContent = mode === 'due' ? 'Keine Karten fällig' : 'Keine Karten verfügbar';
   refs.emptyCopy.textContent = mode === 'due' ? 'Du kannst stattdessen zufällig mit den ausgewählten Kursen üben.' : 'Für die ausgewählten Kurse gibt es keine verwendbaren Fotos.';
   refs.emptyRandom.hidden = mode !== 'due' || cardsForSelection().length === 0;
@@ -343,6 +392,8 @@ function renderCard() {
   refs.course.style.setProperty('--course-color', String(card.courseColor || '#334155'));
   refs.known.disabled = true;
   refs.unknown.disabled = true;
+  resetHint();
+  refs.hint.hidden = mode !== 'due' || buildHintChoices(card, hintPool(card), HINT_CHOICE_COUNT).length < HINT_CHOICE_COUNT;
   try {
     objectUrl = URL.createObjectURL(new Blob([Uint8Array.from(atob(card.portrait.data), (char) => char.charCodeAt(0))], { type: card.portrait.mime }));
     refs.portrait.src = objectUrl;
@@ -382,7 +433,9 @@ function reveal() {
   refs.practice.classList.remove('is-ready-to-reveal');
   refs.flashcard.classList.add('is-revealed');
   refs.flipCard.disabled = true;
+  refs.hint.hidden = true;
   refs.flashcardBack.setAttribute('aria-hidden', 'false');
+  if (hintOutcome) return;
   refs.known.disabled = false;
   refs.unknown.disabled = false;
   requestAnimationFrame(() => refs.known.focus());
@@ -394,7 +447,9 @@ function review(known) {
   if (mode === 'random') { clearPreviousReview(); renderNextCardAfterFlip(); return; }
   const now = Date.now();
   const previousProgress = card.progress ? { ...card.progress } : null;
-  const progress = applyReview(card.progress, known, now);
+  const progress = hintOutcome
+    ? applyHintedReview(card.progress, hintOutcome.correct, now)
+    : applyReview(card.progress, known, now);
   card.progress = progress;
   previousReview = { card, progress: previousProgress };
   refs.known.disabled = true;
@@ -434,6 +489,7 @@ function buildTutorialDemoCards(now = Date.now()) {
     ['Mara Beispiel', 'MB', '#2563eb', 900001],
     ['Jonas Muster', 'JM', '#0f766e', 900002],
     ['Lea Probe', 'LP', '#b45309', 900003],
+    ['Nils Vorlage', 'NV', '#7c3aed', 900004],
   ].map(([name, initials, color, studentId]) => ({
     courseId: 900100,
     courseName: 'Tutorial-Beispielkurs',
@@ -511,6 +567,10 @@ function showTutorialSurface(surface = 'setup') {
     return;
   }
   renderCard();
+  if (surface === 'hint') {
+    showHintChoices();
+    return;
+  }
   if (surface === 'revealed' || surface === 'feedback') {
     reveal();
   }
@@ -569,8 +629,14 @@ refs.startDue.addEventListener('click', () => start('due')); refs.startRandom.ad
 refs.main.addEventListener('click', (event) => {
   if (!reviewFeedbackActive) return;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest('#known, #unknown, #previous-review')) return;
+  if (target?.closest('#known, #unknown, #previous-review, #hint, #hint-choices')) return;
   advanceAfterReviewFeedback();
+});
+refs.hint.addEventListener('click', (event) => { event.stopPropagation(); showHintChoices(); });
+refs.hintChoices.addEventListener('click', (event) => {
+  event.stopPropagation();
+  const choice = event.target instanceof Element ? event.target.closest('[data-hint-name]') : null;
+  if (choice) answerHint(choice.dataset.hintName);
 });
 refs.known.addEventListener('click', (event) => { event.stopPropagation(); review(true); });
 refs.unknown.addEventListener('click', (event) => { event.stopPropagation(); review(false); });

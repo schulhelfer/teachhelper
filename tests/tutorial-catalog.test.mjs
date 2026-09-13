@@ -42,7 +42,7 @@ const tabEntries = [
   [tabs.TAB_DUPLICATE_CHECK, 'DuplikatCheck', 15],
   [tabs.TAB_WORK_PHASE, 'Arbeitsphase', 21],
   [tabs.TAB_QR, 'QR', 17],
-  [tabs.TAB_NAME_LEARNING, 'Namen lernen', 12],
+  [tabs.TAB_NAME_LEARNING, 'Namen lernen', 13],
 ];
 
 function createHarness({ externalFileSync = false, seatplanDataset = {}, seatplanDemo = false } = {}) {

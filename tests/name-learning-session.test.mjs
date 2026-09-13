@@ -23,6 +23,37 @@ test('stage intervals and reviews use the fixed schedule', () => {
   });
 });
 
+test('a hinted review lowers the stage by one instead of resetting it', () => {
+  assert.deepEqual(session.applyHintedReview({ stage: 3, dueAt: NOW }, true, NOW), {
+    stage: 2, dueAt: NOW + 2 * session.DAY_MS,
+  });
+  assert.deepEqual(session.applyHintedReview({ stage: 0, dueAt: NOW }, true, NOW), {
+    stage: 0, dueAt: NOW,
+  });
+  assert.deepEqual(session.applyHintedReview({ stage: 6, dueAt: NOW }, false, NOW), {
+    stage: 0, dueAt: NOW,
+  });
+});
+
+test('hint choices mix the answer with distinct distractors from the pool', () => {
+  const named = (studentId, name) => ({ studentId, courseId: 10, name, portrait });
+  const answer = named(1, 'Ada Lovelace');
+  const pool = [answer, named(2, 'Alan Turing'), named(3, 'Grace Hopper'), named(4, 'Edsger Dijkstra'), named(5, 'Ada Lovelace')];
+  const choices = session.buildHintChoices(answer, pool, 4, () => 0.5);
+  assert.equal(choices.length, 4);
+  assert.equal(new Set(choices).size, 4);
+  assert.equal(choices.includes('Ada Lovelace'), true);
+  assert.equal(choices.every((name) => pool.some((item) => item.name === name)), true);
+});
+
+test('hint choices shrink when the pool holds too few other names', () => {
+  const named = (studentId, name) => ({ studentId, courseId: 10, name, portrait });
+  const answer = named(1, 'Ada Lovelace');
+  assert.deepEqual(session.buildHintChoices(answer, [answer], 4, () => 0.5), ['Ada Lovelace']);
+  assert.equal(session.buildHintChoices(answer, [answer, named(2, 'Alan Turing')], 4, () => 0.5).length, 2);
+  assert.deepEqual(session.buildHintChoices({ studentId: 1, name: '' }, [], 4, () => 0.5), []);
+});
+
 test('cards are due at or before now', () => {
   assert.equal(session.isDue({ stage: 1, dueAt: NOW - 1 }, NOW), true);
   assert.equal(session.isDue({ stage: 1, dueAt: NOW }, NOW), true);

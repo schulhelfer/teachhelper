@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
 const helpCenterSource = await readFile(new URL('../src/app/help-center.js', import.meta.url), 'utf8');
 const {
   HELP_ARTICLES,
@@ -16,6 +18,8 @@ const helpVisualSource = await readFile(new URL('../src/app/help-visuals.js', im
 const helpPreviewSource = await readFile(new URL('../src/app/help-preview.js', import.meta.url), 'utf8');
 const previewBootstrapSource = await readFile(new URL('../src/app/bootstrap.js', import.meta.url), 'utf8');
 const previewMainSource = await readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8');
+const tutorialControllerSource = await readFile(new URL('../src/app/app-tutorial-controller.js', import.meta.url), 'utf8');
+const updateControllerSource = await readFile(new URL('../src/app/app-update-controller.js', import.meta.url), 'utf8');
 const firstRunTutorialSource = await readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8');
 const moduleFrameBridgeSource = await readFile(new URL('../src/shared/module-frame-bridge.js', import.meta.url), 'utf8');
 const shellCssSource = await readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8');
@@ -111,10 +115,10 @@ test('jede PWA-Vorschau ist artikelgenau und der URL-Modus akzeptiert nur konfig
 test('der Vorschaumodus bleibt flüchtig, nicht bedienbar und ohne PWA-Nebeneffekte', () => {
   assert.match(previewBootstrapSource, /ephemeral: moduleWindowRequest\.isModuleWindow \|\| Boolean\(helpPreviewRequest\)/);
   assert.match(previewMainSource, /if \(!moduleWindowRequest\.isModuleWindow && !helpPreviewRequest\)/);
-  assert.match(previewMainSource, /const serviceWorkerUpdates = helpPreviewRequest \? null/);
-  assert.match(previewMainSource, /firstRunTutorial\.startPreview\(\)/);
-  assert.match(previewMainSource, /firstRunTutorial\.showPreviewStep\(stepTitle\)/);
-  assert.match(previewMainSource, /firstRunTutorial\.getPreviewTargetRect\(stepTitle\)/);
+  assert.match(updateControllerSource, /const serviceWorkerUpdates = helpPreviewRequest \? null/);
+  assert.match(tutorialControllerSource, /firstRunTutorial\.startPreview\(\)/);
+  assert.match(tutorialControllerSource, /firstRunTutorial\.showPreviewStep\(stepTitle\)/);
+  assert.match(tutorialControllerSource, /firstRunTutorial\.getPreviewTargetRect\(stepTitle\)/);
   assert.match(firstRunTutorialSource, /function getPreviewTargetRect\(stepTitle\)/);
   assert.match(shellCssSource, /#app\[data-help-preview='true'\] \{\s+pointer-events: none;/);
   assert.match(shellCssSource, /\.help-preview-frame \{[\s\S]*?pointer-events: none;/);
@@ -280,7 +284,7 @@ test('alle Rettungsringe leiten zur gemeinsamen Hilfeauswahl weiter', async () =
   assert.match(mainSource, /createHelpCenter/);
   assert.match(routerSource, /HELP_ENTRY_REQUEST_EVENT = 'classroom:help-entry-request'/);
   assert.match(routerSource, /invoke\('onHelpEntryRequest'/);
-  assert.match(mainSource, /onHelpEntryRequest: \(\) => \{\s*openHelpEntry\(\);/);
+  assert.match(coordinatorSource, /onHelpEntryRequest: \(\) => \{\s*openHelpEntry\(\);/);
   assert.match(mainSource, /onEntryRequest: openHelpEntry/);
   assert.match(firstRunSource, /onEntryRequest = null/);
   assert.match(firstRunSource, /onEntryRequest\(\)/);

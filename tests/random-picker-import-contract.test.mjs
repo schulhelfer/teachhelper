@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [html, main] = await Promise.all([
+const [html, main, files] = await Promise.all([
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/classroom-file-actions.js', import.meta.url), 'utf8'),
 ]);
 
 test('the picker reloads saved JSON state instead of replacing the shared CSV roster', () => {
@@ -14,7 +15,7 @@ test('the picker reloads saved JSON state instead of replacing the shared CSV ro
   );
   assert.match(
     main,
-    /randomPickerController = mountRandomPicker\(\{[\s\S]*?onImport: \(\) => \{\s*void handlePlanImportAction\(\);\s*\},[\s\S]*?onExport:/,
+    /randomPickerController = mountRandomPicker\(\{[\s\S]*?onImport: \(\) => \{\s*void fileActions\.handlePlanImportAction\(\);\s*\},[\s\S]*?onExport:/,
   );
   assert.doesNotMatch(
     main,
@@ -23,7 +24,7 @@ test('the picker reloads saved JSON state instead of replacing the shared CSV ro
 });
 
 test('the shared CSV roster remains exclusively available through the Groups dropzone', () => {
-  assert.match(main, /bindRuntime\(els\.csvDropZone, 'drop', async \(e\) => \{/);
-  assert.match(main, /const csvFile = droppedFiles\.find\(isCsvFile\);/);
-  assert.match(main, /await importCsvFromFile\(csvFile\);/);
+  assert.match(files, /bindRuntime\(els\.csvDropZone, 'drop', async \(e\) => \{/);
+  assert.match(files, /const csvFile = droppedFiles\.find\(isCsvFile\);/);
+  assert.match(files, /await importCsvFromFile\(csvFile\);/);
 });

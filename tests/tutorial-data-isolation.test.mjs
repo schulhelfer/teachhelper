@@ -18,7 +18,7 @@ const [
   groupsSource,
 ] = await Promise.all([
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-tutorial-controller.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/classroom-state.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/planning/bridge.js', import.meta.url), 'utf8'),
@@ -131,10 +131,10 @@ test('work phase tutorial restores the complete previous timer snapshot', () => 
 
 test('groups and picker restore both the visible roster and the shared roster store', () => {
   assert.match(classroomStateSource, /const previousRosterState = rosterStore\.getState\(\)/);
-  assert.match(mainSource, /const previousGroupsState = groupsController\?\.getStateSnapshot\(\)/);
+  assert.match(mainSource, /const previousGroupsState = getGroupsController\(\)\?\.getStateSnapshot\(\)/);
   assert.match(
     mainSource,
-    /restoreClassroomState\(\);\s+groupsController\?\.replaceState\(previousGroupsState\);/
+    /restoreClassroomState\(\);\s+getGroupsController\(\)\?\.replaceState\(previousGroupsState\);/
   );
   assert.match(classroomStateSource, /if \(demoActive\) return rosterStore\.getState\(\)/);
   assert.match(classroomStateSource, /rosterStore\.replace\(previousRosterState\);\s+state = realState;\s+demoActive = false;/);

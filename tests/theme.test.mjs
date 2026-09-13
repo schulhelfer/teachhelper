@@ -67,7 +67,7 @@ test('stellt Theme-Control, Light-Tokens, frühen Start und Frame-Brücke bereit
     readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
     readFile(new URL('../src/shared/theme.css', import.meta.url), 'utf8'),
     readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
-    readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
     readFile(new URL('../manifest.webmanifest', import.meta.url), 'utf8'),
   ]);

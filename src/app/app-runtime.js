@@ -5,27 +5,12 @@ import { createShellActionDialog } from './shell-action-dialog.js';
 import { createFirstRunTutorial } from './first-run-tutorial.js';
 import { createGradeRosterCoordinator } from './grade-roster-coordinator.js';
 import { createHelpCenter } from './help-center.js';
-import {
-  createModuleMessageRouter,
-  SIDEBAR_WIDTH_SCOPE_OTHER,
-  SIDEBAR_WIDTH_SCOPE_PLANNING,
-  SIDEBAR_WIDTH_SYNC_EVENT,
-} from './module-message-router.js';
-import { createTutorialCatalog } from './tutorials/catalog.js';
-import {
-  HELP_PREVIEW_COMMAND_EVENT,
-  HELP_PREVIEW_STATE_EVENT,
-  getHelpPreviewFrameNonce,
-  readHelpPreviewRequest,
-} from './help-preview.js';
+import { createModuleShellCoordinator } from './module-shell-coordinator.js';
+import { createAppTutorialController } from './app-tutorial-controller.js';
+import { readHelpPreviewRequest } from './help-preview.js';
 import { createPlanningSeatplanBridge } from './planning-seatplan-bridge.js';
-import { createPlanSnapshot } from './plan-format.js';
-import {
-  loadPlan,
-  pickPlanFile,
-  savePlan,
-} from './plan-persistence.js';
-import { registerServiceWorkerUpdates } from './pwa-updates.js';
+import { createClassroomFileActions } from './classroom-file-actions.js';
+import { createAppUpdateController } from './app-update-controller.js';
 import { createPwaInstallPrompt } from './pwa-install-prompt.js';
 import {
   isTearOffTab,
@@ -42,38 +27,11 @@ import {
   createThemeController,
   THEME_APPLY_EVENT,
 } from '../shared/theme.js';
-import {
-  createModuleFrame,
-  postToModule,
-} from '../shared/module-frame-bridge.js';
-import {
-  hasTutorialEntryHintBeenSeen,
-  markTutorialEntryHintSeen,
-  TUTORIAL_ENTRY_HINT_SYNC_EVENT,
-} from '../shared/tutorial-entry-state.js';
-import {
-  assertFileSizeAtMost,
-  FILE_LIMITS,
-  formatFileSize,
-} from '../shared/file-guards.js';
-import {
-  normalizeCsvCell,
-  normalizeCsvHeader,
-  parseCSV,
-} from '../shared/csv.js';
-import {
-  dataTransferHasFiles,
-  isCsvFile,
-  isJsonFile,
-  sanitizeExportFileName,
-  stripFileExtension,
-  triggerBlobDownload,
-} from '../shared/file-io.js';
+import { postToModule } from '../shared/module-frame-bridge.js';
+import { sanitizeExportFileName } from '../shared/file-io.js';
 import { createSharedTimerStore } from '../shared/timer-store.js';
 import {
-  RANDOM_PICKER_DEFAULT_WEIGHT,
   mountRandomPicker,
-  normalizeRandomPickerAutoDisableSelected,
   normalizeRandomPickerWeight,
 } from '../modules/random-picker/index.js';
 import {
@@ -84,11 +42,7 @@ import {
 } from '../modules/groups/index.js';
 import { mountWorkPhase } from '../modules/work-phase/index.js';
 import {
-  GRADES_GRADE_VAULT_OVERLAY_EVENT,
-  GRADES_VIEW_REQUEST_EVENT,
   MODULE_CONTEXT_MENU_DISMISS_EVENT,
-  PLANNING_TUTORIAL_START_REQUEST_EVENT,
-  PLANNING_VIEW_REQUEST_EVENT,
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
@@ -190,106 +144,18 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   bindRuntime(appEl, 'contextmenu', (event) => {
     event.preventDefault();
   }, true);
-  const TEMPLATE_CSV_NAME = 'Namensliste Vorlage.csv';
-  const TEMPLATE_CSV_CONTENT = [';Nachname;Vorname', ';Wurst;Hans'].join('\n');
-  const UPDATE_APPLIED_HINT_SESSION_KEY = 'teachhelper:update-applied-hint';
-  const getSafeSessionStorage = () => {
-    try {
-      return window.sessionStorage;
-    } catch {
-      return null;
-    }
-  };
-  let versionUpdateHintTimer = 0;
-  let versionUpdateAvailable = false;
-  let versionUpdateAppliedVisible = false;
-  registerCleanup(() => {
-    clearRuntimeTimeout(versionUpdateHintTimer);
-    versionUpdateHintTimer = 0;
+  const updateController = createAppUpdateController({
+    view: window,
+    els,
+    appVersion,
+    registerCleanup,
+    bindRuntime,
+    setRuntimeTimeout,
+    clearRuntimeTimeout,
+    runGuardBackup,
+    describeBackupStatus,
+    showMessage: (...args) => showMessage(...args),
   });
-
-  const renderVersionUpdateHint = () => {
-    if (!els.headerVersion) {
-      return;
-    }
-    const hintText = versionUpdateAppliedVisible
-      ? 'Aktualisiert'
-      : (versionUpdateAvailable ? 'Update verfügbar' : '');
-    els.headerVersion.classList.toggle('has-update-hint', Boolean(hintText));
-    if (hintText) {
-      els.headerVersion.dataset.updateHint = hintText;
-    } else {
-      delete els.headerVersion.dataset.updateHint;
-    }
-  };
-
-  const clearVersionUpdateHintTimer = () => {
-    if (versionUpdateHintTimer) {
-      clearRuntimeTimeout(versionUpdateHintTimer);
-      versionUpdateHintTimer = 0;
-    }
-  };
-
-  const dismissVersionUpdateHint = () => {
-    versionUpdateAppliedVisible = false;
-    clearVersionUpdateHintTimer();
-    renderVersionUpdateHint();
-  };
-
-  const showVersionUpdateHint = () => {
-    if (!els.headerVersion) {
-      return;
-    }
-    versionUpdateAppliedVisible = true;
-    clearVersionUpdateHintTimer();
-    renderVersionUpdateHint();
-    versionUpdateHintTimer = setRuntimeTimeout(() => {
-      dismissVersionUpdateHint();
-    }, 8000);
-  };
-
-  const setVersionUpdateAvailability = (isAvailable) => {
-    versionUpdateAvailable = Boolean(isAvailable);
-    renderVersionUpdateHint();
-  };
-
-  const markVersionUpdateHintPending = () => {
-    try {
-      getSafeSessionStorage()?.setItem(UPDATE_APPLIED_HINT_SESSION_KEY, '1');
-    } catch {
-
-    }
-  };
-
-  const consumePendingVersionUpdateHint = () => {
-    try {
-      const storage = getSafeSessionStorage();
-      if (storage?.getItem(UPDATE_APPLIED_HINT_SESSION_KEY) !== '1') {
-        return;
-      }
-      storage.removeItem(UPDATE_APPLIED_HINT_SESSION_KEY);
-      showVersionUpdateHint();
-    } catch {
-
-    }
-  };
-
-  const setDisplayedAppVersion = (version) => {
-    if (els.headerVersion) {
-      const safeVersion = String(version || '').trim();
-      els.headerVersion.textContent = safeVersion ? `(v${safeVersion})` : '';
-      els.headerVersion.hidden = !safeVersion;
-      if (safeVersion) {
-        els.headerVersion.setAttribute('title', 'Auf Updates prüfen');
-        els.headerVersion.setAttribute('aria-label', `Version v${safeVersion}. Auf Updates prüfen`);
-      } else {
-        els.headerVersion.removeAttribute('title');
-        els.headerVersion.removeAttribute('aria-label');
-      }
-    }
-  };
-  setDisplayedAppVersion(String(appVersion || 'dev'));
-  consumePendingVersionUpdateHint();
   const isIOSDevice = (() => {
     if (typeof navigator === 'undefined') {
       return false;
@@ -344,7 +210,6 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   let workPhaseController = null;
   let classroomState = null;
   let courseContext = null;
-  let moduleMessageRouter = null;
   const positionWorkOrderHintOverlay = () => workPhaseController?.positionHintOverlay();
   const getActiveTab = () => (shellController ? shellController.getActiveTab() : shellState.activeTab);
   const isChromeCollapsed = () => (shellController ? shellController.isChromeCollapsed() : false);
@@ -369,31 +234,33 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   let tabNavigationBound = false;
   let firstRunTutorial = null;
   let helpCenter = null;
-  let planningTutorialDemoFrame = null;
-  let planningTutorialDemoActive = false;
-  let planningTutorialDemoFrameReady = false;
-  let pendingPlanningTutorialDemoView = null;
-  let gradesTutorialDemoFrame = null;
-  let gradesTutorialDemoActive = false;
-  let gradesTutorialDemoFrameReady = false;
-  let pendingGradesTutorialDemoView = null;
-  let seatplanTutorialDemoFrame = null;
-  let seatplanTutorialDemoActive = false;
-  const PLANNING_TUTORIAL_COMMAND_EVENT = 'classroom:planning-tutorial-command';
-  const GRADES_TUTORIAL_COMMAND_EVENT = 'classroom:grades-tutorial-command';
-  const QR_TUTORIAL_COMMAND_EVENT = 'classroom:qr-tutorial-command';
-  const DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
-  const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
-  const getGradesFrame = () => gradesTutorialDemoFrame || els.gradesHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
-  const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
-  const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
-  const getQrFrame = () => els.qrHost?.querySelector('iframe') || null;
-  const getSeatplanFrame = () => (
-    seatplanTutorialDemoFrame
-    || els.seatplanMainHost?.querySelector('iframe:not(.tutorial-demo-frame)')
-    || null
-  );
-  const getNameLearningFrame = () => els.nameLearningHost?.querySelector('iframe') || null;
+  const tutorialController = createAppTutorialController({
+    view: window,
+    els,
+    helpPreviewRequest,
+    shellSupportsExternalFileSync,
+    bindRuntime,
+    setRuntimeTimeout,
+    getBridgeController: () => bridgeController,
+    getClassroomState: () => classroomState,
+    getGroupsController: () => groupsController,
+    getRandomPickerController: () => randomPickerController,
+    getWorkPhaseController: () => workPhaseController,
+    getFirstRunTutorial: () => firstRunTutorial,
+    updateCsvStatusDisplay,
+    renderRandomPicker,
+    setActiveTabForTutorial,
+  });
+  const {
+    getPlanningFrame,
+    getGradesFrame,
+    getMergerFrame,
+    getDuplicateCheckFrame,
+    getQrFrame,
+    getSeatplanFrame,
+    getNameLearningFrame,
+  } = tutorialController.frames;
+  const { syncTutorialEntryHintToModules } = tutorialController;
   const getModuleFrames = () => [
     getPlanningFrame(),
     getGradesFrame(),
@@ -412,443 +279,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   bindRuntime(document, 'keydown', (event) => {
     if (event.key === 'Escape') dismissModuleContextMenus();
   }, true);
-  const getDuplicateCheckController = () => els.duplicateCheckHost?._duplicateCheckController || null;
-  const getQrController = () => els.qrHost?._qrController || null;
-  const openExternalUrlForModule = (value) => {
-    let url;
-    try {
-      url = new URL(String(value || ''));
-    } catch {
-      return;
-    }
-    if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
-    window.open(url.href, '_blank', 'noopener,noreferrer');
-  };
-  const openModuleResultPdf = (detail) => {
-    const buffer = detail?.bytes;
-    if (!(buffer instanceof ArrayBuffer) || !buffer.byteLength) return;
-    if (buffer.byteLength > FILE_LIMITS.PDF_RESULT_OPEN_BYTES) {
-      showMessage(
-        `Das Ergebnis ist zu groß für die Vorschau (max. ${formatFileSize(FILE_LIMITS.PDF_RESULT_OPEN_BYTES)}). Bitte die Datei herunterladen.`,
-        'warn',
-        { presentation: 'toast' }
-      );
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/pdf' }));
-    window.open(url, '_blank', 'noopener,noreferrer');
-    registerCleanup(() => URL.revokeObjectURL(url));
-    setRuntimeTimeout(() => URL.revokeObjectURL(url), 120_000);
-  };
-  const syncTutorialEntryHintToModules = () => {
-    if (!hasTutorialEntryHintBeenSeen()) return;
-    [
-      getPlanningFrame(),
-      getGradesFrame(),
-      getMergerFrame(),
-      getDuplicateCheckFrame(),
-      getQrFrame(),
-      getSeatplanFrame(),
-      getNameLearningFrame(),
-    ].forEach((frame) => {
-      postToModule(frame, {
-        type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
-        detail: { seen: true },
-      });
-    });
-  };
-  const getSidebarWidthScopeForTab = (tab) => (
-    tab === TAB_PLANNING || tab === TAB_GRADES
-      ? SIDEBAR_WIDTH_SCOPE_PLANNING
-      : SIDEBAR_WIDTH_SCOPE_OTHER
-  );
-  const getFramesForSidebarWidthScope = (scope) => (
-    scope === SIDEBAR_WIDTH_SCOPE_PLANNING
-      ? [getPlanningFrame(), getGradesFrame()]
-      : [getMergerFrame(), getDuplicateCheckFrame(), getQrFrame(), getSeatplanFrame(), getNameLearningFrame()]
-  );
-  const syncSidebarWidthToModules = (scope, width) => {
-    const normalizedScope = scope === SIDEBAR_WIDTH_SCOPE_PLANNING
-      ? SIDEBAR_WIDTH_SCOPE_PLANNING
-      : SIDEBAR_WIDTH_SCOPE_OTHER;
-    getFramesForSidebarWidthScope(normalizedScope).forEach((frame) => {
-      postToModule(frame, {
-        type: SIDEBAR_WIDTH_SYNC_EVENT,
-        detail: { scope: normalizedScope, width },
-      });
-    });
-  };
-  const openMergerToolForTutorial = (tool = 'layout') => {
-    bridgeController?.ensureTabInitialized(TAB_MERGER);
-    bridgeController?.dispatchMergerToolRequest?.(tool);
-  };
-  const dispatchPlanningTutorialDemoView = (detail) => {
-    const frame = planningTutorialDemoFrame;
-    pendingPlanningTutorialDemoView = detail;
-    if (!planningTutorialDemoFrameReady || !frame?.contentWindow) return false;
-    postToModule(frame, {
-      type: 'classroom:planning-view-request',
-      detail,
-    });
-    return true;
-  };
-  const dispatchGradesTutorialDemoView = (detail) => {
-    const frame = gradesTutorialDemoFrame;
-    pendingGradesTutorialDemoView = detail;
-    if (!gradesTutorialDemoFrameReady || !frame?.contentWindow) return false;
-    postToModule(frame, {
-      type: GRADES_VIEW_REQUEST_EVENT,
-      detail,
-    });
-    return true;
-  };
-  const postPlanningTutorialCommand = (command, detail = null, frame = getPlanningFrame()) => {
-    if (!frame) return false;
-    const payload = {
-      type: PLANNING_TUTORIAL_COMMAND_EVENT,
-      detail: { command, detail },
-    };
-    if (planningTutorialDemoActive && frame === planningTutorialDemoFrame && !planningTutorialDemoFrameReady) {
-      bindRuntime(frame, 'load', () => {
-        if (planningTutorialDemoFrame === frame) postToModule(frame, payload);
-      }, { once: true });
-      return true;
-    }
-    return postToModule(frame, payload);
-  };
-  const postGradesTutorialCommand = (command, detail = null, frame = getGradesFrame()) => {
-    if (!frame) return false;
-    const payload = {
-      type: GRADES_TUTORIAL_COMMAND_EVENT,
-      detail: { command, detail },
-    };
-    if (gradesTutorialDemoActive && frame === gradesTutorialDemoFrame && !gradesTutorialDemoFrameReady) {
-      bindRuntime(frame, 'load', () => {
-        if (gradesTutorialDemoFrame === frame) postToModule(frame, payload);
-      }, { once: true });
-      return true;
-    }
-    return postToModule(frame, payload);
-  };
-  const preparePlanningTutorialSurface = (surface) => {
-    postPlanningTutorialCommand('showSurface', { surface });
-  };
-  const prepareGradesTutorialSurface = (surface) => {
-    postGradesTutorialCommand('showSurface', { surface });
-  };
-  const openPlanningSettingsForTutorial = (settingsTab = 'dayoff') => {
-    if (planningTutorialDemoActive) {
-      dispatchPlanningTutorialDemoView({
-        view: 'settings',
-        settingsTab,
-        settingsContext: 'planning',
-        source: 'tutorial',
-      });
-      return;
-    }
-    bridgeController?.ensureTabInitialized(TAB_PLANNING);
-    bridgeController?.dispatchPlanningViewRequest({
-      view: 'settings',
-      settingsTab,
-      settingsContext: 'planning',
-      source: 'tutorial',
-    });
-  };
-  const NAME_LEARNING_TUTORIAL_COMMAND_EVENT = 'classroom:name-learning-tutorial-command';
-  const postNameLearningTutorialCommand = (command, detail = null) => postToModule(getNameLearningFrame(), {
-    type: NAME_LEARNING_TUTORIAL_COMMAND_EVENT,
-    detail: { command, detail },
-  });
-  const prepareNameLearningTutorialSurface = (surface) => {
-    bridgeController?.ensureTabInitialized(TAB_NAME_LEARNING);
-    postNameLearningTutorialCommand('showSurface', { surface });
-  };
-  function activateNameLearningTutorialDemo() {
-    bridgeController?.ensureTabInitialized(TAB_NAME_LEARNING);
-    const frame = getNameLearningFrame();
-    const activate = () => postNameLearningTutorialCommand('activateDemo');
-    if (!activate() && frame) {
-      bindRuntime(frame, 'load', activate, { once: true });
-    }
-    const cleanup = () => postNameLearningTutorialCommand('cleanupDemo');
-    try {
-      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_NAME_LEARNING });
-      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-  let requestedQrTutorialTool = 'generator';
-  let requestedQrTutorialSurface = '';
-  let qrTutorialLoadFrame = null;
-  const postQrTutorialCommand = (command, detail = null) => {
-    const controller = getQrController();
-    if (controller?.post?.({
-      type: QR_TUTORIAL_COMMAND_EVENT,
-      detail: { command, detail },
-    })) {
-      return true;
-    }
-    const frame = getQrFrame();
-    return postToModule(frame, {
-      type: QR_TUTORIAL_COMMAND_EVENT,
-      detail: { command, detail },
-    });
-  };
-  const applyRequestedQrTutorialTool = () => {
-    const frame = getQrFrame();
-    if (!frame) return false;
-    return postQrTutorialCommand('selectTool', {
-      tool: requestedQrTutorialTool,
-      surface: requestedQrTutorialSurface,
-    });
-  };
-  const openQrToolForTutorial = (tool = 'generator', surface = '') => {
-    requestedQrTutorialTool = tool === 'decoder' ? 'decoder' : 'generator';
-    requestedQrTutorialSurface = surface;
-    bridgeController?.ensureTabInitialized(TAB_QR);
-    const frame = getQrFrame();
-    if (!frame || applyRequestedQrTutorialTool()) return;
-    if (qrTutorialLoadFrame === frame) return;
-    qrTutorialLoadFrame = frame;
-    bindRuntime(frame, 'load', () => {
-      if (qrTutorialLoadFrame === frame) {
-        qrTutorialLoadFrame = null;
-      }
-      applyRequestedQrTutorialTool();
-    }, { once: true });
-  };
-  function activateQrTutorialDemo() {
-    bridgeController?.ensureTabInitialized(TAB_QR);
-    postQrTutorialCommand('activateDemo');
-    const cleanup = () => postQrTutorialCommand('cleanupDemo');
-    try {
-      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_QR });
-      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-  function activatePlanningTutorialDemo() {
-    const host = els.planningHost;
-    if (!host) return { steps: [] };
-    const realFrame = host.querySelector('iframe:not(.tutorial-demo-frame)');
-    const realFrameWasHidden = Boolean(realFrame?.hidden);
-    const realFrameDisplay = realFrame?.style.display || '';
-    const manualSaveWasDisabled = Boolean(els.sidebarManualSaveBtn?.disabled);
-    const manualSaveTitle = els.sidebarManualSaveBtn?.title || '';
-    planningTutorialDemoActive = true;
-    if (realFrame) {
-      realFrame.hidden = true;
-      realFrame.style.display = 'none';
-    }
-    if (els.sidebarManualSaveBtn) {
-      els.sidebarManualSaveBtn.disabled = true;
-      els.sidebarManualSaveBtn.title = 'Im Demomodus nicht verfügbar';
-    }
-    const demoUrl = new URL('../modules/planning/app.html', import.meta.url);
-    demoUrl.searchParams.set('tutorial-demo', 'planning');
-    const frame = createModuleFrame({
-      className: 'planning-frame tutorial-demo-frame',
-      title: 'Interaktive Tutorial-Beispieldaten',
-      loading: 'eager',
-      src: demoUrl,
-    });
-    host.appendChild(frame);
-    planningTutorialDemoFrame = frame;
-    planningTutorialDemoFrameReady = false;
-    bindRuntime(frame, 'load', () => {
-      if (planningTutorialDemoFrame !== frame) return;
-      planningTutorialDemoFrameReady = true;
-      if (pendingPlanningTutorialDemoView) {
-        dispatchPlanningTutorialDemoView(pendingPlanningTutorialDemoView);
-      }
-    }, { once: true });
-    const cleanup = () => {
-      postToModule(frame, {
-        type: PLANNING_TUTORIAL_COMMAND_EVENT,
-        detail: { command: 'cleanup', detail: null },
-      });
-      planningTutorialDemoActive = false;
-      planningTutorialDemoFrame?.remove();
-      planningTutorialDemoFrame = null;
-      planningTutorialDemoFrameReady = false;
-      pendingPlanningTutorialDemoView = null;
-      if (realFrame) {
-        realFrame.hidden = realFrameWasHidden;
-        realFrame.style.display = realFrameDisplay;
-      }
-      if (els.sidebarManualSaveBtn) {
-        els.sidebarManualSaveBtn.disabled = manualSaveWasDisabled;
-        els.sidebarManualSaveBtn.title = manualSaveTitle;
-      }
-    };
-    try {
-      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_PLANNING });
-      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-  function activateGradesTutorialDemo() {
-    const host = els.gradesHost;
-    if (!host) return { steps: [] };
-    const realFrame = host.querySelector('iframe:not(.tutorial-demo-frame)');
-    const realFrameWasHidden = Boolean(realFrame?.hidden);
-    const realFrameDisplay = realFrame?.style.display || '';
-    const manualSaveWasDisabled = Boolean(els.sidebarManualSaveBtn?.disabled);
-    const manualSaveTitle = els.sidebarManualSaveBtn?.title || '';
-    gradesTutorialDemoActive = true;
-    if (realFrame) {
-      realFrame.hidden = true;
-      realFrame.style.display = 'none';
-    }
-    if (els.sidebarManualSaveBtn) {
-      els.sidebarManualSaveBtn.disabled = true;
-      els.sidebarManualSaveBtn.title = 'Im Demomodus nicht verfügbar';
-    }
-    const demoUrl = new URL('../modules/grades/app.html', import.meta.url);
-    demoUrl.searchParams.set('tutorial-demo', 'grades');
-    const frame = createModuleFrame({
-      className: 'grades-frame tutorial-demo-frame',
-      title: 'Interaktive Tutorial-Beispieldaten',
-      loading: 'eager',
-      src: demoUrl,
-    });
-    host.appendChild(frame);
-    gradesTutorialDemoFrame = frame;
-    gradesTutorialDemoFrameReady = false;
-    bindRuntime(frame, 'load', () => {
-      if (gradesTutorialDemoFrame !== frame) return;
-      gradesTutorialDemoFrameReady = true;
-      if (pendingGradesTutorialDemoView) {
-        dispatchGradesTutorialDemoView(pendingGradesTutorialDemoView);
-      }
-    }, { once: true });
-    const cleanup = () => {
-      postToModule(frame, {
-        type: GRADES_TUTORIAL_COMMAND_EVENT,
-        detail: { command: 'cleanup', detail: null },
-      });
-      gradesTutorialDemoActive = false;
-      gradesTutorialDemoFrame?.remove();
-      gradesTutorialDemoFrame = null;
-      gradesTutorialDemoFrameReady = false;
-      pendingGradesTutorialDemoView = null;
-      if (realFrame) {
-        realFrame.hidden = realFrameWasHidden;
-        realFrame.style.display = realFrameDisplay;
-      }
-      if (els.sidebarManualSaveBtn) {
-        els.sidebarManualSaveBtn.disabled = manualSaveWasDisabled;
-        els.sidebarManualSaveBtn.title = manualSaveTitle;
-      }
-    };
-    try {
-      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_GRADES });
-      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-  function activateSeatplanTutorialDemo() {
-    bridgeController?.ensureTabInitialized(TAB_SEATPLAN);
-    const host = els.seatplanMainHost;
-    if (!host) return { steps: [] };
-    const realFrame = host.querySelector('iframe:not(.tutorial-demo-frame)');
-    const realFrameWasHidden = Boolean(realFrame?.hidden);
-    const realFrameDisplay = realFrame?.style.display || '';
-    seatplanTutorialDemoActive = true;
-    if (realFrame) {
-      realFrame.hidden = true;
-      realFrame.style.display = 'none';
-    }
-    const demoUrl = new URL('../modules/seatplan/app.html', import.meta.url);
-    demoUrl.searchParams.set('tutorial-demo', 'seatplan');
-    const frame = createModuleFrame({
-      className: 'seatplan-frame tutorial-demo-frame',
-      title: 'Interaktive Tutorial-Beispieldaten',
-      loading: 'eager',
-      src: demoUrl,
-    });
-    host.appendChild(frame);
-    seatplanTutorialDemoFrame = frame;
-    const cleanup = () => {
-      if (!seatplanTutorialDemoActive) return;
-      seatplanTutorialDemoActive = false;
-      seatplanTutorialDemoFrame?.remove();
-      seatplanTutorialDemoFrame = null;
-      if (realFrame) {
-        realFrame.hidden = realFrameWasHidden;
-        realFrame.style.display = realFrameDisplay;
-      }
-    };
-    try {
-      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_SEATPLAN });
-      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-  function activateDuplicateCheckTutorialDemo() {
-    bridgeController?.ensureTabInitialized(TAB_DUPLICATE_CHECK);
-    const postDuplicateCheckTutorialCommand = (command) => {
-      const payload = {
-        type: DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT,
-        detail: { command },
-      };
-      if (getDuplicateCheckController()?.post?.(payload)) return true;
-      return postToModule(getDuplicateCheckFrame(), payload);
-    };
-    postDuplicateCheckTutorialCommand('activateDemo');
-    const cleanup = () => postDuplicateCheckTutorialCommand('cleanupDemo');
-    try {
-      const definition = getCurrentModuleTutorialSteps({ activeTab: TAB_DUPLICATE_CHECK });
-      return { steps: Array.isArray(definition) ? definition : definition.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-  const tutorialCatalog = createTutorialCatalog({
-    shellSupportsExternalFileSync,
-    getComputedStyle: (node) => (
-      (node.ownerDocument?.defaultView || window).getComputedStyle(node)
-    ),
-    frames: {
-      getPlanningFrame,
-      getGradesFrame,
-      getMergerFrame,
-      getDuplicateCheckFrame,
-      getQrFrame,
-      getSeatplanFrame,
-      getNameLearningFrame,
-    },
-    actions: {
-      preparePlanningTutorialSurface,
-      prepareGradesTutorialSurface,
-      openMergerToolForTutorial,
-      openQrToolForTutorial,
-      prepareNameLearningTutorialSurface,
-    },
-    demos: {
-      activateGradesTutorialDemo,
-      activatePlanningTutorialDemo,
-      activateSeatplanTutorialDemo,
-      activateClassroomTutorialDemo,
-      activateDuplicateCheckTutorialDemo,
-      activateWorkPhaseTutorialDemo,
-      activateQrTutorialDemo,
-      activateNameLearningTutorialDemo,
-      isSeatplanTutorialDemoActive: () => seatplanTutorialDemoActive,
-    },
-  });
-  const getCurrentModuleTutorialSteps = tutorialCatalog.getDefinition;
+  tutorialController.initializeCatalog();
   function applyModuleWindowChrome() {
     if (els.app) els.app.dataset.moduleWindow = 'true';
     if (els.sidebarManualSaveBtn) {
@@ -907,78 +338,6 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     helpCenter?.openEntry({ module: getActiveTab() });
   }
 
-  function startHelpPreview() {
-    if (!helpPreviewRequest || !firstRunTutorial) return;
-    const { articleId, config } = helpPreviewRequest;
-    const frameNonce = getHelpPreviewFrameNonce(window.location);
-    const trustedParentOrigin = (window.origin === 'null' || window.location.origin === 'null') ? '*' : window.location.origin;
-    const postState = (state, detail = {}) => {
-      if (window.parent === window) return;
-      window.parent.postMessage({
-        type: HELP_PREVIEW_STATE_EVENT,
-        ...(frameNonce ? { frameNonce } : {}),
-        detail: { articleId, state, ...detail },
-      }, trustedParentOrigin);
-    };
-    let previewFrameSequence = 0;
-    const publishTarget = (stepTitle, sequence, attempts = 0) => {
-      if (sequence !== previewFrameSequence) return;
-      const rect = firstRunTutorial.getPreviewTargetRect(stepTitle);
-      if (!rect) {
-        if (attempts < 420) {
-          setRuntimeTimeout(() => publishTarget(stepTitle, sequence, attempts + 1), 50);
-          return;
-        }
-        postState('target-missing', { stepTitle });
-        return;
-      }
-      postState('frame', {
-        stepTitle,
-        rect: {
-          left: rect.left,
-          top: rect.top,
-          width: rect.width,
-          height: rect.height,
-        },
-      });
-    };
-    const showFrame = (stepTitle) => {
-      const sequence = ++previewFrameSequence;
-      if (!firstRunTutorial.showPreviewStep(stepTitle)) {
-        postState('target-missing', { stepTitle });
-        return;
-      }
-      [320, 900, 1800, 3200].forEach((delay) => setRuntimeTimeout(() => {
-        if (sequence === previewFrameSequence) firstRunTutorial.showPreviewStep(stepTitle);
-      }, delay));
-      publishTarget(stepTitle, sequence);
-    };
-    const onPreviewCommand = (event) => {
-      const message = event.data;
-      if (
-        event.source !== window.parent
-        || !message
-        || message.type !== HELP_PREVIEW_COMMAND_EVENT
-        || (frameNonce
-          ? message.frameNonce !== frameNonce
-          : event.origin !== trustedParentOrigin)
-      ) return;
-      const stepTitle = String(message.detail?.stepTitle || '');
-      if (message.detail?.action === 'show-frame' && stepTitle) showFrame(stepTitle);
-    };
-    bindRuntime(window, 'message', onPreviewCommand);
-    bindRuntime(window, 'pagehide', () => window.removeEventListener('message', onPreviewCommand), { once: true });
-
-    setActiveTabForTutorial(config.tab);
-    const availableSteps = firstRunTutorial.startPreview();
-    if (!availableSteps.length) {
-      postState('error');
-      return;
-    }
-    postState('ready', { availableSteps });
-    setRuntimeTimeout(() => showFrame(config.frames[0]?.stepTitle), 0);
-  }
-
   function isGuardBackupPossible() {
     const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
     const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
@@ -1018,54 +377,30 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     return false;
   }
 
-  async function beforeReloadForUpdate() {
-    const result = await runGuardBackup('update');
-    if (result.ok) markVersionUpdateHintPending();
-    return result;
-  }
-
-  let pendingSeatplanChromeCollapsed = null;
-  let pendingSeatplanChromeFrame = 0;
-  registerCleanup(() => {
-    pendingSeatplanChromeCollapsed = null;
-    if (!pendingSeatplanChromeFrame) return;
-    cancelRuntimeSchedule(pendingSeatplanChromeFrame);
-    pendingSeatplanChromeFrame = 0;
+  const moduleShellCoordinator = createModuleShellCoordinator({
+    documentRef: document,
+    view: window,
+    appEl,
+    frames: tutorialController.frames,
+    themeController,
+    bindRuntime,
+    registerCleanup,
+    setRuntimeTimeout,
+    clearRuntimeTimeout,
+    requestRuntimeFrame,
+    cancelRuntimeSchedule,
+    getActiveTab,
+    setActiveTab,
+    getChromeTransitionState,
+    setChromeCollapsed,
+    getBridgeController: () => bridgeController,
+    getShellController: () => shellController,
+    getCourseContext: () => courseContext,
+    getFirstRunTutorial: () => firstRunTutorial,
+    syncTutorialEntryHintToModules,
+    openHelpEntry,
+    showMessage,
   });
-
-  const applyPendingSeatplanChrome = (attempt = 0) => {
-    pendingSeatplanChromeFrame = 0;
-    if (pendingSeatplanChromeCollapsed === null) return;
-    if (getChromeTransitionState() === 'idle') {
-      const collapsed = pendingSeatplanChromeCollapsed;
-      pendingSeatplanChromeCollapsed = null;
-      setChromeCollapsed(collapsed, { resetSidebarWidth: false });
-      return;
-    }
-    if (attempt >= 60) {
-      pendingSeatplanChromeCollapsed = null;
-      return;
-    }
-    if (typeof window.requestAnimationFrame === 'function') {
-      pendingSeatplanChromeFrame = requestRuntimeFrame(() => applyPendingSeatplanChrome(attempt + 1));
-      return;
-    }
-    if (typeof window.setTimeout === 'function') {
-      pendingSeatplanChromeFrame = setRuntimeTimeout(() => applyPendingSeatplanChrome(attempt + 1), 16);
-    }
-  };
-
-  const requestSeatplanChromeCollapsed = (collapsed) => {
-    pendingSeatplanChromeCollapsed = Boolean(collapsed);
-    if (pendingSeatplanChromeFrame) return;
-    if (typeof window.requestAnimationFrame === 'function') {
-      pendingSeatplanChromeFrame = requestRuntimeFrame(() => applyPendingSeatplanChrome());
-      return;
-    }
-    if (typeof window.setTimeout === 'function') {
-      pendingSeatplanChromeFrame = setRuntimeTimeout(() => applyPendingSeatplanChrome(), 16);
-    }
-  };
 
   courseContext = createCourseContext({
     eventTarget: window,
@@ -1079,153 +414,35 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   });
   registerCleanup(() => courseContext?.dispose?.());
 
-  if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
-    moduleMessageRouter = createModuleMessageRouter({
-      messageTarget: window,
-      frames: {
-        getPlanningFrame,
-        getGradesFrame,
-        getMergerFrame,
-        getDuplicateCheckFrame,
-        getQrFrame,
-        getSeatplanFrame,
-        getNameLearningFrame,
-      },
-      handlers: {
-        onPlanningViewRequest: (detail) => {
-          window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, { detail }));
-        },
-        onNameLearningRequest: (type, detail) => {
-          window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
-          document.dispatchEvent(new CustomEvent(type, { detail }));
-        },
-        onNameLearningManageStudentsRequest: (detail) => {
-          const courseId = Number(detail?.courseId || 0);
-          const studentId = Number(detail?.studentId || 0);
-          if (!courseId) return;
-          courseContext.suppressGradesAutoSelect();
-          bridgeController?.dispatchGradesNavigation?.({
-            courseId,
-            action: 'manage-students',
-            ...(studentId ? { studentId } : {}),
-            subview: 'overview',
-            source: 'name-learning',
-          });
-          setActiveTab(TAB_GRADES);
-        },
-        onThemePreferenceChange: (detail) => {
-          themeController.setPreference(detail?.preference);
-        },
-        onToastRequest: (detail) => {
-          const message = String(detail.message || '').trim();
-          if (!message) return;
-          const variant = detail.variant === 'error' ? 'error' : 'success';
-          showMessage(message, variant, { presentation: 'toast' });
-        },
-        onMoreToolsDismiss: () => {
-          shellController?.closeMoreToolsMenu();
-        },
-        onOpenExternalRequest: (detail) => {
-          openExternalUrlForModule(detail?.url);
-        },
-        onMergerOpenResultRequest: (detail) => {
-          openModuleResultPdf(detail);
-        },
-        onGradesNavigate: (detail) => {
-          courseContext.suppressGradesAutoSelect();
-          bridgeController?.dispatchGradesNavigation?.(detail);
-        },
-        onGradeVaultActivity: () => {
-          window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
-        },
-        onGradeVaultRequest: (detail) => {
-          bridgeController?.requestGradeVault?.(detail);
-        },
-        onSidebarWidthRequest: (detail, { frame, scope }) => {
-          postToModule(frame, {
-            type: SIDEBAR_WIDTH_SYNC_EVENT,
-            detail: {
-              scope,
-              width: shellController?.getSidebarWidth(scope)
-                ?? (scope === SIDEBAR_WIDTH_SCOPE_PLANNING ? 220 : 360),
-            },
-          });
-        },
-        onSidebarWidthCommit: (detail, { scope }) => {
-          shellController?.setSidebarWidth(scope, detail?.width);
-        },
-        onSidebarCollapseRequest: (detail, { scope }) => {
-          if (scope !== getSidebarWidthScopeForTab(getActiveTab())) return;
-          setChromeCollapsed(true);
-        },
-        onSeatplanChromeRequest: (detail) => {
-          const collapsed = detail.collapsed === true;
-          if (collapsed && getActiveTab() !== TAB_SEATPLAN) return;
-          requestSeatplanChromeCollapsed(collapsed);
-        },
-        onTutorialEntryHint: (detail, { frame }) => {
-          if (detail.action === 'seen') {
-            markTutorialEntryHintSeen();
-            firstRunTutorial?.clearContextHelpPrompt?.();
-            syncTutorialEntryHintToModules();
-            return;
-          }
-          postToModule(frame, {
-            type: TUTORIAL_ENTRY_HINT_SYNC_EVENT,
-            detail: { seen: hasTutorialEntryHintBeenSeen() },
-          });
-        },
-        onHelpEntryRequest: () => {
-          openHelpEntry();
-        },
-      },
-    });
-    registerCleanup(() => moduleMessageRouter?.dispose?.());
-    bindRuntime(window, PLANNING_VIEW_REQUEST_EVENT, (event) => {
-      const detail = event instanceof CustomEvent ? event.detail : null;
-      if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
-        return;
-      }
-      if (detail.view === 'grades') {
-        courseContext.suppressGradesAutoSelect();
-        bridgeController?.dispatchGradesNavigation?.(detail);
-        setActiveTab(TAB_GRADES);
-        return;
-      }
-      setActiveTab(TAB_PLANNING);
-      if (detail.returnNotice) {
-        showMessage(String(detail.returnNotice), 'success', { presentation: 'toast' });
-      }
-    });
-    bindRuntime(window, GRADES_VIEW_REQUEST_EVENT, (event) => {
-      const detail = event instanceof CustomEvent ? event.detail : null;
-      if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
-        return;
-      }
-      if (
-        detail.view !== 'planning'
-        && gradeVaultOverlayNavigationReturnTab
-        && Date.now() < gradeVaultOverlayNavigationSuppressedUntil
-      ) {
-        if (getActiveTab() !== gradeVaultOverlayNavigationReturnTab) {
-          setActiveTab(gradeVaultOverlayNavigationReturnTab);
-        }
-        return;
-      }
-      if (detail.view !== 'planning') {
-        courseContext.suppressGradesAutoSelect();
-      }
-      setActiveTab(detail.view === 'planning' ? TAB_PLANNING : TAB_GRADES);
-    });
-    bindRuntime(window, PLANNING_TUTORIAL_START_REQUEST_EVENT, openHelpEntry);
-  }
+  moduleShellCoordinator.bindMessages();
 
   const state = {
-    lastDirectoryHandle: null,
     randomPickerAutoDisableSelected: false,
   };
   let randomPickerController = null;
   let gradeRosterCoordinator = null;
+  const fileActions = createClassroomFileActions({
+    documentRef: document,
+    els,
+    isIOSDevice,
+    shellActionDialog,
+    bindRuntime,
+    showMessage,
+    reportAppError,
+    getActiveTab,
+    isRandomPickerTabActive,
+    getClassroomState: () => classroomState,
+    getGroupsController: () => groupsController,
+    getWorkPhaseController: () => workPhaseController,
+    getGradeRosterCoordinator: () => gradeRosterCoordinator,
+    getAutoDisableSelected: () => state.randomPickerAutoDisableSelected,
+    setAutoDisableSelected: (value) => { state.randomPickerAutoDisableSelected = value; },
+    sanitizeRandomPickerStudent,
+    renderRandomPicker,
+  });
+  function updateCsvStatusDisplay() {
+    fileActions.updateCsvStatusDisplay();
+  }
   classroomState = createClassroomState({
     documentBus: document,
     initialState: {
@@ -1252,81 +469,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   registerCleanup(() => classroomState?.dispose?.());
   const rosterStore = classroomState.rosterStore;
 
-  function activateClassroomTutorialDemo(tab) {
-    if (classroomState.isDemoActive()) {
-      const current = getCurrentModuleTutorialSteps({ activeTab: tab });
-      return { steps: Array.isArray(current) ? current : current.steps, cleanup: () => { } };
-    }
-    const demoStudents = [
-      ['01', 'Alex', 'Beispiel', 'A', 1], ['02', 'Sam', 'Muster', 'A', 2],
-      ['03', 'Kim', 'Demo', 'B', 1], ['04', 'Robin', 'Test', 'B', 3],
-      ['05', 'Mika', 'Probe', 'C', 1], ['06', 'Toni', 'Beispiel', 'C', 1],
-      ['07', 'Jona', 'Muster', 'D', 1], ['08', 'Noa', 'Demo', 'D', 1],
-    ].map(([id, first, last, performanceFlair, randomWeight]) => ({
-      id, first, last, performanceFlair, randomWeight,
-      buddies: id === '01' ? ['02'] : [],
-      foes: id === '03' ? ['04'] : [],
-    }));
-    const previousGroupsState = groupsController?.getStateSnapshot();
-    const fileInputWasDisabled = Boolean(els.file?.disabled);
-    if (els.file) els.file.disabled = true;
-    const restoreClassroomState = classroomState.activateDemoState({
-      students: demoStudents,
-      headers: ['Nachname', 'Vorname'],
-      csvName: 'Beispielklasse',
-      performanceFlairCount: 4,
-    });
-    groupsController?.replaceState({
-      seats: { '1-1': ['01', '02'], '1-2': ['03', '05'], '2-1': ['04'], '2-2': ['06'] },
-      gridRows: 2,
-      gridCols: 2,
-      activeSeats: new Set(['1-1', '1-2', '2-1', '2-2']),
-      activeSeatOrder: ['1-1', '1-2', '2-1', '2-2'],
-      lockedSeats: new Set(['1-1']),
-      seatTopics: { '1-1': 'Recherche', '1-2': 'Auswertung', '2-1': '', '2-2': '' },
-      minGroupSize: 2,
-      maxGroupSize: 3,
-    });
-    updateCsvStatusDisplay();
-    groupsController?.render({ resetViewport: true });
-    renderRandomPicker();
-    const cleanup = () => {
-      if (!classroomState.isDemoActive()) return;
-      if (groupsController?.isSuggesting() || randomPickerController?.isSpinning()) {
-        setRuntimeTimeout(cleanup, 120);
-        return;
-      }
-      restoreClassroomState();
-      groupsController?.replaceState(previousGroupsState);
-      if (els.file) els.file.disabled = fileInputWasDisabled;
-      if (els.preferencesDialog?.open && typeof els.preferencesDialog.close === 'function') {
-        els.preferencesDialog.close();
-      }
-      els.preferencesDialog?.removeAttribute('open');
-      updateCsvStatusDisplay();
-      groupsController?.render({ resetViewport: true });
-      renderRandomPicker();
-    };
-    try {
-      const current = getCurrentModuleTutorialSteps({ activeTab: tab });
-      return { steps: Array.isArray(current) ? current : current.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
-
   const SharedTimerStore = createSharedTimerStore();
-  function activateWorkPhaseTutorialDemo() {
-    const cleanup = workPhaseController?.activateTutorialDemo() || (() => {});
-    try {
-      const current = getCurrentModuleTutorialSteps({ activeTab: TAB_WORK_PHASE });
-      return { steps: Array.isArray(current) ? current : current.steps, cleanup };
-    } catch (error) {
-      cleanup();
-      throw error;
-    }
-  }
   bridgeController = createPlanningSeatplanBridge({
     els,
     getChromeCollapsed: isChromeCollapsed,
@@ -1377,7 +520,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     onRequestManualSave: () => bridgeController?.requestManualSave?.(),
     onResolveGradesTabLeave: () => bridgeController?.requestGradesTabLeaveConfirmation?.() || Promise.resolve(false),
     onResolvePlanningTabLeave: () => bridgeController?.requestPlanningTabLeaveConfirmation?.() || Promise.resolve(false),
-    onSidebarWidthChange: (scope, width) => syncSidebarWidthToModules(scope, width),
+    onSidebarWidthChange: (scope, width) => moduleShellCoordinator.syncSidebarWidthToModules(scope, width),
     onActiveTabChange: () => firstRunTutorial?.showContextHelp?.({ prompt: true }),
     onTabActivating: (tab) => {
       courseContext.handleTabActivating(tab);
@@ -1413,383 +556,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   function isRandomPickerTabActive() {
     return getActiveTab() === TAB_RANDOM_PICKER;
   }
-  function getDefaultPlanModeLabel() {
-    return getActiveTab() === TAB_RANDOM_PICKER ? 'Picker' : 'Gruppen';
-  }
-
-  function getDefaultPlanBaseName() {
-    const modeLabel = getDefaultPlanModeLabel();
-    const pickerBinding = isRandomPickerTabActive()
-      ? gradeRosterCoordinator?.getPickerBinding?.()
-      : null;
-    if (pickerBinding?.courseName) {
-      return `${pickerBinding.courseName} (${modeLabel})`;
-    }
-    const { csvName } = classroomState.getState();
-    return csvName ? `${csvName} (${modeLabel})` : modeLabel;
-  }
-
-  function getSuggestedPlanFileName() {
-    return sanitizeExportFileName(getDefaultPlanBaseName());
-  }
-
-  function downloadCsvTemplate() {
-    if (classroomState.isDemoActive()) {
-      showMessage('Demo: Downloads sind für Beispieldaten deaktiviert.', 'info', { presentation: 'toast' });
-      return;
-    }
-    const blob = new Blob([TEMPLATE_CSV_CONTENT], { type: 'text/csv;charset=utf-8;' });
-    triggerBlobDownload(blob, TEMPLATE_CSV_NAME, {
-      defaultName: TEMPLATE_CSV_NAME,
-      cleanupDelay: isIOSDevice ? 6000 : 2500,
-      onErrorMessage: 'CSV-Download konnte nicht gestartet werden:',
-    });
-  }
-
-  async function downloadSeatPlan() {
-    if (classroomState.isDemoActive()) {
-      showMessage('Demo: Speichern und Exportieren ist für Beispieldaten deaktiviert.', 'info', { presentation: 'toast' });
-      return;
-    }
-    const groupsPlanState = groupsController?.getPlanState();
-    if (!groupsPlanState) return;
-    const classroom = classroomState.getState();
-    const pickerBinding = isRandomPickerTabActive()
-      ? gradeRosterCoordinator?.getPickerBinding?.()
-      : null;
-    const rosterStudents = pickerBinding
-      ? gradeRosterCoordinator.getPickerStudents(classroom.students)
-      : classroom.students;
-    const rosterName = pickerBinding?.courseName || classroom.csvName || '';
-    const autoDisableSelected = isRandomPickerTabActive()
-      ? gradeRosterCoordinator.getPickerAutoDisableSelected(state.randomPickerAutoDisableSelected)
-      : state.randomPickerAutoDisableSelected;
-    const snapshot = createPlanSnapshot({
-      generatedAt: new Date().toISOString(),
-      roster: {
-        students: rosterStudents,
-        headers: classroom.headers,
-        delimiter: classroom.delim,
-        csvName: rosterName,
-      },
-      groups: groupsPlanState,
-      randomPicker: {
-        autoDisableSelected,
-      },
-      workPhase: workPhaseController?.getPlanState(),
-    });
-    if (!snapshot) return;
-    const defaultName = getSuggestedPlanFileName();
-    let nameInput = defaultName;
-    if (!isIOSDevice) {
-      if (!shellActionDialog) return;
-      const promptLabel = getActiveTab() === TAB_RANDOM_PICKER
-        ? 'Bitte gib einen Dateinamen für den Pickerstand ein:'
-        : 'Bitte gib einen Dateinamen ein:';
-      const desiredName = await shellActionDialog.prompt({
-        title: 'Dateiname festlegen',
-        message: promptLabel,
-        inputLabel: 'Dateiname',
-        defaultValue: defaultName,
-        confirmText: 'Speichern',
-      });
-      if (desiredName === null) return;
-      nameInput = desiredName || '';
-    }
-    const safeName = sanitizeExportFileName(nameInput) || defaultName;
-    const saveResult = await savePlan(snapshot, {
-      filename: safeName,
-      fallbackName: getDefaultPlanModeLabel(),
-      directoryHandle: state.lastDirectoryHandle,
-      pickerDescription: `${getDefaultPlanModeLabel()} JSON`,
-      cleanupDelay: isIOSDevice ? 4000 : 1200,
-    });
-    if (saveResult.status === 'aborted') {
-      return;
-    }
-    if (saveResult.handle) {
-      state.lastDirectoryHandle = saveResult.handle;
-    }
-    const savedMode = isRandomPickerTabActive() ? 'Picker' : 'Gruppen';
-    showMessage(`Man kann ${savedMode === 'Picker' ? 'den Picker' : 'die Gruppen'} NICHT durch Anklicken der eben erstellten Datenbankdatei öffnen.\n\nStattdessen muss man die Datenbankdatei hier in TeachHelper über „${savedMode} laden“ auswählen oder sie irgendwo in TeachHelper ziehen.`, 'info');
-  }
-
-  async function choosePickerSaveTarget() {
-    const binding = gradeRosterCoordinator?.getPickerBinding?.();
-    if (!binding) return 'file';
-    if (!shellActionDialog?.choose) {
-      showMessage('Der Dialog zum Speichern steht nicht zur Verfügung.', 'error');
-      return '';
-    }
-    return shellActionDialog.choose({
-      title: 'Picker speichern',
-      message: `Pickerstand für „${binding.courseName}“ im Notenmodul oder als separate Datei speichern?`,
-      secondaryText: 'Separate Picker-Datei',
-      secondaryValue: 'file',
-      confirmText: 'Im Notenmodul',
-      confirmValue: 'grades',
-      cancelValue: '',
-    });
-  }
-
-  async function savePickerInGradeModule() {
-    const result = await gradeRosterCoordinator?.savePickerConfig?.();
-    return result?.ok === true;
-  }
-
-  async function handlePickerSaveClick() {
-    const target = await choosePickerSaveTarget();
-    if (target === 'grades') {
-      await savePickerInGradeModule();
-      return;
-    }
-    if (target === 'file') await downloadSeatPlan();
-  }
-
-  async function confirmPickerBindingReplacement(binding = null) {
-    if (!shellActionDialog?.choose) {
-      showMessage('Der Dialog für ungesicherte Picker-Änderungen steht nicht zur Verfügung.', 'error');
-      return false;
-    }
-    const courseReference = binding?.courseName
-      ? `„${String(binding.courseName)}“`
-      : 'den verbundenen Kurs';
-    const choice = await shellActionDialog.choose({
-      title: 'Ungesicherte Picker-Änderungen',
-      message: `Der Pickerstand für ${courseReference} wurde noch nicht im Notenmodul gespeichert.`,
-      secondaryText: 'Änderungen verwerfen',
-      secondaryValue: 'discard',
-      secondaryDanger: true,
-      confirmText: 'Im Notenmodul speichern',
-      confirmValue: 'save',
-      cancelValue: '',
-    });
-    if (choice === 'save') {
-      const saved = await savePickerInGradeModule();
-      if (!saved) return false;
-      if (!gradeRosterCoordinator?.hasUnsavedPickerConfig?.()) return true;
-      showMessage('Der Picker wurde während des Speicherns erneut geändert. Bitte speichere den aktuellen Stand noch einmal.', 'warn');
-      return false;
-    }
-    return choice === 'discard';
-  }
-
-  function applyPlan(plan, options = {}) {
-    const restoreSeatAssignments = options.restoreSeatAssignments !== false;
-    if (!plan || typeof plan !== 'object') throw new Error('Ungültiges Plan-Format.');
-    const rosterPlanState = plan.roster && typeof plan.roster === 'object' ? plan.roster : {};
-    const groupsPlanState = plan.groups && typeof plan.groups === 'object' ? plan.groups : {};
-    const randomPickerPlanState = plan.randomPicker && typeof plan.randomPicker === 'object'
-      ? plan.randomPicker
-      : {};
-    const workPhasePlanState = plan.workPhase && typeof plan.workPhase === 'object'
-      ? plan.workPhase
-      : {};
-    const incomingStudents = Array.isArray(rosterPlanState.students) ? rosterPlanState.students : [];
-    const incomingCsvName = typeof rosterPlanState.csvName === 'string' ? rosterPlanState.csvName : '';
-    classroomState.updateState({
-      performanceFlairCount: clampPerformanceFlairCount(groupsPlanState.performanceFlairCount, 4),
-    });
-    state.randomPickerAutoDisableSelected = normalizeRandomPickerAutoDisableSelected(
-      randomPickerPlanState.autoDisableSelected
-    );
-    const normalizedCsvName = sanitizeExportFileName(incomingCsvName);
-    classroomState.updateState({
-      students: incomingStudents.map(student => sanitizeRandomPickerStudent(student)),
-      headers: Array.isArray(rosterPlanState.headers) ? rosterPlanState.headers : [],
-      delim: typeof rosterPlanState.delimiter === 'string' ? rosterPlanState.delimiter : ',',
-      csvName: normalizedCsvName || classroomState.getState().csvName || '',
-    });
-    groupsController?.restorePlanState(groupsPlanState, { restoreSeatAssignments });
-    workPhaseController?.restorePlanState(workPhasePlanState);
-    if (!restoreSeatAssignments) {
-      els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
-    }
-    renderRandomPicker();
-  }
-
-  async function importPlanFromFile(file, handle) {
-    if (classroomState.isDemoActive()) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
-      return;
-    }
-    if (!file) return;
-    const planLabelFromFile = sanitizeExportFileName(stripFileExtension(file.name || ''));
-    const plan = await loadPlan(file);
-    const replacesPickerBinding = isRandomPickerTabActive()
-      && Boolean(gradeRosterCoordinator?.getPickerBinding?.());
-    if (replacesPickerBinding && !await gradeRosterCoordinator.confirmPickerBindingReplacement()) {
-      return false;
-    }
-    if (replacesPickerBinding) gradeRosterCoordinator.clearPickerBinding();
-    if (handle) {
-      state.lastDirectoryHandle = handle;
-    }
-    applyPlan(plan, { restoreSeatAssignments: true });
-    const importedLabel = typeof plan?.roster?.csvName === 'string' ? plan.roster.csvName.trim() : '';
-    if (!importedLabel) {
-      classroomState.updateState({
-        csvName: planLabelFromFile || classroomState.getState().csvName,
-      });
-    }
-    return true;
-  }
-
-  function splitCombinedStudentName(value) {
-    const combined = normalizeCsvCell(value);
-    if (!combined) return { first: '', last: '' };
-    if (combined.includes(',')) {
-      const [last, first] = combined.split(',');
-      return {
-        first: normalizeCsvCell(first),
-        last: normalizeCsvCell(last),
-      };
-    }
-    const parts = combined.split(/\s+/).filter(Boolean);
-    return {
-      first: normalizeCsvCell(parts.shift() || ''),
-      last: normalizeCsvCell(parts.join(' ')),
-    };
-  }
-
-  function resolveStudentColumnIndexes(headers, rows) {
-    const normalizedHeaders = Array.isArray(headers) ? headers.map(normalizeCsvHeader) : [];
-    const findIndex = aliases => normalizedHeaders.findIndex(cell => aliases.includes(cell));
-    const lastIndex = findIndex(['nachname', 'name', 'surname', 'last', 'lastname', 'familienname']);
-    const firstIndex = findIndex(['vorname', 'firstname', 'first', 'givenname', 'rufname']);
-    const combinedIndex = findIndex(['schüler', 'schueler', 'schülername', 'schuelername', 'student', 'lernende', 'lernender']);
-    if (lastIndex >= 0 || firstIndex >= 0 || combinedIndex >= 0) {
-      return { lastIndex, firstIndex, combinedIndex };
-    }
-    const sampleRow = Array.isArray(rows)
-      ? rows.find(row => Array.isArray(row) && row.some(cell => normalizeCsvCell(cell)))
-      : null;
-    const fallbackOffset = normalizedHeaders[0] === '' && normalizedHeaders.length >= 3 ? 1 : 0;
-    if (sampleRow && sampleRow.length >= fallbackOffset + 2) {
-      return { lastIndex: fallbackOffset, firstIndex: fallbackOffset + 1, combinedIndex: -1 };
-    }
-    if (sampleRow && sampleRow.length >= 3) {
-      return { lastIndex: 1, firstIndex: 2, combinedIndex: -1 };
-    }
-    return { lastIndex: 0, firstIndex: 1, combinedIndex: -1 };
-  }
-
-  function readStudents(rows, headers = []) {
-    const { lastIndex, firstIndex, combinedIndex } = resolveStudentColumnIndexes(headers, rows);
-    const students = [];
-    for (const r of rows) {
-      let first = '';
-      let last = '';
-      if (lastIndex >= 0 || firstIndex >= 0) {
-        last = normalizeCsvCell(r?.[lastIndex] || '');
-        first = normalizeCsvCell(r?.[firstIndex] || '');
-      }
-      if ((!last && !first) && combinedIndex >= 0) {
-        const parsed = splitCombinedStudentName(r?.[combinedIndex] || '');
-        first = parsed.first;
-        last = parsed.last;
-      }
-      if (last || first) {
-        const id = String(students.length + 1).padStart(2, '0');
-        students.push({
-          id,
-          first,
-          last,
-          performanceFlair: '',
-          buddies: [],
-          foes: [],
-          randomWeight: RANDOM_PICKER_DEFAULT_WEIGHT
-        });
-      }
-    }
-    return students;
-  }
-
-  function updateCsvStatusDisplay() {
-    if (!els.csvStatus) return;
-    const label = String(classroomState.getState().csvName || '').trim();
-    renderCsvStatus(label);
-  }
-
-  function renderCsvStatus(label = '') {
-    if (!els.csvStatus) return;
-    const normalizedLabel = String(label || '').trim();
-    els.csvStatus.replaceChildren();
-    els.csvStatus.classList.toggle('empty-state-box', !normalizedLabel);
-    if (normalizedLabel) {
-      els.csvStatus.textContent = normalizedLabel;
-      return;
-    }
-    const title = document.createElement('span');
-    title.className = 'empty-state-title';
-    title.textContent = 'Noch keine Datei';
-    const copy = document.createElement('span');
-    copy.className = 'empty-state-copy';
-    copy.textContent = 'Importiere eine Namensliste, um loszulegen.';
-    els.csvStatus.append(title, copy);
-  }
-  let gradeVaultOverlayRevealedGradesShell = false;
-  let gradeVaultOverlayReturnTab = '';
-  let gradeVaultOverlayRestoreTimer = 0;
-  let gradeVaultOverlayNavigationReturnTab = '';
-  let gradeVaultOverlayNavigationSuppressedUntil = 0;
-  let gradeVaultOverlayPreservesSourceTab = false;
-  registerCleanup(() => {
-    clearRuntimeTimeout(gradeVaultOverlayRestoreTimer);
-    gradeVaultOverlayRestoreTimer = 0;
-  });
-  bindRuntime(window, GRADES_GRADE_VAULT_OVERLAY_EVENT, (event) => {
-    const detail = event instanceof CustomEvent ? event.detail : null;
-    const isOpen = Boolean(detail?.open);
-    const preserveSourceTab = detail?.preserveSourceTab !== false;
-    const gradesTabIsActive = appEl.classList.contains('app-tab-grades');
-
-    if (isOpen) {
-      gradeVaultOverlayPreservesSourceTab = preserveSourceTab;
-      if (preserveSourceTab && !gradesTabIsActive) {
-        gradeVaultOverlayReturnTab = getActiveTab();
-        gradeVaultOverlayNavigationReturnTab = gradeVaultOverlayReturnTab;
-        gradeVaultOverlayNavigationSuppressedUntil = Date.now() + 1500;
-      } else if (!preserveSourceTab) {
-        gradeVaultOverlayReturnTab = '';
-        gradeVaultOverlayNavigationReturnTab = '';
-        gradeVaultOverlayNavigationSuppressedUntil = 0;
-        if (gradeVaultOverlayRestoreTimer) {
-          clearRuntimeTimeout(gradeVaultOverlayRestoreTimer);
-          gradeVaultOverlayRestoreTimer = 0;
-        }
-      }
-    }
-    gradeVaultOverlayRevealedGradesShell = isOpen && !gradesTabIsActive;
-
-    appEl.classList.toggle('grade-vault-overlay', isOpen);
-    appEl.classList.toggle(
-      'grade-vault-overlay-revealed-grades',
-      isOpen && gradeVaultOverlayRevealedGradesShell
-    );
-    if (!isOpen && gradeVaultOverlayPreservesSourceTab && gradeVaultOverlayReturnTab) {
-      const returnTab = gradeVaultOverlayReturnTab;
-      gradeVaultOverlayReturnTab = '';
-      gradeVaultOverlayNavigationReturnTab = returnTab;
-      gradeVaultOverlayNavigationSuppressedUntil = Date.now() + 1500;
-      const restoreSourceTab = () => {
-        if (getActiveTab() === TAB_GRADES && returnTab !== TAB_GRADES) {
-          setActiveTab(returnTab);
-        }
-      };
-      restoreSourceTab();
-      if (gradeVaultOverlayRestoreTimer) {
-        clearRuntimeTimeout(gradeVaultOverlayRestoreTimer);
-      }
-      gradeVaultOverlayRestoreTimer = setRuntimeTimeout(() => {
-        gradeVaultOverlayRestoreTimer = 0;
-        restoreSourceTab();
-      }, 360);
-    }
-    if (!isOpen) {
-      gradeVaultOverlayPreservesSourceTab = false;
-    }
-  });
+  moduleShellCoordinator.bindVaultOverlay();
 
   gradeRosterCoordinator = createGradeRosterCoordinator({
     documentBus: document,
@@ -1810,210 +577,12 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     normalizePickerWeight: normalizeRandomPickerWeight,
     showMessage,
     onPickerBindingChange: renderRandomPicker,
-    onBeforePickerBindingReplace: confirmPickerBindingReplacement,
+    onBeforePickerBindingReplace: fileActions.confirmPickerBindingReplacement,
   });
   registerCleanup(() => gradeRosterCoordinator?.dispose?.());
   gradeRosterCoordinator.requestCourses();
 
-  async function importCsvFromFile(file) {
-    if (classroomState.isDemoActive()) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
-      return;
-    }
-    if (!file) return;
-    assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
-    const guessedLabel = sanitizeExportFileName(stripFileExtension(file.name));
-    const text = await file.text();
-    const parsedCsv = parseCSV(text);
-    let rows = parsedCsv.rows;
-    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' }); return; }
-    const isSeparatorRow = (row) => {
-      if (!Array.isArray(row)) return false;
-      const normalized = row
-        .map(val => String(val ?? '').trim())
-        .join('')
-        .toLowerCase();
-      return /^sep\s*=/.test(normalized);
-    };
-    rows = rows.filter(row => !isSeparatorRow(row));
-    if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' }); return; }
-    const firstNonEmptyIdx = rows.findIndex(r => Array.isArray(r) && r.some(x => String(x || '').trim() !== ''));
-    if (firstNonEmptyIdx === -1) { showMessage('Nur leere Zeilen gefunden.', 'warn', { presentation: 'toast' }); return; }
-
-    const headers = rows[firstNonEmptyIdx] || [];
-    const dataStartIdx = firstNonEmptyIdx + 1;
-    const dataRows = rows.slice(dataStartIdx);
-    const students = readStudents(dataRows, headers);
-    const replacesPickerBinding = isRandomPickerTabActive()
-      && Boolean(gradeRosterCoordinator?.getPickerBinding?.());
-    if (replacesPickerBinding && !await gradeRosterCoordinator.confirmPickerBindingReplacement()) {
-      return;
-    }
-    if (replacesPickerBinding) gradeRosterCoordinator.clearPickerBinding();
-    classroomState.updateState({
-      headers,
-      delim: parsedCsv.delimiter,
-      csvName: guessedLabel || classroomState.getState().csvName,
-      performanceFlairCount: 4,
-      students,
-    });
-    updateCsvStatusDisplay();
-    workPhaseController?.reset();
-    groupsController?.handleRosterReplacement({ rebuildCapacity: true });
-
-    els.sidePanel?.scrollTo({ top: 0, behavior: 'auto' });
-    renderRandomPicker();
-    classroomState.sync();
-    const importedCount = students.length;
-    const importedLabel = importedCount === 1 ? 'Name' : 'Namen';
-    showMessage(`${importedCount} ${importedLabel} importiert.`, 'success', { presentation: 'toast' });
-  }
-
-  async function handlePlanImportAction() {
-    if (classroomState.isDemoActive()) {
-      showMessage('Demo: Dateiimporte verändern die Beispieldaten nicht.', 'info', { presentation: 'toast' });
-      return;
-    }
-    const picked = await pickPlanFile({ directoryHandle: state.lastDirectoryHandle });
-    if (picked && picked.file) {
-      try {
-        await importPlanFromFile(picked.file, picked.handle);
-        return;
-      } catch (err) {
-        reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
-          scope: 'plan-import',
-          source: 'file-picker',
-        });
-        return;
-      }
-    }
-    if (picked?.aborted) {
-      return;
-    }
-    if (!picked || picked.supported === false) {
-      els.importPlanFile?.click();
-    }
-  }
-
-  bindRuntime(els.templateLink, 'click', (e) => {
-    e.preventDefault();
-    downloadCsvTemplate();
-  });
-
-  bindRuntime(els.file, 'change', async (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (!f) {
-      classroomState.updateState({ csvName: '' });
-      updateCsvStatusDisplay();
-      return;
-    }
-    try {
-      await importCsvFromFile(f);
-    } catch (err) {
-      reportAppError(err, err?.message || 'Namensliste konnte nicht geladen werden.', {
-        scope: 'csv-import',
-        source: 'file-input',
-      });
-    }
-  });
-
-  const isEventInsideCsvDropZone = (event) => {
-    const target = event?.target;
-    if (!(target instanceof Element)) return false;
-    return Boolean(target.closest('#csv-drop-zone'));
-  };
-  const isEventInsideMergerDropZone = (event) => {
-    const target = event?.target;
-    if (!(target instanceof Element)) return false;
-    return Boolean(target.closest('#merger-host'));
-  };
-
-  if (els.csvDropZone) {
-    let csvDragDepth = 0;
-    const clearCsvDragState = () => {
-      csvDragDepth = 0;
-      els.csvDropZone.classList.remove('drag-over-file');
-    };
-    bindRuntime(els.csvDropZone, 'dragenter', (e) => {
-      if (!dataTransferHasFiles(e.dataTransfer)) return;
-      e.preventDefault();
-      csvDragDepth += 1;
-      els.csvDropZone.classList.add('drag-over-file');
-    });
-    bindRuntime(els.csvDropZone, 'dragover', (e) => {
-      if (!dataTransferHasFiles(e.dataTransfer)) return;
-      e.preventDefault();
-      if (e.dataTransfer) {
-        e.dataTransfer.dropEffect = 'copy';
-      }
-      els.csvDropZone.classList.add('drag-over-file');
-    });
-    bindRuntime(els.csvDropZone, 'dragleave', (e) => {
-      e.preventDefault();
-      csvDragDepth = Math.max(0, csvDragDepth - 1);
-      if (csvDragDepth === 0) {
-        els.csvDropZone.classList.remove('drag-over-file');
-      }
-    });
-    bindRuntime(els.csvDropZone, 'drop', async (e) => {
-      if (!dataTransferHasFiles(e.dataTransfer)) return;
-      e.preventDefault();
-      e.stopPropagation();
-      clearCsvDragState();
-      const droppedFiles = Array.from(e.dataTransfer?.files || []);
-      const csvFile = droppedFiles.find(isCsvFile);
-      if (!csvFile) {
-        showMessage('Bitte hier eine CSV-Datei ablegen.', 'warn', { presentation: 'toast' });
-        return;
-      }
-      try {
-        await importCsvFromFile(csvFile);
-      } catch (err) {
-        reportAppError(err, err?.message || 'Namensliste konnte nicht geladen werden.', {
-          scope: 'csv-import',
-          source: 'drop-zone',
-        });
-      }
-    });
-    bindRuntime(document, 'drop', clearCsvDragState);
-    bindRuntime(document, 'dragend', clearCsvDragState);
-  }
-
-  bindRuntime(document, 'dragover', (e) => {
-    if (!dataTransferHasFiles(e.dataTransfer)) return;
-    if (isEventInsideCsvDropZone(e)) return;
-    if (isEventInsideMergerDropZone(e)) return;
-    e.preventDefault();
-    if (e.dataTransfer) {
-      e.dataTransfer.dropEffect = 'copy';
-    }
-  });
-
-  bindRuntime(document, 'drop', async (e) => {
-    if (!dataTransferHasFiles(e.dataTransfer)) return;
-    if (isEventInsideCsvDropZone(e)) return;
-    if (isEventInsideMergerDropZone(e)) return;
-    e.preventDefault();
-    const droppedFiles = Array.from(e.dataTransfer?.files || []);
-    const jsonFile = droppedFiles.find(isJsonFile);
-    if (!jsonFile) {
-      const csvFile = droppedFiles.find(isCsvFile);
-      if (csvFile) {
-        showMessage('CSV bitte im Feld „Namensliste auswählen“ ablegen.', 'warn', { presentation: 'toast' });
-      } else {
-        showMessage('Hier können nur Gruppen als JSON geladen werden.', 'warn', { presentation: 'toast' });
-      }
-      return;
-    }
-    try {
-      await importPlanFromFile(jsonFile);
-    } catch (err) {
-      reportAppError(err, err?.message || 'Gruppen konnten nicht geladen werden.', {
-        scope: 'plan-import',
-        source: 'document-drop',
-      });
-    }
-  });
+  fileActions.bindInputs();
 
   groupsController = mountGroups({
     doc: document,
@@ -2030,13 +599,13 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     isTutorialDemoActive: () => classroomState.isDemoActive(),
     showMessage,
     reportError: reportAppError,
-    getSuggestedPlanFileName,
+    getSuggestedPlanFileName: fileActions.getSuggestedPlanFileName,
     onPlanImportRequest: () => {
-      void handlePlanImportAction();
+      void fileActions.handlePlanImportAction();
     },
-    onPlanFileSelected: (file) => importPlanFromFile(file),
+    onPlanFileSelected: (file) => fileActions.importPlanFromFile(file),
     onPlanExportRequest: () => {
-      void downloadSeatPlan();
+      void fileActions.downloadSeatPlan();
     },
   });
   registerCleanup(() => groupsController?.dispose?.());
@@ -2059,10 +628,10 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     sanitizeStudent: sanitizeRandomPickerStudent,
     showMessage,
     onImport: () => {
-      void handlePlanImportAction();
+      void fileActions.handlePlanImportAction();
     },
     onExport: () => {
-      void handlePickerSaveClick();
+      void fileActions.handlePickerSaveClick();
     },
   });
   registerCleanup(() => randomPickerController?.dispose?.());
@@ -2233,7 +802,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   }
   firstRunTutorial = createFirstRunTutorial({
     els,
-    getContextualSteps: getCurrentModuleTutorialSteps,
+    getContextualSteps: tutorialController.getDefinition,
     getActiveTab,
     setActiveTab: setActiveTabForTutorial,
     isChromeCollapsed,
@@ -2248,65 +817,9 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     els,
     onStartTutorial: startTutorialFromEntry,
   });
-  if (helpPreviewRequest) startHelpPreview();
+  if (helpPreviewRequest) tutorialController.startHelpPreview();
   else firstRunTutorial.showContextHelp({ prompt: true });
-  const serviceWorkerUpdates = helpPreviewRequest ? null : registerServiceWorkerUpdates({
-    updateDialog: els.updateDialog,
-    updateDialogLater: els.updateDialogLater,
-    updateDialogReload: els.updateDialogReload,
-    updateDialogForce: els.updateDialogForce,
-    updateDialogStatus: els.updateDialogStatus,
-    beforeReloadForUpdate,
-    describeBackupStatus,
-    onUpdateAvailabilityChange: setVersionUpdateAvailability,
-    serviceWorkerUrl: './sw.js',
-  });
-  if (els.headerVersion && serviceWorkerUpdates?.checkForUpdates) {
-    const runManualUpdateCheck = async () => {
-      if (els.headerVersion.dataset.updateCheckPending === '1') {
-        return;
-      }
-      els.headerVersion.dataset.updateCheckPending = '1';
-      els.headerVersion.classList.add('is-checking-update');
-      try {
-        const result = await serviceWorkerUpdates.checkForUpdates({ force: true });
-        switch (result?.status) {
-          case 'update-available':
-            break;
-          case 'update-installing':
-            showMessage('Update wird geladen. Der Neu-laden-Hinweis erscheint automatisch.', 'info', { presentation: 'toast' });
-            break;
-          case 'up-to-date':
-            showMessage('TeachHelper ist aktuell.', 'info', { presentation: 'toast' });
-            break;
-          case 'disabled':
-            showMessage('Update-Check ist auf localhost deaktiviert.', 'warn', { presentation: 'toast' });
-            break;
-          case 'unsupported':
-            showMessage('Update-Check wird von diesem Browser nicht unterstützt.', 'warn', { presentation: 'toast' });
-            break;
-          default:
-            showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn', { presentation: 'toast' });
-            break;
-        }
-      } catch {
-        showMessage('Update-Check konnte gerade nicht ausgeführt werden.', 'warn', { presentation: 'toast' });
-      } finally {
-        delete els.headerVersion.dataset.updateCheckPending;
-        els.headerVersion.classList.remove('is-checking-update');
-      }
-    };
-    bindRuntime(els.headerVersion, 'click', () => {
-      void runManualUpdateCheck();
-    });
-    bindRuntime(els.headerVersion, 'keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ' && event.code !== 'Space') {
-        return;
-      }
-      event.preventDefault();
-      void runManualUpdateCheck();
-    });
-  }
+  updateController.start({ helpPreviewRequest });
   bindRuntime(window, 'pagehide', (event) => {
     if (event.persisted !== true) disposeRuntime();
   });

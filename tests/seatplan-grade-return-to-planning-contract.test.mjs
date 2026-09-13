@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const [seatplanSource, shellSource, routerSource] = await Promise.all([
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/module-message-router.js', import.meta.url), 'utf8'),
 ]);
 

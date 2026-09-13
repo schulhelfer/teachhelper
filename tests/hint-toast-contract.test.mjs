@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const fileActionsSource = await readFile(new URL('../src/app/classroom-file-actions.js', import.meta.url), 'utf8');
+
 const read = async (path) => (await readFile(new URL(path, import.meta.url), 'utf8')).replace(/\r\n/g, '\n');
 
 const [
@@ -45,7 +47,7 @@ test('der Sitzplan-Fork stellt Erfolgsmeldungen wie die geteilte API als Toast d
 
 test('keine wirkungslose duration-Option mehr - der Toast liest ausschliesslich durationMs', () => {
   assert.match(messagesSource, /const durationMs = Number\(options\.durationMs\);/);
-  [mainSource, seatplanSource].forEach((source) => {
+  [mainSource, fileActionsSource, seatplanSource].forEach((source) => {
     assert.doesNotMatch(source, /showMessage\([^;]*\{[^}]*\bduration:/);
   });
   assert.match(
@@ -56,14 +58,14 @@ test('keine wirkungslose duration-Option mehr - der Toast liest ausschliesslich 
 
 test('folgenlose Hinweise erscheinen als Toast statt als blockierendes Overlay', () => {
   const toastHints = [
-    [mainSource, 'Keine Daten gefunden.'],
-    [mainSource, 'Nur leere Zeilen gefunden.'],
+    [fileActionsSource, 'Keine Daten gefunden.'],
+    [fileActionsSource, 'Nur leere Zeilen gefunden.'],
     [groupsSource, 'Keine aktiven Gruppenfelder vorhanden.'],
     [mainSource, 'Importiere zuerst die Namensliste!'],
     [groupsSource, 'Maximale Anzahl an Gruppen erreicht.'],
     [groupsSource, 'Keine freien Gruppen verfügbar (alle gesperrt).'],
-    [mainSource, 'Demo: Downloads sind für Beispieldaten deaktiviert.'],
-    [mainSource, 'Demo: Dateiimporte verändern die Beispieldaten nicht.'],
+    [fileActionsSource, 'Demo: Downloads sind für Beispieldaten deaktiviert.'],
+    [fileActionsSource, 'Demo: Dateiimporte verändern die Beispieldaten nicht.'],
     [seatplanSource, 'Keine aktiven Sitzplätze vorhanden.'],
     [seatplanSource, 'Keine aktiven Sitzplätze zum Minimieren.'],
     [seatplanSource, 'Keine Lernenden für den Geschlechtervorschlag vorhanden.'],

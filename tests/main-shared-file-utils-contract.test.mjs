@@ -5,7 +5,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const main = fs.readFileSync(path.join(root, 'src/app/app-runtime.js'), 'utf8');
+const main = fs.readFileSync(path.join(root, 'src/app/classroom-file-actions.js'), 'utf8');
 const csv = fs.readFileSync(path.join(root, 'src/shared/csv.js'), 'utf8');
 const fileIo = fs.readFileSync(path.join(root, 'src/shared/file-io.js'), 'utf8');
 const serviceWorker = fs.readFileSync(path.join(root, 'sw.js'), 'utf8');
@@ -17,7 +17,7 @@ test('main consumes shared CSV and file utilities without local duplicates', () 
   assert.doesNotMatch(main, /function\s+(?:detectDelimiter|parseCSV|normalizeCsvCell|normalizeCsvHeader)\s*\(/);
   assert.doesNotMatch(main, /function\s+(?:sanitizeExportFileName|stripFileExtension|dataTransferHasFiles|isCsvFile|isJsonFile|triggerBlobDownload)\s*\(/);
   assert.match(main, /const parsedCsv = parseCSV\(text\);\s*let rows = parsedCsv\.rows;/);
-  assert.match(main, /classroomState\.updateState\(\{[\s\S]*?delim: parsedCsv\.delimiter,[\s\S]*?\}\);/);
+  assert.match(main, /getClassroomState\(\)\.updateState\(\{[\s\S]*?delim: parsedCsv\.delimiter,[\s\S]*?\}\);/);
   assert.doesNotMatch(csv, /\bstate\s*\./);
   assert.doesNotMatch(fileIo, /\bstate\s*\.|isIOSDevice/);
 });

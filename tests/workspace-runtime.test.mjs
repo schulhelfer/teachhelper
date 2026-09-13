@@ -1710,3 +1710,53 @@ test('eine während der Aktualisierung gesperrte Notendatenbank erzeugt keine Ku
     /if \(error\?\.code === WORKSPACE_ERROR_VAULT_LOCKED \|\| !this\.canAccessGradeVault\(\)\) return false;/,
   );
 });
+
+test('database loading owns its input snapshot and rejects overlapping imports', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const built = runtime.buildEmptyDatabaseContainer();
+  const expectedHash = await thdb.getThdb1FileHashAsync(built.bytes);
+  const loading = runtime.loadBytes(built.bytes);
+  built.bytes.fill(0);
+  await assert.rejects(runtime.loadBytes(built.bytes), /bereits eine Datenbank geladen/);
+  assert.equal(runtime.databaseLoaded, false);
+  await loading;
+  assert.equal(runtime.knownFileHash, expectedHash);
+  assert.equal(runtime.databaseLoaded, true);
+  assert.equal(runtime.loadInProgress, false);
+});
+
+test('failed imports preserve workspace data and release the import lock', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  const built = runtime.buildEmptyDatabaseContainer();
+  const corrupt = built.bytes.slice();
+  corrupt[built.header.planningPublicOffset] ^= 1;
+  const invalidJson = thdb.buildThdb1ContainerBytes({
+    schema: built.header.schema,
+    startupShellText: '{}',
+    planningPublicText: '{',
+    gradeVaultConfigText: '{}',
+  });
+  const before = structuredClone(store.state);
+  for (const input of [corrupt, invalidJson.bytes]) {
+    await assert.rejects(runtime.loadBytes(input), /ungültig/);
+    assert.deepEqual(store.state, before);
+    assert.equal(runtime.loadInProgress, false);
+    assert.equal(runtime.databaseLoaded, false);
+  }
+  await runtime.loadBytes(built.bytes);
+  assert.equal(runtime.databaseLoaded, true);
+});
+
+test('an import prevents saving the previous workspace while validation is pending', async () => {
+  const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
+  const built = runtime.buildEmptyDatabaseContainer();
+  runtime.databaseLoaded = true;
+  runtime.fileHandle = { getFile() { throw new Error('must not read during import'); } };
+  const loading = runtime.loadBytes(built.bytes);
+  assert.equal(runtime.isPersistenceReady(), false);
+  assert.equal(await runtime.saveToConnectedFile(), false);
+  await loading;
+  assert.equal(runtime.isPersistenceReady(), true);
+});

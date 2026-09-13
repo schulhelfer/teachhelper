@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+
 const [html, css, appSource, shellHtml, shellSource, mainSource] = await Promise.all([
   readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
@@ -259,8 +261,8 @@ test('Sitzplan, Gruppen und Picker verwenden keinen hidden-Vorfahren für das Va
   assert.match(shellHtml, /<section id="grades-shell" class="grades-shell" aria-label="Noten">/);
   assert.doesNotMatch(shellHtml, /id="grades-shell"[^>]*\shidden(?:\s|>)/);
   assert.doesNotMatch(shellSource, /gradesShell\.hidden\s*=/);
-  assert.doesNotMatch(mainSource, /gradesShell(?:\?\.)?\.hidden\s*=/);
-  assert.match(mainSource, /gradeVaultOverlayRevealedGradesShell = isOpen && !gradesTabIsActive/);
+  assert.doesNotMatch(coordinatorSource, /gradesShell(?:\?\.)?\.hidden\s*=/);
+  assert.match(coordinatorSource, /gradeVaultOverlayRevealedGradesShell = isOpen && !gradesTabIsActive/);
 
   const overlayStart = appSource.indexOf('  notifyParentGradeVaultOverlay(open)');
   const overlayEnd = appSource.indexOf('\n  notifyParentTutorialStartRequest()', overlayStart);

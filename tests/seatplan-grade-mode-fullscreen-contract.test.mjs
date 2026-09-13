@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
   .then((text) => text.replace(/\r\n/g, '\n'));
 
@@ -93,14 +95,14 @@ test('the shell honours seatplan chrome requests only from the seatplan frame, a
   assert.match(handler, /if \(role !== 'seatplan'\) return false;/);
   assert.match(handler, /if \(!detail \|\| detail\.source !== 'iframe'\) return false;/);
   assert.match(handler, /invoke\('onSeatplanChromeRequest', detail, metadata\)/);
-  assert.match(main, /onSeatplanChromeRequest: \(detail\) => \{[\s\S]*?if \(collapsed && getActiveTab\(\) !== TAB_SEATPLAN\) return;[\s\S]*?requestSeatplanChromeCollapsed\(collapsed\);/);
+  assert.match(coordinatorSource, /onSeatplanChromeRequest: \(detail\) => \{[\s\S]*?if \(collapsed && getActiveTab\(\) !== TAB_SEATPLAN\) return;[\s\S]*?requestSeatplanChromeCollapsed\(collapsed\);/);
 });
 
 test('a chrome request waits out a running chrome transition without re-checking the tab', () => {
-  const start = main.indexOf('const applyPendingSeatplanChrome = (attempt = 0) => {');
-  const end = main.indexOf('const requestSeatplanChromeCollapsed', start);
+  const start = coordinatorSource.indexOf('const applyPendingSeatplanChrome = (attempt = 0) => {');
+  const end = coordinatorSource.indexOf('const requestSeatplanChromeCollapsed', start);
   assert.ok(start >= 0 && end > start, 'the deferred chrome applier must exist');
-  const scheduler = main.slice(start, end);
+  const scheduler = coordinatorSource.slice(start, end);
 
   assert.match(scheduler, /if \(getChromeTransitionState\(\) === 'idle'\) \{/);
   assert.match(scheduler, /setChromeCollapsed\(collapsed, \{ resetSidebarWidth: false \}\);/);

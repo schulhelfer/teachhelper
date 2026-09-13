@@ -2,6 +2,7 @@ import {
   buildThdb1ContainerBytes,
   getThdb1FileHashAsync,
   parseThdb1ContainerBytes,
+  parseThdb1ContainerBytesAsync,
   parseThdb1Header,
 } from '../../shared/school-data/thdb.js';
 import { FILE_LIMITS, formatFileSize } from '../../shared/file-guards.js';
@@ -375,6 +376,7 @@ export class WorkspaceRuntime {
     this.knownFileHash = '';
     this.databaseLoaded = false;
     this.loadGeneration = 0;
+    this.loadInProgress = false;
     this.persistedCourseIds = new Set();
     this.deletedCourseIds = new Set();
     this.confirmedStudentRemovalsByCourse = new Map();
@@ -722,7 +724,7 @@ export class WorkspaceRuntime {
   }
 
   isPersistenceReady() {
-    return !this.fileHandle || this.databaseLoaded;
+    return !this.loadInProgress && (!this.fileHandle || this.databaseLoaded);
   }
 
   clearPersistenceFailure() {
@@ -1655,72 +1657,80 @@ export class WorkspaceRuntime {
   }
 
   async loadBytes(bytes, source = 'manual') {
-    this.loadGeneration += 1;
-    const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
-    const parsed = parseThdb1ContainerBytes(view, {
-      schemas: [APP_DB_SCHEMA, APP_DB_SCHEMA_LEGACY],
-      includePlanningPublic: true,
-      includeGradeCourseSegments: true,
-    });
-    if (!parsed) throw new Error('Datenbankdatei ist ungültig oder beschädigt.');
-    let publicState;
-    let config;
+    if (this.loadInProgress) throw new Error('Es wird bereits eine Datenbank geladen. Bitte warte, bis der Import abgeschlossen ist.');
+    this.loadInProgress = true;
     try {
-      publicState = JSON.parse(parsed.planningPublicText);
-      const rawVaultConfig = JSON.parse(parsed.gradeVaultConfigText || '{}');
-      config = normalizeVaultConfig(rawVaultConfig);
-      if (config.configured) validateWorkspaceVaultKdf(rawVaultConfig.kdf);
-    } catch {
-      throw new Error('Datenbanksegmente oder Verschlüsselungseinstellungen sind ungültig.');
+      this.loadGeneration += 1;
+      const view = new Uint8Array(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []));
+      const parsed = await parseThdb1ContainerBytesAsync(view, {
+        schemas: [APP_DB_SCHEMA, APP_DB_SCHEMA_LEGACY],
+        includePlanningPublic: true,
+        includeGradeCourseSegments: true,
+      });
+      if (!parsed) throw new Error('Datenbankdatei ist ungültig oder beschädigt.');
+      let publicState;
+      let config;
+      try {
+        publicState = JSON.parse(parsed.planningPublicText);
+        const rawVaultConfig = JSON.parse(parsed.gradeVaultConfigText || '{}');
+        config = normalizeVaultConfig(rawVaultConfig);
+        if (config.configured) validateWorkspaceVaultKdf(rawVaultConfig.kdf);
+      } catch {
+        throw new Error('Datenbanksegmente oder Verschlüsselungseinstellungen sind ungültig.');
+      }
+      const fileHash = await getThdb1FileHashAsync(view);
+      if (!fileHash) throw new Error('Datenbankdatei konnte nicht vollständig geprüft werden.');
+      const isEmptyDatabase = [
+        publicState?.schoolYears,
+        publicState?.courses,
+        publicState?.slots,
+        publicState?.freeRanges,
+        publicState?.specialDays,
+        publicState?.lessons,
+        parsed.gradeCourseSegments,
+      ].every((items) => Array.isArray(items) && items.length === 0);
+      this.store.importDatabaseState(publicState, emptyGradeState(this.store), {
+        skipSaveNotification: true,
+        allowEmpty: isEmptyDatabase,
+      });
+      this.segmentTexts = new Map(parsed.gradeCourseSegments.map((segment) => [Number(segment.courseId), String(segment.text || '')]));
+      this.rememberPersistedCourseIds(parsed.gradeCourseSegments);
+      this.deletedCourseIds.clear();
+      this.confirmedStudentRemovalsByCourse.clear();
+      this.courseCache.clear();
+      this.performanceIndexCache.clear();
+      this.seatplanPresenceCache.clear();
+      this.dirtyCourseIds.clear();
+      this.loadedCourseId = null;
+      this.store.replaceGradeVaultState(emptyGradeState(this.store));
+      this.vault.encryptionEnabled = Boolean(
+        config.configured
+        || publicState?.settings?.gradeVaultEncryptionEnabled,
+      );
+      this.vault.configured = Boolean(config.configured);
+      this.vault.unlocked = false;
+      this.vault.config = config;
+      this.vault.persistedConfig = clone(config, normalizeVaultConfig(null));
+      this.vault.persistedCryptoKey = null;
+      this.vault.cryptoKey = null;
+      this.vault.kdf = config.kdf;
+      this.store.state.settings.gradeVaultEncryptionEnabled = this.vault.encryptionEnabled;
+      this.knownRevision = Math.max(0, Number(parsed.header.revision) || 0);
+      this.knownFileHash = fileHash;
+      this.publicDirty = false;
+      this.manualDirty = false;
+      this.clearGradeVaultAutoLockWarning();
+      this.manualLoaded = true;
+      this.databaseLoaded = true;
+      this.ready = true;
+      this.clearPersistenceFailure();
+      if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
+      this.controller?.markChanged?.('planning');
+      this.controller?.publish?.('grades');
+      return { ok: true, source };
+    } finally {
+      this.loadInProgress = false;
     }
-    const isEmptyDatabase = [
-      publicState?.schoolYears,
-      publicState?.courses,
-      publicState?.slots,
-      publicState?.freeRanges,
-      publicState?.specialDays,
-      publicState?.lessons,
-      parsed.gradeCourseSegments,
-    ].every((items) => Array.isArray(items) && items.length === 0);
-    this.store.importDatabaseState(publicState, emptyGradeState(this.store), {
-      skipSaveNotification: true,
-      allowEmpty: isEmptyDatabase,
-    });
-    this.segmentTexts = new Map(parsed.gradeCourseSegments.map((segment) => [Number(segment.courseId), String(segment.text || '')]));
-    this.rememberPersistedCourseIds(parsed.gradeCourseSegments);
-    this.deletedCourseIds.clear();
-    this.confirmedStudentRemovalsByCourse.clear();
-    this.courseCache.clear();
-    this.performanceIndexCache.clear();
-    this.seatplanPresenceCache.clear();
-    this.dirtyCourseIds.clear();
-    this.loadedCourseId = null;
-    this.store.replaceGradeVaultState(emptyGradeState(this.store));
-    this.vault.encryptionEnabled = Boolean(
-      config.configured
-      || publicState?.settings?.gradeVaultEncryptionEnabled,
-    );
-    this.vault.configured = Boolean(config.configured);
-    this.vault.unlocked = false;
-    this.vault.config = config;
-    this.vault.persistedConfig = clone(config, normalizeVaultConfig(null));
-    this.vault.persistedCryptoKey = null;
-    this.vault.cryptoKey = null;
-    this.vault.kdf = config.kdf;
-    this.store.state.settings.gradeVaultEncryptionEnabled = this.vault.encryptionEnabled;
-    this.knownRevision = Math.max(0, Number(parsed.header.revision) || 0);
-    this.knownFileHash = await getThdb1FileHashAsync(view);
-    this.publicDirty = false;
-    this.manualDirty = false;
-    this.clearGradeVaultAutoLockWarning();
-    this.manualLoaded = true;
-    this.databaseLoaded = true;
-    this.ready = true;
-    this.clearPersistenceFailure();
-    if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
-    this.controller?.markChanged?.('planning');
-    this.controller?.publish?.('grades');
-    return { ok: true, source };
   }
 
   readPersistedCourseIds(bytes) {
@@ -1960,6 +1970,7 @@ export class WorkspaceRuntime {
   }
 
   async saveToConnectedFile(reason = 'save') {
+    if (this.loadInProgress) return false;
     if (!this.fileHandle) return false;
     if (!this.databaseLoaded) return false;
     const fileHandle = this.fileHandle;

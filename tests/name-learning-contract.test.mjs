@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [defaults, store, runtime, integrity, gradesHtml, gradesApp, tabs, bridge, shell, tabController, workspaceStatus, main, router, index, nameLearningHtml, nameLearningCss, nameLearningIndex, nameLearningApp] = await Promise.all([
   read('../src/shared/school-data/defaults.js'), read('../src/modules/workspace/store.js'), read('../src/modules/workspace/runtime.js'),
@@ -29,7 +31,7 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(index, /data-more-tools-target="name-learning"[\s\S]*?data-name-learning-due-count hidden/);
   assert.match(index, /id="name-learning-host"/);
   assert.match(router, /NAME_LEARNING_DATA_REQUEST_EVENT/);
-  assert.match(main, /onNameLearningRequest: \(type, detail\) =>/);
+  assert.match(coordinatorSource, /onNameLearningRequest: \(type, detail\) =>/);
   assert.match(bridge, /mountNameLearning/);
   assert.match(bridge, /GRADES_NAME_LEARNING_DATA_REQUEST_EVENT/);
   assert.match(bridge, /GRADES_NAME_LEARNING_REVIEW_REQUEST_EVENT/);
@@ -85,7 +87,7 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningApp, /const previousProgress = card\.progress \? \{ \.\.\.card\.progress \} : null;[\s\S]*?previousReview = \{ card, progress: previousProgress \};/);
   assert.match(nameLearningApp, /function restorePreviousReview\(\) \{[\s\S]*?previous\.card\.progress = previous\.progress \? \{ \.\.\.previous\.progress \} : null;[\s\S]*?queue\.unshift\(previous\.card\);[\s\S]*?renderCard\(\);[\s\S]*?reveal\(\);/);
   assert.match(nameLearningApp, /refs\.practice\.classList\.add\('is-ready-to-reveal'\)/);
-  assert.match(nameLearningApp, /refs\.main\.addEventListener\('click', \(event\) => \{[\s\S]*?if \(!reviewFeedbackActive\) return;[\s\S]*?target\?\.closest\('#known, #unknown, #previous-review'\)\) return;[\s\S]*?advanceAfterReviewFeedback\(\);/);
+  assert.match(nameLearningApp, /refs\.main\.addEventListener\('click', \(event\) => \{[\s\S]*?if \(!reviewFeedbackActive\) return;[\s\S]*?target\?\.closest\('#known, #unknown, #previous-review, #hint, #hint-choices'\)\) return;[\s\S]*?advanceAfterReviewFeedback\(\);/);
   assert.match(nameLearningApp, /if \(mode === 'random'\) \{ clearPreviousReview\(\); renderNextCardAfterFlip\(\); return; \}/);
   assert.match(nameLearningApp, /Fällige Karten \(\$\{dueCount\}\) abfragen/);
   assert.doesNotMatch(nameLearningApp, /Karte\$\{dueCount === 1/);
@@ -119,6 +121,31 @@ test('name learning uses the shared module shell with its own sidebar', () => {
   assert.match(nameLearningCss, /\.main \{ position: relative; display: flex; align-items: center;/);
 });
 
+test('name learning offers a hint with four name tiles on the card front', () => {
+  assert.match(nameLearningHtml, /id="flip-card"[\s\S]*?id="hint" class="hint-action" type="button" hidden>Tipp<\/button>[\s\S]*?id="hint-choices" class="hint-choices" role="group" aria-label="Namen zur Auswahl" hidden><\/div>[\s\S]*?id="flashcard-back"/);
+  assert.doesNotMatch(nameLearningHtml, /id="flashcard-back"[\s\S]*?id="hint"/);
+  assert.match(nameLearningApp, /import \{ applyHintedReview, applyReview, buildDueQueue, buildHintChoices, buildRandomQueue, nextReviewMessage \} from '\.\/session\.js';/);
+  assert.match(nameLearningApp, /hint: document\.getElementById\('hint'\), hintChoices: document\.getElementById\('hint-choices'\)/);
+  assert.match(nameLearningApp, /let hintOutcome = null;/);
+  assert.match(nameLearningApp, /const HINT_CHOICE_COUNT = 4;/);
+  assert.match(nameLearningApp, /function hintPool\(card\) \{[\s\S]*?Number\(entry\.courseId\) === Number\(card\.courseId\)[\s\S]*?cardsForSelection\(\)[\s\S]*?: cards;/);
+  assert.match(nameLearningApp, /refs\.hint\.hidden = mode !== 'due' \|\| buildHintChoices\(card, hintPool\(card\), HINT_CHOICE_COUNT\)\.length < HINT_CHOICE_COUNT;/);
+  assert.match(nameLearningApp, /const progress = hintOutcome[\s\S]*?\? applyHintedReview\(card\.progress, hintOutcome\.correct, now\)[\s\S]*?: applyReview\(card\.progress, known, now\);/);
+  assert.match(nameLearningApp, /function resetHint\(\) \{[\s\S]*?hintOutcome = null;[\s\S]*?refs\.hintChoices\.replaceChildren\(\);/);
+  assert.match(nameLearningApp, /function showHintChoices\(\) \{[\s\S]*?if \(choices\.length < HINT_CHOICE_COUNT\) return;/);
+  assert.match(nameLearningApp, /function answerHint\(name\) \{[\s\S]*?reveal\(\);[\s\S]*?review\(correct\);/);
+  assert.match(nameLearningApp, /refs\.hint\.addEventListener\('click', \(event\) => \{ event\.stopPropagation\(\); showHintChoices\(\); \}\);/);
+  assert.match(nameLearningApp, /refs\.hintChoices\.addEventListener\('click', \(event\) => \{[\s\S]*?closest\('\[data-hint-name\]'\)[\s\S]*?answerHint\(choice\.dataset\.hintName\);/);
+  assert.match(nameLearningApp, /refs\.hint\.hidden = true;[\s\S]*?if \(hintOutcome\) return;[\s\S]*?refs\.known\.disabled = false;/);
+  assert.match(nameLearningCss, /\.hint-action \{ position: absolute;[\s\S]*?backface-visibility: hidden;/);
+  assert.match(nameLearningCss, /\.hint-choices \{ position: absolute; inset: 0;[\s\S]*?grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(nameLearningCss, /\.hint-choice \{[\s\S]*?overflow-wrap: anywhere/);
+  assert.match(nameLearningCss, /\.hint-choice\.is-correct/);
+  assert.match(nameLearningCss, /\.hint-choice\.is-wrong/);
+  assert.match(nameLearningCss, /\.flashcard\.is-revealed \.hint-action, \.flashcard\.is-revealed \.hint-choices \{ visibility: hidden; pointer-events: none; \}/);
+  assert.match(nameLearningCss, /@media \(max-width: 460px\)[\s\S]*?\.hint-choices \{ grid-template-columns: minmax\(0, 1fr\); \}/);
+});
+
 test('name learning clears sensitive cards while the grade vault is locked', () => {
   assert.match(bridge, /nameLearningGradeVaultState/);
   assert.match(bridge, /const setNameLearningGradeVaultState/);
@@ -149,8 +176,8 @@ test('name learning course actions use a dedicated persistent visibility setting
   assert.match(gradesApp, /await this\.openCourseStudentsDialog\(courseId\)/);
   assert.match(bridge, /GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT/);
   assert.match(router, /NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT/);
-  assert.match(main, /onNameLearningManageStudentsRequest: \(detail\) =>/);
-  assert.match(main, /action: 'manage-students'/);
+  assert.match(coordinatorSource, /onNameLearningManageStudentsRequest: \(detail\) =>/);
+  assert.match(coordinatorSource, /action: 'manage-students'/);
   assert.match(nameLearningHtml, /id="course-context-menu"[\s\S]*?Aus „Namen lernen“ ausblenden[\s\S]*?Teilnehmende verwalten/);
   assert.match(nameLearningApp, /course\.hidden \? 'In „Namen lernen“ einblenden' : 'Aus „Namen lernen“ ausblenden'/);
   assert.match(nameLearningHtml, /id="sidebar-context-menu"[\s\S]*?role="menuitemcheckbox"[\s\S]*?data-sidebar-context-action="show-hidden"/);

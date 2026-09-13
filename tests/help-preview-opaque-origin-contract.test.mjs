@@ -148,9 +148,10 @@ test('planning, grades und seatplan beantworten die Tutorial-Rect-Anfrage per po
 test('die Vorschau bleibt flüchtig, damit die opake Origin keine Daten anlegt', async () => {
   const bootstrap = await read('../src/app/bootstrap.js');
   assert.match(bootstrap, /ephemeral: moduleWindowRequest\.isModuleWindow \|\| Boolean\(helpPreviewRequest\)/);
-  const main = await read('../src/app/app-runtime.js');
-  assert.match(main, /const serviceWorkerUpdates = helpPreviewRequest \? null/);
-  assert.match(main, /const trustedParentOrigin = \(window\.origin === 'null' \|\| window\.location\.origin === 'null'\) \? '\*' : window\.location\.origin;/);
+  const updates = await read('../src/app/app-update-controller.js');
+  const tutorials = await read('../src/app/app-tutorial-controller.js');
+  assert.match(updates, /const serviceWorkerUpdates = helpPreviewRequest \? null/);
+  assert.match(tutorials, /const trustedParentOrigin = \(window\.origin === 'null' \|\| window\.location\.origin === 'null'\) \? '\*' : window\.location\.origin;/);
 });
 
 test('gemeinsame Frame-Skripte posten an ein opaque-fähiges Ziel', async () => {

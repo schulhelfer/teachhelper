@@ -18,6 +18,13 @@ export function applyReview(progress, known, now = Date.now()) {
   return { stage, dueAt: now + STAGES[stage] * DAY_MS };
 }
 
+export function applyHintedReview(progress, correct, now = Date.now()) {
+  if (!correct) return applyReview(progress, false, now);
+  const current = normalizeProgress(progress, now);
+  const stage = Math.max(0, current.stage - 1);
+  return { stage, dueAt: now + STAGES[stage] * DAY_MS };
+}
+
 export function nextReviewMessage(progress, now = Date.now()) {
   const days = Math.max(0, Math.round((normalizeProgress(progress, now).dueAt - now) / DAY_MS));
   if (days === 0) return 'Nächste Abfrage: sofort';
@@ -38,6 +45,22 @@ export function shuffle(cards = [], random = Math.random) {
     [next[index], next[target]] = [next[target], next[index]];
   }
   return next;
+}
+
+export function buildHintChoices(card, pool = [], count = 4, random = Math.random) {
+  const answer = String(card?.name || '').trim();
+  if (!answer) return [];
+  const seen = new Set([answer]);
+  const distractors = [];
+  for (const candidate of shuffle(Array.isArray(pool) ? pool : [], random)) {
+    if (distractors.length >= Math.max(0, count - 1)) break;
+    if (Number(candidate?.studentId) === Number(card?.studentId)) continue;
+    const name = String(candidate?.name || '').trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    distractors.push(name);
+  }
+  return shuffle([answer, ...distractors], random);
 }
 
 export function buildDueQueue(cards = [], courseIds = [], now = Date.now(), random = Math.random) {

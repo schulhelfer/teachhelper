@@ -4,6 +4,7 @@ import test from 'node:test';
 
 const [
   mainSource,
+  tutorialControllerSource,
   catalogSource,
   tutorialSource,
   shellStyles,
@@ -19,6 +20,7 @@ const [
   nameLearningSource,
 ] = await Promise.all([
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/app-tutorial-controller.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/tutorials/catalog.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/first-run-tutorial.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
@@ -218,9 +220,10 @@ test('verankert opake Module an konkreten sichtbaren Modulzielen', () => {
 });
 
 test('hält Katalog, Engine und Laufzeit-Orchestrierung getrennt', () => {
-  assert.match(mainSource, /import \{ createTutorialCatalog \} from '\.\/tutorials\/catalog\.js';/);
-  assert.match(mainSource, /const tutorialCatalog = createTutorialCatalog\(\{/);
-  assert.match(mainSource, /const getCurrentModuleTutorialSteps = tutorialCatalog\.getDefinition;/);
+  assert.match(tutorialControllerSource, /import \{ createTutorialCatalog \} from '\.\/tutorials\/catalog\.js';/);
+  assert.match(tutorialControllerSource, /tutorialCatalog = createTutorialCatalog\(\{/);
+  assert.match(tutorialControllerSource, /getDefinition: getCurrentModuleTutorialSteps/);
+  assert.match(tutorialControllerSource, /const getCurrentModuleTutorialSteps = \(\.\.\.args\) => tutorialCatalog\.getDefinition\(\.\.\.args\);/);
   assert.doesNotMatch(mainSource, /const createModuleTutorialStep|const withSection|Noten verschlüsseln|#layoutStartButton/);
   assert.doesNotMatch(catalogSource, /\bdocument\b|\bwindow\b|first-run-tutorial|src\/modules/);
   Object.values(cases).forEach((source) => {
@@ -228,5 +231,5 @@ test('hält Katalog, Engine und Laufzeit-Orchestrierung getrennt', () => {
     assert.doesNotMatch(source, /main\.js|first-run-tutorial|src\/modules/);
   });
   assert.match(mainSource, /createFirstRunTutorial\(\{/);
-  assert.match(mainSource, /getContextualSteps: getCurrentModuleTutorialSteps/);
+  assert.match(mainSource, /getContextualSteps: tutorialController\.getDefinition/);
 });

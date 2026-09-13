@@ -334,3 +334,61 @@ test('declared hashes are bound to course IDs and header metadata cannot disguis
   assert.equal(result.ok, false);
   assert.equal(result.reason, 'grade-course-checksum-mismatch');
 });
+
+test('cooperative SHA-256 handles chunk boundaries and unavailable or failing WebCrypto', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  try {
+    for (const crypto of [undefined, { subtle: { digest: async () => { throw new Error('unavailable'); } } }]) {
+      Object.defineProperty(globalThis, 'crypto', { configurable: true, value: crypto });
+      for (const length of [0, 55, 56, 63, 64, 65, 262143, 262144, 262145, 1048577]) {
+        const backing = Uint8Array.from({ length: length + 13 }, (_, index) => index % 251);
+        const payload = backing.subarray(7, 7 + length);
+        const expected = createHash('sha256').update(payload).digest('hex');
+        let ticked = false;
+        const timer = setTimeout(() => { ticked = true; }, 0);
+        assert.equal(await thdb.sha256HexBytesAsync(payload), expected);
+        clearTimeout(timer);
+        assert.equal(ticked, true);
+        assert.equal(thdb.sha256HexBytes(payload), expected);
+      }
+    }
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+    else delete globalThis.crypto;
+  }
+});
+
+test('large hashes yield without passing the full input to WebCrypto', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  let digestCalls = 0;
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: { subtle: { digest: async () => { digestCalls += 1; throw new Error('unexpected'); } } },
+  });
+  let ticks = 0;
+  const timer = setInterval(() => { ticks += 1; }, 0);
+  try {
+    const payload = new Uint8Array(2 * 1024 * 1024);
+    assert.equal(await thdb.sha256HexBytesAsync(payload), createHash('sha256').update(payload).digest('hex'));
+    assert.equal(digestCalls, 0);
+    assert.ok(ticks > 1);
+  } finally {
+    clearInterval(timer);
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+    else delete globalThis.crypto;
+  }
+});
+
+test('async container parsing preserves legacy, selection and integrity behavior', async () => {
+  const built = sampleContainer();
+  const corrupt = built.bytes.slice();
+  corrupt[built.header.planningPublicOffset] ^= 1;
+  const partial = buildLegacyContainer({ descriptorPatch: (row) => ({ ...row, contentHash: `sha256:${'0'.repeat(64)}` }), gradeCourseSegments: [{ courseId: 1, text: '{}' }] });
+  const invalidRange = buildLegacyContainer({ headerPatch: (header) => ({ ...header, planningPublicOffset: 0 }) });
+  for (const input of [built.bytes, buildLegacyContainer(), corrupt, partial, invalidRange, built.bytes.subarray(0, built.bytes.length - 1)]) {
+    for (const options of [{}, { includeGradeCourseSegments: true }, { includePlanningPublic: false, includeGradeCourseSegments: [2] }, { requireChecksums: true }, { schemas: ['unsupported'] }]) {
+      assert.deepEqual(await thdb.verifyThdb1ContainerChecksumsAsync(input, options), thdb.verifyThdb1ContainerChecksums(input, options));
+      assert.deepEqual(await thdb.parseThdb1ContainerBytesAsync(input, options), thdb.parseThdb1ContainerBytes(input, options));
+    }
+  }
+});

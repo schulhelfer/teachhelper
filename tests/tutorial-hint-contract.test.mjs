@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+
 const [
   tutorialSource,
   moduleHintSource,
@@ -55,7 +57,7 @@ test('merkt gestartete Einführungen dauerhaft und modulübergreifend', () => {
 test('synchronisiert einen aktivierten Hinweis direkt an offene Module und Fenster', () => {
   assert.match(routerSource, /data\.detail\?\.action !== 'seen' && data\.detail\?\.action !== 'request'/);
   assert.match(routerSource, /invoke\('onTutorialEntryHint', data\.detail, metadata\)/);
-  assert.match(mainSource, /markTutorialEntryHintSeen\(\);\s+firstRunTutorial\?\.clearContextHelpPrompt\?\.\(\);\s+syncTutorialEntryHintToModules\(\);/);
+  assert.match(coordinatorSource, /markTutorialEntryHintSeen\(\);\s+getFirstRunTutorial\(\)\?\.clearContextHelpPrompt\?\.\(\);\s+syncTutorialEntryHintToModules\(\);/);
   assert.match(mainSource, /onEntrySeen: syncTutorialEntryHintToModules/);
   assert.match(tutorialSource, /els\.firstRunTutorialStart\?\.addEventListener\('click', \(\) => \{\s+markTutorialStarted\(\);/);
   assert.match(tutorialSource, /subscribeToTutorialEntryHintSeen\(\(\) => \{\s+clearContextHelpPromptTimer\(\);/);

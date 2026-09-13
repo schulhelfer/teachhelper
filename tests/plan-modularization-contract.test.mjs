@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const [main, format, persistence, groups, picker, workPhase, serviceWorker, audit] = await Promise.all([
-  read('../src/app/app-runtime.js'),
+  read('../src/app/classroom-file-actions.js'),
   read('../src/app/plan-format.js'),
   read('../src/app/plan-persistence.js'),
   read('../src/modules/groups/app.js'),
@@ -20,8 +20,8 @@ test('main delegates plan formatting and persistence without retaining old imple
   assert.doesNotMatch(main, /function (?:stripJsonWarning|createPlanSnapshot|savePlanWithPicker|triggerPlanDownload|pickPlanFileWithPicker)\s*\(/);
   assert.match(main, /const plan = await loadPlan\(file\);[\s\S]*?if \(handle\) \{\s*state\.lastDirectoryHandle = handle;/);
   assert.match(main, /applyPlan\(plan, \{ restoreSeatAssignments: true \}\)/);
-  assert.match(main, /groupsController\?\.restorePlanState\(groupsPlanState, \{ restoreSeatAssignments \}\)/);
-  assert.match(main, /workPhaseController\?\.restorePlanState\(workPhasePlanState\)/);
+  assert.match(main, /getGroupsController\(\)\?\.restorePlanState\(groupsPlanState, \{ restoreSeatAssignments \}\)/);
+  assert.match(main, /getWorkPhaseController\(\)\?\.restorePlanState\(workPhasePlanState\)/);
 });
 
 test('plan format is DOM-independent and feature modules remain unaware of the full format', () => {

@@ -12,7 +12,7 @@ const [
   seatplanCss,
   seatplanDocument,
 ] = await Promise.all([
-  readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/app/classroom-file-actions.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../index.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/dom.js', import.meta.url), 'utf8'),

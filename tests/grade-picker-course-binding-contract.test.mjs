@@ -4,13 +4,14 @@ import test from 'node:test';
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 
-const [gradesApp, gradesBridge, gradesIndex, shellBridge, coordinator, main, indexHtml, shellCss] = await Promise.all([
+const [gradesApp, gradesBridge, gradesIndex, shellBridge, coordinator, main, files, indexHtml, shellCss] = await Promise.all([
   read('../src/modules/grades/app.js'),
   read('../src/modules/grades/bridge.js'),
   read('../src/modules/grades/index.js'),
   read('../src/app/planning-seatplan-bridge.js'),
   read('../src/app/grade-roster-coordinator.js'),
   read('../src/app/app-runtime.js'),
+  read('../src/app/classroom-file-actions.js'),
   read('../index.html'),
   read('../src/app/shell.css'),
 ]);
@@ -49,10 +50,10 @@ test('die Shell bindet den Picker live an den Kurs und speichert nur über die e
   assert.match(coordinator, /const hasUnsavedPickerConfig = \(\) => Boolean\(/);
   assert.match(coordinator, /const savePickerConfig = \(\) => \{/);
   assert.doesNotMatch(coordinator, /savePickerConfig\(\{ deferSave \}\)/);
-  assert.match(main, /async function choosePickerSaveTarget\(\)/);
-  assert.match(main, /secondaryText: 'Separate Picker-Datei'/);
-  assert.match(main, /confirmText: 'Im Notenmodul'/);
-  assert.match(main, /onExport: \(\) => \{\s*void handlePickerSaveClick\(\);/);
+  assert.match(files, /async function choosePickerSaveTarget\(\)/);
+  assert.match(files, /secondaryText: 'Separate Picker-Datei'/);
+  assert.match(files, /confirmText: 'Im Notenmodul'/);
+  assert.match(main, /onExport: \(\) => \{\s*void fileActions\.handlePickerSaveClick\(\);/);
   assert.doesNotMatch(main, /onConditionsSaved: \(\) => gradeRosterCoordinator\.savePickerConfig/);
   const saveResultHandler = coordinator.match(/const handlePickerSaveResult = \(event\) => \{([\s\S]*?)\n  \};/);
   assert.ok(saveResultHandler, 'Picker-Speicherergebnis muss behandelt werden');
@@ -65,23 +66,23 @@ test('die Shell bindet den Picker live an den Kurs und speichert nur über die e
 });
 
 test('kursgebundene Picker exportieren Kursname, Kursliste und wirksame Einstellungen', () => {
-  assert.match(main, /return `\$\{pickerBinding\.courseName\} \(\$\{modeLabel\}\)`/);
-  assert.match(main, /return csvName \? `\$\{csvName\} \(\$\{modeLabel\}\)` : modeLabel/);
-  assert.match(main, /const rosterStudents = pickerBinding[\s\S]*?gradeRosterCoordinator\.getPickerStudents/);
-  assert.match(main, /const rosterName = pickerBinding\?\.courseName \|\| classroom\.csvName/);
-  assert.match(main, /gradeRosterCoordinator\.getPickerAutoDisableSelected/);
-  const exportMethod = main.match(/async function downloadSeatPlan\(\) \{([\s\S]*?)\n  \}/);
+  assert.match(files, /return `\$\{pickerBinding\.courseName\} \(\$\{modeLabel\}\)`/);
+  assert.match(files, /return csvName \? `\$\{csvName\} \(\$\{modeLabel\}\)` : modeLabel/);
+  assert.match(files, /const rosterStudents = pickerBinding[\s\S]*?getGradeRosterCoordinator\(\)\.getPickerStudents/);
+  assert.match(files, /const rosterName = pickerBinding\?\.courseName \|\| classroom\.csvName/);
+  assert.match(files, /getGradeRosterCoordinator\(\)\.getPickerAutoDisableSelected/);
+  const exportMethod = files.match(/async function downloadSeatPlan\(\) \{([\s\S]*?)\n  \}/);
   assert.ok(exportMethod, 'Dateiexport muss vorhanden sein');
   assert.doesNotMatch(exportMethod[1], /savePickerConfig|savedConfigSignature/);
-  assert.match(main, /confirmPickerBindingReplacement\(\)[\s\S]*?clearPickerBinding\(\)[\s\S]*?applyPlan\(plan/);
-  assert.match(main, /if \(replacesPickerBinding\) gradeRosterCoordinator\.clearPickerBinding\(\)/);
+  assert.match(files, /confirmPickerBindingReplacement\(\)[\s\S]*?clearPickerBinding\(\)[\s\S]*?applyPlan\(plan/);
+  assert.match(files, /if \(replacesPickerBinding\) getGradeRosterCoordinator\(\)\.clearPickerBinding\(\)/);
 });
 
 test('ungesicherte Pickerstände schützen Ersetzung und Browsernavigation', () => {
-  assert.match(main, /async function confirmPickerBindingReplacement\(binding = null\)/);
-  assert.match(main, /secondaryText: 'Änderungen verwerfen'/);
-  assert.match(main, /confirmText: 'Im Notenmodul speichern'/);
-  assert.match(main, /onBeforePickerBindingReplace: confirmPickerBindingReplacement/);
+  assert.match(files, /async function confirmPickerBindingReplacement\(binding = null\)/);
+  assert.match(files, /secondaryText: 'Änderungen verwerfen'/);
+  assert.match(files, /confirmText: 'Im Notenmodul speichern'/);
+  assert.match(main, /onBeforePickerBindingReplace: fileActions\.confirmPickerBindingReplacement/);
   assert.match(main, /bindRuntime\(window, 'beforeunload',[\s\S]*?hasUnsavedPickerConfig/);
 });
 

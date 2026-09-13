@@ -2,6 +2,9 @@ export const THDB_MAGIC = 'THDB1';
 export const THDB_CHECKSUM_VERSION = 1;
 export const THDB_CHECKSUM_ALGORITHM = 'SHA-256';
 
+const SHA256_CHUNK_BYTES = 256 * 1024;
+const SHA256_WEB_CRYPTO_MAX_BYTES = 1024 * 1024;
+
 const SHA256_PREFIX = 'sha256:';
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/i;
 const THDB_MAX_HEADER_BYTES = 1024 * 1024;
@@ -50,16 +53,17 @@ function rotateRight(value, count) {
 
 
 
-export function sha256HexBytes(value) {
+function* sha256Chunks(value) {
   const bytes = asUint8Array(value);
   const paddedLength = Math.ceil((bytes.length + 9) / 64) * 64;
-  const padded = new Uint8Array(paddedLength);
-  padded.set(bytes);
-  padded[bytes.length] = 0x80;
+  const fullBlockLength = bytes.length - (bytes.length % 64);
+  const padded = new Uint8Array(paddedLength - fullBlockLength);
+  padded.set(bytes.subarray(fullBlockLength));
+  padded[bytes.length - fullBlockLength] = 0x80;
   const bitLength = bytes.length * 8;
   const lengthView = new DataView(padded.buffer);
-  lengthView.setUint32(paddedLength - 8, Math.floor(bitLength / 0x100000000), false);
-  lengthView.setUint32(paddedLength - 4, bitLength >>> 0, false);
+  lengthView.setUint32(padded.length - 8, Math.floor(bitLength / 0x100000000), false);
+  lengthView.setUint32(padded.length - 4, bitLength >>> 0, false);
 
   let h0 = 0x6a09e667;
   let h1 = 0xbb67ae85;
@@ -71,8 +75,11 @@ export function sha256HexBytes(value) {
   let h7 = 0x5be0cd19;
   const words = new Uint32Array(64);
 
-  for (let blockOffset = 0; blockOffset < padded.length; blockOffset += 64) {
-    const block = new DataView(padded.buffer, blockOffset, 64);
+  for (let blockOffset = 0; blockOffset < paddedLength; blockOffset += 64) {
+    if (blockOffset > 0 && blockOffset % SHA256_CHUNK_BYTES === 0) yield;
+    const block = blockOffset < fullBlockLength
+      ? new DataView(bytes.buffer, bytes.byteOffset + blockOffset, 64)
+      : new DataView(padded.buffer, blockOffset - fullBlockLength, 64);
     for (let index = 0; index < 16; index += 1) {
       words[index] = block.getUint32(index * 4, false);
     }
@@ -124,18 +131,32 @@ export function sha256HexBytes(value) {
     .join('');
 }
 
+export function sha256HexBytes(value) {
+  const chunks = sha256Chunks(value);
+  let next = chunks.next();
+  while (!next.done) next = chunks.next();
+  return next.value;
+}
+
 export async function sha256HexBytesAsync(value) {
   const bytes = asUint8Array(value);
   const subtle = globalThis.crypto?.subtle;
-  if (typeof subtle?.digest !== 'function') return sha256HexBytes(bytes);
-  try {
-    const digest = await subtle.digest('SHA-256', bytes);
-    return [...new Uint8Array(digest)]
-      .map((part) => part.toString(16).padStart(2, '0'))
-      .join('');
-  } catch {
-    return sha256HexBytes(bytes);
+  if (bytes.length <= SHA256_WEB_CRYPTO_MAX_BYTES && typeof subtle?.digest === 'function') {
+    try {
+      const digest = await subtle.digest('SHA-256', bytes);
+      return [...new Uint8Array(digest)]
+        .map((part) => part.toString(16).padStart(2, '0'))
+        .join('');
+    } catch {}
   }
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  const chunks = sha256Chunks(bytes);
+  let next = chunks.next();
+  while (!next.done) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    next = chunks.next();
+  }
+  return next.value;
 }
 
 function hashBytes(value) {
@@ -313,13 +334,13 @@ export function parseThdb1Header(bytes, { schemas = [] } = {}) {
   const secondEnd = firstEnd < 0
     ? -1
     : lineFeedIndex(view, headerStart, headerStart + THDB_MAX_HEADER_BYTES + 1);
-  if (firstEnd < 0 || secondEnd < 0 || utf8Text(view.slice(0, firstEnd)).replace(/\r$/, '').trim() !== THDB_MAGIC) {
+  if (firstEnd < 0 || secondEnd < 0 || utf8Text(view.subarray(0, firstEnd)).replace(/\r$/, '').trim() !== THDB_MAGIC) {
     return null;
   }
   if (secondEnd - headerStart > THDB_MAX_HEADER_BYTES) return null;
   let raw;
   try {
-    raw = JSON.parse(utf8Text(view.slice(firstEnd + 1, secondEnd)).replace(/\r$/, ''));
+    raw = JSON.parse(utf8Text(view.subarray(firstEnd + 1, secondEnd)).replace(/\r$/, ''));
   } catch {
     return null;
   }
@@ -419,15 +440,15 @@ function computeLayoutChecksums(layout) {
   const { view, header } = layout;
   return buildContentChecksums({
     schema: header.schema,
-    startupShellBytes: view.slice(header.startupShellOffset, header.startupShellOffset + header.startupShellLength),
-    planningPublicBytes: view.slice(header.planningPublicOffset, header.planningPublicOffset + header.planningPublicLength),
-    gradeVaultConfigBytes: view.slice(
+    startupShellBytes: view.subarray(header.startupShellOffset, header.startupShellOffset + header.startupShellLength),
+    planningPublicBytes: view.subarray(header.planningPublicOffset, header.planningPublicOffset + header.planningPublicLength),
+    gradeVaultConfigBytes: view.subarray(
       header.gradeVaultConfigOffset,
       header.gradeVaultConfigOffset + header.gradeVaultConfigLength,
     ),
     gradeCourseSegments: header.gradeCourseSegments.map((descriptor) => ({
       courseId: descriptor.courseId,
-      bytes: view.slice(descriptor.offset, descriptor.offset + descriptor.length),
+      bytes: view.subarray(descriptor.offset, descriptor.offset + descriptor.length),
     })),
   });
 }
@@ -442,6 +463,51 @@ export function verifyThdb1ContainerChecksums(bytes, { schemas = [], requireChec
     return { ok: false, legacy: false, reason: layout.reason, contentHash: '' };
   }
   const computed = computeLayoutChecksums(layout);
+  return compareLayoutChecksums(layout, computed, requireChecksums);
+}
+
+async function computeLayoutChecksumsAsync(layout) {
+  const { view, header } = layout;
+  const readHash = (offset, length) => hashBytesAsync(view.subarray(offset, offset + length));
+  const startupShellHash = await readHash(header.startupShellOffset, header.startupShellLength);
+  const planningPublicHash = await readHash(header.planningPublicOffset, header.planningPublicLength);
+  const gradeVaultConfigHash = await readHash(header.gradeVaultConfigOffset, header.gradeVaultConfigLength);
+  const gradeCourseSegments = [];
+  for (const descriptor of header.gradeCourseSegments) {
+    gradeCourseSegments.push({
+      courseId: descriptor.courseId,
+      contentHash: await readHash(descriptor.offset, descriptor.length),
+    });
+  }
+  return {
+    version: THDB_CHECKSUM_VERSION,
+    algorithm: THDB_CHECKSUM_ALGORITHM,
+    startupShellHash,
+    planningPublicHash,
+    gradeVaultConfigHash,
+    gradeCourseSegments,
+    contentHash: canonicalContentChecksum({
+      schema: header.schema,
+      startupShellHash,
+      planningPublicHash,
+      gradeVaultConfigHash,
+      gradeCourseSegments,
+    }),
+  };
+}
+
+async function verifyLayoutChecksumsAsync(layout, requireChecksums) {
+  const computed = await computeLayoutChecksumsAsync(layout);
+  return compareLayoutChecksums(layout, computed, requireChecksums);
+}
+
+export async function verifyThdb1ContainerChecksumsAsync(bytes, { schemas = [], requireChecksums = false } = {}) {
+  const layout = inspectContainerLayout(bytes, { schemas });
+  if (!layout.ok) return { ok: false, legacy: false, reason: layout.reason, contentHash: '' };
+  return verifyLayoutChecksumsAsync(layout, requireChecksums);
+}
+
+function compareLayoutChecksums(layout, computed, requireChecksums) {
   const { header } = layout;
   const declaredChecksums = header.integrity;
   const descriptorHashes = header.gradeCourseSegments.map((descriptor) => descriptor.contentHash);
@@ -508,7 +574,7 @@ export function getThdb1SegmentChecksum(bytes, locator) {
   const offset = normalizeNonnegativeInteger(locator?.offset);
   const length = normalizeNonnegativeInteger(locator?.length);
   if (offset === null || length === null || offset > view.length || length > view.length - offset) return '';
-  return hashBytes(view.slice(offset, offset + length));
+  return hashBytes(view.subarray(offset, offset + length));
 }
 
 
@@ -661,6 +727,23 @@ export function parseThdb1ContainerBytes(bytes, {
   if (!layout.ok) return null;
   const checksums = verifyThdb1ContainerChecksums(layout.view, { schemas, requireChecksums });
   if (!checksums.ok) return null;
+  return readContainerSegments(layout, checksums, { includePlanningPublic, includeGradeCourseSegments });
+}
+
+export async function parseThdb1ContainerBytesAsync(bytes, {
+  schemas = [],
+  includePlanningPublic = true,
+  includeGradeCourseSegments = false,
+  requireChecksums = false,
+} = {}) {
+  const layout = inspectContainerLayout(bytes, { schemas });
+  if (!layout.ok) return null;
+  const checksums = await verifyLayoutChecksumsAsync(layout, requireChecksums);
+  if (!checksums.ok) return null;
+  return readContainerSegments(layout, checksums, { includePlanningPublic, includeGradeCourseSegments });
+}
+
+function readContainerSegments(layout, checksums, { includePlanningPublic, includeGradeCourseSegments }) {
   const { view, header } = layout;
   const actualCourseHashes = new Map(
     checksums.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
@@ -678,7 +761,7 @@ export function parseThdb1ContainerBytes(bytes, {
     : Array.isArray(includeGradeCourseSegments)
       ? includeGradeCourseSegments.map(Number).filter((id) => id > 0)
       : [];
-  const read = (offset, length) => utf8Text(view.slice(offset, offset + length));
+  const read = (offset, length) => utf8Text(view.subarray(offset, offset + length));
   return {
     header,
     checksums,

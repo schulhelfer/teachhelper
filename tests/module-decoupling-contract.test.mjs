@@ -101,7 +101,7 @@ test('planning and grades share the reduced sidebar width scope', async () => {
     read('../src/modules/planning/app.html'),
     read('../src/modules/grades/app.html'),
     read('../src/shared/sidebar-resize.js'),
-    read('../src/app/app-runtime.js'),
+    read('../src/app/module-shell-coordinator.js'),
   ]);
   assert.match(planningHtml, /data-sidebar-width-scope="planning"/);
   assert.match(gradesHtml, /data-sidebar-width-scope="grades"/);

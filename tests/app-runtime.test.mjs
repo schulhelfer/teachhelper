@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+
 const read = path => readFile(new URL(path, import.meta.url), 'utf8');
 const [runtimeSource, mainSource, serviceWorkerSource, auditSource] = await Promise.all([
   read('../src/app/app-runtime.js'),
@@ -60,7 +62,6 @@ test('bindet Runtime-Lifecycle und bestehende Controller-Cleanups ohne BFCache-A
     'themeController.dispose()',
     'appTooltips?.dispose?.()',
     'courseContext?.dispose?.()',
-    'moduleMessageRouter?.dispose?.()',
     'classroomState?.dispose?.()',
     'gradeRosterCoordinator?.dispose?.()',
     'groupsController?.dispose?.()',
@@ -70,6 +71,8 @@ test('bindet Runtime-Lifecycle und bestehende Controller-Cleanups ohne BFCache-A
   ]) {
     assert.ok(runtimeSource.includes(expression), `${expression} must be owned by the runtime cleanup`);
   }
+  assert.match(coordinatorSource, /registerCleanup\(\(\) => moduleMessageRouter\?\.dispose\?\.\(\)\)/);
+  assert.match(runtimeSource, /moduleShellCoordinator\.bindMessages\(\)/);
   assert.equal((runtimeSource.match(/mountGroups\(\{/g) || []).length, 1);
   assert.equal((runtimeSource.match(/mountRandomPicker\(\{/g) || []).length, 1);
   assert.equal((runtimeSource.match(/mountWorkPhase\(\{/g) || []).length, 1);
@@ -83,5 +86,5 @@ test('hält main als schlanken Entry-Point und die Runtime offline verfügbar', 
   assert.doesNotMatch(mainSource, /mountGroups|mountRandomPicker|mountWorkPhase|addEventListener|createModuleMessageRouter/);
   assert.match(serviceWorkerSource, /'\.\/src\/app\/app-runtime\.js'/);
   assert.match(auditSource, /ROOT \/ 'src' \/ 'app' \/ 'app-runtime\.js'/);
-  assert.match(auditSource, /unsandboxed_module_frame_allowed_paths = \{\s*bridge_path,\s*app_runtime_path,/);
+  assert.match(auditSource, /unsandboxed_module_frame_allowed_paths = \{\s*bridge_path,\s*app_tutorial_path,/);
 });

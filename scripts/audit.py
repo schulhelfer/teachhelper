@@ -179,6 +179,10 @@ if manifest_path.exists():
 
 required_precache_assets = [
   ROOT / 'src' / 'app' / 'app-runtime.js',
+  ROOT / 'src' / 'app' / 'module-shell-coordinator.js',
+  ROOT / 'src' / 'app' / 'app-tutorial-controller.js',
+  ROOT / 'src' / 'app' / 'classroom-file-actions.js',
+  ROOT / 'src' / 'app' / 'app-update-controller.js',
   ROOT / 'src' / 'app' / 'classroom-state.js',
   ROOT / 'src' / 'app' / 'course-context.js',
   ROOT / 'src' / 'app' / 'grade-roster-coordinator.js',
@@ -648,7 +652,7 @@ check_first_party_code()
 
 bridge_path = ROOT / 'src' / 'shared' / 'module-frame-bridge.js'
 main_path = ROOT / 'src' / 'main.js'
-app_runtime_path = ROOT / 'src' / 'app' / 'app-runtime.js'
+app_tutorial_path = ROOT / 'src' / 'app' / 'app-tutorial-controller.js'
 planning_index_path = ROOT / 'src' / 'modules' / 'planning' / 'index.js'
 grades_index_path = ROOT / 'src' / 'modules' / 'grades' / 'index.js'
 qr_index_path = ROOT / 'src' / 'modules' / 'qr' / 'index.js'
@@ -742,7 +746,7 @@ for path, expected_sandbox_profile in isolated_tool_module_sandbox_profiles.item
 
 unsandboxed_module_frame_allowed_paths = {
   bridge_path,
-  app_runtime_path,
+  app_tutorial_path,
   planning_index_path,
   grades_index_path,
   seatplan_index_path,
