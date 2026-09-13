@@ -393,8 +393,9 @@ export const HELP_ARTICLES = [
     { title: 'Nach der Ziehung', text: 'Bei Bedarf kann eine gezogene Person automatisch deaktiviert werden. Prüfe diese Einstellung, wenn wiederholte Aufrufe erwünscht sind.' },
   ]),
   article('picker-storage', 'random-picker', 'Pickerstand speichern und laden', 'Auswahlbedingungen für eine spätere Unterrichtsstunde erhalten.', ['speichern', 'laden', 'pickerstand', 'auswahlbedingungen', 'datei', 'wiederverwenden'], [
-    { title: 'Stand speichern', text: 'Speichere einen vorbereiteten Pickerstand mit einer eindeutigen Bezeichnung. So bleiben Namen, Gewichtungen und Verfügbarkeiten zusammen erhalten.' },
-    { title: 'Stand laden', text: 'Beim Laden sollten die Bedingungen vor der nächsten Ziehung kurz kontrolliert werden. Ändere sie erst danach für die neue Situation.' },
+    { title: 'Stand speichern', text: 'Ein mit einem Notenkurs verbundener Picker lässt sich ausdrücklich im Notenmodul oder als separate Datei speichern. Ohne Kursbindung wird eine Datei mit einer eindeutigen Bezeichnung angelegt.' },
+    { title: 'Speicherziele unterscheiden', text: 'Ein Dateiexport verändert den gespeicherten Stand des Notenkurses nicht. Änderungen an Gewichtungen und Verfügbarkeiten gelangen erst über „Picker speichern“ und „Im Notenmodul“ in den verbundenen Kurs.' },
+    { title: 'Stand laden', text: 'Beim Laden einer Datei wird eine bestehende Kursbindung nach einer Sicherheitsabfrage gelöst. Kontrolliere die geladenen Bedingungen vor der nächsten Ziehung.' },
   ]),
   article('pdf-layout', 'merger', 'PDF-Seiten für den Druck anordnen', 'Mehrere Seiten passend auf einem Blatt ausgeben.', ['layout', 'seiten pro blatt', 'ausrichtung', 'kopien', 'restseiten', 'druck'], [
     { title: 'Layout wählen', text: 'Wähle das Anordnen-Werkzeug und lege fest, wie viele Seiten auf einem Blatt erscheinen sollen. Für kleine Lerngruppen können Kopien und Restseiten angepasst werden.' },

@@ -822,7 +822,6 @@ class PlanningApp {
       ? createWorkspaceClient(this.workspaceController, "planning", `planning-frame:${randomId()}`)
       : null;
     const sharedWorkspaceStore = this.workspaceController?.getStore?.() || null;
-    this.isStandaloneWorkspace = false;
     if (!sharedWorkspaceStore) throw new Error("Neutraler Workspace-Store ist nicht verfügbar.");
     this.store = sharedWorkspaceStore;
     const tutorialDemo = this.tutorialDemoMode ? seedTutorialDemoStore(this.store) : null;
@@ -1024,25 +1023,6 @@ class PlanningApp {
       dbManualSaveBtn: document.querySelector("#db-manual-save-btn"),
       dbManualFile: document.querySelector("#db-manual-file"),
 
-      courseSettingsAdd: document.querySelector("#course-settings-add"),
-      courseList: document.querySelector("#course-list"),
-
-      slotForm: document.querySelector("#slot-form"),
-      slotId: document.querySelector("#slot-id"),
-      slotCourse: document.querySelector("#slot-course"),
-      slotDay: document.querySelector("#slot-day"),
-      slotHour: document.querySelector("#slot-hour"),
-      slotDuration: document.querySelector("#slot-duration"),
-      slotStart: document.querySelector("#slot-start"),
-      slotEnd: document.querySelector("#slot-end"),
-      slotParity: document.querySelector("#slot-parity"),
-      slotEditTools: document.querySelector("#slot-edit-tools"),
-      slotEditScope: document.querySelector("#slot-edit-scope"),
-      slotEditFromDate: document.querySelector("#slot-edit-from-date"),
-      slotReset: document.querySelector("#slot-reset"),
-      slotDelete: document.querySelector("#slot-delete"),
-      slotList: document.querySelector("#slot-list"),
-
       freeRangeAdd: document.querySelector("#free-range-add"),
       freeRangeDialog: document.querySelector("#free-range-dialog"),
       freeRangeDialogForm: document.querySelector("#free-range-dialog-form"),
@@ -1113,9 +1093,7 @@ class PlanningApp {
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.settingsDirty = false;
     this.workspaceRevision = Math.max(0, Number(this.workspaceController?.getRevision?.()) || 0);
-    this.workspaceHydrated = this.isStandaloneWorkspace
-      ? false
-      : Boolean(this.workspaceController?.isReady?.());
+    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.());
     this.settingsDraftRevision = this.workspaceRevision;
     this.syncMeta = this.tutorialDemoMode ? {
       deviceId: "tutorial-demo",
@@ -1126,7 +1104,7 @@ class PlanningApp {
     } : this.loadSyncMeta();
     this.syncState = {
       supported: false,
-      initialized: !this.isStandaloneWorkspace,
+      initialized: true,
       syncingNow: false,
       pendingSaveTimer: 0,
       pendingSaveReason: "",
@@ -1165,29 +1143,24 @@ class PlanningApp {
       fileName: "",
       lastAction: this.tutorialDemoMode
         ? "tutorial-demo"
-        : (this.isStandaloneWorkspace ? "" : "workspace-client")
+        : "workspace-client"
     };
     this.beforeUnloadWarningEnabled = false;
     this.lastAutoBackupAt = String(this.store.getLastAutoBackupAt?.() || "");
     if (this.workspaceController) {
       this.unregisterWorkspaceFeatureClient = this.workspaceController.registerFeatureClient?.('planning', this);
-      if (!this.isStandaloneWorkspace) {
-        this.unregisterWorkspaceClient = this.workspaceClient?.subscribe(
-          "planning",
-          (detail) => this.handleWorkspaceState(detail)
-        );
-      }
+      this.unregisterWorkspaceClient = this.workspaceClient?.subscribe(
+        "planning",
+        (detail) => this.handleWorkspaceState(detail)
+      );
       window.addEventListener("pagehide", () => {
         this.unregisterWorkspaceFeatureClient?.();
-        if (!this.isStandaloneWorkspace) {
-          this.unregisterWorkspaceClient?.();
-        }
+        this.unregisterWorkspaceClient?.();
       }, { once: true });
     }
     this.ensureStandaloneSettingsView();
     this.initNumberSteppers();
     this.bindEvents();
-    this.bindWindowFocusGuards();
     this.bindPlanningTutorialPreviewGuards();
     if (this.tutorialDemoMode) {
       this.bindTutorialDemoGuards();
@@ -1196,17 +1169,13 @@ class PlanningApp {
     this.renderAll({ visibleOnly: true });
     if (this.tutorialDemoMode) {
       this.setSyncStatus("Beispieldaten – Änderungen werden nicht gespeichert.");
-    } else if (this.isStandaloneWorkspace) {
-      this.initializeExternalFileSync().catch((_error) => {
-        this.setSyncStatus("Datenbankdatei konnte nicht initialisiert werden.", true);
-      });
     } else {
       this.queuePlanningReadySignal();
     }
   }
 
   handleWorkspaceState(detail = null) {
-    if (this.isStandaloneWorkspace || !detail || typeof detail !== "object") {
+    if (!detail || typeof detail !== "object") {
       return;
     }
     const previousRevision = Math.max(0, Number(this.workspaceRevision) || 0);
@@ -1726,7 +1695,7 @@ class PlanningApp {
   }
 
   async ensurePlanningPublicLoaded() {
-    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.() || this.isStandaloneWorkspace);
+    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.());
     return this.getCurrentPublicStateSnapshot();
   }
 
@@ -1814,7 +1783,7 @@ class PlanningApp {
   }
 
   async selectSyncFile(mode = "existing", options = {}) {
-    if (!this.workspaceController || this.isStandaloneWorkspace) return false;
+    if (!this.workspaceController) return false;
     try {
       if (mode === "new-empty") {
         if (typeof window.showDirectoryPicker !== "function") {
@@ -1854,12 +1823,6 @@ class PlanningApp {
     return Boolean(result.changed);
   }
 
-  async initializeExternalFileSync() {
-    this.syncState.initialized = true;
-    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.() || this.isStandaloneWorkspace);
-    return true;
-  }
-
   shouldPromptForManualDatabaseOnStartup() {
     if (!this.isManualPersistencePresentationMode()) return false;
     const persistence = this.getWorkspacePersistenceStatus();
@@ -1876,8 +1839,6 @@ class PlanningApp {
     const result = await this.executeWorkspaceAction("backup-directory-reconnect", { allowPrompt });
     return Boolean(result.changed);
   }
-
-  openSyncSetupSettingsOnStartup() {}
 
   ensureStandaloneSettingsView() {
     if (!this.refs.stackGlass || !this.refs.viewSettings) {
@@ -2240,7 +2201,7 @@ class PlanningApp {
       this.renderLessonTimesSection();
       return false;
     }
-    if (!this.isStandaloneWorkspace && this.workspaceController) {
+    if (this.workspaceController) {
       if (!this.workspaceHydrated || !this.workspaceController.isReady?.()) {
         await this.showInfoMessage("Der gemeinsame Datenstand wird noch geladen. Einstellungen wurden nicht gespeichert.");
         return false;
@@ -2507,7 +2468,7 @@ class PlanningApp {
   }
 
   isAccessLocked() {
-    if (!this.isStandaloneWorkspace && this.workspaceController && !this.workspaceHydrated) {
+    if (this.workspaceController && !this.workspaceHydrated) {
       return true;
     }
     const year = this.activeSchoolYear;
@@ -3690,9 +3651,6 @@ class PlanningApp {
     if (this.selectedCourseId === id) {
       this.selectedCourseId = null;
     }
-    if (Number(this.refs.slotCourse.value) === id) {
-      this.resetSlotForm();
-    }
     this.selectedLessonId = null;
     this.renderAll();
     return true;
@@ -4871,19 +4829,6 @@ class PlanningApp {
     this.refs.slotDialogCourse.style.color = selectedColor || "";
   }
 
-  syncSlotFormCourseColor() {
-    if (!this.refs.slotCourse) {
-      return;
-    }
-    const selectedOption = this.refs.slotCourse.selectedOptions
-      ? this.refs.slotCourse.selectedOptions[0]
-      : null;
-    const selectedColor = selectedOption
-      ? String(selectedOption.dataset.courseColor || selectedOption.style.color || "").trim()
-      : "";
-    this.refs.slotCourse.style.color = selectedColor || "";
-  }
-
   syncSlotDialogHourRange() {
     if (!this.refs.slotDialogHour || !this.refs.slotDialogEndHour) {
       return;
@@ -5343,7 +5288,6 @@ class PlanningApp {
     }
     await this.persistExplicitDatabaseSave("planning-slot-series-save");
     this.closeSlotDialog();
-    this.resetSlotForm();
     this.renderAll();
   }
 
@@ -5361,7 +5305,6 @@ class PlanningApp {
       return;
     }
     this.closeSlotDialog();
-    this.resetSlotForm();
     this.renderAll();
   }
 
@@ -5563,21 +5506,6 @@ class PlanningApp {
       this.renderBackupSection();
       this.renderDatabaseSection();
     }
-  }
-
-  bindWindowFocusGuards() {
-    window.addEventListener("blur", () => {
-    });
-    window.addEventListener("focus", () => {
-      if (this.isStandaloneWorkspace && this.syncState.initialized) {
-        void this.maybeRunAutomaticWebBackup();
-      }
-    });
-    document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "visible" && this.isStandaloneWorkspace && this.syncState.initialized) {
-        void this.maybeRunAutomaticWebBackup();
-      }
-    });
   }
 
   bindEvents() {
@@ -6124,8 +6052,6 @@ class PlanningApp {
       if (shouldApply) {
         this.applySidebarCourseOrderFromDom();
         this.renderSidebarCourseList();
-        this.renderCourseSection();
-        this.renderSlotSection();
       }
     });
 
@@ -6716,156 +6642,6 @@ class PlanningApp {
       });
     }
 
-    this.refs.courseSettingsAdd.addEventListener("click", () => {
-      if (this.locked) {
-        return;
-      }
-      this.openCourseDialog();
-    });
-
-    this.refs.courseList.addEventListener("click", (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) {
-        return;
-      }
-      if (this.locked) {
-        return;
-      }
-      const id = Number(button.dataset.id);
-      const action = button.dataset.action;
-      if (!id) {
-        return;
-      }
-      if (action === "edit" || action === "delete") {
-        if (action === "edit") {
-          this.openCourseDialog(id);
-        } else {
-          void this.deleteCourseById(id);
-        }
-        return;
-      }
-    });
-
-    this.refs.courseList.addEventListener("contextmenu", (event) => {
-      event.preventDefault();
-      if (event.button !== 2) {
-        this.hideContextMenu();
-        return;
-      }
-      const row = event.target.closest("li[data-course-id]");
-      if (!row) {
-        return;
-      }
-      if (this.locked) {
-        this.hideContextMenu();
-        return;
-      }
-      const id = Number(row.dataset.courseId);
-      if (!id) {
-        return;
-      }
-      this.openCourseContextMenu(id, event.clientX, event.clientY);
-    });
-
-    this.refs.slotForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const ok = await this.persistSlotChange({
-        slotId: this.refs.slotId.value || null,
-        courseId: this.refs.slotCourse.value,
-        dayOfWeek: this.refs.slotDay.value,
-        startHour: this.refs.slotHour.value,
-        duration: this.refs.slotDuration.value,
-        startDate: this.refs.slotStart.value || null,
-        endDateInput: this.refs.slotEnd.value || null,
-        recurrenceValue: this.refs.slotParity.value,
-        editScope: this.refs.slotEditScope.value || "all",
-        editFromDate: this.refs.slotEditFromDate.value || null
-      });
-      if (!ok) {
-        return;
-      }
-      await this.persistExplicitDatabaseSave("planning-slot-series-save");
-      this.resetSlotForm();
-      this.renderAll();
-    });
-
-    this.refs.slotCourse.addEventListener("change", () => {
-      this.syncSlotFormCourseColor();
-    });
-
-    this.refs.slotEditScope.addEventListener("change", () => {
-      this.syncSlotEditTools();
-    });
-
-    this.refs.slotParity.addEventListener("change", () => {
-      this.syncSlotEditTools();
-    });
-
-    this.refs.slotStart.addEventListener("change", () => {
-      if (Number(this.refs.slotParity.value || 0) === -1) {
-        this.refs.slotEnd.value = this.refs.slotStart.value || "";
-      }
-    });
-
-    this.refs.slotEditFromDate.addEventListener("change", () => {
-      if (this.refs.slotEditScope.value === "from" && this.refs.slotEditFromDate.value) {
-        this.refs.slotStart.value = this.refs.slotEditFromDate.value;
-        if (Number(this.refs.slotParity.value || 0) === -1) {
-          this.refs.slotEnd.value = this.refs.slotEditFromDate.value;
-        }
-      }
-    });
-
-    this.refs.slotReset.addEventListener("click", () => {
-      this.resetSlotForm();
-    });
-
-    this.refs.slotDelete.addEventListener("click", async () => {
-      const slotId = Number(this.refs.slotId.value || 0);
-      if (!slotId) {
-        return;
-      }
-      const ok = await this.deleteSlotWithScope(
-        slotId,
-        this.refs.slotEditScope.value || "all",
-        this.refs.slotEditFromDate.value || null
-      );
-      if (!ok) {
-        return;
-      }
-      this.resetSlotForm();
-      this.renderAll();
-    });
-
-    this.refs.slotList.addEventListener("click", async (event) => {
-      const button = event.target.closest("button[data-action]");
-      if (!button) {
-        return;
-      }
-      const id = Number(button.dataset.id);
-      const action = button.dataset.action;
-
-      if (action === "edit") {
-        const slot = this.store.getSlot(id);
-        if (!slot) {
-          return;
-        }
-        await this.openSlotDialogForEdit(slot);
-        return;
-      }
-
-      if (action === "delete") {
-        if (!await this.showConfirmMessage("Unterrichtsstunde löschen?", {
-          dangerOk: true
-        })) {
-          return;
-        }
-        this.store.deleteSlot(id);
-        this.selectedLessonId = null;
-        this.renderAll();
-      }
-    });
-
     if (this.refs.freeRangeAdd) {
       this.refs.freeRangeAdd.addEventListener("click", () => {
         this.openFreeRangeDialog();
@@ -7165,7 +6941,6 @@ class PlanningApp {
 
     this.touchContextMenuCleanups = [
       bindCourseList(this.refs.sidebarCourseList),
-      bindCourseList(this.refs.courseList),
       installTouchLongPress(this.refs.weekTable, {
         getTarget: (event) => findNonEditableTarget(event, ".lesson-block[data-lesson-id]"),
         onLongPress: ({ target, clientX, clientY }) => {
@@ -7593,98 +7368,6 @@ class PlanningApp {
     }
     this.syncAllNumberSteppers();
     this.updateSettingsActionButtons();
-  }
-
-  syncSlotEditTools() {
-    const isEditing = Boolean(this.refs.slotId.value);
-    const recurrenceNone = Number(this.refs.slotParity.value || 0) === -1;
-    this.refs.slotEditTools.hidden = !isEditing;
-    this.refs.slotDelete.hidden = !isEditing;
-    if (!isEditing) {
-      this.refs.slotEditScope.value = "all";
-      this.refs.slotEditFromDate.value = "";
-      this.refs.slotEditFromDate.disabled = true;
-      this.refs.slotStart.disabled = false;
-      this.refs.slotEnd.disabled = recurrenceNone;
-      if (recurrenceNone) {
-        this.refs.slotEnd.value = this.refs.slotStart.value || "";
-      }
-      return;
-    }
-    const fromScope = this.refs.slotEditScope.value === "from";
-    this.refs.slotEditFromDate.disabled = !fromScope;
-    this.refs.slotStart.disabled = fromScope;
-    if (fromScope && this.refs.slotEditFromDate.value) {
-      this.refs.slotStart.value = this.refs.slotEditFromDate.value;
-    }
-    if (recurrenceNone) {
-      this.refs.slotEnd.value = this.refs.slotStart.value || "";
-    }
-    this.refs.slotEnd.disabled = recurrenceNone;
-  }
-
-  prefillSlotFromGrid(dayOfWeek, startHour) {
-    const year = this.activeSchoolYear;
-    this.switchView("settings");
-    this.refs.slotId.value = "";
-    this.refs.slotDay.value = String(dayOfWeek);
-    this.refs.slotHour.value = String(startHour);
-    if (this.selectedCourseId) {
-      this.refs.slotCourse.value = String(this.selectedCourseId);
-    }
-    this.refs.slotDuration.value = "1";
-    this.refs.slotParity.value = "0";
-    if (year) {
-      let startDefault = addDays(this.weekStartIso, Number(dayOfWeek) - 1);
-      if (startDefault < year.startDate) {
-        startDefault = year.startDate;
-      }
-      if (startDefault > year.endDate) {
-        startDefault = year.endDate;
-      }
-      const endDefault = this._computeSlotEndDefault(startDefault);
-
-      this.refs.slotStart.value = startDefault;
-      this.refs.slotEnd.value = endDefault;
-    } else {
-      this.refs.slotStart.value = "";
-      this.refs.slotEnd.value = "";
-    }
-    this.syncSlotEditTools();
-  }
-
-  prefillSlotForEdit(slot, clickedDate = null) {
-    const year = this.activeSchoolYear;
-    if (!slot || !year) {
-      return;
-    }
-    this.switchView("settings");
-    this.refs.slotId.value = String(slot.id);
-    this.refs.slotCourse.value = String(slot.courseId);
-    this.refs.slotDay.value = String(slot.dayOfWeek);
-    this.refs.slotHour.value = String(slot.startHour);
-    this.refs.slotDuration.value = String(slot.duration);
-    this.refs.slotStart.value = slot.startDate || "";
-    this.refs.slotEnd.value = slot.endDate || "";
-    let displayParity = Number(slot.weekParity || 0);
-    if (displayParity === 0 && slot.startDate && slot.endDate && slot.startDate === slot.endDate) {
-      displayParity = -1;
-    }
-    this.refs.slotParity.value = String(displayParity);
-    this.refs.slotEditScope.value = "all";
-
-    const slotStart = slot.startDate || year.startDate;
-    const slotEnd = slot.endDate || year.endDate;
-    this.refs.slotEditFromDate.min = slotStart;
-    this.refs.slotEditFromDate.max = slotEnd;
-
-    let defaultFrom = this.weekStartIso > slotStart ? this.weekStartIso : slotStart;
-    if (clickedDate && clickedDate >= slotStart && clickedDate <= slotEnd) {
-      defaultFrom = clickedDate;
-      this.refs.slotEditScope.value = "from";
-    }
-    this.refs.slotEditFromDate.value = defaultFrom > slotEnd ? slotEnd : defaultFrom;
-    this.syncSlotEditTools();
   }
 
   hideContextMenu() {
@@ -8638,7 +8321,7 @@ class PlanningApp {
     this.syncArchiveDialogState();
     let archiveCreated = false;
     try {
-      if (this.workspaceController && !this.isStandaloneWorkspace) {
+      if (this.workspaceController) {
         this.setArchiveDialogStatus("PDF wird erstellt ...");
         await this.executeWorkspaceAction("archive-generate", { options });
         this.setArchiveDialogStatus("PDF wurde erstellt.", "ok");
@@ -8866,10 +8549,6 @@ class PlanningApp {
     this.renderViewState();
     this.renderSettingsTabs();
     this.renderSidebarCourseList();
-    if (!visibleOnly || this.currentView === "course") {
-      this.renderCourseSection();
-      this.renderSlotSection();
-    }
     if (!visibleOnly || (this.currentView === "settings" && this.activeSettingsTab === "display")) {
       this.renderDisplaySection();
     }
@@ -8892,7 +8571,6 @@ class PlanningApp {
     if (this.currentView === "course") {
       this.renderCourseTimeline();
     }
-    this.syncSlotEditTools();
     this.updateWeekNavigation();
     this.syncAllNumberSteppers();
     this.queuePlanningReadySignal();
@@ -9539,156 +9217,6 @@ class PlanningApp {
     addButton.disabled = this.locked;
     addItem.append(addButton);
     this.refs.sidebarCourseList.append(addItem);
-  }
-
-  renderCourseSection() {
-    const year = this.activeSchoolYear;
-    const courses = year ? this.store.listCourses(year.id) : [];
-    this.refs.courseSettingsAdd.disabled = this.locked || !year;
-
-    this.refs.courseList.innerHTML = "";
-    for (const course of courses) {
-      const li = document.createElement("li");
-      li.dataset.courseId = String(course.id);
-      const main = document.createElement("div");
-      main.className = "main";
-      const name = document.createElement("div");
-      const dot = document.createElement("span");
-      dot.className = "color-dot";
-      dot.style.display = "inline-block";
-      dot.style.marginRight = "8px";
-      dot.style.background = normalizeCourseColor(course.color, Boolean(course.noLesson));
-      name.append(dot, document.createTextNode(course.name));
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      meta.textContent = course.noLesson ? "Unterrichtsfrei-Kurs" : "Regulärer Kurs";
-      main.append(name, meta);
-
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-      const editBtn = document.createElement("button");
-      editBtn.type = "button";
-      editBtn.className = "ghost";
-      editBtn.dataset.action = "edit";
-      editBtn.dataset.id = String(course.id);
-      editBtn.textContent = "✎ Bearbeiten";
-      editBtn.disabled = this.locked;
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.className = "delete";
-      deleteBtn.dataset.action = "delete";
-      deleteBtn.dataset.id = String(course.id);
-      deleteBtn.textContent = "Löschen";
-      deleteBtn.disabled = this.locked;
-
-      actions.append(editBtn, deleteBtn);
-
-      li.append(main, actions);
-      this.refs.courseList.append(li);
-    }
-  }
-
-  renderSlotSection() {
-    this.renderSlotCourseSelect();
-    this.renderSlotList();
-  }
-
-  renderSlotCourseSelect() {
-    const year = this.activeSchoolYear;
-    const courses = year ? this.store.listCourses(year.id) : [];
-    const previous = this.refs.slotCourse.value;
-    this.refs.slotCourse.innerHTML = "";
-
-    for (const course of courses) {
-      const option = document.createElement("option");
-      option.value = String(course.id);
-      option.textContent = course.name;
-      const courseColor = normalizeCourseColor(course.color, Boolean(course.noLesson));
-      option.style.color = courseColor;
-      option.style.backgroundColor = "var(--dropdown-bg)";
-      option.dataset.courseColor = courseColor;
-      this.refs.slotCourse.append(option);
-    }
-
-    if (courses.length === 0) {
-      const option = document.createElement("option");
-      option.value = "";
-      option.textContent = "Erst Kurs anlegen";
-      option.style.backgroundColor = "var(--dropdown-bg)";
-      this.refs.slotCourse.append(option);
-      this.refs.slotCourse.disabled = true;
-      this.refs.slotCourse.style.color = "";
-      return;
-    }
-
-    this.refs.slotCourse.disabled = false;
-    this.refs.slotCourse.value = courses.some((course) => String(course.id) === previous)
-      ? previous
-      : String(courses[0].id);
-    this.syncSlotFormCourseColor();
-  }
-
-  renderSlotList() {
-    const year = this.activeSchoolYear;
-    const slots = year ? this.store.listSlotsForYear(year.id) : [];
-    const coursesById = new Map((year ? this.store.listCourses(year.id) : []).map((item) => [item.id, item]));
-    this.refs.slotList.innerHTML = "";
-
-    for (const slot of slots) {
-      const course = coursesById.get(slot.courseId);
-      const li = document.createElement("li");
-      const main = document.createElement("div");
-      main.className = "main";
-      const name = document.createElement("div");
-      const dayName = DAYS_SHORT[slot.dayOfWeek - 1] || `Tag ${slot.dayOfWeek}`;
-      const oneTime = Number(slot.weekParity) === 0 && slot.startDate && slot.endDate && slot.startDate === slot.endDate;
-      const parityText = oneTime
-        ? "einmalig"
-        : Number(slot.weekParity) === 1
-          ? "ung. KW"
-          : Number(slot.weekParity) === 2
-            ? "ger. KW"
-            : "jede KW";
-      name.textContent = slot.placement === "break"
-        ? `${dayName} · Pause nach der ${slot.startHour}. Std. · ${slot.label || "Aufsicht"}`
-        : `${dayName} ${slot.startHour}.-${slot.startHour + slot.duration - 1}. Std. · ${course ? course.name : "?"}`;
-      const meta = document.createElement("div");
-      meta.className = "meta";
-      const rangeText = slot.startDate || slot.endDate
-        ? slot.startDate && slot.endDate && slot.startDate === slot.endDate
-          ? formatDate(slot.startDate)
-          : `${slot.startDate ? formatDate(slot.startDate) : "Start Schuljahr"} - ${slot.endDate ? formatDate(slot.endDate) : "Ende Schuljahr"}`
-        : "Ganzes Schuljahr";
-      meta.textContent = `${rangeText} · ${parityText}`;
-      main.append(name, meta);
-
-      const actions = document.createElement("div");
-      actions.className = "item-actions";
-      actions.replaceChildren((() => {
-        const fragment = document.createDocumentFragment();
-        fragment.append("\n");
-        const ghost1 = document.createElement("button");
-        ghost1.setAttribute("type", "button");
-        ghost1.className = "ghost";
-        ghost1.dataset.action = "edit";
-        ghost1.dataset.id = String(slot.id);
-        ghost1.textContent = "Bearbeiten";
-        fragment.append(ghost1);
-        fragment.append("\n");
-        const delete2 = document.createElement("button");
-        delete2.setAttribute("type", "button");
-        delete2.className = "delete";
-        delete2.dataset.action = "delete";
-        delete2.dataset.id = String(slot.id);
-        delete2.textContent = "Löschen";
-        fragment.append(delete2);
-        fragment.append("\n");
-        return fragment;
-      })());
-      li.append(main, actions);
-      this.refs.slotList.append(li);
-    }
   }
 
   renderDisplaySection() {
@@ -11436,22 +10964,6 @@ class PlanningApp {
     const offsetWithinPanel = rowRect.top - panelRect.top;
     const targetTop = panel.scrollTop + offsetWithinPanel - ((panel.clientHeight - rowRect.height) / 2);
     panel.scrollTop = clamp(targetTop, 0, maxScrollTop);
-  }
-
-  resetSlotForm() {
-    this.refs.slotId.value = "";
-    this.refs.slotDay.value = "1";
-    this.refs.slotHour.value = "1";
-    this.refs.slotDuration.value = "1";
-    this.refs.slotStart.value = "";
-    this.refs.slotEnd.value = "";
-    this.refs.slotParity.value = "0";
-    this.refs.slotEditScope.value = "all";
-    this.refs.slotEditFromDate.min = "";
-    this.refs.slotEditFromDate.max = "";
-    this.refs.slotEditFromDate.value = "";
-    this.refs.slotDelete.hidden = true;
-    this.syncSlotEditTools();
   }
 
 }

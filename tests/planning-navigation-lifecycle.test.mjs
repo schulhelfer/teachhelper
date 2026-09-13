@@ -47,7 +47,6 @@ test('shell status updates do not rebuild an unchanged planning view', () => {
   )();
   const calls = { renderAll: 0, footer: 0, archive: 0 };
   const harness = {
-    isStandaloneWorkspace: false,
     workspaceRevision: 4,
     workspaceHydrated: true,
     settingsDirty: false,

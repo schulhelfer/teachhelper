@@ -39,23 +39,50 @@ test('Picker-Speicherungen warten auf die Entsperrung und akzeptieren keine vera
   assert.match(gradesApp, /action\.type === "picker-config-save"/);
 });
 
-test('die Shell bindet den Picker live an den Kurs und speichert Änderungen einschließlich automatischer Deaktivierung', () => {
+test('die Shell bindet den Picker live an den Kurs und speichert nur über die explizite Zielauswahl', () => {
   assert.match(main, /from '\.\/grade-roster-coordinator\.js'/);
   assert.match(main, /gradeRosterCoordinator = createGradeRosterCoordinator\(\{/);
   assert.match(coordinator, /mode: isRandomPickerActive\(\) \? 'picker' : 'roster'/);
   assert.match(coordinator, /pickerBinding = \{/);
   assert.match(main, /getStudents: \(\) => gradeRosterCoordinator\.getPickerStudents\(classroomState\.getState\(\)\.students\)/);
   assert.match(main, /const preferenceStudents = isRandomPickerTabActive\(\)[\s\S]*?gradeRosterCoordinator\.getPickerStudents\(classroomState\.getState\(\)\.students\)/);
-  assert.match(coordinator, /pickerBinding\.autoDisableSelected = value;[\s\S]*?savePickerConfig\(\{ deferSave \}\)/);
-  assert.match(main, /student\.randomWeight = weight;[\s\S]*?gradeRosterCoordinator\.savePickerConfig\(\{ deferSave \}\)/);
-  assert.match(main, /onConditionsSaved: \(\) => gradeRosterCoordinator\.savePickerConfig\(\)/);
+  assert.match(coordinator, /const hasUnsavedPickerConfig = \(\) => Boolean\(/);
+  assert.match(coordinator, /const savePickerConfig = \(\) => \{/);
+  assert.doesNotMatch(coordinator, /savePickerConfig\(\{ deferSave \}\)/);
+  assert.match(main, /async function choosePickerSaveTarget\(\)/);
+  assert.match(main, /secondaryText: 'Separate Picker-Datei'/);
+  assert.match(main, /confirmText: 'Im Notenmodul'/);
+  assert.match(main, /onExport: \(\) => \{\s*void handlePickerSaveClick\(\);/);
+  assert.doesNotMatch(main, /onConditionsSaved: \(\) => gradeRosterCoordinator\.savePickerConfig/);
   const saveResultHandler = coordinator.match(/const handlePickerSaveResult = \(event\) => \{([\s\S]*?)\n  \};/);
   assert.ok(saveResultHandler, 'Picker-Speicherergebnis muss behandelt werden');
   assert.doesNotMatch(saveResultHandler[1], /importCourse/);
-  assert.match(coordinator, /bind\(randomPickerCourseReset, 'click', clearPickerBinding\)/);
+  assert.match(saveResultHandler[1], /Picker im Notenmodul gespeichert\./);
+  assert.match(coordinator, /bind\(randomPickerCourseReset, 'click',[\s\S]*?requestPickerBindingClear/);
   assert.doesNotMatch(main, /\bgradePickerBinding\b/);
   assert.match(indexHtml, /id="random-picker-course-reset"[\s\S]*?class="app-action-reset-icon"/);
   assert.match(shellCss, /\.random-picker-course-reset-button \{[\s\S]*?width: 26px;/);
+});
+
+test('kursgebundene Picker exportieren Kursname, Kursliste und wirksame Einstellungen', () => {
+  assert.match(main, /return `\$\{pickerBinding\.courseName\} \(\$\{modeLabel\}\)`/);
+  assert.match(main, /return csvName \? `\$\{csvName\} \(\$\{modeLabel\}\)` : modeLabel/);
+  assert.match(main, /const rosterStudents = pickerBinding[\s\S]*?gradeRosterCoordinator\.getPickerStudents/);
+  assert.match(main, /const rosterName = pickerBinding\?\.courseName \|\| classroom\.csvName/);
+  assert.match(main, /gradeRosterCoordinator\.getPickerAutoDisableSelected/);
+  const exportMethod = main.match(/async function downloadSeatPlan\(\) \{([\s\S]*?)\n  \}/);
+  assert.ok(exportMethod, 'Dateiexport muss vorhanden sein');
+  assert.doesNotMatch(exportMethod[1], /savePickerConfig|savedConfigSignature/);
+  assert.match(main, /confirmPickerBindingReplacement\(\)[\s\S]*?clearPickerBinding\(\)[\s\S]*?applyPlan\(plan/);
+  assert.match(main, /if \(replacesPickerBinding\) gradeRosterCoordinator\.clearPickerBinding\(\)/);
+});
+
+test('ungesicherte Pickerstände schützen Ersetzung und Browsernavigation', () => {
+  assert.match(main, /async function confirmPickerBindingReplacement\(binding = null\)/);
+  assert.match(main, /secondaryText: 'Änderungen verwerfen'/);
+  assert.match(main, /confirmText: 'Im Notenmodul speichern'/);
+  assert.match(main, /onBeforePickerBindingReplace: confirmPickerBindingReplacement/);
+  assert.match(main, /bindRuntime\(window, 'beforeunload',[\s\S]*?hasUnsavedPickerConfig/);
 });
 
 test('der Picker platziert die Kursbindung wie der Sitzplan neben der Importüberschrift', () => {

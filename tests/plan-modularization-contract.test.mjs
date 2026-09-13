@@ -18,7 +18,7 @@ test('main delegates plan formatting and persistence without retaining old imple
   assert.match(main, /from '\.\/plan-format\.js'/);
   assert.match(main, /from '\.\/plan-persistence\.js'/);
   assert.doesNotMatch(main, /function (?:stripJsonWarning|createPlanSnapshot|savePlanWithPicker|triggerPlanDownload|pickPlanFileWithPicker)\s*\(/);
-  assert.match(main, /const plan = await loadPlan\(file\);\s*if \(handle\)/);
+  assert.match(main, /const plan = await loadPlan\(file\);[\s\S]*?if \(handle\) \{\s*state\.lastDirectoryHandle = handle;/);
   assert.match(main, /applyPlan\(plan, \{ restoreSeatAssignments: true \}\)/);
   assert.match(main, /groupsController\?\.restorePlanState\(groupsPlanState, \{ restoreSeatAssignments \}\)/);
   assert.match(main, /workPhaseController\?\.restorePlanState\(workPhasePlanState\)/);

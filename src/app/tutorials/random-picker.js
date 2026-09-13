@@ -18,7 +18,7 @@ export function createRandomPickerTutorialDefinition(context = {}) {
       createModuleTutorialStep({
         tab: TAB_RANDOM_PICKER,
         title: 'Auswahlbedingungen öffnen',
-        copy: 'Hier stellst du pro Person „normal“, „sicher“ oder „unmöglich“ ein. „Speichern“ übernimmt die Bedingungen für die nächste Ziehung.',
+        copy: 'Hier stellst du pro Person „normal“, „sicher“ oder „unmöglich“ ein. „Speichern“ übernimmt die Bedingungen zunächst in den aktuellen Pickerstand.',
         target: (nodes) => nodes.groupSeatPreferences,
         placement: 'right',
       }),
@@ -68,7 +68,7 @@ export function createRandomPickerTutorialDefinition(context = {}) {
       createModuleTutorialStep({
         tab: TAB_RANDOM_PICKER,
         title: 'Pickerstand speichern',
-        copy: 'Speichere Liste und Gewichtungen als Datei. So bleibt erhalten, wer in dieser Runde schon dran war.',
+        copy: 'Bei einem verbundenen Kurs speicherst du den Stand wahlweise im Notenmodul oder als separate Datei. Nur „Im Notenmodul“ aktualisiert den Kurs; ohne Kursbindung steht direkt der Dateiexport bereit.',
         target: (nodes) => nodes.randomPickerExport || nodes.randomPickerPlanActions,
         placement: 'right',
       }),

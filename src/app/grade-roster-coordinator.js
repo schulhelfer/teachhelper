@@ -21,6 +21,7 @@ export function createGradeRosterCoordinator({
   normalizePickerWeight = (value) => value,
   showMessage = () => {},
   onPickerBindingChange = () => {},
+  onBeforePickerBindingReplace = () => Promise.resolve(true),
 } = {}) {
   const {
     gradeRosterImportMenu,
@@ -40,7 +41,7 @@ export function createGradeRosterCoordinator({
   let pickerBinding = null;
   let pickerSaveSequence = 0;
   let resizeObserver = null;
-  const pendingPickerSaveRequestIds = new Set();
+  const pendingPickerSaveRequests = new Map();
   const listeners = [];
 
   const bind = (target, type, listener) => {
@@ -93,20 +94,72 @@ export function createGradeRosterCoordinator({
     };
   };
 
-  const savePickerConfig = ({ deferSave = false } = {}) => {
-    if (deferSave) return false;
+  const getPickerConfigSignature = (config = getPickerConfig()) => {
+    if (!config) return '';
+    const weights = Object.entries(config.weightsByStudentId || {})
+      .map(([studentId, weight]) => [String(studentId), normalizePickerWeight(weight)])
+      .sort(([left], [right]) => left.localeCompare(right));
+    return JSON.stringify({ weights, autoDisableSelected: config.autoDisableSelected === true });
+  };
+
+  const getPickerBinding = () => pickerBinding ? {
+    courseId: pickerBinding.courseId,
+    courseName: pickerBinding.courseName,
+    rosterToken: pickerBinding.rosterToken,
+  } : null;
+
+  const hasUnsavedPickerConfig = () => Boolean(
+    pickerBinding
+    && getPickerConfigSignature() !== pickerBinding.savedConfigSignature
+  );
+
+  const savePickerConfig = () => {
     const binding = pickerBinding;
     const config = getPickerConfig();
-    if (!binding || !config) return false;
+    if (!binding || !config) return Promise.resolve({ ok: false, unbound: true });
+    if (typeof bridge?.requestGradePickerConfigSave !== 'function') {
+      const result = {
+        ok: false,
+        message: 'Picker-Konfiguration konnte nicht gespeichert werden.',
+      };
+      showMessage(result.message, 'warn');
+      return Promise.resolve(result);
+    }
     const requestId = `shell-grade-picker-${Date.now()}-${++pickerSaveSequence}`;
-    pendingPickerSaveRequestIds.add(requestId);
-    bridge?.requestGradePickerConfigSave?.({
-      requestId,
-      courseId: binding.courseId,
-      rosterToken: binding.rosterToken,
-      config,
+    const signature = getPickerConfigSignature(config);
+    return new Promise((resolve) => {
+      pendingPickerSaveRequests.set(requestId, {
+        courseId: binding.courseId,
+        rosterToken: binding.rosterToken,
+        signature,
+        resolve,
+      });
+      let requested = false;
+      try {
+        requested = bridge.requestGradePickerConfigSave({
+          requestId,
+          courseId: binding.courseId,
+          rosterToken: binding.rosterToken,
+          config,
+        });
+      } catch {
+        requested = false;
+      }
+      if (requested !== false || !pendingPickerSaveRequests.has(requestId)) return;
+      pendingPickerSaveRequests.delete(requestId);
+      const result = {
+        requestId,
+        ok: false,
+        message: 'Picker-Konfiguration konnte nicht gespeichert werden.',
+      };
+      showMessage(result.message, 'warn');
+      resolve(result);
     });
-    return true;
+  };
+
+  const confirmPickerBindingReplacement = async () => {
+    if (!hasUnsavedPickerConfig()) return true;
+    return await onBeforePickerBindingReplace(getPickerBinding()) === true;
   };
 
   const syncImportHeight = () => {
@@ -154,10 +207,18 @@ export function createGradeRosterCoordinator({
     setImportColumns(bestPercent);
   };
 
-  const importCourse = (courseId) => {
+  const importCourse = async (courseId) => {
     if (isTutorialDemoActive()) {
       showMessage('Demo: Importe aus dem Notenmodul verändern die Beispieldaten nicht.', 'info');
       return;
+    }
+    if (
+      isRandomPickerActive()
+      && hasUnsavedPickerConfig()
+      && !await confirmPickerBindingReplacement()
+    ) return;
+    if (gradeRosterImportMenu?.hidden === false) {
+      showImportMessage('Namensliste wird importiert …');
     }
     const requestId = createRequestId();
     pendingImportRequestId = requestId;
@@ -218,7 +279,7 @@ export function createGradeRosterCoordinator({
         );
       button.classList.toggle('is-imported', isSelected);
       if (isSelected) button.setAttribute('aria-current', 'true');
-      button.addEventListener('click', () => importCourse(course?.id));
+      button.addEventListener('click', () => { void importCourse(course?.id); });
       gradeRosterPills.append(button);
     });
     gradeRosterPills.hidden = false;
@@ -246,8 +307,7 @@ export function createGradeRosterCoordinator({
       button.setAttribute('role', 'menuitem');
       button.textContent = String(course?.name || 'Kurs');
       button.addEventListener('click', () => {
-        showImportMessage('Namensliste wird importiert …');
-        importCourse(course?.id);
+        void importCourse(course?.id);
       });
       gradeRosterImportMenu.append(button);
     });
@@ -356,6 +416,7 @@ export function createGradeRosterCoordinator({
           randomWeight: normalizePickerWeight(storedWeights[String(student?.id || '')]),
         })),
       };
+      pickerBinding.savedConfigSignature = getPickerConfigSignature();
       updatePickerBindingUi();
       onPickerBindingChange();
     } else {
@@ -380,9 +441,34 @@ export function createGradeRosterCoordinator({
 
   const handlePickerSaveResult = (event) => {
     const detail = getEventDetail(event);
-    if (!detail || !pendingPickerSaveRequestIds.delete(String(detail.requestId || ''))) return;
-    if (detail.ok || detail.unlockRequired || detail.unlockCancelled) return;
-    showMessage(detail.message || 'Picker-Konfiguration konnte nicht gespeichert werden.', 'warn');
+    const requestId = String(detail?.requestId || '');
+    const pending = pendingPickerSaveRequests.get(requestId);
+    if (!detail || !pending) return;
+    pendingPickerSaveRequests.delete(requestId);
+    const matchesBinding = Boolean(
+      pickerBinding
+      && pickerBinding.courseId === pending.courseId
+      && pickerBinding.rosterToken === pending.rosterToken
+    );
+    if (
+      detail.ok
+      && matchesBinding
+    ) {
+      pickerBinding.savedConfigSignature = pending.signature;
+      showMessage('Picker im Notenmodul gespeichert.', 'success', { presentation: 'toast' });
+      pending.resolve(detail);
+      return;
+    }
+    const result = detail.ok ? {
+      ...detail,
+      ok: false,
+      stale: true,
+      message: 'Die Picker-Kursbindung hat sich während des Speicherns geändert.',
+    } : detail;
+    if (!result.unlockRequired && !result.unlockCancelled) {
+      showMessage(result.message || 'Picker-Konfiguration konnte nicht gespeichert werden.', 'warn');
+    }
+    pending.resolve(result);
   };
 
   const handleDocumentClick = (event) => {
@@ -402,6 +488,12 @@ export function createGradeRosterCoordinator({
     return true;
   };
 
+  const requestPickerBindingClear = async () => {
+    if (!pickerBinding) return false;
+    if (hasUnsavedPickerConfig() && !await confirmPickerBindingReplacement()) return false;
+    return clearPickerBinding();
+  };
+
   const updateSharedRosterSelection = (detail) => {
     if (!detail || typeof detail !== 'object') return;
     selectedCourseId = detail.source === STUDENTS_SYNC_SOURCE_GRADES
@@ -418,10 +510,9 @@ export function createGradeRosterCoordinator({
     pickerBinding?.autoDisableSelected ?? fallbackValue
   );
 
-  const setPickerAutoDisableSelected = (value, { deferSave = false } = {}) => {
+  const setPickerAutoDisableSelected = (value) => {
     if (!pickerBinding) return false;
     pickerBinding.autoDisableSelected = value;
-    savePickerConfig({ deferSave });
     return true;
   };
 
@@ -433,11 +524,16 @@ export function createGradeRosterCoordinator({
     listeners.splice(0).forEach((remove) => remove());
     resizeObserver?.disconnect?.();
     resizeObserver = null;
-    pendingPickerSaveRequestIds.clear();
+    pendingPickerSaveRequests.forEach(({ resolve }, requestId) => resolve({
+      requestId,
+      ok: false,
+      disposed: true,
+    }));
+    pendingPickerSaveRequests.clear();
   };
 
   bind(gradeRosterImportTrigger, 'click', handleImportTriggerClick);
-  bind(randomPickerCourseReset, 'click', clearPickerBinding);
+  bind(randomPickerCourseReset, 'click', () => { void requestPickerBindingClear(); });
   bind(documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, handleCoursesResult);
   bind(documentBus, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, handleImportResult);
   bind(documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, restoreReturnTab);
@@ -454,8 +550,11 @@ export function createGradeRosterCoordinator({
   return {
     requestCourses,
     updateSharedRosterSelection,
+    getPickerBinding,
     getPickerStudents,
     getPickerAutoDisableSelected,
+    hasUnsavedPickerConfig,
+    confirmPickerBindingReplacement,
     setPickerAutoDisableSelected,
     savePickerConfig,
     clearPickerBinding,

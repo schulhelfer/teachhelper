@@ -105,7 +105,12 @@ class TestDocument extends EventTarget {
   }
 }
 
-function createHarness({ activeTab = TAB_GROUPS, tutorialDemo = false, rosterLabel = '' } = {}) {
+function createHarness({
+  activeTab = TAB_GROUPS,
+  tutorialDemo = false,
+  rosterLabel = '',
+  replacementDecisions = [],
+} = {}) {
   const documentBus = new TestDocument();
   const row = new TestElement();
   const surface = new TestElement();
@@ -123,6 +128,7 @@ function createHarness({ activeTab = TAB_GROUPS, tutorialDemo = false, rosterLab
   const saveRequests = [];
   const messages = [];
   const activatedTabs = [];
+  const replacementRequests = [];
   let pickerBindingChanges = 0;
   let disconnected = false;
   let observedTarget = null;
@@ -181,6 +187,10 @@ function createHarness({ activeTab = TAB_GROUPS, tutorialDemo = false, rosterLab
     onPickerBindingChange: () => {
       pickerBindingChanges += 1;
     },
+    onBeforePickerBindingReplace: async (binding) => {
+      replacementRequests.push(binding);
+      return replacementDecisions.length ? replacementDecisions.shift() : true;
+    },
   });
 
   return {
@@ -192,6 +202,7 @@ function createHarness({ activeTab = TAB_GROUPS, tutorialDemo = false, rosterLab
     saveRequests,
     messages,
     activatedTabs,
+    replacementRequests,
     get pickerBindingChanges() {
       return pickerBindingChanges;
     },
@@ -218,6 +229,10 @@ function createHarness({ activeTab = TAB_GROUPS, tutorialDemo = false, rosterLab
 
 function dispatchResult(documentBus, type, detail) {
   documentBus.dispatchEvent(new CustomEvent(type, { detail }));
+}
+
+async function flushMicrotasks() {
+  for (let tick = 0; tick < 8; tick += 1) await Promise.resolve();
 }
 
 function loadCourses(harness, courses, extra = {}) {
@@ -267,7 +282,7 @@ test('Kursabfragen korrelieren Antworten und behalten Entsperrungsnavigation und
   assert.equal(harness.elements.pills.children[0].textContent, 'Notenkurse werden geladen …');
 });
 
-test('Picker-Import übernimmt die gespeicherte Bindung und persistiert Änderungen unverändert', () => {
+test('Picker-Import übernimmt die Bindung und speichert Änderungen ausschließlich explizit', async () => {
   const harness = createHarness({ activeTab: TAB_RANDOM_PICKER });
   loadCourses(harness, [{ id: 12, name: 'Physik', color: '#abc' }]);
   harness.elements.pills.children[0].dispatchEvent(new Event('click'));
@@ -298,10 +313,17 @@ test('Picker-Import übernimmt die gespeicherte Bindung und persistiert Änderun
   assert.match(harness.elements.reset.title, /Physik/);
   assert.equal(harness.pickerBindingChanges, 1);
 
-  assert.equal(harness.coordinator.setPickerAutoDisableSelected(false, { deferSave: true }), true);
+  assert.deepEqual(harness.coordinator.getPickerBinding(), {
+    courseId: 12,
+    courseName: 'Physik',
+    rosterToken: 'roster-12',
+  });
+  assert.equal(harness.coordinator.hasUnsavedPickerConfig(), false);
+  assert.equal(harness.coordinator.setPickerAutoDisableSelected(false), true);
   assert.equal(harness.saveRequests.length, 0);
   boundStudents[0].randomWeight = 4;
-  assert.equal(harness.coordinator.savePickerConfig(), true);
+  assert.equal(harness.coordinator.hasUnsavedPickerConfig(), true);
+  const failedSave = harness.coordinator.savePickerConfig();
   assert.deepEqual(harness.saveRequests[0], {
     requestId: harness.saveRequests[0].requestId,
     courseId: 12,
@@ -323,14 +345,80 @@ test('Picker-Import übernimmt die gespeicherte Bindung und persistiert Änderun
     ok: false,
     message: 'Speichern fehlgeschlagen',
   });
+  assert.equal((await failedSave).ok, false);
   assert.deepEqual(harness.messages.at(-1), ['Speichern fehlgeschlagen', 'warn']);
+  assert.equal(harness.coordinator.hasUnsavedPickerConfig(), true);
+
+  const successfulSave = harness.coordinator.savePickerConfig();
+  const successfulRequest = harness.saveRequests.at(-1);
+  boundStudents[1].randomWeight = 3;
+  dispatchResult(harness.documentBus, GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, {
+    requestId: successfulRequest.requestId,
+    ok: true,
+  });
+  assert.equal((await successfulSave).ok, true);
+  assert.equal(harness.coordinator.hasUnsavedPickerConfig(), true);
+  assert.deepEqual(harness.messages.at(-1), [
+    'Picker im Notenmodul gespeichert.',
+    'success',
+    { presentation: 'toast' },
+  ]);
+
+  const finalSave = harness.coordinator.savePickerConfig();
+  const finalRequest = harness.saveRequests.at(-1);
+  dispatchResult(harness.documentBus, GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, {
+    requestId: finalRequest.requestId,
+    ok: true,
+  });
+  await finalSave;
+  assert.equal(harness.coordinator.hasUnsavedPickerConfig(), false);
 
   assert.equal(harness.coordinator.clearPickerBinding(), true);
   assert.equal(harness.coordinator.getPickerStudents(fallback), fallback);
   assert.equal(harness.coordinator.getPickerAutoDisableSelected(true), true);
   assert.equal(harness.elements.reset.hidden, true);
   assert.equal(harness.pickerBindingChanges, 2);
-  assert.equal(harness.coordinator.savePickerConfig(), false);
+  assert.equal((await harness.coordinator.savePickerConfig()).unbound, true);
+});
+
+test('ungesicherte Picker-Bindungen schützen Kurswechsel und das Lösen der Bindung', async () => {
+  const harness = createHarness({
+    activeTab: TAB_RANDOM_PICKER,
+    replacementDecisions: [false, true, false, true],
+  });
+  loadCourses(harness, [
+    { id: 12, name: 'Physik' },
+    { id: 13, name: 'Chemie' },
+  ]);
+  harness.elements.pills.children[0].dispatchEvent(new Event('click'));
+  const initialRequest = harness.importRequests.at(-1);
+  dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, {
+    requestId: initialRequest.requestId,
+    ok: true,
+    mode: 'picker',
+    courseId: 12,
+    courseName: 'Physik',
+    rosterToken: 'roster-12',
+    students: [{ id: 'a', first: 'Ada' }],
+    pickerConfig: { weightsByStudentId: { a: 1 }, autoDisableSelected: false },
+  });
+  harness.coordinator.getPickerStudents([])[0].randomWeight = 3;
+
+  harness.elements.pills.children[1].dispatchEvent(new Event('click'));
+  await flushMicrotasks();
+  assert.equal(harness.importRequests.length, 1);
+  assert.equal(harness.replacementRequests.length, 1);
+
+  harness.elements.pills.children[1].dispatchEvent(new Event('click'));
+  await flushMicrotasks();
+  assert.equal(harness.importRequests.length, 2);
+
+  harness.elements.reset.dispatchEvent(new Event('click'));
+  await flushMicrotasks();
+  assert.ok(harness.coordinator.getPickerBinding());
+  harness.elements.reset.dispatchEvent(new Event('click'));
+  await flushMicrotasks();
+  assert.equal(harness.coordinator.getPickerBinding(), null);
 });
 
 test('Roster-Auswahl, Dateinamen-Fallback und Kursimport bleiben vom Picker getrennt', () => {

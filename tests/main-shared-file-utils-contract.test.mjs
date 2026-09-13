@@ -16,7 +16,8 @@ test('main consumes shared CSV and file utilities without local duplicates', () 
   assert.match(main, /from '\.\.\/shared\/file-io\.js';/);
   assert.doesNotMatch(main, /function\s+(?:detectDelimiter|parseCSV|normalizeCsvCell|normalizeCsvHeader)\s*\(/);
   assert.doesNotMatch(main, /function\s+(?:sanitizeExportFileName|stripFileExtension|dataTransferHasFiles|isCsvFile|isJsonFile|triggerBlobDownload)\s*\(/);
-  assert.match(main, /const parsedCsv = parseCSV\(text\);\s*classroomState\.updateState\(\{ delim: parsedCsv\.delimiter \}\);\s*let rows = parsedCsv\.rows;/);
+  assert.match(main, /const parsedCsv = parseCSV\(text\);\s*let rows = parsedCsv\.rows;/);
+  assert.match(main, /classroomState\.updateState\(\{[\s\S]*?delim: parsedCsv\.delimiter,[\s\S]*?\}\);/);
   assert.doesNotMatch(csv, /\bstate\s*\./);
   assert.doesNotMatch(fileIo, /\bstate\s*\.|isIOSDevice/);
 });

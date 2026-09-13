@@ -140,16 +140,11 @@ export function createTabController({
   }
 
   function updateSeatPreferencesTrigger() {
-    const isPicker = activeTab === TAB_RANDOM_PICKER;
     if (seatPreferencesLabel) {
-      seatPreferencesLabel.textContent = isPicker
-        ? 'Gib Bedingungen an (optional)'
-        : 'Gib Bedingungen an (optional)';
+      seatPreferencesLabel.textContent = 'Gib Bedingungen an (optional)';
     }
     if (groupSeatPreferences) {
-      groupSeatPreferences.textContent = isPicker
-        ? 'Bedingungen eingeben'
-        : 'Bedingungen eingeben';
+      groupSeatPreferences.textContent = 'Bedingungen eingeben';
     }
   }
 

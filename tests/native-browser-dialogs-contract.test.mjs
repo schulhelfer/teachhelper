@@ -20,8 +20,9 @@ test('PWA paths have no native browser alert, confirm, or prompt calls', () => {
 });
 
 test('the shell export and large-file confirmation use the shared app dialog', () => {
-  assert.match(indexHtml, /<dialog id="shell-action-dialog"[\s\S]*?id="shell-action-dialog-input"[\s\S]*?id="shell-action-dialog-cancel"[\s\S]*?id="shell-action-dialog-confirm"/);
+  assert.match(indexHtml, /<dialog id="shell-action-dialog"[\s\S]*?id="shell-action-dialog-input"[\s\S]*?id="shell-action-dialog-cancel"[\s\S]*?id="shell-action-dialog-secondary"[\s\S]*?id="shell-action-dialog-confirm"/);
   assert.match(main, /shellActionDialog\.prompt\(\{[\s\S]*?title: 'Dateiname festlegen'[\s\S]*?defaultValue: defaultName/);
+  assert.match(main, /shellActionDialog\.choose\(\{[\s\S]*?title: 'Picker speichern'[\s\S]*?confirmValue: 'grades'/);
   assert.match(runtime, /await this\.confirmLargeFile\?\.\(\{[\s\S]*?formattedSize: formatFileSize\(size\)/);
   assert.doesNotMatch(runtime, /globalThis\.confirm/);
 });

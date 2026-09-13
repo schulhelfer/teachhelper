@@ -14,7 +14,7 @@ test('main mounts the picker against the shared state through explicit adapters'
   assert.match(main, /randomPickerController = mountRandomPicker\(\{/);
   assert.match(main, /getStudents: \(\) => gradeRosterCoordinator\.getPickerStudents\(classroomState\.getState\(\)\.students\)/);
   assert.match(main, /getAutoDisableSelected: \(\) => gradeRosterCoordinator\.getPickerAutoDisableSelected\([\s\S]*?state\.randomPickerAutoDisableSelected[\s\S]*?\)/);
-  assert.match(main, /setStudentWeight: \(student, weight, \{ deferSave = false \} = \{\}\) => \{\s*student\.randomWeight = weight;/);
+  assert.match(main, /setStudentWeight: \(student, weight\) => \{\s*student\.randomWeight = weight;/);
   assert.doesNotMatch(main, /function (?:getRandomPickerCandidates|pickWeightedRandomPickerCandidate|updateRandomPickerCards|startRandomPickerSpin|buildRandomPickerConditionsTable)\(/);
 });
 

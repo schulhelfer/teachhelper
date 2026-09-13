@@ -250,19 +250,18 @@ test('planning, group metadata, file names and shared errors cross the DOM bound
     const planner = Object.create(PlanningApp.prototype);
     Object.defineProperty(planner, 'activeSchoolYear', { value: { id: 1 } });
     Object.assign(planner, {
-      refs: { slotList: document.createElement('ul'), lessonTimesList: document.createElement('div') },
+      refs: { slotDialogCourse: document.createElement('select'), lessonTimesList: document.createElement('div') },
       store: {
-        listSlotsForYear: () => [{ id: payload, courseId: 2, dayOfWeek: 1, startHour: 1, duration: 1 }],
-        listCourses: () => [{ id: 2, name: payload }],
+        listCourses: () => [{ id: payload, name: payload }],
         getHoursPerDay: () => 2,
       },
       getSettingsDraftLessonTimes: () => [{ lesson: payload, start: payload, end: '09:30' }],
       updateSettingsActionButtons() {},
     });
-    planner.renderSlotList();
-    assertSafe(planner.refs.slotList);
-    check(planner.refs.slotList.textContent.includes(payload), 'Course name is literal');
-    check(planner.refs.slotList.querySelector('[data-action="edit"]').dataset.id === payload, 'Slot ID is literal');
+    check(planner.populateSlotDialogCourseSelect(), 'Course options are available');
+    assertSafe(planner.refs.slotDialogCourse);
+    check(planner.refs.slotDialogCourse.selectedOptions[0].textContent === payload, 'Course name is literal');
+    check(planner.refs.slotDialogCourse.value === payload, 'Course ID is literal');
     planner.renderLessonTimesSection();
     assertSafe(planner.refs.lessonTimesList);
     const start = planner.refs.lessonTimesList.querySelector('[data-lesson-time="start"]');

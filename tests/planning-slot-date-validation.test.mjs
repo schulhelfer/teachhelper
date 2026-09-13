@@ -53,7 +53,6 @@ function createHarness(startDate, endDate) {
     async persistSlotChange(value) { calls.persist.push(value); return true; },
     async persistExplicitDatabaseSave() { calls.saves += 1; },
     closeSlotDialog() {},
-    resetSlotForm() {},
     renderAll() {},
   };
 }

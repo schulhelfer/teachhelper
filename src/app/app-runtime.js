@@ -1419,6 +1419,12 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
 
   function getDefaultPlanBaseName() {
     const modeLabel = getDefaultPlanModeLabel();
+    const pickerBinding = isRandomPickerTabActive()
+      ? gradeRosterCoordinator?.getPickerBinding?.()
+      : null;
+    if (pickerBinding?.courseName) {
+      return `${pickerBinding.courseName} (${modeLabel})`;
+    }
     const { csvName } = classroomState.getState();
     return csvName ? `${csvName} (${modeLabel})` : modeLabel;
   }
@@ -1448,17 +1454,27 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     const groupsPlanState = groupsController?.getPlanState();
     if (!groupsPlanState) return;
     const classroom = classroomState.getState();
+    const pickerBinding = isRandomPickerTabActive()
+      ? gradeRosterCoordinator?.getPickerBinding?.()
+      : null;
+    const rosterStudents = pickerBinding
+      ? gradeRosterCoordinator.getPickerStudents(classroom.students)
+      : classroom.students;
+    const rosterName = pickerBinding?.courseName || classroom.csvName || '';
+    const autoDisableSelected = isRandomPickerTabActive()
+      ? gradeRosterCoordinator.getPickerAutoDisableSelected(state.randomPickerAutoDisableSelected)
+      : state.randomPickerAutoDisableSelected;
     const snapshot = createPlanSnapshot({
       generatedAt: new Date().toISOString(),
       roster: {
-        students: classroom.students,
+        students: rosterStudents,
         headers: classroom.headers,
         delimiter: classroom.delim,
-        csvName: classroom.csvName || '',
+        csvName: rosterName,
       },
       groups: groupsPlanState,
       randomPicker: {
-        autoDisableSelected: state.randomPickerAutoDisableSelected,
+        autoDisableSelected,
       },
       workPhase: workPhaseController?.getPlanState(),
     });
@@ -1494,7 +1510,68 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     if (saveResult.handle) {
       state.lastDirectoryHandle = saveResult.handle;
     }
-    showMessage('Man kann die Gruppen NICHT durch Anklicken der eben erstellten Datenbankdatei öffnen.\n\nStattdessen muss man die Datenbankdatei hier in TeachHelper über „Gruppen laden“ auswählen oder sie irgendwo in TeachHelper ziehen.', 'info');
+    const savedMode = isRandomPickerTabActive() ? 'Picker' : 'Gruppen';
+    showMessage(`Man kann ${savedMode === 'Picker' ? 'den Picker' : 'die Gruppen'} NICHT durch Anklicken der eben erstellten Datenbankdatei öffnen.\n\nStattdessen muss man die Datenbankdatei hier in TeachHelper über „${savedMode} laden“ auswählen oder sie irgendwo in TeachHelper ziehen.`, 'info');
+  }
+
+  async function choosePickerSaveTarget() {
+    const binding = gradeRosterCoordinator?.getPickerBinding?.();
+    if (!binding) return 'file';
+    if (!shellActionDialog?.choose) {
+      showMessage('Der Dialog zum Speichern steht nicht zur Verfügung.', 'error');
+      return '';
+    }
+    return shellActionDialog.choose({
+      title: 'Picker speichern',
+      message: `Pickerstand für „${binding.courseName}“ im Notenmodul oder als separate Datei speichern?`,
+      secondaryText: 'Separate Picker-Datei',
+      secondaryValue: 'file',
+      confirmText: 'Im Notenmodul',
+      confirmValue: 'grades',
+      cancelValue: '',
+    });
+  }
+
+  async function savePickerInGradeModule() {
+    const result = await gradeRosterCoordinator?.savePickerConfig?.();
+    return result?.ok === true;
+  }
+
+  async function handlePickerSaveClick() {
+    const target = await choosePickerSaveTarget();
+    if (target === 'grades') {
+      await savePickerInGradeModule();
+      return;
+    }
+    if (target === 'file') await downloadSeatPlan();
+  }
+
+  async function confirmPickerBindingReplacement(binding = null) {
+    if (!shellActionDialog?.choose) {
+      showMessage('Der Dialog für ungesicherte Picker-Änderungen steht nicht zur Verfügung.', 'error');
+      return false;
+    }
+    const courseReference = binding?.courseName
+      ? `„${String(binding.courseName)}“`
+      : 'den verbundenen Kurs';
+    const choice = await shellActionDialog.choose({
+      title: 'Ungesicherte Picker-Änderungen',
+      message: `Der Pickerstand für ${courseReference} wurde noch nicht im Notenmodul gespeichert.`,
+      secondaryText: 'Änderungen verwerfen',
+      secondaryValue: 'discard',
+      secondaryDanger: true,
+      confirmText: 'Im Notenmodul speichern',
+      confirmValue: 'save',
+      cancelValue: '',
+    });
+    if (choice === 'save') {
+      const saved = await savePickerInGradeModule();
+      if (!saved) return false;
+      if (!gradeRosterCoordinator?.hasUnsavedPickerConfig?.()) return true;
+      showMessage('Der Picker wurde während des Speicherns erneut geändert. Bitte speichere den aktuellen Stand noch einmal.', 'warn');
+      return false;
+    }
+    return choice === 'discard';
   }
 
   function applyPlan(plan, options = {}) {
@@ -1539,6 +1616,12 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     if (!file) return;
     const planLabelFromFile = sanitizeExportFileName(stripFileExtension(file.name || ''));
     const plan = await loadPlan(file);
+    const replacesPickerBinding = isRandomPickerTabActive()
+      && Boolean(gradeRosterCoordinator?.getPickerBinding?.());
+    if (replacesPickerBinding && !await gradeRosterCoordinator.confirmPickerBindingReplacement()) {
+      return false;
+    }
+    if (replacesPickerBinding) gradeRosterCoordinator.clearPickerBinding();
     if (handle) {
       state.lastDirectoryHandle = handle;
     }
@@ -1549,6 +1632,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
         csvName: planLabelFromFile || classroomState.getState().csvName,
       });
     }
+    return true;
   }
 
   function splitCombinedStudentName(value) {
@@ -1726,6 +1810,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     normalizePickerWeight: normalizeRandomPickerWeight,
     showMessage,
     onPickerBindingChange: renderRandomPicker,
+    onBeforePickerBindingReplace: confirmPickerBindingReplacement,
   });
   registerCleanup(() => gradeRosterCoordinator?.dispose?.());
   gradeRosterCoordinator.requestCourses();
@@ -1738,13 +1823,8 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     if (!file) return;
     assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
     const guessedLabel = sanitizeExportFileName(stripFileExtension(file.name));
-    classroomState.updateState({
-      csvName: guessedLabel || classroomState.getState().csvName,
-    });
-    updateCsvStatusDisplay();
     const text = await file.text();
     const parsedCsv = parseCSV(text);
-    classroomState.updateState({ delim: parsedCsv.delimiter });
     let rows = parsedCsv.rows;
     if (!rows.length) { showMessage('Keine Daten gefunden.', 'warn', { presentation: 'toast' }); return; }
     const isSeparatorRow = (row) => {
@@ -1764,11 +1844,20 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     const dataStartIdx = firstNonEmptyIdx + 1;
     const dataRows = rows.slice(dataStartIdx);
     const students = readStudents(dataRows, headers);
+    const replacesPickerBinding = isRandomPickerTabActive()
+      && Boolean(gradeRosterCoordinator?.getPickerBinding?.());
+    if (replacesPickerBinding && !await gradeRosterCoordinator.confirmPickerBindingReplacement()) {
+      return;
+    }
+    if (replacesPickerBinding) gradeRosterCoordinator.clearPickerBinding();
     classroomState.updateState({
       headers,
+      delim: parsedCsv.delimiter,
+      csvName: guessedLabel || classroomState.getState().csvName,
       performanceFlairCount: 4,
       students,
     });
+    updateCsvStatusDisplay();
     workPhaseController?.reset();
     groupsController?.handleRosterReplacement({ rebuildCapacity: true });
 
@@ -1959,23 +2048,21 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     getAutoDisableSelected: () => gradeRosterCoordinator.getPickerAutoDisableSelected(
       state.randomPickerAutoDisableSelected
     ),
-    setAutoDisableSelected: (value, { deferSave = false } = {}) => {
-      if (!gradeRosterCoordinator.setPickerAutoDisableSelected(value, { deferSave })) {
+    setAutoDisableSelected: (value) => {
+      if (!gradeRosterCoordinator.setPickerAutoDisableSelected(value)) {
         state.randomPickerAutoDisableSelected = value;
       }
     },
-    setStudentWeight: (student, weight, { deferSave = false } = {}) => {
+    setStudentWeight: (student, weight) => {
       student.randomWeight = weight;
-      gradeRosterCoordinator.savePickerConfig({ deferSave });
     },
-    onConditionsSaved: () => gradeRosterCoordinator.savePickerConfig(),
     sanitizeStudent: sanitizeRandomPickerStudent,
     showMessage,
     onImport: () => {
       void handlePlanImportAction();
     },
     onExport: () => {
-      void downloadSeatPlan();
+      void handlePickerSaveClick();
     },
   });
   registerCleanup(() => randomPickerController?.dispose?.());
@@ -2222,6 +2309,11 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   }
   bindRuntime(window, 'pagehide', (event) => {
     if (event.persisted !== true) disposeRuntime();
+  });
+  bindRuntime(window, 'beforeunload', (event) => {
+    if (!gradeRosterCoordinator?.hasUnsavedPickerConfig?.()) return;
+    event.preventDefault();
+    event.returnValue = '';
   });
   return true;
 }

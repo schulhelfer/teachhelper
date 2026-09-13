@@ -586,8 +586,7 @@
           max-width: 360px;
         }
 
-        #slot-dialog-course option,
-        #slot-course option {
+        #slot-dialog-course option {
           background-color: var(--dropdown-bg) !important;
         }
 
@@ -1988,17 +1987,6 @@
           color: #ffffff;
         }
 
-        #course-settings-add {
-          background: var(--button-primary-bg);
-          color: var(--button-primary-fg);
-          border-color: var(--accent-primary);
-        }
-
-        #course-settings-add:hover:not(:disabled) {
-          background: var(--button-primary-hover);
-          color: var(--button-primary-fg);
-        }
-
         .settings-tab-content>.settings-panel {
           margin-bottom: 0;
           border: none;
@@ -3220,7 +3208,6 @@
           gap: 0.52rem;
         }
 
-        .form-grid>div#slot-edit-tools,
         .form-grid>div#slot-dialog-edit-tools {
           border: 1px solid var(--line-soft);
           border-radius: 10px;
