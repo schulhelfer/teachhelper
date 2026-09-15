@@ -148,10 +148,10 @@ function createDirectoryHandle(entries = []) {
 function createRuntime() {
   const store = new WorkspaceStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
-  runtime.storeHandle = async () => true;
-  runtime.loadStoredHandle = async () => null;
-  runtime.removeStoredHandle = async () => true;
-  runtime.openHandleDb = async () => null;
+  runtime.persistence.storeHandle = async () => true;
+  runtime.persistence.loadStoredHandle = async () => null;
+  runtime.persistence.removeStoredHandle = async () => true;
+  runtime.persistence.openHandleDb = async () => null;
   return { store, runtime };
 }
 
@@ -487,8 +487,8 @@ test('creating a new empty database aborts when the new target is changed before
   const source = await seedDatabase({ name: 'source.thdb' });
   const targetName = source.runtime.buildNewDatabaseSuggestedName();
   const directory = createDirectoryHandle();
-  const buildEmpty = source.runtime.buildEmptyDatabaseContainer.bind(source.runtime);
-  source.runtime.buildEmptyDatabaseContainer = (...args) => {
+  const buildEmpty = source.runtime.persistence.buildEmptyDatabaseContainer.bind(source.runtime.persistence);
+  source.runtime.persistence.buildEmptyDatabaseContainer = (...args) => {
     directory.getFile(targetName).setBytes(Uint8Array.of(1, 2, 3));
     return buildEmpty(...args);
   };
@@ -526,7 +526,7 @@ test('a stale save uses its original file handle when a reconnect starts at the 
 test('a reconnect whose load fails does not keep the file connected', async () => {
   const { handle, bytes } = await seedDatabase();
   const { runtime } = createRuntime();
-  runtime.readHandleBytes = async () => { throw new Error('Datenbankdatei ist ungültig oder beschädigt.'); };
+  runtime.persistence.readHandleBytes = async () => { throw new Error('Datenbankdatei ist ungültig oder beschädigt.'); };
 
   await assert.rejects(() => runtime.acceptWorkspaceSyncFileHandle(handle, 'reconnect'), /beschädigt/);
   assert.equal(runtime.fileHandle, null);

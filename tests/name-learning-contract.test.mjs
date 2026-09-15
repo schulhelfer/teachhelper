@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const persistenceSource = await readFile(new URL('../src/modules/workspace/workspace-persistence.js', import.meta.url), 'utf8');
+
+const repositorySource = await readFile(new URL('../src/modules/workspace/course-repository.js', import.meta.url), 'utf8');
+
 const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -44,7 +48,7 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(nameLearningApp, /frameNonce: MODULE_FRAME_NONCE/);
   assert.match(gradesApp, /courseColor: normalizeCourseColor\(course\.color/);
   assert.match(runtime, /nameLearningDueCount: this\.getNameLearningDueCount\(\)/);
-  assert.match(runtime, /async refreshNameLearningDueSummary\(\)/);
+  assert.match(repositorySource, /async refreshNameLearningDueSummary\(\)/);
   assert.match(runtime, /await this\.refreshNameLearningDueSummary\(\);/);
   assert.doesNotMatch(bridge, /refreshNameLearningDueCount/);
   assert.match(tabController, /\[data-name-learning-due-count\]/);
@@ -170,7 +174,7 @@ test('name learning course actions use a dedicated persistent visibility setting
   assert.match(tabs, /GRADES_NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT/);
   assert.match(store, /hiddenInNameLearning: false/);
   assert.match(store, /setCourseNameLearningHidden\(schoolYearId, courseId, hiddenInNameLearning = true\)/);
-  assert.match(runtime, /hiddenInNameLearning: Boolean\(course\.hiddenInNameLearning\)/);
+  assert.match(persistenceSource, /hiddenInNameLearning: Boolean\(course\.hiddenInNameLearning\)/);
   assert.match(gradesApp, /const hiddenInNameLearning = Boolean\(course\.hiddenInNameLearning\)/);
   assert.match(gradesApp, /handleNameLearningCourseVisibilityRequest/);
   assert.match(gradesApp, /visibilityChange: \{ courseId, hidden \}/);
@@ -205,8 +209,8 @@ test('name learning course actions use a dedicated persistent visibility setting
 
 test('only compact progress data is stored in encrypted grade course segments', () => {
   assert.match(store, /gradeNameLearning: Array\.isArray\(source\.gradeNameLearning\)/);
-  assert.match(runtime, /gradeNameLearning: \(Array\.isArray\(state\.gradeNameLearning\)/);
-  assert.match(runtime, /gradeNameLearning: withCourse\(persisted\.gradeNameLearning\)/);
+  assert.match(repositorySource, /gradeNameLearning: \(Array\.isArray\(state\.gradeNameLearning\)/);
+  assert.match(repositorySource, /gradeNameLearning: withCourse\(persisted\.gradeNameLearning\)/);
   assert.match(integrity, /ungültigen Namenslernfortschritt/);
   assert.match(gradesApp, /portrait,\r?\n            progress:/);
 });

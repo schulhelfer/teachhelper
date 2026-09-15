@@ -1,21 +1,7 @@
-import {
-  buildThdb1ContainerBytes,
-  getThdb1FileHashAsync,
-  parseThdb1ContainerBytes,
-  parseThdb1ContainerBytesAsync,
-  parseThdb1Header,
-} from '../../shared/school-data/thdb.js';
-import { FILE_LIMITS, formatFileSize } from '../../shared/file-guards.js';
-import { writeAndVerifyFileBytes } from '../../shared/school-data/sync-safety.js';
-import {
-  APP_DB_SCHEMA,
-  APP_DB_SCHEMA_LEGACY,
-  APP_DB_STARTUP_SHELL_SCHEMA,
-  GRADE_COURSE_SCHEMA,
-  GRADE_VAULT_CONFIG_SCHEMA,
-  GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
-  GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT,
-} from '../../shared/school-data/defaults.js';
+import { WorkspaceBackup } from './workspace-backup.js';
+import { WorkspacePersistence, downloadBytes } from './workspace-persistence.js';
+import { GradeVault } from './grade-vault.js';
+import { CourseRepository } from './course-repository.js';
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
   WORKSPACE_COMMAND_CREATE_COURSE,
@@ -24,37 +10,12 @@ import {
   WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
   WORKSPACE_COMMAND_REORDER_COURSES,
   WORKSPACE_COMMAND_UPDATE_COURSE,
-  WORKSPACE_ERROR_PERSISTENCE_CONFLICT,
-  WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS,
-  WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE,
-  WORKSPACE_ERROR_VAULT_DIRTY,
-  WORKSPACE_ERROR_VAULT_LOCKED,
-  WORKSPACE_ERROR_VAULT_PLAINTEXT_SEGMENT,
 } from '../../shared/school-data/messages.js';
 import { getDefaultSchoolYearStartYear } from './store.js';
-import {
-  createWorkspaceVaultKdf,
-  decryptWorkspaceVaultText,
-  deriveWorkspaceVaultKey,
-  encryptWorkspaceVaultText,
-  normalizeWorkspaceVaultKdf,
-  validateWorkspaceVaultKdf,
-  WORKSPACE_VAULT_KDF_ITERATIONS,
-} from './crypto.js';
 import { buildWorkspaceArchivePdfBytes, downloadWorkspaceArchivePdf } from './archive-pdf.js';
-import {
-  buildNameLearningDueBuckets,
-  countPublicNameLearningDueCards,
-  normalizeNameLearningDueSummary,
-} from '../../shared/name-learning-due-summary.js';
 
-const VAULT_VALIDATION_TOKEN = 'teachhelper-grade-vault-v1';
-const HANDLE_DB_NAME = 'teachhelper-sync-handles-v1';
-const HANDLE_STORE_NAME = 'handles';
-const HANDLE_FILE_KEY = 'sync-file';
-const HANDLE_BACKUP_KEY = 'backup-dir';
-const AUTO_LOCK_RETRY_MS = 10 * 60 * 1000;
-const THDB_CONFIRM_BYTES = 100 * 1024 * 1024;
+export { formatLocalBackupTimestamp } from './workspace-backup.js';
+
 const PLANNING_SETTING_KEYS = new Set([
   'hoursPerDay',
   'lessonTimes',
@@ -97,259 +58,6 @@ function randomId() {
     || `workspace-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
 }
 
-export function formatLocalBackupTimestamp(date = new Date()) {
-  const pad = (value) => String(value).padStart(2, '0');
-  return [
-    date.getFullYear(),
-    pad(date.getMonth() + 1),
-    pad(date.getDate()),
-    pad(date.getHours()),
-    pad(date.getMinutes()),
-  ].join('-');
-}
-
-function buildBackupFileName(date = new Date()) {
-  return `TeachHelper-Backup-${formatLocalBackupTimestamp(date)}.json`;
-}
-
-function emptyGradeState(store) {
-  return store.normalizeGradeVaultState(null);
-}
-
-function gradeStateContainsCourseData(state, courseId) {
-  const id = Number(courseId) || 0;
-  if (!id || !state || typeof state !== 'object') return false;
-  return [
-    'gradeStructures',
-    'gradeAssessments',
-    'gradeStudents',
-    'gradeImports',
-    'gradeSeatPlans',
-    'gradePickerConfigs',
-    'gradeAccommodations',
-    'gradeNameLearning',
-  ].some((key) => (
-    Array.isArray(state[key])
-    && state[key].some((entry) => Number(entry?.courseId) === id)
-  ));
-}
-
-function courseStateHasSeatPlan(state) {
-  return (Array.isArray(state?.gradeSeatPlans) ? state.gradeSeatPlans : []).some((row) => (
-    row
-    && row.plan
-    && typeof row.plan === 'object'
-    && (!Array.isArray(row.plan.activeSeats) || row.plan.activeSeats.length > 0)
-  ));
-}
-
-function gradeStateHasPersistedStructure(state, courseId) {
-  const id = Number(courseId) || 0;
-  const structure = Array.isArray(state?.gradeStructures)
-    ? state.gradeStructures.find((entry) => Number(entry?.courseId) === id)
-    : null;
-  if (!structure) return false;
-  const periodCategories = structure.periodCategories && typeof structure.periodCategories === 'object'
-    ? structure.periodCategories
-    : { h1: structure.categories };
-  return ['h1', 'h2'].some((period) => (
-    Array.isArray(periodCategories[period])
-    && periodCategories[period].some((category) => Number(category?.id || 0) > 0)
-  ));
-}
-
-function buildCourseContentSignature(state, courseId) {
-  const id = Number(courseId) || 0;
-  const rowsForCourse = (key) => (Array.isArray(state?.[key]) ? state[key] : [])
-    .filter((entry) => Number(entry?.courseId) === id);
-  const students = rowsForCourse('gradeStudents');
-  const assessments = rowsForCourse('gradeAssessments');
-  const studentIds = new Set(students.map((student) => Number(student?.id) || 0).filter(Boolean));
-  const assessmentIds = new Set(assessments.map((assessment) => Number(assessment?.id) || 0).filter(Boolean));
-  const entries = (Array.isArray(state?.gradeEntries) ? state.gradeEntries : []).filter((entry) => (
-    studentIds.has(Number(entry?.studentId)) || assessmentIds.has(Number(entry?.assessmentId))
-  ));
-  const counts = {
-    structure: gradeStateHasPersistedStructure(state, id) ? 1 : 0,
-    assessments: assessments.length,
-    entries: entries.length,
-    overrides: rowsForCourse('gradeOverrides').length,
-    imports: rowsForCourse('gradeImports').length,
-    seatPlans: rowsForCourse('gradeSeatPlans').length,
-    pickerConfigs: rowsForCourse('gradePickerConfigs').length,
-    accommodations: rowsForCourse('gradeAccommodations').length,
-    nameLearning: rowsForCourse('gradeNameLearning').length,
-  };
-  const hasOtherContent = Object.values(counts).some((count) => count > 0);
-  return {
-    studentIds,
-    counts,
-    hasOtherContent,
-    hasMeaningfulContent: studentIds.size > 0 || hasOtherContent,
-  };
-}
-
-function normalizeVaultConfig(raw = null) {
-  const source = raw && typeof raw === 'object' ? raw : {};
-  const configured = Boolean(source.configured && source.kdf && source.validation);
-  return {
-    schema: GRADE_VAULT_CONFIG_SCHEMA,
-    configured,
-    kdf: configured ? normalizeWorkspaceVaultKdf(source.kdf) : null,
-    validation: configured ? clone(source.validation, null) : null,
-  };
-}
-
-function vaultConfigsEqual(left, right) {
-  return JSON.stringify(normalizeVaultConfig(left)) === JSON.stringify(normalizeVaultConfig(right));
-}
-
-function parseCourseSegment(text = '') {
-  try {
-    const parsed = JSON.parse(String(text || ''));
-    if (parsed?.schema === GRADE_COURSE_SCHEMA) {
-      return { encrypted: false, state: parsed };
-    }
-    if (parsed?.schema === 'teachhelper-grade-vault-v1' && parsed?.ciphertext) {
-      return { encrypted: true, envelope: parsed };
-    }
-  } catch {
-  }
-  return null;
-}
-
-function assertCourseSegmentEncryption(parsed, courseId, encryptionRequired) {
-  if (!encryptionRequired || parsed.encrypted) return parsed;
-  const error = new Error(`Notensegment für Kurs ${courseId} liegt unverschlüsselt in einer geschützten Datenbank vor und wurde abgelehnt.`);
-  error.code = WORKSPACE_ERROR_VAULT_PLAINTEXT_SEGMENT;
-  throw error;
-}
-
-function buildStartupShell(publicState, configured, gradeEntryCount = null) {
-  const activeSchoolYearId = Number(publicState?.settings?.activeSchoolYearId || 0) || null;
-  return {
-    schema: APP_DB_STARTUP_SHELL_SCHEMA,
-    activeSchoolYearId,
-    schoolYears: (Array.isArray(publicState?.schoolYears) ? publicState.schoolYears : []).map((year) => ({
-      id: Number(year.id) || 0,
-      name: String(year.name || ''),
-      startDate: String(year.startDate || ''),
-      endDate: String(year.endDate || ''),
-    })),
-    courses: (Array.isArray(publicState?.courses) ? publicState.courses : []).map((course) => ({
-      id: Number(course.id) || 0,
-      schoolYearId: Number(course.schoolYearId) || 0,
-      name: String(course.name || ''),
-      subject: String(course.subject || ''),
-      gradeLevel: Number.isInteger(Number(course.gradeLevel)) ? Number(course.gradeLevel) : null,
-      color: String(course.color || ''),
-      noLesson: Boolean(course.noLesson),
-      noGrades: Boolean(course.noGrades),
-      hiddenInSidebar: Boolean(course.hiddenInSidebar),
-      hiddenInNameLearning: Boolean(course.hiddenInNameLearning),
-      sortOrder: Number(course.sortOrder || 0),
-    })),
-    gradeVaultConfigured: Boolean(configured),
-    gradeEntryCount: Number.isFinite(gradeEntryCount) ? Math.max(0, Number(gradeEntryCount) || 0) : null,
-  };
-}
-
-function persistedCourseFromState(store, courseId, rawState = null) {
-  const id = Number(courseId) || 0;
-  const state = store.normalizeGradeVaultState(rawState);
-  const studentIds = new Set(state.gradeStudents.filter((row) => Number(row.courseId) === id).map((row) => Number(row.id)));
-  const assessmentIds = new Set(state.gradeAssessments.filter((row) => Number(row.courseId) === id).map((row) => Number(row.id)));
-  return {
-    schema: GRADE_COURSE_SCHEMA,
-    courseId: id,
-    counters: clone(state.counters, {}),
-    gradeStructures: state.gradeStructures.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-    gradeAssessments: state.gradeAssessments.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-    gradeStudents: state.gradeStudents.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      delete copy.sortKey;
-      return copy;
-    }),
-    gradeEntries: state.gradeEntries.filter((row) => (
-      studentIds.has(Number(row.studentId)) && assessmentIds.has(Number(row.assessmentId))
-    )).map((row) => clone(row, {})),
-    gradeOverrides: state.gradeOverrides.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-    gradeImports: state.gradeImports.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-    gradeSeatPlans: state.gradeSeatPlans.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      if (copy.plan && typeof copy.plan === 'object') delete copy.plan.students;
-      return copy;
-    }),
-    gradePickerConfigs: (Array.isArray(state.gradePickerConfigs) ? state.gradePickerConfigs : []).filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-    gradeAccommodations: state.gradeAccommodations.filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-    gradeNameLearning: (Array.isArray(state.gradeNameLearning) ? state.gradeNameLearning : []).filter((row) => Number(row.courseId) === id).map((row) => {
-      const copy = clone(row, {});
-      delete copy.courseId;
-      return copy;
-    }),
-  };
-}
-
-function runtimeCourseFromPersisted(store, courseId, persisted) {
-  const id = Number(courseId) || 0;
-  if (!persisted || persisted.schema !== GRADE_COURSE_SCHEMA || Number(persisted.courseId) !== id) {
-    throw new Error('Gespeicherter Notenkurs gehört nicht zum erwarteten Kurs.');
-  }
-  const withCourse = (rows) => (Array.isArray(rows) ? rows : []).map((row) => ({ ...clone(row, {}), courseId: id }));
-  return store.normalizeGradeVaultState({
-    counters: clone(persisted.counters, {}),
-    gradeStructures: withCourse(persisted.gradeStructures),
-    gradeAssessments: withCourse(persisted.gradeAssessments),
-    gradeStudents: withCourse(persisted.gradeStudents),
-    gradeEntries: clone(Array.isArray(persisted.gradeEntries) ? persisted.gradeEntries : [], []),
-    gradeOverrides: withCourse(persisted.gradeOverrides),
-    gradeImports: withCourse(persisted.gradeImports),
-    gradeSeatPlans: withCourse(persisted.gradeSeatPlans),
-    gradePickerConfigs: withCourse(persisted.gradePickerConfigs),
-    gradeAccommodations: withCourse(persisted.gradeAccommodations),
-    gradeNameLearning: withCourse(persisted.gradeNameLearning),
-  });
-}
-
-function downloadBytes(bytes, fileName) {
-  const blob = new Blob([bytes], { type: 'application/octet-stream' });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement('a');
-  anchor.href = url;
-  anchor.download = String(fileName || 'TeachHelper-Datenbank.json');
-  anchor.hidden = true;
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  setTimeout(() => URL.revokeObjectURL(url), 30_000);
-}
-
 export class WorkspaceRuntime {
   constructor(store, {
     eventTarget = globalThis.window || new EventTarget(),
@@ -365,57 +73,350 @@ export class WorkspaceRuntime {
     this.controller = null;
     this.clients = new Map();
     this.ready = true;
-    this.fileHandle = null;
-    this.storedFileHandle = null;
-    this.backupDirectoryHandle = null;
-    this.storedBackupDirectoryHandle = null;
-    this.syncReconnectInFlight = null;
     this.startupPermissionRecovery = null;
-    this.fileName = '';
-    this.knownRevision = 0;
-    this.knownFileHash = '';
-    this.databaseLoaded = false;
-    this.loadGeneration = 0;
-    this.loadInProgress = false;
-    this.persistedCourseIds = new Set();
-    this.deletedCourseIds = new Set();
-    this.confirmedStudentRemovalsByCourse = new Map();
-    this.persistenceFailure = null;
-    this.deviceId = randomId();
-    this.manualLoaded = false;
-    this.manualDirty = false;
-    this.publicDirty = false;
-    this.segmentTexts = new Map();
-    this.courseCache = new Map();
-    this.performanceIndexCache = new Map();
-    this.seatplanPresenceCache = new Map();
-    this.dirtyCourseIds = new Set();
-    this.courseRevisions = new Map();
-    this.loadedCourseId = null;
-    this.courseLoadTail = Promise.resolve();
-    this.gradeCourseMutationActiveCourseId = null;
     this.operationTail = Promise.resolve();
-    this.vault = {
-      encryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
-      configured: false,
-      unlocked: false,
-      config: normalizeVaultConfig(null),
-      persistedConfig: normalizeVaultConfig(null),
-      persistedCryptoKey: null,
-      cryptoKey: null,
-      kdf: null,
-      lastActivityAt: 0,
-      autoLockTimer: 0,
-      backgroundAutoLockTimer: 0,
-      backgroundHiddenAt: 0,
-      autoLockWarning: null,
-      autoLockNotice: null,
-    };
+
+    this.courseRepository = new CourseRepository({
+      store,
+      clone,
+      canAccessGradeVault: () => this.canAccessGradeVault(),
+      isGradeVaultConfigured: () => this.isGradeVaultConfigured(),
+      isGradeVaultUnlocked: () => this.isGradeVaultUnlocked(),
+      decodeCourse: (...args) => this.decodeCourse(...args),
+      decodeCourseSegmentForPlausibility: (...args) => this.decodeCourseSegmentForPlausibility(...args),
+      encodeCourse: (...args) => this.gradeVault.encodeCourse(...args),
+      isPersistenceReady: () => this.isPersistenceReady(),
+      isManualPersistenceMode: () => this.isManualPersistenceMode(),
+      hasConnectedFile: () => Boolean(this.fileHandle),
+      queueSyncSave: (...args) => this.queueSyncSave(...args),
+      onPublicChanged: () => this.onPublicChanged(),
+      markManualDirty: () => { this.manualDirty = true; },
+      enqueueOperation: (operation) => this.enqueueFileOperation(operation),
+      markChanged: (scope) => this.controller?.markChanged?.(scope),
+      publish: (scope) => this.controller?.publish?.(scope),
+    });
+    this.gradeVault = new GradeVault({
+      store,
+      eventTarget: this.eventTarget,
+      getDocument: () => this.eventTarget?.document || globalThis.document,
+      setTimeout: (...args) => setTimeout(...args),
+      clearTimeout: (...args) => clearTimeout(...args),
+      nowMs: () => Date.now(),
+      randomId,
+      clone,
+      markChanged: (scope) => this.controller?.markChanged?.(scope),
+      hasDirtyCourses: () => this.dirtyCourseIds.size > 0,
+      hasPersistedCourses: () => this.segmentTexts.size > 0,
+      hasConnectedFile: () => Boolean(this.fileHandle),
+      isManualPersistenceMode: () => this.isManualPersistenceMode(),
+      saveToConnectedFile: (...args) => this.saveToConnectedFile(...args),
+      enqueueOperation: (operation) => this.enqueueFileOperation(operation),
+      loadAllPersistedGradeCoursesForCryptoRewrite: () => this.loadAllPersistedGradeCoursesForCryptoRewrite(),
+      refreshNameLearningDueSummary: () => this.refreshNameLearningDueSummary(),
+      markPersistedCoursesDirty: () => this.courseRepository.markPersistedCoursesDirty(),
+      getCryptoRewriteSnapshot: () => this.courseRepository.getCryptoRewriteSnapshot(),
+      getPersistedCourseText: (courseId) => this.segmentTexts.get(courseId) || '',
+      replaceCryptoRewriteStates: (...args) => this.courseRepository.replaceCryptoRewriteStates(...args),
+      clearPlaintextCourses: () => this.courseRepository.clearPlaintextCourses(),
+      discardCourseChanges: () => {
+        this.courseRepository.discardCourseChanges();
+        this.manualDirty = Boolean(this.publicDirty);
+      },
+      runtimeCourseFromPersisted: (...args) => this.courseRepository.runtimeCourseFromPersisted(...args),
+    });
+    this.persistence = new WorkspacePersistence({
+      store,
+      ephemeral: this.ephemeral,
+      confirmLargeFile: (...args) => this.confirmLargeFile?.(...args),
+      deviceId: randomId(),
+      getIndexedDB: () => globalThis.indexedDB,
+      downloadBytes,
+      markChanged: (scope) => this.controller?.markChanged?.(scope),
+      publish: (scope) => this.controller?.publish?.(scope),
+      markReady: () => { this.ready = true; },
+      buildGradeCourseSegments: () => this.courseRepository.buildGradeCourseSegments(),
+      getVaultConfig: () => this.gradeVault.getContainerConfig(),
+      emptyVaultConfig: () => this.gradeVault.normalizeVaultConfig(null),
+      validateVaultConfig: (raw) => this.gradeVault.validateConfig(raw),
+      loadVaultConfig: (...args) => this.gradeVault.loadConfig(...args),
+      commitPersistedSegments: (segments) => this.courseRepository.commitPersistedSegments(segments),
+      commitPersistedConfig: () => this.gradeVault.commitPersistedConfig(),
+      resetCoursesForDatabase: (segments) => this.courseRepository.resetForDatabase(segments),
+      completeGradeSave: (options) => this.courseRepository.completeSave(options),
+      clearGradeVaultAutoLockWarning: () => this.clearGradeVaultAutoLockWarning(),
+      isGradeVaultEncryptionEnabled: () => this.isGradeVaultEncryptionEnabled(),
+      refreshNameLearningDueSummary: () => this.refreshNameLearningDueSummary(),
+      getDefaultSchoolYearStartYear: (...args) => this.getDefaultSchoolYearStartYear(...args),
+      assertContainerKeepsPersistedCourses: (...args) => this.assertContainerKeepsPersistedCourses(...args),
+      getBackupConnection: () => ({
+        directoryHandle: this.backupDirectoryHandle,
+        storedDirectoryHandle: this.storedBackupDirectoryHandle,
+      }),
+      clearBackupConnection: () => {
+        this.backupDirectoryHandle = null;
+        this.storedBackupDirectoryHandle = null;
+      },
+      restoreBackupConnection: ({ directoryHandle, storedDirectoryHandle }) => {
+        this.backupDirectoryHandle = directoryHandle;
+        this.storedBackupDirectoryHandle = storedDirectoryHandle;
+      },
+      enqueueOperation: (operation) => this.enqueueFileOperation(operation),
+    });
+    this.backup = new WorkspaceBackup({
+      store,
+      ephemeral: this.ephemeral,
+      now: () => this.now(),
+      markChanged: (scope) => this.controller?.markChanged?.(scope),
+      ensureHandleReadWritePermission: (...args) => this.ensureHandleReadWritePermission(...args),
+      storeHandle: (...args) => this.storeHandle(...args),
+      loadStoredHandle: (...args) => this.loadStoredHandle(...args),
+      isPersistenceReady: () => this.isPersistenceReady(),
+      buildContainer: (...args) => this.buildContainer(...args),
+      loadBytes: (...args) => this.loadBytes(...args),
+      readDatabaseFileBytes: (...args) => this.readDatabaseFileBytes(...args),
+      downloadBytes,
+      loadManualDatabaseFromFile: (...args) => this.loadManualDatabaseFromFile(...args),
+      getFileName: () => this.fileName,
+      setFileName: (value) => { this.fileName = value; },
+      buildSyncFileSuggestedName: () => this.buildSyncFileSuggestedName(),
+    });
     this.store.setAfterSaveHooks({
       publicChange: () => this.onPublicChanged(),
       gradeVaultChange: () => this.onGradeChanged(),
     });
     this.bindAutoLock();
+  }
+
+  get fileHandle() {
+    return this.persistence.fileHandle;
+  }
+
+  set fileHandle(value) {
+    this.persistence.fileHandle = value;
+  }
+
+  get storedFileHandle() {
+    return this.persistence.storedFileHandle;
+  }
+
+  set storedFileHandle(value) {
+    this.persistence.storedFileHandle = value;
+  }
+
+  get syncReconnectInFlight() {
+    return this.persistence.syncReconnectInFlight;
+  }
+
+  set syncReconnectInFlight(value) {
+    this.persistence.syncReconnectInFlight = value;
+  }
+
+  get fileName() {
+    return this.persistence.fileName;
+  }
+
+  set fileName(value) {
+    this.persistence.fileName = value;
+  }
+
+  get knownRevision() {
+    return this.persistence.knownRevision;
+  }
+
+  set knownRevision(value) {
+    this.persistence.knownRevision = value;
+  }
+
+  get knownFileHash() {
+    return this.persistence.knownFileHash;
+  }
+
+  set knownFileHash(value) {
+    this.persistence.knownFileHash = value;
+  }
+
+  get databaseLoaded() {
+    return this.persistence.databaseLoaded;
+  }
+
+  set databaseLoaded(value) {
+    this.persistence.databaseLoaded = value;
+  }
+
+  get loadGeneration() {
+    return this.persistence.loadGeneration;
+  }
+
+  set loadGeneration(value) {
+    this.persistence.loadGeneration = value;
+  }
+
+  get loadInProgress() {
+    return this.persistence.loadInProgress;
+  }
+
+  set loadInProgress(value) {
+    this.persistence.loadInProgress = value;
+  }
+
+  get persistenceFailure() {
+    return this.persistence.persistenceFailure;
+  }
+
+  set persistenceFailure(value) {
+    this.persistence.persistenceFailure = value;
+  }
+
+  get deviceId() {
+    return this.persistence.deviceId;
+  }
+
+  set deviceId(value) {
+    this.persistence.deviceId = value;
+  }
+
+  get manualLoaded() {
+    return this.persistence.manualLoaded;
+  }
+
+  set manualLoaded(value) {
+    this.persistence.manualLoaded = value;
+  }
+
+  get manualDirty() {
+    return this.persistence.manualDirty;
+  }
+
+  set manualDirty(value) {
+    this.persistence.manualDirty = value;
+  }
+
+  get publicDirty() {
+    return this.persistence.publicDirty;
+  }
+
+  set publicDirty(value) {
+    this.persistence.publicDirty = value;
+  }
+
+  get backupDirectoryHandle() {
+    return this.backup.backupDirectoryHandle;
+  }
+
+  set backupDirectoryHandle(value) {
+    this.backup.backupDirectoryHandle = value;
+  }
+
+  get storedBackupDirectoryHandle() {
+    return this.backup.storedBackupDirectoryHandle;
+  }
+
+  set storedBackupDirectoryHandle(value) {
+    this.backup.storedBackupDirectoryHandle = value;
+  }
+
+  get vault() {
+    return this.gradeVault.vault;
+  }
+
+  set vault(value) {
+    this.gradeVault.vault = value;
+  }
+
+  get persistedCourseIds() {
+    return this.courseRepository.persistedCourseIds;
+  }
+
+  set persistedCourseIds(value) {
+    this.courseRepository.persistedCourseIds = value;
+  }
+
+  get deletedCourseIds() {
+    return this.courseRepository.deletedCourseIds;
+  }
+
+  set deletedCourseIds(value) {
+    this.courseRepository.deletedCourseIds = value;
+  }
+
+  get confirmedStudentRemovalsByCourse() {
+    return this.courseRepository.confirmedStudentRemovalsByCourse;
+  }
+
+  set confirmedStudentRemovalsByCourse(value) {
+    this.courseRepository.confirmedStudentRemovalsByCourse = value;
+  }
+
+  get segmentTexts() {
+    return this.courseRepository.segmentTexts;
+  }
+
+  set segmentTexts(value) {
+    this.courseRepository.segmentTexts = value;
+  }
+
+  get courseCache() {
+    return this.courseRepository.courseCache;
+  }
+
+  set courseCache(value) {
+    this.courseRepository.courseCache = value;
+  }
+
+  get performanceIndexCache() {
+    return this.courseRepository.performanceIndexCache;
+  }
+
+  set performanceIndexCache(value) {
+    this.courseRepository.performanceIndexCache = value;
+  }
+
+  get seatplanPresenceCache() {
+    return this.courseRepository.seatplanPresenceCache;
+  }
+
+  set seatplanPresenceCache(value) {
+    this.courseRepository.seatplanPresenceCache = value;
+  }
+
+  get dirtyCourseIds() {
+    return this.courseRepository.dirtyCourseIds;
+  }
+
+  set dirtyCourseIds(value) {
+    this.courseRepository.dirtyCourseIds = value;
+  }
+
+  get courseRevisions() {
+    return this.courseRepository.courseRevisions;
+  }
+
+  set courseRevisions(value) {
+    this.courseRepository.courseRevisions = value;
+  }
+
+  get loadedCourseId() {
+    return this.courseRepository.loadedCourseId;
+  }
+
+  set loadedCourseId(value) {
+    this.courseRepository.loadedCourseId = value;
+  }
+
+  get courseLoadTail() {
+    return this.courseRepository.courseLoadTail;
+  }
+
+  set courseLoadTail(value) {
+    this.courseRepository.courseLoadTail = value;
+  }
+
+  get gradeCourseMutationActiveCourseId() {
+    return this.courseRepository.gradeCourseMutationActiveCourseId;
+  }
+
+  set gradeCourseMutationActiveCourseId(value) {
+    this.courseRepository.gradeCourseMutationActiveCourseId = value;
   }
 
   async initialize() {
@@ -477,27 +478,12 @@ export class WorkspaceRuntime {
     };
   }
 
-  buildSyncFileSuggestedName() {
-    const year = this.store.getActiveSchoolYear?.();
-    const now = new Date();
-    const fallbackStart = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
-    const parsedStart = Number(String(year?.startDate || '').slice(0, 4));
-    const parsedEnd = Number(String(year?.endDate || '').slice(0, 4));
-    const start = Number.isFinite(parsedStart) && parsedStart > 0 ? parsedStart : fallbackStart;
-    const end = Number.isFinite(parsedEnd) && parsedEnd > 0 ? parsedEnd : start + 1;
-    const short = (value) => String(Math.trunc(value) % 100).padStart(2, '0');
-    return `TeachHelper-Datenbank-${short(start)}-${short(end)}.json`;
+  buildSyncFileSuggestedName(...args) {
+    return this.persistence.buildSyncFileSuggestedName(...args);
   }
 
-  buildNewDatabaseSuggestedName(fileName = this.fileName || this.fileHandle?.name || '') {
-    const fallback = this.buildSyncFileSuggestedName();
-    const source = String(fileName || fallback).trim() || fallback;
-    const extensionMatch = source.match(/(\.[^./\\]+)$/);
-    const extension = extensionMatch?.[1] || '.json';
-    const stem = (extensionMatch ? source.slice(0, -extension.length) : source)
-      .replace(/\s+\(neu\)$/i, '')
-      .trim() || 'TeachHelper-Datenbank';
-    return `${stem} (neu)${extension}`;
+  buildNewDatabaseSuggestedName(...args) {
+    return this.persistence.buildNewDatabaseSuggestedName(...args);
   }
 
   registerFeatureClient(scope, client) {
@@ -509,107 +495,40 @@ export class WorkspaceRuntime {
     };
   }
 
-  bindAutoLock() {
-    if (!this.eventTarget?.addEventListener) return;
-    const record = () => this.recordGradeVaultActivity();
-    for (const type of ['pointerdown', 'keydown', 'input', 'wheel', 'touchstart']) {
-      this.eventTarget.addEventListener(type, record, { passive: true });
-    }
-    const documentTarget = this.eventTarget.document || globalThis.document;
-    documentTarget?.addEventListener?.('visibilitychange', () => {
-      void this.handleGradeVaultVisibilityChange();
-    });
+  bindAutoLock(...args) {
+    return this.gradeVault.bindAutoLock(...args);
   }
 
-  getGradeVaultAutoLockMs() {
-    const minutes = Number(this.store.getGradeVaultAutoLockMinutes?.() ?? GRADE_VAULT_AUTO_LOCK_MINUTES_DEFAULT);
-    return Math.max(1, minutes) * 60 * 1000;
+  getGradeVaultAutoLockMs(...args) {
+    return this.gradeVault.getGradeVaultAutoLockMs(...args);
   }
 
-  recordGradeVaultActivity() {
-    if (!this.vault.unlocked) return;
-    this.vault.lastActivityAt = Date.now();
-    this.scheduleGradeVaultAutoLock(this.getGradeVaultAutoLockMs());
+  recordGradeVaultActivity(...args) {
+    return this.gradeVault.recordGradeVaultActivity(...args);
   }
 
-  clearGradeVaultAutoLockTimer() {
-    clearTimeout(this.vault.autoLockTimer);
-    this.vault.autoLockTimer = 0;
+  clearGradeVaultAutoLockTimer(...args) {
+    return this.gradeVault.clearGradeVaultAutoLockTimer(...args);
   }
 
-  clearGradeVaultBackgroundAutoLockTimer() {
-    clearTimeout(this.vault.backgroundAutoLockTimer);
-    this.vault.backgroundAutoLockTimer = 0;
-    this.vault.backgroundHiddenAt = 0;
+  clearGradeVaultBackgroundAutoLockTimer(...args) {
+    return this.gradeVault.clearGradeVaultBackgroundAutoLockTimer(...args);
   }
 
-  scheduleGradeVaultAutoLock(delayMs = this.getGradeVaultAutoLockMs()) {
-    this.clearGradeVaultAutoLockTimer();
-    if (!this.isGradeVaultUnlocked()) return;
-    const timeoutMs = Math.max(0, Number(delayMs) || 0);
-    this.vault.autoLockTimer = setTimeout(() => {
-      void this.handleGradeVaultAutoLockTimeout().catch(() => undefined);
-    }, timeoutMs);
+  scheduleGradeVaultAutoLock(...args) {
+    return this.gradeVault.scheduleGradeVaultAutoLock(...args);
   }
 
-  clearGradeVaultAutoLockWarning() {
-    if (!this.vault.autoLockWarning) return false;
-    this.vault.autoLockWarning = null;
-    return true;
+  clearGradeVaultAutoLockWarning(...args) {
+    return this.gradeVault.clearGradeVaultAutoLockWarning(...args);
   }
 
-  async handleGradeVaultAutoLockTimeout() {
-    try {
-      const autoLock = async () => {
-        if (!this.isGradeVaultUnlocked()) {
-          this.clearGradeVaultAutoLockTimer();
-          return false;
-        }
-        if (this.dirtyCourseIds.size > 0) {
-          await this.saveDirtyGradeVaultChangesForAutoLock();
-        }
-        const locked = await this.lockGradeVaultSession({ autoLock: true });
-        if (locked || !this.isGradeVaultUnlocked()) return locked;
-        throw new Error('Der Notenbereich konnte nicht automatisch gesperrt werden.');
-      };
-      const promise = this.operationTail.then(autoLock, autoLock);
-      this.operationTail = promise.catch(() => undefined);
-      return await promise;
-    } catch (error) {
-      if (!this.isGradeVaultUnlocked()) return false;
-      const previousWarning = this.vault.autoLockWarning;
-      const blockedAt = Number(previousWarning?.blockedAt) || Date.now();
-      const retryAt = Date.now() + AUTO_LOCK_RETRY_MS;
-      this.vault.autoLockWarning = {
-        active: true,
-        blockedAt,
-        retryAt,
-        message: error instanceof Error && error.message
-          ? error.message
-          : 'Ungespeicherte Notenänderungen verhindern das automatische Sperren.',
-      };
-      this.controller?.markChanged?.('grades');
-      this.scheduleGradeVaultAutoLock(AUTO_LOCK_RETRY_MS);
-      return false;
-    }
+  handleGradeVaultAutoLockTimeout(...args) {
+    return this.gradeVault.handleGradeVaultAutoLockTimeout(...args);
   }
 
-  async saveDirtyGradeVaultChangesForAutoLock() {
-    if (this.dirtyCourseIds.size === 0) return false;
-    if (!this.store.getGradeVaultAutoSaveBeforeLock?.()) {
-      throw new Error('Ungespeicherte Noten verhindern das automatische Sperren. Automatisches Speichern vor der Sperre ist ausgeschaltet. Bitte speichere die Noten manuell.');
-    }
-    if (this.isManualPersistenceMode()) {
-      throw new Error('Automatisches Speichern ist im manuellen Download-Modus nicht möglich. Bitte speichere die Noten manuell.');
-    }
-    if (!this.fileHandle) {
-      throw new Error('Automatisches Speichern ist nicht möglich, weil keine Datenbankdatei verbunden ist. Bitte verbinde oder speichere die Noten manuell.');
-    }
-    const saved = await this.saveToConnectedFile('grade-vault-auto-lock');
-    if (!saved || this.dirtyCourseIds.size > 0) {
-      throw new Error('Die Notendaten konnten vor dem automatischen Sperren nicht vollständig gespeichert werden.');
-    }
-    return true;
+  saveDirtyGradeVaultChangesForAutoLock(...args) {
+    return this.gradeVault.saveDirtyGradeVaultChangesForAutoLock(...args);
   }
 
   onPublicChanged() {
@@ -622,13 +541,7 @@ export class WorkspaceRuntime {
   }
 
   onGradeChanged() {
-    const courseId = Number(this.loadedCourseId) || 0;
-    if (courseId) {
-      this.courseCache.set(courseId, this.store.exportGradeVaultStateSnapshot());
-      this.rememberPerformanceIndex(courseId, this.courseCache.get(courseId));
-      this.dirtyCourseIds.add(courseId);
-      this.courseRevisions.set(courseId, this.getGradeCourseRevision(courseId) + 1);
-    }
+    this.courseRepository.captureGradeChange();
     this.manualDirty = true;
     this.controller?.markChanged?.('grades');
     if (!this.isManualPersistenceMode() && this.fileHandle) {
@@ -723,33 +636,20 @@ export class WorkspaceRuntime {
     return !this.isExternalFileSyncPresentationSupported();
   }
 
-  isPersistenceReady() {
-    return !this.loadInProgress && (!this.fileHandle || this.databaseLoaded);
+  isPersistenceReady(...args) {
+    return this.persistence.isPersistenceReady(...args);
   }
 
-  clearPersistenceFailure() {
-    if (!this.persistenceFailure) return false;
-    this.persistenceFailure = null;
-    return true;
+  clearPersistenceFailure(...args) {
+    return this.persistence.clearPersistenceFailure(...args);
   }
 
-  recordPersistenceFailure(error) {
-    this.persistenceFailure = {
-      code: String(error?.code || ''),
-      message: error instanceof Error && error.message
-        ? error.message
-        : 'Die Datenbankdatei konnte nicht gespeichert werden.',
-      at: Date.now(),
-    };
-    this.controller?.markChanged?.('shell');
-    return false;
+  recordPersistenceFailure(...args) {
+    return this.persistence.recordPersistenceFailure(...args);
   }
 
-  rememberPersistedCourseIds(segments) {
-    this.persistedCourseIds = new Set(
-      (Array.isArray(segments) ? segments : []).map((segment) => Number(segment?.courseId) || 0).filter(Boolean),
-    );
-    return this.persistedCourseIds;
+  rememberPersistedCourseIds(...args) {
+    return this.courseRepository.rememberPersistedCourseIds(...args);
   }
 
   isManualPersistencePresentationMode() {
@@ -760,242 +660,72 @@ export class WorkspaceRuntime {
     return this.isManualPersistenceMode() && !this.manualLoaded;
   }
 
-  isGradeVaultEncryptionEnabled() {
-    return Boolean(this.vault.encryptionEnabled || this.store.getGradeVaultEncryptionEnabled());
+  isGradeVaultEncryptionEnabled(...args) {
+    return this.gradeVault.isGradeVaultEncryptionEnabled(...args);
   }
 
-  isGradeVaultConfigured() {
-    return Boolean(this.isGradeVaultEncryptionEnabled() && this.vault.configured);
+  isGradeVaultConfigured(...args) {
+    return this.gradeVault.isGradeVaultConfigured(...args);
   }
 
-  isGradeVaultUnlocked() {
-    return Boolean(this.isGradeVaultConfigured() && this.vault.unlocked && this.vault.cryptoKey);
+  isGradeVaultUnlocked(...args) {
+    return this.gradeVault.isGradeVaultUnlocked(...args);
   }
 
-  canAccessGradeVault() {
-    return !this.isGradeVaultEncryptionEnabled() || this.isGradeVaultUnlocked();
+  canAccessGradeVault(...args) {
+    return this.gradeVault.canAccessGradeVault(...args);
   }
 
-  hasGradeVaultUnlockConfig() {
-    return Boolean(this.vault.configured && this.vault.config?.kdf && this.vault.config?.validation);
+  hasGradeVaultUnlockConfig(...args) {
+    return this.gradeVault.hasGradeVaultUnlockConfig(...args);
   }
 
-  getGradeVaultStatusMode() {
-    if (!this.isGradeVaultEncryptionEnabled()) return 'off';
-    if (!this.isGradeVaultConfigured()) return 'setup';
-    return this.isGradeVaultUnlocked() ? 'ready' : 'unlock';
+  getGradeVaultStatusMode(...args) {
+    return this.gradeVault.getGradeVaultStatusMode(...args);
   }
 
-  async setupGradeVault(password, { coursesLoaded = false } = {}) {
-    if (String(password || '').length < 12) throw new Error('Das Passwort muss mindestens 12 Zeichen lang sein.');
-    if (!coursesLoaded && this.segmentTexts.size) {
-      await this.loadAllPersistedGradeCoursesForCryptoRewrite();
-    }
-    const previousCryptoKey = this.vault.cryptoKey;
-    if (
-      this.vault.persistedConfig?.configured
-      && this.vault.config?.configured
-      && previousCryptoKey
-      && !this.vault.persistedCryptoKey
-    ) {
-      this.vault.persistedCryptoKey = previousCryptoKey;
-    }
-    const kdf = createWorkspaceVaultKdf();
-    const { cryptoKey } = await deriveWorkspaceVaultKey(password, kdf);
-    const validation = await encryptWorkspaceVaultText(VAULT_VALIDATION_TOKEN, cryptoKey, kdf, { type: 'validation' });
-    this.vault = {
-      ...this.vault,
-      encryptionEnabled: true,
-      configured: true,
-      unlocked: true,
-      config: { schema: GRADE_VAULT_CONFIG_SCHEMA, configured: true, kdf, validation },
-      cryptoKey,
-      kdf,
-    };
-    this.store.setGradeVaultEncryptionEnabled(true);
-    for (const courseId of this.segmentTexts.keys()) this.dirtyCourseIds.add(courseId);
-    await this.refreshNameLearningDueSummary();
-    this.recordGradeVaultActivity();
-    this.controller?.markChanged?.('grades');
-    return true;
+  setupGradeVault(...args) {
+    return this.gradeVault.setupGradeVault(...args);
   }
 
-  async unlockGradeVault(password) {
-    if (!this.hasGradeVaultUnlockConfig()) {
-      throw new Error('Der geschützte Notenbereich ist nicht vollständig eingerichtet.');
-    }
-    const { cryptoKey, kdf } = await deriveWorkspaceVaultKey(password, this.vault.config.kdf);
-    const validation = await decryptWorkspaceVaultText(this.vault.config.validation, cryptoKey, kdf, { type: 'validation' });
-    if (validation !== VAULT_VALIDATION_TOKEN) throw new Error('Passwort falsch oder Notendaten beschädigt.');
-    this.vault.unlocked = true;
-    this.vault.cryptoKey = cryptoKey;
-    this.vault.kdf = kdf;
-    this.vault.autoLockNotice = null;
-    try {
-      await this.upgradeGradeVaultKdf(password);
-    } catch {
-    }
-    await this.refreshNameLearningDueSummary();
-    this.recordGradeVaultActivity();
-    this.controller?.markChanged?.('grades');
-    return true;
+  unlockGradeVault(...args) {
+    return this.gradeVault.unlockGradeVault(...args);
   }
 
-  async upgradeGradeVaultKdf(password) {
-    const currentKdf = normalizeWorkspaceVaultKdf(this.vault.config?.kdf);
-    if (currentKdf.iterations >= WORKSPACE_VAULT_KDF_ITERATIONS) return false;
-
-    const courseIds = new Set([
-      ...this.segmentTexts.keys(),
-      ...this.courseCache.keys(),
-      ...(this.loadedCourseId ? [this.loadedCourseId] : []),
-    ]);
-    const rewrittenStates = new Map(this.courseCache);
-    for (const courseId of courseIds) {
-      if (rewrittenStates.has(courseId)) continue;
-      const text = this.segmentTexts.get(courseId) || '';
-      const state = text
-        ? await this.decodeCourse(courseId, text)
-        : emptyGradeState(this.store);
-      rewrittenStates.set(courseId, state);
-    }
-
-    const nextKdf = createWorkspaceVaultKdf();
-    const { cryptoKey: nextCryptoKey } = await deriveWorkspaceVaultKey(password, nextKdf);
-    const validation = await encryptWorkspaceVaultText(
-      VAULT_VALIDATION_TOKEN,
-      nextCryptoKey,
-      nextKdf,
-      { type: 'validation' },
-    );
-
-    this.vault.persistedCryptoKey = this.vault.cryptoKey;
-    this.vault.config = {
-      schema: GRADE_VAULT_CONFIG_SCHEMA,
-      configured: true,
-      kdf: nextKdf,
-      validation,
-    };
-    this.vault.cryptoKey = nextCryptoKey;
-    this.vault.kdf = nextKdf;
-    this.courseCache = rewrittenStates;
-    if (this.loadedCourseId && rewrittenStates.has(this.loadedCourseId)) {
-      this.store.replaceGradeVaultState(rewrittenStates.get(this.loadedCourseId));
-    }
-    for (const courseId of courseIds) this.dirtyCourseIds.add(courseId);
-    return true;
+  upgradeGradeVaultKdf(...args) {
+    return this.gradeVault.upgradeGradeVaultKdf(...args);
   }
 
-  async changeGradeVaultPassword(currentPassword, nextPassword) {
-    await this.unlockGradeVault(currentPassword);
-    await this.loadAllPersistedGradeCoursesForCryptoRewrite();
-    return this.setupGradeVault(nextPassword, { coursesLoaded: true });
+  changeGradeVaultPassword(...args) {
+    return this.gradeVault.changeGradeVaultPassword(...args);
   }
 
-  async setGradeVaultEncryptionEnabledFromSettings(enabled) {
-    const next = Boolean(enabled);
-    if (next === this.isGradeVaultEncryptionEnabled()) return true;
-    if (next) return false;
-    if (!this.isGradeVaultUnlocked()) throw new Error('Der geschützte Notenbereich muss zuerst entsperrt sein.');
-    await this.loadAllPersistedGradeCoursesForCryptoRewrite();
-    const persistedCryptoKey = this.vault.cryptoKey;
-    this.vault.encryptionEnabled = false;
-    this.vault.configured = false;
-    this.vault.unlocked = false;
-    this.vault.config = normalizeVaultConfig(null);
-    this.vault.persistedCryptoKey = persistedCryptoKey;
-    this.vault.cryptoKey = null;
-    this.vault.kdf = null;
-    this.clearGradeVaultAutoLockTimer();
-    this.clearGradeVaultBackgroundAutoLockTimer();
-    this.clearGradeVaultAutoLockWarning();
-    this.vault.autoLockNotice = null;
-    this.store.setGradeVaultEncryptionEnabled(false);
-    await this.refreshNameLearningDueSummary();
-    this.controller?.markChanged?.('grades');
-    return true;
+  setGradeVaultEncryptionEnabledFromSettings(...args) {
+    return this.gradeVault.setGradeVaultEncryptionEnabledFromSettings(...args);
   }
 
-  async lockGradeVaultSession({ autoLock = false } = {}) {
-    if (!this.isGradeVaultEncryptionEnabled()) return false;
-    if (this.dirtyCourseIds.size > 0) {
-      const error = new Error('Ungespeicherte Notenänderungen müssen vor dem Sperren gespeichert werden.');
-      error.code = WORKSPACE_ERROR_VAULT_DIRTY;
-      throw error;
-    }
-    if (this.loadedCourseId) {
-      this.rememberPerformanceIndex(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
-    }
-    this.store.replaceGradeVaultState(emptyGradeState(this.store));
-    this.courseCache.clear();
-    this.loadedCourseId = null;
-    this.vault.unlocked = false;
-    this.vault.cryptoKey = null;
-    this.vault.persistedCryptoKey = null;
-    this.vault.kdf = this.vault.config?.kdf || null;
-    this.clearGradeVaultAutoLockTimer();
-    this.clearGradeVaultBackgroundAutoLockTimer();
-    this.clearGradeVaultAutoLockWarning();
-    this.vault.autoLockNotice = autoLock
-      ? { id: randomId(), lockedAt: Date.now() }
-      : null;
-    this.controller?.markChanged?.('grades');
-    return true;
+  lockGradeVaultSession(...args) {
+    return this.gradeVault.lockGradeVaultSession(...args);
   }
 
-  async discardGradeVaultChanges() {
-    if (!this.dirtyCourseIds.size) return false;
-    const persistedConfig = normalizeVaultConfig(this.vault.persistedConfig);
-    const configChanged = !vaultConfigsEqual(this.vault.config, persistedConfig);
-    if (configChanged && persistedConfig.configured && !this.vault.persistedCryptoKey) {
-      throw new Error('Die ausstehende Verschlüsselungsänderung kann in dieser Sitzung nicht sicher verworfen werden. Bitte speichere die Datenbank oder lade sie erneut.');
-    }
-
-    this.courseCache.clear();
-    this.performanceIndexCache.clear();
-    this.seatplanPresenceCache.clear();
-    this.courseRevisions.clear();
-    this.dirtyCourseIds.clear();
-    this.confirmedStudentRemovalsByCourse.clear();
-    this.store.replaceGradeVaultState(emptyGradeState(this.store));
-    this.loadedCourseId = null;
-    this.manualDirty = Boolean(this.publicDirty);
-    this.clearGradeVaultAutoLockWarning();
-
-    if (configChanged) {
-      this.vault.config = persistedConfig;
-      this.vault.configured = Boolean(persistedConfig.configured);
-      this.vault.encryptionEnabled = Boolean(persistedConfig.configured);
-      this.vault.cryptoKey = persistedConfig.configured ? this.vault.persistedCryptoKey : null;
-      this.vault.kdf = persistedConfig.kdf;
-      this.store.setGradeVaultEncryptionEnabled(Boolean(persistedConfig.configured));
-    }
-    this.controller?.markChanged?.('grades');
-    return true;
+  discardGradeVaultChanges(...args) {
+    return this.gradeVault.discardGradeVaultChanges(...args);
   }
 
-  getGradeCourseRevision(courseId) {
-    return Math.max(0, Number(this.courseRevisions.get(Number(courseId) || 0)) || 0);
+  getGradeCourseRevision(...args) {
+    return this.courseRepository.getGradeCourseRevision(...args);
   }
 
-  isGradeCourseLoaded(courseId) {
-    return Number(this.loadedCourseId || 0) === (Number(courseId) || 0);
+  isGradeCourseLoaded(...args) {
+    return this.courseRepository.isGradeCourseLoaded(...args);
   }
 
-  getCurrentGradeVaultSnapshot() {
-    return this.store.exportGradeVaultStateSnapshot();
+  getCurrentGradeVaultSnapshot(...args) {
+    return this.courseRepository.getCurrentGradeVaultSnapshot(...args);
   }
 
-  normalizeAndAssertGradeCourseSnapshot(courseId, state = null) {
-    const id = Number(courseId) || 0;
-    const normalized = this.store.normalizeGradeVaultState(state);
-    const wrongCourse = [
-      ...(normalized.gradeStudents || []),
-      ...(normalized.gradeAssessments || []),
-      ...(normalized.gradeStructures || []),
-    ].some((row) => Number(row.courseId) !== id);
-    if (wrongCourse) throw new Error('Notenkurs enthält Daten eines anderen Kurses.');
-    return normalized;
+  normalizeAndAssertGradeCourseSnapshot(...args) {
+    return this.courseRepository.normalizeAndAssertGradeCourseSnapshot(...args);
   }
 
   async ensurePlanningPublicLoaded() {
@@ -1008,33 +738,12 @@ export class WorkspaceRuntime {
       : this.enqueueConnectedFileSave('grade-vault-explicit-save');
   }
 
-  scheduleGradeVaultBackgroundAutoLock(delayMs = this.getGradeVaultAutoLockMs()) {
-    this.clearGradeVaultBackgroundAutoLockTimer();
-    if (!this.isGradeVaultUnlocked() || !this.store.getGradeVaultAutoLockOnBackground?.()) return;
-    this.vault.backgroundHiddenAt = Date.now();
-    this.vault.backgroundAutoLockTimer = setTimeout(() => {
-      this.vault.backgroundAutoLockTimer = 0;
-      this.vault.backgroundHiddenAt = 0;
-      void this.handleGradeVaultAutoLockTimeout().catch(() => undefined);
-    }, Math.max(0, Number(delayMs) || 0));
+  scheduleGradeVaultBackgroundAutoLock(...args) {
+    return this.gradeVault.scheduleGradeVaultBackgroundAutoLock(...args);
   }
 
-  async handleGradeVaultVisibilityChange() {
-    const documentTarget = this.eventTarget?.document || globalThis.document;
-    if (!documentTarget || !this.isGradeVaultUnlocked() || !this.store.getGradeVaultAutoLockOnBackground?.()) return;
-    if (documentTarget.visibilityState === 'hidden') {
-      this.clearGradeVaultAutoLockTimer();
-      this.scheduleGradeVaultBackgroundAutoLock();
-      return;
-    }
-    const hiddenAt = Number(this.vault.backgroundHiddenAt) || 0;
-    this.clearGradeVaultBackgroundAutoLockTimer();
-    if (!hiddenAt) return;
-    if (Date.now() - hiddenAt >= this.getGradeVaultAutoLockMs()) {
-      await this.handleGradeVaultAutoLockTimeout();
-      return;
-    }
-    this.recordGradeVaultActivity();
+  handleGradeVaultVisibilityChange(...args) {
+    return this.gradeVault.handleGradeVaultVisibilityChange(...args);
   }
 
   async persistExplicitDatabaseSave() {
@@ -1042,777 +751,140 @@ export class WorkspaceRuntime {
     return this.saveManualDatabase();
   }
 
-  async decodeCourse(courseId, text) {
-    const parsed = parseCourseSegment(text);
-    if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
-    assertCourseSegmentEncryption(parsed, courseId, this.isGradeVaultConfigured());
-    let persisted = parsed.state;
-    if (parsed.encrypted) {
-      if (!this.isGradeVaultUnlocked()) {
-        const error = new Error('Das Notenmodul ist gesperrt.');
-        error.code = WORKSPACE_ERROR_VAULT_LOCKED;
-        throw error;
-      }
-      const plaintext = await decryptWorkspaceVaultText(
-        parsed.envelope,
-        this.vault.cryptoKey,
-        this.vault.kdf || parsed.envelope.kdf,
-        { type: 'course', courseId },
-      );
-      persisted = JSON.parse(plaintext);
-    }
-    return runtimeCourseFromPersisted(this.store, courseId, persisted);
+  decodeCourse(...args) {
+    return this.gradeVault.decodeCourse(...args);
   }
 
-  async ensureGradeCourseLoaded(courseId, { publish = true } = {}) {
-    const id = Number(courseId) || 0;
-    if (!id || !this.canAccessGradeVault()) return false;
-    const load = async () => {
-      if (this.loadedCourseId === id) return true;
-      if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
-      let state = this.courseCache.get(id) || null;
-      if (!state) {
-        const text = this.segmentTexts.get(id) || '';
-        const initialState = this.store.exportGradeVaultStateSnapshot();
-        state = text
-          ? await this.decodeCourse(id, text)
-          : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
-            ? initialState
-            : emptyGradeState(this.store));
-        this.courseCache.set(id, state);
-        this.rememberPerformanceIndex(id, state);
-      }
-      this.store.replaceGradeVaultState(state);
-      this.loadedCourseId = id;
-      if (!gradeStateHasPersistedStructure(state, id)) {
-        const defaultStructure = this.store.getDefaultGradeStructure?.();
-        const defaultPeriodCategories = defaultStructure?.periodCategories;
-        const hasDefaults = ['h1', 'h2'].some((period) => (
-          Array.isArray(defaultPeriodCategories?.[period])
-          && defaultPeriodCategories[period].length > 0
-        ));
-        if (hasDefaults) {
-          this.store._suspendSaveHooks();
-          try {
-            this.store.saveGradeStructure(id, defaultPeriodCategories);
-          } finally {
-            this.store._resumeSaveHooks({ flush: false });
-          }
-          state = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
-          this.courseCache.set(id, state);
-          this.rememberPerformanceIndex(id, state);
-          this.dirtyCourseIds.add(id);
-          this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
-          this.manualDirty = true;
-        }
-      }
-      if (publish) this.controller?.publish?.('grades');
-      return true;
-    };
-    const pending = this.courseLoadTail.then(load, load);
-    this.courseLoadTail = pending.catch(() => undefined);
-    return pending;
+  ensureGradeCourseLoaded(...args) {
+    return this.courseRepository.ensureGradeCourseLoaded(...args);
   }
 
-  async getGradeCourseRosterSummary(courseId) {
-    const id = Number(courseId) || 0;
-    if (!id || !this.canAccessGradeVault()) return null;
-    await this.courseLoadTail;
-    let state = this.loadedCourseId === id
-      ? this.store.exportGradeVaultStateSnapshot()
-      : this.courseCache.get(id) || null;
-    if (!state) {
-      const text = this.segmentTexts.get(id) || '';
-      if (text) {
-        state = await this.decodeCourse(id, text);
-        this.courseCache.set(id, state);
-        this.rememberPerformanceIndex(id, state);
-      } else {
-        const initialState = this.store.exportGradeVaultStateSnapshot();
-        state = !this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
-          ? initialState
-          : emptyGradeState(this.store);
-      }
-    }
-    const studentCount = (Array.isArray(state?.gradeStudents) ? state.gradeStudents : [])
-      .filter((student) => (
-        Number(student?.courseId || id) === id
-        && !student?.isPlaceholder
-        && Number(student?.id || 0) > 0
-      )).length;
-    return { courseId: id, studentCount };
+  getGradeCourseRosterSummary(...args) {
+    return this.courseRepository.getGradeCourseRosterSummary(...args);
   }
 
-  async getGradeCourseStateSnapshot(courseId) {
-    const id = Number(courseId) || 0;
-    if (!id || !this.canAccessGradeVault()) return null;
-    await this.courseLoadTail;
-    let state = this.loadedCourseId === id
-      ? this.store.exportGradeVaultStateSnapshot()
-      : this.courseCache.get(id) || null;
-    if (!state) {
-      const text = this.segmentTexts.get(id) || '';
-      const initialState = this.store.exportGradeVaultStateSnapshot();
-      state = text
-        ? await this.decodeCourse(id, text)
-        : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
-          ? initialState
-          : emptyGradeState(this.store));
-      this.courseCache.set(id, state);
-      this.rememberPerformanceIndex(id, state);
-    }
-    return clone(state, emptyGradeState(this.store));
+  getGradeCourseStateSnapshot(...args) {
+    return this.courseRepository.getGradeCourseStateSnapshot(...args);
   }
 
-  setGradeCourseStudentCounts(counts = null) {
-    if (!this.isPersistenceReady()) return false;
-    const source = counts && typeof counts === 'object' ? counts : {};
-    if (!Array.isArray(this.store.state?.courses) || this.store.state.courses.length === 0) return false;
-    const validCourseIds = this.store.state.courses
-      .map((course) => String(Number(course.id) || 0))
-      .filter((courseId) => courseId !== '0');
-    const next = Object.fromEntries(
-      validCourseIds.map((courseId) => [courseId, Math.max(0, Number(source[courseId]) || 0)])
-    );
-    const current = this.store.state.settings.gradeCourseStudentCounts || {};
-    if (
-      this.store.state.settings.gradeCourseStudentCountsComplete === true
-      && JSON.stringify(current) === JSON.stringify(next)
-    ) {
-      return false;
-    }
-    this.store.state.settings.gradeCourseStudentCounts = next;
-    this.store.state.settings.gradeCourseStudentCountsComplete = true;
-    this.onPublicChanged();
-    return true;
+  setGradeCourseStudentCounts(...args) {
+    return this.courseRepository.setGradeCourseStudentCounts(...args);
   }
 
-  getNameLearningDueCount(now = Date.now()) {
-    const activeYearId = Number(this.store.getActiveSchoolYear?.()?.id) || 0;
-    const courses = Array.isArray(this.store.state?.courses)
-      ? this.store.state.courses
-      : (this.store.exportPublicStateSnapshot?.().courses || []);
-    return countPublicNameLearningDueCards(
-      this.store.state.settings.nameLearningDueSummary,
-      courses,
-      activeYearId,
-      now,
-    );
+  getNameLearningDueCount(...args) {
+    return this.courseRepository.getNameLearningDueCount(...args);
   }
 
-  saveNameLearningDueSummary(summary, { notify = true } = {}) {
-    const courses = Array.isArray(this.store.state?.courses)
-      ? this.store.state.courses
-      : (this.store.exportPublicStateSnapshot?.().courses || []);
-    const validCourseIds = new Set(courses.map((course) => Number(course.id)).filter((id) => id > 0));
-    const next = normalizeNameLearningDueSummary(summary, validCourseIds);
-    const current = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary, validCourseIds);
-    if (JSON.stringify(current) === JSON.stringify(next)) return false;
-    this.store.state.settings.nameLearningDueSummary = next;
-    if (notify) this.onPublicChanged();
-    return true;
+  saveNameLearningDueSummary(...args) {
+    return this.courseRepository.saveNameLearningDueSummary(...args);
   }
 
-  updateNameLearningDueSummaryForCourse(courseId, gradeState) {
-    const id = Number(courseId) || 0;
-    const courses = Array.isArray(this.store.state?.courses)
-      ? this.store.state.courses
-      : (this.store.exportPublicStateSnapshot?.().courses || []);
-    const course = courses.find((item) => Number(item.id) === id);
-    if (!id || !course) return false;
-    const summary = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary);
-    if (course.noLesson || course.noGrades) delete summary.courses[String(id)];
-    else summary.courses[String(id)] = buildNameLearningDueBuckets(gradeState, id);
-    return this.saveNameLearningDueSummary(summary, { notify: false });
+  updateNameLearningDueSummaryForCourse(...args) {
+    return this.courseRepository.updateNameLearningDueSummaryForCourse(...args);
   }
 
-  removeNameLearningDueSummaryForCourse(courseId) {
-    const id = Number(courseId) || 0;
-    if (!id) return false;
-    const summary = normalizeNameLearningDueSummary(this.store.state.settings.nameLearningDueSummary);
-    if (!Object.hasOwn(summary.courses, String(id))) return false;
-    delete summary.courses[String(id)];
-    return this.saveNameLearningDueSummary(summary);
+  removeNameLearningDueSummaryForCourse(...args) {
+    return this.courseRepository.removeNameLearningDueSummaryForCourse(...args);
   }
 
-  async refreshNameLearningDueSummary() {
-    if (!this.canAccessGradeVault()) return false;
-    const courses = {};
-    const publicCourses = Array.isArray(this.store.state?.courses)
-      ? this.store.state.courses
-      : (this.store.exportPublicStateSnapshot?.().courses || []);
-    const courseIds = publicCourses
-      .filter((course) => !course.noLesson && !course.noGrades)
-      .map((course) => Number(course.id))
-      .filter((courseId) => courseId > 0);
-    let complete = true;
-    for (const courseId of courseIds) {
-      let state;
-      try {
-        state = await this.getGradeCourseStateSnapshot(courseId);
-      } catch (error) {
-        if (error?.code === WORKSPACE_ERROR_VAULT_LOCKED || !this.canAccessGradeVault()) return false;
-        console.warn(`[TeachHelper] Kurs ${courseId} konnte für die Namenslern-Übersicht nicht gelesen werden.`, error);
-        complete = false;
-        continue;
-      }
-      courses[String(courseId)] = buildNameLearningDueBuckets(state, courseId);
-    }
-    return this.saveNameLearningDueSummary({ complete, courses });
+  refreshNameLearningDueSummary(...args) {
+    return this.courseRepository.refreshNameLearningDueSummary(...args);
   }
 
-  async getOccurrenceCategoryUsage(categoryId) {
-    const id = Number(categoryId) || 0;
-    if (!id || !this.canAccessGradeVault()) return 0;
-    const courseIds = new Set([
-      ...this.segmentTexts.keys(),
-      ...this.courseCache.keys(),
-      ...(this.loadedCourseId ? [this.loadedCourseId] : []),
-    ]);
-    let count = 0;
-    for (const courseId of courseIds) {
-      let state = Number(courseId) === Number(this.loadedCourseId)
-        ? this.store.exportGradeVaultStateSnapshot()
-        : this.courseCache.get(courseId) || null;
-      if (!state) {
-        const text = this.segmentTexts.get(courseId) || '';
-        state = text ? await this.decodeCourse(courseId, text) : emptyGradeState(this.store);
-        this.courseCache.set(courseId, state);
-      }
-      count += (Array.isArray(state.gradeAssessments) ? state.gradeAssessments : []).filter((assessment) => (
-        String(assessment?.mode || '') === 'homework'
-        && Number(assessment?.occurrenceCategoryId || 1) === id
-      )).length;
-    }
-    return count;
+  getOccurrenceCategoryUsage(...args) {
+    return this.courseRepository.getOccurrenceCategoryUsage(...args);
   }
 
-  async deleteOccurrenceCategoryData(categoryId) {
-    const categoryIdNumber = Number(categoryId) || 0;
-    if (!categoryIdNumber) return 0;
-    if (!this.canAccessGradeVault()) {
-      const error = new Error('Das Notenmodul muss zum Löschen von Vorkommnissen entsperrt sein.');
-      error.code = WORKSPACE_ERROR_VAULT_LOCKED;
-      throw error;
-    }
-    const previous = this.loadedCourseId;
-    const courseIds = new Set([
-      ...this.segmentTexts.keys(),
-      ...this.courseCache.keys(),
-      ...(previous ? [previous] : []),
-    ]);
-    let deleted = 0;
-    for (const courseId of courseIds) {
-      deleted += await this.runGradeCourseMutation(courseId, () => {
-        const assessmentIds = this.store.listGradeAssessments(courseId)
-          .filter((assessment) => (
-            String(assessment?.mode || '') === 'homework'
-            && Number(assessment?.occurrenceCategoryId || 1) === categoryIdNumber
-          ))
-          .map((assessment) => Number(assessment.id));
-        if (!assessmentIds.length) return 0;
-        const removedIds = new Set(assessmentIds);
-        this.store.gradeVaultState.gradeAssessments = this.store.gradeVaultState.gradeAssessments
-          .filter((assessment) => !removedIds.has(Number(assessment.id)));
-        this.store.gradeVaultState.gradeEntries = this.store.gradeVaultState.gradeEntries
-          .filter((entry) => !removedIds.has(Number(entry.assessmentId)));
-        return assessmentIds.length;
-      });
-    }
-    if (previous && previous !== this.loadedCourseId) await this.ensureGradeCourseLoaded(previous);
-    return deleted;
+  deleteOccurrenceCategoryData(...args) {
+    return this.courseRepository.deleteOccurrenceCategoryData(...args);
   }
 
-  async loadGradeCourseNavigationTargetAtomically(courseId, fallbackCourseId = null) {
-    const previous = Number(this.loadedCourseId || fallbackCourseId) || null;
-    try {
-      return await this.ensureGradeCourseLoaded(courseId);
-    } catch (error) {
-      if (previous && previous !== Number(courseId)) await this.ensureGradeCourseLoaded(previous);
-      throw error;
-    }
+  loadGradeCourseNavigationTargetAtomically(...args) {
+    return this.courseRepository.loadGradeCourseNavigationTargetAtomically(...args);
   }
 
-  async withTemporaryGradeCourse(courseId, operation) {
-    const previous = this.loadedCourseId;
-    await this.ensureGradeCourseLoaded(courseId, { publish: false });
-    try {
-      return await operation();
-    } finally {
-      if (previous && previous !== Number(courseId)) {
-        await this.ensureGradeCourseLoaded(previous, { publish: false });
-      }
-      this.controller?.publish?.('grades');
-    }
+  withTemporaryGradeCourse(...args) {
+    return this.courseRepository.withTemporaryGradeCourse(...args);
   }
 
-  rememberConfirmedStudentRemovals(courseId, previousStudentIds, nextStudentIds, confirmedStudentIds = []) {
-    const id = Number(courseId) || 0;
-    if (!id) return false;
-    const next = new Set((Array.isArray(nextStudentIds) ? nextStudentIds : []).map(Number).filter(Boolean));
-    const removed = (Array.isArray(previousStudentIds) ? previousStudentIds : [])
-      .map(Number)
-      .filter((studentId) => studentId > 0 && !next.has(studentId));
-    if (!removed.length) return false;
-    const confirmed = new Set(
-      (Array.isArray(confirmedStudentIds) ? confirmedStudentIds : []).map(Number).filter(Boolean),
-    );
-    if (removed.some((studentId) => !confirmed.has(studentId))) return false;
-    const known = this.confirmedStudentRemovalsByCourse.get(id) || new Set();
-    for (const studentId of removed) known.add(studentId);
-    this.confirmedStudentRemovalsByCourse.set(id, known);
-    return true;
+  rememberConfirmedStudentRemovals(...args) {
+    return this.courseRepository.rememberConfirmedStudentRemovals(...args);
   }
 
-  async runGradeCourseMutation(courseId, operation, {
-    preserveRoster = false,
-    skipAutoSave = false,
-    confirmedRemovedStudentIds = [],
-  } = {}) {
-    const id = Number(courseId) || 0;
-    const run = async () => {
-      await this.ensureGradeCourseLoaded(id, { publish: false });
-      const before = this.store.exportGradeVaultStateSnapshot();
-      const roster = before.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
-      this.gradeCourseMutationActiveCourseId = id;
-      this.store._suspendSaveHooks();
-      try {
-        const result = await operation({ courseId: id });
-        const after = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
-        const nextRoster = after.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
-        if (preserveRoster) {
-          if (JSON.stringify(roster) !== JSON.stringify(nextRoster)) throw new Error('Die Kursliste wurde während der Mutation verändert.');
-        }
-        this.store.replaceGradeVaultState(after);
-        this.courseCache.set(id, after);
-        this.rememberPerformanceIndex(id, after);
-        this.updateNameLearningDueSummaryForCourse(id, after);
-        this.rememberConfirmedStudentRemovals(id, roster, nextRoster, confirmedRemovedStudentIds);
-        this.dirtyCourseIds.add(id);
-        this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
-        this.manualDirty = true;
-        if (!skipAutoSave && !this.isManualPersistenceMode() && this.fileHandle) {
-          this.queueSyncSave('grades-auto-save');
-        }
-        return result;
-      } catch (error) {
-        this.store.replaceGradeVaultState(before);
-        throw error;
-      } finally {
-        this.store._resumeSaveHooks({ flush: false });
-        this.gradeCourseMutationActiveCourseId = null;
-        this.controller?.markChanged?.('grades');
-      }
-    };
-    const promise = this.operationTail.then(run, run);
-    this.operationTail = promise.catch(() => undefined);
-    return promise;
+  runGradeCourseMutation(...args) {
+    return this.courseRepository.runGradeCourseMutation(...args);
   }
 
-  async loadAllPersistedGradeCoursesForCryptoRewrite() {
-    for (const courseId of this.segmentTexts.keys()) {
-      if (!this.courseCache.has(courseId)) {
-        const state = await this.decodeCourse(courseId, this.segmentTexts.get(courseId));
-        this.courseCache.set(courseId, state);
-        this.rememberPerformanceIndex(courseId, state);
-      }
-      this.dirtyCourseIds.add(courseId);
-    }
-    if (this.loadedCourseId && this.courseCache.has(this.loadedCourseId)) {
-      this.store.replaceGradeVaultState(this.courseCache.get(this.loadedCourseId));
-    }
-    return true;
+  loadAllPersistedGradeCoursesForCryptoRewrite(...args) {
+    return this.courseRepository.loadAllPersistedGradeCoursesForCryptoRewrite(...args);
   }
 
-  buildPerformanceIndex(courseIds = []) {
-    const requested = new Set((Array.isArray(courseIds) ? courseIds : []).map(Number));
-    const result = [];
-    for (const [courseId, items] of this.performanceIndexCache.entries()) {
-      if (requested.size && !requested.has(courseId)) continue;
-      result.push(...items.map((item) => ({ ...item })));
-    }
-    return result;
+  buildPerformanceIndex(...args) {
+    return this.courseRepository.buildPerformanceIndex(...args);
   }
 
-  rememberPerformanceIndex(courseId, state) {
-    const id = Number(courseId) || 0;
-    if (!id) return;
-    const items = (state?.gradeAssessments || []).map((assessment) => ({
-      courseId: id,
-      assessmentId: Number(assessment.id) || 0,
-      date: String(assessment.date || assessment.lessonDate || ''),
-      title: String(assessment.title || ''),
-    }));
-    this.performanceIndexCache.set(id, items);
-    this.seatplanPresenceCache.set(id, courseStateHasSeatPlan(state));
+  rememberPerformanceIndex(...args) {
+    return this.courseRepository.rememberPerformanceIndex(...args);
   }
 
-  buildSeatplanCourseIds(courseIds = []) {
-    const requested = new Set((Array.isArray(courseIds) ? courseIds : []).map(Number));
-    const result = [];
-    for (const [courseId, hasPlan] of this.seatplanPresenceCache.entries()) {
-      if (requested.size && !requested.has(courseId)) continue;
-      if (hasPlan) result.push(courseId);
-    }
-    return result;
+  buildSeatplanCourseIds(...args) {
+    return this.courseRepository.buildSeatplanCourseIds(...args);
   }
 
-  async resolvePerformanceIndex(courseIds) {
-    const ids = [...new Set((Array.isArray(courseIds) ? courseIds : []).map(Number).filter((id) => id > 0))];
-    if (!this.canAccessGradeVault()) {
-      const error = new Error('Das Notenmodul ist gesperrt.');
-      error.code = WORKSPACE_ERROR_VAULT_LOCKED;
-      throw error;
-    }
-    const previous = this.loadedCourseId;
-    for (const id of ids) {
-      if (!this.courseCache.has(id)) {
-        const text = this.segmentTexts.get(id);
-        const state = text ? await this.decodeCourse(id, text) : emptyGradeState(this.store);
-        this.courseCache.set(id, state);
-        this.rememberPerformanceIndex(id, state);
-      }
-    }
-    if (previous) {
-      this.store.replaceGradeVaultState(this.courseCache.get(previous) || emptyGradeState(this.store));
-      this.loadedCourseId = previous;
-    }
-    return this.buildPerformanceIndex(ids);
+  resolvePerformanceIndex(...args) {
+    return this.courseRepository.resolvePerformanceIndex(...args);
   }
 
-  async decodeCourseSegmentForPlausibility(courseId, text, { persisted = false } = {}) {
-    const parsed = parseCourseSegment(text);
-    if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
-    assertCourseSegmentEncryption(
-      parsed,
-      courseId,
-      persisted ? Boolean(this.vault.persistedConfig?.configured) : this.isGradeVaultConfigured(),
-    );
-    let rawState = parsed.state;
-    if (parsed.encrypted) {
-      const cryptoKey = persisted
-        ? this.vault.persistedCryptoKey || this.vault.cryptoKey
-        : this.vault.cryptoKey;
-      if (!cryptoKey) {
-        const error = new Error('Das Notensegment kann für die Sicherheitsprüfung nicht entschlüsselt werden.');
-        error.code = WORKSPACE_ERROR_VAULT_LOCKED;
-        throw error;
-      }
-      const plaintext = await decryptWorkspaceVaultText(
-        parsed.envelope,
-        cryptoKey,
-        parsed.envelope?.kdf || this.vault.kdf,
-        { type: 'course', courseId },
-      );
-      rawState = JSON.parse(plaintext);
-    }
-    return runtimeCourseFromPersisted(this.store, courseId, rawState);
+  decodeCourseSegmentForPlausibility(...args) {
+    return this.gradeVault.decodeCourseSegmentForPlausibility(...args);
   }
 
-  async getCourseContentSignature(courseId, text, options = {}) {
-    return buildCourseContentSignature(
-      await this.decodeCourseSegmentForPlausibility(courseId, text, options),
-      courseId,
-    );
+  getCourseContentSignature(...args) {
+    return this.courseRepository.getCourseContentSignature(...args);
   }
 
-  async assertCourseContentIsPlausible(segments = []) {
-    const candidateTexts = new Map(
-      (Array.isArray(segments) ? segments : []).map((segment) => [
-        Number(segment?.courseId) || 0,
-        String(segment?.text || ''),
-      ]),
-    );
-    const unexpectedRosterLosses = [];
-    const emptiedCourseIds = [];
-    for (const [courseId, persistedText] of this.segmentTexts.entries()) {
-      if (this.deletedCourseIds.has(courseId)) continue;
-      const candidateText = candidateTexts.get(courseId);
-      if (!candidateText || candidateText === persistedText) continue;
-      let previous;
-      let next;
-      try {
-        previous = await this.getCourseContentSignature(courseId, persistedText, { persisted: true });
-        next = await this.getCourseContentSignature(courseId, candidateText);
-      } catch (cause) {
-        const error = new Error(`Speichern abgebrochen: Der Inhalt von Kurs ${courseId} konnte nicht sicher geprüft werden. Die Datenbankdatei wurde nicht verändert.`);
-        error.code = WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS;
-        error.cause = cause;
-        throw error;
-      }
-      const approvedStudentRemovals = this.confirmedStudentRemovalsByCourse.get(courseId) || new Set();
-      const unconfirmedStudentIds = [...previous.studentIds].filter((studentId) => (
-        !next.studentIds.has(studentId) && !approvedStudentRemovals.has(studentId)
-      ));
-      if (unconfirmedStudentIds.length > 0) {
-        unexpectedRosterLosses.push({ courseId, studentIds: unconfirmedStudentIds });
-      }
-      const onlyConfirmedRosterRemoval = (
-        previous.studentIds.size > 0
-        && !previous.hasOtherContent
-        && next.studentIds.size === 0
-        && !next.hasOtherContent
-        && unconfirmedStudentIds.length === 0
-      );
-      if (
-        previous.hasMeaningfulContent
-        && !next.hasMeaningfulContent
-        && !onlyConfirmedRosterRemoval
-      ) {
-        emptiedCourseIds.push(courseId);
-      }
-    }
-    if (unexpectedRosterLosses.length > 0) {
-      const details = unexpectedRosterLosses
-        .map(({ courseId, studentIds }) => `${courseId} (${studentIds.join(', ')})`)
-        .join('; ');
-      const error = new Error(`Speichern abgebrochen: Teilnehmende würden ohne ausdrückliche Löschbestätigung entfernt (Kurs-IDs und Teilnehmenden-IDs: ${details}). Die Datenbankdatei wurde nicht verändert.`);
-      error.code = WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS;
-      throw error;
-    }
-    if (emptiedCourseIds.length > 0) {
-      const error = new Error(`Speichern abgebrochen: Die Notendaten der Kurssegmente ${emptiedCourseIds.join(', ')} wären nach dem Speichern inhaltlich leer. Die Datenbankdatei wurde nicht verändert.`);
-      error.code = WORKSPACE_ERROR_PERSISTENCE_CONTENT_LOSS;
-      throw error;
-    }
-    return true;
+  assertCourseContentIsPlausible(...args) {
+    return this.courseRepository.assertCourseContentIsPlausible(...args);
   }
 
-  async buildContainer(reason = 'save') {
-    if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
-    const courseIds = new Set([
-      ...this.segmentTexts.keys(),
-      ...this.courseCache.keys(),
-      ...this.dirtyCourseIds,
-    ]);
-    const publicCourses = Array.isArray(this.store.state?.courses)
-      ? this.store.state.courses
-      : (this.store.exportPublicStateSnapshot?.().courses || []);
-    const existingCourses = new Set(publicCourses.map((course) => Number(course.id)));
-    const segments = [];
-    let entryCount = 0;
-    for (const courseId of [...courseIds].sort((a, b) => a - b)) {
-      if (
-        !existingCourses.has(courseId)
-        && !this.persistedCourseIds.has(courseId)
-        && !this.dirtyCourseIds.has(courseId)
-      ) continue;
-      const rewrite = this.dirtyCourseIds.has(courseId) || !this.segmentTexts.has(courseId);
-      if (!rewrite && this.segmentTexts.has(courseId)) {
-        segments.push({ courseId, text: this.segmentTexts.get(courseId) });
-        continue;
-      }
-      if (this.isGradeVaultConfigured() && !this.isGradeVaultUnlocked()) {
-        const error = new Error('Ungespeicherte Notenänderungen können erst nach dem Entsperren des Notenbereichs gespeichert werden.');
-        error.code = WORKSPACE_ERROR_VAULT_LOCKED;
-        throw error;
-      }
-      const state = this.courseCache.get(courseId) || emptyGradeState(this.store);
-      entryCount += state.gradeEntries?.length || 0;
-      const persisted = persistedCourseFromState(this.store, courseId, state);
-      const text = this.isGradeVaultUnlocked()
-        ? JSON.stringify(await encryptWorkspaceVaultText(
-          JSON.stringify(persisted),
-          this.vault.cryptoKey,
-          this.vault.kdf,
-          { type: 'course', courseId },
-        ))
-        : JSON.stringify(persisted);
-      segments.push({ courseId, text });
-    }
-    const writtenCourseIds = new Set(segments.map((segment) => Number(segment.courseId)));
-    const droppedCourseIds = [...this.persistedCourseIds].filter((courseId) => !writtenCourseIds.has(courseId));
-    if (droppedCourseIds.length > 0) {
-      const error = new Error(`Speichern abgebrochen: Die Notendaten von ${droppedCourseIds.length} Kurs(en) fehlen im Schreibvorgang (Kurs-IDs ${droppedCourseIds.join(', ')}). Die Datenbankdatei wurde nicht verändert.`);
-      error.code = WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE;
-      throw error;
-    }
-    await this.assertCourseContentIsPlausible(segments);
-    const publicState = this.store.exportPublicStateSnapshot();
-    const config = this.isGradeVaultEncryptionEnabled() ? this.vault.config : normalizeVaultConfig(null);
-    const containerOptions = {
-      schema: APP_DB_SCHEMA,
-      startupShellText: JSON.stringify(buildStartupShell(publicState, config.configured, entryCount)),
-      planningPublicText: JSON.stringify(publicState),
-      gradeVaultConfigText: JSON.stringify(config),
-      gradeCourseSegments: segments,
-      revision: this.knownRevision + 1,
-      updatedAt: new Date().toISOString(),
-      deviceId: this.deviceId,
-      reason,
-    };
-    return buildThdb1ContainerBytes(containerOptions);
+  buildContainer(...args) {
+    return this.persistence.buildContainer(...args);
   }
 
-  commitPersistedVaultContainer(bytes) {
-    const parsed = parseThdb1ContainerBytes(bytes, { includeGradeCourseSegments: true });
-    this.segmentTexts = new Map(parsed?.gradeCourseSegments?.map((segment) => [
-      Number(segment.courseId),
-      String(segment.text || ''),
-    ]) || []);
-    this.rememberPersistedCourseIds(parsed?.gradeCourseSegments);
-    this.confirmedStudentRemovalsByCourse.clear();
-    this.vault.persistedConfig = clone(this.vault.config, normalizeVaultConfig(null));
-    this.vault.persistedCryptoKey = null;
+  commitPersistedVaultContainer(...args) {
+    return this.persistence.commitPersistedVaultContainer(...args);
   }
 
-  async loadBytes(bytes, source = 'manual') {
-    if (this.loadInProgress) throw new Error('Es wird bereits eine Datenbank geladen. Bitte warte, bis der Import abgeschlossen ist.');
-    this.loadInProgress = true;
-    try {
-      this.loadGeneration += 1;
-      const view = new Uint8Array(bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []));
-      const parsed = await parseThdb1ContainerBytesAsync(view, {
-        schemas: [APP_DB_SCHEMA, APP_DB_SCHEMA_LEGACY],
-        includePlanningPublic: true,
-        includeGradeCourseSegments: true,
-      });
-      if (!parsed) throw new Error('Datenbankdatei ist ungültig oder beschädigt.');
-      let publicState;
-      let config;
-      try {
-        publicState = JSON.parse(parsed.planningPublicText);
-        const rawVaultConfig = JSON.parse(parsed.gradeVaultConfigText || '{}');
-        config = normalizeVaultConfig(rawVaultConfig);
-        if (config.configured) validateWorkspaceVaultKdf(rawVaultConfig.kdf);
-      } catch {
-        throw new Error('Datenbanksegmente oder Verschlüsselungseinstellungen sind ungültig.');
-      }
-      const fileHash = await getThdb1FileHashAsync(view);
-      if (!fileHash) throw new Error('Datenbankdatei konnte nicht vollständig geprüft werden.');
-      const isEmptyDatabase = [
-        publicState?.schoolYears,
-        publicState?.courses,
-        publicState?.slots,
-        publicState?.freeRanges,
-        publicState?.specialDays,
-        publicState?.lessons,
-        parsed.gradeCourseSegments,
-      ].every((items) => Array.isArray(items) && items.length === 0);
-      this.store.importDatabaseState(publicState, emptyGradeState(this.store), {
-        skipSaveNotification: true,
-        allowEmpty: isEmptyDatabase,
-      });
-      this.segmentTexts = new Map(parsed.gradeCourseSegments.map((segment) => [Number(segment.courseId), String(segment.text || '')]));
-      this.rememberPersistedCourseIds(parsed.gradeCourseSegments);
-      this.deletedCourseIds.clear();
-      this.confirmedStudentRemovalsByCourse.clear();
-      this.courseCache.clear();
-      this.performanceIndexCache.clear();
-      this.seatplanPresenceCache.clear();
-      this.dirtyCourseIds.clear();
-      this.loadedCourseId = null;
-      this.store.replaceGradeVaultState(emptyGradeState(this.store));
-      this.vault.encryptionEnabled = Boolean(
-        config.configured
-        || publicState?.settings?.gradeVaultEncryptionEnabled,
-      );
-      this.vault.configured = Boolean(config.configured);
-      this.vault.unlocked = false;
-      this.vault.config = config;
-      this.vault.persistedConfig = clone(config, normalizeVaultConfig(null));
-      this.vault.persistedCryptoKey = null;
-      this.vault.cryptoKey = null;
-      this.vault.kdf = config.kdf;
-      this.store.state.settings.gradeVaultEncryptionEnabled = this.vault.encryptionEnabled;
-      this.knownRevision = Math.max(0, Number(parsed.header.revision) || 0);
-      this.knownFileHash = fileHash;
-      this.publicDirty = false;
-      this.manualDirty = false;
-      this.clearGradeVaultAutoLockWarning();
-      this.manualLoaded = true;
-      this.databaseLoaded = true;
-      this.ready = true;
-      this.clearPersistenceFailure();
-      if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
-      this.controller?.markChanged?.('planning');
-      this.controller?.publish?.('grades');
-      return { ok: true, source };
-    } finally {
-      this.loadInProgress = false;
-    }
+  loadBytes(...args) {
+    return this.persistence.loadBytes(...args);
   }
 
-  readPersistedCourseIds(bytes) {
-    const prefix = parseThdb1Header(bytes, { schemas: [APP_DB_SCHEMA, APP_DB_SCHEMA_LEGACY] });
-    return (prefix?.header?.gradeCourseSegments || []).map((descriptor) => Number(descriptor.courseId) || 0).filter(Boolean);
+  readPersistedCourseIds(...args) {
+    return this.persistence.readPersistedCourseIds(...args);
   }
 
-  assertContainerKeepsPersistedCourses(built, knownCourseIds) {
-    const writtenCourseIds = new Set(
-      (built?.header?.gradeCourseSegments || []).map((descriptor) => Number(descriptor.courseId) || 0),
-    );
-    const droppedCourseIds = [...new Set(knownCourseIds)]
-      .filter((courseId) => !writtenCourseIds.has(courseId) && !this.deletedCourseIds.has(courseId));
-    if (droppedCourseIds.length === 0) return true;
-    const error = new Error(`Speichern abgebrochen: Die Notendaten von ${droppedCourseIds.length} Kurs(en) fehlen im Schreibvorgang (Kurs-IDs ${droppedCourseIds.join(', ')}). Die Datenbankdatei wurde nicht verändert.`);
-    error.code = WORKSPACE_ERROR_PERSISTENCE_INCOMPLETE;
-    throw error;
+  assertContainerKeepsPersistedCourses(...args) {
+    return this.courseRepository.assertContainerKeepsPersistedCourses(...args);
   }
 
-  async readHandleBytes(handle) {
-    const file = await handle.getFile();
-    return this.readDatabaseFileBytes(file, 'Datenbankdatei');
+  readHandleBytes(...args) {
+    return this.persistence.readHandleBytes(...args);
   }
 
-  async readDatabaseFileBytes(file, label = 'Datenbankdatei') {
-    if (!file || typeof file.arrayBuffer !== 'function') {
-      throw new Error(`${label} konnte nicht gelesen werden.`);
-    }
-    const size = Number(file.size);
-    if (Number.isFinite(size) && size > FILE_LIMITS.THDB_BYTES) {
-      throw new Error(`${label} ist zu groß: maximal ${formatFileSize(FILE_LIMITS.THDB_BYTES)}.`);
-    }
-    if (Number.isFinite(size) && size > THDB_CONFIRM_BYTES) {
-      let shouldContinue = false;
-      try {
-        shouldContinue = Boolean(await this.confirmLargeFile?.({
-          label,
-          size,
-          formattedSize: formatFileSize(size),
-        }));
-      } catch {
-        shouldContinue = false;
-      }
-      if (!shouldContinue) {
-        throw new Error(`${label} wurde nicht geladen.`);
-      }
-    }
-    return new Uint8Array(await file.arrayBuffer());
+  readDatabaseFileBytes(...args) {
+    return this.persistence.readDatabaseFileBytes(...args);
   }
 
   getDefaultSchoolYearStartYear(date = new Date()) {
     return getDefaultSchoolYearStartYear(date);
   }
 
-  buildEmptyDatabaseContainer(reason = 'create-empty', { schoolYearStart = null } = {}) {
-    const startYear = Number(schoolYearStart);
-    const publicState = Number.isInteger(startYear) && startYear >= 1900 && startYear <= 9998
-      ? this.store.buildNewDatabasePublicState(startYear)
-      : this.store.normalizePublicState(null);
-    const config = normalizeVaultConfig(null);
-    return buildThdb1ContainerBytes({
-      schema: APP_DB_SCHEMA,
-      startupShellText: JSON.stringify(buildStartupShell(publicState, false, 0)),
-      planningPublicText: JSON.stringify(publicState),
-      gradeVaultConfigText: JSON.stringify(config),
-      gradeCourseSegments: [],
-      revision: 1,
-      updatedAt: new Date().toISOString(),
-      deviceId: this.deviceId,
-      reason,
-    });
+  buildEmptyDatabaseContainer(...args) {
+    return this.persistence.buildEmptyDatabaseContainer(...args);
   }
 
-  async isCurrentWorkspaceFileHandle(handle) {
-    if (!handle || !this.fileHandle) return false;
-    if (handle === this.fileHandle) return true;
-    if (typeof handle.isSameEntry !== 'function') return false;
-    try {
-      return Boolean(await handle.isSameEntry(this.fileHandle));
-    } catch {
-      return false;
-    }
+  isCurrentWorkspaceFileHandle(...args) {
+    return this.persistence.isCurrentWorkspaceFileHandle(...args);
   }
 
   enqueueFileOperation(operation) {
@@ -1821,213 +893,40 @@ export class WorkspaceRuntime {
     return queued;
   }
 
-  async getNewWorkspaceFileHandleInDirectory(directoryHandle, fileName) {
-    if (!directoryHandle || typeof directoryHandle.getFileHandle !== 'function') {
-      throw new Error('Der Zielordner konnte nicht geöffnet werden.');
-    }
-    try {
-      await directoryHandle.getFileHandle(fileName);
-    } catch (error) {
-      if (String(error?.name || '') === 'NotFoundError') {
-        return directoryHandle.getFileHandle(fileName, { create: true });
-      }
-      throw error;
-    }
-    throw new Error(`Die Datei „${fileName}“ existiert bereits. Bitte benenne oder verschiebe sie, bevor eine neue leere Datenbank angelegt wird.`);
+  getNewWorkspaceFileHandleInDirectory(...args) {
+    return this.persistence.getNewWorkspaceFileHandleInDirectory(...args);
   }
 
-  async assertEmptyWorkspaceDatabaseTarget(handle, fileName) {
-    const file = await handle?.getFile?.();
-    if (!file || typeof file.arrayBuffer !== 'function') {
-      throw new Error('Die neue Datenbankdatei konnte nicht gelesen werden.');
-    }
-    const size = Number(file.size);
-    const containsData = Number.isFinite(size)
-      ? size > 0
-      : (await file.arrayBuffer()).byteLength > 0;
-    if (containsData) {
-      throw new Error(`Die Datei „${fileName || handle?.name || ''}“ enthält bereits Daten. Die neue leere Datenbank wurde nicht angelegt.`);
-    }
-    return true;
+  assertEmptyWorkspaceDatabaseTarget(...args) {
+    return this.persistence.assertEmptyWorkspaceDatabaseTarget(...args);
   }
 
-  async createEmptyWorkspaceFileInDirectory(directoryHandle, options = {}) {
-    if (!directoryHandle) return false;
-    if (!await this.ensureHandleReadWritePermission(directoryHandle)) {
-      throw new Error('Für den Zielordner wurde keine Schreibberechtigung erteilt.');
-    }
-    return this.enqueueFileOperation(() => this.createEmptyWorkspaceFileInDirectoryNow(directoryHandle, options));
+  createEmptyWorkspaceFileInDirectory(...args) {
+    return this.persistence.createEmptyWorkspaceFileInDirectory(...args);
   }
 
-  async createEmptyWorkspaceFileInDirectoryNow(directoryHandle, options = {}) {
-    const fileName = this.buildNewDatabaseSuggestedName();
-    const handle = await this.getNewWorkspaceFileHandleInDirectory(directoryHandle, fileName);
-    return this.connectEmptyWorkspaceFileNow(handle, options, { fileName });
+  createEmptyWorkspaceFileInDirectoryNow(...args) {
+    return this.persistence.createEmptyWorkspaceFileInDirectoryNow(...args);
   }
 
-  async connectEmptyWorkspaceFileNow(handle, options = {}, { fileName = '' } = {}) {
-    if (await this.isCurrentWorkspaceFileHandle(handle)) {
-      throw new Error('Bitte wähle für die neue leere Datenbank eine andere Datei.');
-    }
-    await this.assertEmptyWorkspaceDatabaseTarget(handle, fileName);
-    const built = this.buildEmptyDatabaseContainer('create-empty', {
-      ...options,
-      schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
-    });
-    const builtHash = await getThdb1FileHashAsync(built.bytes);
-    const writeResult = await writeAndVerifyFileBytes(
-      handle,
-      built.bytes,
-      async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
-      { validateOriginal: async (original) => original.length === 0 },
-    );
-    if (!writeResult.ok) {
-      if (writeResult.stage === 'precondition') {
-        throw new Error(`Die Datei „${fileName || handle?.name || ''}“ wurde vor dem Schreiben geändert. Die neue leere Datenbank wurde nicht angelegt.`);
-      }
-      throw writeResult.error || new Error('Leere Datenbankdatei konnte nicht verifiziert werden.');
-    }
-    if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
-      throw new Error('Die Auswahl der Datenbankdatei konnte nicht dauerhaft gespeichert werden.');
-    }
-
-    this.databaseLoaded = false;
-    this.fileHandle = handle;
-    this.storedFileHandle = handle;
-    this.fileName = String(handle.name || this.buildSyncFileSuggestedName());
-    this.backupDirectoryHandle = null;
-    this.storedBackupDirectoryHandle = null;
-    await this.loadBytes(built.bytes, 'new-empty');
-    await this.removeStoredHandle(HANDLE_BACKUP_KEY);
-    this.controller?.markChanged?.('shell');
-    return true;
+  connectEmptyWorkspaceFileNow(...args) {
+    return this.persistence.connectEmptyWorkspaceFileNow(...args);
   }
 
-  async acceptWorkspaceSyncFileHandle(handle, mode = 'existing', options = {}) {
-    if (!handle) return false;
-    if (String(mode || '') === 'new-empty') {
-      throw new Error('Für eine neue leere Datenbank wähle bitte einen Zielordner.');
-    }
-    if (!await this.ensureHandleReadWritePermission(handle)) {
-      throw new Error('Für die Datenbankdatei wurde keine Schreibberechtigung erteilt.');
-    }
-    return this.enqueueFileOperation(() => this.acceptWorkspaceSyncFileHandleNow(handle, mode, options));
+  acceptWorkspaceSyncFileHandle(...args) {
+    return this.persistence.acceptWorkspaceSyncFileHandle(...args);
   }
 
-  async acceptWorkspaceSyncFileHandleNow(handle, mode = 'existing', _options = {}) {
-    const preserveBackupDirectory = String(mode || '') === 'reconnect';
-    const previousBackupDirectoryHandle = this.backupDirectoryHandle;
-    const previousStoredBackupDirectoryHandle = this.storedBackupDirectoryHandle;
-    const previousFileHandle = this.fileHandle;
-    const previousStoredFileHandle = this.storedFileHandle;
-    const previousFileName = this.fileName;
-    const previousDatabaseLoaded = this.databaseLoaded;
-    if (!preserveBackupDirectory) {
-      this.backupDirectoryHandle = null;
-      this.storedBackupDirectoryHandle = null;
-    }
-    this.databaseLoaded = false;
-    this.fileHandle = handle;
-    this.storedFileHandle = handle;
-    this.fileName = String(handle.name || this.buildSyncFileSuggestedName());
-    try {
-      if (!await this.storeHandle(HANDLE_FILE_KEY, handle)) {
-        throw new Error('Die Auswahl der Datenbankdatei konnte nicht dauerhaft gespeichert werden.');
-      }
-      await this.loadBytes(await this.readHandleBytes(handle), 'file');
-    } catch (error) {
-      if (!preserveBackupDirectory) {
-        this.backupDirectoryHandle = previousBackupDirectoryHandle;
-        this.storedBackupDirectoryHandle = previousStoredBackupDirectoryHandle;
-      }
-      this.fileHandle = previousFileHandle;
-      this.storedFileHandle = previousStoredFileHandle;
-      this.fileName = previousFileName;
-      this.databaseLoaded = previousDatabaseLoaded;
-      throw error;
-    }
-    if (!preserveBackupDirectory) {
-      await this.removeStoredHandle(HANDLE_BACKUP_KEY);
-      this.controller?.markChanged?.('shell');
-    }
-    return true;
+  acceptWorkspaceSyncFileHandleNow(...args) {
+    return this.persistence.acceptWorkspaceSyncFileHandleNow(...args);
   }
 
-  async acceptWorkspaceBackupDirectoryHandle(handle) {
-    if (!handle) return false;
-    if (!await this.ensureHandleReadWritePermission(handle)) {
-      throw new Error('Für den Backup-Ordner wurde keine Schreibberechtigung erteilt.');
-    }
-    this.backupDirectoryHandle = handle;
-    this.storedBackupDirectoryHandle = handle;
-    if (!await this.storeHandle(HANDLE_BACKUP_KEY, handle)) {
-      this.backupDirectoryHandle = null;
-      this.storedBackupDirectoryHandle = null;
-      throw new Error('Die Auswahl des Backup-Ordners konnte nicht dauerhaft gespeichert werden.');
-    }
-    this.controller?.markChanged?.('shell');
-    return true;
+  acceptWorkspaceBackupDirectoryHandle(...args) {
+    return this.backup.acceptWorkspaceBackupDirectoryHandle(...args);
   }
 
-  async saveToConnectedFile(reason = 'save') {
-    if (this.loadInProgress) return false;
-    if (!this.fileHandle) return false;
-    if (!this.databaseLoaded) return false;
-    const fileHandle = this.fileHandle;
-    const generation = this.loadGeneration;
-    const expectedFileHash = this.knownFileHash;
-    const isCurrentSaveTarget = () => (
-      this.fileHandle === fileHandle
-      && this.databaseLoaded
-      && this.loadGeneration === generation
-    );
-    const remote = await this.readHandleBytes(fileHandle);
-    if (!isCurrentSaveTarget()) return false;
-    if (expectedFileHash) {
-      const remoteHash = await getThdb1FileHashAsync(remote);
-      if (!isCurrentSaveTarget()) return false;
-      if (remoteHash && remoteHash !== expectedFileHash) {
-        const error = new Error('Die Datenbankdatei wurde außerhalb dieses Workspace geändert.');
-        error.code = WORKSPACE_ERROR_PERSISTENCE_CONFLICT;
-        throw error;
-      }
-    }
-    const remoteCourseIds = this.readPersistedCourseIds(remote);
-    const built = await this.buildContainer(reason);
-    if (!isCurrentSaveTarget()) return false;
-    this.assertContainerKeepsPersistedCourses(built, remoteCourseIds);
-    const builtHash = await getThdb1FileHashAsync(built.bytes);
-    if (!isCurrentSaveTarget()) return false;
-    const writeResult = await writeAndVerifyFileBytes(
-      fileHandle,
-      built.bytes,
-      async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
-      {
-        validateOriginal: expectedFileHash
-          ? async (original) => (await getThdb1FileHashAsync(original)) === expectedFileHash
-          : null,
-      },
-    );
-    if (!writeResult.ok) {
-      if (writeResult.stage === 'precondition') {
-        const error = new Error('Die Datenbankdatei wurde außerhalb dieses Workspace geändert.');
-        error.code = WORKSPACE_ERROR_PERSISTENCE_CONFLICT;
-        throw error;
-      }
-      throw writeResult.error || new Error('Datenbankdatei konnte nicht verifiziert werden.');
-    }
-    if (!isCurrentSaveTarget()) return false;
-    this.knownRevision = built.header.revision;
-    this.knownFileHash = builtHash;
-    this.commitPersistedVaultContainer(built.bytes);
-    this.publicDirty = false;
-    this.dirtyCourseIds.clear();
-    this.deletedCourseIds.clear();
-    this.manualDirty = false;
-    this.clearGradeVaultAutoLockWarning();
-    this.clearPersistenceFailure();
-    this.controller?.markChanged?.('shell');
-    return true;
+  saveToConnectedFile(...args) {
+    return this.persistence.saveToConnectedFile(...args);
   }
 
   enqueueConnectedFileSave(reason = 'save') {
@@ -2045,138 +944,36 @@ export class WorkspaceRuntime {
     return true;
   }
 
-  async saveManualDatabase() {
-    if (!this.isPersistenceReady()) {
-      throw new Error('Die verbundene Datenbankdatei wurde noch nicht vollständig geladen.');
-    }
-    if (
-      !this.manualLoaded
-      && Array.isArray(this.store.state?.schoolYears)
-      && this.store.state.schoolYears.length === 0
-      && typeof this.store.buildNewDatabasePublicState === 'function'
-    ) {
-      const publicState = this.store.buildNewDatabasePublicState(this.getDefaultSchoolYearStartYear());
-      this.store.importDatabaseState(
-        publicState,
-        this.store.exportGradeVaultStateSnapshot(),
-        { skipSaveNotification: true, allowEmpty: false },
-      );
-    }
-    const built = await this.buildContainer('manual-save');
-    downloadBytes(built.bytes, this.fileName || this.buildSyncFileSuggestedName());
-    this.commitPersistedVaultContainer(built.bytes);
-    this.manualLoaded = true;
-    this.manualDirty = false;
-    this.publicDirty = false;
-    this.dirtyCourseIds.clear();
-    this.clearGradeVaultAutoLockWarning();
-    this.controller?.markChanged?.('shell');
-    return true;
+  saveManualDatabase(...args) {
+    return this.persistence.saveManualDatabase(...args);
   }
 
-  async createEmptyManualDatabase(options = {}) {
-    const built = this.buildEmptyDatabaseContainer('manual-create-empty', {
-      ...options,
-      schoolYearStart: options.schoolYearStart ?? this.getDefaultSchoolYearStartYear(),
-    });
-    const fileName = this.buildNewDatabaseSuggestedName();
-    downloadBytes(built.bytes, fileName);
-    this.fileName = fileName;
-    await this.loadBytes(built.bytes, 'manual-create-empty');
-    return true;
+  createEmptyManualDatabase(...args) {
+    return this.persistence.createEmptyManualDatabase(...args);
   }
 
-  async loadManualDatabaseFromFile(file) {
-    if (!file) return false;
-    this.fileName = String(file.name || this.buildSyncFileSuggestedName());
-    await this.loadBytes(await this.readDatabaseFileBytes(file), 'manual');
-    return true;
+  loadManualDatabaseFromFile(...args) {
+    return this.persistence.loadManualDatabaseFromFile(...args);
   }
 
-  async createLatestWebBackup(mode = 'manual', silent = false) {
-    if (!this.backupDirectoryHandle) return false;
-    if (!this.isPersistenceReady()) {
-      if (silent) return false;
-      throw new Error('Die verbundene Datenbankdatei wurde noch nicht vollständig geladen.');
-    }
-    if (!await this.ensureHandleReadWritePermission(this.backupDirectoryHandle, { allowPrompt: !silent })) {
-      if (silent) return false;
-      throw new Error('Der Backup-Ordner ist nicht mehr zum Schreiben freigegeben. Bitte verbinde ihn in den Einstellungen neu.');
-    }
-    const built = await this.buildContainer(`backup-${mode}`);
-    let handle;
-    try {
-      handle = await this.backupDirectoryHandle.getFileHandle(buildBackupFileName(this.now()), { create: true });
-    } catch (cause) {
-      if (silent) {
-        console.warn('[TeachHelper] Hintergrund-Backup fehlgeschlagen.', cause);
-        return false;
-      }
-      const detail = String(cause?.name || '') === 'NotAllowedError'
-        ? 'Zugriff verweigert'
-        : String(cause?.message || cause?.name || 'unbekannter Fehler');
-      const error = new Error(`Der Backup-Ordner ist nicht mehr erreichbar. Bitte verbinde ihn in den Einstellungen neu. (${detail})`);
-      error.cause = cause;
-      throw error;
-    }
-    const builtHash = await getThdb1FileHashAsync(built.bytes);
-    const writeResult = await writeAndVerifyFileBytes(
-      handle,
-      built.bytes,
-      async (persisted) => (await getThdb1FileHashAsync(persisted)) === builtHash,
-    );
-    if (!writeResult.ok) {
-      const error = writeResult.error
-        || new Error(`Backup konnte nicht verifiziert werden (Schritt: ${writeResult.stage || 'unbekannt'}).`);
-      if (silent) {
-        console.warn('[TeachHelper] Hintergrund-Backup fehlgeschlagen.', error);
-        return false;
-      }
-      throw error;
-    }
-    return true;
+  createLatestWebBackup(...args) {
+    return this.backup.createLatestWebBackup(...args);
   }
 
-  async maybeRunAutomaticWebBackup() {
-    if (!this.store.getBackupEnabled?.() || !this.backupDirectoryHandle) return false;
-    const intervalDays = Math.max(1, Number(this.store.getBackupIntervalDays?.()) || 7);
-    const lastRun = Date.parse(String(this.store.getSetting?.('lastAutoBackupAt', '') || ''));
-    if (Number.isFinite(lastRun) && Date.now() - lastRun < intervalDays * 86400000) return false;
-    const created = await this.createLatestWebBackup('automatic', true);
-    if (created) this.store.setSetting?.('lastAutoBackupAt', new Date().toISOString());
-    return created;
+  maybeRunAutomaticWebBackup(...args) {
+    return this.backup.maybeRunAutomaticWebBackup(...args);
   }
 
-  async restoreLatestWebBackup() {
-    if (!await this.ensureBackupDirectoryReady()) return false;
-    const candidates = [];
-    for await (const entry of this.backupDirectoryHandle.values()) {
-      if (
-        entry?.kind !== 'file'
-        || !/^(?:Planung-Backup-|TeachHelper-Backup-).*\.json$/i.test(String(entry.name || ''))
-      ) continue;
-      candidates.push(entry);
-    }
-    candidates.sort((left, right) => String(right.name || '').localeCompare(String(left.name || '')));
-    const latest = candidates[0];
-    if (!latest) return false;
-    const file = await latest.getFile();
-    await this.loadBytes(await this.readDatabaseFileBytes(file, 'Sicherung'), 'backup');
-    this.fileName = String(latest.name || this.fileName || this.buildSyncFileSuggestedName());
-    return true;
+  restoreLatestWebBackup(...args) {
+    return this.backup.restoreLatestWebBackup(...args);
   }
 
-  async exportBackup() {
-    if (!this.isPersistenceReady()) {
-      throw new Error('Die verbundene Datenbankdatei wurde noch nicht vollständig geladen.');
-    }
-    const built = await this.buildContainer('backup-export');
-    downloadBytes(built.bytes, buildBackupFileName(this.now()));
-    return true;
+  exportBackup(...args) {
+    return this.backup.exportBackup(...args);
   }
 
-  async importBackupFromFile(file) {
-    return this.loadManualDatabaseFromFile(file);
+  importBackupFromFile(...args) {
+    return this.backup.importBackupFromFile(...args);
   }
 
   bindStartupPermissionRecovery() {
@@ -2217,114 +1014,36 @@ export class WorkspaceRuntime {
     return true;
   }
 
-  tryReconnectStoredSyncFile(options = {}) {
-    if (this.ephemeral) return Promise.resolve(false);
-    if (this.syncReconnectInFlight) return this.syncReconnectInFlight;
-    const attempt = this.runStoredSyncFileReconnect(options);
-    this.syncReconnectInFlight = attempt;
-    const release = () => {
-      if (this.syncReconnectInFlight === attempt) this.syncReconnectInFlight = null;
-    };
-    attempt.then(release, release);
-    return attempt;
+  tryReconnectStoredSyncFile(...args) {
+    return this.persistence.tryReconnectStoredSyncFile(...args);
   }
 
-  async runStoredSyncFileReconnect({ allowPrompt = false } = {}) {
-    if (this.ephemeral) return false;
-    const handle = this.storedFileHandle || await this.loadStoredHandle(HANDLE_FILE_KEY);
-    if (!handle) return false;
-    this.storedFileHandle = handle;
-    if (!this.fileHandle) this.fileName = String(handle.name || this.fileName || '');
-    try {
-      let permission = await handle.queryPermission?.({ mode: 'readwrite' });
-      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
-        permission = await handle.requestPermission({ mode: 'readwrite' });
-      }
-      if (permission !== 'granted') return false;
-      return this.acceptWorkspaceSyncFileHandle(handle, 'reconnect');
-    } catch {
-      return false;
-    }
+  runStoredSyncFileReconnect(...args) {
+    return this.persistence.runStoredSyncFileReconnect(...args);
   }
 
-  async ensureHandleReadWritePermission(handle, { allowPrompt = true } = {}) {
-    if (!handle || typeof handle.queryPermission !== 'function') return Boolean(handle);
-    try {
-      let permission = await handle.queryPermission({ mode: 'readwrite' });
-      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
-        permission = await handle.requestPermission({ mode: 'readwrite' });
-      }
-      return permission === 'granted';
-    } catch {
-      return false;
-    }
+  ensureHandleReadWritePermission(...args) {
+    return this.persistence.ensureHandleReadWritePermission(...args);
   }
 
-  async ensureBackupDirectoryReady({ allowPrompt = false } = {}) {
-    if (this.ephemeral) return false;
-    if (this.backupDirectoryHandle) return true;
-    const handle = this.storedBackupDirectoryHandle || await this.loadStoredHandle(HANDLE_BACKUP_KEY);
-    if (!handle) return false;
-    this.storedBackupDirectoryHandle = handle;
-    try {
-      let permission = await handle.queryPermission?.({ mode: 'readwrite' });
-      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
-        permission = await handle.requestPermission({ mode: 'readwrite' });
-      }
-      if (permission !== 'granted') return false;
-      this.backupDirectoryHandle = handle;
-      this.controller?.markChanged?.('shell');
-      return true;
-    } catch {
-      return false;
-    }
+  ensureBackupDirectoryReady(...args) {
+    return this.backup.ensureBackupDirectoryReady(...args);
   }
 
-  async openHandleDb() {
-    if (this.ephemeral) return null;
-    if (!globalThis.indexedDB) return null;
-    return new Promise((resolve) => {
-      const request = indexedDB.open(HANDLE_DB_NAME, 1);
-      request.onupgradeneeded = () => {
-        if (!request.result.objectStoreNames.contains(HANDLE_STORE_NAME)) request.result.createObjectStore(HANDLE_STORE_NAME);
-      };
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => resolve(null);
-    });
+  openHandleDb(...args) {
+    return this.persistence.openHandleDb(...args);
   }
 
-  async storeHandle(key, handle) {
-    const db = await this.openHandleDb();
-    if (!db) return false;
-    return new Promise((resolve) => {
-      const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
-      tx.objectStore(HANDLE_STORE_NAME).put(handle, key);
-      tx.oncomplete = () => { db.close(); resolve(true); };
-      tx.onerror = () => { db.close(); resolve(false); };
-    });
+  storeHandle(...args) {
+    return this.persistence.storeHandle(...args);
   }
 
-  async loadStoredHandle(key) {
-    const db = await this.openHandleDb();
-    if (!db) return null;
-    return new Promise((resolve) => {
-      const tx = db.transaction(HANDLE_STORE_NAME, 'readonly');
-      const request = tx.objectStore(HANDLE_STORE_NAME).get(key);
-      request.onsuccess = () => resolve(request.result || null);
-      request.onerror = () => resolve(null);
-      tx.oncomplete = () => db.close();
-    });
+  loadStoredHandle(...args) {
+    return this.persistence.loadStoredHandle(...args);
   }
 
-  async removeStoredHandle(key) {
-    const db = await this.openHandleDb();
-    if (!db) return false;
-    return new Promise((resolve) => {
-      const tx = db.transaction(HANDLE_STORE_NAME, 'readwrite');
-      tx.objectStore(HANDLE_STORE_NAME).delete(key);
-      tx.oncomplete = () => { db.close(); resolve(true); };
-      tx.onerror = () => { db.close(); resolve(false); };
-    });
+  removeStoredHandle(...args) {
+    return this.persistence.removeStoredHandle(...args);
   }
 
   async applyWorkspacePublicState(publicState) {
@@ -2382,15 +1101,7 @@ export class WorkspaceRuntime {
       if (payload.destructive !== true) throw new Error('Kurslöschung wurde nicht ausdrücklich bestätigt.');
       this.store.deleteCourse(courseId);
       this.removeNameLearningDueSummaryForCourse(courseId);
-      this.segmentTexts.delete(courseId);
-      this.persistedCourseIds.delete(courseId);
-      this.deletedCourseIds.add(courseId);
-      this.confirmedStudentRemovalsByCourse.delete(courseId);
-      this.courseCache.delete(courseId);
-      this.performanceIndexCache.delete(courseId);
-      this.seatplanPresenceCache.delete(courseId);
-      this.dirtyCourseIds.delete(courseId);
-      if (this.loadedCourseId === courseId) this.loadedCourseId = null;
+      this.courseRepository.deleteCourseData(courseId);
       return { changed: true, scope: 'planning' };
     }
     if (command === WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY) {

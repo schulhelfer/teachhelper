@@ -1,43 +1,25 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createWorkspaceModuleLoader } from './helpers/workspace-modules.mjs';
 
-const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
-const loadSourceUrl = async (path) => dataUrl(await readFile(new URL(path, import.meta.url), 'utf8'));
-
-const [thdbUrl, syncUrl, defaultsUrl, messagesUrl, cryptoUrl, fileGuardsUrl, nameLearningDueSummaryUrl] = await Promise.all([
-  loadSourceUrl('../src/shared/school-data/thdb.js'),
-  loadSourceUrl('../src/shared/school-data/sync-safety.js'),
-  loadSourceUrl('../src/shared/school-data/defaults.js'),
-  loadSourceUrl('../src/shared/school-data/messages.js'),
-  loadSourceUrl('../src/modules/workspace/crypto.js'),
-  loadSourceUrl('../src/shared/file-guards.js'),
-  loadSourceUrl('../src/shared/name-learning-due-summary.js'),
-]);
-const archiveUrl = dataUrl(`
-  export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
-  export function downloadWorkspaceArchivePdf() {}
-`);
-const storeUrl = dataUrl(`
+const loadModuleUrl = createWorkspaceModuleLoader({
+  './store.js': `
   export function getDefaultSchoolYearStartYear(date = new Date()) {
     return date.getMonth() >= 6 ? date.getFullYear() : date.getFullYear() - 1;
   }
-`);
-let runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
-for (const [path, url] of [
-  ['../../shared/school-data/thdb.js', thdbUrl],
-  ['../../shared/file-guards.js', fileGuardsUrl],
-  ['../../shared/school-data/sync-safety.js', syncUrl],
-  ['../../shared/school-data/defaults.js', defaultsUrl],
-  ['../../shared/school-data/messages.js', messagesUrl],
-  ['./store.js', storeUrl],
-  ['./crypto.js', cryptoUrl],
-  ['./archive-pdf.js', archiveUrl],
-  ['../../shared/name-learning-due-summary.js', nameLearningDueSummaryUrl],
-]) runtimeSource = runtimeSource.replace(path, url);
-
+`,
+  './archive-pdf.js': `
+  export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
+  export function downloadWorkspaceArchivePdf() {}
+`,
+});
+const [runtimeUrl, messagesUrl, cryptoUrl] = await Promise.all([
+  loadModuleUrl('./runtime.js'),
+  loadModuleUrl('../../shared/school-data/messages.js'),
+  loadModuleUrl('./crypto.js'),
+]);
 const [{ WorkspaceRuntime }, messages, workspaceCrypto] = await Promise.all([
-  import(dataUrl(runtimeSource)),
+  import(runtimeUrl),
   import(messagesUrl),
   import(cryptoUrl),
 ]);
@@ -195,7 +177,7 @@ test('enabling encryption still reads the existing plaintext segments', async ()
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   runtime.refreshNameLearningDueSummary = async () => false;
-  runtime.recordGradeVaultActivity = () => {};
+  runtime.gradeVault.recordGradeVaultActivity = () => {};
   runtime.segmentTexts.set(COURSE_ID, forgedPlaintextSegment(9));
 
   assert.equal(await runtime.setupGradeVault(PASSWORD), true);

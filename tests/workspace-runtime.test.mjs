@@ -1,43 +1,33 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { createWorkspaceModuleLoader } from './helpers/workspace-modules.mjs';
 
-const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
-const loadSourceUrl = async (path) => dataUrl(await readFile(new URL(path, import.meta.url), 'utf8'));
-
-const [thdbUrl, syncUrl, defaultsUrl, messagesUrl, cryptoUrl, fileGuardsUrl, nameLearningDueSummaryUrl] = await Promise.all([
-  loadSourceUrl('../src/shared/school-data/thdb.js'),
-  loadSourceUrl('../src/shared/school-data/sync-safety.js'),
-  loadSourceUrl('../src/shared/school-data/defaults.js'),
-  loadSourceUrl('../src/shared/school-data/messages.js'),
-  loadSourceUrl('../src/modules/workspace/crypto.js'),
-  loadSourceUrl('../src/shared/file-guards.js'),
-  loadSourceUrl('../src/shared/name-learning-due-summary.js'),
-]);
-const archiveUrl = dataUrl(`
-  export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
-  export function downloadWorkspaceArchivePdf() {}
-`);
-const storeUrl = dataUrl(`
+const loadModuleUrl = createWorkspaceModuleLoader({
+  './store.js': `
   export function getDefaultSchoolYearStartYear(date = new Date()) {
     return date.getMonth() >= 6 ? date.getFullYear() : date.getFullYear() - 1;
   }
-`);
-let runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
-for (const [path, url] of [
-  ['../../shared/school-data/thdb.js', thdbUrl],
-  ['../../shared/file-guards.js', fileGuardsUrl],
-  ['../../shared/school-data/sync-safety.js', syncUrl],
-  ['../../shared/school-data/defaults.js', defaultsUrl],
-  ['../../shared/school-data/messages.js', messagesUrl],
-  ['./store.js', storeUrl],
-  ['./crypto.js', cryptoUrl],
-  ['./archive-pdf.js', archiveUrl],
-  ['../../shared/name-learning-due-summary.js', nameLearningDueSummaryUrl],
-]) runtimeSource = runtimeSource.replace(path, url);
+`,
+  './archive-pdf.js': `
+  export async function buildWorkspaceArchivePdfBytes() { return new Uint8Array(); }
+  export function downloadWorkspaceArchivePdf() {}
+`,
+});
+const [runtimeUrl, thdbUrl, messagesUrl, cryptoUrl] = await Promise.all([
+  loadModuleUrl('./runtime.js'),
+  loadModuleUrl('../../shared/school-data/thdb.js'),
+  loadModuleUrl('../../shared/school-data/messages.js'),
+  loadModuleUrl('./crypto.js'),
+]);
+const [repositorySource, vaultSource, persistenceSource, backupSource] = await Promise.all(
+  ['course-repository.js', 'grade-vault.js', 'workspace-persistence.js', 'workspace-backup.js']
+    .map((name) => readFile(new URL(`../src/modules/workspace/${name}`, import.meta.url), 'utf8')),
+);
+
 
 const [{ WorkspaceRuntime, formatLocalBackupTimestamp }, messages, workspaceCrypto, thdb] = await Promise.all([
-  import(dataUrl(runtimeSource)),
+  import(runtimeUrl),
   import(messagesUrl),
   import(cryptoUrl),
   import(thdbUrl),
@@ -157,15 +147,15 @@ async function buildEncryptedVaultContainer(password = 'ein-ausreichend-langes-p
 }
 
 function disableVaultKdfUpgrade(runtime) {
-  runtime.upgradeGradeVaultKdf = async () => false;
+  runtime.gradeVault.upgradeGradeVaultKdf = async () => false;
   runtime.refreshNameLearningDueSummary = async () => false;
-  runtime.recordGradeVaultActivity = () => {};
+  runtime.gradeVault.recordGradeVaultActivity = () => {};
   return runtime;
 }
 
 test('new database filenames add the suffix once before the extension', () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
-  runtime.buildSyncFileSuggestedName = () => 'TeachHelper-Datenbank-26-27.json';
+  runtime.persistence.buildSyncFileSuggestedName = () => 'TeachHelper-Datenbank-26-27.json';
 
   assert.equal(runtime.buildNewDatabaseSuggestedName('Klasse-7a.json'), 'Klasse-7a (neu).json');
   assert.equal(runtime.buildNewDatabaseSuggestedName('Klasse-7a (neu).json'), 'Klasse-7a (neu).json');
@@ -458,8 +448,8 @@ test('a stored database handle is retained and re-authorized on the next user ac
   };
   let acceptedHandle = null;
   let acceptedMode = '';
-  runtime.loadStoredHandle = async () => handle;
-  runtime.acceptWorkspaceSyncFileHandle = async (nextHandle, mode) => {
+  runtime.persistence.loadStoredHandle = async () => handle;
+  runtime.persistence.acceptWorkspaceSyncFileHandle = async (nextHandle, mode) => {
     acceptedHandle = nextHandle;
     acceptedMode = mode;
     runtime.fileHandle = nextHandle;
@@ -492,8 +482,8 @@ test('a pending database permission is requested on the first user gesture after
       return permission;
     },
   };
-  runtime.loadStoredHandle = async (key) => (key === 'sync-file' ? handle : null);
-  runtime.acceptWorkspaceSyncFileHandle = async (nextHandle) => {
+  runtime.persistence.loadStoredHandle = async (key) => (key === 'sync-file' ? handle : null);
+  runtime.persistence.acceptWorkspaceSyncFileHandle = async (nextHandle) => {
     runtime.fileHandle = nextHandle;
     return true;
   };
@@ -527,7 +517,7 @@ test('a declined database permission is not requested again on every later gestu
       return 'prompt';
     },
   };
-  runtime.loadStoredHandle = async (key) => (key === 'sync-file' ? handle : null);
+  runtime.persistence.loadStoredHandle = async (key) => (key === 'sync-file' ? handle : null);
   runtime.bindController({ publish() {}, markChanged() {} });
 
   await runtime.initialize();
@@ -554,8 +544,8 @@ test('a pending backup directory is requested on a separate gesture from the dat
   });
   const fileHandle = makeHandle('Klasse-7a.thdb', 'sync-file');
   const backupHandle = makeHandle('TeachHelper-Backups', 'backup-dir');
-  runtime.loadStoredHandle = async (key) => (key === 'sync-file' ? fileHandle : backupHandle);
-  runtime.acceptWorkspaceSyncFileHandle = async (nextHandle) => {
+  runtime.persistence.loadStoredHandle = async (key) => (key === 'sync-file' ? fileHandle : backupHandle);
+  runtime.persistence.acceptWorkspaceSyncFileHandle = async (nextHandle) => {
     runtime.fileHandle = nextHandle;
     return true;
   };
@@ -583,11 +573,11 @@ test('selecting a database handle explicitly requests persistent write access', 
     async getFile() { return { async arrayBuffer() { return new Uint8Array().buffer; } }; },
   };
   let storedHandle = null;
-  runtime.storeHandle = async (_key, value) => {
+  runtime.persistence.storeHandle = async (_key, value) => {
     storedHandle = value;
     return true;
   };
-  runtime.loadBytes = async () => ({ ok: true });
+  runtime.persistence.loadBytes = async () => ({ ok: true });
 
   assert.equal(await runtime.acceptWorkspaceSyncFileHandle(handle), true);
   assert.equal(storedHandle, handle);
@@ -601,7 +591,7 @@ test('a stored backup directory is retained and re-authorized on the next user a
     async requestPermission() { return 'granted'; },
   };
   let changedScope = '';
-  runtime.loadStoredHandle = async () => handle;
+  runtime.persistence.loadStoredHandle = async () => handle;
   runtime.bindController({ markChanged(scope) { changedScope = scope; } });
 
   assert.equal(await runtime.ensureBackupDirectoryReady(), false);
@@ -718,7 +708,7 @@ for (const enabled of [undefined, false]) {
     runtime.dirtyCourseIds.add(7);
     runtime.saveToConnectedFile = async () => assert.fail('saving requires explicit opt-in');
     let retryDelay = 0;
-    runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+    runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
 
     assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
     assert.equal(runtime.isGradeVaultUnlocked(), true);
@@ -745,7 +735,7 @@ test('auto-lock keeps dirty grades unlocked in manual download mode, publishes a
   let retryDelay = 0;
   let saveCalls = 0;
   runtime.bindController({ markChanged(scope) { changedScope = scope; } });
-  runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+  runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
   runtime.isManualPersistenceMode = () => true;
   runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
 
@@ -788,8 +778,8 @@ test('auto-lock saves every dirty grade course to a connected database before lo
     runtime.dirtyCourseIds.clear();
     return true;
   };
-  const lockGradeVaultSession = runtime.lockGradeVaultSession.bind(runtime);
-  runtime.lockGradeVaultSession = async () => {
+  const lockGradeVaultSession = runtime.gradeVault.lockGradeVaultSession.bind(runtime.gradeVault);
+  runtime.gradeVault.lockGradeVaultSession = async () => {
     order.push('lock');
     return lockGradeVaultSession();
   };
@@ -864,7 +854,7 @@ test('auto-lock leaves dirty grades unlocked when automatic saving fails', async
     throw new Error('Dateikonflikt');
   };
   let retryDelay = 0;
-  runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+  runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
 
   assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
   assert.equal(runtime.isGradeVaultUnlocked(), true);
@@ -889,7 +879,7 @@ test('auto-lock leaves dirty grades unlocked when no database file is connected'
   let saveCalls = 0;
   let retryDelay = 0;
   runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
-  runtime.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
+  runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
 
   assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
   assert.equal(runtime.isGradeVaultUnlocked(), true);
@@ -910,7 +900,7 @@ test('grade-vault activity postpones a blocked auto-lock retry to the normal idl
     autoLockWarning: { active: true, blockedAt: Date.now(), retryAt: Date.now() + 600000, message: 'Speichern' },
   };
   let scheduledDelay = 0;
-  runtime.scheduleGradeVaultAutoLock = (delay) => { scheduledDelay = delay; };
+  runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { scheduledDelay = delay; };
 
   runtime.recordGradeVaultActivity();
 
@@ -923,7 +913,7 @@ test('grade-vault activity uses the configured auto-lock interval', () => {
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
   runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true, cryptoKey: { opaque: true } };
   let scheduledDelay = 0;
-  runtime.scheduleGradeVaultAutoLock = (delay) => { scheduledDelay = delay; };
+  runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { scheduledDelay = delay; };
 
   for (const minutes of [5, 15, 30, 45]) {
     store.setGradeVaultAutoLockMinutes(minutes);
@@ -943,7 +933,7 @@ test('background auto-lock uses the configured interval and locks after delayed 
   const runtime = new WorkspaceRuntime(store, { eventTarget });
   runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true, cryptoKey: { opaque: true } };
   let scheduledDelay = 0;
-  runtime.scheduleGradeVaultBackgroundAutoLock = (delay) => {
+  runtime.gradeVault.scheduleGradeVaultBackgroundAutoLock = (delay) => {
     scheduledDelay = delay ?? runtime.getGradeVaultAutoLockMs();
     runtime.vault.backgroundHiddenAt = Date.now();
   };
@@ -952,7 +942,7 @@ test('background auto-lock uses the configured interval and locks after delayed 
   assert.equal(scheduledDelay, 5 * 60 * 1000);
 
   let lockCalls = 0;
-  runtime.handleGradeVaultAutoLockTimeout = async () => { lockCalls += 1; return true; };
+  runtime.gradeVault.handleGradeVaultAutoLockTimeout = async () => { lockCalls += 1; return true; };
   runtime.vault.backgroundHiddenAt = Date.now() - (5 * 60 * 1000);
   documentTarget.visibilityState = 'visible';
   await runtime.handleGradeVaultVisibilityChange();
@@ -967,7 +957,7 @@ test('visibility changes leave the existing auto-lock timer untouched when backg
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget });
   runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true };
   let scheduled = false;
-  runtime.scheduleGradeVaultAutoLock = () => { scheduled = true; };
+  runtime.gradeVault.scheduleGradeVaultAutoLock = () => { scheduled = true; };
 
   await runtime.handleGradeVaultVisibilityChange();
   documentTarget.visibilityState = 'visible';
@@ -1482,7 +1472,7 @@ test('workspace settings operations reject fields from the wrong client group', 
 test('latest directory backup is selected and loaded by the workspace', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   const loaded = [];
-  runtime.loadBytes = async (bytes, source) => loaded.push({ bytes: [...bytes], source });
+  runtime.persistence.loadBytes = async (bytes, source) => loaded.push({ bytes: [...bytes], source });
   const entry = (name, value) => ({
     kind: 'file', name,
     async getFile() { return { async arrayBuffer() { return Uint8Array.of(value).buffer; } }; },
@@ -1512,7 +1502,7 @@ test('backups created in the same minute use one filename and overwrite its cont
     eventTarget: new EventTarget(),
     now: () => new Date(2026, 7, 31, 14, 5),
   });
-  runtime.buildContainer = async (mode) => ({
+  runtime.persistence.buildContainer = async (mode) => ({
     bytes: Uint8Array.of(mode === 'backup-first' ? 1 : 2),
   });
   runtime.backupDirectoryHandle = {
@@ -1602,16 +1592,16 @@ test('large database files are read only after the app confirmation', async () =
 });
 
 test('new backups use the TeachHelper backup filename while legacy backups remain restorable', () => {
-  assert.match(runtimeSource, /function buildBackupFileName\(date = new Date\(\)\)/);
-  assert.match(runtimeSource, /getFileHandle\(buildBackupFileName\(this\.now\(\)\), \{ create: true \}\)/);
-  assert.match(runtimeSource, /downloadBytes\(built\.bytes, buildBackupFileName\(this\.now\(\)\)\)/);
-  assert.match(runtimeSource, /\^\(\?:Planung-Backup-\|TeachHelper-Backup-\)/);
+  assert.match(backupSource, /function buildBackupFileName\(date = new Date\(\)\)/);
+  assert.match(backupSource, /getFileHandle\(buildBackupFileName\(this\.now\(\)\), \{ create: true \}\)/);
+  assert.match(backupSource, /downloadBytes\(built\.bytes, buildBackupFileName\(this\.now\(\)\)\)/);
+  assert.match(backupSource, /\^\(\?:Planung-Backup-\|TeachHelper-Backup-\)/);
 });
 
 test('explicit database selection requires a fresh backup directory, while startup reconnect keeps it', () => {
-  assert.match(runtimeSource, /const preserveBackupDirectory = String\(mode \|\| ''\) === 'reconnect';[\s\S]*?this\.backupDirectoryHandle = null;/);
-  assert.match(runtimeSource, /await this\.removeStoredHandle\(HANDLE_BACKUP_KEY\);[\s\S]*?this\.controller\?\.markChanged\?\.\('shell'\);/);
-  assert.match(runtimeSource, /return this\.acceptWorkspaceSyncFileHandle\(handle, 'reconnect'\);/);
+  assert.match(persistenceSource, /const preserveBackupDirectory = String\(mode \|\| ''\) === 'reconnect';[\s\S]*?this\.clearBackupConnection\(\);/);
+  assert.match(persistenceSource, /await this\.removeStoredHandle\(HANDLE_BACKUP_KEY\);[\s\S]*?this\.markChanged\('shell'\);/);
+  assert.match(persistenceSource, /return this\.acceptWorkspaceSyncFileHandle\(handle, 'reconnect'\);/);
 });
 
 async function buildOrphanedVaultDatabase() {
@@ -1681,13 +1671,13 @@ test('ein unlesbares Notensegment darf beim Speichern nicht durch leere Daten er
 
 test('ein eingerichteter, aber gesperrter Notenbereich blockiert das Schreiben weiterhin', () => {
   assert.match(
-    runtimeSource,
+    repositorySource,
     /if \(this\.isGradeVaultConfigured\(\) && !this\.isGradeVaultUnlocked\(\)\) \{[\s\S]*?WORKSPACE_ERROR_VAULT_LOCKED/,
     'ein echtes Passwort-Schloss bleibt eine Schreibsperre - nur der unentsperrbare Zustand nicht',
   );
   assert.match(
-    runtimeSource,
-    /const text = this\.isGradeVaultUnlocked\(\)\s*\?\s*JSON\.stringify\(await encryptWorkspaceVaultText\(/,
+    vaultSource,
+    /this\.isGradeVaultUnlocked\(\)\s*\?\s*JSON\.stringify\(await encryptWorkspaceVaultText\(/,
     'verschluesselt wird nur mit einem tatsaechlich vorhandenen Schluessel',
   );
 });
@@ -1698,7 +1688,7 @@ test('ein unlesbarer Kurs bricht die Namenslern-Uebersicht nicht ab', async () =
   await runtime.loadBytes(bytes, 'manual');
   await assert.doesNotReject(() => runtime.refreshNameLearningDueSummary());
   assert.match(
-    runtimeSource,
+    repositorySource,
     /complete = false;\s*continue;/,
     'eine Uebersicht mit uebersprungenem Kurs darf sich nicht als vollstaendig ausgeben',
   );
@@ -1706,7 +1696,7 @@ test('ein unlesbarer Kurs bricht die Namenslern-Uebersicht nicht ab', async () =
 
 test('eine während der Aktualisierung gesperrte Notendatenbank erzeugt keine Kurswarnung', () => {
   assert.match(
-    runtimeSource,
+    repositorySource,
     /if \(error\?\.code === WORKSPACE_ERROR_VAULT_LOCKED \|\| !this\.canAccessGradeVault\(\)\) return false;/,
   );
 });

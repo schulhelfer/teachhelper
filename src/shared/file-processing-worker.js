@@ -1,7 +1,7 @@
 import { FILE_LIMITS, exceedsZipCompressionRatio } from "./file-guards.js";
 import { prepareDocxTemplate } from "./docx-template.js";
 
-const PDF_LIB_URL = new URL("../vendor/cantoo-pdf-lib/2.11.0/pdf-lib.min.js", import.meta.url);
+const PDF_LIB_URL = new URL("../vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js", import.meta.url);
 const JSZIP_URL = new URL("../vendor/jszip/3.10.2/jszip.min.js", import.meta.url);
 
 async function pdfLib() {

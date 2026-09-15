@@ -2,6 +2,14 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const repositorySource = await readFile(new URL('../src/modules/workspace/course-repository.js', import.meta.url), 'utf8');
+
+const vaultSource = await readFile(new URL('../src/modules/workspace/grade-vault.js', import.meta.url), 'utf8');
+
+const backupSource = await readFile(new URL('../src/modules/workspace/workspace-backup.js', import.meta.url), 'utf8');
+
+const persistenceSource = await readFile(new URL('../src/modules/workspace/workspace-persistence.js', import.meta.url), 'utf8');
+
 const fileActionsSource = await readFile(new URL('../src/app/classroom-file-actions.js', import.meta.url), 'utf8');
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
@@ -16,7 +24,7 @@ const [indexHtml, main, runtime, seatplanHtml, seatplan] = await Promise.all([
 const nativeBrowserDialog = /(?<![\w$.])(?:alert|confirm|prompt)\s*\(|(?:globalThis|window)\.(?:alert|confirm|prompt)\s*\(/;
 
 test('PWA paths have no native browser alert, confirm, or prompt calls', () => {
-  for (const source of [main, fileActionsSource, runtime, seatplan]) {
+  for (const source of [main, fileActionsSource, runtime, persistenceSource, backupSource, vaultSource, repositorySource, seatplan]) {
     assert.doesNotMatch(source, nativeBrowserDialog);
   }
 });
@@ -25,7 +33,7 @@ test('the shell export and large-file confirmation use the shared app dialog', (
   assert.match(indexHtml, /<dialog id="shell-action-dialog"[\s\S]*?id="shell-action-dialog-input"[\s\S]*?id="shell-action-dialog-cancel"[\s\S]*?id="shell-action-dialog-secondary"[\s\S]*?id="shell-action-dialog-confirm"/);
   assert.match(fileActionsSource, /shellActionDialog\.prompt\(\{[\s\S]*?title: 'Dateiname festlegen'[\s\S]*?defaultValue: defaultName/);
   assert.match(fileActionsSource, /shellActionDialog\.choose\(\{[\s\S]*?title: 'Picker speichern'[\s\S]*?confirmValue: 'grades'/);
-  assert.match(runtime, /await this\.confirmLargeFile\?\.\(\{[\s\S]*?formattedSize: formatFileSize\(size\)/);
+  assert.match(persistenceSource, /await this\.confirmLargeFile\(\{[\s\S]*?formattedSize: formatFileSize\(size\)/);
   assert.doesNotMatch(runtime, /globalThis\.confirm/);
 });
 

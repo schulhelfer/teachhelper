@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '110';
+const TEACHHELPER_APP_VERSION_STAMP = '111';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -121,6 +121,10 @@ const APP_SHELL = [
   './src/modules/grades/competence-expectations-template.docx',
   './src/modules/workspace/index.js',
   './src/modules/workspace/runtime.js',
+  './src/modules/workspace/course-repository.js',
+  './src/modules/workspace/grade-vault.js',
+  './src/modules/workspace/workspace-persistence.js',
+  './src/modules/workspace/workspace-backup.js',
   './src/modules/workspace/archive-pdf.js',
   './src/modules/workspace/local-value-store.js',
   './src/modules/workspace/client.js',
@@ -168,8 +172,8 @@ const DEFERRED_ASSETS = [
   './src/modules/qr/vendor/jsQR.js',
   './src/vendor/jszip/3.10.2/jszip.min.js',
   './src/vendor/jszip/3.10.2/LICENSE.markdown',
-  './src/vendor/cantoo-pdf-lib/2.11.0/pdf-lib.min.js',
-  './src/vendor/cantoo-pdf-lib/2.11.0/LICENSE.md',
+  './src/vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js',
+  './src/vendor/cantoo-pdf-lib/2.11.1/LICENSE.md',
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs',
   './src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs',
   './src/vendor/pdfjs-dist/6.3.289/LICENSE',

@@ -47,7 +47,7 @@ test('die drei Passwortabläufe haben feste, getrennte Browserformulare', () => 
 });
 
 test('neue Vault-Passwörter müssen mindestens zwölf Zeichen haben', async () => {
-  const runtimeSource = await readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8');
+  const vaultSource = await readFile(new URL('../src/modules/workspace/grade-vault.js', import.meta.url), 'utf8');
 
   assert.match(appSource, /const GRADE_VAULT_PASSWORD_MIN_LENGTH = 12;/);
   assert.match(html, /id="grade-vault-unlock-password"[^>]*minlength="10"/);
@@ -55,7 +55,7 @@ test('neue Vault-Passwörter müssen mindestens zwölf Zeichen haben', async () 
   assert.match(html, /id="grade-vault-setup-confirm-password"[^>]*minlength="12"/);
   assert.match(html, /id="grade-vault-change-password"[^>]*minlength="12"/);
   assert.match(html, /id="grade-vault-change-confirm-password"[^>]*minlength="12"/);
-  assert.match(runtimeSource, /String\(password \|\| ''\)\.length < 12/);
+  assert.match(vaultSource, /String\(password \|\| ''\)\.length < 12/);
 });
 
 test('der Entsperrmodus macht die Grades-Shell vor dem Öffnen des Dialogs technisch sichtbar', () => {

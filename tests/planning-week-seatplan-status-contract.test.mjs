@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const repositorySource = await readFile(new URL('../src/modules/workspace/course-repository.js', import.meta.url), 'utf8');
+
 const appSource = await readFile(
   new URL('../src/modules/planning/app.js', import.meta.url),
   'utf8',
@@ -67,7 +69,7 @@ const getSeatplanNavigationStateForLesson = Function(
 )('Kurs-Sitzplan öffnen', '⚠️', SEATPLAN_STATUS_CLASSES, PERFORMANCE_STATUS_SYMBOLS, 'Notenmodul ist gesperrt');
 
 const courseStateHasSeatPlan = Function(
-  `"use strict"; ${extractTopLevelFunction(runtimeSource, 'courseStateHasSeatPlan')} return courseStateHasSeatPlan;`,
+  `"use strict"; ${extractTopLevelFunction(repositorySource, 'courseStateHasSeatPlan')} return courseStateHasSeatPlan;`,
 )();
 
 function createHarness({ resolvedCourseIds = [7], seatplanCourseIds = [7], hasAssessment = false, locked = false } = {}) {
@@ -162,9 +164,9 @@ test('nur ein echt gespeicherter Sitzplan zählt als vorhanden', () => {
 });
 
 test('die Sitzplan-Präsenz reist auf dem vorhandenen Leistungs-Index mit', () => {
-  assert.match(runtimeSource, /this\.seatplanPresenceCache = new Map\(\);/);
+  assert.match(repositorySource, /this\.seatplanPresenceCache = new Map\(\);/);
   assert.match(
-    runtimeSource,
+    repositorySource,
     /this\.performanceIndexCache\.set\(id, items\);\s+this\.seatplanPresenceCache\.set\(id, courseStateHasSeatPlan\(state\)\);/,
     'rememberPerformanceIndex muss beide Caches füllen, damit alle Aufrufstellen abgedeckt sind',
   );
@@ -174,10 +176,10 @@ test('die Sitzplan-Präsenz reist auf dem vorhandenen Leistungs-Index mit', () =
     /seatplanCourseIds: this\.buildSeatplanCourseIds\(\[\.\.\.this\.performanceIndexCache\.keys\(\)\]\),/,
   );
 
-  const clears = runtimeSource.match(/this\.performanceIndexCache\.clear\(\);\s+this\.seatplanPresenceCache\.clear\(\);/g) || [];
+  const clears = repositorySource.match(/this\.performanceIndexCache\.clear\(\);\s+this\.seatplanPresenceCache\.clear\(\);/g) || [];
   assert.equal(clears.length, 2, 'beide Reset-Stellen müssen den Sitzplan-Cache mitleeren');
   assert.match(
-    runtimeSource,
+    repositorySource,
     /this\.performanceIndexCache\.delete\(courseId\);\s+this\.seatplanPresenceCache\.delete\(courseId\);/,
   );
 

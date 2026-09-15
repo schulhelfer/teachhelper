@@ -2,10 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [storeSource, appSource, runtimeSource, htmlSource, cssSource] = await Promise.all([
+const [storeSource, appSource, repositorySource, htmlSource, cssSource] = await Promise.all([
   readFile(new URL('../src/modules/workspace/store.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/workspace/course-repository.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.css', import.meta.url), 'utf8'),
 ]);
@@ -63,6 +63,6 @@ test('settings provide complete category management and protected deletion', () 
   assert.match(appSource, /commitVisibleGradesEntryMetadataInputs[\s\S]*?occurrenceCategorySelect[\s\S]*?occurrenceCategoryId: mode === "homework"/);
   assert.match(appSource, /getGradesEntryDraft[\s\S]*?mode,[\s\S]*?occurrenceCategoryId: this\.resolveGradeOccurrenceCategoryId\(previous\.occurrenceCategoryId\)/);
   assert.match(appSource, /WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY/);
-  assert.match(runtimeSource, /async deleteOccurrenceCategoryData\(categoryId\)[\s\S]*?gradeEntries = this\.store\.gradeVaultState\.gradeEntries[\s\S]*?filter/);
-  assert.match(runtimeSource, /WORKSPACE_ERROR_VAULT_LOCKED/);
+  assert.match(repositorySource, /async deleteOccurrenceCategoryData\(categoryId\)[\s\S]*?gradeEntries = this\.store\.gradeVaultState\.gradeEntries[\s\S]*?filter/);
+  assert.match(repositorySource, /WORKSPACE_ERROR_VAULT_LOCKED/);
 });

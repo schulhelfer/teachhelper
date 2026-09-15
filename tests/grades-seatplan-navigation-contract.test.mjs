@@ -2,12 +2,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [index, app, seatplanApp, seatplanHtml, runtime, shell] = await Promise.all([
+const [index, app, seatplanApp, seatplanHtml, repository, shell] = await Promise.all([
   readFile(new URL('../src/modules/grades/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/seatplan/app.html', import.meta.url), 'utf8'),
-  readFile(new URL('../src/modules/workspace/runtime.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/workspace/course-repository.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
 ]);
 
@@ -93,6 +93,6 @@ test('switching a seatplan course reads a course snapshot without swapping the a
 });
 
 test('a course snapshot waits for an in-flight grades course load before reading the roster', () => {
-  const snapshot = runtime.match(/\n  async getGradeCourseStateSnapshot\(courseId\) \{([\s\S]*?)\n  setGradeCourseStudentCounts\(/)?.[1] || '';
+  const snapshot = repository.match(/\n  async getGradeCourseStateSnapshot\(courseId\) \{([\s\S]*?)\n  setGradeCourseStudentCounts\(/)?.[1] || '';
   assert.match(snapshot, /await this\.courseLoadTail/);
 });

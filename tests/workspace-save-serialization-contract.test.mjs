@@ -22,7 +22,7 @@ test('explizite und automatische Datenbank-Speicherungen werden serialisiert', (
   assert.match(enqueueSource, /this\.operationTail = operation\.catch\(\(\) => undefined\)/);
 
   const autoSaveStart = runtimeSource.indexOf("  queueSyncSave(reason = 'auto-save')");
-  const autoSaveEnd = runtimeSource.indexOf('\n  async saveManualDatabase()', autoSaveStart);
+  const autoSaveEnd = runtimeSource.indexOf('\n  saveManualDatabase(', autoSaveStart);
   assert.ok(autoSaveStart >= 0 && autoSaveEnd > autoSaveStart, 'queueSyncSave must exist');
   const autoSaveSource = runtimeSource.slice(autoSaveStart, autoSaveEnd);
   assert.match(autoSaveSource, /this\.enqueueConnectedFileSave\(reason\)/);

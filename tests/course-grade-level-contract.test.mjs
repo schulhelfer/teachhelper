@@ -2,6 +2,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
+const persistenceSource = await readFile(new URL('../src/modules/workspace/workspace-persistence.js', import.meta.url), 'utf8');
+
 const [schoolDataSource, storeSource, runtimeSource, planningSource, planningHtml, gradesSource, gradesHtml] = await Promise.all([
   readFile(new URL('../src/shared/school-data/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/workspace/store.js', import.meta.url), 'utf8'),
@@ -41,7 +43,7 @@ test('Store und Workspace speichern den Jahrgang und leeren ihn für Termine ohn
   assert.match(storeSource, /gradeLevel: cleanGradeLevel,/);
   assert.match(storeSource, /course\.gradeLevel = courseNoLesson\s*\? null/);
   assert.match(storeSource, /course\.gradeLevel = isNoLesson \? null : normalizeCourseGradeLevel\(course\.gradeLevel\);/);
-  assert.match(runtimeSource, /gradeLevel: Number\.isInteger\(Number\(course\.gradeLevel\)\) \? Number\(course\.gradeLevel\) : null,/);
+  assert.match(persistenceSource, /gradeLevel: Number\.isInteger\(Number\(course\.gradeLevel\)\) \? Number\(course\.gradeLevel\) : null,/);
   assert.match(runtimeSource, /payload\.subject, payload\.gradeLevel/);
   assert.match(runtimeSource, /value\('subject', current\.subject\), value\('gradeLevel', current\.gradeLevel\)/);
 });
