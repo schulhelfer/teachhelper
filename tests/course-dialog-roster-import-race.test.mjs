@@ -112,8 +112,8 @@ function createHarness(candidates) {
     refs: { courseDialogRosterPills: pills, courseStudentsImportRow: importRow },
     canAccessGradeVault() { return true; },
     listCourseDialogRosterImportCandidates() { return candidates; },
-    getWorkspaceOwnerApp() {
-      return {
+    get workspaceClient() {
+      return { operations: {
         getGradeCourseRosterSummary: (courseId) => {
           const id = Number(courseId);
           startedSummaries.push(id);
@@ -121,7 +121,7 @@ function createHarness(candidates) {
             pendingSummaries.set(id, { resolve, reject });
           });
         },
-      };
+      } };
     },
   };
   return { harness, pendingSummaries, startedSummaries, pills, importRow };

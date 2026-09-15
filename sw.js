@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '109';
+const TEACHHELPER_APP_VERSION_STAMP = '110';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -124,6 +124,7 @@ const APP_SHELL = [
   './src/modules/workspace/archive-pdf.js',
   './src/modules/workspace/local-value-store.js',
   './src/modules/workspace/client.js',
+  './src/modules/workspace/public-api.js',
   './src/modules/workspace/components.js',
   './src/modules/workspace/crypto.js',
   './src/modules/workspace/store.js',

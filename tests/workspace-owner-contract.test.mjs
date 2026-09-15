@@ -27,7 +27,7 @@ const workspaceSource = (await readFile(
   "from '../../shared/school-data/messages.js';",
   `from '${messagesUrl}';`,
 ).replace("import { WorkspaceStore } from './store.js';", 'class WorkspaceStore {}')
-  .replace("from './runtime.js';", `from '${runtimeUrl}';`);
+  .replace("from './runtime.js';", `from '${runtimeUrl}';`).replace("from './public-api.js';", `from '${new URL('../src/modules/workspace/public-api.js', import.meta.url).href}';`);
 const [{ createWorkspaceController }, { WORKSPACE_STATE_EVENT }] = await Promise.all([
   import(`data:text/javascript;base64,${Buffer.from(workspaceSource).toString('base64')}`),
   import(messagesUrl),

@@ -27,10 +27,12 @@ import {
   normalizePublicSchoolData,
   QUALIFICATION_PHASE_END_DATE_KEYS
 } from "../../shared/school-data/index.js";
-import { createWorkspaceClient } from "../workspace/client.js";
-import { createWorkspaceController } from "../workspace/index.js";
-import { installWorkspaceComponents } from "../workspace/components.js";
-import { buildWorkspaceArchivePdfBytes, downloadWorkspaceArchivePdf } from "../workspace/archive-pdf.js";
+import {
+  createFeatureWorkspaceClient,
+  installWorkspaceComponents,
+  buildWorkspaceArchivePdfBytes,
+  downloadWorkspaceArchivePdf
+} from "../workspace/client.js";
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
   WORKSPACE_COMMAND_CREATE_COURSE,
@@ -142,19 +144,6 @@ const TUTORIAL_DEMO_MODE = (() => {
   }
 })();
 
-function getParentWorkspaceController() {
-  if (TUTORIAL_DEMO_MODE || typeof window === "undefined" || !window.parent || window.parent === window) {
-    return null;
-  }
-  try {
-    if (window.parent.location.origin !== window.location.origin) {
-      return null;
-    }
-    return window.parent.__teachhelperWorkspaceController || null;
-  } catch (_error) {
-    return null;
-  }
-}
 
 function randomId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -785,7 +774,7 @@ function seedTutorialDemoStore(store) {
       .length >= topics.length;
   };
   const weekStarts = [...new Set(
-    store.state.lessons
+    store.listLessons()
       .filter((lesson) => Number(lesson.courseId) === Number(courseId))
       .map((lesson) => weekStartFor(lesson.lessonDate))
   )];
@@ -795,7 +784,7 @@ function seedTutorialDemoStore(store) {
     ...weekStarts.filter((candidate) => candidate < currentWeek),
   ].find(isTeachingWeek) || currentWeek;
   const weekEnd = addDays(weekStart, 4);
-  store.state.lessons
+  store.listLessons()
     .filter((lesson) => (
       Number(lesson.courseId) === Number(courseId)
       && lesson.lessonDate >= weekStart
@@ -813,17 +802,12 @@ function seedTutorialDemoStore(store) {
 class PlanningApp {
   constructor() {
     this.tutorialDemoMode = TUTORIAL_DEMO_MODE;
-    this.workspaceController = getParentWorkspaceController()
-      || createWorkspaceController({
-        eventTarget: window,
-        ephemeral: true
-      });
-    this.workspaceClient = this.workspaceController
-      ? createWorkspaceClient(this.workspaceController, "planning", `planning-frame:${randomId()}`)
-      : null;
-    const sharedWorkspaceStore = this.workspaceController?.getStore?.() || null;
-    if (!sharedWorkspaceStore) throw new Error("Neutraler Workspace-Store ist nicht verfügbar.");
-    this.store = sharedWorkspaceStore;
+    this.workspaceClient = createFeatureWorkspaceClient("planning", {
+      targetWindow: window,
+      isolated: Boolean(this.tutorialDemoMode),
+      id: `planning-frame:${randomId()}`
+    });
+    this.store = this.workspaceClient.data;
     const tutorialDemo = this.tutorialDemoMode ? seedTutorialDemoStore(this.store) : null;
     this.tutorialDemoCourseId = tutorialDemo?.courseId || null;
     this.weekStartIso = tutorialDemo?.weekStart || currentWeekStartForDisplay();
@@ -1073,7 +1057,7 @@ class PlanningApp {
     this.inlineTopicDraft = "";
     this.courseDialogDraft = null;
     this.archiveExportInProgress = false;
-    this.workspacePublicLoaded = Boolean(this.tutorialDemoMode || this.workspaceController?.isReady?.());
+    this.workspacePublicLoaded = Boolean(this.tutorialDemoMode || this.workspaceClient?.isReady?.());
     this.pendingWeekPerformanceIndexLoadKey = "";
     this.performanceIndex = new Map();
     this.seatplanCourseIds = new Set();
@@ -1092,8 +1076,8 @@ class PlanningApp {
     this.courseColorDialogDefaultColor = this.courseDialogSelectedColor;
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.settingsDirty = false;
-    this.workspaceRevision = Math.max(0, Number(this.workspaceController?.getRevision?.()) || 0);
-    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.());
+    this.workspaceRevision = Math.max(0, Number(this.workspaceClient?.getRevision?.()) || 0);
+    this.workspaceHydrated = Boolean(this.workspaceClient?.isReady?.());
     this.settingsDraftRevision = this.workspaceRevision;
     this.syncMeta = this.tutorialDemoMode ? {
       deviceId: "tutorial-demo",
@@ -1147,8 +1131,10 @@ class PlanningApp {
     };
     this.beforeUnloadWarningEnabled = false;
     this.lastAutoBackupAt = String(this.store.getLastAutoBackupAt?.() || "");
-    if (this.workspaceController) {
-      this.unregisterWorkspaceFeatureClient = this.workspaceController.registerFeatureClient?.('planning', this);
+    if (this.workspaceClient) {
+      this.unregisterWorkspaceFeatureClient = this.workspaceClient.registerFeatureClient({
+        collectArchivePlanningSections: (...args) => this.collectArchivePlanningSections(...args)
+      });
       this.unregisterWorkspaceClient = this.workspaceClient?.subscribe(
         "planning",
         (detail) => this.handleWorkspaceState(detail)
@@ -1245,13 +1231,9 @@ class PlanningApp {
     return true;
   }
 
-  getWorkspaceRuntime() {
-    return this.workspaceController?.getOwner?.() || null;
-  }
-
   async refreshSidebarCourseStudentCounts() {
     const refreshToken = ++this.courseStudentCountsRefreshToken;
-    const workspaceOwner = this.getWorkspaceRuntime();
+    const workspaceOwner = this.workspaceClient.operations;
     if (!workspaceOwner?.canAccessGradeVault?.()) {
       if (this.courseStudentCounts.size) {
         this.courseStudentCounts.clear();
@@ -1281,7 +1263,7 @@ class PlanningApp {
   }
 
   getArchiveVaultStatus() {
-    const snapshot = this.workspaceController?.getSnapshot?.("shell");
+    const snapshot = this.workspaceClient?.getSnapshot?.("shell");
     return snapshot?.vault && typeof snapshot.vault === "object"
       ? snapshot.vault
       : { encryptionEnabled: true, unlocked: false };
@@ -1322,7 +1304,7 @@ class PlanningApp {
       return { ok: false, code: "UNSUPPORTED", message: "Workspace ist nicht verfügbar." };
     }
     const result = await this.workspaceClient.execute(command, payload, {
-      baseRevision: options?.baseRevision ?? this.workspaceRevision ?? this.workspaceController?.getRevision?.()
+      baseRevision: options?.baseRevision ?? this.workspaceRevision ?? this.workspaceClient?.getRevision?.()
     });
     this.workspaceRevision = Math.max(this.workspaceRevision || 0, Number(result?.revision) || 0);
     return result;
@@ -1492,7 +1474,7 @@ class PlanningApp {
         .filter((course) => !course.noLesson)
         .map((course) => Number(course.id))
     );
-    const lesson = this.store.state.lessons.find((item) => (
+    const lesson = this.store.listLessons().find((item) => (
       courseIds.has(Number(item.courseId)) && !item.canceled && !item.noLesson
     )) || null;
     if (lesson) {
@@ -1695,7 +1677,7 @@ class PlanningApp {
   }
 
   async ensurePlanningPublicLoaded() {
-    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.());
+    this.workspaceHydrated = Boolean(this.workspaceClient?.isReady?.());
     return this.getCurrentPublicStateSnapshot();
   }
 
@@ -1783,7 +1765,7 @@ class PlanningApp {
   }
 
   async selectSyncFile(mode = "existing", options = {}) {
-    if (!this.workspaceController) return false;
+    if (!this.workspaceClient) return false;
     try {
       if (mode === "new-empty") {
         if (typeof window.showDirectoryPicker !== "function") {
@@ -2147,46 +2129,6 @@ class PlanningApp {
     this.dispatchPlanningUnsavedState();
   }
 
-  applyValidatedSettingsDraftToStore(draft, normalizedLessonTimes) {
-    const beforeState = this.getCurrentPublicStateSnapshot();
-    let committed = false;
-    this.store._suspendSaveHooks();
-    try {
-      this.store.setHoursPerDay(draft.hoursPerDay);
-      this.store.setLessonTimes(normalizedLessonTimes, draft.hoursPerDay);
-      this.store.setSetting("showHiddenSidebarCourses", Boolean(draft.showHiddenSidebarCourses));
-      this.store.setSetting("showHalfYearBoundaryMarkers", Boolean(draft.showHalfYearBoundaryMarkers));
-      this.store.setBackupEnabled(draft.backupEnabled);
-      this.store.setBackupIntervalDays(draft.backupIntervalDays);
-      if (
-        Number(this.store.getHoursPerDay()) !== Number(draft.hoursPerDay)
-        || !lessonTimesEqual(
-          this.store.getLessonTimes(draft.hoursPerDay),
-          normalizedLessonTimes,
-          draft.hoursPerDay
-        )
-        || Boolean(this.store.getSetting("showHiddenSidebarCourses", SHOW_HIDDEN_SIDEBAR_COURSES_DEFAULT))
-          !== Boolean(draft.showHiddenSidebarCourses)
-        || Boolean(this.store.getSetting("showHalfYearBoundaryMarkers", SHOW_HALF_YEAR_BOUNDARY_MARKERS_DEFAULT))
-          !== Boolean(draft.showHalfYearBoundaryMarkers)
-        || Boolean(this.store.getBackupEnabled()) !== Boolean(draft.backupEnabled)
-        || Number(this.store.getBackupIntervalDays()) !== Number(draft.backupIntervalDays)
-      ) {
-        throw new Error("Einstellungen konnten nicht vollständig übernommen werden.");
-      }
-      committed = true;
-    } catch (error) {
-      this.store.state = this.store.normalizePublicState(beforeState);
-      this.store.pendingPublicSaveNotification = false;
-      throw error;
-    } finally {
-      this.store._resumeSaveHooks({ flush: committed });
-      if (!committed) {
-        this.store.pendingPublicSaveNotification = false;
-      }
-    }
-  }
-
   async applySettingsDraftToStore() {
     const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
     if (!this.workspacePublicLoaded) {
@@ -2201,8 +2143,8 @@ class PlanningApp {
       this.renderLessonTimesSection();
       return false;
     }
-    if (this.workspaceController) {
-      if (!this.workspaceHydrated || !this.workspaceController.isReady?.()) {
+    if (this.workspaceClient) {
+      if (!this.workspaceHydrated || !this.workspaceClient.isReady?.()) {
         await this.showInfoMessage("Der gemeinsame Datenstand wird noch geladen. Einstellungen wurden nicht gespeichert.");
         return false;
       }
@@ -2220,12 +2162,6 @@ class PlanningApp {
         return false;
       }
       this.settingsDraftRevision = Math.max(0, Number(result.revision) || this.workspaceRevision || 0);
-    } else {
-      this.applyValidatedSettingsDraftToStore(draft, lessonTimesValidation.normalized);
-      this.settingsDraftRevision = Math.max(
-        0,
-        Number(this.workspaceController?.getRevision?.()) || Number(this.workspaceRevision) || 0
-      );
     }
     if (this.store.getBackupEnabled()) {
       void this.maybeRunAutomaticWebBackup();
@@ -2243,7 +2179,7 @@ class PlanningApp {
     this.settingsDirty = false;
     this.settingsDraftRevision = Math.max(
       0,
-      Number(this.workspaceController?.getRevision?.()) || Number(this.workspaceRevision) || 0
+      Number(this.workspaceClient?.getRevision?.()) || Number(this.workspaceRevision) || 0
     );
     this.renderDisplaySection();
     this.renderLessonTimesSection();
@@ -2468,7 +2404,7 @@ class PlanningApp {
   }
 
   isAccessLocked() {
-    if (this.workspaceController && !this.workspaceHydrated) {
+    if (this.workspaceClient && !this.workspaceHydrated) {
       return true;
     }
     const year = this.activeSchoolYear;
@@ -3277,7 +3213,7 @@ class PlanningApp {
       return;
     }
     const numericId = Number(courseId || 0);
-    this.courseDialogBaseRevision = this.workspaceController?.getRevision?.() ?? this.workspaceRevision ?? 0;
+    this.courseDialogBaseRevision = this.workspaceClient?.getRevision?.() ?? this.workspaceRevision ?? 0;
     const course = numericId
       ? this.store.listCourses(year.id).find((item) => item.id === numericId)
       : null;
@@ -3560,7 +3496,7 @@ class PlanningApp {
     if (id) {
       let ok = false;
       let commandResult = null;
-      if (this.workspaceController) {
+      if (this.workspaceClient) {
         commandResult = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_UPDATE_COURSE, {
           schoolYearId: year.id,
           courseId: id,
@@ -3586,7 +3522,7 @@ class PlanningApp {
     } else {
       let created = null;
       let commandResult = null;
-      if (this.workspaceController) {
+      if (this.workspaceClient) {
         commandResult = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_CREATE_COURSE, {
           schoolYearId: year.id,
           name,
@@ -3628,7 +3564,7 @@ class PlanningApp {
     if (!this.workspacePublicLoaded) {
       await this.ensurePlanningPublicLoaded();
     }
-    const baseRevision = this.workspaceController?.getRevision?.() ?? this.workspaceRevision ?? 0;
+    const baseRevision = this.workspaceClient?.getRevision?.() ?? this.workspaceRevision ?? 0;
     if (!await this.showConfirmMessage("Soll dieser Kurs wirklich gelöscht werden?", {
       title: "Kurs löschen",
       okText: "Kurs wirklich löschen",
@@ -3636,7 +3572,7 @@ class PlanningApp {
     })) {
       return false;
     }
-    if (this.workspaceController) {
+    if (this.workspaceClient) {
       const result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_DELETE_COURSE, {
         courseId: id,
         destructive: true
@@ -5388,7 +5324,7 @@ class PlanningApp {
     }
     if (!this.workspacePublicLoaded) {
       void this.ensurePlanningPublicLoaded().then(async () => {
-        if (this.workspaceController) {
+        if (this.workspaceClient) {
           await this.executeWorkspaceCommand(WORKSPACE_COMMAND_REORDER_COURSES, {
             schoolYearId: year.id,
             orderedIds
@@ -5405,7 +5341,7 @@ class PlanningApp {
       });
       return;
     }
-    if (this.workspaceController) {
+    if (this.workspaceClient) {
       await this.executeWorkspaceCommand(WORKSPACE_COMMAND_REORDER_COURSES, {
         schoolYearId: year.id,
         orderedIds
@@ -7050,7 +6986,7 @@ class PlanningApp {
   }
 
   getDefaultInitialSchoolYearStartYear() {
-    const fromRuntime = Number(this.getWorkspaceRuntime()?.getDefaultSchoolYearStartYear?.());
+    const fromRuntime = Number(this.workspaceClient.operations?.getDefaultSchoolYearStartYear?.());
     if (Number.isInteger(fromRuntime)) return fromRuntime;
     const today = new Date();
     return today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
@@ -7077,7 +7013,7 @@ class PlanningApp {
   }
 
   async prepareEmptyDatabaseRestart() {
-    const workspaceUnsaved = this.workspaceController?.getSnapshot?.("shell")?.unsaved || {};
+    const workspaceUnsaved = this.workspaceClient?.getSnapshot?.("shell")?.unsaved || {};
     const hasUnsavedChanges = Boolean(workspaceUnsaved.dirty || this.settingsDirty);
     if (hasUnsavedChanges) {
       const choice = await this.showChoiceMessage(
@@ -8321,7 +8257,7 @@ class PlanningApp {
     this.syncArchiveDialogState();
     let archiveCreated = false;
     try {
-      if (this.workspaceController) {
+      if (this.workspaceClient) {
         this.setArchiveDialogStatus("PDF wird erstellt ...");
         await this.executeWorkspaceAction("archive-generate", { options });
         this.setArchiveDialogStatus("PDF wurde erstellt.", "ok");
@@ -8634,7 +8570,7 @@ class PlanningApp {
     const year = this.activeSchoolYear;
     const id = Number(courseId || 0);
     if (!year || !id) return false;
-    if (this.workspaceController) {
+    if (this.workspaceClient) {
       const result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_UPDATE_COURSE, {
         schoolYearId: year.id,
         courseId: id,
@@ -8642,7 +8578,7 @@ class PlanningApp {
         bulk: options.bulk === true
       }, {
         baseRevision: options.baseRevision
-          ?? this.workspaceController.getRevision?.()
+          ?? this.workspaceClient.getRevision?.()
           ?? this.workspaceRevision
           ?? 0
       });
@@ -8838,7 +8774,7 @@ class PlanningApp {
     this.pendingWeekPerformanceIndexLoadKey = requestKey;
     void (async () => {
       try {
-        if (this.workspaceController) {
+        if (this.workspaceClient) {
           const result = await this.executeWorkspaceCommand(
             WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
             { courseIds: missingCourseIds }

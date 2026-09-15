@@ -28,7 +28,7 @@ import {
   isTrustedModuleMessage,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
-import { WORKSPACE_GLOBAL_KEY } from '../workspace/index.js';
+import { getWorkspaceClient } from '../workspace/client.js';
 
 const GRADES_URL = new URL('./app.html', import.meta.url);
 
@@ -92,7 +92,7 @@ export function mountGrades({ host } = {}) {
 
   const registerWorkspaceMessageSource = () => {
     unregisterWorkspaceMessageSource?.();
-    unregisterWorkspaceMessageSource = window[WORKSPACE_GLOBAL_KEY]
+    unregisterWorkspaceMessageSource = getWorkspaceClient(window)
       ?.registerMessageSource?.(frame.contentWindow, 'grades') || null;
   };
 

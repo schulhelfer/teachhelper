@@ -831,15 +831,14 @@ for module_name in ('grades', 'planning'):
   if not app_path.exists():
     continue
   app_body = app_path.read_text(encoding='utf-8', errors='ignore')
-  fallback = re.search(
-    r'getParentWorkspaceController\(\)\s*\|\|\s*createWorkspaceController\(\{.*?\}\)',
-    app_body,
-    flags=re.DOTALL,
-  )
-  if not fallback:
-    errors.append(f'missing workspace controller fallback in {rel(app_path)}')
-  elif not re.search(r'ephemeral:\s*true', fallback.group(0)):
-    errors.append(f'standalone workspace fallback must stay ephemeral in {rel(app_path)}')
+  if not re.search(r'createFeatureWorkspaceClient\(', app_body):
+    errors.append(f'missing public workspace client in {rel(app_path)}')
+  if re.search(r'\b(?:getStore|getOwner)\b|workspace/(?!client\.js)[^\s"\']+\.js', app_body):
+    errors.append(f'feature accesses workspace internals in {rel(app_path)}')
+
+workspace_client_body = (ROOT / 'src/modules/workspace/client.js').read_text(encoding='utf-8')
+if not re.search(r'createWorkspaceController\(\{[^}]*ephemeral:\s*true', workspace_client_body):
+  errors.append('standalone workspace client fallback must stay ephemeral')
 
 camera_allow_allowed_paths = {bridge_path, qr_index_path}
 for path in iter_source_files():

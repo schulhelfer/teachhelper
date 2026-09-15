@@ -1,3 +1,4 @@
+import { getWorkspaceClient } from '../modules/workspace/client.js';
 import {
   createModuleMessageRouter,
   SIDEBAR_WIDTH_SCOPE_OTHER,
@@ -168,7 +169,7 @@ export function createModuleShellCoordinator({
             window.dispatchEvent(new CustomEvent(PLANNING_VIEW_REQUEST_EVENT, { detail }));
           },
           onNameLearningRequest: (type, detail) => {
-            window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
+            getWorkspaceClient(window)?.operations.recordGradeVaultActivity?.();
             document.dispatchEvent(new CustomEvent(type, { detail }));
           },
           onNameLearningManageStudentsRequest: (detail) => {
@@ -208,7 +209,7 @@ export function createModuleShellCoordinator({
             getBridgeController()?.dispatchGradesNavigation?.(detail);
           },
           onGradeVaultActivity: () => {
-            window.__teachhelperWorkspaceController?.getOwner?.().recordGradeVaultActivity?.();
+            getWorkspaceClient(window)?.operations.recordGradeVaultActivity?.();
           },
           onGradeVaultRequest: (detail) => {
             getBridgeController()?.requestGradeVault?.(detail);

@@ -1,3 +1,4 @@
+import { getWorkspaceClient } from '../modules/workspace/client.js';
 import { createAppDom } from './dom.js';
 import { createClassroomState } from './classroom-state.js';
 import { createCourseContext } from './course-context.js';
@@ -339,9 +340,9 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   }
 
   function isGuardBackupPossible() {
-    const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
+    const workspaceOwner = getWorkspaceClient(window)?.operations;
     const databaseConnected = Boolean(workspaceOwner?.hasShellDatabaseConnection?.());
-    const backupDirectoryConnected = Boolean(workspaceOwner?.backupState?.directoryHandle);
+    const backupDirectoryConnected = Boolean(workspaceOwner?.getPersistenceView().backup.connected);
     return databaseConnected && backupDirectoryConnected;
   }
 
@@ -352,7 +353,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   }
 
   async function runGuardBackup(mode) {
-    const workspaceOwner = window.__teachhelperWorkspaceController?.getOwner?.();
+    const workspaceOwner = getWorkspaceClient(window)?.operations;
     if (!isGuardBackupPossible()) {
       return { ok: true, skipped: true, reason: '' };
     }
@@ -527,7 +528,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     },
     onRegisterCleanup: registerCleanup,
   });
-  const initialWorkspaceSnapshot = window.__teachhelperWorkspaceController?.getSnapshot?.('shell');
+  const initialWorkspaceSnapshot = getWorkspaceClient(window)?.getSnapshot('shell');
   if (initialWorkspaceSnapshot?.vault) {
     shellController.setPlanningGradeVaultState({
       ...initialWorkspaceSnapshot.vault,

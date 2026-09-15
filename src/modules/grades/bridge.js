@@ -125,6 +125,7 @@
     if (data.type === SHELL_LAYOUT_EVENT) {
       const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
       document.documentElement.dataset.shellCollapsed = detail && detail.collapsed ? 'true' : 'false';
+      window.dispatchEvent(new CustomEvent(SHELL_LAYOUT_EVENT, { detail }));
       return;
     }
     if (data.type === CONTEXT_MENU_DISMISS_EVENT) {

@@ -37,7 +37,7 @@ test('autosave before locking requires a direct connection and explains which ch
   assert.doesNotMatch(toggle, /\bchecked\b/);
   assert.match(toggle, /aria-describedby="grade-vault-auto-save-before-lock-hint"/);
   assert.match(html, /Offene Eingabeentwürfe werden\s+nicht übernommen/);
-  assert.match(appSource, /const autoSaveDisabled = autoLockSettingsDisabled \|\| unsupported \|\| !persistenceSyncState\.fileHandle;/);
+  assert.match(appSource, /const autoSaveDisabled = autoLockSettingsDisabled \|\| unsupported \|\| !persistenceSyncState\.connected;/);
   assert.match(appSource, /gradeVaultAutoSaveBeforeLock\.disabled = autoSaveDisabled/);
 });
 

@@ -352,13 +352,9 @@ test('der Schalter durchläuft den vollständigen Einstellungs-Lebenszyklus', ()
   assert.match(extractClassMethod('applySettingsDefaultsForActiveTab'), key);
   assert.match(extractClassMethod('renderDisplaySection'), key);
 
-  const applyDraft = extractClassMethod('applyValidatedSettingsDraftToStore');
-  assert.match(applyDraft, /this\.store\.setSetting\("showHalfYearBoundaryMarkers", Boolean\(draft\.showHalfYearBoundaryMarkers\)\);/);
-  assert.match(
-    applyDraft,
-    /\|\| Boolean\(this\.store\.getSetting\("showHalfYearBoundaryMarkers"[\s\S]*?\n\s+!== Boolean\(draft\.showHalfYearBoundaryMarkers\)/,
-    'die Nachprüfung nach dem Speichern muss den Schalter einschließen',
-  );
+  const applyDraft = extractClassMethod('applySettingsDraftToStore');
+  assert.match(applyDraft, /WORKSPACE_COMMAND_APPLY_SETTINGS/);
+  assert.match(applyDraft, /settings: cloneJsonValue\(draft, \{\}\)/);
 
   assert.match(
     extractClassMethod('renderDisplaySection'),

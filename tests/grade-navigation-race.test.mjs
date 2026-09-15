@@ -91,15 +91,15 @@ function createHarness() {
     gradeVaultSession: { loadedGradeCourseId: 1 },
     refs: roots,
     canAccessGradeVault() { return true; },
-    getWorkspaceOwnerApp() {
-      return {
+    get workspaceClient() {
+      return { operations: {
         loadGradeCourseNavigationTargetAtomically: async (courseId, fallbackCourseId = null) => {
           const loaded = await this.ensureGradeCourseLoadedNow(courseId);
           if (loaded) return true;
           if (fallbackCourseId) await this.ensureGradeCourseLoadedNow(fallbackCourseId);
           throw new Error('Notenkurs konnte nicht geladen werden.');
         },
-      };
+      } };
     },
     enqueueGradeCourseOperation(operation) {
       const queued = this.gradeCourseOperationTail.then(operation, operation);

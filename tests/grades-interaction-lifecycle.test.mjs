@@ -255,8 +255,8 @@ test('the workspace owner is authoritative while the first unlocked grade course
   )();
   const harness = {
     gradeVaultSession: { loadedGradeCourseId: null },
-    getWorkspaceOwnerApp() {
-      return { isGradeCourseLoaded: (courseId) => Number(courseId) === 7 };
+    get workspaceClient() {
+      return { operations: { isGradeCourseLoaded: (courseId) => Number(courseId) === 7 } };
     },
   };
 
@@ -354,13 +354,13 @@ test('course dialog drafts use the requested read-only grade course snapshot', a
     gradeStructures: [{ courseId: 8, periodCategories: { h1: [{ name: 'Mitarbeit' }], h2: [] } }],
   };
   const harness = {
-    getWorkspaceOwnerApp() {
-      return {
+    get workspaceClient() {
+      return { operations: {
         async getGradeCourseStateSnapshot(courseId) {
           assert.equal(courseId, 8);
           return gradeState;
         },
-      };
+      } };
     },
     buildCourseDialogDraft(nextCourse, options) {
       assert.equal(nextCourse, course);

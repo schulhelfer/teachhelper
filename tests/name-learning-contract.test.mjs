@@ -37,7 +37,7 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(bridge, /GRADES_NAME_LEARNING_REVIEW_REQUEST_EVENT/);
   assert.match(gradesApp, /type === "name-learning-data"[\s\S]*?\|\| type === "name-learning-review"/);
   assert.match(gradesApp, /handleNameLearningDataRequest\(action\.detail\)/);
-  assert.match(gradesApp, /error\.code = "NAME_LEARNING_STUDENT_MISSING"/);
+  assert.match(gradesApp, /this\.store\.saveNameLearningProgress\(courseId, studentId, \{ stage, dueAt \}\)/);
   assert.doesNotMatch(gradesApp, /!student \|\| !normalizeGradeStudentPortrait\(student\.portrait\)/);
   assert.match(nameLearningIndex, /sandbox: ISOLATED_MODULE_SANDBOX/);
   assert.match(nameLearningApp, /MODULE_FRAME_NONCE/);
@@ -50,7 +50,7 @@ test('the module is a registered first-level tab and uses the existing bridge', 
   assert.match(tabController, /\[data-name-learning-due-count\]/);
   assert.match(workspaceStatus, /bind\(view, WORKSPACE_STATE_EVENT, handleWorkspaceState\);/);
   assert.match(workspaceStatus, /setVaultState\(\{\s+\.\.\.vault,\s+ready: Boolean\(detail\.snapshot\.ready\),/);
-  assert.match(main, /const initialWorkspaceSnapshot = window\.__teachhelperWorkspaceController\?\.getSnapshot\?\.\('shell'\);[\s\S]*?shellController\.setPlanningGradeVaultState\(\{/);
+  assert.match(main, /const initialWorkspaceSnapshot = getWorkspaceClient\(window\)\?\.getSnapshot\('shell'\);[\s\S]*?shellController\.setPlanningGradeVaultState\(\{/);
 });
 
 test('name learning uses the shared module shell with its own sidebar', () => {

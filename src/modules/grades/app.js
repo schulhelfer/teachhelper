@@ -58,14 +58,13 @@ import {
   buildStudentNameMatchKey,
   remapCourseSeatPlan
 } from "../../shared/school-data/seatplan-transfer.js";
-import { createWorkspaceClient } from "../workspace/client.js";
-import { createWorkspaceController } from "../workspace/index.js";
-import { installWorkspaceComponents } from "../workspace/components.js";
 import {
+  createFeatureWorkspaceClient,
+  installWorkspaceComponents,
   deleteWorkspaceLocalValue as clearStoredLocalValue,
   getWorkspaceLocalValue as getStoredLocalValue,
   setWorkspaceLocalValue as storeLocalValue
-} from "../workspace/local-value-store.js";
+} from "../workspace/client.js";
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
   WORKSPACE_COMMAND_CREATE_COURSE,
@@ -234,19 +233,6 @@ const TUTORIAL_DEMO_MODE = (() => {
   }
 })();
 
-function getParentWorkspaceController() {
-  if (TUTORIAL_DEMO_MODE || typeof window === "undefined" || !window.parent || window.parent === window) {
-    return null;
-  }
-  try {
-    if (window.parent.location.origin !== window.location.origin) {
-      return null;
-    }
-    return window.parent.__teachhelperWorkspaceController || null;
-  } catch (_error) {
-    return null;
-  }
-}
 
 function randomId() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -2798,22 +2784,18 @@ function seedTutorialDemoStore(store) {
 class GradesApp {
   constructor() {
     this.tutorialDemoMode = TUTORIAL_DEMO_MODE;
-    this.workspaceController = getParentWorkspaceController()
-      || createWorkspaceController({
-        eventTarget: window,
-        ephemeral: true
-      });
-    this.workspaceClient = this.workspaceController
-      ? createWorkspaceClient(this.workspaceController, "grades", `grades-frame:${randomId()}`)
-      : null;
-    const sharedWorkspaceStore = this.workspaceController?.getStore?.() || null;
-    if (!sharedWorkspaceStore) throw new Error("Neutraler Workspace-Store ist nicht verfügbar.");
-    this.store = sharedWorkspaceStore;
+    this.workspaceClient = createFeatureWorkspaceClient("grades", {
+      targetWindow: window,
+      isolated: Boolean(this.tutorialDemoMode),
+      id: `grades-frame:${randomId()}`
+    });
+    this.store = this.workspaceClient.data;
     this.tutorialDemoCourseId = this.tutorialDemoMode ? seedTutorialDemoStore(this.store) : null;
     this.selectedLessonId = null;
     this.selectedCourseId = this.tutorialDemoCourseId;
     this.currentView = "grades";
     this.shellTabContext = "grades";
+    this.gradesSurfaceRevealed = false;
     this.gradesSubView = "overview";
     this.gradeOverviewDisplaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
     this.gradeOverviewPredicateSuffixes = true;
@@ -3344,8 +3326,8 @@ class GradesApp {
     this.courseColorDialogDefaultColor = this.courseDialogSelectedColor;
     this.settingsDraft = this.buildSettingsDraftFromStore();
     this.settingsDirty = false;
-    this.workspaceRevision = Math.max(0, Number(this.workspaceController?.getRevision?.()) || 0);
-    this.workspaceHydrated = Boolean(this.workspaceController?.isReady?.());
+    this.workspaceRevision = Math.max(0, Number(this.workspaceClient?.getRevision?.()) || 0);
+    this.workspaceHydrated = Boolean(this.workspaceClient?.isReady?.());
     this.settingsDraftRevision = this.workspaceRevision;
     this.syncMeta = this.tutorialDemoMode ? {
       deviceId: "tutorial-demo",
@@ -3355,7 +3337,7 @@ class GradesApp {
       lastSyncedAt: ""
     } : this.loadSyncMeta();
     this.syncState = {
-      supported: Boolean(this.getWorkspaceOwnerApp()?.isExternalFileSyncPresentationSupported?.()),
+      supported: Boolean(this.workspaceClient.operations?.isExternalFileSyncPresentationSupported?.()),
       initialized: true,
       syncingNow: false,
       pendingSaveTimer: 0,
@@ -3398,8 +3380,10 @@ class GradesApp {
     };
     this.beforeUnloadWarningEnabled = false;
     this.lastAutoBackupAt = String(this.store.getLastAutoBackupAt?.() || "");
-    if (this.workspaceController) {
-      this.unregisterWorkspaceFeatureClient = this.workspaceController.registerFeatureClient?.('grades', this);
+    if (this.workspaceClient) {
+      this.unregisterWorkspaceFeatureClient = this.workspaceClient.registerFeatureClient({
+        collectArchiveGradeSections: (...args) => this.collectArchiveGradeSections(...args)
+      });
       this.unregisterWorkspaceClient = this.workspaceClient?.subscribe(
         "grades",
         (detail) => this.handleWorkspaceState(detail)
@@ -3680,13 +3664,9 @@ class GradesApp {
     }
   }
 
-  getWorkspaceOwnerApp() {
-    return this.workspaceController?.getOwner?.() || null;
-  }
-
   async refreshSidebarCourseStudentCounts() {
     const refreshToken = ++this.courseStudentCountsRefreshToken;
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     if (!workspaceOwner?.canAccessGradeVault?.()) {
       if (this.courseStudentCounts.size) {
         this.courseStudentCounts.clear();
@@ -3737,7 +3717,7 @@ class GradesApp {
       return { ok: false, code: "UNSUPPORTED", message: "Workspace ist nicht verfügbar." };
     }
     const result = await this.workspaceClient.execute(command, payload, {
-      baseRevision: options?.baseRevision ?? this.workspaceRevision ?? this.workspaceController?.getRevision?.()
+      baseRevision: options?.baseRevision ?? this.workspaceRevision ?? this.workspaceClient?.getRevision?.()
     });
     this.workspaceRevision = Math.max(this.workspaceRevision || 0, Number(result?.revision) || 0);
     return result;
@@ -4046,29 +4026,27 @@ class GradesApp {
   }
 
   isGradeVaultConfigured() {
-    return Boolean(this.getWorkspaceOwnerApp()?.isGradeVaultConfigured?.());
+    return Boolean(this.workspaceClient.operations?.isGradeVaultConfigured?.());
   }
 
   isGradeVaultEncryptionEnabled() {
-    return Boolean(this.getWorkspaceOwnerApp()?.isGradeVaultEncryptionEnabled?.());
+    return Boolean(this.workspaceClient.operations?.isGradeVaultEncryptionEnabled?.());
   }
 
   isGradeVaultUnlocked() {
-    return Boolean(this.getWorkspaceOwnerApp()?.isGradeVaultUnlocked?.());
+    return Boolean(this.workspaceClient.operations?.isGradeVaultUnlocked?.());
   }
 
   canAccessGradeVault() {
-    return Boolean(this.getWorkspaceOwnerApp()?.canAccessGradeVault?.());
+    return Boolean(this.workspaceClient.operations?.canAccessGradeVault?.());
   }
 
   hasGradeVaultUnlockConfig() {
-    return Boolean(this.getWorkspaceOwnerApp()?.hasGradeVaultUnlockConfig?.());
+    return Boolean(this.workspaceClient.operations?.hasGradeVaultUnlockConfig?.());
   }
 
   getKnownGradeEntryCount() {
-    return Array.isArray(this.store.gradeVaultState?.gradeEntries)
-      ? this.store.gradeVaultState.gradeEntries.length
-      : 0;
+    return this.store.listGradeEntries().length;
   }
 
   hasKnownGradeEntries() {
@@ -4081,7 +4059,7 @@ class GradesApp {
     const courses = year ? this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course)) : [];
     const selected = courses.find((course) => Number(course.id) === Number(this.selectedCourseId)) || courses[0] || null;
     return {
-      backupConnected: Boolean(this.getWorkspaceOwnerApp()?.backupState?.directoryHandle),
+      backupConnected: Boolean(this.workspaceClient.operations.getPersistenceView().backup.connected),
       hasGradeCourse: courses.length > 0,
       hasGradeStudents: Boolean(selected && this.isGradeCourseLoaded(selected.id)
         && this.hasGradeParticipants(this.store.listGradeStudents(selected.id)))
@@ -4118,7 +4096,7 @@ class GradesApp {
   }
 
   getWorkspaceUnsavedState() {
-    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
+    const snapshot = this.workspaceClient?.getSnapshot?.("shell") || {};
     const unsaved = snapshot.unsaved && typeof snapshot.unsaved === "object" ? snapshot.unsaved : {};
     return {
       dirty: Boolean(unsaved.dirty || this.gradesEntryDraftDirty || this.settingsDirty),
@@ -4224,7 +4202,7 @@ class GradesApp {
   }
 
   getGradeVaultAutoLockWarning() {
-    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
+    const snapshot = this.workspaceClient?.getSnapshot?.("shell") || {};
     const warning = snapshot?.vault?.autoLockWarning;
     if (!warning || warning.active !== true) {
       return null;
@@ -4275,7 +4253,7 @@ class GradesApp {
     if (this.tutorialDemoMode) {
       return Number(this.gradeVaultSession.loadedGradeCourseId || 0) === courseKey;
     }
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (owner && typeof owner.isGradeCourseLoaded === "function") {
       return Boolean(owner.isGradeCourseLoaded(courseKey));
     }
@@ -4284,7 +4262,7 @@ class GradesApp {
 
   async ensureGradeCourseLoaded(courseId) {
     const courseKey = Number(courseId) || 0;
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!courseKey || !owner?.ensureGradeCourseLoaded) return false;
     const loaded = await owner.ensureGradeCourseLoaded(courseKey);
     if (loaded) this.gradeVaultSession.loadedGradeCourseId = courseKey;
@@ -4292,7 +4270,7 @@ class GradesApp {
   }
 
   async loadGradeCourseNavigationTargetAtomically(courseId, fallbackCourseId = null) {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.loadGradeCourseNavigationTargetAtomically) return false;
     const loaded = await owner.loadGradeCourseNavigationTargetAtomically(courseId, fallbackCourseId);
     if (loaded) this.gradeVaultSession.loadedGradeCourseId = Number(courseId) || null;
@@ -4380,7 +4358,7 @@ class GradesApp {
   }
 
   async withTemporaryGradeCourse(courseId, operation) {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.withTemporaryGradeCourse) throw new Error("Notenkursdienst ist nicht verfügbar.");
     return owner.withTemporaryGradeCourse(courseId, operation);
   }
@@ -4390,7 +4368,7 @@ class GradesApp {
     if (!courseId) {
       return this.buildCourseDialogDraft(course);
     }
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (typeof owner?.getGradeCourseStateSnapshot === "function") {
       const gradeState = await owner.getGradeCourseStateSnapshot(courseId);
       if (!gradeState) {
@@ -4405,66 +4383,37 @@ class GradesApp {
   }
 
   async getOccurrenceCategoryUsage(categoryId) {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.getOccurrenceCategoryUsage) return 0;
     return owner.getOccurrenceCategoryUsage(categoryId);
   }
 
   getGradeCourseRevision(courseId) {
-    return this.getWorkspaceOwnerApp()?.getGradeCourseRevision?.(courseId) || 0;
+    return this.workspaceClient.operations?.getGradeCourseRevision?.(courseId) || 0;
   }
 
-  canCommitImmediateGradeCourseMutation(courseId, { assessmentId = null, studentId = null } = {}) {
-    const courseKey = Number(courseId || 0);
-    const assessmentKey = Number(assessmentId || 0);
-    const studentKey = Number(studentId || 0);
-    const owner = this.getWorkspaceOwnerApp() || this;
-    if (
-      !courseKey
-      || owner.gradeCourseOperationActive
-      || owner.gradeCourseMutationActiveCourseId
-      || !owner.isGradeCourseLoaded(courseKey)
-      || (owner.store !== this.store && this.getWorkspaceOwnerApp())
-    ) {
-      return false;
-    }
-    try {
-      owner.normalizeAndAssertGradeCourseSnapshot(courseKey, owner.getCurrentGradeVaultSnapshot());
-    } catch (_error) {
-      return false;
-    }
-    const assessment = assessmentKey ? this.store.getGradeAssessment(assessmentKey) : null;
-    if (assessmentKey && Number(assessment?.courseId || 0) !== courseKey) {
-      return false;
-    }
-    if (studentKey) {
-      const studentBelongsToCourse = this.store.listGradeStudents(courseKey)
-        .some((student) => Number(student?.id || 0) === studentKey);
-      if (!studentBelongsToCourse) {
-        return false;
-      }
-    }
-    return true;
+  canCommitImmediateGradeCourseMutation(courseId, options = {}) {
+    return this.workspaceClient.operations.canCommitImmediateGradeCourseMutation(courseId, options);
   }
 
   isGradeCourseMutationContextActive(courseId) {
     const courseKey = Number(courseId || 0);
-    const owner = this.getWorkspaceOwnerApp() || this;
+    const owner = this.workspaceClient.operations;
     return Boolean(
       courseKey
-      && Number(owner.gradeCourseMutationActiveCourseId || 0) === courseKey
+      && Number(owner.getGradeCourseActivity().mutationCourseId || 0) === courseKey
       && owner.isGradeCourseLoaded(courseKey)
     );
   }
 
   async runGradeCourseMutation(courseId, operation, options = {}) {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.runGradeCourseMutation) throw new Error("Notenkursdienst ist nicht verfügbar.");
     return owner.runGradeCourseMutation(courseId, operation, options);
   }
 
   async ensureWorkspacePublicLoaded() {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.ensurePlanningPublicLoaded) return false;
     await owner.ensurePlanningPublicLoaded();
     this.gradeVaultSession.workspacePublicLoaded = true;
@@ -4486,6 +4435,9 @@ class GradesApp {
 
   promptGradeVaultUnlockForInitialCourse() {
     if (this.gradeVaultStartupUnlockPromptResolved || this.tutorialDemoMode) {
+      return false;
+    }
+    if (!this.gradesSurfaceRevealed) {
       return false;
     }
     if (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired") {
@@ -4529,7 +4481,7 @@ class GradesApp {
   }
 
   hasShellDatabaseConnection() {
-    return Boolean(this.getWorkspaceOwnerApp()?.hasShellDatabaseConnection?.());
+    return Boolean(this.workspaceClient.operations?.hasShellDatabaseConnection?.());
   }
 
   renderGradeVaultBanner() {
@@ -4595,11 +4547,6 @@ class GradesApp {
 
   openGradeVaultDialog(mode = "unlock") {
     if (this.lockReason === "databaseRequired" || this.lockReason === "backupDirRequired") {
-      return;
-    }
-    const workspaceOwner = this.getWorkspaceOwnerApp();
-    if (workspaceOwner?.openGradeVaultDialog) {
-      workspaceOwner.openGradeVaultDialog(mode);
       return;
     }
     if (!this.refs.gradeVaultDialog || !this.getGradeVaultDialogForm(mode)) {
@@ -4874,7 +4821,7 @@ class GradesApp {
   }
 
   async lockGradeVaultSession() {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.lockGradeVaultSession) return false;
     this.closeGroupPhotoExtractionDialog();
     this.revokeGradeStudentPortraitObjectUrls();
@@ -4888,7 +4835,7 @@ class GradesApp {
   }
 
   async discardGradeVaultChanges() {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.discardGradeVaultChanges) return false;
     this.closeGroupPhotoExtractionDialog();
     this.revokeGradeStudentPortraitObjectUrls();
@@ -5178,7 +5125,7 @@ class GradesApp {
   }
 
   async saveGradeVaultChanges() {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.saveGradeVaultChanges) return false;
     const saved = await owner.saveGradeVaultChanges();
     if (saved) this.clearGradesEntryDraftDirty();
@@ -5186,7 +5133,7 @@ class GradesApp {
   }
 
   async persistExplicitDatabaseSave() {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.persistExplicitDatabaseSave) return false;
     try {
       return Boolean(await owner.persistExplicitDatabaseSave());
@@ -5225,7 +5172,7 @@ class GradesApp {
   }
 
   async setGradeVaultEncryptionEnabledFromSettings(enabled, { persist = true } = {}) {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.setGradeVaultEncryptionEnabledFromSettings) return false;
     if (!enabled && this.isGradeVaultEncryptionEnabled() && !this.canAccessGradeVault()) {
       if (!this.hasGradeVaultUnlockConfig()) {
@@ -5339,7 +5286,7 @@ class GradesApp {
   }
 
   loadSyncMeta() {
-    return cloneJsonValue(this.getWorkspaceOwnerApp()?.syncMeta, {
+    return cloneJsonValue(this.workspaceClient.operations.getPersistenceView().meta, {
       deviceId: "", knownRemoteRevision: 0, knownRemoteHash: "", fileName: "", lastSyncedAt: ""
     });
   }
@@ -5353,26 +5300,24 @@ class GradesApp {
   }
 
   isManualPersistenceMode() {
-    return Boolean(this.getWorkspaceOwnerApp()?.isManualPersistenceMode?.());
+    return Boolean(this.workspaceClient.operations?.isManualPersistenceMode?.());
   }
 
   isExternalFileSyncPresentationSupported() {
-    return Boolean(this.getWorkspaceOwnerApp()?.isExternalFileSyncPresentationSupported?.());
+    return Boolean(this.workspaceClient.operations?.isExternalFileSyncPresentationSupported?.());
   }
 
   isManualPersistencePresentationMode() {
-    return Boolean(this.getWorkspaceOwnerApp()?.isManualPersistencePresentationMode?.());
+    return Boolean(this.workspaceClient.operations?.isManualPersistencePresentationMode?.());
   }
 
   getWorkspacePersistenceStatus() {
-    const ownerPersistence = this.getWorkspaceOwnerApp()?.getWorkspacePersistenceStatus?.();
-    if (ownerPersistence && typeof ownerPersistence === "object") return ownerPersistence;
-    const snapshot = this.workspaceController?.getSnapshot?.("shell") || {};
+    const snapshot = this.workspaceClient?.getSnapshot?.("shell") || {};
     return snapshot.persistence && typeof snapshot.persistence === "object" ? snapshot.persistence : {};
   }
 
   shouldPromptForManualDatabaseOnStartup() {
-    return Boolean(this.getWorkspaceOwnerApp()?.shouldPromptForManualDatabaseOnStartup?.());
+    return Boolean(this.workspaceClient.operations?.shouldPromptForManualDatabaseOnStartup?.());
   }
 
   dispatchManualSaveButtonState() {
@@ -5395,7 +5340,7 @@ class GradesApp {
   }
 
   async assignBackupDirectoryFromSyncFile() {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.acceptWorkspaceBackupDirectoryHandle || typeof window.showDirectoryPicker !== "function") return false;
     try {
       const handle = await window.showDirectoryPicker({ mode: "readwrite" });
@@ -5407,11 +5352,11 @@ class GradesApp {
   }
 
   async tryReconnectStoredSyncFile() {
-    return this.getWorkspaceOwnerApp()?.tryReconnectStoredSyncFile?.() || false;
+    return this.workspaceClient.operations?.tryReconnectStoredSyncFile?.() || false;
   }
 
   async selectSyncFile(mode = "existing", options = {}) {
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (!owner?.acceptWorkspaceSyncFileHandle) return false;
     try {
       if (mode === "new-empty") {
@@ -5867,7 +5812,7 @@ class GradesApp {
     this.gradeVaultAutoLockOnBackgroundDraft = null;
     this.gradeVaultAutoSaveBeforeLockDraft = null;
     this.settingsDirty = false;
-    this.settingsDraftRevision = Number(this.workspaceController?.getRevision?.()) || this.workspaceRevision || 0;
+    this.settingsDraftRevision = Number(this.workspaceClient?.getRevision?.()) || this.workspaceRevision || 0;
     this.switchSettingsTab(this.activeSettingsTab);
     this.updateSettingsActionButtons();
     this.dispatchGradesUnsavedState();
@@ -5916,20 +5861,20 @@ class GradesApp {
   }
 
   updateAccessLock() {
-    const persistenceOwner = this.getWorkspaceOwnerApp() || this;
-    const persistenceSyncState = persistenceOwner.syncState || this.syncState;
-    const persistenceBackupState = persistenceOwner.backupState || this.backupState;
+    const persistenceOwner = this.workspaceClient.operations;
+    const persistenceSyncState = persistenceOwner.getPersistenceView().sync;
+    const persistenceBackupState = persistenceOwner.getPersistenceView().backup;
     const manualDatabaseRequired = !persistenceSyncState.supported
       && this.shouldPromptForManualDatabaseOnStartup();
     const persistenceSetupRequired = !this.tutorialDemoMode;
     const databaseRequired = persistenceSetupRequired && (
-      (persistenceSyncState.supported && !persistenceSyncState.fileHandle)
+      (persistenceSyncState.supported && !persistenceSyncState.connected)
       || manualDatabaseRequired
     );
     const backupDirRequired = persistenceSetupRequired
       && persistenceSyncState.supported
       && !databaseRequired
-      && !persistenceBackupState.directoryHandle;
+      && !persistenceBackupState.connected;
     this.lockReason = databaseRequired
       ? "databaseRequired"
       : (backupDirRequired ? "backupDirRequired" : "");
@@ -8070,7 +8015,7 @@ class GradesApp {
   }
 
   async collectGradeStudentPortraitSources(excludeCourseId = 0) {
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     if (typeof workspaceOwner?.getGradeCourseStateSnapshot !== "function") {
       throw new Error("Notenkursdienst ist nicht verfügbar.");
     }
@@ -8407,7 +8352,7 @@ class GradesApp {
       return;
     }
     const numericId = Number(courseId || 0);
-    this.courseDialogBaseRevision = this.workspaceController?.getRevision?.() ?? this.workspaceRevision ?? 0;
+    this.courseDialogBaseRevision = this.workspaceClient?.getRevision?.() ?? this.workspaceRevision ?? 0;
     if (!numericId && !this.ensureGradeVaultConfiguredBeforeGradeCourseCreate()) {
       return;
     }
@@ -8909,7 +8854,7 @@ class GradesApp {
     const id = Number(courseId) || 0;
     if (!id) return false;
     await this.ensureWorkspacePublicLoaded();
-    const baseRevision = this.workspaceController?.getRevision?.() ?? this.workspaceRevision ?? 0;
+    const baseRevision = this.workspaceClient?.getRevision?.() ?? this.workspaceRevision ?? 0;
     if (!await this.showConfirmMessage("Soll dieser Kurs wirklich gelöscht werden?", {
       title: "Kurs löschen", okText: "Kurs wirklich löschen", dangerOk: true
     })) return false;
@@ -9187,7 +9132,7 @@ class GradesApp {
     }
     const token = ++this.courseDialogRosterImportToken;
     const candidates = this.listCourseDialogRosterImportCandidates();
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     if (candidates.length === 0 || !this.canAccessGradeVault() || !workspaceOwner) {
       this.courseDialogRosterImportCourses = [];
       this.courseDialogRosterImportState = "ready";
@@ -9266,7 +9211,7 @@ class GradesApp {
     if (!id) {
       return [];
     }
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (typeof owner?.getGradeCourseStateSnapshot === "function") {
       const gradeState = await owner.getGradeCourseStateSnapshot(id);
       if (!gradeState) {
@@ -9467,7 +9412,7 @@ class GradesApp {
     }
     if (!this.gradeVaultSession.workspacePublicLoaded) {
       void this.ensureWorkspacePublicLoaded().then(async () => {
-        if (this.workspaceController) {
+        if (this.workspaceClient) {
           await this.executeWorkspaceCommand(WORKSPACE_COMMAND_REORDER_COURSES, {
             schoolYearId: year.id,
             orderedIds
@@ -9484,7 +9429,7 @@ class GradesApp {
       });
       return;
     }
-    if (this.workspaceController) {
+    if (this.workspaceClient) {
       await this.executeWorkspaceCommand(WORKSPACE_COMMAND_REORDER_COURSES, {
         schoolYearId: year.id,
         orderedIds
@@ -11248,7 +11193,7 @@ class GradesApp {
   }
 
   bindWindowFocusGuards() {
-    const runBackup = () => this.getWorkspaceOwnerApp()?.maybeRunAutomaticWebBackup?.();
+    const runBackup = () => this.workspaceClient.operations?.maybeRunAutomaticWebBackup?.();
     window.addEventListener("focus", runBackup);
     document.addEventListener("visibilitychange", () => {
       if (document.visibilityState === "visible") runBackup();
@@ -11278,7 +11223,7 @@ class GradesApp {
       window.dispatchEvent(new CustomEvent("classroom:grades-grade-vault-activity"));
       return;
     }
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     if (workspaceOwner?.recordGradeVaultActivity) {
       workspaceOwner.recordGradeVaultActivity();
     }
@@ -11288,6 +11233,13 @@ class GradesApp {
     if (typeof window !== "undefined" && typeof window.addEventListener === "function") {
       window.addEventListener("contextmenu", (event) => {
         event.preventDefault();
+      });
+      window.addEventListener("classroom:grades-shell-layout", (event) => {
+        const detail = event instanceof CustomEvent ? event.detail : null;
+        if (String(detail?.activeTab || "") !== "grades") return;
+        if (this.gradesSurfaceRevealed) return;
+        this.gradesSurfaceRevealed = true;
+        this.promptGradeVaultUnlockForInitialCourse();
       });
       window.addEventListener("classroom:grades-tab-leave-request", async (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
@@ -11327,6 +11279,7 @@ class GradesApp {
           return;
         }
         this.shellTabContext = "grades";
+        this.gradesSurfaceRevealed = true;
         if (!this.canAccessGradeVault() && this.hasGradeVaultUnlockConfig()) {
           this.settingsSourceView = this.shellTabContext;
           this.renderAll({ visibleOnly: true });
@@ -12539,15 +12492,15 @@ class GradesApp {
 
     if (this.refs.backupDirChangeBtn) {
       this.refs.backupDirChangeBtn?.addEventListener("click", async () => {
-        const persistenceOwner = this.getWorkspaceOwnerApp() || this;
-        const syncFileHandle = persistenceOwner.syncState?.fileHandle || null;
+        const persistenceOwner = this.workspaceClient.operations;
+        const syncFileHandle = persistenceOwner.getPersistenceView().sync.connected;
         if (!syncFileHandle) {
           await this.showInfoMessage("Bitte zuerst eine Datenbankdatei auswählen.");
           return;
         }
-        const backupState = persistenceOwner.backupState || this.backupState;
-        const restoredStoredDirectory = !backupState.directoryHandle
-          && Boolean(backupState.storedDirectoryHandle)
+        const backupState = persistenceOwner.getPersistenceView().backup;
+        const restoredStoredDirectory = !backupState.connected
+          && backupState.pending
           && typeof persistenceOwner.ensureBackupDirectoryReady === "function"
           && await persistenceOwner.ensureBackupDirectoryReady({ allowPrompt: true });
         const assigned = restoredStoredDirectory
@@ -12888,15 +12841,15 @@ class GradesApp {
   }
 
   async saveManualDatabase() {
-    return this.getWorkspaceOwnerApp()?.saveManualDatabase?.() || false;
+    return this.workspaceClient.operations?.saveManualDatabase?.() || false;
   }
 
   async createEmptyManualDatabase(options = {}) {
-    return this.getWorkspaceOwnerApp()?.createEmptyManualDatabase?.(options) || false;
+    return this.workspaceClient.operations?.createEmptyManualDatabase?.(options) || false;
   }
 
   getDefaultInitialSchoolYearStartYear() {
-    const fromRuntime = Number(this.getWorkspaceOwnerApp()?.getDefaultSchoolYearStartYear?.());
+    const fromRuntime = Number(this.workspaceClient.operations?.getDefaultSchoolYearStartYear?.());
     if (Number.isInteger(fromRuntime)) return fromRuntime;
     const today = new Date();
     return today.getMonth() >= 6 ? today.getFullYear() : today.getFullYear() - 1;
@@ -12940,7 +12893,7 @@ class GradesApp {
         if (this.gradesEntryDraftDirty && !await this.saveCurrentGradesEntry()) return false;
         if (this.settingsDirty && !await this.applySettingsDraftToStore()) return false;
         if (this.isManualPersistenceMode()) return this.saveManualDatabase();
-        return Boolean(await this.getWorkspaceOwnerApp()?.enqueueConnectedFileSave?.("before-create-empty"));
+        return Boolean(await this.workspaceClient.operations?.enqueueConnectedFileSave?.("before-create-empty"));
       }
       if (choice !== "discard") return false;
       if (this.gradesEntryDraftDirty) this.discardGradesEntryEditSession();
@@ -12965,11 +12918,11 @@ class GradesApp {
   }
 
   async loadManualDatabaseFromFile(file) {
-    return this.getWorkspaceOwnerApp()?.loadManualDatabaseFromFile?.(file) || false;
+    return this.workspaceClient.operations?.loadManualDatabaseFromFile?.(file) || false;
   }
 
   async createLatestWebBackup(mode = "manual", silent = false) {
-    return this.getWorkspaceOwnerApp()?.createLatestWebBackup?.(mode, silent) || false;
+    return this.workspaceClient.operations?.createLatestWebBackup?.(mode, silent) || false;
   }
 
   async createManualWebBackup() {
@@ -12990,20 +12943,20 @@ class GradesApp {
   }
 
   renderDatabaseSection() {
-    const persistenceOwner = this.getWorkspaceOwnerApp() || this;
-    const persistenceSyncState = persistenceOwner.syncState || this.syncState;
-    const persistenceSyncMeta = persistenceOwner.syncMeta || this.syncMeta;
-    const persistenceManualState = persistenceOwner.manualPersistenceState || this.manualPersistenceState;
+    const persistenceOwner = this.workspaceClient.operations;
+    const persistenceSyncState = persistenceOwner.getPersistenceView().sync;
+    const persistenceSyncMeta = persistenceOwner.getPersistenceView().meta;
+    const persistenceManualState = persistenceOwner.getPersistenceView().manual;
     const unsupported = !this.isExternalFileSyncPresentationSupported();
     const gradesSettingsContext = this.isGradesTopTabActive();
     const encryptionSettingsContext = gradesSettingsContext && this.activeSettingsTab === "encryption";
     const startupDatabaseLoading = !unsupported
       && !persistenceSyncState.initialized
-      && !persistenceSyncState.fileHandle
+      && !persistenceSyncState.connected
       && Boolean(persistenceSyncMeta.fileName || persistenceSyncState.fileName);
-    const pendingStoredHandle = !persistenceSyncState.fileHandle ? persistenceSyncState.storedFileHandle : null;
-    const pendingStoredFileName = pendingStoredHandle
-      ? String(pendingStoredHandle.name || persistenceSyncState.fileName || persistenceSyncMeta.fileName || "")
+    const hasPendingStoredFile = !persistenceSyncState.connected && persistenceSyncState.pending;
+    const pendingStoredFileName = hasPendingStoredFile
+      ? String(persistenceSyncState.pendingFileName || persistenceSyncState.fileName || persistenceSyncMeta.fileName || "")
       : (startupDatabaseLoading
         ? String(persistenceSyncMeta.fileName || persistenceSyncState.fileName || "")
         : "");
@@ -13042,9 +12995,9 @@ class GradesApp {
         this.refs.syncFileName.textContent = "Datenbankdatei: Tutorial-Vorschau (nicht verbunden)";
       } else if (startupDatabaseLoading && hasKnownLoadingFile) {
         this.refs.syncFileName.textContent = `Datenbankdatei: ${pendingStoredFileName} (wird geladen)`;
-      } else if (pendingStoredHandle) {
+      } else if (hasPendingStoredFile) {
         this.refs.syncFileName.textContent = `Datenbankdatei: ${pendingStoredFileName} (Zugriff ausstehend)`;
-      } else if (!persistenceSyncState.fileHandle) {
+      } else if (!persistenceSyncState.connected) {
         this.refs.syncFileName.textContent = "Datenbankdatei: nicht ausgewählt";
       } else {
         const connectedFileName = String(persistenceSyncState.fileName || "").trim();
@@ -13061,10 +13014,10 @@ class GradesApp {
         if (!currentStatus || hasConnectedStatusText(currentStatus) || disconnectedStatusTexts.has(currentStatus)) {
           this.setSyncStatus(loadingStatusText);
         }
-      } else if (!persistenceSyncState.fileHandle) {
+      } else if (!persistenceSyncState.connected) {
         if (!currentStatus || hasConnectedStatusText(currentStatus)) {
           this.setSyncStatus(
-            pendingStoredHandle
+            hasPendingStoredFile
               ? "Gespeicherte Datenbank gefunden. Bitte Zugriff erlauben."
               : ""
           );
@@ -13148,7 +13101,7 @@ class GradesApp {
         );
       }
       if (this.refs.gradeVaultAutoSaveBeforeLock) {
-        const autoSaveDisabled = autoLockSettingsDisabled || unsupported || !persistenceSyncState.fileHandle;
+        const autoSaveDisabled = autoLockSettingsDisabled || unsupported || !persistenceSyncState.connected;
         this.refs.gradeVaultAutoSaveBeforeLock.checked = this.gradeVaultAutoSaveBeforeLockDraft
           ?? this.store.getGradeVaultAutoSaveBeforeLock();
         this.refs.gradeVaultAutoSaveBeforeLock.disabled = autoSaveDisabled;
@@ -13175,17 +13128,17 @@ class GradesApp {
       return;
     }
     const draft = this.settingsDraft || this.buildSettingsDraftFromStore();
-    const persistenceOwner = this.getWorkspaceOwnerApp() || this;
-    const persistenceSyncState = persistenceOwner.syncState || this.syncState;
-    const persistenceBackupState = persistenceOwner.backupState || this.backupState;
+    const persistenceOwner = this.workspaceClient.operations;
+    const persistenceSyncState = persistenceOwner.getPersistenceView().sync;
+    const persistenceBackupState = persistenceOwner.getPersistenceView().backup;
     const enabled = Boolean(draft.backupEnabled);
     const interval = clamp(Number(draft.backupIntervalDays) || BACKUP_INTERVAL_DEFAULT_DAYS, 1, 30);
     const presentationSupported = this.isExternalFileSyncPresentationSupported();
-    const syncFileConnected = this.tutorialDemoMode || Boolean(persistenceSyncState.fileHandle);
-    const backupFileConnected = this.tutorialDemoMode || Boolean(persistenceBackupState.directoryHandle);
+    const syncFileConnected = this.tutorialDemoMode || Boolean(persistenceSyncState.connected);
+    const backupFileConnected = this.tutorialDemoMode || Boolean(persistenceBackupState.connected);
     const backupSettingsAvailable = presentationSupported && syncFileConnected;
     if (this.refs.backupDirName) {
-      const directoryName = String(persistenceBackupState.directoryHandle?.name || "").trim();
+      const directoryName = String(persistenceBackupState.directoryName || "").trim();
       this.refs.backupDirName.textContent = directoryName
         ? `Backup-Ordner: ${directoryName}`
         : "Backup-Ordner: nicht verbunden";
@@ -13266,7 +13219,7 @@ class GradesApp {
   }
 
   async importBackupFromFile(file) {
-    return this.getWorkspaceOwnerApp()?.importBackupFromFile?.(file) || false;
+    return this.workspaceClient.operations?.importBackupFromFile?.(file) || false;
   }
 
   hideContextMenu() {
@@ -13867,10 +13820,7 @@ class GradesApp {
       return null;
     }
     const assessmentId = Number(assessment.id || 0);
-    const entries = (Array.isArray(this.store.gradeVaultState?.gradeEntries)
-      ? this.store.gradeVaultState.gradeEntries
-      : []
-    ).filter((entry) => Number(entry?.assessmentId || 0) === assessmentId)
+    const entries = this.store.listGradeEntries().filter((entry) => Number(entry?.assessmentId || 0) === assessmentId)
       .reduce((result, entry) => {
         const studentId = Number(entry?.studentId || 0);
         if (studentId > 0) {
@@ -14498,10 +14448,7 @@ class GradesApp {
     const previousScale = normalizeGradeTestScale(assessment.testScale);
     const nextScale = normalizeGradeTestScale(editorValues?.testScale);
     if (mode !== previousMode) {
-      const existingEntryCount = (Array.isArray(this.store.gradeVaultState?.gradeEntries)
-        ? this.store.gradeVaultState.gradeEntries
-        : []
-      ).filter((entry) => Number(entry?.assessmentId || 0) === id).length;
+      const existingEntryCount = this.store.listGradeEntries().filter((entry) => Number(entry?.assessmentId || 0) === id).length;
       const confirmationKey = `${id}:${previousMode}->${mode}`;
       if (existingEntryCount > 0 && this.confirmedGradesEntryModeChangeKey !== confirmationKey) {
         const confirmed = await this.showConfirmMessage(
@@ -15583,13 +15530,13 @@ class GradesApp {
 
   renderGradesView() {
     this.pendingWorkspaceRenderAfterEntryInteraction = false;
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     if (this.isGradeCourseNavigationUiLocked()) {
       this.pendingGradesRenderAfterCourseLoad = true;
       return;
     }
     this.pendingGradesRenderAfterCourseLoad = false;
-    if (this.gradeCourseMutationActiveCourseId || workspaceOwner?.gradeCourseMutationActiveCourseId) {
+    if (this.gradeCourseMutationActiveCourseId || workspaceOwner?.getGradeCourseActivity().mutationCourseId) {
       this.pendingGradesRenderAfterMutation = true;
       return;
     }
@@ -23880,9 +23827,7 @@ class GradesApp {
       return true;
     }
     if (assessment) {
-      const entries = Array.isArray(this.store.gradeVaultState?.gradeEntries)
-        ? this.store.gradeVaultState.gradeEntries
-        : [];
+      const entries = this.store.listGradeEntries();
       return entries.some((entry) => (
         Number(entry?.assessmentId || 0) === Number(assessment.id || 0)
         && Object.prototype.hasOwnProperty.call(normalizeGradeTestScores(entry?.testScores), normalizedTaskId)
@@ -24733,8 +24678,7 @@ class GradesApp {
     }
     const entries = draft && typeof draft.entries === "object" ? draft.entries : {};
     if (replaceExisting) {
-      this.store.gradeVaultState.gradeEntries = this.store.gradeVaultState.gradeEntries
-        .filter((entry) => Number(entry?.assessmentId || 0) !== assessmentKey);
+      this.store.clearGradeAssessmentEntries(assessmentKey);
     }
     let persistedCount = 0;
     Object.entries(entries).forEach(([studentId, value]) => {
@@ -29141,10 +29085,7 @@ class GradesApp {
       return null;
     }
     const assessmentId = Number(assessment.id || 0);
-    const existingEntryCount = (Array.isArray(this.store.gradeVaultState?.gradeEntries)
-      ? this.store.gradeVaultState.gradeEntries
-      : []
-    ).filter((entry) => Number(entry?.assessmentId || 0) === assessmentId).length;
+    const existingEntryCount = this.store.listGradeEntries().filter((entry) => Number(entry?.assessmentId || 0) === assessmentId).length;
     const confirmationKey = `${assessmentId}:${previousMode}->${mode}`;
     return {
       mode,
@@ -29322,13 +29263,13 @@ class GradesApp {
 
   renderAll({ visibleOnly = false } = {}) {
     this.revokeGradeStudentPortraitObjectUrls();
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     if (this.isGradeCourseNavigationUiLocked()) {
       this.pendingGradesRenderAfterCourseLoad = true;
       return;
     }
     this.pendingGradesRenderAfterCourseLoad = false;
-    if (this.gradeCourseMutationActiveCourseId || workspaceOwner?.gradeCourseMutationActiveCourseId) {
+    if (this.gradeCourseMutationActiveCourseId || workspaceOwner?.getGradeCourseActivity().mutationCourseId) {
       this.pendingWorkspaceRenderAfterGradeMutation = true;
       return;
     }
@@ -29861,7 +29802,7 @@ class GradesApp {
     const year = this.activeSchoolYear;
     const id = Number(courseId || 0);
     if (!year || !id) return false;
-    if (this.workspaceController) {
+    if (this.workspaceClient) {
       const result = await this.executeWorkspaceCommand(WORKSPACE_COMMAND_UPDATE_COURSE, {
         schoolYearId: year.id,
         courseId: id,
@@ -29869,7 +29810,7 @@ class GradesApp {
         bulk: options.bulk === true
       }, {
         baseRevision: options.baseRevision
-          ?? this.workspaceController.getRevision?.()
+          ?? this.workspaceClient.getRevision?.()
           ?? this.workspaceRevision
           ?? 0
       });
@@ -29909,6 +29850,7 @@ class GradesApp {
       return false;
     }
     this.shellTabContext = "grades";
+    this.gradesSurfaceRevealed = true;
     if (!this.canAccessGradeVault()) {
       this.queueGradeVaultContinuation({ type: "grades-navigation", detail: navigation });
       if (navigation.action === "seatplan") {
@@ -30259,7 +30201,7 @@ class GradesApp {
       const courses = [];
       const studentCounts = {};
       let studentCountsComplete = true;
-      const workspaceOwner = this.getWorkspaceOwnerApp();
+      const workspaceOwner = this.workspaceClient.operations;
       for (const course of availableCourses) {
         const rosterSummary = typeof workspaceOwner?.getGradeCourseRosterSummary === "function"
           ? await workspaceOwner.getGradeCourseRosterSummary(course.id)
@@ -30337,7 +30279,7 @@ class GradesApp {
         });
         return;
       }
-      const workspaceOwner = this.getWorkspaceOwnerApp();
+      const workspaceOwner = this.workspaceClient.operations;
       const courseState = typeof workspaceOwner?.getGradeCourseStateSnapshot === "function"
         ? await workspaceOwner.getGradeCourseStateSnapshot(course.id)
         : null;
@@ -30406,7 +30348,7 @@ class GradesApp {
     if (!id) {
       return { students: [], plan: null };
     }
-    const owner = this.getWorkspaceOwnerApp();
+    const owner = this.workspaceClient.operations;
     if (typeof owner?.getGradeCourseStateSnapshot === "function") {
       const gradeState = await owner.getGradeCourseStateSnapshot(id);
       if (!gradeState) {
@@ -30509,7 +30451,7 @@ class GradesApp {
       const cards = [];
       const nameLearningCourses = [];
       const courses = year ? this.store.listCourses(year.id).filter((course) => this.courseAllowsGrades(course)) : [];
-      const workspaceOwner = this.getWorkspaceOwnerApp();
+      const workspaceOwner = this.workspaceClient.operations;
       for (const course of courses) {
         const state = await workspaceOwner?.getGradeCourseStateSnapshot?.(course.id);
         const progressByStudentId = new Map((state?.gradeNameLearning || []).map((row) => [Number(row.studentId), row]));
@@ -30560,7 +30502,7 @@ class GradesApp {
     if (!this.gradeVaultSession.workspacePublicLoaded) await this.ensureWorkspacePublicLoaded();
     const year = this.activeSchoolYear;
     const courses = year ? this.store.listCourses(year.id).filter((course) => !course.noLesson) : [];
-    const workspaceOwner = this.getWorkspaceOwnerApp();
+    const workspaceOwner = this.workspaceClient.operations;
     const roster = [];
     for (const course of courses) {
       const state = await workspaceOwner?.getGradeCourseStateSnapshot?.(course.id);
@@ -30692,16 +30634,7 @@ class GradesApp {
     }
     try {
       await this.runGradeCourseMutation(courseId, () => {
-        const student = this.store.listGradeStudents(courseId).find((row) => Number(row.id) === studentId);
-        if (!student) {
-          const error = new Error("Diese Person ist nicht mehr im Kurs.");
-          error.code = "NAME_LEARNING_STUDENT_MISSING";
-          throw error;
-        }
-        const rows = this.store.gradeVaultState.gradeNameLearning;
-        const current = rows.find((row) => Number(row.courseId) === courseId && Number(row.studentId) === studentId);
-        if (current) Object.assign(current, { stage, dueAt });
-        else rows.push({ courseId, studentId, stage, dueAt });
+        this.store.saveNameLearningProgress(courseId, studentId, { stage, dueAt });
       }, { preserveRoster: true });
       this.dispatchNameLearningReviewResult({ requestId, ok: true, courseId, studentId, progress: { stage, dueAt } });
       return true;
@@ -30730,7 +30663,7 @@ class GradesApp {
     if (activeYearCourse) {
       return activeYearCourse;
     }
-    return (this.store.state?.courses || []).find((course) => Number(course.id) === courseKey) || null;
+    return this.store.getCourse(courseKey);
   }
 
   buildCourseSeatplanGradeEntries(assessmentId, students = []) {
@@ -30949,12 +30882,6 @@ class GradesApp {
     const normalizedLessonId = Number(lessonId || 0);
     if (!normalizedLessonId) {
       return false;
-    }
-    if (false) {
-      const workspaceOwner = this.getWorkspaceOwnerApp();
-      if (workspaceOwner?.activateGradeSeatplanTrigger) {
-        return workspaceOwner.activateGradeSeatplanTrigger(normalizedLessonId);
-      }
     }
     const lesson = this.store.getLessonById(normalizedLessonId);
     const courseId = Number(lesson?.courseId || 0);
@@ -31526,19 +31453,17 @@ class GradesApp {
       return true;
     }
     try {
-      const workspaceOwner = this.getWorkspaceOwnerApp();
-      if (!workspaceOwner?.store) throw new Error("Notenkursdienst ist nicht verfügbar.");
       const saved = await this.runGradeCourseMutation(courseId, () => {
         const currentRosterToken = this.buildCourseSeatplanRosterToken(
           courseId,
-          workspaceOwner.store.listGradeStudents(courseId),
+          this.store.listGradeStudents(courseId),
         );
         if (currentRosterToken !== rosterToken) {
           const staleError = new Error("Der Kurs oder seine Teilnehmendenliste wurde zwischenzeitlich geändert. Bitte den Picker neu öffnen.");
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
         }
-        const result = workspaceOwner.store.saveGradePickerConfig(courseId, config);
+        const result = this.store.saveGradePickerConfig(courseId, config);
         if (!result) throw new Error("Picker-Konfiguration konnte nicht sicher gespeichert werden.");
         return result;
       }, { preserveRoster: true });

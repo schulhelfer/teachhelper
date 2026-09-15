@@ -43,10 +43,12 @@
 - `shared/module-frame-bridge.js`: `createModuleFrame`, `postToModule`, `isTrustedModuleMessage`; prüft Quelle/Origin und bei opaken Frames zusätzlich Nonces.
 - Sandbox/Permissions sind modulspezifisch. Planung und Noten verwenden regulär gleichursprüngliche Frames; PDF-Werkzeuge/QR konfigurieren eigene Sandboxes.
 - `planning/bridge.js` und `grades/bridge.js` übersetzen zwischen `postMessage` und lokalen Ereignissen; bei Protokolländerungen beide Seiten prüfen.
-- Workspace-API: `getStore`, `getOwner`, `getSnapshot`, `registerClient`, `registerFeatureClient`, `execute`, `markChanged` in `workspace/index.js`.
-- `workspace/client.js` kapselt Abonnement und Befehle; `shared/school-data/messages.js` definiert Commands, Fehlercodes und Request-Normalisierung.
+- Öffentliche Workspace-API für Verbraucher: `workspace/client.js`; `createFeatureWorkspaceClient` verbindet gleichursprüngliche Frames und erzeugt für Tutorials/Standalone einen ephemeren Workspace. Die Shell verwendet `getWorkspaceClient`.
+- Der Client bietet `data` für synchrone Fachabfragen/-änderungen, `operations` für Kurs-, Vault- und Dateiaktionen sowie Snapshots, Abonnements und revisionierte `execute`-Befehle. Datenabfragen liefern Kopien; `this.store` in Planung/Noten ist nur ein Alias auf `client.data`.
+- `workspace/public-api.js` implementiert die expliziten, modulabhängigen Methodenlisten intern. Store, Runtime, Save-Hooks und Datei-Handles werden nicht an Verbraucher ausgegeben. API-Vertrag: `workspace/README.md`.
+- `shared/school-data/messages.js` definiert Commands, Fehlercodes und Request-Normalisierung; Controller-Erzeugung und interne Store-/Owner-Zugänge bleiben in `workspace/index.js`.
 - `execute` serialisiert Befehle und prüft `baseRevision`; registrierte Nachrichtenquellen haben fest zugeordnete Fähigkeiten.
-- Tatsächliche Kopplung: Planung und Noten nutzen zusätzlich `getStore()` direkt und rufen Methoden auf `getOwner()` auf; Änderungen laufen nicht ausschließlich über Commands.
+- Planung und Noten importieren ausschließlich `workspace/client.js`; auch Archivkomponenten und lokale Vorlagenwerte werden über diesen Einstieg angeboten. Kursänderungen nutzen `operations.runGradeCourseMutation`; deren Callback arbeitet nur mit der öffentlichen Daten-API.
 - `workspace/components.js` liefert gemeinsame Datenbank-/Archiv-Dialoge; `shared/school-data/grade-integrity.js` enthält gemeinsame Integritätsoperationen.
 
 ## Prüfen und Ausführen

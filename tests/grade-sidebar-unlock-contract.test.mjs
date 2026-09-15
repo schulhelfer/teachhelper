@@ -62,6 +62,7 @@ test('öffnet beim Start mit gewähltem Notenkurs einmalig den Entsperrdialog', 
   const app = {
     gradeVaultStartupUnlockPromptResolved: false,
     tutorialDemoMode: '',
+    gradesSurfaceRevealed: true,
     activeSchoolYear: { id: 7 },
     selectedCourseId: 42,
     store: {
@@ -93,6 +94,7 @@ test('wartet beim Start ohne gewählten Notenkurs und fragt nicht bei einem ents
   const app = {
     gradeVaultStartupUnlockPromptResolved: false,
     tutorialDemoMode: '',
+    gradesSurfaceRevealed: true,
     activeSchoolYear: { id: 7 },
     selectedCourseId: null,
     store: { listCourses() { return [{ id: 42, noLesson: false, noGrades: false }]; } },
@@ -109,17 +111,43 @@ test('wartet beim Start ohne gewählten Notenkurs und fragt nicht bei einem ents
   assert.equal(app.gradeVaultStartupUnlockPromptResolved, true);
 });
 
+test('fragt beim vorgezogenen Mounten hinter dem Planungstab nicht nach dem Passwort', () => {
+  const app = {
+    gradeVaultStartupUnlockPromptResolved: false,
+    tutorialDemoMode: '',
+    gradesSurfaceRevealed: false,
+    activeSchoolYear: { id: 7 },
+    selectedCourseId: 42,
+    store: { listCourses() { return [{ id: 42, noLesson: false, noGrades: false }]; } },
+    normalizeGradesSubView() { return 'overview'; },
+    queueGradeVaultContinuation() { assert.fail('der Vorabmount darf nichts einreihen'); },
+    courseAllowsGrades() { return true; },
+    getGradeVaultStatusMode() { return 'unlock'; },
+    openGradeVaultDialog() { assert.fail('der Vorabmount darf keinen Dialog öffnen'); },
+  };
+
+  assert.equal(promptGradeVaultUnlockForInitialCourse.call(app), false);
+  assert.equal(app.gradeVaultStartupUnlockPromptResolved, false);
+
+  app.gradesSurfaceRevealed = true;
+  let dialogMode = '';
+  app.openGradeVaultDialog = (mode) => { dialogMode = mode; };
+  app.queueGradeVaultContinuation = () => {};
+  assert.equal(promptGradeVaultUnlockForInitialCourse.call(app), true);
+  assert.equal(dialogMode, 'unlock');
+});
+
 test('fordert beim Ausschalten einer gesperrten Verschlüsselung zuerst das Passwort an', async () => {
   let dialogMode = '';
   let renderCount = 0;
   const app = {
     pendingGradeVaultEncryptionDisable: false,
-    getWorkspaceOwnerApp() {
-      return {
+    get workspaceClient() {
+      return { operations: {
         async setGradeVaultEncryptionEnabledFromSettings() {
           assert.fail('die Verschlüsselung darf vor dem Entsperren nicht deaktiviert werden');
         },
-      };
+      } };
     },
     isGradeVaultEncryptionEnabled() { return true; },
     canAccessGradeVault() { return false; },
@@ -245,13 +273,13 @@ test('speichert die Datenbank beim dauerhaften Aufheben der Verschlüsselung sof
   const app = {
     gradeVaultEncryptionDraft: false,
     settingsDirty: true,
-    getWorkspaceOwnerApp() {
-      return {
+    get workspaceClient() {
+      return { operations: {
         async setGradeVaultEncryptionEnabledFromSettings(enabled) {
           assert.equal(enabled, false);
           return true;
         },
-      };
+      } };
     },
     isGradeVaultEncryptionEnabled() { return true; },
     canAccessGradeVault() { return true; },

@@ -207,7 +207,7 @@ test('the complete grade editor still renders all modes and dispatches its exist
     const courseId = app.selectedCourseId;
     const payload = '<img src=x onerror=alert(1)>"';
     const course = app.store.listCourses(app.activeSchoolYear.id).find((item) => item.id === courseId);
-    course.name = payload;
+    app.workspaceClient.data.updateCourse(app.activeSchoolYear.id, courseId, payload, course.color, course.noLesson);
     const modes = [];
     for (const mode of ['grade', 'homework', 'test']) {
       const draft = app.getGradesEntryDraft(courseId);

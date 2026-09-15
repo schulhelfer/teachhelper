@@ -22,6 +22,7 @@ import {
 } from '../../shared/school-data/messages.js';
 import { WorkspaceStore } from './store.js';
 import { createWorkspaceRuntime } from './runtime.js';
+import { createWorkspacePublicApi } from './public-api.js';
 
 export const WORKSPACE_GLOBAL_KEY = '__teachhelperWorkspaceController';
 
@@ -370,6 +371,17 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
   };
 
   const controller = {
+    openClientApi(scope) {
+      const requireAvailable = (value) => {
+        if (disposed || !value) throw new Error('Workspace ist nicht mehr verfügbar.');
+        return value;
+      };
+      return createWorkspacePublicApi({
+        scope: normalizeWorkspaceClient(scope),
+        getStore: () => requireAvailable(store),
+        getRuntime: () => requireAvailable(runtimeService),
+      });
+    },
     attachRuntime,
     detachRuntime(featureClient) {
       if (!featureClient) return false;

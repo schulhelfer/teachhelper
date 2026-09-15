@@ -32,10 +32,10 @@ test('Picker-Speicherungen warten auf die Entsperrung und akzeptieren keine vera
   assert.ok(method, 'Picker-Speicherhandler muss vorhanden sein');
   const body = method[1];
   assert.match(body, /queueGradeVaultContinuation\(\{ type: "picker-config-save", detail \}\)/);
-  assert.match(body, /workspaceOwner\.store\.listGradeStudents\(courseId\)/);
+  assert.match(body, /this\.store\.listGradeStudents\(courseId\)/);
   assert.match(body, /currentRosterToken !== rosterToken/);
   assert.match(body, /STALE_GRADE_CONTEXT/);
-  assert.match(body, /workspaceOwner\.store\.saveGradePickerConfig\(courseId, config\)/);
+  assert.match(body, /this\.store\.saveGradePickerConfig\(courseId, config\)/);
   assert.match(body, /runGradeCourseMutation\(courseId,[\s\S]*?\{ preserveRoster: true \}\)/);
   assert.match(gradesApp, /action\.type === "picker-config-save"/);
 });

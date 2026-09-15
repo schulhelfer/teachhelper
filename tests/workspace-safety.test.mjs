@@ -29,7 +29,7 @@ export function createWorkspaceRuntime(store) {
     '../../shared/school-data/messages.js',
     messagesUrl,
   ).replace("import { WorkspaceStore } from './store.js';", 'class WorkspaceStore {}')
-    .replace("from './runtime.js';", `from '${runtimeUrl}';`);
+    .replace("from './runtime.js';", `from '${runtimeUrl}';`).replace("from './public-api.js';", `from '${new URL('../src/modules/workspace/public-api.js', import.meta.url).href}';`);
   const workspaceUrl = `data:text/javascript;base64,${Buffer.from(rewrittenWorkspaceSource).toString('base64')}`;
   return {
     messages: await import(messagesUrl),

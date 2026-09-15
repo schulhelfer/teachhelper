@@ -1,3 +1,4 @@
+import { getWorkspaceClient } from '../modules/workspace/client.js';
 import {
   STUDENTS_UPDATED_EVENT,
   STUDENTS_SYNC_SOURCE_GRADES,
@@ -94,8 +95,8 @@ export function createPlanningSeatplanBridge({
 
   const seatplanBus = documentBus;
 
-  const getWorkspaceController = () => (
-    typeof window !== 'undefined' ? window.__teachhelperWorkspaceController || null : null
+  const getShellWorkspaceClient = () => (
+    typeof window !== 'undefined' ? getWorkspaceClient(window) : null
   );
 
   const setNameLearningGradeVaultState = (detail = null, host = els.nameLearningHost) => {
@@ -115,15 +116,8 @@ export function createPlanningSeatplanBridge({
   };
 
   const refreshWorkspaceLifecycle = () => {
-    const controller = getWorkspaceController();
-    const owner = controller?.getOwner?.() || null;
-    if (owner) controller?.refreshOwnerStatus?.(owner);
-    return controller?.getLifecycle?.() || {
-      owner: Boolean(owner),
-      hydrated: Boolean(controller?.isHydrated?.()),
-      ready: Boolean(controller?.isReady?.()),
-      revision: Number(controller?.getRevision?.()) || 0,
-    };
+    const controller = getShellWorkspaceClient();
+    return controller?.getLifecycle() || { owner: false, hydrated: false, ready: false, revision: 0 };
   };
 
   const isWorkspaceReady = () => Boolean(refreshWorkspaceLifecycle().ready);
@@ -270,7 +264,7 @@ export function createPlanningSeatplanBridge({
   const initNameLearningTab = (host = els.nameLearningHost) => {
     if (!host || host.dataset.initialized === '1') return;
     if (!nameLearningGradeVaultState) {
-      const vault = getWorkspaceController()?.getSnapshot?.('shell')?.vault;
+      const vault = getShellWorkspaceClient()?.getSnapshot?.('shell')?.vault;
       if (vault) {
         setNameLearningGradeVaultState({
           locked: vault.encryptionEnabled === true && vault.unlocked !== true,
@@ -400,7 +394,7 @@ export function createPlanningSeatplanBridge({
     duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
     nameLearningController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
-    gradesController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
+    gradesController?.applyShellLayout?.({ collapsed: getChromeCollapsed(), activeTab });
     planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
     seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed(), activeTab });
     scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
@@ -489,8 +483,9 @@ export function createPlanningSeatplanBridge({
 
   function dispatchPublicLockedGradeRosterCourses(detail = null) {
     const source = detail && typeof detail === 'object' ? detail : {};
-    const owner = getWorkspaceController()?.getOwner?.();
-    const store = owner?.store;
+    const client = getShellWorkspaceClient();
+    const owner = client?.operations;
+    const store = client?.data;
     if (
       source.unlock === true
       || !owner?.isGradeVaultEncryptionEnabled?.()

@@ -17,7 +17,7 @@ import {
   isTrustedModuleMessage,
   postToModule,
 } from '../../shared/module-frame-bridge.js';
-import { WORKSPACE_GLOBAL_KEY } from '../workspace/index.js';
+import { getWorkspaceClient } from '../workspace/client.js';
 
 const PLANNING_URL = new URL('./app.html', import.meta.url);
 const FORWARDED_FRAME_EVENTS = new Set([
@@ -49,7 +49,7 @@ export function mountPlanning({ host }) {
 
   const registerWorkspaceMessageSource = () => {
     unregisterWorkspaceMessageSource?.();
-    unregisterWorkspaceMessageSource = window[WORKSPACE_GLOBAL_KEY]
+    unregisterWorkspaceMessageSource = getWorkspaceClient(window)
       ?.registerMessageSource?.(frame.contentWindow, 'planning') || null;
   };
 

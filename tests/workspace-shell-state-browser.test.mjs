@@ -33,7 +33,10 @@ test('workspace shell state preserves bootstrap, vault, unsaved, and warning beh
       configurable: true,
       value: {
         getSnapshot: (scope) => scope === 'shell' ? structuredClone(initialSnapshot) : null,
-        getOwner: () => null,
+        execute: async () => ({ ok: true, revision: 0 }),
+        openClientApi: () => ({ data: {}, operations: {} }),
+        refreshOwnerStatus() {},
+        registerMessageSource: () => () => {},
         getLifecycle: () => ({ owner: false, hydrated: true, ready: true, revision: 0 }),
         getRevision: () => 0,
         isHydrated: () => true,

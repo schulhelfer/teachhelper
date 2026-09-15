@@ -77,13 +77,10 @@ test('nur ausklinkbare Werkzeuge bekommen einen Shell-Deeplink', async () => {
 test('grades und planning starten ohne Shell niemals einen schreibenden Workspace', async () => {
   for (const name of ['grades', 'planning']) {
     const source = await read(`../src/modules/${name}/app.js`);
-    const fallback = source.match(/getParentWorkspaceController\(\)\s*\|\|\s*createWorkspaceController\(\{[\s\S]*?\}\)/);
-    assert.ok(fallback, `${name}: Workspace-Fallback nicht gefunden`);
-    assert.match(
-      fallback[0],
-      /ephemeral: true/,
-      `${name}: der Fallback-Controller muss ephemer bleiben`,
-    );
+    assert.match(source, /createFeatureWorkspaceClient\(/);
+    const client = await read('../src/modules/workspace/client.js');
+    assert.match(client, /createWorkspaceController\(\{[^}]*ephemeral: true/);
+
   }
 });
 
