@@ -2,14 +2,11 @@ import { installAppTooltips } from '../../shared/app-tooltips.js';
 import { installTutorialEntryHint } from '../../shared/tutorial-entry-hint.js';
 import { DUPLICATE_CHECK_SHELL_LAYOUT_EVENT } from '../../shell/tabs.js';
 import {
-  FILE_LIMITS,
   FILE_TIMEOUTS,
   assertImageDimensionsAtMost,
-  exceedsZipCompressionRatio,
   readFileArrayBufferWithTimeout,
   readImageDimensions,
   validateZipFile,
-  withTimeout,
 } from '../../shared/file-guards.js';
 import { runFileProcessingTask } from '../../shared/file-processing-client.js';
 import {
@@ -28,7 +25,6 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     DUPLICATE_CHECK_SHELL_LAYOUT_EVENT,
     TUTORIAL_TARGET_RECT_REQUEST_EVENT,
   ]);
-  const JSZIP_URL = new URL('../../vendor/jszip/3.10.2/jszip.min.js', import.meta.url);
   const HASH_WIDTH = 17;
   const HASH_HEIGHT = 16;
   const IMAGE_HASH_SIZE = (HASH_WIDTH - 1) * HASH_HEIGHT;
@@ -62,7 +58,6 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     ruleButtons: [...root.querySelectorAll('[data-duplicate-rule]')],
   };
 
-  let jsZipLoadPromise = null;
   let analysisToken = 0;
   let enabledRules = { name: true, size: true, visual: true };
   let lastRecords = [];
@@ -155,63 +150,8 @@ export function createDuplicateCheckApp({ root = document } = {}) {
     }), TRUSTED_PARENT_ORIGIN);
   }
 
-  function hasJsZipLoaded() {
-    return Boolean(window.JSZip && typeof window.JSZip.loadAsync === 'function');
-  }
-
-  function loadJsZipScript() {
-    return new Promise((resolve, reject) => {
-      if (typeof document === 'undefined' || !document.head) {
-        reject(new Error('ZIP-Library kann in dieser Umgebung nicht geladen werden.'));
-        return;
-      }
-
-      const script = document.createElement('script');
-      script.src = JSZIP_URL.href;
-      script.async = true;
-      script.onload = () => resolve();
-      script.onerror = () => {
-        script.remove();
-        reject(new Error(`ZIP-Library konnte nicht geladen werden: ${JSZIP_URL.pathname}`));
-      };
-      document.head.append(script);
-    });
-  }
-
-  async function ensureJsZipLoaded() {
-    if (hasJsZipLoaded()) return window.JSZip;
-    if (!jsZipLoadPromise) {
-      jsZipLoadPromise = loadJsZipScript()
-        .then(() => {
-          if (!hasJsZipLoaded()) {
-            throw new Error('ZIP-Library wurde geladen, ist aber unvollständig.');
-          }
-          return window.JSZip;
-        })
-        .catch((error) => {
-          jsZipLoadPromise = null;
-          throw error;
-        });
-    }
-    return jsZipLoadPromise;
-  }
-
   function getEnabledRuleList(rules = enabledRules) {
     return ['name', 'size', 'visual'].filter((rule) => Boolean(rules[rule]));
-  }
-
-  function getRuleLabel(rule) {
-    if (rule === 'name') return 'gleichem Namen';
-    if (rule === 'size') return 'gleicher Größe';
-    if (rule === 'visual') return 'ähnlichem Bildinhalt';
-    return '';
-  }
-
-  function formatRuleList(rules = enabledRules) {
-    const labels = getEnabledRuleList(rules).map(getRuleLabel).filter(Boolean);
-    if (!labels.length) return 'keinem aktiven Kriterium';
-    if (labels.length === 1) return labels[0];
-    return `${labels.slice(0, -1).join(', ')} und ${labels[labels.length - 1]}`;
   }
 
   function syncRuleButtons() {
@@ -826,105 +766,6 @@ export function createDuplicateCheckApp({ root = document } = {}) {
       decoded?.close?.();
     }
   }
-
-	  function getZipEntrySize(entry, key) {
-	    const value = entry?._data?.[key];
-	    return Number.isFinite(value) && value >= 0 ? value : null;
-	  }
-
-	  function ensureZipAnalysisWithinDeadline(deadlineMs) {
-	    if (Date.now() > deadlineMs) {
-	      throw new Error('Die ZIP-Analyse hat zu lange gedauert. Bitte mit einem kleineren ZIP erneut versuchen.');
-	    }
-	  }
-
-	  function assertZipEntryLimits(entries) {
-	    if (entries.length > FILE_LIMITS.ZIP_MAX_ENTRIES) {
-	      throw new Error(`Das ZIP enthält zu viele Dateien. Maximal erlaubt: ${FILE_LIMITS.ZIP_MAX_ENTRIES}.`);
-	    }
-
-	    let knownUncompressedTotal = 0;
-	    entries.forEach((entry) => {
-	      const compressedSize = getZipEntrySize(entry, 'compressedSize');
-	      const uncompressedSize = getZipEntrySize(entry, 'uncompressedSize');
-	      if (compressedSize != null && compressedSize > FILE_LIMITS.ZIP_BYTES) {
-	        throw new Error(`"${entry.name}" ist im ZIP ungewöhnlich groß.`);
-	      }
-	      if (uncompressedSize != null) {
-	        if (uncompressedSize > FILE_LIMITS.ZIP_ENTRY_BYTES) {
-	          throw new Error(`"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_ENTRY_BYTES)}.`);
-	        }
-	        if (compressedSize != null && exceedsZipCompressionRatio(compressedSize, uncompressedSize)) {
-	          throw new Error(`"${entry.name}" ist verdächtig stark komprimiert.`);
-	        }
-	        knownUncompressedTotal += uncompressedSize;
-	      }
-	    });
-
-	    if (knownUncompressedTotal > FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES) {
-	      throw new Error(`Das ZIP ist entpackt zu groß. Maximal erlaubt: ${formatBytes(FILE_LIMITS.ZIP_TOTAL_UNCOMPRESSED_BYTES)}.`);
-	    }
-	  }
-
-	  function readZipEntryCapped(entry, maxBytes, timeoutMs, options = {}) {
-	    return new Promise((resolve, reject) => {
-	      let stream;
-	      try {
-	        stream = entry.internalStream('uint8array');
-	      } catch (error) {
-	        reject(error);
-	        return;
-	      }
-	      const chunks = [];
-	      let total = 0;
-	      let settled = false;
-	      const timer = setTimeout(() => {
-	        fail(new Error('ZIP-Eintrag konnte nicht rechtzeitig entpackt werden.'));
-	      }, Math.max(1, timeoutMs));
-
-	      function stop() {
-	        settled = true;
-	        clearTimeout(timer);
-	        try {
-	          stream.pause();
-	        } catch (_error) {
-	        }
-	      }
-
-	      function fail(error) {
-	        if (settled) return;
-	        stop();
-	        reject(error);
-	      }
-
-	      stream
-	        .on('data', (chunk) => {
-	          if (settled) return;
-	          total += chunk.length;
-	          if (total > maxBytes) {
-	            fail(new Error(
-	              options.overflowMessage
-	              || `"${entry.name}" ist entpackt zu groß. Maximal erlaubt: ${formatBytes(maxBytes)}.`
-	            ));
-	            return;
-	          }
-	          chunks.push(chunk);
-	        })
-	        .on('error', fail)
-	        .on('end', () => {
-	          if (settled) return;
-	          stop();
-	          const result = new Uint8Array(total);
-	          let offset = 0;
-	          chunks.forEach((chunk) => {
-	            result.set(chunk, offset);
-	            offset += chunk.length;
-	          });
-	          resolve(result);
-	        })
-	        .resume();
-	    });
-	  }
 
   function getBasename(path) {
     return String(path || '').split(/[\\/]/).filter(Boolean).pop() || String(path || '');

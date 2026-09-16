@@ -1816,64 +1816,6 @@ export function mountGroups({
     doc.body.appendChild(ghost);
     return ghost;
   }
-  function assignStudentsEvenly(options = {}) {
-    const { shuffle = true } = options;
-    if (!state.students.length) { showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' }); return; }
-    if (!state.activeSeats.size) { showMessage('Bitte zuerst das Gruppenraster einrichten.', 'warn', { presentation: 'toast' }); return; }
-    syncGroupSizeInputs();
-    const maxSize = clampMaxGroupSize(state.maxGroupSize);
-    const minSize = clampMinGroupSize(state.minGroupSize);
-    ensureCapacityForStudents(maxSize, minSize);
-    const activeIds = Array.from(state.activeSeats);
-    const lockedAssignments = {};
-    const assigned = new Set();
-    state.lockedSeats.forEach(id => {
-      lockedAssignments[id] = getSeatList(id);
-      lockedAssignments[id].forEach(sid => assigned.add(sid));
-    });
-    const freeSeats = activeIds.filter(id => !state.lockedSeats.has(id));
-    if (!freeSeats.length) {
-      showMessage('Keine freien Gruppen verfügbar (alle gesperrt).', 'warn', { presentation: 'toast' });
-      return;
-    }
-    const capacity = activeIds.length * maxSize;
-    const remainingCount = state.students.length;
-    if (capacity < remainingCount) {
-      showMessage('Raster wurde erweitert, aber es fehlt Platz für alle Lernenden bei dieser Gruppengröße.', 'warn');
-    }
-    const order = state.students.slice().filter(s => !assigned.has(s.id));
-    if (shuffle) {
-      for (let i = order.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [order[i], order[j]] = [order[j], order[i]];
-      }
-    }
-    const nextSeats = {};
-    activeIds.forEach(id => {
-      nextSeats[id] = state.lockedSeats.has(id) ? ensureSeatList(lockedAssignments[id]) : [];
-    });
-    let idx = 0;
-    order.forEach(student => {
-      let attempts = 0;
-      let target = null;
-      while (attempts < freeSeats.length) {
-        const candidate = freeSeats[idx % freeSeats.length];
-        if ((nextSeats[candidate]?.length || 0) < maxSize) {
-          target = candidate; break;
-        }
-        idx++; attempts++;
-      }
-      if (target === null) {
-        target = freeSeats[idx % freeSeats.length];
-      }
-      nextSeats[target].push(student.id);
-      idx++;
-    });
-    state.seats = nextSeats;
-    renderSeats();
-    refreshUnseated();
-  }
-
   const GROUP_SUGGEST_ROULETTE_CONFIG = Object.freeze({
     candidateAttempts: 42,
     minFrames: 18,

@@ -10785,7 +10785,7 @@ class PlanningApp {
       notesCell.className = "course-details-cell";
 
       const firstLessonId = topLesson.id;
-      const performanceNavigationState = course.noLesson
+      const performanceNavigationState = course.noLesson || allCanceled
         ? null
         : this.getPerformanceNavigationStateForLesson(topLesson, performanceLookup);
       tr.dataset.lessonId = String(firstLessonId);

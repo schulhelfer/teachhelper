@@ -11,11 +11,6 @@ import {
   combineGradePeriods
 } from "../../shared/school-data/grades.js";
 import {
-  assertGradeCourseIntegrity,
-  assertGradeRosterUnchanged,
-  validateGradeDelta
-} from "../../shared/school-data/grade-integrity.js";
-import {
   BACKUP_ENABLED_DEFAULT,
   BACKUP_INTERVAL_DEFAULT_DAYS,
   BACKUP_INTERVAL_MAX_DAYS,

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import vm from 'node:vm';
 
 const [source, workerSource] = await Promise.all([
   readFile(new URL('../src/modules/duplicate-check/app.js', import.meta.url), 'utf8'),
@@ -29,9 +30,23 @@ test('die Gesamtsumme wird aus den tatsächlich entpackten Bytes gebildet, nicht
   assert.doesNotMatch(workerSource, /total \+= .*uncompressedSize/);
 });
 
-test('readZipEntryCapped meldet ein erschöpftes Gesamtbudget als ZIP-Fehler statt als Eintragsfehler', () => {
-  const reader = readFunctionBody('readZipEntryCapped', 'getBasename');
+test('der Worker stoppt den ZIP-Stream bei erschöpftem Gesamtbudget', async () => {
+  const start = workerSource.indexOf('async function readEntry(');
+  const end = workerSource.indexOf('function imageMime(', start);
+  assert.ok(start >= 0 && end > start);
+  const readEntry = vm.runInNewContext(`(${workerSource.slice(start, end).trim()})`, {
+    FILE_LIMITS: { ZIP_TOTAL_UNCOMPRESSED_BYTES: 10 },
+    Uint8Array,
+  });
+  const handlers = {};
+  let paused = false;
+  const stream = {
+    on(type, handler) { handlers[type] = handler; return this; },
+    pause() { paused = true; },
+    resume() { handlers.data(new Uint8Array(4)); },
+  };
+  const entry = { internalStream: () => stream };
 
-  assert.match(reader, /options\.overflowMessage/);
-  assert.match(reader, /\|\|\s*`"\$\{entry\.name\}" ist entpackt zu groß/);
+  await assert.rejects(readEntry(entry, 100, 8), /Das ZIP ist entpackt zu groß/);
+  assert.equal(paused, true);
 });

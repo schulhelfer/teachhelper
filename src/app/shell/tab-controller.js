@@ -307,7 +307,7 @@ export function createTabController({
       return;
     }
     if (workspaceStatus?.shouldPromptVaultUnlock?.(nextTab)) {
-      onRequestGradeVault({ action: 'unlock', overlay: true });
+      onRequestGradeVault({ action: 'unlock', overlay: true, preserveSourceTab: false });
     }
     if (nextTab !== activeTab) onTabActivating(nextTab, activeTab);
     if (options.skipAnimation) {

@@ -355,6 +355,21 @@ test('switches immediately for reduced motion while preserving callback order', 
   assert.ok(names.indexOf('refresh') < names.indexOf('active-change'));
 });
 
+test('requests the vault unlock overlay without preserving the source tab', () => {
+  const harness = createHarness({ initialActiveTab: 'planning', reducedMotion: true });
+  harness.workspace.promptVault = true;
+  harness.controller.setActiveTab('grades');
+
+  const request = harness.calls.find(([name]) => name === 'vault-request');
+  assert.ok(request);
+  assert.deepEqual(request[1], {
+    action: 'unlock',
+    overlay: true,
+    preserveSourceTab: false,
+  });
+  assert.equal(harness.controller.getActiveTab(), 'grades');
+});
+
 test('switches without animation when no tab region is currently rendered', () => {
   const harness = createHarness({ initialActiveTab: 'groups' });
   harness.app.children.forEach((region) => {

@@ -81,7 +81,6 @@ export function mountRandomPicker({
 } = {}) {
   let spinInProgress = false;
   let currentIndex = 0;
-  let lockedWidthPx = 0;
   const removers = [];
   const view = doc?.defaultView || globalThis;
 
@@ -154,12 +153,10 @@ export function mountRandomPicker({
         .reduce((sum, key) => sum + (Number.parseFloat(wheelStyle[key]) || 0), 0);
       const arrowClearance = Number.parseFloat(wheelStyle.getPropertyValue('--random-picker-arrow-clearance')) || 0;
       const cardWidthPx = Math.max(0, widthPx - horizontalPadding - arrowClearance);
-      lockedWidthPx = widthPx;
       dom.wheel.style.setProperty('--random-picker-wheel-static-width', `${widthPx}px`);
       dom.wheel.style.setProperty('--random-picker-card-static-width', `${cardWidthPx}px`);
       return;
     }
-    lockedWidthPx = 0;
     dom.wheel.style.removeProperty('--random-picker-wheel-static-width');
     dom.wheel.style.removeProperty('--random-picker-card-static-width');
   }

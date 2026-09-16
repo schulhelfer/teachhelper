@@ -802,47 +802,6 @@ export function createMergerApp({
             return text.length;
           }
 
-          function scanComposite(text, start, openA, closeA, openB = null, closeB = null) {
-            let depthA = 0;
-            let depthB = 0;
-            let i = start;
-            while (i < text.length) {
-              const duo = text.slice(i, i + 2);
-              const ch = text[i];
-              if (ch === "(") {
-                i = scanLiteralString(text, i);
-                continue;
-              }
-              if (duo === openA) {
-                depthA += 1;
-                i += openA.length;
-                continue;
-              }
-              if (duo === closeA) {
-                depthA -= 1;
-                i += closeA.length;
-                if (depthA === 0 && depthB === 0) return i;
-                continue;
-              }
-              if (openB && duo === openB) {
-                depthB += 1;
-                i += openB.length;
-                continue;
-              }
-              if (closeB && duo === closeB) {
-                depthB -= 1;
-                i += closeB.length;
-                continue;
-              }
-              if (ch === "[" && openA !== "[") {
-                i = scanArray(text, i);
-                continue;
-              }
-              i += 1;
-            }
-            return text.length;
-          }
-
           function scanArray(text, start) {
             let depth = 0;
             let i = start;
@@ -3832,21 +3791,6 @@ export function createMergerApp({
               throw new Error(`"${file.name}" konnte nicht gelesen werden (evtl. beschädigt oder verschlüsselt).`);
             }
           }
-
-	          async function createPdfFromPageIndexes(PDFLib, sourceDoc, pageIndexes) {
-	            const outputDoc = await PDFLib.PDFDocument.create();
-	            for (const pageIndex of pageIndexes) {
-              const [copiedPage] = await outputDoc.copyPages(sourceDoc, [pageIndex]);
-              outputDoc.addPage(copiedPage);
-            }
-	            if (!outputDoc.getPageCount()) {
-	              throw new Error("Die Auswahl enthält keine Seiten.");
-	            }
-	            return runPdfOperation(
-	              () => outputDoc.save({ useObjectStreams: false }),
-	              "Aufteilen"
-	            );
-	          }
 
           async function handleLayoutStart() {
             if (!layoutState.file) {

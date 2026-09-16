@@ -8226,6 +8226,7 @@
 
         .grades-master-table .grade-total-button {
           padding-inline: var(--grade-cell-control-padding-inline);
+          border-radius: var(--grade-cell-control-radius);
         }
 
         .grade-override-cell-editor {

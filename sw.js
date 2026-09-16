@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '111';
+const TEACHHELPER_APP_VERSION_STAMP = '112';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -114,6 +114,7 @@ const APP_SHELL = [
   './src/modules/grades/app.js',
   './src/modules/grades/bridge.js',
   './src/modules/grades/percentile-rank.js',
+  './src/modules/grades/expectation-horizon-latex.js',
   './src/modules/grades/roster-ocr-dialog.js',
   './src/modules/grades/roster-ocr-data.js',
   './src/modules/grades/roster-ocr-pdf.js',
