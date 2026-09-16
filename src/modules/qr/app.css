@@ -576,13 +576,19 @@ h1,
   gap: 12px;
 }
 
-.camera-panel video {
+.camera-placeholder {
+  display: grid;
+  place-items: center;
   width: 100%;
   max-height: 52vh;
   aspect-ratio: 16 / 9;
-  object-fit: cover;
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  border: 1px dashed color-mix(in srgb, var(--line) 70%, transparent);
   border-radius: 14px;
-  background: #020617;
+  background: color-mix(in srgb, var(--drop) 84%, transparent);
 }
 
 .decoded-text {

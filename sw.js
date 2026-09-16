@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '112';
+const TEACHHELPER_APP_VERSION_STAMP = '113';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -14,6 +14,7 @@ const APP_SHELL = [
   './src/main.js',
   './src/app/app-runtime.js',
   './src/app/module-shell-coordinator.js',
+  './src/app/qr-camera-controller.js',
   './src/app/app-tutorial-controller.js',
   './src/app/classroom-file-actions.js',
   './src/app/app-update-controller.js',
@@ -83,6 +84,7 @@ const APP_SHELL = [
   './src/shared/workspace-client.css',
   './src/shared/school-data/defaults.js',
   './src/shared/messages.js',
+  './src/shared/qr-decode.js',
   './src/shared/module-frame-bridge.js',
   './src/shared/name-learning-due-summary.js',
   './src/shared/roster-store.js',

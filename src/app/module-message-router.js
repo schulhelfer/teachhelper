@@ -13,6 +13,7 @@ import {
   NAME_LEARNING_REVIEW_REQUEST_EVENT,
   NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
+  QR_CAMERA_REQUEST_EVENT,
 } from '../shell/tabs.js';
 
 export const SIDEBAR_WIDTH_SCOPE_PLANNING = 'planning';
@@ -112,6 +113,13 @@ export function createModuleMessageRouter({
     if (data.type === MODULE_OPEN_EXTERNAL_REQUEST_EVENT) {
       if (role !== 'qr') return false;
       return invoke('onOpenExternalRequest', data.detail, metadata);
+    }
+    if (data.type === QR_CAMERA_REQUEST_EVENT) {
+      if (role !== 'qr') return false;
+      const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
+      if (!detail || detail.source !== 'iframe') return false;
+      if (detail.action !== 'start' && detail.action !== 'stop') return false;
+      return invoke('onQrCameraRequest', detail, metadata);
     }
     if (data.type === MERGER_OPEN_RESULT_REQUEST_EVENT) {
       if (role !== 'merger') return false;

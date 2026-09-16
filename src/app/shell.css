@@ -7775,3 +7775,57 @@
     app-region: no-drag;
   }
 }
+
+.qr-host {
+  position: relative;
+}
+
+.qr-camera-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  backdrop-filter: blur(4px);
+}
+
+.qr-camera-overlay-frame {
+  display: grid;
+  gap: 12px;
+  width: min(100%, 720px);
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28);
+}
+
+.qr-camera-overlay-frame video {
+  width: 100%;
+  max-height: 52vh;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 14px;
+  background: #020617;
+}
+
+.qr-camera-overlay-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.qr-camera-overlay-stop {
+  padding: 8px 16px;
+  font: inherit;
+  color: var(--text);
+  cursor: pointer;
+  background: var(--drop);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 10px;
+}
+
+.qr-camera-overlay-stop:hover {
+  background: color-mix(in srgb, var(--drop) 70%, var(--text) 8%);
+}

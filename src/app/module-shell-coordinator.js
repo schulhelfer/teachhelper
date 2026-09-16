@@ -6,6 +6,7 @@ import {
   SIDEBAR_WIDTH_SYNC_EVENT,
 } from './module-message-router.js';
 import { postToModule } from '../shared/module-frame-bridge.js';
+import { createQrCameraController } from './qr-camera-controller.js';
 import { FILE_LIMITS, formatFileSize } from '../shared/file-guards.js';
 import {
   hasTutorialEntryHintBeenSeen,
@@ -17,6 +18,8 @@ import {
   GRADES_VIEW_REQUEST_EVENT,
   PLANNING_TUTORIAL_START_REQUEST_EVENT,
   PLANNING_VIEW_REQUEST_EVENT,
+  QR_CAMERA_RESULT_EVENT,
+  QR_CAMERA_STATE_EVENT,
   TAB_GRADES,
   TAB_PLANNING,
   TAB_SEATPLAN,
@@ -55,6 +58,27 @@ export function createModuleShellCoordinator({
   showMessage,
 }) {
   let moduleMessageRouter = null;
+  let qrCameraController = null;
+  const postToQrFrame = (type, detail) => {
+    const frame = getQrFrame();
+    if (!frame) return;
+    postToModule(frame, { type, detail });
+  };
+  const getQrCameraController = () => {
+    if (qrCameraController) return qrCameraController;
+    qrCameraController = createQrCameraController({
+      documentRef: document,
+      view: window,
+      getHost: () => getQrFrame()?.parentElement || null,
+      onResult: (value) => {
+        postToQrFrame(QR_CAMERA_RESULT_EVENT, { value });
+      },
+      onState: (state) => {
+        postToQrFrame(QR_CAMERA_STATE_EVENT, state);
+      },
+    });
+    return qrCameraController;
+  };
   const openExternalUrlForModule = (value) => {
     let url;
     try {
@@ -201,6 +225,14 @@ export function createModuleShellCoordinator({
           onOpenExternalRequest: (detail) => {
             openExternalUrlForModule(detail?.url);
           },
+          onQrCameraRequest: (detail) => {
+            if (detail.action === 'stop') {
+              qrCameraController?.stop();
+              return;
+            }
+            if (!appEl.classList.contains('app-tab-qr')) return;
+            void getQrCameraController().start();
+          },
           onMergerOpenResultRequest: (detail) => {
             openModuleResultPdf(detail);
           },
@@ -254,6 +286,17 @@ export function createModuleShellCoordinator({
         },
       });
       registerCleanup(() => moduleMessageRouter?.dispose?.());
+      registerCleanup(() => qrCameraController?.dispose?.());
+      if (typeof window.MutationObserver === 'function' && appEl) {
+        const qrTabObserver = new window.MutationObserver(() => {
+          if (!qrCameraController?.isActive()) return;
+          if (appEl.classList.contains('app-tab-qr')) return;
+          qrCameraController.stop();
+          postToQrFrame(QR_CAMERA_STATE_EVENT, { active: false });
+        });
+        qrTabObserver.observe(appEl, { attributes: true, attributeFilter: ['class'] });
+        registerCleanup(() => qrTabObserver.disconnect());
+      }
       bindRuntime(window, PLANNING_VIEW_REQUEST_EVENT, (event) => {
         const detail = event instanceof CustomEvent ? event.detail : null;
         if (!detail || typeof detail !== 'object' || detail.source !== 'iframe') {
