@@ -73,6 +73,29 @@ test('pre-commit rejects a Python-free environment before running other checks',
   assert.doesNotMatch(result.stdout, /Stamping the app version/);
 });
 
+test('cached responses drop redirect state so worker scripts stay loadable', () => {
+  assert.match(
+    serviceWorkerSource,
+    /function withoutRedirectState\(response\)/,
+    'the service worker must be able to strip redirect state from a response',
+  );
+  assert.match(
+    serviceWorkerSource,
+    /response\.redirected \|\| response\.type === 'opaqueredirect'|!response\.redirected && response\.type !== 'opaqueredirect'/,
+    'redirect stripping must detect both redirected and opaqueredirect responses',
+  );
+  const pinnedBody = serviceWorkerSource.slice(
+    serviceWorkerSource.indexOf('async function precacheFirst('),
+    serviceWorkerSource.indexOf('async function staleWhileRevalidate('),
+  );
+  assert.doesNotMatch(
+    pinnedBody,
+    /\n    return pinned;/,
+    'a pinned precache hit must not be served without stripping redirect state',
+  );
+  assert.match(pinnedBody, /return withoutRedirectState\(pinned\)/);
+});
+
 test('file-processing timeout and abort terminate the active worker', async () => {
   const workers = [];
   class FakeWorker {
