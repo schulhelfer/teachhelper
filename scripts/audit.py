@@ -502,6 +502,7 @@ RELATIVE_LITERAL_PATTERN = re.compile(r'[\'"](?!https?:|//|data:)[^\'"]*[\'"]')
 
 DYNAMIC_SCRIPT_URL_ALLOWLIST = {
   ('src/shared/pdf-vendor.js', 'url.href'),
+  ('src/shared/worker-origin-fallback.js', '${JSON.stringify(url.href)}'),
 }
 
 

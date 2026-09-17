@@ -1,26 +1,10 @@
 import { FILE_LIMITS } from "./file-guards.js";
+import { createWorkerWithOriginFallback } from "./worker-origin-fallback.js";
 
 const WORKER_URL = new URL("./file-processing-worker.js", import.meta.url);
 
 const pending = [];
 let activeCount = 0;
-let blobWorkerUrl = "";
-
-function createOpaqueOriginWorkerUrl() {
-  if (blobWorkerUrl) return blobWorkerUrl;
-  const shim = `import ${JSON.stringify(WORKER_URL.href)};`;
-  blobWorkerUrl = URL.createObjectURL(new Blob([shim], { type: "text/javascript" }));
-  return blobWorkerUrl;
-}
-
-function createWorker(job) {
-  try {
-    return job.workerFactory(WORKER_URL, { type: "module" });
-  } catch (error) {
-    if (error?.name !== "SecurityError" || typeof Blob !== "function" || typeof URL?.createObjectURL !== "function") throw error;
-    return job.workerFactory(createOpaqueOriginWorkerUrl(), { type: "module" });
-  }
-}
 
 function abortError() {
   return new DOMException("Der Vorgang wurde abgebrochen.", "AbortError");
@@ -45,7 +29,7 @@ function runNext() {
   activeCount += 1;
   let worker;
   try {
-    worker = createWorker(job);
+    worker = createWorkerWithOriginFallback(WORKER_URL, { type: "module", workerFactory: job.workerFactory });
   } catch (error) {
     activeCount -= 1;
     job.reject(error instanceof Error ? error : new Error("Die lokale Dateiverarbeitung konnte nicht gestartet werden."));

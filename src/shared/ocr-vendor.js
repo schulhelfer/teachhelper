@@ -1,10 +1,20 @@
-export function recognizeLocalNames(image, { signal, onProgress, workerFactory = (url) => new Worker(url) } = {}) {
+import { createWorkerWithOriginFallback } from "./worker-origin-fallback.js";
+
+const WORKER_URL = new URL("./ocr-worker.js", import.meta.url);
+
+export function recognizeLocalNames(image, { signal, onProgress, workerFactory } = {}) {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
       reject(new DOMException("Abgebrochen", "AbortError"));
       return;
     }
-    const worker = workerFactory(new URL("./ocr-worker.js", import.meta.url));
+    let worker;
+    try {
+      worker = createWorkerWithOriginFallback(WORKER_URL, { workerFactory });
+    } catch (error) {
+      reject(error instanceof Error ? error : new Error("Die lokale Texterkennung konnte nicht gestartet werden."));
+      return;
+    }
     let settled = false;
     const finish = (error, text) => {
       if (settled) return;

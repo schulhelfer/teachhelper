@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '116';
+const TEACHHELPER_APP_VERSION_STAMP = '118';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -79,6 +79,7 @@ const APP_SHELL = [
   './src/shared/docx-worker-client.js',
   './src/shared/file-processing-client.js',
   './src/shared/file-processing-worker.js',
+  './src/shared/worker-origin-fallback.js',
   './src/shared/planning-note-links.js',
   './src/shared/planning-rich-text.js',
   './src/shared/workspace-client.css',
@@ -299,16 +300,6 @@ async function putInRuntimeCache(request, response) {
   return response;
 }
 
-async function withoutRedirectState(response) {
-  if (!response || (!response.redirected && response.type !== 'opaqueredirect')) return response;
-  const body = await response.clone().arrayBuffer();
-  return new Response(body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers: response.headers,
-  });
-}
-
 async function matchCached(request) {
   const runtime = await caches.open(RUNTIME_NAME);
   const runtimeMatch = await runtime.match(request);
@@ -345,23 +336,23 @@ async function networkFirst(request, {
 async function precacheFirst(request, { fallbackUrl = null } = {}) {
   const precache = await caches.open(PRECACHE_NAME);
   const pinned = await precache.match(request, { ignoreSearch: true });
-  if (pinned) return withoutRedirectState(pinned);
+  if (pinned) return pinned;
 
   try {
     const response = await fetch(request, { cache: 'no-cache' });
     if (shouldCacheResponse(response)) {
       await precache.put(request, response.clone());
     }
-    return withoutRedirectState(response);
+    return response;
   } catch (error) {
     const cached = await matchCached(request);
     if (cached) {
-      return withoutRedirectState(cached);
+      return cached;
     }
     if (fallbackUrl) {
       const fallback = await precache.match(fallbackUrl, { ignoreSearch: true });
       if (fallback) {
-        return withoutRedirectState(fallback);
+        return fallback;
       }
     }
     throw error;
@@ -378,12 +369,12 @@ async function staleWhileRevalidate(request, event = null) {
   }
 
   if (cached) {
-    return withoutRedirectState(cached);
+    return cached;
   }
 
   const networkResponse = await networkPromise;
   if (networkResponse) {
-    return withoutRedirectState(networkResponse);
+    return networkResponse;
   }
 
   throw new Error(`No cached response for ${request.url}`);

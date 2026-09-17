@@ -1,4 +1,5 @@
-const vendorUrl = (path) => new URL(`../vendor/${path}`, self.location.href).href;
+const workerBaseUrl = self.__teachhelperWorkerBaseUrl || self.location.href;
+const vendorUrl = (path) => new URL(`../vendor/${path}`, workerBaseUrl).href;
 self.onmessage = async ({ data }) => {
   self.onmessage = null;
   let worker;

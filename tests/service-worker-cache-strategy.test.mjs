@@ -12,9 +12,11 @@ const hookPath = fileURLToPath(new URL('../scripts/pre-commit-checks.sh', import
 const rootPath = fileURLToPath(new URL('..', import.meta.url));
 const fileGuardsSource = await readFile(new URL('../src/shared/file-guards.js', import.meta.url), 'utf8');
 const fileGuardsUrl = `data:text/javascript;base64,${Buffer.from(fileGuardsSource).toString('base64')}`;
-const fileProcessingClientSource = (await readFile(new URL('../src/shared/file-processing-client.js', import.meta.url), 'utf8'))
+const fileProcessingClientUrl = new URL('../src/shared/file-processing-client.js', import.meta.url);
+const fileProcessingClientSource = (await readFile(fileProcessingClientUrl, 'utf8'))
   .replace('"./file-guards.js"', JSON.stringify(fileGuardsUrl))
-  .replaceAll('import.meta.url', JSON.stringify(new URL('../src/shared/file-processing-client.js', import.meta.url).href));
+  .replace('"./worker-origin-fallback.js"', JSON.stringify(new URL('../src/shared/worker-origin-fallback.js', import.meta.url).href))
+  .replaceAll('import.meta.url', JSON.stringify(fileProcessingClientUrl.href));
 const { runFileProcessingTask } = await import(`data:text/javascript;base64,${Buffer.from(fileProcessingClientSource).toString('base64')}`);
 const vendorManifest = JSON.parse(
   await readFile(new URL('../vendor-manifest.json', import.meta.url), 'utf8'),
@@ -71,29 +73,6 @@ test('pre-commit rejects a Python-free environment before running other checks',
   assert.doesNotMatch(result.stdout, /Running Node\.js regression tests/);
   assert.doesNotMatch(result.stdout, /Running PWA audit/);
   assert.doesNotMatch(result.stdout, /Stamping the app version/);
-});
-
-test('cached responses drop redirect state so worker scripts stay loadable', () => {
-  assert.match(
-    serviceWorkerSource,
-    /function withoutRedirectState\(response\)/,
-    'the service worker must be able to strip redirect state from a response',
-  );
-  assert.match(
-    serviceWorkerSource,
-    /response\.redirected \|\| response\.type === 'opaqueredirect'|!response\.redirected && response\.type !== 'opaqueredirect'/,
-    'redirect stripping must detect both redirected and opaqueredirect responses',
-  );
-  const pinnedBody = serviceWorkerSource.slice(
-    serviceWorkerSource.indexOf('async function precacheFirst('),
-    serviceWorkerSource.indexOf('async function staleWhileRevalidate('),
-  );
-  assert.doesNotMatch(
-    pinnedBody,
-    /\n    return pinned;/,
-    'a pinned precache hit must not be served without stripping redirect state',
-  );
-  assert.match(pinnedBody, /return withoutRedirectState\(pinned\)/);
 });
 
 test('file-processing timeout and abort terminate the active worker', async () => {

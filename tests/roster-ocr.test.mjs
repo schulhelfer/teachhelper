@@ -3,7 +3,9 @@ import test from 'node:test';
 import { readFile } from 'node:fs/promises';
 async function loadModule(path) {
   const url = new URL(path, import.meta.url);
-  const source = (await readFile(url, 'utf8')).replaceAll('import.meta.url', JSON.stringify(url.href));
+  const source = (await readFile(url, 'utf8'))
+    .replaceAll('import.meta.url', JSON.stringify(url.href))
+    .replace(/(\bfrom\s*)(['"])(\.[^'"]*)\2/g, (_match, prefix, quote, specifier) => `${prefix}${quote}${new URL(specifier, url).href}${quote}`);
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
 const { parseOcrNames, importableOcrNames, boundCrop, changeCrop, cropPixels, ocrOutputSize } = await loadModule('../src/modules/grades/roster-ocr-data.js');
