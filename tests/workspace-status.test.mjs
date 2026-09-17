@@ -293,7 +293,7 @@ test('processes only shell workspace events in unsaved-then-vault order without 
   harness.controller.dispose();
 });
 
-test('preserves leave-guard priority and unsaved area decisions', () => {
+test('preserves leave-guard priority', () => {
   const harness = createHarness();
   harness.controller.setUnsavedState({ planningSettingsDirty: true });
   assert.equal(harness.controller.getLeaveGuard('groups'), 'planning');
@@ -309,13 +309,6 @@ test('preserves leave-guard priority and unsaved area decisions', () => {
   });
   assert.equal(harness.controller.getLeaveGuard('planning'), 'grades');
   assert.equal(harness.controller.getLeaveGuard('groups'), 'grades');
-  assert.equal(harness.controller.getUnsavedAreaLabel(), 'Planung und Noten');
-  harness.controller.setUnsavedState({ planningDirty: true });
-  assert.equal(harness.controller.getUnsavedAreaLabel(), 'Planung');
-  harness.controller.setUnsavedState({ gradesDirty: true });
-  assert.equal(harness.controller.getUnsavedAreaLabel(), 'Noten');
-  harness.controller.setUnsavedState({ planningSettingsDirty: true });
-  assert.equal(harness.controller.getUnsavedAreaLabel(), 'Planung oder Noten');
   harness.controller.dispose();
 });
 

@@ -246,7 +246,7 @@ export function createModuleShellCoordinator({
           onGradeVaultRequest: (detail) => {
             getBridgeController()?.requestGradeVault?.(detail);
           },
-          onSidebarWidthRequest: (detail, { frame, scope }) => {
+          onSidebarWidthRequest: ({ frame, scope }) => {
             postToModule(frame, {
               type: SIDEBAR_WIDTH_SYNC_EVENT,
               detail: {
@@ -259,7 +259,7 @@ export function createModuleShellCoordinator({
           onSidebarWidthCommit: (detail, { scope }) => {
             getShellController()?.setSidebarWidth(scope, detail?.width);
           },
-          onSidebarCollapseRequest: (detail, { scope }) => {
+          onSidebarCollapseRequest: ({ scope }) => {
             if (scope !== getSidebarWidthScopeForTab(getActiveTab())) return;
             setChromeCollapsed(true);
           },

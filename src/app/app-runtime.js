@@ -218,7 +218,6 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     shellController ? shellController.getChromeTransitionState() : 'idle'
   );
   const setChromeCollapsed = (collapsed, options) => shellController?.setChromeCollapsed(collapsed, options);
-  const toggleChromeCollapsed = () => shellController?.toggleChromeCollapsed();
   const setActiveTab = (tab, options = {}) => {
     firstRunTutorial?.clearContextHelpPrompt?.();
     shellController?.setActiveTab(tab, options);

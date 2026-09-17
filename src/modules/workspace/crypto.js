@@ -1,11 +1,11 @@
 export const WORKSPACE_VAULT_SCHEMA = 'teachhelper-grade-vault-v1';
-export const WORKSPACE_VAULT_AAD_SCHEMA = 'teachhelper-db-v1';
+const WORKSPACE_VAULT_AAD_SCHEMA = 'teachhelper-db-v1';
 export const WORKSPACE_VAULT_KDF_ITERATIONS = 600000;
-export const WORKSPACE_VAULT_KDF_MIN_ITERATIONS = 100000;
+const WORKSPACE_VAULT_KDF_MIN_ITERATIONS = 100000;
 export const WORKSPACE_VAULT_KDF_MAX_ITERATIONS = 2000000;
-export const WORKSPACE_VAULT_SALT_BYTES = 16;
-export const WORKSPACE_VAULT_IV_BYTES = 12;
-export const WORKSPACE_VAULT_TAG_LENGTH = 128;
+const WORKSPACE_VAULT_SALT_BYTES = 16;
+const WORKSPACE_VAULT_IV_BYTES = 12;
+const WORKSPACE_VAULT_TAG_LENGTH = 128;
 
 function bytesToBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
@@ -86,7 +86,7 @@ export function createWorkspaceVaultKdf({
   });
 }
 
-export function buildWorkspaceVaultAad(scope = {}) {
+function buildWorkspaceVaultAad(scope = {}) {
   return new TextEncoder().encode(JSON.stringify({
     schema: WORKSPACE_VAULT_AAD_SCHEMA,
     gradeVault: {

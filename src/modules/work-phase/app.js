@@ -83,7 +83,6 @@ export function mountWorkPhase({
   const removers = [];
   const observers = [];
   let disposed = false;
-  let active = false;
   let workOrderTimerId = null;
   let workOrderAlarmIntervalId = null;
   let workOrderAudioCtx = null;
@@ -1296,14 +1295,6 @@ export function mountWorkPhase({
     positionHintOverlay();
   };
 
-  const setActive = (nextActive) => {
-    active = Boolean(nextActive);
-    if (active) {
-      refreshLayout();
-    }
-    return active;
-  };
-
   const getPlanState = () => {
     const timerState = getTimerState();
     const durationMinutes = parseWorkOrderDuration(timerState.durationMinutes);
@@ -1460,7 +1451,6 @@ export function mountWorkPhase({
     render,
     refreshLayout,
     positionHintOverlay,
-    setActive,
     getPlanState,
     restorePlanState,
     reset,

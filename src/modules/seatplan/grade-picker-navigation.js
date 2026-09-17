@@ -1,4 +1,4 @@
-export const COURSE_GRADE_NEIGHBOR_OFFSETS = [
+const COURSE_GRADE_NEIGHBOR_OFFSETS = [
   [0, 1],
   [1, 0],
   [0, -1],

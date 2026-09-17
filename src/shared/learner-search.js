@@ -10,7 +10,7 @@ export function normalizeLearnerSearchText(value = '') {
     .replace(/\s+/g, ' ');
 }
 
-export function learnerDisplayName(student = {}) {
+function learnerDisplayName(student = {}) {
   return [String(student.firstName || '').trim(), String(student.lastName || '').trim()]
     .filter(Boolean)
     .join(' ');

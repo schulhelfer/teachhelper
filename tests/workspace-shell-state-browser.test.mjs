@@ -115,7 +115,6 @@ test('workspace shell state preserves bootstrap, vault, unsaved, and warning beh
       fallbackTab: document.getElementById('app').classList.contains('app-tab-planning'),
       nameLearningHidden: nameLearningTab.hidden,
       unsavedProtected: beforeUnload.defaultPrevented,
-      unsavedDialogOpen: document.getElementById('unsaved-data-dialog').open,
     };
   }, { token: Date.now() });
 
@@ -141,5 +140,4 @@ test('workspace shell state preserves bootstrap, vault, unsaved, and warning beh
   assert.equal(result.fallbackTab, true);
   assert.equal(result.nameLearningHidden, true);
   assert.equal(result.unsavedProtected, true);
-  assert.equal(result.unsavedDialogOpen, false);
 });

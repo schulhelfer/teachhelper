@@ -24,7 +24,6 @@ import {
 } from "../../shared/planning-rich-text.js";
 import {
   normalizeCourseGradeLevel,
-  normalizePublicSchoolData,
   QUALIFICATION_PHASE_END_DATE_KEYS
 } from "../../shared/school-data/index.js";
 import {
@@ -39,8 +38,7 @@ import {
   WORKSPACE_COMMAND_DELETE_COURSE,
   WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
   WORKSPACE_COMMAND_REORDER_COURSES,
-  WORKSPACE_COMMAND_UPDATE_COURSE,
-  WORKSPACE_ERROR_STALE_STATE
+  WORKSPACE_COMMAND_UPDATE_COURSE
 } from "../../shared/school-data/messages.js";
 
 const { showMessage: showModuleToast } = createMessageApi(document);
@@ -727,14 +725,6 @@ function validateLessonTimes(lessonTimes, hoursPerDay = HOURS_PER_DAY_DEFAULT) {
     previousEnd = endMinutes;
   }
   return { valid: true, normalized, hasAnyValue: true, message: "" };
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }
 
 function seedTutorialDemoStore(store) {

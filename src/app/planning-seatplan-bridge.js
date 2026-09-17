@@ -74,7 +74,6 @@ export function createPlanningSeatplanBridge({
   let planningInitPending = false;
   let pendingPlanningViewRequest = null;
   let pendingGradesNavigation = null;
-  let pendingCourseGradeSaveRequest = null;
   let gradesTabLeaveRequestSequence = 0;
   let planningTabLeaveRequestSequence = 0;
   let seatplanController = null;
@@ -468,11 +467,6 @@ export function createPlanningSeatplanBridge({
 
   window.addEventListener(WORKSPACE_OWNER_READY_EVENT, initializePendingPlanning);
 
-  function emitStudentsUpdated(source) {
-    const detail = buildStudentsSyncDetail(source);
-    rosterStore?.dispatch?.(detail);
-  }
-
   function sendCourseSeatplanContext(detail) {
     if (!detail || typeof detail !== 'object') return;
     ensureTabInitialized(TAB_SEATPLAN);
@@ -736,12 +730,6 @@ export function createPlanningSeatplanBridge({
       dispatchBlockedResult(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, detail);
       return;
     }
-    pendingCourseGradeSaveRequest = {
-      requestId: String(detail.requestId || ''),
-      courseId: Number(detail.courseId || 0),
-      contextToken: String(detail.contextToken || ''),
-      rosterToken: String(detail.rosterToken || ''),
-    };
     ensureTabInitialized(TAB_GRADES);
     gradesController?.post?.(GRADES_COURSE_GRADE_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
   });
@@ -819,18 +807,6 @@ export function createPlanningSeatplanBridge({
   saveResultTarget.addEventListener(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
-    const pending = pendingCourseGradeSaveRequest;
-    const matchesPendingRequest = Boolean(
-      pending
-      && pending.requestId
-      && pending.requestId === String(detail.requestId || '')
-      && pending.courseId === Number(detail.courseId || 0)
-      && pending.contextToken === String(detail.contextToken || '')
-      && pending.rosterToken === String(detail.rosterToken || '')
-    );
-    if (matchesPendingRequest) {
-      pendingCourseGradeSaveRequest = null;
-    }
     seatplanController?.sendCourseGradeSaveResult?.(detail);
   });
 
@@ -839,15 +815,11 @@ export function createPlanningSeatplanBridge({
     dispatchPlanningViewRequest,
     dispatchGradesNavigation,
     dispatchMergerToolRequest,
-    emitStudentsUpdated,
     refreshModuleLayouts,
     sendCourseSeatplanContext,
     requestGradeRosterCourses,
     requestGradeRosterImport,
     requestGradePickerConfigSave,
-    requestNameLearningData,
-    requestNameLearningReview,
-    requestNameLearningStudentSearch,
     requestManualSave,
     requestGradeVault,
     requestGradesTabLeaveConfirmation,

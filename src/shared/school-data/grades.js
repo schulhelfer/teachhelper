@@ -1,4 +1,4 @@
-export function clampGrade(value, min = 0, max = 15) {
+function clampGrade(value, min = 0, max = 15) {
   return Math.min(max, Math.max(min, Number(value) || 0));
 }
 

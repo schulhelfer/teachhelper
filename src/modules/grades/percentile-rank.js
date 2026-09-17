@@ -1,5 +1,5 @@
-export const PERCENTILE_RANK_IMAGE_WIDTH_PX = 1212;
-export const PERCENTILE_RANK_IMAGE_HEIGHT_PX = 525;
+const PERCENTILE_RANK_IMAGE_WIDTH_PX = 1212;
+const PERCENTILE_RANK_IMAGE_HEIGHT_PX = 525;
 export const PERCENTILE_RANK_IMAGE_WIDTH_EMU = 5760000;
 export const PERCENTILE_RANK_IMAGE_HEIGHT_EMU = Math.round(
   PERCENTILE_RANK_IMAGE_WIDTH_EMU
@@ -28,13 +28,13 @@ export function formatPercentileRank(value) {
   }).format(number);
 }
 
-export function getPercentileRankDescription(value) {
+function getPercentileRankDescription(value) {
   const percentile = clampPercentileRank(value);
   const p = formatPercentileRank(percentile);
   return `Ein Prozentrang von ${p} bedeutet, dass etwa ${p} % der anderen Lernenden ein schlechteres oder gleich gutes Ergebnis erzielt haben.`;
 }
 
-export function hasPngSignature(bytes) {
+function hasPngSignature(bytes) {
   if (!(bytes instanceof Uint8Array) || bytes.length < PNG_SIGNATURE.length) {
     return false;
   }
@@ -300,7 +300,7 @@ function drawPercentileRankCanvas(ctx, percentile) {
   return value;
 }
 
-export function isPercentileRankCanvasVisible(ctx, width = PERCENTILE_RANK_IMAGE_WIDTH_PX, height = PERCENTILE_RANK_IMAGE_HEIGHT_PX) {
+function isPercentileRankCanvasVisible(ctx, width = PERCENTILE_RANK_IMAGE_WIDTH_PX, height = PERCENTILE_RANK_IMAGE_HEIGHT_PX) {
   try {
     const data = ctx.getImageData(0, 0, width, height).data;
     let visibleSamples = 0;

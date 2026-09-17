@@ -1,4 +1,4 @@
-export const BYTES_PER_MIB = 1024 * 1024;
+const BYTES_PER_MIB = 1024 * 1024;
 
 export const FILE_LIMITS = Object.freeze({
   CSV_BYTES: 5 * BYTES_PER_MIB,
@@ -57,7 +57,7 @@ export function formatFileSize(value) {
   return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unitIndex]}`;
 }
 
-export function createFileValidationError(message) {
+function createFileValidationError(message) {
   const error = new Error(message);
   error.name = "FileValidationError";
   return error;
@@ -108,7 +108,7 @@ export async function readFileArrayBufferWithTimeout(file, options = {}) {
   );
 }
 
-export async function readFileHeader(file, byteLength = 8, options = {}) {
+async function readFileHeader(file, byteLength = 8, options = {}) {
   if (!file || typeof file.slice !== "function") {
     throw createFileValidationError("Datei konnte nicht gelesen werden.");
   }
@@ -385,7 +385,7 @@ export async function validateDocxTemplateFile(file, options = {}) {
   return file;
 }
 
-export async function assertZipSignature(file, options = {}) {
+async function assertZipSignature(file, options = {}) {
   const header = await readFileHeader(file, 4, {
     timeoutMs: options.timeoutMs ?? FILE_TIMEOUTS.READ_MS,
     signal: options.signal,

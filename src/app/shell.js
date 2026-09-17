@@ -85,7 +85,6 @@ export function createShellController({
   const registerCleanup = typeof onRegisterCleanup === 'function'
     ? onRegisterCleanup
     : (() => {});
-  let unsavedTabConfirmPromise = null;
   let chromeController = null;
   let tabNavLayout = null;
   let tabController = null;
@@ -124,60 +123,6 @@ export function createShellController({
     now: Date.now,
   });
   registerCleanup(() => sidebarResize.dispose());
-
-  function showUnsavedTabLeaveDialog() {
-    if (unsavedTabConfirmPromise) {
-      return unsavedTabConfirmPromise;
-    }
-    const dialog = els.unsavedDataDialog;
-    if (!dialog) {
-      return Promise.resolve(true);
-    }
-    const areaLabel = workspaceStatus.getUnsavedAreaLabel();
-    if (els.unsavedDataDialogText) {
-      els.unsavedDataDialogText.textContent = `In ${areaLabel} gibt es ungespeicherte Änderungen. Speichere sie, bevor du die Ansicht verlässt, oder wechsle trotzdem.`;
-    }
-    unsavedTabConfirmPromise = new Promise((resolve) => {
-      const finish = (confirmed) => {
-        els.unsavedDataDialogStay?.removeEventListener('click', onStay);
-        els.unsavedDataDialogLeave?.removeEventListener('click', onLeave);
-        dialog.removeEventListener('cancel', onCancel);
-        dialog.removeEventListener('close', onClose);
-        if (dialog.open && typeof dialog.close === 'function') {
-          dialog.close(confirmed ? 'leave' : 'stay');
-        } else {
-          dialog.removeAttribute('open');
-        }
-        unsavedTabConfirmPromise = null;
-        resolve(Boolean(confirmed));
-      };
-      const onStay = () => finish(false);
-      const onLeave = () => finish(true);
-      const onCancel = (event) => {
-        event.preventDefault();
-        finish(false);
-      };
-      const onClose = () => finish(dialog.returnValue === 'leave');
-      els.unsavedDataDialogStay?.addEventListener('click', onStay);
-      els.unsavedDataDialogLeave?.addEventListener('click', onLeave);
-      dialog.addEventListener('cancel', onCancel);
-      dialog.addEventListener('close', onClose);
-      try {
-        if (typeof dialog.showModal === 'function') {
-          if (!dialog.open) {
-            dialog.showModal();
-          }
-        } else {
-          dialog.setAttribute('open', 'open');
-        }
-      } catch (_error) {
-        finish(false);
-        return;
-      }
-      els.unsavedDataDialogStay?.focus();
-    });
-    return unsavedTabConfirmPromise;
-  }
 
   function setTutorialEntryVisibility(visible) {
     const isVisible = Boolean(visible);
@@ -434,24 +379,11 @@ export function createShellController({
     isChromeCollapsed: () => chromeController.isCollapsed(),
     getChromeTransitionState: () => chromeController.getTransitionState(),
     closeMoreToolsMenu: () => tabNavLayout.closeMenu(),
-    isTabOverflowed: (tab) => tabNavLayout.isTabOverflowed(tab),
-    renderTabs: () => tabController.render(),
-    renderPlanningGradeVaultUnlockButton,
-    renderPlanningManualSaveButton,
     setChromeCollapsed: (collapsed, options) => chromeController.setCollapsed(collapsed, options),
     setSidebarWidth: (scope, width) => sidebarResize.setWidth(scope, width),
     setActiveTab: (tab, options) => tabController.setActiveTab(tab, options),
     setActiveTabImmediate: (tab, options) => tabController.setActiveTabImmediate(tab, options),
-    toggleChromeCollapsed: () => chromeController.toggle(),
-    updateChromeToggleUI: (options) => chromeController.updateToggleUI(options),
-    setChromeRegionVisibility: (hidden) => chromeController.setRegionVisibility(hidden),
-    setChromeHeaderVisibility: (hidden) => chromeController.setHeaderVisibility(hidden),
-    setChromeOverlayVisibility: (visible, interactive) => chromeController.setOverlayVisibility(visible, interactive),
-    setPlanningManualSaveState: (detail) => workspaceStatus.setManualSaveState(detail),
     setPlanningGradeVaultState: (detail) => workspaceStatus.setVaultState(detail),
-    setPlanningUnsavedState: (detail) => workspaceStatus.setUnsavedState(detail),
-    markPlanningReady: (detail) => workspaceStatus.markPlanningReady(detail),
-    markGradesReady: (detail) => workspaceStatus.markGradesReady(detail),
     syncChromeState: () => chromeController.sync(),
   };
 }

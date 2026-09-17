@@ -17,7 +17,7 @@ Stand: 2026-09-08. Untersucht wurden die eigenen JavaScript-/ES-Modul- und HTML-
 | PDF-/ZIP-/Bild-Dateinamen, Pfade und Fehlermeldungen in Merger, Duplikatprüfung, QR, Workspace | DOM-Text/Attribute sowie Shared-Message-API; Dateiinhalt wird nicht als Beschriftungs-Markup eingesetzt | Beibehalten; Browser-Regression für echte Dateinamen und Shared-Fehlermeldungen |
 | Kommentare, Kompetenzen und sonstige Notentexte | Bereits umgestellte DOM-Renderer bzw. Text-/Dokumentmodell für Export | Beibehalten und Import-/Renderer-Regressionen ergänzen |
 
-Die dynamischen Noten-Builder geben nun Nodes oder Fragmente zurück. Auch Aufrufer in Druck-/Tooltip-Pfaden verwenden `replaceChildren`/`append`. Leere Ergebnisse bleiben leere Textausgaben. `escapeHtml` bleibt vorhanden; es wird nicht vor `textContent`/`.value` angewandt, weil dies sichtbare doppelte Escapes erzeugen würde. CSP, URL-Prüfungen, Linkschutz und Importnormalisierung bleiben bestehen. Keine Speicherformat- oder öffentliche API-Änderung.
+Die dynamischen Noten-Builder geben nun Nodes oder Fragmente zurück. Auch Aufrufer in Druck-/Tooltip-Pfaden verwenden `replaceChildren`/`append`. Leere Ergebnisse bleiben leere Textausgaben. Dynamische Texte werden über DOM-APIs ausgegeben; ein zusätzlicher HTML-Escaping-Helfer ist dafür nicht erforderlich. CSP, URL-Prüfungen, Linkschutz und Importnormalisierung bleiben bestehen. Keine Speicherformat- oder öffentliche API-Änderung.
 
 ## Eng begrenzte verbleibende Parser und verwandte Pfade
 

@@ -8,9 +8,9 @@ export const TAB_SEATPLAN = 'seatplan';
 export const TAB_NAME_LEARNING = 'name-learning';
 export const TAB_WORK_PHASE = 'work-phase';
 export const TAB_QR = 'qr';
-export const TAB_MONITOR = 'monitor';
-export const TAB_WORK_ORDER = 'work-order';
-export const TAB_TIMER = 'timer';
+const TAB_MONITOR = 'monitor';
+const TAB_WORK_ORDER = 'work-order';
+const TAB_TIMER = 'timer';
 
 export const PLANNING_MANUAL_SAVE_STATE_EVENT = 'classroom:planning-manual-save-state';
 export const PLANNING_MANUAL_SAVE_REQUEST_EVENT = 'classroom:planning-manual-save-request';

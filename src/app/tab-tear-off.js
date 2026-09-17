@@ -9,7 +9,7 @@ const NAME_SIZE_MIN_PX = 24;
 const NAME_SIZE_MAX_PX = 64;
 const NAME_SIZE_BUDGET_PX = 340;
 
-export function resolveTearNameFontSize(label) {
+function resolveTearNameFontSize(label) {
   const length = String(label || '').trim().length;
   if (!length) return NAME_SIZE_MIN_PX;
   return Math.round(
@@ -184,7 +184,4 @@ export function createTabTearOff({ els, onTearOff } = {}) {
     event.stopImmediatePropagation();
   }, true);
 
-  return {
-    isDragging: () => Boolean(dragState),
-  };
 }

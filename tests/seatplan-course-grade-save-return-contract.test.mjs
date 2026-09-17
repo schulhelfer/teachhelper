@@ -17,10 +17,7 @@ test('a successful seatplan grade save is forwarded to the seatplan', () => {
 
   assert.ok(start >= 0 && end > start, 'the seatplan grade save result handler must exist');
   assert.match(handler, /seatplanController\?\.sendCourseGradeSaveResult\?\.\(detail\);/);
-  assert.match(
-    handler,
-    /const matchesPendingRequest = Boolean\([\s\S]*?pending\.requestId === String\(detail\.requestId \|\| ''\)[\s\S]*?pending\.courseId === Number\(detail\.courseId \|\| 0\)[\s\S]*?pending\.contextToken === String\(detail\.contextToken \|\| ''\)[\s\S]*?pending\.rosterToken === String\(detail\.rosterToken \|\| ''\)/,
-  );
+  assert.doesNotMatch(handler, /pendingCourseGradeSaveRequest|matchesPendingRequest/);
   assert.doesNotMatch(handler, /onCourseGradeSaveSuccess/);
   assert.doesNotMatch(main, /onCourseGradeSaveSuccess:/);
 });

@@ -139,10 +139,6 @@
             visibility 0s linear var(--motion-medium);
         }
 
-        .random-picker-card[aria-hidden="true"] {
-          display: none;
-        }
-
         .message-stack.active {
           opacity: 1;
           visibility: visible;

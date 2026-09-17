@@ -2608,9 +2608,6 @@ export function mountGroups({
   return {
     render,
     refreshLayout: requestGroupGridLayoutRefresh,
-    setActive(active) {
-      if (active) requestGroupGridLayoutRefresh({ resetViewport: true });
-    },
     isSuggesting() { return groupSuggestInProgress; },
     handleRosterReplacement,
     getPlanState,

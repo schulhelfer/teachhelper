@@ -328,32 +328,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             return node;
           }
 
-          function setSuggestProgress(percent, text) {
-            if (!els.suggestProgress || !els.suggestProgressFill || !els.suggestProgressLabel) return;
-            const pct = Math.max(0, Math.min(100, percent || 0));
-            els.suggestProgress.classList.add('active');
-            els.suggestProgress.classList.remove('fade-out');
-            els.suggestProgressFill.style.animation = 'none';
-            els.suggestProgressFill.style.transform = `scaleX(${pct / 100})`;
-            els.suggestProgressLabel.textContent = text || '';
-          }
-
-          function setSuggestProgressPercent(percent) {
-            if (!els.suggestProgress || !els.suggestProgressFill) return;
-            const pct = Math.max(0, Math.min(100, percent || 0));
-            els.suggestProgress.classList.add('active');
-            els.suggestProgress.classList.remove('fade-out');
-            els.suggestProgressFill.style.animation = 'none';
-            els.suggestProgressFill.style.transform = `scaleX(${pct / 100})`;
-          }
-
-          function setSuggestProgressText(text) {
-            if (!els.suggestProgress || !els.suggestProgressLabel) return;
-            els.suggestProgress.classList.add('active');
-            els.suggestProgress.classList.remove('fade-out');
-            els.suggestProgressLabel.textContent = text || '';
-          }
-
           const nowMs = () => (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now();
           let suggestProgressTimer = null;
           let suggestProgressHideTimeoutId = null;
@@ -434,21 +408,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               inner.style.transform = '';
             }
             els.suggestProgressLabel.textContent = text || 'Starte...';
-          }
-
-          function finishSuggestProgress(text) {
-            if (!els.suggestProgress || !els.suggestProgressFill || !els.suggestProgressLabel) return;
-            clearSuggestProgressTimer();
-            setSuggestProgress(100, text || 'Fertig');
-            setTimeout(() => {
-              els.suggestProgress.classList.remove('fade-out');
-              void els.suggestProgress.offsetWidth;
-              els.suggestProgress.classList.add('fade-out');
-              suggestProgressHideTimeoutId = setTimeout(() => {
-                els.suggestProgress.classList.remove('active');
-                suggestProgressHideTimeoutId = null;
-              }, 1500);
-            }, 200);
           }
 
           function fadeOutSuggestProgress() {
@@ -3846,203 +3805,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             });
             return wrapper;
           }
-          function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
-            const parsed = Number.parseInt(value, 10);
-            if (!Number.isFinite(parsed)) return fallback;
-            if (parsed <= RANDOM_PICKER_MIN_WEIGHT) return RANDOM_PICKER_MIN_WEIGHT;
-            if (parsed >= RANDOM_PICKER_CERTAIN_WEIGHT) return RANDOM_PICKER_CERTAIN_WEIGHT;
-            if (parsed >= RANDOM_PICKER_MAX_WEIGHT) return RANDOM_PICKER_MAX_WEIGHT;
-            if (parsed >= 3) return 3;
-            if (parsed >= 2) return 2;
-            return RANDOM_PICKER_DEFAULT_WEIGHT;
-          }
-          function sanitizeRandomPickerStudent(student) {
-            if (!student || typeof student !== 'object') return student;
-            student.randomWeight = normalizeRandomPickerWeight(student.randomWeight);
-            return student;
-          }
-          function getRandomPickerCandidates({ includeZeroWeight = false } = {}) {
-            return state.students
-              .map((student) => {
-                const name = formatStudentLabel(student);
-                if (!name) return null;
-                const weight = normalizeRandomPickerWeight(student?.randomWeight);
-                return {
-                  id: student.id,
-                  name,
-                  weight,
-                };
-              })
-              .filter((entry) => entry && (includeZeroWeight || entry.weight > 0));
-          }
-          function getRandomPickerNames({ includeZeroWeight = true } = {}) {
-            return getRandomPickerCandidates({ includeZeroWeight }).map((entry) => entry.name);
-          }
-          function pickWeightedRandomPickerCandidate(candidates) {
-            const pool = Array.isArray(candidates)
-              ? candidates.filter((entry) => entry && entry.weight > 0)
-              : [];
-            const certainCandidate = pool.find((entry) => entry.weight === RANDOM_PICKER_CERTAIN_WEIGHT);
-            if (certainCandidate) return certainCandidate;
-            const totalWeight = pool.reduce((sum, entry) => sum + entry.weight, 0);
-            if (!pool.length || totalWeight <= 0) return null;
-            let threshold = Math.random() * totalWeight;
-            for (const entry of pool) {
-              threshold -= entry.weight;
-              if (threshold < 0) return entry;
-            }
-            return pool[pool.length - 1] || null;
-          }
-          function updateRandomPickerCards(centerIndex = 0, { final = false } = {}) {
-            if (!els.randomPickerCards?.length) return;
-            const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
-            const names = getRandomPickerNames({ includeZeroWeight: true });
-            const total = names.length;
-            const cards = Array.from(els.randomPickerCards);
-            els.randomPickerWheel?.classList.toggle('is-final', false);
-            if (!total) {
-              const emptyLabel = allCandidates.length ? 'Keine Auswahl aktiv' : 'Noch keine Namen importiert';
-              cards.forEach((card, slotIndex) => {
-                const distance = Math.abs(slotIndex - 3);
-                card.textContent = slotIndex === 3 ? 'Noch keine Namen' : '';
-                card.setAttribute('aria-hidden', slotIndex === 3 ? 'false' : 'true');
-                card.dataset.distance = String(distance);
-                card.classList.toggle('is-final', false);
-              });
-              randomPickerCurrentIndex = 0;
-              return;
-            }
-            const safeIndex = ((Math.round(centerIndex) % total) + total) % total;
-            randomPickerCurrentIndex = safeIndex;
-            cards.forEach((card, slotIndex) => {
-              const offset = slotIndex - 3;
-              const candidateIndex = ((safeIndex + offset) % total + total) % total;
-              const distance = Math.abs(offset);
-              card.textContent = names[candidateIndex];
-              card.removeAttribute('aria-hidden');
-              card.dataset.distance = String(Math.min(3, distance));
-              card.classList.toggle('is-final', final && offset === 0);
-            });
-            if (final && typeof requestAnimationFrame === 'function') {
-              requestAnimationFrame(() => els.randomPickerWheel?.classList.add('is-final'));
-            } else if (final) {
-              els.randomPickerWheel?.classList.add('is-final');
-            }
-          }
-          function renderRandomPicker() {
-            const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
-            const candidates = getRandomPickerCandidates();
-            const names = allCandidates.map((entry) => entry.name);
-            const count = candidates.length;
-            if (els.randomPickerCount) {
-              els.randomPickerCount.textContent = String(count);
-            }
-            if (!count) {
-              randomPickerSpinInProgress = false;
-              if (els.randomPickerResultName) {
-                els.randomPickerResultName.textContent = allCandidates.length
-                  ? 'Keine Auswahl aktiv'
-                  : 'Noch keine Namen importiert';
-              }
-              if (els.randomPickerResultNote) {
-                els.randomPickerResultNote.textContent = allCandidates.length
-                  ? 'Alle Einträge stehen auf „unmöglich“. Stelle mindestens einen Eintrag auf „normal“, „doppelt“ oder „dreifach“.'
-                  : 'Importiere zuerst eine Namensliste in der Sidebar.';
-              }
-              if (els.randomPickerActionNote) {
-                els.randomPickerActionNote.textContent = allCandidates.length
-                  ? 'Lege im Dialog Bedingungen pro Name „unmöglich“, „normal“, „doppelt“ oder „dreifach“ fest.'
-                  : 'Tippe auf den Button, damit der Generator losläuft.';
-              }
-              if (els.randomPickerStart) {
-                els.randomPickerStart.disabled = !allCandidates.length;
-                els.randomPickerStart.textContent = 'Start';
-              }
-              updateRandomPickerCards(0);
-              return;
-            }
-            const safeIndex = Math.min(randomPickerCurrentIndex, Math.max(0, names.length - 1));
-            updateRandomPickerCards(safeIndex);
-            if (els.randomPickerStart && !randomPickerSpinInProgress) {
-              els.randomPickerStart.disabled = false;
-            }
-            if (els.randomPickerResultName && !randomPickerSpinInProgress) {
-              els.randomPickerResultName.textContent = names[safeIndex];
-            }
-            if (els.randomPickerResultNote) {
-              els.randomPickerResultNote.textContent = randomPickerSpinInProgress
-                ? 'Der Generator läuft und bremst kontrolliert ab.'
-                : 'Die Auswahl erfolgt zufällig aus allen importierten Namen.';
-            }
-            if (els.randomPickerActionNote && !randomPickerSpinInProgress) {
-              els.randomPickerActionNote.textContent = count === 1
-                ? 'Es ist nur ein Name verfügbar.'
-                : 'Tippe auf den Button, damit der Generator losläuft.';
-            }
-          }
-          async function startRandomPickerSpin() {
-            const allCandidates = getRandomPickerCandidates({ includeZeroWeight: true });
-            if (!allCandidates.length) {
-              showMessage('Importiere zuerst die Namensliste!', 'warn', { presentation: 'toast' });
-              return;
-            }
-            const candidates = allCandidates.filter((entry) => entry.weight > 0);
-            if (!candidates.length) {
-              showMessage('Für den Picker ist aktuell kein Name auf „normal“, „doppelt“ oder „dreifach“ gesetzt.', 'warn');
-              return;
-            }
-            const names = candidates.map((entry) => entry.name);
-            if (randomPickerSpinInProgress) return;
-            randomPickerSpinInProgress = true;
-            if (els.randomPickerStart) {
-              els.randomPickerStart.disabled = true;
-              els.randomPickerStart.textContent = 'Läuft...';
-            }
-            if (els.randomPickerResultNote) {
-              els.randomPickerResultNote.textContent = 'Der Generator läuft und bremst kontrolliert ab.';
-            }
-            if (els.randomPickerActionNote) {
-              els.randomPickerActionNote.textContent = 'Zufallsgenerator läuft...';
-            }
-            try {
-              const total = names.length;
-              const winner = pickWeightedRandomPickerCandidate(candidates);
-              const winnerIndex = Math.max(0, candidates.findIndex((entry) => entry.id === winner?.id));
-              const loops = total <= 1 ? 0 : Math.max(2, Math.ceil(14 / total));
-              const totalSteps = total <= 1
-                ? 1
-                : Math.max(18, (loops * total) + winnerIndex - randomPickerCurrentIndex + (winnerIndex >= randomPickerCurrentIndex ? 0 : total));
-              for (let step = 1; step <= totalSteps; step += 1) {
-                const progress = step / totalSteps;
-                const eased = progress * progress;
-                const frameIndex = total <= 1 ? winnerIndex : (randomPickerCurrentIndex + 1) % total;
-                updateRandomPickerCards(frameIndex, { final: false });
-                const delayMs = 48 + Math.round(eased * 380);
-                await waitMs(delayMs);
-              }
-              updateRandomPickerCards(winnerIndex, { final: true });
-              if (els.randomPickerResultName) {
-                els.randomPickerResultName.textContent = names[winnerIndex];
-              }
-              if (els.randomPickerResultNote) {
-                els.randomPickerResultNote.textContent = 'Der Zufallsgenerator ist stehen geblieben.';
-              }
-              if (els.randomPickerActionNote) {
-                els.randomPickerActionNote.textContent = `Gewählt wurde: ${names[winnerIndex]}`;
-              }
-              if (els.randomPickerStart) {
-                els.randomPickerStart.textContent = 'Nochmal';
-              }
-            } finally {
-              randomPickerSpinInProgress = false;
-              if (els.randomPickerStart) {
-                els.randomPickerStart.disabled = false;
-                if (els.randomPickerStart.textContent.trim() === 'Läuft...') {
-                  els.randomPickerStart.textContent = 'Start';
-                }
-              }
-            }
-          }
           function formatStudentLabel(student) {
             if (!student) return '';
             const name = displayName(student);
@@ -4108,9 +3870,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.conditions.genderMixWeight = normalizeGenderMixWeight(state.conditions?.genderMixWeight);
             state.conditions.genderAlternation = state.conditions.genderMode === GENDER_MODE_FORCED
               && hasGenderAssignments();
-          }
-          function isGenderMixingActive() {
-            return state.conditions?.genderMode === GENDER_MODE_MIXED && hasGenderAssignments();
           }
           function genderModeLabel(mode = state.conditions?.genderMode) {
             const normalized = normalizeGenderMode(mode);
@@ -7476,10 +7235,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               const bCenterY = bEl.offsetTop + (bEl.offsetHeight / 2);
               const x = (aCenterX + bCenterX) / 2;
               const y = (aCenterY + bCenterY) / 2;
-              const dx = bCenterX - aCenterX;
-              const dy = bCenterY - aCenterY;
-              const len = Math.max(0, Math.hypot(dx, dy));
-              const angle = Math.atan2(dy, dx) * (180 / Math.PI);
               const isMerged = key && state.mergedPairs.has(key);
               const shouldAnimateUnderlay = key && state.justMergedPairs && state.justMergedPairs.has(key);
               if (isMerged) {
@@ -7499,27 +7254,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 if (shouldAnimateUnderlay) {
                   state.justMergedPairs.delete(key);
                 }
-                const aRect = {
-                  left: aEl.offsetLeft,
-                  right: aEl.offsetLeft + aEl.offsetWidth,
-                  top: aEl.offsetTop,
-                  bottom: aEl.offsetTop + aEl.offsetHeight,
-                  width: aEl.offsetWidth,
-                  height: aEl.offsetHeight,
-                  centerY: aEl.offsetTop + (aEl.offsetHeight / 2),
-                  centerX: aEl.offsetLeft + (aEl.offsetWidth / 2),
-                };
-                const bRect = {
-                  left: bEl.offsetLeft,
-                  right: bEl.offsetLeft + bEl.offsetWidth,
-                  top: bEl.offsetTop,
-                  bottom: bEl.offsetTop + bEl.offsetHeight,
-                  width: bEl.offsetWidth,
-                  height: bEl.offsetHeight,
-                  centerY: bEl.offsetTop + (bEl.offsetHeight / 2),
-                  centerX: bEl.offsetLeft + (bEl.offsetWidth / 2),
-                };
-                const horizontal = Math.abs(dx) >= Math.abs(dy);
               }
               const node = document.createElement('div');
               node.className = 'grid-link';

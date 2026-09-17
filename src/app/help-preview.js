@@ -1,4 +1,4 @@
-export const HELP_PREVIEW_QUERY_PARAM = 'help-preview';
+const HELP_PREVIEW_QUERY_PARAM = 'help-preview';
 export const HELP_PREVIEW_COMMAND_EVENT = 'classroom:help-preview-command';
 export const HELP_PREVIEW_STATE_EVENT = 'classroom:help-preview-state';
 

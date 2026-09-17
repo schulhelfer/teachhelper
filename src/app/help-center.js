@@ -259,7 +259,7 @@ const ARTICLE_TAGS = {
   'qr-camera': ['Kamera', 'Berechtigung', 'Scan'],
 };
 
-export const SEARCH_SYNONYM_GROUPS = [
+const SEARCH_SYNONYM_GROUPS = [
   ['sicherung', 'sichern', 'backup', 'datensicherung'],
   ['sitzplan', 'sitzordnung', 'sitzplatz', 'platzierung'],
   ['lernende', 'schueler', 'schuler', 'teilnehmende', 'klasse'],

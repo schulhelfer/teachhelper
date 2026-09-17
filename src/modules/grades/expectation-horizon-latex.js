@@ -1,4 +1,4 @@
-export function findExpectationHorizonLatexMatchingBrace(text, openIndex) {
+function findExpectationHorizonLatexMatchingBrace(text, openIndex) {
   let depth = 0;
   for (let index = openIndex; index < text.length; index += 1) {
     const char = text[index];
@@ -18,7 +18,7 @@ export function findExpectationHorizonLatexMatchingBrace(text, openIndex) {
   return -1;
 }
 
-export function replaceExpectationHorizonLatexCommandArgument(text, command, prefix = "") {
+function replaceExpectationHorizonLatexCommandArgument(text, command, prefix = "") {
   const needle = `\\${command}{`;
   let result = "";
   let cursor = 0;
@@ -42,13 +42,13 @@ export function replaceExpectationHorizonLatexCommandArgument(text, command, pre
   return result;
 }
 
-export function removeExpectationHorizonLatexEnvironmentWithContent(text, environmentName) {
+function removeExpectationHorizonLatexEnvironmentWithContent(text, environmentName) {
   const name = String(environmentName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const pattern = new RegExp(`\\\\begin\\{${name}\\}(?:\\s*\\[[^\\]]*\\]|\\s*\\([^)]*\\)|\\s*\\{[^{}]*\\})*[\\s\\S]*?\\\\end\\{${name}\\}`, "g");
   return String(text || "").replace(pattern, " ");
 }
 
-export function stripExpectationHorizonLatexEnvironmentMarkers(text, environmentName) {
+function stripExpectationHorizonLatexEnvironmentMarkers(text, environmentName) {
   const name = String(environmentName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const beginPattern = new RegExp(`\\\\begin\\{${name}\\}(?:\\s*\\[[^\\]]*\\]|\\s*\\([^)]*\\)|\\s*\\{[^{}]*\\})*`, "g");
   const endPattern = new RegExp(`\\\\end\\{${name}\\}`, "g");
@@ -77,7 +77,7 @@ export function findExpectationHorizonLatexMatchingDelimiter(text, openIndex, op
   return -1;
 }
 
-export function removeExpectationHorizonLatexCommandWithArguments(text, command) {
+function removeExpectationHorizonLatexCommandWithArguments(text, command) {
   const source = String(text || "");
   const needle = `\\${command}`;
   let result = "";
@@ -126,7 +126,7 @@ export function removeExpectationHorizonLatexCommandWithArguments(text, command)
   return result;
 }
 
-export function normalizeExpectationHorizonLatexCellText(text, options = {}) {
+function normalizeExpectationHorizonLatexCellText(text, options = {}) {
   const keepEmptyLines = options.keepEmptyLines === true;
   const trimEdges = options.trimEdges !== false;
   const lines = String(text || "")
@@ -141,7 +141,7 @@ export function normalizeExpectationHorizonLatexCellText(text, options = {}) {
   return trimEdges ? normalized.trim() : normalized;
 }
 
-export function preprocessExpectationHorizonLatexTask(text) {
+function preprocessExpectationHorizonLatexTask(text) {
   let result = String(text || "").replace(/\r\n?/g, "\n");
   result = removeExpectationHorizonLatexEnvironmentWithContent(result, "framed");
   result = removeExpectationHorizonLatexEnvironmentWithContent(result, "lsg");
@@ -153,7 +153,7 @@ export function preprocessExpectationHorizonLatexTask(text) {
   return normalizeExpectationHorizonLatexCellText(result);
 }
 
-export function isExpectationHorizonLatexEscapedAt(text, index) {
+function isExpectationHorizonLatexEscapedAt(text, index) {
   let slashCount = 0;
   for (let cursor = index - 1; cursor >= 0 && text[cursor] === "\\"; cursor -= 1) {
     slashCount += 1;
@@ -161,7 +161,7 @@ export function isExpectationHorizonLatexEscapedAt(text, index) {
   return slashCount % 2 === 1;
 }
 
-export function findExpectationHorizonLatexMathStart(text, cursor = 0) {
+function findExpectationHorizonLatexMathStart(text, cursor = 0) {
   const source = String(text || "");
   for (let index = cursor; index < source.length; index += 1) {
     if (source[index] === "$" && !isExpectationHorizonLatexEscapedAt(source, index)) {
@@ -188,7 +188,7 @@ export function findExpectationHorizonLatexMathStart(text, cursor = 0) {
   return null;
 }
 
-export function findExpectationHorizonLatexMathEnd(text, start) {
+function findExpectationHorizonLatexMathEnd(text, start) {
   const source = String(text || "");
   if (!start) {
     return null;
@@ -213,7 +213,7 @@ export function findExpectationHorizonLatexMathEnd(text, start) {
   return null;
 }
 
-export function splitExpectationHorizonLatexMathPieces(text) {
+function splitExpectationHorizonLatexMathPieces(text) {
   const source = String(text || "");
   const pieces = [];
   let cursor = 0;
@@ -237,7 +237,7 @@ export function splitExpectationHorizonLatexMathPieces(text) {
   return pieces;
 }
 
-export function findExpectationHorizonLatexSolutionCommand(text, cursor = 0) {
+function findExpectationHorizonLatexSolutionCommand(text, cursor = 0) {
   const source = String(text || "");
   const needle = "\\lsgZwei";
   let searchCursor = cursor;
@@ -293,7 +293,7 @@ export function findExpectationHorizonLatexSolutionCommand(text, cursor = 0) {
   return null;
 }
 
-export function splitExpectationHorizonLatexSolutionSegments(text) {
+function splitExpectationHorizonLatexSolutionSegments(text) {
   const source = preprocessExpectationHorizonLatexTask(text);
   const segments = [];
   let cursor = 0;
@@ -316,7 +316,7 @@ export function splitExpectationHorizonLatexSolutionSegments(text) {
   return segments;
 }
 
-export function cleanExpectationHorizonLatexSegment(text, options = {}) {
+function cleanExpectationHorizonLatexSegment(text, options = {}) {
   let result = String(text || "").replace(/\r\n?/g, "\n");
   const argumentCommands = ["textbf", "textit", "textsc", "texttt"];
   for (let pass = 0; pass < 8; pass += 1) {
@@ -343,7 +343,7 @@ export function cleanExpectationHorizonLatexSegment(text, options = {}) {
   return normalized;
 }
 
-export function appendExpectationHorizonLatexTaskRun(runs, text, options = {}) {
+function appendExpectationHorizonLatexTaskRun(runs, text, options = {}) {
   const rawValue = String(text || "");
   const normalized = normalizeExpectationHorizonLatexCellText(rawValue);
   let value = options.preserveOuterSpaces === true && normalized
@@ -401,7 +401,7 @@ export function appendExpectationHorizonLatexTaskRun(runs, text, options = {}) {
   runs.push(nextRun);
 }
 
-export function trimExpectationHorizonLatexTaskRuns(runs) {
+function trimExpectationHorizonLatexTaskRuns(runs) {
   const trimmedRuns = (Array.isArray(runs) ? runs : [])
     .map((run) => ({ ...run, text: String(run?.text || "") }));
   while (trimmedRuns.length && !trimmedRuns[0].math && !trimmedRuns[0].text.trim()) {

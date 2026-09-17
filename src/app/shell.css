@@ -6344,10 +6344,6 @@
       min-width: 40px;
     }
 
-    #unsaved-data-dialog {
-      max-width: min(420px, calc(100vw - 32px));
-    }
-
     #preferences-dialog {
       width: fit-content;
       min-width: 0;

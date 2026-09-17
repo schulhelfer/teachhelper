@@ -389,10 +389,6 @@ export function createChromeController({
     getTransitionState,
     getTransitionDuration,
     sync,
-    updateToggleUI,
-    setRegionVisibility,
-    setHeaderVisibility,
-    setOverlayVisibility,
     dispose,
   };
 }

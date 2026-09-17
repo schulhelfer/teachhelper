@@ -317,6 +317,7 @@ test('heavy optional assets are precached after the start, not during install', 
     './src/app/shell/workspace-status.js',
     './src/modules/planning/app.js',
     './src/modules/grades/app.js',
+    './src/modules/grades/grade-calculations.js',
   ]) {
     assert.ok(appShell.includes(asset), `${asset} must stay in the app shell`);
     assert.ok(!deferred.includes(asset), `${asset} must not be deferred`);

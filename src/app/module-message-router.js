@@ -145,15 +145,14 @@ export function createModuleMessageRouter({
         ? SIDEBAR_WIDTH_SCOPE_PLANNING
         : SIDEBAR_WIDTH_SCOPE_OTHER;
       if (scope !== expectedScope) return false;
-      return invoke(
-        data.type === SIDEBAR_WIDTH_REQUEST_EVENT ? 'onSidebarWidthRequest' : 'onSidebarWidthCommit',
-        data.detail,
-        { ...metadata, scope }
-      );
+      if (data.type === SIDEBAR_WIDTH_REQUEST_EVENT) {
+        return invoke('onSidebarWidthRequest', { ...metadata, scope });
+      }
+      return invoke('onSidebarWidthCommit', data.detail, { ...metadata, scope });
     }
     if (data.type === SIDEBAR_COLLAPSE_REQUEST_EVENT) {
       const scope = normalizeSidebarScope(data.detail);
-      return invoke('onSidebarCollapseRequest', data.detail, { ...metadata, scope });
+      return invoke('onSidebarCollapseRequest', { ...metadata, scope });
     }
     if (data.type === SEATPLAN_CHROME_REQUEST_EVENT) {
       if (role !== 'seatplan') return false;

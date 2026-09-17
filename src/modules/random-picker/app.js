@@ -520,9 +520,6 @@ export function mountRandomPicker({
     saveConditions,
     resetConditions,
     handleConditionsChange,
-    setActive(active) {
-      if (active) render();
-    },
     dispose() {
       removers.splice(0).forEach((remove) => remove());
       applyWheelWidth(0);

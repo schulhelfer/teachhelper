@@ -10,21 +10,13 @@ import {
   postToModule,
 } from '../shared/module-frame-bridge.js';
 
-export const HELP_VISUAL_FRAME_INTERVAL_MS = 3600;
+const HELP_VISUAL_FRAME_INTERVAL_MS = 3600;
 
-const HELP_VISUAL_IDS = new Set([
-  'allgemein', 'grades', 'planning', 'seatplan', 'name-learning', 'groups',
-  'random-picker', 'merger', 'duplicate-check', 'work-phase', 'qr',
-]);
 const PREVIEW_WIDTH = 1280;
 const PREVIEW_HEIGHT = 720;
 const PREVIEW_CROP_WIDTH = 960;
 const PREVIEW_CROP_HEIGHT = 540;
 const PREVIEW_TIMEOUT_MS = 12_000;
-
-export function isHelpVisualId(value) {
-  return HELP_VISUAL_IDS.has(String(value || ''));
-}
 
 export function hasHelpPreview(articleId) {
   return Boolean(getHelpPreviewConfig(articleId));

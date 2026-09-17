@@ -2,7 +2,7 @@ export const THEME_PREFERENCE_STORAGE_KEY = 'teachhelper:theme-preference';
 export const THEME_PREFERENCE_CHANGE_EVENT = 'classroom:theme-preference-change';
 export const THEME_APPLY_EVENT = 'classroom:theme-apply';
 
-export const THEME_PREFERENCES = Object.freeze(['dark', 'light', 'system']);
+const THEME_PREFERENCES = Object.freeze(['dark', 'light', 'system']);
 
 export function normalizeThemePreference(value, fallback = 'dark') {
   return THEME_PREFERENCES.includes(value) ? value : fallback;

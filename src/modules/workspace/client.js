@@ -11,7 +11,7 @@ export { getWorkspaceLocalValue, setWorkspaceLocalValue, deleteWorkspaceLocalVal
 
 const windowClients = new WeakMap();
 
-export class WorkspaceClient {
+class WorkspaceClient {
   #controller;
   #scope;
 

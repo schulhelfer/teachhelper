@@ -15,7 +15,7 @@ import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TI
 import { createMessageApi } from '../../shared/messages.js';
 import { createQrDecoder } from '../../shared/qr-decode.js';
 
-export function createQrApp({ root = document } = {}) {
+function createQrApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
     ? new URL(import.meta.url).origin
     : window.location.origin;

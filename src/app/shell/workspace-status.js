@@ -135,15 +135,6 @@ export function createWorkspaceStatusController({
     return { ...vaultState };
   }
 
-  function getUnsavedAreaLabel() {
-    if (unsavedState.planningDirty && unsavedState.gradesDirty) {
-      return 'Planung und Noten';
-    }
-    if (unsavedState.planningDirty) return 'Planung';
-    if (unsavedState.gradesDirty) return 'Noten';
-    return 'Planung oder Noten';
-  }
-
   function getLeaveGuard(nextTab, options = {}) {
     if (options.skipUnsavedPrompt) return null;
     const activeTab = getActiveTab();
@@ -389,7 +380,6 @@ export function createWorkspaceStatusController({
     getManualSaveState,
     getUnsavedState,
     getVaultState,
-    getUnsavedAreaLabel,
     getLeaveGuard,
     shouldPromptVaultUnlock,
     shouldBlockBeforeUnload,

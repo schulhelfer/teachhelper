@@ -17,6 +17,14 @@ import {
   cleanExpectationHorizonLatexTask,
   findExpectationHorizonLatexMatchingDelimiter
 } from "./expectation-horizon-latex.js";
+import {
+  calculateGradeDeficitShare,
+  calculateGradeEntryAverage,
+  GRADE_DEFICIT_THRESHOLD_DEFAULT,
+  isGradeValueBelowThreshold,
+  normalizeGradeDeficitThreshold,
+  parseGradeValue
+} from "./grade-calculations.js";
 import { installAppTooltips } from "../../shared/app-tooltips.js";
 import { createMessageApi } from "../../shared/messages.js";
 import {
@@ -40,21 +48,11 @@ import {
   validateDocxTemplateFile,
   withTimeout
 } from "../../shared/file-guards.js";
-import { ensurePdfLibLoaded } from "../../shared/pdf-vendor.js";
 import {
   COURSE_GRADE_LEVELS,
-  deleteCourseCascadeInPlace,
-  normalizeGradeCourseRelations,
-  normalizeCourseGradeLevel,
-  normalizePublicSchoolData
+  normalizeCourseGradeLevel
 } from "../../shared/school-data/index.js";
 import {
-  calculateWeightedGrade,
-  combineGradePeriods
-} from "../../shared/school-data/grades.js";
-import {
-  assertGradeCourseIntegrity,
-  assertGradeRosterUnchanged,
   validateGradeDelta,
   validateGradeOccurrenceDelta
 } from "../../shared/school-data/grade-integrity.js";
@@ -74,7 +72,6 @@ import {
   WORKSPACE_COMMAND_CREATE_COURSE,
   WORKSPACE_COMMAND_DELETE_COURSE,
   WORKSPACE_COMMAND_DELETE_OCCURRENCE_CATEGORY,
-  WORKSPACE_COMMAND_GET_PERFORMANCE_INDEX,
   WORKSPACE_COMMAND_REORDER_COURSES,
   WORKSPACE_COMMAND_UPDATE_COURSE,
   WORKSPACE_ERROR_PERSISTENCE_CONFLICT,
@@ -820,7 +817,6 @@ const GRADE_OCCURRENCE_CATEGORY_SUGGESTIONS = Object.freeze([
   { emoji: "🙋", name: "Gutes Arbeitsverhalten", polarity: "positive" },
   { emoji: "👥", name: "Gutes Sozialverhalten", polarity: "positive" }
 ]);
-const GRADE_DEFICIT_THRESHOLD_DEFAULT = 4;
 const GRADE_TEST_SCALE_THRESHOLDS = {
   sek1: [
     [0.96, 15], [0.92, 14], [0.88, 13], [0.83, 12],
@@ -2015,22 +2011,6 @@ function sanitizePedagogicalGradeInput(raw, maxLength = 4) {
   return result.slice(0, Math.max(1, Number(maxLength) || 4));
 }
 
-function parseGradeValue(raw, maxValue = Number.POSITIVE_INFINITY) {
-  const text = String(raw ?? "").trim();
-  if (!text) {
-    return { valid: true, value: null };
-  }
-  if (!/^\d+$/.test(text)) {
-    return { valid: false, value: null };
-  }
-  const value = Number(text);
-  const normalizedMax = Number.isFinite(maxValue) ? Math.max(0, Math.round(Number(maxValue) || 0)) : Number.POSITIVE_INFINITY;
-  if (!Number.isInteger(value) || value < 0 || value > normalizedMax) {
-    return { valid: false, value: null };
-  }
-  return { valid: true, value };
-}
-
 function formatGradeInteger(value, maxValue = 15) {
   const normalizedMax = Number.isFinite(maxValue) ? Math.max(0, Math.round(Number(maxValue) || 0)) : 99;
   const numeric = clamp(Math.round(Number(value) || 0), 0, normalizedMax);
@@ -2113,56 +2093,8 @@ function parseGradeInputForSystem(raw, displaySystem = GRADE_DISPLAY_SYSTEM_DEFA
     : { valid: false, value: null };
 }
 
-function normalizeGradeDeficitThreshold(value, fallback = GRADE_DEFICIT_THRESHOLD_DEFAULT) {
-  const parsed = parseGradeValue(value, 15);
-  if (parsed.valid && parsed.value !== null) {
-    return parsed.value;
-  }
-  const fallbackParsed = parseGradeValue(fallback, 15);
-  return fallbackParsed.valid && fallbackParsed.value !== null ? fallbackParsed.value : GRADE_DEFICIT_THRESHOLD_DEFAULT;
-}
-
-function isGradeValueBelowThreshold(value, threshold = GRADE_DEFICIT_THRESHOLD_DEFAULT) {
-  if (value === null || value === undefined || value === "") {
-    return false;
-  }
-  const numeric = Number(value);
-  const normalizedThreshold = normalizeGradeDeficitThreshold(threshold, GRADE_DEFICIT_THRESHOLD_DEFAULT);
-  return Number.isFinite(numeric) && numeric <= normalizedThreshold;
-}
-
-function calculateGradeDeficitShare(values = [], threshold = GRADE_DEFICIT_THRESHOLD_DEFAULT) {
-  const normalizedValues = (Array.isArray(values) ? values : [])
-    .map((value) => {
-      if (value === null || value === undefined || value === "") {
-        return null;
-      }
-      const numeric = Number(value);
-      return Number.isFinite(numeric) ? numeric : null;
-    })
-    .filter((value) => value !== null && value !== undefined);
-  if (!normalizedValues.length) {
-    return null;
-  }
-  const deficitCount = normalizedValues.filter((value) => isGradeValueBelowThreshold(value, threshold)).length;
-  return Math.round((deficitCount / normalizedValues.length) * 100);
-}
-
 function formatGradeDeficitShare(value) {
   return value === null || value === undefined ? "—" : `${Math.round(Number(value) || 0)}%`;
-}
-
-function calculateGradeEntryAverage(values = []) {
-  const normalizedValues = (Array.isArray(values) ? values : [])
-    .map((value) => {
-      const parsed = parseGradeValue(value, 15);
-      return parsed.valid ? parsed.value : null;
-    })
-    .filter((value) => value !== null && value !== undefined);
-  if (!normalizedValues.length) {
-    return null;
-  }
-  return normalizedValues.reduce((sum, value) => sum + Number(value || 0), 0) / normalizedValues.length;
 }
 
 function formatGradeTooltipDecimal(value) {
@@ -2171,15 +2103,6 @@ function formatGradeTooltipDecimal(value) {
   }
   const numeric = clamp(Number(value) || 0, 0, 15);
   return numeric.toFixed(1).replace(".", ",");
-}
-
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function normalizeGradeStudentPortrait(value) {
@@ -2736,7 +2659,7 @@ function seedTutorialDemoStore(store) {
   const year = store.getActiveSchoolYear();
   if (!year) return null;
   const courseId = store.createCourse(year.id, "Biologie 8a", "#3CB44B", false, false, "Biologie");
-  const secondCourseId = store.createCourse(
+  store.createCourse(
     year.id,
     "Naturwissenschaften 9b",
     "#E6194B",

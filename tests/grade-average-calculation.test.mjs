@@ -1,20 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import {
+  calculateGradeDeficitShare,
+  calculateGradeEntryAverage,
+  isGradeValueBelowThreshold,
+  parseGradeValue,
+} from '../src/modules/grades/grade-calculations.js';
 import { loadGradesInternals } from './helpers/grades-module.mjs';
 
 const {
-  calculateGradeEntryAverage,
-  calculateGradeDeficitShare,
-  isGradeValueBelowThreshold,
-  parseGradeValue,
   parseSchoolGradeValue,
   getRoundedGradeDisplayValue,
   formatGradeDisplayForSystem,
 } = await loadGradesInternals([
-  'calculateGradeEntryAverage',
-  'calculateGradeDeficitShare',
-  'isGradeValueBelowThreshold',
-  'parseGradeValue',
   'parseSchoolGradeValue',
   'getRoundedGradeDisplayValue',
   'formatGradeDisplayForSystem',

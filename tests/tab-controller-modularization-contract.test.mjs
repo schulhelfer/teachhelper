@@ -16,7 +16,6 @@ test('shell composes and delegates tab activation through the tab controller', (
   assert.equal((shell.match(/createTabController\(\{/g) || []).length, 1);
   assert.match(shell, /getActiveTab,/);
   assert.match(shell, /getTabTransitionState,/);
-  assert.match(shell, /renderTabs: \(\) => tabController\.render\(\),/);
   assert.match(shell, /setActiveTab: \(tab, options\) => tabController\.setActiveTab\(tab, options\),/);
   assert.match(shell, /setActiveTabImmediate: \(tab, options\) => tabController\.setActiveTabImmediate\(tab, options\),/);
   assert.match(shell, /registerCleanup\(\(\) => tabController\.dispose\(\)\);/);

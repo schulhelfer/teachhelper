@@ -50,7 +50,6 @@ test('the Work Phase public surface and offline cache include the extracted modu
     'render',
     'refreshLayout',
     'positionHintOverlay',
-    'setActive',
     'getPlanState',
     'restorePlanState',
     'reset',

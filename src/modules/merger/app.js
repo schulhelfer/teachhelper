@@ -27,7 +27,7 @@ import {
   revokePdfPreviewUrls,
 } from './pdf-preview.js';
 
-export function createMergerApp({
+function createMergerApp({
   sideRoot = null,
   mainRoot = null,
   sideHost = null,

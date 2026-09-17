@@ -124,9 +124,9 @@ test('routes every known message type to its existing authorized adapter', () =>
     ['planning', tabs.GRADES_NAVIGATE_EVENT, 'onGradesNavigate', { courseId: 3 }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_ACTIVITY_EVENT, 'onGradeVaultActivity', { source: 'grades' }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_REQUEST_EVENT, 'onGradeVaultRequest', { action: 'unlock' }, 0],
-    ['planning', 'classroom:sidebar-width-request', 'onSidebarWidthRequest', { scope: 'planning' }, 0],
+    ['planning', 'classroom:sidebar-width-request', 'onSidebarWidthRequest', { scope: 'planning' }, null],
     ['qr', 'classroom:sidebar-width-commit', 'onSidebarWidthCommit', { scope: 'other', width: 360 }, 0],
-    ['seatplan', 'classroom:sidebar-collapse-request', 'onSidebarCollapseRequest', { scope: 'other' }, 0],
+    ['seatplan', 'classroom:sidebar-collapse-request', 'onSidebarCollapseRequest', { scope: 'other' }, null],
     ['seatplan', 'classroom:seatplan-chrome-request', 'onSeatplanChromeRequest', { source: 'iframe', collapsed: true }, 0],
     ['merger', 'classroom:tutorial-entry-hint-sync', 'onTutorialEntryHint', { action: 'request' }, 0],
     ['nameLearning', 'classroom:help-entry-request', 'onHelpEntryRequest', { source: 'module' }, 0],
@@ -137,7 +137,9 @@ test('routes every known message type to its existing authorized adapter', () =>
     assert.equal(harness.router.handleMessage(harness.message(role, type, detail)), true, type);
     assert.equal(harness.calls.length, 1, type);
     assert.equal(harness.calls[0].name, handler, type);
-    assert.equal(harness.calls[0].args[detailIndex], detail, type);
+    if (detailIndex !== null) {
+      assert.equal(harness.calls[0].args[detailIndex], detail, type);
+    }
     const metadata = harness.calls[0].args.at(-1);
     assert.equal(metadata.frame, harness.currentFrames[role], type);
     assert.equal(metadata.role, role, type);

@@ -1,7 +1,7 @@
 import { isAllowedPlanningNoteLink, normalizePlanningNoteText, tokenizePlanningNoteLinks } from "./planning-note-links.js";
 
 export const PLANNING_RICH_TEXT_VERSION = 1;
-export const PLANNING_RICH_TEXT_SIZES = [12, 14, 16, 18, 22];
+const PLANNING_RICH_TEXT_SIZES = [12, 14, 16, 18, 22];
 export const PLANNING_RICH_TEXT_COLORS = Object.freeze({
   navy: "#1e3a8a",
   blue: "#1d4ed8",

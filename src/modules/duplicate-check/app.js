@@ -14,7 +14,7 @@ import {
   TUTORIAL_TARGET_RECT_RESPONSE_EVENT,
 } from '../../shared/module-frame-bridge.js';
 
-export function createDuplicateCheckApp({ root = document } = {}) {
+function createDuplicateCheckApp({ root = document } = {}) {
   const TRUSTED_PARENT_ORIGIN = window.location.origin === 'null'
     ? new URL(import.meta.url).origin
     : window.location.origin;

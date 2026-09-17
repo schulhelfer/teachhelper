@@ -26,7 +26,6 @@ test('shell delegates chrome state while retaining tutorial orchestration', () =
   assert.match(tabController, /function setActiveTab\(tab, options = \{\}\) \{/);
   assert.match(shell, /function setTutorialEntryVisibility\(visible\) \{/);
   assert.match(shell, /setChromeCollapsed: \(collapsed, options\) => chromeController\.setCollapsed\(collapsed, options\),/);
-  assert.match(shell, /toggleChromeCollapsed: \(\) => chromeController\.toggle\(\),/);
   assert.match(shell, /syncChromeState: \(\) => chromeController\.sync\(\),/);
   assert.doesNotMatch(shell, /state\.chromeTransition(?:State|Timer)/);
   assert.doesNotMatch(shell, /function (?:finalizeChromeTransition|queueChromeTransition|moveFocusOutOfChrome)/);

@@ -6,7 +6,7 @@ export const WORKSPACE_OWNER_READY_EVENT = 'classroom:workspace-owner-ready';
 export const WORKSPACE_CLIENT_SHELL = 'shell';
 export const WORKSPACE_CLIENT_PLANNING = 'planning';
 export const WORKSPACE_CLIENT_GRADES = 'grades';
-export const WORKSPACE_CLIENT_SEATPLAN = 'seatplan';
+const WORKSPACE_CLIENT_SEATPLAN = 'seatplan';
 
 export const WORKSPACE_ERROR_STALE_STATE = 'STALE_STATE';
 export const WORKSPACE_ERROR_NOT_READY = 'WORKSPACE_NOT_READY';

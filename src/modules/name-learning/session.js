@@ -1,7 +1,7 @@
 export const STAGES = Object.freeze([0, 1, 2, 4, 7, 14, 21, 30, 45, 60, 90]);
 export const DAY_MS = 24 * 60 * 60 * 1000;
 
-export function normalizeProgress(progress = null, now = Date.now()) {
+function normalizeProgress(progress = null, now = Date.now()) {
   const stage = Math.min(STAGES.length - 1, Math.max(0, Math.floor(Number(progress?.stage) || 0)));
   const dueAt = Number(progress?.dueAt);
   return { stage, dueAt: Number.isFinite(dueAt) && dueAt >= 0 ? dueAt : now };
@@ -31,14 +31,14 @@ export function nextReviewMessage(progress, now = Date.now()) {
   return `Nächste Abfrage: in ${days} ${days === 1 ? 'Tag' : 'Tagen'}`;
 }
 
-export function filterCards(cards = [], courseIds = []) {
+function filterCards(cards = [], courseIds = []) {
   const selected = new Set((courseIds || []).map((id) => Number(id)).filter((id) => id > 0));
   return (Array.isArray(cards) ? cards : []).filter((card) => (
     selected.has(Number(card?.courseId)) && card?.portrait && Number(card?.studentId) > 0
   ));
 }
 
-export function shuffle(cards = [], random = Math.random) {
+function shuffle(cards = [], random = Math.random) {
   const next = [...cards];
   for (let index = next.length - 1; index > 0; index -= 1) {
     const target = Math.floor(random() * (index + 1));

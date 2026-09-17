@@ -12,13 +12,12 @@ const [shell, tabController, workspaceStatus, runtime, serviceWorker, audit] = a
   read('../scripts/audit.py'),
 ]);
 
-test('shell delegates workspace status while retaining dialogs and UI', () => {
+test('shell delegates workspace status while retaining status UI', () => {
   assert.match(shell, /import \{ createWorkspaceStatusController \} from '\.\/shell\/workspace-status\.js';/);
   assert.equal((shell.match(/createWorkspaceStatusController\(\{/g) || []).length, 1);
   assert.match(shell, /onChange: handleWorkspaceStatusChange,/);
   assert.match(tabController, /workspaceStatus\?\.getLeaveGuard\?\.\(nextTab, options\)/);
   assert.match(tabController, /Promise\.resolve\(resolver\(\)\)/);
-  assert.match(shell, /function showUnsavedTabLeaveDialog\(\) \{/);
   assert.match(shell, /function renderPlanningManualSaveButton\(\) \{/);
   assert.match(shell, /function renderPlanningGradeVaultUnlockButton\(\) \{/);
   assert.match(shell, /createTabController\(\{/);

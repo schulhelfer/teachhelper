@@ -34,7 +34,7 @@ function cloneStudent(student, index = 0) {
   };
 }
 
-export function cloneStudentsPayload(students) {
+function cloneStudentsPayload(students) {
   if (!Array.isArray(students)) return [];
   return students
     .map((student, index) => cloneStudent(student, index))

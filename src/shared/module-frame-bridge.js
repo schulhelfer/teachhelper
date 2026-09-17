@@ -1,4 +1,4 @@
-export const DEFAULT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'";
+const DEFAULT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read 'none'; clipboard-write 'none'";
 export const WORKSPACE_CLIENT_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read; clipboard-write";
 export const PLANNING_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboard-read; clipboard-write";
 export const CAMERA_MODULE_ALLOW = "camera; clipboard-read; clipboard-write; microphone 'none'";
@@ -49,7 +49,7 @@ function appendFrameParameters(src, { nonce = '', theme = '' } = {}) {
   }
 }
 
-export function applyModulePermissions(frame, allow = DEFAULT_MODULE_ALLOW) {
+function applyModulePermissions(frame, allow = DEFAULT_MODULE_ALLOW) {
   if (!frame) return frame;
   frame.setAttribute('allow', allow || DEFAULT_MODULE_ALLOW);
   return frame;
@@ -83,7 +83,7 @@ export function createModuleFrame({
   return frame;
 }
 
-export function getModuleFrameNonce(frame) {
+function getModuleFrameNonce(frame) {
   return frame?.dataset?.moduleFrameNonce || '';
 }
 
@@ -105,7 +105,7 @@ export function isOpaqueOriginModuleFrame(frame) {
   return true;
 }
 
-export function getModuleFrameOrigin(frame) {
+function getModuleFrameOrigin(frame) {
   if (!frame) return '';
   const src = frame.getAttribute?.('src') || frame.src || '';
   if (!src) return '';

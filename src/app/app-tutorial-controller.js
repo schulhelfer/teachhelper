@@ -140,24 +140,6 @@ export function createAppTutorialController({
   const prepareGradesTutorialSurface = (surface) => {
     postGradesTutorialCommand('showSurface', { surface });
   };
-  const openPlanningSettingsForTutorial = (settingsTab = 'dayoff') => {
-    if (planningTutorialDemoActive) {
-      dispatchPlanningTutorialDemoView({
-        view: 'settings',
-        settingsTab,
-        settingsContext: 'planning',
-        source: 'tutorial',
-      });
-      return;
-    }
-    getBridgeController()?.ensureTabInitialized(TAB_PLANNING);
-    getBridgeController()?.dispatchPlanningViewRequest({
-      view: 'settings',
-      settingsTab,
-      settingsContext: 'planning',
-      source: 'tutorial',
-    });
-  };
   const NAME_LEARNING_TUTORIAL_COMMAND_EVENT = 'classroom:name-learning-tutorial-command';
   const postNameLearningTutorialCommand = (command, detail = null) => postToModule(getNameLearningFrame(), {
     type: NAME_LEARNING_TUTORIAL_COMMAND_EVENT,

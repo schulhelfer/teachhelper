@@ -139,7 +139,7 @@ test('die feste Tool-Gruppe ist restlos verschwunden', () => {
   }
   assert.doesNotMatch(shell, /isMoreToolsTab/);
   assert.match(tabNavLayout, /function isTabOverflowed\(tab\) \{\s+return overflowTargets\.has\(tab\);/);
-  assert.match(shell, /isTabOverflowed: \(tab\) => tabNavLayout\.isTabOverflowed\(tab\)/);
+  assert.doesNotMatch(shell, /isTabOverflowed:/);
 });
 
 test('die Ueberlaufregeln stehen im Stylesheet', () => {

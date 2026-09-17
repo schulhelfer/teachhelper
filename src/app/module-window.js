@@ -7,9 +7,9 @@ import {
   TAB_WORK_PHASE,
 } from '../shell/tabs.js';
 
-export const MODULE_WINDOW_TAB_PARAM = 'tab';
-export const MODULE_WINDOW_MODE_PARAM = 'window';
-export const MODULE_WINDOW_MODE_VALUE = 'module';
+const MODULE_WINDOW_TAB_PARAM = 'tab';
+const MODULE_WINDOW_MODE_PARAM = 'window';
+const MODULE_WINDOW_MODE_VALUE = 'module';
 
 export const TEAR_OFF_TABS = new Set([
   TAB_GROUPS,

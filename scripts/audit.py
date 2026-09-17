@@ -216,6 +216,7 @@ required_precache_assets = [
   ROOT / 'src' / 'modules' / 'grades' / 'app.html',
   ROOT / 'src' / 'modules' / 'grades' / 'app.css',
   ROOT / 'src' / 'modules' / 'grades' / 'app.js',
+  ROOT / 'src' / 'modules' / 'grades' / 'grade-calculations.js',
   ROOT / 'src' / 'modules' / 'grades' / 'bridge.js',
   ROOT / 'src' / 'modules' / 'grades' / 'percentile-rank.js',
   ROOT / 'src' / 'modules' / 'grades' / 'expectation-horizon-latex.js',

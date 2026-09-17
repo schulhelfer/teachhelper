@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [main, picker, index, serviceWorker] = await Promise.all([
+const [main, picker, seatplan, index, serviceWorker] = await Promise.all([
   readFile(new URL('../src/app/app-runtime.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/random-picker/app.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/modules/seatplan/app.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/modules/random-picker/index.js', import.meta.url), 'utf8'),
   readFile(new URL('../sw.js', import.meta.url), 'utf8'),
 ]);
@@ -16,6 +17,7 @@ test('main mounts the picker against the shared state through explicit adapters'
   assert.match(main, /getAutoDisableSelected: \(\) => gradeRosterCoordinator\.getPickerAutoDisableSelected\([\s\S]*?state\.randomPickerAutoDisableSelected[\s\S]*?\)/);
   assert.match(main, /setStudentWeight: \(student, weight\) => \{\s*student\.randomWeight = weight;/);
   assert.doesNotMatch(main, /function (?:getRandomPickerCandidates|pickWeightedRandomPickerCandidate|updateRandomPickerCards|startRandomPickerSpin|buildRandomPickerConditionsTable)\(/);
+  assert.doesNotMatch(seatplan, /function (?:getRandomPickerCandidates|pickWeightedRandomPickerCandidate|updateRandomPickerCards|startRandomPickerSpin)\(/);
 });
 
 test('the random picker module owns rendering, selection, conditions, and button events', () => {
