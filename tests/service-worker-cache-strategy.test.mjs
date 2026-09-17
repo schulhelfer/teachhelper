@@ -93,6 +93,43 @@ test('file-processing timeout and abort terminate the active worker', async () =
   assert.equal(workers[1].terminated, 1);
 });
 
+test('file-processing falls back to a blob worker in an opaque-origin sandbox', async () => {
+  const urls = [];
+  class FakeWorker {
+    constructor() { this.terminated = 0; }
+    postMessage() {}
+    terminate() { this.terminated += 1; }
+  }
+  let worker = null;
+  const factory = (url) => {
+    urls.push(String(url));
+    if (urls.length === 1) throw new DOMException('cannot be accessed from origin \'null\'.', 'SecurityError');
+    worker = new FakeWorker();
+    return worker;
+  };
+  const pending = runFileProcessingTask('test', {}, { workerFactory: factory, timeoutMs: 1_000 });
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /file-processing-worker\.js$/);
+  assert.match(urls[1], /^blob:/);
+  worker.onmessage({ data: { type: 'result', value: 'done' } });
+  assert.equal(await pending, 'done');
+});
+
+test('file-processing rejects when the worker cannot be constructed at all', async () => {
+  const factory = () => { throw new TypeError('kaputt'); };
+  await assert.rejects(runFileProcessingTask('test', {}, { workerFactory: factory, timeoutMs: 1_000 }), /kaputt/);
+  const workers = [];
+  class FakeWorker {
+    constructor() { workers.push(this); this.terminated = 0; }
+    postMessage() {}
+    terminate() { this.terminated += 1; }
+  }
+  const next = runFileProcessingTask('after', {}, { workerFactory: () => new FakeWorker(), timeoutMs: 1_000 });
+  assert.equal(workers.length, 1);
+  workers[0].onmessage({ data: { type: 'result', value: 'after' } });
+  assert.equal(await next, 'after');
+});
+
 test('file-processing serializes heavy workers', async () => {
   const workers = [];
   class FakeWorker {

@@ -1,7 +1,26 @@
 import { FILE_LIMITS } from "./file-guards.js";
 
+const WORKER_URL = new URL("./file-processing-worker.js", import.meta.url);
+
 const pending = [];
 let activeCount = 0;
+let blobWorkerUrl = "";
+
+function createOpaqueOriginWorkerUrl() {
+  if (blobWorkerUrl) return blobWorkerUrl;
+  const shim = `import ${JSON.stringify(WORKER_URL.href)};`;
+  blobWorkerUrl = URL.createObjectURL(new Blob([shim], { type: "text/javascript" }));
+  return blobWorkerUrl;
+}
+
+function createWorker(job) {
+  try {
+    return job.workerFactory(WORKER_URL, { type: "module" });
+  } catch (error) {
+    if (error?.name !== "SecurityError" || typeof Blob !== "function" || typeof URL?.createObjectURL !== "function") throw error;
+    return job.workerFactory(createOpaqueOriginWorkerUrl(), { type: "module" });
+  }
+}
 
 function abortError() {
   return new DOMException("Der Vorgang wurde abgebrochen.", "AbortError");
@@ -24,7 +43,15 @@ function runNext() {
     return;
   }
   activeCount += 1;
-  const worker = job.workerFactory(new URL("./file-processing-worker.js", import.meta.url), { type: "module" });
+  let worker;
+  try {
+    worker = createWorker(job);
+  } catch (error) {
+    activeCount -= 1;
+    job.reject(error instanceof Error ? error : new Error("Die lokale Dateiverarbeitung konnte nicht gestartet werden."));
+    runNext();
+    return;
+  }
   let finished = false;
   let timeout = 0;
   const finish = (error, result) => {
