@@ -1171,14 +1171,17 @@
             aria-label="Übernehmen" data-tooltip="Übernehmen">✔️</button>
         </div>
       </div>
-      <input id="competence-expectations-latex-file" class="visually-hidden" type="file"
-        accept=".tex,.ltx,.latex,text/plain,text/x-tex,application/x-tex">
+      <input id="competence-expectations-text-file" class="visually-hidden" type="file"
+        accept=".txt,.text,text/plain">
       <div class="expectation-horizon-dropzone-grid competence-expectations-import-grid">
-        <button id="competence-expectations-latex-dropzone" class="expectation-horizon-dropzone" type="button">
+        <button id="competence-expectations-text-dropzone" class="expectation-horizon-dropzone" type="button">
           <span class="expectation-horizon-dropzone-icon" aria-hidden="true">📄</span>
-          <span>Aus LaTeX-Datei Kompetenzerwartung übernehmen</span>
+          <span>Aus Textdatei Kompetenzerwartung übernehmen</span>
         </button>
       </div>
+      <p class="competence-expectations-import-hint">
+        Eine Zeile je Thema mit <code>-</code>, darunter die Kompetenzen mit <code>--</code>. Leerzeilen werden ignoriert.
+      </p>
       <div id="competence-expectations-list" class="competence-expectations-list"></div>
       <div id="competence-expectations-status" class="expectation-horizon-status" aria-live="polite"></div>
     </form>

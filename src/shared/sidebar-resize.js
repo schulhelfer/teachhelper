@@ -26,7 +26,7 @@
     return scope === 'planning' ? 220 : DEFAULT_WIDTH;
   }
 
-  function getMinimumStoredWidth(scope) {
+  function getMinimumStoredWidth() {
     return FULLSCREEN_THRESHOLD;
   }
 
@@ -221,7 +221,7 @@
       const data = event.data;
       if (data.type !== WIDTH_SYNC_EVENT || data.detail?.scope !== scope) return;
       const width = Number(data.detail.width);
-      if (!Number.isFinite(width) || width < getMinimumStoredWidth(scope)) return;
+      if (!Number.isFinite(width) || width < getMinimumStoredWidth()) return;
       currentWidth = Math.round(width);
       setWidth(currentWidth);
     });

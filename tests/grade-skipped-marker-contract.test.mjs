@@ -29,15 +29,30 @@ test('the seatplan tracks skipped students separately from handled ones', () => 
   assert.match(seatplan, /function isCourseGradeStudentSkipped\(studentId\) \{[\s\S]*?return Boolean\(state\.courseGradeSkippedStudentIds\?\.has\(sid\)\);/);
 });
 
-test('only the seatplan skip button marks a student as skipped', () => {
+test('only the seatplan skip action marks a student as skipped', () => {
   assert.match(
     seatplan,
-    /skipButton\.addEventListener\('click', event => \{\n\s*event\.stopPropagation\(\);\n\s*markCourseGradeStudentHandled\(input\.dataset\.studentId \|\| ''\);\n\s*markCourseGradeStudentSkipped\(input\.dataset\.studentId \|\| ''\);\n\s*applyCourseGradeSkippedState\(input\);\n\s*state\.courseGradeCompletionPromptArmed = true;\n\s*advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+    /function skipCourseGradeInput\(input\) \{\n\s*if \(!\(input instanceof HTMLInputElement\)\) return false;\n\s*const studentId = String\(input\.dataset\.studentId \|\| ''\);\n\s*markCourseGradeStudentHandled\(studentId\);\n\s*markCourseGradeStudentSkipped\(studentId\);\n\s*applyCourseGradeSkippedState\(input\);\n\s*state\.courseGradeCompletionPromptArmed = true;\n\s*return advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
   );
   assert.equal(
     seatplan.split('markCourseGradeStudentSkipped(').length - 1,
     2,
-    'markCourseGradeStudentSkipped may only be defined once and called from the skip button',
+    'markCourseGradeStudentSkipped may only be defined once and called from skipCourseGradeInput',
+  );
+
+  const skipCalls = seatplan.match(/skipCourseGradeInput\(input\);/g) || [];
+  assert.equal(
+    skipCalls.length,
+    2,
+    'skipCourseGradeInput may only be reached from the skip button and the ArrowDown key',
+  );
+  assert.match(
+    seatplan,
+    /skipButton\.addEventListener\('click', event => \{\n\s*event\.stopPropagation\(\);\n\s*skipCourseGradeInput\(input\);/,
+  );
+  assert.match(
+    seatplan,
+    /if \(event\.key === 'ArrowDown'\) \{\n\s*skipCourseGradeInput\(input\);/,
   );
 });
 

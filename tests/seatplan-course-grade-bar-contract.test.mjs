@@ -88,7 +88,11 @@ test('nur eine Note oder der Auslassen-Button zaehlen als erledigt', () => {
   );
   assert.match(
     seatplanApp,
-    /skipButton\.addEventListener\('click', event => \{[\s\S]*?markCourseGradeStudentHandled\(input\.dataset\.studentId \|\| ''\);/,
+    /function skipCourseGradeInput\(input\) \{[\s\S]*?markCourseGradeStudentHandled\(studentId\);/,
+  );
+  assert.match(
+    seatplanApp,
+    /skipButton\.addEventListener\('click', event => \{[\s\S]*?skipCourseGradeInput\(input\);/,
   );
 });
 

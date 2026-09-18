@@ -59,7 +59,7 @@ export function createSidebarResizeController({
           ? view.localStorage?.getItem(LEGACY_SIDEBAR_WIDTH_STORAGE_KEY)
           : null);
       const stored = Number.parseFloat(storedValue);
-      if (!Number.isFinite(stored) || stored < getMinimumWidth(normalizedScope)) {
+      if (!Number.isFinite(stored) || stored < getMinimumWidth()) {
         return getDefaultWidth(normalizedScope);
       }
       return Math.round(stored);
@@ -284,7 +284,7 @@ export function createSidebarResizeController({
       .find(([, storageKey]) => storageKey === event.key)?.[0];
     if (!scope) return;
     const nextWidth = Number.parseFloat(event.newValue);
-    if (!Number.isFinite(nextWidth) || nextWidth < getMinimumWidth(scope)) return;
+    if (!Number.isFinite(nextWidth) || nextWidth < getMinimumWidth()) return;
     updateScopedWidth(scope, nextWidth, { notify: false });
   }
 

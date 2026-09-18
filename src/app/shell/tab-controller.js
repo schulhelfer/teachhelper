@@ -223,13 +223,18 @@ export function createTabController({
   }
 
   function getTabSwitchDuration() {
-    if (typeof matchMedia !== 'function') return 100;
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return 1;
+    if (typeof matchMedia !== 'function') return { leave: 100, enter: 100 };
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return { leave: 1, enter: 1 };
     const styleHost = app || documentRef?.documentElement;
     const computed = typeof getComputedStyle === 'function' && styleHost
       ? getComputedStyle(styleHost)
       : null;
-    return parseCssTimeToMs(computed?.getPropertyValue?.('--tab-switch-duration')) || 100;
+    const readDuration = (name) => parseCssTimeToMs(computed?.getPropertyValue?.(name));
+    const leave = readDuration('--tab-switch-leave-duration')
+      || readDuration('--tab-switch-duration')
+      || 110;
+    const enter = readDuration('--tab-switch-enter-duration') || leave * 2;
+    return { leave, enter };
   }
 
   function isHTMLElement(value) {
@@ -331,9 +336,9 @@ export function createTabController({
       onRefreshLayouts();
       return;
     }
-    const transitionDuration = getTabSwitchDuration();
+    const { leave: leaveDuration, enter: enterDuration } = getTabSwitchDuration();
     const currentRegions = collectRenderedTabRegions();
-    if (!currentRegions.length || transitionDuration <= 1) {
+    if (!currentRegions.length || leaveDuration <= 1) {
       commitActiveTab(nextTab);
       onEnsureTabInitialized(activeTab);
       render();
@@ -373,8 +378,8 @@ export function createTabController({
       transitionTimer = scheduleTimer(() => {
         transitionTimer = null;
         finishTabTransition({ showTutorialHint: Boolean(options.showTutorialHint) });
-      }, transitionDuration);
-    }, transitionDuration);
+      }, enterDuration);
+    }, leaveDuration);
   }
 
   function setActiveTabImmediate(tab, options = {}) {

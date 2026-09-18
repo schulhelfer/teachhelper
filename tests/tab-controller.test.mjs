@@ -212,9 +212,15 @@ function createHarness(options = {}) {
     matchMedia: () => ({ matches: Boolean(options.reducedMotion) }),
     getComputedStyle: (element) => ({
       display: element.display,
-      getPropertyValue: (name) => name === '--tab-switch-duration'
-        ? (options.transitionDuration || '120ms')
-        : '',
+      getPropertyValue: (name) => {
+        if (name === '--tab-switch-leave-duration' || name === '--tab-switch-duration') {
+          return options.transitionDuration || '120ms';
+        }
+        if (name === '--tab-switch-enter-duration') {
+          return options.enterDuration || '240ms';
+        }
+        return '';
+      },
     }),
     workspaceStatus: workspace,
     sidebarResize,
@@ -401,7 +407,7 @@ test('runs leave and enter phases through their existing timer and frame boundar
 
   harness.runFrames();
   assert.equal(harness.regions.mergerShell.classList.contains('tab-switch-enter'), false);
-  harness.runNextTimer(120);
+  harness.runNextTimer(240);
   assert.equal(harness.controller.getTransitionState(), 'idle');
   assert.equal(harness.app.classList.contains('is-tab-switching'), false);
   assert.equal(harness.calls.filter(([name, tab]) => name === 'active-change' && tab === 'merger').length, 1);
@@ -415,13 +421,13 @@ test('keeps only the latest pending request during a running transition', () => 
 
   harness.runNextTimer(120);
   harness.runFrames();
-  harness.runNextTimer(120);
+  harness.runNextTimer(240);
   assert.equal(harness.controller.getTransitionState(), 'leaving');
   assert.equal(harness.controller.getActiveTab(), 'merger');
 
   harness.runNextTimer(120);
   harness.runFrames();
-  harness.runNextTimer(120);
+  harness.runNextTimer(240);
   assert.equal(harness.controller.getActiveTab(), 'duplicate-check');
   assert.equal(harness.controller.getTransitionState(), 'idle');
   assert.equal(harness.calls.some(([name, tab]) => name === 'ensure' && tab === 'qr'), false);

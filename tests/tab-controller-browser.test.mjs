@@ -59,7 +59,7 @@ test('tab transitions settle rapid and overflow navigation on the latest request
     };
 
     document.getElementById('tab-duplicate-check').click();
-    await wait(240);
+    await wait(480);
     const repeated = {
       activeTab: activeTab(),
       switching: app.classList.contains('is-tab-switching'),

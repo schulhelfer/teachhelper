@@ -308,7 +308,9 @@
       --chrome-transition-duration-medium: 240ms;
       --motion-fast: 150ms;
       --motion-medium: 220ms;
-      --tab-switch-duration: 150ms;
+      --tab-switch-leave-duration: 110ms;
+      --tab-switch-enter-duration: 220ms;
+      --tab-switch-duration: var(--tab-switch-leave-duration);
       --chrome-transition-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
       --motion-ease: var(--chrome-transition-ease);
       --app-header-max-height: 240px;
@@ -931,7 +933,7 @@
     .app>.monitor-shell,
     .app>.work-order-shell,
     .app>.timer-shell {
-      will-change: opacity, transform, filter;
+      will-change: opacity, transform;
       transition: padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), background-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), filter var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
@@ -947,34 +949,24 @@
     .app.is-tab-switching>.work-order-shell,
     .app.is-tab-switching>.timer-shell {
       pointer-events: none;
+      transition: opacity var(--tab-switch-enter-duration) var(--motion-ease), transform var(--tab-switch-enter-duration) var(--motion-ease);
     }
 
     .tab-switch-leave,
     .tab-switch-enter {
       pointer-events: none !important;
-      transition-duration: var(--tab-switch-duration) !important;
+      opacity: 0 !important;
+      filter: none !important;
     }
 
     .tab-switch-leave {
-      opacity: 0 !important;
-      transform: translateY(8px) scale(0.996) !important;
-      filter: blur(2px) saturate(0.98) !important;
+      transform: translateY(4px) !important;
+      transition: opacity var(--tab-switch-leave-duration) var(--motion-ease), transform var(--tab-switch-leave-duration) var(--motion-ease) !important;
     }
 
     .tab-switch-enter {
-      opacity: 0 !important;
-      transform: translateY(10px) scale(0.996) !important;
-      filter: blur(2px) saturate(0.98) !important;
-    }
-
-    .app.app-ios-optimized .tab-switch-leave {
-      transform: translateY(6px) scale(0.996) !important;
-      filter: none !important;
-    }
-
-    .app.app-ios-optimized .tab-switch-enter {
-      transform: translateY(8px) scale(0.996) !important;
-      filter: none !important;
+      transform: translateY(6px) !important;
+      transition-duration: 0s !important;
     }
 
     #app {
@@ -1397,11 +1389,17 @@
       grid-row: 2;
     }
 
+    .app.app-tab-planning>.planning-shell,
+    .app.app-tab-grades>.grades-shell {
+      transition: opacity var(--tab-switch-enter-duration) var(--motion-ease), visibility 0s;
+    }
+
     .app.planning-initial-paint-pending.app-tab-planning>.planning-shell,
     .app.grades-initial-paint-pending.app-tab-grades>.grades-shell {
       opacity: 0;
       visibility: hidden;
       pointer-events: none;
+      transition: none;
     }
 
     .app.is-collapsing.app-tab-grades>.grades-shell,
