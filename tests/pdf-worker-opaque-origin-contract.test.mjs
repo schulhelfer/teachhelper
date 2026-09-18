@@ -33,16 +33,27 @@ const pageSources = new Map(
   ),
 );
 
-test('pdf.js falls back to its blob: worker wrapper in opaque-origin module frames', () => {
+test('pdf.js receives a prebuilt worker in opaque-origin module frames', () => {
   assert.match(pdfVendorSource, /window\.origin === "null"/);
-  assert.match(pdfVendorSource, /pdfjsLib\.PDFWorker\._isSameOrigin = \(\) => false;/);
-});
-
-test('the opaque-origin switch stays guarded against pdf.js internals changing', () => {
   assert.match(
     pdfVendorSource,
-    /typeof pdfjsLib\.PDFWorker\?\._isSameOrigin === "function"/,
+    /GlobalWorkerOptions\.workerPort = createWorkerWithOriginFallback\(/,
+    'PDFWorker builds its own wrapper with type:"module", which Chromium refuses in an opaque origin',
   );
+  assert.match(
+    pdfVendorSource,
+    /import \{ createWorkerWithOriginFallback \} from "\.\/worker-origin-fallback\.js"/,
+    'pdf-vendor.js must reuse the shared fallback instead of rolling its own blob worker',
+  );
+});
+
+test('the prebuilt worker port is only used where the native pdf.js path fails', () => {
+  assert.match(
+    pdfVendorSource,
+    /if \(!isOpaqueOriginContext\(\) \|\| pdfjsLib\.GlobalWorkerOptions\.workerPort\) return;/,
+    'a same-origin document must keep pdf.js own worker handling',
+  );
+  assert.match(pdfVendorSource, /workerSrc = PDF_JS_WORKER_URL\.href/);
 });
 
 test('every page allows blob: workers so the real pdf.js worker can start', () => {

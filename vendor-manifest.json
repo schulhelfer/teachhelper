@@ -55,7 +55,7 @@
       "registry": "npm",
       "package": "pdfjs-dist",
       "purl": "pkg:npm/pdfjs-dist@6.3.289",
-      "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows. Re-check that PDFWorker._isSameOrigin still exists, because src/shared/pdf-vendor.js overrides it for opaque-origin module frames.",
+      "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows. Re-check that GlobalWorkerOptions.workerPort still accepts a Worker, because src/shared/pdf-vendor.js hands over its own classic blob worker for opaque-origin module frames; PDFWorker builds its wrapper with type:\"module\", which Chromium refuses there.",
       "files": [
         {
           "path": "src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs",

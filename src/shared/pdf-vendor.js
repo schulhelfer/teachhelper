@@ -1,3 +1,5 @@
+import { createWorkerWithOriginFallback } from "./worker-origin-fallback.js";
+
 const PDF_LIB_URL = new URL("../vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js", import.meta.url);
 const PDF_JS_URL = new URL("../vendor/pdfjs-dist/6.3.289/build/pdf.mjs", import.meta.url);
 const PDF_JS_WORKER_URL = new URL("../vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs", import.meta.url);
@@ -50,6 +52,26 @@ export async function ensurePdfLibLoaded() {
   return pdfLibLoadPromise;
 }
 
+function isOpaqueOriginContext() {
+  try {
+    return window.origin === "null" || window.location.origin === "null";
+  } catch {
+    return false;
+  }
+}
+
+function attachOpaqueOriginWorkerPort(pdfjsLib) {
+  if (!isOpaqueOriginContext() || pdfjsLib.GlobalWorkerOptions.workerPort) return;
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerPort = createWorkerWithOriginFallback(
+      PDF_JS_WORKER_URL,
+      { type: "module" },
+    );
+  } catch {
+    pdfjsLib.GlobalWorkerOptions.workerPort = null;
+  }
+}
+
 export async function ensurePdfJsLoaded() {
   if (!pdfJsLoadPromise) {
     pdfJsLoadPromise = import(PDF_JS_URL.href)
@@ -59,13 +81,7 @@ export async function ensurePdfJsLoaded() {
         }
         if (pdfjsLib.GlobalWorkerOptions) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_JS_WORKER_URL.href;
-        }
-        if (
-          typeof window !== "undefined"
-          && window.origin === "null"
-          && typeof pdfjsLib.PDFWorker?._isSameOrigin === "function"
-        ) {
-          pdfjsLib.PDFWorker._isSameOrigin = () => false;
+          attachOpaqueOriginWorkerPort(pdfjsLib);
         }
         return pdfjsLib;
       })

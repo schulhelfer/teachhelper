@@ -9,11 +9,13 @@ const fileProcessingClientSource = await readFile(new URL('../src/shared/file-pr
 
 const capturedBlobs = [];
 
-function loadHelper() {
+function loadHelper(origin, WorkerStub) {
   const source = helperSource.replace(/\bexport function\b/g, 'function');
   const factory = new Function(
     'Blob',
     'URL',
+    'window',
+    'Worker',
     `${source}\nreturn { createWorkerWithOriginFallback };`,
   );
   const FakeBlob = class {
@@ -25,7 +27,8 @@ function loadHelper() {
       return `blob:null/${capturedBlobs.length}`;
     },
   };
-  return factory(FakeBlob, fakeUrl);
+  const fakeWindow = origin === undefined ? undefined : { origin, location: { origin } };
+  return factory(FakeBlob, fakeUrl, fakeWindow, WorkerStub);
 }
 
 function securityError() {
@@ -33,6 +36,123 @@ function securityError() {
   error.name = 'SecurityError';
   return error;
 }
+
+test('an opaque origin uses the blob shim on the first call without attempting the real URL', () => {
+  capturedBlobs.length = 0;
+  const urls = [];
+  const WorkerStub = class {
+    constructor(url) {
+      urls.push(String(url));
+      this.id = 'worker';
+    }
+  };
+  const { createWorkerWithOriginFallback } = loadHelper('null', WorkerStub);
+
+  createWorkerWithOriginFallback(
+    new URL('https://example.test/app/file-processing-worker.js'),
+    { type: 'module' },
+  );
+
+  assert.equal(
+    urls.length,
+    1,
+    'a cross-origin worker request is refused asynchronously via onerror, so it must never be attempted',
+  );
+  assert.match(urls[0], /^blob:/);
+  assert.match(
+    capturedBlobs[0],
+    /import\("https:\/\/example\.test\/app\/file-processing-worker\.js"\)/,
+  );
+});
+
+test('the blob fallback of a module worker is started as a classic worker', () => {
+  capturedBlobs.length = 0;
+  const optionsSeen = [];
+  const WorkerStub = class {
+    constructor(url, options) {
+      optionsSeen.push(options);
+      this.id = 'worker';
+    }
+  };
+  const { createWorkerWithOriginFallback } = loadHelper('null', WorkerStub);
+
+  createWorkerWithOriginFallback(
+    new URL('https://example.test/app/file-processing-worker.js'),
+    { type: 'module' },
+  );
+
+  assert.deepEqual(
+    optionsSeen,
+    [undefined],
+    'Chromium refuses a type:"module" blob worker in an opaque origin, so the shim must be classic',
+  );
+});
+
+test('the module shim queues messages that arrive before the import resolves', () => {
+  capturedBlobs.length = 0;
+  const WorkerStub = class {
+    constructor() { this.id = 'worker'; }
+  };
+  const { createWorkerWithOriginFallback } = loadHelper('null', WorkerStub);
+
+  createWorkerWithOriginFallback(
+    new URL('https://example.test/app/file-processing-worker.js'),
+    { type: 'module' },
+  );
+
+  const shim = capturedBlobs[0];
+  assert.match(shim, /queued\.push\(event\)/, 'the client posts immediately after construction');
+  assert.match(shim, /queued\.splice\(0\)/, 'buffered messages must be replayed once the module is live');
+  assert.doesNotMatch(shim, /^\s*await import/, 'top-level await is unavailable in a classic worker');
+  assert.match(
+    shim,
+    /self\.dispatchEvent\(new MessageEvent\("message"/,
+    'pdf.worker.mjs listens via addEventListener, which a replay through self.onmessage never reaches',
+  );
+});
+
+test('a same-origin document starts the worker from the real URL and builds no blob', () => {
+  capturedBlobs.length = 0;
+  const urls = [];
+  const WorkerStub = class {
+    constructor(url) {
+      urls.push(String(url));
+      this.id = 'worker';
+    }
+  };
+  const { createWorkerWithOriginFallback } = loadHelper('https://example.test', WorkerStub);
+
+  createWorkerWithOriginFallback(
+    new URL('https://example.test/app/file-processing-worker.js'),
+    { type: 'module' },
+  );
+
+  assert.deepEqual(urls, ['https://example.test/app/file-processing-worker.js']);
+  assert.equal(capturedBlobs.length, 0);
+});
+
+test('an injected worker factory bypasses the opaque-origin detection', () => {
+  capturedBlobs.length = 0;
+  const urls = [];
+  const { createWorkerWithOriginFallback } = loadHelper('null');
+  const workerFactory = (url) => {
+    urls.push(String(url));
+    return { id: 'stub' };
+  };
+
+  createWorkerWithOriginFallback(new URL('https://example.test/w.js'), { workerFactory });
+
+  assert.deepEqual(urls, ['https://example.test/w.js']);
+  assert.equal(capturedBlobs.length, 0);
+});
+
+test('the origin fallback decides up front instead of waiting for an asynchronous worker error', () => {
+  assert.match(
+    helperSource,
+    /window\.origin === "null" \|\| window\.location\.origin === "null"/,
+    'a sandboxed frame without allow-same-origin never throws synchronously in Chromium',
+  );
+});
 
 test('a module worker shim uses a dynamic import so it resolves in an opaque origin', () => {
   capturedBlobs.length = 0;
@@ -54,7 +174,7 @@ test('a module worker shim uses a dynamic import so it resolves in an opaque ori
   const shim = capturedBlobs[0];
   assert.match(
     shim,
-    /await import\("https:\/\/example\.test\/app\/file-processing-worker\.js"\)/,
+    /import\("https:\/\/example\.test\/app\/file-processing-worker\.js"\)/,
     'the shim must use a dynamic import',
   );
   assert.doesNotMatch(
