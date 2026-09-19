@@ -2413,8 +2413,98 @@ export class WorkspaceStore {
     };
   }
 
-  saveGradeStructure(courseId, categoriesOrPeriodCategories, performanceFlairWeightOverrides = null) {
+  promoteGradeAssessmentsToParentCategory(courseId, sourceIdsByPeriod) {
+    const id = Number(courseId) || 0;
+    const canPromote = (period, categoryId, subcategoryId) => {
+      const validIds = sourceIdsByPeriod[period] || sourceIdsByPeriod.h1;
+      return (
+        subcategoryId > 0
+        && categoryId > 0
+        && validIds.categoryIds.has(categoryId)
+        && validIds.categoryHasSubcategories.get(categoryId) === false
+        && !validIds.subcategoryIdsByCategory.get(categoryId)?.has(subcategoryId)
+      );
+    };
+    const promoted = this.gradeVaultState.gradeAssessments.filter((assessment) => (
+      Number(assessment.courseId) === id
+      && canPromote(
+        normalizeGradeHalfYear(assessment.halfYear),
+        Number(assessment.categoryId) || 0,
+        Number(assessment.subcategoryId) || 0
+      )
+    ));
+    if (promoted.length === 0) {
+      return 0;
+    }
+    const targetGroupKeys = new Set();
+    promoted.forEach((assessment) => {
+      assessment.subcategoryId = null;
+      targetGroupKeys.add(getGradeAssessmentOrderGroupKey(assessment));
+    });
+    const promotedIds = new Set(promoted.map((assessment) => Number(assessment.id) || 0));
+    targetGroupKeys.forEach((groupKey) => {
+      this.gradeVaultState.gradeAssessments
+        .filter((assessment) => getGradeAssessmentOrderGroupKey(assessment) === groupKey)
+        .sort((left, right) => {
+          const leftPromoted = promotedIds.has(Number(left.id) || 0);
+          const rightPromoted = promotedIds.has(Number(right.id) || 0);
+          if (leftPromoted !== rightPromoted) {
+            return leftPromoted ? 1 : -1;
+          }
+          return compareGradeAssessmentsByOrder(left, right);
+        })
+        .forEach((assessment, index) => {
+          assessment.sortOrder = index + 1;
+        });
+    });
+    this.gradeVaultState.gradeOverrides = this.gradeVaultState.gradeOverrides.filter((override) => {
+      if (Number(override.courseId) !== id || normalizeGradeOverrideScope(override.scope) !== "subcategory") {
+        return true;
+      }
+      const periods = ["h1", "h2"].includes(normalizeGradePeriod(override.period))
+        ? [normalizeGradePeriod(override.period)]
+        : ["h1", "h2"];
+      return !periods.every((period) => canPromote(
+        period,
+        Number(override.categoryId) || 0,
+        Number(override.subcategoryId) || 0
+      ));
+    });
+    return promoted.length;
+  }
+
+  countGradeAssessmentsForSubcategory(courseId, halfYear, categoryId, subcategoryId) {
+    const id = Number(courseId) || 0;
+    const period = normalizeGradeHalfYear(halfYear);
+    const categoryKey = Number(categoryId) || 0;
+    const subcategoryKey = Number(subcategoryId) || 0;
+    if (!id || !categoryKey || !subcategoryKey) {
+      return { assessments: 0, overrides: 0 };
+    }
+    const assessments = this.gradeVaultState.gradeAssessments.filter((assessment) => (
+      Number(assessment.courseId) === id
+      && normalizeGradeHalfYear(assessment.halfYear) === period
+      && Number(assessment.categoryId) === categoryKey
+      && Number(assessment.subcategoryId) === subcategoryKey
+    )).length;
+    const overrides = this.gradeVaultState.gradeOverrides.filter((override) => {
+      if (
+        Number(override.courseId) !== id
+        || normalizeGradeOverrideScope(override.scope) !== "subcategory"
+        || Number(override.categoryId) !== categoryKey
+        || Number(override.subcategoryId) !== subcategoryKey
+      ) {
+        return false;
+      }
+      const overridePeriod = normalizeGradePeriod(override.period);
+      return ["h1", "h2"].includes(overridePeriod) ? overridePeriod === period : true;
+    }).length;
+    return { assessments, overrides };
+  }
+
+  saveGradeStructure(courseId, categoriesOrPeriodCategories, performanceFlairWeightOverrides = null, options = {}) {
     const id = Number(courseId);
+    const promoteOrphanedAssessments = Boolean(options && options.promoteOrphanedAssessments);
     const sourcePeriodCategories = Array.isArray(categoriesOrPeriodCategories)
       ? normalizeGradeStructurePeriodCategories({ categories: categoriesOrPeriodCategories })
       : normalizeGradeStructurePeriodCategories({ periodCategories: categoriesOrPeriodCategories });
@@ -2434,6 +2524,9 @@ export class WorkspaceStore {
         ]))
       }];
     }));
+    if (promoteOrphanedAssessments) {
+      this.promoteGradeAssessmentsToParentCategory(id, sourceIdsByPeriod);
+    }
     const removedAssessmentReference = this.gradeVaultState.gradeAssessments.find((assessment) => {
       if (Number(assessment.courseId) !== id) {
         return false;

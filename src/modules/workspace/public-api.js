@@ -58,6 +58,7 @@ const GRADES_DATA_METHODS = Object.freeze([
   'calculateGradeForStudentInCoursePeriod',
   'calculateGradeForStudentInSubcategoryPeriod',
   'calculateHomeworkSummaryForStudentInSubcategoryPeriod',
+  'countGradeAssessmentsForSubcategory',
   'createGradeAssessment',
   'createGradeAssessmentSnapshot',
   'deleteGradeAssessment',

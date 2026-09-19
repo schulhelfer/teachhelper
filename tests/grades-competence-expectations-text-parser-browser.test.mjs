@@ -98,3 +98,101 @@ test('das Textformat für Kompetenzerwartungen wird wie dokumentiert gelesen', {
     assert.match(entry.message, /keine gültigen Themen/);
   }
 });
+
+test('ein Ausrufezeichen am Zeilenanfang schließt Themen und Kompetenzen vom Import aus', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const { parseCompetenceExpectationsTextBlock } = await import('/src/modules/grades/app.js?dom-test');
+
+    const describe = (value) => ({
+      ok: value.ok,
+      message: value.message,
+      topics: value.items.map((item) => item.topic),
+      competencies: value.items.map((item) => item.competencies.map((entry) => entry.text)),
+    });
+
+    return {
+      skippedLeadingTopic: describe(parseCompetenceExpectationsTextBlock([
+        '!- Grundlagen',
+        '-- Logische Zeichen für Und, Oder, Implikation und Äquivalenz verwenden',
+        '-- Mengenschreibweise (∈, =, ⊂, ∩, ∪, ∖) verwenden',
+        '',
+        '- Wiederholung',
+        '-- Extremstellen bestimmen',
+      ].join('\n'))),
+      skippedTopicBetween: describe(parseCompetenceExpectationsTextBlock([
+        '- Analysis',
+        '-- Ableitungen bestimmen',
+        '!- Grundlagen',
+        '-- Mengenschreibweise verwenden',
+        '- Stochastik',
+        '-- Erwartungswert berechnen',
+      ].join('\n'))),
+      skippedTrailingTopic: describe(parseCompetenceExpectationsTextBlock([
+        '- Analysis',
+        '-- Ableitungen bestimmen',
+        '!- Grundlagen',
+        '-- Mengenschreibweise verwenden',
+      ].join('\n'))),
+      skippedCompetence: describe(parseCompetenceExpectationsTextBlock([
+        '- Grundlagen',
+        '-- Logische Zeichen verwenden',
+        '!-- Mengenschreibweise verwenden',
+        '-- Intervallschreibweise verwenden',
+      ].join('\n'))),
+      allCompetenciesSkipped: describe(parseCompetenceExpectationsTextBlock([
+        '- Grundlagen',
+        '!-- Logische Zeichen verwenden',
+        '!-- Mengenschreibweise verwenden',
+      ].join('\n'))),
+      onlySkippedTopics: describe(parseCompetenceExpectationsTextBlock([
+        '!- Grundlagen',
+        '-- Logische Zeichen verwenden',
+        '!- Wiederholung',
+        '-- Extremstellen bestimmen',
+      ].join('\n'))),
+      spacedAndIndented: describe(parseCompetenceExpectationsTextBlock([
+        '   ! - Grundlagen',
+        '-- Logische Zeichen verwenden',
+        '- Wiederholung',
+        '   !--   Extremstellen bestimmen',
+        '-- Wendestellen bestimmen',
+      ].join('\n'))),
+      strayBangLine: describe(parseCompetenceExpectationsTextBlock([
+        '!Hinweis zur Datei',
+        '- Grundlagen',
+        '-- Logische Zeichen verwenden',
+      ].join('\n'))),
+    };
+  });
+
+  assert.equal(result.skippedLeadingTopic.ok, true);
+  assert.deepEqual(result.skippedLeadingTopic.topics, ['Wiederholung']);
+  assert.deepEqual(result.skippedLeadingTopic.competencies, [['Extremstellen bestimmen']]);
+
+  assert.equal(result.skippedTopicBetween.ok, true);
+  assert.deepEqual(result.skippedTopicBetween.topics, ['Analysis', 'Stochastik']);
+  assert.deepEqual(result.skippedTopicBetween.competencies, [['Ableitungen bestimmen'], ['Erwartungswert berechnen']]);
+
+  assert.equal(result.skippedTrailingTopic.ok, true);
+  assert.deepEqual(result.skippedTrailingTopic.topics, ['Analysis']);
+  assert.deepEqual(result.skippedTrailingTopic.competencies, [['Ableitungen bestimmen']]);
+
+  assert.equal(result.skippedCompetence.ok, true);
+  assert.deepEqual(result.skippedCompetence.topics, ['Grundlagen']);
+  assert.deepEqual(result.skippedCompetence.competencies, [['Logische Zeichen verwenden', 'Intervallschreibweise verwenden']]);
+
+  assert.equal(result.allCompetenciesSkipped.ok, false);
+  assert.match(result.allCompetenciesSkipped.message, /Thema ohne Kompetenz/);
+
+  assert.equal(result.onlySkippedTopics.ok, false);
+  assert.match(result.onlySkippedTopics.message, /keine gültigen Themen/);
+
+  assert.equal(result.spacedAndIndented.ok, true);
+  assert.deepEqual(result.spacedAndIndented.topics, ['Wiederholung']);
+  assert.deepEqual(result.spacedAndIndented.competencies, [['Wendestellen bestimmen']]);
+
+  assert.equal(result.strayBangLine.ok, true);
+  assert.deepEqual(result.strayBangLine.topics, ['Grundlagen']);
+  assert.deepEqual(result.strayBangLine.competencies, [['Logische Zeichen verwenden']]);
+});

@@ -1306,17 +1306,29 @@ export function parseCompetenceExpectationsTextBlock(text) {
   const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
   const items = [];
   let currentTopic = null;
+  let skippedTopic = false;
   for (const rawLine of lines) {
-    const line = String(rawLine || "").trim();
-    if (!line) {
+    const trimmedLine = String(rawLine || "").trim();
+    if (!trimmedLine) {
+      continue;
+    }
+    const excluded = trimmedLine.startsWith("!");
+    const line = excluded ? trimmedLine.slice(1).trim() : trimmedLine;
+    if (excluded && !line.startsWith("-")) {
       continue;
     }
     if (line.startsWith("--")) {
+      if (excluded) {
+        continue;
+      }
       const textValue = line.slice(2).trim();
       if (!textValue) {
         continue;
       }
       if (!currentTopic) {
+        if (skippedTopic) {
+          continue;
+        }
         return { ok: false, message: "In der Textdatei steht eine Kompetenz ohne vorheriges Thema.", items: [] };
       }
       currentTopic.competencies.push({ text: textValue });
@@ -1330,6 +1342,12 @@ export function parseCompetenceExpectationsTextBlock(text) {
       if (currentTopic && !currentTopic.competencies.length) {
         return { ok: false, message: "In der Textdatei steht ein Thema ohne Kompetenz.", items: [] };
       }
+      if (excluded) {
+        currentTopic = null;
+        skippedTopic = true;
+        continue;
+      }
+      skippedTopic = false;
       currentTopic = { topic, competencies: [] };
       items.push(currentTopic);
     }
@@ -6781,6 +6799,7 @@ class GradesApp {
         .filter((studentId) => studentId > 0)
         .sort((left, right) => left - right),
       confirmedRemovedStudentIds: [],
+      confirmedPromotedSubcategoryIds: [],
       gradeCourseRevision: course ? this.getGradeCourseRevision(course.id) : 0,
       structurePeriod: "h1",
       structurePerformanceFlair: "",
@@ -8237,7 +8256,7 @@ class GradesApp {
     this.renderCourseDialogStructure();
   }
 
-  handleCourseDialogStructureClick(event) {
+  async handleCourseDialogStructureClick(event) {
     if (!this.courseDialogDraft) {
       return;
     }
@@ -8256,6 +8275,7 @@ class GradesApp {
       const category = this.getCourseDialogStructureCategories()[categoryIndex];
       if (category) {
         category.subcategories.push({ id: 0, name: "", weight: 0 });
+        this.forgetConfirmedPromotedSubcategories(category);
         this.renderCourseDialogStructure();
       }
       return;
@@ -8263,12 +8283,87 @@ class GradesApp {
     const removeSubcategoryButton = event.target.closest("button[data-structure-remove-subcategory]");
     if (removeSubcategoryButton) {
       const [categoryIndexRaw, subcategoryIndexRaw] = String(removeSubcategoryButton.dataset.structureRemoveSubcategory || "").split(":");
-      const category = this.getCourseDialogStructureCategories()[Number(categoryIndexRaw || -1)];
-      if (category) {
-        category.subcategories.splice(Number(subcategoryIndexRaw || -1), 1);
-        this.renderCourseDialogStructure();
+      const categoryIndex = Number(categoryIndexRaw || -1);
+      const subcategoryIndex = Number(subcategoryIndexRaw || -1);
+      const category = this.getCourseDialogStructureCategories()[categoryIndex];
+      const subcategory = category?.subcategories?.[subcategoryIndex];
+      if (!category || !subcategory) {
+        return;
       }
+      if (!await this.confirmCourseDialogSubcategoryRemoval(category, subcategory)) {
+        return;
+      }
+      const currentCategory = this.getCourseDialogStructureCategories()[categoryIndex];
+      if (currentCategory?.subcategories?.[subcategoryIndex] !== subcategory) {
+        return;
+      }
+      currentCategory.subcategories.splice(subcategoryIndex, 1);
+      this.renderCourseDialogStructure();
     }
+  }
+
+  forgetConfirmedPromotedSubcategories(category) {
+    const confirmedIds = this.courseDialogDraft?.confirmedPromotedSubcategoryIds;
+    if (!Array.isArray(confirmedIds) || confirmedIds.length === 0) {
+      return;
+    }
+    const categoryId = Number(category?.id) || 0;
+    this.courseDialogDraft.confirmedPromotedSubcategoryIds = confirmedIds
+      .filter((entry) => Number(entry?.categoryId) !== categoryId);
+  }
+
+  async confirmCourseDialogSubcategoryRemoval(category, subcategory) {
+    const courseId = Number(this.refs.courseStructureDialogId?.value || 0);
+    const subcategoryId = Number(subcategory?.id) || 0;
+    const categoryId = Number(category?.id) || 0;
+    const isLastSubcategory = (category?.subcategories || []).length === 1;
+    if (!courseId || !subcategoryId || !categoryId || !isLastSubcategory) {
+      return true;
+    }
+    const period = normalizeGradeHalfYear(this.courseDialogDraft?.structurePeriod || "h1");
+    const counts = this.store.countGradeAssessmentsForSubcategory(
+      courseId,
+      period,
+      categoryId,
+      subcategoryId
+    );
+    if (!counts.assessments && !counts.overrides) {
+      return true;
+    }
+    const categoryName = normalizeGradeTextPart(category?.name) || "dieser Kategorie";
+    const messageParts = [];
+    if (counts.assessments > 0) {
+      messageParts.push(
+        counts.assessments === 1
+          ? `1 Leistung wird künftig direkt der Kategorie „${categoryName}" zugeordnet.`
+          : `${counts.assessments} Leistungen werden künftig direkt der Kategorie „${categoryName}" zugeordnet.`
+      );
+    }
+    if (counts.overrides > 0) {
+      messageParts.push(
+        counts.overrides === 1
+          ? "1 manuell gesetzte Note dieser Unterkategorie geht dabei verloren."
+          : `${counts.overrides} manuell gesetzte Noten dieser Unterkategorie gehen dabei verloren.`
+      );
+    }
+    const draft = this.courseDialogDraft;
+    const confirmed = await this.showConfirmMessage(`${messageParts.join(" ")} Fortfahren?`, {
+      title: "Unterkategorie löschen",
+      okText: "Löschen",
+      cancelText: "Abbrechen",
+      dangerOk: counts.overrides > 0
+    });
+    if (!confirmed || this.courseDialogDraft !== draft) {
+      return false;
+    }
+    const confirmedIds = Array.isArray(draft.confirmedPromotedSubcategoryIds)
+      ? draft.confirmedPromotedSubcategoryIds
+      : [];
+    draft.confirmedPromotedSubcategoryIds = [
+      ...confirmedIds.filter((entry) => Number(entry?.subcategoryId) !== subcategoryId),
+      { categoryId, subcategoryId }
+    ];
+    return true;
   }
 
   validateCourseDialogStructure(periodCategories, performanceFlairWeightOverrides = null) {
@@ -8859,7 +8954,10 @@ class GradesApp {
         return this.store.saveGradeStructure(
           id,
           structureValidation.periodCategories,
-          structureValidation.performanceFlairWeightOverrides
+          structureValidation.performanceFlairWeightOverrides,
+          {
+            promoteOrphanedAssessments: (this.courseDialogDraft.confirmedPromotedSubcategoryIds || []).length > 0
+          }
         );
       }, { preserveRoster: true });
     } catch (error) {
