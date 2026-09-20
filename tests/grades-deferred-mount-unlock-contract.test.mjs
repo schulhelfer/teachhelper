@@ -18,7 +18,7 @@ test('der Vorabmount meldet dem Notenmodul keinen aktiven Notentab', () => {
 test('der Layout-Refresh reicht den aktiven Tab an das Notenmodul weiter', () => {
   assert.match(
     bridgeSource,
-    /gradesController\?\.applyShellLayout\?\.\(\{ collapsed: getChromeCollapsed\(\), activeTab \}\)/,
+    /if \(id === TAB_GRADES \|\| id === TAB_SEATPLAN\) detail\.activeTab = activeTab/,
   );
 });
 

@@ -35,19 +35,9 @@ const NAME_LEARNING_REQUEST_EVENTS = new Set([
   NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT,
 ]);
 
-const FRAME_ROLES = [
-  ['planning', 'getPlanningFrame'],
-  ['grades', 'getGradesFrame'],
-  ['merger', 'getMergerFrame'],
-  ['duplicateCheck', 'getDuplicateCheckFrame'],
-  ['qr', 'getQrFrame'],
-  ['seatplan', 'getSeatplanFrame'],
-  ['nameLearning', 'getNameLearningFrame'],
-];
-
 export function createModuleMessageRouter({
   messageTarget,
-  frames = {},
+  modules = [],
   handlers = {},
 } = {}) {
   let disposed = false;
@@ -60,8 +50,8 @@ export function createModuleMessageRouter({
   };
 
   const resolveTrustedFrame = (event) => {
-    for (const [role, getterName] of FRAME_ROLES) {
-      const frame = frames[getterName]?.();
+    for (const { role, getFrame } of modules) {
+      const frame = getFrame();
       if (frame && isTrustedModuleMessage(event, frame)) return { frame, role };
     }
     return null;

@@ -16,8 +16,7 @@ const [tabs, main, gradesApp, gradesBridge, planningApp, planningBridge, seatpla
 
 test('the shell dismisses module context menus on outside clicks and Escape', () => {
   assert.match(tabs, /MODULE_CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss'/);
-  assert.match(main, /const getModuleFrames = \(\) => \[[\s\S]*?getPlanningFrame\(\),[\s\S]*?getGradesFrame\(\),[\s\S]*?getSeatplanFrame\(\),[\s\S]*?getNameLearningFrame\(\),[\s\S]*?\]\.filter\(Boolean\)/);
-  assert.match(main, /dismissModuleContextMenus = \(\) => \{[\s\S]*?getModuleFrames\(\)\.forEach[\s\S]*?type: MODULE_CONTEXT_MENU_DISMISS_EVENT/);
+  assert.match(main, /dismissModuleContextMenus = \(\) => \{[\s\S]*?moduleRegistry\.broadcast[\s\S]*?type: MODULE_CONTEXT_MENU_DISMISS_EVENT/);
   assert.match(main, /bindRuntime\(document, 'pointerdown', dismissModuleContextMenus, true\)/);
   assert.match(main, /if \(event\.key === 'Escape'\) dismissModuleContextMenus\(\)/);
 });

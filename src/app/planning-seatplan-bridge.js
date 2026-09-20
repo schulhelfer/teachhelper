@@ -90,6 +90,79 @@ export function createPlanningSeatplanBridge({
     [TAB_NAME_LEARNING]: false,
   };
 
+  let disposed = false;
+  const disposedModules = new Set();
+  const listenerCleanups = new Set();
+  const pendingTabLeaves = new Set();
+  const timers = new Set();
+  const animationFrames = new Set();
+  const listen = (target, type, handler, options) => {
+    const listener = (event) => {
+      if (!disposed) handler(event);
+    };
+    target.addEventListener(type, listener, options);
+    const remove = () => {
+      target.removeEventListener(type, listener, options);
+      listenerCleanups.delete(remove);
+    };
+    listenerCleanups.add(remove);
+    return remove;
+  };
+  const scheduleTimeout = (callback, delay) => {
+    if (disposed) return 0;
+    const id = setTimeout(() => {
+      timers.delete(id);
+      if (!disposed) callback();
+    }, delay);
+    timers.add(id);
+    return id;
+  };
+  const scheduleFrame = (callback) => {
+    if (disposed) return 0;
+    const id = requestAnimationFrame(() => {
+      animationFrames.delete(id);
+      if (!disposed) callback();
+    });
+    animationFrames.add(id);
+    return id;
+  };
+  const moduleControllers = {
+    [TAB_MERGER]: () => mergerController,
+    [TAB_DUPLICATE_CHECK]: () => duplicateCheckController,
+    [TAB_QR]: () => qrController,
+    [TAB_NAME_LEARNING]: () => nameLearningController,
+    [TAB_GRADES]: () => gradesController,
+    [TAB_PLANNING]: () => planningController,
+    [TAB_SEATPLAN]: () => seatplanController,
+  };
+
+  const disposeModule = (id) => {
+    if (disposedModules.has(id)) return;
+    disposedModules.add(id);
+    if (id === TAB_GRADES) {
+      cancelDeferredGradesMount?.();
+      cancelDeferredGradesMount = null;
+    }
+    if (id === TAB_PLANNING) planningInitPending = false;
+    moduleControllers[id]?.()?.dispose();
+  };
+
+  const dispose = () => {
+    if (disposed) return;
+    disposed = true;
+    cancelDeferredGradesMount?.();
+    cancelDeferredGradesMount = null;
+    listenerCleanups.forEach((remove) => remove());
+    pendingTabLeaves.forEach((finish) => finish(false));
+    timers.forEach((id) => clearTimeout(id));
+    timers.clear();
+    animationFrames.forEach((id) => cancelAnimationFrame(id));
+    animationFrames.clear();
+    planningInitPending = false;
+    pendingPlanningViewRequest = null;
+    pendingGradesNavigation = null;
+  };
+
   const seatplanBus = documentBus;
 
   const getShellWorkspaceClient = () => (
@@ -189,6 +262,7 @@ export function createPlanningSeatplanBridge({
   };
 
   const mountGradesTabNow = () => {
+    if (disposed || disposedModules.has(TAB_GRADES)) return;
     cancelDeferredGradesMount?.();
     cancelDeferredGradesMount = null;
     if (tabInitState[TAB_GRADES]) return;
@@ -197,6 +271,7 @@ export function createPlanningSeatplanBridge({
   };
 
   const scheduleGradesTabMount = () => {
+    if (disposed || disposedModules.has(TAB_GRADES)) return;
     if (tabInitState[TAB_GRADES] || cancelDeferredGradesMount) return;
     const view = typeof window !== 'undefined' ? window : null;
     if (!view) {
@@ -276,6 +351,7 @@ export function createPlanningSeatplanBridge({
   };
 
   function dispatchPlanningViewRequest(view) {
+    if (disposed) return false;
     if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') {
       return;
     }
@@ -305,6 +381,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function dispatchGradesNavigation(detail = null) {
+    if (disposed) return false;
     ensureTabInitialized(TAB_GRADES);
     if (gradesController?.frame?.loading === 'lazy') {
       gradesController.frame.loading = 'eager';
@@ -320,6 +397,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function dispatchMergerToolRequest(tool) {
+    if (disposed) return false;
     const normalizedTool = ['layout', 'merge', 'rotate', 'split'].includes(tool) ? tool : '';
     if (!normalizedTool) return;
     ensureTabInitialized(TAB_MERGER);
@@ -327,7 +405,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function scheduleModuleLayoutRefresh(activeTab, isIOSDevice = false) {
-    if (typeof window === 'undefined') return;
+    if (disposed || typeof window === 'undefined') return;
 
     const trigger = () => {
       try {
@@ -340,24 +418,24 @@ export function createPlanningSeatplanBridge({
     if (activeTab === TAB_SEATPLAN) {
       if (isIOSDevice) {
         if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(trigger);
+          scheduleFrame(trigger);
         } else {
-          setTimeout(trigger, 0);
+          scheduleTimeout(trigger, 0);
         }
-        setTimeout(trigger, 120);
+        scheduleTimeout(trigger, 120);
       } else {
         if (typeof requestAnimationFrame === 'function') {
-          requestAnimationFrame(() => {
+          scheduleFrame(() => {
             trigger();
-            requestAnimationFrame(trigger);
+            scheduleFrame(trigger);
           });
         } else {
-          setTimeout(trigger, 0);
-          setTimeout(trigger, 40);
+          scheduleTimeout(trigger, 0);
+          scheduleTimeout(trigger, 40);
         }
-        setTimeout(trigger, 140);
-        setTimeout(trigger, 320);
-        setTimeout(trigger, 520);
+        scheduleTimeout(trigger, 140);
+        scheduleTimeout(trigger, 320);
+        scheduleTimeout(trigger, 520);
       }
       return;
     }
@@ -368,36 +446,35 @@ export function createPlanningSeatplanBridge({
 
     if (isIOSDevice) {
       if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(trigger);
+        scheduleFrame(trigger);
       } else {
-        setTimeout(trigger, 0);
+        scheduleTimeout(trigger, 0);
       }
       return;
     }
 
     if (typeof requestAnimationFrame === 'function') {
-      requestAnimationFrame(() => {
+      scheduleFrame(() => {
         trigger();
-        requestAnimationFrame(trigger);
+        scheduleFrame(trigger);
       });
     } else {
-      setTimeout(trigger, 0);
-      setTimeout(trigger, 40);
+      scheduleTimeout(trigger, 0);
+      scheduleTimeout(trigger, 40);
     }
   }
 
-  function refreshModuleLayouts({ activeTab, isIOSDevice = false } = {}) {
-    mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
-    duplicateCheckController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
-    qrController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
-    nameLearningController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
-    gradesController?.applyShellLayout?.({ collapsed: getChromeCollapsed(), activeTab });
-    planningController?.applyShellLayout({ collapsed: getChromeCollapsed() });
-    seatplanController?.applyShellLayout({ collapsed: getChromeCollapsed(), activeTab });
-    scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
+  function applyModuleShellLayout(id, { activeTab } = {}) {
+    if (disposed || disposedModules.has(id)) return;
+    const controller = moduleControllers[id]?.();
+    if (!controller) return;
+    const detail = { collapsed: getChromeCollapsed() };
+    if (id === TAB_GRADES || id === TAB_SEATPLAN) detail.activeTab = activeTab;
+    controller.applyShellLayout?.(detail);
   }
 
   function ensureTabInitialized(tab) {
+    if (disposed || disposedModules.has(tab)) return;
     if (tab === TAB_MERGER) {
       if (tabInitState[TAB_MERGER]) return;
       initMergerTab(els.mergerHost);
@@ -448,14 +525,14 @@ export function createPlanningSeatplanBridge({
   }
 
   const initializePendingPlanning = () => {
-    if (!planningInitPending || tabInitState[TAB_PLANNING]) return;
+    if (disposed || disposedModules.has(TAB_PLANNING) || !planningInitPending || tabInitState[TAB_PLANNING]) return;
     if (initPlanningTab(els.planningHost)) {
       tabInitState[TAB_PLANNING] = true;
       scheduleModuleLayoutRefresh(TAB_PLANNING);
     }
   };
 
-  window.addEventListener(GRADES_READY_EVENT, () => {
+  listen(window, GRADES_READY_EVENT, () => {
     const lifecycle = refreshWorkspaceLifecycle();
     if (lifecycle.ready && pendingGradesNavigation) {
       const navigation = pendingGradesNavigation;
@@ -465,9 +542,10 @@ export function createPlanningSeatplanBridge({
     initializePendingPlanning();
   });
 
-  window.addEventListener(WORKSPACE_OWNER_READY_EVENT, initializePendingPlanning);
+  listen(window, WORKSPACE_OWNER_READY_EVENT, initializePendingPlanning);
 
   function sendCourseSeatplanContext(detail) {
+    if (disposed) return false;
     if (!detail || typeof detail !== 'object') return;
     ensureTabInitialized(TAB_SEATPLAN);
     seatplanController?.sendCourseContext?.(detail);
@@ -521,6 +599,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function requestGradeRosterCourses(detail = null) {
+    if (disposed) return false;
     if (!isWorkspaceReady()) {
       return dispatchBlockedResult(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, detail);
     }
@@ -536,6 +615,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function requestGradeRosterImport(detail = null) {
+    if (disposed) return false;
     if (!isWorkspaceReady()) {
       return dispatchBlockedResult(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, detail);
     }
@@ -548,6 +628,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function requestGradePickerConfigSave(detail = null) {
+    if (disposed) return false;
     if (!isWorkspaceReady()) {
       return dispatchBlockedResult(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, detail);
     }
@@ -595,6 +676,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function requestManualSave() {
+    if (disposed) return false;
     if (!isWorkspaceReady()) return false;
     ensureTabInitialized(TAB_GRADES);
     gradesController?.post?.(GRADES_MANUAL_SAVE_REQUEST_EVENT, null);
@@ -602,6 +684,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function requestGradeVault(detail = null) {
+    if (disposed) return false;
     if (!isWorkspaceReady()) return false;
     ensureTabInitialized(TAB_GRADES);
     if (gradesController?.frame?.loading === 'lazy') {
@@ -619,6 +702,7 @@ export function createPlanningSeatplanBridge({
   }
 
   function requestGradesTabLeaveConfirmation() {
+    if (disposed) return Promise.resolve(false);
     ensureTabInitialized(TAB_GRADES);
     if (!gradesController?.requestTabLeave) {
       return Promise.resolve(false);
@@ -628,23 +712,28 @@ export function createPlanningSeatplanBridge({
       ? window
       : documentBus;
     return new Promise((resolve) => {
+      const finish = (allowed) => {
+        resultTarget.removeEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
+        pendingTabLeaves.delete(finish);
+        resolve(allowed);
+      };
       const onResult = (event) => {
         const detail = event?.detail;
         if (!detail || String(detail.requestId || '') !== requestId) {
           return;
         }
-        resultTarget.removeEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
-        resolve(detail.allowed === true);
+        finish(detail.allowed === true);
       };
+      pendingTabLeaves.add(finish);
       resultTarget.addEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
       if (!gradesController.requestTabLeave({ requestId })) {
-        resultTarget.removeEventListener(GRADES_TAB_LEAVE_RESULT_EVENT, onResult);
-        resolve(false);
+        finish(false);
       }
     });
   }
 
   function requestPlanningTabLeaveConfirmation() {
+    if (disposed) return Promise.resolve(false);
     ensureTabInitialized(TAB_PLANNING);
     if (!planningController?.requestTabLeave) {
       return Promise.resolve(false);
@@ -654,30 +743,34 @@ export function createPlanningSeatplanBridge({
       ? window
       : documentBus;
     return new Promise((resolve) => {
+      const finish = (allowed) => {
+        resultTarget.removeEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
+        pendingTabLeaves.delete(finish);
+        resolve(allowed);
+      };
       const onResult = (event) => {
         const detail = event?.detail;
         if (!detail || String(detail.requestId || '') !== requestId) {
           return;
         }
-        resultTarget.removeEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
-        resolve(detail.allowed === true);
+        finish(detail.allowed === true);
       };
+      pendingTabLeaves.add(finish);
       resultTarget.addEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
       if (!planningController.requestTabLeave({ requestId })) {
-        resultTarget.removeEventListener(PLANNING_TAB_LEAVE_RESULT_EVENT, onResult);
-        resolve(false);
+        finish(false);
       }
     });
   }
 
-  seatplanBus.addEventListener(STUDENTS_UPDATED_EVENT, (event) => {
+  listen(seatplanBus, STUDENTS_UPDATED_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     if (detail.source === STUDENTS_SYNC_SOURCE_SEATPLAN) return;
     dispatchStudentsUpdateToSeatplan(detail);
   });
 
-  seatplanBus.addEventListener(SEATPLAN_COURSE_SAVE_REQUEST_EVENT, (event) => {
+  listen(seatplanBus, SEATPLAN_COURSE_SAVE_REQUEST_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     if (!isWorkspaceReady()) {
@@ -688,31 +781,31 @@ export function createPlanningSeatplanBridge({
     gradesController?.post?.(GRADES_COURSE_SEATPLAN_SAVE_REQUEST_EVENT, withWorkspaceRevision(detail));
   });
 
-  seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT, (event) => {
+  listen(seatplanBus, SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT, (event) => {
     requestGradeRosterCourses(event.detail);
   });
 
-  seatplanBus.addEventListener(SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT, (event) => {
+  listen(seatplanBus, SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT, (event) => {
     requestGradeRosterImport(event.detail);
   });
 
-  documentBus.addEventListener('classroom:name-learning-data-request', (event) => {
+  listen(documentBus, 'classroom:name-learning-data-request', (event) => {
     requestNameLearningData(event.detail);
   });
 
-  documentBus.addEventListener('classroom:name-learning-review-request', (event) => {
+  listen(documentBus, 'classroom:name-learning-review-request', (event) => {
     requestNameLearningReview(event.detail);
   });
 
-  documentBus.addEventListener('classroom:name-learning-course-visibility-request', (event) => {
+  listen(documentBus, 'classroom:name-learning-course-visibility-request', (event) => {
     requestNameLearningCourseVisibility(event.detail);
   });
 
-  documentBus.addEventListener('classroom:name-learning-student-search-request', (event) => {
+  listen(documentBus, 'classroom:name-learning-student-search-request', (event) => {
     requestNameLearningStudentSearch(event.detail);
   });
 
-  seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT, (event) => {
+  listen(seatplanBus, SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     if (!isWorkspaceReady()) {
@@ -723,7 +816,7 @@ export function createPlanningSeatplanBridge({
     gradesController?.post?.(GRADES_COURSE_GRADE_CONFIG_REQUEST_EVENT, withWorkspaceRevision(detail));
   });
 
-  seatplanBus.addEventListener(SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT, (event) => {
+  listen(seatplanBus, SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     if (!isWorkspaceReady()) {
@@ -737,26 +830,26 @@ export function createPlanningSeatplanBridge({
   const saveResultTarget = typeof window !== 'undefined' && typeof window.addEventListener === 'function'
     ? window
     : documentBus;
-  saveResultTarget.addEventListener(GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendCourseSaveResult?.(detail);
   });
 
-  saveResultTarget.addEventListener(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     documentBus.dispatchEvent(new CustomEvent(GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, { detail }));
   });
 
-  saveResultTarget.addEventListener(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendGradeRosterCoursesResult?.(detail);
     documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, { detail }));
   });
 
-  saveResultTarget.addEventListener(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendGradeRosterImportResult?.(detail);
@@ -765,25 +858,25 @@ export function createPlanningSeatplanBridge({
     rosterStore?.dispatch?.(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GRADES, Date.now(), detail));
   });
 
-  saveResultTarget.addEventListener(GRADES_NAME_LEARNING_DATA_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_NAME_LEARNING_DATA_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     nameLearningController?.post?.({ type: 'classroom:name-learning-data-result', detail });
   });
 
-  saveResultTarget.addEventListener(GRADES_NAME_LEARNING_REVIEW_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_NAME_LEARNING_REVIEW_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     nameLearningController?.post?.({ type: 'classroom:name-learning-review-result', detail });
   });
 
-  saveResultTarget.addEventListener(GRADES_NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_NAME_LEARNING_STUDENT_SEARCH_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     nameLearningController?.post?.({ type: 'classroom:name-learning-student-search-result', detail });
   });
 
-  saveResultTarget.addEventListener(GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_GRADE_VAULT_STATE_EVENT, (event) => {
     const detail = event?.detail && typeof event.detail === 'object' ? event.detail : {};
     setNameLearningGradeVaultState({
       locked: detail.encryptionEnabled === true && detail.unlocked !== true,
@@ -798,13 +891,13 @@ export function createPlanningSeatplanBridge({
     });
   });
 
-  saveResultTarget.addEventListener(GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendCourseGradeConfigResult?.(detail);
   });
 
-  saveResultTarget.addEventListener(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, (event) => {
+  listen(saveResultTarget, GRADES_COURSE_GRADE_SAVE_RESULT_EVENT, (event) => {
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendCourseGradeSaveResult?.(detail);
@@ -815,7 +908,10 @@ export function createPlanningSeatplanBridge({
     dispatchPlanningViewRequest,
     dispatchGradesNavigation,
     dispatchMergerToolRequest,
-    refreshModuleLayouts,
+    applyModuleShellLayout,
+    scheduleModuleLayoutRefresh,
+    disposeModule,
+    dispose,
     sendCourseSeatplanContext,
     requestGradeRosterCourses,
     requestGradeRosterImport,

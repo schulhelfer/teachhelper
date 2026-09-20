@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+const coordinatorSource = await readFile(new URL('../src/app/iframe-module-shell-bindings.js', import.meta.url), 'utf8');
 
 const [html, css, appSource, shellHtml, shellSource, mainSource] = await Promise.all([
   readFile(new URL('../src/modules/grades/app.html', import.meta.url), 'utf8'),

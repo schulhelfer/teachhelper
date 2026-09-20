@@ -11,7 +11,7 @@ const [appBridge, main] = await Promise.all([
 ]);
 
 test('a successful seatplan grade save is forwarded to the seatplan', () => {
-  const start = appBridge.indexOf('saveResultTarget.addEventListener(GRADES_COURSE_GRADE_SAVE_RESULT_EVENT');
+  const start = appBridge.indexOf('listen(saveResultTarget, GRADES_COURSE_GRADE_SAVE_RESULT_EVENT');
   const end = appBridge.indexOf('\n\n  return {', start);
   const handler = appBridge.slice(start, end);
 

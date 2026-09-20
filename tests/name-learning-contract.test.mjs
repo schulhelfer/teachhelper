@@ -6,7 +6,7 @@ const persistenceSource = await readFile(new URL('../src/modules/workspace/works
 
 const repositorySource = await readFile(new URL('../src/modules/workspace/course-repository.js', import.meta.url), 'utf8');
 
-const coordinatorSource = await readFile(new URL('../src/app/module-shell-coordinator.js', import.meta.url), 'utf8');
+const coordinatorSource = await readFile(new URL('../src/app/iframe-module-shell-bindings.js', import.meta.url), 'utf8');
 
 const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 const [defaults, store, runtime, integrity, gradesHtml, gradesApp, tabs, bridge, shell, tabController, workspaceStatus, main, router, index, nameLearningHtml, nameLearningCss, nameLearningIndex, nameLearningApp] = await Promise.all([

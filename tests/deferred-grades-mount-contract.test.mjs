@@ -62,6 +62,8 @@ function createHarness({ planningInitSucceeds = true } = {}) {
     TAB_NAME_LEARNING: 'name-learning',
     DEFERRED_GRADES_MOUNT_TIMEOUT_MS: 4000,
     cancelDeferredGradesMount: null,
+    disposed: false,
+    disposedModules: new Set(),
     tabInitState: {
       [TAB_PLANNING]: false,
       [TAB_GRADES]: false,

@@ -6,6 +6,8 @@ test('tutorial demo frames replace live frame getters, ignore stale loads and re
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {
     const { createAppTutorialController } = await import('/src/app/app-tutorial-controller.js');
+    const { createModuleRegistry } = await import('/src/app/module-registry.js');
+    const { createIframeModuleAdapters } = await import('/src/app/iframe-module-adapters.js');
     const { createModuleFrame } = await import('/src/shared/module-frame-bridge.js');
     const { TAB_PLANNING, TAB_GRADES, TAB_SEATPLAN } = await import('/src/shell/tabs.js');
     const button = document.createElement('button');
@@ -38,18 +40,23 @@ test('tutorial demo frames replace live frame getters, ignore stale loads and re
     });
     controller.initializeCatalog();
     bridge = { ensureTabInitialized: (tab) => ensuredTabs.push(tab) };
+    const registry = createModuleRegistry(createIframeModuleAdapters({
+      frames: controller.frames,
+      getBridgeController: () => bridge,
+      els,
+    }));
     const outcomes = configurations.map(([tab, hostKey, getter, module]) => {
-      const realFrame = controller.frames[getter]();
+      const realFrame = registry.get(tab).getFrame();
       button.disabled = tab === TAB_GRADES;
       const initialDisabled = button.disabled;
       const first = controller.getDefinition({ activeTab: tab }).demo.activate();
-      const staleFrame = controller.frames[getter]();
+      const staleFrame = registry.get(tab).getFrame();
       const staleMessages = [];
       staleFrame.contentWindow.postMessage = (message) => staleMessages.push(message);
       first.steps.find((step) => step.beforeRender)?.beforeRender();
       first.cleanup();
       const second = controller.getDefinition({ activeTab: tab }).demo.activate();
-      const demoFrame = controller.frames[getter]();
+      const demoFrame = registry.get(tab).getFrame();
       const messages = [];
       demoFrame.contentWindow.postMessage = (message) => messages.push(message);
       const replaced = demoFrame !== realFrame && realFrame.hidden && realFrame.style.display === 'none';
@@ -68,7 +75,7 @@ test('tutorial demo frames replace live frame getters, ignore stale loads and re
         beforeLoad,
         afterLoad,
         staleShowCommands: staleMessages.filter((message) => message.detail?.command === 'showSurface').length,
-        restored: controller.frames[getter]() === realFrame && !realFrame.hidden && realFrame.style.display === 'block',
+        restored: registry.get(tab).getFrame() === realFrame && !realFrame.hidden && realFrame.style.display === 'block',
         demoCount: els[hostKey].querySelectorAll('.tutorial-demo-frame').length,
         saveRestored: button.disabled === initialDisabled && button.title === 'Original',
       };

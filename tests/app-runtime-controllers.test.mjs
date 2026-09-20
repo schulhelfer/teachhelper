@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createClassroomFileActions } from '../src/app/classroom-file-actions.js';
 import { createModuleShellCoordinator } from '../src/app/module-shell-coordinator.js';
+import { createIframeModuleShellBindings } from '../src/app/iframe-module-shell-bindings.js';
+import { createModuleRegistry } from '../src/app/module-registry.js';
+import { createIframeModuleAdapters } from '../src/app/iframe-module-adapters.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
@@ -66,7 +69,12 @@ function createCoordinatorHarness(t) {
   const calls = [];
   const classes = new Set();
   const frame = { src: 'https://teachhelper.example/seatplan', contentWindow: {} };
-  const coordinator = createModuleShellCoordinator({
+  const moduleRegistry = createModuleRegistry(createIframeModuleAdapters({
+    frames: { getSeatplanFrame: () => frame },
+    getBridgeController: () => bridge,
+    els: {},
+  }));
+  const context = {
     ...resources,
     view,
     documentRef: new EventTarget(),
@@ -76,7 +84,7 @@ function createCoordinatorHarness(t) {
         toggle: (name, enabled) => enabled ? classes.add(name) : classes.delete(name),
       },
     },
-    frames: { getSeatplanFrame: () => frame },
+    moduleRegistry,
     getActiveTab: () => activeTab,
     setActiveTab: (tab) => { activeTab = tab; calls.push(['tab', tab]); },
     getChromeTransitionState: () => transition,
@@ -88,10 +96,12 @@ function createCoordinatorHarness(t) {
     openHelpEntry: () => calls.push(['help']),
     syncTutorialEntryHintToModules: () => calls.push(['hint']),
     showMessage: (...args) => calls.push(['message', ...args]),
-  });
+  };
+  const moduleBindings = createIframeModuleShellBindings(context);
+  const coordinator = createModuleShellCoordinator({ ...context, moduleBindings });
   t.after(() => resources.dispose());
   return {
-    coordinator, resources, calls, classes,
+    coordinator, moduleBindings, resources, calls, classes,
     get activeTab() { return activeTab; },
     set activeTab(value) { activeTab = value; },
     set transition(value) { transition = value; },
@@ -130,7 +140,7 @@ test('vault overlay restores the source tab immediately and after delayed naviga
   harness.coordinator.bindMessages();
   harness.dispatch(GRADES_GRADE_VAULT_OVERLAY_EVENT, { open: true });
   assert.equal(harness.classes.size, 0);
-  harness.coordinator.bindVaultOverlay();
+  harness.moduleBindings.bindVaultOverlay();
   harness.dispatch(GRADES_GRADE_VAULT_OVERLAY_EVENT, { open: true });
   assert.ok(harness.classes.has('grade-vault-overlay-revealed-grades'));
   harness.activeTab = TAB_GRADES;
@@ -150,7 +160,7 @@ test('vault overlay restores the source tab immediately and after delayed naviga
 test('vault overlays can release the source tab and dispose cancels restoration', (t) => {
   const harness = createCoordinatorHarness(t);
   harness.coordinator.bindMessages();
-  harness.coordinator.bindVaultOverlay();
+  harness.moduleBindings.bindVaultOverlay();
   harness.dispatch(GRADES_GRADE_VAULT_OVERLAY_EVENT, { open: true });
   harness.activeTab = TAB_GRADES;
   harness.dispatch(GRADES_GRADE_VAULT_OVERLAY_EVENT, { open: false });

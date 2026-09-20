@@ -42,7 +42,7 @@ test('qr and merger delegate window opening to the shell instead of opening popu
 
 test('the shell revalidates module open requests instead of trusting the frame', async () => {
   const [main, router] = await Promise.all([
-    read('../src/app/module-shell-coordinator.js'),
+    read('../src/app/iframe-module-shell-bindings.js'),
     read('../src/app/module-message-router.js'),
   ]);
 

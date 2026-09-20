@@ -96,7 +96,8 @@ function createHarness() {
     calls.push({ name, args });
   }]));
   const messageTarget = createMessageTarget();
-  const router = routerModule.createModuleMessageRouter({ messageTarget, frames, handlers });
+  const modules = Object.entries(roleGetters).map(([role, getter]) => ({ role, getFrame: frames[getter] }));
+  const router = routerModule.createModuleMessageRouter({ messageTarget, modules, handlers });
   const message = (role, type, detail, overrides = {}) => ({
     source: currentFrames[role].contentWindow,
     origin: ORIGIN,

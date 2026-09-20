@@ -52,7 +52,7 @@ test('router accepts camera requests only from the qr frame', async () => {
 });
 
 test('shell coordinator stops the camera when the qr tab is left', async () => {
-  const coordinator = await read('../src/app/module-shell-coordinator.js');
+  const coordinator = await read('../src/app/iframe-module-shell-bindings.js');
   assert.match(coordinator, /createQrCameraController/);
   assert.match(coordinator, /app-tab-qr/);
   assert.match(coordinator, /qrCameraController\?\.dispose\?\.\(\)/);

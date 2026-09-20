@@ -180,6 +180,9 @@ if manifest_path.exists():
 required_precache_assets = [
   ROOT / 'src' / 'app' / 'app-runtime.js',
   ROOT / 'src' / 'app' / 'module-shell-coordinator.js',
+  ROOT / 'src' / 'app' / 'iframe-module-shell-bindings.js',
+  ROOT / 'src' / 'app' / 'iframe-module-adapters.js',
+  ROOT / 'src' / 'app' / 'module-registry.js',
   ROOT / 'src' / 'app' / 'app-tutorial-controller.js',
   ROOT / 'src' / 'app' / 'classroom-file-actions.js',
   ROOT / 'src' / 'app' / 'app-update-controller.js',

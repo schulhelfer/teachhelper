@@ -76,6 +76,6 @@ test('feature controllers keep their own layout settling responsibilities', () =
   assert.match(randomPicker, /function refreshLayout\(\) \{[\s\S]*?refreshWheelWidth\(labels\)/);
   assert.match(workPhase, /const refreshLayout = \(\) => \{\s*updateMonitorAmpelSizing\(\);\s*positionHintOverlay\(\)/);
   assert.match(main, /syncChromeState\(\);\s*workPhaseController\?\.refreshLayout\(\)/);
-  assert.match(bridge, /if \(activeTab === TAB_SEATPLAN\)[\s\S]*?setTimeout\(trigger, 520\)/);
-  assert.match(bridge, /if \(isIOSDevice\) \{[\s\S]*?requestAnimationFrame\(trigger\)/);
+  assert.match(bridge, /if \(activeTab === TAB_SEATPLAN\)[\s\S]*?scheduleTimeout\(trigger, 520\)/);
+  assert.match(bridge, /if \(isIOSDevice\) \{[\s\S]*?scheduleFrame\(trigger\)/);
 });

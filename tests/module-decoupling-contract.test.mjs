@@ -101,7 +101,7 @@ test('planning and grades share the reduced sidebar width scope', async () => {
     read('../src/modules/planning/app.html'),
     read('../src/modules/grades/app.html'),
     read('../src/shared/sidebar-resize.js'),
-    read('../src/app/module-shell-coordinator.js'),
+    read('../src/app/iframe-module-adapters.js'),
   ]);
   assert.match(planningHtml, /data-sidebar-width-scope="planning"/);
   assert.match(gradesHtml, /data-sidebar-width-scope="grades"/);
@@ -110,7 +110,8 @@ test('planning and grades share the reduced sidebar width scope', async () => {
     /declaredScope === 'planning' \|\| declaredScope === 'grades'[\s\S]*?\? 'planning'/,
   );
   assert.match(sidebarResize, /scope === 'planning' \? 220 : DEFAULT_WIDTH/);
-  assert.match(shell, /\[getPlanningFrame\(\), getGradesFrame\(\)\]/);
+  assert.match(shell, /id: TAB_GRADES[\s\S]*?sidebarScope: SIDEBAR_WIDTH_SCOPE_PLANNING/);
+  assert.match(shell, /id: TAB_PLANNING[\s\S]*?sidebarScope: SIDEBAR_WIDTH_SCOPE_PLANNING/);
 });
 
 test('the workspace creates its store before a feature service can attach', async () => {

@@ -7,6 +7,9 @@ import { createFirstRunTutorial } from './first-run-tutorial.js';
 import { createGradeRosterCoordinator } from './grade-roster-coordinator.js';
 import { createHelpCenter } from './help-center.js';
 import { createModuleShellCoordinator } from './module-shell-coordinator.js';
+import { createModuleRegistry } from './module-registry.js';
+import { createIframeModuleAdapters } from './iframe-module-adapters.js';
+import { createIframeModuleShellBindings } from './iframe-module-shell-bindings.js';
 import { createAppTutorialController } from './app-tutorial-controller.js';
 import { readHelpPreviewRequest } from './help-preview.js';
 import { createPlanningSeatplanBridge } from './planning-seatplan-bridge.js';
@@ -251,29 +254,15 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     renderRandomPicker,
     setActiveTabForTutorial,
   });
-  const {
-    getPlanningFrame,
-    getGradesFrame,
-    getMergerFrame,
-    getDuplicateCheckFrame,
-    getQrFrame,
-    getSeatplanFrame,
-    getNameLearningFrame,
-  } = tutorialController.frames;
+  const moduleRegistry = createModuleRegistry(createIframeModuleAdapters({
+    frames: tutorialController.frames,
+    getBridgeController: () => bridgeController,
+    els,
+  }));
+  registerCleanup(() => moduleRegistry.dispose());
   const { syncTutorialEntryHintToModules } = tutorialController;
-  const getModuleFrames = () => [
-    getPlanningFrame(),
-    getGradesFrame(),
-    getMergerFrame(),
-    getDuplicateCheckFrame(),
-    getQrFrame(),
-    getSeatplanFrame(),
-    getNameLearningFrame(),
-  ].filter(Boolean);
   const dismissModuleContextMenus = () => {
-    getModuleFrames().forEach((frame) => postToModule(frame, {
-      type: MODULE_CONTEXT_MENU_DISMISS_EVENT,
-    }));
+    moduleRegistry.broadcast({ type: MODULE_CONTEXT_MENU_DISMISS_EVENT });
   };
   bindRuntime(document, 'pointerdown', dismissModuleContextMenus, true);
   bindRuntime(document, 'keydown', (event) => {
@@ -377,12 +366,11 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     return false;
   }
 
-  const moduleShellCoordinator = createModuleShellCoordinator({
+  const moduleShellBindings = createIframeModuleShellBindings({
     documentRef: document,
     view: window,
     appEl,
-    frames: tutorialController.frames,
-    themeController,
+    moduleRegistry,
     bindRuntime,
     registerCleanup,
     setRuntimeTimeout,
@@ -394,8 +382,19 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     getChromeTransitionState,
     setChromeCollapsed,
     getBridgeController: () => bridgeController,
-    getShellController: () => shellController,
     getCourseContext: () => courseContext,
+    openHelpEntry,
+    showMessage,
+  });
+  const moduleShellCoordinator = createModuleShellCoordinator({
+    view: window,
+    moduleRegistry,
+    moduleBindings: moduleShellBindings,
+    themeController,
+    registerCleanup,
+    getActiveTab,
+    setChromeCollapsed,
+    getShellController: () => shellController,
     getFirstRunTutorial: () => firstRunTutorial,
     syncTutorialEntryHintToModules,
     openHelpEntry,
@@ -409,7 +408,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     setActiveTab,
     dispatchGradesNavigation: detail => bridgeController?.dispatchGradesNavigation?.(detail),
     dispatchPlanningViewRequest: detail => bridgeController?.dispatchPlanningViewRequest?.(detail),
-    ensureSeatplanInitialized: () => bridgeController?.ensureTabInitialized(TAB_SEATPLAN),
+    ensureSeatplanInitialized: () => moduleRegistry.get(TAB_SEATPLAN)?.ensureInitialized(),
     sendCourseSeatplanContext: detail => bridgeController?.sendCourseSeatplanContext(detail),
   });
   registerCleanup(() => courseContext?.dispose?.());
@@ -476,40 +475,19 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     rosterStore,
     documentBus: document,
   });
+  registerCleanup(() => bridgeController.dispose());
   shellController = createShellController({
     els,
     state: shellState,
     isIOSDevice,
     shellSupportsExternalFileSync,
     onEnsureTabInitialized: (tab) => {
+      const adapter = moduleRegistry.get(tab);
       try {
-        bridgeController?.ensureTabInitialized(tab);
+        adapter?.ensureInitialized();
       } catch (error) {
-        const userMessage = tab === TAB_MERGER
-          ? 'PDF-Tools konnten nicht initialisiert werden.'
-          : (
-            tab === TAB_DUPLICATE_CHECK
-              ? 'DuplikatCheck konnte nicht initialisiert werden.'
-              : (
-                tab === TAB_QR
-                  ? 'QR-Tools konnten nicht initialisiert werden.'
-                  : tab === TAB_SEATPLAN
-                    ? 'Sitzplan-Modul konnte nicht initialisiert werden.'
-                    : tab === TAB_GRADES
-                      ? 'Noten-Modul konnte nicht initialisiert werden.'
-                      : 'Planungs-Modul konnte nicht initialisiert werden.'
-              )
-          );
-        reportAppError(error, userMessage, {
-          scope: 'tab-init',
-          tab,
-        });
-        if (tab === TAB_PLANNING && els.planningHost) {
-          els.planningHost.textContent = 'Planung konnte nicht geladen werden.';
-        }
-        if (tab === TAB_GRADES && els.gradesHost) {
-          els.gradesHost.textContent = 'Noten konnten nicht geladen werden.';
-        }
+        reportAppError(error, adapter.initError, { scope: 'tab-init', tab });
+        adapter.showInitializationError();
       }
     },
     onDispatchPlanningViewRequest: (view) => bridgeController?.dispatchPlanningViewRequest(view),
@@ -556,7 +534,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   function isRandomPickerTabActive() {
     return getActiveTab() === TAB_RANDOM_PICKER;
   }
-  moduleShellCoordinator.bindVaultOverlay();
+  moduleShellBindings.bindVaultOverlay();
 
   gradeRosterCoordinator = createGradeRosterCoordinator({
     documentBus: document,
@@ -741,10 +719,9 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
   };
   function refreshChromeDependentLayouts() {
     handleViewportChange({ skipImmediateGroupRefresh: true });
-    bridgeController?.refreshModuleLayouts({
-      activeTab: getActiveTab(),
-      isIOSDevice,
-    });
+    const activeTab = getActiveTab();
+    moduleRegistry.list().forEach((adapter) => adapter.applyShellLayout({ activeTab }));
+    bridgeController?.scheduleModuleLayoutRefresh(activeTab, isIOSDevice);
     if (getActiveTab() === TAB_RANDOM_PICKER) {
       randomPickerController?.refreshLayout?.();
     }
