@@ -14134,6 +14134,10 @@ class GradesApp {
   }
 
   getGradesEntryDistributionValues(course, students, assessment = null, draft = null) {
+    if (assessment && Number(this.selectedGradesEntryAssessmentId || 0) === Number(assessment.id)) {
+      draft = this.getGradesEntryAssessmentDraft(assessment);
+      assessment = this.buildGradesEntryAssessmentPreview(assessment, draft);
+    }
     const mode = normalizeGradeAssessmentMode(assessment?.mode || draft?.mode);
     if (mode !== "grade" && mode !== "test") {
       return [];
@@ -14144,15 +14148,13 @@ class GradesApp {
     if (mode === "test") {
       const tasks = normalizeGradeTestTasks(assessment?.testTasks || draft?.testTasks, { ensureDefault: false });
       const scale = normalizeGradeTestScale(assessment?.testScale || draft?.testScale);
-      const scaleSnapshot = assessment
-        ? normalizeGradeTestScaleSnapshot(assessment.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
-        : this.store.buildGradeTestScaleSnapshot(scale);
+      const scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, draft);
       const testPredicateSuffixes = assessment
         ? normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(draft?.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(scale));
       return displayStudents
         .map((student) => {
-          const entry = assessment
+          const entry = assessment && !draft
             ? this.store.getGradeEntry(student.id, assessment.id)
             : (Object.prototype.hasOwnProperty.call(draftEntries, student.id)
               ? normalizeGradeDraftEntry(draftEntries[student.id])
@@ -14166,7 +14168,7 @@ class GradesApp {
     }
     return displayStudents
       .map((student) => {
-        const entry = assessment
+        const entry = assessment && !draft
           ? this.store.getGradeEntry(student.id, assessment.id)
           : (Object.prototype.hasOwnProperty.call(draftEntries, student.id)
             ? normalizeGradeDraftEntry(draftEntries[student.id])
@@ -16201,10 +16203,10 @@ class GradesApp {
       this.markGradesEntryDraftDirty();
       groups.forEach((group) => {
         if (group.isDraftInput) {
-          this.refreshVisibleGradeTestResult(group.studentId, null);
+          this.refreshVisibleGradeTestResult(group.studentId, group.assessmentId || null);
         }
       });
-      this.refreshVisibleGradeTestAverages(null);
+      this.refreshVisibleGradeTestAverages(Number(draft.assessmentId || 0) || null);
     }
     return true;
   }
@@ -23995,6 +23997,21 @@ class GradesApp {
     }
   }
 
+  getGradeTestEntryScaleSnapshot(assessment = null, draft = null) {
+    const scale = normalizeGradeTestScale(draft?.testScale || assessment?.testScale);
+    if (!assessment) {
+      return this.store.buildGradeTestScaleSnapshot(scale);
+    }
+    const snapshot = scale === normalizeGradeTestScale(assessment.testScale)
+      ? draft?.testScaleSnapshot || assessment.testScaleSnapshot
+      : this.store.buildGradeTestScaleSnapshot(scale);
+    return normalizeGradeTestScaleSnapshot(
+      snapshot,
+      scale,
+      this.store.getGradeTestScaleSettings()
+    );
+  }
+
   buildGradesTestEntryTable(course, students, assessment = null, draft = null) {
     const activeDraft = assessment
       ? this.getGradesEntryAssessmentDraft(assessment)
@@ -24002,13 +24019,7 @@ class GradesApp {
     const tasks = normalizeGradeTestTasks(activeDraft?.testTasks || assessment?.testTasks, { ensureDefault: false });
     const entries = activeDraft && typeof activeDraft.entries === "object" ? activeDraft.entries : {};
     const scale = normalizeGradeTestScale(activeDraft?.testScale || assessment?.testScale);
-    const scaleSnapshot = assessment
-      ? normalizeGradeTestScaleSnapshot(
-        activeDraft?.testScaleSnapshot || assessment.testScaleSnapshot,
-        scale,
-        this.store.getGradeTestScaleSettings()
-      )
-      : this.store.buildGradeTestScaleSnapshot(scale);
+    const scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, activeDraft);
     const testPredicateSuffixes = assessment
       ? normalizeGradeTestPredicateSuffixes(activeDraft?.testPredicateSuffixes, true)
       : normalizeGradeTestPredicateSuffixes(activeDraft?.testPredicateSuffixes, getDefaultGradeTestPredicateSuffixes(scale));
@@ -24577,6 +24588,7 @@ class GradesApp {
       mode,
       occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(previous.occurrenceCategoryId),
       testScale,
+      testScaleSnapshot: previous.testScaleSnapshot || null,
       testPredicateSuffixes: courseDefaults
         ? courseDefaults.testPredicateSuffixes
         : (Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
@@ -27826,10 +27838,7 @@ class GradesApp {
         ? normalizeGradeDraftEntry(draft.entries[studentKey])
         : this.store.getGradeEntry(studentKey, assessmentId);
       const tasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
-      const scale = normalizeGradeTestScale(draft?.testScale || assessment?.testScale);
-      const scaleSnapshot = draft
-        ? this.store.buildGradeTestScaleSnapshot(scale)
-        : assessment?.testScaleSnapshot || assessment?.testScale;
+      const scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, draft);
       const testPredicateSuffixes = draft
         ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(assessment?.testPredicateSuffixes, true);
@@ -27909,16 +27918,16 @@ class GradesApp {
         ? this.getGradesEntryAssessmentDraft(assessment)
         : null;
       tasks = normalizeGradeTestTasks(draft?.testTasks || assessment.testTasks, { ensureDefault: false });
-      const scale = normalizeGradeTestScale(draft?.testScale || assessment.testScale);
-      scaleSnapshot = draft
-        ? this.store.buildGradeTestScaleSnapshot(scale)
-        : assessment.testScaleSnapshot || assessment.testScale;
+      scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, draft);
       testPredicateSuffixes = draft
         ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true);
-      scoreEntries = students.map((student) => normalizeGradeTestScores(
-        this.store.getGradeEntry(student.id, assessment.id)?.testScores
-      ));
+      scoreEntries = students.map((student) => {
+        const entry = draft
+          ? normalizeGradeDraftEntry(draft.entries?.[student.id])
+          : this.store.getGradeEntry(student.id, assessment.id);
+        return normalizeGradeTestScores(entry?.testScores);
+      });
     } else {
       const draft = this.getGradesEntryDraft(courseId);
       tasks = normalizeGradeTestTasks(draft?.testTasks, { ensureDefault: false });
@@ -28148,8 +28157,8 @@ class GradesApp {
           entries: nextEntries
         };
         this.markGradesEntryDraftDirty();
-        this.refreshVisibleGradeTestResult(studentId, null);
-        this.refreshVisibleGradeTestAverages(null);
+        this.refreshVisibleGradeTestResult(studentId, assessmentId || null);
+        this.refreshVisibleGradeTestAverages(assessmentId || null);
         return true;
       }
       if (!this.ensureGradeVaultReadyForGradesEntryMutation()) {
