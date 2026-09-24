@@ -38,7 +38,7 @@ test('der Auslassen-Button nutzt dieselbe Funktion wie die Tastatur', () => {
 
   assert.match(
     seatplanApp,
-    /function skipCourseGradeInput\(input\) \{[\s\S]*?markCourseGradeStudentHandled\(studentId\);[\s\S]*?markCourseGradeStudentSkipped\(studentId\);[\s\S]*?applyCourseGradeSkippedState\(input\);[\s\S]*?state\.courseGradeCompletionPromptArmed = true;[\s\S]*?advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+    /function skipCourseGradeInput\(input\) \{[\s\S]*?markCourseGradeStudentHandled\(studentId\);[\s\S]*?markCourseGradeStudentSkipped\(studentId\);[\s\S]*?applyCourseGradeEmptyPlaceholder\(input\);[\s\S]*?state\.courseGradeCompletionPromptArmed = true;[\s\S]*?advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
   );
 });
 
@@ -53,7 +53,7 @@ test('der Besuchsverlauf wird beim Vorwärtsspringen gefüllt und beim Zurückse
   assert.match(seatplanApp, /courseGradeVisitedInputStack: \[\],/);
 
   const resets = seatplanApp.match(
-    /state\.courseGradeSkippedStudentIds = new Set\(\);\s+state\.courseGradeVisitedInputStack = \[\];/g,
+    /state\.courseGradeSkippedStudentIds = new Set\(\);\s+state\.courseGradeClearedStudentIds = new Set\(\);\s+state\.courseGradeVisitedInputStack = \[\];/g,
   ) || [];
   assert.equal(resets.length, 2, 'der Besuchsverlauf muss an beiden Reset-Stellen geleert werden');
 

@@ -403,6 +403,7 @@
     .app-header-title {
       display: inline-flex;
       align-items: center;
+      justify-self: start;
       grid-column: 1;
       grid-row: 1;
       position: relative;

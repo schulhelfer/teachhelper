@@ -118,8 +118,7 @@ export async function openDomBrowser(t, options = {}) {
   const { targetId } = await command('Target.createTarget', { url: 'about:blank' });
   const { sessionId } = await command('Target.attachToTarget', { targetId, flatten: true });
   await command('Page.enable', {}, sessionId);
-  const viewport = options?.viewport;
-  if (Number.isFinite(viewport?.width) && Number.isFinite(viewport?.height)) {
+  async function setViewport(viewport) {
     await command('Emulation.setDeviceMetricsOverride', {
       width: Math.max(1, Math.round(viewport.width)),
       height: Math.max(1, Math.round(viewport.height)),
@@ -129,14 +128,20 @@ export async function openDomBrowser(t, options = {}) {
       mobile: Boolean(viewport.mobile),
     }, sessionId);
   }
+  if (Number.isFinite(options.viewport?.width) && Number.isFinite(options.viewport?.height)) {
+    await setViewport(options.viewport);
+  }
   const origin = `http://127.0.0.1:${server.address().port}`;
   await command('Page.navigate', { url: origin }, sessionId);
-  return async function evaluate(fn, argument) {
+  async function evaluate(fn, argument) {
     const result = await command('Runtime.evaluate', {
       expression: `(${fn.toString()})(${JSON.stringify(argument)})`,
       awaitPromise: true, returnByValue: true,
     }, sessionId);
     if (result.exceptionDetails) throw new Error(result.exceptionDetails.exception?.description || result.exceptionDetails.text);
     return result.result.value;
-  };
+  }
+  evaluate.setViewport = setViewport;
+  evaluate.dispatchMouseEvent = (event) => command('Input.dispatchMouseEvent', event, sessionId);
+  return evaluate;
 }

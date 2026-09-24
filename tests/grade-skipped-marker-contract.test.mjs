@@ -20,10 +20,12 @@ const sliceBetween = (source, startNeedle, endNeedle, label) => {
 };
 
 test('the seatplan tracks skipped students separately from handled ones', () => {
-  assert.match(seatplan, /courseGradeHandledStudentIds: new Set\(\),\n\s*courseGradeSkippedStudentIds: new Set\(\),/);
+  assert.match(seatplan, /courseGradeHandledStudentIds: new Set\(\),\n\s*courseGradeSkippedStudentIds: new Set\(\),\n\s*courseGradeClearedStudentIds: new Set\(\),/);
 
   const resets = seatplan.match(/state\.courseGradeHandledStudentIds = new Set\(\);\n\s*state\.courseGradeSkippedStudentIds = new Set\(\);/g) || [];
   assert.equal(resets.length, 2, 'resetCourseGradeMode and startCourseGradeMode must both clear the skipped set');
+  const clearedResets = seatplan.match(/state\.courseGradeClearedStudentIds = new Set\(\);/g) || [];
+  assert.equal(clearedResets.length, 2, 'resetCourseGradeMode and startCourseGradeMode must both clear the cleared set');
 
   assert.match(seatplan, /function markCourseGradeStudentSkipped\(studentId\) \{[\s\S]*?state\.courseGradeSkippedStudentIds\.add\(sid\);/);
   assert.match(seatplan, /function isCourseGradeStudentSkipped\(studentId\) \{[\s\S]*?return Boolean\(state\.courseGradeSkippedStudentIds\?\.has\(sid\)\);/);
@@ -32,7 +34,7 @@ test('the seatplan tracks skipped students separately from handled ones', () => 
 test('only the seatplan skip action marks a student as skipped', () => {
   assert.match(
     seatplan,
-    /function skipCourseGradeInput\(input\) \{\n\s*if \(!\(input instanceof HTMLInputElement\)\) return false;\n\s*const studentId = String\(input\.dataset\.studentId \|\| ''\);\n\s*markCourseGradeStudentHandled\(studentId\);\n\s*markCourseGradeStudentSkipped\(studentId\);\n\s*applyCourseGradeSkippedState\(input\);\n\s*state\.courseGradeCompletionPromptArmed = true;\n\s*return advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+    /function skipCourseGradeInput\(input\) \{\n\s*if \(!\(input instanceof HTMLInputElement\)\) return false;\n\s*const studentId = String\(input\.dataset\.studentId \|\| ''\);\n\s*markCourseGradeStudentHandled\(studentId\);\n\s*markCourseGradeStudentSkipped\(studentId\);\n\s*applyCourseGradeEmptyPlaceholder\(input\);\n\s*state\.courseGradeCompletionPromptArmed = true;\n\s*return advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
   );
   assert.equal(
     seatplan.split('markCourseGradeStudentSkipped(').length - 1,
@@ -60,7 +62,7 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
   const setter = sliceBetween(
     seatplan,
     'function setCourseGradeEntry(studentId, value, options = {}) {',
-    'function applyCourseGradeSkippedState(',
+    'function applyCourseGradeEmptyPlaceholder(',
     'setCourseGradeEntry',
   );
 
@@ -72,11 +74,13 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
   );
   assert.doesNotMatch(emptyBranch, /clearCourseGradeStudentSkipped/);
   assert.doesNotMatch(emptyBranch, /markCourseGradeStudentHandled/);
+  assert.doesNotMatch(emptyBranch, /courseGradeClearedStudentIds\.delete/);
 
   assert.match(
     setter,
     /\} else \{\n\s*state\.courseGradeEntries\[sid\] = parsed\.value;\n\s*state\.courseGradeDeletedStudentIds\.delete\(sid\);\n[\s\S]*?clearCourseGradeStudentSkipped\(sid\);\n[\s\S]*?markCourseGradeStudentHandled\(sid\);\n\s*\}/,
   );
+  assert.match(setter, /clearCourseGradeStudentSkipped\(sid\);\n\s*state\.courseGradeClearedStudentIds\.delete\(sid\);\n\s*markCourseGradeStudentHandled\(sid\);/);
   assert.equal(
     setter.split('clearCourseGradeStudentSkipped(').length - 1,
     1,
@@ -88,24 +92,24 @@ test('only a real seatplan grade drops the skipped marker, never an empty value'
     'a student may only be counted as done on an actual grade assignment',
   );
 
-  assert.match(setter, /updateCourseGradeSkippedInputsForStudent\(sid\);\n[\s\S]*?syncCourseGradeOverlay\(\);/);
+  assert.match(setter, /updateCourseGradeEmptyPlaceholdersForStudent\(sid\);\n[\s\S]*?syncCourseGradeOverlay\(\);/);
 });
 
-test('the seatplan renders the skipped marker as a placeholder, never as a value', () => {
-  assert.match(seatplan, /const COURSE_GRADE_SKIPPED_PLACEHOLDER = '--';/);
+test('the seatplan renders skipped and cleared entries as a placeholder, never as a value', () => {
+  assert.match(seatplan, /const COURSE_GRADE_EMPTY_PLACEHOLDER = '—';/);
 
   const helper = sliceBetween(
     seatplan,
-    'function applyCourseGradeSkippedState(input) {',
-    'function updateCourseGradeSkippedInputsForStudent(',
-    'applyCourseGradeSkippedState',
+    'function applyCourseGradeEmptyPlaceholder(input) {',
+    'function updateCourseGradeEmptyPlaceholdersForStudent(',
+    'applyCourseGradeEmptyPlaceholder',
   );
-  assert.match(helper, /const skipped = Boolean\(sid\) && !input\.value && isCourseGradeStudentSkipped\(sid\);/);
-  assert.match(helper, /input\.placeholder = skipped \? COURSE_GRADE_SKIPPED_PLACEHOLDER : '';/);
+  assert.match(helper, /const showPlaceholder = Boolean\(sid\) && !input\.value\s+&& \(isCourseGradeStudentSkipped\(sid\) \|\| state\.courseGradeClearedStudentIds\.has\(sid\)\);/);
+  assert.match(helper, /input\.placeholder = showPlaceholder \? COURSE_GRADE_EMPTY_PLACEHOLDER : '';/);
   assert.doesNotMatch(helper, /input\.value =/, 'the marker must never be written into the input value');
 
-  assert.match(seatplan, /input\.value = state\.courseGradeEntries\[sid\] === undefined \? '' : formatCourseGradeValue\(state\.courseGradeEntries\[sid\]\);\n\s*applyCourseGradeSkippedState\(input\);/);
-  assert.match(seatplan, /input\.classList\.remove\('invalid'\);\n\s*applyCourseGradeSkippedState\(input\);/);
+  assert.match(seatplan, /input\.value = state\.courseGradeEntries\[sid\] === undefined \? '' : formatCourseGradeValue\(state\.courseGradeEntries\[sid\]\);\n\s*applyCourseGradeEmptyPlaceholder\(input\);/);
+  assert.match(seatplan, /input\.classList\.remove\('invalid'\);\n\s*applyCourseGradeEmptyPlaceholder\(input\);/);
 });
 
 test('the seatplan placeholder stays readable in every browser', () => {

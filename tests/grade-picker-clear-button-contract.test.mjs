@@ -27,6 +27,11 @@ test('der Sitzplan-Picker speichert nicht mehr selbst, sondern leert den Eintrag
     seatplanApp,
     /value === null\s*\?\s*state\.courseGradeEntries\[studentId\] === undefined/,
   );
+  assert.match(seatplanApp, /const COURSE_GRADE_EMPTY_PLACEHOLDER = '—';/);
+  assert.match(seatplanApp, /return formatted \|\| COURSE_GRADE_EMPTY_PLACEHOLDER;/);
+  assert.match(seatplanApp, /setCourseGradeEntry\(studentId, value, \{ prompt: true, markCleared: value === null \}\);/);
+  assert.match(seatplanApp, /if \(options\.markCleared === true\) \{\s+state\.courseGradeClearedStudentIds\.add\(sid\);/);
+  assert.match(seatplanApp, /state\.courseGradeEntries\[sid\] = parsed\.value;[\s\S]*?state\.courseGradeClearedStudentIds\.delete\(sid\);/);
 
   const start = seatplanApp.indexOf('function openCourseGradePicker(input)');
   const end = seatplanApp.indexOf('\n\n          function createCourseGradeInput', start);

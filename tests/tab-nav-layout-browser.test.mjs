@@ -2,6 +2,74 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDomBrowser } from './helpers/dom-browser.mjs';
 
+test('visible menu tabs receive pointer input across viewport breakpoints', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t, { viewport: { width: 1280, height: 900 } });
+  await evaluate(async () => {
+    const html = await fetch('/index.html').then((response) => response.text());
+    const fixture = new DOMParser().parseFromString(html, 'text/html');
+    const css = await Promise.all([...fixture.querySelectorAll('link[rel="stylesheet"]')]
+      .map((link) => fetch(link.getAttribute('href')).then((response) => response.text())));
+    const style = document.createElement('style');
+    style.textContent = css.join('\n');
+    document.head.append(style);
+    document.body.replaceChildren(...fixture.body.childNodes);
+    sessionStorage.setItem('teachhelper:pwa-install-prompt-dismissed', '1');
+    await import('/src/main.js');
+  });
+
+  async function pointAt(selector) {
+    const point = await evaluate((selector) => {
+      const element = document.querySelector(selector);
+      const rect = element.getBoundingClientRect();
+      return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    }, selector);
+    await evaluate.dispatchMouseEvent({ type: 'mouseMoved', ...point });
+    assert.equal(await evaluate((selector) => document.querySelector(selector).matches(':hover'), selector), true, selector);
+    return point;
+  }
+
+  async function clickAt(selector) {
+    const point = await pointAt(selector);
+    await evaluate.dispatchMouseEvent({ type: 'mousePressed', button: 'left', clickCount: 1, ...point });
+    await evaluate.dispatchMouseEvent({ type: 'mouseReleased', button: 'left', clickCount: 1, ...point });
+    await evaluate(() => new Promise((done) => setTimeout(done, 400)));
+  }
+
+  for (const width of [1280, 1181, 1180, 1000, 641, 640, 480, 640, 641, 1180, 1181, 1280]) {
+    await evaluate.setViewport({ width, height: 900 });
+    const state = await evaluate(async () => {
+      await new Promise((done) => setTimeout(done, 400));
+      const buttons = [...document.querySelectorAll('.tab-nav .tab-button')]
+        .filter((button) => button.getClientRects().length > 0);
+      return {
+        tabs: buttons.map((button) => ({
+          id: button.id,
+          reachable: [0.25, 0.5, 0.75].every((fraction) => {
+            const rect = button.getBoundingClientRect();
+            return button.contains(document.elementFromPoint(rect.left + rect.width * fraction, rect.top + rect.height / 2));
+          }),
+        })),
+        hasMenu: buttons.some((button) => button.id === 'more-tools-trigger'),
+      };
+    });
+    assert.ok(state.tabs.some((tab) => tab.id === 'tab-grades'));
+    assert.ok(state.tabs.some((tab) => tab.id === 'tab-planning'));
+    for (const tab of state.tabs) {
+      assert.equal(tab.reachable, true, `${tab.id} at ${width}px`);
+      await pointAt(`#${tab.id}`);
+    }
+    if (state.hasMenu) {
+      await clickAt('#more-tools-trigger');
+      assert.equal(await evaluate(() => document.getElementById('more-tools-menu').hidden), false);
+      await clickAt('[data-more-tools-target="qr"]');
+      assert.equal(await evaluate(() => document.getElementById('tab-qr').classList.contains('active')), true);
+      assert.equal(await evaluate(() => document.getElementById('more-tools-menu').hidden), true);
+    }
+    await clickAt('#tab-planning');
+    assert.equal(await evaluate(() => document.getElementById('tab-planning').classList.contains('active')), true);
+  }
+});
+
 test('responsive tab layout keeps overflow, menu focus and indicator aligned', { timeout: 60000 }, async (t) => {
   const evaluate = await openDomBrowser(t, {
     viewport: { width: 1800, height: 900, mobile: false },

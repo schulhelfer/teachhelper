@@ -566,6 +566,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             courseGradeCompletionPromptArmed: false,
             courseGradeHandledStudentIds: new Set(),
             courseGradeSkippedStudentIds: new Set(),
+            courseGradeClearedStudentIds: new Set(),
             courseGradeVisitedInputStack: [],
             courseGradeEntryMode: 'grade',
             courseGradeOccurrenceCategoryId: null,
@@ -588,7 +589,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
           const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
           const SEATPLAN_CHROME_REQUEST_EVENT = 'classroom:seatplan-chrome-request';
-          const COURSE_GRADE_SKIPPED_PLACEHOLDER = '--';
+          const COURSE_GRADE_EMPTY_PLACEHOLDER = '—';
           const MODULE_CONTEXT_MENU_DISMISS_EVENT = 'classroom:module-context-menu-dismiss';
           const COURSE_GRADE_DISPLAY_POINTS = 'points15';
           const COURSE_GRADE_DISPLAY_SCHOOL = 'school';
@@ -2121,7 +2122,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function formatCourseGradeDisplayValue(value) {
             const formatted = formatCourseGradeValue(value);
-            return formatted || '–';
+            return formatted || COURSE_GRADE_EMPTY_PLACEHOLDER;
           }
 
           function sanitizeCourseGradeInputValue(raw) {
@@ -2172,6 +2173,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.courseGradeCompletionPromptArmed = false;
             state.courseGradeHandledStudentIds = new Set();
             state.courseGradeSkippedStudentIds = new Set();
+            state.courseGradeClearedStudentIds = new Set();
             state.courseGradeVisitedInputStack = [];
             state.courseGradeEntryMode = COURSE_GRADE_ENTRY_MODE_GRADE;
             state.courseGradeOccurrenceCategoryId = null;
@@ -2353,6 +2355,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             state.courseGradeCompletionPromptArmed = false;
             state.courseGradeHandledStudentIds = new Set();
             state.courseGradeSkippedStudentIds = new Set();
+            state.courseGradeClearedStudentIds = new Set();
             state.courseGradeVisitedInputStack = [];
             if (isOccurrenceMode) {
               hideCourseGradePicker();
@@ -2449,6 +2452,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             }
             if (parsed.value === null) {
               delete state.courseGradeEntries[sid];
+              if (options.markCleared === true) {
+                state.courseGradeClearedStudentIds.add(sid);
+              }
               if (Object.prototype.hasOwnProperty.call(state.courseGradeOriginalEntries || {}, sid)) {
                 state.courseGradeDeletedStudentIds.add(sid);
               } else {
@@ -2458,9 +2464,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               state.courseGradeEntries[sid] = parsed.value;
               state.courseGradeDeletedStudentIds.delete(sid);
               clearCourseGradeStudentSkipped(sid);
+              state.courseGradeClearedStudentIds.delete(sid);
               markCourseGradeStudentHandled(sid);
             }
-            updateCourseGradeSkippedInputsForStudent(sid);
+            updateCourseGradeEmptyPlaceholdersForStudent(sid);
             if (options.armCompletion === true || options.prompt === true) {
               state.courseGradeCompletionPromptArmed = true;
             }
@@ -2469,19 +2476,20 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             return true;
           }
 
-          function applyCourseGradeSkippedState(input) {
+          function applyCourseGradeEmptyPlaceholder(input) {
             if (!(input instanceof HTMLInputElement)) return;
             const sid = String(input.dataset.studentId || '');
-            const skipped = Boolean(sid) && !input.value && isCourseGradeStudentSkipped(sid);
-            input.placeholder = skipped ? COURSE_GRADE_SKIPPED_PLACEHOLDER : '';
+            const showPlaceholder = Boolean(sid) && !input.value
+              && (isCourseGradeStudentSkipped(sid) || state.courseGradeClearedStudentIds.has(sid));
+            input.placeholder = showPlaceholder ? COURSE_GRADE_EMPTY_PLACEHOLDER : '';
           }
 
-          function updateCourseGradeSkippedInputsForStudent(studentId) {
+          function updateCourseGradeEmptyPlaceholdersForStudent(studentId) {
             const sid = String(studentId || '');
             if (!sid) return;
             document.querySelectorAll("input[data-course-grade-input='1']").forEach(input => {
               if (String(input.dataset.studentId || '') !== sid) return;
-              applyCourseGradeSkippedState(input);
+              applyCourseGradeEmptyPlaceholder(input);
             });
           }
 
@@ -2492,7 +2500,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               const value = state.courseGradeEntries[sid];
               input.value = value === undefined ? '' : formatCourseGradeValue(value);
               input.classList.remove('invalid');
-              applyCourseGradeSkippedState(input);
+              applyCourseGradeEmptyPlaceholder(input);
             });
           }
 
@@ -3155,7 +3163,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               button.addEventListener('mousedown', event => event.preventDefault());
               button.addEventListener('click', event => {
                 event.stopPropagation();
-                setCourseGradeEntry(studentId, value, { prompt: true });
+                setCourseGradeEntry(studentId, value, { prompt: true, markCleared: value === null });
                 updateCourseGradeInputsForStudent(studentId);
                 advanceCourseGradeInput(input, { closePicker: true });
               });
@@ -3185,7 +3193,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const studentId = String(input.dataset.studentId || '');
             markCourseGradeStudentHandled(studentId);
             markCourseGradeStudentSkipped(studentId);
-            applyCourseGradeSkippedState(input);
+            applyCourseGradeEmptyPlaceholder(input);
             state.courseGradeCompletionPromptArmed = true;
             return advanceCourseGradeInput(input, { closePicker: true });
           }
@@ -3200,7 +3208,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             input.dataset.courseGradeInput = '1';
             input.dataset.studentId = sid;
             input.value = state.courseGradeEntries[sid] === undefined ? '' : formatCourseGradeValue(state.courseGradeEntries[sid]);
-            applyCourseGradeSkippedState(input);
+            applyCourseGradeEmptyPlaceholder(input);
             input.setAttribute('aria-label', `Bewertung für ${label || sid}`);
             input.addEventListener('mousedown', event => event.stopPropagation());
             input.addEventListener('touchstart', event => event.stopPropagation(), { passive: true });
@@ -3305,7 +3313,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             button.className = 'course-grade-input course-grade-trigger';
             button.dataset.courseGradeTrigger = '1';
             button.dataset.studentId = sid;
-            button.textContent = state.courseGradeEntries[sid] === undefined ? '–' : formatCourseGradeDisplayValue(state.courseGradeEntries[sid]);
+            button.textContent = state.courseGradeEntries[sid] === undefined
+              ? COURSE_GRADE_EMPTY_PLACEHOLDER
+              : formatCourseGradeDisplayValue(state.courseGradeEntries[sid]);
             button.setAttribute('aria-label', `Bewertung für ${label || sid} eingeben`);
             button.title = 'Note eingeben';
             button.addEventListener('mousedown', event => event.stopPropagation());

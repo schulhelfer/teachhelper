@@ -74,7 +74,7 @@ test('grade entry advances reliably after a confirmed value', () => {
   );
   assert.match(
     seatplanApp,
-    /setCourseGradeEntry\(studentId, value, \{ prompt: true \}\);\s+updateCourseGradeInputsForStudent\(studentId\);\s+advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
+    /setCourseGradeEntry\(studentId, value, \{ prompt: true, markCleared: value === null \}\);\s+updateCourseGradeInputsForStudent\(studentId\);\s+advanceCourseGradeInput\(input, \{ closePicker: true \}\);/,
   );
   assert.match(
     seatplanApp,
