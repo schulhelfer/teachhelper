@@ -14,6 +14,7 @@ import {
   SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT,
   SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT,
   SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
+  SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT,
   SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
   SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
 } from '../../shell/tabs.js';
@@ -46,6 +47,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
   let pendingCourseGradeConfigResult = null;
   let pendingCourseGradeSaveResult = null;
   let pendingGradeRosterCoursesResult = null;
+  let pendingGradeRosterCoursesOutdated = false;
   let pendingGradeRosterImportResult = null;
   let disposed = false;
 
@@ -116,6 +118,15 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       return;
     }
     postToModule(frame, { type: GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, detail });
+  };
+
+  const sendGradeRosterCoursesOutdated = () => {
+    if (disposed) return;
+    if (!ready || !frame.contentWindow) {
+      pendingGradeRosterCoursesOutdated = true;
+      return;
+    }
+    postToModule(frame, { type: SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT });
   };
 
   const sendGradeRosterImportResult = (detail) => {
@@ -199,6 +210,10 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
       sendGradeRosterCoursesResult(pendingGradeRosterCoursesResult);
       pendingGradeRosterCoursesResult = null;
     }
+    if (pendingGradeRosterCoursesOutdated) {
+      pendingGradeRosterCoursesOutdated = false;
+      sendGradeRosterCoursesOutdated();
+    }
     if (pendingGradeRosterImportResult) {
       sendGradeRosterImportResult(pendingGradeRosterImportResult);
       pendingGradeRosterImportResult = null;
@@ -216,6 +231,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     pendingCourseGradeConfigResult = null;
     pendingCourseGradeSaveResult = null;
     pendingGradeRosterCoursesResult = null;
+    pendingGradeRosterCoursesOutdated = false;
     pendingGradeRosterImportResult = null;
     frame.removeEventListener('load', onFrameLoad);
     window.removeEventListener('message', onWindowMessage);
@@ -246,6 +262,7 @@ export function mountSeatplan({ sideHost, mainHost, dialogHost, bus = document }
     sendCourseGradeConfigResult,
     sendCourseGradeSaveResult,
     sendGradeRosterCoursesResult,
+    sendGradeRosterCoursesOutdated,
     sendGradeRosterImportResult,
     isReady: () => ready,
     dispose

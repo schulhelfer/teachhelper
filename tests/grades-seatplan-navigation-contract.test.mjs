@@ -81,8 +81,25 @@ test('picking another course while bound asks whether to switch or to adopt its 
 test('shell layout updates reuse the cached course pills instead of refreshing them repeatedly', () => {
   assert.match(
     seatplanApp,
-    /if \(!interactive && \(pendingGradeRosterCoursesRequestId \|\| gradeRosterCoursesState !== 'idle'\)\) return/,
+    /if \(!interactive && \(pendingGradeRosterCoursesRequestId \|\| \(gradeRosterCoursesState !== 'idle' && !gradeRosterCoursesOutdated\)\)\) return/,
   );
+});
+
+test('workspace changes mark the seatplan course pills as outdated and refresh them once the seatplan is visible', () => {
+  assert.match(seatplanApp, /const SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT = 'classroom:seatplan-grade-roster-courses-outdated';/);
+  assert.match(seatplanApp, /ALLOWED_PARENT_MESSAGE_TYPES = new Set\(\[[\s\S]*?SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT,[\s\S]*?\]\)/);
+  assert.match(
+    seatplanApp,
+    /if \(data\.type === SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT\) \{\s*gradeRosterCoursesOutdated = true;\s*refreshOutdatedGradeRosterCourses\(\);/,
+  );
+  assert.match(
+    seatplanApp,
+    /function refreshOutdatedGradeRosterCourses\(\) \{\s*if \(!gradeRosterCoursesOutdated \|\| !seatplanTabWasActive\) return;\s*requestGradeRosterCourses\(\);/,
+  );
+  assert.match(seatplanApp, /renderGradeRosterImportCourses\(detail\);\s*refreshOutdatedGradeRosterCourses\(\);/);
+  const request = seatplanApp.match(/function requestGradeRosterCourses\([^)]*\) \{([\s\S]*?)\n          \}/)?.[1] || '';
+  assert.match(request, /pendingGradeRosterCoursesRequestId = requestId;\s*gradeRosterCoursesOutdated = false;/);
+  assert.match(request, /restoreTabAfterUnlock: unlock \}/);
 });
 
 test('switching a seatplan course reads a course snapshot without swapping the active grades course', () => {

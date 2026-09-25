@@ -1,4 +1,5 @@
 import { STUDENTS_SYNC_SOURCE_GRADES } from '../shared/student-sync-bus.js';
+import { WORKSPACE_STATE_EVENT } from '../shared/school-data/messages.js';
 import {
   GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
@@ -35,6 +36,7 @@ export function createGradeRosterCoordinator({
   let pendingImportRequestId = '';
   let courses = [];
   let coursesState = 'idle';
+  let coursesOutdated = false;
   let hasAvailableCourses = true;
   let selectedCourseId = 0;
   let selectedCourseName = '';
@@ -57,6 +59,8 @@ export function createGradeRosterCoordinator({
   };
 
   const createRequestId = () => `shell-grade-roster-${Date.now()}-${++requestSequence}`;
+
+  const isRosterTabActive = () => [TAB_GROUPS, TAB_RANDOM_PICKER].includes(getActiveTab());
 
   const closeImportMenu = () => {
     if (!gradeRosterImportMenu) return;
@@ -317,6 +321,7 @@ export function createGradeRosterCoordinator({
     if (!interactive && pendingCoursesRequestId) return false;
     const requestId = createRequestId();
     pendingCoursesRequestId = requestId;
+    coursesOutdated = false;
     if (interactive) {
       coursesState = 'loading';
       renderCoursePills();
@@ -326,9 +331,14 @@ export function createGradeRosterCoordinator({
       returnTab: getActiveTab(),
       interactive,
       unlock,
-      restoreTabAfterUnlock: true,
+      restoreTabAfterUnlock: unlock,
     });
     return true;
+  };
+
+  const refreshOutdatedCourses = () => {
+    if (!coursesOutdated || !isRosterTabActive()) return false;
+    return requestCourses();
   };
 
   const handleImportTriggerClick = () => {
@@ -351,10 +361,7 @@ export function createGradeRosterCoordinator({
     requestCourses({ interactive: true });
   };
 
-  const handleCoursesResult = (event) => {
-    const detail = getEventDetail(event);
-    if (!detail || String(detail.requestId || '') !== pendingCoursesRequestId) return;
-    pendingCoursesRequestId = '';
+  const applyCoursesResult = (detail) => {
     if (detail.locked) {
       courses = Array.isArray(detail.courses) ? detail.courses : [];
       hasAvailableCourses = detail.hasCourses !== false;
@@ -379,6 +386,20 @@ export function createGradeRosterCoordinator({
     coursesState = 'ready';
     closeImportMenu();
     renderCoursePills();
+  };
+
+  const handleCoursesResult = (event) => {
+    const detail = getEventDetail(event);
+    if (!detail || String(detail.requestId || '') !== pendingCoursesRequestId) return;
+    pendingCoursesRequestId = '';
+    applyCoursesResult(detail);
+    refreshOutdatedCourses();
+  };
+
+  const handleWorkspaceState = (event) => {
+    if (getEventDetail(event)?.scope !== 'shell') return;
+    coursesOutdated = true;
+    refreshOutdatedCourses();
   };
 
   const handleImportResult = (event) => {
@@ -518,6 +539,7 @@ export function createGradeRosterCoordinator({
 
   const refreshLayout = () => {
     renderCoursePills();
+    refreshOutdatedCourses();
   };
 
   const dispose = () => {
@@ -540,6 +562,7 @@ export function createGradeRosterCoordinator({
   bind(documentBus, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, restoreReturnTab);
   bind(documentBus, GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, handlePickerSaveResult);
   bind(documentBus, 'click', handleDocumentClick);
+  bind(view, WORKSPACE_STATE_EVENT, handleWorkspaceState);
 
   const ResizeObserverType = view?.ResizeObserver;
   if (typeof ResizeObserverType === 'function' && resizeTarget) {

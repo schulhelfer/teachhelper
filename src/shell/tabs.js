@@ -64,6 +64,7 @@ export const SEATPLAN_COURSE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-sav
 export const SEATPLAN_COURSE_GRADE_CONFIG_REQUEST_EVENT = 'classroom:seatplan-course-grade-config-request';
 export const SEATPLAN_COURSE_GRADE_SAVE_REQUEST_EVENT = 'classroom:seatplan-course-grade-save-request';
 export const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
+export const SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT = 'classroom:seatplan-grade-roster-courses-outdated';
 export const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
 export const NAME_LEARNING_DATA_REQUEST_EVENT = 'classroom:name-learning-data-request';
 export const NAME_LEARNING_REVIEW_REQUEST_EVENT = 'classroom:name-learning-review-request';

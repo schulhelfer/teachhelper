@@ -2,17 +2,20 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const [coordinatorModuleSource, studentSyncSource, tabsSource] = await Promise.all([
+const [coordinatorModuleSource, studentSyncSource, tabsSource, messagesSource] = await Promise.all([
   readFile(new URL('../src/app/grade-roster-coordinator.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shared/student-sync-bus.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/shell/tabs.js', import.meta.url), 'utf8'),
+  readFile(new URL('../src/shared/school-data/messages.js', import.meta.url), 'utf8'),
 ]);
 const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const studentSyncUrl = dataUrl(studentSyncSource);
 const tabsUrl = dataUrl(tabsSource);
+const messagesUrl = dataUrl(messagesSource);
 const coordinatorUrl = dataUrl(
   coordinatorModuleSource
     .replace("'../shared/student-sync-bus.js'", JSON.stringify(studentSyncUrl))
+    .replace("'../shared/school-data/messages.js'", JSON.stringify(messagesUrl))
     .replace("'../shell/tabs.js'", JSON.stringify(tabsUrl)),
 );
 const { createGradeRosterCoordinator } = await import(coordinatorUrl);
@@ -21,8 +24,10 @@ const {
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
   GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
   TAB_GROUPS,
+  TAB_PLANNING,
   TAB_RANDOM_PICKER,
 } = await import(tabsUrl);
+const { WORKSPACE_STATE_EVENT } = await import(messagesUrl);
 
 class TestClassList {
   constructor() {
@@ -151,14 +156,16 @@ function createHarness({
     }
   }
 
+  const view = Object.assign(new EventTarget(), {
+    CustomEvent,
+    Element: TestElement,
+    ResizeObserver: TestResizeObserver,
+    matchMedia: () => ({ matches: false }),
+  });
+
   const coordinator = createGradeRosterCoordinator({
     documentBus,
-    view: {
-      CustomEvent,
-      Element: TestElement,
-      ResizeObserver: TestResizeObserver,
-      matchMedia: () => ({ matches: false }),
-    },
+    view,
     elements: {
       gradeRosterImportMenu: menu,
       gradeRosterImportTrigger: trigger,
@@ -224,6 +231,9 @@ function createHarness({
     runResize() {
       resizeCallback?.();
     },
+    emitWorkspaceChange(scope = 'shell') {
+      view.dispatchEvent(new CustomEvent(WORKSPACE_STATE_EVENT, { detail: { scope } }));
+    },
   };
 }
 
@@ -257,6 +267,7 @@ test('Kursabfragen korrelieren Antworten und behalten Entsperrungsnavigation und
     Object.keys(harness.courseRequests[0]).sort(),
     ['interactive', 'requestId', 'restoreTabAfterUnlock', 'returnTab', 'unlock'].sort(),
   );
+  assert.equal(harness.courseRequests[0].restoreTabAfterUnlock, false);
 
   dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, {
     requestId: 'stale',
@@ -279,7 +290,81 @@ test('Kursabfragen korrelieren Antworten und behalten Entsperrungsnavigation und
   assert.equal(harness.coordinator.requestCourses({ interactive: true, unlock: true }), true);
   assert.equal(harness.courseRequests.at(-1).interactive, true);
   assert.equal(harness.courseRequests.at(-1).unlock, true);
+  assert.equal(harness.courseRequests.at(-1).restoreTabAfterUnlock, true);
   assert.equal(harness.elements.pills.children[0].textContent, 'Notenkurse werden geladen …');
+});
+
+test('eine beim Start leere Kursliste lädt nach Workspace-Änderungen neu, sobald Picker oder Gruppen sichtbar sind', () => {
+  const harness = createHarness({ activeTab: TAB_PLANNING });
+  loadCourses(harness, []);
+  assert.equal(harness.elements.surface.hidden, true);
+  assert.equal(harness.elements.row.classList.contains('grade-roster-import-unavailable'), true);
+
+  harness.emitWorkspaceChange();
+  assert.equal(harness.courseRequests.length, 1);
+
+  harness.setTab(TAB_RANDOM_PICKER);
+  harness.coordinator.refreshLayout();
+  assert.equal(harness.courseRequests.length, 2);
+  assert.equal(harness.courseRequests[1].returnTab, TAB_RANDOM_PICKER);
+  assert.equal(harness.courseRequests[1].restoreTabAfterUnlock, false);
+
+  dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, {
+    requestId: harness.courseRequests[1].requestId,
+    ok: true,
+    hasCourses: true,
+    courses: [{ id: 5, name: 'Englisch', color: '#abc' }],
+  });
+  assert.equal(harness.elements.surface.hidden, false);
+  assert.equal(harness.elements.row.classList.contains('grade-roster-import-unavailable'), false);
+  assert.equal(harness.elements.pills.hidden, false);
+  assert.deepEqual(harness.elements.pills.children.map((pill) => pill.textContent), ['Englisch']);
+  assert.deepEqual(harness.activatedTabs, []);
+
+  harness.coordinator.refreshLayout();
+  harness.runResize();
+  assert.equal(harness.courseRequests.length, 2);
+});
+
+test('Workspace-Änderungen während einer offenen Kursabfrage lösen genau eine Folgeabfrage aus', () => {
+  const harness = createHarness({ activeTab: TAB_GROUPS });
+  harness.coordinator.requestCourses();
+  harness.emitWorkspaceChange();
+  harness.emitWorkspaceChange();
+  assert.equal(harness.courseRequests.length, 1);
+
+  dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, {
+    requestId: harness.courseRequests[0].requestId,
+    ok: true,
+    hasCourses: false,
+    courses: [],
+  });
+  assert.equal(harness.courseRequests.length, 2);
+  assert.equal(harness.elements.surface.hidden, true);
+
+  dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, {
+    requestId: harness.courseRequests[1].requestId,
+    ok: true,
+    hasCourses: true,
+    courses: [{ id: 7, name: 'Chemie' }],
+  });
+  assert.equal(harness.courseRequests.length, 2);
+  assert.equal(harness.elements.surface.hidden, false);
+
+  harness.emitWorkspaceChange('grades');
+  assert.equal(harness.courseRequests.length, 2);
+  harness.emitWorkspaceChange();
+  assert.equal(harness.courseRequests.length, 3);
+
+  dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, {
+    requestId: harness.courseRequests[2].requestId,
+    ok: true,
+    hasCourses: true,
+    courses: [{ id: 7, name: 'Chemie' }],
+  });
+  harness.coordinator.dispose();
+  harness.emitWorkspaceChange();
+  assert.equal(harness.courseRequests.length, 3);
 });
 
 test('Picker-Import übernimmt die Bindung und speichert Änderungen ausschließlich explizit', async () => {

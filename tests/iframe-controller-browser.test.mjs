@@ -198,3 +198,53 @@ test('iframe shell bindings stop camera tracks on tab departure and runtime clea
   assert.deepEqual(result, { active: true, stoppedOnDeparture: 1, inactive: true,
     overlayRemoved: true, ignoredWhileInactive: true, opened: 2, stopped: 2, finalOverlayRemoved: true });
 });
+
+test('the seatplan controller forwards an outdated course list once after load', async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const { mountSeatplan } = await import('/src/modules/seatplan/index.js');
+    const {
+      GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
+      SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT,
+    } = await import('/src/shell/tabs.js');
+    const host = document.createElement('div');
+    document.body.append(host);
+    let manualLoad = false;
+    host.addEventListener('load', (event) => {
+      if (!manualLoad) event.stopImmediatePropagation();
+    }, true);
+    const append = (frame) => {
+      frame.src = 'about:blank';
+      return Element.prototype.appendChild.call(host, frame);
+    };
+    host.appendChild = append;
+    host.append = append;
+    const controller = mountSeatplan({ mainHost: host, bus: document });
+    const messages = [];
+    controller.frame.contentWindow.postMessage = (payload) => messages.push(payload.type);
+    controller.sendGradeRosterCoursesOutdated();
+    controller.sendGradeRosterCoursesResult({ requestId: 'seatplan-courses' });
+    controller.sendGradeRosterCoursesOutdated();
+    const beforeLoad = messages.length;
+    manualLoad = true;
+    controller.frame.dispatchEvent(new Event('load'));
+    const afterLoad = [...messages];
+    controller.sendGradeRosterCoursesOutdated();
+    const afterDirectSend = [...messages];
+    controller.dispose();
+    controller.sendGradeRosterCoursesOutdated();
+    host.remove();
+    return {
+      beforeLoad,
+      afterLoad,
+      afterDirectSend,
+      afterDispose: messages.length,
+      expectedAfterLoad: [GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT],
+      outdatedType: SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT,
+    };
+  });
+  assert.equal(result.beforeLoad, 0);
+  assert.deepEqual(result.afterLoad, result.expectedAfterLoad);
+  assert.deepEqual(result.afterDirectSend, [...result.expectedAfterLoad, result.outdatedType]);
+  assert.equal(result.afterDispose, result.afterDirectSend.length);
+});

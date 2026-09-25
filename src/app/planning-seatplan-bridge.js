@@ -56,6 +56,7 @@ import { mountSeatplan } from '../modules/seatplan/index.js';
 import {
   WORKSPACE_ERROR_NOT_READY,
   WORKSPACE_OWNER_READY_EVENT,
+  WORKSPACE_STATE_EVENT,
 } from '../shared/school-data/messages.js';
 
 const DEFERRED_GRADES_MOUNT_TIMEOUT_MS = 4000;
@@ -847,6 +848,11 @@ export function createPlanningSeatplanBridge({
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendGradeRosterCoursesResult?.(detail);
     documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT, { detail }));
+  });
+
+  listen(window, WORKSPACE_STATE_EVENT, (event) => {
+    if (event.detail?.scope !== 'shell') return;
+    seatplanController?.sendGradeRosterCoursesOutdated?.();
   });
 
   listen(saveResultTarget, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {

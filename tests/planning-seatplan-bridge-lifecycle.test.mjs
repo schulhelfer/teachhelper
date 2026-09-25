@@ -43,6 +43,7 @@ function createHarness({ ready = true, missingHosts = false } = {}) {
       send: (detail) => calls.push([id, 'roster', detail]),
       sendCourseContext: (detail) => calls.push([id, 'course', detail]),
       sendGradeRosterImportResult: (detail) => calls.push([id, 'import', detail]),
+      sendGradeRosterCoursesOutdated: () => calls.push([id, 'courses-outdated']),
       dispose: () => { calls.push([id, 'dispose']); delete target.dataset.initialized; },
     };
     controllers.set(id, controller);
@@ -112,6 +113,20 @@ test('module layouts preserve active-tab payloads, initial roster and vault acce
   h.dispatch(tabs.GRADES_GRADE_VAULT_STATE_EVENT, { encryptionEnabled: true, unlocked: false });
   assert.equal(h.calls.at(-1)[2].clearGradeStudentPortraits, true);
   h.bridge.dispose();
+});
+
+test('shell workspace changes mark the seatplan course pills as outdated', () => {
+  const h = createHarness();
+  const outdatedCalls = () => h.calls.filter(([, method]) => method === 'courses-outdated').map(([id]) => id);
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+  assert.deepEqual(outdatedCalls(), []);
+  h.bridge.ensureTabInitialized('seatplan');
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'grades' });
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+  assert.deepEqual(outdatedCalls(), ['seatplan']);
+  h.bridge.dispose();
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+  assert.deepEqual(outdatedCalls(), ['seatplan']);
 });
 
 test('disposal cancels deferred mounts, frame retries, listeners and pending leave requests', async () => {

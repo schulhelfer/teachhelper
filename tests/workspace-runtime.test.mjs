@@ -1440,6 +1440,89 @@ test('temporarily loading an initially supplied course retains its participants'
   assert.equal(runtime.courseCache.get(7).gradeStudents.length, 1);
 });
 
+test('a grade course load requested during a mutation waits until the mutation has committed', async () => {
+  const store = new FakeStore();
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 70, courseId: 7, firstName: 'Aktiv' }],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = 7;
+  runtime.courseCache.set(7, store.exportGradeVaultStateSnapshot());
+  runtime.segmentTexts.set(8, 'kurs-8');
+  let releaseDecode = null;
+  runtime.decodeCourse = () => new Promise((resolve) => {
+    releaseDecode = () => resolve({
+      ...emptyGrades(),
+      gradeStudents: [{ id: 80, courseId: 8, firstName: 'Ada' }],
+    });
+  });
+
+  const mutation = runtime.runGradeCourseMutation(8, () => {
+    store.gradeState.gradeStudents.push({ id: 81, courseId: 8, firstName: 'Neu' });
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  const concurrentLoad = runtime.ensureGradeCourseLoaded(7, { publish: false });
+  releaseDecode();
+  await Promise.all([mutation, concurrentLoad]);
+
+  assert.deepEqual(runtime.courseCache.get(8).gradeStudents.map((student) => student.firstName), ['Ada', 'Neu']);
+  assert.equal(runtime.loadedCourseId, 7);
+  assert.deepEqual(store.gradeState.gradeStudents.map((student) => student.firstName), ['Aktiv']);
+});
+
+test('a temporary grade course stays loaded for its whole operation while another course is requested', async () => {
+  const store = new FakeStore();
+  store.gradeState = {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 70, courseId: 7, firstName: 'Aktiv' }],
+  };
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.loadedCourseId = 7;
+  runtime.courseCache.set(7, store.exportGradeVaultStateSnapshot());
+  runtime.courseCache.set(8, {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 80, courseId: 8, firstName: 'Ada' }],
+  });
+
+  let concurrentLoad = null;
+  const students = await runtime.withTemporaryGradeCourse(8, async () => {
+    concurrentLoad = runtime.ensureGradeCourseLoaded(7, { publish: false });
+    await Promise.resolve();
+    return store.gradeState.gradeStudents.map((student) => student.firstName);
+  });
+  await concurrentLoad;
+
+  assert.deepEqual(students, ['Ada']);
+  assert.equal(runtime.loadedCourseId, 7);
+  assert.deepEqual(store.gradeState.gradeStudents.map((student) => student.firstName), ['Aktiv']);
+});
+
+test('resolving the performance index waits for a running grade course mutation', async () => {
+  const store = new FakeStore();
+  const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
+  runtime.courseCache.set(8, {
+    ...emptyGrades(),
+    gradeStudents: [{ id: 80, courseId: 8, firstName: 'Ada' }],
+  });
+  runtime.segmentTexts.set(9, 'kurs-9');
+  runtime.decodeCourse = async (courseId) => ({
+    ...emptyGrades(),
+    gradeAssessments: [{ id: 90, courseId, title: 'Test' }],
+  });
+
+  let performanceIndex = null;
+  await runtime.runGradeCourseMutation(8, async () => {
+    store.gradeState.gradeStudents.push({ id: 81, courseId: 8, firstName: 'Neu' });
+    performanceIndex = runtime.resolvePerformanceIndex([9]);
+    await new Promise((resolve) => setImmediate(resolve));
+  });
+
+  assert.deepEqual((await performanceIndex).map((item) => item.assessmentId), [90]);
+  assert.deepEqual(runtime.courseCache.get(8).gradeStudents.map((student) => student.firstName), ['Ada', 'Neu']);
+  assert.equal(runtime.loadedCourseId, 8);
+});
+
 test('workspace settings operations reject fields from the wrong client group', async () => {
   const store = new FakeStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });

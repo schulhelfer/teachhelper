@@ -587,6 +587,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           const GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT = 'classroom:grades-grade-roster-courses-result';
           const GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT = 'classroom:grades-grade-roster-import-result';
           const SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT = 'classroom:seatplan-grade-roster-courses-request';
+          const SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT = 'classroom:seatplan-grade-roster-courses-outdated';
           const SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT = 'classroom:seatplan-grade-roster-import-request';
           const SEATPLAN_CHROME_REQUEST_EVENT = 'classroom:seatplan-chrome-request';
           const COURSE_GRADE_EMPTY_PLACEHOLDER = '—';
@@ -618,6 +619,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT,
             GRADES_COURSE_GRADE_SAVE_RESULT_EVENT,
             GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
+            SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT,
             GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT,
             MODULE_CONTEXT_MENU_DISMISS_EVENT,
           ]);
@@ -626,6 +628,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           let pendingGradeRosterImportRequestId = '';
           let gradeRosterCourses = [];
           let gradeRosterCoursesState = 'idle';
+          let gradeRosterCoursesOutdated = false;
           let gradeRosterHasAvailableCourses = true;
           let gradeRosterSelectedCourseId = 0;
           let gradeRosterSelectedCourseName = '';
@@ -961,17 +964,23 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function requestGradeRosterCourses({ interactive = false, unlock = false } = {}) {
             if (TUTORIAL_DEMO_MODE || !canImportGradeRoster() || !window.parent || window.parent === window) return;
-            if (!interactive && (pendingGradeRosterCoursesRequestId || gradeRosterCoursesState !== 'idle')) return;
+            if (!interactive && (pendingGradeRosterCoursesRequestId || (gradeRosterCoursesState !== 'idle' && !gradeRosterCoursesOutdated))) return;
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
             pendingGradeRosterCoursesRequestId = requestId;
+            gradeRosterCoursesOutdated = false;
             if (interactive) {
               gradeRosterCoursesState = 'loading';
               renderGradeRosterPills();
             }
             window.parent.postMessage(withModuleFrameNonce({
               type: SEATPLAN_GRADE_ROSTER_COURSES_REQUEST_EVENT,
-              detail: { requestId, returnTab: 'seatplan', interactive, unlock, restoreTabAfterUnlock: true }
+              detail: { requestId, returnTab: 'seatplan', interactive, unlock, restoreTabAfterUnlock: unlock }
             }), PARENT_MESSAGE_TARGET);
+          }
+
+          function refreshOutdatedGradeRosterCourses() {
+            if (!gradeRosterCoursesOutdated || !seatplanTabWasActive) return;
+            requestGradeRosterCourses();
           }
 
           function startGradeRosterImport(courseId) {
@@ -3777,6 +3786,12 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (data.type === GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               renderGradeRosterImportCourses(detail);
+              refreshOutdatedGradeRosterCourses();
+              return;
+            }
+            if (data.type === SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT) {
+              gradeRosterCoursesOutdated = true;
+              refreshOutdatedGradeRosterCourses();
               return;
             }
             if (data.type === GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT) {

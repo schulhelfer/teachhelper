@@ -252,54 +252,65 @@ export class CourseRepository {
     return normalized;
   }
 
+  queueGradeCourseJob(job) {
+    const pending = this.courseLoadTail.then(job, job);
+    this.courseLoadTail = pending.catch(() => undefined);
+    return pending;
+  }
+
   async ensureGradeCourseLoaded(courseId, { publish = true } = {}) {
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return false;
-    const load = async () => {
-      if (this.loadedCourseId === id) return true;
-      if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
-      let state = this.courseCache.get(id) || null;
-      if (!state) {
-        const text = this.segmentTexts.get(id) || '';
-        const initialState = this.store.exportGradeVaultStateSnapshot();
-        state = text
-          ? await this.decodeCourse(id, text)
-          : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
-            ? initialState
-            : emptyGradeState(this.store));
+    return this.queueGradeCourseJob(() => this.loadGradeCourse(id, { publish }));
+  }
+
+  async loadAccessibleGradeCourse(courseId, options) {
+    const id = Number(courseId) || 0;
+    if (!id || !this.canAccessGradeVault()) return false;
+    return this.loadGradeCourse(id, options);
+  }
+
+  async loadGradeCourse(id, { publish = true } = {}) {
+    if (this.loadedCourseId === id) return true;
+    if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
+    let state = this.courseCache.get(id) || null;
+    if (!state) {
+      const text = this.segmentTexts.get(id) || '';
+      const initialState = this.store.exportGradeVaultStateSnapshot();
+      state = text
+        ? await this.decodeCourse(id, text)
+        : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
+          ? initialState
+          : emptyGradeState(this.store));
+      this.courseCache.set(id, state);
+      this.rememberPerformanceIndex(id, state);
+    }
+    this.store.replaceGradeVaultState(state);
+    this.loadedCourseId = id;
+    if (!gradeStateHasPersistedStructure(state, id)) {
+      const defaultStructure = this.store.getDefaultGradeStructure?.();
+      const defaultPeriodCategories = defaultStructure?.periodCategories;
+      const hasDefaults = ['h1', 'h2'].some((period) => (
+        Array.isArray(defaultPeriodCategories?.[period])
+        && defaultPeriodCategories[period].length > 0
+      ));
+      if (hasDefaults) {
+        this.store._suspendSaveHooks();
+        try {
+          this.store.saveGradeStructure(id, defaultPeriodCategories);
+        } finally {
+          this.store._resumeSaveHooks({ flush: false });
+        }
+        state = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
         this.courseCache.set(id, state);
         this.rememberPerformanceIndex(id, state);
+        this.dirtyCourseIds.add(id);
+        this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
+        this.markManualDirty();
       }
-      this.store.replaceGradeVaultState(state);
-      this.loadedCourseId = id;
-      if (!gradeStateHasPersistedStructure(state, id)) {
-        const defaultStructure = this.store.getDefaultGradeStructure?.();
-        const defaultPeriodCategories = defaultStructure?.periodCategories;
-        const hasDefaults = ['h1', 'h2'].some((period) => (
-          Array.isArray(defaultPeriodCategories?.[period])
-          && defaultPeriodCategories[period].length > 0
-        ));
-        if (hasDefaults) {
-          this.store._suspendSaveHooks();
-          try {
-            this.store.saveGradeStructure(id, defaultPeriodCategories);
-          } finally {
-            this.store._resumeSaveHooks({ flush: false });
-          }
-          state = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
-          this.courseCache.set(id, state);
-          this.rememberPerformanceIndex(id, state);
-          this.dirtyCourseIds.add(id);
-          this.courseRevisions.set(id, this.getGradeCourseRevision(id) + 1);
-          this.markManualDirty();
-        }
-      }
-      if (publish) this.publish('grades');
-      return true;
-    };
-    const pending = this.courseLoadTail.then(load, load);
-    this.courseLoadTail = pending.catch(() => undefined);
-    return pending;
+    }
+    if (publish) this.publish('grades');
+    return true;
   }
 
   async getGradeCourseRosterSummary(courseId) {
@@ -522,16 +533,19 @@ export class CourseRepository {
   }
 
   async withTemporaryGradeCourse(courseId, operation) {
-    const previous = this.loadedCourseId;
-    await this.ensureGradeCourseLoaded(courseId, { publish: false });
-    try {
-      return await operation();
-    } finally {
-      if (previous && previous !== Number(courseId)) {
-        await this.ensureGradeCourseLoaded(previous, { publish: false });
+    const id = Number(courseId) || 0;
+    return this.queueGradeCourseJob(async () => {
+      const previous = this.loadedCourseId;
+      await this.loadAccessibleGradeCourse(id, { publish: false });
+      try {
+        return await operation();
+      } finally {
+        if (previous && previous !== id) {
+          await this.loadAccessibleGradeCourse(previous, { publish: false });
+        }
+        this.publish('grades');
       }
-      this.publish('grades');
-    }
+    });
   }
 
   rememberConfirmedStudentRemovals(courseId, previousStudentIds, nextStudentIds, confirmedStudentIds = []) {
@@ -558,8 +572,8 @@ export class CourseRepository {
     confirmedRemovedStudentIds = [],
   } = {}) {
     const id = Number(courseId) || 0;
-    const run = async () => {
-      await this.ensureGradeCourseLoaded(id, { publish: false });
+    const run = () => this.queueGradeCourseJob(async () => {
+      await this.loadAccessibleGradeCourse(id, { publish: false });
       const before = this.store.exportGradeVaultStateSnapshot();
       const roster = before.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
       this.gradeCourseMutationActiveCourseId = id;
@@ -591,7 +605,7 @@ export class CourseRepository {
         this.gradeCourseMutationActiveCourseId = null;
         this.markChanged('grades');
       }
-    };
+    });
     return this.enqueueOperation(run);
   }
 
@@ -650,20 +664,22 @@ export class CourseRepository {
       error.code = WORKSPACE_ERROR_VAULT_LOCKED;
       throw error;
     }
-    const previous = this.loadedCourseId;
-    for (const id of ids) {
-      if (!this.courseCache.has(id)) {
-        const text = this.segmentTexts.get(id);
-        const state = text ? await this.decodeCourse(id, text) : emptyGradeState(this.store);
-        this.courseCache.set(id, state);
-        this.rememberPerformanceIndex(id, state);
+    return this.queueGradeCourseJob(async () => {
+      const previous = this.loadedCourseId;
+      for (const id of ids) {
+        if (!this.courseCache.has(id)) {
+          const text = this.segmentTexts.get(id);
+          const state = text ? await this.decodeCourse(id, text) : emptyGradeState(this.store);
+          this.courseCache.set(id, state);
+          this.rememberPerformanceIndex(id, state);
+        }
       }
-    }
-    if (previous) {
-      this.store.replaceGradeVaultState(this.courseCache.get(previous) || emptyGradeState(this.store));
-      this.loadedCourseId = previous;
-    }
-    return this.buildPerformanceIndex(ids);
+      if (previous) {
+        this.store.replaceGradeVaultState(this.courseCache.get(previous) || emptyGradeState(this.store));
+        this.loadedCourseId = previous;
+      }
+      return this.buildPerformanceIndex(ids);
+    });
   }
 
   async getCourseContentSignature(courseId, text, options = {}) {
