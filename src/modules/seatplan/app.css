@@ -1,3 +1,11 @@
+        .course-seatplans { margin-top: 12px; padding: 12px; border: 1px solid var(--module-surface-border); border-radius: 12px; }
+        .course-seatplans h2 { margin: 0 0 8px; font-size: 0.95rem; }
+        .course-seatplans-list { display: grid; gap: 8px; }
+        .course-seatplan-item { display: grid; gap: 6px; padding: 8px; border: 1px solid var(--control-border); border-radius: 9px; }
+        .course-seatplan-item.is-current { border-color: var(--accent); }
+        .course-seatplan-item.is-selected { background: var(--highlight-neutral-soft); }
+        .course-seatplan-item-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+        .course-seatplan-item-actions button { font-size: 0.8rem; padding: 5px 8px; }
         :root {
           --bg: #0f172a;
           --panel: #111827;

@@ -172,6 +172,10 @@
           <button id="print-plan" class="primary flex-1">Sitzplan<br>drucken</button>
           <input id="import-plan-file" type="file" accept="application/json,.json" hidden />
         </div>
+        <section id="course-seatplans" class="course-seatplans" aria-label="Gespeicherte Kurs-Sitzpläne" hidden>
+          <h2>Gespeicherte Sitzpläne</h2>
+          <div id="course-seatplans-list" class="course-seatplans-list"></div>
+        </section>
         <section id="roster-panel" class="roster-panel" aria-label="Freie Lernende">
           <div class="list" id="unseated"></div>
         </section>
@@ -392,6 +396,18 @@
           <div class="dialog-actions">
             <button type="button" id="course-save-dialog-file" class="ghost">Separate Sitzplan-Datei</button>
             <button type="button" id="course-save-dialog-grades" class="primary">Im Notenmodul</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="course-seatplan-confirm-dialog" aria-labelledby="course-seatplan-confirm-title">
+        <form class="dialog-form">
+          <div class="dialog-header">
+            <h2 id="course-seatplan-confirm-title" class="dialog-title">Sitzplan verwalten</h2>
+          </div>
+          <p id="course-seatplan-confirm-message" class="dialog-copy"></p>
+          <div class="dialog-actions">
+            <button type="button" id="course-seatplan-confirm-cancel" class="ghost">Abbrechen</button>
+            <button type="button" id="course-seatplan-confirm-accept" class="primary">Fortfahren</button>
           </div>
         </form>
       </dialog>

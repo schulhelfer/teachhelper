@@ -30266,15 +30266,16 @@ class GradesApp {
         ? (() => {
           const students = this.buildCourseSeatplanStudents(course.id, courseState.gradeStudents);
           const contextState = this.buildCourseSeatplanContextState(course.id, "", students);
-          const seatPlan = Array.isArray(courseState.gradeSeatPlans)
-            ? courseState.gradeSeatPlans.find((item) => Number(item?.courseId) === Number(course.id))?.plan || null
-            : null;
+          const seatPlans = Array.isArray(courseState.gradeSeatPlans) ? courseState.gradeSeatPlans : [];
+          const seatPlan = (seatPlans.find((item) => Number(item?.courseId) === Number(course.id) && item.isCurrent)
+            || seatPlans.find((item) => Number(item?.courseId) === Number(course.id)))?.plan || null;
           const pickerConfig = Array.isArray(courseState.gradePickerConfigs)
             ? courseState.gradePickerConfigs.find((item) => Number(item?.courseId) === Number(course.id))?.config || null
             : null;
           return {
             students,
             plan: seatPlan,
+            seatPlans,
             pickerConfig,
             contextToken: contextState.contextToken,
             rosterToken: contextState.rosterToken
@@ -30286,6 +30287,7 @@ class GradesApp {
           return {
             students,
             plan: this.store.getGradeSeatPlan(course.id),
+            seatPlans: this.store.listGradeSeatPlans(course.id),
             pickerConfig: this.store.getGradePickerConfig(course.id),
             contextToken: contextState.contextToken,
             rosterToken: contextState.rosterToken
@@ -30304,6 +30306,7 @@ class GradesApp {
         students: importPayload.students,
         showGradeStudentPortraits: this.shouldShowGradeStudentPortraits(),
         plan: importPayload.plan,
+        seatPlans: mode === "roster" ? importPayload.seatPlans : null,
         pickerConfig: mode === "picker" ? importPayload.pickerConfig : null,
         contextToken: importPayload.contextToken,
         rosterToken: importPayload.rosterToken,
@@ -30337,7 +30340,8 @@ class GradesApp {
         students: (Array.isArray(gradeState.gradeStudents) ? gradeState.gradeStudents : [])
           .filter((student) => Number(student?.courseId || 0) === id),
         plan: Array.isArray(gradeState.gradeSeatPlans)
-          ? gradeState.gradeSeatPlans.find((item) => Number(item?.courseId) === id)?.plan || null
+          ? (gradeState.gradeSeatPlans.find((item) => Number(item?.courseId) === id && item.isCurrent)
+            || gradeState.gradeSeatPlans.find((item) => Number(item?.courseId) === id))?.plan || null
           : null
       };
     }
@@ -30831,6 +30835,7 @@ class GradesApp {
       return false;
     }
     const plan = this.store.getGradeSeatPlan(courseKey);
+    const seatPlans = this.store.listGradeSeatPlans(courseKey);
     const lessonId = Number(lesson?.id || 0);
     const lessonDate = String(lesson?.lessonDate || "").trim();
     const students = this.buildCourseSeatplanStudents(courseKey);
@@ -30846,6 +30851,7 @@ class GradesApp {
         courseName: String(course?.name || "Kurs"),
         students,
         plan,
+        seatPlans,
         contextToken: contextState.contextToken,
         rosterToken: contextState.rosterToken,
         gradeConfig,
@@ -31475,8 +31481,10 @@ class GradesApp {
     const lessonDate = String(detail?.lessonDate || "").trim();
     const contextToken = String(detail?.contextToken || "");
     const rosterToken = String(detail?.rosterToken || "");
+    const action = detail?.action === "activate" || detail?.action === "delete" ? detail.action : "create";
+    const planId = String(detail?.planId || "");
     const plan = detail?.plan && typeof detail.plan === "object" ? detail.plan : null;
-    if (!requestId || !courseId || !contextToken || !rosterToken || !plan) {
+    if (!requestId || !courseId || !contextToken || !rosterToken || (action === "create" ? !plan : !planId)) {
       this.dispatchCourseSeatplanSaveResult({
         requestId,
         courseId,
@@ -31516,11 +31524,15 @@ class GradesApp {
           staleError.code = "STALE_GRADE_CONTEXT";
           throw staleError;
         }
-        const result = this.store.saveGradeSeatPlan(courseId, plan);
+        const result = action === "activate"
+          ? this.store.setCurrentGradeSeatPlan(courseId, planId)
+          : action === "delete"
+            ? this.store.deleteGradeSeatPlan(courseId, planId)
+            : this.store.createGradeSeatPlan(courseId, plan);
         if (!result) {
           throw new Error("Sitzplan konnte nicht sicher gespeichert werden.");
         }
-        return result;
+        return { row: result, seatPlans: this.store.listGradeSeatPlans(courseId) };
       }, { preserveRoster: true });
       this.dispatchCourseSeatplanSaveResult({
         requestId,
@@ -31528,8 +31540,12 @@ class GradesApp {
         contextToken,
         rosterToken,
         ok: true,
-        updatedAt: saved?.updatedAt || new Date().toISOString(),
-        message: "Sitzplan im Notenmodul gespeichert."
+        seatPlans: saved.seatPlans,
+        action,
+        selectedPlanId: action === "create" ? saved.row?.id || '' : planId,
+        updatedAt: saved.row?.updatedAt || new Date().toISOString(),
+        message: action === "activate" ? "Sitzplan ist jetzt aktuell."
+          : action === "delete" ? "Sitzplan gelöscht." : "Sitzplan im Notenmodul gespeichert."
       });
       return true;
     } catch (error) {

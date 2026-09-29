@@ -2868,11 +2868,65 @@ export class WorkspaceStore {
     if (!id) {
       return null;
     }
-    const row = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id);
+    const row = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id && item.isCurrent);
     if (!row || !row.plan || typeof row.plan !== "object") {
       return null;
     }
     return cloneJsonValue(row.plan, null);
+  }
+
+  listGradeSeatPlans(courseId) {
+    const id = Number(courseId);
+    return cloneJsonValue(this.gradeVaultState.gradeSeatPlans
+      .filter((item) => Number(item.courseId) === id)
+      .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt))), []);
+  }
+
+  createGradeSeatPlan(courseId, plan) {
+    const id = Number(courseId);
+    if (!id || !isRecord(plan)) return null;
+    const normalizedPlan = cloneJsonValue(plan, {});
+    delete normalizedPlan.students;
+    const rows = this.gradeVaultState.gradeSeatPlans.filter((item) => Number(item.courseId) === id);
+    const latest = Math.max(0, ...rows.map((item) => Date.parse(item.createdAt) || 0));
+    const now = new Date(Math.max(Date.now(), latest + 1)).toISOString();
+    const row = {
+      courseId: id,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      plan: normalizedPlan,
+      createdAt: now,
+      updatedAt: now,
+      isCurrent: rows.length === 0
+    };
+    this.gradeVaultState.gradeSeatPlans.push(row);
+    this._saveGradeVault();
+    return cloneJsonValue(row, null);
+  }
+
+  setCurrentGradeSeatPlan(courseId, planId) {
+    const id = Number(courseId);
+    const selected = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id && item.id === planId);
+    if (!selected) return null;
+    this.gradeVaultState.gradeSeatPlans.forEach((item) => {
+      if (Number(item.courseId) === id) item.isCurrent = item === selected;
+    });
+    this._saveGradeVault();
+    return cloneJsonValue(selected, null);
+  }
+
+  deleteGradeSeatPlan(courseId, planId) {
+    const id = Number(courseId);
+    const index = this.gradeVaultState.gradeSeatPlans.findIndex((item) => Number(item.courseId) === id && item.id === planId);
+    if (index < 0) return null;
+    const [removed] = this.gradeVaultState.gradeSeatPlans.splice(index, 1);
+    if (removed.isCurrent) {
+      const replacement = this.gradeVaultState.gradeSeatPlans
+        .filter((item) => Number(item.courseId) === id)
+        .sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0];
+      if (replacement) replacement.isCurrent = true;
+    }
+    this._saveGradeVault();
+    return cloneJsonValue(removed, null);
   }
 
   saveGradeSeatPlan(courseId, plan) {
@@ -2887,11 +2941,11 @@ export class WorkspaceStore {
       plan: normalizedPlan,
       updatedAt: new Date().toISOString()
     };
-    const existing = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id);
+    const existing = this.gradeVaultState.gradeSeatPlans.find((item) => Number(item.courseId) === id && item.isCurrent);
     if (existing) {
-      Object.assign(existing, row);
+      Object.assign(existing, row, { id: existing.id, createdAt: existing.createdAt, isCurrent: true });
     } else {
-      this.gradeVaultState.gradeSeatPlans.push(row);
+      this.gradeVaultState.gradeSeatPlans.push({ ...row, id: `${Date.now()}-${Math.random().toString(36).slice(2)}`, createdAt: row.updatedAt, isCurrent: true });
     }
     this._saveGradeVault();
     return cloneJsonValue(row, null);
@@ -5000,14 +5054,17 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         importedAt: String(item.importedAt || "")
       };
     }) : [],
-    gradeSeatPlans: Array.isArray(source.gradeSeatPlans) ? source.gradeSeatPlans.map((raw) => {
+    gradeSeatPlans: Array.isArray(source.gradeSeatPlans) ? source.gradeSeatPlans.map((raw, index) => {
       const item = asObject(raw);
       const plan = cloneJsonValue(isRecord(item.plan) ? item.plan : {}, {});
       delete plan.students;
       return {
         courseId: Number(item.courseId),
+        id: String(item.id || `legacy-${Number(item.courseId)}-${index}`),
         plan,
-        updatedAt: String(item.updatedAt || "")
+        createdAt: String(item.createdAt || item.updatedAt || ""),
+        updatedAt: String(item.updatedAt || ""),
+        isCurrent: item.isCurrent === true
       };
     }) : [],
     gradePickerConfigs: Array.isArray(source.gradePickerConfigs) ? source.gradePickerConfigs.map((raw) => {
@@ -5071,6 +5128,17 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
     .filter((item) => item.courseId > 0);
   normalized.gradeSeatPlans = normalized.gradeSeatPlans
     .filter((item) => item.courseId > 0 && item.plan && typeof item.plan === "object");
+  const seatPlansByCourse = new Map();
+  normalized.gradeSeatPlans.forEach((item) => {
+    const rows = seatPlansByCourse.get(item.courseId) || [];
+    rows.push(item);
+    seatPlansByCourse.set(item.courseId, rows);
+  });
+  seatPlansByCourse.forEach((rows) => {
+    const current = rows.find((item) => item.isCurrent)
+      || rows.slice().sort((left, right) => String(right.createdAt).localeCompare(String(left.createdAt)))[0];
+    rows.forEach((item) => { item.isCurrent = item === current; });
+  });
   const pickerConfigsByCourseId = new Map();
   normalized.gradePickerConfigs.forEach((item) => {
     if (item.courseId <= 0 || !item.config || typeof item.config !== "object") return;

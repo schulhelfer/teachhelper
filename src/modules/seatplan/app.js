@@ -44,10 +44,16 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             gridDialogCancel: document.getElementById('grid-dialog-cancel'),
             gridDialogMinimum: document.getElementById('grid-dialog-minimum'),
             exportPlan: document.getElementById('export-plan'),
+            courseSeatplans: document.getElementById('course-seatplans'),
+            courseSeatplansList: document.getElementById('course-seatplans-list'),
             courseSaveDialog: document.getElementById('course-save-dialog'),
             courseSaveDialogFile: document.getElementById('course-save-dialog-file'),
             courseSaveDialogGrades: document.getElementById('course-save-dialog-grades'),
             courseSaveDialogCancel: document.getElementById('course-save-dialog-cancel'),
+            courseSeatplanConfirmDialog: document.getElementById('course-seatplan-confirm-dialog'),
+            courseSeatplanConfirmMessage: document.getElementById('course-seatplan-confirm-message'),
+            courseSeatplanConfirmCancel: document.getElementById('course-seatplan-confirm-cancel'),
+            courseSeatplanConfirmAccept: document.getElementById('course-seatplan-confirm-accept'),
             exportFileNameDialog: document.getElementById('export-file-name-dialog'),
             exportFileNameDialogInput: document.getElementById('export-file-name-dialog-input'),
             exportFileNameDialogCancel: document.getElementById('export-file-name-dialog-cancel'),
@@ -547,6 +553,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             optimalScorePending: false,
             optimalScoreVersion: 0,
             courseContext: null,
+            courseSeatPlans: [],
+            selectedCourseSeatPlanId: '',
             courseSeatplanBaseline: '',
             pendingCourseSwitchCourseId: 0,
             pendingCourseSaveRequestId: '',
@@ -897,11 +905,115 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             }
           }
 
+          function getCurrentCourseSeatPlan() {
+            return state.courseSeatPlans.find(plan => plan.isCurrent) || null;
+          }
+
+          function confirmCourseSeatplanAction(message) {
+            const dialog = els.courseSeatplanConfirmDialog;
+            if (!dialog || dialog.open) return Promise.resolve(false);
+            els.courseSeatplanConfirmMessage.textContent = message;
+            return new Promise(resolve => {
+              let settled = false;
+              const finish = accepted => {
+                if (settled) return;
+                settled = true;
+                dialog.removeEventListener('cancel', onCancel);
+                dialog.removeEventListener('close', onClose);
+                els.courseSeatplanConfirmCancel.removeEventListener('click', onCancel);
+                els.courseSeatplanConfirmAccept.removeEventListener('click', onAccept);
+                if (dialog.open && typeof dialog.close === 'function') dialog.close();
+                dialog.removeAttribute('open');
+                resolve(accepted);
+              };
+              const onCancel = event => { event?.preventDefault(); finish(false); };
+              const onAccept = () => finish(true);
+              const onClose = () => finish(false);
+              dialog.addEventListener('cancel', onCancel);
+              dialog.addEventListener('close', onClose);
+              els.courseSeatplanConfirmCancel.addEventListener('click', onCancel);
+              els.courseSeatplanConfirmAccept.addEventListener('click', onAccept);
+              if (typeof dialog.showModal === 'function') dialog.showModal();
+              else dialog.setAttribute('open', 'open');
+              els.courseSeatplanConfirmAccept.focus({ preventScroll: true });
+            });
+          }
+
+          async function selectSavedCourseSeatPlan(planId) {
+            const courseContext = state.courseContext;
+            const selected = state.courseSeatPlans.find(plan => plan.id === planId);
+            if (!selected || state.pendingCourseSaveRequestId) return false;
+            if (state.selectedCourseSeatPlanId === planId) return true;
+            if (hasUnsavedCourseSeatplanChanges() && !await confirmCourseSeatplanAction('Ungespeicherte Änderungen am Sitzplan verwerfen?')) return false;
+            if (hasCourseGradeUnsavedChanges() && !await confirmCourseSeatplanAction('Ungespeicherte Noteneingaben verwerfen?')) return false;
+            if (state.courseContext !== courseContext || !state.courseSeatPlans.some(plan => plan.id === planId)) return false;
+            if (isCourseGradeMode()) {
+              resetCourseGradeMode();
+              requestShellChromeCollapsed(false);
+            }
+            applyCoursePlanData(selected.plan, state.courseContext.students);
+            state.selectedCourseSeatPlanId = planId;
+            setCourseSeatplanBaseline();
+            markPlanSavedAction();
+            updateCourseSeatplanUi();
+            return true;
+          }
+
+          function renderCourseSeatPlans() {
+            if (!els.courseSeatplans || !els.courseSeatplansList) return;
+            els.courseSeatplans.hidden = !isCourseSeatplanMode();
+            els.courseSeatplansList.replaceChildren();
+            if (!isCourseSeatplanMode()) return;
+            if (!state.courseSeatPlans.length) {
+              const empty = document.createElement('p');
+              empty.textContent = 'Noch keine gespeicherten Sitzpläne.';
+              els.courseSeatplansList.append(empty);
+              return;
+            }
+            state.courseSeatPlans.forEach(plan => {
+              const row = document.createElement('div');
+              row.className = 'course-seatplan-item';
+              row.classList.toggle('is-current', plan.isCurrent);
+              row.classList.toggle('is-selected', plan.id === state.selectedCourseSeatPlanId);
+              const label = document.createElement('span');
+              const date = new Date(plan.createdAt || plan.updatedAt);
+              const dateLabel = Number.isNaN(date.getTime())
+                ? 'Gespeicherter Sitzplan'
+                : new Intl.DateTimeFormat('de-DE', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+              label.textContent = `${dateLabel}${plan.isCurrent ? ' · Aktuell' : ''}${plan.id === state.selectedCourseSeatPlanId ? ' · Angezeigt' : ''}`;
+              const actions = document.createElement('div');
+              actions.className = 'course-seatplan-item-actions';
+              const show = document.createElement('button');
+              show.type = 'button';
+              show.textContent = 'Anzeigen';
+              show.disabled = plan.id === state.selectedCourseSeatPlanId || Boolean(state.pendingCourseSaveRequestId);
+              show.addEventListener('click', () => { void selectSavedCourseSeatPlan(plan.id); });
+              actions.append(show);
+              if (!plan.isCurrent) {
+                const activate = document.createElement('button');
+                activate.type = 'button';
+                activate.textContent = 'Als aktuell festlegen';
+                activate.disabled = Boolean(state.pendingCourseSaveRequestId);
+                activate.addEventListener('click', () => { void confirmAndRequestCourseSeatplanAction('activate', plan.id); });
+                actions.append(activate);
+              }
+              const remove = document.createElement('button');
+              remove.type = 'button';
+              remove.textContent = 'Löschen';
+              remove.disabled = Boolean(state.pendingCourseSaveRequestId);
+              remove.addEventListener('click', () => { void confirmAndRequestCourseSeatplanAction('delete', plan.id, dateLabel); });
+              actions.append(remove);
+              row.append(label, actions);
+              els.courseSeatplansList.append(row);
+            });
+          }
+
           function updateCourseSeatplanUi() {
             const active = isCourseSeatplanMode();
             const canSwitchRoster = canSwitchCourseRoster();
             syncCourseRosterResetButton();
             appEl.dataset.courseSeatplan = active ? '1' : '0';
+            renderCourseSeatPlans();
             appEl.dataset.courseRosterSwitch = canSwitchRoster ? '1' : '0';
             if (els.exportPlan) {
               els.exportPlan.disabled = Boolean(state.pendingCourseSaveRequestId) || Boolean(state.pendingCourseGradeSaveRequestId);
@@ -1193,6 +1305,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!canResetCourseRoster()) return;
             if (!await chooseCourseRosterReset()) return;
             state.courseContext = null;
+            state.courseSeatPlans = [];
+            state.selectedCourseSeatPlanId = '';
             state.courseSeatplanBaseline = '';
             state.pendingCourseSwitchCourseId = 0;
             state.pendingCourseSaveRequestId = '';
@@ -1434,6 +1548,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               students: Array.isArray(detail.students) ? detail.students : [],
               showGradeStudentPortraits: detail.showGradeStudentPortraits === true,
               plan: detail.plan && typeof detail.plan === 'object' ? detail.plan : null,
+              seatPlans: Array.isArray(detail.seatPlans) ? detail.seatPlans : [],
               contextToken: normalizeCourseGradeToken(detail.contextToken),
               rosterToken: normalizeCourseGradeToken(detail.rosterToken),
               requestedAt: new Date().toISOString(),
@@ -1613,6 +1728,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               rosterToken,
               loadedAt: String(detail.requestedAt || new Date().toISOString()),
             };
+            state.courseSeatPlans = Array.isArray(detail.seatPlans) ? detail.seatPlans : [];
+            state.selectedCourseSeatPlanId = getCurrentCourseSeatPlan()?.id || '';
             state.showGradeStudentPortraits = detail.showGradeStudentPortraits === true;
             state.csvName = state.courseContext.courseName;
             state.pendingCourseSwitchCourseId = 0;
@@ -1689,12 +1806,25 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             );
           }
 
-          function requestCourseSeatplanSave() {
+          async function confirmAndRequestCourseSeatplanAction(action, planId, dateLabel = '') {
+            const courseContext = state.courseContext;
+            if (action === 'delete' && !await confirmCourseSeatplanAction(`Sitzplan vom ${dateLabel} wirklich löschen?`)) return;
+            if (hasCourseGradeUnsavedChanges() && !await confirmCourseSeatplanAction('Ungespeicherte Noteneingaben verwerfen?')) return;
+            if (action === 'delete' && planId === state.selectedCourseSeatPlanId
+              && hasUnsavedCourseSeatplanChanges()
+              && !await confirmCourseSeatplanAction('Ungespeicherte Änderungen am angezeigten Sitzplan verwerfen?')) return;
+            if (state.courseContext !== courseContext) return;
+            requestCourseSeatplanSave(action, planId);
+          }
+
+          function requestCourseSeatplanSave(action = 'create', planId = '') {
             if (!isCourseSeatplanMode()) {
               return false;
             }
-            const plan = createCoursePlanSnapshot();
-            if (!plan) return false;
+            if (state.pendingCourseSaveRequestId) return false;
+            if (action !== 'create' && !state.courseSeatPlans.some(item => item.id === planId)) return false;
+            const plan = action === 'create' ? createCoursePlanSnapshot() : null;
+            if (action === 'create' && !plan) return false;
             const courseId = Number(state.courseContext?.courseId || 0);
             const contextToken = normalizeCourseGradeToken(state.courseContext?.contextToken);
             const rosterToken = normalizeCourseGradeToken(state.courseContext?.rosterToken);
@@ -1704,7 +1834,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             }
             const requestId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
             state.pendingCourseSaveRequestId = requestId;
-            state.pendingCourseSaveRequest = { requestId, courseId, contextToken, rosterToken };
+            state.pendingCourseSaveRequest = {
+              requestId, courseId, contextToken, rosterToken, action, planId,
+              snapshotKey: action === 'create' ? getCourseSeatplanSnapshotKey() : ''
+            };
             updateCourseSeatplanUi();
             window.parent?.postMessage(withModuleFrameNonce({
               type: SEATPLAN_COURSE_SAVE_REQUEST_EVENT,
@@ -1714,6 +1847,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                 lessonDate: String(state.courseContext?.lessonDate || ''),
                 contextToken,
                 rosterToken,
+                action,
+                planId,
                 plan,
               }
             }), PARENT_MESSAGE_TARGET);
@@ -1836,6 +1971,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             }
             const target = await chooseCourseSeatplanSaveTarget();
             if (target === 'grades') {
+              if (hasCourseGradeUnsavedChanges() && !await confirmCourseSeatplanAction('Ungespeicherte Noteneingaben verwerfen?')) return;
               requestCourseSeatplanSave();
               return;
             }
@@ -1868,8 +2004,22 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             const targetCourseId = Number(state.pendingCourseSwitchCourseId || 0);
             if (detail.ok) {
               showMessage(detail.message || 'Sitzplan im Notenmodul gespeichert.', 'success', { presentation: 'toast' });
-              setCourseSeatplanBaseline();
-              markPlanSavedAction();
+              state.courseSeatPlans = Array.isArray(detail.seatPlans) ? detail.seatPlans : state.courseSeatPlans;
+              if (isCourseGradeMode()) {
+                resetCourseGradeMode();
+                requestShellChromeCollapsed(false);
+              }
+              if (pending.action === 'create') {
+                state.selectedCourseSeatPlanId = String(detail.selectedPlanId || '');
+                state.courseSeatplanBaseline = pending.snapshotKey;
+                if (!hasUnsavedCourseSeatplanChanges()) markPlanSavedAction();
+              } else if (pending.action === 'delete' && pending.planId === state.selectedCourseSeatPlanId) {
+                const replacement = getCurrentCourseSeatPlan() || state.courseSeatPlans[0] || null;
+                state.selectedCourseSeatPlanId = replacement?.id || '';
+                applyCoursePlanData(replacement?.plan || null, state.courseContext.students);
+                setCourseSeatplanBaseline();
+                markPlanSavedAction();
+              }
               state.pendingCourseSwitchCourseId = 0;
               updateCourseSeatplanUi();
               if (targetCourseId) startGradeRosterImport(targetCourseId);
@@ -2194,6 +2344,13 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
 
           function requestCourseGradeConfig(studentId = '', options = {}) {
             if (!isCourseSeatplanMode() || !Number(state.courseContext?.lessonId || 0)) return;
+            const currentPlan = getCurrentCourseSeatPlan();
+            if (currentPlan && currentPlan.id !== state.selectedCourseSeatPlanId) {
+              void selectSavedCourseSeatPlan(currentPlan.id).then(selected => {
+                if (selected) requestCourseGradeConfig(studentId, options);
+              });
+              return;
+            }
             const courseId = Number(state.courseContext?.courseId || 0);
             const contextToken = normalizeCourseGradeToken(state.courseContext?.contextToken);
             if (!courseId || !contextToken) {
@@ -3599,6 +3756,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           function clearCourseRosterForPlanningReturn() {
             if (!isCourseSeatplanMode()) return;
             state.courseContext = null;
+            state.courseSeatPlans = [];
+            state.selectedCourseSeatPlanId = '';
             state.courseSeatplanBaseline = '';
             state.pendingCourseSwitchCourseId = 0;
             state.pendingCourseSaveRequestId = '';
