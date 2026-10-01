@@ -1,6 +1,7 @@
 import { getWorkspaceClient } from '../modules/workspace/client.js';
 import { createQrCameraController } from './qr-camera-controller.js';
 import { createPdfPrintController } from './pdf-print-controller.js';
+import { createPdfPrintHelpController } from './pdf-print-help-controller.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
@@ -36,7 +37,9 @@ export function createIframeModuleShellBindings({
 }) {
   let qrCameraController = null;
   let pdfPrintController = null;
+  let pdfPrintHelpController = null;
   registerCleanup(() => pdfPrintController?.dispose());
+  registerCleanup(() => pdfPrintHelpController?.dispose());
   const printModuleResult = (detail) => {
     if (appEl?.dataset?.helpPreview === 'true') return;
     pdfPrintController ||= createPdfPrintController({ documentRef: document, view: window, showMessage });
@@ -260,6 +263,11 @@ export function createIframeModuleShellBindings({
       },
       onMergerPrintResultRequest: (detail) => {
         printModuleResult(detail);
+      },
+      onMergerPrintHelpRequest: ({ frame }) => {
+        if (appEl?.dataset?.helpPreview === 'true') return;
+        pdfPrintHelpController ||= createPdfPrintHelpController({ documentRef: document, view: window });
+        pdfPrintHelpController.open(frame);
       },
       onQrCameraRequest: (detail) => {
         if (detail.action === 'stop') {

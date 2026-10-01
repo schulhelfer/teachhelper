@@ -43,10 +43,6 @@
           <button id="tool-tab-split" class="tool-tab" type="button" role="tab" data-tool="split"
             aria-controls="tool-panel-split" aria-selected="false">Aufteilen</button>
         </div>
-        <label class="field checkbox-field auto-print-field">
-          <input id="autoPrintToggle" type="checkbox" checked>
-          <span>Automatisch Drucken</span>
-        </label>
         <section id="splitSidebarPanel" class="tool-sidebar-panel split-sidebar-panel" aria-labelledby="tool-tab-split" hidden>
           <section class="split-toolbar-group split-toolbar-group-selection" aria-labelledby="splitSelectionHeading">
             <div class="split-toolbar-group-head">
@@ -109,7 +105,12 @@
               </div>
             </div>
             <div class="controls">
-              <button id="mergeStartButton" class="start" type="button">Zusammenführen</button>
+              <div class="print-action">
+                <button id="mergePrintButton" class="start" type="button">Drucken</button>
+                <button id="mergePrintHelpButton" class="print-help-button" type="button"
+                  aria-label="Hinweise zum Drucken" aria-haspopup="dialog">ℹ️</button>
+              </div>
+              <button id="mergeSaveButton" class="start" type="button">Speichern</button>
             </div>
           </div>
         </section>
@@ -193,7 +194,12 @@
         </section>
 
         <div class="controls">
-          <button id="layoutStartButton" class="start" type="button">Zusammenführen</button>
+          <div class="print-action">
+            <button id="layoutPrintButton" class="start" type="button">Drucken</button>
+            <button id="layoutPrintHelpButton" class="print-help-button" type="button"
+              aria-label="Hinweise zum Drucken" aria-haspopup="dialog">ℹ️</button>
+          </div>
+          <button id="layoutSaveButton" class="start" type="button">Speichern</button>
         </div>
       </div>
     </section>
@@ -248,7 +254,12 @@
         </section>
 
         <div class="controls">
-          <button id="rotateStartButton" class="start" type="button">PDF drehen</button>
+          <div class="print-action">
+            <button id="rotatePrintButton" class="start" type="button">Drucken</button>
+            <button id="rotatePrintHelpButton" class="print-help-button" type="button"
+              aria-label="Hinweise zum Drucken" aria-haspopup="dialog">ℹ️</button>
+          </div>
+          <button id="rotateSaveButton" class="start" type="button">Speichern</button>
         </div>
       </div>
     </section>
@@ -277,7 +288,12 @@
         </section>
 
         <div class="controls split-controls">
-          <button id="splitStartButton" class="start" type="button">PDF aufteilen</button>
+          <div class="print-action">
+            <button id="splitPrintButton" class="start" type="button">Drucken</button>
+            <button id="splitPrintHelpButton" class="print-help-button" type="button"
+              aria-label="Hinweise zum Drucken" aria-haspopup="dialog">ℹ️</button>
+          </div>
+          <button id="splitSaveButton" class="start" type="button">Speichern</button>
         </div>
       </div>
     </section>

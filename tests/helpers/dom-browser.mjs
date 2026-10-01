@@ -149,5 +149,6 @@ export async function openDomBrowser(t, options = {}) {
   evaluate.setViewport = setViewport;
   evaluate.printToPdf = async () => (await command('Page.printToPDF', { preferCSSPageSize: true, printBackground: true }, sessionId)).data;
   evaluate.dispatchMouseEvent = (event) => command('Input.dispatchMouseEvent', event, sessionId);
+  evaluate.dispatchKeyEvent = (event) => command('Input.dispatchKeyEvent', event, sessionId);
   return evaluate;
 }

@@ -1,4 +1,6 @@
 import {
+  MERGER_PRINT_HELP_CLOSED_EVENT,
+  MERGER_PRINT_HELP_REQUEST_EVENT,
   MERGER_PRINT_RESULT_REQUEST_EVENT,
   MERGER_SHELL_LAYOUT_EVENT,
   MERGER_TOOL_REQUEST_EVENT,
@@ -50,6 +52,7 @@ function createMergerApp({
     : window.location.origin;
   const MODULE_FRAME_NONCE = new URLSearchParams(window.location.hash.replace(/^#/, "")).get("moduleFrameNonce") || "";
   const ALLOWED_PARENT_MESSAGE_TYPES = new Set([
+    MERGER_PRINT_HELP_CLOSED_EVENT,
     MERGER_TOOL_REQUEST_EVENT,
     MERGER_SHELL_LAYOUT_EVENT,
     TUTORIAL_TARGET_RECT_REQUEST_EVENT,
@@ -109,25 +112,28 @@ function createMergerApp({
     mergeFileListShell: getElementById("mergeFileListShell"),
     mergeTotalPages: getElementById("mergeTotalPages"),
     mergeAppendFileList: getElementById("mergeAppendFileList"),
-    mergeStartButton: getElementById("mergeStartButton"),
+    mergePrintButton: getElementById("mergePrintButton"),
+    mergeSaveButton: getElementById("mergeSaveButton"),
     layoutDropZone: getElementById("layoutDropZone"),
     layoutDropHint: getElementById("layoutDropHint"),
     layoutDropSummary: getElementById("layoutDropSummary"),
     optionsPanel: getElementById("optionsPanel"),
     pagesButtons: [...querySelectorAll("#pagesButtons button[data-pages]")],
     autoOrientationToggle: getElementById("autoOrientationToggle"),
-    autoPrintToggle: getElementById("autoPrintToggle"),
+    printHelpButtons: [...querySelectorAll(".print-help-button")],
     studentCount: getElementById("studentCount"),
     paddingModes: [...querySelectorAll('input[name="paddingMode"]')],
     specialThreeModeButton: getElementById("specialThreeModeButton"),
-    layoutStartButton: getElementById("layoutStartButton"),
+    layoutPrintButton: getElementById("layoutPrintButton"),
+    layoutSaveButton: getElementById("layoutSaveButton"),
     rotateDropZone: getElementById("rotateDropZone"),
     rotateDropHint: getElementById("rotateDropHint"),
     rotateDropSummary: getElementById("rotateDropSummary"),
     rotateDocumentDegreesButtons: [...querySelectorAll("#rotateDocumentDegreesGroup [data-rotation]")],
     rotatePagesHint: getElementById("rotatePagesHint"),
     rotatePagesList: getElementById("rotatePagesList"),
-    rotateStartButton: getElementById("rotateStartButton"),
+    rotatePrintButton: getElementById("rotatePrintButton"),
+    rotateSaveButton: getElementById("rotateSaveButton"),
     splitDropZone: getElementById("splitDropZone"),
     splitDropHint: getElementById("splitDropHint"),
     splitDropSummary: getElementById("splitDropSummary"),
@@ -135,7 +141,8 @@ function createMergerApp({
     splitPagesList: getElementById("splitPagesList"),
     splitGroupRowsList: getElementById("splitGroupRowsList"),
     splitOutputModeButtons: [...querySelectorAll("[data-split-output-mode]")],
-    splitStartButton: getElementById("splitStartButton"),
+    splitPrintButton: getElementById("splitPrintButton"),
+    splitSaveButton: getElementById("splitSaveButton"),
     splitActivateAllButton: getElementById("splitActivateAllButton"),
     splitDeactivateAllButton: getElementById("splitDeactivateAllButton"),
     resultDialog: getElementById("resultDialog"),
@@ -150,6 +157,8 @@ function createMergerApp({
 
   let activeTool = TOOL_LAYOUT;
   let pendingPickerTarget = null;
+  let outputInProgress = false;
+  let pendingPrintHelpButton = null;
 
   function blockBrowserContextMenu(event) {
     event.preventDefault();
@@ -468,6 +477,11 @@ function createMergerApp({
     messageListener = (event) => {
       if (!isTrustedParentMessage(event)) return;
       const data = event.data;
+      if (data.type === MERGER_PRINT_HELP_CLOSED_EVENT) {
+        pendingPrintHelpButton?.focus();
+        pendingPrintHelpButton = null;
+        return;
+      }
       if (data.type === TUTORIAL_TARGET_RECT_REQUEST_EVENT) {
         respondWithTutorialTargetRect(data.detail && typeof data.detail === "object" ? data.detail : {});
         return;
@@ -2212,21 +2226,33 @@ function createMergerApp({
             return button;
           }
 
+          function setOutputButtonsDisabled(tool, disabled) {
+            ui[`${tool}PrintButton`].disabled = disabled || outputInProgress;
+            ui[`${tool}SaveButton`].disabled = disabled || outputInProgress;
+          }
+
+          function syncOutputButtonStates() {
+            syncLayoutStartButtonState();
+            syncMergeStartButtonState();
+            syncRotateStartButtonState();
+            syncSplitButtonsState();
+          }
+
           function syncLayoutStartButtonState() {
             if (!layoutState.file) {
-              ui.layoutStartButton.disabled = true;
+              setOutputButtonsDisabled(TOOL_LAYOUT, true);
               return;
             }
             const isLcmWithoutStudentCount = getPaddingModeValue() === "lcm" && !ui.studentCount.value.trim();
-            ui.layoutStartButton.disabled = isLcmWithoutStudentCount;
+            setOutputButtonsDisabled(TOOL_LAYOUT, isLcmWithoutStudentCount);
           }
 
           function syncMergeStartButtonState() {
-            ui.mergeStartButton.disabled = mergeState.files.length < 2;
+            setOutputButtonsDisabled(TOOL_MERGE, mergeState.files.length < 2);
           }
 
           function syncRotateStartButtonState() {
-            ui.rotateStartButton.disabled = !rotateState.file || rotateState.loadingPages || !rotateState.pageRotations.length;
+            setOutputButtonsDisabled(TOOL_ROTATE, !rotateState.file || rotateState.loadingPages || !rotateState.pageRotations.length);
           }
 
           function setMergeTotalPagesText(value) {
@@ -3037,7 +3063,7 @@ function createMergerApp({
             const hasPages = splitState.pageCount > 0;
             const hasActivePages = getActiveSplitPageIndexes().length > 0;
             const disabled = !hasFile || splitState.loadingPages || Boolean(splitState.pageLoadError) || !hasPages;
-            ui.splitStartButton.disabled = disabled || !hasActivePages;
+            setOutputButtonsDisabled(TOOL_SPLIT, disabled || !hasActivePages);
             ui.splitActivateAllButton.disabled = disabled;
             ui.splitDeactivateAllButton.disabled = disabled;
           }
@@ -3707,7 +3733,6 @@ function createMergerApp({
           }
 
           function requestResultPrint(outputs) {
-            if (!ui.autoPrintToggle.checked) return;
             try {
               const printOutputs = outputs.map(({ bytes, name }) => ({
                 bytes: bytes.slice().buffer,
@@ -3718,13 +3743,17 @@ function createMergerApp({
                 detail: { outputs: printOutputs },
               }), TRUSTED_PARENT_ORIGIN, printOutputs.map(({ bytes }) => bytes));
             } catch (_error) {
-              showResultToast("Drucken konnte nicht gestartet werden. Bitte die heruntergeladene PDF öffnen und dort drucken.", "warn");
+              showResultToast("Drucken konnte nicht gestartet werden. Bitte erneut versuchen oder die PDF über „Speichern“ herunterladen.", "warn");
             }
           }
 
-          async function deliverMultiplePdfs(outputs, archiveName) {
+          async function deliverMultiplePdfs(outputs, archiveName, outputMode) {
+            if (outputMode === "print") {
+              requestResultPrint(outputs);
+              return;
+            }
             if (outputs.length === 1) {
-              await deliverSinglePdf(outputs[0].bytes, outputs[0].name, "PDF erstellt.");
+              await deliverSinglePdf(outputs[0].bytes, outputs[0].name, "PDF erstellt.", outputMode);
               return;
             }
 
@@ -3739,10 +3768,13 @@ function createMergerApp({
             triggerDownload(url, archiveName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
             showResultToast(`${outputs.length} PDFs als ZIP-Download erstellt.`, "success");
-            requestResultPrint(outputs);
           }
 
-          async function deliverSinglePdf(bytes, outputName, successMessage) {
+          async function deliverSinglePdf(bytes, outputName, successMessage, outputMode) {
+            if (outputMode === "print") {
+              requestResultPrint([{ bytes, name: outputName }]);
+              return;
+            }
             const blob = new Blob([bytes], { type: "application/pdf" });
             const shareResult = await tryShareMergedPdfOnIOS(blob, outputName);
 
@@ -3751,7 +3783,6 @@ function createMergerApp({
                 showResultDialog(`PDF wurde erstellt, Teilen wurde abgebrochen.\n${outputName}`, "warn", "Hinweis");
               } else {
                 showResultToast(successMessage, "success");
-                requestResultPrint([{ bytes, name: outputName }]);
               }
               return;
             }
@@ -3760,7 +3791,6 @@ function createMergerApp({
             triggerDownload(url, outputName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
             showResultToast(successMessage, "success");
-            requestResultPrint([{ bytes, name: outputName }]);
           }
 
           async function ensurePdfLibForTool(operationLabel) {
@@ -3796,7 +3826,8 @@ function createMergerApp({
             }
           }
 
-          async function handleLayoutStart() {
+          async function handleLayoutStart(outputMode) {
+            if (outputInProgress) return;
             if (!layoutState.file) {
               showResultDialog("Bitte zuerst eine PDF-Datei auswählen.", "warn", "Hinweis");
               return;
@@ -3809,7 +3840,8 @@ function createMergerApp({
               return;
             }
 
-            ui.layoutStartButton.disabled = true;
+            outputInProgress = true;
+            syncOutputButtonStates();
 
             try {
               if (!(window.PDFLib && window.PDFLib.PDFDocument)) {
@@ -3883,24 +3915,27 @@ function createMergerApp({
               );
 
               const outputName = buildOutputName(getBaseName(layoutState.file.name), copyCount);
-              await deliverSinglePdf(outBytes, outputName, "PDF erstellt.");
+              await deliverSinglePdf(outBytes, outputName, "PDF erstellt.", outputMode);
             } catch (error) {
               console.error(error);
               if (maybeShowMacOSPermissionHint(error)) return;
               const message = error && error.message ? error.message : "PDF konnte nicht verarbeitet werden.";
               showResultDialog(message, "error", "Fehler");
             } finally {
-              syncLayoutStartButtonState();
+              outputInProgress = false;
+              syncOutputButtonStates();
             }
           }
 
-          async function handleMergeStart() {
+          async function handleMergeStart(outputMode) {
+            if (outputInProgress) return;
             if (mergeState.files.length < 2) {
               showResultDialog("Bitte mindestens zwei PDF-Dateien auswählen.", "warn", "Hinweis");
               return;
             }
 
-            ui.mergeStartButton.disabled = true;
+            outputInProgress = true;
+            syncOutputButtonStates();
             try {
               const files = [];
               for (const file of mergeState.files) files.push(await readPdfFileBytes(file));
@@ -3910,18 +3945,20 @@ function createMergerApp({
               });
               const outBytes = new Uint8Array(result.data);
               const outputName = buildAppendOutputName(mergeState.files);
-              await deliverSinglePdf(outBytes, outputName, "PDFs zusammengeführt.");
+              await deliverSinglePdf(outBytes, outputName, "PDFs zusammengeführt.", outputMode);
             } catch (error) {
               console.error(error);
               if (maybeShowMacOSPermissionHint(error)) return;
               const message = error && error.message ? error.message : "PDFs konnten nicht zusammengeführt werden.";
               showResultDialog(message, "error", "Fehler");
             } finally {
-              syncMergeStartButtonState();
+              outputInProgress = false;
+              syncOutputButtonStates();
             }
           }
 
-          async function handleRotateStart() {
+          async function handleRotateStart(outputMode) {
+            if (outputInProgress) return;
             if (!rotateState.file) {
               showResultDialog("Bitte zuerst eine PDF-Datei auswählen.", "warn", "Hinweis");
               return;
@@ -3931,7 +3968,8 @@ function createMergerApp({
               return;
             }
 
-            ui.rotateStartButton.disabled = true;
+            outputInProgress = true;
+            syncOutputButtonStates();
             try {
               const data = await readPdfFileBytes(rotateState.file);
               if (!rotateState.pageRotations.length) {
@@ -3941,18 +3979,20 @@ function createMergerApp({
                 timeoutMs: FILE_TIMEOUTS.PDF_OPERATION_MS,
                 timeoutMessage: "Drehen hat zu lange gedauert. Bitte mit kleineren PDFs erneut versuchen.",
               });
-              await deliverSinglePdf(new Uint8Array(result.data), buildRotatedOutputName(rotateState.file.name), "PDF gedreht.");
+              await deliverSinglePdf(new Uint8Array(result.data), buildRotatedOutputName(rotateState.file.name), "PDF gedreht.", outputMode);
             } catch (error) {
               console.error(error);
               if (maybeShowMacOSPermissionHint(error)) return;
               const message = error && error.message ? error.message : "PDF konnte nicht gedreht werden.";
               showResultDialog(message, "error", "Fehler");
             } finally {
-              syncRotateStartButtonState();
+              outputInProgress = false;
+              syncOutputButtonStates();
             }
           }
 
-          async function handleSplitStart() {
+          async function handleSplitStart(outputMode) {
+            if (outputInProgress) return;
             if (!splitState.file) {
               showResultDialog("Bitte zuerst eine PDF-Datei auswählen.", "warn", "Hinweis");
               return;
@@ -3964,7 +4004,8 @@ function createMergerApp({
               return;
             }
 
-            ui.splitStartButton.disabled = true;
+            outputInProgress = true;
+            syncOutputButtonStates();
             try {
               const data = await readPdfFileBytes(splitState.file);
               const pageCount = splitState.pageCount;
@@ -3989,7 +4030,7 @@ function createMergerApp({
                       : buildSplitPartOutputName(splitState.file.name, index, groups.length),
                   };
                 });
-                await deliverMultiplePdfs(outputs, buildSplitArchiveOutputName(splitState.file.name));
+                await deliverMultiplePdfs(outputs, buildSplitArchiveOutputName(splitState.file.name), outputMode);
               } else {
                 const result = await runFileProcessingTask("pdf-split", { data, groups: [getOrderedActiveSplitPageIndexes()] }, {
                   timeoutMs: FILE_TIMEOUTS.PDF_OPERATION_MS,
@@ -3998,7 +4039,8 @@ function createMergerApp({
                 await deliverSinglePdf(
                   new Uint8Array(result.outputs[0]),
                   buildSplitCombinedOutputName(splitState.file.name),
-                  "PDF erstellt."
+                  "PDF erstellt.",
+                  outputMode
                 );
               }
             } catch (error) {
@@ -4007,7 +4049,8 @@ function createMergerApp({
               const message = error && error.message ? error.message : "PDF konnte nicht aufgeteilt werden.";
               showResultDialog(message, "error", "Fehler");
             } finally {
-              syncSplitButtonsState();
+              outputInProgress = false;
+              syncOutputButtonStates();
             }
           }
 
@@ -4092,6 +4135,11 @@ function createMergerApp({
             button.addEventListener("click", () => setActiveTool(button.dataset.tool));
           });
           ui.tutorialButton?.addEventListener("click", notifyParentTutorialStartRequest);
+          const requestPrintHelp = (event) => {
+            pendingPrintHelpButton = event.currentTarget;
+            window.parent.postMessage(withModuleFrameNonce({ type: MERGER_PRINT_HELP_REQUEST_EVENT }), TRUSTED_PARENT_ORIGIN);
+          };
+          ui.printHelpButtons.forEach((button) => button.addEventListener("click", requestPrintHelp));
           ui.sharedPdfInput.addEventListener("change", async () => {
             const files = [...(ui.sharedPdfInput.files || [])];
             const target = pendingPickerTarget;
@@ -4378,10 +4426,14 @@ function createMergerApp({
             renderSplitSelection();
           });
 
-          ui.layoutStartButton.addEventListener("click", handleLayoutStart);
-          ui.mergeStartButton.addEventListener("click", handleMergeStart);
-          ui.rotateStartButton.addEventListener("click", handleRotateStart);
-          ui.splitStartButton?.addEventListener("click", handleSplitStart);
+          ui.layoutPrintButton.addEventListener("click", () => void handleLayoutStart("print"));
+          ui.layoutSaveButton.addEventListener("click", () => void handleLayoutStart("save"));
+          ui.mergePrintButton.addEventListener("click", () => void handleMergeStart("print"));
+          ui.mergeSaveButton.addEventListener("click", () => void handleMergeStart("save"));
+          ui.rotatePrintButton.addEventListener("click", () => void handleRotateStart("print"));
+          ui.rotateSaveButton.addEventListener("click", () => void handleRotateStart("save"));
+          ui.splitPrintButton.addEventListener("click", () => void handleSplitStart("print"));
+          ui.splitSaveButton.addEventListener("click", () => void handleSplitStart("save"));
           ui.resultCloseButton.addEventListener("click", hideResultDialog);
           ui.resultDialog.addEventListener("close", () => {
             ui.resultDialog.classList.add("hidden");
@@ -4404,6 +4456,8 @@ function createMergerApp({
           return {
             applyShellLayout,
             dispose() {
+              ui.printHelpButtons.forEach((button) => button.removeEventListener("click", requestPrintHelp));
+              pendingPrintHelpButton = null;
               unbindBrowserContextMenuBlocker();
               [rotateState, splitState].forEach((state) => {
                 state.previewSetupToken += 1;

@@ -83,7 +83,31 @@ test('all six dialog integrations share their appearance across themes and viewp
       document.head.append(slowTransitions);
       const { createMessageApi } = await import('/src/shared/messages.js');
       const { applyFeedbackDialog } = await import('/src/shared/feedback-dialog.js');
+      await import('/src/shared/dialog-resize.js');
       const payload = '<img src=x onerror=alert(1)>\n' + 'Lange Fehlermeldung '.repeat(35);
+      window.feedbackLongMessage = payload;
+      window.measureFeedbackGeometry = () => {
+        const dialog = document.querySelector('.feedback-dialog');
+        const rect = dialog.getBoundingClientRect();
+        const icon = dialog.querySelector('.feedback-dialog-icon').getBoundingClientRect();
+        const title = dialog.querySelector('.feedback-dialog-title').getBoundingClientRect();
+        const body = dialog.querySelector('.feedback-dialog-body').getBoundingClientRect();
+        const textTop = Math.min(title.top, body.top);
+        const textBottom = Math.max(title.bottom, body.bottom);
+        const app = document.querySelector('.qr-runtime-root .app, .merger-runtime-root .app');
+        return {
+          centerXError: Math.abs(rect.left + rect.width / 2 - document.documentElement.clientWidth / 2),
+          centerYError: Math.abs(rect.top + rect.height / 2 - document.documentElement.clientHeight / 2),
+          iconCenterError: Math.abs(icon.top + icon.height / 2 - (textTop + textBottom) / 2),
+          backgroundFilter: getComputedStyle(dialog, '::backdrop').backdropFilter,
+          extraContentFilter: app ? getComputedStyle(app).filter : 'none',
+          position: getComputedStyle(dialog).position,
+          resizeReady: dialog.classList.contains('has-dialog-resize') && Boolean(dialog.querySelector('.dialog-resize-grip')),
+          width: rect.width,
+          height: rect.height,
+          fits: rect.left >= 0 && rect.right <= document.documentElement.clientWidth && rect.top >= 0 && rect.bottom <= document.documentElement.clientHeight,
+        };
+      };
       if (module === 'shell') {
         const api = createMessageApi(document);
         api.showMessage(payload, 'warn');
@@ -115,47 +139,98 @@ test('all six dialog integrations share their appearance across themes and viewp
         document.getElementById('messageText').textContent = payload;
       } else {
         await import('/src/modules/merger/app.js');
-        document.getElementById('mergeStartButton').dispatchEvent(new Event('click'));
+        const transfer = new DataTransfer();
+        transfer.items.add(new File(['Beispieldatei'], 'Beispiel.txt', { type: 'text/plain' }));
+        document.getElementById('layoutDropZone').dispatchEvent(new DragEvent('drop', {
+          dataTransfer: transfer, bubbles: true, cancelable: true,
+        }));
+        const deadline = performance.now() + 5000;
+        while (!document.getElementById('resultDialog').open && performance.now() < deadline) {
+          await new Promise(resolve => requestAnimationFrame(resolve));
+        }
+        if (document.getElementById('resultMessage').textContent !== 'Beispiel.txt: Bitte eine gültige PDF-Datei auswählen.') {
+          throw new Error('The invalid-file selection must display its validation warning');
+        }
+        document.body.classList.add('dialog-active');
         document.getElementById('resultMessage').textContent = payload;
       }
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, { module });
-    for (const width of [860, 320]) {
-      await evaluate.setViewport({ width, height: 740 });
-      for (const theme of ['light', 'dark']) {
-        const snapshot = await evaluate(async ({ theme, module }) => {
-          document.documentElement.dataset.theme = theme;
-          const dialog = document.querySelector('.feedback-dialog');
-          if (!dialog?.open) throw new Error(`${module}: Feedback dialog must be open; dialogs=${[...document.querySelectorAll('dialog')].map(node => `${node.id}:${node.open}:${node.className}`).join(',')}`);
-          for (const animation of dialog.getAnimations({ subtree: true })) {
-            if (Number.isFinite(animation.effect.getComputedTiming().endTime)) animation.finish();
-          }
-          await new Promise(resolve => requestAnimationFrame(resolve));
-          const body = dialog.querySelector('.feedback-dialog-body');
-          const button = dialog.querySelector('button.feedback-dialog-actions, .feedback-dialog-actions button:not([hidden]):not(.hidden)');
-          const icon = dialog.querySelector('.feedback-dialog-icon');
-          const style = getComputedStyle(dialog);
-          const bodyStyle = getComputedStyle(body);
-          const buttonStyle = getComputedStyle(button);
-          const rect = dialog.getBoundingClientRect();
-          return {
-            width: rect.width, radius: style.borderRadius, background: style.backgroundColor,
-            border: style.borderTopColor, font: bodyStyle.fontSize, lineHeight: bodyStyle.lineHeight,
-            textColor: bodyStyle.color, buttonBackgroundImage: buttonStyle.backgroundImage,
-            buttonBackgroundColor: buttonStyle.backgroundColor,
-            buttonRadius: buttonStyle.borderRadius, buttonFont: buttonStyle.fontSize,
-            iconSize: getComputedStyle(icon).fontSize, icon: icon.textContent,
-            iconCount: dialog.querySelectorAll('.feedback-dialog-icon').length,
-            safe: !body.querySelector('img'), fits: rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
-          };
-        }, { theme, module });
-        assert.equal(snapshot.icon, '⚠️', module);
-        assert.equal(snapshot.iconCount, 1, module);
-        assert.equal(snapshot.safe, true, module);
-        assert.equal(snapshot.fits, true, module);
-        const key = `${width}-${theme}`;
-        if (!snapshots.has(key)) snapshots.set(key, snapshot);
-        else assert.deepEqual(snapshot, snapshots.get(key), `${module}: ${key}`);
+    for (const length of ['short', 'long']) {
+      await evaluate(({ length }) => {
+        document.querySelector('.feedback-dialog-body').textContent = length === 'long'
+          ? window.feedbackLongMessage
+          : 'Beispiel.txt: Bitte eine gültige PDF-Datei auswählen.';
+      }, { length });
+      for (const width of [860, 320]) {
+        await evaluate.setViewport({ width, height: 740 });
+        for (const theme of ['light', 'dark']) {
+          const snapshot = await evaluate(async ({ theme, module }) => {
+            document.documentElement.dataset.theme = theme;
+            const dialog = document.querySelector('.feedback-dialog');
+            if (!dialog?.open) throw new Error(`${module}: Feedback dialog must be open; dialogs=${[...document.querySelectorAll('dialog')].map(node => `${node.id}:${node.open}:${node.className}`).join(',')}`);
+            for (const animation of dialog.getAnimations({ subtree: true })) {
+              if (Number.isFinite(animation.effect.getComputedTiming().endTime)) animation.finish();
+            }
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            const body = dialog.querySelector('.feedback-dialog-body');
+            const button = dialog.querySelector('button.feedback-dialog-actions, .feedback-dialog-actions button:not([hidden]):not(.hidden)');
+            const icon = dialog.querySelector('.feedback-dialog-icon');
+            const style = getComputedStyle(dialog);
+            const bodyStyle = getComputedStyle(body);
+            const buttonStyle = getComputedStyle(button);
+            const rect = dialog.getBoundingClientRect();
+            return {
+              width: rect.width, radius: style.borderRadius, background: style.backgroundColor,
+              border: style.borderTopColor, font: bodyStyle.fontSize, lineHeight: bodyStyle.lineHeight,
+              textColor: bodyStyle.color, buttonBackgroundImage: buttonStyle.backgroundImage,
+              buttonBackgroundColor: buttonStyle.backgroundColor,
+              buttonRadius: buttonStyle.borderRadius, buttonFont: buttonStyle.fontSize,
+              iconSize: getComputedStyle(icon).fontSize, icon: icon.textContent,
+              iconCount: dialog.querySelectorAll('.feedback-dialog-icon').length,
+              safe: !body.querySelector('img'), fits: rect.left >= 0 && rect.right <= innerWidth && rect.bottom <= innerHeight,
+              geometry: window.measureFeedbackGeometry(),
+            };
+          }, { theme, module });
+          assert.equal(snapshot.icon, '⚠️', module);
+          assert.equal(snapshot.iconCount, 1, module);
+          assert.equal(snapshot.safe, true, module);
+          assert.equal(snapshot.fits, true, module);
+          const { geometry, ...appearance } = snapshot;
+          assert.equal(geometry.resizeReady, true, module);
+          assert.equal(geometry.position, 'fixed', module);
+          assert.ok(geometry.centerXError <= 1, `${module}: ${length}-${width}-${theme}: horizontal center ${geometry.centerXError}`);
+          assert.ok(geometry.centerYError <= 1, `${module}: vertical center ${geometry.centerYError}`);
+          assert.ok(geometry.iconCenterError <= 1, `${module}: icon center ${geometry.iconCenterError}`);
+          assert.equal(geometry.backgroundFilter, 'blur(6px)', module);
+          assert.equal(geometry.extraContentFilter, 'none', module);
+          const key = `${length}-${width}-${theme}`;
+          if (!snapshots.has(key)) snapshots.set(key, appearance);
+          else assert.deepEqual(appearance, snapshots.get(key), `${module}: ${key}`);
+          const enlarged = await evaluate(async () => {
+            const dialog = document.querySelector('.feedback-dialog');
+            const grip = dialog.querySelector('.dialog-resize-grip');
+            const before = window.measureFeedbackGeometry();
+            grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+            grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
+            for (const animation of dialog.getAnimations({ subtree: true })) {
+              if (Number.isFinite(animation.effect.getComputedTiming().endTime)) animation.finish();
+            }
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            const after = window.measureFeedbackGeometry();
+            const resized = dialog.classList.contains('is-dialog-resized');
+            grip.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+            return { before, after, resized };
+          });
+          assert.equal(enlarged.resized, true, module);
+          assert.ok(enlarged.after.width >= enlarged.before.width, module);
+          assert.ok(enlarged.after.height >= enlarged.before.height, module);
+          if (width === 860) assert.ok(enlarged.after.width > enlarged.before.width, module);
+          assert.equal(enlarged.after.fits, true, module);
+          assert.ok(enlarged.after.centerXError <= 1, `${module}: resized horizontal center`);
+          assert.ok(enlarged.after.centerYError <= 1, `${module}: resized vertical center`);
+          assert.ok(enlarged.after.iconCenterError <= 1, `${module}: resized icon center ${enlarged.after.iconCenterError}`);
+        }
       }
     }
     await evaluate(async ({ module }) => {

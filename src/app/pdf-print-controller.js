@@ -3,7 +3,12 @@ import { ensurePdfJsLoaded } from '../shared/pdf-vendor.js';
 
 const PRINT_RESOLUTION = 150;
 const PDF_POINTS_PER_INCH = 72;
-const PRINT_FAILURE_MESSAGE = 'Drucken konnte nicht gestartet werden. Bitte die heruntergeladene PDF öffnen und dort drucken.';
+const PRINT_FAILURE_MESSAGE = 'Drucken konnte nicht gestartet werden. Bitte erneut versuchen oder die PDF über „Speichern“ herunterladen.';
+
+function isMacOS(view) {
+  const platform = view.navigator?.userAgentData?.platform || view.navigator?.platform || '';
+  return /^mac/i.test(platform) && Number(view.navigator?.maxTouchPoints || 0) <= 1;
+}
 
 function validateOutputs(outputs) {
   if (!Array.isArray(outputs) || !outputs.length || outputs.length > FILE_LIMITS.PDF_MAX_PAGES) {
@@ -16,7 +21,7 @@ function validateOutputs(outputs) {
     }
     totalBytes += output.bytes.byteLength;
     if (totalBytes > FILE_LIMITS.PDF_MERGE_TOTAL_BYTES) {
-      throw new Error('Die PDFs sind zu groß für den automatischen Druck.');
+      throw new Error('Die PDFs sind zu groß für den Druck.');
     }
   }
   return outputs;
@@ -39,6 +44,7 @@ export function createPdfPrintController({
     if (!job || job.cancelled) return;
     job.cancelled = true;
     job.renderTask?.cancel();
+    job.renderTask = null;
     if (job.loadingTask) {
       Promise.resolve(job.loadingTask.destroy()).catch(() => {});
       job.loadingTask = null;
@@ -46,11 +52,15 @@ export function createPdfPrintController({
     if (job.canvas) {
       job.canvas.width = 0;
       job.canvas.height = 0;
+      job.canvas = null;
     }
     for (const url of job.urls) window.URL.revokeObjectURL(url);
     job.urls.length = 0;
+    job.area.replaceChildren();
     job.area.remove();
     document.adoptedStyleSheets = document.adoptedStyleSheets.filter((sheet) => sheet !== job.sheet);
+    job.sheet.replaceSync('');
+    job.rules.length = 0;
     document.documentElement.classList.remove('pdf-printing');
     if (activeJob === job) activeJob = null;
   }
@@ -158,10 +168,16 @@ export function createPdfPrintController({
       job.sheet.replaceSync(`@media print { ${job.rules.join('\n')} }`);
       document.adoptedStyleSheets = [...document.adoptedStyleSheets, job.sheet];
       document.documentElement.classList.add('pdf-printing');
+      if (isMacOS(window)) {
+        try {
+          window.focus?.();
+        } catch {}
+      }
       await new Promise((resolve) => window.setTimeout(resolve, 0));
       assertCurrent(job);
       job.printing = true;
       window.print();
+      if (!disposed) showMessage('Druckdialog geöffnet.', 'success', { presentation: 'toast' });
       return true;
     } catch (_error) {
       const cancelled = disposed || job?.cancelled;

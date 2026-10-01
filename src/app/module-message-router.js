@@ -5,6 +5,7 @@ import {
   GRADES_GRADE_VAULT_ACTIVITY_EVENT,
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_NAVIGATE_EVENT,
+  MERGER_PRINT_HELP_REQUEST_EVENT,
   MERGER_PRINT_RESULT_REQUEST_EVENT,
   MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
   NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT,
@@ -114,6 +115,10 @@ export function createModuleMessageRouter({
     if (data.type === MERGER_PRINT_RESULT_REQUEST_EVENT) {
       if (role !== 'merger') return false;
       return invoke('onMergerPrintResultRequest', data.detail, metadata);
+    }
+    if (data.type === MERGER_PRINT_HELP_REQUEST_EVENT) {
+      if (role !== 'merger') return false;
+      return invoke('onMergerPrintHelpRequest', metadata);
     }
     if (data.type === GRADES_NAVIGATE_EVENT) {
       if (role !== 'planning') return false;

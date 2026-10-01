@@ -55,6 +55,8 @@ test('the shell revalidates module open requests instead of trusting the frame',
   assert.doesNotMatch(router, /MERGER_OPEN_RESULT_REQUEST_EVENT/);
   assert.match(router, /data\.type === MERGER_PRINT_RESULT_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/);
   assert.match(main, /onMergerPrintResultRequest: \(detail\) => \{\s*printModuleResult\(detail\);/);
+  assert.match(router, /data\.type === MERGER_PRINT_HELP_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/);
+  assert.match(main, /onMergerPrintHelpRequest/);
 
   const externalHelper = main.match(/const openExternalUrlForModule = \([\s\S]*?\n  \};/)?.[0] || '';
   assert.match(externalHelper, /new URL\(/);

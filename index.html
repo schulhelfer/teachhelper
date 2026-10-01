@@ -533,6 +533,30 @@
         </div>
       </form>
     </dialog>
+    <dialog id="pdf-print-help-dialog" aria-labelledby="pdf-print-help-title" aria-describedby="pdf-print-help-instructions">
+      <div class="dialog-form">
+        <div class="dialog-header">
+          <h2 id="pdf-print-help-title" class="dialog-title">macOS-Systemdruckdialog</h2>
+          <button id="pdf-print-help-close" type="button" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Schließen" data-tooltip="Schließen">❌</button>
+        </div>
+        <p id="pdf-print-help-instructions" class="dialog-copy">Browser und TeachHelper vollständig beenden,
+          den passenden Befehl im Terminal ausführen und anschließend neu starten.</p>
+        <label for="pdf-print-help-command">Microsoft Edge</label>
+        <div class="pdf-print-help-command-row">
+          <textarea id="pdf-print-help-command" rows="2" readonly spellcheck="false"></textarea>
+          <button id="pdf-print-help-copy" type="button" class="ghost app-action-icon"
+            aria-label="Befehl für Microsoft Edge kopieren" data-tooltip="Befehl kopieren">📋</button>
+        </div>
+        <label for="pdf-print-help-chrome-command">Google Chrome</label>
+        <div class="pdf-print-help-command-row">
+          <textarea id="pdf-print-help-chrome-command" rows="2" readonly spellcheck="false"></textarea>
+          <button id="pdf-print-help-chrome-copy" type="button" class="ghost app-action-icon"
+            aria-label="Befehl für Google Chrome kopieren" data-tooltip="Befehl kopieren">📋</button>
+        </div>
+        <p id="pdf-print-help-status" class="dialog-status" role="status" aria-live="polite"></p>
+      </div>
+    </dialog>
     <dialog id="update-dialog" aria-labelledby="update-dialog-title" aria-describedby="update-dialog-status">
       <form method="dialog" class="dialog-form">
         <div class="dialog-header">

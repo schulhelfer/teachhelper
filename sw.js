@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '128';
+const TEACHHELPER_APP_VERSION_STAMP = '129';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -16,6 +16,7 @@ const APP_SHELL = [
   './src/app/module-shell-coordinator.js',
   './src/app/iframe-module-shell-bindings.js',
   './src/app/pdf-print-controller.js',
+  './src/app/pdf-print-help-controller.js',
   './src/app/pdf-print.css',
   './src/app/iframe-module-adapters.js',
   './src/app/module-registry.js',

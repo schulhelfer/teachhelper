@@ -77,8 +77,8 @@ export function createMergerTutorialDefinition(context = {}) {
       createModuleTutorialStep({
         tab: TAB_MERGER,
         title: 'Layout erstellen',
-        copy: 'Dieser Button erzeugt die neue PDF. Sobald sie fertig ist, meldet sich ein Hinweisfenster, aus dem du sie öffnen kannst.',
-        target: mergerFrameTarget('#layoutStartButton'),
+        copy: '„Drucken“ erstellt das Layout und öffnet den Druckdialog. „Speichern“ erstellt die PDF als Download.',
+        target: mergerFrameTarget(['#layoutPrintButton', '#layoutSaveButton']),
         placement: 'top',
         beforeRender: () => openMergerToolForTutorial('layout'),
       }),
@@ -111,8 +111,8 @@ export function createMergerTutorialDefinition(context = {}) {
       createModuleTutorialStep({
         tab: TAB_MERGER,
         title: 'Dateien zusammenführen',
-        copy: 'Dieser Button verbindet alle geladenen PDFs in der angezeigten Reihenfolge zu einer neuen Datei.',
-        target: mergerFrameTarget('#mergeStartButton'),
+        copy: 'Beide Buttons verbinden die PDFs in der angezeigten Reihenfolge. „Drucken“ öffnet den Druckdialog; „Speichern“ lädt die neue Datei herunter.',
+        target: mergerFrameTarget(['#mergePrintButton', '#mergeSaveButton']),
         placement: 'top',
         beforeRender: () => openMergerToolForTutorial('merge'),
       }),
@@ -145,8 +145,8 @@ export function createMergerTutorialDefinition(context = {}) {
       createModuleTutorialStep({
         tab: TAB_MERGER,
         title: 'Gedrehte PDF erstellen',
-        copy: 'Dieser Button erzeugt eine neue PDF mit den festgelegten Drehungen. Die Ausgangsdatei bleibt unverändert.',
-        target: mergerFrameTarget('#rotateStartButton'),
+        copy: '„Drucken“ öffnet den Druckdialog mit den festgelegten Drehungen. „Speichern“ erstellt die gedrehte PDF als Download.',
+        target: mergerFrameTarget(['#rotatePrintButton', '#rotateSaveButton']),
         placement: 'top',
         beforeRender: () => openMergerToolForTutorial('rotate'),
       }),
@@ -200,8 +200,8 @@ export function createMergerTutorialDefinition(context = {}) {
       createModuleTutorialStep({
         tab: TAB_MERGER,
         title: 'Aufteilung starten',
-        copy: 'Dieser Button erstellt die gewählte gemeinsame oder einzelne Ausgabe. Mehrere Dateien kommen dabei als ZIP.',
-        target: mergerFrameTarget('#splitStartButton'),
+        copy: '„Drucken“ druckt die gewählte Ausgabe in einem gemeinsamen Auftrag. „Speichern“ lädt eine PDF oder bei mehreren Dateien ein ZIP herunter.',
+        target: mergerFrameTarget(['#splitPrintButton', '#splitSaveButton']),
         placement: 'top',
         beforeRender: () => openMergerToolForTutorial('split'),
       }),

@@ -751,8 +751,24 @@ html:not([data-shell-collapsed="true"]) .main {
   font-weight: 600;
 }
 
-.auto-print-field {
-  margin-block: 16px;
+.print-action {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.print-help-button {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .sr-only {
@@ -1824,6 +1840,9 @@ html.split-drag-active * {
 .controls {
   display: flex;
   justify-content: center;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 12px;
 }
 
 .start,
@@ -1843,7 +1862,7 @@ html.split-drag-active * {
 }
 
 .start {
-  min-width: 220px;
+  min-width: 160px;
   padding: 1rem 1.45rem;
   font-size: 1.05rem;
 }

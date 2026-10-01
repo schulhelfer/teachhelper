@@ -2,13 +2,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDomBrowser } from './helpers/dom-browser.mjs';
 
-test('PDF-Werkzeug sendet nach Erstellung einen Druckauftrag an die Shell und behält die Checkbox bis zum Neuladen', async (t) => {
+test('alle PDF-Werkzeuge drucken ohne Dateiausgabe und speichern ohne Druck; Mehrfachausgabe wird nur beim Speichern gezippt', async (t) => {
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {
     const { ensurePdfLibLoaded } = await import('/src/shared/pdf-vendor.js');
     const PDFLib = await ensurePdfLibLoaded();
     const pdf = await PDFLib.PDFDocument.create();
-    pdf.addPage([100, 100]);
+    for (let index = 0; index < 3; index += 1) pdf.addPage([100, 100]).drawText(String(index + 1), { x: 10, y: 50 });
     const bytes = await pdf.save();
     const { mountMerger } = await import('/src/modules/merger/index.js');
     const host = document.createElement('div');
@@ -19,7 +19,7 @@ test('PDF-Werkzeug sendet nach Erstellung einen Druckauftrag an die Shell und be
     };
     const mounted = mountMerger({ host });
     const frame = mounted.frame;
-    const waitFor = async (condition) => {
+    const waitFor = async (condition, describe = () => '') => {
       for (let attempt = 0; attempt < 300; attempt += 1) {
         try {
           if (condition()) return;
@@ -28,64 +28,80 @@ test('PDF-Werkzeug sendet nach Erstellung einen Druckauftrag an die Shell und be
         }
         await new Promise((resolve) => setTimeout(resolve, 20));
       }
-      throw new Error('PDF-Werkzeug wurde nicht rechtzeitig bereit.');
+      throw new Error(`PDF-Ausgabe wurde nicht rechtzeitig bereit. ${describe()}`);
     };
     await waitFor(() => frame.contentWindow.__teachhelperMergerApp);
     const moduleDocument = frame.contentDocument;
-    const checkbox = moduleDocument.getElementById('autoPrintToggle');
-    const initial = checkbox.checked;
-    checkbox.click();
-    for (const tool of ['merge', 'rotate', 'split', 'layout']) moduleDocument.getElementById(`tool-tab-${tool}`).click();
-    const retained = !checkbox.checked && !checkbox.disabled && Boolean(checkbox.closest('aside'));
-    checkbox.click();
-    moduleDocument.getElementById('tool-tab-merge').click();
+    const downloads = [];
+    frame.contentWindow.HTMLAnchorElement.prototype.click = function () { downloads.push(this.download); };
+    const { createIframeModuleShellBindings } = await import('/src/app/iframe-module-shell-bindings.js');
+    const { createModuleMessageRouter } = await import('/src/app/module-message-router.js');
+    const cleanups = [];
+    const messages = [];
+    const bindings = createIframeModuleShellBindings({ documentRef: document, view: window, appEl: host, registerCleanup: (cleanup) => cleanups.push(cleanup), showMessage: (...args) => messages.push(args) });
+    const router = createModuleMessageRouter({ messageTarget: window, modules: [{ role: 'merger', getFrame: () => frame }], handlers: bindings.handlers });
+    let printCalls = 0;
+    const printedPages = [];
+    window.print = () => {
+      printCalls += 1;
+      printedPages.push(document.querySelectorAll('.pdf-print-page').length);
+      window.dispatchEvent(new Event('afterprint'));
+    };
+    const actions = [];
+    const initiallyDisabledByTool = Object.fromEntries(['layout', 'merge', 'rotate', 'split'].map((tool) => [tool, moduleDocument.getElementById(`${tool}PrintButton`).disabled && moduleDocument.getElementById(`${tool}SaveButton`).disabled]));
     const transfer = new DataTransfer();
     transfer.items.add(new File([bytes], 'A.pdf', { type: 'application/pdf' }));
     transfer.items.add(new File([bytes], 'B.pdf', { type: 'application/pdf' }));
     moduleDocument.getElementById('mergeDropZone').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
-    const button = moduleDocument.getElementById('mergeStartButton');
-    await waitFor(() => !button.disabled);
-    const { createIframeModuleShellBindings } = await import('/src/app/iframe-module-shell-bindings.js');
-    const { createModuleMessageRouter } = await import('/src/app/module-message-router.js');
-    const cleanups = [];
-    const warnings = [];
-    const bindings = createIframeModuleShellBindings({ documentRef: document, view: window, appEl: host, registerCleanup: (cleanup) => cleanups.push(cleanup), showMessage: (...args) => warnings.push(args) });
-    const router = createModuleMessageRouter({ messageTarget: window, modules: [{ role: 'merger', getFrame: () => frame }], handlers: bindings.handlers });
-    let printCalls = 0;
-    let pageCount = 0;
-    window.print = () => {
-      printCalls += 1;
-      pageCount = document.querySelectorAll('.pdf-print-page').length;
-      window.dispatchEvent(new Event('afterprint'));
-    };
-    button.click();
-    await waitFor(() => printCalls === 1);
-    checkbox.click();
-    await waitFor(() => !button.disabled);
-    button.click();
-    await waitFor(() => !button.disabled);
-    await new Promise((resolve) => setTimeout(resolve, 100));
-    const disabledPrintCalls = printCalls;
+    await waitFor(() => ['layout', 'merge', 'rotate', 'split'].every((tool) => !moduleDocument.getElementById(`${tool}PrintButton`).disabled && !moduleDocument.getElementById(`${tool}SaveButton`).disabled));
+    for (const tool of ['layout', 'merge', 'rotate', 'split']) {
+      moduleDocument.getElementById(`tool-tab-${tool}`).click();
+      const printButton = moduleDocument.getElementById(`${tool}PrintButton`);
+      const saveButton = moduleDocument.getElementById(`${tool}SaveButton`);
+      const initiallyDisabled = initiallyDisabledByTool[tool];
+      if (tool === 'split') moduleDocument.querySelector('[data-split-output-mode="single"]').click();
+      const oldPrintCalls = printCalls;
+      const oldDownloads = downloads.length;
+      printButton.click();
+      const locked = printButton.disabled && saveButton.disabled;
+      saveButton.click();
+      await waitFor(() => printCalls === oldPrintCalls + 1 && !printButton.disabled && !saveButton.disabled, () => JSON.stringify({ tool, printCalls, oldPrintCalls, messages, downloads, result: moduleDocument.getElementById("resultMessage").textContent, busy: moduleDocument.getElementById("busyMessage").textContent, printDisabled: printButton.disabled }));
+      const printingDownloads = downloads.length - oldDownloads;
+      saveButton.click();
+      const savingLocked = printButton.disabled && saveButton.disabled;
+      await waitFor(() => downloads.length === oldDownloads + 1 && !printButton.disabled && !saveButton.disabled);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      actions.push({ tool, initiallyDisabled, locked, savingLocked, printingDownloads, savedWithoutPrint: printCalls === oldPrintCalls + 1, download: downloads.at(-1) });
+    }
+    moduleDocument.getElementById('tool-tab-layout').click();
+    moduleDocument.getElementById('studentCount').value = '1.5';
+    moduleDocument.getElementById('layoutPrintButton').click();
+    const invalidInputDialog = moduleDocument.getElementById('resultDialog').open;
+    const invalidInputMessage = moduleDocument.getElementById('resultMessage').textContent;
+    moduleDocument.getElementById('resultCloseButton').click();
     const dialogClosed = !moduleDocument.getElementById('resultDialog').open;
-    const successToast = Boolean(moduleDocument.querySelector('.toast-message.message-success'));
-    const oldApp = frame.contentWindow.__teachhelperMergerApp;
-    frame.contentWindow.location.reload();
-    await waitFor(() => frame.contentWindow.__teachhelperMergerApp && frame.contentWindow.__teachhelperMergerApp !== oldApp);
-    const reset = frame.contentDocument.getElementById('autoPrintToggle').checked;
+    const noCheckbox = !moduleDocument.getElementById('autoPrintToggle');
     router.dispose();
     cleanups.forEach((cleanup) => cleanup());
     mounted.dispose();
-    return { initial, retained, reset, printCalls, disabledPrintCalls, pageCount, dialogClosed, successToast, warnings };
+    return { actions, printCalls, printedPages, dialogClosed, noCheckbox, messages, invalidInputDialog, invalidInputMessage };
   });
-  assert.equal(result.initial, true);
-  assert.equal(result.retained, true);
-  assert.equal(result.reset, true);
-  assert.equal(result.printCalls, 1);
-  assert.equal(result.disabledPrintCalls, 1);
-  assert.equal(result.pageCount, 2);
+  assert.equal(result.printCalls, 4);
+  assert.deepEqual(result.printedPages, [3, 6, 3, 3]);
+  assert.equal(result.invalidInputDialog, true);
+  assert.match(result.invalidInputMessage, /ganze Zahl größer 0/);
   assert.equal(result.dialogClosed, true);
-  assert.equal(result.successToast, true);
-  assert.deepEqual(result.warnings, []);
+  assert.equal(result.noCheckbox, true);
+  assert.equal(result.messages.length, 4);
+  assert.ok(result.messages.every(([message, variant, options]) => message === 'Druckdialog geöffnet.' && variant === 'success' && options.presentation === 'toast'));
+  for (const action of result.actions) {
+    assert.equal(action.initiallyDisabled, true, action.tool);
+    assert.equal(action.locked, true, action.tool);
+    assert.equal(action.savingLocked, true, action.tool);
+    assert.equal(action.printingDownloads, 0, action.tool);
+    assert.equal(action.savedWithoutPrint, true, action.tool);
+    assert.ok(action.download.endsWith(action.tool === 'split' ? '.zip' : '.pdf'), action.tool);
+  }
 });
 
 test('echte PDFs werden vollständig und in Reihenfolge gedruckt, anschließend werden Druckressourcen freigegeben', async (t) => {
@@ -120,10 +136,30 @@ test('echte PDFs werden vollständig und in Reihenfolge gedruckt, anschließend 
     ];
     const { createPdfPrintController } = await import('/src/app/pdf-print-controller.js');
     const warnings = [];
+    const imageUrls = [];
+    const revokedImageUrls = [];
+    const createObjectURL = window.URL.createObjectURL.bind(window.URL);
+    const revokeObjectURL = window.URL.revokeObjectURL.bind(window.URL);
+    window.URL.createObjectURL = (blob) => {
+      const url = createObjectURL(blob);
+      if (blob.type === 'image/png') imageUrls.push(url);
+      return url;
+    };
+    window.URL.revokeObjectURL = (url) => {
+      if (imageUrls.includes(url)) revokedImageUrls.push(url);
+      revokeObjectURL(url);
+    };
     let printCalls = 0;
     let pages = [];
     let rules = [];
+    const focusSequence = [];
+    Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: { platform: 'macOS' } });
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 });
+    window.focus = () => {
+      focusSequence.push({ action: 'focus', readyPages: document.querySelectorAll('.pdf-print-page img').length });
+    };
     window.print = () => {
+      focusSequence.push({ action: 'print' });
       printCalls += 1;
       window.dispatchEvent(new Event('beforeprint'));
       pages = [...document.querySelectorAll('.pdf-print-page img')].map((image) => {
@@ -145,12 +181,12 @@ test('echte PDFs werden vollständig und in Reihenfolge gedruckt, anschließend 
     const shellHidden = getComputedStyle(shell).display === 'none';
     const areaVisible = getComputedStyle(document.querySelector('.pdf-print-area')).display === 'block';
     mediaRule.media.mediaText = 'print';
-    window.pdfPrintTest = { controller, shell, warnings, originalSheets };
-    return { printed, printCalls, pages, rules, retained, shellHidden, areaVisible };
+    window.pdfPrintTest = { controller, shell, warnings, originalSheets, imageUrls, revokedImageUrls };
+    return { printed, printCalls, pages, rules, retained, shellHidden, areaVisible, focusSequence };
   });
   const printedPdf = await evaluate.printToPdf();
   const completion = await evaluate(async (base64) => {
-    const { controller, shell, warnings, originalSheets } = window.pdfPrintTest;
+    const { controller, shell, warnings, originalSheets, imageUrls, revokedImageUrls } = window.pdfPrintTest;
     const PDFLib = window.PDFLib;
     const output = await PDFLib.PDFDocument.load(Uint8Array.from(atob(base64), (character) => character.charCodeAt(0)));
     const paperSizes = output.getPages().map((page) => page.getSize());
@@ -161,10 +197,11 @@ test('echte PDFs werden vollständig und in Reihenfolge gedruckt, anschließend 
       && document.adoptedStyleSheets.length === originalSheets;
     const restored = getComputedStyle(shell).display !== 'none';
     controller.dispose();
-    return { paperSizes, rejectedParallel, warnings, cleaned, restored };
+    return { paperSizes, rejectedParallel, warnings, cleaned, restored, imageUrls, revokedImageUrls };
   }, printedPdf);
   assert.equal(result.printed, true);
   assert.equal(result.printCalls, 1);
+  assert.deepEqual(result.focusSequence, [{ action: 'focus', readyPages: 3 }, { action: 'print' }]);
   assert.deepEqual(result.pages.map(({ color }) => color), [[255, 0, 0, 255], [0, 0, 255, 255], [0, 255, 0, 255]]);
   assert.deepEqual(result.pages.map(({ width, height }) => [width, height]), [[208, 416], [208, 416], [250, 166]]);
   assert.ok(result.rules.some((rule) => /size: 100pt 200pt/.test(rule)));
@@ -179,9 +216,12 @@ test('echte PDFs werden vollständig und in Reihenfolge gedruckt, anschließend 
     assert.ok(Math.abs(height - expected[1]) < 1);
   }
   assert.equal(completion.rejectedParallel, false);
-  assert.equal(completion.warnings.length, 1);
+  assert.equal(completion.warnings.filter(([, variant]) => variant === 'warn').length, 1);
+  assert.equal(completion.warnings.filter(([, variant]) => variant === 'success').length, 1);
   assert.equal(completion.cleaned, true);
   assert.equal(completion.restored, true);
+  assert.equal(completion.imageUrls.length, 3);
+  assert.deepEqual(completion.revokedImageUrls, completion.imageUrls);
 });
 
 test('ungültige Daten, Druckfehler, Seitengrenzen und Dispose räumen auf, ohne erneut zu drucken', async (t) => {
@@ -211,6 +251,10 @@ test('ungültige Daten, Druckfehler, Seitengrenzen und Dispose räumen auf, ohne
     pdf.addPage([100, 100]);
     const data = await pdf.save();
     let printCalls = 0;
+    let focusCalls = 0;
+    Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: { platform: 'macOS' } });
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 });
+    window.focus = () => { focusCalls += 1; throw new Error('Fokus wurde abgelehnt'); };
     window.print = () => { printCalls += 1; throw new Error('Druckfehler'); };
     const failure = await controller.print({ outputs: [{ bytes: data.slice().buffer }] });
     const cleanedFailure = !document.querySelector('.pdf-print-area') && !document.documentElement.classList.contains('pdf-printing');
@@ -231,17 +275,57 @@ test('ungültige Daten, Druckfehler, Seitengrenzen und Dispose räumen auf, ohne
     resolveLoad({});
     const cancelled = await pending;
     const afterDispose = await delayed.print({ outputs: [{ bytes: data.slice().buffer }] });
-    return { invalidResults, loadingDestroyed, failure, retry, printCalls, cleanedFailure, cleanedDispose, cancelled, afterDispose, warnings };
+    return { invalidResults, loadingDestroyed, failure, retry, printCalls, focusCalls, cleanedFailure, cleanedDispose, cancelled, afterDispose, warnings };
   });
   assert.ok(result.invalidResults.every((value) => value === false));
   assert.equal(result.loadingDestroyed, 1);
   assert.equal(result.failure, false);
   assert.equal(result.retry, true);
   assert.equal(result.printCalls, 2);
+  assert.equal(result.focusCalls, 2);
   assert.equal(result.cleanedFailure, true);
   assert.equal(result.cleanedDispose, true);
   assert.equal(result.cancelled, false);
   assert.equal(result.afterDispose, false);
-  assert.equal(result.warnings.length, 7);
-  assert.ok(result.warnings.every(([message, variant, options]) => message.includes('heruntergeladene PDF') && variant === 'warn' && options.presentation === 'toast'));
+  assert.equal(result.warnings.filter(([, variant]) => variant === 'warn').length, 7);
+  assert.equal(result.warnings.filter(([, variant]) => variant === 'success').length, 1);
+  assert.ok(result.warnings.filter(([, variant]) => variant === 'warn').every(([message, variant, options]) => message.includes('über „Speichern“ herunterladen') && variant === 'warn' && options.presentation === 'toast'));
+});
+
+test('der Fokusversuch gilt ausschließlich für macOS und schließt iPadOS aus', async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const { createPdfPrintController } = await import('/src/app/pdf-print-controller.js');
+    const { ensurePdfLibLoaded } = await import('/src/shared/pdf-vendor.js');
+    const PDFLib = await ensurePdfLibLoaded();
+    const pdf = await PDFLib.PDFDocument.create();
+    pdf.addPage([100, 100]);
+    const bytes = await pdf.save();
+    let focusCalls = 0;
+    let printCalls = 0;
+    window.focus = () => { focusCalls += 1; };
+    window.print = () => {
+      printCalls += 1;
+      window.dispatchEvent(new Event('afterprint'));
+    };
+    const controller = createPdfPrintController({ documentRef: document, view: window, showMessage() {} });
+    const cases = [];
+    for (const [platform, touchPoints] of [['Win32', 0], ['Linux x86_64', 0], ['MacIntel', 5], ['MacIntel', 0]]) {
+      Object.defineProperty(navigator, 'userAgentData', { configurable: true, value: undefined });
+      Object.defineProperty(navigator, 'platform', { configurable: true, value: platform });
+      Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: touchPoints });
+      const previousCalls = focusCalls;
+      const printed = await controller.print({ outputs: [{ bytes: bytes.slice().buffer }] });
+      cases.push({ printed, focusCalls: focusCalls - previousCalls });
+    }
+    controller.dispose();
+    return { cases, printCalls };
+  });
+  assert.equal(result.printCalls, 4);
+  assert.deepEqual(result.cases, [
+    { printed: true, focusCalls: 0 },
+    { printed: true, focusCalls: 0 },
+    { printed: true, focusCalls: 0 },
+    { printed: true, focusCalls: 1 },
+  ]);
 });

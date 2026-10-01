@@ -207,8 +207,9 @@ test('behält isolierte Beispieldaten und zustandsabhängige Varianten', () => {
 
 test('verankert opake Module an konkreten sichtbaren Modulzielen', () => {
   assert.match(catalogSource, /const OPAQUE_FRAME_TABS = new Set\(\[\s+TAB_MERGER,\s+TAB_DUPLICATE_CHECK,\s+TAB_QR,\s+TAB_NAME_LEARNING,/);
-  for (const selector of ['.tool-tab-bar', '#layoutStartButton', '#mergeStartButton', '#rotateStartButton', '#splitStartButton']) {
-    assert.ok(cases.merger.includes(`target: mergerFrameTarget('${selector}')`), `PDF-Tutorialziel fehlt: ${selector}`);
+  assert.ok(cases.merger.includes("target: mergerFrameTarget('.tool-tab-bar')"));
+  for (const tool of ['layout', 'merge', 'rotate', 'split']) {
+    assert.ok(cases.merger.includes(`target: mergerFrameTarget(['#${tool}PrintButton', '#${tool}SaveButton'])`), `PDF-Tutorialziele fehlen: ${tool}`);
   }
   assert.match(cases.merger, /#mergeFileListShell:not\(\.hidden\)[\s\S]*?#mergeDropZone/);
   assert.match(cases.merger, /\.rotate-page-card[\s\S]*?#rotateDropZone/);

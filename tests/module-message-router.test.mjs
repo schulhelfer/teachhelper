@@ -46,6 +46,7 @@ const handlerNames = [
   'onOpenExternalRequest',
   'onQrCameraRequest',
   'onMergerPrintResultRequest',
+  'onMergerPrintHelpRequest',
   'onGradesNavigate',
   'onGradeVaultActivity',
   'onGradeVaultRequest',
@@ -122,6 +123,7 @@ test('routes every known message type to its existing authorized adapter', () =>
     ['qr', tabs.MODULE_OPEN_EXTERNAL_REQUEST_EVENT, 'onOpenExternalRequest', { url: 'https://example.test' }, 0],
     ['qr', tabs.QR_CAMERA_REQUEST_EVENT, 'onQrCameraRequest', { source: 'iframe', action: 'start' }, 0],
     ['merger', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, 'onMergerPrintResultRequest', { outputs: [{ bytes: new ArrayBuffer(2), name: 'Test.pdf' }] }, 0],
+    ['merger', tabs.MERGER_PRINT_HELP_REQUEST_EVENT, 'onMergerPrintHelpRequest', undefined, null],
     ['planning', tabs.GRADES_NAVIGATE_EVENT, 'onGradesNavigate', { courseId: 3 }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_ACTIVITY_EVENT, 'onGradeVaultActivity', { source: 'grades' }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_REQUEST_EVENT, 'onGradeVaultRequest', { action: 'unlock' }, 0],
@@ -180,6 +182,23 @@ test('PDF-Druck aus einem opaken Frame benötigt die gültige Quelle und Nonce',
   event.data.frameNonce = 'merger-nonce';
   event.source = {};
   assert.equal(harness.router.handleMessage(event), false);
+});
+
+test('Druckhinweis akzeptiert ausschließlich das vertrauenswürdige PDF-Modul', () => {
+  const harness = createHarness();
+  for (const role of Object.keys(roleGetters).filter((role) => role !== 'merger')) {
+    assert.equal(harness.router.handleMessage(harness.message(role, tabs.MERGER_PRINT_HELP_REQUEST_EVENT)), false);
+  }
+  harness.currentFrames.merger = createFrame('merger', { opaque: true });
+  const event = harness.message('merger', tabs.MERGER_PRINT_HELP_REQUEST_EVENT, { command: 'ungeprüfter Befehl' });
+  assert.equal(harness.router.handleMessage(event), false);
+  event.data.frameNonce = 'gefälscht';
+  assert.equal(harness.router.handleMessage(event), false);
+  event.data.frameNonce = 'merger-nonce';
+  assert.equal(harness.router.handleMessage({ ...event, source: {} }), false);
+  assert.equal(harness.router.handleMessage({ ...event, origin: 'https://fremd.test' }), false);
+  assert.equal(harness.router.handleMessage(event), true);
+  assert.deepEqual(harness.calls, [{ name: 'onMergerPrintHelpRequest', args: [{ frame: harness.currentFrames.merger, role: 'merger' }] }]);
 });
 
 test('ignores malformed, unknown, markerless, and wrong-role messages', () => {
