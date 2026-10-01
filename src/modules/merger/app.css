@@ -751,6 +751,10 @@ html:not([data-shell-collapsed="true"]) .main {
   font-weight: 600;
 }
 
+.auto-print-field {
+  margin-block: 16px;
+}
+
 .sr-only {
   position: absolute;
   width: 1px;

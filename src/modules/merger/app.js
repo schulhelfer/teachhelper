@@ -1,5 +1,5 @@
 import {
-  MERGER_OPEN_RESULT_REQUEST_EVENT,
+  MERGER_PRINT_RESULT_REQUEST_EVENT,
   MERGER_SHELL_LAYOUT_EVENT,
   MERGER_TOOL_REQUEST_EVENT,
 } from '../../shell/tabs.js';
@@ -20,6 +20,7 @@ import {
 import { ensurePdfJsLoaded, ensurePdfLibLoaded } from '../../shared/pdf-vendor.js';
 import { runFileProcessingTask } from '../../shared/file-processing-client.js';
 import { createMessageApi } from '../../shared/messages.js';
+import { applyFeedbackDialog } from '../../shared/feedback-dialog.js';
 import {
   createCanvasPngObjectUrl,
   createPdfPreviewRenderSpec,
@@ -115,6 +116,7 @@ function createMergerApp({
     optionsPanel: getElementById("optionsPanel"),
     pagesButtons: [...querySelectorAll("#pagesButtons button[data-pages]")],
     autoOrientationToggle: getElementById("autoOrientationToggle"),
+    autoPrintToggle: getElementById("autoPrintToggle"),
     studentCount: getElementById("studentCount"),
     paddingModes: [...querySelectorAll('input[name="paddingMode"]')],
     specialThreeModeButton: getElementById("specialThreeModeButton"),
@@ -139,7 +141,6 @@ function createMergerApp({
     resultDialog: getElementById("resultDialog"),
     resultTitle: getElementById("resultTitle"),
     resultMessage: getElementById("resultMessage"),
-    resultOpenButton: getElementById("resultOpenButton"),
     resultCloseButton: getElementById("resultCloseButton"),
     busyDialog: getElementById("busyDialog"),
     busyTitle: getElementById("busyTitle"),
@@ -304,7 +305,6 @@ function createMergerApp({
     dragPreviewX: 0,
     dragPreviewY: 0,
   };
-  let resultOpenPayload = null;
   let messageListener = null;
   let splitDragPreviewElement = null;
   let jsZipLoadPromise = null;
@@ -569,14 +569,20 @@ function createMergerApp({
             mergerToastApi.showMessage(String(message || ""), variant, { presentation: "toast" });
           }
 
-          function showResultDialog(message, tone = "warn", title = "Hinweis", openPayload = null) {
+          function showResultDialog(message, tone = "warn", title = "Hinweis") {
             const hasTitle = Boolean(title && String(title).trim());
             ui.resultTitle.textContent = hasTitle ? title : "";
             ui.resultTitle.classList.toggle("hidden", !hasTitle);
             ui.resultMessage.textContent = message;
-            resultOpenPayload = openPayload;
-            ui.resultOpenButton.classList.toggle("hidden", !resultOpenPayload);
             ui.resultDialog.setAttribute("data-tone", tone);
+            applyFeedbackDialog({
+              dialog: ui.resultDialog,
+              title: ui.resultTitle,
+              body: ui.resultMessage,
+              actions: [ui.resultCloseButton.parentElement],
+              dismissButton: ui.resultCloseButton,
+              variant: tone,
+            });
             ui.resultDialog.classList.remove("hidden");
             if (typeof ui.resultDialog.showModal === "function") {
               if (!ui.resultDialog.open) ui.resultDialog.showModal();
@@ -587,8 +593,6 @@ function createMergerApp({
           }
 
           function hideResultDialog() {
-            resultOpenPayload = null;
-            ui.resultOpenButton.classList.add("hidden");
             if (typeof ui.resultDialog.close === "function" && ui.resultDialog.open) {
               ui.resultDialog.close();
             } else {
@@ -3702,22 +3706,19 @@ function createMergerApp({
             anchor.click();
           }
 
-          function openResultPdf({ bytes, name }) {
-            if (!bytes?.length) return;
-            if (!window.parent || window.parent === window) {
-              const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
-              window.open(url, "_blank", "noopener,noreferrer");
-              setTimeout(() => URL.revokeObjectURL(url), 120_000);
-              return;
-            }
-            const buffer = bytes.slice().buffer;
+          function requestResultPrint(outputs) {
+            if (!ui.autoPrintToggle.checked) return;
             try {
+              const printOutputs = outputs.map(({ bytes, name }) => ({
+                bytes: bytes.slice().buffer,
+                name: String(name || ""),
+              }));
               window.parent.postMessage(withModuleFrameNonce({
-                type: MERGER_OPEN_RESULT_REQUEST_EVENT,
-                detail: { bytes: buffer, name: String(name || "") },
-              }), TRUSTED_PARENT_ORIGIN, [buffer]);
+                type: MERGER_PRINT_RESULT_REQUEST_EVENT,
+                detail: { outputs: printOutputs },
+              }), TRUSTED_PARENT_ORIGIN, printOutputs.map(({ bytes }) => bytes));
             } catch (_error) {
-
+              showResultToast("Drucken konnte nicht gestartet werden. Bitte die heruntergeladene PDF öffnen und dort drucken.", "warn");
             }
           }
 
@@ -3738,6 +3739,7 @@ function createMergerApp({
             triggerDownload(url, archiveName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
             showResultToast(`${outputs.length} PDFs als ZIP-Download erstellt.`, "success");
+            requestResultPrint(outputs);
           }
 
           async function deliverSinglePdf(bytes, outputName, successMessage) {
@@ -3749,6 +3751,7 @@ function createMergerApp({
                 showResultDialog(`PDF wurde erstellt, Teilen wurde abgebrochen.\n${outputName}`, "warn", "Hinweis");
               } else {
                 showResultToast(successMessage, "success");
+                requestResultPrint([{ bytes, name: outputName }]);
               }
               return;
             }
@@ -3756,7 +3759,8 @@ function createMergerApp({
             const url = URL.createObjectURL(blob);
             triggerDownload(url, outputName);
             setTimeout(() => URL.revokeObjectURL(url), 120_000);
-            showResultDialog(successMessage, "ok", "", { bytes, name: outputName });
+            showResultToast(successMessage, "success");
+            requestResultPrint([{ bytes, name: outputName }]);
           }
 
           async function ensurePdfLibForTool(operationLabel) {
@@ -4379,14 +4383,8 @@ function createMergerApp({
           ui.rotateStartButton.addEventListener("click", handleRotateStart);
           ui.splitStartButton?.addEventListener("click", handleSplitStart);
           ui.resultCloseButton.addEventListener("click", hideResultDialog);
-          ui.resultOpenButton.addEventListener("click", () => {
-            if (!resultOpenPayload) return;
-            openResultPdf(resultOpenPayload);
-          });
           ui.resultDialog.addEventListener("close", () => {
             ui.resultDialog.classList.add("hidden");
-            resultOpenPayload = null;
-            ui.resultOpenButton.classList.add("hidden");
             syncDialogUiState();
           });
           ui.busyDialog.addEventListener("close", () => {
@@ -4416,7 +4414,6 @@ function createMergerApp({
                 window.removeEventListener("message", messageListener);
                 messageListener = null;
               }
-              resultOpenPayload = null;
               if (runtimeChrome) {
                 runtimeChrome.classList.remove("dialog-active");
                 delete runtimeChrome.dataset.tool;

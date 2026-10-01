@@ -1,3 +1,4 @@
+import { applyFeedbackDialog } from "../../shared/feedback-dialog.js";
 import { createRosterOcrDialog } from "./roster-ocr-dialog.js";
 import {
   createDocxFromPreparedTemplate,
@@ -3524,7 +3525,8 @@ class GradesApp {
       this.persistenceFailureNoticeAt = at;
       void this.showInfoMessage(
         String(persistence.statusText || "Die Datenbankdatei konnte nicht gespeichert werden."),
-        "Speichern fehlgeschlagen"
+        "Speichern fehlgeschlagen",
+        { variant: "error" }
       );
     }
     return true;
@@ -4909,7 +4911,8 @@ class GradesApp {
         if (!saved) {
           await this.showInfoMessage(
             "Die Noten konnten nicht gespeichert werden. Der Notenbereich bleibt entsperrt.",
-            "Noten speichern"
+            "Noten speichern",
+            { variant: "error" }
           );
           return false;
         }
@@ -4926,7 +4929,8 @@ class GradesApp {
         error instanceof Error && error.message
           ? error.message
           : "Der Notenbereich konnte nicht gesperrt werden.",
-        "Notenbereich sperren"
+        "Notenbereich sperren",
+        { variant: "error" }
       );
       return false;
     }
@@ -5153,7 +5157,8 @@ class GradesApp {
         if (!saved) {
           await this.showInfoMessage(
             "Die Verschlüsselung wurde eingerichtet, aber die Datenbank konnte nicht gespeichert werden. Bitte speichere die Datenbank erneut.",
-            "Datenbank speichern"
+            "Datenbank speichern",
+            { variant: "error" }
           );
         }
       }
@@ -5181,7 +5186,7 @@ class GradesApp {
     try {
       return Boolean(await owner.persistExplicitDatabaseSave());
     } catch (_error) {
-      await this.showInfoMessage("Änderung übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.", "Datenbank speichern");
+      await this.showInfoMessage("Änderung übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.", "Datenbank speichern", { variant: "error" });
       return false;
     }
   }
@@ -5196,7 +5201,8 @@ class GradesApp {
       if (!saved) {
         await this.showInfoMessage(
           "Noten übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.",
-          "Noten speichern"
+          "Noten speichern",
+          { variant: "error" }
         );
       }
       return saved;
@@ -5208,7 +5214,8 @@ class GradesApp {
           : (error instanceof Error && error.message
             ? `Noten übernommen, aber die Datenbankdatei konnte nicht gespeichert werden: ${error.message}`
             : "Noten übernommen, aber die Datenbankdatei konnte nicht gespeichert werden."),
-        persistenceConflict ? "Datenbankkonflikt" : "Noten speichern"
+        persistenceConflict ? "Datenbankkonflikt" : "Noten speichern",
+        { variant: "error" }
       );
       return false;
     }
@@ -5257,7 +5264,8 @@ class GradesApp {
       if (!saved) {
         await this.showInfoMessage(
           "Die Verschlüsselung wurde aufgehoben, aber die Datenbank konnte nicht gespeichert werden. Bitte speichere die Datenbank erneut.",
-          "Datenbank speichern"
+          "Datenbank speichern",
+          { variant: "error" }
         );
       }
     }
@@ -5306,7 +5314,7 @@ class GradesApp {
         settings
       }, { baseRevision: this.settingsDraftRevision });
       if (!result?.ok) {
-        await this.showInfoMessage(result?.message || "Auto-Lock-Einstellungen konnten nicht gespeichert werden.");
+        await this.showInfoMessage(result?.message || "Auto-Lock-Einstellungen konnten nicht gespeichert werden.", "Hinweis", { variant: "error" });
         return false;
       }
       this.settingsDraftRevision = Number(result.revision) || this.workspaceRevision || 0;
@@ -5389,7 +5397,7 @@ class GradesApp {
       const handle = await window.showDirectoryPicker({ mode: "readwrite" });
       return owner.acceptWorkspaceBackupDirectoryHandle(handle);
     } catch (error) {
-      if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Backup-Ordner konnte nicht ausgewählt werden.");
+      if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Backup-Ordner konnte nicht ausgewählt werden.", "Hinweis", { variant: "error" });
       return false;
     }
   }
@@ -5415,7 +5423,7 @@ class GradesApp {
       });
       return owner.acceptWorkspaceSyncFileHandle(handle, mode, options);
     } catch (error) {
-      if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.");
+      if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.", "Hinweis", { variant: "error" });
       return false;
     }
   }
@@ -5795,18 +5803,18 @@ class GradesApp {
     if (this.activeSettingsTab === "occurrences") draft.gradeOccurrenceCategories = this.readGradeOccurrenceCategoriesFromDom();
     const gradeScaleValidation = this.validateGradeTestScaleSettingsDraft(draft.gradeTestScaleSettings);
     if (!gradeScaleValidation.valid) {
-      await this.showInfoMessage(gradeScaleValidation.message || "Die Prozentgrenzen sind ungültig.");
+      await this.showInfoMessage(gradeScaleValidation.message || "Die Prozentgrenzen sind ungültig.", "Hinweis", { variant: "warn" });
       return false;
     }
     const structureValidation = this.validateCourseDialogStructure(draft.defaultGradeStructure?.periodCategories);
     if (!structureValidation.ok) {
-      await this.showInfoMessage(structureValidation.message || "Die Notenstruktur ist ungültig.");
+      await this.showInfoMessage(structureValidation.message || "Die Notenstruktur ist ungültig.", "Hinweis", { variant: "warn" });
       return false;
     }
     draft.defaultGradeStructure = normalizeDefaultGradeStructureSetting({ periodCategories: structureValidation.periodCategories });
     const occurrenceValidation = this.validateGradeOccurrenceCategoriesDraft(draft.gradeOccurrenceCategories);
     if (!occurrenceValidation.valid) {
-      await this.showInfoMessage(occurrenceValidation.message);
+      await this.showInfoMessage(occurrenceValidation.message, "Hinweis", { variant: "warn" });
       return false;
     }
     draft.gradeOccurrenceCategories = occurrenceValidation.categories;
@@ -5826,7 +5834,7 @@ class GradesApp {
         destructive: true
       }, { baseRevision: this.settingsDraftRevision });
       if (!deletion?.ok) {
-        await this.showInfoMessage(deletion?.message || "Die Vorkommnisse konnten nicht gelöscht werden.");
+        await this.showInfoMessage(deletion?.message || "Die Vorkommnisse konnten nicht gelöscht werden.", "Hinweis", { variant: "error" });
         return false;
       }
       this.settingsDraftRevision = Number(deletion.revision) || this.settingsDraftRevision;
@@ -5837,7 +5845,10 @@ class GradesApp {
     if (!result?.ok) {
       await this.showInfoMessage(result?.code === "STALE_STATE"
         ? "Die Einstellungen wurden zwischenzeitlich geändert. Bitte prüfe sie erneut."
-        : (result?.message || "Einstellungen konnten nicht gespeichert werden."));
+        : (result?.message || "Einstellungen konnten nicht gespeichert werden."),
+        "Hinweis",
+        { variant: result?.code === "STALE_STATE" ? "warn" : "error" }
+      );
       return false;
     }
     this.settingsDraftRevision = Number(result.revision) || this.workspaceRevision || 0;
@@ -6053,6 +6064,7 @@ class GradesApp {
 
   showMessageDialog({
     mode = "alert",
+    variant = "info",
     title = "Hinweis",
     message = "",
     okText = "OK",
@@ -6101,7 +6113,14 @@ class GradesApp {
       this._resolveMessageDialog("cancel");
     }
     this.refs.messageDialogTitle.textContent = String(title || "Hinweis");
-    this.refs.messageDialog.classList.toggle("is-warning-message", Boolean(warning));
+    applyFeedbackDialog({
+      dialog: this.refs.messageDialog,
+      content: this.refs.messageDialogTitle.closest("form"),
+      title: this.refs.messageDialogTitle,
+      body: this.refs.messageDialogText,
+      actions: [this.refs.messageDialogActionsBottom],
+      variant: warning ? "warn" : variant
+    });
     this.refs.messageDialogText.textContent = String(message || "");
     this.refs.messageDialogText.hidden = !String(message || "").trim();
     this.refs.messageDialogOk.textContent = String(okText || "OK");
@@ -6188,6 +6207,7 @@ class GradesApp {
     }
     await this.showMessageDialog({
       mode: "alert",
+      variant: options.variant || "info",
       title,
       message,
       okText: "OK"
@@ -6297,7 +6317,8 @@ class GradesApp {
     } catch (_error) {
       await this.showInfoMessage(
         "Bookmarklet-Code konnte nicht automatisch kopiert werden.",
-        GROUP_POPULATE_BOOKMARKLET_NAME
+        GROUP_POPULATE_BOOKMARKLET_NAME,
+        { variant: "error" }
       );
     }
   }
@@ -6338,7 +6359,8 @@ class GradesApp {
     if (!names.length) {
       await this.showInfoMessage(
         "Für diesen Kurs sind keine Teilnehmenden vorhanden.",
-        GROUP_POPULATE_BOOKMARKLET_NAME
+        GROUP_POPULATE_BOOKMARKLET_NAME,
+        { variant: "warn" }
       );
       return;
     }
@@ -6481,7 +6503,7 @@ class GradesApp {
       await navigator.clipboard.writeText(code);
       await this.showInfoMessage("Bookmarklet-Code wurde in die Zwischenablage kopiert.", GRADE_TRANSFER_BOOKMARKLET_NAME);
     } catch (_error) {
-      await this.showInfoMessage("Bookmarklet-Code konnte nicht automatisch kopiert werden.", GRADE_TRANSFER_BOOKMARKLET_NAME);
+      await this.showInfoMessage("Bookmarklet-Code konnte nicht automatisch kopiert werden.", GRADE_TRANSFER_BOOKMARKLET_NAME, { variant: "error" });
     }
   }
 
@@ -7412,7 +7434,7 @@ class GradesApp {
       this.revokeGradeStudentPortraitObjectUrls();
       this.renderCourseDialogStudents();
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Das Bild konnte nicht verarbeitet werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Das Bild konnte nicht verarbeitet werden.", "Hinweis", { variant: "error" });
     }
   }
 
@@ -7420,7 +7442,7 @@ class GradesApp {
     const student = this.courseDialogDraft?.students?.[Number(index)];
     if (!student) return;
     if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
-      await this.showInfoMessage("Dieser Browser kann keine Bilder aus der Zwischenablage lesen.");
+      await this.showInfoMessage("Dieser Browser kann keine Bilder aus der Zwischenablage lesen.", "Hinweis", { variant: "warn" });
       return;
     }
     try {
@@ -7436,15 +7458,15 @@ class GradesApp {
         this.renderCourseDialogStudents();
         return;
       }
-      await this.showInfoMessage("In der Zwischenablage wurde keine passende Datei gefunden.");
+      await this.showInfoMessage("In der Zwischenablage wurde keine passende Datei gefunden.", "Hinweis", { variant: "warn" });
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Datei konnte nicht aus der Zwischenablage gelesen werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Datei konnte nicht aus der Zwischenablage gelesen werden.", "Hinweis", { variant: "error" });
     }
   }
 
   async pasteGroupPhotoExtractionImage() {
     if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
-      await this.showInfoMessage("Dieser Browser kann keine Dateien aus der Zwischenablage lesen.");
+      await this.showInfoMessage("Dieser Browser kann keine Dateien aus der Zwischenablage lesen.", "Hinweis", { variant: "warn" });
       return;
     }
     try {
@@ -7458,9 +7480,9 @@ class GradesApp {
         await this.loadGroupPhotoExtractionFile(file);
         return;
       }
-      await this.showInfoMessage("In der Zwischenablage wurde keine passende Datei gefunden.");
+      await this.showInfoMessage("In der Zwischenablage wurde keine passende Datei gefunden.", "Hinweis", { variant: "warn" });
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Datei konnte nicht aus der Zwischenablage gelesen werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Datei konnte nicht aus der Zwischenablage gelesen werden.", "Hinweis", { variant: "error" });
     }
   }
 
@@ -7961,7 +7983,7 @@ class GradesApp {
 
   async loadGroupPhotoExtractionFile(file) {
     if (!(file instanceof File) || !GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(file.type)) {
-      await this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.");
+      await this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.", "Hinweis", { variant: "warn" });
       return;
     }
     let url = "";
@@ -7982,7 +8004,7 @@ class GradesApp {
       }
     } catch (error) {
       if (url) URL.revokeObjectURL(url);
-      await this.showInfoMessage(error instanceof Error ? error.message : "Das Gruppenfoto konnte nicht gelesen werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Das Gruppenfoto konnte nicht gelesen werden.", "Hinweis", { variant: "error" });
     }
   }
 
@@ -8034,7 +8056,7 @@ class GradesApp {
         this.refs.courseGroupPhotoStage?.classList.remove("is-photo-rotating");
       }, 360);
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Das Foto konnte nicht gedreht werden.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Das Foto konnte nicht gedreht werden.", "Hinweis", { variant: "error" });
     } finally {
       this.groupPhotoRotating = false;
     }
@@ -8141,7 +8163,8 @@ class GradesApp {
           targets.length === 1
             ? "In anderen Kursen wurde kein Bild mit gleichem Vor- und Nachnamen gefunden."
             : `Für die ${targets.length} Teilnehmenden ohne Bild wurde in anderen Kursen kein Bild mit gleichem Vor- und Nachnamen gefunden.`,
-          PORTRAIT_IMPORT_DIALOG_TITLE
+          PORTRAIT_IMPORT_DIALOG_TITLE,
+          { variant: "warn" }
         );
         return;
       }
@@ -8543,7 +8566,7 @@ class GradesApp {
     }
     const trimmedName = String(nextName || "").trim();
     if (!trimmedName) {
-      await this.showInfoMessage("Der Kursname darf nicht leer sein.");
+      await this.showInfoMessage("Der Kursname darf nicht leer sein.", "Hinweis", { variant: "warn" });
       return;
     }
     if (!this.gradeVaultSession.workspacePublicLoaded) {
@@ -8551,7 +8574,7 @@ class GradesApp {
     }
     const ok = await this.updateCourseFields(id, { name: trimmedName });
     if (!ok) {
-      await this.showInfoMessage("Kursname bereits vorhanden.");
+      await this.showInfoMessage("Kursname bereits vorhanden.", "Hinweis", { variant: "warn" });
       return;
     }
     await this.persistExplicitDatabaseSave();
@@ -8586,7 +8609,7 @@ class GradesApp {
     }
     const ok = await this.updateCourseFields(id, { subject: String(nextSubject || "").trim() });
     if (!ok) {
-      await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     await this.persistExplicitDatabaseSave();
@@ -8625,7 +8648,7 @@ class GradesApp {
     }
     const ok = await this.updateCourseFields(id, { gradeLevel: normalizeCourseGradeLevel(nextGradeLevel) });
     if (!ok) {
-      await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     await this.persistExplicitDatabaseSave();
@@ -8681,7 +8704,7 @@ class GradesApp {
     }
     const ok = await this.updateCourseFields(id, { color, noLesson: false });
     if (!ok) {
-      await this.showInfoMessage("Die Farbe konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Die Farbe konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     await this.persistExplicitDatabaseSave();
@@ -8705,7 +8728,7 @@ class GradesApp {
     const nextNoGrades = !course.noGrades;
     const ok = await this.updateCourseFields(id, { noGrades: nextNoGrades });
     if (!ok) {
-      await this.showInfoMessage("Die Noten-Einstellung konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Die Noten-Einstellung konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     if (nextNoGrades && this.isGradesTopTabActive() && Number(this.selectedCourseId || 0) === id) {
@@ -8753,7 +8776,7 @@ class GradesApp {
       }
     }
     if (!result?.ok || !targetCourseId) {
-      await this.showInfoMessage(result?.message || "Kursname bereits vorhanden.");
+      await this.showInfoMessage(result?.message || "Kursname bereits vorhanden.", "Hinweis", { variant: "warn" });
       return;
     }
     await this.persistExplicitDatabaseSave();
@@ -8830,7 +8853,7 @@ class GradesApp {
     try {
       validatedStudents = this.validateCourseDialogStudents(this.courseDialogDraft.students);
     } catch (error) {
-      await this.showInfoMessage(error instanceof Error ? error.message : "Teilnehmendenliste ist ungültig.");
+      await this.showInfoMessage(error instanceof Error ? error.message : "Teilnehmendenliste ist ungültig.", "Hinweis", { variant: "warn" });
       return;
     }
     const pendingImportMeta = this.courseDialogDraft.importMeta;
@@ -8874,7 +8897,9 @@ class GradesApp {
       await this.showInfoMessage(
         message
           ? message
-          : "Teilnehmendenliste konnte nicht sicher gespeichert werden."
+          : "Teilnehmendenliste konnte nicht sicher gespeichert werden.",
+        "Hinweis",
+        { variant: "error" }
       );
       return;
     }
@@ -8941,7 +8966,7 @@ class GradesApp {
       this.courseDialogDraft.performanceFlairWeightOverrides
     );
     if (!structureValidation.ok) {
-      await this.showInfoMessage(structureValidation.message);
+      await this.showInfoMessage(structureValidation.message, "Hinweis", { variant: "warn" });
       return;
     }
     try {
@@ -8964,7 +8989,9 @@ class GradesApp {
       await this.showInfoMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Notenstruktur konnte nicht sicher gespeichert werden."
+          : "Notenstruktur konnte nicht sicher gespeichert werden.",
+        "Hinweis",
+        { variant: "error" }
       );
       return;
     }
@@ -8985,7 +9012,7 @@ class GradesApp {
       courseId: id, destructive: true
     }, { baseRevision });
     if (!result?.ok) {
-      await this.showInfoMessage(result?.message || "Kurs konnte nicht gelöscht werden.");
+      await this.showInfoMessage(result?.message || "Kurs konnte nicht gelöscht werden.", "Hinweis", { variant: "error" });
       return false;
     }
     if (Number(this.gradeVaultSession.loadedGradeCourseId) === id) this.gradeVaultSession.loadedGradeCourseId = null;
@@ -9222,7 +9249,7 @@ class GradesApp {
       const message = error instanceof Error && error.message
         ? error.message
         : "Die CSV-Datei konnte nicht verarbeitet werden.";
-      await this.showInfoMessage(message);
+      await this.showInfoMessage(message, "Hinweis", { variant: "error" });
     }
   }
 
@@ -9403,7 +9430,7 @@ class GradesApp {
       ));
       if (this.courseDialogDraft !== draft) return;
       if (sourceStudents.length === 0) {
-        await this.showInfoMessage(`„${courseName}“ enthält keine Teilnehmenden.`);
+        await this.showInfoMessage(`„${courseName}“ enthält keine Teilnehmenden.`, "Hinweis", { variant: "warn" });
         return;
       }
       const { added, skipped } = this.appendCourseDialogStudents(sourceStudents);
@@ -9422,7 +9449,7 @@ class GradesApp {
       const message = error instanceof Error && error.message
         ? error.message
         : "Die Teilnehmenden konnten nicht importiert werden.";
-      await this.showInfoMessage(message);
+      await this.showInfoMessage(message, "Hinweis", { variant: "error" });
     } finally {
       if (this.courseDialogDraft === draft && importToken === this.courseDialogRosterImportToken) {
         this.courseDialogRosterImportBusy = false;
@@ -9846,7 +9873,9 @@ class GradesApp {
       this.renderGradesView();
     } catch (error) {
       await this.showInfoMessage(
-        error instanceof Error ? error.message : "Die Leistungsreihenfolge konnte nicht gespeichert werden."
+        error instanceof Error ? error.message : "Die Leistungsreihenfolge konnte nicht gespeichert werden.",
+        "Hinweis",
+        { variant: "error" }
       );
     }
   }
@@ -10128,7 +10157,9 @@ class GradesApp {
       : this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId);
     if (!isDraftSave && !activeAssessment) {
       await this.showInfoMessage(
-        "Die bearbeitete Einzelleistung ist im geladenen Kursstand nicht mehr vorhanden. Der Entwurf wurde nicht als neue Leistung gespeichert."
+        "Die bearbeitete Einzelleistung ist im geladenen Kursstand nicht mehr vorhanden. Der Entwurf wurde nicht als neue Leistung gespeichert.",
+        "Hinweis",
+        { variant: "warn" }
       );
       return false;
     }
@@ -10144,11 +10175,11 @@ class GradesApp {
       Number(sessionDraft.courseId || 0) !== courseId
       || (activeAssessment && Number(activeAssessment.courseId || 0) !== courseId)
     ) {
-      await this.showInfoMessage("Der Einzelleistungsentwurf gehört nicht mehr zum ausgewählten Kurs. Es wurde nichts gespeichert.");
+      await this.showInfoMessage("Der Einzelleistungsentwurf gehört nicht mehr zum ausgewählten Kurs. Es wurde nichts gespeichert.", "Hinweis", { variant: "warn" });
       return false;
     }
     if (!String(sessionDraft.title || "").trim()) {
-      await this.showInfoMessage("Der Leistungsname darf nicht leer sein.");
+      await this.showInfoMessage("Der Leistungsname darf nicht leer sein.", "Hinweis", { variant: "warn" });
       this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-title]")?.focus();
       return false;
     }
@@ -10158,7 +10189,7 @@ class GradesApp {
       sessionDraft.categoryId,
       sessionDraft.subcategoryId
     )) {
-      await this.showInfoMessage("Bitte eine gültige Kategoriezuordnung auswählen.");
+      await this.showInfoMessage("Bitte eine gültige Kategoriezuordnung auswählen.", "Hinweis", { variant: "warn" });
       return false;
     }
     if (
@@ -10222,7 +10253,9 @@ class GradesApp {
         await this.showInfoMessage(
           error instanceof Error && error.message
             ? error.message
-            : "Die Einzelleistung konnte nicht sicher gespeichert werden."
+            : "Die Einzelleistung konnte nicht sicher gespeichert werden.",
+          "Hinweis",
+          { variant: "error" }
         );
       }
       return false;
@@ -10807,7 +10840,9 @@ class GradesApp {
         await this.showInfoMessage(
           error instanceof Error && error.message
             ? error.message
-            : "Notenkurs konnte nicht sicher geladen werden."
+            : "Notenkurs konnte nicht sicher geladen werden.",
+          "Hinweis",
+          { variant: "error" }
         );
         if (!this.isGradeCourseNavigationLoadCurrent(loadGeneration)) {
           return;
@@ -11462,7 +11497,8 @@ class GradesApp {
                   error instanceof Error && error.message
                     ? error.message
                     : "Der Notenbereich konnte nicht gesperrt werden.",
-                  "Notenbereich sperren"
+                  "Notenbereich sperren",
+                  { variant: "error" }
                 );
               }
             } finally {
@@ -11952,7 +11988,8 @@ class GradesApp {
       void this.importCourseDialogPortraitsFromOtherCourses().catch(async (error) => {
         await this.showInfoMessage(
           error instanceof Error && error.message ? error.message : "Bilder konnten nicht importiert werden.",
-          PORTRAIT_IMPORT_DIALOG_TITLE
+          PORTRAIT_IMPORT_DIALOG_TITLE,
+          { variant: "error" }
         );
       });
     });
@@ -11964,7 +12001,7 @@ class GradesApp {
     this.refs.courseGroupPhotoDialogForm?.addEventListener("submit", (event) => {
       event.preventDefault();
       void this.applyGroupPhotoExtractions().catch(async (error) => {
-        await this.showInfoMessage(error instanceof Error ? error.message : "Bilder konnten nicht übernommen werden.");
+        await this.showInfoMessage(error instanceof Error ? error.message : "Bilder konnten nicht übernommen werden.", "Hinweis", { variant: "error" });
       });
     });
     this.refs.courseGroupPhotoPaste?.addEventListener("click", () => {
@@ -12048,7 +12085,7 @@ class GradesApp {
         const file = Array.from(event.dataTransfer?.files || [])
           .find((item) => GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(item.type));
         if (file) void this.loadGroupPhotoExtractionFile(file);
-        else void this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild ablegen.");
+        else void this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild ablegen.", "Hinweis", { variant: "warn" });
       });
       document.addEventListener("dragend", clearGroupPhotoDragState);
     }
@@ -12165,7 +12202,7 @@ class GradesApp {
         clearDropzone();
         const csvFile = Array.from(event.dataTransfer?.files || []).find((file) => gradeIsCsvFile(file));
         if (!csvFile) {
-          await this.showInfoMessage("Bitte eine CSV-Datei ablegen.");
+          await this.showInfoMessage("Bitte eine CSV-Datei ablegen.", "Hinweis", { variant: "warn" });
           return;
         }
         await this.importCourseDialogStudentsFromFile(csvFile);
@@ -12627,7 +12664,7 @@ class GradesApp {
         const persistenceOwner = this.workspaceClient.operations;
         const syncFileHandle = persistenceOwner.getPersistenceView().sync.connected;
         if (!syncFileHandle) {
-          await this.showInfoMessage("Bitte zuerst eine Datenbankdatei auswählen.");
+          await this.showInfoMessage("Bitte zuerst eine Datenbankdatei auswählen.", "Hinweis", { variant: "warn" });
           return;
         }
         const backupState = persistenceOwner.getPersistenceView().backup;
@@ -14625,7 +14662,7 @@ class GradesApp {
     const editorValues = values || this.readGradesEntryEditorValues();
     const title = String(editorValues?.title || "").trim();
     if (!title) {
-      await this.showInfoMessage("Der Leistungsname darf nicht leer sein.");
+      await this.showInfoMessage("Der Leistungsname darf nicht leer sein.", "Hinweis", { variant: "warn" });
       this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-title]")?.focus();
       return false;
     }
@@ -14635,7 +14672,7 @@ class GradesApp {
       editorValues?.categoryId,
       editorValues?.subcategoryId
     )) {
-      await this.showInfoMessage("Bitte eine gültige Kategoriezuordnung auswählen.");
+      await this.showInfoMessage("Bitte eine gültige Kategoriezuordnung auswählen.", "Hinweis", { variant: "warn" });
       return false;
     }
     const mode = normalizeGradeAssessmentMode(editorValues.mode);
@@ -27175,7 +27212,7 @@ class GradesApp {
       targetCategory.id,
       targetSubcategory?.id || null
     )) {
-      await this.showInfoMessage("Bitte zuerst eine gültige Notenkategorie anlegen.");
+      await this.showInfoMessage("Bitte zuerst eine gültige Notenkategorie anlegen.", "Hinweis", { variant: "warn" });
       return;
     }
 
@@ -27252,7 +27289,9 @@ class GradesApp {
       await this.showInfoMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Die Leistung konnte nicht sicher gelöscht werden."
+          : "Die Leistung konnte nicht sicher gelöscht werden.",
+        "Hinweis",
+        { variant: "error" }
       );
       return false;
     }
@@ -29634,7 +29673,9 @@ class GradesApp {
       await this.showInfoMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Notenkurs konnte nicht sicher geladen werden."
+          : "Notenkurs konnte nicht sicher geladen werden.",
+        "Hinweis",
+        { variant: "error" }
       );
       return false;
     }
@@ -29643,7 +29684,7 @@ class GradesApp {
     }
     const assessment = this.store.getGradeAssessment(id);
     if (!assessment || Number(assessment.courseId || 0) !== courseId) {
-      await this.showInfoMessage("Die Einzelleistung gehört nicht zum geladenen Notenkurs.");
+      await this.showInfoMessage("Die Einzelleistung gehört nicht zum geladenen Notenkurs.", "Hinweis", { variant: "warn" });
       return false;
     }
     return this.openGradesEntryForAssessment(id, {
@@ -29691,7 +29732,9 @@ class GradesApp {
       await this.showInfoMessage(
         error instanceof Error && error.message
           ? error.message
-          : "Notenkurs konnte nicht sicher geladen werden."
+          : "Notenkurs konnte nicht sicher geladen werden.",
+        "Hinweis",
+        { variant: "error" }
       );
       return false;
     }

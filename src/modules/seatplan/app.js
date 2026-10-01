@@ -1,4 +1,5 @@
 import { createMessageApi } from '../../shared/messages.js';
+import { applyFeedbackDialog } from '../../shared/feedback-dialog.js';
 import {
   assertFileSizeAtMost,
   assertJsonNestingAtMost,
@@ -280,6 +281,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           function removeMessage(node) {
             const host = ensureMessageHost();
             if (node) {
+              if (node.open && typeof node.close === 'function') node.close();
               node.remove();
             }
             if (!host.hasChildNodes()) {
@@ -308,9 +310,11 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!shouldEnqueue) {
               queuedMessages.length = 0;
             }
+            host.querySelectorAll('dialog[open]').forEach((dialog) => dialog.close());
             host.textContent = '';
             const config = MESSAGE_VARIANTS[variant] || MESSAGE_VARIANTS.info;
-            const node = document.createElement('div');
+            const isFeedback = variant === 'warn' || variant === 'error';
+            const node = document.createElement(isFeedback ? 'dialog' : 'div');
             node.className = `message ${config.className || ''}`.trim();
             node.setAttribute('role', 'alertdialog');
             const icon = document.createElement('div');
@@ -327,8 +331,17 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             node.appendChild(icon);
             node.appendChild(body);
             node.appendChild(closeBtn);
+            applyFeedbackDialog({ dialog: node, body, actions: [closeBtn], variant, icon });
             host.appendChild(node);
             host.classList.add('active');
+            if (isFeedback) {
+              node.addEventListener('cancel', (event) => {
+                event.preventDefault();
+                removeMessage(node);
+              });
+              if (typeof node.showModal === 'function') node.showModal();
+              else node.setAttribute('open', '');
+            }
             closeBtn.focus({ preventScroll: true });
             setTimeout(() => node.classList.add('show'), 0);
             return node;

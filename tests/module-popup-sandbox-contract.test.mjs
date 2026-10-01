@@ -16,28 +16,28 @@ test('sandboxed tool modules never receive popup permissions', async () => {
       `${name}_MODULE_SANDBOX darf keine Popups erlauben: ${match[1]}`,
     );
     assert.ok(!tokens.includes('allow-same-origin'), `${name}_MODULE_SANDBOX muss opaque bleiben`);
+    assert.ok(!tokens.includes('allow-modals'), `${name}_MODULE_SANDBOX darf keine Druckdialoge öffnen`);
   }
 });
 
-test('qr and merger delegate window opening to the shell instead of opening popups', async () => {
+test('qr delegates window opening to the shell and merger never opens popups', async () => {
   const [qr, merger] = await Promise.all([
     read('../src/modules/qr/app.js'),
     read('../src/modules/merger/app.js'),
   ]);
 
-  for (const [label, source] of [['qr', qr], ['merger', merger]]) {
-    const opens = [...source.matchAll(/window\.open\(/g)];
-    assert.equal(opens.length, 1, `${label}: genau ein window.open (Standalone-Fallback) erwartet`);
-    const guarded = source.slice(Math.max(0, opens[0].index - 400), opens[0].index);
-    assert.match(
-      guarded,
-      /!window\.parent \|\| window\.parent === window/,
-      `${label}: window.open ist nicht durch den Standalone-Check abgesichert`,
-    );
-  }
+  const opens = [...qr.matchAll(/window\.open\(/g)];
+  assert.equal(opens.length, 1, 'qr: genau ein window.open (Standalone-Fallback) erwartet');
+  const guarded = qr.slice(Math.max(0, opens[0].index - 400), opens[0].index);
+  assert.match(
+    guarded,
+    /!window\.parent \|\| window\.parent === window/,
+    'qr: window.open ist nicht durch den Standalone-Check abgesichert',
+  );
 
   assert.match(qr, /MODULE_OPEN_EXTERNAL_REQUEST_EVENT/);
-  assert.match(merger, /MERGER_OPEN_RESULT_REQUEST_EVENT/);
+  assert.doesNotMatch(merger, /window\.open\(/);
+  assert.doesNotMatch(merger, /MERGER_OPEN_RESULT_REQUEST_EVENT/);
 });
 
 test('the shell revalidates module open requests instead of trusting the frame', async () => {
@@ -50,19 +50,13 @@ test('the shell revalidates module open requests instead of trusting the frame',
     router,
     /data\.type === MODULE_OPEN_EXTERNAL_REQUEST_EVENT\) \{\s*if \(role !== 'qr'\) return false;/,
   );
-  assert.match(
-    router,
-    /data\.type === MERGER_OPEN_RESULT_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/,
-  );
   assert.match(main, /onOpenExternalRequest: \(detail\) => \{\s*openExternalUrlForModule\(detail\?\.url\);/);
-  assert.match(main, /onMergerOpenResultRequest: \(detail\) => \{\s*openModuleResultPdf\(detail\);/);
+  assert.doesNotMatch(main, /openModuleResultPdf/);
+  assert.doesNotMatch(router, /MERGER_OPEN_RESULT_REQUEST_EVENT/);
+  assert.match(router, /data\.type === MERGER_PRINT_RESULT_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/);
+  assert.match(main, /onMergerPrintResultRequest: \(detail\) => \{\s*printModuleResult\(detail\);/);
 
   const externalHelper = main.match(/const openExternalUrlForModule = \([\s\S]*?\n  \};/)?.[0] || '';
   assert.match(externalHelper, /new URL\(/);
   assert.match(externalHelper, /url\.protocol !== 'http:' && url\.protocol !== 'https:'/);
-
-  const pdfHelper = main.match(/const openModuleResultPdf = \([\s\S]*?\n  \};/)?.[0] || '';
-  assert.match(pdfHelper, /instanceof ArrayBuffer/);
-  assert.match(pdfHelper, /FILE_LIMITS\.PDF_RESULT_OPEN_BYTES/);
-  assert.match(pdfHelper, /type: 'application\/pdf'/);
 });

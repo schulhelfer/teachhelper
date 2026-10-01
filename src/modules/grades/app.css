@@ -919,39 +919,6 @@
           justify-content: center;
         }
 
-        #message-dialog.app-dialog.is-warning-message {
-          border-color: rgba(248, 113, 113, 0.45);
-          box-shadow:
-            0 0 0 1px rgba(248, 113, 113, 0.18),
-            var(--module-surface-shadow);
-        }
-
-        #message-dialog.is-warning-message #message-dialog-form {
-          grid-template-columns: auto minmax(0, 1fr);
-          column-gap: 0.78rem;
-          row-gap: 0.52rem;
-        }
-
-        #message-dialog.is-warning-message #message-dialog-form::before {
-          content: "⚠️";
-          grid-column: 1;
-          grid-row: 1 / span 2;
-          align-self: start;
-          margin-top: -0.08rem;
-          font-size: 2.65rem;
-          line-height: 1;
-        }
-
-        #message-dialog.is-warning-message .dialog-header,
-        #message-dialog.is-warning-message .message-dialog-text,
-        #message-dialog.is-warning-message .message-dialog-input-row {
-          grid-column: 2;
-        }
-
-        #message-dialog.is-warning-message .dialog-actions {
-          grid-column: 1 / -1;
-        }
-
         #message-dialog-ok.danger-action,
         #message-dialog-ok-top.danger-action {
           background: var(--action-danger-bg);

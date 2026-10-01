@@ -1,6 +1,6 @@
 import { getWorkspaceClient } from '../modules/workspace/client.js';
 import { createQrCameraController } from './qr-camera-controller.js';
-import { FILE_LIMITS, formatFileSize } from '../shared/file-guards.js';
+import { createPdfPrintController } from './pdf-print-controller.js';
 import {
   GRADES_GRADE_VAULT_OVERLAY_EVENT,
   GRADES_VIEW_REQUEST_EVENT,
@@ -35,6 +35,13 @@ export function createIframeModuleShellBindings({
   showMessage,
 }) {
   let qrCameraController = null;
+  let pdfPrintController = null;
+  registerCleanup(() => pdfPrintController?.dispose());
+  const printModuleResult = (detail) => {
+    if (appEl?.dataset?.helpPreview === 'true') return;
+    pdfPrintController ||= createPdfPrintController({ documentRef: document, view: window, showMessage });
+    void pdfPrintController.print(detail);
+  };
   const postToQrFrame = (type, detail) => {
     moduleRegistry.get(TAB_QR)?.postMessage({ type, detail });
   };
@@ -62,22 +69,6 @@ export function createIframeModuleShellBindings({
     }
     if (url.protocol !== 'http:' && url.protocol !== 'https:') return;
     window.open(url.href, '_blank', 'noopener,noreferrer');
-  };
-  const openModuleResultPdf = (detail) => {
-    const buffer = detail?.bytes;
-    if (!(buffer instanceof ArrayBuffer) || !buffer.byteLength) return;
-    if (buffer.byteLength > FILE_LIMITS.PDF_RESULT_OPEN_BYTES) {
-      showMessage(
-        `Das Ergebnis ist zu groß für die Vorschau (max. ${formatFileSize(FILE_LIMITS.PDF_RESULT_OPEN_BYTES)}). Bitte die Datei herunterladen.`,
-        'warn',
-        { presentation: 'toast' }
-      );
-      return;
-    }
-    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/pdf' }));
-    window.open(url, '_blank', 'noopener,noreferrer');
-    registerCleanup(() => URL.revokeObjectURL(url));
-    setRuntimeTimeout(() => URL.revokeObjectURL(url), 120_000);
   };
   let pendingSeatplanChromeCollapsed = null;
   let pendingSeatplanChromeFrame = 0;
@@ -267,6 +258,9 @@ export function createIframeModuleShellBindings({
       onOpenExternalRequest: (detail) => {
         openExternalUrlForModule(detail?.url);
       },
+      onMergerPrintResultRequest: (detail) => {
+        printModuleResult(detail);
+      },
       onQrCameraRequest: (detail) => {
         if (detail.action === 'stop') {
           qrCameraController?.stop();
@@ -274,9 +268,6 @@ export function createIframeModuleShellBindings({
         }
         if (!appEl.classList.contains('app-tab-qr')) return;
         void getQrCameraController().start();
-      },
-      onMergerOpenResultRequest: (detail) => {
-        openModuleResultPdf(detail);
       },
       onGradesNavigate: (detail) => {
         getCourseContext().suppressGradesAutoSelect();

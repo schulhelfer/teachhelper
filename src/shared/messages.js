@@ -1,3 +1,5 @@
+import { applyFeedbackDialog } from './feedback-dialog.js';
+
 const MESSAGE_VARIANTS = {
   info: { icon: 'ℹ️', className: 'message-info' },
   warn: { icon: '⚠️', className: 'message-warn' },
@@ -42,6 +44,7 @@ export function createMessageApi(doc = document) {
     const host = ensureMessageHost();
     if (!node?.isConnected) return;
     const finish = () => {
+      if (node.open && typeof node.close === 'function') node.close();
       node.remove();
       if (!host.children.length) {
         host.classList.remove('active');
@@ -143,7 +146,8 @@ export function createMessageApi(doc = document) {
       return null;
     }
     const config = MESSAGE_VARIANTS[variant] || MESSAGE_VARIANTS.info;
-    const node = doc.createElement('div');
+    const isFeedback = variant === 'warn' || variant === 'error';
+    const node = doc.createElement(isFeedback ? 'dialog' : 'div');
     node.className = `message ${config.className || ''}`.trim();
     const icon = doc.createElement('div');
     icon.className = 'message-icon';
@@ -159,8 +163,17 @@ export function createMessageApi(doc = document) {
     node.appendChild(icon);
     node.appendChild(body);
     node.appendChild(closeBtn);
+    applyFeedbackDialog({ dialog: node, body, actions: [closeBtn], variant, icon });
     host.appendChild(node);
     host.classList.add('active');
+    if (isFeedback) {
+      node.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        removeMessage(node);
+      });
+      if (typeof node.showModal === 'function') node.showModal();
+      else node.setAttribute('open', '');
+    }
     window.requestAnimationFrame?.(() => node.classList.add('show'));
     if (typeof window.requestAnimationFrame !== 'function') {
       node.classList.add('show');

@@ -136,7 +136,11 @@ test('Meldungen aus geöffneten Dialogen bleiben Modals, weil ein Toast im Top L
   });
 });
 
-test('der PDF-Ergebnisdialog bleibt erhalten, wenn er einen Öffnen-Button trägt', () => {
+test('PDF-Erfolge erscheinen als Toast und Warnungen behalten den Ergebnisdialog', () => {
   assert.match(mergerSource, /showResultToast\(`\$\{outputs\.length\} PDFs als ZIP-Download erstellt\.`, "success"\)/);
-  assert.match(mergerSource, /showResultDialog\(successMessage, "ok", "", \{ bytes, name: outputName \}\)/);
+  assert.equal((mergerSource.match(/showResultToast\(successMessage, "success"\)/g) || []).length, 2);
+  assert.match(mergerSource, /showResultDialog\(`PDF wurde erstellt, Teilen wurde abgebrochen\.\\n\$\{outputName\}`, "warn", "Hinweis"\)/);
+  assert.match(mergerDocument, /id="resultDialog"/);
+  assert.doesNotMatch(mergerDocument, /id="resultOpenButton"/);
+  assert.doesNotMatch(mergerSource, /showResultDialog\(successMessage/);
 });

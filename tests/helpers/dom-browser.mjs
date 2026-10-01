@@ -55,7 +55,12 @@ export async function openDomBrowser(t, options = {}) {
           + '\nexport { PlanningApp };';
       }
       response.setHeader('Content-Type', path.endsWith('.js') || path.endsWith('.mjs')
-        ? 'text/javascript; charset=utf-8' : 'application/octet-stream');
+        ? 'text/javascript; charset=utf-8'
+        : path.endsWith('.css')
+          ? 'text/css; charset=utf-8'
+          : path.endsWith('.html')
+            ? 'text/html; charset=utf-8'
+            : 'application/octet-stream');
       response.end(source);
     } catch (error) {
       response.writeHead(404);
@@ -142,6 +147,7 @@ export async function openDomBrowser(t, options = {}) {
     return result.result.value;
   }
   evaluate.setViewport = setViewport;
+  evaluate.printToPdf = async () => (await command('Page.printToPDF', { preferCSSPageSize: true, printBackground: true }, sessionId)).data;
   evaluate.dispatchMouseEvent = (event) => command('Input.dispatchMouseEvent', event, sessionId);
   return evaluate;
 }

@@ -5,7 +5,7 @@ import {
   GRADES_GRADE_VAULT_ACTIVITY_EVENT,
   GRADES_GRADE_VAULT_REQUEST_EVENT,
   GRADES_NAVIGATE_EVENT,
-  MERGER_OPEN_RESULT_REQUEST_EVENT,
+  MERGER_PRINT_RESULT_REQUEST_EVENT,
   MODULE_OPEN_EXTERNAL_REQUEST_EVENT,
   NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT,
   NAME_LEARNING_DATA_REQUEST_EVENT,
@@ -111,9 +111,9 @@ export function createModuleMessageRouter({
       if (detail.action !== 'start' && detail.action !== 'stop') return false;
       return invoke('onQrCameraRequest', detail, metadata);
     }
-    if (data.type === MERGER_OPEN_RESULT_REQUEST_EVENT) {
+    if (data.type === MERGER_PRINT_RESULT_REQUEST_EVENT) {
       if (role !== 'merger') return false;
-      return invoke('onMergerOpenResultRequest', data.detail, metadata);
+      return invoke('onMergerPrintResultRequest', data.detail, metadata);
     }
     if (data.type === GRADES_NAVIGATE_EVENT) {
       if (role !== 'planning') return false;

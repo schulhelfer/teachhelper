@@ -45,7 +45,7 @@ const handlerNames = [
   'onMoreToolsDismiss',
   'onOpenExternalRequest',
   'onQrCameraRequest',
-  'onMergerOpenResultRequest',
+  'onMergerPrintResultRequest',
   'onGradesNavigate',
   'onGradeVaultActivity',
   'onGradeVaultRequest',
@@ -121,7 +121,7 @@ test('routes every known message type to its existing authorized adapter', () =>
     ['duplicateCheck', 'classroom:more-tools-dismiss', 'onMoreToolsDismiss', { reason: 'pointer' }, 0],
     ['qr', tabs.MODULE_OPEN_EXTERNAL_REQUEST_EVENT, 'onOpenExternalRequest', { url: 'https://example.test' }, 0],
     ['qr', tabs.QR_CAMERA_REQUEST_EVENT, 'onQrCameraRequest', { source: 'iframe', action: 'start' }, 0],
-    ['merger', tabs.MERGER_OPEN_RESULT_REQUEST_EVENT, 'onMergerOpenResultRequest', { bytes: new ArrayBuffer(2) }, 0],
+    ['merger', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, 'onMergerPrintResultRequest', { outputs: [{ bytes: new ArrayBuffer(2), name: 'Test.pdf' }] }, 0],
     ['planning', tabs.GRADES_NAVIGATE_EVENT, 'onGradesNavigate', { courseId: 3 }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_ACTIVITY_EVENT, 'onGradeVaultActivity', { source: 'grades' }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_REQUEST_EVENT, 'onGradeVaultRequest', { action: 'unlock' }, 0],
@@ -168,6 +168,20 @@ test('keeps detail defaults and sidebar scope metadata compatible', () => {
   assert.equal(harness.calls[0].args.at(-1).scope, routerModule.SIDEBAR_WIDTH_SCOPE_OTHER);
 });
 
+test('PDF-Druck aus einem opaken Frame benötigt die gültige Quelle und Nonce', () => {
+  const harness = createHarness();
+  harness.currentFrames.merger = createFrame('merger', { opaque: true });
+  const event = harness.message('merger', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, { outputs: [{ bytes: new ArrayBuffer(2) }] });
+  event.data.frameNonce = 'merger-nonce';
+  assert.equal(harness.router.handleMessage(event), true);
+  assert.equal(harness.calls.at(-1).name, 'onMergerPrintResultRequest');
+  event.data.frameNonce = 'gefälscht';
+  assert.equal(harness.router.handleMessage(event), false);
+  event.data.frameNonce = 'merger-nonce';
+  event.source = {};
+  assert.equal(harness.router.handleMessage(event), false);
+});
+
 test('ignores malformed, unknown, markerless, and wrong-role messages', () => {
   const harness = createHarness();
   const ignored = [
@@ -180,7 +194,8 @@ test('ignores malformed, unknown, markerless, and wrong-role messages', () => {
     harness.message('merger', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'iframe', action: 'start' }),
     harness.message('qr', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'shell', action: 'start' }),
     harness.message('qr', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'iframe', action: 'pause' }),
-    harness.message('qr', tabs.MERGER_OPEN_RESULT_REQUEST_EVENT, {}),
+    harness.message('merger', 'classroom:merger-open-result-request', { bytes: new ArrayBuffer(2) }),
+    harness.message('qr', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, { outputs: [{ bytes: new ArrayBuffer(2) }] }),
     harness.message('planning', tabs.GRADES_GRADE_VAULT_REQUEST_EVENT, {}),
     harness.message('planning', 'classroom:sidebar-width-request', { scope: 'other' }),
     harness.message('qr', 'classroom:sidebar-width-commit', { scope: 'planning' }),

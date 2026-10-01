@@ -1,0 +1,129 @@
+.feedback-dialog.feedback-dialog {
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - 24px));
+  max-width: 440px;
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  padding: 0;
+  border: 1px solid var(--feedback-dialog-border);
+  border-radius: 18px;
+  background: var(--surface-overlay-strong);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-overlay);
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: left;
+}
+
+.feedback-dialog-warn {
+  --feedback-dialog-border: var(--tooltip-warn-border);
+}
+
+.feedback-dialog-error {
+  --feedback-dialog-border: var(--tooltip-error-border);
+}
+
+dialog.feedback-dialog::backdrop {
+  background: var(--backdrop-dialog);
+}
+
+.feedback-dialog.feedback-dialog .feedback-dialog-content,
+.feedback-dialog.feedback-dialog.feedback-dialog-content {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 8px 12px;
+  align-items: start;
+  margin: 0;
+  padding: 16px;
+}
+
+.feedback-dialog-content > :not(.feedback-dialog-icon):not(.feedback-dialog-actions) {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.feedback-dialog .feedback-dialog-icon {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  font-size: 2.65rem;
+  line-height: 1;
+}
+
+.feedback-dialog .feedback-dialog-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.feedback-dialog .feedback-dialog-body {
+  margin: 0;
+  color: var(--text-dialog);
+  font-size: 14px;
+  font-weight: 400;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.feedback-dialog .dialog-header {
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.feedback-dialog .feedback-dialog-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 8px 0 0;
+}
+
+.feedback-dialog button.feedback-dialog-actions,
+.feedback-dialog .feedback-dialog-actions button:not(.danger-action):not(.warn-action):not(.primary),
+.feedback-dialog .feedback-dialog-actions .feedback-dialog-dismiss:not(.danger-action):not(.warn-action) {
+  box-sizing: border-box;
+  width: auto;
+  min-width: 72px;
+  min-height: 36px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-control);
+  border-radius: 10px;
+  background: var(--button-secondary-bg);
+  color: var(--button-secondary-fg);
+  box-shadow: none;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.feedback-dialog button.feedback-dialog-actions {
+  justify-self: end;
+}
+
+.feedback-dialog button.feedback-dialog-actions:hover,
+.feedback-dialog .feedback-dialog-actions button:not(.danger-action):not(.warn-action):not(.primary):hover,
+.feedback-dialog .feedback-dialog-actions .feedback-dialog-dismiss:not(.danger-action):not(.warn-action):hover {
+  background: var(--button-secondary-hover);
+}
+
+.feedback-dialog button:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+.feedback-dialog .feedback-dialog-replaced-icon,
+.feedback-dialog [hidden],
+.feedback-dialog .hidden {
+  display: none;
+}
+
+.message-stack:has(dialog.feedback-dialog[open]) {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

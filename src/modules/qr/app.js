@@ -13,6 +13,7 @@ import {
 } from '../../shared/module-frame-bridge.js';
 import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TIMEOUTS } from '../../shared/file-guards.js';
 import { createMessageApi } from '../../shared/messages.js';
+import { applyFeedbackDialog } from '../../shared/feedback-dialog.js';
 import { createQrDecoder } from '../../shared/qr-decode.js';
 
 function createQrApp({ root = document } = {}) {
@@ -181,7 +182,7 @@ function createQrApp({ root = document } = {}) {
     toastApi.showMessage(String(message || ''), variant, { presentation: 'toast' });
   }
 
-  function showMessage(message, title = 'Hinweis') {
+  function showMessage(message, title = 'Hinweis', variant = 'warn') {
     if (!ui.messageDialog) return;
     pendingExternalLink = '';
     ui.externalLinkOpenButton?.classList.add('hidden');
@@ -190,6 +191,7 @@ function createQrApp({ root = document } = {}) {
     if (ui.messageCloseButton) ui.messageCloseButton.textContent = 'OK';
     if (ui.messageTitle) ui.messageTitle.textContent = title;
     if (ui.messageText) ui.messageText.textContent = message;
+    applyMessageAppearance(variant);
     ui.messageDialog.classList.remove('hidden');
     root.body?.classList.add('dialog-active');
     try {
@@ -218,6 +220,17 @@ function createQrApp({ root = document } = {}) {
       ui.messageDialog.removeAttribute('open');
     }
     ui.messageDialog.classList.add('hidden');
+  }
+
+  function applyMessageAppearance(variant) {
+    applyFeedbackDialog({
+      dialog: ui.messageDialog,
+      title: ui.messageTitle,
+      body: ui.messageText,
+      actions: [ui.messageCloseButton?.parentElement],
+      dismissButton: ui.messageCloseButton,
+      variant,
+    });
   }
 
   function setActiveTool(tool) {
@@ -302,6 +315,7 @@ function createQrApp({ root = document } = {}) {
     ui.externalLinkOpenButton?.classList.add('primary');
     ui.messageCloseButton?.classList.remove('primary');
     if (ui.messageCloseButton) ui.messageCloseButton.textContent = 'Abbrechen';
+    applyMessageAppearance('warn');
     ui.messageDialog?.classList.remove('hidden');
     root.body?.classList.add('dialog-active');
     try {
@@ -394,7 +408,7 @@ function createQrApp({ root = document } = {}) {
     try {
       await renderGeneratedQr(normalized.value);
     } catch (error) {
-      showMessage(error?.message || 'QR-Code konnte nicht erstellt werden.', 'Fehler');
+      showMessage(error?.message || 'QR-Code konnte nicht erstellt werden.', 'Fehler', 'error');
     }
   }
 
@@ -430,7 +444,7 @@ function createQrApp({ root = document } = {}) {
       anchor.remove();
       setTimeout(() => URL.revokeObjectURL(url), 1000);
     } catch (error) {
-      showMessage(error?.message || 'Download konnte nicht vorbereitet werden.', 'Fehler');
+      showMessage(error?.message || 'Download konnte nicht vorbereitet werden.', 'Fehler', 'error');
     }
   }
 
@@ -450,7 +464,7 @@ function createQrApp({ root = document } = {}) {
       ]);
       showToastMessage('QR-Code wurde in die Zwischenablage kopiert.', 'success');
     } catch (error) {
-      showMessage(error?.message || 'QR-Code konnte nicht in die Zwischenablage kopiert werden.', 'Fehler');
+      showMessage(error?.message || 'QR-Code konnte nicht in die Zwischenablage kopiert werden.', 'Fehler', 'error');
     }
   }
 
@@ -725,7 +739,7 @@ function createQrApp({ root = document } = {}) {
         }
       }
     } catch (error) {
-      showMessage(error?.message || 'QR-Code konnte nicht gelesen werden.', 'Fehler');
+      showMessage(error?.message || 'QR-Code konnte nicht gelesen werden.', 'Fehler', 'error');
     }
   }
 
@@ -750,7 +764,7 @@ function createQrApp({ root = document } = {}) {
       }
       showToastMessage('In der Zwischenablage wurde kein Bild gefunden.', 'warn');
     } catch (error) {
-      showMessage(error?.message || 'Bild konnte nicht aus der Zwischenablage gelesen werden.', 'Fehler');
+      showMessage(error?.message || 'Bild konnte nicht aus der Zwischenablage gelesen werden.', 'Fehler', 'error');
     }
   }
 
@@ -791,7 +805,7 @@ function createQrApp({ root = document } = {}) {
   function handleCameraState(detail) {
     if (detail.error) {
       stopCamera();
-      showMessage(detail.error, 'Fehler');
+      showMessage(detail.error, 'Fehler', 'error');
       return;
     }
     if (detail.active === false) {
@@ -820,7 +834,7 @@ function createQrApp({ root = document } = {}) {
       await navigator.clipboard.writeText(decodedValue);
       showToastMessage('Ergebnis wurde in die Zwischenablage kopiert.', 'success');
     } catch (error) {
-      showMessage(error?.message || 'Ergebnis konnte nicht kopiert werden.', 'Fehler');
+      showMessage(error?.message || 'Ergebnis konnte nicht kopiert werden.', 'Fehler', 'error');
     }
   }
 

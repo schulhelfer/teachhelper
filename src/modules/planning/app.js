@@ -1,3 +1,4 @@
+import { applyFeedbackDialog } from "../../shared/feedback-dialog.js";
 import { installAppTooltips } from "../../shared/app-tooltips.js";
 import { createMessageApi } from "../../shared/messages.js";
 import {
@@ -1215,7 +1216,8 @@ class PlanningApp {
       this.persistenceFailureNoticeAt = at;
       void this.showInfoMessage(
         String(persistence.statusText || "Die Datenbankdatei konnte nicht gespeichert werden."),
-        "Speichern fehlgeschlagen"
+        "Speichern fehlgeschlagen",
+        { variant: "error" }
       );
     }
     return true;
@@ -1774,7 +1776,7 @@ class PlanningApp {
       return handle ? this.acceptWorkspaceSyncFileHandle(handle, mode, options) : false;
     } catch (error) {
       if (error?.name !== "AbortError") {
-        await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.");
+        await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.", "Hinweis", { variant: "error" });
       }
       return false;
     }
@@ -2126,7 +2128,7 @@ class PlanningApp {
     }
     const lessonTimesValidation = validateLessonTimes(draft.lessonTimes, draft.hoursPerDay);
     if (!lessonTimesValidation.valid) {
-      await this.showInfoMessage(lessonTimesValidation.message || "Die Stundenzeiten sind ungültig.");
+      await this.showInfoMessage(lessonTimesValidation.message || "Die Stundenzeiten sind ungültig.", "Hinweis", { variant: "warn" });
       this.activeSettingsTab = "lessonTimes";
       this.settingsSourceView = "planning";
       this.renderSettingsTabs();
@@ -2135,7 +2137,7 @@ class PlanningApp {
     }
     if (this.workspaceClient) {
       if (!this.workspaceHydrated || !this.workspaceClient.isReady?.()) {
-        await this.showInfoMessage("Der gemeinsame Datenstand wird noch geladen. Einstellungen wurden nicht gespeichert.");
+        await this.showInfoMessage("Der gemeinsame Datenstand wird noch geladen. Einstellungen wurden nicht gespeichert.", "Hinweis", { variant: "warn" });
         return false;
       }
       const result = await this.executeWorkspaceCommand(
@@ -2147,7 +2149,9 @@ class PlanningApp {
         await this.showInfoMessage(
           result?.code === "STALE_STATE"
             ? "Die Einstellungen wurden zwischenzeitlich geändert. Dein Entwurf blieb erhalten; bitte prüfe ihn erneut."
-            : (result?.message || "Einstellungen konnten nicht gespeichert werden.")
+            : (result?.message || "Einstellungen konnten nicht gespeichert werden."),
+          "Hinweis",
+          { variant: result?.code === "STALE_STATE" ? "warn" : "error" }
         );
         return false;
       }
@@ -2844,6 +2848,7 @@ class PlanningApp {
 
   showMessageDialog({
     mode = "alert",
+    variant = "info",
     title = "Hinweis",
     message = "",
     okText = "OK",
@@ -2891,7 +2896,14 @@ class PlanningApp {
       this._resolveMessageDialog("cancel");
     }
     this.refs.messageDialogTitle.textContent = String(title || "Hinweis");
-    this.refs.messageDialog.classList.toggle("is-warning-message", Boolean(warning));
+    applyFeedbackDialog({
+      dialog: this.refs.messageDialog,
+      content: this.refs.messageDialogTitle.closest("form"),
+      title: this.refs.messageDialogTitle,
+      body: this.refs.messageDialogText,
+      actions: [this.refs.messageDialogActionsBottom],
+      variant: warning ? "warn" : variant
+    });
     this.refs.messageDialogText.textContent = String(message || "");
     this.refs.messageDialogText.hidden = !String(message || "").trim();
     this.refs.messageDialogOk.textContent = String(okText || "OK");
@@ -2974,6 +2986,7 @@ class PlanningApp {
     }
     await this.showMessageDialog({
       mode: "alert",
+      variant: options.variant || "info",
       title,
       message,
       okText: "OK"
@@ -3261,7 +3274,7 @@ class PlanningApp {
     }
     const trimmedName = String(nextName || "").trim();
     if (!trimmedName) {
-      await this.showInfoMessage("Der Kursname darf nicht leer sein.");
+      await this.showInfoMessage("Der Kursname darf nicht leer sein.", "Hinweis", { variant: "warn" });
       return;
     }
     if (!this.workspacePublicLoaded) {
@@ -3269,7 +3282,7 @@ class PlanningApp {
     }
     const ok = await this.updateCourseFields(id, { name: trimmedName });
     if (!ok) {
-      await this.showInfoMessage("Kursname bereits vorhanden.");
+      await this.showInfoMessage("Kursname bereits vorhanden.", "Hinweis", { variant: "warn" });
       return;
     }
     await this.persistExplicitDatabaseSave("planning-course-name-save");
@@ -3304,7 +3317,7 @@ class PlanningApp {
     }
     const ok = await this.updateCourseFields(id, { subject: String(nextSubject || "").trim() });
     if (!ok) {
-      await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Die Fachzuweisung konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     await this.persistExplicitDatabaseSave("planning-course-subject-save");
@@ -3340,12 +3353,12 @@ class PlanningApp {
     }
     const normalizedNextGradeLevel = normalizeCourseGradeLevel(nextGradeLevel);
     if (String(nextGradeLevel || "").trim() && normalizedNextGradeLevel === null) {
-      await this.showInfoMessage("Bitte wähle einen Jahrgang zwischen 5 und 13.");
+      await this.showInfoMessage("Bitte wähle einen Jahrgang zwischen 5 und 13.", "Hinweis", { variant: "warn" });
       return;
     }
     const ok = await this.updateCourseFields(id, { gradeLevel: normalizedNextGradeLevel });
     if (!ok) {
-      await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Der Jahrgang konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     await this.persistExplicitDatabaseSave("planning-course-grade-level-save");
@@ -3401,7 +3414,7 @@ class PlanningApp {
     }
     const ok = await this.updateCourseFields(id, { color, noLesson: false });
     if (!ok) {
-      await this.showInfoMessage("Die Farbe konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Die Farbe konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     await this.persistExplicitDatabaseSave("planning-course-color-save");
@@ -3440,7 +3453,7 @@ class PlanningApp {
     }
     const ok = await this.updateCourseFields(id, { color, noLesson: nextNoLesson });
     if (!ok) {
-      await this.showInfoMessage("Die Umwandlung konnte nicht gespeichert werden.");
+      await this.showInfoMessage("Die Umwandlung konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
       return;
     }
     if (nextNoLesson && this.selectedCourseId === id) {
@@ -3478,7 +3491,7 @@ class PlanningApp {
     }
     if (!noLesson && gradeLevelInput && gradeLevel === null) {
       this.refs.courseDialogGradeLevel?.focus();
-      await this.showInfoMessage("Bitte wähle einen Jahrgang zwischen 5 und 13.");
+      await this.showInfoMessage("Bitte wähle einen Jahrgang zwischen 5 und 13.", "Hinweis", { variant: "warn" });
       return;
     }
 
@@ -3503,7 +3516,7 @@ class PlanningApp {
         ok = this.store.updateCourse(year.id, id, name, color, noLesson, hiddenInSidebar, subject, gradeLevel);
       }
       if (!ok) {
-        await this.showInfoMessage(commandResult?.message || "Kursname bereits vorhanden.");
+        await this.showInfoMessage(commandResult?.message || "Kursname bereits vorhanden.", "Hinweis", { variant: "warn" });
         return;
       }
       if (noLesson && this.selectedCourseId === id) {
@@ -3532,7 +3545,7 @@ class PlanningApp {
         }
       }
       if (!created) {
-        await this.showInfoMessage(commandResult?.message || "Kursname bereits vorhanden.");
+        await this.showInfoMessage(commandResult?.message || "Kursname bereits vorhanden.", "Hinweis", { variant: "warn" });
         return;
       }
       targetCourseId = created;
@@ -3568,7 +3581,7 @@ class PlanningApp {
         destructive: true
       }, { baseRevision });
       if (!result?.ok) {
-        await this.showInfoMessage(result?.message || "Kurs konnte nicht gelöscht werden.");
+        await this.showInfoMessage(result?.message || "Kurs konnte nicht gelöscht werden.", "Hinweis", { variant: "error" });
         return false;
       }
     } else {
@@ -3689,7 +3702,7 @@ class PlanningApp {
       return;
     }
     if (!isSummerHoliday && endDate < startDate) {
-      await this.showInfoMessage("Das Enddatum muss nach dem Startdatum liegen.");
+      await this.showInfoMessage("Das Enddatum muss nach dem Startdatum liegen.", "Hinweis", { variant: "warn" });
       return;
     }
     this.store.upsertFreeRange(id || null, year.id, label, startDate, endDate);
@@ -3768,7 +3781,7 @@ class PlanningApp {
     }
     const ok = this.store.upsertSpecialDay(id || null, name, dayDate);
     if (!ok) {
-      await this.showInfoMessage("Name bereits vorhanden oder Eingabe ungültig.");
+      await this.showInfoMessage("Name bereits vorhanden oder Eingabe ungültig.", "Hinweis", { variant: "warn" });
       return;
     }
     await this.persistExplicitDatabaseSave("planning-special-day-save");
@@ -4509,23 +4522,23 @@ class PlanningApp {
     const normalizedLabel = normalizedPlacement === "break" ? String(label || "").trim() : "";
     if (normalizedPlacement === "break") {
       if (!normalizedLabel) {
-        await this.showInfoMessage("Bitte eine Bezeichnung für die Aufsicht angeben.");
+        await this.showInfoMessage("Bitte eine Bezeichnung für die Aufsicht angeben.", "Hinweis", { variant: "warn" });
         return false;
       }
       if (!BREAK_SUPERVISION_AFTER_HOURS.includes(normalizedStartHour)) {
-        await this.showInfoMessage("Aufsichten sind nur nach der 2., 4. oder 6. Stunde möglich.");
+        await this.showInfoMessage("Aufsichten sind nur nach der 2., 4. oder 6. Stunde möglich.", "Hinweis", { variant: "warn" });
         return false;
       }
     }
 
     if (normalizedRecurrence === -1) {
       if (!normalizedStartDate) {
-        await this.showInfoMessage("Für 'Keine' muss ein Startdatum gesetzt sein.");
+        await this.showInfoMessage("Für 'Keine' muss ein Startdatum gesetzt sein.", "Hinweis", { variant: "warn" });
         return false;
       }
       const singleDay = dayOfWeekIso(normalizedStartDate);
       if (singleDay < 1 || singleDay > 5) {
-        await this.showInfoMessage("Der Termin muss auf einen Schultag (Montag bis Freitag) fallen.");
+        await this.showInfoMessage("Der Termin muss auf einen Schultag (Montag bis Freitag) fallen.", "Hinweis", { variant: "warn" });
         return false;
       }
       normalizedDay = singleDay;
@@ -4534,7 +4547,7 @@ class PlanningApp {
     }
 
     if (normalizedStartDate && endDate && endDate < normalizedStartDate) {
-      await this.showInfoMessage("Das Enddatum muss nach dem Startdatum liegen.");
+      await this.showInfoMessage("Das Enddatum muss nach dem Startdatum liegen.", "Hinweis", { variant: "warn" });
       return false;
     }
 
@@ -4565,13 +4578,13 @@ class PlanningApp {
 
     if (normalizedSlotId) {
       if (!this.store.getSlot(normalizedSlotId)) {
-        await this.showInfoMessage("Der Slot wurde nicht gefunden.");
+        await this.showInfoMessage("Der Slot wurde nicht gefunden.", "Hinweis", { variant: "warn" });
         return false;
       }
 
       if (editScope === "from") {
         if (!editFromDate) {
-          await this.showInfoMessage("Bitte ein Startdatum für die Teiländerung angeben.");
+          await this.showInfoMessage("Bitte ein Startdatum für die Teiländerung angeben.", "Hinweis", { variant: "warn" });
           return false;
         }
         const result = this.store.splitSlotFromDate(
@@ -4588,7 +4601,7 @@ class PlanningApp {
           normalizedLabel
         );
         if (!result || !result.ok) {
-          await this.showInfoMessage((result && result.message) || "Teiländerung konnte nicht gespeichert werden.");
+          await this.showInfoMessage((result && result.message) || "Teiländerung konnte nicht gespeichert werden.", "Hinweis", { variant: "error" });
           return false;
         }
       } else {
@@ -4636,7 +4649,7 @@ class PlanningApp {
     }
     const slot = this.store.getSlot(normalizedSlotId);
     if (!slot) {
-      await this.showInfoMessage("Der Slot wurde nicht gefunden.");
+      await this.showInfoMessage("Der Slot wurde nicht gefunden.", "Hinweis", { variant: "warn" });
       return false;
     }
     if (!await this.showConfirmMessage("Unterrichtsstunde löschen?", {
@@ -4664,7 +4677,7 @@ class PlanningApp {
           slot.label || ""
         );
         if (!result || !result.ok) {
-          await this.showInfoMessage((result && result.message) || "Teillöschung konnte nicht durchgeführt werden.");
+          await this.showInfoMessage((result && result.message) || "Teillöschung konnte nicht durchgeführt werden.", "Hinweis", { variant: "error" });
           return false;
         }
         if (result.newSlotId) {
@@ -5152,31 +5165,31 @@ class PlanningApp {
     const startDate = this.refs.slotDialogStart.value || null;
     const endDate = this.refs.slotDialogEnd.value || null;
     if (!startDate || !endDate) {
-      await this.showInfoMessage("Bitte Start- und Enddatum vollständig eingeben.");
+      await this.showInfoMessage("Bitte Start- und Enddatum vollständig eingeben.", "Hinweis", { variant: "warn" });
       return;
     }
     if (startDate < year.startDate) {
-      await this.showInfoMessage("Startdatum liegt vor dem Schuljahr.");
+      await this.showInfoMessage("Startdatum liegt vor dem Schuljahr.", "Hinweis", { variant: "warn" });
       return;
     }
     if (endDate > year.endDate) {
-      await this.showInfoMessage("Enddatum liegt nach dem Schuljahr.");
+      await this.showInfoMessage("Enddatum liegt nach dem Schuljahr.", "Hinweis", { variant: "warn" });
       return;
     }
     if (!this.refs.slotDialogId.value && this.slotDialogStartMinIso && startDate < this.slotDialogStartMinIso) {
-      await this.showInfoMessage("Startdatum liegt vor dem gewählten Tag.");
+      await this.showInfoMessage("Startdatum liegt vor dem gewählten Tag.", "Hinweis", { variant: "warn" });
       return;
     }
     if (!isSchoolWeekdayIso(startDate)) {
-      await this.showInfoMessage("Das Startdatum muss auf einen Schultag (Montag bis Freitag) fallen.");
+      await this.showInfoMessage("Das Startdatum muss auf einen Schultag (Montag bis Freitag) fallen.", "Hinweis", { variant: "warn" });
       return;
     }
     if (!isSchoolWeekdayIso(endDate)) {
-      await this.showInfoMessage("Das Enddatum muss auf einen Schultag (Montag bis Freitag) fallen.");
+      await this.showInfoMessage("Das Enddatum muss auf einen Schultag (Montag bis Freitag) fallen.", "Hinweis", { variant: "warn" });
       return;
     }
     if (endDate < startDate) {
-      await this.showInfoMessage("Enddatum muss am oder nach dem Startdatum liegen.");
+      await this.showInfoMessage("Enddatum muss am oder nach dem Startdatum liegen.", "Hinweis", { variant: "warn" });
       return;
     }
     const placement = this.slotDialogMode === "break" ? "break" : "lesson";
@@ -6456,11 +6469,11 @@ class PlanningApp {
     if (this.refs.backupDirChangeBtn) {
       this.refs.backupDirChangeBtn.addEventListener("click", async () => {
         if (!this.hasShellDatabaseConnection()) {
-          await this.showInfoMessage("Bitte zuerst eine Datenbankdatei auswählen.");
+          await this.showInfoMessage("Bitte zuerst eine Datenbankdatei auswählen.", "Hinweis", { variant: "warn" });
           return;
         }
         if (typeof window.showDirectoryPicker !== "function") {
-          await this.showInfoMessage("Der Browser unterstützt keine Verzeichnisauswahl.");
+          await this.showInfoMessage("Der Browser unterstützt keine Verzeichnisauswahl.", "Hinweis", { variant: "warn" });
           return;
         }
         let assigned = false;
@@ -6965,7 +6978,7 @@ class PlanningApp {
       const result = await this.executeWorkspaceAction("explicit-save", { reason });
       return Boolean(result.changed);
     } catch (_error) {
-      await this.showInfoMessage("Änderung übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.", "Datenbank speichern");
+      await this.showInfoMessage("Änderung übernommen, aber die Datenbankdatei konnte nicht gespeichert werden.", "Datenbank speichern", { variant: "error" });
       return false;
     }
   }
@@ -7801,7 +7814,7 @@ class PlanningApp {
               }
               const result = this.store.shiftCourseTopicsForward(year.id, courseId, startLessonId);
               if (!result.success && result.message) {
-                await this.showInfoMessage(result.message);
+                await this.showInfoMessage(result.message, "Hinweis", { variant: "warn" });
               }
               this.renderWeekSection();
               this.renderLessonSection();
@@ -7818,7 +7831,7 @@ class PlanningApp {
               }
               const result = this.store.shiftCourseTopicsBackward(year.id, courseId, startLessonId);
               if (!result.success && result.message) {
-                await this.showInfoMessage(result.message);
+                await this.showInfoMessage(result.message, "Hinweis", { variant: "warn" });
               }
               this.renderWeekSection();
               this.renderLessonSection();
