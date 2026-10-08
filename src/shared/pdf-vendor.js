@@ -1,8 +1,8 @@
 import { createWorkerWithOriginFallback } from "./worker-origin-fallback.js";
 
 const PDF_LIB_URL = new URL("../vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js", import.meta.url);
-const PDF_JS_URL = new URL("../vendor/pdfjs-dist/6.3.289/build/pdf.mjs", import.meta.url);
-const PDF_JS_WORKER_URL = new URL("../vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs", import.meta.url);
+const PDF_JS_URL = new URL("../vendor/pdfjs-dist/6.4.299/build/pdf.mjs", import.meta.url);
+const PDF_JS_WORKER_URL = new URL("../vendor/pdfjs-dist/6.4.299/build/pdf.worker.mjs", import.meta.url);
 
 let pdfLibLoadPromise = null;
 let pdfJsLoadPromise = null;

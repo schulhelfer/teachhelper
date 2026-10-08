@@ -1822,8 +1822,8 @@ function applyTableColumnReplacements(doc, replacements, stats = null, richTextC
     .filter((element) => element.localName === "tbl");
   tables.forEach((table) => {
     const rows = getChildElementsByLocalName(table, "tr");
-    const [headerRow, ...bodyRows] = rows;
-    if (!headerRow || !bodyRows.length) {
+    const [headerRow] = rows;
+    if (!headerRow || rows.length < 2) {
       return;
     }
     const headerCells = getChildElementsByLocalName(headerRow, "tc");
@@ -1831,6 +1831,7 @@ function applyTableColumnReplacements(doc, replacements, stats = null, richTextC
       return;
     }
     replacements.forEach((replacement, replacementIndex) => {
+      const bodyRows = getChildElementsByLocalName(table, "tr").slice(1);
       const replacementStats = stats ? stats[replacementIndex] : null;
       const columnIndex = findWordTableHeaderColumnIndex(headerCells, replacement.header);
       if (columnIndex < 0) {

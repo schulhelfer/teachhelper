@@ -35,13 +35,13 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 
 ## pdfjs-dist
 
-- Version: 6.3.289
+- Version: 6.4.299
 - License: Apache-2.0
-- Source: https://www.npmjs.com/package/pdfjs-dist/v/6.3.289
+- Source: https://www.npmjs.com/package/pdfjs-dist/v/6.4.299
 - Local files:
-  - `src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs`
-  - `src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs`
-  - `src/vendor/pdfjs-dist/6.3.289/LICENSE`
+  - `src/vendor/pdfjs-dist/6.4.299/build/pdf.mjs`
+  - `src/vendor/pdfjs-dist/6.4.299/build/pdf.worker.mjs`
+  - `src/vendor/pdfjs-dist/6.4.299/LICENSE`
 - Upstream NOTICE: none published in the npm package.
 
 ## qrcode.min.js

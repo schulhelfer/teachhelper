@@ -7,6 +7,7 @@ import {
   preparedDocxTemplateContainsText,
 } from "../../shared/docx-template.js";
 import { prepareDocxTemplateInWorker } from "../../shared/docx-worker-client.js";
+import { convertDocxToPdfBytes } from "../../shared/docx-pdf.js";
 import {
   clampPercentileRank,
   formatPercentileRank,
@@ -106,6 +107,7 @@ const EXPECTATION_HORIZON_ADJACENT_BLOCK_PLACEHOLDER_GROUPS = [
   EXPECTATION_HORIZON_PERCENTILE_PLACEHOLDERS
 ];
 const EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT = "both";
+const EXPECTATION_HORIZON_OUTPUT_FORMAT_DEFAULT = "both";
 const EXPECTATION_HORIZON_PERCENTILE_IMAGE_WIDTH_EMU = PERCENTILE_RANK_IMAGE_WIDTH_EMU;
 const EXPECTATION_HORIZON_PERCENTILE_IMAGE_HEIGHT_EMU = PERCENTILE_RANK_IMAGE_HEIGHT_EMU;
 const EXPECTATION_HORIZON_COMMENT_TEMPLATE_DEFAULT = [
@@ -2865,6 +2867,7 @@ class GradesApp {
     this.expectationHorizonIncludePercentile = true;
     this.expectationHorizonIncludePercentBoundaries = true;
     this.expectationHorizonPercentBoundaryMode = EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
+    this.expectationHorizonOutputFormat = EXPECTATION_HORIZON_OUTPUT_FORMAT_DEFAULT;
     this.expectationHorizonStoredTemplate = null;
     this.expectationHorizonStoredTemplateLoaded = false;
     this.competenceExpectationsStoredTemplate = null;
@@ -3093,6 +3096,8 @@ class GradesApp {
       expectationHorizonPercentBoundariesToggle: document.querySelector("#expectation-horizon-percent-boundaries-toggle"),
       expectationHorizonPercentBoundaryModeField: document.querySelector("#expectation-horizon-percent-boundary-mode-field"),
       expectationHorizonPercentBoundaryModeInputs: [...document.querySelectorAll("input[data-expectation-horizon-percent-boundary-mode='1']")],
+      expectationHorizonOutputFormatField: document.querySelector("#expectation-horizon-output-format-field"),
+      expectationHorizonOutputFormatInputs: [...document.querySelectorAll("input[data-expectation-horizon-output-format='1']")],
       expectationHorizonFileName: document.querySelector("#expectation-horizon-file-name"),
       expectationHorizonStatus: document.querySelector("#expectation-horizon-status"),
       expectationHorizonSave: document.querySelector("#expectation-horizon-save"),
@@ -18406,6 +18411,15 @@ class GradesApp {
         this.syncExpectationHorizonGenerateState();
       });
     });
+    this.refs.expectationHorizonOutputFormatInputs?.forEach((input) => {
+      input.addEventListener("change", () => {
+        if (this.expectationHorizonGenerating || !input.checked) {
+          return;
+        }
+        this.expectationHorizonOutputFormat = input.value;
+        this.syncExpectationHorizonGenerateState();
+      });
+    });
     this.refs.expectationHorizonFile?.addEventListener("change", async (event) => {
       const [file] = event.target.files || [];
       if (file) {
@@ -19215,6 +19229,7 @@ class GradesApp {
     this.expectationHorizonIncludePercentile = true;
     this.expectationHorizonIncludePercentBoundaries = true;
     this.expectationHorizonPercentBoundaryMode = EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
+    this.expectationHorizonOutputFormat = EXPECTATION_HORIZON_OUTPUT_FORMAT_DEFAULT;
     const context = this.getExpectationHorizonCourseContext();
     await this.ensureStoredExpectationHorizonTemplateLoaded();
     this.loadTemporaryExpectationHorizonTemplateFile(context);
@@ -19358,6 +19373,16 @@ class GradesApp {
       input.disabled = this.expectationHorizonGenerating || !this.expectationHorizonIncludePercentBoundaries;
     });
     this.syncSegmentControlSlideStates(this.refs.expectationHorizonPercentBoundaryModeField, {
+      animateFromPrevious: true
+    });
+    if (this.refs.expectationHorizonOutputFormatField) {
+      this.refs.expectationHorizonOutputFormatField.disabled = this.expectationHorizonGenerating;
+    }
+    this.refs.expectationHorizonOutputFormatInputs?.forEach((input) => {
+      input.checked = input.value === (this.expectationHorizonOutputFormat || EXPECTATION_HORIZON_OUTPUT_FORMAT_DEFAULT);
+      input.disabled = this.expectationHorizonGenerating;
+    });
+    this.syncSegmentControlSlideStates(this.refs.expectationHorizonOutputFormatField, {
       animateFromPrevious: true
     });
   }
@@ -19997,7 +20022,12 @@ class GradesApp {
     return [
       {
         header: "AFB",
-        values: normalizedTasks.map((task) => task.afb || "")
+        values: normalizedTasks.map((task) => task.afb || ""),
+        targetRowHeader: "Nr.",
+        targetSectionEndText: "∑",
+        extendRows: true,
+        numberTargetRows: true,
+        removeUnusedTargetRows: true
       },
       {
         header: "BE1",
@@ -20341,11 +20371,6 @@ class GradesApp {
       }
       return runs[0]?.text || "";
     }
-    runs.push({
-      text: "Kompetenzen:",
-      bold: true,
-      paragraphBreak: runs.length > 0
-    });
     texts.forEach((text) => {
       runs.push({
         text,
@@ -20693,6 +20718,24 @@ class GradesApp {
     this.downloadBytes(archive, fileName, "application/zip");
   }
 
+  async buildExpectationHorizonOutputFiles(preparedTemplate, record, outputFormat) {
+    const docxBytes = await createDocxFromPreparedTemplate(preparedTemplate, record.replacements, {
+      tableColumnReplacements: record.tableColumnReplacements,
+      adjacentBlockPlaceholderGroups: EXPECTATION_HORIZON_ADJACENT_BLOCK_PLACEHOLDER_GROUPS,
+    });
+    const files = [];
+    if (outputFormat !== "pdf") {
+      files.push({ name: record.fileName, data: docxBytes });
+    }
+    if (outputFormat !== "docx") {
+      files.push({
+        name: record.fileName.replace(/\.docx$/i, ".pdf"),
+        data: await convertDocxToPdfBytes(docxBytes),
+      });
+    }
+    return files;
+  }
+
   async generateExpectationHorizons() {
     if (this.expectationHorizonGenerating) {
       return;
@@ -20713,7 +20756,11 @@ class GradesApp {
     }
     this.expectationHorizonGenerating = true;
     this.syncExpectationHorizonGenerateState();
-    this.setExpectationHorizonStatus("Erzeuge DOCX-Dateien...");
+    const outputFormat = ["docx", "pdf"].includes(this.expectationHorizonOutputFormat)
+      ? this.expectationHorizonOutputFormat
+      : EXPECTATION_HORIZON_OUTPUT_FORMAT_DEFAULT;
+    const formatLabel = outputFormat === "both" ? "DOCX- und PDF-Dateien" : `${outputFormat.toUpperCase()}-Dateien`;
+    this.setExpectationHorizonStatus(`Erzeuge ${formatLabel}...`);
     let templateInfo = null;
     try {
       await this.yieldToBrowser();
@@ -20737,19 +20784,15 @@ class GradesApp {
       const files = [];
       for (let index = 0; index < records.length; index += 1) {
         const record = records[index];
-        files.push({
-          name: record.fileName,
-          data: await createDocxFromPreparedTemplate(preparedTemplate, record.replacements, {
-            tableColumnReplacements: record.tableColumnReplacements,
-            adjacentBlockPlaceholderGroups: EXPECTATION_HORIZON_ADJACENT_BLOCK_PLACEHOLDER_GROUPS,
-          }),
-        });
-        this.setExpectationHorizonStatus(`Erzeuge DOCX-Dateien... ${files.length}/${records.length}`);
+        files.push(...await this.buildExpectationHorizonOutputFiles(preparedTemplate, record, outputFormat));
+        this.setExpectationHorizonStatus(`Erzeuge ${formatLabel}... ${index + 1}/${records.length}`);
         await this.yieldToBrowser();
       }
       this.setExpectationHorizonStatus("Packe ZIP-Datei...");
       this.downloadExpectationHorizonZip(files, this.buildExpectationHorizonZipFileName(context));
-      this.setExpectationHorizonStatus(`${records.length} DOCX-Dateien als ZIP-Download gestartet.`, "success");
+      this.setExpectationHorizonStatus(outputFormat === "both"
+        ? `${records.length} DOCX-Dateien und ${records.length} PDF-Dateien als ZIP-Download gestartet.`
+        : `${records.length} ${outputFormat.toUpperCase()}-Dateien als ZIP-Download gestartet.`, "success");
       this.expectationHorizonGenerating = false;
       this.syncExpectationHorizonGenerateState();
       this.closeExpectationHorizonDialog();

@@ -7875,6 +7875,23 @@
           opacity: 0.58;
         }
 
+        .expectation-horizon-output-format-field {
+          min-width: 0;
+          margin: 0;
+          padding: 0;
+          border: 0;
+        }
+
+        .expectation-horizon-output-format-field legend {
+          padding: 0 0 0.4rem;
+          font-size: 0.85rem;
+          font-weight: 750;
+        }
+
+        .expectation-horizon-output-format-field:disabled {
+          opacity: 0.58;
+        }
+
         .expectation-horizon-boundary-mode-toggle {
           --liquid-segment-gap: 0.18rem;
           --liquid-segment-pad: 0.2rem;

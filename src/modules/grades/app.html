@@ -1105,6 +1105,27 @@
             aria-label="Übernehmen" data-tooltip="Übernehmen">✔️</button>
         </div>
       </div>
+      <fieldset id="expectation-horizon-output-format-field" class="expectation-horizon-output-format-field">
+        <legend>Ausgabeformat</legend>
+        <div class="assessment-mode-toggle segment-control segment-control--three expectation-horizon-boundary-mode-toggle"
+          role="radiogroup" aria-label="Ausgabeformat">
+          <label class="assessment-mode-option segment-control__option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-output-format"
+              data-expectation-horizon-output-format="1" value="docx">
+            <span>DOCX</span>
+          </label>
+          <label class="assessment-mode-option segment-control__option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-output-format"
+              data-expectation-horizon-output-format="1" value="both" checked>
+            <span>Beides</span>
+          </label>
+          <label class="assessment-mode-option segment-control__option expectation-horizon-boundary-mode-option">
+            <input type="radio" name="expectation-horizon-output-format"
+              data-expectation-horizon-output-format="1" value="pdf">
+            <span>PDF</span>
+          </label>
+        </div>
+      </fieldset>
       <input id="expectation-horizon-file" class="visually-hidden" type="file"
         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
       <input id="expectation-horizon-latex-file" class="visually-hidden" type="file"

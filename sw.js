@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '129';
+const TEACHHELPER_APP_VERSION_STAMP = '130';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -83,6 +83,7 @@ const APP_SHELL = [
   './src/shared/learner-search-dialog.css',
   './src/shared/docx-template.js',
   './src/shared/docx-worker-client.js',
+  './src/shared/docx-pdf.js',
   './src/shared/file-processing-client.js',
   './src/shared/file-processing-worker.js',
   './src/shared/worker-origin-fallback.js',
@@ -185,11 +186,15 @@ const DEFERRED_ASSETS = [
   './src/modules/qr/vendor/jsQR.js',
   './src/vendor/jszip/3.10.2/jszip.min.js',
   './src/vendor/jszip/3.10.2/LICENSE.markdown',
+  './src/vendor/docx-preview/0.4.1/docx-preview.min.js',
+  './src/vendor/docx-preview/0.4.1/LICENSE',
+  './src/vendor/html-to-image/1.11.13/html-to-image.js',
+  './src/vendor/html-to-image/1.11.13/LICENSE',
   './src/vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js',
   './src/vendor/cantoo-pdf-lib/2.11.1/LICENSE.md',
-  './src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs',
-  './src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs',
-  './src/vendor/pdfjs-dist/6.3.289/LICENSE',
+  './src/vendor/pdfjs-dist/6.4.299/build/pdf.mjs',
+  './src/vendor/pdfjs-dist/6.4.299/build/pdf.worker.mjs',
+  './src/vendor/pdfjs-dist/6.4.299/LICENSE',
   './src/vendor/tesseract.js/7.0.0/LICENSE.md',
   './src/vendor/tesseract.js/7.0.0/tesseract.min.js',
   './src/vendor/tesseract.js/7.0.0/tesseract.min.js.LICENSE.txt',

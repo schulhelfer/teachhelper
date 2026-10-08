@@ -150,5 +150,12 @@ export async function openDomBrowser(t, options = {}) {
   evaluate.printToPdf = async () => (await command('Page.printToPDF', { preferCSSPageSize: true, printBackground: true }, sessionId)).data;
   evaluate.dispatchMouseEvent = (event) => command('Input.dispatchMouseEvent', event, sessionId);
   evaluate.dispatchKeyEvent = (event) => command('Input.dispatchKeyEvent', event, sessionId);
+  evaluate.setNetworkOffline = async (offline) => {
+    await command('Network.enable', {}, sessionId);
+    await command('Network.setCacheDisabled', { cacheDisabled: true }, sessionId);
+    await command('Network.emulateNetworkConditions', {
+      offline, latency: 0, downloadThroughput: -1, uploadThroughput: -1,
+    }, sessionId);
+  };
   return evaluate;
 }

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-09-15",
+  "updated": "2026-10-08",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -49,26 +49,26 @@
     },
     {
       "name": "pdfjs-dist",
-      "version": "6.3.289",
+      "version": "6.4.299",
       "license": "Apache-2.0",
-      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.3.289",
+      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.4.299",
       "registry": "npm",
       "package": "pdfjs-dist",
-      "purl": "pkg:npm/pdfjs-dist@6.3.289",
+      "purl": "pkg:npm/pdfjs-dist@6.4.299",
       "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows. Re-check that GlobalWorkerOptions.workerPort still accepts a Worker, because src/shared/pdf-vendor.js hands over its own classic blob worker for opaque-origin module frames; PDFWorker builds its wrapper with type:\"module\", which Chromium refuses there.",
       "files": [
         {
-          "path": "src/vendor/pdfjs-dist/6.3.289/build/pdf.mjs",
+          "path": "src/vendor/pdfjs-dist/6.4.299/build/pdf.mjs",
           "role": "runtime",
-          "sha256": "495588717f62303a839e91a5343deebf1b41f52e2f9f6361e73dee6ea6a4355e"
+          "sha256": "dd13af821c9c3e1778653340d6539a1ba07bc56cba40073a4c727864cf0c232a"
         },
         {
-          "path": "src/vendor/pdfjs-dist/6.3.289/build/pdf.worker.mjs",
+          "path": "src/vendor/pdfjs-dist/6.4.299/build/pdf.worker.mjs",
           "role": "runtime-worker",
-          "sha256": "f2870db902eaff8397442c912b69459980ac91f6f4b5ed827167b12cf7057930"
+          "sha256": "07ceb740d746e5d9012fcf9f27d5c7dea09f7d2f5e74f5c8109e5787551a2333"
         },
         {
-          "path": "src/vendor/pdfjs-dist/6.3.289/LICENSE",
+          "path": "src/vendor/pdfjs-dist/6.4.299/LICENSE",
           "role": "license",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
         }
@@ -196,6 +196,50 @@
           "path": "src/vendor/tesseract.js-data-deu/1.0.0/deu.traineddata.gz",
           "role": "language-model",
           "sha256": "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b"
+        }
+      ]
+    },
+    {
+      "name": "docx-preview",
+      "version": "0.4.1",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/docx-preview/v/0.4.1",
+      "registry": "npm",
+      "package": "docx-preview",
+      "purl": "pkg:npm/docx-preview@0.4.1",
+      "updateNotes": "Replace the pinned browser runtime and license from the npm package, refresh SHA-256 hashes, then run scripts/audit.py and EWH PDF browser regressions.",
+      "files": [
+        {
+          "path": "src/vendor/docx-preview/0.4.1/docx-preview.min.js",
+          "role": "runtime",
+          "sha256": "c4a133c65a112799e35b143c572dfff9e923a3bf39b5fd3b07a06aa0f8f530c2"
+        },
+        {
+          "path": "src/vendor/docx-preview/0.4.1/LICENSE",
+          "role": "license",
+          "sha256": "8668bf4417d161e4eb4d47d6044526e4914d9eb3c748573d9bb7e87708c1253f"
+        }
+      ]
+    },
+    {
+      "name": "html-to-image",
+      "version": "1.11.13",
+      "license": "MIT",
+      "source": "https://www.npmjs.com/package/html-to-image/v/1.11.13",
+      "registry": "npm",
+      "package": "html-to-image",
+      "purl": "pkg:npm/html-to-image@1.11.13",
+      "updateNotes": "Replace the pinned browser runtime and license from the npm package, refresh SHA-256 hashes, then run scripts/audit.py and EWH PDF browser regressions.",
+      "files": [
+        {
+          "path": "src/vendor/html-to-image/1.11.13/html-to-image.js",
+          "role": "runtime",
+          "sha256": "a90b42909d80964269ef6d5f3d1e4a5a7e2a4c263a5d2a76a9e7151901343262"
+        },
+        {
+          "path": "src/vendor/html-to-image/1.11.13/LICENSE",
+          "role": "license",
+          "sha256": "9fe73723f7a9e91057f73aafc9b6a3c3b2174db2b3ddc0a3a6a8ddf2bad68e37"
         }
       ]
     }
