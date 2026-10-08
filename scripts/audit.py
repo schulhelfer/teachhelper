@@ -223,6 +223,7 @@ required_precache_assets = [
   ROOT / 'src' / 'modules' / 'grades' / 'bridge.js',
   ROOT / 'src' / 'modules' / 'grades' / 'percentile-rank.js',
   ROOT / 'src' / 'modules' / 'grades' / 'expectation-horizon-latex.js',
+  ROOT / 'src' / 'modules' / 'grades' / 'expectation-horizon-print.js',
   ROOT / 'src' / 'modules' / 'grades' / 'expectation-horizon-template.docx',
   ROOT / 'src' / 'modules' / 'grades' / 'competence-expectations-template.docx',
   ROOT / 'src' / 'modules' / 'name-learning' / 'index.js',
@@ -504,7 +505,6 @@ SCRIPT_ELEMENT_PATTERN = re.compile(
 RELATIVE_LITERAL_PATTERN = re.compile(r'[\'"](?!https?:|//|data:)[^\'"]*[\'"]')
 
 DYNAMIC_SCRIPT_URL_ALLOWLIST = {
-  ('src/shared/docx-pdf.js', 'url.href'),
   ('src/shared/pdf-vendor.js', 'url.href'),
   ('src/shared/worker-origin-fallback.js', '${JSON.stringify(url.href)}'),
 }

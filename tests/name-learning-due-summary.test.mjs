@@ -51,6 +51,22 @@ test('the public due count advances without opening the name-learning module', (
   assert.equal(dueSummary.countPublicNameLearningDueCards({ complete: false, courses: {} }, courses, 1, NOW), null);
 });
 
+test('the public due count ignores courses hidden in name learning', () => {
+  const summary = {
+    complete: true,
+    courses: {
+      10: [{ dueAt: 0, count: 2 }],
+      11: [{ dueAt: 0, count: 1 }],
+    },
+  };
+  const courses = [
+    { id: 10, schoolYearId: 1 },
+    { id: 11, schoolYearId: 1, hiddenInNameLearning: true },
+  ];
+
+  assert.equal(dueSummary.countPublicNameLearningDueCards(summary, courses, 1, NOW), 2);
+});
+
 test('public summaries discard invalid or deleted course buckets', () => {
   assert.deepEqual(dueSummary.normalizeNameLearningDueSummary({
     complete: true,

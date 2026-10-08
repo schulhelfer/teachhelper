@@ -51,6 +51,7 @@ export function countPublicNameLearningDueCards(summary = null, courses = [], ac
       Number(course?.schoolYearId) === activeYearId
       && !course?.noLesson
       && !course?.noGrades
+      && !course?.hiddenInNameLearning
     ))
     .map((course) => String(Number(course.id) || 0))
     .filter((courseId) => courseId !== '0'));

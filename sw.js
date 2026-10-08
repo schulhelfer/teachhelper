@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '130';
+const TEACHHELPER_APP_VERSION_STAMP = '131';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -83,7 +83,6 @@ const APP_SHELL = [
   './src/shared/learner-search-dialog.css',
   './src/shared/docx-template.js',
   './src/shared/docx-worker-client.js',
-  './src/shared/docx-pdf.js',
   './src/shared/file-processing-client.js',
   './src/shared/file-processing-worker.js',
   './src/shared/worker-origin-fallback.js',
@@ -128,6 +127,7 @@ const APP_SHELL = [
   './src/modules/grades/bridge.js',
   './src/modules/grades/percentile-rank.js',
   './src/modules/grades/expectation-horizon-latex.js',
+  './src/modules/grades/expectation-horizon-print.js',
   './src/modules/grades/roster-ocr-dialog.js',
   './src/modules/grades/roster-ocr-data.js',
   './src/modules/grades/roster-ocr-pdf.js',
@@ -186,10 +186,6 @@ const DEFERRED_ASSETS = [
   './src/modules/qr/vendor/jsQR.js',
   './src/vendor/jszip/3.10.2/jszip.min.js',
   './src/vendor/jszip/3.10.2/LICENSE.markdown',
-  './src/vendor/docx-preview/0.4.1/docx-preview.min.js',
-  './src/vendor/docx-preview/0.4.1/LICENSE',
-  './src/vendor/html-to-image/1.11.13/html-to-image.js',
-  './src/vendor/html-to-image/1.11.13/LICENSE',
   './src/vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js',
   './src/vendor/cantoo-pdf-lib/2.11.1/LICENSE.md',
   './src/vendor/pdfjs-dist/6.4.299/build/pdf.mjs',

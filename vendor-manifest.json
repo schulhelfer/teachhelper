@@ -198,50 +198,6 @@
           "sha256": "306c4280d0cbed46fbff727486bd43b92730181bae80f56941a091f363bdf28b"
         }
       ]
-    },
-    {
-      "name": "docx-preview",
-      "version": "0.4.1",
-      "license": "Apache-2.0",
-      "source": "https://www.npmjs.com/package/docx-preview/v/0.4.1",
-      "registry": "npm",
-      "package": "docx-preview",
-      "purl": "pkg:npm/docx-preview@0.4.1",
-      "updateNotes": "Replace the pinned browser runtime and license from the npm package, refresh SHA-256 hashes, then run scripts/audit.py and EWH PDF browser regressions.",
-      "files": [
-        {
-          "path": "src/vendor/docx-preview/0.4.1/docx-preview.min.js",
-          "role": "runtime",
-          "sha256": "c4a133c65a112799e35b143c572dfff9e923a3bf39b5fd3b07a06aa0f8f530c2"
-        },
-        {
-          "path": "src/vendor/docx-preview/0.4.1/LICENSE",
-          "role": "license",
-          "sha256": "8668bf4417d161e4eb4d47d6044526e4914d9eb3c748573d9bb7e87708c1253f"
-        }
-      ]
-    },
-    {
-      "name": "html-to-image",
-      "version": "1.11.13",
-      "license": "MIT",
-      "source": "https://www.npmjs.com/package/html-to-image/v/1.11.13",
-      "registry": "npm",
-      "package": "html-to-image",
-      "purl": "pkg:npm/html-to-image@1.11.13",
-      "updateNotes": "Replace the pinned browser runtime and license from the npm package, refresh SHA-256 hashes, then run scripts/audit.py and EWH PDF browser regressions.",
-      "files": [
-        {
-          "path": "src/vendor/html-to-image/1.11.13/html-to-image.js",
-          "role": "runtime",
-          "sha256": "a90b42909d80964269ef6d5f3d1e4a5a7e2a4c263a5d2a76a9e7151901343262"
-        },
-        {
-          "path": "src/vendor/html-to-image/1.11.13/LICENSE",
-          "role": "license",
-          "sha256": "9fe73723f7a9e91057f73aafc9b6a3c3b2174db2b3ddc0a3a6a8ddf2bad68e37"
-        }
-      ]
     }
   ]
 }

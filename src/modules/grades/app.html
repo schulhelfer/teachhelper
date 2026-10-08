@@ -1096,6 +1096,8 @@
         <div class="dialog-actions-top app-action-group">
           <button type="button" id="expectation-horizon-generate" class="ghost dialog-icon-button app-action-icon"
             aria-label="Generieren" data-tooltip="Generieren">✨</button>
+          <button type="button" id="expectation-horizon-print-copy" class="ghost dialog-icon-button app-action-icon"
+            aria-label="Druckbefehl kopieren" data-tooltip="Druckbefehl kopieren" disabled>🖨️</button>
           <button type="button" id="expectation-horizon-template-download"
             class="ghost dialog-icon-button app-action-icon" aria-label="Vorlage herunterladen"
             data-tooltip="Vorlage herunterladen">📥</button>
@@ -1105,27 +1107,6 @@
             aria-label="Übernehmen" data-tooltip="Übernehmen">✔️</button>
         </div>
       </div>
-      <fieldset id="expectation-horizon-output-format-field" class="expectation-horizon-output-format-field">
-        <legend>Ausgabeformat</legend>
-        <div class="assessment-mode-toggle segment-control segment-control--three expectation-horizon-boundary-mode-toggle"
-          role="radiogroup" aria-label="Ausgabeformat">
-          <label class="assessment-mode-option segment-control__option expectation-horizon-boundary-mode-option">
-            <input type="radio" name="expectation-horizon-output-format"
-              data-expectation-horizon-output-format="1" value="docx">
-            <span>DOCX</span>
-          </label>
-          <label class="assessment-mode-option segment-control__option expectation-horizon-boundary-mode-option">
-            <input type="radio" name="expectation-horizon-output-format"
-              data-expectation-horizon-output-format="1" value="both" checked>
-            <span>Beides</span>
-          </label>
-          <label class="assessment-mode-option segment-control__option expectation-horizon-boundary-mode-option">
-            <input type="radio" name="expectation-horizon-output-format"
-              data-expectation-horizon-output-format="1" value="pdf">
-            <span>PDF</span>
-          </label>
-        </div>
-      </fieldset>
       <input id="expectation-horizon-file" class="visually-hidden" type="file"
         accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
       <input id="expectation-horizon-latex-file" class="visually-hidden" type="file"
@@ -1176,6 +1157,9 @@
         Temporäre Vorlage verwerfen
       </button>
       <div id="expectation-horizon-status" class="expectation-horizon-status" aria-live="polite"></div>
+      <p id="expectation-horizon-print-help" class="expectation-horizon-print-help" hidden></p>
+      <textarea id="expectation-horizon-print-command" class="expectation-horizon-print-command" rows="4"
+        aria-label="Druckbefehl zum manuellen Kopieren" readonly spellcheck="false" hidden></textarea>
     </form>
   </dialog>
 
