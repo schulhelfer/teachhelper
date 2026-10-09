@@ -10250,7 +10250,7 @@ class GradesApp {
           { replaceExisting: true }
         );
         return this.store.getGradeAssessment(targetAssessment.id);
-      }, { preserveRoster: true });
+      }, { preserveRoster: true, skipAutoSave: true });
     } catch (error) {
       this.selectedGradesEntryAssessmentId = activeAssessment?.id || null;
       this.gradesEntryDraft = sessionDraft;
@@ -14037,6 +14037,18 @@ class GradesApp {
   }
 
   getGradesEntryAssessmentDraft(assessment) {
+    const currentDraft = this.gradesEntryDraft;
+    if (
+      assessment
+      && Number(assessment.id) > 0
+      && currentDraft
+      && Number(currentDraft?.assessmentId || 0) === Number(assessment.id)
+      && Number(currentDraft?.courseId || 0) === Number(assessment.courseId)
+      && Number.isFinite(currentDraft.baseCourseRevision)
+      && currentDraft.baseFingerprint
+    ) {
+      return currentDraft;
+    }
     const base = this.createGradesEntryAssessmentDraft(assessment);
     if (!base || !base.assessmentId) {
       return null;
@@ -16170,8 +16182,22 @@ class GradesApp {
         invalidInput = invalidInput || input;
         continue;
       }
-      const context = this.getGradeTestInputContext(input);
-      const task = context.tasks.find((item) => item.id === taskId) || null;
+      const groupKey = isDraftInput
+        ? `draft:${studentId}`
+        : `assessment:${assessmentId}:${studentId}`;
+      let group = groups.get(groupKey);
+      if (!group) {
+        const context = this.getGradeTestInputContext(input);
+        group = {
+          isDraftInput,
+          studentId,
+          assessmentId,
+          tasksById: new Map(context.tasks.map((task) => [task.id, task])),
+          scores: { ...context.scores }
+        };
+        groups.set(groupKey, group);
+      }
+      const task = group.tasksById.get(taskId) || null;
       const parsed = parseGradeBeValue(input.value);
       if (
         !parsed.valid
@@ -16192,18 +16218,6 @@ class GradesApp {
       input.setAttribute("aria-invalid", "false");
       input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
       this.syncGradeTestDeficitFollowUpScoreClass(input, task, parsed.value);
-      const groupKey = isDraftInput
-        ? `draft:${studentId}`
-        : `assessment:${assessmentId}:${studentId}`;
-      if (!groups.has(groupKey)) {
-        groups.set(groupKey, {
-          isDraftInput,
-          studentId,
-          assessmentId,
-          scores: { ...context.scores }
-        });
-      }
-      const group = groups.get(groupKey);
       if (parsed.value === null) {
         delete group.scores[taskId];
       } else {

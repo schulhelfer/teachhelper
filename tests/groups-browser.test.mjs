@@ -165,11 +165,16 @@ test('Groups preserves preferences and the complete shared plan payload', { time
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {
     const saved = [];
+    let resolveExport;
+    const exportCompleted = new Promise(resolve => { resolveExport = resolve; });
     window.showSaveFilePicker = async () => ({
       async createWritable() {
         return {
-          async write(blob) { saved.push(await blob.text()); },
-          async close() {},
+          async write(blob) {
+            await new Promise(done => window.setTimeout(done, 160));
+            saved.push(await blob.text());
+          },
+          async close() { resolveExport(saved[0]); },
         };
       },
     });
@@ -223,8 +228,14 @@ test('Groups preserves preferences and the complete shared plan payload', { time
     document.getElementById('group-export-plan').click();
     await Promise.resolve();
     document.getElementById('shell-action-dialog-confirm').click();
-    await new Promise(done => window.setTimeout(done, 80));
-    const exported = JSON.parse(saved[0]);
+    const exportedText = await new Promise((resolve, reject) => {
+      const timeout = window.setTimeout(() => reject(new Error('Groups plan export did not finish within 5 seconds.')), 5000);
+      exportCompleted.then(text => {
+        window.clearTimeout(timeout);
+        resolve(text);
+      });
+    });
+    const exported = JSON.parse(exportedText);
 
     document.getElementById('tab-work-phase').click();
     await new Promise(done => window.setTimeout(done, 450));
