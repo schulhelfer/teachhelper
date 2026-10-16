@@ -2867,6 +2867,7 @@ class GradesApp {
     this.expectationHorizonPrintCopying = false;
     this.expectationHorizonIncludePercentile = true;
     this.expectationHorizonIncludePercentBoundaries = true;
+    this.expectationHorizonIncludeLatexSolutions = true;
     this.expectationHorizonPercentBoundaryMode = EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
     this.expectationHorizonStoredTemplate = null;
     this.expectationHorizonStoredTemplateLoaded = false;
@@ -3092,6 +3093,7 @@ class GradesApp {
       expectationHorizonLatexFile: document.querySelector("#expectation-horizon-latex-file"),
       expectationHorizonDropzone: document.querySelector("#expectation-horizon-dropzone"),
       expectationHorizonLatexDropzone: document.querySelector("#expectation-horizon-latex-dropzone"),
+      expectationHorizonLatexSolutionsToggle: document.querySelector("#expectation-horizon-latex-solutions-toggle"),
       expectationHorizonPercentileToggle: document.querySelector("#expectation-horizon-percentile-toggle"),
       expectationHorizonPercentBoundariesToggle: document.querySelector("#expectation-horizon-percent-boundaries-toggle"),
       expectationHorizonPercentBoundaryModeField: document.querySelector("#expectation-horizon-percent-boundary-mode-field"),
@@ -18406,6 +18408,13 @@ class GradesApp {
     this.refs.expectationHorizonTemplateReset?.addEventListener("click", () => {
       this.resetTemporaryExpectationHorizonTemplateFile();
     });
+    this.refs.expectationHorizonLatexSolutionsToggle?.addEventListener("click", () => {
+      if (this.expectationHorizonGenerating) {
+        return;
+      }
+      this.expectationHorizonIncludeLatexSolutions = !this.expectationHorizonIncludeLatexSolutions;
+      this.syncExpectationHorizonGenerateState();
+    });
     this.refs.expectationHorizonPercentileToggle?.addEventListener("click", () => {
       if (this.expectationHorizonGenerating) {
         return;
@@ -19238,6 +19247,7 @@ class GradesApp {
     this.resetExpectationHorizonPrintExport();
     this.expectationHorizonIncludePercentile = true;
     this.expectationHorizonIncludePercentBoundaries = true;
+    this.expectationHorizonIncludeLatexSolutions = true;
     this.expectationHorizonPercentBoundaryMode = EXPECTATION_HORIZON_PERCENT_BOUNDARY_MODE_DEFAULT;
     const context = this.getExpectationHorizonCourseContext();
     await this.ensureStoredExpectationHorizonTemplateLoaded();
@@ -19419,6 +19429,13 @@ class GradesApp {
     if (this.refs.expectationHorizonTemplateReset) {
       this.refs.expectationHorizonTemplateReset.disabled = this.expectationHorizonGenerating || !this.expectationHorizonTemplateFile;
     }
+    if (this.refs.expectationHorizonLatexSolutionsToggle) {
+      this.refs.expectationHorizonLatexSolutionsToggle.disabled = this.expectationHorizonGenerating;
+      this.refs.expectationHorizonLatexSolutionsToggle.setAttribute(
+        "aria-checked",
+        this.expectationHorizonIncludeLatexSolutions ? "true" : "false"
+      );
+    }
     if (this.refs.expectationHorizonPercentileToggle) {
       this.refs.expectationHorizonPercentileToggle.disabled = this.expectationHorizonGenerating;
       this.refs.expectationHorizonPercentileToggle.setAttribute(
@@ -19545,10 +19562,11 @@ class GradesApp {
       this.setExpectationHorizonStatus("Dieser Browser unterstützt die DOCX-ZIP-Dekompression nicht.", "error");
       return false;
     }
+    const includeSolutions = this.expectationHorizonIncludeLatexSolutions;
     try {
       this.setExpectationHorizonStatus("Lese LaTeX-Datei...");
       const latexText = await readValidatedLatexFileText(file);
-      const taskEntries = this.extractExpectationHorizonLatexTaskEntries(latexText);
+      const taskEntries = this.extractExpectationHorizonLatexTaskEntries(latexText, { includeSolutions });
       if (!taskEntries.length) {
         this.setExpectationHorizonStatus("In der LaTeX-Datei wurden keine nicht auskommentierten Aufgabe-Umgebungen gefunden.", "error");
         return false;
@@ -19610,7 +19628,8 @@ class GradesApp {
     }
   }
 
-  extractExpectationHorizonLatexTaskEntries(text) {
+  extractExpectationHorizonLatexTaskEntries(text, options = {}) {
+    const includeSolutions = options.includeSolutions === true;
     const beginMarker = "\\begin{Aufgabe}";
     const endMarker = "\\end{Aufgabe}";
     const lines = String(text || "").replace(/\r\n?/g, "\n").split("\n");
@@ -19639,7 +19658,7 @@ class GradesApp {
         const endIndex = rest.indexOf(endMarker);
         if (endIndex >= 0) {
           buffer.push(rest.slice(0, endIndex));
-          const cleaned = cleanExpectationHorizonLatexTask(buffer.join("\n"));
+          const cleaned = cleanExpectationHorizonLatexTask(buffer.join("\n"), { includeSolutions });
           if (this.getExpectationHorizonLatexTaskPlainText(cleaned)) {
             tasks.push({
               content: cleaned,
@@ -20362,25 +20381,17 @@ class GradesApp {
         return;
       }
       const previous = result[result.length - 1];
-      const needsInsertedSpace = Boolean(
-        previous
-        && item.paragraphBreak === true
-        && !previous.list
-        && !item.list
-        && !/\s$/.test(previous.text)
-        && !/^\s/.test(text)
-        && !/[\[({/]$/.test(previous.text)
-        && !/^[,.;:!?)]/.test(text)
-      );
-      if (needsInsertedSpace && previous.math && !item.math) {
-        text = ` ${text}`;
-      } else if (needsInsertedSpace) {
-        previous.text += " ";
+      const paragraphBreak = Boolean(previous) && item.paragraphBreak === true;
+      if (paragraphBreak && !previous.math) {
+        previous.text = previous.text.replace(/\s+$/, "");
+      }
+      if (paragraphBreak && !item.math) {
+        text = text.replace(/^\s+/, "");
       }
       result.push({
         ...item,
         text,
-        paragraphBreak: false
+        paragraphBreak
       });
     });
     while (result.length && !String(result[0]?.text || "").trim()) {
@@ -20695,6 +20706,9 @@ class GradesApp {
       const name = this.getGradeStudentLegalDisplayName(student);
       const entry = this.getExpectationHorizonStudentEntry(context, student);
       const scores = normalizeGradeTestScores(entry?.testScores);
+      if (!tasks.some((task) => Object.prototype.hasOwnProperty.call(scores, task.id))) {
+        continue;
+      }
       const deficitFollowUpTaskNumbers = tasks.reduce((result, task, index) => {
         if (isGradeTestDeficitFollowUpScore(task, scores[task.id])) {
           result.push(index + 1);
@@ -20837,7 +20851,7 @@ class GradesApp {
         percentBoundaryMode: this.expectationHorizonPercentBoundaryMode
       });
       if (!records.length) {
-        this.setExpectationHorizonStatus("Für diesen Kurs sind keine Lernenden vorhanden.", "error");
+        this.setExpectationHorizonStatus("Für diesen Kurs sind noch keine BE2-Einträge vorhanden.", "error");
         return;
       }
       const hasPercentileImages = records.some((record) => record.hasPercentileImage);

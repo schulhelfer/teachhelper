@@ -1,3 +1,8 @@
+const EXPECTATION_HORIZON_LATEX_SOLUTION_START = "\uE000";
+const EXPECTATION_HORIZON_LATEX_SOLUTION_END = "\uE001";
+const EXPECTATION_HORIZON_LATEX_LINE_BREAK = "\uE002";
+const EXPECTATION_HORIZON_LATEX_MARKER_PATTERN = /[\uE000-\uE002]/g;
+
 function findExpectationHorizonLatexMatchingBrace(text, openIndex) {
   let depth = 0;
   for (let index = openIndex; index < text.length; index += 1) {
@@ -48,13 +53,13 @@ function removeExpectationHorizonLatexEnvironmentWithContent(text, environmentNa
   return String(text || "").replace(pattern, " ");
 }
 
-function stripExpectationHorizonLatexEnvironmentMarkers(text, environmentName) {
+function stripExpectationHorizonLatexEnvironmentMarkers(text, environmentName, beginReplacement = " ", endReplacement = " ") {
   const name = String(environmentName || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const beginPattern = new RegExp(`\\\\begin\\{${name}\\}(?:\\s*\\[[^\\]]*\\]|\\s*\\([^)]*\\)|\\s*\\{[^{}]*\\})*`, "g");
   const endPattern = new RegExp(`\\\\end\\{${name}\\}`, "g");
   return String(text || "")
-    .replace(beginPattern, " ")
-    .replace(endPattern, " ");
+    .replace(beginPattern, beginReplacement)
+    .replace(endPattern, endReplacement);
 }
 
 export function findExpectationHorizonLatexMatchingDelimiter(text, openIndex, openChar, closeChar) {
@@ -141,16 +146,86 @@ function normalizeExpectationHorizonLatexCellText(text, options = {}) {
   return trimEdges ? normalized.trim() : normalized;
 }
 
-function preprocessExpectationHorizonLatexTask(text) {
-  let result = String(text || "").replace(/\r\n?/g, "\n");
+function skipExpectationHorizonLatexOptionalArguments(source, start) {
+  let next = start;
+  while (next < source.length) {
+    let probe = next;
+    while (probe < source.length && /\s/.test(source[probe])) {
+      probe += 1;
+    }
+    if (source[probe] !== "[") {
+      break;
+    }
+    const close = findExpectationHorizonLatexMatchingDelimiter(source, probe, "[", "]");
+    if (close < 0) {
+      break;
+    }
+    next = close + 1;
+  }
+  return next;
+}
+
+function wrapExpectationHorizonLatexSolutionCommands(text) {
+  const source = String(text || "");
+  const needle = "\\lsg";
+  let result = "";
+  let cursor = 0;
+  while (cursor < source.length) {
+    const index = source.indexOf(needle, cursor);
+    if (index < 0) {
+      result += source.slice(cursor);
+      break;
+    }
+    const afterName = index + needle.length;
+    if (/[a-zA-Z]/.test(source[afterName] || "")) {
+      result += source.slice(cursor, afterName);
+      cursor = afterName;
+      continue;
+    }
+    let openIndex = skipExpectationHorizonLatexOptionalArguments(source, afterName);
+    while (openIndex < source.length && /\s/.test(source[openIndex])) {
+      openIndex += 1;
+    }
+    const closeIndex = source[openIndex] === "{" ? findExpectationHorizonLatexMatchingBrace(source, openIndex) : -1;
+    if (closeIndex < 0) {
+      result += source.slice(cursor, afterName);
+      cursor = afterName;
+      continue;
+    }
+    result += source.slice(cursor, index)
+      + EXPECTATION_HORIZON_LATEX_SOLUTION_START
+      + source.slice(openIndex + 1, closeIndex)
+      + EXPECTATION_HORIZON_LATEX_SOLUTION_END;
+    cursor = skipExpectationHorizonLatexOptionalArguments(source, closeIndex + 1);
+  }
+  return result;
+}
+
+function preprocessExpectationHorizonLatexTask(text, includeSolutions = false) {
+  let result = String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(EXPECTATION_HORIZON_LATEX_MARKER_PATTERN, "");
   result = removeExpectationHorizonLatexEnvironmentWithContent(result, "framed");
-  result = removeExpectationHorizonLatexEnvironmentWithContent(result, "lsg");
+  if (includeSolutions) {
+    result = stripExpectationHorizonLatexEnvironmentMarkers(
+      result,
+      "lsg",
+      EXPECTATION_HORIZON_LATEX_SOLUTION_START,
+      EXPECTATION_HORIZON_LATEX_SOLUTION_END
+    );
+    result = wrapExpectationHorizonLatexSolutionCommands(result);
+  } else {
+    result = removeExpectationHorizonLatexEnvironmentWithContent(result, "lsg");
+    result = removeExpectationHorizonLatexCommandWithArguments(result, "lsg");
+  }
   result = removeExpectationHorizonLatexEnvironmentWithContent(result, "tikzpicture");
   result = stripExpectationHorizonLatexEnvironmentMarkers(result, "tasks")
     .replace(/\\task\b(?:\s*\[[^\]]*\]|\s*\([^)]*\)|\s*\{[^{}]*\})*/g, "\n- ");
   result = stripExpectationHorizonLatexEnvironmentMarkers(result, "minipage");
   result = removeExpectationHorizonLatexCommandWithArguments(result, "includegraphics");
-  return normalizeExpectationHorizonLatexCellText(result);
+  return normalizeExpectationHorizonLatexCellText(result)
+    .split("\n")
+    .join(`\n${EXPECTATION_HORIZON_LATEX_LINE_BREAK}\n`);
 }
 
 function isExpectationHorizonLatexEscapedAt(text, index) {
@@ -237,87 +312,42 @@ function splitExpectationHorizonLatexMathPieces(text) {
   return pieces;
 }
 
-function findExpectationHorizonLatexSolutionCommand(text, cursor = 0) {
-  const source = String(text || "");
-  const needle = "\\lsgZwei";
-  let searchCursor = cursor;
-  while (searchCursor < source.length) {
-    const commandIndex = source.indexOf(needle, searchCursor);
-    if (commandIndex < 0) {
-      return null;
-    }
-    let next = commandIndex + needle.length;
-    if (/[a-zA-Z]/.test(source[next] || "")) {
-      searchCursor = next;
-      continue;
-    }
-    while (next < source.length && /\s/.test(source[next])) {
-      next += 1;
-    }
-    while (source[next] === "[") {
-      const close = findExpectationHorizonLatexMatchingDelimiter(source, next, "[", "]");
-      if (close < 0) {
-        return { index: commandIndex, openIndex: -1, closeIndex: -1 };
-      }
-      next = close + 1;
-      while (next < source.length && /\s/.test(source[next])) {
-        next += 1;
-      }
-    }
-    if (source[next] !== "{") {
-      searchCursor = next;
-      continue;
-    }
-    const closeIndex = findExpectationHorizonLatexMatchingBrace(source, next);
-    let afterIndex = closeIndex >= 0 ? closeIndex + 1 : closeIndex;
-    while (afterIndex > 0) {
-      while (afterIndex < source.length && /\s/.test(source[afterIndex])) {
-        afterIndex += 1;
-      }
-      if (source[afterIndex] !== "[") {
-        break;
-      }
-      const optionClose = findExpectationHorizonLatexMatchingDelimiter(source, afterIndex, "[", "]");
-      if (optionClose < 0) {
-        break;
-      }
-      afterIndex = optionClose + 1;
-    }
-    return {
-      index: commandIndex,
-      openIndex: next,
-      closeIndex,
-      afterIndex
-    };
-  }
-  return null;
-}
-
 function splitExpectationHorizonLatexSolutionSegments(text) {
-  const source = preprocessExpectationHorizonLatexTask(text);
   const segments = [];
-  let cursor = 0;
-  while (cursor < source.length) {
-    const command = findExpectationHorizonLatexSolutionCommand(source, cursor);
-    if (!command) {
-      segments.push({ text: source.slice(cursor), italic: true, leadingBreak: false });
-      break;
+  let depth = 0;
+  let current = "";
+  const flush = () => {
+    if (!current) {
+      return;
     }
-    if (command.index > cursor) {
-      segments.push({ text: source.slice(cursor, command.index), italic: true, leadingBreak: false });
+    const solution = depth > 0;
+    const previous = segments[segments.length - 1];
+    if (previous && previous.solution === solution) {
+      previous.text += current;
+    } else {
+      segments.push({ text: current, solution });
     }
-    if (command.openIndex < 0 || command.closeIndex < 0) {
-      segments.push({ text: source.slice(command.index), italic: true, leadingBreak: false });
-      break;
+    current = "";
+  };
+  for (const char of String(text || "")) {
+    if (char === EXPECTATION_HORIZON_LATEX_SOLUTION_START) {
+      flush();
+      depth += 1;
+    } else if (char === EXPECTATION_HORIZON_LATEX_SOLUTION_END) {
+      flush();
+      depth = Math.max(0, depth - 1);
+    } else {
+      current += char;
     }
-    segments.push({ text: source.slice(command.openIndex + 1, command.closeIndex), italic: false, leadingBreak: true });
-    cursor = command.afterIndex > command.closeIndex ? command.afterIndex : command.closeIndex + 1;
   }
+  flush();
   return segments;
 }
 
 function cleanExpectationHorizonLatexSegment(text, options = {}) {
-  let result = String(text || "").replace(/\r\n?/g, "\n");
+  let result = String(text || "")
+    .replace(/\r\n?/g, "\n")
+    .replace(/\\\\\*?(?:\[[^\]]*\])?|\\(?:newline|par)(?![a-zA-Z])/g, `\n${EXPECTATION_HORIZON_LATEX_LINE_BREAK}\n`);
   const argumentCommands = ["textbf", "textit", "textsc", "texttt"];
   for (let pass = 0; pass < 8; pass += 1) {
     const before = result;
@@ -438,26 +468,35 @@ function trimExpectationHorizonLatexTaskRuns(runs) {
   return trimmedRuns;
 }
 
-export function cleanExpectationHorizonLatexTask(text) {
+export function cleanExpectationHorizonLatexTask(text, options = {}) {
+  const includeSolutions = options.includeSolutions === true;
   const runs = [];
-  splitExpectationHorizonLatexSolutionSegments(text).forEach((segment) => {
+  let lastContentWasSolution = false;
+  let pendingBreak = false;
+  const source = preprocessExpectationHorizonLatexTask(text, includeSolutions);
+  splitExpectationHorizonLatexSolutionSegments(source).forEach((segment) => {
+    const italic = includeSolutions && !segment.solution;
+    const leadingBreak = segment.solution || lastContentWasSolution;
     let segmentHasContent = false;
     let pendingList = "";
+    const startsParagraph = () => runs.length > 0
+      && ((leadingBreak && !segmentHasContent) || Boolean(pendingList) || pendingBreak);
     const pieces = splitExpectationHorizonLatexMathPieces(segment.text);
     const preserveMathSpacing = pieces.some((piece) => piece.math);
     pieces.forEach((piece) => {
       if (piece.math) {
-        const formula = String(piece.text || "").trim();
+        const formula = String(piece.text || "").replace(EXPECTATION_HORIZON_LATEX_MARKER_PATTERN, " ").trim();
         if (!formula) {
           return;
         }
         appendExpectationHorizonLatexTaskRun(runs, formula, {
           italic: false,
           math: true,
-          paragraphBreak: (segment.leadingBreak && !segmentHasContent && runs.length > 0) || (Boolean(pendingList) && runs.length > 0),
+          paragraphBreak: startsParagraph(),
           list: pendingList
         });
         pendingList = "";
+        pendingBreak = false;
         segmentHasContent = true;
         return;
       }
@@ -470,8 +509,11 @@ export function cleanExpectationHorizonLatexTask(text) {
         if (!trimmedLine) {
           return;
         }
-        const emptyBulletMatch = trimmedLine.match(/^-\s*$/);
-        if (emptyBulletMatch) {
+        if (trimmedLine === EXPECTATION_HORIZON_LATEX_LINE_BREAK) {
+          pendingBreak = true;
+          return;
+        }
+        if (/^-\s*$/.test(trimmedLine)) {
           pendingList = "hyphenBullet";
           if (lineIndex > 0) {
             segmentHasContent = true;
@@ -487,16 +529,20 @@ export function cleanExpectationHorizonLatexTask(text) {
           runs,
           textValue,
           {
-            italic: segment.italic,
-            paragraphBreak: (segment.leadingBreak && !segmentHasContent && runs.length > 0) || (Boolean(pendingList) && runs.length > 0),
+            italic,
+            paragraphBreak: startsParagraph(),
             preserveOuterSpaces: preserveMathSpacing,
             list
           }
         );
         pendingList = "";
+        pendingBreak = false;
         segmentHasContent = true;
       });
     });
+    if (segmentHasContent) {
+      lastContentWasSolution = segment.solution;
+    }
   });
   return { runs: trimExpectationHorizonLatexTaskRuns(runs) };
 }
