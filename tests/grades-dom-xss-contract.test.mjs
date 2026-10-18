@@ -29,6 +29,7 @@ test('imported/persisted grade text is rendered with DOM properties, not parsed 
     methodSource('renderGradeTaskCompetenceDialogOptions', 'syncGradeTaskCompetenceDialogSelection'),
     methodSource('renderGradeSimulationDialogControls', 'readGradeSimulationStateFromControls'),
     methodSource('renderGradeSimulationResults', 'togglePrivacyFocusedGradeStudent'),
+    methodSource('renderGradeDeficitFollowUpDialogList', 'closeGradeDeficitFollowUpDialog'),
     methodSource('renderGradeOccurrenceCategorySuggestions', 'renderGradeOccurrenceCategoriesSettingsSection'),
     methodSource('renderGradeOccurrenceCategoriesSettingsSection', 'addGradeOccurrenceCategoryDraft'),
   ];

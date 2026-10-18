@@ -529,6 +529,11 @@
           max-width: 760px;
         }
 
+        #grade-deficit-followup-dialog.app-dialog {
+          width: min(560px, calc(100vw - 24px));
+          max-width: 560px;
+        }
+
         #archive-dialog.app-dialog {
           width: min(560px, calc(100vw - 24px));
           max-width: 560px;
@@ -7508,6 +7513,58 @@
 
         .grade-simulation-dialog form {
           gap: 0.85rem;
+        }
+
+        .grade-deficit-followup-dialog form {
+          gap: 0.85rem;
+        }
+
+        .grade-deficit-followup-summary {
+          padding: 0.55rem 0.7rem;
+          border: 1px solid rgba(148, 163, 184, 0.28);
+          border-radius: 0.7rem;
+          background: var(--surface-panel-subtle);
+          color: var(--text-strong);
+          font-size: 0.86rem;
+          font-weight: 800;
+        }
+
+        .grade-deficit-followup-list {
+          display: grid;
+          gap: 0.6rem;
+          max-height: min(60vh, 560px);
+          overflow: auto;
+        }
+
+        .grade-deficit-followup-task {
+          padding: 0.6rem 0.75rem;
+          border: 1px solid rgba(148, 163, 184, 0.24);
+          border-left: 3px solid rgba(250, 204, 21, 0.72);
+          border-radius: 0.7rem;
+        }
+
+        .grade-deficit-followup-task-title {
+          margin: 0 0 0.35rem;
+          color: #facc15;
+          font-size: 0.82rem;
+          font-weight: 800;
+          letter-spacing: 0.03em;
+          text-transform: uppercase;
+        }
+
+        .grade-deficit-followup-students {
+          display: grid;
+          gap: 0.2rem;
+          margin: 0;
+          padding-left: 1.1rem;
+          color: var(--text-strong);
+          font-size: 0.9rem;
+        }
+
+        .grade-deficit-followup-empty {
+          margin: 0;
+          color: var(--text-muted);
+          font-size: 0.9rem;
         }
 
         #grade-expectation-horizon-comment-dialog.app-dialog {

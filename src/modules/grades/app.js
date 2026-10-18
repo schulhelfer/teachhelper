@@ -2911,6 +2911,7 @@ class GradesApp {
       sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
       sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
       sidebarGradeCompetenceExpectationsSection: document.querySelector("#sidebar-grade-competence-expectations-section"),
+      sidebarGradeDeficitFollowUpSection: document.querySelector("#sidebar-grade-deficit-followup-section"),
       sidebarGradeSimulationSection: document.querySelector("#sidebar-grade-simulation-section"),
       sidebarGradeAccommodationSection: document.querySelector("#sidebar-grade-accommodation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
@@ -2920,6 +2921,7 @@ class GradesApp {
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeCompetenceExpectationsBtn: document.querySelector("#sidebar-grade-competence-expectations-btn"),
+      sidebarGradeDeficitFollowUpBtn: document.querySelector("#sidebar-grade-deficit-followup-btn"),
       sidebarGradeSimulationBtn: document.querySelector("#sidebar-grade-simulation-btn"),
       sidebarGradeAccommodationBtn: document.querySelector("#sidebar-grade-accommodation-btn"),
       sidebarArchiveActions: document.querySelector("#sidebar-archive-actions"),
@@ -3116,6 +3118,11 @@ class GradesApp {
       competenceExpectationsStatus: document.querySelector("#competence-expectations-status"),
       competenceExpectationsSave: document.querySelector("#competence-expectations-save"),
       competenceExpectationsGenerate: document.querySelector("#competence-expectations-generate"),
+      gradeDeficitFollowUpDialog: document.querySelector("#grade-deficit-followup-dialog"),
+      gradeDeficitFollowUpDialogForm: document.querySelector("#grade-deficit-followup-dialog-form"),
+      gradeDeficitFollowUpDialogClose: document.querySelector("#grade-deficit-followup-dialog-close"),
+      gradeDeficitFollowUpSummary: document.querySelector("#grade-deficit-followup-summary"),
+      gradeDeficitFollowUpList: document.querySelector("#grade-deficit-followup-list"),
       gradeTaskCompetenceDialog: document.querySelector("#grade-task-competence-dialog"),
       gradeTaskCompetenceDialogForm: document.querySelector("#grade-task-competence-dialog-form"),
       gradeTaskCompetenceCancelTop: document.querySelector("#grade-task-competence-cancel-top"),
@@ -4949,7 +4956,10 @@ class GradesApp {
       return true;
     }
     if (options?.queueSave) {
-      this.queueGradeVaultContinuation({ type: "grades-entry-save" });
+      this.queueGradeVaultContinuation({
+        type: "grades-entry-save",
+        showDeficitFollowUps: options.showDeficitFollowUps === true
+      });
     }
     this.openGradeVaultDialog(this.isGradeVaultConfigured() ? "unlock" : "setup");
     return false;
@@ -4962,7 +4972,7 @@ class GradesApp {
     }
     const type = String(action.type || "").trim();
     if (type === "grades-entry-save") {
-      this.pendingGradeVaultContinuation = { type };
+      this.pendingGradeVaultContinuation = { type, showDeficitFollowUps: action.showDeficitFollowUps === true };
       return;
     }
     if (type === "grade-roster-courses" || type === "grade-roster-import") {
@@ -5025,7 +5035,7 @@ class GradesApp {
       return true;
     }
     if (action.type === "grades-entry-save") {
-      void this.saveCurrentGradesEntry();
+      void this.saveCurrentGradesEntry({ showDeficitFollowUps: action.showDeficitFollowUps === true });
       return true;
     }
     if (action.type === "grade-roster-courses") {
@@ -10144,12 +10154,13 @@ class GradesApp {
     this.openGradesHeaderContextMenu(header, event.clientX, event.clientY);
   }
 
-  async saveCurrentGradesEntry() {
+  async saveCurrentGradesEntry(options = {}) {
     const courseId = Number(this.selectedCourseId || 0);
     if (!courseId) {
       return false;
     }
-    if (!this.ensureGradeVaultReadyForGradesEntryMutation({ queueSave: true })) {
+    const showDeficitFollowUps = options.showDeficitFollowUps === true;
+    if (!this.ensureGradeVaultReadyForGradesEntryMutation({ queueSave: true, showDeficitFollowUps })) {
       return false;
     }
     const isDraftSave = !this.selectedGradesEntryAssessmentId;
@@ -10300,6 +10311,9 @@ class GradesApp {
           firstDraftInput?.select();
         });
       }
+      if (showDeficitFollowUps) {
+        this.showGradeDeficitFollowUpsAfterSave(savedCourseId, assessment.id);
+      }
       return true;
     }
     this.clearGradesEntryDraftDirty();
@@ -10311,6 +10325,9 @@ class GradesApp {
       requestAnimationFrame(() => {
         this.focusGradeAssessmentInput(assessment.id, 0);
       });
+    }
+    if (showDeficitFollowUps) {
+      this.showGradeDeficitFollowUpsAfterSave(savedCourseId, assessment.id);
     }
     return true;
   }
@@ -10441,7 +10458,7 @@ class GradesApp {
     const saveEntryButton = event.target.closest("button[data-grades-entry-save]");
     if (saveEntryButton) {
       event.stopPropagation();
-      await this.saveCurrentGradesEntry();
+      await this.saveCurrentGradesEntry({ showDeficitFollowUps: true });
       return;
     }
     const deleteEntryButton = event.target.closest("button[data-grades-entry-delete='1']");
@@ -11638,7 +11655,7 @@ class GradesApp {
         && this.normalizeGradesSubView(this.gradesSubView) === "entry"
         && this.gradesEntryDraftDirty
       ) {
-        void this.saveCurrentGradesEntry();
+        void this.saveCurrentGradesEntry({ showDeficitFollowUps: true });
         return;
       }
       void this.saveGradeVaultChanges();
@@ -11675,7 +11692,7 @@ class GradesApp {
       const action = String(button.dataset.gradeVaultBannerAction || "");
       if (action === "save") {
         if (this.gradesEntryDraftDirty) {
-          void this.saveCurrentGradesEntry();
+          void this.saveCurrentGradesEntry({ showDeficitFollowUps: true });
         } else {
           void this.saveGradeVaultChanges();
         }
@@ -11755,6 +11772,11 @@ class GradesApp {
         this.handleCompetenceExpectationsOpenRequest(event);
       });
     }
+    if (this.refs.sidebarGradeDeficitFollowUpBtn) {
+      this.refs.sidebarGradeDeficitFollowUpBtn?.addEventListener("click", (event) => {
+        this.handleGradeDeficitFollowUpOpenRequest(event);
+      });
+    }
     if (this.refs.sidebarGradeSimulationBtn) {
       this.refs.sidebarGradeSimulationBtn?.addEventListener("click", (event) => {
         this.handleGradeSimulationOpenRequest(event);
@@ -11820,6 +11842,20 @@ class GradesApp {
     this.refs.gradeSimulationDialogForm?.addEventListener("submit", (event) => {
       event.preventDefault();
       this.closeGradeSimulationDialog();
+    });
+    this.refs.gradeDeficitFollowUpDialogClose?.addEventListener("click", () => {
+      this.closeGradeDeficitFollowUpDialog();
+    });
+    this.refs.gradeDeficitFollowUpDialogForm?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.closeGradeDeficitFollowUpDialog();
+    });
+    this.refs.gradeDeficitFollowUpDialog?.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      this.closeGradeDeficitFollowUpDialog();
+    });
+    this.bindDialogBackdropClose(this.refs.gradeDeficitFollowUpDialog, () => {
+      this.closeGradeDeficitFollowUpDialog();
     });
     this.refs.gradeSimulationValue?.addEventListener("change", () => {
       this.handleGradeSimulationControlChange();
@@ -15740,6 +15776,7 @@ class GradesApp {
       this.updateSidebarGradePrintButtonState();
       this.updateSidebarExpectationHorizonButtonState();
       this.updateSidebarCompetenceExpectationsButtonState();
+      this.updateSidebarGradeDeficitFollowUpButtonState();
       this.updateSidebarGradeSimulationButtonState();
       this.updateSidebarGradeAccommodationButtonState();
       return;
@@ -15806,6 +15843,7 @@ class GradesApp {
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarCompetenceExpectationsButtonState();
+        this.updateSidebarGradeDeficitFollowUpButtonState();
         this.updateSidebarGradeSimulationButtonState();
         this.updateSidebarGradeAccommodationButtonState();
         return;
@@ -15830,6 +15868,7 @@ class GradesApp {
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarCompetenceExpectationsButtonState();
+        this.updateSidebarGradeDeficitFollowUpButtonState();
         this.updateSidebarGradeSimulationButtonState();
         this.updateSidebarGradeAccommodationButtonState();
         return;
@@ -15846,6 +15885,7 @@ class GradesApp {
     this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarCompetenceExpectationsButtonState();
+    this.updateSidebarGradeDeficitFollowUpButtonState();
     this.updateSidebarGradeSimulationButtonState();
     this.updateSidebarGradeAccommodationButtonState();
     this.syncSegmentControlSlideStates(this.refs.viewGrades, { animateFromPrevious: true });
@@ -18354,6 +18394,173 @@ class GradesApp {
           ? "Notenmodul zuerst entsperren"
           : (context.ready ? "Kompetenzerwartung erzeugen" : context.reason || "Nur im BE-Modus verfügbar.")
       );
+  }
+
+  updateSidebarGradeDeficitFollowUpButtonState() {
+    const actions = this.refs.sidebarGradePrivacyActions;
+    const section = this.refs.sidebarGradeDeficitFollowUpSection;
+    const button = this.refs.sidebarGradeDeficitFollowUpBtn;
+    if (!actions || !button) {
+      return;
+    }
+    const isGradesEntry = this.isGradesTopTabActive()
+      && this.currentView === "grades"
+      && this.normalizeGradesSubView(this.gradesSubView) === "entry";
+    let isTestMode = false;
+    if (isGradesEntry) {
+      const modeInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-mode='1']:checked");
+      if (modeInput) {
+        isTestMode = normalizeGradeAssessmentMode(modeInput.value) === "test";
+      } else {
+        const activeAssessment = this.getGradesEntryActiveAssessment(this.selectedCourseId);
+        const draft = activeAssessment
+          ? this.getGradesEntryAssessmentDraft(activeAssessment)
+          : this.getGradesEntryDraft(this.selectedCourseId);
+        isTestMode = normalizeGradeAssessmentMode(draft?.mode || activeAssessment?.mode) === "test";
+      }
+    }
+    const context = this.getExpectationHorizonCourseContext();
+    actions.hidden = !this.shouldShowSidebarGradeActions();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    if (section) {
+      section.hidden = !isGradesEntry || !isTestMode;
+    }
+    button.disabled = vaultInaccessible || !context.ready;
+    button.setAttribute("aria-label", "Nachbereitungen anzeigen");
+    button.title = this.locked
+      ? GRADE_SIDEBAR_LOCKED_TOOLTIP
+      : (
+        vaultInaccessible
+          ? "Notenmodul zuerst entsperren"
+          : (context.ready ? "Nachbereitungen anzeigen" : context.reason || "Nur im BE-Modus verfügbar.")
+      );
+  }
+
+  handleGradeDeficitFollowUpOpenRequest(event = null) {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    if (!this.getExpectationHorizonCourseContext().ready) {
+      this.updateSidebarGradeDeficitFollowUpButtonState();
+      return;
+    }
+    if (!this.commitVisibleGradeInputs({ requireTestTaskValues: true })) {
+      return;
+    }
+    const context = this.getExpectationHorizonCourseContext();
+    if (!context.ready) {
+      this.updateSidebarGradeDeficitFollowUpButtonState();
+      return;
+    }
+    this.openGradeDeficitFollowUpDialog({
+      title: context.values?.title,
+      courseName: context.course?.name,
+      result: this.collectGradeDeficitFollowUpGroups(context)
+    });
+  }
+
+  collectGradeDeficitFollowUpGroups(context = {}) {
+    const students = Array.isArray(context?.students) ? context.students : [];
+    const flaggedTasks = normalizeGradeTestTasks(context?.values?.testTasks, { ensureDefault: false })
+      .map((task, index) => ({ task, number: index + 1 }))
+      .filter(({ task }) => task.deficitDiagnosisFollowUp === true);
+    if (!flaggedTasks.length) {
+      return { flaggedTaskCount: 0, groups: [] };
+    }
+    const studentScores = students.map((student) => ({
+      student,
+      scores: normalizeGradeTestScores(this.getExpectationHorizonStudentEntry(context, student)?.testScores)
+    }));
+    const groups = flaggedTasks.reduce((result, { task, number }) => {
+      const taskStudents = studentScores
+        .filter(({ scores }) => isGradeTestDeficitFollowUpScore(task, scores[task.id]))
+        .map(({ student }) => ({
+          id: Number(student.id || 0),
+          name: this.getGradeStudentDisplayName(student)
+        }));
+      if (taskStudents.length) {
+        result.push({ taskId: task.id, label: `Aufgabe ${number}`, students: taskStudents });
+      }
+      return result;
+    }, []);
+    return { flaggedTaskCount: flaggedTasks.length, groups };
+  }
+
+  showGradeDeficitFollowUpsAfterSave(courseId, assessmentId) {
+    const assessment = this.store.getGradeAssessment(assessmentId);
+    if (!assessment || normalizeGradeAssessmentMode(assessment.mode) !== "test") {
+      return false;
+    }
+    const students = this.getSortedGradeStudentsForNameOrder(this.store.listGradeStudents(courseId))
+      .filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0);
+    const result = this.collectGradeDeficitFollowUpGroups({
+      students,
+      assessment,
+      draft: null,
+      values: { testTasks: assessment.testTasks }
+    });
+    if (!result.groups.length) {
+      return false;
+    }
+    this.openGradeDeficitFollowUpDialog({
+      title: assessment.title,
+      courseName: this.store.getCourse(courseId)?.name,
+      result
+    });
+    return true;
+  }
+
+  openGradeDeficitFollowUpDialog({ title = "", courseName = "", result = null } = {}) {
+    const dialog = this.refs.gradeDeficitFollowUpDialog;
+    if (!dialog) {
+      return;
+    }
+    const summary = [String(title || "").trim(), String(courseName || "").trim()].filter(Boolean).join(" · ");
+    if (this.refs.gradeDeficitFollowUpSummary) {
+      this.refs.gradeDeficitFollowUpSummary.textContent = summary;
+      this.refs.gradeDeficitFollowUpSummary.hidden = !summary;
+    }
+    this.renderGradeDeficitFollowUpDialogList(result);
+    this.openDialog(dialog);
+    requestAnimationFrame(() => {
+      document.__teachhelperAppTooltipsController?.hide?.();
+    });
+  }
+
+  renderGradeDeficitFollowUpDialogList(result = null) {
+    const list = this.refs.gradeDeficitFollowUpList;
+    if (!list) {
+      return;
+    }
+    const groups = Array.isArray(result?.groups) ? result.groups : [];
+    if (!groups.length) {
+      const empty = document.createElement("p");
+      empty.className = "grade-deficit-followup-empty";
+      empty.textContent = Number(result?.flaggedTaskCount || 0) > 0
+        ? "Keine Lernenden mit Nachbereitungshinweis."
+        : "Für keine Aufgabe ist eine Nachbereitung vorgesehen.";
+      list.replaceChildren(empty);
+      return;
+    }
+    list.replaceChildren(...groups.map((group) => {
+      const section = document.createElement("section");
+      section.className = "grade-deficit-followup-task";
+      const heading = document.createElement("h4");
+      heading.className = "grade-deficit-followup-task-title";
+      heading.textContent = String(group.label || "");
+      const names = document.createElement("ul");
+      names.className = "grade-deficit-followup-students";
+      names.replaceChildren(...(Array.isArray(group.students) ? group.students : []).map((student) => {
+        const item = document.createElement("li");
+        item.textContent = String(student?.name || "");
+        return item;
+      }));
+      section.append(heading, names);
+      return section;
+    }));
+  }
+
+  closeGradeDeficitFollowUpDialog() {
+    this.closeDialog(this.refs.gradeDeficitFollowUpDialog);
   }
 
   handleExpectationHorizonOpenRequest(event = null) {
@@ -32085,6 +32292,7 @@ class GradesApp {
     this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
     this.updateSidebarCompetenceExpectationsButtonState();
+    this.updateSidebarGradeDeficitFollowUpButtonState();
     this.updateSidebarGradeSimulationButtonState();
     this.updateSidebarGradeAccommodationButtonState();
     this.renderSidebarFooterActions();

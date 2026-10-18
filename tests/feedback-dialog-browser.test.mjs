@@ -212,6 +212,7 @@ test('all six dialog integrations share their appearance across themes and viewp
             const grip = dialog.querySelector('.dialog-resize-grip');
             const before = window.measureFeedbackGeometry();
             grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
+            const widened = window.measureFeedbackGeometry();
             grip.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true, cancelable: true }));
             for (const animation of dialog.getAnimations({ subtree: true })) {
               if (Number.isFinite(animation.effect.getComputedTiming().endTime)) animation.finish();
@@ -220,11 +221,11 @@ test('all six dialog integrations share their appearance across themes and viewp
             const after = window.measureFeedbackGeometry();
             const resized = dialog.classList.contains('is-dialog-resized');
             grip.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-            return { before, after, resized };
+            return { before, widened, after, resized };
           });
           assert.equal(enlarged.resized, true, module);
           assert.ok(enlarged.after.width >= enlarged.before.width, module);
-          assert.ok(enlarged.after.height >= enlarged.before.height, module);
+          assert.ok(enlarged.after.height >= enlarged.widened.height, module);
           if (width === 860) assert.ok(enlarged.after.width > enlarged.before.width, module);
           assert.equal(enlarged.after.fits, true, module);
           assert.ok(enlarged.after.centerXError <= 1, `${module}: resized horizontal center`);

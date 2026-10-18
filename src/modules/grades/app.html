@@ -125,6 +125,13 @@
               aria-label="Erwartungshorizont erzeugen" disabled><span class="sidebar-grade-print-icon"
                 aria-hidden="true">🎯</span></button>
           </div>
+          <div id="sidebar-grade-deficit-followup-section"
+            class="sidebar-grade-action-section sidebar-grade-action-section-deficit-followup">
+            <div class="sidebar-grade-action-title">Nachbereitung</div>
+            <button id="sidebar-grade-deficit-followup-btn" class="sidebar-grade-expectation-btn" type="button"
+              aria-label="Nachbereitungen anzeigen" disabled><span class="sidebar-grade-print-icon"
+                aria-hidden="true">🛠️</span></button>
+          </div>
           <div id="sidebar-grade-print-section" class="sidebar-grade-action-section sidebar-grade-action-section-print"
             data-tutorial-anchor="grades-print">
             <div class="sidebar-grade-action-title">Drucken</div>
@@ -1196,6 +1203,21 @@
       </p>
       <div id="competence-expectations-list" class="competence-expectations-list"></div>
       <div id="competence-expectations-status" class="expectation-horizon-status" aria-live="polite"></div>
+    </form>
+  </dialog>
+
+  <dialog id="grade-deficit-followup-dialog" class="app-dialog grade-deficit-followup-dialog"
+    aria-labelledby="grade-deficit-followup-dialog-title">
+    <form id="grade-deficit-followup-dialog-form" class="form-grid" method="dialog">
+      <div class="dialog-header">
+        <h3 id="grade-deficit-followup-dialog-title" class="dialog-title">Nachbereitung</h3>
+        <div class="dialog-actions-top app-action-group">
+          <button type="button" id="grade-deficit-followup-dialog-close"
+            class="ghost dialog-icon-button app-action-icon" aria-label="Schließen" data-tooltip="Schließen">❌</button>
+        </div>
+      </div>
+      <div id="grade-deficit-followup-summary" class="grade-deficit-followup-summary"></div>
+      <div id="grade-deficit-followup-list" class="grade-deficit-followup-list" aria-live="polite"></div>
     </form>
   </dialog>
 
