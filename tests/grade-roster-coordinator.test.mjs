@@ -16,6 +16,7 @@ const coordinatorUrl = dataUrl(
   coordinatorModuleSource
     .replace("'../shared/student-sync-bus.js'", JSON.stringify(studentSyncUrl))
     .replace("'../shared/school-data/messages.js'", JSON.stringify(messagesUrl))
+    .replace("'../shared/random-picker-settings.js'", JSON.stringify(new URL('../src/shared/random-picker-settings.js', import.meta.url).href))
     .replace("'../shell/tabs.js'", JSON.stringify(tabsUrl)),
 );
 const { createGradeRosterCoordinator } = await import(coordinatorUrl);
@@ -416,6 +417,7 @@ test('Picker-Import übernimmt die Bindung und speichert Änderungen ausschließ
     config: {
       weightsByStudentId: { a: 4, b: 1 },
       autoDisableSelected: false,
+      spinDurationMs: 3000,
     },
   });
 
@@ -464,6 +466,47 @@ test('Picker-Import übernimmt die Bindung und speichert Änderungen ausschließ
   assert.equal(harness.elements.reset.hidden, true);
   assert.equal(harness.pickerBindingChanges, 2);
   assert.equal((await harness.coordinator.savePickerConfig()).unbound, true);
+});
+
+test('Drehzeiten werden pro Kurs geladen, explizit gespeichert und als ungesicherte Änderung erkannt', async () => {
+  const harness = createHarness({ activeTab: TAB_RANDOM_PICKER });
+  const { coordinator } = harness;
+  assert.equal(coordinator.getPickerSpinDurationMs(5000), 5000);
+  assert.equal(coordinator.setPickerSpinDurationMs(6000), false);
+  loadCourses(harness, [{ id: 12, name: 'Physik' }, { id: 13, name: 'Chemie' }]);
+  const importCourse = (courseIndex, spinDurationMs) => {
+    harness.elements.pills.children[courseIndex].dispatchEvent(new Event('click'));
+    dispatchResult(harness.documentBus, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, {
+      requestId: harness.importRequests.at(-1).requestId,
+      ok: true,
+      mode: 'picker',
+      courseId: courseIndex + 12,
+      courseName: courseIndex ? 'Chemie' : 'Physik',
+      rosterToken: `roster-${courseIndex}`,
+      students: [{ id: 'a', first: 'Ada' }],
+      pickerConfig: { spinDurationMs },
+    });
+  };
+  importCourse(0, 6500);
+  assert.equal(coordinator.getPickerSpinDurationMs(5000), 6500);
+  assert.equal(coordinator.hasUnsavedPickerConfig(), false);
+  assert.equal(coordinator.setPickerSpinDurationMs(8000), true);
+  assert.equal(coordinator.hasUnsavedPickerConfig(), true);
+  assert.equal(harness.saveRequests.length, 0);
+  const saving = coordinator.savePickerConfig();
+  const request = harness.saveRequests.at(-1);
+  assert.equal(request.config.spinDurationMs, 8000);
+  dispatchResult(harness.documentBus, GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT, {
+    requestId: request.requestId, ok: true,
+  });
+  await saving;
+  assert.equal(coordinator.hasUnsavedPickerConfig(), false);
+  importCourse(1, undefined);
+  assert.equal(coordinator.getPickerSpinDurationMs(5000), 3000);
+  assert.equal(coordinator.hasUnsavedPickerConfig(), false);
+  coordinator.clearPickerBinding();
+  assert.equal(coordinator.getPickerSpinDurationMs(5000), 5000);
+  coordinator.dispose();
 });
 
 test('ungesicherte Picker-Bindungen schützen Kurswechsel und das Lösen der Bindung', async () => {

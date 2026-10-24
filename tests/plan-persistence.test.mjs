@@ -11,7 +11,8 @@ const [persistenceSource, formatSource, fileGuardsSource, fileIoSource] = await 
 const dataUrl = source => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
 const fileGuardsUrl = dataUrl(fileGuardsSource);
 const fileIoUrl = dataUrl(fileIoSource);
-const formatUrl = dataUrl(formatSource.replace("'../shared/file-guards.js'", JSON.stringify(fileGuardsUrl)));
+const formatUrl = dataUrl(formatSource.replace("'../shared/file-guards.js'", JSON.stringify(fileGuardsUrl))
+  .replace("'../shared/random-picker-settings.js'", JSON.stringify(new URL('../src/shared/random-picker-settings.js', import.meta.url).href)));
 const persistenceUrl = dataUrl(
   persistenceSource
     .replace("'../shared/file-guards.js'", JSON.stringify(fileGuardsUrl))

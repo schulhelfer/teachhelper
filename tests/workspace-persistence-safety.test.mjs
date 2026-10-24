@@ -155,6 +155,89 @@ function createRuntime() {
   return { store, runtime };
 }
 
+test('changes during a verified write remain dirty and survive the following save', async (t) => {
+  const { store, runtime } = createRuntime();
+  t.after(() => runtime.disposeGradeVaultSession());
+  runtime.queueSyncSave = () => false;
+  const courseId = store.createCourse(store.getActiveSchoolYear().id, 'Testkurs');
+  await runtime.runGradeCourseMutation(courseId, () => {
+    store.replaceGradeStudentsForCourse(courseId, [{ firstName: 'Alter', lastName: 'Stand' }]);
+  }, { skipAutoSave: true });
+  await runtime.setupGradeVault('sicheres-test-passwort');
+  const seed = await runtime.buildContainer('seed');
+  runtime.persistence.commitBuiltContainer(seed, { clearDeleted: true });
+  const handle = createFileHandle();
+  handle.setBytes(seed.bytes);
+  runtime.fileHandle = handle;
+  runtime.databaseLoaded = true;
+  runtime.knownFileHash = '';
+  handle.setWriteDelay(25);
+  const started = handle.waitForNextWrite();
+  const saving = runtime.saveToConnectedFile('first');
+  await started;
+  await runtime.runGradeCourseMutation(courseId, () => {
+    store.replaceGradeStudentsForCourse(courseId, store.listGradeStudents(courseId).map((student) => ({ ...student, firstName: 'Neuer' })));
+  }, { skipAutoSave: true });
+  store.setSetting('showNameLearningModule', true);
+  assert.equal(await saving, true);
+  assert.equal(runtime.dirtyCourseIds.has(courseId), true);
+  assert.equal(runtime.manualDirty, true);
+  assert.equal(runtime.publicDirty, true);
+  assert.equal(store.listGradeStudents(courseId)[0].firstName, 'Neuer');
+  await runtime.saveToConnectedFile('second');
+  assert.equal(runtime.dirtyCourseIds.size, 0);
+  assert.equal(runtime.manualDirty, false);
+  const reopened = createRuntime();
+  t.after(() => reopened.runtime.disposeGradeVaultSession());
+  await reopened.runtime.loadBytes(handle.read());
+  await reopened.runtime.unlockGradeVault('sicheres-test-passwort');
+  await reopened.runtime.ensureGradeCourseLoaded(courseId);
+  assert.equal(reopened.store.listGradeStudents(courseId)[0].firstName, 'Neuer');
+  assert.equal(reopened.store.getSetting('showNameLearningModule'), true);
+});
+
+test('verified saves and manual exports reuse built segments without reparsing', async (t) => {
+  const { store, runtime } = createRuntime();
+  t.after(() => runtime.disposeGradeVaultSession());
+  runtime.queueSyncSave = () => false;
+  store.setGradeVaultEncryptionEnabled(false);
+  const built = await runtime.buildContainer('seed');
+  const handle = createFileHandle();
+  handle.setBytes(built.bytes);
+  runtime.fileHandle = handle;
+  runtime.databaseLoaded = true;
+  runtime.persistence.commitPersistedVaultContainer = () => { throw new Error('must not reparse'); };
+  assert.equal(await runtime.saveToConnectedFile('verified'), true);
+  let downloads = 0;
+  runtime.persistence.downloadBytes = () => { downloads += 1; };
+  assert.equal(await runtime.saveManualDatabase(), true);
+  assert.equal(downloads, 1);
+});
+
+test('invalid persisted bytes leave the previous segments and configuration intact', async (t) => {
+  const { runtime } = createRuntime();
+  t.after(() => runtime.disposeGradeVaultSession());
+  const segments = [...runtime.segmentTexts];
+  const config = structuredClone(runtime.vault.persistedConfig);
+  assert.throws(() => runtime.persistence.commitPersistedVaultContainer(new Uint8Array([1, 2, 3])), /ungültig/);
+  assert.deepEqual([...runtime.segmentTexts], segments);
+  assert.deepEqual(runtime.vault.persistedConfig, config);
+});
+
+test('manual export does not download an old database after a concurrent import', async (t) => {
+  const { runtime } = createRuntime();
+  t.after(() => runtime.disposeGradeVaultSession());
+  const replacement = runtime.buildEmptyDatabaseContainer();
+  const build = runtime.persistence.buildContainer.bind(runtime.persistence);
+  runtime.persistence.buildContainer = async (...args) => {
+    const built = await build(...args);
+    await runtime.loadBytes(replacement.bytes);
+    return built;
+  };
+  runtime.persistence.downloadBytes = () => { throw new Error('must not download'); };
+  assert.equal(await runtime.saveManualDatabase(), false);
+});
+
 test('Picker-Konfigurationen werden kursweise normalisiert, exportiert und beim Löschen entfernt', () => {
   const store = new WorkspaceStore();
   store._save = () => {};
@@ -184,6 +267,7 @@ test('Picker-Konfigurationen werden kursweise normalisiert, exportiert und beim 
   assert.deepEqual(store.getGradePickerConfig(firstCourseId), {
     weightsByStudentId: { 12: 4 },
     autoDisableSelected: true,
+    spinDurationMs: 3000,
   });
   const exportedPublic = store.exportPublicStateSnapshot();
   const exportedVault = store.exportGradeVaultStateSnapshot();
@@ -194,6 +278,7 @@ test('Picker-Konfigurationen werden kursweise normalisiert, exportiert und beim 
   assert.deepEqual(imported.getGradePickerConfig(firstCourseId), {
     weightsByStudentId: { 12: 4 },
     autoDisableSelected: true,
+    spinDurationMs: 3000,
   });
 
   imported.deleteCourse(firstCourseId);
@@ -201,6 +286,7 @@ test('Picker-Konfigurationen werden kursweise normalisiert, exportiert und beim 
   assert.deepEqual(imported.getGradePickerConfig(secondCourseId), {
     weightsByStudentId: { 21: 0 },
     autoDisableSelected: false,
+    spinDurationMs: 3000,
   });
 });
 

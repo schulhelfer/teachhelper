@@ -8,7 +8,8 @@ const [planFormatSource, fileGuardsSource] = await Promise.all([
 ]);
 const fileGuardsUrl = `data:text/javascript;base64,${Buffer.from(fileGuardsSource).toString('base64')}`;
 const planFormatUrl = `data:text/javascript;base64,${Buffer.from(
-  planFormatSource.replace("'../shared/file-guards.js'", JSON.stringify(fileGuardsUrl)),
+  planFormatSource.replace("'../shared/file-guards.js'", JSON.stringify(fileGuardsUrl))
+    .replace("'../shared/random-picker-settings.js'", JSON.stringify(new URL('../src/shared/random-picker-settings.js', import.meta.url).href)),
 ).toString('base64')}`;
 const {
   PLAN_FORMAT_VERSION,
@@ -69,6 +70,7 @@ function expectedSerializedPlan() {
     students: roster.students,
     performanceFlairCount: groups.performanceFlairCount,
     randomPickerAutoDisableSelected: true,
+    randomPickerSpinDurationMs: 3000,
     headers: roster.headers,
     delim: roster.delimiter,
     csvName: roster.csvName,
@@ -77,6 +79,17 @@ function expectedSerializedPlan() {
   };
 }
 
+test('picker duration survives a JSON roundtrip and defaults or normalizes imported values', () => {
+  const snapshot = createSnapshot();
+  snapshot.randomPicker.spinDurationMs = 6500;
+  const serialized = serializePlan(snapshot);
+  assert.equal(JSON.parse(serialized).randomPickerSpinDurationMs, 6500);
+  assert.equal(deserializePlan(serialized).randomPicker.spinDurationMs, 6500);
+  assert.equal(deserializePlan('{}').randomPicker.spinDurationMs, 3000);
+  assert.equal(deserializePlan('{"randomPickerSpinDurationMs": 3250}').randomPicker.spinDurationMs, 3500);
+  assert.equal(deserializePlan('{"randomPickerSpinDurationMs": 20000}').randomPicker.spinDurationMs, 10000);
+});
+
 test('createPlanSnapshot builds the complete versioned internal plan structure', () => {
   assert.equal(PLAN_FORMAT_VERSION, 1);
   assert.deepEqual(createSnapshot(), {
@@ -84,7 +97,7 @@ test('createPlanSnapshot builds the complete versioned internal plan structure',
     generatedAt,
     roster,
     groups,
-    randomPicker: { autoDisableSelected: true },
+    randomPicker: { autoDisableSelected: true, spinDurationMs: 3000 },
     workPhase,
   });
   assert.equal(createPlanSnapshot({ generatedAt, roster, groups: null }), null);
@@ -137,7 +150,7 @@ test('deserializePlan applies the existing defaults for missing optional fields'
     delimiter: ',',
     csvName: '',
   });
-  assert.deepEqual(plan.randomPicker, { autoDisableSelected: undefined });
+  assert.deepEqual(plan.randomPicker, { autoDisableSelected: undefined, spinDurationMs: 3000 });
   assert.deepEqual(plan.workPhase, {
     workOrder: '',
     workOrderDurationMinutes: null,

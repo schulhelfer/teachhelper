@@ -1,3 +1,4 @@
+import { normalizeRandomPickerSpinDurationMs } from "../../shared/random-picker-settings.js";
 import {
   deleteCourseCascadeInPlace,
   getDefaultQualificationPhaseEndDates,
@@ -2974,6 +2975,7 @@ export class WorkspaceStore {
       config: {
         weightsByStudentId,
         autoDisableSelected: config.autoDisableSelected === true,
+        spinDurationMs: normalizeRandomPickerSpinDurationMs(config.spinDurationMs),
       },
       updatedAt: new Date().toISOString(),
     };
@@ -5080,6 +5082,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         config: {
           weightsByStudentId,
           autoDisableSelected: sourceConfig.autoDisableSelected === true,
+          spinDurationMs: normalizeRandomPickerSpinDurationMs(sourceConfig.spinDurationMs),
         },
         updatedAt: String(item.updatedAt || ""),
       };

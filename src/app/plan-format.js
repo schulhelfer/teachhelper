@@ -1,4 +1,5 @@
 import { assertJsonNestingAtMost } from '../shared/file-guards.js';
+import { normalizeRandomPickerSpinDurationMs } from '../shared/random-picker-settings.js';
 
 export const PLAN_FORMAT_VERSION = 1;
 
@@ -51,6 +52,7 @@ function normalizePlanDocument(data) {
     groups: normalizeGroupsPlan(source),
     randomPicker: {
       autoDisableSelected: source.randomPickerAutoDisableSelected,
+      spinDurationMs: normalizeRandomPickerSpinDurationMs(source.randomPickerSpinDurationMs),
     },
     workPhase: normalizeWorkPhasePlan(source),
   };
@@ -73,6 +75,7 @@ export function createPlanSnapshot({ generatedAt, roster, groups, randomPicker, 
     groups: normalizeGroupsPlan(groups),
     randomPicker: {
       autoDisableSelected: pickerState.autoDisableSelected === true,
+      spinDurationMs: normalizeRandomPickerSpinDurationMs(pickerState.spinDurationMs),
     },
     workPhase: normalizeWorkPhasePlan(workPhaseState),
   };
@@ -98,6 +101,7 @@ export function serializePlan(plan) {
     students: roster.students,
     performanceFlairCount: groups.performanceFlairCount,
     randomPickerAutoDisableSelected: randomPicker.autoDisableSelected,
+    randomPickerSpinDurationMs: normalizeRandomPickerSpinDurationMs(randomPicker.spinDurationMs),
     headers: roster.headers,
     delim: roster.delimiter,
     csvName: roster.csvName,

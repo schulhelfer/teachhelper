@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '133';
+const TEACHHELPER_APP_VERSION_STAMP = '134';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -148,6 +148,7 @@ const APP_SHELL = [
   './src/modules/workspace/store.js',
   './src/modules/random-picker/index.js',
   './src/modules/random-picker/app.js',
+  './src/shared/random-picker-settings.js',
   './src/modules/groups/index.js',
   './src/modules/groups/app.js',
   './src/modules/work-phase/index.js',

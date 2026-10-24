@@ -34,6 +34,7 @@ import {
 import { postToModule } from '../shared/module-frame-bridge.js';
 import { sanitizeExportFileName } from '../shared/file-io.js';
 import { createSharedTimerStore } from '../shared/timer-store.js';
+import { RANDOM_PICKER_SPIN_DURATION_MS, normalizeRandomPickerSpinDurationMs } from '../shared/random-picker-settings.js';
 import {
   mountRandomPicker,
   normalizeRandomPickerWeight,
@@ -417,6 +418,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
 
   const state = {
     randomPickerAutoDisableSelected: false,
+    randomPickerSpinDurationMs: RANDOM_PICKER_SPIN_DURATION_MS,
   };
   let randomPickerController = null;
   let gradeRosterCoordinator = null;
@@ -436,6 +438,8 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     getGradeRosterCoordinator: () => gradeRosterCoordinator,
     getAutoDisableSelected: () => state.randomPickerAutoDisableSelected,
     setAutoDisableSelected: (value) => { state.randomPickerAutoDisableSelected = value; },
+    getSpinDurationMs: () => state.randomPickerSpinDurationMs,
+    setSpinDurationMs: (value) => { state.randomPickerSpinDurationMs = normalizeRandomPickerSpinDurationMs(value); },
     sanitizeRandomPickerStudent,
     renderRandomPicker,
   });
@@ -598,6 +602,12 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     setAutoDisableSelected: (value) => {
       if (!gradeRosterCoordinator.setPickerAutoDisableSelected(value)) {
         state.randomPickerAutoDisableSelected = value;
+      }
+    },
+    getSpinDurationMs: () => gradeRosterCoordinator.getPickerSpinDurationMs(state.randomPickerSpinDurationMs),
+    setSpinDurationMs: (value) => {
+      if (!gradeRosterCoordinator.setPickerSpinDurationMs(value)) {
+        state.randomPickerSpinDurationMs = normalizeRandomPickerSpinDurationMs(value);
       }
     },
     setStudentWeight: (student, weight) => {

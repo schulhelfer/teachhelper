@@ -16,7 +16,7 @@ const {
   RANDOM_PICKER_MIN_WEIGHT,
   normalizeRandomPickerAutoDisableSelected,
   pickWeightedRandomPickerCandidate,
-} = await import(`data:text/javascript;base64,${Buffer.from(pickerSource).toString('base64')}`);
+} = await import('../src/modules/random-picker/app.js');
 
 test('picker defaults to retaining selected names and exposes an accessible switch', () => {
   assert.match(mainSource, /randomPickerAutoDisableSelected:\s*false/);

@@ -6,7 +6,7 @@ const source = await readFile(new URL('../src/modules/random-picker/app.js', imp
 const {
   normalizeRandomPickerWeight,
   RANDOM_PICKER_WINNER_HIGHLIGHT_MS,
-} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+} = await import('../src/modules/random-picker/app.js');
 
 test('der Picker erhält alle unterstützten Gewichtsstufen', () => {
   assert.equal(normalizeRandomPickerWeight(0), 0);

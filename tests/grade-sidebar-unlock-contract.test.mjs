@@ -201,6 +201,7 @@ test('nutzt nach Bestätigung des Auto-Lock-Hinweises den Entsperrpfad des Vorde
   const foregroundRequests = [];
   const noticeCalls = [];
   const app = {
+    workspaceClient: { getSnapshot() { return { vault: { suspendedChanges: false } }; } },
     gradeVaultAutoLockNoticeHandledId: '',
     gradeVaultAutoLockNoticePending: null,
     isGradesTopTabActive() { return true; },
@@ -253,6 +254,7 @@ test('leitet den Auto-Lock-Entsperrwunsch an dieselbe Shell-Anforderung wie der 
 test('„Später“ zeigt denselben Auto-Lock-Hinweis nicht erneut', async () => {
   let notices = 0;
   const app = {
+    workspaceClient: { getSnapshot() { return { vault: { suspendedChanges: false } }; } },
     gradeVaultAutoLockNoticeHandledId: '',
     gradeVaultAutoLockNoticePending: null,
     isGradesTopTabActive() { return true; },

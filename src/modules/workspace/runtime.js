@@ -80,6 +80,8 @@ export class WorkspaceRuntime {
       store,
       clone,
       canAccessGradeVault: () => this.canAccessGradeVault(),
+      captureSession: () => this.gradeVault.captureSession(),
+      assertSession: (session, options) => this.gradeVault.assertSession(session, options),
       isGradeVaultConfigured: () => this.isGradeVaultConfigured(),
       isGradeVaultUnlocked: () => this.isGradeVaultUnlocked(),
       decodeCourse: (...args) => this.decodeCourse(...args),
@@ -90,7 +92,7 @@ export class WorkspaceRuntime {
       hasConnectedFile: () => Boolean(this.fileHandle),
       queueSyncSave: (...args) => this.queueSyncSave(...args),
       onPublicChanged: () => this.onPublicChanged(),
-      markManualDirty: () => { this.manualDirty = true; },
+      markManualDirty: () => { this.manualDirty = true; this.persistence.changeGeneration += 1; },
       enqueueOperation: (operation) => this.enqueueFileOperation(operation),
       markChanged: (scope) => this.controller?.markChanged?.(scope),
       publish: (scope) => this.controller?.publish?.(scope),
@@ -117,12 +119,16 @@ export class WorkspaceRuntime {
       getCryptoRewriteSnapshot: () => this.courseRepository.getCryptoRewriteSnapshot(),
       getPersistedCourseText: (courseId) => this.segmentTexts.get(courseId) || '',
       replaceCryptoRewriteStates: (...args) => this.courseRepository.replaceCryptoRewriteStates(...args),
-      clearPlaintextCourses: () => this.courseRepository.clearPlaintextCourses(),
+      clearPlaintextCourses: (options) => this.courseRepository.clearPlaintextCourses(options),
       discardCourseChanges: () => {
         this.courseRepository.discardCourseChanges();
         this.manualDirty = Boolean(this.publicDirty);
       },
       runtimeCourseFromPersisted: (...args) => this.courseRepository.runtimeCourseFromPersisted(...args),
+      captureCourseSession: () => this.courseRepository.captureSessionState(),
+      restoreCourseSession: (state) => this.courseRepository.restoreSessionState(state),
+      getPersistedCourseTexts: () => [...this.courseRepository.segmentTexts],
+      getFeatureClient: () => this.clients.get('grades'),
     });
     this.persistence = new WorkspacePersistence({
       store,
@@ -139,10 +145,16 @@ export class WorkspaceRuntime {
       emptyVaultConfig: () => this.gradeVault.normalizeVaultConfig(null),
       validateVaultConfig: (raw) => this.gradeVault.validateConfig(raw),
       loadVaultConfig: (...args) => this.gradeVault.loadConfig(...args),
-      commitPersistedSegments: (segments) => this.courseRepository.commitPersistedSegments(segments),
-      commitPersistedConfig: () => this.gradeVault.commitPersistedConfig(),
+      commitPersistedSegments: (...args) => this.courseRepository.commitPersistedSegments(...args),
+      commitPersistedConfig: (...args) => this.gradeVault.commitPersistedConfig(...args),
       resetCoursesForDatabase: (segments) => this.courseRepository.resetForDatabase(segments),
       completeGradeSave: (options) => this.courseRepository.completeSave(options),
+      captureSaveState: () => ({
+        session: this.gradeVault.captureSession(),
+        courses: JSON.stringify([
+          [...this.courseRepository.courseRevisions], [...this.dirtyCourseIds], [...this.deletedCourseIds],
+        ]),
+      }),
       clearGradeVaultAutoLockWarning: () => this.clearGradeVaultAutoLockWarning(),
       isGradeVaultEncryptionEnabled: () => this.isGradeVaultEncryptionEnabled(),
       refreshNameLearningDueSummary: () => this.refreshNameLearningDueSummary(),
@@ -532,6 +544,7 @@ export class WorkspaceRuntime {
   }
 
   onPublicChanged() {
+    this.persistence.changeGeneration += 1;
     this.publicDirty = true;
     this.manualDirty = true;
     this.controller?.markChanged?.('planning');
@@ -541,6 +554,7 @@ export class WorkspaceRuntime {
   }
 
   onGradeChanged() {
+    this.persistence.changeGeneration += 1;
     this.courseRepository.captureGradeChange();
     this.manualDirty = true;
     this.controller?.markChanged?.('grades');
@@ -571,12 +585,13 @@ export class WorkspaceRuntime {
         statusAt: Number(this.persistenceFailure?.at) || 0,
       },
       unsaved: {
-        dirty: Boolean(this.publicDirty || this.dirtyCourseIds.size),
+        dirty: Boolean(this.publicDirty || this.dirtyCourseIds.size || this.gradeVault.hasSuspendedChanges()),
         planningDirty: this.publicDirty,
-        gradesDirty: this.dirtyCourseIds.size > 0,
+        gradesDirty: this.dirtyCourseIds.size > 0 || this.gradeVault.hasSuspendedChanges(),
         dirtyGradeCourseIds: [...this.dirtyCourseIds],
       },
       vault: {
+        suspendedChanges: this.gradeVault.hasSuspendedChanges(),
         mode: this.getGradeVaultStatusMode(),
         dbConnected: this.hasShellDatabaseConnection(),
         configured: this.isGradeVaultConfigured(),
@@ -704,8 +719,12 @@ export class WorkspaceRuntime {
     return this.gradeVault.setGradeVaultEncryptionEnabledFromSettings(...args);
   }
 
+  disposeGradeVaultSession() {
+    this.gradeVault.disposeSession();
+  }
+
   lockGradeVaultSession(...args) {
-    return this.gradeVault.lockGradeVaultSession(...args);
+    return this.enqueueFileOperation(() => this.gradeVault.lockGradeVaultSession(...args));
   }
 
   discardGradeVaultChanges(...args) {

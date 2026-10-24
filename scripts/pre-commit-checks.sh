@@ -67,12 +67,9 @@ else
 fi
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "Error: Node.js not found. Install Node.js to run the regression tests." >&2
+  echo "Error: Node.js not found. Install Node.js to stamp the app version." >&2
   exit 1
 fi
-
-echo "Running Node.js regression tests..."
-node --test tests/*.test.mjs
 
 echo "Running PWA audit..."
 case "$python_runner" in

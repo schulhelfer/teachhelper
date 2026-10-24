@@ -1,3 +1,19 @@
+import { WORKSPACE_ERROR_VAULT_LOCKED } from '../../shared/school-data/messages.js';
+
+const VAULT_DATA_METHODS = new Set([
+  'listGradeStudents', 'exportGradeVaultStateSnapshot', 'getGradeAssessment',
+  'getGradeEntry', 'getGradeImportMeta', 'getGradeOverride', 'getGradePickerConfig',
+  'getGradeSeatPlan', 'listGradeSeatPlans', 'getGradeStructure', 'getGradeStructureForPeriod',
+  'getGradeStudentPerformanceFlair', 'getGroupedGradeAssessments', 'listGradeAccommodations',
+  'listGradeAssessments', 'countGradeAssessmentsForSubcategory', 'createGradeAssessmentSnapshot',
+]);
+
+function vaultLockedError() {
+  const error = new Error('Das Notenmodul ist gesperrt.');
+  error.code = WORKSPACE_ERROR_VAULT_LOCKED;
+  return error;
+}
+
 const SHARED_DATA_METHODS = Object.freeze([
   'createCourse',
   'ensureLessonsForYear',
@@ -178,7 +194,19 @@ export function createWorkspacePublicApi({ getStore, getRuntime, scope }) {
     ...(grades ? GRADES_DATA_METHODS : []),
   ]);
   for (const method of dataMethods) {
-    data[method] = (...args) => copyResult(getStore()[method](...args.map(copy)));
+    data[method] = (...args) => {
+      let store = getStore();
+      if (getRuntime().canAccessGradeVault?.() === false) {
+        const mutation = GRADES_DATA_METHODS.includes(method)
+          && /^(create|delete|reorder|replace|save|set|update)/.test(method)
+          && method !== 'createGradeAssessmentSnapshot';
+        if (mutation) throw vaultLockedError();
+        if (VAULT_DATA_METHODS.has(method) || method.startsWith('calculate')) {
+          store = Object.assign(Object.create(store), { gradeVaultState: store.normalizeGradeVaultState(null) });
+        }
+      }
+      return copyResult(store[method](...args.map(copy)));
+    };
   }
   const operationMethods = new Set([
     ...(shared ? PLANNING_OPERATIONS : []),
@@ -215,14 +243,17 @@ export function createWorkspacePublicApi({ getStore, getRuntime, scope }) {
     };
   }
   if (grades) {
-    data.listGradeEntries = () => copy(getStore().gradeVaultState.gradeEntries);
+    data.listGradeEntries = () => getRuntime().canAccessGradeVault?.() === false
+      ? [] : copy(getStore().gradeVaultState.gradeEntries);
     data.clearGradeAssessmentEntries = (assessmentId) => {
+      if (getRuntime().canAccessGradeVault?.() === false) throw vaultLockedError();
       const store = getStore();
       store.gradeVaultState.gradeEntries = store.gradeVaultState.gradeEntries
         .filter((entry) => Number(entry.assessmentId) !== Number(assessmentId));
       store._saveGradeVault();
     };
     data.saveNameLearningProgress = (courseId, studentId, progress) => {
+      if (getRuntime().canAccessGradeVault?.() === false) throw vaultLockedError();
       const store = getStore();
       if (!store.listGradeStudents(courseId).some((student) => Number(student.id) === Number(studentId))) {
         const error = new Error('Diese Person ist nicht mehr im Kurs.');
@@ -248,7 +279,7 @@ export function createWorkspacePublicApi({ getStore, getRuntime, scope }) {
       const courseKey = Number(courseId) || 0;
       const assessmentKey = Number(assessmentId) || 0;
       const studentKey = Number(studentId) || 0;
-      if (!courseKey || runtime.gradeCourseOperationActive || runtime.gradeCourseMutationActiveCourseId || !runtime.isGradeCourseLoaded(courseKey)) return false;
+      if (runtime.canAccessGradeVault?.() === false || !courseKey || runtime.gradeCourseOperationActive || runtime.gradeCourseMutationActiveCourseId || !runtime.isGradeCourseLoaded(courseKey)) return false;
       try {
         runtime.normalizeAndAssertGradeCourseSnapshot(courseKey, runtime.getCurrentGradeVaultSnapshot());
       } catch {

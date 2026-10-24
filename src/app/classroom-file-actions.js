@@ -16,6 +16,7 @@ import {
 } from '../modules/random-picker/index.js';
 import { clampPerformanceFlairCount } from '../modules/groups/index.js';
 import { TAB_RANDOM_PICKER } from '../shell/tabs.js';
+import { RANDOM_PICKER_SPIN_DURATION_MS, normalizeRandomPickerSpinDurationMs } from '../shared/random-picker-settings.js';
 
 export function createClassroomFileActions({
   documentRef: document,
@@ -33,6 +34,8 @@ export function createClassroomFileActions({
   getGradeRosterCoordinator,
   getAutoDisableSelected,
   setAutoDisableSelected,
+  getSpinDurationMs = () => RANDOM_PICKER_SPIN_DURATION_MS,
+  setSpinDurationMs = () => {},
   sanitizeRandomPickerStudent,
   renderRandomPicker,
 }) {
@@ -101,6 +104,9 @@ export function createClassroomFileActions({
       groups: groupsPlanState,
       randomPicker: {
         autoDisableSelected,
+        spinDurationMs: isRandomPickerTabActive()
+          ? getGradeRosterCoordinator().getPickerSpinDurationMs(getSpinDurationMs())
+          : getSpinDurationMs(),
       },
       workPhase: getWorkPhaseController()?.getPlanState(),
     });
@@ -219,6 +225,7 @@ export function createClassroomFileActions({
     setAutoDisableSelected(normalizeRandomPickerAutoDisableSelected(
       randomPickerPlanState.autoDisableSelected
     ));
+    setSpinDurationMs(normalizeRandomPickerSpinDurationMs(randomPickerPlanState.spinDurationMs));
     const normalizedCsvName = sanitizeExportFileName(incomingCsvName);
     getClassroomState().updateState({
       students: incomingStudents.map(student => sanitizeRandomPickerStudent(student)),

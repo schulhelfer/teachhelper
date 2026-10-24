@@ -1896,12 +1896,19 @@
       display: none !important;
     }
 
+    .random-picker-sidebar-duration,
     .random-picker-sidebar-action-label {
       display: none !important;
     }
 
+    .app.app-tab-random-picker .random-picker-sidebar-duration,
     .app.app-tab-random-picker .random-picker-sidebar-action-label {
       display: list-item !important;
+    }
+
+    .random-picker-duration-field {
+      display: block;
+      margin: 10px 0 6px;
     }
 
     .app.app-tab-random-picker .random-picker-sidebar-plan-actions {

@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
-const source = await readFile(new URL('../src/modules/random-picker/app.js', import.meta.url), 'utf8');
 const {
   RANDOM_PICKER_CERTAIN_WEIGHT,
   RANDOM_PICKER_DEFAULT_WEIGHT,
@@ -11,14 +9,14 @@ const {
   RANDOM_PICKER_SPIN_DURATION_MS,
   normalizeRandomPickerWeight,
   pickWeightedRandomPickerCandidate,
-} = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
+} = await import('../src/modules/random-picker/app.js');
 
 test('random picker weight normalization preserves the existing boundaries', () => {
   assert.equal(RANDOM_PICKER_MIN_WEIGHT, 0);
   assert.equal(RANDOM_PICKER_DEFAULT_WEIGHT, 1);
   assert.equal(RANDOM_PICKER_MAX_WEIGHT, 4);
   assert.equal(RANDOM_PICKER_CERTAIN_WEIGHT, 4);
-  assert.equal(RANDOM_PICKER_SPIN_DURATION_MS, 4000);
+  assert.equal(RANDOM_PICKER_SPIN_DURATION_MS, 3000);
   assert.equal(normalizeRandomPickerWeight(-3), 0);
   assert.equal(normalizeRandomPickerWeight(0), 0);
   assert.equal(normalizeRandomPickerWeight(1), 1);

@@ -33,6 +33,14 @@ const [{ WorkspaceRuntime, formatLocalBackupTimestamp }, messages, workspaceCryp
   import(thdbUrl),
 ]);
 
+async function configureRuntimeVault(runtime) {
+  const kdf = workspaceCrypto.createWorkspaceVaultKdf({ iterations: 100000 });
+  const { cryptoKey } = await workspaceCrypto.deriveWorkspaceVaultKey('sicheres-test-passwort', kdf);
+  const validation = await workspaceCrypto.encryptWorkspaceVaultText('teachhelper-grade-vault-v1', cryptoKey, kdf, { type: 'validation' });
+  const config = { configured: true, kdf, validation };
+  runtime.vault = { ...runtime.vault, encryptionEnabled: true, configured: true, unlocked: true, cryptoKey, kdf, config, persistedConfig: structuredClone(config) };
+}
+
 function emptyGrades() {
   return {
     counters: {}, gradeStructures: [], gradeAssessments: [], gradeStudents: [],
@@ -698,7 +706,7 @@ test('discarding dirty grade changes restores a lockable persisted vault state',
 });
 
 for (const enabled of [undefined, false]) {
-  test(`auto-lock does not save dirty grades when the option is ${String(enabled)}`, async () => {
+  test(`auto-lock suspends dirty grades without saving when the option is ${String(enabled)}`, async () => {
     const store = new FakeStore();
     if (enabled !== undefined) store.setGradeVaultAutoSaveBeforeLock(enabled);
     const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
@@ -710,15 +718,16 @@ for (const enabled of [undefined, false]) {
     let retryDelay = 0;
     runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
 
-    assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
-    assert.equal(runtime.isGradeVaultUnlocked(), true);
+    await configureRuntimeVault(runtime);
+    assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+    assert.equal(runtime.isGradeVaultUnlocked(), false);
     assert.equal(runtime.dirtyCourseIds.has(7), true);
-    assert.match(runtime.vault.autoLockWarning.message, /ausgeschaltet/);
-    assert.equal(retryDelay, 10 * 60 * 1000);
+    assert.equal(runtime.gradeVault.hasSuspendedChanges(), true);
+    assert.equal(retryDelay, 0);
   });
 }
 
-test('auto-lock keeps dirty grades unlocked in manual download mode, publishes a warning, and retries after ten minutes', async () => {
+test('auto-lock suspends dirty grades in manual download mode without writing a file', async () => {
   const store = new FakeStore();
   store.setGradeVaultAutoSaveBeforeLock(true);
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
@@ -739,15 +748,16 @@ test('auto-lock keeps dirty grades unlocked in manual download mode, publishes a
   runtime.isManualPersistenceMode = () => true;
   runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
 
-  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
-  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  await configureRuntimeVault(runtime);
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
   assert.equal(changedScope, 'grades');
   assert.equal(saveCalls, 0);
-  assert.equal(retryDelay, 10 * 60 * 1000);
+  assert.equal(retryDelay, 0);
   const warning = runtime.createWorkspaceSnapshot('shell').vault.autoLockWarning;
-  assert.equal(warning.active, true);
-  assert.match(warning.message, /manuellen Download-Modus/);
-  assert.ok(warning.retryAt > Date.now());
+  assert.equal(warning.active, false);
+  assert.equal(runtime.gradeVault.hasSuspendedChanges(), true);
+  assert.equal(warning.retryAt, 0);
 });
 
 test('auto-lock saves every dirty grade course to a connected database before locking', async () => {
@@ -836,7 +846,7 @@ test('only a successful auto-lock publishes an in-memory unlock notice', async (
   assert.ok(notice.lockedAt > 0);
 });
 
-test('auto-lock leaves dirty grades unlocked when automatic saving fails', async () => {
+test('auto-lock suspends dirty grades when automatic saving fails', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   runtime.store.setGradeVaultAutoSaveBeforeLock(true);
   runtime.vault = {
@@ -856,14 +866,15 @@ test('auto-lock leaves dirty grades unlocked when automatic saving fails', async
   let retryDelay = 0;
   runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
 
-  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
-  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  await configureRuntimeVault(runtime);
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
   assert.equal(runtime.dirtyCourseIds.has(7), true);
-  assert.match(runtime.vault.autoLockWarning.message, /Dateikonflikt/);
-  assert.equal(retryDelay, 10 * 60 * 1000);
+  assert.equal(runtime.gradeVault.hasSuspendedChanges(), true);
+  assert.equal(retryDelay, 0);
 });
 
-test('auto-lock leaves dirty grades unlocked when no database file is connected', async () => {
+test('auto-lock suspends dirty grades when no database file is connected', async () => {
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   runtime.store.setGradeVaultAutoSaveBeforeLock(true);
   runtime.vault = {
@@ -881,11 +892,12 @@ test('auto-lock leaves dirty grades unlocked when no database file is connected'
   runtime.saveToConnectedFile = async () => { saveCalls += 1; return true; };
   runtime.gradeVault.scheduleGradeVaultAutoLock = (delay) => { retryDelay = delay; };
 
-  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), false);
-  assert.equal(runtime.isGradeVaultUnlocked(), true);
+  await configureRuntimeVault(runtime);
+  assert.equal(await runtime.handleGradeVaultAutoLockTimeout(), true);
+  assert.equal(runtime.isGradeVaultUnlocked(), false);
   assert.equal(saveCalls, 0);
-  assert.match(runtime.vault.autoLockWarning.message, /keine Datenbankdatei verbunden/);
-  assert.equal(retryDelay, 10 * 60 * 1000);
+  assert.equal(runtime.gradeVault.hasSuspendedChanges(), true);
+  assert.equal(retryDelay, 0);
 });
 
 test('grade-vault activity postpones a blocked auto-lock retry to the normal idle period', () => {
@@ -1770,11 +1782,11 @@ test('ein unlesbarer Kurs bricht die Namenslern-Uebersicht nicht ab', async () =
   const runtime = new WorkspaceRuntime(new FakeStore(), { eventTarget: new EventTarget() });
   await runtime.loadBytes(bytes, 'manual');
   await assert.doesNotReject(() => runtime.refreshNameLearningDueSummary());
-  assert.match(
-    repositorySource,
-    /complete = false;\s*continue;/,
-    'eine Uebersicht mit uebersprungenem Kurs darf sich nicht als vollstaendig ausgeben',
-  );
+  await configureRuntimeVault(runtime);
+  runtime.store.state.settings.nameLearningDueSummary = { complete: true, courses: {} };
+  runtime.courseRepository.getGradeCourseStateSnapshot = async () => { throw new Error('Beschädigter Kurs'); };
+  await assert.doesNotReject(() => runtime.refreshNameLearningDueSummary());
+  assert.equal(runtime.store.state.settings.nameLearningDueSummary.complete, false);
 });
 
 test('eine während der Aktualisierung gesperrte Notendatenbank erzeugt keine Kurswarnung', () => {

@@ -7,6 +7,40 @@ const WORKSPACE_VAULT_SALT_BYTES = 16;
 const WORKSPACE_VAULT_IV_BYTES = 12;
 const WORKSPACE_VAULT_TAG_LENGTH = 128;
 
+export async function serializeWorkspaceVaultSession(value) {
+  const encode = async (item) => {
+    if (item === undefined) return ['undefined'];
+    if (item === null || typeof item !== 'object') return ['value', item];
+    const type = Object.prototype.toString.call(item);
+    if (type === '[object Blob]' || type === '[object File]') return ['blob', item.type, item.name ?? null, bytesToBase64(await item.arrayBuffer())];
+    if (type === '[object ArrayBuffer]') return ['buffer', bytesToBase64(item)];
+    if (type === '[object Uint8Array]') return ['bytes', bytesToBase64(item)];
+    if (type === '[object Set]') return ['set', await Promise.all([...item].map(encode))];
+    if (type === '[object Map]') return ['map', await Promise.all([...item].map(async ([key, entry]) => [await encode(key), await encode(entry)]))];
+    if (Array.isArray(item)) return ['array', await Promise.all(item.map(encode))];
+    return ['object', await Promise.all(Object.entries(item).map(async ([key, entry]) => [key, await encode(entry)]))];
+  };
+  return JSON.stringify(await encode(value));
+}
+
+export function deserializeWorkspaceVaultSession(text) {
+  const decode = ([type, value, name, data]) => {
+    if (type === 'undefined') return undefined;
+    if (type === 'value') return value;
+    if (type === 'buffer') return base64ToBytes(value).buffer;
+    if (type === 'bytes') return base64ToBytes(value);
+    if (type === 'blob') return name !== null && typeof File === 'function'
+      ? new File([base64ToBytes(data)], name, { type: value })
+      : new Blob([base64ToBytes(data)], { type: value });
+    if (type === 'set') return new Set(value.map(decode));
+    if (type === 'map') return new Map(value.map(([key, entry]) => [decode(key), decode(entry)]));
+    if (type === 'array') return value.map(decode);
+    if (type === 'object') return Object.fromEntries(value.map(([key, entry]) => [key, decode(entry)]));
+    throw new Error('Die verschlüsselte Zwischensicherung ist ungültig.');
+  };
+  return decode(JSON.parse(text));
+}
+
 function bytesToBase64(bytes) {
   const view = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
   let binary = '';
@@ -93,6 +127,7 @@ function buildWorkspaceVaultAad(scope = {}) {
       schema: WORKSPACE_VAULT_SCHEMA,
       type: String(scope.type || 'vault'),
       courseId: Number(scope.courseId) || 0,
+      ...(scope.sessionId ? { sessionId: String(scope.sessionId) } : {}),
     },
   }));
 }

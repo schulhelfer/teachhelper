@@ -3441,7 +3441,12 @@ class GradesApp {
     this.lastAutoBackupAt = String(this.store.getLastAutoBackupAt?.() || "");
     if (this.workspaceClient) {
       this.unregisterWorkspaceFeatureClient = this.workspaceClient.registerFeatureClient({
-        collectArchiveGradeSections: (...args) => this.collectArchiveGradeSections(...args)
+        collectArchiveGradeSections: (...args) => this.collectArchiveGradeSections(...args),
+        captureVaultSession: () => this.captureVaultSession(),
+        prepareVaultSessionLock: () => this.prepareVaultSessionLock(),
+        clearVaultSession: () => this.clearVaultSession(),
+        restoreVaultSession: (state) => this.restoreVaultSession(state),
+        finishVaultSessionLock: () => this.finishVaultSessionLock()
       });
       this.unregisterWorkspaceClient = this.workspaceClient?.subscribe(
         "grades",
@@ -3474,6 +3479,174 @@ class GradesApp {
 
 
 
+  openCourseOcrDialog() {
+    const draft = this.courseDialogDraft;
+    if (!draft || !this.canAccessGradeVault()) return;
+    const ocrDialog = document.querySelector("#course-ocr-dialog");
+    if (!this.courseOcrDialog) {
+      this.courseOcrDialog = createRosterOcrDialog({
+        dialog: ocrDialog,
+        openDialog: (dialog) => this.openDialog(dialog),
+        closeDialog: (dialog) => this.closeDialog(dialog),
+        onImported: ({ added, skipped }) => {
+          const addedLabel = added === 1 ? "Name" : "Namen";
+          const skippedLabel = skipped === 1 ? "Name" : "Namen";
+          void this.showInfoMessage([
+            `${added} ${addedLabel} hinzugefügt.`,
+            `${skipped} bereits vorhandene ${skippedLabel} übersprungen.`,
+            "",
+            "Neue Daten werden erst fest übernommen, wenn im folgenden Verwaltungsdialog gespeichert wird.",
+            "",
+            "Tipp: Überprüfen der Schreibweisen mit dem Tool „IServ-Gruppe bevölkern“"
+          ].join("\n"), ROSTER_OCR_IMPORT_DIALOG_TITLE);
+        }
+      });
+    }
+    this.courseOcrDialog.open((names) => {
+      if (this.courseDialogDraft !== draft || !this.canAccessGradeVault()) {
+        throw new Error("Der Kurs ist nicht mehr zur Bearbeitung geöffnet. Bitte den Import erneut öffnen.");
+      }
+      const result = this.appendCourseDialogStudents(names);
+      this.renderCourseDialogStudents();
+      return result;
+    });
+    this.syncSegmentControlSlideStates(ocrDialog);
+  }
+
+  getVaultSessionDialogs() {
+    return [
+      'courseStudentsDialog', 'courseStructureDialog', 'gradeAccommodationDialog',
+      'gradeExpectationHorizonCommentDialog', 'gradeSimulationDialog', 'gradeTransferDialog',
+      'groupPopulateDialog', 'expectationHorizonDialog', 'competenceExpectationsDialog',
+      'gradeDeficitFollowUpDialog', 'gradeTaskCompetenceDialog',
+    ];
+  }
+
+  captureVaultSession() {
+    const dialogs = this.getVaultSessionDialogs().filter((key) => this.refs[key]).map((key) => ({
+      key, open: this.refs[key].open,
+      controls: [...this.refs[key].querySelectorAll('input, textarea, select')].map((node) => ({
+        id: node.id, value: node.type === 'file' ? '' : node.value, checked: node.checked,
+      })),
+      titles: [...this.refs[key].querySelectorAll('h1, h2, h3')].map((node) => node.textContent),
+    }));
+    if (!this.gradesEntryDraft && !this.courseDialogDraft && !this.gradeAccommodationDialogDraft && !dialogs.length) return null;
+    const accommodation = this.gradeAccommodationDialogDraft
+      ? { ...this.gradeAccommodationDialogDraft, ui: new Map() } : null;
+    return structuredClone({
+      dirty: Boolean(this.gradesEntryDraftDirty || this.courseDialogDraft || accommodation || dialogs.some((dialog) => dialog.open)),
+      gradesEntryDraft: this.gradesEntryDraft,
+      gradesEntryDraftDirty: this.gradesEntryDraftDirty,
+      gradesEntryEditSnapshot: this.gradesEntryEditSnapshot,
+      courseDialogDraft: this.courseDialogDraft,
+      courseDialogRosterImportedCourseIds: this.courseDialogRosterImportedCourseIds,
+      gradeAccommodationDialogDraft: accommodation,
+      gradeExpectationHorizonCommentDialogState: this.gradeExpectationHorizonCommentDialogState,
+      selectedGradesEntryAssessmentId: this.selectedGradesEntryAssessmentId,
+      selectedCourseId: this.selectedCourseId,
+      gradesSubView: this.gradesSubView,
+      dialogs,
+      ocrDraft: this.courseOcrDialog?.captureDraft?.() || null,
+      gradesTutorialSnapshot: this.gradesTutorialPresentation?.snapshot || null,
+    });
+  }
+
+  prepareVaultSessionLock() {
+    document.body.inert = true;
+    this.vaultUiGeneration = (this.vaultUiGeneration || 0) + 1;
+    this.courseDialogRosterImportToken += 1;
+    this.courseStudentCountsRefreshToken += 1;
+    this.gradeCourseLoadGeneration += 1;
+    this.gradesEntryModeRenderGeneration += 1;
+    this.courseOcrDialog?.pause?.();
+  }
+
+  finishVaultSessionLock() {
+    document.body.inert = false;
+  }
+
+  clearVaultSession() {
+    this.vaultUiGeneration = (this.vaultUiGeneration || 0) + 1;
+    this.courseDialogRosterImportToken += 1;
+    this.courseStudentCountsRefreshToken += 1;
+    this.gradeCourseLoadGeneration += 1;
+    this.gradesEntryModeRenderGeneration += 1;
+    this.courseOcrDialog?.close();
+    this.closeGroupPhotoExtractionDialog();
+    this.revokeGradeStudentPortraitObjectUrls();
+    this.learnerSearch?.close();
+    this.learnerSearch?.setStatus('');
+    if (this.learnerSearch?.input) this.learnerSearch.input.value = '';
+    this.stopGradeTableMorph();
+    this.hideGradePicker();
+    this.hideGradePrivacyOverlay();
+    this.hideContextMenu();
+    this.discardGradesEntryEditSession();
+    this.courseDialogDraft = null;
+    this.gradeAccommodationDialogDraft = null;
+    this.gradeExpectationHorizonCommentDialogState = null;
+    this.courseDialogRosterImportCourses = [];
+    this.courseDialogRosterImportedCourseIds.clear();
+    this.courseStudentCounts.clear();
+    this.gradeAssessmentLinkIndex.clear();
+    this.gradeVaultSession.loadedGradeCourseId = null;
+    this.gradeCourseLoadUiGeneration = 0;
+    this.pendingGradesEntryControlInteractionUntil = 0;
+    this.pendingSegmentControlInteractionUntil = 0;
+    this.pendingWorkspaceRenderAfterEntryInteraction = false;
+    this.expectationHorizonPrintExport = null;
+    this.gradesTutorialSurfaceToken = (this.gradesTutorialSurfaceToken || 0) + 1;
+    this.gradesTutorialPresentation = null;
+    for (const key of this.getVaultSessionDialogs()) {
+      const dialog = this.refs[key];
+      this.closeDialog(dialog);
+      dialog?.querySelectorAll('input, textarea').forEach((node) => {
+        if (!['radio', 'checkbox', 'button', 'submit'].includes(node.type)) node.value = '';
+      });
+      dialog?.querySelectorAll('h1, h2, h3').forEach((node) => { node.textContent = ''; });
+    }
+    for (const key of [
+      'gradesTable', 'gradesEntryContent', 'courseDialogStudentsList', 'courseDialogStructureList',
+      'gradeAccommodationList', 'gradeDeficitFollowUpList', 'gradeSimulationResult',
+      'competenceExpectationsList', 'gradeTaskCompetenceList', 'courseGroupPhotoSelectionList', 'courseGroupPhotoStage',
+    ]) this.refs[key]?.replaceChildren();
+  }
+
+  restoreVaultSession(state) {
+    if (!state) return;
+    state = structuredClone(state);
+    for (const key of [
+      'gradesEntryDraft', 'gradesEntryDraftDirty', 'gradesEntryEditSnapshot', 'courseDialogDraft',
+      'courseDialogRosterImportedCourseIds', 'gradeAccommodationDialogDraft',
+      'gradeExpectationHorizonCommentDialogState', 'selectedGradesEntryAssessmentId',
+      'selectedCourseId', 'gradesSubView',
+    ]) this[key] = state[key];
+    this.gradeVaultSession.loadedGradeCourseId = this.selectedCourseId;
+    if (this.courseDialogDraft) {
+      this.renderCourseDialogStudents();
+      this.renderCourseDialogStructure();
+    }
+    if (this.gradeAccommodationDialogDraft) this.renderGradeAccommodationDialog();
+    for (const { key, controls, titles, open } of state.dialogs) {
+      const dialog = this.refs[key];
+      if (!dialog) continue;
+      const nodes = [...dialog.querySelectorAll('input, textarea, select')];
+      controls.forEach((value, index) => {
+        const node = value.id ? nodes.find((item) => item.id === value.id) : nodes[index];
+        if (!node || node.type === 'file') return;
+        node.value = value.value;
+        if (typeof value.checked === 'boolean') node.checked = value.checked;
+      });
+      dialog.querySelectorAll('h1, h2, h3').forEach((node, index) => { node.textContent = titles[index] || ''; });
+      if (open) this.openDialog(dialog);
+    }
+    if (state.gradesTutorialSnapshot) this.gradesTutorialPresentation = { snapshot: state.gradesTutorialSnapshot, dialogs: new Set() };
+    if (state.ocrDraft && this.courseDialogDraft) {
+      this.openCourseOcrDialog();
+      this.courseOcrDialog.restoreDraft(state.ocrDraft);
+    }
+  }
+
   handleWorkspaceState(detail = null) {
     if (!detail || typeof detail !== "object") return;
     this.captureGradeVaultAutoLockNotice(
@@ -3490,7 +3663,7 @@ class GradesApp {
       this.settingsDraftRevision = this.workspaceRevision;
     }
     if (detail.scope === "grades" && this.refs?.sidebarCourseList) {
-      if (this.shouldPreserveActiveGradesEntryControl()) {
+      if (this.canAccessGradeVault() && this.shouldPreserveActiveGradesEntryControl()) {
         this.pendingWorkspaceRenderAfterEntryInteraction = true;
         return;
       }
@@ -3579,7 +3752,9 @@ class GradesApp {
     this.gradeVaultAutoLockNoticeHandledId = notice.id;
     this.gradeVaultAutoLockNoticePending = null;
     await this.showConfirmMessage(
-      "Der Notenbereich wurde aus Sicherheitsgründen automatisch gesperrt.",
+      this.workspaceClient.getSnapshot("shell")?.vault?.suspendedChanges
+        ? "Der Notenbereich wurde automatisch gesperrt. Ungespeicherte Änderungen sind verschlüsselt in diesem Tab erhalten und werden nach dem Entsperren wiederhergestellt. Sie sind noch nicht in der Datei gespeichert und gehen beim Neuladen oder Schließen verloren."
+        : "Der Notenbereich wurde aus Sicherheitsgründen automatisch gesperrt.",
       {
         title: "Notenbereich automatisch gesperrt",
         okText: "Jetzt entsperren",
@@ -4158,10 +4333,11 @@ class GradesApp {
   getWorkspaceUnsavedState() {
     const snapshot = this.workspaceClient?.getSnapshot?.("shell") || {};
     const unsaved = snapshot.unsaved && typeof snapshot.unsaved === "object" ? snapshot.unsaved : {};
+    const dialogDraft = Boolean(this.courseDialogDraft || this.gradeAccommodationDialogDraft || this.gradeExpectationHorizonCommentDialogState);
     return {
-      dirty: Boolean(unsaved.dirty || this.gradesEntryDraftDirty || this.settingsDirty),
+      dirty: Boolean(unsaved.dirty || snapshot.vault?.suspendedChanges || dialogDraft || this.gradesEntryDraftDirty || this.settingsDirty),
       planningDirty: Boolean(unsaved.planningDirty),
-      gradesDirty: Boolean(unsaved.gradesDirty || this.gradesEntryDraftDirty),
+      gradesDirty: Boolean(unsaved.gradesDirty || snapshot.vault?.suspendedChanges || dialogDraft || this.gradesEntryDraftDirty),
       planningSettingsDirty: Boolean(unsaved.planningSettingsDirty),
       gradesSettingsDirty: Boolean(this.settingsDirty),
       dirtyGradeCourseIds: Array.isArray(unsaved.dirtyGradeCourseIds) ? [...unsaved.dirtyGradeCourseIds] : []
@@ -7440,6 +7616,7 @@ class GradesApp {
   }
 
   async handleCourseDialogStudentPortraitFileChange(event) {
+    const session = this.vaultUiGeneration || 0;
     const input = event.target.closest("input[data-student-portrait-file]");
     if (!input || !this.courseDialogDraft) return;
     const index = Number(input.dataset.studentPortraitFile || -1);
@@ -7448,7 +7625,9 @@ class GradesApp {
     input.value = "";
     if (!student || !file) return;
     try {
-      student.portrait = await prepareGradeStudentPortrait(file);
+      const portrait = await prepareGradeStudentPortrait(file);
+      if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
+      student.portrait = portrait;
       this.revokeGradeStudentPortraitObjectUrls();
       this.renderCourseDialogStudents();
     } catch (error) {
@@ -7457,6 +7636,7 @@ class GradesApp {
   }
 
   async pasteCourseDialogStudentPortrait(index) {
+    const session = this.vaultUiGeneration || 0;
     const student = this.courseDialogDraft?.students?.[Number(index)];
     if (!student) return;
     if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
@@ -7471,7 +7651,9 @@ class GradesApp {
         const blob = await item.getType(imageType);
         const extension = imageType === "image/jpeg" ? "jpg" : imageType.slice("image/".length);
         const file = new File([blob], `bild-aus-zwischenablage.${extension}`, { type: imageType });
-        student.portrait = await prepareGradeStudentPortrait(file);
+        const portrait = await prepareGradeStudentPortrait(file);
+        if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
+        student.portrait = portrait;
         this.revokeGradeStudentPortraitObjectUrls();
         this.renderCourseDialogStudents();
         return;
@@ -7483,6 +7665,7 @@ class GradesApp {
   }
 
   async pasteGroupPhotoExtractionImage() {
+    const session = this.vaultUiGeneration || 0;
     if (!navigator.clipboard || typeof navigator.clipboard.read !== "function") {
       await this.showInfoMessage("Dieser Browser kann keine Dateien aus der Zwischenablage lesen.", "Hinweis", { variant: "warn" });
       return;
@@ -7495,6 +7678,7 @@ class GradesApp {
         const blob = await item.getType(imageType);
         const extension = imageType === "image/jpeg" ? "jpg" : imageType.slice("image/".length);
         const file = new File([blob], `gruppenfoto-aus-zwischenablage.${extension}`, { type: imageType });
+        if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
         await this.loadGroupPhotoExtractionFile(file);
         return;
       }
@@ -8000,6 +8184,7 @@ class GradesApp {
   }
 
   async loadGroupPhotoExtractionFile(file) {
+    const session = this.vaultUiGeneration || 0;
     if (!(file instanceof File) || !GRADE_STUDENT_PORTRAIT_INPUT_TYPES.has(file.type)) {
       await this.showInfoMessage("Bitte ein JPEG-, PNG- oder WebP-Bild auswählen.", "Hinweis", { variant: "warn" });
       return;
@@ -8012,6 +8197,10 @@ class GradesApp {
       const image = new Image();
       image.src = url;
       await withTimeout(image.decode(), FILE_TIMEOUTS.READ_MS, "Das Gruppenfoto konnte nicht rechtzeitig geladen werden.");
+      if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) {
+        URL.revokeObjectURL(url);
+        return;
+      }
       if (!image.naturalWidth || !image.naturalHeight) throw new Error("Das Gruppenfoto konnte nicht gelesen werden.");
       this.clearGroupPhotoExtractionState();
       this.groupPhotoExtractionState = { url, image, selections: [], selectedId: "", drag: null, nextId: 1, zoom: 1 };
@@ -8027,6 +8216,7 @@ class GradesApp {
   }
 
   async rotateGroupPhotoExtractionImage() {
+    const session = this.vaultUiGeneration || 0;
     const state = this.groupPhotoExtractionState;
     if (!state?.image || this.groupPhotoRotating) return;
     this.groupPhotoRotating = true;
@@ -8054,6 +8244,10 @@ class GradesApp {
       const image = new Image();
       image.src = url;
       await withTimeout(image.decode(), FILE_TIMEOUTS.READ_MS, "Das gedrehte Foto konnte nicht rechtzeitig geladen werden.");
+      if (session !== (this.vaultUiGeneration || 0) || this.groupPhotoExtractionState !== state || !this.canAccessGradeVault()) {
+        URL.revokeObjectURL(url);
+        return;
+      }
       if (state.url) URL.revokeObjectURL(state.url);
       state.url = url;
       state.image = image;
@@ -8081,6 +8275,7 @@ class GradesApp {
   }
 
   async applyGroupPhotoExtractions() {
+    const session = this.vaultUiGeneration || 0;
     const state = this.groupPhotoExtractionState;
     if (!state?.image || !this.courseDialogDraft) return;
     const selections = state.selections.filter((item) => Number(item.studentId || 0) > 0);
@@ -8091,7 +8286,9 @@ class GradesApp {
         `Das vorhandene Bild von ${this.getGroupPhotoStudentLabel(student)} ersetzen?`,
         { title: "Vorhandenes Bild ersetzen", okText: "Ersetzen", cancelText: "Beibehalten", dangerOk: true }
       )) continue;
-      student.portrait = await encodeGradeStudentPortraitCrop(state.image, selection.x, selection.y, selection.size);
+      const portrait = await encodeGradeStudentPortraitCrop(state.image, selection.x, selection.y, selection.size);
+      if (session !== (this.vaultUiGeneration || 0) || this.groupPhotoExtractionState !== state || !this.canAccessGradeVault()) return;
+      student.portrait = portrait;
     }
     this.revokeGradeStudentPortraitObjectUrls();
     this.closeGroupPhotoExtractionDialog();
@@ -8136,6 +8333,7 @@ class GradesApp {
   }
 
   async importCourseDialogPortraitsFromOtherCourses() {
+    const session = this.vaultUiGeneration || 0;
     if (!this.courseDialogDraft || !this.shouldShowGradeStudentPortraits()) {
       return;
     }
@@ -8165,6 +8363,7 @@ class GradesApp {
       const sources = await this.collectGradeStudentPortraitSources(
         Number(this.refs.courseStudentsDialogId?.value || 0)
       );
+      if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
       const sourceLabels = new Set();
       let imported = 0;
       let ambiguous = 0;
@@ -8805,6 +9004,7 @@ class GradesApp {
   }
 
   async openCourseStudentsDialog(courseId, options = null) {
+    const session = this.vaultUiGeneration || 0;
     const year = this.activeSchoolYear;
     const id = Number(courseId || 0);
     if (!year || !id || !this.refs.courseStudentsDialog) {
@@ -8823,7 +9023,9 @@ class GradesApp {
       if (!await this.ensureGradeCourseLoaded(id)) {
         throw new Error("Notenkurs konnte nicht geladen werden.");
       }
-      this.courseDialogDraft = await this.buildCourseDialogDraftForCourse(course);
+      const draft = await this.buildCourseDialogDraftForCourse(course);
+      if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
+      this.courseDialogDraft = draft;
     } catch (error) {
       this.setSyncStatus(
         error instanceof Error && error.message ? error.message : "Notenkurs konnte nicht geladen werden.",
@@ -8927,6 +9129,7 @@ class GradesApp {
   }
 
   async openCourseStructureDialog(courseId) {
+    const session = this.vaultUiGeneration || 0;
     const year = this.activeSchoolYear;
     const id = Number(courseId || 0);
     if (!year || !id || !this.refs.courseStructureDialog) {
@@ -8945,7 +9148,9 @@ class GradesApp {
       if (!await this.ensureGradeCourseLoaded(id)) {
         throw new Error("Notenkurs konnte nicht geladen werden.");
       }
-      this.courseDialogDraft = await this.buildCourseDialogDraftForCourse(course);
+      const draft = await this.buildCourseDialogDraftForCourse(course);
+      if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
+      this.courseDialogDraft = draft;
     } catch (error) {
       this.setSyncStatus(
         error instanceof Error && error.message ? error.message : "Notenkurs konnte nicht geladen werden.",
@@ -9245,6 +9450,8 @@ class GradesApp {
   }
 
   async importCourseDialogStudentsFromFile(file) {
+    const draft = this.courseDialogDraft;
+    const session = this.vaultUiGeneration || 0;
     if (!file || !this.courseDialogDraft) {
       return;
     }
@@ -9255,6 +9462,7 @@ class GradesApp {
     try {
       assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, "CSV-Datei");
       const text = await file.text();
+      if (session !== (this.vaultUiGeneration || 0) || this.courseDialogDraft !== draft || !this.canAccessGradeVault()) return;
       const delimiter = this.detectGradeCsvDelimiter(text);
       const rows = this.parseGradeCsv(text, delimiter);
       const result = this.extractStudentsFromCsvRows(rows, delimiter, file.name);
@@ -11989,37 +12197,7 @@ class GradesApp {
     });
 
     document.querySelector("#course-dialog-ocr-open")?.addEventListener("click", () => {
-      const draft = this.courseDialogDraft;
-      if (!draft || !this.canAccessGradeVault()) return;
-      const ocrDialog = document.querySelector("#course-ocr-dialog");
-      if (!this.courseOcrDialog) {
-        this.courseOcrDialog = createRosterOcrDialog({
-          dialog: ocrDialog,
-          openDialog: (dialog) => this.openDialog(dialog),
-          closeDialog: (dialog) => this.closeDialog(dialog),
-          onImported: ({ added, skipped }) => {
-            const addedLabel = added === 1 ? "Name" : "Namen";
-            const skippedLabel = skipped === 1 ? "Name" : "Namen";
-            void this.showInfoMessage([
-              `${added} ${addedLabel} hinzugefügt.`,
-              `${skipped} bereits vorhandene ${skippedLabel} übersprungen.`,
-              "",
-              "Neue Daten werden erst fest übernommen, wenn im folgenden Verwaltungsdialog gespeichert wird.",
-              "",
-              "Tipp: Überprüfen der Schreibweisen mit dem Tool „IServ-Gruppe bevölkern“"
-            ].join("\n"), ROSTER_OCR_IMPORT_DIALOG_TITLE);
-          }
-        });
-      }
-      this.courseOcrDialog.open((names) => {
-        if (this.courseDialogDraft !== draft || !this.canAccessGradeVault()) {
-          throw new Error("Der Kurs ist nicht mehr zur Bearbeitung geöffnet. Bitte den Import erneut öffnen.");
-        }
-        const result = this.appendCourseDialogStudents(names);
-        this.renderCourseDialogStudents();
-        return result;
-      });
-      this.syncSegmentControlSlideStates(ocrDialog);
+      this.openCourseOcrDialog();
     });
 
     this.refs.courseDialogStudentsAdd?.addEventListener("click", () => {
@@ -30897,10 +31075,13 @@ class GradesApp {
       this.openGradeVaultDialog(this.isGradeVaultConfigured() ? 'unlock' : 'setup');
       return;
     }
+    const session = this.vaultUiGeneration || 0;
     const learnerSearch = this.getLearnerSearchDialog();
     learnerSearch.open();
     try {
-      learnerSearch.setRoster(await this.collectLearnerSearchRoster());
+      const roster = await this.collectLearnerSearchRoster();
+      if (session !== (this.vaultUiGeneration || 0) || !this.canAccessGradeVault()) return;
+      learnerSearch.setRoster(roster);
     } catch (error) {
       learnerSearch.setStatus(error instanceof Error ? error.message : LEARNER_SEARCH_MESSAGES.failed);
     }
@@ -30991,9 +31172,13 @@ class GradesApp {
       return true;
     }
     try {
-      await this.runGradeCourseMutation(courseId, () => {
+      if (this.canCommitImmediateGradeCourseMutation(courseId, { studentId })) {
         this.store.saveNameLearningProgress(courseId, studentId, { stage, dueAt });
-      }, { preserveRoster: true });
+      } else {
+        await this.runGradeCourseMutation(courseId, () => {
+          this.store.saveNameLearningProgress(courseId, studentId, { stage, dueAt });
+        }, { preserveRoster: true });
+      }
       this.dispatchNameLearningReviewResult({ requestId, ok: true, courseId, studentId, progress: { stage, dueAt } });
       return true;
     } catch (error) {

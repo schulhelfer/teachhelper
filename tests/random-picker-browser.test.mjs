@@ -2,6 +2,102 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDomBrowser } from './helpers/dom-browser.mjs';
 
+test('the fourth picker sidebar step controls duration and stays locked during a spin', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const fixture = new DOMParser().parseFromString(await fetch('/index.html').then((response) => response.text()), 'text/html');
+    for (const script of fixture.querySelectorAll('script')) script.remove();
+    document.body.replaceChildren(...fixture.body.childNodes);
+    const style = document.createElement('style');
+    style.textContent = await fetch('/src/app/shell.css').then((response) => response.text());
+    document.head.append(style);
+    const app = document.getElementById('app');
+    app.className = 'app app-tab-random-picker app-js-ready';
+    const section = document.querySelector('.random-picker-sidebar-duration');
+    const visibleSteps = [...document.querySelector('.steps-list').children]
+      .filter((element) => getComputedStyle(element).display !== 'none');
+    const sidebar = {
+      step: visibleSteps.indexOf(section) + 1,
+      actionStep: visibleSteps.findIndex((element) => element.classList.contains('random-picker-sidebar-action-label')) + 1,
+      display: getComputedStyle(section).display,
+    };
+    app.className = 'app app-tab-groups app-js-ready';
+    sidebar.groupsDisplay = getComputedStyle(section).display;
+    app.className = 'app app-tab-random-picker app-js-ready';
+    const { mountRandomPicker } = await import('/src/modules/random-picker/app.js');
+    const input = document.getElementById('random-picker-spin-duration');
+    const decrease = document.getElementById('random-picker-spin-duration-decrease');
+    const increase = document.getElementById('random-picker-spin-duration-increase');
+    let durationMs = 3000;
+    let running = null;
+    let fail = false;
+    const delays = [];
+    const controller = mountRandomPicker({
+      doc: document,
+      getStudents: () => [{ id: 'a', first: 'Ada', randomWeight: 1 }, { id: 'b', first: 'Bo', randomWeight: 1 }],
+      getSpinDurationMs: () => durationMs,
+      setSpinDurationMs: (value) => { durationMs = value; },
+      random: () => 0,
+      wait: async (delay) => {
+        delays.push(delay);
+        if (!running) {
+          running = [input.disabled, decrease.disabled, increase.disabled];
+          input.value = '9';
+          input.dispatchEvent(new Event('change'));
+        }
+        if (fail) throw new Error('Testabbruch');
+      },
+    });
+    controller.render();
+    const initial = input.value;
+    await controller.start();
+    const defaultDuration = delays.reduce((sum, delay) => sum + delay, 0);
+    const afterSpin = [input.value, input.disabled, decrease.disabled, increase.disabled];
+    increase.click();
+    const incremented = durationMs;
+    decrease.click();
+    const decremented = durationMs;
+    const change = (value) => {
+      input.value = value;
+      input.dispatchEvent(new Event('change'));
+    };
+    change('6.7');
+    delays.length = 0;
+    await controller.start();
+    const customDuration = delays.reduce((sum, delay) => sum + delay, 0);
+    durationMs = 4000;
+    controller.render();
+    const restored = input.value;
+    change('10');
+    const maximum = [durationMs, increase.disabled, decrease.disabled];
+    change('1');
+    const minimum = [durationMs, increase.disabled, decrease.disabled];
+    change('');
+    const empty = [durationMs, input.value];
+    fail = true;
+    let rejected = false;
+    try { await controller.start(); } catch { rejected = true; }
+    const recovered = rejected && !input.disabled && !increase.disabled && !decrease.disabled && !controller.isSpinning();
+    controller.dispose();
+    change('8');
+    return { sidebar, initial, running, defaultDuration, afterSpin, incremented, decremented, customDuration, restored, maximum, minimum, empty, recovered, disposedDuration: durationMs };
+  });
+  assert.deepEqual(result.sidebar, { step: 4, actionStep: 5, display: 'list-item', groupsDisplay: 'none' });
+  assert.equal(result.initial, '3');
+  assert.deepEqual(result.running, [true, true, true]);
+  assert.ok(Math.abs(result.defaultDuration - 3000) < 0.001);
+  assert.deepEqual(result.afterSpin, ['3', false, false, false]);
+  assert.equal(result.incremented, 3500);
+  assert.equal(result.decremented, 3000);
+  assert.ok(Math.abs(result.customDuration - 6500) < 0.001);
+  assert.equal(result.restored, '4');
+  assert.deepEqual(result.maximum, [10000, true, false]);
+  assert.deepEqual(result.minimum, [1000, false, true]);
+  assert.deepEqual(result.empty, [3000, '3']);
+  assert.equal(result.recovered, true);
+  assert.equal(result.disposedDuration, 3000);
+});
+
 test('the random picker preserves its cards, controls, conditions, and callbacks', { timeout: 60000 }, async (t) => {
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {
@@ -222,7 +318,7 @@ test('the random picker preserves its cards, controls, conditions, and callbacks
   ]);
   assert.equal(result.finalResult.text, 'Ida I');
   assert.equal(result.finalResult.final, true);
-  assert.ok(Math.abs(result.finalResult.duration - 4000) < 0.001);
+  assert.ok(Math.abs(result.finalResult.duration - 3000) < 0.001);
   assert.deepEqual(result.runningSnapshot, {
     active: true,
     startDisabled: true,
@@ -238,7 +334,7 @@ test('the random picker preserves its cards, controls, conditions, and callbacks
   assert.equal(result.spinResult.collapsedDisabled, false);
   assert.equal(result.spinResult.collapsedText, '✨');
   assert.equal(result.spinResult.active, false);
-  assert.ok(Math.abs(result.spinResult.duration - 4000) < 0.001);
+  assert.ok(Math.abs(result.spinResult.duration - 3000) < 0.001);
   assert.deepEqual(result.secondSpinResult, {
     weights: [0, 0, 0],
     winner: 'Emil E',

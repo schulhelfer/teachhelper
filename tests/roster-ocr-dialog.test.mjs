@@ -147,6 +147,31 @@ test('closing, reopening and selecting another image invalidate outstanding OCR 
   state.api.close();
 });
 
+test('edited OCR drafts can be cleared for locking and restored without importing them', async (t) => {
+  installImage(t);
+  const state = setup(async () => 'Muller Anna');
+  const results = [];
+  state.api.open((names) => { results.push(names); });
+  await selectImage(state.refs);
+  state.refs.recognize.fire('click');
+  await tick(); await tick();
+  const input = state.refs.rows.children[1].children[0];
+  input.value = 'Müller';
+  input.fire('input');
+  const draft = state.api.captureDraft();
+  state.api.pause();
+  assert.deepEqual(state.api.captureDraft(), draft);
+  state.api.close();
+  assert.equal(state.api.captureDraft(), null);
+  assert.equal(state.refs.rows.children.length, 0);
+  state.api.open((names) => { results.push(names); });
+  state.api.restoreDraft(draft);
+  assert.equal(state.refs.rows.children[1].children[0].value, 'Müller');
+  assert.deepEqual(results, []);
+  state.form.fire('submit');
+  assert.deepEqual(results, [[{ lastName: 'Müller', firstName: 'Anna' }]]);
+});
+
 test('an image finishing decode after close cannot reopen the crop or retain its URL', async (t) => {
   let resolve;
   const revoked = installImage(t, () => new Promise((done) => { resolve = done; }));

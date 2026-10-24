@@ -205,17 +205,26 @@ test('file actions resolve late controllers and preserve picker confirmation, re
   let workPhase = null;
   let coordinator = null;
   let autoDisableSelected = false;
+  let spinDurationMs = 5000;
   let allowReplacement = false;
   const handle = { name: 'saved.json' };
+  const exported = [];
   const view = { showOpenFilePicker: async (options) => {
     calls.push(['picker', options.startIn]);
     throw Object.assign(new Error('Cancelled'), { name: 'AbortError' });
-  } };
+  }, showSaveFilePicker: async () => ({
+    createWritable: async () => ({
+      write: async (blob) => exported.push(JSON.parse(await blob.text())),
+      close: async () => {},
+    }),
+  }) };
   installWindow(t, view);
   const actions = createClassroomFileActions({
     ...resources,
     documentRef: new EventTarget(),
     els: {},
+    shellActionDialog: { prompt: async () => 'Pickerstand' },
+    showMessage: () => {},
     getActiveTab: () => TAB_RANDOM_PICKER,
     isRandomPickerTabActive: () => true,
     getClassroomState: () => classroomController,
@@ -224,6 +233,8 @@ test('file actions resolve late controllers and preserve picker confirmation, re
     getGradeRosterCoordinator: () => coordinator,
     getAutoDisableSelected: () => autoDisableSelected,
     setAutoDisableSelected: (value) => { autoDisableSelected = value; },
+    getSpinDurationMs: () => spinDurationMs,
+    setSpinDurationMs: (value) => { spinDurationMs = value; },
     sanitizeRandomPickerStudent: (student) => student,
     renderRandomPicker: () => calls.push(['render']),
   });
@@ -232,10 +243,13 @@ test('file actions resolve late controllers and preserve picker confirmation, re
     isDemoActive: () => false,
     updateState: (patch) => Object.assign(classroom, patch),
   };
-  groups = { restorePlanState: (state, options) => calls.push(['groups', state.seats, options]) };
-  workPhase = { restorePlanState: (state) => calls.push(['work', state.workOrder]) };
+  groups = { getPlanState: () => ({}), restorePlanState: (state, options) => calls.push(['groups', state.seats, options]) };
+  workPhase = { getPlanState: () => ({}), restorePlanState: (state) => calls.push(['work', state.workOrder]) };
   coordinator = {
     getPickerBinding: () => ({ courseName: 'Kurs 7' }),
+    getPickerStudents: () => classroom.students,
+    getPickerAutoDisableSelected: (fallback) => fallback,
+    getPickerSpinDurationMs: () => 8000,
     confirmPickerBindingReplacement: async () => { calls.push(['confirm']); return allowReplacement; },
     clearPickerBinding: () => calls.push(['clear']),
   };
@@ -252,6 +266,7 @@ test('file actions resolve late controllers and preserve picker confirmation, re
   assert.equal(await actions.importPlanFromFile(file, handle), false);
   assert.equal(classroom.csvName, 'Original');
   assert.equal(autoDisableSelected, false);
+  assert.equal(spinDurationMs, 5000);
   assert.deepEqual(calls, [['confirm']]);
   await actions.handlePlanImportAction();
   assert.deepEqual(calls.at(-1), ['picker', 'downloads']);
@@ -260,6 +275,7 @@ test('file actions resolve late controllers and preserve picker confirmation, re
   assert.equal(await actions.importPlanFromFile(file, handle), true);
   assert.equal(classroom.csvName, 'Import');
   assert.equal(autoDisableSelected, true);
+  assert.equal(spinDurationMs, 3000);
   assert.deepEqual(calls, [
     ['confirm'], ['clear'],
     ['groups', { '1-1': ['01'] }, { restoreSeatAssignments: true }],
@@ -267,4 +283,13 @@ test('file actions resolve late controllers and preserve picker confirmation, re
   ]);
   await actions.handlePlanImportAction();
   assert.deepEqual(calls.at(-1), ['picker', handle]);
+  const durationText = JSON.stringify({ randomPickerSpinDurationMs: 6500 });
+  await actions.importPlanFromFile({ name: 'duration.json', size: durationText.length, text: async () => durationText });
+  assert.equal(spinDurationMs, 6500);
+  await actions.downloadSeatPlan();
+  assert.equal(exported.at(-1).randomPickerSpinDurationMs, 8000);
+  coordinator.getPickerBinding = () => null;
+  coordinator.getPickerSpinDurationMs = (fallback) => fallback;
+  await actions.downloadSeatPlan();
+  assert.equal(exported.at(-1).randomPickerSpinDurationMs, 6500);
 });

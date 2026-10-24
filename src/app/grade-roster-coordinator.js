@@ -1,5 +1,6 @@
 import { STUDENTS_SYNC_SOURCE_GRADES } from '../shared/student-sync-bus.js';
 import { WORKSPACE_STATE_EVENT } from '../shared/school-data/messages.js';
+import { normalizeRandomPickerSpinDurationMs } from '../shared/random-picker-settings.js';
 import {
   GRADES_COURSE_PICKER_CONFIG_SAVE_RESULT_EVENT,
   GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT,
@@ -95,6 +96,7 @@ export function createGradeRosterCoordinator({
         normalizePickerWeight(student.randomWeight),
       ])),
       autoDisableSelected: Boolean(pickerBinding.autoDisableSelected),
+      spinDurationMs: normalizeRandomPickerSpinDurationMs(pickerBinding.spinDurationMs),
     };
   };
 
@@ -103,7 +105,11 @@ export function createGradeRosterCoordinator({
     const weights = Object.entries(config.weightsByStudentId || {})
       .map(([studentId, weight]) => [String(studentId), normalizePickerWeight(weight)])
       .sort(([left], [right]) => left.localeCompare(right));
-    return JSON.stringify({ weights, autoDisableSelected: config.autoDisableSelected === true });
+    return JSON.stringify({
+      weights,
+      autoDisableSelected: config.autoDisableSelected === true,
+      spinDurationMs: normalizeRandomPickerSpinDurationMs(config.spinDurationMs),
+    });
   };
 
   const getPickerBinding = () => pickerBinding ? {
@@ -432,6 +438,7 @@ export function createGradeRosterCoordinator({
         courseName: String(detail.courseName || '').trim(),
         rosterToken: String(detail.rosterToken || ''),
         autoDisableSelected: storedConfig.autoDisableSelected === true,
+        spinDurationMs: normalizeRandomPickerSpinDurationMs(storedConfig.spinDurationMs),
         students: (Array.isArray(detail.students) ? detail.students : []).map((student) => ({
           ...student,
           randomWeight: normalizePickerWeight(storedWeights[String(student?.id || '')]),
@@ -537,6 +544,16 @@ export function createGradeRosterCoordinator({
     return true;
   };
 
+  const getPickerSpinDurationMs = (fallbackValue) => normalizeRandomPickerSpinDurationMs(
+    pickerBinding?.spinDurationMs ?? fallbackValue
+  );
+
+  const setPickerSpinDurationMs = (value) => {
+    if (!pickerBinding) return false;
+    pickerBinding.spinDurationMs = normalizeRandomPickerSpinDurationMs(value);
+    return true;
+  };
+
   const refreshLayout = () => {
     renderCoursePills();
     refreshOutdatedCourses();
@@ -576,9 +593,11 @@ export function createGradeRosterCoordinator({
     getPickerBinding,
     getPickerStudents,
     getPickerAutoDisableSelected,
+    getPickerSpinDurationMs,
     hasUnsavedPickerConfig,
     confirmPickerBindingReplacement,
     setPickerAutoDisableSelected,
+    setPickerSpinDurationMs,
     savePickerConfig,
     clearPickerBinding,
     refreshLayout,

@@ -3,7 +3,7 @@ const THDB_CHECKSUM_VERSION = 1;
 const THDB_CHECKSUM_ALGORITHM = 'SHA-256';
 
 const SHA256_CHUNK_BYTES = 256 * 1024;
-const SHA256_WEB_CRYPTO_MAX_BYTES = 1024 * 1024;
+const SHA256_WEB_CRYPTO_MAX_BYTES = 32 * 1024 * 1024;
 
 const SHA256_PREFIX = 'sha256:';
 const SHA256_PATTERN = /^sha256:[0-9a-f]{64}$/i;
@@ -293,6 +293,30 @@ function buildContentChecksums({
 }
 
 
+async function buildContentChecksumsAsync({
+  schema, startupShellBytes, planningPublicBytes, gradeVaultConfigBytes, gradeCourseSegments,
+}) {
+  const startupShellHash = await hashBytesAsync(startupShellBytes);
+  const planningPublicHash = await hashBytesAsync(planningPublicBytes);
+  const gradeVaultConfigHash = await hashBytesAsync(gradeVaultConfigBytes);
+  const courses = [];
+  for (const segment of gradeCourseSegments) {
+    courses.push({ courseId: segment.courseId, contentHash: await hashBytesAsync(segment.bytes) });
+  }
+  return {
+    version: THDB_CHECKSUM_VERSION,
+    algorithm: THDB_CHECKSUM_ALGORITHM,
+    startupShellHash,
+    planningPublicHash,
+    gradeVaultConfigHash,
+    gradeCourseSegments: courses,
+    contentHash: canonicalContentChecksum({
+      schema, startupShellHash, planningPublicHash, gradeVaultConfigHash, gradeCourseSegments: courses,
+    }),
+  };
+}
+
+
 export function getThdb1ContentChecksum({
   schema,
   startupShellText,
@@ -468,32 +492,17 @@ export function verifyThdb1ContainerChecksums(bytes, { schemas = [], requireChec
 
 async function computeLayoutChecksumsAsync(layout) {
   const { view, header } = layout;
-  const readHash = (offset, length) => hashBytesAsync(view.subarray(offset, offset + length));
-  const startupShellHash = await readHash(header.startupShellOffset, header.startupShellLength);
-  const planningPublicHash = await readHash(header.planningPublicOffset, header.planningPublicLength);
-  const gradeVaultConfigHash = await readHash(header.gradeVaultConfigOffset, header.gradeVaultConfigLength);
-  const gradeCourseSegments = [];
-  for (const descriptor of header.gradeCourseSegments) {
-    gradeCourseSegments.push({
+  const readBytes = (offset, length) => view.subarray(offset, offset + length);
+  return buildContentChecksumsAsync({
+    schema: header.schema,
+    startupShellBytes: readBytes(header.startupShellOffset, header.startupShellLength),
+    planningPublicBytes: readBytes(header.planningPublicOffset, header.planningPublicLength),
+    gradeVaultConfigBytes: readBytes(header.gradeVaultConfigOffset, header.gradeVaultConfigLength),
+    gradeCourseSegments: header.gradeCourseSegments.map((descriptor) => ({
       courseId: descriptor.courseId,
-      contentHash: await readHash(descriptor.offset, descriptor.length),
-    });
-  }
-  return {
-    version: THDB_CHECKSUM_VERSION,
-    algorithm: THDB_CHECKSUM_ALGORITHM,
-    startupShellHash,
-    planningPublicHash,
-    gradeVaultConfigHash,
-    gradeCourseSegments,
-    contentHash: canonicalContentChecksum({
-      schema: header.schema,
-      startupShellHash,
-      planningPublicHash,
-      gradeVaultConfigHash,
-      gradeCourseSegments,
-    }),
-  };
+      bytes: readBytes(descriptor.offset, descriptor.length),
+    })),
+  });
 }
 
 async function verifyLayoutChecksumsAsync(layout, requireChecksums) {
@@ -594,7 +603,7 @@ export async function getThdb1FileHashAsync(bytes) {
   }
 }
 
-export function buildThdb1ContainerBytes({
+function prepareThdb1Container({
   schema,
   startupShellText,
   planningPublicText,
@@ -628,13 +637,34 @@ export function buildThdb1ContainerBytes({
     seenCourseIds.add(courseId);
     return { courseId, text, bytes: utf8Bytes(text) };
   }).sort((left, right) => left.courseId - right.courseId);
-  const checksums = buildContentChecksums({
-    schema: normalizedSchema,
-    startupShellBytes: shellBytes,
-    planningPublicBytes: publicBytes,
-    gradeVaultConfigBytes: configBytes,
-    gradeCourseSegments: courses,
-  });
+  return { normalizedSchema, shellText, shellBytes, publicText, publicBytes, configText, configBytes,
+    courses, normalizedRevision, updatedAt, deviceId, reason };
+}
+
+function containerChecksumInput(prepared) {
+  return {
+    schema: prepared.normalizedSchema,
+    startupShellBytes: prepared.shellBytes,
+    planningPublicBytes: prepared.publicBytes,
+    gradeVaultConfigBytes: prepared.configBytes,
+    gradeCourseSegments: prepared.courses,
+  };
+}
+
+export function buildThdb1ContainerBytes(options = {}) {
+  const prepared = prepareThdb1Container(options);
+  return assembleThdb1Container(prepared, buildContentChecksums(containerChecksumInput(prepared)));
+}
+
+export async function buildThdb1ContainerBytesAsync(options = {}) {
+  const prepared = prepareThdb1Container(options);
+  const checksums = await buildContentChecksumsAsync(containerChecksumInput(prepared));
+  return assembleThdb1Container(prepared, checksums);
+}
+
+function assembleThdb1Container(prepared, checksums) {
+  const { normalizedSchema, shellText, shellBytes, publicText, publicBytes, configText, configBytes,
+    courses, normalizedRevision, updatedAt, deviceId, reason } = prepared;
   const courseHashes = new Map(
     checksums.gradeCourseSegments.map((segment) => [segment.courseId, segment.contentHash]),
   );

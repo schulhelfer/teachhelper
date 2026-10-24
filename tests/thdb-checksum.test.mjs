@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, webcrypto } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
@@ -358,7 +358,7 @@ test('cooperative SHA-256 handles chunk boundaries and unavailable or failing We
   }
 });
 
-test('large hashes yield without passing the full input to WebCrypto', async () => {
+test('native crypto failures use the cooperative fallback for large hashes', async () => {
   const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
   let digestCalls = 0;
   Object.defineProperty(globalThis, 'crypto', {
@@ -370,7 +370,7 @@ test('large hashes yield without passing the full input to WebCrypto', async () 
   try {
     const payload = new Uint8Array(2 * 1024 * 1024);
     assert.equal(await thdb.sha256HexBytesAsync(payload), createHash('sha256').update(payload).digest('hex'));
-    assert.equal(digestCalls, 0);
+    assert.equal(digestCalls, 1);
     assert.ok(ticks > 1);
   } finally {
     clearInterval(timer);
@@ -390,5 +390,64 @@ test('async container parsing preserves legacy, selection and integrity behavior
       assert.deepEqual(await thdb.verifyThdb1ContainerChecksumsAsync(input, options), thdb.verifyThdb1ContainerChecksums(input, options));
       assert.deepEqual(await thdb.parseThdb1ContainerBytesAsync(input, options), thdb.parseThdb1ContainerBytes(input, options));
     }
+  }
+});
+
+
+test('native hashing covers the 32 MiB boundary and larger inputs use the fallback', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  const calls = [];
+  Object.defineProperty(globalThis, 'crypto', {
+    configurable: true,
+    value: { subtle: { digest: async (algorithm, payload) => {
+      calls.push(payload.length);
+      return webcrypto.subtle.digest(algorithm, payload);
+    } } },
+  });
+  try {
+    for (const length of [1048577, 32 * 1024 * 1024, 32 * 1024 * 1024 + 1]) {
+      const payload = new Uint8Array(length + 9).fill(73).subarray(9);
+      assert.equal(await thdb.sha256HexBytesAsync(payload), createHash('sha256').update(payload).digest('hex'));
+    }
+    assert.deepEqual(calls, [1048577, 32 * 1024 * 1024]);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+    else delete globalThis.crypto;
+  }
+});
+
+test('async container building preserves bytes, validation and sequential hashing with all crypto paths', async () => {
+  const descriptor = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+  let active = 0;
+  let peak = 0;
+  const native = { subtle: { digest: async (...args) => {
+    active += 1;
+    peak = Math.max(peak, active);
+    try { return await webcrypto.subtle.digest(...args); }
+    finally { active -= 1; }
+  } } };
+  try {
+    for (const crypto of [native, undefined, { subtle: { digest: async () => { throw new Error('unavailable'); } } }]) {
+      Object.defineProperty(globalThis, 'crypto', { configurable: true, value: crypto });
+      for (const length of [0, 55, 56, 63, 64, 65, 1048577]) {
+        const options = {
+          schema: 'test-db-v2', startupShellText: '{"title":"ÄÖÜ 👩🏽‍🏫"}',
+          planningPublicText: 'x'.repeat(length), gradeVaultConfigText: '{"configured":false}',
+          gradeCourseSegments: [{ courseId: 7, text: '{"name":"Müller"}' }, { courseId: 2, text: '{}' }],
+          revision: 9, updatedAt: '2026-10-23T12:00:00Z', deviceId: 'test', reason: 'parity',
+        };
+        assert.deepEqual(await thdb.buildThdb1ContainerBytesAsync(options), thdb.buildThdb1ContainerBytes(options));
+      }
+      for (const options of [{}, { schema: 'test', startupShellText: '{}', revision: -1 },
+        { schema: 'test', startupShellText: '{}', gradeCourseSegments: [{ courseId: 1, text: '' }] },
+        { schema: 'test', startupShellText: '{}', gradeCourseSegments: [{ courseId: 1, text: '{}' }, { courseId: 1, text: '{}' }] }]) {
+        assert.throws(() => thdb.buildThdb1ContainerBytes(options));
+        await assert.rejects(thdb.buildThdb1ContainerBytesAsync(options));
+      }
+    }
+    assert.equal(peak, 1);
+  } finally {
+    if (descriptor) Object.defineProperty(globalThis, 'crypto', descriptor);
+    else delete globalThis.crypto;
   }
 });

@@ -17,6 +17,8 @@ import {
   normalizeWorkspaceVaultKdf,
   validateWorkspaceVaultKdf,
   WORKSPACE_VAULT_KDF_ITERATIONS,
+  serializeWorkspaceVaultSession,
+  deserializeWorkspaceVaultSession,
 } from './crypto.js';
 
 const VAULT_VALIDATION_TOKEN = 'teachhelper-grade-vault-v1';
@@ -80,6 +82,10 @@ export class GradeVault {
     clearPlaintextCourses,
     discardCourseChanges,
     runtimeCourseFromPersisted,
+    captureCourseSession,
+    restoreCourseSession,
+    getPersistedCourseTexts,
+    getFeatureClient,
   }) {
     this.store = store;
     this.eventTarget = eventTarget;
@@ -105,6 +111,15 @@ export class GradeVault {
     this.clearPlaintextCourses = clearPlaintextCourses;
     this.discardCourseChanges = discardCourseChanges;
     this.runtimeCourseFromPersisted = runtimeCourseFromPersisted;
+    this.captureCourseSession = captureCourseSession;
+    this.restoreCourseSession = restoreCourseSession;
+    this.getPersistedCourseTexts = getPersistedCourseTexts;
+    this.getFeatureClient = getFeatureClient;
+    this.sessionGeneration = 0;
+    this.sessionTransition = false;
+    this.disposed = false;
+    this.suspendedSession = null;
+    this.persistedStates = new Map();
     this.vault = {
       encryptionEnabled: GRADE_VAULT_ENCRYPTION_ENABLED_DEFAULT,
       configured: false,
@@ -133,6 +148,39 @@ export class GradeVault {
     documentTarget?.addEventListener?.('visibilitychange', () => {
       void this.handleGradeVaultVisibilityChange();
     });
+  }
+
+  captureSession() {
+    return this.sessionGeneration;
+  }
+
+  assertSession(session, { requireAccess = true, allowTransition = false } = {}) {
+    if (this.disposed || session !== this.sessionGeneration
+      || (!allowTransition && this.sessionTransition)
+      || (requireAccess && !this.canAccessGradeVault())) {
+      const error = new Error('Die Notensitzung wurde gesperrt oder gewechselt.');
+      error.code = WORKSPACE_ERROR_VAULT_LOCKED;
+      throw error;
+    }
+  }
+
+  hasSuspendedChanges() {
+    return Boolean(this.suspendedSession?.dirty);
+  }
+
+  disposeSession() {
+    this.sessionGeneration += 1;
+    this.disposed = true;
+    this.suspendedSession = null;
+    this.persistedStates.clear();
+    this.clearPlaintextCourses({ clearSegments: true });
+    this.vault.unlocked = false;
+    this.vault.cryptoKey = null;
+    this.vault.persistedCryptoKey = null;
+    this.clearGradeVaultAutoLockTimer();
+    this.clearGradeVaultBackgroundAutoLockTimer();
+    this.getFeatureClient()?.clearVaultSession?.();
+    this.getFeatureClient()?.finishVaultSessionLock?.();
   }
 
   getGradeVaultAutoLockMs() {
@@ -179,8 +227,12 @@ export class GradeVault {
           this.clearGradeVaultAutoLockTimer();
           return false;
         }
-        if (this.hasDirtyCourses()) {
-          await this.saveDirtyGradeVaultChangesForAutoLock();
+        if (this.hasDirtyCourses() && this.store.getGradeVaultAutoSaveBeforeLock?.()
+          && !this.isManualPersistenceMode() && this.hasConnectedFile()) {
+          try {
+            await this.saveDirtyGradeVaultChangesForAutoLock();
+          } catch {
+          }
         }
         const locked = await this.lockGradeVaultSession({ autoLock: true });
         if (locked || !this.isGradeVaultUnlocked()) return locked;
@@ -237,7 +289,8 @@ export class GradeVault {
   }
 
   canAccessGradeVault() {
-    return !this.isGradeVaultEncryptionEnabled() || this.isGradeVaultUnlocked();
+    return !this.disposed && !this.sessionTransition
+      && (!this.isGradeVaultEncryptionEnabled() || this.isGradeVaultUnlocked());
   }
 
   hasGradeVaultUnlockConfig() {
@@ -251,10 +304,13 @@ export class GradeVault {
   }
 
   async setupGradeVault(password, { coursesLoaded = false } = {}) {
+    const session = this.captureSession();
+    this.assertSession(session, { requireAccess: false });
     if (String(password || '').length < 12) throw new Error('Das Passwort muss mindestens 12 Zeichen lang sein.');
     if (!coursesLoaded && this.hasPersistedCourses()) {
       await this.loadAllPersistedGradeCoursesForCryptoRewrite();
     }
+    this.assertSession(session, { requireAccess: false });
     const previousCryptoKey = this.vault.cryptoKey;
     if (
       this.vault.persistedConfig?.configured
@@ -267,6 +323,7 @@ export class GradeVault {
     const kdf = createWorkspaceVaultKdf();
     const { cryptoKey } = await deriveWorkspaceVaultKey(password, kdf);
     const validation = await encryptWorkspaceVaultText(VAULT_VALIDATION_TOKEN, cryptoKey, kdf, { type: 'validation' });
+    this.assertSession(session, { requireAccess: false });
     this.vault = {
       ...this.vault,
       encryptionEnabled: true,
@@ -279,33 +336,78 @@ export class GradeVault {
     this.store.setGradeVaultEncryptionEnabled(true);
     this.markPersistedCoursesDirty();
     await this.refreshNameLearningDueSummary();
+    this.assertSession(session);
     this.recordGradeVaultActivity();
     this.markChanged('grades');
     return true;
   }
 
   async unlockGradeVault(password) {
+    const generation = this.captureSession();
+    this.assertSession(generation, { requireAccess: false });
     if (!this.hasGradeVaultUnlockConfig()) {
       throw new Error('Der geschützte Notenbereich ist nicht vollständig eingerichtet.');
     }
-    const { cryptoKey, kdf } = await deriveWorkspaceVaultKey(password, this.vault.config.kdf);
-    const validation = await decryptWorkspaceVaultText(this.vault.config.validation, cryptoKey, kdf, { type: 'validation' });
+    const config = this.vault.config;
+    const suspended = this.suspendedSession;
+    const { cryptoKey, kdf } = await deriveWorkspaceVaultKey(password, config.kdf);
+    this.assertSession(generation, { requireAccess: false });
+    const validation = await decryptWorkspaceVaultText(config.validation, cryptoKey, kdf, { type: 'validation' });
+    this.assertSession(generation, { requireAccess: false });
     if (validation !== VAULT_VALIDATION_TOKEN) throw new Error('Passwort falsch oder Notendaten beschädigt.');
-    this.vault.unlocked = true;
-    this.vault.cryptoKey = cryptoKey;
-    this.vault.kdf = kdf;
-    this.vault.autoLockNotice = null;
-    try {
-      await this.upgradeGradeVaultKdf(password);
-    } catch {
+    let restored = null;
+    if (suspended) {
+      const plaintext = await decryptWorkspaceVaultText(suspended.envelope, cryptoKey, kdf, {
+        type: 'session', sessionId: suspended.id,
+      });
+      this.assertSession(generation, { requireAccess: false });
+      restored = deserializeWorkspaceVaultSession(plaintext);
+      if (restored.version !== 1 || restored.id !== suspended.id) {
+        throw new Error('Die verschlüsselte Zwischensicherung ist ungültig.');
+      }
     }
-    await this.refreshNameLearningDueSummary();
-    this.recordGradeVaultActivity();
-    this.markChanged('grades');
-    return true;
+    const session = ++this.sessionGeneration;
+    try {
+      if (restored) {
+        this.restoreCourseSession(restored.courses);
+        this.persistedStates = new Map(restored.persistedStates);
+      }
+      this.vault.unlocked = true;
+      this.vault.cryptoKey = cryptoKey;
+      this.vault.kdf = kdf;
+      this.vault.autoLockNotice = null;
+      if (restored) this.getFeatureClient()?.restoreVaultSession?.(restored.feature);
+      try {
+        await this.upgradeGradeVaultKdf(password);
+      } catch (error) {
+        if (error?.code === WORKSPACE_ERROR_VAULT_LOCKED) throw error;
+      }
+      void this.refreshNameLearningDueSummary().catch((error) => {
+        if (error?.code !== WORKSPACE_ERROR_VAULT_LOCKED) {
+          console.warn('[TeachHelper] Die Namenslern-Übersicht konnte nicht aktualisiert werden.', error);
+        }
+      });
+      this.assertSession(session);
+      this.suspendedSession = null;
+      this.recordGradeVaultActivity();
+      this.markChanged('grades');
+      return true;
+    } catch (error) {
+      if (session === this.sessionGeneration) {
+        this.sessionGeneration += 1;
+        this.clearPlaintextCourses({ clearUnencryptedSegments: true });
+        this.persistedStates.clear();
+        this.getFeatureClient()?.clearVaultSession?.();
+        this.vault.unlocked = false;
+        this.vault.cryptoKey = null;
+        this.vault.persistedCryptoKey = null;
+      }
+      throw error;
+    }
   }
 
   async upgradeGradeVaultKdf(password) {
+    const session = this.captureSession();
     const currentKdf = normalizeWorkspaceVaultKdf(this.vault.config?.kdf);
     if (currentKdf.iterations >= WORKSPACE_VAULT_KDF_ITERATIONS) return false;
 
@@ -328,7 +430,8 @@ export class GradeVault {
       { type: 'validation' },
     );
 
-    this.vault.persistedCryptoKey = this.vault.cryptoKey;
+    this.assertSession(session);
+    this.vault.persistedCryptoKey ||= this.vault.cryptoKey;
     this.vault.config = {
       schema: GRADE_VAULT_CONFIG_SCHEMA,
       configured: true,
@@ -343,16 +446,20 @@ export class GradeVault {
 
   async changeGradeVaultPassword(currentPassword, nextPassword) {
     await this.unlockGradeVault(currentPassword);
+    const session = this.captureSession();
     await this.loadAllPersistedGradeCoursesForCryptoRewrite();
+    this.assertSession(session);
     return this.setupGradeVault(nextPassword, { coursesLoaded: true });
   }
 
   async setGradeVaultEncryptionEnabledFromSettings(enabled) {
+    const session = this.captureSession();
     const next = Boolean(enabled);
     if (next === this.isGradeVaultEncryptionEnabled()) return true;
     if (next) return false;
     if (!this.isGradeVaultUnlocked()) throw new Error('Der geschützte Notenbereich muss zuerst entsperrt sein.');
     await this.loadAllPersistedGradeCoursesForCryptoRewrite();
+    this.assertSession(session);
     const persistedCryptoKey = this.vault.cryptoKey;
     this.vault.encryptionEnabled = false;
     this.vault.configured = false;
@@ -373,34 +480,79 @@ export class GradeVault {
 
   async lockGradeVaultSession({ autoLock = false } = {}) {
     if (!this.isGradeVaultEncryptionEnabled()) return false;
-    if (this.hasDirtyCourses()) {
+    if (!autoLock && this.hasDirtyCourses()) {
       const error = new Error('Ungespeicherte Notenänderungen müssen vor dem Sperren gespeichert werden.');
       error.code = WORKSPACE_ERROR_VAULT_DIRTY;
       throw error;
     }
-    this.clearPlaintextCourses();
-    this.vault.unlocked = false;
-    this.vault.cryptoKey = null;
-    this.vault.persistedCryptoKey = null;
-    this.vault.kdf = this.vault.config?.kdf || null;
-    this.clearGradeVaultAutoLockTimer();
-    this.clearGradeVaultBackgroundAutoLockTimer();
-    this.clearGradeVaultAutoLockWarning();
-    this.vault.autoLockNotice = autoLock
-      ? { id: this.randomId(), lockedAt: this.nowMs() }
-      : null;
-    this.markChanged('grades');
+    if (this.sessionTransition) return false;
+    const session = ++this.sessionGeneration;
+    if (!this.isGradeVaultUnlocked()) return true;
+    this.sessionTransition = true;
+    const featureClient = this.getFeatureClient();
+    try {
+      const feature = featureClient?.captureVaultSession?.() || null;
+      featureClient?.prepareVaultSessionLock?.();
+      const configChanged = JSON.stringify(this.normalizeVaultConfig(this.vault.config))
+        !== JSON.stringify(this.normalizeVaultConfig(this.vault.persistedConfig));
+      let suspended = null;
+      if (this.hasDirtyCourses() || feature || configChanged) {
+        const persistedStates = new Map(this.persistedStates);
+        if (configChanged) {
+          for (const [courseId, text] of this.getPersistedCourseTexts()) {
+            const state = await this.decodeCourseSegmentForPlausibility(courseId, text, {
+              persisted: true, allowTransition: true,
+            });
+            this.assertSession(session, { requireAccess: false, allowTransition: true });
+            persistedStates.set(courseId, { text, state });
+          }
+        }
+        const id = this.randomId();
+        const courses = this.captureCourseSession();
+        const plaintext = await serializeWorkspaceVaultSession({
+          version: 1, id, courses, feature, persistedStates: [...persistedStates],
+        });
+        this.assertSession(session, { requireAccess: false, allowTransition: true });
+        const envelope = await encryptWorkspaceVaultText(plaintext, this.vault.cryptoKey, this.vault.kdf, {
+          type: 'session', sessionId: id,
+        });
+        this.assertSession(session, { requireAccess: false, allowTransition: true });
+        suspended = { id, envelope, dirty: this.hasDirtyCourses() || Boolean(feature?.dirty) || configChanged };
+      }
+      this.suspendedSession = suspended;
+      this.clearPlaintextCourses({ clearUnencryptedSegments: true });
+      this.persistedStates.clear();
+      this.vault.unlocked = false;
+      this.vault.cryptoKey = null;
+      this.vault.persistedCryptoKey = null;
+      featureClient?.clearVaultSession?.();
+      this.vault.kdf = this.vault.config?.kdf || null;
+      this.clearGradeVaultAutoLockTimer();
+      this.clearGradeVaultBackgroundAutoLockTimer();
+      this.clearGradeVaultAutoLockWarning();
+      this.vault.autoLockNotice = autoLock
+        ? { id: this.randomId(), lockedAt: this.nowMs() }
+        : null;
+    } finally {
+      if (session === this.sessionGeneration) {
+        this.sessionTransition = false;
+        featureClient?.finishVaultSessionLock?.();
+        this.markChanged('grades');
+      }
+    }
     return true;
   }
 
   async discardGradeVaultChanges() {
-    if (!this.hasDirtyCourses()) return false;
     const persistedConfig = this.normalizeVaultConfig(this.vault.persistedConfig);
     const configChanged = JSON.stringify(this.normalizeVaultConfig(this.vault.config)) !== JSON.stringify(this.normalizeVaultConfig(persistedConfig));
-    if (configChanged && persistedConfig.configured && !this.vault.persistedCryptoKey) {
-      throw new Error('Die ausstehende Verschlüsselungsänderung kann in dieser Sitzung nicht sicher verworfen werden. Bitte speichere die Datenbank oder lade sie erneut.');
-    }
+    if (!this.hasDirtyCourses() && !configChanged) return false;
+    const requiresUnlock = configChanged && persistedConfig.configured && !this.vault.persistedCryptoKey;
 
+    this.assertSession(this.captureSession());
+    this.sessionGeneration += 1;
+    this.suspendedSession = null;
+    this.persistedStates.clear();
     this.discardCourseChanges();
     this.clearGradeVaultAutoLockWarning();
 
@@ -411,6 +563,10 @@ export class GradeVault {
       this.vault.cryptoKey = persistedConfig.configured ? this.vault.persistedCryptoKey : null;
       this.vault.kdf = persistedConfig.kdf;
       this.store.setGradeVaultEncryptionEnabled(Boolean(persistedConfig.configured));
+    }
+    if (requiresUnlock) {
+      this.vault.unlocked = false;
+      this.getFeatureClient()?.clearVaultSession?.();
     }
     this.markChanged('grades');
     return true;
@@ -446,6 +602,7 @@ export class GradeVault {
   }
 
   async decodeCourse(courseId, text) {
+    const session = this.captureSession();
     const parsed = parseCourseSegment(text);
     if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
     assertCourseSegmentEncryption(parsed, courseId, this.isGradeVaultConfigured());
@@ -464,10 +621,15 @@ export class GradeVault {
       );
       persisted = JSON.parse(plaintext);
     }
+    this.assertSession(session);
     return this.runtimeCourseFromPersisted(courseId, persisted);
   }
 
-  async decodeCourseSegmentForPlausibility(courseId, text, { persisted = false } = {}) {
+  async decodeCourseSegmentForPlausibility(courseId, text, { persisted = false, allowTransition = false } = {}) {
+    const session = this.captureSession();
+    this.assertSession(session, { requireAccess: false, allowTransition });
+    const saved = persisted ? this.persistedStates.get(Number(courseId)) : null;
+    if (saved?.text === text) return this.clone(saved.state);
     const parsed = parseCourseSegment(text);
     if (!parsed) throw new Error(`Notensegment für Kurs ${courseId} ist ungültig.`);
     assertCourseSegmentEncryption(
@@ -493,6 +655,7 @@ export class GradeVault {
       );
       rawState = JSON.parse(plaintext);
     }
+    this.assertSession(session, { requireAccess: false, allowTransition });
     return this.runtimeCourseFromPersisted(courseId, rawState);
   }
 
@@ -512,6 +675,14 @@ export class GradeVault {
   }
 
   loadConfig(config, encryptionEnabled) {
+    this.sessionGeneration += 1;
+    this.sessionTransition = false;
+    this.suspendedSession = null;
+    this.persistedStates.clear();
+    this.getFeatureClient()?.clearVaultSession?.();
+    this.getFeatureClient()?.finishVaultSessionLock?.();
+    this.clearGradeVaultAutoLockTimer();
+    this.clearGradeVaultBackgroundAutoLockTimer();
     this.vault.encryptionEnabled = Boolean(config.configured || encryptionEnabled);
     this.vault.configured = Boolean(config.configured);
     this.vault.unlocked = false;
@@ -523,9 +694,12 @@ export class GradeVault {
     this.store.state.settings.gradeVaultEncryptionEnabled = this.vault.encryptionEnabled;
   }
 
-  commitPersistedConfig() {
-    this.vault.persistedConfig = this.clone(this.vault.config, this.normalizeVaultConfig(null));
-    this.vault.persistedCryptoKey = null;
+  commitPersistedConfig(config = this.vault.config) {
+    const cryptoKey = this.vault.persistedCryptoKey || this.vault.cryptoKey;
+    this.persistedStates.clear();
+    this.vault.persistedConfig = this.clone(config, this.normalizeVaultConfig(null));
+    this.vault.persistedCryptoKey = this.isGradeVaultUnlocked()
+      && JSON.stringify(this.vault.config) !== JSON.stringify(config) ? cryptoKey : null;
   }
 
   async encodeCourse(courseId, persisted) {

@@ -43,6 +43,7 @@ test('shell status updates do not rebuild an unchanged grades view', () => {
     refs: { sidebarCourseList: {} },
     captureGradeVaultAutoLockNotice() {},
     applyWorkspacePersistenceStatus() {},
+    canAccessGradeVault() { return true; },
     shouldPreserveActiveGradesEntryControl() { return false; },
     updateAccessLock() {},
     renderAll() { calls.renderAll += 1; },
@@ -122,6 +123,7 @@ test('grade workspace changes still rebuild the visible grades data once', () =>
     captureGradeVaultAutoLockNotice() {},
     applyWorkspacePersistenceStatus() {},
     presentGradeVaultAutoLockNotice() { return Promise.resolve(); },
+    canAccessGradeVault() { return true; },
     shouldPreserveActiveGradesEntryControl() { return false; },
     renderAll() { renderCount += 1; },
     refreshSidebarCourseStudentCounts() { return Promise.resolve(); },
@@ -149,6 +151,7 @@ test('grade workspace changes do not replace a course picker or mode control bei
     pendingWorkspaceRenderAfterEntryInteraction: false,
     captureGradeVaultAutoLockNotice() {},
     applyWorkspacePersistenceStatus() {},
+    canAccessGradeVault() { return true; },
     shouldPreserveActiveGradesEntryControl() { return true; },
     renderAll() { renderCount += 1; },
   };

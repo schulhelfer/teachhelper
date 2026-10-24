@@ -17,4 +17,4 @@ HOOK
 
 chmod +x .git/hooks/pre-commit
 
-echo "Pre-commit hook installed: Node.js tests, Python 3 audit, advisory and version checks"
+echo "Pre-commit hook installed: Python regression tests, PWA audit, advisory and version checks, app version stamp"

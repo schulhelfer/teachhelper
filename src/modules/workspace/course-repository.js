@@ -14,6 +14,14 @@ function emptyGradeState(store) {
   return store.normalizeGradeVaultState(null);
 }
 
+function isPlaintextCourseSegment(text) {
+  try {
+    return JSON.parse(text)?.schema === GRADE_COURSE_SCHEMA;
+  } catch {
+    return false;
+  }
+}
+
 function gradeStateContainsCourseData(state, courseId) {
   const id = Number(courseId) || 0;
   if (!id || !state || typeof state !== 'object') return false;
@@ -175,6 +183,8 @@ export class CourseRepository {
     store,
     clone,
     canAccessGradeVault,
+    captureSession,
+    assertSession,
     isGradeVaultConfigured,
     isGradeVaultUnlocked,
     decodeCourse,
@@ -193,6 +203,8 @@ export class CourseRepository {
     this.store = store;
     this.clone = clone;
     this.canAccessGradeVault = canAccessGradeVault;
+    this.captureSession = captureSession;
+    this.assertSession = assertSession;
     this.isGradeVaultConfigured = isGradeVaultConfigured;
     this.isGradeVaultUnlocked = isGradeVaultUnlocked;
     this.decodeCourse = decodeCourse;
@@ -219,6 +231,7 @@ export class CourseRepository {
     this.loadedCourseId = null;
     this.courseLoadTail = Promise.resolve();
     this.gradeCourseMutationActiveCourseId = null;
+    this.nameLearningRefreshGeneration = 0;
   }
 
   rememberPersistedCourseIds(segments) {
@@ -261,7 +274,11 @@ export class CourseRepository {
   async ensureGradeCourseLoaded(courseId, { publish = true } = {}) {
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return false;
-    return this.queueGradeCourseJob(() => this.loadGradeCourse(id, { publish }));
+    const session = this.captureSession();
+    return this.queueGradeCourseJob(() => {
+      this.assertSession(session);
+      return this.loadGradeCourse(id, { publish });
+    });
   }
 
   async loadAccessibleGradeCourse(courseId, options) {
@@ -271,6 +288,8 @@ export class CourseRepository {
   }
 
   async loadGradeCourse(id, { publish = true } = {}) {
+    const session = this.captureSession();
+    this.assertSession(session);
     if (this.loadedCourseId === id) return true;
     if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
     let state = this.courseCache.get(id) || null;
@@ -282,9 +301,11 @@ export class CourseRepository {
         : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
           ? initialState
           : emptyGradeState(this.store));
+      this.assertSession(session);
       this.courseCache.set(id, state);
       this.rememberPerformanceIndex(id, state);
     }
+    this.assertSession(session);
     this.store.replaceGradeVaultState(state);
     this.loadedCourseId = id;
     if (!gradeStateHasPersistedStructure(state, id)) {
@@ -302,6 +323,7 @@ export class CourseRepository {
           this.store._resumeSaveHooks({ flush: false });
         }
         state = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
+        this.assertSession(session);
         this.courseCache.set(id, state);
         this.rememberPerformanceIndex(id, state);
         this.dirtyCourseIds.add(id);
@@ -314,9 +336,11 @@ export class CourseRepository {
   }
 
   async getGradeCourseRosterSummary(courseId) {
+    const session = this.captureSession();
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return null;
     await this.courseLoadTail;
+    this.assertSession(session);
     let state = this.loadedCourseId === id
       ? this.store.exportGradeVaultStateSnapshot()
       : this.courseCache.get(id) || null;
@@ -324,6 +348,7 @@ export class CourseRepository {
       const text = this.segmentTexts.get(id) || '';
       if (text) {
         state = await this.decodeCourse(id, text);
+        this.assertSession(session);
         this.courseCache.set(id, state);
         this.rememberPerformanceIndex(id, state);
       } else {
@@ -339,13 +364,17 @@ export class CourseRepository {
         && !student?.isPlaceholder
         && Number(student?.id || 0) > 0
       )).length;
+    this.assertSession(session);
     return { courseId: id, studentCount };
   }
 
   async getGradeCourseStateSnapshot(courseId) {
+    const session = this.captureSession();
     const id = Number(courseId) || 0;
     if (!id || !this.canAccessGradeVault()) return null;
     await this.courseLoadTail;
+    this.assertSession(session);
+    const revision = this.getGradeCourseRevision(id);
     let state = this.loadedCourseId === id
       ? this.store.exportGradeVaultStateSnapshot()
       : this.courseCache.get(id) || null;
@@ -357,9 +386,12 @@ export class CourseRepository {
         : (!this.loadedCourseId && gradeStateContainsCourseData(initialState, id)
           ? initialState
           : emptyGradeState(this.store));
+      this.assertSession(session);
+      if (revision !== this.getGradeCourseRevision(id)) return this.getGradeCourseStateSnapshot(id);
       this.courseCache.set(id, state);
       this.rememberPerformanceIndex(id, state);
     }
+    this.assertSession(session);
     return this.clone(state, emptyGradeState(this.store));
   }
 
@@ -435,32 +467,60 @@ export class CourseRepository {
   }
 
   async refreshNameLearningDueSummary() {
+    const session = this.captureSession();
     if (!this.canAccessGradeVault()) return false;
-    const courses = {};
-    const publicCourses = Array.isArray(this.store.state?.courses)
-      ? this.store.state.courses
-      : (this.store.exportPublicStateSnapshot?.().courses || []);
-    const courseIds = publicCourses
+    const generation = ++this.nameLearningRefreshGeneration;
+    const isCurrent = () => {
+      this.assertSession(session);
+      return generation === this.nameLearningRefreshGeneration;
+    };
+    const eligibleIds = () => (this.store.state?.courses || this.store.exportPublicStateSnapshot?.().courses || [])
       .filter((course) => !course.noLesson && !course.noGrades)
       .map((course) => Number(course.id))
-      .filter((courseId) => courseId > 0);
-    let complete = true;
-    for (const courseId of courseIds) {
-      let state;
-      try {
-        state = await this.getGradeCourseStateSnapshot(courseId);
-      } catch (error) {
-        if (error?.code === WORKSPACE_ERROR_VAULT_LOCKED || !this.canAccessGradeVault()) return false;
-        console.warn(`[TeachHelper] Kurs ${courseId} konnte für die Namenslern-Übersicht nicht gelesen werden.`, error);
-        complete = false;
-        continue;
+      .filter((courseId) => courseId > 0)
+      .sort((left, right) => Number(right === this.loadedCourseId) - Number(left === this.loadedCourseId));
+    const courses = {};
+    const revisions = new Map();
+    const failed = new Set();
+    this.saveNameLearningDueSummary({ complete: false, courses: this.store.state.settings.nameLearningDueSummary?.courses });
+    try {
+      while (true) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        if (!isCurrent()) return false;
+        const ids = eligibleIds();
+        const courseId = ids.find((id) => revisions.get(id) !== this.getGradeCourseRevision(id));
+        if (!courseId) {
+          for (const id of Object.keys(courses)) {
+            if (!ids.includes(Number(id))) delete courses[id];
+          }
+          return this.saveNameLearningDueSummary({ complete: ids.every((id) => !failed.has(id)), courses });
+        }
+        const revision = this.getGradeCourseRevision(courseId);
+        let state;
+        try {
+          state = await this.getGradeCourseStateSnapshot(courseId);
+        } catch (error) {
+          if (!isCurrent()) return false;
+          if (error?.code === WORKSPACE_ERROR_VAULT_LOCKED || !this.canAccessGradeVault()) return false;
+          console.warn(`[TeachHelper] Kurs ${courseId} konnte für die Namenslern-Übersicht nicht gelesen werden.`, error);
+          failed.add(courseId);
+          revisions.set(courseId, revision);
+          continue;
+        }
+        if (!isCurrent()) return false;
+        if (revision !== this.getGradeCourseRevision(courseId)) continue;
+        courses[String(courseId)] = buildNameLearningDueBuckets(state, courseId);
+        revisions.set(courseId, revision);
+        failed.delete(courseId);
       }
-      courses[String(courseId)] = buildNameLearningDueBuckets(state, courseId);
+    } catch (error) {
+      if (error?.code === WORKSPACE_ERROR_VAULT_LOCKED) return false;
+      throw error;
     }
-    return this.saveNameLearningDueSummary({ complete, courses });
   }
 
   async getOccurrenceCategoryUsage(categoryId) {
+    const session = this.captureSession();
     const id = Number(categoryId) || 0;
     if (!id || !this.canAccessGradeVault()) return 0;
     const courseIds = new Set([
@@ -476,6 +536,7 @@ export class CourseRepository {
       if (!state) {
         const text = this.segmentTexts.get(courseId) || '';
         state = text ? await this.decodeCourse(courseId, text) : emptyGradeState(this.store);
+        this.assertSession(session);
         this.courseCache.set(courseId, state);
       }
       count += (Array.isArray(state.gradeAssessments) ? state.gradeAssessments : []).filter((assessment) => (
@@ -483,10 +544,12 @@ export class CourseRepository {
         && Number(assessment?.occurrenceCategoryId || 1) === id
       )).length;
     }
+    this.assertSession(session);
     return count;
   }
 
   async deleteOccurrenceCategoryData(categoryId) {
+    const session = this.captureSession();
     const categoryIdNumber = Number(categoryId) || 0;
     if (!categoryIdNumber) return 0;
     if (!this.canAccessGradeVault()) {
@@ -518,28 +581,37 @@ export class CourseRepository {
         return assessmentIds.length;
       });
     }
+    this.assertSession(session);
     if (previous && previous !== this.loadedCourseId) await this.ensureGradeCourseLoaded(previous);
     return deleted;
   }
 
   async loadGradeCourseNavigationTargetAtomically(courseId, fallbackCourseId = null) {
+    const session = this.captureSession();
     const previous = Number(this.loadedCourseId || fallbackCourseId) || null;
     try {
       return await this.ensureGradeCourseLoaded(courseId);
     } catch (error) {
+      this.assertSession(session);
       if (previous && previous !== Number(courseId)) await this.ensureGradeCourseLoaded(previous);
       throw error;
     }
   }
 
   async withTemporaryGradeCourse(courseId, operation) {
+    const session = this.captureSession();
     const id = Number(courseId) || 0;
     return this.queueGradeCourseJob(async () => {
+      this.assertSession(session);
       const previous = this.loadedCourseId;
       await this.loadAccessibleGradeCourse(id, { publish: false });
+      this.assertSession(session);
       try {
-        return await operation();
+        const result = await operation();
+        this.assertSession(session);
+        return result;
       } finally {
+        this.assertSession(session);
         if (previous && previous !== id) {
           await this.loadAccessibleGradeCourse(previous, { publish: false });
         }
@@ -571,15 +643,19 @@ export class CourseRepository {
     skipAutoSave = false,
     confirmedRemovedStudentIds = [],
   } = {}) {
+    const session = this.captureSession();
     const id = Number(courseId) || 0;
     const run = () => this.queueGradeCourseJob(async () => {
+      this.assertSession(session);
       await this.loadAccessibleGradeCourse(id, { publish: false });
+      this.assertSession(session);
       const before = this.store.exportGradeVaultStateSnapshot();
       const roster = before.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
       this.gradeCourseMutationActiveCourseId = id;
       this.store._suspendSaveHooks();
       try {
         const result = await operation({ courseId: id });
+        this.assertSession(session);
         const after = this.store.normalizeGradeVaultState(this.store.exportGradeVaultStateSnapshot());
         const nextRoster = after.gradeStudents.map((student) => Number(student.id)).sort((a, b) => a - b);
         if (preserveRoster) {
@@ -598,6 +674,7 @@ export class CourseRepository {
         }
         return result;
       } catch (error) {
+        this.assertSession(session);
         this.store.replaceGradeVaultState(before);
         throw error;
       } finally {
@@ -610,15 +687,19 @@ export class CourseRepository {
   }
 
   async loadAllPersistedGradeCoursesForCryptoRewrite() {
+    const session = this.captureSession();
+    this.assertSession(session);
     for (const courseId of this.segmentTexts.keys()) {
       if (!this.courseCache.has(courseId)) {
         const state = await this.decodeCourse(courseId, this.segmentTexts.get(courseId));
+        this.assertSession(session);
         this.courseCache.set(courseId, state);
         this.rememberPerformanceIndex(courseId, state);
       }
       this.dirtyCourseIds.add(courseId);
     }
     if (this.loadedCourseId && this.courseCache.has(this.loadedCourseId)) {
+      this.assertSession(session);
       this.store.replaceGradeVaultState(this.courseCache.get(this.loadedCourseId));
     }
     return true;
@@ -658,6 +739,7 @@ export class CourseRepository {
   }
 
   async resolvePerformanceIndex(courseIds) {
+    const session = this.captureSession();
     const ids = [...new Set((Array.isArray(courseIds) ? courseIds : []).map(Number).filter((id) => id > 0))];
     if (!this.canAccessGradeVault()) {
       const error = new Error('Das Notenmodul ist gesperrt.');
@@ -665,28 +747,32 @@ export class CourseRepository {
       throw error;
     }
     return this.queueGradeCourseJob(async () => {
+      this.assertSession(session);
       const previous = this.loadedCourseId;
       for (const id of ids) {
         if (!this.courseCache.has(id)) {
           const text = this.segmentTexts.get(id);
           const state = text ? await this.decodeCourse(id, text) : emptyGradeState(this.store);
+          this.assertSession(session);
           this.courseCache.set(id, state);
           this.rememberPerformanceIndex(id, state);
         }
       }
       if (previous) {
+        this.assertSession(session);
         this.store.replaceGradeVaultState(this.courseCache.get(previous) || emptyGradeState(this.store));
         this.loadedCourseId = previous;
       }
+      this.assertSession(session);
       return this.buildPerformanceIndex(ids);
     });
   }
 
   async getCourseContentSignature(courseId, text, options = {}) {
-    return buildCourseContentSignature(
-      await this.decodeCourseSegmentForPlausibility(courseId, text, options),
-      courseId,
-    );
+    const session = this.captureSession();
+    const state = await this.decodeCourseSegmentForPlausibility(courseId, text, options);
+    this.assertSession(session, { requireAccess: false });
+    return buildCourseContentSignature(state, courseId);
   }
 
   async assertCourseContentIsPlausible(segments = []) {
@@ -764,6 +850,8 @@ export class CourseRepository {
   }
 
   async buildGradeCourseSegments() {
+    const session = this.captureSession();
+    this.assertSession(session, { requireAccess: false });
     if (this.loadedCourseId) this.courseCache.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
     const courseIds = new Set([
       ...this.segmentTexts.keys(),
@@ -796,6 +884,7 @@ export class CourseRepository {
       entryCount += state.gradeEntries?.length || 0;
       const persisted = this.persistedCourseFromState(courseId, state);
       const text = await this.encodeCourse(courseId, persisted);
+      this.assertSession(session);
       segments.push({ courseId, text });
     }
     const writtenCourseIds = new Set(segments.map((segment) => Number(segment.courseId)));
@@ -806,6 +895,7 @@ export class CourseRepository {
       throw error;
     }
     await this.assertCourseContentIsPlausible(segments);
+    this.assertSession(session, { requireAccess: false });
     return { segments, entryCount };
   }
 
@@ -840,13 +930,45 @@ export class CourseRepository {
     for (const courseId of courseIds) this.dirtyCourseIds.add(courseId);
   }
 
-  clearPlaintextCourses() {
+  captureSessionState() {
+    const courses = new Map(this.courseCache);
+    if (this.loadedCourseId) courses.set(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
+    return {
+      courses: [...courses],
+      loadedCourseId: this.loadedCourseId,
+      dirtyCourseIds: [...this.dirtyCourseIds],
+      deletedCourseIds: [...this.deletedCourseIds],
+      courseRevisions: [...this.courseRevisions],
+      confirmedStudentRemovals: [...this.confirmedStudentRemovalsByCourse].map(([id, values]) => [id, [...values]]),
+      plaintextSegments: [...this.segmentTexts].filter(([, text]) => isPlaintextCourseSegment(text)),
+    };
+  }
+
+  restoreSessionState(state) {
+    this.courseCache = new Map(state.courses.map(([id, value]) => [id, this.normalizeAndAssertGradeCourseSnapshot(id, value)]));
+    this.dirtyCourseIds = new Set(state.dirtyCourseIds);
+    this.deletedCourseIds = new Set(state.deletedCourseIds);
+    this.courseRevisions = new Map(state.courseRevisions);
+    this.confirmedStudentRemovalsByCourse = new Map(state.confirmedStudentRemovals.map(([id, values]) => [id, new Set(values)]));
+    for (const [id, text] of state.plaintextSegments) this.segmentTexts.set(id, text);
+    this.loadedCourseId = state.loadedCourseId;
+    this.store.replaceGradeVaultState(this.courseCache.get(this.loadedCourseId) || emptyGradeState(this.store));
+    for (const [id, value] of this.courseCache) this.rememberPerformanceIndex(id, value);
+  }
+
+  clearPlaintextCourses({ clearSegments = false, clearUnencryptedSegments = false } = {}) {
     if (this.loadedCourseId) {
       this.rememberPerformanceIndex(this.loadedCourseId, this.store.exportGradeVaultStateSnapshot());
     }
     this.store.replaceGradeVaultState(emptyGradeState(this.store));
     this.courseCache.clear();
     this.loadedCourseId = null;
+    if (clearSegments) this.segmentTexts.clear();
+    else if (clearUnencryptedSegments) {
+      for (const [id, text] of this.segmentTexts) {
+        if (isPlaintextCourseSegment(text)) this.segmentTexts.delete(id);
+      }
+    }
   }
 
   discardCourseChanges() {
@@ -860,13 +982,14 @@ export class CourseRepository {
     this.loadedCourseId = null;
   }
 
-  commitPersistedSegments(segments = []) {
-    this.segmentTexts = new Map((segments || []).map((segment) => [
+  commitPersistedSegments(segments = [], { preserveChanges = false } = {}) {
+    const retained = preserveChanges ? segments.filter((segment) => !this.deletedCourseIds.has(Number(segment.courseId))) : segments;
+    this.segmentTexts = new Map((retained || []).map((segment) => [
       Number(segment.courseId),
       String(segment.text || ''),
     ]));
-    this.rememberPersistedCourseIds(segments);
-    this.confirmedStudentRemovalsByCourse.clear();
+    this.rememberPersistedCourseIds(retained);
+    if (!preserveChanges) this.confirmedStudentRemovalsByCourse.clear();
   }
 
   resetForDatabase(segments) {
@@ -890,11 +1013,13 @@ export class CourseRepository {
     if (!courseId) return;
     this.courseCache.set(courseId, this.store.exportGradeVaultStateSnapshot());
     this.rememberPerformanceIndex(courseId, this.courseCache.get(courseId));
+    this.updateNameLearningDueSummaryForCourse(courseId, this.courseCache.get(courseId));
     this.dirtyCourseIds.add(courseId);
     this.courseRevisions.set(courseId, this.getGradeCourseRevision(courseId) + 1);
   }
 
   deleteCourseData(courseId) {
+    this.courseRevisions.set(courseId, this.getGradeCourseRevision(courseId) + 1);
     this.segmentTexts.delete(courseId);
     this.persistedCourseIds.delete(courseId);
     this.deletedCourseIds.add(courseId);

@@ -1,8 +1,17 @@
+import {
+  RANDOM_PICKER_SPIN_DURATION_MS,
+  RANDOM_PICKER_MIN_SPIN_DURATION_MS,
+  RANDOM_PICKER_MAX_SPIN_DURATION_MS,
+  RANDOM_PICKER_SPIN_DURATION_STEP_MS,
+  normalizeRandomPickerSpinDurationMs,
+} from '../../shared/random-picker-settings.js';
+
+export { RANDOM_PICKER_SPIN_DURATION_MS };
+
 export const RANDOM_PICKER_MIN_WEIGHT = 0;
 export const RANDOM_PICKER_MAX_WEIGHT = 4;
 export const RANDOM_PICKER_DEFAULT_WEIGHT = 1;
 export const RANDOM_PICKER_CERTAIN_WEIGHT = 4;
-export const RANDOM_PICKER_SPIN_DURATION_MS = 4000;
 export const RANDOM_PICKER_WINNER_HIGHLIGHT_MS = 2200;
 
 export function normalizeRandomPickerWeight(value, fallback = RANDOM_PICKER_DEFAULT_WEIGHT) {
@@ -42,6 +51,9 @@ export function resolveRandomPickerDom(doc = document) {
     exportButton: doc.getElementById('random-picker-export'),
     startButton: doc.getElementById('random-picker-start'),
     startButtons: doc.querySelectorAll('[data-random-picker-start]'),
+    spinDuration: doc.getElementById('random-picker-spin-duration'),
+    spinDurationDecrease: doc.getElementById('random-picker-spin-duration-decrease'),
+    spinDurationIncrease: doc.getElementById('random-picker-spin-duration-increase'),
     preferencesDialogTitle: doc.getElementById('preferences-dialog-title'),
     preferencesTableHead: doc.getElementById('preferences-thead'),
     preferencesTableBody: doc.getElementById('preferences-tbody'),
@@ -63,6 +75,8 @@ export function mountRandomPicker({
   formatStudentLabel = (student) => `${student?.first || ''} ${student?.last || ''}`.trim(),
   getAutoDisableSelected = () => false,
   setAutoDisableSelected = () => {},
+  getSpinDurationMs = null,
+  setSpinDurationMs = null,
   setStudentWeight = (student, weight) => {
     if (student && typeof student === 'object') student.randomWeight = weight;
   },
@@ -81,8 +95,35 @@ export function mountRandomPicker({
 } = {}) {
   let spinInProgress = false;
   let currentIndex = 0;
+  let localSpinDurationMs = RANDOM_PICKER_SPIN_DURATION_MS;
   const removers = [];
   const view = doc?.defaultView || globalThis;
+
+  function readSpinDurationMs() {
+    return normalizeRandomPickerSpinDurationMs(getSpinDurationMs ? getSpinDurationMs() : localSpinDurationMs);
+  }
+
+  function renderSpinDuration() {
+    const durationMs = readSpinDurationMs();
+    if (dom.spinDuration) {
+      dom.spinDuration.value = String(durationMs / 1000);
+      dom.spinDuration.disabled = spinInProgress;
+    }
+    if (dom.spinDurationDecrease) {
+      dom.spinDurationDecrease.disabled = spinInProgress || durationMs <= RANDOM_PICKER_MIN_SPIN_DURATION_MS;
+    }
+    if (dom.spinDurationIncrease) {
+      dom.spinDurationIncrease.disabled = spinInProgress || durationMs >= RANDOM_PICKER_MAX_SPIN_DURATION_MS;
+    }
+  }
+
+  function changeSpinDuration(durationMs) {
+    if (!spinInProgress) {
+      localSpinDurationMs = normalizeRandomPickerSpinDurationMs(durationMs);
+      setSpinDurationMs?.(localSpinDurationMs);
+    }
+    renderSpinDuration();
+  }
 
   function readStudents() {
     const students = getStudents();
@@ -246,6 +287,7 @@ export function mountRandomPicker({
   }
 
   function render() {
+    renderSpinDuration();
     const allCandidates = getCandidates({ includeZeroWeight: true });
     const candidates = getCandidates();
     const names = allCandidates.map((entry) => entry.name);
@@ -300,8 +342,10 @@ export function mountRandomPicker({
     }
     const displayNames = allCandidates.map((entry) => entry.name);
     if (spinInProgress) return;
+    const spinDurationMs = readSpinDurationMs();
     refreshWheelWidth(displayNames);
     spinInProgress = true;
+    renderSpinDuration();
     setStartButtons({ disabled: true, text: 'Läuft...' });
     if (dom.resultNote) dom.resultNote.textContent = 'Der Generator läuft und bremst kontrolliert ab.';
     if (dom.actionNote) dom.actionNote.textContent = 'Zufallsgenerator läuft...';
@@ -322,7 +366,7 @@ export function mountRandomPicker({
       for (let step = 1; step <= totalSteps; step += 1) {
         const frameIndex = total <= 1 ? winnerIndex : (currentIndex + 1) % total;
         updateCards(frameIndex, { final: false });
-        const delayMs = (RANDOM_PICKER_SPIN_DURATION_MS * stepWeights[step - 1]) / totalWeight;
+        const delayMs = (spinDurationMs * stepWeights[step - 1]) / totalWeight;
         await wait(delayMs);
       }
       updateCards(winnerIndex, { final: true });
@@ -352,6 +396,7 @@ export function mountRandomPicker({
       setStartButtons({ text: 'Nochmal' });
     } finally {
       spinInProgress = false;
+      renderSpinDuration();
       getStartButtons().forEach((button) => {
         button.disabled = false;
         if (button.textContent.trim() === 'Läuft...') {
@@ -508,6 +553,9 @@ export function mountRandomPicker({
   getStartButtons().forEach((button) => bind(button, 'click', () => { void start(); }));
   bind(dom.importButton, 'click', onImport);
   bind(dom.exportButton, 'click', onExport);
+  bind(dom.spinDuration, 'change', () => changeSpinDuration(dom.spinDuration.value === '' ? undefined : dom.spinDuration.valueAsNumber * 1000));
+  bind(dom.spinDurationDecrease, 'click', () => changeSpinDuration(readSpinDurationMs() - RANDOM_PICKER_SPIN_DURATION_STEP_MS));
+  bind(dom.spinDurationIncrease, 'click', () => changeSpinDuration(readSpinDurationMs() + RANDOM_PICKER_SPIN_DURATION_STEP_MS));
 
   return {
     render,

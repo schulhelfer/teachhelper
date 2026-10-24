@@ -1,5 +1,6 @@
 import {
   buildThdb1ContainerBytes,
+  buildThdb1ContainerBytesAsync,
   getThdb1FileHashAsync,
   parseThdb1ContainerBytes,
   parseThdb1ContainerBytesAsync,
@@ -86,6 +87,7 @@ export class WorkspacePersistence {
     commitPersistedConfig,
     resetCoursesForDatabase,
     completeGradeSave,
+    captureSaveState,
     clearGradeVaultAutoLockWarning,
     isGradeVaultEncryptionEnabled,
     refreshNameLearningDueSummary,
@@ -114,6 +116,9 @@ export class WorkspacePersistence {
     this.commitPersistedConfig = commitPersistedConfig;
     this.resetCoursesForDatabase = resetCoursesForDatabase;
     this.completeGradeSave = completeGradeSave;
+    this.captureSaveState = captureSaveState;
+    this.changeGeneration = 0;
+    this.builtContainers = new WeakMap();
     this.clearGradeVaultAutoLockWarning = clearGradeVaultAutoLockWarning;
     this.isGradeVaultEncryptionEnabled = isGradeVaultEncryptionEnabled;
     this.refreshNameLearningDueSummary = refreshNameLearningDueSummary;
@@ -184,7 +189,13 @@ export class WorkspacePersistence {
   }
 
   async buildContainer(reason = 'save') {
+    const saveState = this.captureSaveState();
+    const changeGeneration = this.changeGeneration;
+    const configText = JSON.stringify(this.getVaultConfig());
     const { segments, entryCount } = await this.buildGradeCourseSegments();
+    if (JSON.stringify(this.getVaultConfig()) !== configText) {
+      throw new Error('Die Verschlüsselungseinstellungen wurden während des Speicherns geändert. Bitte erneut speichern.');
+    }
     const publicState = this.store.exportPublicStateSnapshot();
     const config = this.getVaultConfig();
     const containerOptions = {
@@ -198,13 +209,37 @@ export class WorkspacePersistence {
       deviceId: this.deviceId,
       reason,
     };
-    return buildThdb1ContainerBytes(containerOptions);
+    const built = await buildThdb1ContainerBytesAsync(containerOptions);
+    this.builtContainers.set(built, { segments, saveState, changeGeneration });
+    return built;
   }
 
   commitPersistedVaultContainer(bytes) {
     const parsed = parseThdb1ContainerBytes(bytes, { includeGradeCourseSegments: true });
-    this.commitPersistedSegments(parsed?.gradeCourseSegments);
-    this.commitPersistedConfig();
+    if (!parsed) throw new Error('Der gespeicherte Datenbankcontainer ist ungültig oder beschädigt.');
+    const config = this.validateVaultConfig(JSON.parse(parsed.gradeVaultConfigText));
+    this.commitPersistedSegments(parsed.gradeCourseSegments);
+    this.commitPersistedConfig(config);
+  }
+
+  commitBuiltContainer(built, { clearDeleted }) {
+    const metadata = this.builtContainers.get(built);
+    if (!metadata) throw new Error('Der gespeicherte Datenbankstand ist nicht verfügbar.');
+    const current = this.captureSaveState();
+    const preserveChanges = metadata.changeGeneration !== this.changeGeneration
+      || metadata.saveState.session !== current.session
+      || metadata.saveState.courses !== current.courses
+      || built.gradeVaultConfigText !== JSON.stringify(this.getVaultConfig());
+    const config = this.validateVaultConfig(JSON.parse(built.gradeVaultConfigText));
+    this.commitPersistedSegments(metadata.segments, { preserveChanges });
+    this.commitPersistedConfig(config);
+    if (!preserveChanges) {
+      this.publicDirty = false;
+      this.completeGradeSave({ clearDeleted });
+      this.manualDirty = false;
+    } else {
+      this.manualDirty = true;
+    }
   }
 
   async loadBytes(bytes, source = 'manual') {
@@ -507,10 +542,7 @@ export class WorkspacePersistence {
     if (!isCurrentSaveTarget()) return false;
     this.knownRevision = built.header.revision;
     this.knownFileHash = builtHash;
-    this.commitPersistedVaultContainer(built.bytes);
-    this.publicDirty = false;
-    this.completeGradeSave({ clearDeleted: true });
-    this.manualDirty = false;
+    this.commitBuiltContainer(built, { clearDeleted: true });
     this.clearGradeVaultAutoLockWarning();
     this.clearPersistenceFailure();
     this.markChanged('shell');
@@ -534,13 +566,12 @@ export class WorkspacePersistence {
         { skipSaveNotification: true, allowEmpty: false },
       );
     }
+    const generation = this.loadGeneration;
     const built = await this.buildContainer('manual-save');
+    if (generation !== this.loadGeneration || this.loadInProgress) return false;
     this.downloadBytes(built.bytes, this.fileName || this.buildSyncFileSuggestedName());
-    this.commitPersistedVaultContainer(built.bytes);
+    this.commitBuiltContainer(built, { clearDeleted: false });
     this.manualLoaded = true;
-    this.manualDirty = false;
-    this.publicDirty = false;
-    this.completeGradeSave({ clearDeleted: false });
     this.clearGradeVaultAutoLockWarning();
     this.markChanged('shell');
     return true;

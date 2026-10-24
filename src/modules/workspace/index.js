@@ -468,7 +468,7 @@ export function createWorkspaceController({ eventTarget = null, ephemeral = fals
     whenIdle: () => queue,
     dispose() {
       disposed = true;
-      runtimeService?.lockGradeVaultSession?.();
+      runtimeService?.disposeGradeVaultSession?.();
       runtimeService = null;
       runtimeOwner = null;
       store = null;

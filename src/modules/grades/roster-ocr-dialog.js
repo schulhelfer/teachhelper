@@ -508,5 +508,15 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
       stage.focus();
     },
     close,
+    pause: stop,
+    captureDraft() {
+      return dialog.open && rows.length ? structuredClone({ rows, order: nameOrder() }) : null;
+    },
+    restoreDraft(draft) {
+      rows = structuredClone(draft.rows);
+      setNameOrder(draft.order);
+      renderRows();
+      setBusy(false);
+    },
   };
 }

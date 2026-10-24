@@ -243,6 +243,20 @@
               <button type="button" id="group-seat-preferences" class="primary">Gruppenpräferenzen eingeben</button>
             </div>
           </li>
+          <li class="random-picker-sidebar-duration">
+            <strong>Drehzeit einstellen</strong>
+            <label class="random-picker-duration-field" for="random-picker-spin-duration">
+              <span>Drehzeit (Sekunden)</span>
+            </label>
+            <div class="group-size-stepper">
+              <button id="random-picker-spin-duration-decrease" class="group-size-stepper-button" type="button"
+                aria-label="Drehzeit verringern">-</button>
+              <input id="random-picker-spin-duration" class="group-size-input" type="number" min="1" max="10"
+                step="0.5" value="3">
+              <button id="random-picker-spin-duration-increase" class="group-size-stepper-button" type="button"
+                aria-label="Drehzeit erhöhen">+</button>
+            </div>
+          </li>
           <li class="random-picker-sidebar-action-label">
             <strong>Starte Aktion</strong>
           </li>

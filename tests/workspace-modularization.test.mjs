@@ -109,6 +109,8 @@ test('the course repository retains untouched persisted segments without encrypt
     clone: structuredClone,
     isGradeVaultConfigured: () => true,
     isGradeVaultUnlocked: () => false,
+    captureSession: () => 0,
+    assertSession: (session) => assert.equal(session, 0),
     encodeCourse: () => assert.fail('an untouched segment must not be rewritten'),
     decodeCourseSegmentForPlausibility: () => assert.fail('identical segments need no decryption'),
   });
