@@ -102,6 +102,16 @@ test('die Defizitschwelle selbst gilt als Defizit', () => {
   assert.equal(isGradeValueBelowThreshold(0, 4), true);
 });
 
+test('Defizite reichen bis ausschließlich zur nächsten halben Punktzahl', () => {
+  assert.equal(isGradeValueBelowThreshold(4.46), true);
+  assert.equal(isGradeValueBelowThreshold(4.499999), true);
+  assert.equal(isGradeValueBelowThreshold(4.5), false);
+  assert.equal(isGradeValueBelowThreshold(4.51), false);
+  assert.equal(isGradeValueBelowThreshold(3.49, 3), true);
+  assert.equal(isGradeValueBelowThreshold(3.5, 3), false);
+  assert.equal(calculateGradeDeficitShare([4, 4.46, 4.5, 5], 4), 50);
+});
+
 test('leere Werte sind kein Defizit', () => {
   assert.equal(isGradeValueBelowThreshold(null, 4), false);
   assert.equal(isGradeValueBelowThreshold('', 4), false);

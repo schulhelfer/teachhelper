@@ -15581,7 +15581,7 @@ class GradesApp {
       input76.setAttribute("inputmode", "numeric");
       input76.setAttribute("value", String(deficitThreshold));
       input76.value = String(deficitThreshold);
-      input76.setAttribute("title", "Noten bis einschließlich diesem Wert zählen als Defizit");
+      input76.setAttribute("title", "Gerundete Noten bis einschließlich diesem Wert zählen als Defizit");
       gradesEntryField74.append(input76);
       gradesEntryField74.append("\n");
       gradesEntryForm21.append(gradesEntryField74);
@@ -27469,6 +27469,7 @@ class GradesApp {
       const subcategoryId = Number(node.getAttribute("data-subcategory-id") || 0) || null;
       const state = this.getGradeOverrideCellState(studentId, courseId, scope, categoryId, subcategoryId, period);
       node.classList.toggle("is-overridden", state.overridden);
+      node.classList.toggle("is-grade-low", !state.overridden && isGradeValueBelowThreshold(state.value, this.gradeDeficitThreshold));
       if (state.value === null || state.value === undefined || state.value === "") {
         node.removeAttribute("data-grade-tooltip");
       } else {

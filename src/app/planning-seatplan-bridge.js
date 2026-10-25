@@ -271,6 +271,21 @@ export function createPlanningSeatplanBridge({
     tabInitState[TAB_GRADES] = true;
   };
 
+  const loadNameLearningGrades = () => {
+    mountGradesTabNow();
+    if (gradesController?.frame?.loading === 'lazy') {
+      gradesController.frame.loading = 'eager';
+    }
+  };
+
+  const preloadNameLearningGrades = (vault = null) => {
+    if (gradesController?.frame?.loading === 'eager' || !isWorkspaceReady()) return;
+    vault ||= getShellWorkspaceClient()?.getSnapshot?.('shell')?.vault;
+    if (vault?.showGradeStudentPortraits && vault?.showNameLearningModule) {
+      loadNameLearningGrades();
+    }
+  };
+
   const scheduleGradesTabMount = () => {
     if (disposed || disposedModules.has(TAB_GRADES)) return;
     if (tabInitState[TAB_GRADES] || cancelDeferredGradesMount) return;
@@ -336,6 +351,7 @@ export function createPlanningSeatplanBridge({
 
   const initNameLearningTab = (host = els.nameLearningHost) => {
     if (!host || host.dataset.initialized === '1') return;
+    loadNameLearningGrades();
     if (!nameLearningGradeVaultState) {
       const vault = getShellWorkspaceClient()?.getSnapshot?.('shell')?.vault;
       if (vault) {
@@ -543,7 +559,10 @@ export function createPlanningSeatplanBridge({
     initializePendingPlanning();
   });
 
-  listen(window, WORKSPACE_OWNER_READY_EVENT, initializePendingPlanning);
+  listen(window, WORKSPACE_OWNER_READY_EVENT, () => {
+    initializePendingPlanning();
+    preloadNameLearningGrades();
+  });
 
   function sendCourseSeatplanContext(detail) {
     if (disposed) return false;
@@ -853,6 +872,7 @@ export function createPlanningSeatplanBridge({
   listen(window, WORKSPACE_STATE_EVENT, (event) => {
     if (event.detail?.scope !== 'shell') return;
     seatplanController?.sendGradeRosterCoursesOutdated?.();
+    preloadNameLearningGrades(event.detail.snapshot?.vault);
   });
 
   listen(saveResultTarget, GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, (event) => {
@@ -908,6 +928,8 @@ export function createPlanningSeatplanBridge({
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendCourseGradeSaveResult?.(detail);
   });
+
+  preloadNameLearningGrades();
 
   return {
     ensureTabInitialized,

@@ -10,7 +10,7 @@ const source = (await readFile(new URL('../src/app/planning-seatplan-bridge.js',
   .replace(/^import[\s\S]*?from '[^']+';\n/gm, '')
   .replace('export function', 'function');
 
-function createHarness({ ready = true, missingHosts = false } = {}) {
+function createHarness({ ready = true, missingHosts = false, vault = {} } = {}) {
   const calls = [];
   const timers = new Map();
   const frames = new Map();
@@ -60,7 +60,7 @@ function createHarness({ ready = true, missingHosts = false } = {}) {
     cancelAnimationFrame: (id) => frames.delete(id),
     getWorkspaceClient: () => ({
       getLifecycle: () => ({ ready, revision: 12 }),
-      getSnapshot: () => ({ vault: { encryptionEnabled: true, unlocked: false } }),
+      getSnapshot: () => ({ vault: { encryptionEnabled: true, unlocked: false, ...vault } }),
     }),
     mountPlanning: mount('planning'), mountGrades: mount('grades'), mountMerger: mount('merger'),
     mountQr: mount('qr'), mountDuplicateCheck: mount('duplicate-check'),
@@ -112,6 +112,61 @@ test('module layouts preserve active-tab payloads, initial roster and vault acce
   assert.equal(h.calls.at(-1)[2].courseId, 9);
   h.dispatch(tabs.GRADES_GRADE_VAULT_STATE_EVENT, { encryptionEnabled: true, unlocked: false });
   assert.equal(h.calls.at(-1)[2].clearGradeStudentPortraits, true);
+  h.bridge.dispose();
+});
+
+test('opening name learning starts grades eagerly before mounting its own frame', () => {
+  const h = createHarness();
+  h.bridge.ensureTabInitialized('planning');
+  h.bridge.ensureTabInitialized('name-learning');
+  assert.deepEqual(h.mounts, ['planning', 'grades', 'name-learning']);
+  assert.equal(h.controllers.get('grades').frame.loading, 'eager');
+  assert.equal(h.timers.size, 0);
+  assert.equal(h.calls.some(([id, method]) => id === 'grades' && method === 'post'), false);
+  h.bridge.ensureTabInitialized('name-learning');
+  assert.deepEqual(h.mounts, ['planning', 'grades', 'name-learning']);
+  h.bridge.dispose();
+});
+
+test('enabled name learning preloads grades without requesting an unlock', () => {
+  const h = createHarness({ vault: { showGradeStudentPortraits: true, showNameLearningModule: true } });
+  assert.deepEqual(h.mounts, ['grades']);
+  assert.equal(h.controllers.get('grades').frame.loading, 'eager');
+  assert.equal(h.calls.some(([, method]) => method === 'post'), false);
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+  h.dispatch(workspaceMessages.WORKSPACE_OWNER_READY_EVENT, {});
+  assert.deepEqual(h.mounts, ['grades']);
+  h.bridge.dispose();
+});
+
+test('name learning preloading waits for workspace hydration and both visibility settings', () => {
+  for (const vault of [{}, { showGradeStudentPortraits: true }, { showNameLearningModule: true }]) {
+    const h = createHarness({ vault });
+    h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+    assert.deepEqual(h.mounts, []);
+    h.bridge.dispose();
+  }
+  const h = createHarness({ ready: false, vault: { showGradeStudentPortraits: true, showNameLearningModule: true } });
+  assert.deepEqual(h.mounts, []);
+  h.setReady(true);
+  h.dispatch(workspaceMessages.WORKSPACE_OWNER_READY_EVENT, {});
+  assert.deepEqual(h.mounts, ['grades']);
+  assert.equal(h.controllers.get('grades').frame.loading, 'eager');
+  h.bridge.dispose();
+});
+
+test('enabling name learning later promotes an already mounted grades frame', () => {
+  const vault = {};
+  const h = createHarness({ vault });
+  h.bridge.ensureTabInitialized('grades');
+  assert.equal(h.controllers.get('grades').frame.loading, 'lazy');
+  vault.showNameLearningModule = true;
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+  assert.equal(h.controllers.get('grades').frame.loading, 'lazy');
+  vault.showGradeStudentPortraits = true;
+  h.dispatch(workspaceMessages.WORKSPACE_STATE_EVENT, { scope: 'shell' });
+  assert.equal(h.controllers.get('grades').frame.loading, 'eager');
+  assert.deepEqual(h.mounts, ['grades']);
   h.bridge.dispose();
 });
 

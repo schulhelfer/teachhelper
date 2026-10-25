@@ -2,6 +2,78 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDomBrowser } from './helpers/dom-browser.mjs';
 
+test('name learning preloads its hidden unlock provider without opening a password dialog', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const { installWorkspaceController } = await import('/src/modules/workspace/index.js');
+    const { createPlanningSeatplanBridge } = await import('/src/app/planning-seatplan-bridge.js');
+    const owner = installWorkspaceController(window, { ephemeral: true });
+    const store = owner.getStore();
+    const runtime = owner.getOwner();
+    store.setSetting('showGradeStudentPortraits', true);
+    store.setSetting('showNameLearningModule', true);
+    await runtime.setupGradeVault('sicheres-test-passwort');
+    runtime.persistence.commitPersistedVaultContainer((await runtime.buildContainer('seed')).bytes);
+    runtime.courseRepository.completeSave();
+    await runtime.lockGradeVaultSession();
+    runtime.manualLoaded = true;
+    runtime.fileHandle = { name: 'test.json' };
+    runtime.backupDirectoryHandle = { name: 'backup' };
+    const els = { gradesHost: document.createElement('div'), nameLearningHost: document.createElement('div') };
+    els.gradesHost.hidden = true;
+    document.body.append(...Object.values(els));
+    const overlays = [];
+    const onOverlay = (event) => {
+      overlays.push(event.detail);
+      els.gradesHost.hidden = !event.detail.open;
+    };
+    window.addEventListener('classroom:grades-grade-vault-overlay', onOverlay);
+    const bridge = createPlanningSeatplanBridge({ els, getChromeCollapsed: () => false });
+    const frame = els.gradesHost.querySelector('iframe');
+    await new Promise((resolve) => frame.addEventListener('load', resolve, { once: true }));
+    const app = frame.contentWindow.__teachhelperGradesApp?.frame;
+    if (!app) throw new Error(frame.contentDocument.body.dataset.initializationError || 'Grades app did not start');
+    const before = {
+      loading: frame.loading,
+      hidden: els.gradesHost.hidden,
+      locked: !runtime.isGradeVaultUnlocked(),
+      dialogOpen: app.refs.gradeVaultDialog.open,
+      overlays: overlays.length,
+      nameLearningMounted: Boolean(els.nameLearningHost.querySelector('iframe')),
+    };
+    const opened = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Name learning unlock prompt did not open')), 5000);
+      window.addEventListener('classroom:grades-grade-vault-overlay', () => {
+        clearTimeout(timer);
+        resolve();
+      }, { once: true });
+    });
+    bridge.ensureTabInitialized('name-learning');
+    document.dispatchEvent(new CustomEvent('classroom:name-learning-data-request', {
+      detail: { requestId: 'name-learning-open' },
+    }));
+    await opened;
+    const after = {
+      sameFrame: frame === els.gradesHost.querySelector('iframe'),
+      visible: !els.gradesHost.hidden,
+      dialogOpen: app.refs.gradeVaultDialog.open,
+      mode: app.pendingGradeVaultDialogMode,
+      continuation: app.pendingGradeVaultContinuation.type,
+      nameLearningLoading: els.nameLearningHost.querySelector('iframe').loading,
+    };
+    bridge.dispose();
+    bridge.disposeModule('name-learning');
+    bridge.disposeModule('grades');
+    window.removeEventListener('classroom:grades-grade-vault-overlay', onOverlay);
+    owner.dispose();
+    return { before, after };
+  });
+  assert.deepEqual(result.before, { loading: 'eager', hidden: true, locked: true,
+    dialogOpen: false, overlays: 0, nameLearningMounted: false });
+  assert.deepEqual(result.after, { sameFrame: true, visible: true, dialogOpen: true,
+    mode: 'unlock', continuation: 'name-learning-data', nameLearningLoading: 'eager' });
+});
+
 test('iframe controllers preserve pending messages, layouts and disposal across load', async (t) => {
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {

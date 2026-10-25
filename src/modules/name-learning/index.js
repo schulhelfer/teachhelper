@@ -12,7 +12,7 @@ export function mountNameLearning({ host } = {}) {
   host.textContent = '';
   const frame = createModuleFrame({
     className: 'name-learning-frame',
-    loading: 'lazy',
+    loading: 'eager',
     src: NAME_LEARNING_URL,
     title: 'Namen lernen',
     sandbox: ISOLATED_MODULE_SANDBOX,

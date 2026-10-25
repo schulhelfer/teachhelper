@@ -38,7 +38,7 @@ export function isGradeValueBelowThreshold(value, threshold = GRADE_DEFICIT_THRE
     threshold,
     GRADE_DEFICIT_THRESHOLD_DEFAULT
   );
-  return Number.isFinite(numeric) && numeric <= normalizedThreshold;
+  return Number.isFinite(numeric) && numeric < normalizedThreshold + 0.5;
 }
 
 export function calculateGradeDeficitShare(values = [], threshold = GRADE_DEFICIT_THRESHOLD_DEFAULT) {
