@@ -126,6 +126,7 @@ test('BE saving uses one verified write and keeps drafts on errors and conflicts
         app.gradesEntryDraft = { ...app.getGradesEntryDraft(courseId), title: 'Neuer Test', mode: 'test', testTasks };
       }
       const draft = assessment ? app.getGradesEntryAssessmentDraft(assessment) : app.getGradesEntryDraft(courseId);
+      draft.testDisplaySystem = 'school';
       const originalBaseline = { revision: draft.baseCourseRevision, fingerprint: draft.baseFingerprint };
       const students = api.data.listGradeStudents(courseId);
       content.append(app.buildGradesTestEntryTable(api.data.getCourse(courseId), students, assessment, draft));
@@ -170,6 +171,7 @@ test('BE saving uses one verified write and keeps drafts on errors and conflicts
       const currentEntries = api.data.listGradeEntries().filter((entry) => Number(entry.assessmentId) === Number(savedAssessmentId));
       const otherSegment = (segments) => segments.find((segment) => segment.courseId === otherCourseId)?.text;
       let reopenedEntries = [];
+      let reopenedDisplaySystem = null;
       if (saved) {
         const reopenedStore = new WorkspaceStore();
         const reopenedRuntime = new WorkspaceRuntime(reopenedStore, { eventTarget: new EventTarget() });
@@ -177,6 +179,7 @@ test('BE saving uses one verified write and keeps drafts on errors and conflicts
         if (scenario === 'encrypted') await reopenedRuntime.unlockGradeVault('ausreichend-sicheres-passwort');
         await reopenedRuntime.ensureGradeCourseLoaded(courseId);
         reopenedEntries = reopenedStore.gradeVaultState.gradeEntries.filter((entry) => Number(entry.assessmentId) === Number(savedAssessmentId));
+        reopenedDisplaySystem = reopenedStore.getGradeAssessment(savedAssessmentId).testDisplaySystem;
       }
       results.push({
         scenario, saved, committed, writes, commitBaselineReads, commitContextReads, keptBaseline,
@@ -185,7 +188,7 @@ test('BE saving uses one verified write and keeps drafts on errors and conflicts
         fileUnchanged: bytes.length === bytesBeforeSave.length && bytes.every((byte, index) => byte === bytesBeforeSave[index]),
         initialFileRestored: bytes.length === initialBytes.length && bytes.every((byte, index) => byte === initialBytes[index]),
         otherCourseUnchanged: saved && otherSegment(persisted) === otherSegment(initialSegments),
-        entryCount: currentEntries.length, reopenedCount: reopenedEntries.length,
+        entryCount: currentEntries.length, reopenedCount: reopenedEntries.length, reopenedDisplaySystem,
         allScoresSaved: reopenedEntries.every((entry) => testTasks.every((task) => entry.testScores[task.id] === 10)),
         commentsPreserved: reopenedEntries.every((entry) => entry.expectationHorizonComment === (scenario === 'new' ? '' : 'Individueller Kommentar')),
         draftScoresPreserved: students.every((student) => testTasks.every((task) => app.gradesEntryDraft?.entries?.[student.id]?.testScores?.[task.id] === 10)),
@@ -221,6 +224,7 @@ test('BE saving uses one verified write and keeps drafts on errors and conflicts
       assert.equal(result.otherCourseUnchanged, true, result.scenario);
       assert.equal(result.entryCount, 30, result.scenario);
       assert.equal(result.reopenedCount, 30, result.scenario);
+      assert.equal(result.reopenedDisplaySystem, 'school', result.scenario);
       assert.equal(result.allScoresSaved, true, result.scenario);
       assert.equal(result.commentsPreserved, true, result.scenario);
       assert.deepEqual(result.toasts, ['Noten gespeichert'], result.scenario);

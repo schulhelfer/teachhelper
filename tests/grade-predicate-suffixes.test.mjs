@@ -8,6 +8,8 @@ const {
   getDefaultGradeTestPredicateSuffixes,
   getGradeTestScaleTooltipRows,
   calculateGradeTestValueFromRatio,
+  isGradeTestRatioNearBetterGrade,
+  calculateGradeTestRatio,
   formatGradeDisplayForSystem,
   GRADE_TEST_SCALE_THRESHOLDS,
 } = await loadGradesInternals([
@@ -16,6 +18,8 @@ const {
   'getDefaultGradeTestPredicateSuffixes',
   'getGradeTestScaleTooltipRows',
   'calculateGradeTestValueFromRatio',
+  'isGradeTestRatioNearBetterGrade',
+  'calculateGradeTestRatio',
   'formatGradeDisplayForSystem',
   'GRADE_TEST_SCALE_THRESHOLDS',
 ]);
@@ -169,4 +173,119 @@ test('die Punkteanzeige ist zweistellig und kennt keine Tendenzen', () => {
   assert.equal(formatGradeDisplayForSystem(5, 'points'), '05');
   assert.equal(formatGradeDisplayForSystem(15, 'points'), '15');
   assert.equal(formatGradeDisplayForSystem(null, 'points'), '—');
+});
+
+const nearBetterGradeScales = [
+  { scale: 'sek1', thresholds: GRADE_TEST_SCALE_THRESHOLDS.sek1 },
+  { scale: 'sek2', thresholds: GRADE_TEST_SCALE_THRESHOLDS.sek2 },
+  {
+    scale: {
+      id: 'custom',
+      thresholds: GRADE_TEST_SCALE_THRESHOLDS.sek2.map(([threshold, grade]) => [
+        grade >= 13 ? threshold + 0.03 : threshold,
+        grade,
+      ]),
+    },
+    get thresholds() { return this.scale.thresholds; },
+  },
+];
+
+function createGradeTestRatioState(ratio, maxSum = 1000) {
+  return { ratio, maxSum, earnedSum: ratio * maxSum };
+}
+
+test('15 Punkte erhalten auch bis 100 Prozent keine orange Markierung', () => {
+  for (const { scale, thresholds } of nearBetterGradeScales) {
+    const topThreshold = thresholds.find(([, grade]) => grade === 15)[0];
+    for (const ratio of [topThreshold, (topThreshold + 1) / 2, 1]) {
+      for (const maxSum of [20, 1000]) {
+        assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(ratio, maxSum), scale, null, true), false);
+      }
+    }
+  }
+});
+
+test('ohne Tendenzen erhält die gesamte Note 1 keine orange Markierung', () => {
+  for (const { scale, thresholds } of nearBetterGradeScales) {
+    const topThreshold = thresholds.find(([, grade]) => grade === 13)[0];
+    for (const ratio of [topThreshold, (topThreshold + 1) / 2, 0.99, 1]) {
+      for (const maxSum of [20, 1000]) {
+        assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(ratio, maxSum), scale, null, false), false);
+      }
+    }
+  }
+});
+
+test('das obere Viertel markiert auch bei mehr als 1 BE Abstand zur besseren Note', () => {
+  for (const { scale, thresholds } of nearBetterGradeScales) {
+    for (const predicateSuffixes of [true, false]) {
+      const upperGrade = predicateSuffixes ? 15 : 13;
+      const lowerGrade = predicateSuffixes ? 14 : 10;
+      const upper = thresholds.find(([, grade]) => grade === upperGrade)[0];
+      const lower = thresholds.find(([, grade]) => grade === lowerGrade)[0];
+      const orangeFrom = lower + (upper - lower) * 3 / 4;
+      assert.ok((upper - orangeFrom) * 1000 > 1);
+      for (const [ratio, expected] of [[orangeFrom - 0.001, false], [orangeFrom, true], [upper - 0.001, true], [upper, false]]) {
+        assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(ratio), scale, null, predicateSuffixes), expected);
+      }
+    }
+  }
+});
+
+test('höchstens 1 BE Abstand markiert auch unterhalb des oberen Viertels', () => {
+  for (const { scale, thresholds } of nearBetterGradeScales) {
+    for (const predicateSuffixes of [true, false]) {
+      const upperGrade = predicateSuffixes ? 15 : 13;
+      const lowerGrade = predicateSuffixes ? 14 : 10;
+      const upper = thresholds.find(([, grade]) => grade === upperGrade)[0];
+      const lower = thresholds.find(([, grade]) => grade === lowerGrade)[0];
+      const maxSum = 2 / (upper - lower);
+      for (const [missingBe, expected] of [[1.001, false], [1, true], [0.999, true], [0.1, true], [0, false]]) {
+        const ratio = upper - missingBe / maxSum;
+        assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(ratio, maxSum), scale, null, predicateSuffixes), expected);
+      }
+    }
+  }
+});
+
+test('Notenbereiche unter 1 BE werden vollständig markiert und die Bestnote bleibt ausgenommen', () => {
+  for (const { scale, thresholds } of nearBetterGradeScales) {
+    for (const predicateSuffixes of [true, false]) {
+      const upper = thresholds.find(([, grade]) => grade === (predicateSuffixes ? 15 : 13))[0];
+      const lower = thresholds.find(([, grade]) => grade === (predicateSuffixes ? 14 : 10))[0];
+      const maxSum = 0.8 / (upper - lower);
+      assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(lower, maxSum), scale, null, predicateSuffixes), true);
+      assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(upper, maxSum), scale, null, predicateSuffixes), false);
+    }
+  }
+});
+
+test('die 1-BE-Regel verwendet ungerundete Prozentgrenzen', () => {
+  for (const [earnedBe, expected] of [[6.299, false], [6.3, true]]) {
+    const ratioState = createGradeTestRatioState(earnedBe / 10, 10);
+    assert.equal(isGradeTestRatioNearBetterGrade(ratioState, 'sek1', null, false), expected);
+  }
+});
+
+test('nach einem Notensprung wird die neue Stufe geprüft', () => {
+  assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(0.699, 100), 'sek2', null, false), true);
+  assert.equal(isGradeTestRatioNearBetterGrade(createGradeTestRatioState(0.7, 100), 'sek2', null, false), false);
+});
+
+test('fehlende und nicht berechenbare BE-Ergebnisse werden nicht markiert', () => {
+  const tasks = [{ id: '1', maxBe: 30 }];
+  const invalidStates = [
+    null,
+    undefined,
+    {},
+    calculateGradeTestRatio(tasks, {}),
+    calculateGradeTestRatio([], { 1: 5 }),
+    { ratio: 0.7, earnedSum: 7, maxSum: 0 },
+    { ratio: NaN, earnedSum: 7, maxSum: 10 },
+    { ratio: 0.7, earnedSum: Infinity, maxSum: 10 },
+    { ratio: 0.7, earnedSum: 7, maxSum: Infinity },
+  ];
+  for (const state of invalidStates) {
+    assert.equal(isGradeTestRatioNearBetterGrade(state, 'sek1', null, false), false);
+  }
 });

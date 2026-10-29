@@ -2,6 +2,14 @@ function clampGrade(value, min = 0, max = 15) {
   return Math.min(max, Math.max(min, Number(value) || 0));
 }
 
+export function normalizeGradeTestDisplaySystem(value, scale = "sek2") {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "school" || normalized === "points15") {
+    return normalized;
+  }
+  return String(scale || "").trim().toLowerCase() === "sek1" ? "school" : "points15";
+}
+
 export function calculateWeightedGrade(items = [], { min = 0, max = 15 } = {}) {
   let weightedSum = 0;
   let weightSum = 0;

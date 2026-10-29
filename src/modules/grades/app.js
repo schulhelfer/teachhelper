@@ -1,4 +1,5 @@
 import { applyFeedbackDialog } from "../../shared/feedback-dialog.js";
+import { normalizeGradeTestDisplaySystem } from "../../shared/school-data/grades.js";
 import { createRosterOcrDialog } from "./roster-ocr-dialog.js";
 import {
   createDocxFromPreparedTemplate,
@@ -208,7 +209,7 @@ const POPUP_TABLE_GRADE_FIELD_SELECTOR = "body > app-root > app-course-detail > 
 const GRADE_TEST_AFB_OPTIONS = ["I", "I/II", "II", "II/III", "III"];
 const GRADE_DEFICIT_TOOLTIP = "Rot = Defizit";
 const GRADE_DEFICIT_FOLLOWUP_TOOLTIP = "Gelb = Nachbereitung erforderlich";
-const GRADE_RATIO_TOOLTIP = "Orange = Kurz vor besserer Note";
+const GRADE_RATIO_TOOLTIP = "Orange = Oberes Viertel der Notenstufe oder höchstens 1 BE bis zur besseren Note";
 const GRADE_SIDEBAR_LOCKED_TOOLTIP = "Notenmodul ist gesperrt";
 const GRADE_SKIPPED_PLACEHOLDER = "--";
 const GRADE_STUDENT_PERFORMANCE_FLAIRS = ["P1", "P2", "P3", "P4", "P5"];
@@ -1751,35 +1752,40 @@ function calculateGradeTestValueFromRatio(ratioState = null, scale = GRADE_TEST_
   return applyGradeTestPredicateSuffixes(match ? match[1] : 0, predicateSuffixes);
 }
 
-function isGradeTestRatioInUpperThirdOfGradeBand(ratio, scale = GRADE_TEST_SCALE_DEFAULT, settings = null, predicateSuffixes = true) {
-  const normalizedRatio = clamp(Number(ratio) || 0, 0, 1);
+function isGradeTestRatioNearBetterGrade(ratioState, scale = GRADE_TEST_SCALE_DEFAULT, settings = null, predicateSuffixes = true) {
+  const { ratio, earnedSum, maxSum } = ratioState || {};
+  if (!Number.isFinite(ratio) || !Number.isFinite(earnedSum) || !Number.isFinite(maxSum) || maxSum <= 0) {
+    return false;
+  }
+  const normalizedRatio = clamp(ratio, 0, 1);
   const thresholds = scale && typeof scale === "object"
     ? normalizeGradeTestScaleSnapshot(scale, scale.id, settings).thresholds
     : buildGradeTestScaleSnapshot(settings, scale).thresholds;
   const matchIndex = thresholds.findIndex(([threshold]) => normalizedRatio + 0.0000001 >= Number(threshold || 0));
-  if (matchIndex < 0) {
+  if (matchIndex <= 0) {
     return false;
   }
   let lowerBound = clamp(Number(thresholds[matchIndex]?.[0] || 0), 0, 1);
-  let upperBound = matchIndex === 0
-    ? 1
-    : clamp(Number(thresholds[matchIndex - 1]?.[0] || 0), 0, 1);
+  let upperBound = clamp(Number(thresholds[matchIndex - 1]?.[0] || 0), 0, 1);
   if (!normalizeGradeTestPredicateSuffixes(predicateSuffixes, true)) {
     const groupedRows = getGradeTestScaleTooltipRows(thresholds, false);
     const currentGrade = Number(thresholds[matchIndex]?.[1]);
     const groupIndex = groupedRows.findIndex((row) => Number(row.grade) <= currentGrade);
+    if (groupIndex === 0) {
+      return false;
+    }
     if (groupIndex >= 0) {
       lowerBound = clamp(Number(groupedRows[groupIndex]?.threshold || 0), 0, 1);
-      upperBound = groupIndex === 0
-        ? 1
-        : clamp(Number(groupedRows[groupIndex - 1]?.threshold || 0), 0, 1);
+      upperBound = clamp(Number(groupedRows[groupIndex - 1]?.threshold || 0), 0, 1);
     }
   }
   const bandWidth = upperBound - lowerBound;
   if (bandWidth <= 0.0000001) {
     return false;
   }
-  return normalizedRatio + 0.0000001 >= lowerBound + ((bandWidth * 2) / 3);
+  const isInUpperQuarter = normalizedRatio + 0.0000001 >= lowerBound + ((bandWidth * 3) / 4);
+  const missingBe = (upperBound * maxSum) - earnedSum;
+  return isInUpperQuarter || (missingBe > 0 && missingBe <= 1 + 0.0000001);
 }
 
 function formatGradeBeAverageValue(value) {
@@ -11144,6 +11150,23 @@ class GradesApp {
       return;
     }
 
+    const testDisplaySystemInput = event.target.closest("input[data-grades-entry-test-display-system='1']");
+    if (testDisplaySystemInput) {
+      this.runAfterSegmentControlSlide(event, () => {
+        const latestDraft = commitAndGetLatestDraft();
+        if (!latestDraft) {
+          return;
+        }
+        this.markGradesEntryDraftDirty();
+        this.gradesEntryDraft = {
+          ...latestDraft,
+          testDisplaySystem: normalizeGradeTestDisplaySystem(testDisplaySystemInput.value, latestDraft.testScale)
+        };
+        this.renderGradesView();
+      });
+      return;
+    }
+
     const testPredicateSuffixesInput = event.target.closest("input[data-grades-entry-test-predicate-suffixes='1']");
     if (testPredicateSuffixesInput) {
       const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(testPredicateSuffixesInput.value, true);
@@ -11243,6 +11266,9 @@ class GradesApp {
         mode,
         weight: mode === "homework" ? 1 : latestDraft.weight,
         testScale,
+        testDisplaySystem: mode === "test"
+          ? normalizeGradeTestDisplaySystem(previousMode === "test" ? latestDraft.testDisplaySystem : null, testScale)
+          : null,
         testPredicateSuffixes: mode === "test"
           ? (
             courseDefaults
@@ -14184,6 +14210,9 @@ class GradesApp {
       mode: normalizeGradeAssessmentMode(draftValues?.mode),
       occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(draftValues?.occurrenceCategoryId),
       testScale: normalizeGradeTestScale(draftValues?.testScale),
+      testDisplaySystem: normalizeGradeAssessmentMode(draftValues?.mode) === "test"
+        ? normalizeGradeTestDisplaySystem(null, draftValues?.testScale)
+        : null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
         draftValues?.testPredicateSuffixes,
         getDefaultGradeTestPredicateSuffixes(draftValues?.testScale)
@@ -14228,6 +14257,9 @@ class GradesApp {
       mode: normalizeGradeAssessmentMode(assessment.mode),
       occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(assessment.occurrenceCategoryId),
       testScale: normalizeGradeTestScale(assessment.testScale),
+      testDisplaySystem: normalizeGradeAssessmentMode(assessment.mode) === "test"
+        ? normalizeGradeTestDisplaySystem(assessment.testDisplaySystem, assessment.testScale)
+        : null,
       testScaleSnapshot: assessment.testScaleSnapshot || null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(assessment.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }),
@@ -14293,6 +14325,9 @@ class GradesApp {
           : base.occurrenceCategoryId
       ),
       testScale: normalizeGradeTestScale(previous.testScale || base.testScale),
+      testDisplaySystem: normalizeGradeAssessmentMode(previous.mode || base.mode) === "test"
+        ? normalizeGradeTestDisplaySystem(previous.testDisplaySystem ?? base.testDisplaySystem, previous.testScale || base.testScale)
+        : null,
       testScaleSnapshot: previous.testScaleSnapshot || base.testScaleSnapshot || null,
       testPredicateSuffixes: Object.prototype.hasOwnProperty.call(previous, "testPredicateSuffixes")
         ? normalizeGradeTestPredicateSuffixes(previous.testPredicateSuffixes, true)
@@ -14354,6 +14389,9 @@ class GradesApp {
       weight: normalizeGradeInteger(state?.weight, assessment.weight || 1),
       mode: normalizeGradeAssessmentMode(state?.mode || assessment.mode),
       testScale,
+      testDisplaySystem: normalizeGradeAssessmentMode(state?.mode || assessment.mode) === "test"
+        ? normalizeGradeTestDisplaySystem(state?.testDisplaySystem ?? assessment.testDisplaySystem, testScale)
+        : null,
       testScaleSnapshot,
       testPredicateSuffixes: Object.prototype.hasOwnProperty.call(state || {}, "testPredicateSuffixes")
         ? normalizeGradeTestPredicateSuffixes(state.testPredicateSuffixes, true)
@@ -14925,6 +14963,7 @@ class GradesApp {
       weight: mode === "homework" ? 1 : normalizeGradeInteger(editorValues.weight, assessment.weight || 1),
       mode,
       testScale: nextScale,
+      testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(editorValues.testDisplaySystem, nextScale) : null,
       refreshTestScaleSnapshot: mode === "test" && previousMode === "test" && nextScale !== previousScale,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(editorValues.testPredicateSuffixes, true),
       testTasks: normalizeGradeTestTasks(editorValues.testTasks, { ensureDefault: false }),
@@ -15395,7 +15434,7 @@ class GradesApp {
       }
       gradesEntryForm21.append("\n");
       const gradesEntryField50 = document.createElement("fieldset");
-      gradesEntryField50.className = "grades-entry-field grades-entry-test-scale-field is-wide" + String(editorMode === "test" ? "" : " is-hidden");
+      gradesEntryField50.className = "grades-entry-field grades-entry-test-scale-field" + String(editorMode === "test" ? "" : " is-hidden");
       gradesEntryField50.append("\n");
       const legend51 = document.createElement("legend");
       legend51.textContent = "Prozentgrenzen";
@@ -15412,6 +15451,33 @@ class GradesApp {
       gradesEntryField50.append("\n");
       gradesEntryForm21.append(gradesEntryField50);
       gradesEntryForm21.append("\n");
+      const testDisplaySystemField = document.createElement("fieldset");
+      testDisplaySystemField.className = "grades-entry-field grades-entry-test-display-system-field" + String(editorMode === "test" ? "" : " is-hidden");
+      const testDisplaySystemLegend = document.createElement("legend");
+      testDisplaySystemLegend.textContent = "Notensystem";
+      const testDisplaySystemControl = document.createElement("div");
+      testDisplaySystemControl.className = "assessment-mode-toggle";
+      testDisplaySystemControl.setAttribute("role", "radiogroup");
+      testDisplaySystemControl.setAttribute("aria-label", "Notensystem der BE-Leistung");
+      const testDisplaySystem = normalizeGradeTestDisplaySystem(editorState.testDisplaySystem, editorState.testScale);
+      for (const [value, label] of [["points15", "15–00"], ["school", "1–6"]]) {
+        const option = document.createElement("label");
+        option.className = "assessment-mode-option";
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "grades-entry-test-display-system";
+        input.dataset.gradesEntryTestDisplaySystem = "1";
+        input.value = value;
+        input.checked = value === testDisplaySystem;
+        input.defaultChecked = input.checked;
+        input.disabled = editorMode !== "test";
+        const text = document.createElement("span");
+        text.textContent = label;
+        option.append(input, text);
+        testDisplaySystemControl.append(option);
+      }
+      testDisplaySystemField.append(testDisplaySystemLegend, testDisplaySystemControl);
+      gradesEntryForm21.append(testDisplaySystemField);
       const gradesEntryField53 = document.createElement("fieldset");
       gradesEntryField53.className = "grades-entry-field grades-entry-test-predicate-field is-wide" + String(editorMode === "test" ? "" : " is-hidden");
       gradesEntryField53.append("\n");
@@ -16283,6 +16349,7 @@ class GradesApp {
     const weightInput = root.querySelector("input[data-grades-entry-weight]");
     const modeInput = root.querySelector("input[data-grades-entry-mode='1']:checked");
     const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
+    const testDisplaySystemInput = root.querySelector("input[data-grades-entry-test-display-system='1']:checked");
     const testPredicateSuffixesInput = root.querySelector("input[data-grades-entry-test-predicate-suffixes='1']:checked");
     const yearLevelSelect = root.querySelector("select[data-grades-entry-year-level]");
     const courseLevelInput = root.querySelector("input[data-grades-entry-course-level='1']:checked");
@@ -16305,6 +16372,9 @@ class GradesApp {
         ? this.resolveGradeOccurrenceCategoryId(occurrenceCategorySelect?.value ?? draft.occurrenceCategoryId)
         : this.resolveGradeOccurrenceCategoryId(draft.occurrenceCategoryId),
       testScale,
+      testDisplaySystem: mode === "test"
+        ? normalizeGradeTestDisplaySystem(testDisplaySystemInput?.value ?? draft.testDisplaySystem, testScale)
+        : null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
         testPredicateSuffixesInput?.value,
         Object.prototype.hasOwnProperty.call(draft || {}, "testPredicateSuffixes")
@@ -17480,7 +17550,7 @@ class GradesApp {
         const gradeValue = calculateGradeTestValue(tasks, scores, scaleSnapshot, null, predicateSuffixes);
         return [
           this.getGradeStudentDisplayName(student),
-          formatGradeDisplayForSystem(gradeValue, this.getCurrentGradeOverviewDisplaySystem()),
+          formatGradeDisplayForSystem(gradeValue, normalizeGradeTestDisplaySystem(assessment?.testDisplaySystem, assessment?.testScale), { predicateSuffixes: predicateSuffixes }),
           formatGradeTestRatioDisplay(ratioState),
           ...taskColumns.map((_column, index) => {
             const task = tasks[index];
@@ -20954,13 +21024,6 @@ class GradesApp {
   }
 
   formatExpectationHorizonPercentBoundaryGradeLabel(row, displaySystem, predicateSuffixes) {
-    if (
-      normalizeGradeDisplaySystem(displaySystem) === GRADE_DISPLAY_SYSTEM_SCHOOL
-      && normalizeGradeTestPredicateSuffixes(predicateSuffixes, true) === false
-      && row?.label
-    ) {
-      return String(row.label);
-    }
     return formatGradeDisplayForSystem(row?.grade, displaySystem, { predicateSuffixes });
   }
 
@@ -20981,7 +21044,7 @@ class GradesApp {
       ? options.scaleSnapshot
       : this.store.buildGradeTestScaleSnapshot(GRADE_TEST_SCALE_DEFAULT);
     const predicateSuffixes = normalizeGradeTestPredicateSuffixes(options.predicateSuffixes, true);
-    const displaySystem = normalizeGradeDisplaySystem(options.displaySystem || this.getCurrentGradeOverviewDisplaySystem());
+    const displaySystem = normalizeGradeTestDisplaySystem(options.displaySystem, scaleSnapshot.id);
     const maxBeSum = Number(options.maxBeSum || 0);
     const thresholdRows = getGradeTestScaleTooltipRows(scaleSnapshot.thresholds, predicateSuffixes);
     if (!thresholdRows.length) {
@@ -21052,7 +21115,7 @@ class GradesApp {
       scaleSnapshot,
       predicateSuffixes: testPredicateSuffixes,
       maxBeSum,
-      displaySystem: this.getCurrentGradeOverviewDisplaySystem()
+      displaySystem: normalizeGradeTestDisplaySystem(values.testDisplaySystem, scale)
     });
     const includePercentile = options.includePercentile !== false;
     const percentileByStudentId = includePercentile
@@ -24592,8 +24655,8 @@ class GradesApp {
       this.gradeDeficitThreshold,
       testPredicateSuffixes
     );
-    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
-    const displayPredicateSuffixes = this.getCurrentGradeOverviewPredicateSuffixes();
+    const displaySystem = normalizeGradeTestDisplaySystem(activeDraft?.testDisplaySystem, activeDraft?.testScale);
+    const displayPredicateSuffixes = testPredicateSuffixes;
     const table = document.createElement("table");
     table.className = "grade-block-table grades-entry-table grades-test-entry-table";
     table.dataset.tutorialAnchor = "grades-entry-results";
@@ -24778,8 +24841,8 @@ class GradesApp {
       const ratioCell = document.createElement("td");
       ratioCell.className = "grade-test-ratio-col";
       const ratioState = calculateGradeTestRatio(tasks, scores);
-      const isRatioNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
-        ratioState?.ratio,
+      const isRatioNearBetterGrade = isGradeTestRatioNearBetterGrade(
+        ratioState,
         scaleSnapshot,
         null,
         testPredicateSuffixes
@@ -25069,6 +25132,7 @@ class GradesApp {
       ...draft,
       yearLevel: defaults.yearLevel,
       testScale: defaults.testScale,
+      testDisplaySystem: normalizeGradeTestDisplaySystem(draft.testDisplaySystem, defaults.testScale),
       testScaleSnapshot: null,
       testPredicateSuffixes: defaults.testPredicateSuffixes,
       courseLevel: defaults.courseLevel
@@ -25135,6 +25199,7 @@ class GradesApp {
       mode,
       occurrenceCategoryId: this.resolveGradeOccurrenceCategoryId(previous.occurrenceCategoryId),
       testScale,
+      testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(previous.testDisplaySystem, testScale) : null,
       testScaleSnapshot: previous.testScaleSnapshot || null,
       testPredicateSuffixes: courseDefaults
         ? courseDefaults.testPredicateSuffixes
@@ -25271,6 +25336,7 @@ class GradesApp {
       weight: mode === "homework" ? 1 : normalizeGradeInteger(values?.weight, 1),
       mode,
       testScale: normalizeGradeTestScale(values?.testScale),
+      testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(values?.testDisplaySystem, values?.testScale) : null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
         values?.testPredicateSuffixes,
         getDefaultGradeTestPredicateSuffixes(values?.testScale)
@@ -25308,6 +25374,7 @@ class GradesApp {
     const weightInput = root.querySelector("input[data-grades-entry-weight]");
     const modeInput = root.querySelector("input[data-grades-entry-mode='1']:checked");
     const testScaleInput = root.querySelector("input[data-grades-entry-test-scale='1']:checked");
+    const testDisplaySystemInput = root.querySelector("input[data-grades-entry-test-display-system='1']:checked");
     const testPredicateSuffixesInput = root.querySelector("input[data-grades-entry-test-predicate-suffixes='1']:checked");
     const yearLevelSelect = root.querySelector("select[data-grades-entry-year-level]");
     const courseLevelInput = root.querySelector("input[data-grades-entry-course-level='1']:checked");
@@ -25357,6 +25424,9 @@ class GradesApp {
         occurrenceCategorySelect?.value ?? draft.occurrenceCategoryId
       ),
       testScale: normalizeGradeTestScale(testScaleInput?.value || draft.testScale),
+      testDisplaySystem: normalizeGradeAssessmentMode(modeInput?.value || draft.mode) === "test"
+        ? normalizeGradeTestDisplaySystem(testDisplaySystemInput?.value ?? draft.testDisplaySystem, testScaleInput?.value || draft.testScale)
+        : null,
       testScaleSnapshot: draft.testScaleSnapshot || null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
         testPredicateSuffixesInput?.value,
@@ -27135,6 +27205,7 @@ class GradesApp {
         : "—";
       optionRows.push(
         ["Prozentgrenzen", this.formatGradesEntryPrintScaleLabel(values.testScale)],
+        ["Notensystem", normalizeGradeTestDisplaySystem(values.testDisplaySystem, values.testScale) === GRADE_DISPLAY_SYSTEM_SCHOOL ? "1–6" : "15–00"],
         ["Prädikatsanhängsel", normalizeGradeTestPredicateSuffixes(values.testPredicateSuffixes, true) ? "Ja" : "Nein"],
         ["Jahrgangsstufe", yearLevel === null ? "—" : String(yearLevel)],
         ["Anforderungsniveau", courseLevel || "—"],
@@ -27270,7 +27341,7 @@ class GradesApp {
       nameCell.className = "student-col";
       nameCell.textContent = this.getGradeStudentDisplayName(student);
       const gradeCell = document.createElement("td");
-      gradeCell.textContent = formatGradeDisplayForSystem(gradeValue, this.getCurrentGradeOverviewDisplaySystem());
+      gradeCell.textContent = formatGradeDisplayForSystem(gradeValue, normalizeGradeTestDisplaySystem(source?.testDisplaySystem, source?.testScale), { predicateSuffixes: testPredicateSuffixes });
       const ratioCell = document.createElement("td");
       ratioCell.textContent = formatGradeTestRatioDisplay(ratioState);
       tr.append(nameCell, gradeCell, ratioCell);
@@ -27297,7 +27368,7 @@ class GradesApp {
     averageLabel.className = "student-col";
     averageLabel.textContent = "Durchschnitt";
     const averageGrade = document.createElement("td");
-    averageGrade.textContent = formatGradeDisplayForSystem(averageState.gradeValue, this.getCurrentGradeOverviewDisplaySystem());
+    averageGrade.textContent = formatGradeDisplayForSystem(averageState.gradeValue, normalizeGradeTestDisplaySystem(source?.testDisplaySystem, source?.testScale), { predicateSuffixes: testPredicateSuffixes });
     const averageRatio = document.createElement("td");
     averageRatio.textContent = formatGradeTestAverageRatioDisplay(averageState.ratioState);
     averageRow.append(averageLabel, averageGrade, averageRatio);
@@ -28374,8 +28445,6 @@ class GradesApp {
       : `[data-grade-test-ratio-student="${studentKey}"][data-grade-test-draft-ratio="1"]`;
     const node = this.refs.gradesEntryContent?.querySelector(selector);
     const ratioNode = this.refs.gradesEntryContent?.querySelector(ratioSelector);
-    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
-    const predicateSuffixes = this.getCurrentGradeOverviewPredicateSuffixes();
     if (assessmentId) {
       const assessment = this.store.getGradeAssessment(assessmentId);
       const draft = (
@@ -28392,17 +28461,18 @@ class GradesApp {
       const testPredicateSuffixes = draft
         ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
         : normalizeGradeTestPredicateSuffixes(assessment?.testPredicateSuffixes, true);
+      const displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem ?? assessment?.testDisplaySystem, draft?.testScale || assessment?.testScale);
       if (node) {
         const value = calculateGradeTestValue(tasks, entry?.testScores || {}, scaleSnapshot, null, testPredicateSuffixes);
         const isDeficit = isGradeValueBelowThreshold(value, this.gradeDeficitThreshold);
-        node.textContent = formatGradeDisplayForSystem(value, displaySystem, { predicateSuffixes });
+        node.textContent = formatGradeDisplayForSystem(value, displaySystem, { predicateSuffixes: testPredicateSuffixes });
         node.classList.toggle("is-grade-low", isDeficit);
         this.syncGradeDeficitTooltip(node, isDeficit);
       }
       if (ratioNode) {
         const ratioState = calculateGradeTestRatio(tasks, entry?.testScores || {});
-        const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
-          ratioState?.ratio,
+        const isNearBetterGrade = isGradeTestRatioNearBetterGrade(
+          ratioState,
           scaleSnapshot,
           null,
           testPredicateSuffixes
@@ -28414,6 +28484,7 @@ class GradesApp {
       return;
     }
     const draft = this.getGradesEntryDraft(this.selectedCourseId);
+    const displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem, draft?.testScale);
     const entry = draft && typeof draft.entries === "object" && Object.prototype.hasOwnProperty.call(draft.entries, studentKey)
       ? normalizeGradeDraftEntry(draft.entries[studentKey])
       : null;
@@ -28425,7 +28496,7 @@ class GradesApp {
       );
       const value = calculateGradeTestValue(draft.testTasks, entry?.testScores || {}, scaleSnapshot, null, testPredicateSuffixes);
       const isDeficit = isGradeValueBelowThreshold(value, this.gradeDeficitThreshold);
-      node.textContent = formatGradeDisplayForSystem(value, displaySystem, { predicateSuffixes });
+      node.textContent = formatGradeDisplayForSystem(value, displaySystem, { predicateSuffixes: testPredicateSuffixes });
       node.classList.toggle("is-grade-low", isDeficit);
       this.syncGradeDeficitTooltip(node, isDeficit);
     }
@@ -28436,8 +28507,8 @@ class GradesApp {
         getDefaultGradeTestPredicateSuffixes(draft.testScale)
       );
       const ratioState = calculateGradeTestRatio(draft.testTasks, entry?.testScores || {});
-      const isNearBetterGrade = isGradeTestRatioInUpperThirdOfGradeBand(
-        ratioState?.ratio,
+      const isNearBetterGrade = isGradeTestRatioNearBetterGrade(
+        ratioState,
         scaleSnapshot,
         null,
         testPredicateSuffixes
@@ -28458,6 +28529,7 @@ class GradesApp {
     let tasks = [];
     let scaleSnapshot = null;
     let testPredicateSuffixes = true;
+    let displaySystem = GRADE_DISPLAY_SYSTEM_DEFAULT;
     let scoreEntries = [];
     if (assessmentId) {
       const assessment = this.store.getGradeAssessment(assessmentId);
@@ -28468,6 +28540,7 @@ class GradesApp {
         ? this.getGradesEntryAssessmentDraft(assessment)
         : null;
       tasks = normalizeGradeTestTasks(draft?.testTasks || assessment.testTasks, { ensureDefault: false });
+      displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem ?? assessment.testDisplaySystem, draft?.testScale || assessment.testScale);
       scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, draft);
       testPredicateSuffixes = draft
         ? normalizeGradeTestPredicateSuffixes(draft.testPredicateSuffixes, true)
@@ -28480,6 +28553,7 @@ class GradesApp {
       });
     } else {
       const draft = this.getGradesEntryDraft(courseId);
+      displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem, draft?.testScale);
       tasks = normalizeGradeTestTasks(draft?.testTasks, { ensureDefault: false });
       scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft?.testScale);
       testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
@@ -28510,11 +28584,9 @@ class GradesApp {
       : `[data-grade-test-average-ratio="1"][data-grade-test-draft-average-ratio="1"]`;
     const resultNode = this.refs.gradesEntryContent.querySelector(resultSelector);
     const ratioNode = this.refs.gradesEntryContent.querySelector(ratioSelector);
-    const displaySystem = this.getCurrentGradeOverviewDisplaySystem();
-    const predicateSuffixes = this.getCurrentGradeOverviewPredicateSuffixes();
     if (resultNode) {
       const isDeficit = isGradeValueBelowThreshold(averageState.gradeValue, this.gradeDeficitThreshold);
-      resultNode.textContent = formatGradeDisplayForSystem(averageState.gradeValue, displaySystem, { predicateSuffixes });
+      resultNode.textContent = formatGradeDisplayForSystem(averageState.gradeValue, displaySystem, { predicateSuffixes: testPredicateSuffixes });
       resultNode.classList.toggle("is-grade-low", isDeficit);
       this.syncGradeDeficitTooltip(resultNode, isDeficit);
     }

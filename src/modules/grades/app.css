@@ -4367,6 +4367,7 @@
 
         .grades-entry-mode-field,
         .grades-entry-test-scale-field,
+        .grades-entry-test-display-system-field,
         .grades-entry-test-predicate-field,
         .grades-entry-course-level-field,
         .grades-entry-halfyear-field {
@@ -4457,6 +4458,7 @@
 
         .grades-entry-mode-field .assessment-mode-toggle,
         .grades-entry-test-scale-field .assessment-mode-toggle,
+        .grades-entry-test-display-system-field .assessment-mode-toggle,
         .grades-entry-test-predicate-field .assessment-mode-toggle,
         .grades-entry-course-level-field .assessment-mode-toggle,
         .grades-entry-halfyear-field .assessment-mode-toggle {
@@ -4484,6 +4486,7 @@
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .grades-entry-test-display-system-field .assessment-mode-toggle,
         .grades-entry-test-predicate-field .assessment-mode-toggle {
           --assessment-segment-count: 2;
           --assessment-segment-total-gap: 0.35rem;
@@ -4502,6 +4505,7 @@
 
         .grades-entry-mode-field .assessment-mode-option span,
         .grades-entry-test-scale-field .assessment-mode-option span,
+        .grades-entry-test-display-system-field .assessment-mode-option span,
         .grades-entry-test-predicate-field .assessment-mode-option span,
         .grades-entry-course-level-field .assessment-mode-option span,
         .grades-entry-halfyear-field .assessment-mode-option span {
@@ -4517,6 +4521,7 @@
 
         .grades-entry-mode-field .assessment-mode-option:hover span,
         .grades-entry-test-scale-field .assessment-mode-option:hover span,
+        .grades-entry-test-display-system-field .assessment-mode-option:hover span,
         .grades-entry-test-predicate-field .assessment-mode-option:hover span,
         .grades-entry-course-level-field .assessment-mode-option:hover span,
         .grades-entry-halfyear-field .assessment-mode-option:hover span {
@@ -4528,6 +4533,7 @@
 
         .grades-entry-mode-field .assessment-mode-option input:checked+span,
         .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
+        .grades-entry-test-display-system-field .assessment-mode-option input:checked+span,
         .grades-entry-test-predicate-field .assessment-mode-option input:checked+span,
         .grades-entry-course-level-field .assessment-mode-option input:checked+span,
         .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
@@ -4541,6 +4547,7 @@
 
           .grades-entry-mode-field .assessment-mode-toggle::before,
           .grades-entry-test-scale-field .assessment-mode-toggle::before,
+          .grades-entry-test-display-system-field .assessment-mode-toggle::before,
           .grades-entry-test-predicate-field .assessment-mode-toggle::before,
           .grades-entry-course-level-field .assessment-mode-toggle::before,
           .grades-entry-halfyear-field .assessment-mode-toggle::before {
@@ -4566,6 +4573,7 @@
 
           .grades-entry-mode-field .assessment-mode-toggle::after,
           .grades-entry-test-scale-field .assessment-mode-toggle::after,
+          .grades-entry-test-display-system-field .assessment-mode-toggle::after,
           .grades-entry-test-predicate-field .assessment-mode-toggle::after,
           .grades-entry-course-level-field .assessment-mode-toggle::after,
           .grades-entry-halfyear-field .assessment-mode-toggle::after {
@@ -4575,6 +4583,7 @@
 
           .grades-entry-mode-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
           .grades-entry-test-scale-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
+          .grades-entry-test-display-system-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
           .grades-entry-test-predicate-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
           .grades-entry-course-level-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before,
           .grades-entry-halfyear-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::before {
@@ -4583,6 +4592,7 @@
 
           .grades-entry-mode-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after,
           .grades-entry-test-scale-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after,
+          .grades-entry-test-display-system-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after,
           .grades-entry-test-predicate-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after,
           .grades-entry-course-level-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after,
           .grades-entry-halfyear-field .assessment-mode-toggle:has(.assessment-mode-option:nth-of-type(2) input:checked)::after {
@@ -4603,6 +4613,7 @@
 
           .grades-entry-mode-field .assessment-mode-option input:checked+span,
           .grades-entry-test-scale-field .assessment-mode-option input:checked+span,
+          .grades-entry-test-display-system-field .assessment-mode-option input:checked+span,
           .grades-entry-test-predicate-field .assessment-mode-option input:checked+span,
           .grades-entry-course-level-field .assessment-mode-option input:checked+span,
           .grades-entry-halfyear-field .assessment-mode-option input:checked+span {
@@ -9725,6 +9736,7 @@
         }
 
         .grades-entry-test-scale-field .assessment-mode-toggle,
+        .grades-entry-test-display-system-field .assessment-mode-toggle,
         .grades-entry-test-predicate-field .assessment-mode-toggle,
         .grades-entry-halfyear-field .assessment-mode-toggle {
           --liquid-segment-count: 2;

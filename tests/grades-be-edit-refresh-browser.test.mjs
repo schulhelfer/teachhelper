@@ -76,6 +76,8 @@ test('BE edits refresh existing and new assessments without persisting the draft
     const read = () => ({
       grades: [...content.querySelectorAll('[data-grade-test-result-student]')].map((node) => node.textContent),
       ratios: [...content.querySelectorAll('[data-grade-test-ratio-student]')].map((node) => node.textContent),
+      orange: [...content.querySelectorAll('[data-grade-test-ratio-student]')].map((node) => node.classList.contains('is-grade-near-better')),
+      ratioTooltips: [...content.querySelectorAll('[data-grade-test-ratio-student]')].map((node) => node.dataset.gradeTooltip || ''),
       average: content.querySelector('[data-grade-test-average-result]').textContent,
       averageRatio: content.querySelector('[data-grade-test-average-ratio]').textContent,
       taskAverage: content.querySelector('[data-grade-test-average-task]').textContent,
@@ -122,13 +124,19 @@ test('BE edits refresh existing and new assessments without persisting the draft
       testScale: 'sek2', testPredicateSuffixes: true, testTasks: assessment.testTasks, entries: {},
     };
     render();
+    const freshEmpty = read();
+    const freshNearBetter = change(1, '6');
     const fresh = change(1, '10');
     return { initial, edited, rerendered, zero, cleared, bulkOk, bulk, maxChanged,
-      writesBeforeSave, discarded, beforeSave, persisted, reopened, fresh, savedEntries };
+      writesBeforeSave, discarded, beforeSave, persisted, reopened, freshEmpty, freshNearBetter, fresh, savedEntries };
   });
 
   assert.deepEqual(result.initial.grades, ['10', '10']);
+  assert.deepEqual(result.initial.orange, [true, true]);
+  assert.match(result.initial.ratioTooltips[0], /Oberes Viertel.*höchstens 1 BE/);
   assert.deepEqual(result.edited.grades, ['15', '10']);
+  assert.deepEqual(result.edited.orange, [false, true]);
+  assert.equal(result.edited.ratioTooltips[0], '');
   assert.match(result.edited.ratios[0], /^10 \/ 10/);
   assert.notEqual(result.edited.average, result.initial.average);
   assert.notEqual(result.edited.averageRatio, result.initial.averageRatio);
@@ -139,12 +147,15 @@ test('BE edits refresh existing and new assessments without persisting the draft
   assert.match(result.zero.ratios[0], /^0 \/ 10/);
   assert.equal(result.cleared.grades[0], '—');
   assert.equal(result.cleared.ratios[0], '—');
+  assert.equal(result.cleared.orange[0], false);
+  assert.equal(result.cleared.ratioTooltips[0], '');
   assert.equal(result.cleared.average, result.initial.average);
   assert.equal(result.cleared.taskAverage, result.initial.taskAverage);
   assert.equal(result.bulkOk, true);
   assert.deepEqual(result.bulk.grades, ['15', '00']);
   assert.match(result.bulk.ratios[0], /^10 \/ 10/);
   assert.deepEqual(result.maxChanged.grades, ['10', '00']);
+  assert.deepEqual(result.maxChanged.orange, [true, true]);
   assert.match(result.maxChanged.ratios[0], /^10 \/ 20/);
   assert.equal(result.writesBeforeSave, 0);
   assert.deepEqual(result.discarded, result.initial);
@@ -152,5 +163,8 @@ test('BE edits refresh existing and new assessments without persisting the draft
   assert.deepEqual(result.reopened, result.beforeSave);
   assert.deepEqual(result.savedEntries, [{ studentId: 1, assessmentId: 7, testScores: { a: 10 } }]);
   assert.deepEqual(result.fresh.grades, ['15', '—']);
+  assert.deepEqual(result.freshEmpty.orange, [false, false]);
+  assert.deepEqual(result.freshNearBetter.orange, [true, false]);
+  assert.deepEqual(result.fresh.orange, [false, false]);
   assert.match(result.fresh.ratios[0], /^10 \/ 10/);
 });

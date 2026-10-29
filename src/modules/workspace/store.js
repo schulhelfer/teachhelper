@@ -9,7 +9,8 @@ import {
 } from "../../shared/school-data/index.js";
 import {
   calculateWeightedGrade,
-  combineGradePeriods
+  combineGradePeriods,
+  normalizeGradeTestDisplaySystem
 } from "../../shared/school-data/grades.js";
 import {
   BACKUP_ENABLED_DEFAULT,
@@ -3068,6 +3069,7 @@ export class WorkspaceStore {
       mode,
       occurrenceCategoryId: mode === "homework" ? occurrenceCategoryId : null,
       testScale,
+      testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(payload.testDisplaySystem, testScale) : null,
       testScaleSnapshot: mode === "test"
         ? this.buildGradeTestScaleSnapshot(testScale)
         : null,
@@ -3095,6 +3097,9 @@ export class WorkspaceStore {
       return false;
     }
     const previousMode = normalizeGradeAssessmentMode(assessment.mode);
+    const previousTestDisplaySystem = previousMode === "test"
+      ? normalizeGradeTestDisplaySystem(assessment.testDisplaySystem, assessment.testScale)
+      : null;
     let shouldRecalculateTestEntries = false;
     if (patch.title !== undefined) {
       assessment.title = normalizeGradeTextPart(patch.title) || assessment.title;
@@ -3131,6 +3136,12 @@ export class WorkspaceStore {
     } else if (!assessment.testScale) {
       assessment.testScale = GRADE_TEST_SCALE_DEFAULT;
     }
+    assessment.testDisplaySystem = normalizeGradeAssessmentMode(assessment.mode) === "test"
+      ? normalizeGradeTestDisplaySystem(
+        patch.testDisplaySystem !== undefined ? patch.testDisplaySystem : previousTestDisplaySystem,
+        assessment.testScale
+      )
+      : null;
     if (patch.testPredicateSuffixes !== undefined) {
       assessment.testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(patch.testPredicateSuffixes, true);
     } else if (assessment.testPredicateSuffixes === undefined) {
@@ -4983,6 +4994,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
             : defaultOccurrenceCategoryId)
           : null,
         testScale,
+        testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(item.testDisplaySystem, testScale) : null,
         testScaleSnapshot: mode === "test"
           ? normalizeGradeTestScaleSnapshot(item.testScaleSnapshot, testScale, gradeTestScaleSettings)
           : null,
