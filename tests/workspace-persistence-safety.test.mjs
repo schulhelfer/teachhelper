@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
-import test from 'node:test';
+import test, { afterEach } from 'node:test';
 
 const moduleCache = new Map();
 const dataUrl = (source) => `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`;
@@ -145,6 +145,20 @@ function createDirectoryHandle(entries = []) {
   };
 }
 
+const runtimeFixtures = new Set();
+
+afterEach(async () => {
+  const fixtures = [...runtimeFixtures];
+  runtimeFixtures.clear();
+  for (const runtime of fixtures) {
+    try {
+      await runtime.operationTail;
+    } finally {
+      runtime.disposeGradeVaultSession();
+    }
+  }
+});
+
 function createRuntime() {
   const store = new WorkspaceStore();
   const runtime = new WorkspaceRuntime(store, { eventTarget: new EventTarget() });
@@ -152,6 +166,7 @@ function createRuntime() {
   runtime.persistence.loadStoredHandle = async () => null;
   runtime.persistence.removeStoredHandle = async () => true;
   runtime.persistence.openHandleDb = async () => null;
+  runtimeFixtures.add(runtime);
   return { store, runtime };
 }
 

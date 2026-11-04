@@ -3071,7 +3071,7 @@ export class WorkspaceStore {
       testScale,
       testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(payload.testDisplaySystem, testScale) : null,
       testScaleSnapshot: mode === "test"
-        ? this.buildGradeTestScaleSnapshot(testScale)
+        ? normalizeGradeTestScaleSnapshot(payload.testScaleSnapshot, testScale, this.getGradeTestScaleSettings())
         : null,
       testPredicateSuffixes,
       testTasks: normalizeGradeTestTasks(payload.testTasks, { ensureDefault: false }),

@@ -183,7 +183,7 @@ test('the grades table marker never overwrites the existing-value placeholder', 
 
 test('a new grade entry pass starts without stale skip markers', () => {
   const clears = grades.match(/this\.skippedGradeEntries\.clear\(\);/g) || [];
-  assert.equal(clears.length, 2, 'both assessment activation paths must clear the skipped set');
+  assert.equal(clears.length, 3, 'assessment activation and duplication must clear the skipped set');
   assert.match(grades, /if \(Number\(this\.activeGradeAssessmentId \|\| 0\) !== Number\(id \|\| 0\)\) \{\s+this\.skippedGradeEntries\.clear\(\);\s+\}\s+this\.activeGradeAssessmentId = id;/);
   assert.match(grades, /if \(Number\(this\.activeGradeAssessmentId \|\| 0\) !== id\) \{\s+this\.skippedGradeEntries\.clear\(\);\s+\}\s+this\.activeGradeAssessmentId = id;/);
 });

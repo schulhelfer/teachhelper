@@ -256,7 +256,7 @@ test('Groups preserves preferences and the complete shared plan payload', { time
   assert.ok(Number.isFinite(Date.parse(result.exported.generatedAt)));
   assert.deepEqual(
     { ...result.exported, generatedAt: '<generated>' },
-    { ...result.inputPlan, generatedAt: '<generated>' },
+    { ...result.inputPlan, randomPickerSpinDurationMs: 3000, generatedAt: '<generated>' },
   );
   assert.equal(result.workOrder, 'Erstellt ein Plakat.');
   assert.equal(result.duration, '15');

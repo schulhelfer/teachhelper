@@ -4406,7 +4406,8 @@ class GradesApp {
   async resolveUnsavedGradesEntryNavigation({
     targetAssessmentId = null,
     targetCourseId = null,
-    allowSameAssessment = false
+    allowSameAssessment = false,
+    validateNavigation = null
   } = {}) {
     if (!this.gradesEntryDraftDirty) {
       return true;
@@ -4433,6 +4434,9 @@ class GradesApp {
         warning: true
       }
     );
+    if (typeof validateNavigation === "function" && !validateNavigation()) {
+      return false;
+    }
     if (choice === "ok") {
       return this.saveCurrentGradesEntry();
     }
@@ -13784,6 +13788,12 @@ class GradesApp {
           await this.navigateToGradesAssessment(assessmentId, { courseId });
         }
       });
+      if (normalizeGradeAssessmentMode(assessment.mode) === "test") {
+        items.push({
+          label: "Leistungseintrag duplizieren (ohne Ergebnisse)",
+          handler: () => this.duplicateGradeAssessmentWithoutResults(assessmentId, courseId)
+        });
+      }
     } else {
       items.push({
         label: "Notenstruktur verwalten",
@@ -24610,7 +24620,9 @@ class GradesApp {
   getGradeTestEntryScaleSnapshot(assessment = null, draft = null) {
     const scale = normalizeGradeTestScale(draft?.testScale || assessment?.testScale);
     if (!assessment) {
-      return this.store.buildGradeTestScaleSnapshot(scale);
+      return draft?.testScaleSnapshot
+        ? normalizeGradeTestScaleSnapshot(draft.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
+        : this.store.buildGradeTestScaleSnapshot(scale);
     }
     const snapshot = scale === normalizeGradeTestScale(assessment.testScale)
       ? draft?.testScaleSnapshot || assessment.testScaleSnapshot
@@ -25336,6 +25348,7 @@ class GradesApp {
       weight: mode === "homework" ? 1 : normalizeGradeInteger(values?.weight, 1),
       mode,
       testScale: normalizeGradeTestScale(values?.testScale),
+      testScaleSnapshot: mode === "test" ? values?.testScaleSnapshot || null : null,
       testDisplaySystem: mode === "test" ? normalizeGradeTestDisplaySystem(values?.testDisplaySystem, values?.testScale) : null,
       testPredicateSuffixes: normalizeGradeTestPredicateSuffixes(
         values?.testPredicateSuffixes,
@@ -27299,7 +27312,7 @@ class GradesApp {
     const source = context.assessment || context.draft || {};
     const tasks = normalizeGradeTestTasks(source.testTasks, { ensureDefault: false });
     const scale = normalizeGradeTestScale(source.testScale);
-    const scaleSnapshot = context.assessment
+    const scaleSnapshot = context.assessment || source.testScaleSnapshot
       ? normalizeGradeTestScaleSnapshot(source.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
       : this.store.buildGradeTestScaleSnapshot(scale);
     const testPredicateSuffixes = context.assessment
@@ -27828,6 +27841,100 @@ class GradesApp {
     requestAnimationFrame(() => {
       this.focusFirstGradesEntryInput();
     });
+  }
+
+  async duplicateGradeAssessmentWithoutResults(assessmentId, expectedCourseId) {
+    const id = Number(assessmentId || 0);
+    const courseId = Number(expectedCourseId || 0);
+    const getSourceAssessment = () => {
+      if (
+        !id
+        || !courseId
+        || Number(this.selectedCourseId || 0) !== courseId
+        || !this.canAccessGradeVault()
+        || !this.canCommitImmediateGradeCourseMutation(courseId)
+      ) {
+        return null;
+      }
+      const assessment = this.store.getGradeAssessment(id);
+      return assessment
+        && Number(assessment.courseId || 0) === courseId
+        && normalizeGradeAssessmentMode(assessment.mode) === "test"
+        && this.isGradeAssessmentAssignmentValid(courseId, assessment.halfYear, assessment.categoryId, assessment.subcategoryId)
+        ? assessment
+        : null;
+    };
+    if (!getSourceAssessment()) {
+      this.setSyncStatus("Die BE-Leistung ist im ausgewählten Notenkurs nicht verfügbar. Bitte erneut versuchen.", true);
+      return false;
+    }
+    if (!await this.resolveUnsavedGradesEntryNavigation({ validateNavigation: () => Boolean(getSourceAssessment()) })) {
+      return false;
+    }
+    if (!getSourceAssessment() || !this.commitVisibleGradeInputs()) {
+      return false;
+    }
+    const assessment = getSourceAssessment();
+    if (!assessment) {
+      return false;
+    }
+    const draft = cloneJsonValue({
+      courseId,
+      title: `${assessment.title} (Kopie)`,
+      halfYear: assessment.halfYear,
+      weight: assessment.weight,
+      mode: "test",
+      testScale: assessment.testScale,
+      testScaleSnapshot: assessment.testScaleSnapshot,
+      testDisplaySystem: assessment.testDisplaySystem,
+      testPredicateSuffixes: assessment.testPredicateSuffixes,
+      testTasks: assessment.testTasks,
+      competenceExpectations: assessment.competenceExpectations,
+      expectationHorizonTemplateFile: assessment.expectationHorizonTemplateFile,
+      yearLevel: assessment.yearLevel,
+      courseLevel: assessment.courseLevel,
+      assessmentNumber: assessment.assessmentNumber,
+      topic: assessment.topic,
+      examDurationMinutes: assessment.examDurationMinutes,
+      categoryId: assessment.categoryId,
+      subcategoryId: assessment.subcategoryId,
+      entries: {},
+      baseCourseRevision: this.getGradeCourseRevision(courseId),
+      baseFingerprint: ""
+    }, {});
+    this.hideGradePicker();
+    this.clearGradesOverviewAssessmentSpotlight();
+    this.clearPrivacyFocusedGradeStudent();
+    this.clearPendingGradesOverviewAutoScroll();
+    this.activeGradeOverrideContext = null;
+    this.selectedGradesOverviewColumnKey = "";
+    this.selectedGradesOverviewColumnCourseId = null;
+    this.selectedGradesEntryAssessmentId = null;
+    this.gradesEntryEditSnapshot = null;
+    this.activeGradeAssessmentId = null;
+    this.activeGradeStudentId = null;
+    this.confirmedGradesEntryModeChangeKey = "";
+    this.skippedGradeEntries.clear();
+    this.gradesEntryDraft = draft;
+    this.gradeDeficitThreshold = getGradeDeficitThresholdDefaultForScale(draft.testScale);
+    this.gradeDeficitThresholdUserEdited = false;
+    this.shellTabContext = "grades";
+    this.gradesSubView = "entry";
+    this.pendingGradesEntryCourseAutoSelect = false;
+    this.markGradesEntryDraftDirty();
+    this.renderViewState();
+    this.renderSidebarCourseList();
+    this.renderGradesView();
+    const renderedDraft = this.gradesEntryDraft;
+    requestAnimationFrame(() => {
+      if (this.gradesEntryDraft !== renderedDraft || Number(this.selectedCourseId || 0) !== courseId) {
+        return;
+      }
+      const titleInput = this.refs.gradesEntryContent?.querySelector("input[data-grades-entry-title]");
+      titleInput?.focus();
+      titleInput?.select();
+    });
+    return true;
   }
 
   async deleteGradeAssessmentWithConfirm(assessmentId, expectedCourseId = null) {
@@ -28489,7 +28596,7 @@ class GradesApp {
       ? normalizeGradeDraftEntry(draft.entries[studentKey])
       : null;
     if (node) {
-      const scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft.testScale);
+      const scaleSnapshot = this.getGradeTestEntryScaleSnapshot(null, draft);
       const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
         draft.testPredicateSuffixes,
         getDefaultGradeTestPredicateSuffixes(draft.testScale)
@@ -28501,7 +28608,7 @@ class GradesApp {
       this.syncGradeDeficitTooltip(node, isDeficit);
     }
     if (ratioNode) {
-      const scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft.testScale);
+      const scaleSnapshot = this.getGradeTestEntryScaleSnapshot(null, draft);
       const testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
         draft.testPredicateSuffixes,
         getDefaultGradeTestPredicateSuffixes(draft.testScale)
@@ -28555,7 +28662,7 @@ class GradesApp {
       const draft = this.getGradesEntryDraft(courseId);
       displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem, draft?.testScale);
       tasks = normalizeGradeTestTasks(draft?.testTasks, { ensureDefault: false });
-      scaleSnapshot = this.store.buildGradeTestScaleSnapshot(draft?.testScale);
+      scaleSnapshot = this.getGradeTestEntryScaleSnapshot(null, draft);
       testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
         draft?.testPredicateSuffixes,
         getDefaultGradeTestPredicateSuffixes(draft?.testScale)
