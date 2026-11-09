@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '136';
+const TEACHHELPER_APP_VERSION_STAMP = '138';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -189,9 +189,9 @@ const DEFERRED_ASSETS = [
   './src/vendor/jszip/3.10.2/LICENSE.markdown',
   './src/vendor/cantoo-pdf-lib/2.11.1/pdf-lib.min.js',
   './src/vendor/cantoo-pdf-lib/2.11.1/LICENSE.md',
-  './src/vendor/pdfjs-dist/6.4.299/build/pdf.mjs',
-  './src/vendor/pdfjs-dist/6.4.299/build/pdf.worker.mjs',
-  './src/vendor/pdfjs-dist/6.4.299/LICENSE',
+  './src/vendor/pdfjs-dist/6.5.438/build/pdf.mjs',
+  './src/vendor/pdfjs-dist/6.5.438/build/pdf.worker.mjs',
+  './src/vendor/pdfjs-dist/6.5.438/LICENSE',
   './src/vendor/tesseract.js/7.0.0/LICENSE.md',
   './src/vendor/tesseract.js/7.0.0/tesseract.min.js',
   './src/vendor/tesseract.js/7.0.0/tesseract.min.js.LICENSE.txt',

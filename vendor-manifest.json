@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-08",
+  "updated": "2026-11-09",
   "description": "Authoritative manifest for JavaScript libraries vendored for Teachhelper offline use.",
   "packages": [
     {
@@ -49,26 +49,26 @@
     },
     {
       "name": "pdfjs-dist",
-      "version": "6.4.299",
+      "version": "6.5.438",
       "license": "Apache-2.0",
-      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.4.299",
+      "source": "https://www.npmjs.com/package/pdfjs-dist/v/6.5.438",
       "registry": "npm",
       "package": "pdfjs-dist",
-      "purl": "pkg:npm/pdfjs-dist@6.4.299",
+      "purl": "pkg:npm/pdfjs-dist@6.5.438",
       "updateNotes": "Track Mozilla PDF.js releases and advisories closely because PDF parsing handles untrusted files. Replace pdf.mjs and pdf.worker.mjs together, refresh hashes, then run scripts/audit.py and PDF workflows. Re-check that GlobalWorkerOptions.workerPort still accepts a Worker, because src/shared/pdf-vendor.js hands over its own classic blob worker for opaque-origin module frames; PDFWorker builds its wrapper with type:\"module\", which Chromium refuses there.",
       "files": [
         {
-          "path": "src/vendor/pdfjs-dist/6.4.299/build/pdf.mjs",
+          "path": "src/vendor/pdfjs-dist/6.5.438/build/pdf.mjs",
           "role": "runtime",
-          "sha256": "dd13af821c9c3e1778653340d6539a1ba07bc56cba40073a4c727864cf0c232a"
+          "sha256": "cbabeebf4df66f3fe736f2fa2792d332e019a878b0aa88d5e2be17d439079de4"
         },
         {
-          "path": "src/vendor/pdfjs-dist/6.4.299/build/pdf.worker.mjs",
+          "path": "src/vendor/pdfjs-dist/6.5.438/build/pdf.worker.mjs",
           "role": "runtime-worker",
-          "sha256": "07ceb740d746e5d9012fcf9f27d5c7dea09f7d2f5e74f5c8109e5787551a2333"
+          "sha256": "43710009ea26bfbcb615524946e46e3aaf8ad927514f5e465e8ff6d18044ffe9"
         },
         {
-          "path": "src/vendor/pdfjs-dist/6.4.299/LICENSE",
+          "path": "src/vendor/pdfjs-dist/6.5.438/LICENSE",
           "role": "license",
           "sha256": "0d542e0c8804e39aa7f37eb00da5a762149dc682d7829451287e11b938e94594"
         }
