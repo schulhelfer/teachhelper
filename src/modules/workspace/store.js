@@ -883,7 +883,7 @@ function normalizeGradeCompetenceExpectations(items = []) {
       });
       return competenceResult;
     }, []);
-    if (!topic || !competencies.length) {
+    if (!competencies.length) {
       return result;
     }
     result.push({
@@ -3082,6 +3082,7 @@ export class WorkspaceStore {
       assessmentNumber: normalizeGradeAssessmentNumber(payload.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(payload.topic),
       examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(payload.examDurationMinutes) : null,
+      isMakeupAssessment: mode === "test" && payload.isMakeupAssessment === true,
       halfYear: orderGroup.halfYear,
       sortOrder: Number(payload.sortOrder || nextSortOrder)
     };
@@ -3201,6 +3202,8 @@ export class WorkspaceStore {
     } else if (assessment.examDurationMinutes === undefined) {
       assessment.examDurationMinutes = normalizeGradeAssessmentExamDurationMinutes(assessment.examDurationMinutes);
     }
+    assessment.isMakeupAssessment = normalizeGradeAssessmentMode(assessment.mode) === "test"
+      && (patch.isMakeupAssessment ?? assessment.isMakeupAssessment) === true;
     if (normalizeGradeAssessmentMode(assessment.mode) !== "test") {
       assessment.yearLevel = null;
       assessment.courseLevel = "";
@@ -5009,6 +5012,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(item.assessmentNumber) : null,
         topic: mode === "test" ? normalizeGradeAssessmentTopic(item.topic) : "",
         examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(item.examDurationMinutes) : null,
+        isMakeupAssessment: mode === "test" && item.isMakeupAssessment === true,
         halfYear: normalizeGradeHalfYear(item.halfYear),
         sortOrder: Number(item.sortOrder || 0)
       };

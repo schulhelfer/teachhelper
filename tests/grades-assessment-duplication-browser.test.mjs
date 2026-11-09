@@ -83,13 +83,27 @@ test('BE header duplication opens an empty draft and persists an independent edi
       updateGradeVaultActionButtons() {}, dispatchGradesUnsavedState() {},
       syncSegmentControlSlideStates() {}, refreshOpenExpectationHorizonDialogTemplate() {}, focusGradeAssessmentInput() {},
       ensureGradeVaultReadyForGradesEntryMutation: () => true,
-      confirmGradesEntryAfbRequirementsBeforeSave: async () => true,
       showInfoMessage: async (message) => { messages.push(message); },
       openGradesOverviewForCourse: () => true, notifyParentToast() {},
       runAfterSegmentControlSlide: (event, callback) => callback(),
     });
     Object.defineProperty(app, 'activeSchoolYear', { value: year });
     app.renderGradesView = () => app.renderGradesEntryView(app.store.getCourse(courseId), app.store.listGradeStudents(courseId), []);
+    const makeupInput = () => content.querySelector('[data-grades-entry-makeup-assessment]');
+    const toggleMakeup = async (checked) => {
+      const input = makeupInput();
+      input.checked = checked;
+      await app.handleGradesSurfaceChange({ target: input });
+    };
+    app.selectedGradesEntryAssessmentId = sourceId;
+    app.renderGradesView();
+    const regularUnchecked = !makeupInput().checked;
+    app.discardGradesEntryEditSession();
+    app.selectedGradesEntryAssessmentId = null;
+    app.gradesEntryDraft = { courseId, mode: 'test' };
+    app.renderGradesView();
+    const freshUnchecked = !makeupInput().checked;
+    app.discardGradesEntryEditSession();
     let opening;
     app.duplicateGradeAssessmentWithoutResults = (id, course) => {
       opening = GradesApp.prototype.duplicateGradeAssessmentWithoutResults.call(app, id, course);
@@ -106,8 +120,14 @@ test('BE header duplication opens an empty draft and persists an independent edi
     const opened = await opening;
     await new Promise(requestAnimationFrame);
     const initialDraft = structuredClone(app.gradesEntryDraft);
-    const emptyValues = [...content.querySelectorAll('[data-grade-test-score]')].map((input) => input.value);
     const focusedTitle = document.activeElement === content.querySelector('[data-grades-entry-title]');
+    const copyChecked = makeupInput().checked;
+    await toggleMakeup(false);
+    app.renderGradesView();
+    const uncheckedAfterRender = !makeupInput().checked && app.gradesEntryDraft.isMakeupAssessment === false
+      && app.readGradesEntryEditorValues().isMakeupAssessment === false && app.gradesEntryDraftDirty;
+    await toggleMakeup(true);
+    const emptyValues = [...content.querySelectorAll('[data-grade-test-score]')].map((input) => input.value);
     const draftOnly = store.listGradeAssessments(courseId).length === 3 && writes === 0;
     const snapshotPreview = app.getGradeTestEntryScaleSnapshot(null, app.gradesEntryDraft);
     const copiedFields = ['courseId', 'halfYear', 'weight', 'categoryId', 'subcategoryId', 'yearLevel', 'courseLevel',
@@ -127,7 +147,21 @@ test('BE header duplication opens an empty draft and persists an independent edi
     const sourceUnchangedBeforeSave = JSON.stringify(store.createGradeAssessmentSnapshot(sourceId)) === JSON.stringify(original);
     const saved = await app.saveCurrentGradesEntry();
     await runtime.operationTail;
-    const copy = store.listGradeAssessments(courseId).find((assessment) => assessment.title === 'Klassenarbeit (Kopie)');
+    const copy = store.listGradeAssessments(courseId).find((assessment) => assessment.title === 'Klassenarbeit (NT)');
+    const savedMakeup = copy.isMakeupAssessment === true;
+    app.discardGradesEntryEditSession();
+    app.selectedGradesEntryAssessmentId = copy.id;
+    app.renderGradesView();
+    await toggleMakeup(false);
+    const unsavedOnly = store.getGradeAssessment(copy.id).isMakeupAssessment === true
+      && app.buildGradesEntryAssessmentPreview(store.getGradeAssessment(copy.id)).isMakeupAssessment === false;
+    app.discardGradesEntryEditSession();
+    app.selectedGradesEntryAssessmentId = copy.id;
+    app.renderGradesView();
+    const discardedMakeup = makeupInput().checked;
+    await toggleMakeup(false);
+    const savedUnchecked = await app.saveCurrentGradesEntry();
+    await runtime.operationTail;
     const originalUnchanged = JSON.stringify(store.createGradeAssessmentSnapshot(sourceId)) === JSON.stringify(original);
     const reopenedStore = new WorkspaceStore();
     const reopenedRuntime = new WorkspaceRuntime(reopenedStore, { eventTarget: new EventTarget() });
@@ -140,6 +174,14 @@ test('BE header duplication opens an empty draft and persists an independent edi
     app.selectedGradesEntryAssessmentId = copy.id;
     app.renderGradesView();
     const reopened = app.store.getGradeAssessment(copy.id);
+    const reopenedUnchecked = !makeupInput().checked && reopened.isMakeupAssessment === false;
+    await toggleMakeup(true);
+    app.renderGradesView();
+    const existingCheckedAfterRender = makeupInput().checked && app.gradesEntryDraft.isMakeupAssessment === true;
+    app.discardGradesEntryEditSession();
+    app.selectedGradesEntryAssessmentId = copy.id;
+    app.renderGradesView();
+    const existingDiscarded = !makeupInput().checked;
     const entries = app.store.listGradeEntries().filter((entry) => entry.assessmentId === copy.id);
     const reopenedValues = [...content.querySelectorAll('[data-grade-test-score]')].map((input) => input.value);
     const reopenedGrade = content.querySelector('[data-grade-test-result-student]').textContent;
@@ -156,6 +198,8 @@ test('BE header duplication opens an empty draft and persists an independent edi
     app.discardGradesEntryEditSession();
     return {
       opened, onlyBe, draftOnly, focusedTitle, copiedFields, emptyValues,
+      regularUnchecked, freshUnchecked, copyChecked, uncheckedAfterRender, savedMakeup,
+      unsavedOnly, discardedMakeup, savedUnchecked, reopenedUnchecked, existingCheckedAfterRender, existingDiscarded,
       initialEntries: initialDraft.entries, initialIdentity: initialDraft.assessmentId || null,
       clearedSkipped: app.skippedGradeEntries.size === 0,
       preservedSnapshot: JSON.stringify(snapshotPreview) === JSON.stringify(original.assessment.testScaleSnapshot),
@@ -172,11 +216,13 @@ test('BE header duplication opens an empty draft and persists an independent edi
   });
   for (const field of ['opened', 'onlyBe', 'draftOnly', 'focusedTitle', 'copiedFields', 'clearedSkipped', 'preservedSnapshot',
     'sourceUnchangedBeforeSave', 'templateChanged', 'saved', 'originalUnchanged', 'independentId', 'hasCreationTimestamp',
-    'appended', 'storedSnapshot', 'changedScale', 'discarded']) assert.equal(result[field], true, field);
+    'appended', 'storedSnapshot', 'changedScale', 'discarded', 'regularUnchecked', 'freshUnchecked',
+    'copyChecked', 'uncheckedAfterRender', 'savedMakeup', 'unsavedOnly', 'discardedMakeup',
+    'savedUnchecked', 'reopenedUnchecked', 'existingCheckedAfterRender', 'existingDiscarded']) assert.equal(result[field], true, field);
   assert.deepEqual(result.emptyValues, ['', '']);
   assert.deepEqual(result.initialEntries, {});
   assert.equal(result.initialIdentity, null);
-  assert.equal(result.writes, 1);
+  assert.equal(result.writes, 2);
   assert.deepEqual(result.messages, []);
   assert.equal(result.templateName, 'Nachschrift.docx');
   assert.equal(result.competenceText, 'Angepasste Erwartung');

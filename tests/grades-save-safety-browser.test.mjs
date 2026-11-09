@@ -108,7 +108,7 @@ test('BE saving uses one verified write and keeps drafts on errors and conflicts
         getGradeStudentPortraitUrl: () => '', shouldShowGradeStudentPortraitPlaceholders: () => false,
         getCurrentGradeOverviewDisplaySystem: () => 'points', getCurrentGradeOverviewPredicateSuffixes: () => true,
         ensureGradeVaultReadyForGradesEntryMutation: () => true,
-        confirmGradesEntryAfbRequirementsBeforeSave: async () => true,
+        showConfirmMessage: async () => { throw new Error('Unerwarteter Bestätigungsdialog beim Speichern'); },
         confirmGradesEntryAssessmentDestructiveChanges: async () => true,
         showInfoMessage: async (message) => { messages.push(message); },
         notifyParentToast: (message) => { toasts.push(message); },

@@ -63,7 +63,8 @@ test('BE duplication creates an independent template draft with no results or or
   const original = structuredClone(app.assessment);
   assert.equal(await app.duplicateGradeAssessmentWithoutResults(7, 3), true);
   const draft = app.gradesEntryDraft;
-  assert.equal(draft.title, 'Leistung (Kopie)');
+  assert.equal(draft.title, 'Leistung (NT)');
+  assert.equal(draft.isMakeupAssessment, true);
   assert.deepEqual(draft.entries, {});
   for (const field of ['id', 'assessmentId', 'createdAt', 'sortOrder']) assert.equal(draft[field], undefined);
   for (const field of Object.keys(original).filter((key) => !['id', 'title', 'createdAt', 'sortOrder'].includes(key))) {
@@ -134,7 +135,7 @@ test('confirmed discard opens the copy and asynchronous source loss prevents ope
   app.gradesEntryDraftDirty = true;
   app.showChoiceMessage = async () => 'discard';
   assert.equal(await app.duplicateGradeAssessmentWithoutResults(7, 3), true);
-  assert.equal(app.gradesEntryDraft.title, 'Leistung (Kopie)');
+  assert.equal(app.gradesEntryDraft.title, 'Leistung (NT)');
   const pending = createHarness();
   const draft = pending.gradesEntryDraft;
   pending.resolveUnsavedGradesEntryNavigation = async () => { pending.assessment = null; return true; };
@@ -160,4 +161,45 @@ test('assessment creation accepts a saved scale snapshot and keeps current defau
   assert.equal(store.getGradeAssessment(copiedId).testScaleSnapshot.thresholds[0][0], 0.99);
   const gradeId = store.createGradeAssessment(3, { mode: 'grade', testScaleSnapshot: snapshot });
   assert.equal(store.getGradeAssessment(gradeId).testScaleSnapshot, null);
+});
+
+
+test('BE copies always start as makeup assessments', async () => {
+  for (const value of [undefined, false, true]) {
+    const app = createHarness();
+    app.assessment.isMakeupAssessment = value;
+    assert.equal(await app.duplicateGradeAssessmentWithoutResults(7, 3), true);
+    assert.equal(app.gradesEntryDraft.isMakeupAssessment, true);
+    assert.equal(app.assessment.isMakeupAssessment, value);
+  }
+  scheduled.splice(0).forEach((callback) => callback());
+});
+
+test('makeup assessment state defaults to false and survives updates and vault round trips', () => {
+  const store = new WorkspaceStore();
+  const regularId = store.createGradeAssessment(3, { mode: 'test' });
+  const makeupId = store.createGradeAssessment(3, { mode: 'test', isMakeupAssessment: true });
+  assert.equal(store.getGradeAssessment(regularId).isMakeupAssessment, false);
+  assert.equal(store.getGradeAssessment(makeupId).isMakeupAssessment, true);
+  store.updateGradeAssessment(makeupId, { title: 'Überarbeitet' });
+  assert.equal(store.getGradeAssessment(makeupId).isMakeupAssessment, true);
+  const reopened = new WorkspaceStore();
+  reopened.replaceGradeVaultState(JSON.parse(JSON.stringify(store.exportGradeVaultStateSnapshot())));
+  assert.equal(reopened.getGradeAssessment(makeupId).isMakeupAssessment, true);
+  reopened.updateGradeAssessment(makeupId, { isMakeupAssessment: false });
+  assert.equal(reopened.getGradeAssessment(makeupId).isMakeupAssessment, false);
+  store.replaceGradeVaultState(JSON.parse(JSON.stringify(reopened.exportGradeVaultStateSnapshot())));
+  assert.equal(store.getGradeAssessment(makeupId).isMakeupAssessment, false);
+  store.updateGradeAssessment(makeupId, { isMakeupAssessment: true, mode: 'grade' });
+  assert.equal(store.getGradeAssessment(makeupId).isMakeupAssessment, false);
+  for (const mode of ['grade', 'homework']) {
+    const id = store.createGradeAssessment(3, { mode, isMakeupAssessment: true });
+    assert.equal(store.getGradeAssessment(id).isMakeupAssessment, false);
+  }
+  const legacy = store.exportGradeVaultStateSnapshot();
+  delete legacy.gradeAssessments.find((assessment) => assessment.id === regularId).isMakeupAssessment;
+  legacy.gradeAssessments.find((assessment) => assessment.id === makeupId).isMakeupAssessment = true;
+  store.replaceGradeVaultState(legacy);
+  assert.equal(store.getGradeAssessment(regularId).isMakeupAssessment, false);
+  assert.equal(store.getGradeAssessment(makeupId).isMakeupAssessment, false);
 });

@@ -3127,7 +3127,8 @@
           opacity: 0.55;
         }
 
-        #course-dialog .checkbox-line input[type="checkbox"] {
+        #course-dialog .checkbox-line input[type="checkbox"],
+        .grades-entry-makeup-assessment input[type="checkbox"] {
           flex: 0 0 18px;
           inline-size: 18px;
           block-size: 18px;
@@ -3142,7 +3143,8 @@
           transition: none;
         }
 
-        #course-dialog .checkbox-line input[type="checkbox"]:focus {
+        #course-dialog .checkbox-line input[type="checkbox"]:focus,
+        .grades-entry-makeup-assessment input[type="checkbox"]:focus {
           background-color: var(--control-bg);
           box-shadow: var(--focus-ring);
         }
@@ -4632,9 +4634,49 @@
 
         .grades-entry-topic-row {
           display: grid;
-          grid-template-columns: minmax(5.5rem, 0.4fr) minmax(9rem, 0.6fr);
-          gap: 0.85rem;
-          align-items: start;
+          grid-template-columns: minmax(0, 4rem) minmax(18px, 1fr) max-content;
+          gap: 0.85rem 0.5rem;
+          align-items: stretch;
+        }
+
+        .grades-entry-number-field,
+        .grades-entry-exam-duration-field,
+        .grades-entry-makeup-assessment {
+          grid-template-columns: minmax(0, 1fr);
+          grid-template-rows: 1fr auto;
+        }
+
+        .grades-entry-topic-row .grades-entry-field>span {
+          min-width: 0;
+          overflow-wrap: anywhere;
+        }
+
+        .grades-entry-makeup-assessment {
+          cursor: pointer;
+        }
+
+        .grades-entry-makeup-assessment>span:first-child {
+          margin-left: 0;
+          text-align: center;
+        }
+
+        .grades-entry-makeup-assessment>.grades-entry-makeup-control {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: max(46px, calc(1.2em + 1.44rem + 2px));
+          margin: 0;
+          font: inherit;
+        }
+
+        .grades-entry-number-field input,
+        .grades-entry-exam-duration-field input {
+          width: 0;
+          min-width: 100%;
+        }
+
+        .grades-entry-exam-duration-field>span {
+          white-space: nowrap;
         }
 
         .grades-entry-topic-row .grades-entry-topic-field {
@@ -5004,6 +5046,7 @@
 
         .grade-test-task-afb {
           grid-row: 4 / 5;
+          grid-template-columns: auto 3.75rem;
           margin-top: 0.08rem;
         }
 
@@ -5015,6 +5058,7 @@
 
         .grade-test-task-afb select {
           appearance: auto;
+          padding-inline: 0.25rem;
           text-transform: none;
         }
 
@@ -5159,10 +5203,6 @@
           }
 
           .grades-entry-be-options {
-            grid-template-columns: 1fr;
-          }
-
-          .grades-entry-topic-row {
             grid-template-columns: 1fr;
           }
 
@@ -8112,7 +8152,7 @@
           align-items: center;
         }
 
-        .competence-expectations-competence-row {
+        .competence-expectations-topic.has-topic .competence-expectations-competence-row {
           grid-template-columns: 3.25rem minmax(0, 1fr) 5rem;
         }
 

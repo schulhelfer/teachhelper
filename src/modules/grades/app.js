@@ -1293,7 +1293,7 @@ function normalizeGradeCompetenceExpectations(items = []) {
       });
       return competenceResult;
     }, []);
-    if (!topic || !competencies.length) {
+    if (!competencies.length) {
       return result;
     }
     result.push({
@@ -1332,7 +1332,8 @@ export function parseCompetenceExpectationsTextBlock(text) {
         if (skippedTopic) {
           continue;
         }
-        return { ok: false, message: "In der Textdatei steht eine Kompetenz ohne vorheriges Thema.", items: [] };
+        currentTopic = { topic: "", competencies: [] };
+        items.push(currentTopic);
       }
       currentTopic.competencies.push({ text: textValue });
       continue;
@@ -1360,7 +1361,7 @@ export function parseCompetenceExpectationsTextBlock(text) {
   }
   const normalizedItems = normalizeGradeCompetenceExpectations(items);
   if (!normalizedItems.length) {
-    return { ok: false, message: "In der Textdatei wurden keine gültigen Themen mit Kompetenzen gefunden.", items: [] };
+    return { ok: false, message: "In der Textdatei wurden keine gültigen Kompetenzen gefunden.", items: [] };
   }
   return { ok: true, message: "", items: normalizedItems };
 }
@@ -10386,9 +10387,6 @@ class GradesApp {
       return false;
     }
     const draftValues = this.readGradesEntryEditorValues();
-    if (!await this.confirmGradesEntryAfbRequirementsBeforeSave(draftValues)) {
-      return false;
-    }
     const activeAssessment = isDraftSave
       ? null
       : this.store.getGradeAssessment(this.selectedGradesEntryAssessmentId);
@@ -10548,27 +10546,6 @@ class GradesApp {
       this.showGradeDeficitFollowUpsAfterSave(savedCourseId, assessment.id);
     }
     return true;
-  }
-
-  async confirmGradesEntryAfbRequirementsBeforeSave(values = null) {
-    const mode = normalizeGradeAssessmentMode(values?.mode);
-    if (mode !== "test") {
-      return true;
-    }
-    const afbState = calculateGradeTestAfbShares(values?.testTasks, values?.courseLevel);
-    if (afbState.ok) {
-      return true;
-    }
-    return this.showConfirmMessage(
-      "Die kerncurricularen AFB-Vorgaben sind nicht erfüllt.",
-      {
-        title: "Kerncurriculare AFB-Vorgaben",
-        okText: "Trotzdem speichern",
-        cancelText: "Abbrechen",
-        warnOk: true,
-        warning: true
-      }
-    );
   }
 
   async handleGradesSurfaceClick(event) {
@@ -11127,6 +11104,20 @@ class GradesApp {
       return;
     }
 
+    const makeupAssessmentInput = event.target.closest("input[data-grades-entry-makeup-assessment='1']");
+    if (makeupAssessmentInput) {
+      const latestDraft = commitAndGetLatestDraft();
+      if (!latestDraft) {
+        return;
+      }
+      this.markGradesEntryDraftDirty();
+      this.gradesEntryDraft = {
+        ...latestDraft,
+        isMakeupAssessment: normalizeGradeAssessmentMode(latestDraft.mode) === "test" && makeupAssessmentInput.checked
+      };
+      return;
+    }
+
     const testScaleInput = event.target.closest("input[data-grades-entry-test-scale='1']");
     if (testScaleInput) {
       const testScale = normalizeGradeTestScale(testScaleInput.value);
@@ -11293,7 +11284,8 @@ class GradesApp {
           : null,
         examDurationMinutes: mode === "test"
           ? normalizeGradeAssessmentExamDurationMinutes(latestDraft.examDurationMinutes)
-          : null
+          : null,
+        isMakeupAssessment: mode === "test" && latestDraft.isMakeupAssessment === true
       };
       if (courseDefaults) {
         this.gradesEntryDraft = this.applyGradeTestDefaultsToNewDraft(
@@ -14235,6 +14227,7 @@ class GradesApp {
       assessmentNumber: normalizeGradeAssessmentNumber(draftValues?.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(draftValues?.topic),
       examDurationMinutes: normalizeGradeAssessmentExamDurationMinutes(draftValues?.examDurationMinutes),
+      isMakeupAssessment: false,
       categoryId,
       subcategoryId,
       entries: {}
@@ -14280,6 +14273,7 @@ class GradesApp {
       assessmentNumber: normalizeGradeAssessmentNumber(assessment.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(assessment.topic),
       examDurationMinutes: normalizeGradeAssessmentExamDurationMinutes(assessment.examDurationMinutes),
+      isMakeupAssessment: normalizeGradeAssessmentMode(assessment.mode) === "test" && assessment.isMakeupAssessment === true,
       categoryId: Number(assessment.categoryId) || null,
       subcategoryId: Number(assessment.subcategoryId) || null,
       entries,
@@ -14365,6 +14359,8 @@ class GradesApp {
       examDurationMinutes: Object.prototype.hasOwnProperty.call(previous, "examDurationMinutes")
         ? normalizeGradeAssessmentExamDurationMinutes(previous.examDurationMinutes)
         : normalizeGradeAssessmentExamDurationMinutes(base.examDurationMinutes),
+      isMakeupAssessment: normalizeGradeAssessmentMode(previous.mode || base.mode) === "test"
+        && (previous.isMakeupAssessment ?? base.isMakeupAssessment) === true,
       categoryId: Number(previous.categoryId || base.categoryId || 0) || null,
       subcategoryId: Number(previous.subcategoryId || base.subcategoryId || 0) || null,
       entries: Object.entries(
@@ -14414,6 +14410,8 @@ class GradesApp {
       assessmentNumber: normalizeGradeAssessmentNumber(state?.assessmentNumber ?? assessment.assessmentNumber),
       topic: normalizeGradeAssessmentTopic(state?.topic ?? assessment.topic),
       examDurationMinutes: normalizeGradeAssessmentExamDurationMinutes(state?.examDurationMinutes ?? assessment.examDurationMinutes),
+      isMakeupAssessment: normalizeGradeAssessmentMode(state?.mode || assessment.mode) === "test"
+        && (state?.isMakeupAssessment ?? assessment.isMakeupAssessment) === true,
       categoryId: Number(state?.categoryId || assessment.categoryId || 0) || null,
       subcategoryId: Number(state?.subcategoryId || assessment.subcategoryId || 0) || null
     };
@@ -14984,6 +14982,7 @@ class GradesApp {
       assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(editorValues.assessmentNumber) : null,
       topic: mode === "test" ? normalizeGradeAssessmentTopic(editorValues.topic) : "",
       examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(editorValues.examDurationMinutes) : null,
+      isMakeupAssessment: mode === "test" && editorValues.isMakeupAssessment === true,
       categoryId: editorValues.categoryId,
       subcategoryId: editorValues.subcategoryId,
       occurrenceCategoryId: mode === "homework"
@@ -15862,6 +15861,23 @@ class GradesApp {
       }
       gradesEntryField100.append(input102);
       gradesEntryField100.append("\n");
+      const makeupAssessmentLabel = document.createElement("label");
+      makeupAssessmentLabel.className = "grades-entry-field grades-entry-makeup-assessment";
+      const makeupAssessmentInput = document.createElement("input");
+      makeupAssessmentInput.type = "checkbox";
+      makeupAssessmentInput.name = "grades-entry-makeup-assessment";
+      makeupAssessmentInput.dataset.gradesEntryMakeupAssessment = "1";
+      makeupAssessmentInput.checked = editorState.isMakeupAssessment === true;
+      makeupAssessmentInput.defaultChecked = makeupAssessmentInput.checked;
+      makeupAssessmentInput.disabled = editorMode !== "test";
+      const makeupAssessmentText = document.createElement("span");
+      makeupAssessmentText.textContent = "Nachschreiber";
+      const makeupAssessmentControl = document.createElement("span");
+      makeupAssessmentControl.className = "grades-entry-makeup-control";
+      makeupAssessmentControl.append(makeupAssessmentInput);
+      makeupAssessmentLabel.append(makeupAssessmentText, makeupAssessmentControl);
+      gradesEntryTopicRow93.append(makeupAssessmentLabel);
+      gradesEntryTopicRow93.append("\n");
       gradesEntryTopicRow93.append(gradesEntryField100);
       gradesEntryTopicRow93.append("\n");
       gradesEntryForm21.append(gradesEntryTopicRow93);
@@ -16366,6 +16382,7 @@ class GradesApp {
     const assessmentNumberInput = root.querySelector("input[data-grades-entry-number]");
     const topicInput = root.querySelector("input[data-grades-entry-topic]");
     const examDurationInput = root.querySelector("input[data-grades-entry-exam-duration]");
+    const makeupAssessmentInput = root.querySelector("input[data-grades-entry-makeup-assessment]");
     const categorySelect = root.querySelector("select[data-grades-entry-category]");
     const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
     const mode = normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade");
@@ -16400,6 +16417,8 @@ class GradesApp {
       examDurationMinutes: mode === "test"
         ? normalizeGradeAssessmentExamDurationMinutes(examDurationInput?.value ?? draft.examDurationMinutes)
         : null,
+      isMakeupAssessment: normalizeGradeAssessmentMode(modeInput?.value || draft.mode) === "test"
+        && (makeupAssessmentInput?.checked ?? draft.isMakeupAssessment) === true,
       categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
       subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
     };
@@ -19107,10 +19126,11 @@ class GradesApp {
 
   formatCompetenceExpectationsImportStatus(items = [], mode = "replace") {
     const normalizedItems = normalizeGradeCompetenceExpectations(items);
-    const topicCount = normalizedItems.length;
+    const topicCount = normalizedItems.filter((item) => item.topic).length;
     const competenceCount = normalizedItems.reduce((sum, item) => sum + item.competencies.length, 0);
     const modeText = mode === "append" ? "angehängt" : "übernommen";
-    return `${topicCount} Them${topicCount === 1 ? "a" : "en"} mit ${competenceCount} Kompetenz${competenceCount === 1 ? "" : "en"} aus der Textdatei ${modeText}.`;
+    const topicText = topicCount ? ` zu ${topicCount} Them${topicCount === 1 ? "a" : "en"}` : " ohne Thema";
+    return `${competenceCount} Kompetenz${competenceCount === 1 ? "" : "en"}${topicText} aus der Textdatei ${modeText}.`;
   }
 
   async importCompetenceExpectationsTextFile(file) {
@@ -19176,9 +19196,14 @@ class GradesApp {
     const input = document.createElement("input");
     input.type = "text";
     input.dataset.competenceExpectationsTopic = "1";
-    input.placeholder = "Thema";
+    input.placeholder = "Thema (optional)";
+    input.setAttribute("aria-label", "Thema (optional)");
     input.value = String(topic || "");
     input.autocomplete = "off";
+    node.classList.toggle("has-topic", Boolean(input.value.trim()));
+    input.addEventListener("input", () => {
+      node.classList.toggle("has-topic", Boolean(input.value.trim()));
+    });
     const actions = document.createElement("div");
     actions.className = "competence-expectations-row-actions";
     const addButton = document.createElement("button");
@@ -19289,10 +19314,6 @@ class GradesApp {
       if (!topic && !competencies.length) {
         return;
       }
-      if (!topic) {
-        items.push({ error: "Bitte zu jeder Kompetenz ein Thema eintragen." });
-        return;
-      }
       if (!competencies.length) {
         items.push({ error: "Bitte zu jedem Thema mindestens eine Kompetenz eintragen." });
         return;
@@ -19309,7 +19330,7 @@ class GradesApp {
     }
     const normalizedItems = normalizeGradeCompetenceExpectations(items);
     if (!normalizedItems.length) {
-      return { ok: false, message: "Bitte mindestens ein Thema mit Kompetenz eintragen.", items: [] };
+      return { ok: false, message: "Bitte mindestens eine Kompetenz eintragen.", items: [] };
     }
     return { ok: true, message: "", items: normalizedItems };
   }
@@ -19447,9 +19468,11 @@ class GradesApp {
     expectations.forEach((topic) => {
       const section = document.createElement("section");
       section.className = "grade-task-competence-topic";
-      const title = document.createElement("h4");
-      title.textContent = String(topic.topic || "Ohne Thema");
-      section.append(title);
+      if (String(topic.topic || "").trim()) {
+        const title = document.createElement("h4");
+        title.textContent = topic.topic;
+        section.append(title);
+      }
       const competencies = Array.isArray(topic.competencies) ? topic.competencies : [];
       competencies.forEach((competence) => {
         const button = document.createElement("button");
@@ -20753,12 +20776,13 @@ class GradesApp {
 
   formatExpectationHorizonJg(values = {}) {
     const yearLevel = normalizeGradeAssessmentYearLevel(values.yearLevel);
+    const suffix = values.isMakeupAssessment === true ? " (NT)" : "";
     if (yearLevel === null) {
-      return "";
+      return suffix ? `—${suffix}` : "";
     }
     const halfYearNumber = normalizeGradeHalfYear(values.halfYear) === "h2" ? "2" : "1";
     const assessmentNumber = normalizeGradeAssessmentNumber(values.assessmentNumber);
-    return `${yearLevel}-${halfYearNumber}${assessmentNumber === null ? "" : `-${assessmentNumber}`}`;
+    return `${yearLevel}-${halfYearNumber}${assessmentNumber === null ? "" : `-${assessmentNumber}`}${suffix}`;
   }
 
   formatCompetenceExpectationsExamDuration(value) {
@@ -20788,7 +20812,7 @@ class GradesApp {
           runs.push({
             text,
             list: "hyphenBullet",
-            listLevel: 1
+            listLevel: topic ? 1 : 0
           });
         }
       });
@@ -25234,6 +25258,7 @@ class GradesApp {
       examDurationMinutes: normalizeGradeAssessmentMode(previous.mode) === "test"
         ? normalizeGradeAssessmentExamDurationMinutes(previous.examDurationMinutes)
         : null,
+      isMakeupAssessment: mode === "test" && previous.isMakeupAssessment === true,
       categoryId,
       subcategoryId,
       entries
@@ -25362,6 +25387,7 @@ class GradesApp {
       assessmentNumber: mode === "test" ? normalizeGradeAssessmentNumber(values?.assessmentNumber) : null,
       topic: mode === "test" ? normalizeGradeAssessmentTopic(values?.topic) : "",
       examDurationMinutes: mode === "test" ? normalizeGradeAssessmentExamDurationMinutes(values?.examDurationMinutes) : null,
+      isMakeupAssessment: mode === "test" && values?.isMakeupAssessment === true,
       categoryId,
       subcategoryId,
       occurrenceCategoryId: mode === "homework"
@@ -25394,6 +25420,7 @@ class GradesApp {
     const assessmentNumberInput = root.querySelector("input[data-grades-entry-number]");
     const topicInput = root.querySelector("input[data-grades-entry-topic]");
     const examDurationInput = root.querySelector("input[data-grades-entry-exam-duration]");
+    const makeupAssessmentInput = root.querySelector("input[data-grades-entry-makeup-assessment]");
     const categorySelect = root.querySelector("select[data-grades-entry-category]");
     const subcategorySelect = root.querySelector("select[data-grades-entry-subcategory]");
     const occurrenceCategorySelect = root.querySelector("select[data-grades-entry-occurrence-category]");
@@ -25461,6 +25488,8 @@ class GradesApp {
       examDurationMinutes: normalizeGradeAssessmentMode(modeInput?.value || draft.mode || "grade") === "test"
         ? normalizeGradeAssessmentExamDurationMinutes(examDurationInput?.value ?? draft.examDurationMinutes)
         : null,
+      isMakeupAssessment: normalizeGradeAssessmentMode(modeInput?.value || draft.mode) === "test"
+        && (makeupAssessmentInput?.checked ?? draft.isMakeupAssessment) === true,
       categoryId: Number(categorySelect?.value || draft.categoryId || 0) || null,
       subcategoryId: Number(subcategorySelect?.value || draft.subcategoryId || 0) || null
     };
@@ -27880,7 +27909,7 @@ class GradesApp {
     }
     const draft = cloneJsonValue({
       courseId,
-      title: `${assessment.title} (Kopie)`,
+      title: `${assessment.title} (NT)`,
       halfYear: assessment.halfYear,
       weight: assessment.weight,
       mode: "test",
@@ -27896,6 +27925,7 @@ class GradesApp {
       assessmentNumber: assessment.assessmentNumber,
       topic: assessment.topic,
       examDurationMinutes: assessment.examDurationMinutes,
+      isMakeupAssessment: true,
       categoryId: assessment.categoryId,
       subcategoryId: assessment.subcategoryId,
       entries: {},

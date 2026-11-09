@@ -49,8 +49,12 @@ test('das Textformat für Kompetenzerwartungen wird wie dokumentiert gelesen', {
         return { ok: value.ok, topics: value.items.map((item) => item.topic) };
       })(),
       competenceWithoutTopic: (() => {
-        const value = parseCompetenceExpectationsTextBlock('-- Kompetenz ohne Thema\n');
-        return { ok: value.ok, message: value.message, itemCount: value.items.length };
+        const value = parseCompetenceExpectationsTextBlock('-- Kompetenz ohne Thema\n!-- Ausgelassene Kompetenz\n-- Weitere Kompetenz\n');
+        return { ok: value.ok, message: value.message, items: value.items };
+      })(),
+      mixedTopics: (() => {
+        const value = parseCompetenceExpectationsTextBlock('-- Freie Kompetenz\n- Thema\n-- Zugeordnete Kompetenz\n');
+        return { ok: value.ok, topics: value.items.map((item) => item.topic), competencies: value.items.map((item) => item.competencies.map((entry) => entry.text)) };
       })(),
       trailingEmptyTopic: (() => {
         const value = parseCompetenceExpectationsTextBlock('- Thema ohne Kompetenz\n');
@@ -83,9 +87,16 @@ test('das Textformat für Kompetenzerwartungen wird wie dokumentiert gelesen', {
   assert.equal(result.strayLine.ok, true);
   assert.deepEqual(result.strayLine.topics, ['Thema']);
 
-  assert.equal(result.competenceWithoutTopic.ok, false);
-  assert.equal(result.competenceWithoutTopic.itemCount, 0);
-  assert.match(result.competenceWithoutTopic.message, /Kompetenz ohne vorheriges Thema/);
+  assert.equal(result.competenceWithoutTopic.ok, true);
+  assert.equal(result.competenceWithoutTopic.message, '');
+  assert.equal(result.competenceWithoutTopic.items.length, 1);
+  assert.equal(result.competenceWithoutTopic.items[0].topic, '');
+  assert.deepEqual(result.competenceWithoutTopic.items[0].competencies.map((item) => item.text), ['Kompetenz ohne Thema', 'Weitere Kompetenz']);
+  assert.ok(result.competenceWithoutTopic.items[0].id);
+  assert.equal(new Set(result.competenceWithoutTopic.items[0].competencies.map((item) => item.id)).size, 2);
+  assert.equal(result.mixedTopics.ok, true);
+  assert.deepEqual(result.mixedTopics.topics, ['', 'Thema']);
+  assert.deepEqual(result.mixedTopics.competencies, [['Freie Kompetenz'], ['Zugeordnete Kompetenz']]);
 
   assert.equal(result.trailingEmptyTopic.ok, false);
   assert.match(result.trailingEmptyTopic.message, /Thema ohne Kompetenz/);
@@ -95,7 +106,7 @@ test('das Textformat für Kompetenzerwartungen wird wie dokumentiert gelesen', {
 
   for (const entry of result.blankInputs) {
     assert.equal(entry.ok, false);
-    assert.match(entry.message, /keine gültigen Themen/);
+    assert.match(entry.message, /keine gültigen Kompetenzen/);
   }
 });
 
@@ -186,7 +197,7 @@ test('ein Ausrufezeichen am Zeilenanfang schließt Themen und Kompetenzen vom Im
   assert.match(result.allCompetenciesSkipped.message, /Thema ohne Kompetenz/);
 
   assert.equal(result.onlySkippedTopics.ok, false);
-  assert.match(result.onlySkippedTopics.message, /keine gültigen Themen/);
+  assert.match(result.onlySkippedTopics.message, /keine gültigen Kompetenzen/);
 
   assert.equal(result.spacedAndIndented.ok, true);
   assert.deepEqual(result.spacedAndIndented.topics, ['Wiederholung']);
