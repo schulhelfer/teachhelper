@@ -2,6 +2,7 @@ import { createOcrPdfSession } from "./roster-ocr-pdf.js";
 import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TIMEOUTS, withTimeout } from "../../shared/file-guards.js";
 import { recognizeLocalNames } from "../../shared/ocr-vendor.js";
 import { boundCrop, changeCrop, cropPixels, importableOcrNames, ocrOutputSize, parseOcrNames } from "./roster-ocr-data.js";
+import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair } from "../../shared/school-data/grades.js";
 
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 };
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -136,7 +137,7 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
   const renderHead = (list) => {
     const head = doc.createElement("div");
     head.className = "course-ocr-row course-ocr-head";
-    for (const title of ["Nachname", "Vorname", ""]) {
+    for (const title of ["Nachname", "Vorname", "Klasse", ""]) {
       const cell = doc.createElement("span");
       cell.textContent = title;
       head.append(cell);
@@ -163,6 +164,24 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
         input.addEventListener("input", () => { row[field] = input.value; updateConfirm(); });
         item.append(input);
       }
+      const classSelect = doc.createElement("select");
+      row.classFlair = normalizeGradeClassFlair(row.classFlair);
+      classSelect.className = `course-dialog-student-flair-select course-dialog-student-class-select${row.classFlair ? " has-flair" : ""}`;
+      classSelect.setAttribute("aria-label", `Klasse ${index + 1}`);
+      for (const value of ["", ...GRADE_STUDENT_CLASS_FLAIRS]) {
+        const option = doc.createElement("option");
+        option.value = value;
+        option.textContent = value || "Keine Klasse";
+        option.selected = value === row.classFlair;
+        classSelect.append(option);
+      }
+      classSelect.value = row.classFlair;
+      classSelect.addEventListener("change", () => {
+        row.classFlair = normalizeGradeClassFlair(classSelect.value);
+        classSelect.className = `course-dialog-student-flair-select course-dialog-student-class-select${row.classFlair ? " has-flair" : ""}`;
+        updateConfirm();
+      });
+      item.append(classSelect);
       const remove = doc.createElement("button");
       remove.type = "button";
       remove.className = "ghost danger-action dialog-icon-button app-action-icon";

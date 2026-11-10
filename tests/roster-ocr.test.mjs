@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { normalizeGradeClassFlair } from '../src/shared/school-data/grades.js';
 import { readFile } from 'node:fs/promises';
 async function loadModule(path) {
   const url = new URL(path, import.meta.url);
@@ -16,16 +17,16 @@ test('OCR preserves name parts and order and keeps every recognized line for rev
   const rows = parseOcrNames('Nachname  Vorname\n1. Müller-Schön, Anna Maria\n2 van der Meer\tLéa\n\nO’Neill  Max\nSolo\n123');
   assert.equal(rows.length, 6);
   assert.deepEqual(importableOcrNames(rows), [
-    { lastName: 'Nachname', firstName: 'Vorname' },
-    { lastName: 'Müller-Schön', firstName: 'Anna Maria' },
-    { lastName: 'van der Meer', firstName: 'Léa' },
-    { lastName: 'O’Neill', firstName: 'Max' },
-    { lastName: 'Solo', firstName: '' },
-    { lastName: '123', firstName: '' },
+    { lastName: 'Nachname', firstName: 'Vorname', classFlair: '' },
+    { lastName: 'Müller-Schön', firstName: 'Anna Maria', classFlair: '' },
+    { lastName: 'van der Meer', firstName: 'Léa', classFlair: '' },
+    { lastName: 'O’Neill', firstName: 'Max', classFlair: '' },
+    { lastName: 'Solo', firstName: '', classFlair: '' },
+    { lastName: '123', firstName: '', classFlair: '' },
   ]);
   assert.deepEqual(importableOcrNames(parseOcrNames('Anna Maria  von Berg\nMax Mustermann', 'first-last')), [
-    { firstName: 'Anna Maria', lastName: 'von Berg' },
-    { firstName: 'Max', lastName: 'Mustermann' },
+    { firstName: 'Anna Maria', lastName: 'von Berg', classFlair: '' },
+    { firstName: 'Max', lastName: 'Mustermann', classFlair: '' },
   ]);
 });
 
@@ -33,15 +34,15 @@ test('recognized names lose stray punctuation but keep hyphens and apostrophes i
   assert.deepEqual(
     importableOcrNames(parseOcrNames('Müller,  Anna .\n• Bauer   Max\n|Lang:   Lea\nSt. Clair  Tom')),
     [
-      { lastName: 'Müller', firstName: 'Anna' },
-      { lastName: 'Bauer', firstName: 'Max' },
-      { lastName: 'Lang', firstName: 'Lea' },
-      { lastName: 'St Clair', firstName: 'Tom' },
+      { lastName: 'Müller', firstName: 'Anna', classFlair: '' },
+      { lastName: 'Bauer', firstName: 'Max', classFlair: '' },
+      { lastName: 'Lang', firstName: 'Lea', classFlair: '' },
+      { lastName: 'St Clair', firstName: 'Tom', classFlair: '' },
     ],
   );
   assert.deepEqual(importableOcrNames(parseOcrNames('Müller-Schön  Anna\nO’Neill  Max')), [
-    { lastName: 'Müller-Schön', firstName: 'Anna' },
-    { lastName: 'O’Neill', firstName: 'Max' },
+    { lastName: 'Müller-Schön', firstName: 'Anna', classFlair: '' },
+    { lastName: 'O’Neill', firstName: 'Max', classFlair: '' },
   ]);
 });
 
@@ -50,7 +51,43 @@ test('only the edited, remaining, nonempty preview entries are returned to the r
   rows[0].lastName = '  Müller  ';
   rows.splice(1, 2);
   rows[1].firstName = rows[1].lastName = ' ';
-  assert.deepEqual(importableOcrNames(rows), [{ lastName: 'Müller', firstName: 'Anna' }]);
+  assert.deepEqual(importableOcrNames(rows), [{ lastName: 'Müller', firstName: 'Anna', classFlair: '' }]);
+});
+
+test('OCR extracts a class column before, between or after names without losing name parts', () => {
+  for (const line of [
+    '7a  van der Meer  Anna Maria',
+    'van der Meer  7a  Anna Maria',
+    'van der Meer  Anna Maria  7a',
+    '1. van der Meer  Anna Maria  7a',
+    '1  7a  van der Meer  Anna Maria',
+    'van der Meer;7a;Anna Maria',
+    'van der Meer\t7a\tAnna Maria',
+    'van der Meer 7a Anna Maria',
+  ]) {
+    const rows = parseOcrNames(line);
+    assert.equal(rows[0].raw, line);
+    assert.deepEqual(importableOcrNames(rows), [{ lastName: 'van der Meer', firstName: 'Anna Maria', classFlair: 'a' }], line);
+  }
+  for (const line of ['11 B  Anna Maria  von Berg', 'Anna Maria  11B  von Berg', 'Anna Maria  von Berg  11\u00a0b']) {
+    assert.deepEqual(importableOcrNames(parseOcrNames(line, 'first-last')), [
+      { firstName: 'Anna Maria', lastName: 'von Berg', classFlair: 'b' },
+    ], line);
+  }
+  assert.deepEqual(importableOcrNames(parseOcrNames('7a Müller Anna\nBauer Max 11b')), [
+    { lastName: 'Müller', firstName: 'Anna', classFlair: 'a' },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'b' },
+  ]);
+});
+
+test('missing, invalid and conflicting OCR classes stay unassigned and class-only rows are not imported', () => {
+  for (const line of ['Müller  Anna', 'Müller  Anna  7h', '7a  Müller  Anna  11b', '7a  Müller  Anna  11a']) {
+    assert.deepEqual(importableOcrNames(parseOcrNames(line)), [{ lastName: 'Müller', firstName: 'Anna', classFlair: '' }], line);
+  }
+  assert.deepEqual(importableOcrNames(parseOcrNames('7a  Müller  Anna  7A')), [
+    { lastName: 'Müller', firstName: 'Anna', classFlair: 'a' },
+  ]);
+  assert.deepEqual(importableOcrNames(parseOcrNames('7a\n11 B')), []);
 });
 
 test('crop movement and corner resizing stay inside the image without changing aspect ratio implicitly', () => {
@@ -115,7 +152,7 @@ test('successful and failed OCR jobs always release their workers and allow anot
 
 const source = await readFile(new URL('../src/modules/grades/app.js', import.meta.url), 'utf8');
 const appendBody = source.match(/  appendCourseDialogStudents\(sourceStudents\) \{([\s\S]*?)\n  \}/)[1];
-const append = new Function('sourceStudents', 'normalizeGradeTextPart', 'buildGradeStudentNameMatchKey', 'normalizeGradeStudentPortrait', 'compareGradeStudents', appendBody);
+const append = new Function('sourceStudents', 'normalizeGradeTextPart', 'buildGradeStudentNameMatchKey', 'normalizeGradeStudentPortrait', 'compareGradeStudents', 'normalizeGradeClassFlair', appendBody);
 
 test('the shared course/OCR append preserves existing records and metadata and skips duplicate name pairs', () => {
   const existing = { id: 12, lastName: 'Müller', firstName: 'Anna', performanceFlair: 'A', portrait: { existing: true } };
@@ -125,9 +162,9 @@ test('the shared course/OCR append preserves existing records and metadata and s
     { lastName: ' MÜLLER ', firstName: 'anna' },
     { lastName: 'Wolf', firstName: 'Tom' },
     { lastName: 'Wolf', firstName: 'Tom' },
-  ], (value) => String(value || '').trim().replace(/\s+/g, ' '), buildStudentNameMatchKey, (value) => value || null, (a, b) => a.lastName.localeCompare(b.lastName));
+  ], (value) => String(value || '').trim().replace(/\s+/g, ' '), buildStudentNameMatchKey, (value) => value || null, (a, b) => a.lastName.localeCompare(b.lastName), normalizeGradeClassFlair);
   assert.deepEqual(result, { added: 1, skipped: 2 });
   assert.equal(app.courseDialogDraft.students[0], existing);
   assert.equal(app.courseDialogDraft.importMeta, meta);
-  assert.deepEqual(app.courseDialogDraft.students[1], { id: 0, lastName: 'Wolf', firstName: 'Tom', rufname: '', performanceFlair: '', portrait: null });
+  assert.deepEqual(app.courseDialogDraft.students[1], { id: 0, lastName: 'Wolf', firstName: 'Tom', rufname: '', performanceFlair: '', classFlair: '', portrait: null });
 });

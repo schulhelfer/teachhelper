@@ -10,6 +10,7 @@ import {
 import {
   calculateWeightedGrade,
   combineGradePeriods,
+  normalizeGradeClassFlair,
   normalizeGradeTestDisplaySystem
 } from "../../shared/school-data/grades.js";
 import {
@@ -2737,6 +2738,7 @@ export class WorkspaceStore {
       const firstName = normalizeGradeTextPart(rawStudent && rawStudent.firstName);
       const rufname = normalizeGradeTextPart(rawStudent && rawStudent.rufname);
       const performanceFlair = normalizeGradePerformanceFlair(rawStudent && rawStudent.performanceFlair);
+      const classFlair = normalizeGradeClassFlair(rawStudent && rawStudent.classFlair);
       const portrait = normalizeGradeStudentPortrait(rawStudent && rawStudent.portrait);
       if (!lastName && !firstName) {
         continue;
@@ -2757,6 +2759,7 @@ export class WorkspaceStore {
         firstName,
         rufname,
         performanceFlair,
+        classFlair,
         portrait,
         sortKey: buildGradeStudentSortKey(lastName, firstName, studentId)
       });
@@ -5025,6 +5028,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
       const firstName = normalizeGradeTextPart(item.firstName);
       const rufname = normalizeGradeTextPart(item.rufname);
       const performanceFlair = normalizeGradePerformanceFlair(item.performanceFlair);
+      const classFlair = normalizeGradeClassFlair(item.classFlair);
       const portrait = normalizeGradeStudentPortrait(item.portrait);
       return {
         id,
@@ -5033,6 +5037,7 @@ WorkspaceStore.prototype.normalizeGradeVaultState = function (rawVaultState = nu
         firstName,
         rufname,
         performanceFlair,
+        classFlair,
         portrait,
         sortKey: buildGradeStudentSortKey(lastName, firstName, id)
       };

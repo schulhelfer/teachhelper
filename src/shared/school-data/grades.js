@@ -1,3 +1,10 @@
+export const GRADE_STUDENT_CLASS_FLAIRS = Object.freeze(["a", "b", "c", "d", "e", "f", "g"]);
+
+export function normalizeGradeClassFlair(value) {
+  const normalized = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return GRADE_STUDENT_CLASS_FLAIRS.includes(normalized) ? normalized : "";
+}
+
 function clampGrade(value, min = 0, max = 15) {
   return Math.min(max, Math.max(min, Number(value) || 0));
 }

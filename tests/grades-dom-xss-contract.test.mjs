@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import test from 'node:test';
+import { normalizeGradeClassFlair } from '../src/shared/school-data/grades.js';
 
 const appSource = await readFile(
   new URL('../src/modules/grades/app.js', import.meta.url),
@@ -44,7 +45,7 @@ test('imported/persisted grade text is rendered with DOM properties, not parsed 
 });
 
 test('student names are inserted as literal text nodes', () => {
-  const start = appSource.indexOf('function createGradeStudentNameElement(');
+  const start = appSource.indexOf('function appendGradeStudentClassFlair(');
   const end = appSource.indexOf('\nfunction buildGradePeriodKey(', start);
   const helper = appSource.slice(start, end);
   const payload = '<img src=x onerror=alert(1)>"&\'';
@@ -75,9 +76,10 @@ test('student names are inserted as literal text nodes', () => {
   const createStudentName = new Function(
     'document',
     'normalizeGradePerformanceFlair',
+    'normalizeGradeClassFlair',
     `${helper}\nreturn createGradeStudentNameElement;`,
-  )(document, (value) => String(value || ''));
-  const node = createStudentName({ id: 7 }, payload);
+  )(document, (value) => String(value || ''), normalizeGradeClassFlair);
+  const node = createStudentName({ id: 7, classFlair: payload }, payload);
 
   assert.equal(node.dataset.studentLabel, payload);
   assert.deepEqual(node.children, [{ type: 'text', textContent: payload }]);

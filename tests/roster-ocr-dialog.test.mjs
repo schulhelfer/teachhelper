@@ -105,18 +105,18 @@ test('the dialog crops the original coordinates and commits the corrected rows t
   assert.ok(output.draws.some(([name, x, y]) => name === 'translate' && x === -200 && y === -200));
   assert.equal(output.width, 0, 'temporary OCR canvas is released');
   const [head, first, second] = state.refs.rows.children;
-  assert.deepEqual(head.children.map((cell) => cell.textContent), ['Nachname', 'Vorname', '']);
+  assert.deepEqual(head.children.map((cell) => cell.textContent), ['Nachname', 'Vorname', 'Klasse', '']);
   assert.equal(state.refs.rows.children.length, 4, 'one header plus three recognized rows');
   first.children[0].value = 'Müller';
   first.children[0].fire('input');
-  assert.ok(second.children[2].className.includes('danger-action'), 'the row delete button is styled as a danger action');
-  second.children[2].fire('click');
-  state.refs.rows.children[2].children[2].fire('click');
+  assert.ok(second.children[3].className.includes('danger-action'), 'the row delete button is styled as a danger action');
+  second.children[3].fire('click');
+  state.refs.rows.children[2].children[3].fire('click');
   assert.equal(state.refs.confirm.attributes['aria-label'], '1 Namen übernehmen');
   assert.equal(state.refs.confirm.attributes['aria-label'], state.refs.confirm.dataset.tooltip);
   assert.equal(state.refs.confirm.textContent, undefined, 'the header submit keeps its icon as content');
   state.form.fire('submit');
-  assert.deepEqual(results, [[{ lastName: 'Müller', firstName: 'Anna' }]]);
+  assert.deepEqual(results, [[{ lastName: 'Müller', firstName: 'Anna', classFlair: '' }]]);
   assert.equal(state.dialog.open, false);
   assert.equal(state.refs.canvas.width, 0);
   assert.equal(state.refs.rows.children.length, 0);
@@ -169,7 +169,7 @@ test('edited OCR drafts can be cleared for locking and restored without importin
   assert.equal(state.refs.rows.children[1].children[0].value, 'Müller');
   assert.deepEqual(results, []);
   state.form.fire('submit');
-  assert.deepEqual(results, [[{ lastName: 'Müller', firstName: 'Anna' }]]);
+  assert.deepEqual(results, [[{ lastName: 'Müller', firstName: 'Anna', classFlair: '' }]]);
 });
 
 test('an image finishing decode after close cannot reopen the crop or retain its URL', async (t) => {
@@ -184,6 +184,45 @@ test('an image finishing decode after close cannot reopen the crop or retain its
   assert.equal(state.refs.stage.dataset.state, 'empty');
   assert.equal(state.refs.canvas.width, 0);
   assert.equal(revoked.mock.callCount(), 1);
+});
+
+test('class selections can be corrected, removed and restored before committing the OCR draft', async (t) => {
+  installImage(t);
+  const state = setup(async () => 'Müller  Anna  7a\nBauer  11 B  Max\nWolf  Tom');
+  const results = [];
+  const onConfirm = (names) => { results.push(names); return { added: names.length, skipped: 0 }; };
+  state.api.open(onConfirm);
+  await selectImage(state.refs);
+  state.refs.recognize.fire('click');
+  await tick(); await tick();
+  const [, first, second, third] = state.refs.rows.children;
+  assert.equal(first.children[2].value, 'a');
+  assert.equal(second.children[2].value, 'b');
+  assert.equal(third.children[2].value, '');
+  assert.deepEqual(first.children[2].children.map((option) => [option.value, option.textContent]), [
+    ['', 'Keine Klasse'], ...['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((value) => [value, value]),
+  ]);
+  assert.equal(first.children[2].attributes['aria-label'], 'Klasse 1');
+  first.children[2].value = 'g';
+  first.children[2].fire('change');
+  second.children[2].value = '';
+  second.children[2].fire('change');
+  assert.ok(first.children[2].className.includes('has-flair'));
+  assert.ok(!second.children[2].className.includes('has-flair'));
+  const draft = state.api.captureDraft();
+  state.api.pause();
+  state.api.close();
+  assert.deepEqual(results, []);
+  state.api.open(onConfirm);
+  state.api.restoreDraft(draft);
+  assert.equal(state.refs.rows.children[1].children[2].value, 'g');
+  assert.equal(state.refs.rows.children[2].children[2].value, '');
+  state.form.fire('submit');
+  assert.deepEqual(results, [[
+    { lastName: 'Müller', firstName: 'Anna', classFlair: 'g' },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: '' },
+    { lastName: 'Wolf', firstName: 'Tom', classFlair: '' },
+  ]]);
 });
 
 test('keyboard crop changes, rotation, recognition failure and retry leave the dialog usable', async (t) => {
@@ -222,7 +261,7 @@ test('the name order segment control drives parsing, resets on open and locks wh
   state.refs.recognize.fire('click'); await tick(); await tick();
   assert.deepEqual(entryCount(state), 1);
   state.form.fire('submit');
-  assert.deepEqual(results, [[{ lastName: 'Anna', firstName: 'Müller' }]]);
+  assert.deepEqual(results, [[{ lastName: 'Anna', firstName: 'Müller', classFlair: '' }]]);
 
   state.api.open((names) => { results.push(names); return { added: names.length, skipped: 0 }; });
   assert.equal(lastFirst.checked, true, 'reopening restores the default order');
@@ -237,7 +276,7 @@ test('the name order segment control drives parsing, resets on open and locks wh
   await tick(); await tick();
   assert.equal(firstLast.disabled, false);
   state.form.fire('submit');
-  assert.deepEqual(results[1], [{ lastName: 'Müller', firstName: 'Anna' }]);
+  assert.deepEqual(results[1], [{ lastName: 'Müller', firstName: 'Anna', classFlair: '' }]);
 });
 
 test('the crop is resized from its border and moved from its interior without handle elements', async (t) => {
@@ -369,7 +408,7 @@ test('PDF page selection feeds the chosen page through the same crop and OCR flo
   assert.equal(imported.length, 0);
   assert.equal(entryCount(state), 1);
   state.form.fire('submit');
-  assert.deepEqual(imported, [[{ lastName: 'Meier', firstName: 'Mia' }]]);
+  assert.deepEqual(imported, [[{ lastName: 'Meier', firstName: 'Mia', classFlair: '' }]]);
   assert.equal(destroyed, 1);
   assert.equal(state.refs['pdf-pages'].hidden, true);
 });

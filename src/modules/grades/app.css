@@ -1423,6 +1423,23 @@
           transform: translateX(22px);
         }
 
+        .sidebar-grade-class-sort-control:not([hidden]) {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.4rem;
+          color: var(--text-secondary-contrast);
+          font-size: 0.78rem;
+          cursor: pointer;
+        }
+
+        .sidebar-grade-class-sort-control input {
+          width: 1rem;
+          min-height: 1rem;
+          margin: 0;
+          accent-color: #16a34a;
+        }
+
         .sidebar-grade-segment-control {
           position: relative;
           isolation: isolate;
@@ -6399,6 +6416,18 @@
           pointer-events: none;
         }
 
+        .grades-student-class-flair {
+          background: rgba(34, 197, 94, 0.18);
+          border-color: rgba(74, 222, 128, 0.44);
+          color: #bbf7d0;
+        }
+
+        :root[data-theme="light"] .grades-student-class-flair {
+          background: rgba(22, 163, 74, 0.12);
+          border-color: rgba(21, 128, 61, 0.4);
+          color: #166534;
+        }
+
         .grades-student-name-wrap {
           display: inline-flex;
           align-items: center;
@@ -9412,7 +9441,7 @@
 
         .course-dialog-student-grid {
           display: grid;
-          grid-template-columns: 2.55rem minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(8rem, 1fr) 3.4rem auto;
+          grid-template-columns: 2.55rem minmax(8rem, 1fr) minmax(8rem, 1fr) minmax(8rem, 1fr) 3.4rem 7.6rem auto;
           gap: 0.45rem;
           align-items: center;
           min-width: 0;
@@ -9616,6 +9645,27 @@
           background: var(--surface-overlay-subtle);
           border-color: rgba(244, 114, 182, 0.46);
           box-shadow: 0 0 0 2px rgba(236, 72, 153, 0.12);
+        }
+
+        .course-dialog-student-class-select.has-flair,
+        .course-dialog-student-class-select.has-flair:hover {
+          background: rgba(34, 197, 94, 0.12);
+          border-color: rgba(74, 222, 128, 0.44);
+          color: #bbf7d0;
+          box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+        }
+
+        .course-dialog-student-class-select:focus,
+        .course-dialog-student-class-select:focus-visible {
+          border-color: #4ade80;
+          box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+        }
+
+        :root[data-theme="light"] .course-dialog-student-class-select.has-flair,
+        :root[data-theme="light"] .course-dialog-student-class-select:hover {
+          background: rgba(22, 163, 74, 0.1);
+          border-color: rgba(21, 128, 61, 0.4);
+          color: #166534;
         }
 
         .course-dialog-category-head {
@@ -10462,7 +10512,7 @@ html[data-module-role="planning"] #view-grades-entry-btn {
 .course-ocr-crop:focus-visible { outline: 3px solid var(--text); outline-offset: -3px; }
 .course-ocr-rows {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 7.6rem auto;
   gap: 0.4rem 0.5rem;
   align-items: center;
 }

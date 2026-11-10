@@ -76,6 +76,10 @@
                 <span>Nachname,<br>Vorname</span>
               </label>
             </div>
+            <label id="sidebar-grade-class-sort-control" class="sidebar-grade-class-sort-control" hidden>
+              <input id="sidebar-grade-class-sort-toggle" type="checkbox" disabled>
+              <span>Nach Klassen</span>
+            </label>
           </div>
           <div id="sidebar-grade-display-section" class="sidebar-grade-action-section"
             data-tutorial-anchor="grades-display-system">
@@ -677,8 +681,8 @@
       </div>
       <input data-ocr="file" type="file"
         accept="image/jpeg,image/png,image/webp,application/pdf,.jpg,.jpeg,.png,.webp,.pdf" hidden>
-      <p class="course-ocr-hint">Schneide für die automatische Erkennung das Bild so zu, dass möglichst nur die Namen
-        in der Tabelle dargestellt sind.</p>
+      <p class="course-ocr-hint">Schneide für die automatische Erkennung das Bild so zu, dass die Namen und gegebenenfalls
+        die Klassenspalte (z. B. 7a oder 11b) in der Tabelle dargestellt sind.</p>
       <div class="course-ocr-stage-wrap">
         <div data-ocr="stage" class="course-ocr-stage" role="button" tabindex="0"
           aria-label="Datei auswählen oder ablegen" data-state="empty">

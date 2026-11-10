@@ -1,3 +1,5 @@
+import { normalizeGradeClassFlair } from "../../shared/school-data/grades.js";
+
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
 const NAME_EDGE_NOISE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
@@ -10,7 +12,13 @@ const cleanNamePart = (value) => clean(value)
 
 export function parseOcrNames(text, order = "last-first") {
   return String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((raw) => {
-    const line = raw.replace(/^\d+[.)\s]+/, "").trim();
+    const classes = new Map();
+    const names = raw.replace(/(^|[\s,;|])(\d+[ \u00a0]*([a-z]))(?=$|[\s,;|])/gi, (_match, boundary, value, letter) => {
+      classes.set(value.replace(/\s/g, "").toLowerCase(), normalizeGradeClassFlair(letter));
+      return `${boundary}  `;
+    });
+    const classFlair = classes.size === 1 ? [...classes.values()][0] : "";
+    const line = names.replace(/^\d+[.)\s]+/, "").trim();
     const parts = line.split(/\s*[,;\t]\s*| {2,}/).filter(Boolean);
     if (parts.length < 2) {
       const words = line.split(/\s+/);
@@ -20,13 +28,14 @@ export function parseOcrNames(text, order = "last-first") {
     const right = cleanNamePart(parts.slice(1).join(" "));
     const lastName = order === "last-first" ? left : right;
     const firstName = order === "last-first" ? right : left;
-    return { raw, lastName, firstName };
+    return { raw, lastName, firstName, classFlair };
   });
 }
 
 export function importableOcrNames(rows) {
   return rows.map((row) => ({
     lastName: clean(row.lastName), firstName: clean(row.firstName),
+    classFlair: normalizeGradeClassFlair(row.classFlair),
   })).filter((row) => row.lastName || row.firstName);
 }
 

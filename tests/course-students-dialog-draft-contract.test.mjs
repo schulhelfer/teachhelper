@@ -39,7 +39,7 @@ test('the participant dialog round-trips every persisted student field', () => {
   const persisted = studentFieldsIn('validateCourseDialogStudents(students)');
   assert.deepEqual(
     [...persisted].sort(),
-    ['firstName', 'id', 'lastName', 'performanceFlair', 'portrait', 'rufname'],
+    ['classFlair', 'firstName', 'id', 'lastName', 'performanceFlair', 'portrait', 'rufname'],
   );
 
   assert.deepEqual(
@@ -62,7 +62,7 @@ test('a CSV roster re-import carries back the fields the CSV cannot supply', () 
   );
 
   const body = extractGradesMethod(csvImport);
-  for (const field of ['rufname', 'performanceFlair', 'portrait']) {
+  for (const field of ['rufname', 'performanceFlair', 'classFlair', 'portrait']) {
     assert.match(
       body,
       new RegExp(`carried\\?\\.${field}`),
@@ -73,6 +73,6 @@ test('a CSV roster re-import carries back the fields the CSV cannot supply', () 
   assert.match(body, /duplicateNameKeys\.forEach\(\(key\) => existingDataByNameKey\.delete\(key\)\)/);
   assert.match(
     body,
-    /importedNameCounts\.get\([\s\S]{0,120}\) \|\| 0\) > 1\) \{\s*student\.rufname = "";\s*student\.performanceFlair = "";\s*student\.portrait = null;/,
+    /importedNameCounts\.get\([\s\S]{0,120}\) \|\| 0\) > 1\) \{\s*student\.rufname = "";\s*student\.performanceFlair = "";\s*student\.classFlair = "";\s*student\.portrait = null;/,
   );
 });

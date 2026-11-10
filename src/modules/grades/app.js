@@ -1,5 +1,5 @@
 import { applyFeedbackDialog } from "../../shared/feedback-dialog.js";
-import { normalizeGradeTestDisplaySystem } from "../../shared/school-data/grades.js";
+import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair, normalizeGradeTestDisplaySystem } from "../../shared/school-data/grades.js";
 import { createRosterOcrDialog } from "./roster-ocr-dialog.js";
 import {
   createDocxFromPreparedTemplate,
@@ -2307,6 +2307,16 @@ function createGradeExpectationHorizonCommentIndicatorElement() {
   return indicator;
 }
 
+function appendGradeStudentClassFlair(node, student) {
+  const classFlair = normalizeGradeClassFlair(student?.classFlair);
+  if (!classFlair) return;
+  const flair = document.createElement("span");
+  flair.className = "grades-student-flair grades-student-class-flair";
+  flair.setAttribute("aria-label", `Klasse ${classFlair}`);
+  flair.textContent = classFlair;
+  node.append(flair);
+}
+
 function createGradeStudentNameElement(student, studentName, options = {}) {
   const node = document.createElement("div");
   node.className = `grades-student-name${options.active ? " is-active" : ""}${options.placeholder ? " is-placeholder" : ""}`;
@@ -2355,6 +2365,7 @@ function createGradeStudentNameElement(student, studentName, options = {}) {
       flair.textContent = performanceFlair;
       node.append(flair);
     }
+    appendGradeStudentClassFlair(node, student);
   } else {
     node.textContent = "\u00a0";
   }
@@ -2923,6 +2934,8 @@ class GradesApp {
       sidebarGradeAccommodationSection: document.querySelector("#sidebar-grade-accommodation-section"),
       sidebarGradePrivacyToggleBtn: document.querySelector("#sidebar-grade-privacy-toggle-btn"),
       sidebarGradeNameOrderInputs: document.querySelectorAll("[data-grade-name-order]"),
+      sidebarGradeClassSortControl: document.querySelector("#sidebar-grade-class-sort-control"),
+      sidebarGradeClassSortToggle: document.querySelector("#sidebar-grade-class-sort-toggle"),
       sidebarGradeDisplaySystemInputs: document.querySelectorAll("[data-grade-display-system]"),
       sidebarGradePredicateSuffixInputs: document.querySelectorAll("[data-grade-predicate-suffixes]"),
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
@@ -3285,6 +3298,7 @@ class GradesApp {
     this.selectedGradesOverviewColumnCourseId = null;
     this.gradeAssessmentColumnDrag = null;
     this.gradesOverviewNameOrder = "last";
+    this.gradesOverviewSortByClass = false;
     this.gradesEntryNameOrder = "first";
     this.gradesEntryDistributionView = "points";
     this.gradesEntryDistributionOverlayOpen = false;
@@ -7019,6 +7033,7 @@ class GradesApp {
         firstName: String(student.firstName || ""),
         rufname: String(student.rufname || ""),
         performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair),
+        classFlair: normalizeGradeClassFlair(student.classFlair),
         portrait: normalizeGradeStudentPortrait(student.portrait)
       })),
       baseStudentIds: students
@@ -7317,6 +7332,22 @@ class GradesApp {
           flairSelect.append(option);
         });
 
+        const classFlair = normalizeGradeClassFlair(student.classFlair);
+        const classSelect = document.createElement("select");
+        classSelect.name = `student-class-flair-${index}`;
+        classSelect.className = `course-dialog-student-flair-select course-dialog-student-class-select${classFlair ? " has-flair" : ""}`;
+        classSelect.dataset.studentField = "classFlair";
+        classSelect.dataset.studentIndex = String(index);
+        classSelect.setAttribute("aria-label", "Klassenzugehörigkeit");
+        classSelect.title = "Klassenzugehörigkeit";
+        ["", ...GRADE_STUDENT_CLASS_FLAIRS].forEach((value) => {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = value || "Keine Klasse";
+          option.selected = classFlair === value;
+          classSelect.append(option);
+        });
+
         const removeButton = this.createGradeStructureActionButton({
           className: "ghost danger-action",
           dataAttribute: "student-remove",
@@ -7385,7 +7416,7 @@ class GradesApp {
         }
 
         grid.append(portraitControl);
-        grid.append(lastName, firstName, rufname, flairSelect, portraitInput, removeButton);
+        grid.append(lastName, firstName, rufname, flairSelect, classSelect, portraitInput, removeButton);
         row.append(grid);
         this.refs.courseDialogStudentsList.append(row);
       });
@@ -7512,7 +7543,7 @@ class GradesApp {
     if (!this.courseDialogDraft) {
       return;
     }
-    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", rufname: "", performanceFlair: "", portrait: null });
+    this.courseDialogDraft.students.push({ id: 0, lastName: "", firstName: "", rufname: "", performanceFlair: "", classFlair: "", portrait: null });
     this.renderCourseDialogStudents();
   }
 
@@ -7537,13 +7568,15 @@ class GradesApp {
     const index = Number(input.dataset.studentIndex || -1);
     const field = String(input.dataset.studentField || "");
     const student = this.courseDialogDraft.students[index];
-    if (!student || !["lastName", "firstName", "rufname", "performanceFlair"].includes(field)) {
+    if (!student || !["lastName", "firstName", "rufname", "performanceFlair", "classFlair"].includes(field)) {
       return;
     }
     student[field] = field === "performanceFlair"
       ? normalizeGradePerformanceFlair(input.value)
-      : String(input.value || "");
-    if (field === "performanceFlair") {
+      : field === "classFlair"
+        ? normalizeGradeClassFlair(input.value)
+        : String(input.value || "");
+    if (field === "performanceFlair" || field === "classFlair") {
       input.value = student[field];
       input.classList.toggle("has-flair", Boolean(student[field]));
     }
@@ -8699,6 +8732,7 @@ class GradesApp {
         firstName: normalizeGradeTextPart(student && student.firstName),
         rufname: normalizeGradeTextPart(student && student.rufname),
         performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair),
+        classFlair: normalizeGradeClassFlair(student && student.classFlair),
         portrait: normalizeGradeStudentPortrait(student && student.portrait)
       }));
     if (normalized.some((student) => student.id > 0 && !student.lastName && !student.firstName)) {
@@ -9397,6 +9431,7 @@ class GradesApp {
       existingDataByNameKey.set(key, {
         rufname: normalizeGradeTextPart(student && student.rufname),
         performanceFlair: normalizeGradePerformanceFlair(student && student.performanceFlair),
+        classFlair: normalizeGradeClassFlair(student && student.classFlair),
         portrait: normalizeGradeStudentPortrait(student && student.portrait)
       });
     });
@@ -9433,6 +9468,7 @@ class GradesApp {
         firstName,
         rufname: carried?.rufname || "",
         performanceFlair: carried?.performanceFlair || "",
+        classFlair: carried?.classFlair || "",
         portrait: carried?.portrait || null
       });
     });
@@ -9445,6 +9481,7 @@ class GradesApp {
       if ((importedNameCounts.get(buildGradeStudentNameMatchKey(student.lastName, student.firstName)) || 0) > 1) {
         student.rufname = "";
         student.performanceFlair = "";
+        student.classFlair = "";
         student.portrait = null;
       }
     });
@@ -9633,6 +9670,7 @@ class GradesApp {
         firstName,
         rufname: normalizeGradeTextPart(student?.rufname),
         performanceFlair: "",
+        classFlair: normalizeGradeClassFlair(student?.classFlair),
         portrait: normalizeGradeStudentPortrait(student?.portrait)
       });
     });
@@ -11966,6 +12004,9 @@ class GradesApp {
           this.handleGradeNameOrderChangeRequest(input.value, event);
         }
       });
+    });
+    this.refs.sidebarGradeClassSortToggle?.addEventListener("change", (event) => {
+      this.handleGradeClassSortChangeRequest(event.target.checked, event);
     });
     this.refs.sidebarGradeDisplaySystemInputs?.forEach((input) => {
       input.addEventListener("change", (event) => {
@@ -17053,6 +17094,24 @@ class GradesApp {
     });
   }
 
+  handleGradeClassSortChangeRequest(value, event = null) {
+    event?.stopPropagation?.();
+    if (
+      !this.shouldShowSidebarGradeNameOrderToggle()
+      || this.normalizeGradesSubView(this.gradesSubView) !== "overview"
+      || this.locked
+      || !this.canAccessGradeVault()
+      || !this.commitVisibleGradeInputs()
+    ) {
+      this.updateSidebarGradeNameOrderToggleState();
+      return;
+    }
+    this.activeGradeOverrideContext = null;
+    this.gradesOverviewSortByClass = Boolean(value);
+    this.renderGradesView();
+    this.updateSidebarGradeNameOrderToggleState();
+  }
+
   handleGradeDisplaySystemChangeRequest(value, event = null) {
     event?.preventDefault?.();
     event?.stopPropagation?.();
@@ -22034,6 +22093,13 @@ class GradesApp {
       input.disabled = !canChange;
       input.checked = normalizeGradeStudentNameOrder(input.value) === nameOrder;
     });
+    if (this.refs.sidebarGradeClassSortControl) {
+      this.refs.sidebarGradeClassSortControl.hidden = !isGradesOverview;
+    }
+    if (this.refs.sidebarGradeClassSortToggle) {
+      this.refs.sidebarGradeClassSortToggle.disabled = !canChange || !isGradesOverview;
+      this.refs.sidebarGradeClassSortToggle.checked = Boolean(this.gradesOverviewSortByClass);
+    }
   }
 
   updateSidebarGradeDisplaySystemToggleState() {
@@ -22393,6 +22459,16 @@ class GradesApp {
     return (Array.isArray(students) ? students : [])
       .slice()
       .sort((a, b) => compareGradeStudentsByNameOrder(a, b, order));
+  }
+
+  getSortedGradeOverviewStudents(students) {
+    const sorted = this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder);
+    if (!this.gradesOverviewSortByClass) return sorted;
+    return sorted.sort((a, b) => {
+      const left = normalizeGradeClassFlair(a?.classFlair) || "z";
+      const right = normalizeGradeClassFlair(b?.classFlair) || "z";
+      return left.localeCompare(right);
+    });
   }
 
   buildGradePrivacyTrendState(course, students = null) {
@@ -26401,7 +26477,7 @@ class GradesApp {
     const gradeDisplaySystem = this.getCurrentGradeOverviewDisplaySystem();
     const predicateSuffixes = this.getCurrentGradeOverviewPredicateSuffixes();
     const thead = document.createElement("thead");
-    const displayStudents = this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder);
+    const displayStudents = this.getSortedGradeOverviewStudents(students);
     const studentCount = displayStudents.filter((student) => !student?.isPlaceholder && Number(student?.id || 0) > 0).length;
     model.headerRows.forEach((row) => {
       if (!row.length) {
@@ -26471,6 +26547,7 @@ class GradesApp {
             flair.textContent = performanceFlair;
             nameWrap.append(flair);
           }
+          appendGradeStudentClassFlair(nameWrap, student);
           td.append(nameWrap);
           tr.append(td);
           return;
@@ -27125,7 +27202,7 @@ class GradesApp {
     table.append(thead);
 
     const tbody = document.createElement("tbody");
-    this.getSortedGradeStudentsForNameOrder(students, this.gradesOverviewNameOrder).forEach((student) => {
+    this.getSortedGradeOverviewStudents(students).forEach((student) => {
       const tr = document.createElement("tr");
       columns.forEach((column) => {
         const td = document.createElement("td");
