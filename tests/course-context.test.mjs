@@ -51,6 +51,7 @@ function createHarness() {
   const seatplan = [];
   const initialized = [];
   const selectedTabs = [];
+  const calls = [];
   let frameSequence = 0;
   let clock = 100;
   let activeTab = tabs.TAB_GROUPS;
@@ -83,9 +84,14 @@ function createHarness() {
     dispatchGradesNavigation: detail => grades.push(detail),
     dispatchPlanningViewRequest: detail => planning.push(detail),
     ensureSeatplanInitialized: () => initialized.push(true),
-    sendCourseSeatplanContext: detail => seatplan.push(detail),
+    sendCourseSeatplanContext: detail => {
+      calls.push('context');
+      seatplan.push(detail);
+    },
+    collapseChromeForSeatplanGradeEntry: () => calls.push('collapse'),
   });
   return {
+    calls,
     eventTarget,
     view,
     context,
@@ -180,6 +186,30 @@ test('liefert Sitzplan-Kontext im bereits aktiven Sitzplan unmittelbar aus', () 
   assert.equal(harness.seatplan[0], detail);
   assert.equal(harness.initialized.length, 2);
   assert.equal(harness.selectedTabs.length, 0);
+});
+
+test('setzt die Shell beim Tabwechsel in die Noteneingabe vor der Kontextübergabe ohne Animation ins Vollbild', () => {
+  const harness = createHarness();
+  const detail = { courseId: 5, gradeConfig: { courseId: 5 } };
+  harness.emit(tabs.PLANNING_COURSE_SEATPLAN_OPEN_EVENT, detail);
+  harness.context.handleTabActivating(tabs.TAB_SEATPLAN);
+  assert.deepEqual(harness.calls, []);
+  harness.setActiveTab(tabs.TAB_SEATPLAN);
+  assert.equal(harness.flushFrame(), true);
+  assert.deepEqual(harness.calls, ['collapse', 'context']);
+  assert.equal(harness.seatplan[0], detail);
+
+  harness.emit(tabs.PLANNING_COURSE_SEATPLAN_OPEN_EVENT, detail);
+  assert.deepEqual(harness.calls, ['collapse', 'context', 'context']);
+});
+
+test('lässt die Shell ohne Notenkonfiguration unverändert', () => {
+  const harness = createHarness();
+  harness.emit(tabs.PLANNING_COURSE_SEATPLAN_OPEN_EVENT, { courseId: 5 });
+  harness.context.handleTabActivating(tabs.TAB_SEATPLAN);
+  harness.setActiveTab(tabs.TAB_SEATPLAN);
+  assert.equal(harness.flushFrame(), true);
+  assert.deepEqual(harness.calls, ['context']);
 });
 
 test('ignoriert ungültige Sitzplan-Events und entfernt alle Listener beim Dispose', () => {

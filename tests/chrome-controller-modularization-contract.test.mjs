@@ -36,7 +36,7 @@ test('chrome controller owns state, transitions, visibility, focus and cleanup',
   assert.match(chromeController, /export function createChromeController\(\{/);
   assert.match(chromeController, /let collapsed = Boolean\(initialCollapsed\);/);
   assert.match(chromeController, /let transitionState = 'idle';/);
-  assert.match(chromeController, /function setCollapsed\(nextValue, \{ resetSidebarWidth = true \} = \{\}\) \{/);
+  assert.match(chromeController, /function setCollapsed\(nextValue, \{ resetSidebarWidth = true, animate = true \} = \{\}\) \{/);
   assert.match(chromeController, /function toggle\(\) \{/);
   assert.match(chromeController, /function sync\(\) \{/);
   assert.match(chromeController, /matchMedia\('\(prefers-reduced-motion: reduce\)'\)\.matches/);

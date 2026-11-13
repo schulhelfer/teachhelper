@@ -75,7 +75,7 @@ test('every other way out of the grade mode also leaves fullscreen', () => {
   );
   assert.match(
     seatplan,
-    /if \(wasCourseGradeMode && !isCourseGradeMode\(\)\) requestShellChromeCollapsed\(false\);/,
+    /if \(\(wasCourseGradeMode \|\| gradeConfig\) && !isCourseGradeMode\(\)\) requestShellChromeCollapsed\(false\);/,
   );
   assert.match(
     seatplan,
@@ -116,7 +116,7 @@ test('a chrome request waits out a running chrome transition without re-checking
 });
 
 test('the automatic expand keeps the persisted sidebar width', () => {
-  assert.match(chromeController, /function setCollapsed\(nextValue, \{ resetSidebarWidth = true \} = \{\}\) \{/);
+  assert.match(chromeController, /function setCollapsed\(nextValue, \{ resetSidebarWidth = true, animate = true \} = \{\}\) \{/);
   assert.match(chromeController, /if \(resetSidebarWidth && !nextCollapsed && collapsed\) onResetSidebarWidth\(\);/);
   assert.match(shell, /onResetSidebarWidth: \(\) => sidebarResize\.resetActiveWidth\(\),/);
   assert.match(main, /const setChromeCollapsed = \(collapsed, options\) => shellController\?\.setChromeCollapsed\(collapsed, options\);/);

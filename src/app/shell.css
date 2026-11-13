@@ -377,6 +377,7 @@
       transition: max-height var(--chrome-transition-duration) var(--chrome-transition-ease), min-height var(--chrome-transition-duration-medium) var(--chrome-transition-ease), row-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), column-gap var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), border-width var(--chrome-transition-duration-short) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), background-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-medium) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), margin var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
+    .app.is-chrome-layout-settling,
     .app.is-chrome-layout-settling .app-header,
     .app.is-chrome-layout-settling .app-header-title,
     .app.is-chrome-layout-settling .app-header-actions,

@@ -298,6 +298,33 @@ test('runs collapse and expand through the existing transition boundaries', () =
   assert.equal(harness.app.classList.contains('is-chrome-layout-settling'), false);
 });
 
+test('collapses and expands immediately without a layout transition when animation is disabled', () => {
+  const harness = createHarness();
+  harness.controller.setCollapsed(true, { resetSidebarWidth: false, animate: false });
+  assert.equal(harness.controller.isCollapsed(), true);
+  assert.equal(harness.controller.getTransitionState(), 'idle');
+  assert.equal(harness.app.classList.contains('is-collapsing'), false);
+  assert.equal(harness.app.classList.contains('chrome-collapsed'), true);
+  assert.equal(harness.app.classList.contains('is-chrome-layout-settling'), true);
+  assert.equal(harness.header.hidden, true);
+  assert.equal(harness.tabNav.hidden, true);
+  assert.equal(harness.overlayToggle.hidden, false);
+  assert.equal(harness.timers.size, 0);
+  assert.ok(harness.calls.includes('refresh'));
+  assert.equal(harness.flushFrame(), true);
+  assert.equal(harness.app.classList.contains('is-chrome-layout-settling'), false);
+
+  harness.controller.setCollapsed(false, { resetSidebarWidth: false, animate: false });
+  assert.equal(harness.controller.isCollapsed(), false);
+  assert.equal(harness.controller.getTransitionState(), 'idle');
+  assert.equal(harness.app.classList.contains('is-expanding'), false);
+  assert.equal(harness.app.classList.contains('chrome-collapsed'), false);
+  assert.equal(harness.header.hidden, false);
+  assert.equal(harness.overlayToggle.hidden, true);
+  assert.equal(harness.calls.includes('reset-sidebar'), false);
+  assert.equal(harness.timers.size, 0);
+});
+
 test('uses reduced motion and the single iOS frame without changing the default duration', () => {
   const desktop = createHarness();
   assert.equal(desktop.controller.getTransitionDuration(), 280);

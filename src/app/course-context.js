@@ -18,12 +18,14 @@ export function createCourseContext({
   dispatchPlanningViewRequest = () => {},
   ensureSeatplanInitialized = () => {},
   sendCourseSeatplanContext = () => {},
+  collapseChromeForSeatplanGradeEntry = () => {},
 } = {}) {
   let sharedCourseContextId = 0;
   let planningCourseViewCourseId = 0;
   let gradesAutoSelectSuppressedUntil = 0;
   let pendingSeatplanContext = null;
   let pendingSeatplanContextFrame = 0;
+  let collapseChromeOnSeatplanDelivery = false;
   let disposed = false;
 
   const rememberSharedCourseContext = (event) => {
@@ -40,6 +42,10 @@ export function createCourseContext({
     const detail = pendingSeatplanContext;
     pendingSeatplanContext = null;
     ensureSeatplanInitialized();
+    if (collapseChromeOnSeatplanDelivery) {
+      collapseChromeOnSeatplanDelivery = false;
+      collapseChromeForSeatplanGradeEntry();
+    }
     sendCourseSeatplanContext(detail);
   };
 
@@ -72,6 +78,9 @@ export function createCourseContext({
       : null;
     if (!detail || typeof detail !== 'object') return;
     pendingSeatplanContext = detail;
+    collapseChromeOnSeatplanDelivery = getActiveTab() !== TAB_SEATPLAN
+      && Boolean(detail.gradeConfig)
+      && typeof detail.gradeConfig === 'object';
     ensureSeatplanInitialized();
     if (getActiveTab() === TAB_SEATPLAN) {
       schedulePendingSeatplanContext();
@@ -128,6 +137,7 @@ export function createCourseContext({
     }
     pendingSeatplanContextFrame = 0;
     pendingSeatplanContext = null;
+    collapseChromeOnSeatplanDelivery = false;
   };
 
   return {

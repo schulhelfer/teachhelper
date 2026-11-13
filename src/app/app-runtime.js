@@ -409,6 +409,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     dispatchPlanningViewRequest: detail => bridgeController?.dispatchPlanningViewRequest?.(detail),
     ensureSeatplanInitialized: () => moduleRegistry.get(TAB_SEATPLAN)?.ensureInitialized(),
     sendCourseSeatplanContext: detail => bridgeController?.sendCourseSeatplanContext(detail),
+    collapseChromeForSeatplanGradeEntry: () => setChromeCollapsed(true, { resetSidebarWidth: false, animate: false }),
   });
   registerCleanup(() => courseContext?.dispose?.());
 

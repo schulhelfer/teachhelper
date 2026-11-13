@@ -1766,7 +1766,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             } else if (gradeConfig) {
               showMessage('Der Notenkontext ist nicht mehr aktuell. Bitte die Noteneingabe erneut öffnen.', 'warn');
             }
-            if (wasCourseGradeMode && !isCourseGradeMode()) requestShellChromeCollapsed(false);
+            if ((wasCourseGradeMode || gradeConfig) && !isCourseGradeMode()) requestShellChromeCollapsed(false);
             updateCourseSeatplanUi();
             setCourseSeatplanBaseline();
             markPlanSavedAction();

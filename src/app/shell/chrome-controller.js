@@ -238,11 +238,11 @@ export function createChromeController({
     });
   }
 
-  function finalizeTransition(nextCollapsed) {
+  function finalizeTransition(nextCollapsed, { settle = !nextCollapsed } = {}) {
     if (disposed) return;
     clearTransitionTimer();
     transitionState = 'idle';
-    const settleChromeLayout = !nextCollapsed && app;
+    const settleChromeLayout = settle && app;
     if (settleChromeLayout) app.classList.add('is-chrome-layout-settling');
     if (app) {
       app.classList.remove('is-collapsing', 'is-expanding');
@@ -275,7 +275,7 @@ export function createChromeController({
     scheduleTimer(callback, 0);
   }
 
-  function setCollapsed(nextValue, { resetSidebarWidth = true } = {}) {
+  function setCollapsed(nextValue, { resetSidebarWidth = true, animate = true } = {}) {
     if (disposed || transitionState !== 'idle') return;
     const nextCollapsed = Boolean(nextValue);
     if (resetSidebarWidth && !nextCollapsed && collapsed) onResetSidebarWidth();
@@ -296,6 +296,11 @@ export function createChromeController({
       applyVisibility(nextCollapsed);
       onRenderManualSaveControl();
       onRefreshLayouts();
+      return;
+    }
+    if (!animate) {
+      app.classList.remove('is-collapsing', 'is-expanding');
+      finalizeTransition(nextCollapsed, { settle: true });
       return;
     }
     updateToggleUI(nextCollapsed
