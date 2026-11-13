@@ -1,3 +1,10 @@
+import {
+  calculateGradeTaskScoreSummary,
+  calculateGradeTaskAverageSummary,
+  getGradeTestScoringTasks,
+  mapGradeTestScoringTasks,
+  normalizeGradeTestTasks
+} from "../../shared/school-data/grade-test-tasks.js";
 import { applyFeedbackDialog } from "../../shared/feedback-dialog.js";
 import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair, normalizeGradeTestDisplaySystem } from "../../shared/school-data/grades.js";
 import { createRosterOcrDialog } from "./roster-ocr-dialog.js";
@@ -981,7 +988,8 @@ function normalizeGradeAssessmentExpectationHorizonTemplateFile(value = null) {
   }
   return {
     name: String(value.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
-    bytes
+    bytes,
+    ...(Array.isArray(value.taskRowIds) ? { taskRowIds: value.taskRowIds.map((id) => String(id || "")) } : {})
   };
 }
 
@@ -1391,50 +1399,6 @@ function normalizeGradeTaskCompetenceExpectationIds(ids = [], expectations = nul
   }, []);
 }
 
-function normalizeGradeTestTasks(tasks = [], options = {}) {
-  const source = Array.isArray(tasks) ? tasks : [];
-  const usedIds = new Set();
-  const normalized = source.reduce((result, raw, index) => {
-    const item = raw && typeof raw === "object" ? raw : {};
-    const idBase = String(item.id || index + 1).trim() || String(index + 1);
-    let id = idBase;
-    let suffix = 2;
-    while (usedIds.has(id)) {
-      id = `${idBase}-${suffix}`;
-      suffix += 1;
-    }
-    usedIds.add(id);
-    const parsedMaxBe = parseGradeBeValue(item.maxBe);
-    result.push({
-      id,
-      title: normalizeGradeTextPart(item.title) || `Aufgabe ${result.length + 1}`,
-      maxBe: parsedMaxBe.valid && parsedMaxBe.value !== null ? parsedMaxBe.value : null,
-      afb: normalizeGradeTestAfb(item.afb),
-      deficitDiagnosisFollowUp: item.deficitDiagnosisFollowUp === true,
-      competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(item.competenceExpectationIds),
-      customCompetenceText: String(item.customCompetenceText || "").trim(),
-      sortOrder: Number(item.sortOrder || index + 1)
-    });
-    return result;
-  }, []).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-  if (!normalized.length && options.ensureDefault !== false) {
-    normalized.push({
-      id: "1",
-      title: "Aufgabe 1",
-      maxBe: null,
-      afb: "",
-      deficitDiagnosisFollowUp: false,
-      competenceExpectationIds: [],
-      customCompetenceText: "",
-      sortOrder: 1
-    });
-  }
-  return normalized.map((task, index) => ({
-    ...task,
-    sortOrder: index + 1
-  }));
-}
-
 function createGradeTestAfbOptions(selectedValue = "") {
   const selectedAfb = normalizeGradeTestAfb(selectedValue);
   return (() => { const fragment = document.createDocumentFragment(); fragment.append(...[
@@ -1471,7 +1435,7 @@ function createGradeTestAfbOptions(selectedValue = "") {
 }
 
 function getNextGradeTestTaskId(tasks = []) {
-  const numericMax = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+  const numericMax = normalizeGradeTestTasks(tasks, { ensureDefault: false }).flatMap((task) => [task, ...(task.subTasks || [])])
     .reduce((max, task) => {
       const numeric = /^\d+$/.test(String(task.id || "")) ? Number(task.id) : 0;
       return Math.max(max, numeric);
@@ -1480,7 +1444,7 @@ function getNextGradeTestTaskId(tasks = []) {
 }
 
 function calculateGradeTestRatio(tasks = [], scores = {}) {
-  const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+  const normalizedTasks = getGradeTestScoringTasks(tasks)
     .filter((task) => Number(task.maxBe || 0) > 0);
   const normalizedScores = normalizeGradeTestScores(scores);
   const hasAnyScore = normalizedTasks.some((task) => Object.prototype.hasOwnProperty.call(normalizedScores, task.id));
@@ -1526,7 +1490,7 @@ function formatGradeTestRatioDisplay(ratioState = null) {
 }
 
 function calculateGradeTestMaxBeSum(tasks = []) {
-  const maxSum = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+  const maxSum = getGradeTestScoringTasks(tasks)
     .reduce((sum, task) => {
       const maxBe = Number(task.maxBe || 0);
       return maxBe > 0 ? sum + maxBe : sum;
@@ -1536,7 +1500,7 @@ function calculateGradeTestMaxBeSum(tasks = []) {
 
 function calculateGradeTestAfbShares(tasks = [], courseLevel = "") {
   const totals = { I: 0, II: 0, III: 0 };
-  const totalMaxBe = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+  const totalMaxBe = getGradeTestScoringTasks(tasks)
     .reduce((sum, task) => {
       const maxBe = Number(task.maxBe || 0);
       if (maxBe <= 0) {
@@ -1812,7 +1776,7 @@ function formatGradeTestAverageRatioDisplay(ratioState = null) {
 }
 
 function getGradeTestAverageTaskColorClasses(tasks = [], taskAverages = {}) {
-  const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+  const normalizedTasks = getGradeTestScoringTasks(tasks);
   const classes = normalizedTasks.reduce((result, task) => {
     result[task.id] = "";
     return result;
@@ -1865,7 +1829,7 @@ function getGradeTestAverageTaskColorClasses(tasks = [], taskAverages = {}) {
 }
 
 function calculateGradeTestAverageState(tasks = [], scoreEntries = [], scale = GRADE_TEST_SCALE_DEFAULT, settings = null, deficitThreshold = GRADE_DEFICIT_THRESHOLD_DEFAULT, predicateSuffixes = true) {
-  const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+  const normalizedTasks = getGradeTestScoringTasks(tasks);
   const normalizedScoresList = (Array.isArray(scoreEntries) ? scoreEntries : [])
     .map((scores) => normalizeGradeTestScores(scores))
     .filter((scores) => Object.keys(scores).length > 0);
@@ -1878,12 +1842,8 @@ function calculateGradeTestAverageState(tasks = [], scoreEntries = [], scale = G
       : null;
     return result;
   }, {});
-  const ratioTasks = normalizedTasks.filter((task) => (
-    Number(task.maxBe || 0) > 0
-    && taskAverages[task.id] !== null
-    && taskAverages[task.id] !== undefined
-  ));
-  const maxSum = ratioTasks.reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+  const ratios = normalizedScoresList.map((scores) => calculateGradeTestRatio(normalizedTasks, scores)).filter(Boolean);
+  const maxSum = ratios.length ? ratios[0].maxSum : 0;
   if (maxSum <= 0) {
     return {
       taskAverages,
@@ -1893,13 +1853,7 @@ function calculateGradeTestAverageState(tasks = [], scoreEntries = [], scale = G
       deficitShare: null
     };
   }
-  const earnedSum = ratioTasks.reduce((sum, task) => {
-    const average = taskAverages[task.id];
-    if (average === null || average === undefined) {
-      return sum;
-    }
-    return sum + clamp(Number(average || 0), 0, Number(task.maxBe || 0));
-  }, 0);
+  const earnedSum = ratios.reduce((sum, state) => sum + state.earnedSum, 0) / ratios.length;
   const ratio = clamp(earnedSum / maxSum, 0, 1);
   const ratioState = {
     earnedSum,
@@ -3144,9 +3098,11 @@ class GradesApp {
       gradeDeficitFollowUpSummary: document.querySelector("#grade-deficit-followup-summary"),
       gradeDeficitFollowUpList: document.querySelector("#grade-deficit-followup-list"),
       gradeTaskCompetenceDialog: document.querySelector("#grade-task-competence-dialog"),
+      gradeTaskCompetenceDialogTitle: document.querySelector("#grade-task-competence-dialog-title"),
       gradeTaskCompetenceDialogForm: document.querySelector("#grade-task-competence-dialog-form"),
       gradeTaskCompetenceCancelTop: document.querySelector("#grade-task-competence-cancel-top"),
       gradeTaskCompetenceList: document.querySelector("#grade-task-competence-list"),
+      gradeTaskCompetenceCustom: document.querySelector("#grade-task-competence-custom"),
       gradeTaskCompetenceStatus: document.querySelector("#grade-task-competence-status"),
       gradeTaskCompetenceSave: document.querySelector("#grade-task-competence-save"),
 
@@ -4410,6 +4366,7 @@ class GradesApp {
   discardGradesEntryEditSession() {
     this.hideGradePicker();
     this.gradesEntryEditSnapshot = null;
+    this.gradeTestViewContextKey = "";
     this.selectedGradesEntryAssessmentId = null;
     this.gradesEntryDraft = null;
     this.confirmedGradesEntryModeChangeKey = "";
@@ -10727,7 +10684,40 @@ class GradesApp {
         return;
       }
       this.markGradesEntryDraftDirty();
+      await this.ensureStoredExpectationHorizonTemplateLoaded();
       this.addGradeTestTask();
+      return;
+    }
+    const addSubTaskButton = event.target.closest("button[data-grade-test-add-subtask]");
+    if (addSubTaskButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (this.commitVisibleGradeInputs()) {
+        await this.ensureStoredExpectationHorizonTemplateLoaded();
+        this.addGradeTestSubTask(addSubTaskButton.dataset.gradeTestAddSubtask);
+      }
+      return;
+    }
+    const toggleSubTasksButton = event.target.closest("button[data-grade-test-toggle-subtasks]");
+    if (toggleSubTasksButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      this.toggleGradeTestSubTasks(toggleSubTasksButton.dataset.gradeTestToggleSubtasks);
+      return;
+    }
+    const mergeSubTasksButton = event.target.closest("button[data-grade-test-merge-subtasks]");
+    if (mergeSubTasksButton) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (!this.commitVisibleGradeInputs({ requireTestTaskValues: true })) return;
+      const confirmed = await this.showConfirmMessage(
+        "Teilaufgaben zu einer einfachen Aufgabe zusammenfassen? BE1 und BE2 werden addiert; fehlende BE2-Teilwerte gehen als 0 in die Summe ein. Kompetenzen und Nachbereitung werden übernommen. Bei unterschiedlichen AFB bitte anschließend einen AFB auswählen.",
+        { title: "Teilaufgaben zusammenfassen", okText: "Zusammenfassen", cancelText: "Abbrechen" }
+      );
+      if (confirmed) {
+        await this.ensureStoredExpectationHorizonTemplateLoaded();
+        this.mergeGradeTestSubTasks(mergeSubTasksButton.dataset.gradeTestMergeSubtasks);
+      }
       return;
     }
     const deficitFollowUpButton = event.target.closest("button[data-grade-test-deficit-followup='1']");
@@ -10763,7 +10753,7 @@ class GradesApp {
       const taskId = removeTestTaskButton.dataset.taskId || "";
       if (this.gradeTestTaskHasEnteredValues(taskId)) {
         const confirmed = await this.showConfirmMessage(
-          "Zu dieser Aufgabe sind bereits BE-Werte eingetragen. Aufgabe wirklich löschen?",
+          this.getGradeTestTaskRemovalMessage(taskId),
           {
             title: "Aufgabe löschen",
             okText: "Aufgabe löschen",
@@ -10776,6 +10766,7 @@ class GradesApp {
         }
       }
       this.markGradesEntryDraftDirty();
+      await this.ensureStoredExpectationHorizonTemplateLoaded();
       this.removeGradeTestTask(taskId);
       return;
     }
@@ -16585,6 +16576,7 @@ class GradesApp {
       }
     }
     if (invalidInput) {
+      this.revealGradeTestTaskInput(invalidInput);
       invalidInput.focus();
       invalidInput.select();
       return false;
@@ -16637,6 +16629,7 @@ class GradesApp {
     for (const input of testTaskInputs) {
       if (!this.updateGradeTestTaskFromInput(input, { requireValue })) {
         if (String(input.dataset.gradeTestTaskField || "") === "maxBe") {
+          this.revealGradeTestTaskInput(input);
           input.focus();
           input.select();
           return false;
@@ -17609,7 +17602,7 @@ class GradesApp {
 
   buildArchiveGradeBeMaskSection(course, students, assessment) {
     const title = formatGradeAssessmentDisplayTitle(assessment?.title || "Leistung") || "Leistung";
-    const tasks = normalizeGradeTestTasks(assessment?.testTasks, { ensureDefault: false });
+    const tasks = getGradeTestScoringTasks(assessment?.testTasks);
     const scale = normalizeGradeTestScale(assessment?.testScale);
     const scaleSnapshot = normalizeGradeTestScaleSnapshot(
       assessment?.testScaleSnapshot,
@@ -17618,7 +17611,7 @@ class GradesApp {
     );
     const predicateSuffixes = normalizeGradeTestPredicateSuffixes(assessment?.testPredicateSuffixes, true);
     const taskColumns = tasks.map((task, index) => {
-      const parts = [`A${index + 1}`];
+      const parts = [`A${task.label}`];
       if (Number(task.maxBe || 0) > 0) {
         parts.push(`BE1 ${formatGradeBeValue(task.maxBe)}`);
       }
@@ -18796,8 +18789,8 @@ class GradesApp {
 
   collectGradeDeficitFollowUpGroups(context = {}) {
     const students = Array.isArray(context?.students) ? context.students : [];
-    const flaggedTasks = normalizeGradeTestTasks(context?.values?.testTasks, { ensureDefault: false })
-      .map((task, index) => ({ task, number: index + 1 }))
+    const flaggedTasks = getGradeTestScoringTasks(context?.values?.testTasks)
+      .map((task, index) => ({ task, number: task.label }))
       .filter(({ task }) => task.deficitDiagnosisFollowUp === true);
     if (!flaggedTasks.length) {
       return { flaggedTaskCount: 0, groups: [] };
@@ -19487,7 +19480,7 @@ class GradesApp {
         customCompetenceText: String(directTask.customCompetenceText || "").trim()
       };
     }
-    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
+    const tasks = getGradeTestScoringTasks(sourceTasks);
     return tasks.find((task) => task.id === normalizedTaskId) || null;
   }
 
@@ -19633,6 +19626,10 @@ class GradesApp {
       return;
     }
     this.gradeTaskCompetenceDialogTaskId = task.id;
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const label = getGradeTestScoringTasks(draft?.testTasks || assessment?.testTasks).find((item) => item.id === task.id)?.label;
+    if (this.refs.gradeTaskCompetenceDialogTitle) this.refs.gradeTaskCompetenceDialogTitle.textContent = `Kompetenzen – Aufgabe ${label || ""}`.trim();
+    if (this.refs.gradeTaskCompetenceCustom) this.refs.gradeTaskCompetenceCustom.value = task.customCompetenceText || "";
     const list = this.refs.gradeTaskCompetenceList;
     this.setGradeTaskCompetenceStatus("");
     const hasCachedOptions = Boolean(list?.childElementCount && this.gradeTaskCompetenceDialogOptionsSignature);
@@ -19704,7 +19701,7 @@ class GradesApp {
       : new Set())];
     const updated = this.updateGradeTestTaskCompetenceAssignment(taskId, {
       competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(selectedIds, expectations),
-      customCompetenceText: ""
+      customCompetenceText: this.refs.gradeTaskCompetenceCustom?.value ?? this.getGradeTaskCompetenceDialogTask(taskId)?.customCompetenceText ?? ""
     });
     if (!updated) {
       this.setGradeTaskCompetenceStatus("Die Aufgabe konnte nicht aktualisiert werden.", "error");
@@ -19725,7 +19722,7 @@ class GradesApp {
     const sourceTasks = draft?.testTasks || assessment?.testTasks;
     const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
     let changed = false;
-    const nextTasks = tasks.map((task) => {
+    const nextTasks = mapGradeTestScoringTasks(tasks, (task) => {
       if (task.id !== normalizedTaskId) {
         return task;
       }
@@ -20126,22 +20123,39 @@ class GradesApp {
           cancelText: "Nur Erwartungshorizont ausfüllen"
         }
       );
+      const initialContext = this.getActiveGradeTestContext();
+      const initialTasks = normalizeGradeTestTasks(initialContext.draft?.testTasks || initialContext.assessment?.testTasks, { ensureDefault: false });
+      if (!shouldUpdateTable && initialTasks.some((task) => task.subTasks?.length) && taskEntries.length > initialTasks.length) {
+        this.setExpectationHorizonStatus("Die LaTeX-Datei enthält zusätzliche Aufgaben. Bitte beim Import auch die BE-Tabelle ergänzen, damit kein Aufgabeninhalt entfällt. Die aktuelle Vorlage bleibt unverändert.", "error");
+        return false;
+      }
       const tableUpdateResult = shouldUpdateTable
         ? this.applyExpectationHorizonLatexTasksToGradeTest(taskEntries)
         : null;
+      if (shouldUpdateTable && !tableUpdateResult?.applied) throw new Error("Die BE-Tabelle konnte nicht ergänzt werden. Die aktuelle Vorlage bleibt unverändert.");
       this.setExpectationHorizonStatus("Ergänze EWH-Vorlage...");
       await this.yieldToBrowser();
       const { assessment, draft } = this.getActiveGradeTestContext();
       const gradeTasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
       const competenceExpectations = normalizeGradeCompetenceExpectations(draft?.competenceExpectations || assessment?.competenceExpectations);
-      const tasks = taskEntries.map((entry, index) => this.buildExpectationHorizonTaskPerformanceValue(
-        entry.content,
-        this.getGradeTestTaskAssignedCompetenceTexts(gradeTasks[index], competenceExpectations)
-      ));
+      const hasSubTasks = gradeTasks.some((task) => task.subTasks?.length);
+      const rowTasks = hasSubTasks ? getGradeTestScoringTasks(gradeTasks) : gradeTasks;
+      const contentByTaskId = new Map(gradeTasks.map((task, index) => [
+        task.subTasks?.[0]?.id || task.id, taskEntries[index]?.content || ""
+      ]));
+      const tasks = hasSubTasks
+        ? rowTasks.map((task) => this.buildExpectationHorizonTaskPerformanceValue(
+          contentByTaskId.get(task.id) || "",
+          this.getGradeTestTaskAssignedCompetenceTexts(task, competenceExpectations)
+        ))
+        : taskEntries.map((entry, index) => this.buildExpectationHorizonTaskPerformanceValue(
+          entry.content,
+          this.getGradeTestTaskAssignedCompetenceTexts(gradeTasks[index], competenceExpectations)
+        ));
       const templateBytes = await this.getCurrentExpectationHorizonTemplateBytes();
       const preparedTemplate = await prepareDocxTemplateInWorker(templateBytes);
       const bytes = await createDocxFromPreparedTemplate(preparedTemplate, {}, {
-        tableColumnReplacements: this.buildExpectationHorizonTaskTemplateColumnReplacements(gradeTasks).concat([
+        tableColumnReplacements: this.buildExpectationHorizonTaskTemplateColumnReplacements(gradeTasks, draft?.expectationHorizonTemplateFile || this.expectationHorizonTemplateFile).concat([
           {
             header: "Erwartete Prüfungsleistungen",
             values: tasks,
@@ -20149,18 +20163,20 @@ class GradesApp {
             targetSectionEndText: "∑",
             extendRows: true,
             numberTargetRows: true,
+            targetRowLabels: hasSubTasks ? rowTasks.map((task) => task.label) : [],
             removeUnusedTargetRows: true
           }
         ])
       });
       this.expectationHorizonTemplateFile = {
         name: this.makeLatexAugmentedExpectationHorizonTemplateName(file),
-        bytes
+        bytes,
+        taskRowIds: getGradeTestScoringTasks(gradeTasks).map((task) => task.id)
       };
       const temporaryTemplateSaved = this.storeTemporaryExpectationHorizonTemplateFile(this.expectationHorizonTemplateFile);
       this.setExpectationHorizonFileName(`Temporäre Vorlage: ${this.expectationHorizonTemplateFile.name}`);
       this.setExpectationHorizonStatus(
-        this.formatExpectationHorizonLatexImportStatus(tasks.length, tableUpdateResult, temporaryTemplateSaved),
+        this.formatExpectationHorizonLatexImportStatus(taskEntries.length, tableUpdateResult, temporaryTemplateSaved),
         "success"
       );
       this.syncExpectationHorizonGenerateState();
@@ -20279,7 +20295,7 @@ class GradesApp {
     entries.forEach((entry, index) => {
       const latexMaxBe = Number(entry?.maxBe || 0) > 0 ? Number(entry.maxBe) : null;
       if (index < tasks.length) {
-        if (latexMaxBe !== null && !gradeTestTaskHasMaxBe(tasks[index])) {
+        if (latexMaxBe !== null && !tasks[index].subTasks?.length && !gradeTestTaskHasMaxBe(tasks[index])) {
           tasks[index] = {
             ...tasks[index],
             maxBe: latexMaxBe
@@ -20479,7 +20495,8 @@ class GradesApp {
     }
     return {
       name: String(value.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
-      bytes
+      bytes,
+      ...(Array.isArray(value.taskRowIds) ? { taskRowIds: value.taskRowIds.map((id) => String(id || "")) } : {})
     };
   }
 
@@ -20497,7 +20514,11 @@ class GradesApp {
   }
 
   storeTemporaryExpectationHorizonTemplateFile(template = null) {
-    const storedTemplate = normalizeGradeAssessmentExpectationHorizonTemplateFile(template);
+    const context = this.getActiveGradeTestContext();
+    const storedTemplate = normalizeGradeAssessmentExpectationHorizonTemplateFile({
+      ...template,
+      taskRowIds: template?.taskRowIds || getGradeTestScoringTasks(context.draft?.testTasks || context.assessment?.testTasks).map((task) => task.id)
+    });
     const runtimeTemplate = this.normalizeExpectationHorizonTemplateFile(storedTemplate);
     if (!storedTemplate || !runtimeTemplate) {
       return false;
@@ -20640,8 +20661,18 @@ class GradesApp {
     setTimeout(() => URL.revokeObjectURL(url), 3000);
   }
 
-  buildExpectationHorizonTaskTemplateColumnReplacements(tasks = []) {
-    const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+  getExpectationHorizonTaskRowSources(tasks, template = null) {
+    if (!Array.isArray(template?.taskRowIds)) return null;
+    const indices = new Map();
+    template.taskRowIds.forEach((id, index) => {
+      if (!indices.has(id)) indices.set(id, []);
+      indices.get(id).push(index);
+    });
+    return getGradeTestScoringTasks(tasks).map((task) => indices.get(task.id) || []);
+  }
+
+  buildExpectationHorizonTaskTemplateColumnReplacements(tasks = [], template = null) {
+    const normalizedTasks = getGradeTestScoringTasks(tasks);
     if (!normalizedTasks.length) {
       return [];
     }
@@ -20653,6 +20684,8 @@ class GradesApp {
         targetSectionEndText: "∑",
         extendRows: true,
         numberTargetRows: true,
+        targetRowLabels: normalizedTasks.map((task) => task.label),
+        sourceRowIndices: this.getExpectationHorizonTaskRowSources(tasks, template),
         removeUnusedTargetRows: true
       },
       {
@@ -20671,7 +20704,7 @@ class GradesApp {
     }
     const values = context.values || {};
     const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
-    const tableColumnReplacements = this.buildExpectationHorizonTaskTemplateColumnReplacements(tasks);
+    const tableColumnReplacements = this.buildExpectationHorizonTaskTemplateColumnReplacements(tasks, values.expectationHorizonTemplateFile);
     if (!tableColumnReplacements.length) {
       return null;
     }
@@ -20849,8 +20882,9 @@ class GradesApp {
     return minutes === null ? "—" : `${minutes} Minuten`;
   }
 
-  buildCompetenceExpectationsRichText(items = []) {
+  buildCompetenceExpectationsRichText(items = [], tasks = []) {
     const runs = [];
+    const leaves = getGradeTestScoringTasks(tasks);
     (Array.isArray(items) ? items : []).forEach((item) => {
       const topic = String(item?.topic || "").trim();
       if (topic) {
@@ -20868,8 +20902,11 @@ class GradesApp {
             : competence
         ).trim();
         if (text) {
+          const taskLabels = leaves.filter((task) => task.competenceExpectationIds.includes(competence?.id))
+            .map((task) => task.label);
+          const taskList = this.formatExpectationHorizonTaskNumberList(taskLabels);
           runs.push({
-            text,
+            text: taskList ? `${text} (${taskList})` : text,
             list: "hyphenBullet",
             listLevel: topic ? 1 : 0
           });
@@ -20901,7 +20938,7 @@ class GradesApp {
       "<<Datum>>": formatLongDateLabel(new Date()) || "—",
       "<<Zeit>> min": duration,
       "<<Zeit>>": duration,
-      "<<Kompetenzen>>": this.buildCompetenceExpectationsRichText(items)
+      "<<Kompetenzen>>": this.buildCompetenceExpectationsRichText(items, values.testTasks)
     };
   }
 
@@ -21032,9 +21069,8 @@ class GradesApp {
 
   formatExpectationHorizonTaskNumberList(numbers = []) {
     const values = numbers
-      .map((number) => Number(number || 0))
-      .filter((number) => Number.isInteger(number) && number > 0)
-      .map(String);
+      .map((number) => String(number ?? "").trim())
+      .filter((number) => /^[1-9]\d*[a-z]*$/.test(number));
     if (!values.length) return "";
     const numbersLabel = values.length === 1
       ? values[0]
@@ -21174,7 +21210,7 @@ class GradesApp {
   async buildExpectationHorizonStudentRecords(context, options = {}) {
     const values = context.values || {};
     const includeExpectedPerformanceCompetences = options.includeExpectedPerformanceCompetences !== false;
-    const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
+    const tasks = getGradeTestScoringTasks(values.testTasks);
     const scale = normalizeGradeTestScale(values.testScale);
     const scaleSnapshot = values.testScaleSnapshot
       ? normalizeGradeTestScaleSnapshot(values.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
@@ -21252,7 +21288,7 @@ class GradesApp {
       }
       const deficitFollowUpTaskNumbers = tasks.reduce((result, task, index) => {
         if (isGradeTestDeficitFollowUpScore(task, scores[task.id])) {
-          result.push(index + 1);
+          result.push(task.label);
         }
         return result;
       }, []);
@@ -21299,6 +21335,8 @@ class GradesApp {
             targetSectionEndText: "∑",
             extendRows: true,
             numberTargetRows: true,
+            targetRowLabels: tasks.map((task) => task.label),
+            sourceRowIndices: this.getExpectationHorizonTaskRowSources(values.testTasks, values.expectationHorizonTemplateFile),
             removeUnusedTargetRows: true
           },
           {
@@ -24391,11 +24429,330 @@ class GradesApp {
       : { assessment: null, draft: null };
   }
 
-  updateGradeTestContextTasks(tasks) {
+  addGradeTestSubTask(taskId) {
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    if (!draft) return false;
+    const tasks = normalizeGradeTestTasks(draft.testTasks || assessment?.testTasks, { ensureDefault: false });
+    const task = tasks.find((item) => item.id === String(taskId));
+    if (!task) return false;
+    const usedIds = new Set(tasks.flatMap((item) => [item.id, ...(item.subTasks || []).map((child) => child.id)]));
+    const nextId = () => {
+      let number = 1;
+      while (usedIds.has(`${task.id}-part-${number}`)) number += 1;
+      const id = `${task.id}-part-${number}`;
+      usedIds.add(id);
+      return id;
+    };
+    let addedId;
+    const wasSimpleTask = !task.subTasks?.length;
+    let entries = draft.entries || {};
+    if (!task.subTasks?.length) {
+      addedId = nextId();
+      task.subTasks = [{ ...task, id: addedId, sortOrder: 1 }];
+      entries = Object.fromEntries(Object.entries(entries).map(([studentId, rawEntry]) => {
+        const entry = normalizeGradeDraftEntry(rawEntry);
+        const scores = { ...entry.testScores };
+        if (Object.prototype.hasOwnProperty.call(scores, task.id)) {
+          scores[addedId] = scores[task.id];
+          delete scores[task.id];
+        }
+        return [studentId, { ...entry, testScores: scores }];
+      }));
+    } else {
+      addedId = nextId();
+      task.subTasks.push({ id: addedId, maxBe: null, sortOrder: task.subTasks.length + 1 });
+    }
+    this.gradesEntryDraft = { ...draft, entries };
+    this.collapsedGradeTestTasks?.delete(task.id);
+    if (!this.updateGradeTestContextTasks(tasks, { taskIdRemap: wasSimpleTask ? new Map([[task.id, addedId]]) : new Map() })) return false;
+    this.markGradesEntryDraftDirty();
+    this.renderGradesView();
+    requestAnimationFrame(() => {
+      const input = [...(this.refs.gradesEntryContent?.querySelectorAll("input[data-grade-test-task-field='maxBe']") || [])]
+        .find((node) => node.dataset.taskId === addedId);
+      input?.focus();
+      input?.select();
+    });
+    return true;
+  }
+
+  revealGradeTestTaskInput(input) {
+    const cell = input?.closest("[data-grade-test-parent-task][hidden]");
+    if (cell) this.toggleGradeTestSubTasks(cell.dataset.gradeTestParentTask);
+  }
+
+  mergeGradeTestSubTasks(taskId) {
+    const { draft } = this.getActiveGradeTestContext();
+    if (!draft) return false;
+    const tasks = normalizeGradeTestTasks(draft.testTasks, { ensureDefault: false });
+    const parent = tasks.find((task) => task.id === String(taskId));
+    if (!parent?.subTasks?.length || parent.subTasks.some((task) => !(task.maxBe > 0))) return false;
+    const children = parent.subTasks;
+    const sourceEntries = Object.entries(draft.entries || {});
+    if (sourceEntries.some(([, entry]) => calculateGradeTaskScoreSummary(children, entry.testScores || {}).invalid)) return false;
+    const afbs = new Set(children.map((task) => task.afb));
+    const merged = {
+      ...parent,
+      maxBe: calculateGradeTaskScoreSummary(children).maxSum,
+      afb: afbs.size === 1 ? children[0].afb : "",
+      deficitDiagnosisFollowUp: children.some((task) => task.deficitDiagnosisFollowUp),
+      competenceExpectationIds: [...new Set(children.flatMap((task) => task.competenceExpectationIds))],
+      customCompetenceText: [...new Set(children.map((task) => task.customCompetenceText).filter(Boolean))].join("\n")
+    };
+    delete merged.subTasks;
+    const entries = Object.fromEntries(sourceEntries.map(([studentId, value]) => {
+      const entry = normalizeGradeDraftEntry(value);
+      const summary = calculateGradeTaskScoreSummary(children, entry.testScores);
+      const scores = { ...entry.testScores };
+      children.forEach((task) => { delete scores[task.id]; });
+      if (summary.earnedSum !== null) scores[parent.id] = summary.earnedSum;
+      return [studentId, { ...entry, testScores: scores }];
+    }));
+    this.gradesEntryDraft = { ...draft, entries };
+    const changed = this.updateGradeTestContextTasks(tasks.map((task) => task.id === parent.id ? merged : task), {
+      taskIdRemap: new Map(children.map((task) => [task.id, parent.id]))
+    });
+    if (changed) {
+      this.collapsedGradeTestTasks?.delete(parent.id);
+      this.markGradesEntryDraftDirty();
+      this.renderGradesView();
+    }
+    return changed;
+  }
+
+  getGradeTestTaskRemovalMessage(taskId) {
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const tasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
+    const parent = tasks.find((task) => task.subTasks?.some((child) => child.id === String(taskId)));
+    const leaf = getGradeTestScoringTasks(tasks).find((task) => task.id === String(taskId));
+    if (parent) {
+      const consequence = parent.subTasks.length === 1
+        ? " Damit wird auch die gesamte Hauptaufgabe mit ihren Bewertungen entfernt."
+        : " Die Bewertungen dieser Teilaufgabe werden entfernt; nachfolgende Teilaufgaben werden neu beschriftet.";
+      return `Teilaufgabe ${leaf?.label || ""} wirklich löschen?${consequence}`;
+    }
+    const index = tasks.findIndex((task) => task.id === String(taskId));
+    return `Aufgabe ${index + 1} mit allen zugehörigen Bewertungen${tasks[index]?.subTasks?.length ? " und Teilaufgaben" : ""} wirklich löschen?`;
+  }
+
+  toggleGradeTestSubTasks(taskId) {
+    this.collapsedGradeTestTasks = this.collapsedGradeTestTasks || new Set();
+    if (!this.collapsedGradeTestTasks.has(taskId)) {
+      const invalid = [...(this.refs.gradesEntryContent?.querySelectorAll("[data-grade-test-parent-task] input.invalid") || [])]
+        .find((input) => input.closest("[data-grade-test-parent-task]").dataset.gradeTestParentTask === taskId
+          && (input.dataset.gradeTestScore === "1" || (input.value.trim() && !parseGradeBeValue(input.value).valid)));
+      if (invalid) {
+        invalid.focus();
+        invalid.select();
+        return;
+      }
+    }
+    if (this.collapsedGradeTestTasks.has(taskId)) {
+      this.collapsedGradeTestTasks.delete(taskId);
+    } else {
+      this.collapsedGradeTestTasks.add(taskId);
+    }
+    const collapsed = this.collapsedGradeTestTasks.has(taskId);
+    this.refs.gradesEntryContent?.querySelectorAll("[data-grade-test-parent-task]").forEach((cell) => {
+      if (cell.dataset.gradeTestParentTask === taskId) cell.hidden = collapsed;
+    });
+    this.refs.gradesEntryContent?.querySelectorAll("button[data-grade-test-toggle-subtasks]").forEach((button) => {
+      if (button.dataset.gradeTestToggleSubtasks !== taskId) return;
+      button.setAttribute("aria-expanded", String(!collapsed));
+      button.textContent = collapsed ? "▶" : "▼";
+    });
+    this.updateGradesEntryTableStickyScrollbar();
+  }
+
+  enhanceGradeTestTaskGroups(table, sourceTasks, students, entries, averageState, expectations = []) {
+    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
+    const leaves = getGradeTestScoringTasks(tasks);
+    const rows = [...table.rows];
+    rows.forEach((row) => {
+      leaves.forEach((task, index) => {
+        const cell = row.cells[index + 3];
+        cell.dataset.gradeTestTaskColumn = task.id;
+        if (task.parentId) {
+          cell.dataset.gradeTestParentTask = task.parentId;
+          cell.hidden = this.collapsedGradeTestTasks?.has(task.parentId) === true;
+          cell.classList.add("grade-test-subtask-col");
+        } else {
+          cell.classList.add("grade-test-main-task-col");
+        }
+      });
+    });
+    const makeButton = (text, label, field, id) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "ghost";
+      button.textContent = text;
+      button.title = label;
+      button.setAttribute("aria-label", label);
+      button.dataset[field] = id;
+      return button;
+    };
+    const makeSubTaskButton = (task, index) => {
+      const button = makeButton("", `Teilaufgabe zu Aufgabe ${index + 1} hinzufügen`, "gradeTestAddSubtask", task.id);
+      button.classList.add("grade-test-add-subtask");
+      button.title = "Teilaufgabe hinzufügen";
+      const icon = document.createElement("span");
+      icon.className = "grade-test-subtask-icon";
+      icon.setAttribute("aria-hidden", "true");
+      ["(a)", "(b)"].forEach((text) => {
+        const line = document.createElement("span");
+        line.textContent = text;
+        icon.append(line);
+      });
+      button.append(icon);
+      if (task.subTasks?.length) {
+        button.classList.add("grade-test-add-subtask-more");
+        const plus = document.createElement("span");
+        plus.className = "grade-test-subtask-plus";
+        plus.setAttribute("aria-hidden", "true");
+        plus.textContent = "+";
+        button.append(plus);
+      }
+      return button;
+    };
+    tasks.forEach((task, index) => {
+      if (!task.subTasks?.length) {
+        const head = [...rows[0].cells].find((cell) => cell.dataset.gradeTestTaskColumn === task.id);
+        const taskHead = head.querySelector(".grade-test-task-head");
+        taskHead.classList.add("grade-test-main-task-head");
+        taskHead.append(makeSubTaskButton(task, index));
+        return;
+      }
+      rows.forEach((row, rowIndex) => {
+        const cell = document.createElement(rowIndex === 0 ? "th" : "td");
+        cell.className = "grade-test-task-col grade-test-group-col";
+        cell.dataset.gradeTestGroup = task.id;
+        if (rowIndex === 0) {
+          const head = document.createElement("div");
+          head.className = "grade-test-group-head";
+          const title = document.createElement("div");
+          title.className = "grade-test-task-title grade-test-group-title";
+          const toggle = makeButton("▼", `Teilaufgaben von Aufgabe ${index + 1} ein- oder ausklappen`, "gradeTestToggleSubtasks", task.id);
+          toggle.classList.add("grade-test-toggle-subtasks");
+          const collapsed = this.collapsedGradeTestTasks?.has(task.id) === true;
+          toggle.textContent = collapsed ? "▶" : "▼";
+          toggle.setAttribute("aria-expanded", String(!collapsed));
+          const label = document.createElement("span");
+          label.className = "grade-test-task-number";
+          label.textContent = String(index + 1);
+          title.append(label);
+          const max = document.createElement("div");
+          max.dataset.gradeTestGroupMax = "1";
+          const competences = document.createElement("div");
+          competences.className = "grade-test-group-competences";
+          competences.dataset.gradeTestGroupCompetences = "1";
+          const actions = document.createElement("div");
+          actions.className = "grade-test-group-actions";
+          const remove = makeButton("🗑️", `Aufgabe ${index + 1} mit Teilaufgaben entfernen`, "gradeTestRemoveTask", "1");
+          remove.dataset.taskId = task.id;
+          remove.classList.add("danger-action", "grade-test-task-remove");
+          actions.append(remove, makeSubTaskButton(task, index), toggle);
+          const merge = makeButton("Zusammenfassen", `Teilaufgaben von Aufgabe ${index + 1} zusammenfassen`, "gradeTestMergeSubtasks", task.id);
+          merge.classList.add("grade-test-merge-subtasks");
+          head.append(title, actions, max, competences, merge);
+          cell.append(head);
+        } else if (rowIndex === rows.length - 1) {
+          cell.dataset.gradeTestGroupAverage = "1";
+        } else {
+          const student = students[rowIndex - 1];
+          if (student?.isPlaceholder) {
+            cell.textContent = "—";
+          } else {
+            cell.dataset.gradeTestGroupStudent = String(student.id);
+          }
+        }
+        const firstChild = [...row.cells].find((node) => node.dataset.gradeTestTaskColumn === task.subTasks[0].id);
+        row.insertBefore(cell, firstChild);
+      });
+    });
+    this.updateGradeTestTaskGroupSummaries(table, tasks, entries, averageState, expectations);
+  }
+
+  updateGradeTestTaskGroupSummaries(root, sourceTasks, entries, averageState = null, expectations = []) {
+    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    root.querySelectorAll("[data-grade-test-group]").forEach((cell) => {
+      const task = taskById.get(cell.dataset.gradeTestGroup);
+      if (!task?.subTasks?.length) return;
+      if (cell.tagName === "TH") {
+        const summary = calculateGradeTaskScoreSummary(task.subTasks);
+        const maxIncomplete = task.subTasks.some((child) => !(child.maxBe > 0));
+        const max = cell.querySelector("[data-grade-test-group-max]");
+        max.title = maxIncomplete ? "BE1 der Teilaufgaben noch unvollständig" : "Summe der BE1 aller Teilaufgaben";
+        max.replaceChildren("BE1: ");
+        if (maxIncomplete) {
+          const question = document.createElement("span");
+          question.className = "grade-test-group-max-unknown";
+          question.setAttribute("role", "img");
+          question.setAttribute("aria-label", max.title);
+          question.textContent = "?";
+          max.append(question);
+        } else {
+          max.append(formatGradeBeValue(summary.maxSum));
+        }
+        const texts = [...new Set(task.subTasks.flatMap((child) => this.getGradeTestTaskAssignedCompetenceTexts(child, expectations)))];
+        const competenceIds = new Set(task.subTasks.flatMap((child) => child.competenceExpectationIds));
+        const competences = cell.querySelector("[data-grade-test-group-competences]");
+        const count = texts.length || competenceIds.size;
+        competences.textContent = count ? `${count} Kompetenz${count === 1 ? "" : "en"}` : "";
+        competences.title = texts.join("\n");
+        return;
+      }
+      if (cell.dataset.gradeTestGroupAverage) {
+        const summary = calculateGradeTaskAverageSummary(task.subTasks, Object.values(entries || {}).map((entry) => entry.testScores));
+        cell.textContent = summary.invalid ? "?" : summary.earnedAverage === null ? "—" : formatGradeBeAverageValue(summary.earnedAverage);
+        cell.classList.toggle("is-invalid-score", summary.invalid);
+        cell.setAttribute("aria-invalid", String(summary.invalid));
+        cell.title = summary.invalid ? "Mindestens eine Teilaufgabe enthält ungültige BE2" : "Durchschnitt der Hauptaufgabensummen";
+        return;
+      }
+      if (!cell.dataset.gradeTestGroupStudent) return;
+      const scores = entries?.[cell.dataset.gradeTestGroupStudent]?.testScores || {};
+      const summary = calculateGradeTaskScoreSummary(task.subTasks, scores);
+      cell.textContent = summary.invalid ? "?" : summary.earnedSum === null ? "—" : formatGradeBeValue(summary.earnedSum);
+      cell.classList.toggle("is-invalid-score", summary.invalid);
+      cell.setAttribute("aria-invalid", String(summary.invalid));
+      cell.title = summary.invalid ? "Eine Teilaufgabe enthält ungültige BE2. Bitte die markierte Eingabe korrigieren."
+        : summary.incomplete ? "BE-Eingaben noch unvollständig" : "Summe der BE2 aller Teilaufgaben";
+      cell.classList.toggle("is-deficit-followup-low", !summary.invalid && summary.requiresFollowUp);
+      if (!summary.invalid && summary.requiresFollowUp) cell.title += " · Nachbereitung erforderlich";
+    });
+  }
+
+  refreshGradeTestTaskGroupSummaries(averageState = null) {
+    const root = this.refs.gradesEntryContent;
+    if (!root?.querySelector("[data-grade-test-group]")) return;
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    this.updateGradeTestTaskGroupSummaries(root, draft?.testTasks || assessment?.testTasks, draft?.entries || {}, averageState,
+      draft?.competenceExpectations || assessment?.competenceExpectations || []);
+  }
+
+  updateGradeTestContextTasks(tasks, options = {}) {
     const { assessment, draft } = this.getActiveGradeTestContext();
     const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false });
     if (draft) {
-      const validTaskIds = new Set(normalizedTasks.map((task) => task.id));
+      const oldIds = getGradeTestScoringTasks(draft.testTasks).map((task) => task.id);
+      const nextIds = getGradeTestScoringTasks(normalizedTasks).map((task) => task.id);
+      const validTaskIds = new Set(nextIds);
+      let template = draft.expectationHorizonTemplateFile;
+      if (JSON.stringify(oldIds) !== JSON.stringify(nextIds)) {
+        const source = template || this.expectationHorizonStoredTemplate;
+        if (source?.bytes?.length) {
+          const remap = options.taskIdRemap || new Map();
+          template = normalizeGradeAssessmentExpectationHorizonTemplateFile({
+            ...source,
+            taskRowIds: (source.taskRowIds || oldIds).map((id) => {
+              const mappedId = remap.get(id) || id;
+              return validTaskIds.has(mappedId) ? mappedId : "";
+            })
+          });
+          this.expectationHorizonTemplateFile = this.normalizeExpectationHorizonTemplateFile(template);
+        }
+      }
       const nextEntries = Object.entries(draft.entries || {}).reduce((result, [studentId, value]) => {
         const normalizedEntry = normalizeGradeDraftEntry(value);
         const testScores = Object.entries(normalizedEntry.testScores || {}).reduce((scores, [taskId, score]) => {
@@ -24412,6 +24769,7 @@ class GradesApp {
       this.gradesEntryDraft = {
         ...draft,
         testTasks: normalizedTasks,
+        expectationHorizonTemplateFile: template || null,
         entries: nextEntries
       };
       return true;
@@ -24472,7 +24830,7 @@ class GradesApp {
     const sourceTasks = draft?.testTasks || assessment?.testTasks;
     const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
     let changed = false;
-    const nextTasks = tasks.map((task) => {
+    const nextTasks = mapGradeTestScoringTasks(tasks, (task) => {
       if (task.id !== normalizedTaskId) {
         return task;
       }
@@ -24489,43 +24847,28 @@ class GradesApp {
   }
 
   gradeTestTaskHasEnteredValues(taskId) {
-    const normalizedTaskId = String(taskId || "").trim();
-    if (!normalizedTaskId) {
-      return false;
-    }
     const { assessment, draft } = this.getActiveGradeTestContext();
     const tasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
-    const task = tasks.find((item) => item.id === normalizedTaskId);
-    if (!task) {
-      return false;
-    }
-    if (Number(task.maxBe || 0) > 0 || Boolean(normalizeGradeTestAfb(task.afb))) {
-      return true;
-    }
-    if (assessment) {
-      const entries = this.store.listGradeEntries();
-      return entries.some((entry) => (
-        Number(entry?.assessmentId || 0) === Number(assessment.id || 0)
-        && Object.prototype.hasOwnProperty.call(normalizeGradeTestScores(entry?.testScores), normalizedTaskId)
-      ));
-    }
-    if (draft && typeof draft.entries === "object") {
-      return Object.values(draft.entries).some((entry) => (
-        Object.prototype.hasOwnProperty.call(normalizeGradeTestScores(normalizeGradeDraftEntry(entry).testScores), normalizedTaskId)
-      ));
-    }
-    return false;
+    const task = tasks.find((item) => item.id === String(taskId))
+      || tasks.flatMap((item) => item.subTasks || []).find((item) => item.id === String(taskId));
+    if (!task) return false;
+    const leaves = task.subTasks || [task];
+    if (leaves.some((item) => Number(item.maxBe || 0) > 0 || item.afb || item.deficitDiagnosisFollowUp
+      || item.competenceExpectationIds.length || item.customCompetenceText)) return true;
+    const entries = draft ? Object.values(draft.entries || {}) : this.store.listGradeEntries()
+      .filter((entry) => Number(entry.assessmentId) === Number(assessment?.id));
+    return entries.some((entry) => leaves.some((item) =>
+      Object.prototype.hasOwnProperty.call(normalizeGradeTestScores(entry.testScores), item.id)));
   }
 
   removeGradeTestTask(taskId) {
-    const normalizedTaskId = String(taskId || "").trim();
-    if (!normalizedTaskId) {
-      return;
-    }
     const { assessment, draft } = this.getActiveGradeTestContext();
-    const sourceTasks = draft?.testTasks || assessment?.testTasks;
-    const nextTasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false })
-      .filter((task) => task.id !== normalizedTaskId);
+    const nextTasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false })
+      .filter((task) => task.id !== String(taskId))
+      .map((task) => task.subTasks?.length
+        ? { ...task, subTasks: task.subTasks.filter((child) => child.id !== String(taskId)) }
+        : task)
+      .filter((task) => !Array.isArray(task.subTasks) || task.subTasks.length > 0);
     this.updateGradeTestContextTasks(nextTasks);
     this.renderGradesView();
   }
@@ -24570,7 +24913,7 @@ class GradesApp {
     const maxValue = Number(maxBe || 0);
     const { assessment, draft } = this.getActiveGradeTestContext();
     const sourceTasks = draft?.testTasks || assessment?.testTasks;
-    const task = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false })
+    const task = getGradeTestScoringTasks(sourceTasks)
       .find((item) => item.id === taskId);
     const followUpTask = task ? { ...task, maxBe: maxValue > 0 ? maxValue : null } : null;
     const root = this.refs.gradesEntryContent;
@@ -24618,7 +24961,7 @@ class GradesApp {
     const { assessment, draft } = this.getActiveGradeTestContext();
     const sourceTasks = draft?.testTasks || assessment?.testTasks;
     const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
-    const task = tasks.find((item) => item.id === taskId);
+    const task = tasks.flatMap((item) => item.subTasks || [item]).find((item) => item.id === taskId);
     if (!task) {
       return false;
     }
@@ -24735,10 +25078,15 @@ class GradesApp {
   }
 
   buildGradesTestEntryTable(course, students, assessment = null, draft = null) {
+    const viewKey = `${course.id}:${assessment?.id || "draft"}`;
+    if (this.gradeTestViewContextKey !== viewKey) {
+      this.gradeTestViewContextKey = viewKey;
+      this.collapsedGradeTestTasks = new Set();
+    }
     const activeDraft = assessment
       ? this.getGradesEntryAssessmentDraft(assessment)
       : (draft || this.getGradesEntryDraft(course.id));
-    const tasks = normalizeGradeTestTasks(activeDraft?.testTasks || assessment?.testTasks, { ensureDefault: false });
+    const tasks = getGradeTestScoringTasks(activeDraft?.testTasks || assessment?.testTasks);
     const entries = activeDraft && typeof activeDraft.entries === "object" ? activeDraft.entries : {};
     const scale = normalizeGradeTestScale(activeDraft?.testScale || assessment?.testScale);
     const scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, activeDraft);
@@ -24802,7 +25150,7 @@ class GradesApp {
     ratioHead.textContent = "BE2 / BE1";
     headRow.append(ratioHead);
     tasks.forEach((task, index) => {
-      const taskLabel = `Aufgabe ${index + 1}`;
+      const taskLabel = `Aufgabe ${task.label}`;
       const hasTaskMaxBe = Number(task.maxBe || 0) > 0;
       const hasDeficitFollowUp = task.deficitDiagnosisFollowUp === true;
       const hasTaskCompetences = (
@@ -24820,7 +25168,10 @@ class GradesApp {
         const gradeTestTaskTitle120 = document.createElement("div");
         gradeTestTaskTitle120.className = "grade-test-task-title";
         gradeTestTaskTitle120.setAttribute("aria-label", String(taskLabel));
-        gradeTestTaskTitle120.textContent = String(index + 1);
+        const taskNumberLabel = document.createElement("span");
+        taskNumberLabel.className = "grade-test-task-number";
+        taskNumberLabel.textContent = task.label;
+        gradeTestTaskTitle120.append(taskNumberLabel);
         gradeTestTaskHead119.append(gradeTestTaskTitle120);
         gradeTestTaskHead119.append("\n");
         const gradeTestTaskMax121 = document.createElement("label");
@@ -24980,7 +25331,7 @@ class GradesApp {
       })());
       tr.append(ratioCell);
       tasks.forEach((task, columnIndex) => {
-        const taskLabel = `Aufgabe ${columnIndex + 1}`;
+        const taskLabel = `Aufgabe ${task.label}`;
         const hasTaskMaxBe = Number(task.maxBe || 0) > 0;
         const td = document.createElement("td");
         td.className = "grade-test-task-col";
@@ -25113,6 +25464,8 @@ class GradesApp {
     averageRow.append(averageAddCell);
     tbody.append(averageRow);
     table.append(tbody);
+    this.enhanceGradeTestTaskGroups(table, activeDraft?.testTasks || assessment?.testTasks, displayStudents, entries, averageState,
+      activeDraft?.competenceExpectations || assessment?.competenceExpectations || []);
     return table;
   }
 
@@ -25517,7 +25870,7 @@ class GradesApp {
         })
         .filter(Boolean)
     );
-    const testTasks = normalizeGradeTestTasks(draft.testTasks, { ensureDefault: false }).map((task) => (
+    const testTasks = mapGradeTestScoringTasks(draft.testTasks, (task) => (
       taskInputById.has(task.id) || taskAfbById.has(task.id)
         ? {
           ...task,
@@ -27309,10 +27662,10 @@ class GradesApp {
     if (mode === "test") {
       const yearLevel = normalizeGradeAssessmentYearLevel(values.yearLevel);
       const courseLevel = normalizeGradeAssessmentCourseLevel(values.courseLevel, yearLevel).toUpperCase();
-      const tasks = normalizeGradeTestTasks(values.testTasks, { ensureDefault: false });
+      const tasks = getGradeTestScoringTasks(values.testTasks);
       const taskSummary = tasks.length
         ? tasks.map((task, index) => {
-          const parts = [`A${index + 1}`];
+          const parts = [`A${task.label || index + 1}`];
           if (Number(task.maxBe || 0) > 0) {
             parts.push(`BE1 ${formatGradeBeValue(task.maxBe)}`);
           }
@@ -27416,7 +27769,7 @@ class GradesApp {
 
   buildGradesEntryTestPrintTable(context) {
     const source = context.assessment || context.draft || {};
-    const tasks = normalizeGradeTestTasks(source.testTasks, { ensureDefault: false });
+    const tasks = getGradeTestScoringTasks(source.testTasks);
     const scale = normalizeGradeTestScale(source.testScale);
     const scaleSnapshot = context.assessment || source.testScaleSnapshot
       ? normalizeGradeTestScaleSnapshot(source.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
@@ -27429,7 +27782,7 @@ class GradesApp {
     const thead = document.createElement("thead");
     const headRow = document.createElement("tr");
     ["Name", "Note", "BE2 / BE1", ...tasks.map((task, index) => {
-      const parts = [`A${index + 1}`];
+      const parts = [`A${task.label}`];
       if (Number(task.maxBe || 0) > 0) {
         parts.push(`BE1 ${formatGradeBeValue(task.maxBe)}`);
       }
@@ -28630,7 +28983,7 @@ class GradesApp {
         ? normalizeGradeDraftEntry(draft.entries[studentId])
         : this.store.getGradeEntry(studentId, assessmentId);
       return {
-        tasks: normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false }),
+        tasks: getGradeTestScoringTasks(draft?.testTasks || assessment?.testTasks),
         scale: normalizeGradeTestScale(draft?.testScale || assessment?.testScale),
         scores: normalizeGradeTestScores(entry?.testScores)
       };
@@ -28640,7 +28993,7 @@ class GradesApp {
       ? normalizeGradeDraftEntry(draft.entries[studentId])
       : null;
     return {
-      tasks: normalizeGradeTestTasks(draft?.testTasks, { ensureDefault: false }),
+      tasks: getGradeTestScoringTasks(draft?.testTasks),
       scale: normalizeGradeTestScale(draft?.testScale),
       scores: normalizeGradeTestScores(entry?.testScores)
     };
@@ -28753,7 +29106,7 @@ class GradesApp {
       const draft = Number(this.selectedGradesEntryAssessmentId || 0) === Number(assessmentId)
         ? this.getGradesEntryAssessmentDraft(assessment)
         : null;
-      tasks = normalizeGradeTestTasks(draft?.testTasks || assessment.testTasks, { ensureDefault: false });
+      tasks = getGradeTestScoringTasks(draft?.testTasks || assessment.testTasks);
       displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem ?? assessment.testDisplaySystem, draft?.testScale || assessment.testScale);
       scaleSnapshot = this.getGradeTestEntryScaleSnapshot(assessment, draft);
       testPredicateSuffixes = draft
@@ -28768,7 +29121,7 @@ class GradesApp {
     } else {
       const draft = this.getGradesEntryDraft(courseId);
       displaySystem = normalizeGradeTestDisplaySystem(draft?.testDisplaySystem, draft?.testScale);
-      tasks = normalizeGradeTestTasks(draft?.testTasks, { ensureDefault: false });
+      tasks = getGradeTestScoringTasks(draft?.testTasks);
       scaleSnapshot = this.getGradeTestEntryScaleSnapshot(null, draft);
       testPredicateSuffixes = normalizeGradeTestPredicateSuffixes(
         draft?.testPredicateSuffixes,
@@ -28831,6 +29184,7 @@ class GradesApp {
         }
       }
     });
+    this.refreshGradeTestTaskGroupSummaries(averageState);
     this.refreshVisibleGradesEntryDistribution(assessmentId);
   }
 
@@ -28966,6 +29320,8 @@ class GradesApp {
       input.setAttribute("aria-invalid", "false");
       input.value = parsed.value === null ? "" : formatGradeBeValue(parsed.value);
       this.syncGradeTestDeficitFollowUpScoreClass(input, task, parsed.value);
+      const previousScore = Object.prototype.hasOwnProperty.call(context.scores, taskId) ? context.scores[taskId] : null;
+      if (isDraftInput && previousScore === parsed.value) return true;
       const nextScores = { ...context.scores };
       if (parsed.value === null) {
         delete nextScores[taskId];
@@ -29090,6 +29446,7 @@ class GradesApp {
       };
       if (input.dataset.gradeDraftInput === "1") {
         return [...tableRoot.querySelectorAll("input[data-grade-test-score='1'][data-grade-draft-input='1']:not(:disabled)")]
+          .filter((node) => !node.closest("[hidden]"))
           .sort(sortByColumnThenRow);
       }
       const assessmentId = Number(input.dataset.assessmentId || 0);
@@ -29098,7 +29455,8 @@ class GradesApp {
       }
       return [...tableRoot.querySelectorAll(
         `input[data-grade-test-score='1']:not(:disabled)[data-assessment-id="${assessmentId}"]`
-      )].sort(sortByColumnThenRow);
+      )].filter((node) => !node.closest("[hidden]"))
+        .sort(sortByColumnThenRow);
     }
     if (input.dataset.gradeDraftInput === "1") {
       return [...root.querySelectorAll("input[data-grade-input='1'][data-grade-draft-input='1']:not(:disabled)")];
@@ -29228,7 +29586,7 @@ class GradesApp {
     const isDraftInput = input.dataset.gradeDraftInput === "1";
     return [...tableRoot.querySelectorAll("input[data-grade-test-score='1']:not(:disabled)")]
       .filter((node) => {
-        if (!(node instanceof HTMLInputElement)) {
+        if (!(node instanceof HTMLInputElement) || node.closest("[hidden]")) {
           return false;
         }
         if (isDraftInput) {

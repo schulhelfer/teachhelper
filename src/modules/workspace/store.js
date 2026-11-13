@@ -1,3 +1,4 @@
+import { normalizeGradeTestTasks, getGradeTestScoringTasks } from "../../shared/school-data/grade-test-tasks.js";
 import { normalizeRandomPickerSpinDurationMs } from "../../shared/random-picker-settings.js";
 import {
   deleteCourseCascadeInPlace,
@@ -636,7 +637,8 @@ function normalizeGradeAssessmentExpectationHorizonTemplateFile(value = null) {
   }
   return {
     name: String(value.name || EXPECTATION_HORIZON_TEMPLATE_FILE_NAME),
-    bytes
+    bytes,
+    ...(Array.isArray(value.taskRowIds) ? { taskRowIds: value.taskRowIds.map((id) => String(id || "")) } : {})
   };
 }
 
@@ -921,54 +923,8 @@ function normalizeGradeTaskCompetenceExpectationIds(ids = [], expectations = nul
   }, []);
 }
 
-function normalizeGradeTestTasks(tasks = [], options = {}) {
-  const source = Array.isArray(tasks) ? tasks : [];
-  const usedIds = new Set();
-  const normalized = source.reduce((result, raw, index) => {
-    const item = raw && typeof raw === "object" ? raw : {};
-    const idBase = String(item.id || index + 1).trim() || String(index + 1);
-    let id = idBase;
-    let suffix = 2;
-    while (usedIds.has(id)) {
-      id = `${idBase}-${suffix}`;
-      suffix += 1;
-    }
-    usedIds.add(id);
-    const parsedMaxBe = parseGradeBeValue(item.maxBe);
-    result.push({
-      id,
-      title: normalizeGradeTextPart(item.title) || `Aufgabe ${result.length + 1}`,
-      maxBe: parsedMaxBe.valid && parsedMaxBe.value !== null ? parsedMaxBe.value : null,
-      afb: normalizeGradeTestAfb(item.afb),
-      deficitDiagnosisFollowUp: item.deficitDiagnosisFollowUp === true,
-      competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(item.competenceExpectationIds),
-      customCompetenceText: String(item.customCompetenceText || "").trim(),
-      sortOrder: Number(item.sortOrder || index + 1)
-    });
-    return result;
-  }, []).sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
-  if (!normalized.length && options.ensureDefault !== false) {
-    normalized.push({
-      id: "1",
-      title: "Aufgabe 1",
-      maxBe: null,
-      afb: "",
-      deficitDiagnosisFollowUp: false,
-      competenceExpectationIds: [],
-      customCompetenceText: "",
-      sortOrder: 1
-    });
-  }
-  return normalized.map((task, index) => ({
-    ...task,
-    sortOrder: index + 1
-  }));
-}
-
-
-
 function calculateGradeTestRatio(tasks = [], scores = {}) {
-  const normalizedTasks = normalizeGradeTestTasks(tasks, { ensureDefault: false })
+  const normalizedTasks = getGradeTestScoringTasks(tasks)
     .filter((task) => Number(task.maxBe || 0) > 0);
   const normalizedScores = normalizeGradeTestScores(scores);
   const hasAnyScore = normalizedTasks.some((task) => Object.prototype.hasOwnProperty.call(normalizedScores, task.id));
@@ -3403,7 +3359,7 @@ export class WorkspaceStore {
     if (!assessment.testScaleSnapshot) {
       assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
     }
-    const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
+    const taskIds = new Set(getGradeTestScoringTasks(assessment.testTasks).map((task) => task.id));
     const normalizedScores = Object.entries(normalizeGradeTestScores(scores)).reduce((result, [taskId, value]) => {
       if (taskIds.has(taskId)) {
         result[taskId] = value;
@@ -3460,7 +3416,7 @@ export class WorkspaceStore {
     if (!assessment.testScaleSnapshot) {
       assessment.testScaleSnapshot = this.buildGradeTestScaleSnapshot(assessment.testScale);
     }
-    const taskIds = new Set(normalizeGradeTestTasks(assessment.testTasks, { ensureDefault: false }).map((task) => task.id));
+    const taskIds = new Set(getGradeTestScoringTasks(assessment.testTasks).map((task) => task.id));
     this.gradeVaultState.gradeEntries = this.gradeVaultState.gradeEntries
       .map((entry) => {
         if (Number(entry.assessmentId) !== Number(assessment.id)) {

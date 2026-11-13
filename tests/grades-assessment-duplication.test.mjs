@@ -111,6 +111,22 @@ test('invalid duplication requests leave the current draft intact', async () => 
   }
 });
 
+test('BE duplication preserves independent subtask settings and clears all child results', async () => {
+  const app = createHarness();
+  app.assessment.testTasks[0].subTasks = [
+    { id: 'part-a', maxBe: 3, afb: 'I', competenceExpectationIds: ['k1'], deficitDiagnosisFollowUp: true },
+    { id: 'part-b', maxBe: 5, afb: 'II', customCompetenceText: 'Erwartung B' },
+  ];
+  const original = structuredClone(app.assessment);
+  assert.equal(await app.duplicateGradeAssessmentWithoutResults(7, 3), true);
+  assert.deepEqual(app.gradesEntryDraft.testTasks, original.testTasks);
+  assert.deepEqual(app.gradesEntryDraft.entries, {});
+  app.gradesEntryDraft.testTasks[0].subTasks[0].competenceExpectationIds.push('k2');
+  app.gradesEntryDraft.testTasks[0].subTasks[1].maxBe = 7;
+  assert.deepEqual(app.assessment, original);
+  scheduled.splice(0).forEach((callback) => callback());
+});
+
 test('unsaved-entry cancellation and context changes during the dialog preserve the old draft', async () => {
   for (const change of [
     () => {},

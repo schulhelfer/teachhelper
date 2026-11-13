@@ -5005,6 +5005,85 @@
           min-width: 0;
         }
 
+        .grade-test-main-task-head {
+          grid-template-columns: repeat(4, minmax(25px, 1fr));
+        }
+
+        .grade-block-table.grades-entry-table thead th.grade-test-task-col {
+          vertical-align: top;
+        }
+
+        .grades-test-entry-table th.grade-test-main-task-col,
+        .grades-test-entry-table td.grade-test-main-task-col {
+          width: 7.2rem;
+          min-width: 7.2rem;
+          max-width: 7.2rem;
+        }
+
+        .grade-test-subtask-icon {
+          display: flex;
+          flex-direction: column;
+          font-size: 10px;
+          font-weight: 700;
+          line-height: 10px;
+        }
+
+        .grade-test-group-max-unknown {
+          color: var(--danger);
+        }
+
+        .grades-test-entry-table .grade-test-subtask-col {
+          background: var(--surface-control-subtle);
+        }
+
+        .grades-test-entry-table th.grade-test-group-col,
+        .grades-test-entry-table td.grade-test-group-col {
+          width: 7.2rem;
+          min-width: 7.2rem;
+          max-width: 7.2rem;
+          font-weight: 800;
+          text-align: center;
+        }
+
+        .grade-test-group-head {
+          display: grid;
+          gap: 0.4rem;
+        }
+
+        .grade-test-group-head > [data-grade-test-group-max] {
+          font-size: 0.76rem;
+        }
+
+        .grade-test-group-actions {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.25rem;
+        }
+
+        .grade-test-group-competences {
+          color: var(--muted);
+          font-size: 0.7rem;
+        }
+
+        .grade-test-merge-subtasks {
+          min-height: 25px;
+          padding: 0.2rem;
+          font-size: 0.7rem;
+        }
+
+        .grade-test-group-col.is-invalid-score {
+          color: var(--danger);
+        }
+
+        .grade-test-group-col.is-deficit-followup-low {
+          background: rgba(250, 204, 21, 0.2);
+        }
+
+        .grades-test-entry-table [data-grade-test-parent-task][hidden] {
+          display: none;
+        }
+
         .grade-test-task-max input,
         .grade-test-task-afb select {
           box-sizing: border-box;
@@ -5026,6 +5105,7 @@
           display: flex;
           align-items: center;
           justify-content: center;
+          box-sizing: border-box;
           width: 100%;
           min-width: 0;
           height: 1.85rem;
@@ -5040,6 +5120,12 @@
           font-weight: 800;
           line-height: 1.1;
           text-align: center;
+        }
+
+        .grade-test-subtask-col .grade-test-task-title {
+          width: fit-content;
+          justify-self: center;
+          padding-inline: 0.35rem;
         }
 
         .grade-test-task-max,
@@ -5081,17 +5167,28 @@
 
         .grade-test-task-deficit-followup,
         .grade-test-task-competence,
-        .grade-test-task-remove {
+        .grade-test-task-remove,
+        .grade-test-add-subtask,
+        .grade-test-toggle-subtasks {
           grid-row: 2 / 3;
-          width: 1.55rem;
-          min-width: 1.55rem;
-          height: 1.55rem;
-          min-height: 1.55rem;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-sizing: border-box;
+          width: 25px;
+          min-width: 25px;
+          height: 25px;
+          min-height: 25px;
           justify-self: center;
+          margin: 0;
           padding: 0;
           border-radius: 8px;
           font-size: 0.82rem;
           line-height: 1;
+        }
+
+        .grade-test-toggle-subtasks {
+          font-size: 18px;
         }
 
         .grade-test-task-deficit-followup {
@@ -5104,6 +5201,21 @@
 
         .grade-test-task-remove {
           grid-column: 3 / 4;
+        }
+
+        .grade-test-add-subtask {
+          grid-column: 4 / 5;
+        }
+
+        .grade-test-add-subtask.grade-test-add-subtask-more {
+          width: 40px;
+          min-width: 40px;
+          gap: 4px;
+        }
+
+        .grade-test-subtask-plus {
+          font-size: 16px;
+          line-height: 1;
         }
 
         .grade-test-task-deficit-followup.is-active {

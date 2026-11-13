@@ -1664,6 +1664,10 @@ function normalizeTableColumnReplacements(tableColumnReplacements) {
         extendRows: item.extendRows === true,
         numberContinuation: item.numberContinuation === true,
         numberTargetRows: item.numberTargetRows === true,
+        targetRowLabels: Array.isArray(item.targetRowLabels) ? item.targetRowLabels.map(String) : [],
+        sourceRowIndices: Array.isArray(item.sourceRowIndices) ? item.sourceRowIndices.map((indices) => (
+          Array.isArray(indices) ? indices.filter((index) => Number.isInteger(index) && index >= 0) : []
+        )) : null,
         removeUnusedTargetRows: item.removeUnusedTargetRows === true
       };
     })
@@ -1789,14 +1793,41 @@ function removeUnusedWordTableRowsForReplacement(targetRows, replacement) {
   targetRows.length = replacement.values.length;
 }
 
-function setWordTableTargetRowNumbers(doc, targetRows, targetColumnIndex) {
+function remapWordTableSectionRows(doc, table, targetRows, replacement, endRow) {
+  if (!replacement.sourceRowIndices || !targetRows.length) return;
+  const sourceRows = targetRows.map((row) => row.cloneNode(true));
+  const rows = replacement.sourceRowIndices.map((indices) => {
+    const sources = indices.map((index) => sourceRows[index]).filter(Boolean);
+    const row = (sources[0] || sourceRows[0]).cloneNode(true);
+    const cells = getChildElementsByLocalName(row, "tc");
+    if (!sources.length) {
+      cells.forEach((cell) => {
+        Array.from(cell.children).filter((child) => child.localName !== "tcPr").forEach((child) => child.remove());
+        setWordCellText(doc, cell, "");
+      });
+    } else {
+      sources.slice(1).forEach((source) => {
+        getChildElementsByLocalName(source, "tc").forEach((cell, index) => {
+          Array.from(cell.children).filter((child) => child.localName !== "tcPr")
+            .forEach((child) => cells[index]?.append(child.cloneNode(true)));
+        });
+      });
+    }
+    return row;
+  });
+  targetRows.forEach((row) => row.remove());
+  rows.forEach((row) => table.insertBefore(row, endRow));
+  targetRows.splice(0, targetRows.length, ...rows);
+}
+
+function setWordTableTargetRowNumbers(doc, targetRows, targetColumnIndex, labels = []) {
   targetRows.forEach((row, rowIndex) => {
     const cell = getChildElementsByLocalName(row, "tc")[targetColumnIndex];
     if (!cell) {
       return;
     }
     removeWordCellNumbering(cell);
-    setWordCellText(doc, cell, `(${rowIndex + 1})`);
+    setWordCellText(doc, cell, `(${labels[rowIndex] || rowIndex + 1})`);
   });
 }
 
@@ -1861,6 +1892,7 @@ function applyTableColumnReplacements(doc, replacements, stats = null, richTextC
             if (replacementStats) {
               replacementStats.foundTargetRows = true;
             }
+            remapWordTableSectionRows(doc, table, targetRows, replacement, section.endRow);
             insertWordTableSectionRowsForReplacement(
               doc,
               table,
@@ -1872,7 +1904,7 @@ function applyTableColumnReplacements(doc, replacements, stats = null, richTextC
             );
             removeUnusedWordTableRowsForReplacement(targetRows, replacement);
             if (replacement.numberTargetRows) {
-              setWordTableTargetRowNumbers(doc, targetRows, targetColumnIndex);
+              setWordTableTargetRowNumbers(doc, targetRows, targetColumnIndex, replacement.targetRowLabels);
             }
           }
           targetRows.slice(0, replacement.values.length).forEach((row, rowIndex) => {

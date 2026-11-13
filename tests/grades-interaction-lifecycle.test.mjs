@@ -8,10 +8,10 @@ const gradesSource = await readFile(
 );
 
 function extractClassMethod(name) {
-  const match = new RegExp(`\\n  (?:async )?${name}\\(`).exec(gradesSource);
+  const match = new RegExp(`\\n  (?:async )?${name}\\([^\\n]*\\) \\{`).exec(gradesSource);
   assert.ok(match, `method ${name} must exist`);
   const start = match.index + 1;
-  const bodyStart = gradesSource.indexOf('{', start);
+  const bodyStart = match.index + match[0].length - 1;
   let depth = 0;
   for (let index = bodyStart; index < gradesSource.length; index += 1) {
     if (gradesSource[index] === '{') depth += 1;

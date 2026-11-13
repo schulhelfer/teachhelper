@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '139';
+const TEACHHELPER_APP_VERSION_STAMP = '140';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -100,6 +100,7 @@ const APP_SHELL = [
   './src/shared/school-data/messages.js',
   './src/shared/school-data/index.js',
   './src/shared/school-data/grades.js',
+  './src/shared/school-data/grade-test-tasks.js',
   './src/shared/school-data/grade-integrity.js',
   './src/shared/school-data/seatplan-transfer.js',
   './src/shared/school-data/sync-safety.js',
