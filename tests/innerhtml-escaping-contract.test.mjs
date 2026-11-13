@@ -17,7 +17,6 @@ const REVIEWED = new Map([
     'seatplanNavigationState.symbol', 'performanceNavigationState.symbol',
     '`<table><tbody>${cells}</tbody></table><p><br></p>`',
   ])],
-  ['src/modules/merger/app.js', new Set(['buildRotateIconMarkup(degrees)'])],
   ['src/modules/workspace/components.js', new Set(['DATABASE_PANEL_MARKUP', 'ARCHIVE_DIALOG_MARKUP'])],
 ]);
 

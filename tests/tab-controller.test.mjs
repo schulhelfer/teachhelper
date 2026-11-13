@@ -8,14 +8,13 @@ const source = `${[
   "const TAB_DUPLICATE_CHECK = 'duplicate-check';",
   "const TAB_GRADES = 'grades';",
   "const TAB_GROUPS = 'groups';",
-  "const TAB_MERGER = 'merger';",
   "const TAB_NAME_LEARNING = 'name-learning';",
   "const TAB_PLANNING = 'planning';",
   "const TAB_QR = 'qr';",
   "const TAB_RANDOM_PICKER = 'random-picker';",
   "const TAB_SEATPLAN = 'seatplan';",
   "const TAB_WORK_PHASE = 'work-phase';",
-  "const normalizeTab = (tab) => ['duplicate-check', 'grades', 'groups', 'merger', 'name-learning', 'planning', 'qr', 'random-picker', 'seatplan', 'work-phase'].includes(tab) ? tab : 'groups';",
+  "const normalizeTab = (tab) => ['duplicate-check', 'grades', 'groups', 'name-learning', 'planning', 'qr', 'random-picker', 'seatplan', 'work-phase'].includes(tab) ? tab : 'groups';",
 ].join('\n')}\n${rawSource.slice(importEnd)}`;
 const { createTabController } = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
@@ -92,11 +91,10 @@ function createHarness(options = {}) {
   const main = new FakeElement(['main']);
   app.append(side, main);
   const buttons = new Map(
-    ['planning', 'grades', 'groups', 'merger', 'duplicate-check', 'qr', 'random-picker', 'seatplan', 'name-learning', 'work-phase']
+    ['planning', 'grades', 'groups', 'duplicate-check', 'qr', 'random-picker', 'seatplan', 'name-learning', 'work-phase']
       .map((tab) => [tab, new FakeElement(['tab-button'])])
   );
   const regions = {
-    mergerShell: new FakeElement(['merger-shell']),
     duplicateCheckShell: new FakeElement(['duplicate-check-shell']),
     qrShell: new FakeElement(['qr-shell']),
     planningShell: new FakeElement(['planning-shell']),
@@ -110,7 +108,6 @@ function createHarness(options = {}) {
     timerShell: new FakeElement(['timer-shell']),
   };
   app.append(
-    regions.mergerShell,
     regions.duplicateCheckShell,
     regions.qrShell,
     regions.planningShell,
@@ -314,7 +311,7 @@ test('renders the initial tab state and only dispatches the planning entry once'
   assert.equal(harness.app.classList.contains('app-tab-planning'), true);
   assert.equal(harness.app.classList.contains('planning-initial-paint-pending'), true);
   assert.equal(harness.regions.planningShell.hidden, false);
-  assert.equal(harness.regions.mergerShell.hidden, true);
+  assert.equal(harness.regions.nameLearningShell.hidden, true);
   assert.equal(harness.regions.groupsMainHost.hidden, true);
   assert.equal(harness.buttons.get('planning').classList.contains('active'), true);
   assert.equal(harness.buttons.get('planning').getAttribute('aria-selected'), 'true');
@@ -391,7 +388,7 @@ test('switches without animation when no tab region is currently rendered', () =
 
 test('runs leave and enter phases through their existing timer and frame boundaries', () => {
   const harness = createHarness({ initialActiveTab: 'groups' });
-  harness.controller.setActiveTab('merger', { showTutorialHint: true });
+  harness.controller.setActiveTab('name-learning', { showTutorialHint: true });
 
   assert.equal(harness.controller.getActiveTab(), 'groups');
   assert.equal(harness.controller.getTransitionState(), 'leaving');
@@ -399,23 +396,23 @@ test('runs leave and enter phases through their existing timer and frame boundar
   assert.equal(harness.side.classList.contains('tab-switch-leave'), true);
 
   harness.runNextTimer(120);
-  assert.equal(harness.controller.getActiveTab(), 'merger');
+  assert.equal(harness.controller.getActiveTab(), 'name-learning');
   assert.equal(harness.controller.getTransitionState(), 'entering');
-  assert.equal(harness.regions.mergerShell.hidden, false);
-  assert.equal(harness.regions.mergerShell.classList.contains('tab-switch-enter'), true);
-  assert.equal(harness.calls.some(([name, tab]) => name === 'active-change' && tab === 'merger'), false);
+  assert.equal(harness.regions.nameLearningShell.hidden, false);
+  assert.equal(harness.regions.nameLearningShell.classList.contains('tab-switch-enter'), true);
+  assert.equal(harness.calls.some(([name, tab]) => name === 'active-change' && tab === 'name-learning'), false);
 
   harness.runFrames();
-  assert.equal(harness.regions.mergerShell.classList.contains('tab-switch-enter'), false);
+  assert.equal(harness.regions.nameLearningShell.classList.contains('tab-switch-enter'), false);
   harness.runNextTimer(240);
   assert.equal(harness.controller.getTransitionState(), 'idle');
   assert.equal(harness.app.classList.contains('is-tab-switching'), false);
-  assert.equal(harness.calls.filter(([name, tab]) => name === 'active-change' && tab === 'merger').length, 1);
+  assert.equal(harness.calls.filter(([name, tab]) => name === 'active-change' && tab === 'name-learning').length, 1);
 });
 
 test('keeps only the latest pending request during a running transition', () => {
   const harness = createHarness({ initialActiveTab: 'groups' });
-  harness.controller.setActiveTab('merger', { showTutorialHint: true });
+  harness.controller.setActiveTab('name-learning', { showTutorialHint: true });
   harness.controller.setActiveTab('qr', { showTutorialHint: false });
   harness.controller.setActiveTab('duplicate-check', { showTutorialHint: true });
 
@@ -423,7 +420,7 @@ test('keeps only the latest pending request during a running transition', () => 
   harness.runFrames();
   harness.runNextTimer(240);
   assert.equal(harness.controller.getTransitionState(), 'leaving');
-  assert.equal(harness.controller.getActiveTab(), 'merger');
+  assert.equal(harness.controller.getActiveTab(), 'name-learning');
 
   harness.runNextTimer(120);
   harness.runFrames();
@@ -435,10 +432,10 @@ test('keeps only the latest pending request during a running transition', () => 
   assert.deepEqual(
     harness.calls.filter(([name]) => name === 'activating').map((call) => call.slice(1)),
     [
-      ['merger', 'groups'],
+      ['name-learning', 'groups'],
       ['qr', 'groups'],
       ['duplicate-check', 'groups'],
-      ['duplicate-check', 'merger'],
+      ['duplicate-check', 'name-learning'],
     ]
   );
 });
@@ -452,7 +449,7 @@ test('serializes grades and planning leave confirmation without changing rejecte
   });
   gradesHarness.workspace.leaveGuard = (_nextTab, options) => options.skipUnsavedPrompt ? null : 'grades';
   gradesHarness.controller.setActiveTab('groups', { showTutorialHint: true });
-  gradesHarness.controller.setActiveTab('merger');
+  gradesHarness.controller.setActiveTab('name-learning');
   assert.equal(gradesHarness.calls.filter(([name]) => name === 'grades-leave').length, 1);
   gradesDeferred.resolve(true);
   await gradesDeferred.promise;
@@ -517,7 +514,7 @@ test('dispose cancels pending transitions, frames, deferred work and guard conti
   assert.equal(guardHarness.controller.getActiveTab(), 'grades');
 
   const transitionHarness = createHarness({ initialActiveTab: 'groups' });
-  transitionHarness.controller.setActiveTab('merger');
+  transitionHarness.controller.setActiveTab('name-learning');
   assert.equal(transitionHarness.timers.size, 1);
   transitionHarness.runNextTimer(120);
   assert.equal(transitionHarness.frames.size, 1);

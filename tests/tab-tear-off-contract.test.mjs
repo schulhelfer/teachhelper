@@ -33,7 +33,7 @@ const {
 test('nur datenbankfreie Werkzeuge lassen sich ausklinken', () => {
   assert.deepEqual(
     [...TEAR_OFF_TABS].sort(),
-    ['duplicate-check', 'groups', 'merger', 'qr', 'random-picker', 'work-phase'],
+    ['duplicate-check', 'groups', 'qr', 'random-picker', 'work-phase'],
   );
   for (const tab of ['grades', 'planning', 'seatplan', 'name-learning']) {
     assert.equal(isTearOffTab(tab), false, `${tab} darf nicht ausklinkbar sein`);
@@ -53,6 +53,11 @@ test('der Bootparameter wird streng validiert und nicht normalisiert', () => {
     'gesperrte Tabs kommen auch per URL nicht durch',
   );
   assert.deepEqual(
+    readModuleWindowRequest({ search: '?tab=merger&window=module' }),
+    { tab: '', isModuleWindow: true },
+    'das entfernte PDF-Modul wird auch über alte Links nicht mehr geöffnet',
+  );
+  assert.deepEqual(
     readModuleWindowRequest({ search: '?tab=voellig-unbekannt' }),
     { tab: '', isModuleWindow: false },
     'Unbekanntes faellt nicht auf Gruppen zurueck',
@@ -64,11 +69,11 @@ test('der Bootparameter wird streng validiert und nicht normalisiert', () => {
 });
 
 test('die Fenster-URL bleibt im App-Scope und traegt beide Parameter', () => {
-  const url = new URL(buildModuleWindowUrl('merger', 'https://example.test/app/index.html?tab=qr'));
+  const url = new URL(buildModuleWindowUrl('duplicate-check', 'https://example.test/app/index.html?tab=qr'));
   assert.equal(url.pathname, '/app/');
-  assert.equal(url.searchParams.get('tab'), 'merger');
+  assert.equal(url.searchParams.get('tab'), 'duplicate-check');
   assert.equal(url.searchParams.get('window'), 'module');
-  assert.equal(getModuleWindowName('merger'), 'teachhelper-tab-merger');
+  assert.equal(getModuleWindowName('duplicate-check'), 'teachhelper-tab-duplicate-check');
 });
 
 const SIDEBAR_STACK_BREAKPOINT = 980;
@@ -84,7 +89,7 @@ test('das Fenster startet breit genug fuer das zweispaltige Layout', () => {
     );
   }
   assert.ok(
-    computeModuleWindowPlacement('merger', { screenX: 1280, screenY: 400, ...screen }).width
+    computeModuleWindowPlacement('duplicate-check', { screenX: 1280, screenY: 400, ...screen }).width
       > computeModuleWindowPlacement('qr', { screenX: 1280, screenY: 400, ...screen }).width,
     'die Werkzeuge mit Dateilisten bekommen mehr Platz',
   );
@@ -110,7 +115,7 @@ test('das Fenster bleibt auch bei Randwuerfen auf dem Bildschirm', () => {
   assert.equal(centered.left, 960 - 640);
 
   for (const [screenX, screenY] of [[0, 0], [1920, 1080], [-500, -500], [4000, 4000]]) {
-    const placement = computeModuleWindowPlacement('merger', { screenX, screenY, ...screen });
+    const placement = computeModuleWindowPlacement('duplicate-check', { screenX, screenY, ...screen });
     assert.ok(placement.left >= 0, `left ${placement.left}`);
     assert.ok(placement.top >= 0, `top ${placement.top}`);
     assert.ok(placement.left + placement.width <= screen.availWidth, 'rechter Rand');
@@ -119,7 +124,7 @@ test('das Fenster bleibt auch bei Randwuerfen auf dem Bildschirm', () => {
 });
 
 test('ein kleiner Bildschirm verkleinert das Fenster statt es hinauszuschieben', () => {
-  const placement = computeModuleWindowPlacement('merger', {
+  const placement = computeModuleWindowPlacement('duplicate-check', {
     screenX: 600,
     screenY: 400,
     availLeft: 0,

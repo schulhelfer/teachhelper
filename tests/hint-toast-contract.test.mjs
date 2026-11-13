@@ -17,8 +17,6 @@ const [
   planningDocument,
   qrSource,
   qrDocument,
-  mergerSource,
-  mergerDocument,
 ] = await Promise.all([
   read('../src/shared/messages.js'),
   read('../src/app/app-runtime.js'),
@@ -30,8 +28,6 @@ const [
   read('../src/modules/planning/app.html'),
   read('../src/modules/qr/app.js'),
   read('../src/modules/qr/app.html'),
-  read('../src/modules/merger/app.js'),
-  read('../src/modules/merger/app.html'),
 ]);
 
 test('der Sitzplan-Fork stellt Erfolgsmeldungen wie die geteilte API als Toast dar', () => {
@@ -105,7 +101,6 @@ test('alle Module mit Toast-Aufrufen laden auch das Toast-Stylesheet', () => {
     [gradesDocument, gradesSource],
     [planningDocument, planningSource],
     [qrDocument, qrSource],
-    [mergerDocument, mergerSource],
   ].forEach(([document, source]) => {
     assert.match(document, /<link rel="stylesheet" href="\.\.\/\.\.\/shared\/toast\.css">/);
     assert.match(source, /import \{ createMessageApi \} from ['"]\.\.\/\.\.\/shared\/messages\.js['"];/);
@@ -134,13 +129,4 @@ test('Meldungen aus geöffneten Dialogen bleiben Modals, weil ein Toast im Top L
       `"${hint}" erscheint im offenen Kursdialog und muss ein Modal bleiben`,
     );
   });
-});
-
-test('PDF-Erfolge erscheinen als Toast und Warnungen behalten den Ergebnisdialog', () => {
-  assert.match(mergerSource, /showResultToast\(`\$\{outputs\.length\} PDFs als ZIP-Download erstellt\.`, "success"\)/);
-  assert.equal((mergerSource.match(/showResultToast\(successMessage, "success"\)/g) || []).length, 2);
-  assert.match(mergerSource, /showResultDialog\(`PDF wurde erstellt, Teilen wurde abgebrochen\.\\n\$\{outputName\}`, "warn", "Hinweis"\)/);
-  assert.match(mergerDocument, /id="resultDialog"/);
-  assert.doesNotMatch(mergerDocument, /id="resultOpenButton"/);
-  assert.doesNotMatch(mergerSource, /showResultDialog\(successMessage/);
 });

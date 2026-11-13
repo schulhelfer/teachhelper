@@ -6,7 +6,6 @@ const cssSources = await Promise.all([
   ['sidebar-help-button', '../src/app/shell.css'],
   ['settings-nav-btn', '../src/modules/planning/app.css'],
   ['module-tutorial-button', '../src/modules/duplicate-check/app.css'],
-  ['module-tutorial-button', '../src/modules/merger/app.css'],
   ['module-tutorial-button', '../src/modules/qr/app.css'],
   ['module-tutorial-button', '../src/modules/seatplan/app.css'],
 ].map(async ([selector, path]) => ({

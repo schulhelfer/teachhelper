@@ -116,7 +116,10 @@ test('jeder ueberlaufbare Tab hat einen Menueeintrag in gleicher Reihenfolge', (
   const menuItems = Array.from(menu.matchAll(/data-more-tools-target="([^"]+)"[^>]*>\s*([^<]*?)\s*</g))
     .map(([, target, label]) => ({ target, label }));
 
-  assert.ok(tabs.length >= 10, 'die Leiste muss alle Tabs enthalten');
+  assert.deepEqual(tabs.map(({ target }) => target), [
+    'grades', 'planning', 'seatplan', 'name-learning', 'groups',
+    'random-picker', 'duplicate-check', 'work-phase', 'qr',
+  ], 'die Leiste muss alle verbleibenden Module enthalten');
   const eligible = tabs.filter(({ target }) => target !== 'grades' && target !== 'planning');
   assert.deepEqual(
     menuItems.map(({ target }) => target),

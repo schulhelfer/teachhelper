@@ -267,7 +267,7 @@ function createHarness({ available = 600, activeTab = 'grades' } = {}) {
     { target: 'grades', width: 100 },
     { target: 'planning', width: 100 },
     { target: 'groups', width: 100 },
-    { target: 'merger', width: 100 },
+    { target: 'duplicate-check', width: 100 },
     { target: 'qr', width: 100 },
   ];
   let left = 0;
@@ -282,7 +282,7 @@ function createHarness({ available = 600, activeTab = 'grades' } = {}) {
     if (target === activeTab) tab.classList.add('active');
     return tab;
   });
-  ['groups', 'merger', 'qr'].forEach((target) => {
+  ['groups', 'duplicate-check', 'qr'].forEach((target) => {
     moreToolsMenu.append(new FakeElement({ dataset: { moreToolsTarget: target }, width: 100 }));
   });
   tabNav.append(...tabs, tabIndicator, moreTools);
@@ -356,7 +356,7 @@ test('moves only unprotected tabs into overflow and represents an active overflo
   assert.equal(harness.controller.isTabOverflowed('planning'), false);
   assert.deepEqual(
     harness.menuItems.filter((item) => !item.hidden).map((item) => item.dataset.moreToolsTarget),
-    ['groups', 'merger', 'qr'],
+    ['groups', 'duplicate-check', 'qr'],
   );
 
   setActiveTab(harness, 'qr');
@@ -429,7 +429,7 @@ test('requests activation through the injected callback and closes the menu', ()
   harness.moreToolsTrigger.dispatch('click');
   const click = harness.moreToolsMenu.dispatch('click', { target: harness.menuItems[1] });
   assert.equal(click.defaultPrevented, false);
-  assert.deepEqual(harness.tabRequests, ['merger']);
+  assert.deepEqual(harness.tabRequests, ['duplicate-check']);
   assert.equal(harness.moreToolsMenu.hidden, true);
   assert.equal(harness.moreToolsTrigger.getAttribute('aria-expanded'), 'false');
   harness.controller.dispose();

@@ -29,7 +29,6 @@ globalThis.window = { origin: ORIGIN, location: { href: `${ORIGIN}/index.html`, 
 const roleGetters = {
   planning: 'getPlanningFrame',
   grades: 'getGradesFrame',
-  merger: 'getMergerFrame',
   duplicateCheck: 'getDuplicateCheckFrame',
   qr: 'getQrFrame',
   seatplan: 'getSeatplanFrame',
@@ -45,8 +44,6 @@ const handlerNames = [
   'onMoreToolsDismiss',
   'onOpenExternalRequest',
   'onQrCameraRequest',
-  'onMergerPrintResultRequest',
-  'onMergerPrintHelpRequest',
   'onGradesNavigate',
   'onGradeVaultActivity',
   'onGradeVaultRequest',
@@ -122,8 +119,6 @@ test('routes every known message type to its existing authorized adapter', () =>
     ['duplicateCheck', 'classroom:more-tools-dismiss', 'onMoreToolsDismiss', { reason: 'pointer' }, 0],
     ['qr', tabs.MODULE_OPEN_EXTERNAL_REQUEST_EVENT, 'onOpenExternalRequest', { url: 'https://example.test' }, 0],
     ['qr', tabs.QR_CAMERA_REQUEST_EVENT, 'onQrCameraRequest', { source: 'iframe', action: 'start' }, 0],
-    ['merger', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, 'onMergerPrintResultRequest', { outputs: [{ bytes: new ArrayBuffer(2), name: 'Test.pdf' }] }, 0],
-    ['merger', tabs.MERGER_PRINT_HELP_REQUEST_EVENT, 'onMergerPrintHelpRequest', undefined, null],
     ['planning', tabs.GRADES_NAVIGATE_EVENT, 'onGradesNavigate', { courseId: 3 }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_ACTIVITY_EVENT, 'onGradeVaultActivity', { source: 'grades' }, 0],
     ['grades', tabs.GRADES_GRADE_VAULT_REQUEST_EVENT, 'onGradeVaultRequest', { action: 'unlock' }, 0],
@@ -131,7 +126,7 @@ test('routes every known message type to its existing authorized adapter', () =>
     ['qr', 'classroom:sidebar-width-commit', 'onSidebarWidthCommit', { scope: 'other', width: 360 }, 0],
     ['seatplan', 'classroom:sidebar-collapse-request', 'onSidebarCollapseRequest', { scope: 'other' }, null],
     ['seatplan', 'classroom:seatplan-chrome-request', 'onSeatplanChromeRequest', { source: 'iframe', collapsed: true }, 0],
-    ['merger', 'classroom:tutorial-entry-hint-sync', 'onTutorialEntryHint', { action: 'request' }, 0],
+    ['duplicateCheck', 'classroom:tutorial-entry-hint-sync', 'onTutorialEntryHint', { action: 'request' }, 0],
     ['nameLearning', 'classroom:help-entry-request', 'onHelpEntryRequest', { source: 'module' }, 0],
   ];
 
@@ -170,37 +165,6 @@ test('keeps detail defaults and sidebar scope metadata compatible', () => {
   assert.equal(harness.calls[0].args.at(-1).scope, routerModule.SIDEBAR_WIDTH_SCOPE_OTHER);
 });
 
-test('PDF-Druck aus einem opaken Frame benötigt die gültige Quelle und Nonce', () => {
-  const harness = createHarness();
-  harness.currentFrames.merger = createFrame('merger', { opaque: true });
-  const event = harness.message('merger', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, { outputs: [{ bytes: new ArrayBuffer(2) }] });
-  event.data.frameNonce = 'merger-nonce';
-  assert.equal(harness.router.handleMessage(event), true);
-  assert.equal(harness.calls.at(-1).name, 'onMergerPrintResultRequest');
-  event.data.frameNonce = 'gefälscht';
-  assert.equal(harness.router.handleMessage(event), false);
-  event.data.frameNonce = 'merger-nonce';
-  event.source = {};
-  assert.equal(harness.router.handleMessage(event), false);
-});
-
-test('Druckhinweis akzeptiert ausschließlich das vertrauenswürdige PDF-Modul', () => {
-  const harness = createHarness();
-  for (const role of Object.keys(roleGetters).filter((role) => role !== 'merger')) {
-    assert.equal(harness.router.handleMessage(harness.message(role, tabs.MERGER_PRINT_HELP_REQUEST_EVENT)), false);
-  }
-  harness.currentFrames.merger = createFrame('merger', { opaque: true });
-  const event = harness.message('merger', tabs.MERGER_PRINT_HELP_REQUEST_EVENT, { command: 'ungeprüfter Befehl' });
-  assert.equal(harness.router.handleMessage(event), false);
-  event.data.frameNonce = 'gefälscht';
-  assert.equal(harness.router.handleMessage(event), false);
-  event.data.frameNonce = 'merger-nonce';
-  assert.equal(harness.router.handleMessage({ ...event, source: {} }), false);
-  assert.equal(harness.router.handleMessage({ ...event, origin: 'https://fremd.test' }), false);
-  assert.equal(harness.router.handleMessage(event), true);
-  assert.deepEqual(harness.calls, [{ name: 'onMergerPrintHelpRequest', args: [{ frame: harness.currentFrames.merger, role: 'merger' }] }]);
-});
-
 test('ignores malformed, unknown, markerless, and wrong-role messages', () => {
   const harness = createHarness();
   const ignored = [
@@ -210,11 +174,9 @@ test('ignores malformed, unknown, markerless, and wrong-role messages', () => {
     harness.message('qr', 'classroom:toast-request', { source: 'iframe', message: 'Nein' }),
     harness.message('planning', 'classroom:toast-request', { message: 'Nein' }),
     harness.message('planning', tabs.MODULE_OPEN_EXTERNAL_REQUEST_EVENT, { url: 'https://example.test' }),
-    harness.message('merger', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'iframe', action: 'start' }),
+    harness.message('duplicateCheck', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'iframe', action: 'start' }),
     harness.message('qr', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'shell', action: 'start' }),
     harness.message('qr', tabs.QR_CAMERA_REQUEST_EVENT, { source: 'iframe', action: 'pause' }),
-    harness.message('merger', 'classroom:merger-open-result-request', { bytes: new ArrayBuffer(2) }),
-    harness.message('qr', tabs.MERGER_PRINT_RESULT_REQUEST_EVENT, { outputs: [{ bytes: new ArrayBuffer(2) }] }),
     harness.message('planning', tabs.GRADES_GRADE_VAULT_REQUEST_EVENT, {}),
     harness.message('planning', 'classroom:sidebar-width-request', { scope: 'other' }),
     harness.message('qr', 'classroom:sidebar-width-commit', { scope: 'planning' }),
@@ -251,23 +213,23 @@ test('fails closed for forged source, origin, and opaque-frame nonce', () => {
 
 test('uses current frame getters and removes its listener on dispose', () => {
   const harness = createHarness();
-  const oldFrame = harness.currentFrames.merger;
-  const nextFrame = createFrame('merger');
-  harness.currentFrames.merger = nextFrame;
+  const oldFrame = harness.currentFrames.duplicateCheck;
+  const nextFrame = createFrame('duplicateCheck');
+  harness.currentFrames.duplicateCheck = nextFrame;
   assert.equal(harness.router.handleMessage({
     source: oldFrame.contentWindow,
     origin: ORIGIN,
     data: { type: 'classroom:more-tools-dismiss' },
   }), false);
-  assert.equal(harness.router.handleMessage(harness.message('merger', 'classroom:more-tools-dismiss')), true);
+  assert.equal(harness.router.handleMessage(harness.message('duplicateCheck', 'classroom:more-tools-dismiss')), true);
   assert.equal(harness.messageTarget.listenerCount(), 1);
   harness.router.dispose();
   harness.router.dispose();
   assert.equal(harness.messageTarget.listenerCount(), 0);
   harness.calls.length = 0;
-  harness.messageTarget.dispatch(harness.message('merger', 'classroom:more-tools-dismiss'));
+  harness.messageTarget.dispatch(harness.message('duplicateCheck', 'classroom:more-tools-dismiss'));
   assert.equal(harness.calls.length, 0);
-  assert.equal(harness.router.handleMessage(harness.message('merger', 'classroom:more-tools-dismiss')), false);
+  assert.equal(harness.router.handleMessage(harness.message('duplicateCheck', 'classroom:more-tools-dismiss')), false);
 });
 
 test('keeps the router boundary independent and offline', async () => {

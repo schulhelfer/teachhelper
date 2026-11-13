@@ -158,8 +158,8 @@ test('responsive tab layout keeps overflow, menu focus and indicator aligned', {
     };
 
     trigger.click();
-    const mergerMenuItem = menu.querySelector('[data-more-tools-target="merger"]');
-    mergerMenuItem.click();
+    const duplicateCheckMenuItem = menu.querySelector('[data-more-tools-target="duplicate-check"]');
+    duplicateCheckMenuItem.click();
     await wait(260);
     const selectedThroughMenu = {
       activeTab: nav.querySelector('.tab-button.active[data-tab-target]')?.dataset.tabTarget || '',
@@ -173,14 +173,14 @@ test('responsive tab layout keeps overflow, menu focus and indicator aligned', {
     nav.style.maxWidth = '1400px';
     window.dispatchEvent(new Event('resize'));
     await wait(320);
-    const mergerTab = document.getElementById('tab-merger');
+    const duplicateCheckTab = document.getElementById('tab-duplicate-check');
     const restored = {
       condensed: nav.classList.contains('is-tools-condensed'),
       overflow: overflowTargets(),
       menuClosed: menu.hidden,
       expanded: trigger.getAttribute('aria-expanded'),
-      mergerActive: mergerTab.classList.contains('active'),
-      indicatorMatchesMerger: indicatorMatches(mergerTab),
+      duplicateCheckActive: duplicateCheckTab.classList.contains('active'),
+      indicatorMatchesDuplicateCheck: indicatorMatches(duplicateCheckTab),
     };
     return { wide, narrow, firstFocusState, endFocusedTarget, escape, selectedThroughMenu, restored };
   }, { token: Date.now() });
@@ -200,7 +200,7 @@ test('responsive tab layout keeps overflow, menu focus and indicator aligned', {
   assert.ok(result.firstFocusState.target, JSON.stringify(result.firstFocusState));
   assert.equal(result.endFocusedTarget, 'qr');
   assert.deepEqual(result.escape, { closed: true, triggerFocused: true });
-  assert.equal(result.selectedThroughMenu.activeTab, 'merger');
+  assert.equal(result.selectedThroughMenu.activeTab, 'duplicate-check');
   assert.equal(result.selectedThroughMenu.menuClosed, true);
   assert.equal(result.selectedThroughMenu.triggerActive, true);
   assert.equal(result.selectedThroughMenu.indicatorMatchesTrigger, true);
@@ -208,6 +208,6 @@ test('responsive tab layout keeps overflow, menu focus and indicator aligned', {
   assert.deepEqual(result.restored.overflow, []);
   assert.equal(result.restored.menuClosed, true);
   assert.equal(result.restored.expanded, 'false');
-  assert.equal(result.restored.mergerActive, true);
-  assert.equal(result.restored.indicatorMatchesMerger, true);
+  assert.equal(result.restored.duplicateCheckActive, true);
+  assert.equal(result.restored.indicatorMatchesDuplicateCheck, true);
 });

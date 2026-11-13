@@ -1,7 +1,6 @@
 import {
   TAB_DUPLICATE_CHECK,
   TAB_GROUPS,
-  TAB_MERGER,
   TAB_QR,
   TAB_RANDOM_PICKER,
   TAB_WORK_PHASE,
@@ -14,7 +13,6 @@ const MODULE_WINDOW_MODE_VALUE = 'module';
 export const TEAR_OFF_TABS = new Set([
   TAB_GROUPS,
   TAB_RANDOM_PICKER,
-  TAB_MERGER,
   TAB_DUPLICATE_CHECK,
   TAB_WORK_PHASE,
   TAB_QR,
@@ -22,7 +20,6 @@ export const TEAR_OFF_TABS = new Set([
 
 const DEFAULT_WINDOW_SIZE = { width: 1280, height: 860 };
 const WINDOW_SIZES = {
-  [TAB_MERGER]: { width: 1400, height: 900 },
   [TAB_DUPLICATE_CHECK]: { width: 1400, height: 900 },
 };
 

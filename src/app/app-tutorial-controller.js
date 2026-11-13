@@ -13,7 +13,6 @@ import {
   GRADES_VIEW_REQUEST_EVENT,
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -54,7 +53,6 @@ export function createAppTutorialController({
   const DUPLICATE_CHECK_TUTORIAL_COMMAND_EVENT = 'classroom:duplicate-check-tutorial-command';
   const getPlanningFrame = () => planningTutorialDemoFrame || els.planningHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
   const getGradesFrame = () => gradesTutorialDemoFrame || els.gradesHost?.querySelector('iframe:not(.tutorial-demo-frame)') || null;
-  const getMergerFrame = () => els.mergerHost?.querySelector('iframe') || null;
   const getDuplicateCheckFrame = () => els.duplicateCheckHost?.querySelector('iframe') || null;
   const getQrFrame = () => els.qrHost?.querySelector('iframe') || null;
   const getSeatplanFrame = () => (
@@ -70,7 +68,6 @@ export function createAppTutorialController({
     [
       getPlanningFrame(),
       getGradesFrame(),
-      getMergerFrame(),
       getDuplicateCheckFrame(),
       getQrFrame(),
       getSeatplanFrame(),
@@ -81,10 +78,6 @@ export function createAppTutorialController({
         detail: { seen: true },
       });
     });
-  };
-  const openMergerToolForTutorial = (tool = 'layout') => {
-    getBridgeController()?.ensureTabInitialized(TAB_MERGER);
-    getBridgeController()?.dispatchMergerToolRequest?.(tool);
   };
   const dispatchPlanningTutorialDemoView = (detail) => {
     const frame = planningTutorialDemoFrame;
@@ -486,7 +479,6 @@ export function createAppTutorialController({
       frames: {
         getPlanningFrame,
         getGradesFrame,
-        getMergerFrame,
         getDuplicateCheckFrame,
         getQrFrame,
         getSeatplanFrame,
@@ -495,7 +487,6 @@ export function createAppTutorialController({
       actions: {
         preparePlanningTutorialSurface,
         prepareGradesTutorialSurface,
-        openMergerToolForTutorial,
         openQrToolForTutorial,
         prepareNameLearningTutorialSurface,
       },
@@ -589,7 +580,6 @@ export function createAppTutorialController({
     frames: {
       getPlanningFrame,
       getGradesFrame,
-      getMergerFrame,
       getDuplicateCheckFrame,
       getQrFrame,
       getSeatplanFrame,

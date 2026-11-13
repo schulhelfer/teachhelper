@@ -5,7 +5,6 @@ import test from 'node:test';
 const sources = await Promise.all([
   ['Arbeitsphase', '../src/app/shell.css', '.side-timer-settings-controls .duration-stepper'],
   ['Planung', '../src/modules/planning/app.css', '.number-stepper'],
-  ['PDF-Tools', '../src/modules/merger/app.css', '.number-stepper'],
 ].map(async ([name, path, selector]) => ({
   name,
   selector,
@@ -25,12 +24,4 @@ test('verwendet einheitliche Plus- und Minusflächen mit Fokus und Finger-Cursor
     assert.match(source, /cursor:\s*pointer;/, name);
     assert.match(source, /:focus-within\s*\{[\s\S]{0,200}?box-shadow:\s*var\(--focus-ring\);/, name);
   });
-});
-
-test('verwendet in PDF-Tools keine überlagerten +/- Buttons mehr', () => {
-  const merger = sources.find(({ name }) => name === 'PDF-Tools').source;
-  assert.doesNotMatch(merger, /\.number-stepper-btn\s*\{[\s\S]{0,180}?position:\s*absolute;/);
-  assert.match(merger, /\.number-stepper-btn\.minus\s*\{[\s\S]{0,160}?grid-column:\s*1;/);
-  assert.match(merger, /\.number-stepper-btn\.plus\s*\{[\s\S]{0,160}?grid-column:\s*3;/);
-  assert.doesNotMatch(merger, /\.split-range-field \.number-stepper-btn\s*\{/);
 });

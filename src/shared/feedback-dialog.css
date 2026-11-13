@@ -139,6 +139,6 @@ dialog.feedback-dialog::backdrop {
   -webkit-backdrop-filter: none;
 }
 
-body:has(dialog.feedback-dialog[open]) :is(.qr-runtime-root, .merger-runtime-root) .app {
+body:has(dialog.feedback-dialog[open]) .qr-runtime-root .app {
   filter: none;
 }

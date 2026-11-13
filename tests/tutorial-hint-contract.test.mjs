@@ -28,7 +28,6 @@ const [
   ...[
     'planning',
     'grades',
-    'merger',
     'duplicate-check',
     'qr',
     'seatplan',

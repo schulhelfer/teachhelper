@@ -9528,11 +9528,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!(target instanceof Element)) return false;
             return Boolean(target.closest('#csv-drop-zone'));
           };
-          const isEventInsideMergerDropZone = (event) => {
-            const target = event?.target;
-            if (!(target instanceof Element)) return false;
-            return Boolean(target.closest('#merger-host'));
-          };
 
           if (els.csvDropZone) {
             let csvDragDepth = 0;
@@ -9586,7 +9581,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           document.addEventListener('dragover', (e) => {
             if (!dataTransferHasFiles(e.dataTransfer)) return;
             if (isEventInsideCsvDropZone(e)) return;
-            if (isEventInsideMergerDropZone(e)) return;
             e.preventDefault();
             if (e.dataTransfer) {
               e.dataTransfer.dropEffect = 'copy';
@@ -9596,7 +9590,6 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           document.addEventListener('drop', async (e) => {
             if (!dataTransferHasFiles(e.dataTransfer)) return;
             if (isEventInsideCsvDropZone(e)) return;
-            if (isEventInsideMergerDropZone(e)) return;
             e.preventDefault();
             const droppedFiles = Array.from(e.dataTransfer?.files || []);
             const jsonFile = droppedFiles.find(isJsonFile);

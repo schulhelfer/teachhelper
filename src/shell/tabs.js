@@ -1,4 +1,3 @@
-export const TAB_MERGER = 'merger';
 export const TAB_DUPLICATE_CHECK = 'duplicate-check';
 export const TAB_PLANNING = 'planning';
 export const TAB_GRADES = 'grades';
@@ -72,11 +71,6 @@ export const NAME_LEARNING_COURSE_VISIBILITY_REQUEST_EVENT = 'classroom:name-lea
 export const NAME_LEARNING_MANAGE_STUDENTS_REQUEST_EVENT = 'classroom:name-learning-manage-students-request';
 export const NAME_LEARNING_STUDENT_SEARCH_REQUEST_EVENT = 'classroom:name-learning-student-search-request';
 export const NAME_LEARNING_SHELL_LAYOUT_EVENT = 'classroom:name-learning-shell-layout';
-export const MERGER_SHELL_LAYOUT_EVENT = 'classroom:merger-shell-layout';
-export const MERGER_TOOL_REQUEST_EVENT = 'classroom:merger-tool-request';
-export const MERGER_PRINT_RESULT_REQUEST_EVENT = 'classroom:merger-print-result-request';
-export const MERGER_PRINT_HELP_REQUEST_EVENT = 'classroom:merger-print-help-request';
-export const MERGER_PRINT_HELP_CLOSED_EVENT = 'classroom:merger-print-help-closed';
 export const DUPLICATE_CHECK_SHELL_LAYOUT_EVENT = 'classroom:duplicate-check-shell-layout';
 export const QR_SHELL_LAYOUT_EVENT = 'classroom:qr-shell-layout';
 export const QR_CAMERA_REQUEST_EVENT = 'classroom:qr-camera-request';
@@ -88,7 +82,6 @@ export const PLANNING_SHELL_LAYOUT_EVENT = 'classroom:planning-shell-layout';
 export const GRADES_SHELL_LAYOUT_EVENT = 'classroom:grades-shell-layout';
 
 export function normalizeTab(tab) {
-  if (tab === TAB_MERGER) return TAB_MERGER;
   if (tab === TAB_DUPLICATE_CHECK) return TAB_DUPLICATE_CHECK;
   if (tab === TAB_PLANNING) return TAB_PLANNING;
   if (tab === TAB_GRADES) return TAB_GRADES;

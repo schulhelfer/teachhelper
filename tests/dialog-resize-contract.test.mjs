@@ -13,7 +13,6 @@ const documents = await Promise.all([
   ['Noten', '../src/modules/grades/app.html', '../../shared/dialog-resize'],
   ['Planung', '../src/modules/planning/app.html', '../../shared/dialog-resize'],
   ['Sitzplan', '../src/modules/seatplan/app.html', '../../shared/dialog-resize'],
-  ['Zusammenführen', '../src/modules/merger/app.html', '../../shared/dialog-resize'],
   ['QR-Codes', '../src/modules/qr/app.html', '../../shared/dialog-resize'],
 ].map(async ([name, path, prefix]) => [name, await read(path), prefix]));
 

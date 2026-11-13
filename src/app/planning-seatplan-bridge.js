@@ -40,7 +40,6 @@ import {
   SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -48,7 +47,6 @@ import {
 } from '../shell/tabs.js';
 import { mountDuplicateCheck } from '../modules/duplicate-check/index.js';
 import { mountGrades } from '../modules/grades/index.js';
-import { mountMerger } from '../modules/merger/index.js';
 import { mountNameLearning } from '../modules/name-learning/index.js';
 import { mountPlanning } from '../modules/planning/index.js';
 import { mountQr } from '../modules/qr/index.js';
@@ -67,7 +65,6 @@ export function createPlanningSeatplanBridge({
   rosterStore,
   documentBus = document,
 } = {}) {
-  let mergerController = null;
   let duplicateCheckController = null;
   let qrController = null;
   let gradesController = null;
@@ -82,7 +79,6 @@ export function createPlanningSeatplanBridge({
   let nameLearningGradeVaultState = null;
   let cancelDeferredGradesMount = null;
   const tabInitState = {
-    [TAB_MERGER]: false,
     [TAB_DUPLICATE_CHECK]: false,
     [TAB_QR]: false,
     [TAB_PLANNING]: false,
@@ -128,7 +124,6 @@ export function createPlanningSeatplanBridge({
     return id;
   };
   const moduleControllers = {
-    [TAB_MERGER]: () => mergerController,
     [TAB_DUPLICATE_CHECK]: () => duplicateCheckController,
     [TAB_QR]: () => qrController,
     [TAB_NAME_LEARNING]: () => nameLearningController,
@@ -308,13 +303,6 @@ export function createPlanningSeatplanBridge({
     };
   };
 
-  const initMergerTab = (root = els.mergerHost) => {
-    const host = root;
-    if (!host || host.dataset.initialized === '1') return;
-    mergerController = mountMerger({ host });
-    mergerController?.applyShellLayout?.({ collapsed: getChromeCollapsed() });
-  };
-
   const initDuplicateCheckTab = (root = els.duplicateCheckHost) => {
     const host = root;
     if (!host || host.dataset.initialized === '1') return;
@@ -413,14 +401,6 @@ export function createPlanningSeatplanBridge({
     return true;
   }
 
-  function dispatchMergerToolRequest(tool) {
-    if (disposed) return false;
-    const normalizedTool = ['layout', 'merge', 'rotate', 'split'].includes(tool) ? tool : '';
-    if (!normalizedTool) return;
-    ensureTabInitialized(TAB_MERGER);
-    mergerController?.selectTool?.(normalizedTool);
-  }
-
   function scheduleModuleLayoutRefresh(activeTab, isIOSDevice = false) {
     if (disposed || typeof window === 'undefined') return;
 
@@ -492,12 +472,6 @@ export function createPlanningSeatplanBridge({
 
   function ensureTabInitialized(tab) {
     if (disposed || disposedModules.has(tab)) return;
-    if (tab === TAB_MERGER) {
-      if (tabInitState[TAB_MERGER]) return;
-      initMergerTab(els.mergerHost);
-      tabInitState[TAB_MERGER] = true;
-      return;
-    }
     if (tab === TAB_DUPLICATE_CHECK) {
       if (tabInitState[TAB_DUPLICATE_CHECK]) return;
       initDuplicateCheckTab(els.duplicateCheckHost);
@@ -935,7 +909,6 @@ export function createPlanningSeatplanBridge({
     ensureTabInitialized,
     dispatchPlanningViewRequest,
     dispatchGradesNavigation,
-    dispatchMergerToolRequest,
     applyModuleShellLayout,
     scheduleModuleLayoutRefresh,
     disposeModule,

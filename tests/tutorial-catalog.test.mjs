@@ -6,7 +6,6 @@ const tutorialFiles = [
   'duplicate-check.js',
   'grades.js',
   'groups.js',
-  'merger.js',
   'name-learning.js',
   'planning.js',
   'qr.js',
@@ -35,7 +34,6 @@ const [{ createTutorialCatalog }, tabs] = await Promise.all([
 const tabEntries = [
   [tabs.TAB_GRADES, 'Noten', 38],
   [tabs.TAB_PLANNING, 'Planung', 41],
-  [tabs.TAB_MERGER, 'PDF-Tools', 24],
   [tabs.TAB_SEATPLAN, 'Sitzplan', 19],
   [tabs.TAB_GROUPS, 'Gruppen', 19],
   [tabs.TAB_RANDOM_PICKER, 'Picker', 10],
@@ -51,7 +49,6 @@ function createHarness({ externalFileSync = false, seatplanDataset = {}, seatpla
   const frameGetters = Object.fromEntries([
     'Planning',
     'Grades',
-    'Merger',
     'DuplicateCheck',
     'Qr',
     'Seatplan',
@@ -69,7 +66,6 @@ function createHarness({ externalFileSync = false, seatplanDataset = {}, seatpla
     actions: {
       preparePlanningTutorialSurface: action('planning-surface'),
       prepareGradesTutorialSurface: action('grades-surface'),
-      openMergerToolForTutorial: action('merger-tool'),
       openQrToolForTutorial: action('qr-tool'),
       prepareNameLearningTutorialSurface: action('name-learning-surface'),
     },
@@ -125,7 +121,6 @@ test('keeps section order and automatic demo adapters', () => {
   const expectedSections = new Map([
     [tabs.TAB_GRADES, ['Überblick', 'Einrichten', 'Kurs aufbauen', 'Leistungen eingeben', 'Auswerten', 'Anzeige und Abschluss']],
     [tabs.TAB_PLANNING, ['Überblick', 'Einrichten', 'Kurse anlegen', 'Woche planen', 'Stunde ausarbeiten', 'Auswerten und Abschluss']],
-    [tabs.TAB_MERGER, ['Überblick', 'Werkzeuge', 'Seiten aufs Blatt', 'Zusammenführen', 'Drehen', 'Aufteilen']],
     [tabs.TAB_SEATPLAN, ['Überblick', 'Namen laden', 'Raum bauen', 'Verteilen', 'Nachbearbeiten', 'Sichern und Drucken']],
     [tabs.TAB_GROUPS, ['Überblick', 'Namen laden', 'Gruppen bilden', 'Anpassen', 'Sichern und Drucken']],
     [tabs.TAB_RANDOM_PICKER, ['Überblick', 'Vorbereiten', 'Ziehen', 'Sichern']],
@@ -134,7 +129,7 @@ test('keeps section order and automatic demo adapters', () => {
     [tabs.TAB_QR, ['Überblick', 'Erstellen', 'Lesen']],
     [tabs.TAB_NAME_LEARNING, ['Überblick', 'Voraussetzungen', 'Lernmodus', 'Abfragen', 'Wiederholung']],
   ]);
-  const demoTabs = tabEntries.map(([activeTab]) => activeTab).filter((activeTab) => activeTab !== tabs.TAB_MERGER);
+  const demoTabs = tabEntries.map(([activeTab]) => activeTab);
   expectedSections.forEach((sections, activeTab) => {
     const actual = [...new Set(definitionSteps(catalog.getDefinition({ activeTab })).map((step) => step.section))];
     assert.deepEqual(actual, sections);
@@ -165,14 +160,12 @@ test('delegates tutorial surface and tool preparation through explicit adapters'
   const { calls, catalog } = createHarness();
   getStep(catalog.getDefinition({ activeTab: tabs.TAB_GRADES }), 'Datenbank verbinden').beforeRender();
   getStep(catalog.getDefinition({ activeTab: tabs.TAB_PLANNING }), 'Einstellungen öffnen').beforeRender();
-  getStep(catalog.getDefinition({ activeTab: tabs.TAB_MERGER }), 'PDF auswählen').beforeRender();
   getStep(catalog.getDefinition({ activeTab: tabs.TAB_QR }), 'Link eingeben').beforeRender();
   getStep(catalog.getDefinition({ activeTab: tabs.TAB_QR }), 'Kamera verwenden').beforeRender();
   getStep(catalog.getDefinition({ activeTab: tabs.TAB_NAME_LEARNING }), 'Kurse auswählen').beforeRender();
   assert.deepEqual(calls, [
     ['grades-surface', 'gradesDatabase'],
     ['planning-surface', 'week'],
-    ['merger-tool', 'layout'],
     ['qr-tool', 'generator'],
     ['qr-tool', 'decoder'],
     ['name-learning-surface', 'setup'],
@@ -205,10 +198,11 @@ test('preserves seatplan variants for free, linked, grading, and demo plans', ()
 
 test('resolves frame targets and visible shell fallbacks without hidden DOM dependencies', () => {
   const { catalog, frameGetters } = createHarness();
-  const mergerTarget = getStep(catalog.getDefinition({ activeTab: tabs.TAB_MERGER }), 'PDF auswählen').target({});
-  assert.equal(mergerTarget.frame, frameGetters.getMergerFrame);
-  assert.equal(mergerTarget.selector, '#layoutDropZone');
-  assert.equal(mergerTarget.fallback, null);
+  const qrTab = {};
+  const qrTarget = getStep(catalog.getDefinition({ activeTab: tabs.TAB_QR }), 'Link eingeben').target({ tabQr: qrTab });
+  assert.equal(qrTarget.frame, frameGetters.getQrFrame);
+  assert.equal(qrTarget.selector, '#generatorLinkInput');
+  assert.equal(qrTarget.fallback, qrTab);
 
   const visible = {
     getBoundingClientRect: () => ({ width: 20, height: 10 }),

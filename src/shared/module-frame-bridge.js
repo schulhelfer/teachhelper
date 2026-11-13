@@ -4,7 +4,6 @@ export const PLANNING_MODULE_ALLOW = "camera 'none'; microphone 'none'; clipboar
 export const CAMERA_MODULE_ALLOW = "camera; clipboard-read; clipboard-write; microphone 'none'";
 
 export const ISOLATED_MODULE_SANDBOX = 'allow-scripts';
-export const MERGER_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const DUPLICATE_CHECK_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const QR_MODULE_SANDBOX = 'allow-scripts allow-downloads';
 export const HELP_PREVIEW_FRAME_SANDBOX = 'allow-scripts';

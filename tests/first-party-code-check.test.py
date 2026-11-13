@@ -116,7 +116,6 @@ class DynamicScriptUrlTests(unittest.TestCase):
             'src/shared/pdf-vendor.js',
             'src/shared/ocr-worker.js',
             'src/app/bootstrap.js',
-            'src/modules/merger/app.js',
             'src/modules/duplicate-check/app.js',
             'src/modules/seatplan/app.js',
         ]:

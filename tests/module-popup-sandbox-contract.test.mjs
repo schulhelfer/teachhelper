@@ -7,7 +7,7 @@ const read = (path) => readFile(new URL(path, import.meta.url), 'utf8');
 test('sandboxed tool modules never receive popup permissions', async () => {
   const bridge = await read('../src/shared/module-frame-bridge.js');
 
-  for (const name of ['ISOLATED', 'MERGER', 'DUPLICATE_CHECK', 'QR']) {
+  for (const name of ['ISOLATED', 'DUPLICATE_CHECK', 'QR']) {
     const match = bridge.match(new RegExp(`${name}_MODULE_SANDBOX = '([^']*)'`));
     assert.ok(match, `${name}_MODULE_SANDBOX fehlt`);
     const tokens = match[1].split(/\s+/).filter(Boolean);
@@ -20,11 +20,8 @@ test('sandboxed tool modules never receive popup permissions', async () => {
   }
 });
 
-test('qr delegates window opening to the shell and merger never opens popups', async () => {
-  const [qr, merger] = await Promise.all([
-    read('../src/modules/qr/app.js'),
-    read('../src/modules/merger/app.js'),
-  ]);
+test('qr delegates window opening to the shell', async () => {
+  const qr = await read('../src/modules/qr/app.js');
 
   const opens = [...qr.matchAll(/window\.open\(/g)];
   assert.equal(opens.length, 1, 'qr: genau ein window.open (Standalone-Fallback) erwartet');
@@ -36,8 +33,6 @@ test('qr delegates window opening to the shell and merger never opens popups', a
   );
 
   assert.match(qr, /MODULE_OPEN_EXTERNAL_REQUEST_EVENT/);
-  assert.doesNotMatch(merger, /window\.open\(/);
-  assert.doesNotMatch(merger, /MERGER_OPEN_RESULT_REQUEST_EVENT/);
 });
 
 test('the shell revalidates module open requests instead of trusting the frame', async () => {
@@ -52,11 +47,6 @@ test('the shell revalidates module open requests instead of trusting the frame',
   );
   assert.match(main, /onOpenExternalRequest: \(detail\) => \{\s*openExternalUrlForModule\(detail\?\.url\);/);
   assert.doesNotMatch(main, /openModuleResultPdf/);
-  assert.doesNotMatch(router, /MERGER_OPEN_RESULT_REQUEST_EVENT/);
-  assert.match(router, /data\.type === MERGER_PRINT_RESULT_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/);
-  assert.match(main, /onMergerPrintResultRequest: \(detail\) => \{\s*printModuleResult\(detail\);/);
-  assert.match(router, /data\.type === MERGER_PRINT_HELP_REQUEST_EVENT\) \{\s*if \(role !== 'merger'\) return false;/);
-  assert.match(main, /onMergerPrintHelpRequest/);
 
   const externalHelper = main.match(/const openExternalUrlForModule = \([\s\S]*?\n  \};/)?.[0] || '';
   assert.match(externalHelper, /new URL\(/);

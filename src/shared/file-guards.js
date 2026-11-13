@@ -15,8 +15,6 @@ export const FILE_LIMITS = Object.freeze({
   LATEX_BYTES: 5 * BYTES_PER_MIB,
   COMPETENCE_EXPECTATIONS_TEXT_BYTES: 2 * BYTES_PER_MIB,
   PDF_BYTES: 100 * BYTES_PER_MIB,
-  PDF_MERGE_TOTAL_BYTES: 150 * BYTES_PER_MIB,
-  PDF_FALLBACK_PARSE_BYTES: 10 * BYTES_PER_MIB,
   PDF_MAX_PAGES: 500,
   HEAVY_PARSER_MAX_PARALLEL: 1,
   ZIP_BYTES: 250 * BYTES_PER_MIB,
@@ -268,15 +266,6 @@ export function assertFileSizeAtMost(file, limitBytes, label) {
   if (Number.isFinite(size) && size > limitBytes) {
     throw createFileValidationError(
       `${label} ist zu groß: max. ${formatFileSize(limitBytes)}.`
-    );
-  }
-}
-
-export function assertTotalSizeAtMost(files, limitBytes, label) {
-  const total = Array.from(files || []).reduce((sum, file) => sum + (Number(file?.size) || 0), 0);
-  if (total > limitBytes) {
-    throw createFileValidationError(
-      `${label} ist zu groß: max. ${formatFileSize(limitBytes)} gesamt.`
     );
   }
 }

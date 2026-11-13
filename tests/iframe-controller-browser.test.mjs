@@ -77,7 +77,7 @@ test('name learning preloads its hidden unlock provider without opening a passwo
 test('iframe controllers preserve pending messages, layouts and disposal across load', async (t) => {
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {
-    const modules = await Promise.all(['planning', 'grades', 'merger', 'duplicate-check', 'qr', 'seatplan', 'name-learning']
+    const modules = await Promise.all(['planning', 'grades', 'duplicate-check', 'qr', 'seatplan', 'name-learning']
       .map((id) => import(`/src/modules/${id}/index.js`)));
     const outcomes = [];
     for (const [index, module] of modules.entries()) {
@@ -105,11 +105,9 @@ test('iframe controllers preserve pending messages, layouts and disposal across 
       const repeatedMount = mount(options) === controller;
       const post = index < 2
         ? (value) => controller.post('test:pending', { value })
-        : index === 2
-          ? (value) => controller.selectTool(value === 1 ? 'merge' : 'split')
-          : index === 5
-            ? (value) => controller.sendCourseContext({ value })
-            : (value) => controller.post({ type: 'test:pending', detail: { value } });
+        : index === 4
+          ? (value) => controller.sendCourseContext({ value })
+          : (value) => controller.post({ type: 'test:pending', detail: { value } });
       const firstReturn = post(1);
       post(2);
       controller.applyShellLayout({ collapsed: false });
@@ -146,13 +144,12 @@ test('iframe controllers preserve pending messages, layouts and disposal across 
     assert.equal(outcome.removed, true);
     assert.equal(outcome.afterPost, outcome.loadedMessages.length + 1);
     assert.equal(outcome.afterDispose, outcome.afterPost);
-    assert.equal(outcome.firstReturn, [0, 2, 5].includes(index) ? 'undefined' : true);
+    assert.equal(outcome.firstReturn, [0, 4].includes(index) ? 'undefined' : true);
     const layouts = outcome.loadedMessages.filter(({ type }) => type.endsWith('shell-layout'));
     assert.deepEqual(layouts.map(({ detail }) => detail), [{ collapsed: true }]);
     const pending = outcome.loadedMessages.filter(({ type }) => !type.endsWith('shell-layout'));
-    assert.deepEqual(pending.map(({ detail }) => detail), index === 2
-      ? [{ tool: 'split' }]
-      : index === 5 ? [{ value: 2 }] : [{ value: 1 }, { value: 2 }]);
+    assert.deepEqual(pending.map(({ detail }) => detail), index === 4
+      ? [{ value: 2 }] : [{ value: 1 }, { value: 2 }]);
   }
 });
 
@@ -173,7 +170,7 @@ test('registry teardown releases all real controllers and workspace message sour
       return () => { sources.delete(source); unregister(); };
     };
     const els = {};
-    for (const name of ['planningHost', 'gradesHost', 'mergerHost', 'duplicateCheckHost', 'qrHost',
+    for (const name of ['planningHost', 'gradesHost', 'duplicateCheckHost', 'qrHost',
       'seatplanMainHost', 'seatplanSideHost', 'seatplanDialogHost', 'nameLearningHost']) {
       els[name] = document.createElement('div');
       document.body.append(els[name]);
@@ -209,7 +206,7 @@ test('registry teardown releases all real controllers and workspace message sour
     return outcome;
   });
   assert.deepEqual(result, {
-    mounted: 7, registered: 2, removed: true, cleared: true,
+    mounted: 6, registered: 2, removed: true, cleared: true,
     sourcesRemaining: 0, framesRemaining: 0, leaveAllowed: false,
   });
 });

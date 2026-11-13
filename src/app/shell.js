@@ -2,7 +2,6 @@ import {
   TAB_GRADES,
   TAB_GROUPS,
   TAB_DUPLICATE_CHECK,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -315,7 +314,6 @@ export function createShellController({
       tabNav: els.tabNav,
       tabButtons: [
         [els.tabGroups, TAB_GROUPS],
-        [els.tabMerger, TAB_MERGER],
         [els.tabPlanning, TAB_PLANNING],
         [els.tabGrades, TAB_GRADES],
         [els.tabSeatplan, TAB_SEATPLAN],
@@ -325,7 +323,6 @@ export function createShellController({
         [els.tabWorkPhase, TAB_WORK_PHASE],
         [els.tabQr, TAB_QR],
       ],
-      mergerShell: els.mergerShell,
       duplicateCheckShell: els.duplicateCheckShell,
       qrShell: els.qrShell,
       planningShell: els.planningShell,

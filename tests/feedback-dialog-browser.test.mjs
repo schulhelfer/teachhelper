@@ -62,10 +62,10 @@ test('feedback presentation is reversible and preserves existing controls and la
   assert.equal(result.originalRole, 'dialog');
 });
 
-test('all six dialog integrations share their appearance across themes and viewport sizes', { timeout: 60000 }, async (t) => {
+test('all five dialog integrations share their appearance across themes and viewport sizes', { timeout: 60000 }, async (t) => {
   const evaluate = await openDomBrowser(t, { viewport: { width: 860, height: 740 } });
   const snapshots = new Map();
-  for (const module of ['shell', 'seatplan', 'planning', 'grades', 'qr', 'merger']) {
+  for (const module of ['shell', 'seatplan', 'planning', 'grades', 'qr']) {
     await evaluate(async ({ module }) => {
       const path = module === 'shell' ? '/index.html' : `/src/modules/${module}/app.html`;
       const source = await fetch(path).then(response => response.text());
@@ -94,7 +94,7 @@ test('all six dialog integrations share their appearance across themes and viewp
         const body = dialog.querySelector('.feedback-dialog-body').getBoundingClientRect();
         const textTop = Math.min(title.top, body.top);
         const textBottom = Math.max(title.bottom, body.bottom);
-        const app = document.querySelector('.qr-runtime-root .app, .merger-runtime-root .app');
+        const app = document.querySelector('.qr-runtime-root .app');
         return {
           centerXError: Math.abs(rect.left + rect.width / 2 - document.documentElement.clientWidth / 2),
           centerYError: Math.abs(rect.top + rect.height / 2 - document.documentElement.clientHeight / 2),
@@ -137,22 +137,6 @@ test('all six dialog integrations share their appearance across themes and viewp
         document.getElementById('generatorLinkInput').value = '';
         document.getElementById('generateButton').click();
         document.getElementById('messageText').textContent = payload;
-      } else {
-        await import('/src/modules/merger/app.js');
-        const transfer = new DataTransfer();
-        transfer.items.add(new File(['Beispieldatei'], 'Beispiel.txt', { type: 'text/plain' }));
-        document.getElementById('layoutDropZone').dispatchEvent(new DragEvent('drop', {
-          dataTransfer: transfer, bubbles: true, cancelable: true,
-        }));
-        const deadline = performance.now() + 5000;
-        while (!document.getElementById('resultDialog').open && performance.now() < deadline) {
-          await new Promise(resolve => requestAnimationFrame(resolve));
-        }
-        if (document.getElementById('resultMessage').textContent !== 'Beispiel.txt: Bitte eine gültige PDF-Datei auswählen.') {
-          throw new Error('The invalid-file selection must display its validation warning');
-        }
-        document.body.classList.add('dialog-active');
-        document.getElementById('resultMessage').textContent = payload;
       }
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
     }, { module });
@@ -160,7 +144,7 @@ test('all six dialog integrations share their appearance across themes and viewp
       await evaluate(({ length }) => {
         document.querySelector('.feedback-dialog-body').textContent = length === 'long'
           ? window.feedbackLongMessage
-          : 'Beispiel.txt: Bitte eine gültige PDF-Datei auswählen.';
+          : 'Bitte eine gültige Datei auswählen.';
       }, { length });
       for (const width of [860, 320]) {
         await evaluate.setViewport({ width, height: 740 });

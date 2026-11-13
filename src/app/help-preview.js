@@ -56,12 +56,6 @@ export const HELP_PREVIEW_CONFIGS = Object.freeze({
   'picker-availability-source': preview('random-picker', ['Gemeinsame Namensliste', 'Auswahlbedingungen öffnen', 'Auswahl starten']),
   'picker-repeat-fairness': preview('random-picker', ['Nach der Ziehung deaktivieren', 'Erneut auswählen', 'Picker-Rad']),
 
-  'merger-pdf': preview('merger', ['Werkzeugauswahl', 'Dateien verbinden', 'Dateien zusammenführen']),
-  'pdf-layout': preview('merger', ['Seiten auf ein Blatt', 'Seiten pro Blatt', 'Layout erstellen']),
-  'pdf-rotate': preview('merger', ['PDF drehen', 'Einzelne Seiten drehen', 'Gedrehte PDF erstellen']),
-  'pdf-split': preview('merger', ['PDF aufteilen', 'Seitenauswahl', 'Aufteilung starten']),
-  'pdf-merge-order': preview('merger', ['Dateien verbinden', 'Dateireihenfolge', 'Dateien zusammenführen']),
-  'pdf-local-results': preview('merger', ['Layout erstellen', 'Dateien zusammenführen', 'Aufteilung starten']),
 
   'duplicate-check': preview('duplicate-check', ['Prüfkriterien auswählen', 'Abgaben als ZIP prüfen', 'Zusammenfassung']),
   'duplicate-rules': preview('duplicate-check', ['Prüfkriterien auswählen', 'Gleicher Dateiname', 'Ähnlicher Bildinhalt']),

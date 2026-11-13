@@ -8,7 +8,6 @@ const MODULE_LABELS = {
   'name-learning': 'Namen lernen',
   groups: 'Gruppen',
   'random-picker': 'Picker',
-  merger: 'PDF-Tools',
   'duplicate-check': 'DuplikatCheck',
   'work-phase': 'Arbeitsphase',
   qr: 'QR',
@@ -22,7 +21,6 @@ const MODULE_PRACTICE_TIPS = {
   'name-learning': 'Nutze nur abgesprochene Porträts und korrigiere unklare Zuordnungen, bevor du mit einer Übungsrunde startest.',
   groups: 'Kontrolliere Vorschläge vor dem Einsatz und halte nur die Bedingungen fest, die für die Lerngruppe wirklich hilfreich sind.',
   'random-picker': 'Mache Auswahlbedingungen transparent, damit Zufall und mögliche Gewichtungen für die Lerngruppe nachvollziehbar bleiben.',
-  merger: 'Öffne erzeugte Dateien vor dem Drucken oder Weitergeben, damit Seitenfolge und Lesbarkeit geprüft sind.',
   'duplicate-check': 'Behandle technische Treffer als Hinweis und bewerte sie immer zusammen mit Aufgabe, Vorlage und erlaubter Zusammenarbeit.',
   'work-phase': 'Stimme sichtbare Zeit- und Lautstärkehilfen mit der Lerngruppe ab und passe sie an die konkrete Unterrichtssituation an.',
   qr: 'Prüfe erzeugte oder gelesene Inhalte, bevor du sie veröffentlichst oder einen darin enthaltenen Link öffnest.',
@@ -97,10 +95,6 @@ const ARTICLE_GUIDANCE = {
     steps: ['Verfügbare Namen und ihre Gewichtungen kontrollieren.', 'Die Auswahl starten.', 'Das Ergebnis nennen und die Verfügbarkeit für die nächste Auswahl bei Bedarf anpassen.'],
     relatedArticleIds: ['groups-create', 'name-learning-practice'],
   },
-  'merger-pdf': {
-    steps: ['Das passende PDF-Werkzeug auswählen.', 'Dateien hinzufügen und Reihenfolge oder Seiten prüfen.', 'Ergebnis erzeugen, öffnen und vor dem Weitergeben kontrollieren.'],
-    relatedArticleIds: ['data-backup'],
-  },
   'duplicate-check': {
     steps: ['ZIP-Datei mit den Abgaben auswählen.', 'Geeignete Prüfkriterien aktivieren.', 'Auffällige Treffer einzeln öffnen und im Kontext der Aufgabe bewerten.'],
     relatedArticleIds: ['data-backup'],
@@ -111,7 +105,7 @@ const ARTICLE_GUIDANCE = {
   },
   qr: {
     steps: ['Link oder Text eingeben beziehungsweise eine Bildquelle auswählen.', 'QR-Code erzeugen oder auslesen.', 'Ergebnis kontrollieren, bevor es geteilt oder ein Link geöffnet wird.'],
-    relatedArticleIds: ['merger-pdf'],
+    relatedArticleIds: ['qr-create-share', 'qr-image-scan'],
   },
   'database-setup': {
     steps: ['In den Einstellungen den Bereich für Daten öffnen.', 'Eine Datenbankdatei auswählen oder neu anlegen.', 'Speicherort bestätigen und anschließend eine Sicherung einrichten.'],
@@ -173,18 +167,6 @@ const ARTICLE_GUIDANCE = {
     steps: ['Den aktuellen Pickerstand prüfen.', 'Speichern wählen und einen eindeutigen Namen vergeben.', 'Gespeicherten Stand später laden und die Auswahlbedingungen kontrollieren.'],
     relatedArticleIds: ['random-picker', 'picker-conditions'],
   },
-  'pdf-layout': {
-    steps: ['Werkzeug „Anordnen“ und die PDF-Datei auswählen.', 'Seiten pro Blatt, Ausrichtung und Kopien einstellen.', 'Layout erzeugen und die Seiten vor dem Drucken prüfen.'],
-    relatedArticleIds: ['merger-pdf', 'pdf-rotate'],
-  },
-  'pdf-rotate': {
-    steps: ['Werkzeug „Drehen“ öffnen und eine PDF auswählen.', 'Ganzes Dokument oder einzelne Seiten auswählen.', 'Drehung erzeugen und das Ergebnis kontrollieren.'],
-    relatedArticleIds: ['merger-pdf', 'pdf-split'],
-  },
-  'pdf-split': {
-    steps: ['Werkzeug „Aufteilen“ öffnen und eine PDF auswählen.', 'Seitenauswahl und Ausgabeformat festlegen.', 'Aufteilung starten und die erzeugten Dateien prüfen.'],
-    relatedArticleIds: ['merger-pdf', 'pdf-rotate'],
-  },
   'duplicate-rules': {
     steps: ['Abgabedatei als ZIP auswählen.', 'Dateiname, Dateigröße und Bildähnlichkeit passend aktivieren.', 'Prüfung starten und die Zusammenfassung abwarten.'],
     relatedArticleIds: ['duplicate-check', 'duplicate-results'],
@@ -243,10 +225,6 @@ const ARTICLE_TAGS = {
   'random-picker': ['Zufallsauswahl', 'Gewichtung', 'Fairness'],
   'picker-conditions': ['Verfügbarkeit', 'Gewichtung', 'Auswahl'],
   'picker-storage': ['Speicherstand', 'Wiederverwenden', 'Bedingungen'],
-  'merger-pdf': ['PDF', 'Dateien', 'Seiten'],
-  'pdf-layout': ['Drucklayout', 'Seiten pro Blatt', 'Ausgabe'],
-  'pdf-rotate': ['Drehen', 'Seitenauswahl', 'Ausrichtung'],
-  'pdf-split': ['Aufteilen', 'Seitengruppen', 'Dateiausgabe'],
   'duplicate-check': ['ZIP-Abgaben', 'Duplikate', 'Prüfung'],
   'duplicate-rules': ['Prüfkriterien', 'Bildähnlichkeit', 'Dateien'],
   'duplicate-results': ['Treffergruppen', 'Vergleich', 'Bewertung'],
@@ -320,10 +298,6 @@ export const HELP_ARTICLES = [
     { title: 'Auswahl starten', text: 'Der Picker zieht aus den aktuell verfügbaren Namen. Entferne Personen nur, wenn sie wirklich nicht teilnehmen sollen, damit die Auswahl transparent bleibt.' },
     { title: 'Gewichtungen', text: 'Gewichtungen verändern die Wahrscheinlichkeit einer Auswahl. Nutze sie sparsam und erkläre der Lerngruppe bei Bedarf, nach welchem Prinzip sie eingesetzt werden.' },
   ]),
-  article('merger-pdf', 'merger', 'PDFs anordnen, verbinden und teilen', 'PDF-Dateien sicher für Arbeitsblätter und Materialien bearbeiten.', ['pdf', 'verbinden', 'zusammenfuegen', 'zusammenfügen', 'drehen', 'teilen', 'seiten'], [
-    { title: 'Dateien auswählen', text: 'Wähle die PDF-Dateien im passenden Werkzeug aus und kontrolliere Reihenfolge sowie Seitenzahl vor dem Start. Das Ergebnis wird neu erzeugt; die Originaldateien bleiben unverändert.' },
-    { title: 'Werkzeug wählen', text: 'Nutze Anordnen für Drucklayouts, Verbinden für eine gemeinsame Datei, Drehen für die Seitenausrichtung und Teilen für einzelne Bereiche. Öffne das Ergebnis anschließend zur Sichtprüfung.' },
-  ]),
   article('duplicate-check', 'duplicate-check', 'ZIP-Abgaben auf Duplikate prüfen', 'Prüfregeln wählen und auffällige Ergebnisse verantwortungsvoll bewerten.', ['duplikat', 'zip', 'abgabe', 'aehnlich', 'ähnlich', 'pruefung', 'prüfung'], [
     { title: 'Prüfung starten', text: 'Lege eine ZIP-Datei mit den Abgaben ab und wähle passende Prüfkriterien. Je nach Material werden Dateinamen, Größen oder visuelle Ähnlichkeiten verglichen.' },
     { title: 'Treffer einordnen', text: 'Ein Treffer ist ein Hinweis, kein Beweis für Täuschung. Öffne die betroffenen Dateien und berücksichtige Aufgabenstellung, Vorlagen und erlaubte Zusammenarbeit, bevor du Konsequenzen ziehst.' },
@@ -396,18 +370,6 @@ export const HELP_ARTICLES = [
     { title: 'Stand speichern', text: 'Ein mit einem Notenkurs verbundener Picker lässt sich ausdrücklich im Notenmodul oder als separate Datei speichern. Ohne Kursbindung wird eine Datei mit einer eindeutigen Bezeichnung angelegt.' },
     { title: 'Speicherziele unterscheiden', text: 'Ein Dateiexport verändert den gespeicherten Stand des Notenkurses nicht. Änderungen an Gewichtungen und Verfügbarkeiten gelangen erst über „Picker speichern“ und „Im Notenmodul“ in den verbundenen Kurs.' },
     { title: 'Stand laden', text: 'Beim Laden einer Datei wird eine bestehende Kursbindung nach einer Sicherheitsabfrage gelöst. Kontrolliere die geladenen Bedingungen vor der nächsten Ziehung.' },
-  ]),
-  article('pdf-layout', 'merger', 'PDF-Seiten für den Druck anordnen', 'Mehrere Seiten passend auf einem Blatt ausgeben.', ['layout', 'seiten pro blatt', 'ausrichtung', 'kopien', 'restseiten', 'druck'], [
-    { title: 'Layout wählen', text: 'Wähle das Anordnen-Werkzeug und lege fest, wie viele Seiten auf einem Blatt erscheinen sollen. Für kleine Lerngruppen können Kopien und Restseiten angepasst werden.' },
-    { title: 'Ergebnis prüfen', text: 'Kontrolliere Ausrichtung, Lesbarkeit und Seitenfolge im erzeugten Dokument. Erst danach sollte die Druckdatei weitergegeben werden.' },
-  ]),
-  article('pdf-rotate', 'merger', 'PDFs und einzelne Seiten drehen', 'Falsch ausgerichtete Seiten vor dem Einsatz korrigieren.', ['drehen', 'rotation', 'ausrichtung', 'einzelne seiten', 'hochformat', 'querformat'], [
-    { title: 'Drehung auswählen', text: 'Entscheide, ob das gesamte Dokument oder nur einzelne Seiten gedreht werden sollen. Die Vorschau und Seitenauswahl helfen bei gemischten Dokumenten.' },
-    { title: 'Datei kontrollieren', text: 'Öffne die erzeugte PDF und prüfe besonders Seitenwechsel und Leserichtung. Die Ursprungsdatei bleibt dabei unverändert.' },
-  ]),
-  article('pdf-split', 'merger', 'PDFs aufteilen', 'Seiten oder Seitengruppen als eigene Dateien ausgeben.', ['aufteilen', 'teilen', 'seitengruppe', 'seitenauswahl', 'ausgabeformat', 'trennen'], [
-    { title: 'Bereiche festlegen', text: 'Wähle Seiten einzeln oder als Gruppen aus. Das gewünschte Ausgabeformat entscheidet, ob mehrere Dateien oder zusammengehörige Bereiche entstehen.' },
-    { title: 'Ausgabe prüfen', text: 'Öffne die neuen Dateien und prüfe ihre Namen sowie die enthaltenen Seiten. So verhindert man, dass Material versehentlich unvollständig verteilt wird.' },
   ]),
   article('duplicate-rules', 'duplicate-check', 'Prüfkriterien im DuplikatCheck wählen', 'Die ZIP-Prüfung auf die Art der Abgaben abstimmen.', ['regel', 'kriterium', 'dateiname', 'dateigroesse', 'dateigröße', 'bildaehnlichkeit', 'bildähnlichkeit'], [
     { title: 'Kriterien verstehen', text: 'Gleiche Dateinamen und Größen liefern schnelle Hinweise, während Bildähnlichkeit bei visuellen Abgaben sinnvoll sein kann. Aktiviere nur Kriterien, die zur Aufgabe passen.' },
@@ -493,14 +455,6 @@ export const HELP_ARTICLES = [
     { title: 'Wiederholung entscheiden', text: 'Lege vor der Ziehung fest, ob gewählte Namen für die nächste Runde weiter verfügbar bleiben. Die automatische Deaktivierung passt vor allem zu einer Runde ohne Wiederholung.' },
     { title: 'Fairness erklären', text: 'Gewichtungen verändern Wahrscheinlichkeiten. Wenn du sie einsetzt, erkläre das Prinzip und kontrolliere den Zustand, bevor die Lerngruppe die Ziehung sieht.' },
   ], { tags: ['Fairness', 'Wiederholung', 'Gewichtungen'], steps: ['Auswahlbedingungen vor der Runde sichtbar prüfen.', 'Die Ziehung starten und das Ergebnis benennen.', 'Verfügbarkeit für die nächste Runde bewusst zurücksetzen oder beibehalten.'], relatedArticleIds: ['random-picker', 'picker-conditions', 'picker-storage'] }),
-  article('pdf-merge-order', 'merger', 'PDFs verbinden und die Seitenfolge prüfen', 'Mehrere Dateien in einer kontrollierten Reihenfolge zu einem Material zusammenführen.', ['pdf', 'verbinden', 'reihenfolge', 'seiten', 'datei', 'zusammenfuegen'], [
-    { title: 'Dateien vorbereiten', text: 'Wähle nur die Dateien aus, die gemeinsam gebraucht werden. Kontrolliere ihre Reihenfolge und Seitenzahl, bevor das neue Dokument erzeugt wird.' },
-    { title: 'Ergebnis absichern', text: 'Das Werkzeug erstellt eine neue Datei; die Originale bleiben unverändert. Öffne das Ergebnis und prüfe Übergänge, Deckblätter und die letzte Seite vor der Weitergabe.' },
-  ], { tags: ['PDF verbinden', 'Seitenfolge', 'Dateien'], steps: ['Das Werkzeug zum Verbinden öffnen.', 'Dateien hinzufügen und die Reihenfolge kontrollieren.', 'Die erzeugte Datei öffnen und vollständig prüfen.'], relatedArticleIds: ['merger-pdf', 'pdf-layout', 'pdf-split'] }),
-  article('pdf-local-results', 'merger', 'PDF-Ergebnisse lokal prüfen und weitergeben', 'Erzeugte Materialien sorgfältig kontrollieren, bevor sie gedruckt oder geteilt werden.', ['lokal', 'pdf', 'ergebnis', 'drucken', 'weitergeben', 'datei'], [
-    { title: 'Lokale Verarbeitung verstehen', text: 'Die PDF-Werkzeuge erzeugen Ergebnisse auf dem verwendeten Gerät. Behalte trotzdem im Blick, welche Dateien du öffnest, speicherst oder über einen anderen Weg weitergibst.' },
-    { title: 'Sichtprüfung vor Ausgabe', text: 'Öffne jede erzeugte Datei und kontrolliere Lesbarkeit, Seitenfolge und Inhalt. Besonders bei Arbeitsblättern fallen so leere oder falsch gedrehte Seiten rechtzeitig auf.' },
-  ], { tags: ['Lokale Verarbeitung', 'PDF-Ergebnis', 'Sichtprüfung'], steps: ['Die erzeugte PDF lokal öffnen.', 'Inhalt und Seitenfolge stichprobenartig oder vollständig prüfen.', 'Erst danach drucken oder über den vorgesehenen Weg weitergeben.'], relatedArticleIds: ['merger-pdf', 'pdf-layout', 'pdf-rotate'] }),
   article('duplicate-zip-limits', 'duplicate-check', 'ZIP-Abgaben vorbereiten und Grenzen der Prüfung kennen', 'Eine passende Eingabedatei wählen und technische Hinweise nicht überinterpretieren.', ['zip', 'abgaben', 'grenzen', 'datei', 'pruefung', 'prüfung'], [
     { title: 'ZIP-Datei vorbereiten', text: 'Lege die zu vergleichenden Abgaben in einer klaren ZIP-Datei bereit. Eine nachvollziehbare Ordnerstruktur erleichtert es, Treffer später im richtigen Kontext zu öffnen.' },
     { title: 'Aussagekraft begrenzen', text: 'Ähnliche Dateinamen, Größen oder Bilder können durch Vorlagen und erlaubte Zusammenarbeit entstehen. Die Prüfung kann auffällige Stellen zeigen, aber keine Täuschungsabsicht feststellen.' },

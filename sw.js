@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '142';
+const TEACHHELPER_APP_VERSION_STAMP = '143';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -15,9 +15,6 @@ const APP_SHELL = [
   './src/app/app-runtime.js',
   './src/app/module-shell-coordinator.js',
   './src/app/iframe-module-shell-bindings.js',
-  './src/app/pdf-print-controller.js',
-  './src/app/pdf-print-help-controller.js',
-  './src/app/pdf-print.css',
   './src/app/iframe-module-adapters.js',
   './src/app/module-registry.js',
   './src/app/qr-camera-controller.js',
@@ -46,7 +43,6 @@ const APP_SHELL = [
   './src/app/tutorials/duplicate-check.js',
   './src/app/tutorials/grades.js',
   './src/app/tutorials/groups.js',
-  './src/app/tutorials/merger.js',
   './src/app/tutorials/name-learning.js',
   './src/app/tutorials/planning.js',
   './src/app/tutorials/qr.js',
@@ -154,7 +150,6 @@ const APP_SHELL = [
   './src/modules/groups/app.js',
   './src/modules/work-phase/index.js',
   './src/modules/work-phase/app.js',
-  './src/modules/merger/index.js',
   './src/modules/duplicate-check/index.js',
   './src/modules/qr/index.js',
   './src/modules/seatplan/index.js',
@@ -174,10 +169,6 @@ const DEFERRED_ASSETS = [
   './src/modules/seatplan/grade-picker-navigation.js',
   './src/modules/seatplan/gender-names.js',
   './src/modules/seatplan/tooltips.js',
-  './src/modules/merger/app.html',
-  './src/modules/merger/app.css',
-  './src/modules/merger/app.js',
-  './src/modules/merger/pdf-preview.js',
   './src/modules/duplicate-check/app.html',
   './src/modules/duplicate-check/app.css',
   './src/modules/duplicate-check/app.js',

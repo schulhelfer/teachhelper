@@ -7,7 +7,7 @@ function createHarness() {
   const calls = [];
   const frames = new Map();
   const getters = Object.fromEntries([
-    ['planning', 'Planning'], ['grades', 'Grades'], ['merger', 'Merger'],
+    ['planning', 'Planning'], ['grades', 'Grades'],
     ['duplicate-check', 'DuplicateCheck'], ['qr', 'Qr'], ['seatplan', 'Seatplan'], ['name-learning', 'NameLearning'],
   ].map(([id, name]) => [`get${name}Frame`, () => frames.get(id)]));
   let bridge = null;
@@ -26,8 +26,9 @@ function createHarness() {
 
 test('adapters resolve late bridge and tutorial frames without mounting for broadcasts', () => {
   const { registry, calls, frames } = createHarness();
-  assert.equal(registry.list().length, 7);
+  assert.equal(registry.list().length, 6);
   assert.equal(registry.get('groups'), null);
+  assert.equal(registry.get('merger'), null);
   const planning = registry.get('planning');
   assert.equal(planning.getFrame(), null);
   registry.broadcast({ type: 'test' });

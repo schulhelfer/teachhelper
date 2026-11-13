@@ -2,6 +2,28 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { openDomBrowser } from './helpers/dom-browser.mjs';
 
+test('alte PDF-Tools-Modulfenster öffnen die Planung ohne das entfernte Modul', async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const html = await fetch('/index.html').then((response) => response.text());
+    const fixture = new DOMParser().parseFromString(html, 'text/html');
+    document.body.replaceChildren(...fixture.body.childNodes);
+    window.history.replaceState(null, '', '/index.html?tab=merger&window=module');
+    await import('/src/app/bootstrap.js');
+    const deadline = performance.now() + 5000;
+    while (!document.getElementById('app').classList.contains('app-js-ready') && performance.now() < deadline) {
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    return {
+      ready: document.getElementById('app').classList.contains('app-js-ready'),
+      activeTab: document.querySelector('.tab-button.active[data-tab-target]')?.dataset.tabTarget,
+      pdfTab: Boolean(document.getElementById('tab-merger')),
+      pdfFrames: document.querySelectorAll('iframe[src*="/merger/"]').length,
+    };
+  });
+  assert.deepEqual(result, { ready: true, activeTab: 'planning', pdfTab: false, pdfFrames: 0 });
+});
+
 test('tab transitions settle rapid and overflow navigation on the latest requested tab', { timeout: 60000 }, async (t) => {
   const evaluate = await openDomBrowser(t, {
     viewport: { width: 1800, height: 900, mobile: false },
@@ -46,7 +68,7 @@ test('tab transitions settle rapid and overflow navigation on the latest request
     window.dispatchEvent(new Event('resize'));
     await wait(240);
 
-    document.getElementById('tab-merger').click();
+    document.getElementById('tab-groups').click();
     document.getElementById('tab-qr').click();
     document.getElementById('tab-duplicate-check').click();
     await wait(850);

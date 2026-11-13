@@ -55,7 +55,6 @@ function createHarness({ planningInitSucceeds = true } = {}) {
     PLANNING_READY_EVENT,
     TAB_PLANNING,
     TAB_GRADES,
-    TAB_MERGER: 'merger',
     TAB_DUPLICATE_CHECK: 'duplicate-check',
     TAB_QR: 'qr',
     TAB_SEATPLAN: 'seatplan',
@@ -75,7 +74,6 @@ function createHarness({ planningInitSucceeds = true } = {}) {
       calls.push('planning');
       return planningInitSucceeds;
     },
-    initMergerTab: () => {},
     initDuplicateCheckTab: () => {},
     initQrTab: () => {},
     initSeatplanTabNative: () => {},

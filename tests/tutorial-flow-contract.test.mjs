@@ -10,7 +10,6 @@ const [
   shellStyles,
   gradesSource,
   planningSource,
-  mergerSource,
   seatplanSource,
   groupsSource,
   pickerSource,
@@ -26,7 +25,6 @@ const [
   readFile(new URL('../src/app/shell.css', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/tutorials/grades.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/tutorials/planning.js', import.meta.url), 'utf8'),
-  readFile(new URL('../src/app/tutorials/merger.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/tutorials/seatplan.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/tutorials/groups.js', import.meta.url), 'utf8'),
   readFile(new URL('../src/app/tutorials/random-picker.js', import.meta.url), 'utf8'),
@@ -56,7 +54,6 @@ function sectionsOf(source) {
 const cases = {
   grades: gradesSource,
   planning: planningSource,
-  merger: mergerSource,
   seatplan: seatplanSource,
   groups: groupsSource,
   picker: pickerSource,
@@ -76,7 +73,6 @@ test('liefert die ausführlichen Definitionen ohne Budgets oder Komprimierung au
   const minimumStepDefinitions = {
     grades: [36, /gradesStep\(/g],
     planning: [39, /planningStep\(/g],
-    merger: [23, /createModuleTutorialStep\(/g],
     seatplan: [21, /createModuleTutorialStep\(/g],
     groups: [18, /createModuleTutorialStep\(/g],
     picker: [9, /createModuleTutorialStep\(/g],
@@ -97,7 +93,6 @@ test('gliedert jede Tour in Arbeitsphasen und zeigt den Fortschritt an', () => {
   const expectedSections = {
     grades: ['Einrichten', 'Kurs aufbauen', 'Leistungen eingeben', 'Auswerten', 'Anzeige und Abschluss'],
     planning: ['Einrichten', 'Kurse anlegen', 'Woche planen', 'Stunde ausarbeiten', 'Auswerten und Abschluss'],
-    merger: ['Werkzeuge', 'Seiten aufs Blatt', 'Zusammenführen', 'Drehen', 'Aufteilen'],
     seatplan: ['Namen laden', 'Raum bauen', 'Verteilen', 'Nachbearbeiten', 'Sichern und Drucken'],
     groups: ['Namen laden', 'Gruppen bilden', 'Anpassen', 'Sichern und Drucken'],
     picker: ['Vorbereiten', 'Ziehen', 'Sichern'],
@@ -143,12 +138,6 @@ test('ordnet die weiteren Touren vollständig und aufgabenorientiert', () => {
     "'Sitzkriterien eingeben'", "'Vorschlag oder Zufall'", "'Kriterien auswerten'", "'Sitzplan nachbearbeiten'",
     "'Perspektive umdrehen'", "'Belegung zurücksetzen'", "'Sitzplan laden'", "'Sitzplan drucken'",
   ]);
-  assertOrdered(cases.merger, [
-    "'Werkzeugauswahl'", "'PDF auswählen'", "'Seiten pro Blatt'", "'Layout erstellen'", "'Dateien verbinden'",
-    "'Dateireihenfolge'", "'Dateien zusammenführen'", "'PDF drehen'", "'Einzelne Seiten drehen'",
-    "'Gedrehte PDF erstellen'", "'PDF aufteilen'", "'Seitenauswahl'", "'Ausgabeformat'", "'Seitengruppen'",
-    "'Aufteilung starten'",
-  ]);
   assertOrdered(cases.groups, ["'Namensliste importieren'", "'Aus dem Notenmodul übernehmen'", "'Gruppenkriterien öffnen'", "'Vorschlag erzeugen'", "'Einteilung manuell anpassen'", "'Gruppen sperren'", "'Gruppenthemen eintragen'", "'Gruppeneinteilung laden'", "'Gruppen drucken'"]);
   assertOrdered(cases.picker, ["'Gemeinsame Namensliste'", "'Auswahlbedingungen öffnen'", "'Nach der Ziehung deaktivieren'", "'Picker-Rad'", "'Auswahl starten'", "'Ergebnis erkennen'", "'Erneut auswählen'", "'Pickerstand speichern'"]);
   assertOrdered(cases.duplicate, ["'Prüfkriterien auswählen'", "'Abgaben als ZIP prüfen'", "'Zusammenfassung'", "'Duplikatgruppen'", "'Treffergründe'", "'Bilder vergleichen'", "'Ergebnis neu auswerten'", "'Originale bleiben unverändert'"]);
@@ -163,7 +152,6 @@ test('benennt Gesten, Berechtigungen und Sicherheitsfolgen eindeutig', () => {
   assert.match(cases.grades, /Rechtsklick auf eine Leistungsspalte/);
   assert.match(cases.planning, /Doppelklicke eine freie Zelle/);
   assert.match(cases.groups, /Doppelklick sperrt eine Gruppe/);
-  assert.match(cases.merger, /Per Drag-and-drop legst du die Reihenfolge fest/);
   assert.match(cases.duplicate, /deine Abgaben werden nicht verändert/);
   assert.match(cases.workPhase, /Mikrofonfreigabe/);
   assert.match(cases.qr, /Kamerafreigabe/);
@@ -206,14 +194,7 @@ test('behält isolierte Beispieldaten und zustandsabhängige Varianten', () => {
 });
 
 test('verankert opake Module an konkreten sichtbaren Modulzielen', () => {
-  assert.match(catalogSource, /const OPAQUE_FRAME_TABS = new Set\(\[\s+TAB_MERGER,\s+TAB_DUPLICATE_CHECK,\s+TAB_QR,\s+TAB_NAME_LEARNING,/);
-  assert.ok(cases.merger.includes("target: mergerFrameTarget('.tool-tab-bar')"));
-  for (const tool of ['layout', 'merge', 'rotate', 'split']) {
-    assert.ok(cases.merger.includes(`target: mergerFrameTarget(['#${tool}PrintButton', '#${tool}SaveButton'])`), `PDF-Tutorialziele fehlen: ${tool}`);
-  }
-  assert.match(cases.merger, /#mergeFileListShell:not\(\.hidden\)[\s\S]*?#mergeDropZone/);
-  assert.match(cases.merger, /\.rotate-page-card[\s\S]*?#rotateDropZone/);
-  assert.match(cases.merger, /\.split-page-card[\s\S]*?#splitDropZone/);
+  assert.match(catalogSource, /const OPAQUE_FRAME_TABS = new Set\(\[\s+TAB_DUPLICATE_CHECK,\s+TAB_QR,\s+TAB_NAME_LEARNING,/);
   assert.doesNotMatch(cases.duplicate, /contentDocument/);
   assert.doesNotMatch(cases.qr, /contentDocument/);
   assert.doesNotMatch(cases.nameLearning, /contentDocument/);

@@ -2,7 +2,6 @@ import { postToModule } from '../shared/module-frame-bridge.js';
 import {
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -12,8 +11,6 @@ import { SIDEBAR_WIDTH_SCOPE_OTHER, SIDEBAR_WIDTH_SCOPE_PLANNING } from './modul
 
 export function createIframeModuleAdapters({ frames, getBridgeController, els }) {
   const definitions = [
-    { id: TAB_MERGER, role: 'merger', getFrame: frames.getMergerFrame,
-      initError: 'PDF-Tools konnten nicht initialisiert werden.' },
     { id: TAB_DUPLICATE_CHECK, role: 'duplicateCheck', getFrame: frames.getDuplicateCheckFrame,
       initError: 'DuplikatCheck konnte nicht initialisiert werden.' },
     { id: TAB_QR, role: 'qr', getFrame: frames.getQrFrame,

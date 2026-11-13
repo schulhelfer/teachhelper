@@ -2,7 +2,6 @@ import {
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -13,7 +12,6 @@ import {
 import { createDuplicateCheckTutorialDefinition } from './duplicate-check.js';
 import { createGradesTutorialDefinition } from './grades.js';
 import { createGroupsTutorialDefinition } from './groups.js';
-import { createMergerTutorialDefinition } from './merger.js';
 import { createNameLearningTutorialDefinition } from './name-learning.js';
 import { createPlanningTutorialDefinition } from './planning.js';
 import { createQrTutorialDefinition } from './qr.js';
@@ -22,7 +20,6 @@ import { createSeatplanTutorialDefinition } from './seatplan.js';
 import { createWorkPhaseTutorialDefinition } from './work-phase.js';
 
 const OPAQUE_FRAME_TABS = new Set([
-  TAB_MERGER,
   TAB_DUPLICATE_CHECK,
   TAB_QR,
   TAB_NAME_LEARNING,
@@ -43,11 +40,6 @@ const MODULE_INTROS = {
     title: 'Sitzplan',
     copy: 'Hier werden Sitzpläne erstellt und Kriterien für Vorschläge genutzt.',
     target: (nodes) => nodes.tabSeatplan,
-  },
-  [TAB_MERGER]: {
-    title: 'PDF-Tools',
-    copy: 'Hier werden PDFs neu angeordnet, verbunden, gedreht oder aufgeteilt.',
-    target: (nodes) => nodes.tabMerger,
   },
   [TAB_GROUPS]: {
     title: 'Gruppen',
@@ -152,7 +144,6 @@ export function createTutorialCatalog({
     TAB_DUPLICATE_CHECK,
     TAB_GRADES,
     TAB_GROUPS,
-    TAB_MERGER,
     TAB_NAME_LEARNING,
     TAB_PLANNING,
     TAB_QR,
@@ -162,7 +153,6 @@ export function createTutorialCatalog({
     shellSupportsExternalFileSync,
     planningFrameTarget: createFrameTarget(frames.getPlanningFrame),
     gradesFrameTarget: createFrameTarget(frames.getGradesFrame),
-    mergerFrameTarget: createFrameTarget(frames.getMergerFrame),
     duplicateCheckFrameTarget: createFrameTarget(frames.getDuplicateCheckFrame),
     qrFrameTarget: createFrameTarget(frames.getQrFrame),
     seatplanFrameTarget: createFrameTarget(frames.getSeatplanFrame),
@@ -170,7 +160,6 @@ export function createTutorialCatalog({
     getSeatplanFrame: frames.getSeatplanFrame,
     preparePlanningTutorialSurface: actions.preparePlanningTutorialSurface,
     prepareGradesTutorialSurface: actions.prepareGradesTutorialSurface,
-    openMergerToolForTutorial: actions.openMergerToolForTutorial,
     openQrToolForTutorial: actions.openQrToolForTutorial,
     prepareNameLearningTutorialSurface: actions.prepareNameLearningTutorialSurface,
     activateGradesTutorialDemo: demos.activateGradesTutorialDemo,
@@ -186,7 +175,6 @@ export function createTutorialCatalog({
   const builders = {
     [TAB_GRADES]: () => createGradesTutorialDefinition(context),
     [TAB_PLANNING]: () => createPlanningTutorialDefinition(context),
-    [TAB_MERGER]: () => createMergerTutorialDefinition(context),
     [TAB_SEATPLAN]: () => createSeatplanTutorialDefinition({
       ...context,
       seatplanTutorialDemoActive: demos.isSeatplanTutorialDemoActive?.() === true,

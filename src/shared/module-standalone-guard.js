@@ -4,7 +4,7 @@
   if (window.parent && window.parent !== window) return;
   if (window.top && window.top !== window) return;
 
-  const DEEP_LINK_TABS = new Set(['merger', 'duplicate-check', 'qr']);
+  const DEEP_LINK_TABS = new Set(['duplicate-check', 'qr']);
   const requestedTab = String(script.dataset.moduleTab || '');
 
   let target = '';

@@ -10,12 +10,11 @@ const MODULE_TABS = {
   planning: 'planning',
   seatplan: 'seatplan',
   'name-learning': 'name-learning',
-  merger: 'merger',
   'duplicate-check': 'duplicate-check',
   qr: 'qr',
 };
 
-const DEEP_LINK_MODULES = new Set(['merger', 'duplicate-check', 'qr']);
+const DEEP_LINK_MODULES = new Set(['duplicate-check', 'qr']);
 
 const guard = await read('../src/shared/module-standalone-guard.js');
 const pages = new Map(

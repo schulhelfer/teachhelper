@@ -39,7 +39,6 @@ const expectedModules = new Set([
   'name-learning',
   'groups',
   'random-picker',
-  'merger',
   'duplicate-check',
   'work-phase',
   'qr',
@@ -47,7 +46,7 @@ const expectedModules = new Set([
 
 test('der Hilfekatalog deckt alle Module mit ausführlichen Artikeln ab', () => {
   const representedModules = new Set(HELP_ARTICLES.map((article) => article.module));
-  assert.ok(HELP_ARTICLES.length >= 63);
+  assert.ok(HELP_ARTICLES.length >= 57);
   assert.deepEqual(representedModules, expectedModules);
   HELP_ARTICLES.forEach((article) => {
     assert.ok(article.id);
@@ -179,7 +178,6 @@ test('das Praxis-Handbuch enthält Treffer für zentrale Abläufe aller Module',
     portraets: 'name-learning-photos',
     namensliste: 'groups-import',
     pickerstand: 'picker-storage',
-    seitengruppe: 'pdf-split',
     bildaehnlichkeit: 'duplicate-rules',
     warnsignal: 'work-phase-monitor',
     zwischenablage: 'qr-image-scan',
@@ -273,7 +271,6 @@ test('alle Rettungsringe leiten zur gemeinsamen Hilfeauswahl weiter', async () =
     ...[
       'qr/app.js',
       'duplicate-check/app.js',
-      'merger/app.js',
       'seatplan/app.js',
       'name-learning/app.js',
       'planning/app.js',

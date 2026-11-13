@@ -925,7 +925,6 @@
     }
 
     .app>.main,
-    .app>.merger-shell,
     .app>.duplicate-check-shell,
     .app>.qr-shell,
     .app>.planning-shell,
@@ -940,7 +939,6 @@
 
     .app.is-tab-switching>.side,
     .app.is-tab-switching>.main,
-    .app.is-tab-switching>.merger-shell,
     .app.is-tab-switching>.duplicate-check-shell,
     .app.is-tab-switching>.qr-shell,
     .app.is-tab-switching>.planning-shell,
@@ -1177,7 +1175,6 @@
       display: flex;
     }
 
-    .merger-shell,
     .duplicate-check-shell,
     .qr-shell,
     .planning-shell,
@@ -1200,7 +1197,6 @@
       transition: padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), filter var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
-    .merger-shell,
     .duplicate-check-shell,
     .qr-shell,
     .planning-shell,
@@ -1209,14 +1205,6 @@
       padding: 0;
       overflow-x: hidden;
       overflow-y: auto;
-    }
-
-    .merger-shell {
-      background: transparent;
-      backdrop-filter: none;
-      border: none;
-      border-radius: 0;
-      box-shadow: none;
     }
 
     .duplicate-check-shell,
@@ -1238,7 +1226,6 @@
       box-shadow: none;
     }
 
-    .merger-host,
     .duplicate-check-host,
     .qr-host,
     .planning-host,
@@ -1267,7 +1254,6 @@
     #seatplan-main-host,
     .name-learning-shell,
     #seatplan-side-host,
-    .merger-host,
     .duplicate-check-host,
     .qr-host,
     #groups-main-host .groups-grid-wrap,
@@ -1295,7 +1281,6 @@
       animation: none !important;
     }
 
-    .merger-host,
     .duplicate-check-host,
     .qr-host {
       overflow: hidden;
@@ -1303,25 +1288,8 @@
       overscroll-behavior: contain;
     }
 
-    .app.app-tab-merger>.side,
-    .app.app-tab-merger>.main,
-    .app.app-tab-merger>.duplicate-check-shell,
-    .app.app-tab-merger>.qr-shell,
-    .app.app-tab-merger>.monitor-shell,
-    .app.app-tab-merger>.work-order-shell,
-    .app.app-tab-merger>.timer-shell {
-      display: none;
-    }
-
-    .app.app-tab-merger>.merger-shell {
-      display: block;
-      grid-column: 1 / -1;
-      grid-row: 2;
-    }
-
     .app.app-tab-duplicate-check>.side,
     .app.app-tab-duplicate-check>.main,
-    .app.app-tab-duplicate-check>.merger-shell,
     .app.app-tab-duplicate-check>.qr-shell,
     .app.app-tab-duplicate-check>.monitor-shell,
     .app.app-tab-duplicate-check>.work-order-shell,
@@ -1337,7 +1305,6 @@
 
     .app.app-tab-qr>.side,
     .app.app-tab-qr>.main,
-    .app.app-tab-qr>.merger-shell,
     .app.app-tab-qr>.duplicate-check-shell,
     .app.app-tab-qr>.planning-shell,
     .app.app-tab-qr>.grades-shell,
@@ -1355,7 +1322,6 @@
 
     .app.app-tab-planning>.side,
     .app.app-tab-planning>.main,
-    .app.app-tab-planning>.merger-shell,
     .app.app-tab-planning>.duplicate-check-shell,
     .app.app-tab-planning>.qr-shell,
     .app.app-tab-planning>.grades-shell,
@@ -1374,7 +1340,6 @@
 
     .app.app-tab-grades>.side,
     .app.app-tab-grades>.main,
-    .app.app-tab-grades>.merger-shell,
     .app.app-tab-grades>.duplicate-check-shell,
     .app.app-tab-grades>.qr-shell,
     .app.app-tab-grades>.planning-shell,
@@ -1414,7 +1379,6 @@
 
     .app.app-tab-name-learning>.side,
     .app.app-tab-name-learning>.main,
-    .app.app-tab-name-learning>.merger-shell,
     .app.app-tab-name-learning>.duplicate-check-shell,
     .app.app-tab-name-learning>.qr-shell,
     .app.app-tab-name-learning>.planning-shell,
@@ -1459,7 +1423,6 @@
       -webkit-backdrop-filter: blur(6px);
     }
 
-    .app.app-tab-seatplan>.merger-shell,
     .app.app-tab-seatplan>.duplicate-check-shell,
     .app.app-tab-seatplan>.qr-shell,
     .app.app-tab-seatplan>.monitor-shell,
@@ -2399,7 +2362,6 @@
       display: none;
     }
 
-    .app.app-tab-work-phase>.merger-shell,
     .app.app-tab-work-phase>.duplicate-check-shell,
     .app.app-tab-work-phase>.qr-shell,
     .app.app-tab-work-phase>.planning-shell,
@@ -2643,8 +2605,6 @@
     .app.chrome-collapsed:not(.is-expanding).app-tab-groups #groups-main-host,
     .app.is-collapsing.app-tab-seatplan #seatplan-main-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-seatplan #seatplan-main-host,
-    .app.is-collapsing.app-tab-merger .merger-host,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-host,
     .app.is-collapsing.app-tab-duplicate-check .duplicate-check-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-duplicate-check .duplicate-check-host,
     .app.is-collapsing.app-tab-qr .qr-host,
@@ -2652,11 +2612,6 @@
     .app.is-collapsing.app-tab-name-learning .name-learning-host,
     .app.chrome-collapsed:not(.is-expanding).app-tab-name-learning .name-learning-host {
       padding-left: var(--chrome-overlay-clearance);
-    }
-
-    .app.is-collapsing.app-tab-merger .merger-host,
-    .app.chrome-collapsed:not(.is-expanding).app-tab-merger .merger-host {
-      padding-right: clamp(12px, 1.6vw, 24px);
     }
 
     .app.is-collapsing.app-tab-qr .qr-host,
@@ -2855,7 +2810,6 @@
     }
 
     .app.chrome-collapsed:not(.is-expanding)>.main,
-    .app.chrome-collapsed:not(.is-expanding)>.merger-shell,
     .app.chrome-collapsed:not(.is-expanding)>.duplicate-check-shell,
     .app.chrome-collapsed:not(.is-expanding)>.qr-shell,
     .app.chrome-collapsed:not(.is-expanding)>.planning-shell,
@@ -6210,27 +6164,6 @@
       color: var(--danger, #f87171);
     }
 
-    #pdf-print-help-dialog {
-      width: min(560px, calc(100vw - 32px));
-    }
-
-    .pdf-print-help-command-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
-
-    #pdf-print-help-dialog .pdf-print-help-command-row textarea {
-      flex: 1 1 auto;
-      min-width: 0;
-      min-height: 0;
-      padding: 10px 12px;
-      font-family: monospace;
-      font-size: 14px;
-      resize: none;
-      user-select: text;
-    }
-
     .pwa-install-dialog .dialog-actions {
       justify-content: flex-end;
     }
@@ -7275,11 +7208,6 @@
         width: calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - (var(--app-shell-padding) * 2));
       }
 
-      .app.app-tab-merger>.merger-shell {
-        grid-column: 1;
-        grid-row: auto;
-      }
-
       .app.app-tab-duplicate-check>.duplicate-check-shell {
         grid-column: 1;
         grid-row: auto;
@@ -7300,7 +7228,6 @@
         grid-row: auto;
       }
 
-      .app.app-tab-merger,
       .app.app-tab-duplicate-check,
       .app.app-tab-qr,
       .app.app-tab-planning,
@@ -7314,7 +7241,6 @@
         overflow: hidden;
       }
 
-      .app.app-tab-merger>.merger-shell,
       .app.app-tab-duplicate-check>.duplicate-check-shell,
       .app.app-tab-qr>.qr-shell,
       .app.app-tab-planning>.planning-shell,
@@ -7328,13 +7254,11 @@
         overflow: hidden;
       }
 
-      .app.app-tab-merger .merger-host,
       .app.app-tab-duplicate-check .duplicate-check-host,
       .app.app-tab-qr .qr-host,
       .app.app-tab-planning .planning-host,
       .app.app-tab-grades .grades-host,
       .app.app-tab-name-learning .name-learning-host,
-      .app.app-tab-merger #merger-host>.merger-frame,
       .app.app-tab-duplicate-check #duplicate-check-host>.duplicate-check-frame,
       .app.app-tab-qr #qr-host>.qr-frame,
       .app.app-tab-planning #planning-host>.planning-frame,
@@ -7666,7 +7590,6 @@
       .side,
       .side>*,
       .main,
-      .merger-shell,
       .duplicate-check-shell,
       .qr-shell,
       .planning-shell,
@@ -7678,10 +7601,8 @@
       #random-picker-host,
       #groups-main-host,
       #seatplan-main-host,
-      .merger-host,
       .duplicate-check-host,
       .qr-host,
-      .merger-runtime-root,
       .duplicate-check-runtime-root,
       .random-picker-shell,
       .random-picker-stage,
@@ -7707,7 +7628,6 @@
     #planning-host>.planning-frame,
     #grades-host>.grades-frame,
     #name-learning-host>.name-learning-frame,
-    #merger-host>.merger-frame,
     #duplicate-check-host>.duplicate-check-frame,
     #qr-host>.qr-frame,
     #seatplan-main-host>.seatplan-frame {

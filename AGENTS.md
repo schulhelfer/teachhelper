@@ -11,7 +11,7 @@
 - `src/modules/workspace/` ist der zentrale Daten- und Persistenzbereich; ein separates `src/workspace/` existiert nicht.
 - `src/modules/`: Fachfunktionen; `index.js` stellt Mount-Funktionen/Exporte bereit, `app.js` enthält die Umsetzung.
 - `groups`, `random-picker`, `work-phase` werden direkt im Shell-DOM gemountet.
-- `planning`, `grades`, `seatplan`, `name-learning`, `merger`, `duplicate-check`, `qr` haben eigene `app.html`/`app.css` und laufen in Iframes.
+- `planning`, `grades`, `seatplan`, `name-learning`, `duplicate-check`, `qr` haben eigene `app.html`/`app.css` und laufen in Iframes.
 - `src/shared/`: gemeinsame Browser-/UI-Helfer, Datei-/CSV-/PDF-/OCR-/DOCX-Verarbeitung, Stores und Datennormalisierung.
 - `src/shared/school-data/`: öffentliche Datenformen, Notenlogik, Defaults, Integritätsregeln, Workspace-Nachrichten und THDB-Format.
 - Fremdbibliotheken liegen in `src/vendor/` und `src/modules/qr/vendor/`; Inventar/Prüfsummen: `vendor-manifest.json`.
@@ -41,7 +41,7 @@
 - `app/planning-seatplan-bridge.js` mountet Iframe-Module bei Bedarf und vermittelt u. a. Noten-, Sitzplan- und Namenlern-Anfragen; Noten werden auch verzögert vorab gemountet.
 - `src/shell/tabs.js` definiert Tab-IDs und viele Ereignisnamen; `app/module-message-router.js` routet freigegebene Nachrichten anhand der Frame-Rolle.
 - `shared/module-frame-bridge.js`: `createModuleFrame`, `postToModule`, `isTrustedModuleMessage`; prüft Quelle/Origin und bei opaken Frames zusätzlich Nonces.
-- Sandbox/Permissions sind modulspezifisch. Planung und Noten verwenden regulär gleichursprüngliche Frames; PDF-Werkzeuge/QR konfigurieren eigene Sandboxes.
+- Sandbox/Permissions sind modulspezifisch. Planung und Noten verwenden regulär gleichursprüngliche Frames; DuplikatCheck und QR konfigurieren eigene Sandboxes.
 - `planning/bridge.js` und `grades/bridge.js` übersetzen zwischen `postMessage` und lokalen Ereignissen; bei Protokolländerungen beide Seiten prüfen.
 - Öffentliche Workspace-API für Verbraucher: `workspace/client.js`; `createFeatureWorkspaceClient` verbindet gleichursprüngliche Frames und erzeugt für Tutorials/Standalone einen ephemeren Workspace. Die Shell verwendet `getWorkspaceClient`.
 - Der Client bietet `data` für synchrone Fachabfragen/-änderungen, `operations` für Kurs-, Vault- und Dateiaktionen sowie Snapshots, Abonnements und revisionierte `execute`-Befehle. Datenabfragen liefern Kopien; `this.store` in Planung/Noten ist nur ein Alias auf `client.data`.
@@ -70,5 +70,5 @@ Alle Befehle im Repository-Root ausführen; erforderlich sind Node.js und Python
 - `modules/grades/app.js` (~33.000 Zeilen), `planning/app.js` (~11.500), `seatplan/app.js` (~10.800): umfangreiche Fachlogik, DOM, Dialoge und Interaktion in jeweils einer Datei.
 - `modules/workspace/store.js` (~5.100) bündelt mehrere Domänen; `runtime.js` (~2.500) kombiniert Persistenz, Vault, Kurscache, Synchronisation und Backups.
 - `app/app-runtime.js` (~2.400) bleibt großer Shell-Orchestrator; `app/planning-seatplan-bridge.js` (~860) vermittelt weit mehr als Planung/Sitzplan.
-- Weitere große Einstiegspunkte: `modules/merger/app.js` (~4.500) und `modules/groups/app.js` (~2.700).
+- Weiterer großer Einstiegspunkt: `modules/groups/app.js` (~2.700).
 - Bei Änderungen gezielt passende `tests/*contract.test.mjs` mitlesen: viele sichern konkrete Dateistrukturen, Ereignisnamen oder Codeformen ab.

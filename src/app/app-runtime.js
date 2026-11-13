@@ -51,7 +51,6 @@ import {
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -291,7 +290,6 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
       onTearOff: tearOffTabToWindow,
     });
     [
-      [els.tabMerger, TAB_MERGER],
       [els.tabPlanning, TAB_PLANNING],
       [els.tabGrades, TAB_GRADES],
       [els.tabSeatplan, TAB_SEATPLAN],

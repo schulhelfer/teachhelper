@@ -469,11 +469,6 @@ export function createClassroomFileActions({
       if (!(target instanceof Element)) return false;
       return Boolean(target.closest('#csv-drop-zone'));
     };
-    const isEventInsideMergerDropZone = (event) => {
-      const target = event?.target;
-      if (!(target instanceof Element)) return false;
-      return Boolean(target.closest('#merger-host'));
-    };
 
     if (els.csvDropZone) {
       let csvDragDepth = 0;
@@ -529,7 +524,6 @@ export function createClassroomFileActions({
     bindRuntime(document, 'dragover', (e) => {
       if (!dataTransferHasFiles(e.dataTransfer)) return;
       if (isEventInsideCsvDropZone(e)) return;
-      if (isEventInsideMergerDropZone(e)) return;
       e.preventDefault();
       if (e.dataTransfer) {
         e.dataTransfer.dropEffect = 'copy';
@@ -539,7 +533,6 @@ export function createClassroomFileActions({
     bindRuntime(document, 'drop', async (e) => {
       if (!dataTransferHasFiles(e.dataTransfer)) return;
       if (isEventInsideCsvDropZone(e)) return;
-      if (isEventInsideMergerDropZone(e)) return;
       e.preventDefault();
       const droppedFiles = Array.from(e.dataTransfer?.files || []);
       const jsonFile = droppedFiles.find(isJsonFile);

@@ -3,7 +3,6 @@ import {
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
-  TAB_MERGER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -12,7 +11,7 @@ import {
   TAB_WORK_PHASE,
 } from '../../shell/tabs.js';
 
-const TAB_REGION_SELECTOR = '.side, .main, .merger-shell, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .name-learning-shell, .monitor-shell, .work-order-shell, .timer-shell';
+const TAB_REGION_SELECTOR = '.side, .main, .duplicate-check-shell, .qr-shell, .planning-shell, .grades-shell, .name-learning-shell, .monitor-shell, .work-order-shell, .timer-shell';
 
 function parseCssTimeToMs(value) {
   if (!value) return 0;
@@ -56,7 +55,6 @@ export function createTabController({
     app = null,
     tabNav = null,
     tabButtons = [],
-    mergerShell = null,
     duplicateCheckShell = null,
     qrShell = null,
     planningShell = null,
@@ -158,7 +156,6 @@ export function createTabController({
     lastRenderedActiveTab = activeTab;
     sidebarResize?.applyActiveWidth?.();
     updateSeatPreferencesTrigger();
-    app.classList.toggle('app-tab-merger', activeTab === TAB_MERGER);
     app.classList.toggle('app-tab-duplicate-check', activeTab === TAB_DUPLICATE_CHECK);
     app.classList.toggle('app-tab-qr', activeTab === TAB_QR);
     app.classList.toggle('app-tab-planning', activeTab === TAB_PLANNING);
@@ -177,7 +174,6 @@ export function createTabController({
     app.classList.toggle('app-tab-groups', activeTab === TAB_GROUPS);
     app.classList.toggle('app-tab-random-picker', activeTab === TAB_RANDOM_PICKER);
     app.classList.toggle('app-seatplan-full', activeTab === TAB_SEATPLAN);
-    if (mergerShell) mergerShell.hidden = activeTab !== TAB_MERGER;
     if (duplicateCheckShell) duplicateCheckShell.hidden = activeTab !== TAB_DUPLICATE_CHECK;
     if (qrShell) qrShell.hidden = activeTab !== TAB_QR;
     if (planningShell) planningShell.hidden = activeTab !== TAB_PLANNING;

@@ -27,7 +27,7 @@ function createHarness({ ready = true, missingHosts = false, vault = {} } = {}) 
   view.clearTimeout = (id) => timers.delete(id);
   const documentBus = new EventTarget();
   const els = Object.fromEntries([
-    'mergerHost', 'duplicateCheckHost', 'qrHost', 'nameLearningHost', 'planningHost', 'gradesHost',
+    'duplicateCheckHost', 'qrHost', 'nameLearningHost', 'planningHost', 'gradesHost',
     'seatplanMainHost', 'seatplanSideHost', 'seatplanDialogHost',
   ].map((id) => [id, missingHosts ? null : { dataset: {} }]));
   const mount = (id) => ({ host, mainHost }) => {
@@ -62,7 +62,7 @@ function createHarness({ ready = true, missingHosts = false, vault = {} } = {}) 
       getLifecycle: () => ({ ready, revision: 12 }),
       getSnapshot: () => ({ vault: { encryptionEnabled: true, unlocked: false, ...vault } }),
     }),
-    mountPlanning: mount('planning'), mountGrades: mount('grades'), mountMerger: mount('merger'),
+    mountPlanning: mount('planning'), mountGrades: mount('grades'),
     mountQr: mount('qr'), mountDuplicateCheck: mount('duplicate-check'),
     mountSeatplan: mount('seatplan'), mountNameLearning: mount('name-learning'),
   };
@@ -98,7 +98,7 @@ test('workspace readiness resumes pending navigation without duplicate mounts or
 
 test('module layouts preserve active-tab payloads, initial roster and vault access', () => {
   const h = createHarness();
-  for (const id of ['merger', 'duplicate-check', 'qr', 'name-learning', 'grades', 'planning', 'seatplan']) {
+  for (const id of ['duplicate-check', 'qr', 'name-learning', 'grades', 'planning', 'seatplan']) {
     h.bridge.ensureTabInitialized(id);
     h.bridge.applyModuleShellLayout(id, { activeTab: 'seatplan' });
     const layout = h.calls.filter(([module, method]) => module === id && method === 'layout').at(-1)[2];
@@ -237,7 +237,7 @@ test('tab leave keeps controller return semantics and matching responses', async
 
 test('missing hosts and repeated initialization remain harmless', () => {
   const h = createHarness({ missingHosts: true });
-  for (const id of ['planning', 'grades', 'merger', 'duplicate-check', 'qr', 'seatplan', 'name-learning']) {
+  for (const id of ['planning', 'grades', 'duplicate-check', 'qr', 'seatplan', 'name-learning']) {
     h.bridge.ensureTabInitialized(id);
     h.bridge.ensureTabInitialized(id);
     h.bridge.applyModuleShellLayout(id, {});

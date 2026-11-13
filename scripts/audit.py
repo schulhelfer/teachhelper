@@ -202,7 +202,6 @@ required_precache_assets = [
   ROOT / 'src' / 'app' / 'tutorials' / 'duplicate-check.js',
   ROOT / 'src' / 'app' / 'tutorials' / 'grades.js',
   ROOT / 'src' / 'app' / 'tutorials' / 'groups.js',
-  ROOT / 'src' / 'app' / 'tutorials' / 'merger.js',
   ROOT / 'src' / 'app' / 'tutorials' / 'name-learning.js',
   ROOT / 'src' / 'app' / 'tutorials' / 'planning.js',
   ROOT / 'src' / 'app' / 'tutorials' / 'qr.js',
@@ -250,7 +249,6 @@ expected = [
   ROOT / 'icon-512.png',
   ROOT / 'src' / 'main.js',
   ROOT / 'src' / 'modules' / 'planning' / 'app.html',
-  ROOT / 'src' / 'modules' / 'merger' / 'app.html',
   ROOT / 'src' / 'modules' / 'duplicate-check' / 'app.html',
   ROOT / 'src' / 'modules' / 'seatplan' / 'app.html',
 ] + required_precache_assets
@@ -667,19 +665,16 @@ grades_index_path = ROOT / 'src' / 'modules' / 'grades' / 'index.js'
 qr_index_path = ROOT / 'src' / 'modules' / 'qr' / 'index.js'
 seatplan_index_path = ROOT / 'src' / 'modules' / 'seatplan' / 'index.js'
 name_learning_index_path = ROOT / 'src' / 'modules' / 'name-learning' / 'index.js'
-merger_index_path = ROOT / 'src' / 'modules' / 'merger' / 'index.js'
 duplicate_check_index_path = ROOT / 'src' / 'modules' / 'duplicate-check' / 'index.js'
 help_visuals_path = ROOT / 'src' / 'app' / 'help-visuals.js'
 bootstrap_path = ROOT / 'src' / 'app' / 'bootstrap.js'
 isolated_tool_module_sandbox_profiles = {
   name_learning_index_path: 'ISOLATED_MODULE_SANDBOX',
   qr_index_path: 'QR_MODULE_SANDBOX',
-  merger_index_path: 'MERGER_MODULE_SANDBOX',
   duplicate_check_index_path: 'DUPLICATE_CHECK_MODULE_SANDBOX',
 }
 isolated_sandbox_profile_tokens = {
   'ISOLATED_MODULE_SANDBOX': {'allow-scripts'},
-  'MERGER_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
   'DUPLICATE_CHECK_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
   'QR_MODULE_SANDBOX': {'allow-scripts', 'allow-downloads'},
 }
@@ -795,13 +790,12 @@ for path in iter_source_files():
     errors.append(f'new module frames must use a known module sandbox profile or be explicitly allowlisted: {rel(path)}')
 
 standalone_guard_path = ROOT / 'src' / 'shared' / 'module-standalone-guard.js'
-standalone_guard_deep_link_tabs = {'merger', 'duplicate-check', 'qr'}
+standalone_guard_deep_link_tabs = {'duplicate-check', 'qr'}
 module_page_tabs = {
   'grades': 'grades',
   'planning': 'planning',
   'seatplan': 'seatplan',
   'name-learning': 'name-learning',
-  'merger': 'merger',
   'duplicate-check': 'duplicate-check',
   'qr': 'qr',
 }
@@ -870,7 +864,6 @@ tutorial_paths = [tutorial_dir / name for name in [
   'duplicate-check.js',
   'grades.js',
   'groups.js',
-  'merger.js',
   'name-learning.js',
   'planning.js',
   'qr.js',
@@ -903,7 +896,6 @@ if main_path.exists() and dom_path.exists() and all(path.exists() for path in tu
   tutorial_modules = [
     (tutorial_dir / 'grades.js', ROOT / 'src' / 'modules' / 'grades'),
     (tutorial_dir / 'planning.js', ROOT / 'src' / 'modules' / 'planning'),
-    (tutorial_dir / 'merger.js', ROOT / 'src' / 'modules' / 'merger'),
     (tutorial_dir / 'seatplan.js', ROOT / 'src' / 'modules' / 'seatplan'),
     (tutorial_dir / 'duplicate-check.js', ROOT / 'src' / 'modules' / 'duplicate-check'),
     (tutorial_dir / 'qr.js', ROOT / 'src' / 'modules' / 'qr'),
