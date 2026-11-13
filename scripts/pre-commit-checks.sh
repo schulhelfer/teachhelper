@@ -67,7 +67,7 @@ else
 fi
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "Error: Node.js not found. Install Node.js to stamp the app version." >&2
+  echo "Error: Node.js not found. Install Node.js to run the regression tests and stamp the app version." >&2
   exit 1
 fi
 
@@ -86,6 +86,16 @@ case "$python_runner" in
     run_python_checks wsl.exe python3
     ;;
 esac
+
+echo "Running Node.js regression tests..."
+if node --test tests/*.test.mjs; then
+  :
+else
+  status=$?
+  echo "Pre-Commit abgebrochen: Die Node.js-Regressionstests sind fehlgeschlagen." >&2
+  echo "Details erneut anzeigen: node --test tests/*.test.mjs" >&2
+  exit "$status"
+fi
 
 echo "Stamping the app version..."
 node scripts/stamp-app-version.mjs

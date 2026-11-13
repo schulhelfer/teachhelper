@@ -61,7 +61,7 @@ Alle Befehle im Repository-Root ausführen; erforderlich sind Node.js und Python
 - Statischer/PWA-Audit: `python3 scripts/audit.py`; prüft u. a. CSP, Assets, Vendor-Prüfsummen, verbotene APIs und Modulverträge.
 - Python-Regressionen: `sh -c 'for test_file in tests/*.test.py; do python3 "$test_file" || exit 1; done'`.
 - Vendor-Prüfungen mit Netzwerkzugriff: `python3 scripts/check-vendor-security.py` und `python3 scripts/check-vendor-updates.py`.
-- Gesamter Pre-Commit-Ablauf: `sh scripts/pre-commit-checks.sh`; Hook installieren: `sh scripts/install-hooks.sh`.
+- Gesamter Pre-Commit-Ablauf: `sh scripts/pre-commit-checks.sh` (Audit, Python-Regressionen, Vendor-Prüfungen, gesamte JS-Suite inkl. Browser-Tests); Hook installieren: `sh scripts/install-hooks.sh`.
 - Der Pre-Commit-Ablauf erhöht zuletzt per `node scripts/stamp-app-version.mjs` die Version und verändert/staged `src/shared/app-version.js` sowie `sw.js`.
 - Kein separater Lint-/Build-Befehl konfiguriert; der Audit übernimmt statische Prüfungen, Browser laden die Quelldateien direkt.
 

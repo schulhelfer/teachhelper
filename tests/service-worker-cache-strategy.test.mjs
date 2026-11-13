@@ -291,8 +291,12 @@ test('the app version is stamped only after successful local checks', async () =
   ]);
   assert.match(hook, /node scripts\/stamp-app-version\.mjs/);
   assert.doesNotMatch(hook, /sync-sw-version|check-version-bump/);
-  assert.doesNotMatch(hook, /node --test/);
+  assert.match(hook, /node --test tests\/\*\.test\.mjs/);
   assert.match(hook, /for python_test in tests\/\*\.test\.py/);
+  assert.ok(
+    hook.indexOf('node --test tests/*.test.mjs') < hook.indexOf('node scripts/stamp-app-version.mjs'),
+    'Node.js regression tests must pass before the generated app version is written',
+  );
   assert.ok(
     hook.indexOf('run_python_checks python3') < hook.indexOf('node scripts/stamp-app-version.mjs'),
     'Python checks must pass before the generated app version is written',
