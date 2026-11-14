@@ -33,7 +33,7 @@ export function recognizeLocalNames(image, { signal, onProgress, workerFactory }
     worker.onmessage = ({ data }) => {
       if (settled) return;
       if (data?.type === "progress") onProgress?.(data);
-      else if (data?.type === "result") finish(null, String(data.text || ""));
+      else if (data?.type === "result") finish(null, { text: String(data.text || ""), tsv: String(data.tsv || "") });
       else if (data?.type === "error") finish(new Error("Die lokale Texterkennung konnte nicht ausgeführt werden. Bitte erneut versuchen. Offline müssen die OCR-Dateien zuvor vollständig geladen worden sein."));
     };
     worker.onerror = (event) => {

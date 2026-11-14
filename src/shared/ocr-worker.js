@@ -5,7 +5,7 @@ self.onmessage = async ({ data }) => {
   let worker;
   try {
     importScripts(vendorUrl("tesseract.js/7.0.0/tesseract.min.js"));
-    worker = await self.Tesseract.createWorker("deu+fra", 1, {
+    worker = await self.Tesseract.createWorker("deu+fra+vie", 1, {
       workerPath: vendorUrl("tesseract.js/7.0.0/worker.min.js"),
       corePath: vendorUrl("tesseract.js-core/7.0.0"),
       langPath: vendorUrl("tesseract.js-data/1.0.0"),
@@ -16,8 +16,8 @@ self.onmessage = async ({ data }) => {
       errorHandler: () => self.postMessage({ type: "error" }),
     });
     await worker.setParameters({ tessedit_pageseg_mode: "6", preserve_interword_spaces: "1" });
-    const result = await worker.recognize(new Uint8Array(data));
-    self.postMessage({ type: "result", text: result.data.text });
+    const result = await worker.recognize(new Uint8Array(data), {}, { text: true, tsv: true });
+    self.postMessage({ type: "result", text: result.data.text, tsv: result.data.tsv || "" });
   } catch (_error) {
     self.postMessage({ type: "error" });
   } finally {

@@ -185,7 +185,7 @@
       "registry": "npm",
       "package": "@tesseract.js-data/deu",
       "purl": "pkg:npm/%40tesseract.js-data/deu@1.0.0",
-      "updateNotes": "Use 4.0.0_best_int/deu.traineddata.gz from this npm release. The npm package metadata declares MIT but contains no license file; the trained model derives from Apache-2.0 Tesseract language data. LICENSE is copied from https://github.com/tesseract-ocr/tessdata/blob/4.1.0/LICENSE and also covers the fra model in the same directory. All language models must share one directory because tesseract.js loads every language from a single langPath. Refresh hashes and run scripts/audit.py and offline OCR checks.",
+      "updateNotes": "Use 4.0.0_best_int/deu.traineddata.gz from this npm release. The npm package metadata declares MIT but contains no license file; the trained model derives from Apache-2.0 Tesseract language data. LICENSE is copied from https://github.com/tesseract-ocr/tessdata/blob/4.1.0/LICENSE and also covers the fra and vie models in the same directory. All language models must share one directory because tesseract.js loads every language from a single langPath. Refresh hashes and run scripts/audit.py and offline OCR checks.",
       "files": [
         {
           "path": "src/vendor/tesseract.js-data/1.0.0/LICENSE",
@@ -213,6 +213,23 @@
           "path": "src/vendor/tesseract.js-data/1.0.0/fra.traineddata.gz",
           "role": "language-model",
           "sha256": "d611139672b3752c7097e671e4a1d9209dfd37f2aeb081ef6487fba3351e9255"
+        }
+      ]
+    },
+    {
+      "name": "@tesseract.js-data/vie",
+      "version": "1.0.0",
+      "license": "Apache-2.0",
+      "source": "https://www.npmjs.com/package/@tesseract.js-data/vie/v/1.0.0",
+      "registry": "npm",
+      "package": "@tesseract.js-data/vie",
+      "purl": "pkg:npm/%40tesseract.js-data/vie@1.0.0",
+      "updateNotes": "Use 4.0.0_best_int/vie.traineddata.gz from this npm release. Adds Vietnamese letters (ê, ễ, ạ, ầ …) to the name OCR, which runs as deu+fra+vie with German as primary language. Licensed like the deu model; the shared LICENSE is listed under @tesseract.js-data/deu because the audit rejects duplicate paths. Must stay in the same directory as deu.traineddata.gz. Refresh hashes and run scripts/audit.py and offline OCR checks.",
+      "files": [
+        {
+          "path": "src/vendor/tesseract.js-data/1.0.0/vie.traineddata.gz",
+          "role": "language-model",
+          "sha256": "2284f610f262a1b19ec8df9f196b9ff6ce38ddb4a66329e998941df4b8961c8d"
         }
       ]
     }

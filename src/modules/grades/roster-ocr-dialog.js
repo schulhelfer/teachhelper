@@ -1,7 +1,7 @@
 import { createOcrPdfSession } from "./roster-ocr-pdf.js";
 import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TIMEOUTS, withTimeout } from "../../shared/file-guards.js";
 import { recognizeLocalNames } from "../../shared/ocr-vendor.js";
-import { boundCrop, changeCrop, cropPixels, importableOcrNames, ocrOutputSize, parseOcrNames } from "./roster-ocr-data.js";
+import { boundCrop, changeCrop, cropPixels, importableOcrNames, ocrLinesFromTsv, ocrOutputSize, parseOcrLayout, parseOcrNames } from "./roster-ocr-data.js";
 import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair } from "../../shared/school-data/grades.js";
 
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 };
@@ -144,6 +144,13 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
     }
     list.append(head);
   };
+  const rowNotes = (row) => (Array.isArray(row?.notes) ? row.notes.filter(Boolean) : []);
+  const recognitionSummary = () => {
+    if (!rows.length) return "Keine Namen erkannt.";
+    const adjusted = rows.filter((row) => rowNotes(row).length).length;
+    if (!adjusted) return "";
+    return `Bei ${adjusted === 1 ? "einem Eintrag" : `${adjusted} Einträgen`} wurde der erkannte Text angepasst – bitte die markierten Zeilen prüfen.`;
+  };
   const renderRows = () => {
     const list = ref("rows");
     const items = [];
@@ -153,8 +160,11 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
     rows.forEach((row, index) => {
       const item = doc.createElement("div");
       item.className = "course-ocr-row";
+      const notes = rowNotes(row);
+      const noteId = `course-ocr-note-${index + 1}`;
       for (const [field, title] of [["lastName", "Nachname"], ["firstName", "Vorname"]]) {
         const input = doc.createElement("input");
+        if (notes.length) input.setAttribute("aria-describedby", noteId);
         input.type = "text";
         input.value = row[field];
         input.maxLength = FILE_LIMITS.CSV_MAX_CELL_CHARS;
@@ -193,6 +203,13 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
         (remaining[Math.min(index, remaining.length - 1)]?.querySelector("button") || ref("recognize")).focus();
       });
       item.append(remove);
+      if (notes.length) {
+        const note = doc.createElement("p");
+        note.className = "course-ocr-note";
+        note.id = noteId;
+        note.textContent = `⚠️ Angepasst: ${notes.join(" · ")}`;
+        item.append(note);
+      }
       list.append(item);
       items.push(item);
     });
@@ -350,7 +367,7 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
       if (!blob) throw new Error("Der Bildausschnitt konnte nicht erstellt werden.");
       const bytes = await blob.arrayBuffer();
       if (signal.aborted) return;
-      const text = await recognize(bytes, {
+      const recognized = await recognize(bytes, {
         signal, onProgress: ({ status: phase, progress }) => {
           if (token !== generation) return;
           if (phase === "recognizing text") {
@@ -360,13 +377,16 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
         }
       });
       if (token !== generation || !dialog.open) return;
-      rows = parseOcrNames(text, order);
+      const layout = typeof recognized === "string" ? [] : ocrLinesFromTsv(recognized?.tsv);
+      rows = layout.length
+        ? parseOcrLayout(layout, order)
+        : parseOcrNames(typeof recognized === "string" ? recognized : recognized?.text, order);
       if (rows.length > FILE_LIMITS.CSV_MAX_ROWS || rows.some((row) => row.raw.length > FILE_LIMITS.CSV_MAX_CELL_CHARS)) {
         clearRows();
         throw new Error("Zu viele oder zu lange Einträge. Bitte einen kleineren Listenbereich auswählen.");
       }
       renderRows();
-      status(rows.length ? "" : "Keine Namen erkannt.");
+      status(recognitionSummary());
       ref("review").querySelector("input")?.focus();
     } catch (error) {
       if (token === generation && error?.name !== "AbortError") status(error instanceof Error ? error.message : "Die Erkennung ist fehlgeschlagen.");

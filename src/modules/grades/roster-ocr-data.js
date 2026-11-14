@@ -2,13 +2,56 @@ import { normalizeGradeClassFlair } from "../../shared/school-data/grades.js";
 
 const clean = (value) => String(value || "").replace(/\s+/g, " ").trim();
 
-const NAME_EDGE_NOISE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
+const EDGE_PUNCTUATION = String.raw`\s.,;:!?"'„“”‚‘’«»()\[\]{}|•·*_\-–—/\\`;
+const NAME_EDGE_PUNCTUATION = new RegExp(`^[${EDGE_PUNCTUATION}]+|[${EDGE_PUNCTUATION}]+$`, "gu");
+const NAME_SYMBOL = /[^\p{L}\p{M}\-'’.]/gu;
+const ACCENT_SUGGESTIONS = Object.freeze({ ũ: "ü", Ũ: "Ü", õ: "ö", Õ: "Ö", ẽ: "ë", ã: "ä", Ã: "Ä" });
+const ACCENT_SUGGESTION_PATTERN = new RegExp(`[${Object.keys(ACCENT_SUGGESTIONS).join("")}]`, "gu");
+const VIETNAMESE_MARKERS = /[ăđơưĂĐƠƯĩĨẠ-ỹ]/u;
+const MIN_ACCENT_HINT_LETTERS = 4;
 
-const cleanNamePart = (value) => clean(value)
+const stripEdges = (word) => String(word || "").replace(NAME_EDGE_PUNCTUATION, "");
+
+function nameWordNotes(word) {
+  const notes = [];
+  const symbols = [...new Set(word.match(NAME_SYMBOL) || [])];
+  if (symbols.length) {
+    notes.push(`„${word}“ enthält ein unsicher erkanntes Zeichen („${symbols.join("“, „")}“) – bitte prüfen`);
+  }
+  const letters = word.match(/\p{L}/gu) || [];
+  const suggested = word.replace(ACCENT_SUGGESTION_PATTERN, (char) => ACCENT_SUGGESTIONS[char]);
+  const looksMisread = suggested !== word
+    && letters.length >= MIN_ACCENT_HINT_LETTERS
+    && !VIETNAMESE_MARKERS.test(word.replace(ACCENT_SUGGESTION_PATTERN, ""));
+  if (looksMisread) notes.push(`„${word}“ – Akzent prüfen (evtl. „${suggested}“)`);
+  return notes;
+}
+
+const cleanNamePart = (value, notes = null) => clean(value)
   .split(" ")
-  .map((word) => word.replace(NAME_EDGE_NOISE, ""))
-  .filter((word) => word && !/\p{N}/u.test(word))
+  .map(stripEdges)
+  .filter((word) => {
+    if (!word) return false;
+    if (/\p{N}/u.test(word)) {
+      notes?.push(`„${word}“ aus dem Namen entfernt`);
+      return false;
+    }
+    notes?.push(...nameWordNotes(word));
+    return true;
+  })
   .join(" ");
+
+function splitNameLine(text, order, notes) {
+  const line = String(text || "").replace(/^\d+[.)\s]+/, "").trim();
+  const parts = line.split(/\s*[,;\t]\s*| {2,}/).filter(Boolean);
+  if (parts.length < 2) {
+    const words = line.split(/\s+/);
+    parts.splice(0, parts.length, words.shift() || "", words.join(" "));
+  }
+  const left = cleanNamePart(parts[0], notes);
+  const right = cleanNamePart(parts.slice(1).join(" "), notes);
+  return order === "last-first" ? { lastName: left, firstName: right } : { lastName: right, firstName: left };
+}
 
 const CLASS_TOKEN = /(^|[\s,;|])(\d+)[ \u00a0]*([\p{L}(\u00a9]?)[.,:)\]]*(?=$|[\s,;|])/gu;
 const LETTER_LOOKALIKES = Object.freeze({ o: "c", "(": "c", "\u00a9": "c" });
@@ -30,38 +73,146 @@ function dominantGrade(lines) {
 }
 
 function resolveClassToken(digits, letter, leading, contextGrade) {
-  if (letter) return { key: `${digits}${letter.toLowerCase()}`, flair: letterFlair(letter) };
+  if (letter) {
+    const lower = letter.toLowerCase();
+    return { key: `${digits}${lower}`, flair: letterFlair(letter), inferred: Boolean(LETTER_LOOKALIKES[lower]) };
+  }
   const grade = digits.slice(0, -1);
   const flair = DIGIT_LOOKALIKES[digits.slice(-1)];
   if (!flair || !isPlausibleGrade(grade)) return null;
   const fits = contextGrade ? grade === contextGrade : !leading && Number(digits) > MAX_GRADE;
-  return fits ? { key: `${grade}${flair}`, flair } : null;
+  return fits ? { key: `${grade}${flair}`, flair, inferred: true } : null;
+}
+
+const classReadNote = (cell, flair) => `„${cell}“ als Klasse ${flair} gelesen`;
+const invalidClassNote = (cell) => `„${cell}“ entfernt – keine gültige Klasse`;
+
+const UPPERCASE_SHARE_LIMIT = 0.5;
+
+const nameWordsOf = (row) => `${row.lastName} ${row.firstName}`.split(" ").filter((word) => /\p{L}/u.test(word));
+const isUppercaseWord = (word) => (word.match(/\p{L}/gu) || []).length >= 2
+  && word === word.toLocaleUpperCase("de") && word !== word.toLocaleLowerCase("de");
+
+function flagUppercaseWords(rows) {
+  const words = rows.flatMap(nameWordsOf);
+  const uppercase = words.filter(isUppercaseWord);
+  if (!uppercase.length || uppercase.length / words.length >= UPPERCASE_SHARE_LIMIT) return rows;
+  for (const row of rows) {
+    for (const word of nameWordsOf(row).filter(isUppercaseWord)) {
+      row.notes.push(`„${word}“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen`);
+    }
+  }
+  return rows;
 }
 
 export function parseOcrNames(text, order = "last-first") {
   const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const contextGrade = dominantGrade(lines);
-  return lines.map((raw) => {
+  return flagUppercaseWords(lines.map((raw) => {
     const classes = new Map();
+    const notes = [];
     const names = raw.replace(CLASS_TOKEN, (match, boundary, digits, letter, offset) => {
       const token = resolveClassToken(digits, letter, !raw.slice(0, offset).trim(), contextGrade);
       if (!token) return match;
-      classes.set(token.key, token.flair);
+      classes.set(token.key, { ...token, cell: match.slice(boundary.length).trim() });
       return `${boundary}  `;
     });
-    const classFlair = classes.size === 1 ? [...classes.values()][0] : "";
-    const line = names.replace(/^\d+[.)\s]+/, "").trim();
-    const parts = line.split(/\s*[,;\t]\s*| {2,}/).filter(Boolean);
-    if (parts.length < 2) {
-      const words = line.split(/\s+/);
-      parts.splice(0, parts.length, words.shift() || "", words.join(" "));
+    const tokens = [...classes.values()];
+    const single = tokens.length === 1 ? tokens[0] : null;
+    if (tokens.length > 1) {
+      notes.push(`Mehrere Klassen erkannt (${tokens.map((token) => `„${token.cell}“`).join(", ")}) – keine übernommen`);
+    } else if (single && !single.flair) {
+      notes.push(invalidClassNote(single.cell));
+    } else if (single?.inferred) {
+      notes.push(classReadNote(single.cell, single.flair));
     }
-    const left = cleanNamePart(parts[0]);
-    const right = cleanNamePart(parts.slice(1).join(" "));
-    const lastName = order === "last-first" ? left : right;
-    const firstName = order === "last-first" ? right : left;
-    return { raw, lastName, firstName, classFlair };
-  });
+    return { raw, ...splitNameLine(names, order, notes), classFlair: single?.flair || "", notes };
+  }));
+}
+
+export function ocrLinesFromTsv(tsv) {
+  const lines = new Map();
+  for (const row of String(tsv || "").split(/\r?\n/)) {
+    const cells = row.split("\t");
+    if (cells.length < 12 || cells[0] !== "5") continue;
+    const text = cells.slice(11).join(" ").trim();
+    const [left, , width, height] = cells.slice(6, 10).map(Number);
+    if (!text || ![left, width, height].every(Number.isFinite)) continue;
+    const key = cells.slice(2, 5).join(":");
+    if (!lines.has(key)) lines.set(key, []);
+    lines.get(key).push({ text, left, right: left + width, height });
+  }
+  return [...lines.values()].map((words) => ({ words: words.sort((a, b) => a.left - b.left) }));
+}
+
+const STRICT_CLASS = /^\d{1,2}([a-g])$/i;
+const CLASS_HEADER = /^kl(asse)?$/i;
+const MAX_CLASS_CELL_CHARS = 4;
+const COLUMN_GAP_FACTOR = 0.9;
+
+const median = (values) => {
+  const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
+  if (!sorted.length) return 0;
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 ? sorted[middle] : (sorted[middle - 1] + sorted[middle]) / 2;
+};
+
+const wordCenter = (word) => (word.left + word.right) / 2;
+
+function detectClassColumn(lines) {
+  const words = lines.flatMap((line) => line.words);
+  const anchors = words.filter((word) => STRICT_CLASS.test(stripEdges(word.text)));
+  if (!anchors.length) return null;
+  const size = median(anchors.map((word) => word.height));
+  const center = median(anchors.map(wordCenter));
+  const aligned = words.filter((word) => (
+    stripEdges(word.text).length <= MAX_CLASS_CELL_CHARS
+    && Math.abs(wordCenter(word) - center) <= size
+  ));
+  if (aligned.length < 2) return null;
+  return {
+    left: Math.min(...aligned.map((word) => word.left)) - size / 2,
+    right: Math.max(...aligned.map((word) => word.right)) + size / 2,
+  };
+}
+
+function isClassCellWord(word, column) {
+  const text = stripEdges(word.text);
+  const center = wordCenter(word);
+  if (center < column.left || center > column.right) return false;
+  return CLASS_HEADER.test(text) || text.length <= MAX_CLASS_CELL_CHARS;
+}
+
+function resolveClassCell(words) {
+  const cell = stripEdges(words.map((word) => word.text).join(""));
+  if (!cell || CLASS_HEADER.test(cell)) return { flair: "", note: "" };
+  const strict = cell.match(STRICT_CLASS);
+  if (strict) return { flair: strict[1].toLowerCase(), note: "" };
+  const last = cell.slice(-1);
+  const flair = letterFlair(last) || DIGIT_LOOKALIKES[last] || "";
+  return { flair, note: flair ? classReadNote(cell, flair) : invalidClassNote(cell) };
+}
+
+function joinWords(words) {
+  const gap = median(words.map((word) => word.height)) * COLUMN_GAP_FACTOR;
+  return words.reduce((text, word, index) => {
+    if (!index) return word.text;
+    return `${text}${word.left - words[index - 1].right > gap ? "  " : " "}${word.text}`;
+  }, "");
+}
+
+export function parseOcrLayout(lines, order = "last-first") {
+  const filled = (lines || []).filter((line) => line?.words?.length);
+  const column = detectClassColumn(filled);
+  if (!column) return parseOcrNames(filled.map((line) => joinWords(line.words)).join("\n"), order);
+  return flagUppercaseWords(filled.map((line) => {
+    const cellWords = line.words.filter((word) => isClassCellWord(word, column));
+    const nameWords = line.words.filter((word) => !cellWords.includes(word));
+    const cell = resolveClassCell(cellWords);
+    const notes = cell.note ? [cell.note] : [];
+    const raw = line.words.map((word) => word.text).join(" ");
+    return { raw, ...splitNameLine(joinWords(nameWords), order, notes), classFlair: cell.flair, notes };
+  }));
 }
 
 export function importableOcrNames(rows) {

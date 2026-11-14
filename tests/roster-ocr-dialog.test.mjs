@@ -412,3 +412,35 @@ test('PDF page selection feeds the chosen page through the same crop and OCR flo
   assert.equal(destroyed, 1);
   assert.equal(state.refs['pdf-pages'].hidden, true);
 });
+
+test('table layouts from the OCR engine mark rows whose recognized text was adjusted', async (t) => {
+  installImage(t);
+  const word = (line, index, left, width, text) => `5\t1\t1\t1\t${line}\t${index}\t${left}\t${line * 30}\t${width}\t20\t90\t${text}`;
+  const tsv = [
+    word(1, 1, 10, 70, 'Müller'), word(1, 2, 200, 40, 'Tim'), word(1, 3, 405, 30, '9a'),
+    word(2, 1, 10, 60, 'Bauer'), word(2, 2, 200, 40, 'Max'), word(2, 3, 404, 30, 'sa'),
+    word(3, 1, 10, 60, 'Lang'), word(3, 2, 200, 40, 'Lea'), word(3, 3, 406, 28, '9b'),
+  ].join('\n');
+  const results = [];
+  const state = setup(async () => ({ text: 'Müller Tim 9a\nBauer Max sa\nLang Lea 9b', tsv }));
+  state.api.open((names) => { results.push(names); return { added: names.length, skipped: 0 }; });
+  await selectImage(state.refs);
+  state.refs.recognize.fire('click');
+  await tick(); await tick();
+  const [, first, second, third] = state.refs.rows.children;
+  const note = (row) => row.children.find((child) => child.className === 'course-ocr-note');
+  assert.equal(note(first), undefined);
+  assert.equal(note(third), undefined);
+  assert.equal(note(second).textContent, '⚠️ Angepasst: „sa“ als Klasse a gelesen');
+  assert.equal(second.children[0].attributes['aria-describedby'], note(second).id);
+  assert.equal(second.children[1].value, 'Max');
+  assert.equal(state.refs.status.textContent, 'Bei einem Eintrag wurde der erkannte Text angepasst – bitte die markierten Zeilen prüfen.');
+  const draft = state.api.captureDraft();
+  assert.deepEqual(draft.rows[1].notes, ['„sa“ als Klasse a gelesen']);
+  state.form.fire('submit');
+  assert.deepEqual(results, [[
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a' },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'a' },
+    { lastName: 'Lang', firstName: 'Lea', classFlair: 'b' },
+  ]]);
+});

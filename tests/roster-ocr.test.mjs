@@ -9,7 +9,7 @@ async function loadModule(path) {
     .replace(/(\bfrom\s*)(['"])(\.[^'"]*)\2/g, (_match, prefix, quote, specifier) => `${prefix}${quote}${new URL(specifier, url).href}${quote}`);
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
-const { parseOcrNames, importableOcrNames, boundCrop, changeCrop, cropPixels, ocrOutputSize } = await loadModule('../src/modules/grades/roster-ocr-data.js');
+const { parseOcrNames, parseOcrLayout, ocrLinesFromTsv, importableOcrNames, boundCrop, changeCrop, cropPixels, ocrOutputSize } = await loadModule('../src/modules/grades/roster-ocr-data.js');
 const { recognizeLocalNames } = await loadModule('../src/shared/ocr-vendor.js');
 const { buildStudentNameMatchKey } = await loadModule('../src/shared/school-data/seatplan-transfer.js');
 
@@ -165,9 +165,9 @@ test('successful and failed OCR jobs always release their workers and allow anot
   for (const type of ['result', 'error', 'result']) {
     const worker = fakeWorker();
     const promise = recognizeLocalNames(new ArrayBuffer(1), { workerFactory: () => worker });
-    worker.onmessage({ data: { type, text: 'Müller Anna' } });
+    worker.onmessage({ data: { type, text: 'Müller Anna', tsv: '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t90\tMüller' } });
     if (type === 'error') await assert.rejects(promise, /lokale Texterkennung/);
-    else assert.equal(await promise, 'Müller Anna');
+    else assert.deepEqual(await promise, { text: 'Müller Anna', tsv: '5\t1\t1\t1\t1\t1\t0\t0\t10\t10\t90\tMüller' });
     assert.equal(worker.terminated, true);
   }
 });
@@ -206,4 +206,155 @@ test('re-importing known names only fills in missing classes and keeps every exi
   assert.equal(withoutClass.classFlair, '');
   assert.equal(byId.get(5), withClass);
   assert.equal(app.courseDialogDraft.students.length, 3);
+});
+
+const tsvWord = (line, index, left, width, text, height = 20) => `5\t1\t1\t1\t${line}\t${index}\t${left}\t${line * 30}\t${width}\t${height}\t90\t${text}`;
+const tsvTable = (rows) => rows.flatMap((words, line) => words.map(([left, width, text], index) => tsvWord(line + 1, index + 1, left, width, text))).join('\n');
+const layoutRows = (rows, order) => parseOcrLayout(ocrLinesFromTsv(tsvTable(rows)), order)
+  .map(({ lastName, firstName, classFlair, notes }) => ({ lastName, firstName, classFlair, notes }));
+
+test('TSV words are grouped into lines in reading order and non-word rows are ignored', () => {
+  const tsv = [
+    '1\t1\t0\t0\t0\t0\t0\t0\t752\t180\t-1\t',
+    '4\t1\t1\t1\t1\t0\t40\t72\t664\t56\t-1\t',
+    '5\t1\t1\t1\t1\t2\t376\t72\t136\t56\t83.2\tMIA',
+    '5\t1\t1\t1\t1\t1\t40\t72\t232\t56\t90.4\tMEIER',
+    '5\t1\t1\t1\t2\t1\t40\t140\t200\t56\t91.0\tBAUER',
+    '5\t1\t1\t1\t2\t2\t300\t140\t20\t56\t10.0\t ',
+  ].join('\n');
+  assert.deepEqual(ocrLinesFromTsv(tsv), [
+    { words: [{ text: 'MEIER', left: 40, right: 272, height: 56 }, { text: 'MIA', left: 376, right: 512, height: 56 }] },
+    { words: [{ text: 'BAUER', left: 40, right: 240, height: 56 }] },
+  ]);
+  assert.deepEqual(ocrLinesFromTsv(''), []);
+});
+
+test('a class column in a printed table is recognized even where single cells were misread', () => {
+  assert.deepEqual(layoutRows([
+    [[10, 80, 'Nachname'], [200, 70, 'Vorname'], [400, 60, 'Klasse']],
+    [[10, 70, 'Müller'], [200, 40, 'Tim'], [405, 30, '9a']],
+    [[10, 60, 'Bauer'], [200, 40, 'Max'], [404, 30, 'sa']],
+    [[10, 40, 'van'], [55, 35, 'der'], [95, 50, 'Meer'], [200, 50, 'Anna'], [255, 60, 'Maria'], [406, 28, '9b']],
+    [[10, 60, 'Lang'], [200, 40, 'Lea'], [403, 32, '9x']],
+    [[10, 60, 'Wolf'], [200, 40, 'Tom']],
+    [[10, 60, 'Kern'], [200, 40, 'Ida'], [405, 30, '90']],
+  ]), [
+    { lastName: 'Nachname', firstName: 'Vorname', classFlair: '', notes: [] },
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a', notes: [] },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'a', notes: ['„sa“ als Klasse a gelesen'] },
+    { lastName: 'van der Meer', firstName: 'Anna Maria', classFlair: 'b', notes: [] },
+    { lastName: 'Lang', firstName: 'Lea', classFlair: '', notes: ['„9x“ entfernt – keine gültige Klasse'] },
+    { lastName: 'Wolf', firstName: 'Tom', classFlair: '', notes: [] },
+    { lastName: 'Kern', firstName: 'Ida', classFlair: 'c', notes: ['„90“ als Klasse c gelesen'] },
+  ]);
+});
+
+test('the class column may stand before or between the name columns', () => {
+  assert.deepEqual(layoutRows([
+    [[10, 30, '7a'], [100, 70, 'Müller'], [300, 40, 'Tim']],
+    [[12, 28, 'Ta'], [100, 60, 'Bauer'], [300, 40, 'Max']],
+    [[11, 30, '7b'], [100, 60, 'Lang'], [300, 40, 'Lea']],
+  ]), [
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a', notes: [] },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'a', notes: ['„Ta“ als Klasse a gelesen'] },
+    { lastName: 'Lang', firstName: 'Lea', classFlair: 'b', notes: [] },
+  ]);
+  assert.deepEqual(layoutRows([
+    [[10, 40, 'Anna'], [200, 30, '9c'], [300, 60, 'Berg']],
+    [[10, 40, 'Ben'], [202, 28, 'so'], [300, 60, 'Kurz']],
+    [[10, 40, 'Ida'], [201, 30, '9a'], [300, 60, 'Hahn']],
+  ], 'first-last'), [
+    { firstName: 'Anna', lastName: 'Berg', classFlair: 'c', notes: [] },
+    { firstName: 'Ben', lastName: 'Kurz', classFlair: 'c', notes: ['„so“ als Klasse c gelesen'] },
+    { firstName: 'Ida', lastName: 'Hahn', classFlair: 'a', notes: [] },
+  ]);
+});
+
+test('without a recognizable class column the layout falls back to the text rules', () => {
+  const rows = [
+    [[10, 70, 'Müller'], [200, 40, 'Tim'], [400, 30, '9a']],
+    [[10, 60, 'Bauer'], [200, 40, 'Max'], [400, 30, '90']],
+  ];
+  assert.deepEqual(layoutRows([rows[0], [[10, 60, 'Bauer'], [200, 40, 'Max']]]), [
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a', notes: [] },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: '', notes: [] },
+  ]);
+  assert.deepEqual(layoutRows([[[10, 40, 'van'], [55, 35, 'der'], [95, 50, 'Meer'], [200, 40, 'Léa']]]), [
+    { lastName: 'van der Meer', firstName: 'Léa', classFlair: '', notes: [] },
+  ]);
+  assert.equal(layoutRows(rows)[1].classFlair, 'c');
+});
+
+test('text-based parsing explains every change it makes to the recognized names', () => {
+  const notes = (text) => parseOcrNames(text).map((row) => row.notes);
+  assert.deepEqual(notes('Müller  Tim  9a\n1. Bauer, Max'), [[], []]);
+  assert.deepEqual(notes('Müller  Tim  90'), [['„90“ als Klasse c gelesen']]);
+  assert.deepEqual(notes('Müller  Tim  9o'), [['„9o“ als Klasse c gelesen']]);
+  assert.deepEqual(notes('Müller  Tim  7h'), [['„7h“ entfernt – keine gültige Klasse']]);
+  assert.deepEqual(notes('7a  Müller  Tim  11b'), [['Mehrere Klassen erkannt („7a“, „11b“) – keine übernommen']]);
+  assert.deepEqual(notes('Müller  Tim  20'), [['„20“ als Klasse c gelesen']]);
+  assert.deepEqual(notes('Müller  Tim  123'), [['„123“ aus dem Namen entfernt']]);
+});
+
+test('one clearly read class anchors the column when other rows have short words right below it', () => {
+  assert.deepEqual(layoutRows([
+    [[10, 70, 'Müller'], [200, 40, 'Tim'], [404, 30, 'sa']],
+    [[10, 60, 'Bauer'], [200, 40, 'Max'], [405, 30, '9a']],
+    [[10, 60, 'Lang'], [200, 40, 'Lea'], [403, 32, 'Se']],
+  ]), [
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a', notes: ['„sa“ als Klasse a gelesen'] },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'a', notes: [] },
+    { lastName: 'Lang', firstName: 'Lea', classFlair: 'e', notes: ['„Se“ als Klasse e gelesen'] },
+  ]);
+  assert.deepEqual(layoutRows([
+    [[10, 70, 'Müller'], [200, 40, 'Tim'], [404, 30, '9a']],
+    [[10, 60, 'Bauer'], [200, 40, 'Max']],
+    [[10, 60, 'Lang'], [200, 90, 'Leonie']],
+  ]), [
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a', notes: [] },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: '', notes: [] },
+    { lastName: 'Lang', firstName: 'Leonie', classFlair: '', notes: [] },
+  ]);
+});
+
+test('uncertain symbols stay visible in the name and are flagged instead of being silently dropped', () => {
+  const rows = parseOcrNames('L&  Anna\nNguy&n  Minh\nL€, Bao');
+  assert.deepEqual(rows.map(({ lastName, firstName, notes }) => ({ lastName, firstName, notes })), [
+    { lastName: 'L&', firstName: 'Anna', notes: ['„L&“ enthält ein unsicher erkanntes Zeichen („&“) – bitte prüfen'] },
+    { lastName: 'Nguy&n', firstName: 'Minh', notes: ['„Nguy&n“ enthält ein unsicher erkanntes Zeichen („&“) – bitte prüfen'] },
+    { lastName: 'L€', firstName: 'Bao', notes: ['„L€“ enthält ein unsicher erkanntes Zeichen („€“) – bitte prüfen'] },
+  ]);
+  assert.deepEqual(
+    parseOcrNames('Müller,  Anna .\n• Bauer   Max\n|Lang:   Lea\nSt. Clair  Tom\nO’Neill  Max\nMüller-Schön  Anna').map((row) => row.notes),
+    [[], [], [], [], [], []],
+  );
+});
+
+test('Vietnamese names pass unflagged while German names with a misread tilde get a suggestion', () => {
+  const rows = parseOcrNames('Lê  Anna\nNguyễn  Minh\nTrần  Bảo\nVũ  Lan\nPhạm  Thị Hồng\nMũller  Tim\nSchrõder  Jörg\nWeiß  Gaẽlle');
+  assert.deepEqual(rows.map((row) => row.notes), [
+    [], [], [], [], [],
+    ['„Mũller“ – Akzent prüfen (evtl. „Müller“)'],
+    ['„Schrõder“ – Akzent prüfen (evtl. „Schröder“)'],
+    ['„Gaẽlle“ – Akzent prüfen (evtl. „Gaëlle“)'],
+  ]);
+  assert.deepEqual(importableOcrNames(rows).slice(0, 2), [
+    { lastName: 'Lê', firstName: 'Anna', classFlair: '' },
+    { lastName: 'Nguyễn', firstName: 'Minh', classFlair: '' },
+  ]);
+  assert.equal(rows[5].lastName, 'Mũller');
+});
+
+test('a single word in capitals inside a normally written list is flagged as a possibly lost accent', () => {
+  const rows = parseOcrNames('LE  Anna\nMüller  Tim\nNguyễn  Minh\nTrần  Bảo');
+  assert.deepEqual(rows.map((row) => row.notes), [
+    ['„LE“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen'], [], [], [],
+  ]);
+  assert.equal(rows[0].lastName, 'LE');
+  assert.deepEqual(parseOcrNames('MÜLLER  Tim\nBAUER  Max\nLE  Anna').map((row) => row.notes), [[], [], []]);
+  assert.deepEqual(parseOcrNames('Müller  T. J.\nBauer  Max').map((row) => row.notes), [[], []]);
+  assert.deepEqual(layoutRows([
+    [[10, 40, 'LE'], [200, 50, 'Anna'], [405, 30, '9a']],
+    [[10, 70, 'Müller'], [200, 40, 'Tim'], [404, 30, '9b']],
+  ]).map((row) => row.notes), [['„LE“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen'], []]);
 });

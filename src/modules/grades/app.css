@@ -10666,6 +10666,17 @@ html[data-module-role="planning"] #view-grades-entry-btn {
   height: var(--control-height);
   min-height: var(--control-height);
 }
+.course-ocr-note {
+  grid-column: 1 / -1;
+  margin: -0.2rem 0 0.2rem;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid var(--tooltip-warn-border);
+  border-radius: 0.4rem;
+  background: var(--tooltip-warn-bg);
+  color: var(--tooltip-warn-text);
+  font-size: 0.78rem;
+  line-height: 1.3;
+}
 .course-ocr-dialog progress { width: 100%; }
 
 .course-ocr-dialog [data-ocr="pdf-page"] { width: 5rem; }

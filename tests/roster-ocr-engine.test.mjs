@@ -83,28 +83,32 @@ function syntheticNameImage(text = 'MEIER  MIA') {
     R: ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
   };
   letters['É'] = [...ACUTE_ACCENT, ...letters.E];
-  const width = 80 + text.length * 48;
-  const height = 180;
-  const baselineTop = 72;
+  const lines = text.split('\n');
+  const lineHeight = 120;
+  const width = 80 + Math.max(...lines.map((line) => line.length)) * 48;
+  const height = 60 + lines.length * lineHeight;
   const pixels = Buffer.alloc(width * height, 255);
-  let cursor = 40;
-  for (const char of text) {
-    const glyph = letters[char];
-    if (glyph) {
-      const top = baselineTop - (glyph.length - 7) * 8;
-      for (let y = 0; y < glyph.length; y += 1) {
-        for (let x = 0; x < 5; x += 1) {
-          if (glyph[y][x] !== '1') continue;
-          for (let dy = 0; dy < 8; dy += 1) {
-            for (let dx = 0; dx < 8; dx += 1) {
-              pixels[(top + y * 8 + dy) * width + cursor + x * 8 + dx] = 0;
+  lines.forEach((line, lineIndex) => {
+    const baselineTop = 72 + lineIndex * lineHeight;
+    let cursor = 40;
+    for (const char of line) {
+      const glyph = letters[char];
+      if (glyph) {
+        const top = baselineTop - (glyph.length - 7) * 8;
+        for (let y = 0; y < glyph.length; y += 1) {
+          for (let x = 0; x < 5; x += 1) {
+            if (glyph[y][x] !== '1') continue;
+            for (let dy = 0; dy < 8; dy += 1) {
+              for (let dx = 0; dx < 8; dx += 1) {
+                pixels[(top + y * 8 + dy) * width + cursor + x * 8 + dx] = 0;
+              }
             }
           }
         }
       }
+      cursor += 48;
     }
-    cursor += 48;
-  }
+  });
   return Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), pixels]);
 }
 
@@ -140,8 +144,10 @@ test('vendored OCR recognizes a synthetic name using only local assets and no pe
     });
     assert.equal(result.type, 'result');
     assert.match(result.text, /MEIER\s+MIA/);
+    assert.match(result.tsv, /^5\t1\t1\t1\t1\t1\t\d+\t\d+\t\d+\t\d+\t[\d.]+\tMEIER$/m);
     assert.ok(requests.some((url) => url.endsWith('/deu.traineddata.gz')));
     assert.ok(requests.some((url) => url.endsWith('/fra.traineddata.gz')));
+    assert.ok(requests.some((url) => url.endsWith('/vie.traineddata.gz')));
     assert.ok(requests.some((url) => url.endsWith('-lstm.wasm.js')));
   } finally {
     clearTimeout(timeout);
