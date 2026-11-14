@@ -29906,25 +29906,61 @@ class GradesApp {
       return false;
     }
     const row = input.closest("tr") || input;
+    const cell = input.closest("td, th") || input;
     const rootRect = root.getBoundingClientRect();
     const rowRect = row.getBoundingClientRect();
+    const cellRect = cell.getBoundingClientRect();
     if (!rootRect.height || !rowRect.height) {
       return false;
     }
     const scrollMargin = 8;
-    const visibleTop = rootRect.top + scrollMargin;
-    const visibleBottom = rootRect.bottom - scrollMargin;
-    let nextScrollTop = Number(root.scrollTop || 0);
-    if (rowRect.top < visibleTop) {
-      nextScrollTop += rowRect.top - visibleTop;
-    } else if (rowRect.bottom > visibleBottom) {
-      nextScrollTop += rowRect.bottom - visibleBottom;
-    } else {
+    const tableHead = input.closest("table")?.tHead || null;
+    const headBottom = tableHead && !tableHead.contains(input)
+      ? tableHead.getBoundingClientRect().bottom
+      : rootRect.top;
+    const stickyStudentCell = row instanceof HTMLTableRowElement
+      ? row.querySelector(":scope > .student-col")
+      : null;
+    const stickyStudentRight = stickyStudentCell && stickyStudentCell !== cell
+      ? stickyStudentCell.getBoundingClientRect().right
+      : rootRect.left;
+    const verticalDelta = this.getGradeInputScrollDelta(
+      rowRect.top,
+      rowRect.bottom,
+      Math.max(rootRect.top, headBottom) + scrollMargin,
+      rootRect.top + root.clientHeight - scrollMargin
+    );
+    const horizontalDelta = cellRect.width
+      ? this.getGradeInputScrollDelta(
+        cellRect.left,
+        cellRect.right,
+        Math.max(rootRect.left, stickyStudentRight) + scrollMargin,
+        rootRect.left + root.clientWidth - scrollMargin
+      )
+      : 0;
+    if (!verticalDelta && !horizontalDelta) {
       return false;
     }
-    const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
-    root.scrollTop = clamp(Math.round(nextScrollTop), 0, maxScrollTop);
+    if (verticalDelta) {
+      const maxScrollTop = Math.max(0, root.scrollHeight - root.clientHeight);
+      root.scrollTop = clamp(Math.round(Number(root.scrollTop || 0) + verticalDelta), 0, maxScrollTop);
+    }
+    if (horizontalDelta) {
+      const maxScrollLeft = Math.max(0, root.scrollWidth - root.clientWidth);
+      root.scrollLeft = clamp(Math.round(Number(root.scrollLeft || 0) + horizontalDelta), 0, maxScrollLeft);
+      this.syncGradesEntryTableStickyScrollbarFromTable();
+    }
     return true;
+  }
+
+  getGradeInputScrollDelta(start, end, visibleStart, visibleEnd) {
+    if (start < visibleStart) {
+      return start - visibleStart;
+    }
+    if (end > visibleEnd) {
+      return Math.min(end - visibleEnd, Math.max(0, start - visibleStart));
+    }
+    return 0;
   }
 
   getSkippedGradeEntryKey(assessmentId, studentId, courseId = 0) {
