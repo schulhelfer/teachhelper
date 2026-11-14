@@ -74,8 +74,7 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
       const titleRect = title.getBoundingClientRect();
       const numberRect = number.getBoundingClientRect();
       const cellRect = cell.getBoundingClientRect();
-      const actions = [...(button.closest('.grade-test-group-actions')?.children
-        || cell.querySelectorAll('.grade-test-task-head > button'))];
+      const actions = [...button.parentElement.children].filter((node) => node.tagName === 'BUTTON');
       const actionRects = actions.map((action) => action.getBoundingClientRect());
       const lines = [...button.querySelector('.grade-test-subtask-icon').children];
       const iconRect = button.querySelector('.grade-test-subtask-icon').getBoundingClientRect();
@@ -100,6 +99,7 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
         noOverlap: actionRects.every((rect, index) => !index || rect.left >= actionRects[index - 1].right),
         withinCell: actionRects.every((rect) => rect.left >= cellRect.left && rect.right <= cellRect.right),
         actionOrder: actions.map((action) => action.hasAttribute('data-grade-test-add-subtask') ? 'abc'
+          : action.hasAttribute('data-grade-test-merge-subtasks') ? 'merge'
           : action.hasAttribute('data-grade-test-toggle-subtasks') ? 'toggle'
             : action.hasAttribute('data-grade-test-deficit-followup') ? 'followup'
               : action.hasAttribute('data-grade-test-competence') ? 'competence' : 'delete'),
@@ -116,8 +116,9 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
       const rect = button.getBoundingClientRect();
       const title = button.closest('th').querySelector('.grade-test-group-title');
       const titleRect = title.getBoundingClientRect();
-      const abc = button.previousElementSibling;
-      const abcRect = abc.getBoundingClientRect();
+      const abc = button.closest('th').querySelector('[data-grade-test-add-subtask]');
+      const remove = button.nextElementSibling;
+      const removeRect = remove.getBoundingClientRect();
       const style = getComputedStyle(button);
       const abcStyle = getComputedStyle(abc);
       return { text: button.textContent, size: [rect.width, rect.height], fontSize: Number.parseFloat(style.fontSize),
@@ -125,8 +126,39 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
         matchingFrame: ['borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderRadius', 'backgroundColor']
           .every((property) => style[property] === abcStyle[property]),
         belowTitle: rect.top >= titleRect.bottom, outsideTitle: !title.contains(button),
-        nextToAbc: abc.hasAttribute('data-grade-test-add-subtask') && rect.left >= abcRect.right,
-        alignedWithAbc: Math.abs(rect.top + rect.height / 2 - abcRect.top - abcRect.height / 2) < 1 };
+        deleteOnRight: remove.hasAttribute('data-grade-test-remove-task') && !remove.nextElementSibling && removeRect.left >= rect.right,
+        alignedWithDelete: Math.abs(rect.top + rect.height / 2 - removeRect.top - removeRect.height / 2) < 1 };
+    };
+    const mergeLayout = () => {
+      const button = content.querySelector('[data-grade-test-merge-subtasks]');
+      const rect = button.getBoundingClientRect();
+      const icon = button.querySelector('.grade-test-subtask-icon');
+      const minus = button.querySelector('.grade-test-subtask-minus');
+      const style = getComputedStyle(button);
+      const abcStyle = getComputedStyle(content.querySelector('[data-grade-test-add-subtask]'));
+      return {
+        matchingDesign: ['borderTopWidth', 'borderTopStyle', 'borderTopColor', 'borderRadius', 'backgroundColor', 'color', 'fontSize', 'gap']
+          .every((property) => style[property] === abcStyle[property]),
+        lines: [...icon.children].map((line) => line.textContent), minus: minus?.textContent || '',
+        noText: !button.textContent.includes('Zusammenfassen'), size: [rect.width, rect.height],
+        minusRightOfIcon: Boolean(minus && minus.getBoundingClientRect().left >= icon.getBoundingClientRect().right),
+        accessibleLabel: button.getAttribute('aria-label'),
+        noCompetenceSummary: !content.querySelector('[data-grade-test-group-competences]'),
+      };
+    };
+    const rowAlignment = () => {
+      const single = content.querySelector('th[data-grade-test-task-column="single"] .grade-test-task-head');
+      const group = content.querySelector('th[data-grade-test-group] .grade-test-group-head');
+      const pairs = [
+        [single.querySelector('button'), group.querySelector('.grade-test-group-actions > button')],
+        [single.querySelector('.grade-test-task-max'), group.querySelector('[data-grade-test-group-max]')],
+        [single.querySelector('.grade-test-task-afb'), group.querySelector('.grade-test-group-subtask-actions')],
+      ];
+      return pairs.map(([reference, node]) => {
+        const a = reference.getBoundingClientRect();
+        const b = node.getBoundingClientRect();
+        return Math.abs(a.top - b.top) < 1 && Math.abs(a.bottom - b.bottom) < 1;
+      });
     };
     const numberBoxLayout = () => [...content.querySelectorAll('th.grade-test-task-col .grade-test-task-title')].map((title) => {
       const cell = title.closest('th');
@@ -214,6 +246,8 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
       widerSummary: content.querySelector('th[data-grade-test-group]').getBoundingClientRect().width
         > content.querySelector('th[data-grade-test-parent-task]').getBoundingClientRect().width,
       button: buttonLayout(),
+      merge: mergeLayout(),
+      rows: rowAlignment(),
       toggle: toggleLayout(),
       numberBoxes: numberBoxLayout(),
       noChildButtons: !content.querySelector('[data-grade-test-parent-task] [data-grade-test-add-subtask]'),
@@ -270,15 +304,24 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
     assert.equal(button.iconFits, true);
     assert.deepEqual(button.size, [button.plus ? 40 : 25, 25]);
     assert.ok(button.actionSizes.every(([width, height], index) =>
-      width === (button.actionOrder[index] === 'abc' && button.plus ? 40 : 25) && height === 25));
+      width === (['abc', 'merge'].includes(button.actionOrder[index]) && button.plus ? 40 : 25) && height === 25));
     assert.equal(button.tooltip, 'Teilaufgabe hinzufügen');
     assert.equal(button.accessibleLabel, 'Teilaufgabe zu Aufgabe 1 hinzufügen');
   }
   assert.equal(result.initialButton.plus, '');
   assert.equal(result.edited.button.plus, '+');
   assert.equal(result.edited.button.plusInsideOnRight, true);
-  assert.deepEqual(result.initialButton.actionOrder, ['followup', 'competence', 'delete', 'abc']);
-  assert.deepEqual(result.edited.button.actionOrder, ['delete', 'abc', 'toggle']);
+  assert.deepEqual(result.initialButton.actionOrder, ['followup', 'competence', 'abc', 'delete']);
+  assert.deepEqual(result.edited.button.actionOrder, ['abc', 'merge']);
+  assert.deepEqual(result.edited.rows, [true, true, true]);
+  assert.equal(result.edited.merge.matchingDesign, true);
+  assert.deepEqual(result.edited.merge.lines, ['(a)', '(b)']);
+  assert.equal(result.edited.merge.minus, '−');
+  assert.equal(result.edited.merge.noText, true);
+  assert.deepEqual(result.edited.merge.size, [40, 25]);
+  assert.equal(result.edited.merge.minusRightOfIcon, true);
+  assert.equal(result.edited.merge.accessibleLabel, 'Teilaufgaben von Aufgabe 1 zusammenfassen');
+  assert.equal(result.edited.merge.noCompetenceSummary, true);
   assert.ok(Math.abs(result.initialButton.minColumnWidth - 7.2 * result.initialButton.rem) < 1);
   for (const toggle of [result.edited.toggle, result.collapsed.toggle]) {
     assert.deepEqual(toggle.size, [25, 25]);
@@ -288,8 +331,8 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
     assert.equal(toggle.matchingFrame, true);
     assert.equal(toggle.belowTitle, true);
     assert.equal(toggle.outsideTitle, true);
-    assert.equal(toggle.nextToAbc, true);
-    assert.equal(toggle.alignedWithAbc, true);
+    assert.equal(toggle.deleteOnRight, true);
+    assert.equal(toggle.alignedWithDelete, true);
   }
   const referenceBox = result.edited.numberBoxes[0];
   for (const box of result.edited.numberBoxes) {

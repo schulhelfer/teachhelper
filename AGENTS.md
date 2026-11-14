@@ -55,6 +55,7 @@
 
 Alle Befehle im Repository-Root ausführen; erforderlich sind Node.js und Python 3.
 
+- Lokal starten: VS Code Live Server mit den Einstellungen aus `.vscode/settings.json` (CORS-Header für opake Sandbox-Frames, kein injiziertes Inline-Skript wegen CSP).
 - Einzelne Regression: `node --test tests/workspace-owner-contract.test.mjs` (Datei passend zur Änderung wählen).
 - Gesamte JS-Suite: `node --test tests/*.test.mjs`; enthält Verhaltenstests und viele Quelltext-/HTML-Vertragstests.
 - Browser-Tests nutzen `tests/helpers/dom-browser.mjs`: Chrome/Chromium/Edge und Node mit globalem `WebSocket`; Browserpfad ggf. über `CHROME_BIN` setzen.

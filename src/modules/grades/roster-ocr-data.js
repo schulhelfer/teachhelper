@@ -7,14 +7,46 @@ const NAME_EDGE_NOISE = /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu;
 const cleanNamePart = (value) => clean(value)
   .split(" ")
   .map((word) => word.replace(NAME_EDGE_NOISE, ""))
-  .filter(Boolean)
+  .filter((word) => word && !/\p{N}/u.test(word))
   .join(" ");
 
+const CLASS_TOKEN = /(^|[\s,;|])(\d+)[ \u00a0]*([\p{L}(\u00a9]?)[.,:)\]]*(?=$|[\s,;|])/gu;
+const LETTER_LOOKALIKES = Object.freeze({ o: "c", "(": "c", "\u00a9": "c" });
+const DIGIT_LOOKALIKES = Object.freeze({ 0: "c", 6: "b" });
+const MAX_GRADE = 13;
+
+const letterFlair = (letter) => normalizeGradeClassFlair(LETTER_LOOKALIKES[letter.toLowerCase()] || letter);
+
+const isPlausibleGrade = (digits) => /^[1-9]\d?$/.test(digits) && Number(digits) <= MAX_GRADE;
+
+function dominantGrade(lines) {
+  const counts = new Map();
+  for (const line of lines) {
+    for (const [, , digits, letter] of line.matchAll(CLASS_TOKEN)) {
+      if (letter && letterFlair(letter)) counts.set(digits, (counts.get(digits) || 0) + 1);
+    }
+  }
+  return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+}
+
+function resolveClassToken(digits, letter, leading, contextGrade) {
+  if (letter) return { key: `${digits}${letter.toLowerCase()}`, flair: letterFlair(letter) };
+  const grade = digits.slice(0, -1);
+  const flair = DIGIT_LOOKALIKES[digits.slice(-1)];
+  if (!flair || !isPlausibleGrade(grade)) return null;
+  const fits = contextGrade ? grade === contextGrade : !leading && Number(digits) > MAX_GRADE;
+  return fits ? { key: `${grade}${flair}`, flair } : null;
+}
+
 export function parseOcrNames(text, order = "last-first") {
-  return String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((raw) => {
+  const lines = String(text || "").split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const contextGrade = dominantGrade(lines);
+  return lines.map((raw) => {
     const classes = new Map();
-    const names = raw.replace(/(^|[\s,;|])(\d+[ \u00a0]*([a-z]))(?=$|[\s,;|])/gi, (_match, boundary, value, letter) => {
-      classes.set(value.replace(/\s/g, "").toLowerCase(), normalizeGradeClassFlair(letter));
+    const names = raw.replace(CLASS_TOKEN, (match, boundary, digits, letter, offset) => {
+      const token = resolveClassToken(digits, letter, !raw.slice(0, offset).trim(), contextGrade);
+      if (!token) return match;
+      classes.set(token.key, token.flair);
       return `${boundary}  `;
     });
     const classFlair = classes.size === 1 ? [...classes.values()][0] : "";

@@ -91,6 +91,29 @@ test('class flairs round-trip through participant controls and class sorting sta
     document.documentElement.dataset.theme = 'light';
     const lightColor = getComputedStyle(classPill).color;
     const pillLabel = classPill.getAttribute('aria-label');
+    app.refs.sidebarGradeClassFlairSection = document.querySelector('#sidebar-grade-class-flair-section');
+    app.refs.sidebarGradeClassFlairInputs = document.querySelectorAll('[data-grade-class-flairs]');
+    const flairState = () => ({
+      display: getComputedStyle(classPill).display,
+      checked: [...app.refs.sidebarGradeClassFlairInputs].find((input) => input.checked)?.value,
+      hidden: app.refs.sidebarGradeClassFlairSection.hidden,
+      disabled: [...app.refs.sidebarGradeClassFlairInputs].every((input) => input.disabled),
+    });
+    const flairStates = { initial: flairState() };
+    app.updateSidebarGradeClassFlairToggleState();
+    flairStates.ready = flairState();
+    app.handleGradeClassFlairVisibilityChangeRequest('true');
+    flairStates.shown = flairState();
+    app.locked = true;
+    app.handleGradeClassFlairVisibilityChangeRequest('false');
+    flairStates.locked = flairState();
+    app.locked = false;
+    vaultAccessible = false;
+    app.handleGradeClassFlairVisibilityChangeRequest('false');
+    flairStates.vault = flairState();
+    vaultAccessible = true;
+    app.handleGradeClassFlairVisibilityChangeRequest('false');
+    flairStates.hidden = flairState();
     app.updateSidebarGradeNameOrderToggleState();
     const overviewVisible = !app.refs.sidebarGradeClassSortControl.hidden && !app.refs.sidebarGradeClassSortToggle.disabled;
     app.handleGradeClassSortChangeRequest(true);
@@ -145,9 +168,28 @@ test('class flairs round-trip through participant controls and class sorting sta
     app.handleCourseDialogStudentListInput({ target: select });
     await app.submitCourseStudentsDialog();
     const cleared = openDraft().value;
-    return { zoe: zoe.id, beta: beta.id, gamma: gamma.id, sam: sam.id,
+    const assessmentId = store.createGradeAssessment(courseId, {});
+    store.setGradeEntry(sam.id, assessmentId, 11);
+    store.setGradeEntry(zoe.id, assessmentId, 7);
+    store.setGradeEntry(beta.id, assessmentId, 13);
+    const gradeSnapshot = () => store.gradeVaultState.gradeEntries
+      .map(({ studentId, assessmentId: entryAssessmentId, value }) => ({ studentId, assessmentId: entryAssessmentId, value }))
+      .sort((left, right) => left.studentId - right.studentId);
+    const gradesBefore = gradeSnapshot();
+    openDraft();
+    const reimport = app.appendCourseDialogStudents([
+      { lastName: 'Aaron', firstName: 'Sam', classFlair: 'c' },
+      { lastName: 'alpha', firstName: 'ZOE', classFlair: 'd' },
+      { lastName: 'Beta', firstName: 'Ben', classFlair: 'e' },
+    ]);
+    await app.submitCourseStudentsDialog();
+    const reimportStudents = store.listGradeStudents(courseId)
+      .map(({ id, firstName, classFlair, performanceFlair }) => ({ id, firstName, classFlair, performanceFlair }))
+      .sort((left, right) => left.id - right.id);
+    const gradesAfter = gradeSnapshot();
+    return { zoe: zoe.id, beta: beta.id, gamma: gamma.id, sam: sam.id, reimport, reimportStudents, gradesBefore, gradesAfter,
       nameSorted, classSorted, classFirstSorted, disabledOrder, printNames, entryOrder, privacyNext,
-      entryPills, darkColor, lightColor, pillLabel, overviewVisible, entryHidden, entryIgnored,
+      entryPills, darkColor, lightColor, pillLabel, flairStates, overviewVisible, entryHidden, entryIgnored,
       lockedIgnored, vaultIgnored, invalidIgnored, options, uncommitted, cancelled, saved, cleared, saves };
   });
   const { zoe, beta, gamma, sam } = result;
@@ -162,6 +204,14 @@ test('class flairs round-trip through participant controls and class sorting sta
   assert.equal(result.pillLabel, 'Klasse b');
   assert.equal(result.darkColor, 'rgb(187, 247, 208)');
   assert.equal(result.lightColor, 'rgb(22, 101, 52)');
+  assert.deepEqual(result.flairStates, {
+    initial: { display: 'none', checked: 'false', hidden: false, disabled: true },
+    ready: { display: 'none', checked: 'false', hidden: false, disabled: false },
+    shown: { display: 'flex', checked: 'true', hidden: false, disabled: false },
+    locked: { display: 'flex', checked: 'true', hidden: false, disabled: true },
+    vault: { display: 'flex', checked: 'true', hidden: false, disabled: true },
+    hidden: { display: 'none', checked: 'false', hidden: false, disabled: false },
+  });
   for (const key of ['overviewVisible', 'entryHidden', 'entryIgnored', 'lockedIgnored', 'vaultIgnored', 'invalidIgnored']) {
     assert.equal(result[key], true, key);
   }
@@ -170,5 +220,17 @@ test('class flairs round-trip through participant controls and class sorting sta
   assert.equal(result.cancelled, 'b');
   assert.equal(result.saved, 'g');
   assert.equal(result.cleared, '');
-  assert.equal(result.saves, 2);
+  assert.equal(result.saves, 3);
+  assert.deepEqual(result.reimport, { added: 0, skipped: 3, classesAdded: 2 });
+  assert.deepEqual(result.reimportStudents, [
+    { id: zoe, firstName: 'Zoe', classFlair: 'd', performanceFlair: 'P2' },
+    { id: beta, firstName: 'Ben', classFlair: 'a', performanceFlair: '' },
+    { id: gamma, firstName: 'Ada', classFlair: 'a', performanceFlair: '' },
+    { id: sam, firstName: 'Sam', classFlair: 'c', performanceFlair: '' },
+  ].sort((left, right) => left.id - right.id));
+  assert.deepEqual(
+    Object.fromEntries(result.gradesBefore.map((entry) => [entry.studentId, entry.value])),
+    { [sam]: 11, [zoe]: 7, [beta]: 13 },
+  );
+  assert.deepEqual(result.gradesAfter, result.gradesBefore);
 });

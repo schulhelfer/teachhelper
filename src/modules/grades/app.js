@@ -2880,6 +2880,7 @@ class GradesApp {
       sidebarGradeSortSection: document.querySelector("#sidebar-grade-sort-section"),
       sidebarGradeDisplaySection: document.querySelector("#sidebar-grade-display-section"),
       sidebarGradePredicateSection: document.querySelector("#sidebar-grade-predicate-section"),
+      sidebarGradeClassFlairSection: document.querySelector("#sidebar-grade-class-flair-section"),
       sidebarGradePrintSection: document.querySelector("#sidebar-grade-print-section"),
       sidebarGradeExpectationSection: document.querySelector("#sidebar-grade-expectation-section"),
       sidebarGradeCompetenceExpectationsSection: document.querySelector("#sidebar-grade-competence-expectations-section"),
@@ -2892,6 +2893,7 @@ class GradesApp {
       sidebarGradeClassSortToggle: document.querySelector("#sidebar-grade-class-sort-toggle"),
       sidebarGradeDisplaySystemInputs: document.querySelectorAll("[data-grade-display-system]"),
       sidebarGradePredicateSuffixInputs: document.querySelectorAll("[data-grade-predicate-suffixes]"),
+      sidebarGradeClassFlairInputs: document.querySelectorAll("[data-grade-class-flairs]"),
       sidebarGradePrintBtn: document.querySelector("#sidebar-grade-print-btn"),
       sidebarGradeExpectationBtn: document.querySelector("#sidebar-grade-expectation-btn"),
       sidebarGradeCompetenceExpectationsBtn: document.querySelector("#sidebar-grade-competence-expectations-btn"),
@@ -3255,6 +3257,7 @@ class GradesApp {
     this.gradeAssessmentColumnDrag = null;
     this.gradesOverviewNameOrder = "last";
     this.gradesOverviewSortByClass = false;
+    this.gradesShowClassFlairs = false;
     this.gradesEntryNameOrder = "first";
     this.gradesEntryDistributionView = "points";
     this.gradesEntryDistributionOverlayOpen = false;
@@ -3465,12 +3468,13 @@ class GradesApp {
         dialog: ocrDialog,
         openDialog: (dialog) => this.openDialog(dialog),
         closeDialog: (dialog) => this.closeDialog(dialog),
-        onImported: ({ added, skipped }) => {
+        onImported: ({ added, skipped, classesAdded = 0 }) => {
           const addedLabel = added === 1 ? "Name" : "Namen";
           const skippedLabel = skipped === 1 ? "Name" : "Namen";
           void this.showInfoMessage([
             `${added} ${addedLabel} hinzugefügt.`,
             `${skipped} bereits vorhandene ${skippedLabel} übersprungen.`,
+            ...(classesAdded > 0 ? [`Bei ${classesAdded === 1 ? "einem vorhandenen Namen" : `${classesAdded} vorhandenen Namen`} Klasse ergänzt.`] : []),
             "",
             "Neue Daten werden erst fest übernommen, wenn im folgenden Verwaltungsdialog gespeichert wird.",
             "",
@@ -9609,18 +9613,30 @@ class GradesApp {
       ? this.courseDialogDraft.students.slice()
       : [];
     const previousCount = students.length;
-    const knownNameKeys = new Set(students.map((student) => buildGradeStudentNameMatchKey(
-      normalizeGradeTextPart(student?.lastName),
-      normalizeGradeTextPart(student?.firstName)
-    )));
+    const knownNameIndexes = new Map();
+    students.forEach((student, index) => {
+      const key = buildGradeStudentNameMatchKey(
+        normalizeGradeTextPart(student?.lastName),
+        normalizeGradeTextPart(student?.firstName)
+      );
+      if (!knownNameIndexes.has(key)) knownNameIndexes.set(key, index);
+    });
+    let classesAdded = 0;
     sourceStudents.forEach((student) => {
       const lastName = normalizeGradeTextPart(student?.lastName);
       const firstName = normalizeGradeTextPart(student?.firstName);
       const key = buildGradeStudentNameMatchKey(lastName, firstName);
-      if (knownNameKeys.has(key)) {
+      if (knownNameIndexes.has(key)) {
+        const index = knownNameIndexes.get(key);
+        const existing = students[index];
+        const importedClassFlair = normalizeGradeClassFlair(student?.classFlair);
+        if (importedClassFlair && !normalizeGradeClassFlair(existing?.classFlair)) {
+          students[index] = { ...existing, classFlair: importedClassFlair };
+          classesAdded += 1;
+        }
         return;
       }
-      knownNameKeys.add(key);
+      knownNameIndexes.set(key, students.length);
       students.push({
         id: 0,
         lastName,
@@ -9634,7 +9650,7 @@ class GradesApp {
     const added = students.length - previousCount;
     const skipped = sourceStudents.length - added;
     this.courseDialogDraft.students = students.sort(compareGradeStudents);
-    return { added, skipped };
+    return { added, skipped, classesAdded };
   }
 
   async importCourseDialogStudentsFromCourse(courseId) {
@@ -9665,16 +9681,19 @@ class GradesApp {
         await this.showInfoMessage(`„${courseName}“ enthält keine Teilnehmenden.`, "Hinweis", { variant: "warn" });
         return;
       }
-      const { added, skipped } = this.appendCourseDialogStudents(sourceStudents);
+      const { added, skipped, classesAdded } = this.appendCourseDialogStudents(sourceStudents);
       this.courseDialogRosterImportedCourseIds.add(id);
       this.revokeGradeStudentPortraitObjectUrls();
       this.renderCourseDialogStudents();
+      const classesNote = classesAdded > 0
+        ? ` Bei ${classesAdded === 1 ? "einem vorhandenen Namen" : `${classesAdded} vorhandenen Namen`} wurde die Klasse ergänzt.`
+        : "";
       if (added === 0) {
-        await this.showInfoMessage(`Alle Teilnehmenden aus „${courseName}“ stehen bereits in der Liste.`);
+        await this.showInfoMessage(`Alle Teilnehmenden aus „${courseName}“ stehen bereits in der Liste.${classesNote}`);
       } else if (skipped > 0) {
         await this.showInfoMessage(
           `${added} von ${sourceStudents.length} Teilnehmenden aus „${courseName}“ hinzugefügt. `
-          + `${skipped === 1 ? "Ein Name stand" : `${skipped} Namen standen`} bereits in der Liste.`
+          + `${skipped === 1 ? "Ein Name stand" : `${skipped} Namen standen`} bereits in der Liste.${classesNote}`
         );
       }
     } catch (error) {
@@ -10724,7 +10743,7 @@ class GradesApp {
     if (deficitFollowUpButton) {
       event.preventDefault();
       event.stopPropagation();
-      if (!this.commitVisibleGradeInputs()) {
+      if (deficitFollowUpButton.disabled || !this.commitVisibleGradeInputs()) {
         return;
       }
       if (this.toggleGradeTestTaskDeficitFollowUp(deficitFollowUpButton.dataset.taskId || "")) {
@@ -10737,7 +10756,7 @@ class GradesApp {
     if (competenceButton) {
       event.preventDefault();
       event.stopPropagation();
-      if (!this.commitGradeTaskCompetenceDialogPreOpenInputs()) {
+      if (competenceButton.disabled || !this.commitGradeTaskCompetenceDialogPreOpenInputs()) {
         return;
       }
       this.openGradeTaskCompetenceDialog(competenceButton.dataset.taskId || "");
@@ -12010,6 +12029,13 @@ class GradesApp {
       input.addEventListener("change", (event) => {
         if (input.checked) {
           this.handleGradeOverviewPredicateSuffixChangeRequest(input.value, event);
+        }
+      });
+    });
+    this.refs.sidebarGradeClassFlairInputs?.forEach((input) => {
+      input.addEventListener("change", (event) => {
+        if (input.checked) {
+          this.handleGradeClassFlairVisibilityChangeRequest(input.value, event);
         }
       });
     });
@@ -16075,6 +16101,7 @@ class GradesApp {
       this.updateSidebarGradeNameOrderToggleState();
       this.updateSidebarGradeDisplaySystemToggleState();
       this.updateSidebarGradePredicateSuffixToggleState();
+      this.updateSidebarGradeClassFlairToggleState();
       this.updateSidebarGradePrintButtonState();
       this.updateSidebarExpectationHorizonButtonState();
       this.updateSidebarCompetenceExpectationsButtonState();
@@ -16142,6 +16169,7 @@ class GradesApp {
         this.updateSidebarGradeNameOrderToggleState();
         this.updateSidebarGradeDisplaySystemToggleState();
         this.updateSidebarGradePredicateSuffixToggleState();
+        this.updateSidebarGradeClassFlairToggleState();
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarCompetenceExpectationsButtonState();
@@ -16167,6 +16195,7 @@ class GradesApp {
         this.updateSidebarGradeNameOrderToggleState();
         this.updateSidebarGradeDisplaySystemToggleState();
         this.updateSidebarGradePredicateSuffixToggleState();
+        this.updateSidebarGradeClassFlairToggleState();
         this.updateSidebarGradePrintButtonState();
         this.updateSidebarExpectationHorizonButtonState();
         this.updateSidebarCompetenceExpectationsButtonState();
@@ -16183,6 +16212,7 @@ class GradesApp {
     this.updateSidebarGradeNameOrderToggleState();
     this.updateSidebarGradeDisplaySystemToggleState();
     this.updateSidebarGradePredicateSuffixToggleState();
+    this.updateSidebarGradeClassFlairToggleState();
     this.updateSidebarGradePrintButtonState();
     this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();
@@ -17162,6 +17192,23 @@ class GradesApp {
       this.gradeOverviewPredicateSuffixes = predicateSuffixes;
       this.renderGradesView();
     });
+  }
+
+  handleGradeClassFlairVisibilityChangeRequest(value, event = null) {
+    event?.stopPropagation?.();
+    if (!this.shouldShowSidebarGradeNameOrderToggle() || this.locked || !this.canAccessGradeVault()) {
+      this.updateSidebarGradeClassFlairToggleState();
+      return;
+    }
+    const showClassFlairs = String(value) !== "false";
+    this.runAfterSegmentControlSlide(event, () => {
+      this.gradesShowClassFlairs = showClassFlairs;
+      this.updateSidebarGradeClassFlairToggleState();
+    });
+  }
+
+  applyGradeClassFlairVisibility() {
+    document.documentElement.dataset.gradeClassFlairs = this.gradesShowClassFlairs ? "shown" : "hidden";
   }
 
   handleGradePrintOverviewRequest(event = null) {
@@ -19627,7 +19674,9 @@ class GradesApp {
     }
     this.gradeTaskCompetenceDialogTaskId = task.id;
     const { assessment, draft } = this.getActiveGradeTestContext();
-    const label = getGradeTestScoringTasks(draft?.testTasks || assessment?.testTasks).find((item) => item.id === task.id)?.label;
+    const sourceTasks = draft?.testTasks || assessment?.testTasks;
+    const label = getGradeTestScoringTasks(sourceTasks).find((item) => item.id === task.id)?.label
+      || String(normalizeGradeTestTasks(sourceTasks, { ensureDefault: false }).findIndex((item) => item.id === task.id) + 1 || "");
     if (this.refs.gradeTaskCompetenceDialogTitle) this.refs.gradeTaskCompetenceDialogTitle.textContent = `Kompetenzen – Aufgabe ${label || ""}`.trim();
     if (this.refs.gradeTaskCompetenceCustom) this.refs.gradeTaskCompetenceCustom.value = task.customCompetenceText || "";
     const list = this.refs.gradeTaskCompetenceList;
@@ -19714,26 +19763,10 @@ class GradesApp {
   }
 
   updateGradeTestTaskCompetenceAssignment(taskId, assignment = {}) {
-    const normalizedTaskId = String(taskId || "").trim();
-    if (!normalizedTaskId) {
-      return false;
-    }
-    const { assessment, draft } = this.getActiveGradeTestContext();
-    const sourceTasks = draft?.testTasks || assessment?.testTasks;
-    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
-    let changed = false;
-    const nextTasks = mapGradeTestScoringTasks(tasks, (task) => {
-      if (task.id !== normalizedTaskId) {
-        return task;
-      }
-      changed = true;
-      return {
-        ...task,
-        competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(assignment.competenceExpectationIds),
-        customCompetenceText: String(assignment.customCompetenceText || "").trim()
-      };
-    });
-    return changed ? this.updateGradeTestContextTasks(nextTasks) : false;
+    return this.updateGradeTestTaskMetadata(taskId, "inheritedCompetences", () => ({
+      competenceExpectationIds: normalizeGradeTaskCompetenceExpectationIds(assignment.competenceExpectationIds),
+      customCompetenceText: String(assignment.customCompetenceText || "").trim()
+    }));
   }
 
   bindExpectationHorizonFileDropzone(dropzone, openPicker, handleFile) {
@@ -22183,6 +22216,26 @@ class GradesApp {
     });
   }
 
+  updateSidebarGradeClassFlairToggleState() {
+    this.applyGradeClassFlairVisibility();
+    const actions = this.refs.sidebarGradePrivacyActions;
+    const section = this.refs.sidebarGradeClassFlairSection;
+    const inputs = this.refs.sidebarGradeClassFlairInputs;
+    if (!actions || !inputs) {
+      return;
+    }
+    const isAvailable = this.shouldShowSidebarGradeNameOrderToggle();
+    const vaultInaccessible = this.syncSidebarGradeActionsAccessState(actions);
+    const canToggle = isAvailable && !this.locked && !vaultInaccessible;
+    if (section) {
+      section.hidden = !isAvailable;
+    }
+    inputs.forEach((input) => {
+      input.disabled = !canToggle;
+      input.checked = (input.value !== "false") === Boolean(this.gradesShowClassFlairs);
+    });
+  }
+
   updateSidebarGradePrintButtonState() {
     const actions = this.refs.sidebarGradePrivacyActions;
     const section = this.refs.sidebarGradePrintSection;
@@ -24449,6 +24502,7 @@ class GradesApp {
     if (!task.subTasks?.length) {
       addedId = nextId();
       task.subTasks = [{ ...task, id: addedId, sortOrder: 1 }];
+      Object.assign(task, { deficitDiagnosisFollowUp: false, competenceExpectationIds: [], customCompetenceText: "" });
       entries = Object.fromEntries(Object.entries(entries).map(([studentId, rawEntry]) => {
         const entry = normalizeGradeDraftEntry(rawEntry);
         const scores = { ...entry.testScores };
@@ -24487,7 +24541,7 @@ class GradesApp {
     const tasks = normalizeGradeTestTasks(draft.testTasks, { ensureDefault: false });
     const parent = tasks.find((task) => task.id === String(taskId));
     if (!parent?.subTasks?.length || parent.subTasks.some((task) => !(task.maxBe > 0))) return false;
-    const children = parent.subTasks;
+    const children = getGradeTestScoringTasks([parent]);
     const sourceEntries = Object.entries(draft.entries || {});
     if (sourceEntries.some(([, entry]) => calculateGradeTaskScoreSummary(children, entry.testScores || {}).invalid)) return false;
     const afbs = new Set(children.map((task) => task.afb));
@@ -24564,7 +24618,22 @@ class GradesApp {
     this.updateGradesEntryTableStickyScrollbar();
   }
 
-  enhanceGradeTestTaskGroups(table, sourceTasks, students, entries, averageState, expectations = []) {
+  lockInheritedGradeSubTaskButtons(cell, task, tasks) {
+    const parentNumber = tasks.findIndex((item) => item.id === task.parentId) + 1;
+    const tooltip = `Wird von Aufgabe ${parentNumber} vorgegeben`;
+    [
+      [task.inheritedDeficitFollowUp, ".grade-test-task-deficit-followup"],
+      [task.inheritedCompetences, ".grade-test-task-competence"]
+    ].forEach(([inherited, selector]) => {
+      const button = inherited ? cell.querySelector(selector) : null;
+      if (!button) return;
+      button.disabled = true;
+      button.title = tooltip;
+      button.setAttribute("aria-label", `${button.getAttribute("aria-label")} (${tooltip})`);
+    });
+  }
+
+  enhanceGradeTestTaskGroups(table, sourceTasks, students, entries, averageState) {
     const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
     const leaves = getGradeTestScoringTasks(tasks);
     const rows = [...table.rows];
@@ -24576,6 +24645,7 @@ class GradesApp {
           cell.dataset.gradeTestParentTask = task.parentId;
           cell.hidden = this.collapsedGradeTestTasks?.has(task.parentId) === true;
           cell.classList.add("grade-test-subtask-col");
+          if (row === rows[0]) this.lockInheritedGradeSubTaskButtons(cell, task, tasks);
         } else {
           cell.classList.add("grade-test-main-task-col");
         }
@@ -24591,10 +24661,7 @@ class GradesApp {
       button.dataset[field] = id;
       return button;
     };
-    const makeSubTaskButton = (task, index) => {
-      const button = makeButton("", `Teilaufgabe zu Aufgabe ${index + 1} hinzufügen`, "gradeTestAddSubtask", task.id);
-      button.classList.add("grade-test-add-subtask");
-      button.title = "Teilaufgabe hinzufügen";
+    const makeSubTaskIcon = () => {
       const icon = document.createElement("span");
       icon.className = "grade-test-subtask-icon";
       icon.setAttribute("aria-hidden", "true");
@@ -24603,14 +24670,23 @@ class GradesApp {
         line.textContent = text;
         icon.append(line);
       });
-      button.append(icon);
+      return icon;
+    };
+    const makeSubTaskSuffix = (text, className) => {
+      const suffix = document.createElement("span");
+      suffix.className = className;
+      suffix.setAttribute("aria-hidden", "true");
+      suffix.textContent = text;
+      return suffix;
+    };
+    const makeSubTaskButton = (task, index) => {
+      const button = makeButton("", `Teilaufgabe zu Aufgabe ${index + 1} hinzufügen`, "gradeTestAddSubtask", task.id);
+      button.classList.add("grade-test-add-subtask");
+      button.title = "Teilaufgabe hinzufügen";
+      button.append(makeSubTaskIcon());
       if (task.subTasks?.length) {
         button.classList.add("grade-test-add-subtask-more");
-        const plus = document.createElement("span");
-        plus.className = "grade-test-subtask-plus";
-        plus.setAttribute("aria-hidden", "true");
-        plus.textContent = "+";
-        button.append(plus);
+        button.append(makeSubTaskSuffix("+", "grade-test-subtask-plus"));
       }
       return button;
     };
@@ -24619,7 +24695,7 @@ class GradesApp {
         const head = [...rows[0].cells].find((cell) => cell.dataset.gradeTestTaskColumn === task.id);
         const taskHead = head.querySelector(".grade-test-task-head");
         taskHead.classList.add("grade-test-main-task-head");
-        taskHead.append(makeSubTaskButton(task, index));
+        taskHead.insertBefore(makeSubTaskButton(task, index), taskHead.querySelector(".grade-test-task-remove"));
         return;
       }
       rows.forEach((row, rowIndex) => {
@@ -24642,18 +24718,30 @@ class GradesApp {
           title.append(label);
           const max = document.createElement("div");
           max.dataset.gradeTestGroupMax = "1";
-          const competences = document.createElement("div");
-          competences.className = "grade-test-group-competences";
-          competences.dataset.gradeTestGroupCompetences = "1";
           const actions = document.createElement("div");
           actions.className = "grade-test-group-actions";
           const remove = makeButton("🗑️", `Aufgabe ${index + 1} mit Teilaufgaben entfernen`, "gradeTestRemoveTask", "1");
           remove.dataset.taskId = task.id;
           remove.classList.add("danger-action", "grade-test-task-remove");
-          actions.append(remove, makeSubTaskButton(task, index), toggle);
-          const merge = makeButton("Zusammenfassen", `Teilaufgaben von Aufgabe ${index + 1} zusammenfassen`, "gradeTestMergeSubtasks", task.id);
+          const followUp = makeButton("🛠️", `Nachbereitung vorschlagen für alle Teilaufgaben von Aufgabe ${index + 1}`, "gradeTestDeficitFollowup", "1");
+          followUp.dataset.taskId = task.id;
+          followUp.title = "Nachbereitung für alle Teilaufgaben vorschlagen";
+          followUp.classList.add("grade-test-task-deficit-followup");
+          followUp.classList.toggle("is-active", task.deficitDiagnosisFollowUp === true);
+          followUp.setAttribute("aria-pressed", String(task.deficitDiagnosisFollowUp === true));
+          const competence = makeButton("💪", `Kompetenzen für alle Teilaufgaben von Aufgabe ${index + 1} zuordnen`, "gradeTestCompetence", "1");
+          competence.dataset.taskId = task.id;
+          competence.title = "Kompetenzen für alle Teilaufgaben zuordnen";
+          competence.classList.add("grade-test-task-competence");
+          competence.classList.toggle("has-competences", Boolean(task.competenceExpectationIds.length || task.customCompetenceText));
+          actions.append(followUp, competence, toggle, remove);
+          const merge = makeButton("", `Teilaufgaben von Aufgabe ${index + 1} zusammenfassen`, "gradeTestMergeSubtasks", task.id);
           merge.classList.add("grade-test-merge-subtasks");
-          head.append(title, actions, max, competences, merge);
+          merge.append(makeSubTaskIcon(), makeSubTaskSuffix("−", "grade-test-subtask-minus"));
+          const subTaskActions = document.createElement("div");
+          subTaskActions.className = "grade-test-group-subtask-actions";
+          subTaskActions.append(makeSubTaskButton(task, index), merge);
+          head.append(title, actions, max, subTaskActions);
           cell.append(head);
         } else if (rowIndex === rows.length - 1) {
           cell.dataset.gradeTestGroupAverage = "1";
@@ -24669,17 +24757,17 @@ class GradesApp {
         row.insertBefore(cell, firstChild);
       });
     });
-    this.updateGradeTestTaskGroupSummaries(table, tasks, entries, averageState, expectations);
+    this.updateGradeTestTaskGroupSummaries(table, tasks, entries, averageState);
   }
 
-  updateGradeTestTaskGroupSummaries(root, sourceTasks, entries, averageState = null, expectations = []) {
+  updateGradeTestTaskGroupSummaries(root, sourceTasks, entries, averageState = null) {
     const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
     const taskById = new Map(tasks.map((task) => [task.id, task]));
     root.querySelectorAll("[data-grade-test-group]").forEach((cell) => {
       const task = taskById.get(cell.dataset.gradeTestGroup);
       if (!task?.subTasks?.length) return;
       if (cell.tagName === "TH") {
-        const summary = calculateGradeTaskScoreSummary(task.subTasks);
+        const summary = calculateGradeTaskScoreSummary([task]);
         const maxIncomplete = task.subTasks.some((child) => !(child.maxBe > 0));
         const max = cell.querySelector("[data-grade-test-group-max]");
         max.title = maxIncomplete ? "BE1 der Teilaufgaben noch unvollständig" : "Summe der BE1 aller Teilaufgaben";
@@ -24694,16 +24782,10 @@ class GradesApp {
         } else {
           max.append(formatGradeBeValue(summary.maxSum));
         }
-        const texts = [...new Set(task.subTasks.flatMap((child) => this.getGradeTestTaskAssignedCompetenceTexts(child, expectations)))];
-        const competenceIds = new Set(task.subTasks.flatMap((child) => child.competenceExpectationIds));
-        const competences = cell.querySelector("[data-grade-test-group-competences]");
-        const count = texts.length || competenceIds.size;
-        competences.textContent = count ? `${count} Kompetenz${count === 1 ? "" : "en"}` : "";
-        competences.title = texts.join("\n");
         return;
       }
       if (cell.dataset.gradeTestGroupAverage) {
-        const summary = calculateGradeTaskAverageSummary(task.subTasks, Object.values(entries || {}).map((entry) => entry.testScores));
+        const summary = calculateGradeTaskAverageSummary([task], Object.values(entries || {}).map((entry) => entry.testScores));
         cell.textContent = summary.invalid ? "?" : summary.earnedAverage === null ? "—" : formatGradeBeAverageValue(summary.earnedAverage);
         cell.classList.toggle("is-invalid-score", summary.invalid);
         cell.setAttribute("aria-invalid", String(summary.invalid));
@@ -24712,7 +24794,7 @@ class GradesApp {
       }
       if (!cell.dataset.gradeTestGroupStudent) return;
       const scores = entries?.[cell.dataset.gradeTestGroupStudent]?.testScores || {};
-      const summary = calculateGradeTaskScoreSummary(task.subTasks, scores);
+      const summary = calculateGradeTaskScoreSummary([task], scores);
       cell.textContent = summary.invalid ? "?" : summary.earnedSum === null ? "—" : formatGradeBeValue(summary.earnedSum);
       cell.classList.toggle("is-invalid-score", summary.invalid);
       cell.setAttribute("aria-invalid", String(summary.invalid));
@@ -24727,8 +24809,7 @@ class GradesApp {
     const root = this.refs.gradesEntryContent;
     if (!root?.querySelector("[data-grade-test-group]")) return;
     const { assessment, draft } = this.getActiveGradeTestContext();
-    this.updateGradeTestTaskGroupSummaries(root, draft?.testTasks || assessment?.testTasks, draft?.entries || {}, averageState,
-      draft?.competenceExpectations || assessment?.competenceExpectations || []);
+    this.updateGradeTestTaskGroupSummaries(root, draft?.testTasks || assessment?.testTasks, draft?.entries || {}, averageState);
   }
 
   updateGradeTestContextTasks(tasks, options = {}) {
@@ -24821,29 +24902,34 @@ class GradesApp {
     }
   }
 
-  toggleGradeTestTaskDeficitFollowUp(taskId) {
+  updateGradeTestTaskMetadata(taskId, inheritedFlag, update) {
     const normalizedTaskId = String(taskId || "").trim();
     if (!normalizedTaskId) {
       return false;
     }
     const { assessment, draft } = this.getActiveGradeTestContext();
-    const sourceTasks = draft?.testTasks || assessment?.testTasks;
-    const tasks = normalizeGradeTestTasks(sourceTasks, { ensureDefault: false });
+    const tasks = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false });
+    if (getGradeTestScoringTasks(tasks).some((task) => task.id === normalizedTaskId && task[inheritedFlag])) {
+      return false;
+    }
     let changed = false;
-    const nextTasks = mapGradeTestScoringTasks(tasks, (task) => {
+    const apply = (task) => {
       if (task.id !== normalizedTaskId) {
         return task;
       }
       changed = true;
-      return {
-        ...task,
-        deficitDiagnosisFollowUp: task.deficitDiagnosisFollowUp !== true
-      };
-    });
-    if (!changed) {
-      return false;
-    }
-    return this.updateGradeTestContextTasks(nextTasks);
+      return { ...task, ...update(task) };
+    };
+    const nextTasks = tasks.map((task) => (
+      task.subTasks?.length ? { ...apply(task), subTasks: task.subTasks.map(apply) } : apply(task)
+    ));
+    return changed ? this.updateGradeTestContextTasks(nextTasks) : false;
+  }
+
+  toggleGradeTestTaskDeficitFollowUp(taskId) {
+    return this.updateGradeTestTaskMetadata(taskId, "inheritedDeficitFollowUp", (task) => ({
+      deficitDiagnosisFollowUp: task.deficitDiagnosisFollowUp !== true
+    }));
   }
 
   gradeTestTaskHasEnteredValues(taskId) {
@@ -24852,7 +24938,7 @@ class GradesApp {
     const task = tasks.find((item) => item.id === String(taskId))
       || tasks.flatMap((item) => item.subTasks || []).find((item) => item.id === String(taskId));
     if (!task) return false;
-    const leaves = task.subTasks || [task];
+    const leaves = task.subTasks ? [task, ...task.subTasks] : [task];
     if (leaves.some((item) => Number(item.maxBe || 0) > 0 || item.afb || item.deficitDiagnosisFollowUp
       || item.competenceExpectationIds.length || item.customCompetenceText)) return true;
     const entries = draft ? Object.values(draft.entries || {}) : this.store.listGradeEntries()
@@ -25464,8 +25550,7 @@ class GradesApp {
     averageRow.append(averageAddCell);
     tbody.append(averageRow);
     table.append(tbody);
-    this.enhanceGradeTestTaskGroups(table, activeDraft?.testTasks || assessment?.testTasks, displayStudents, entries, averageState,
-      activeDraft?.competenceExpectations || assessment?.competenceExpectations || []);
+    this.enhanceGradeTestTaskGroups(table, activeDraft?.testTasks || assessment?.testTasks, displayStudents, entries, averageState);
     return table;
   }
 
@@ -33118,6 +33203,7 @@ class GradesApp {
     this.updateSidebarGradeNameOrderToggleState();
     this.updateSidebarGradeDisplaySystemToggleState();
     this.updateSidebarGradePredicateSuffixToggleState();
+    this.updateSidebarGradeClassFlairToggleState();
     this.updateSidebarGradePrintButtonState();
     this.updateSidebarArchiveButtonState();
     this.updateSidebarExpectationHorizonButtonState();

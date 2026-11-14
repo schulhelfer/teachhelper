@@ -1,0 +1,6 @@
+{
+  "liveServer.settings.headers": {
+    "Access-Control-Allow-Origin": "*"
+  },
+  "liveServer.settings.useWebExt": true
+}

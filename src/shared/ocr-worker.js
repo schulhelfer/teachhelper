@@ -5,10 +5,10 @@ self.onmessage = async ({ data }) => {
   let worker;
   try {
     importScripts(vendorUrl("tesseract.js/7.0.0/tesseract.min.js"));
-    worker = await self.Tesseract.createWorker("deu", 1, {
+    worker = await self.Tesseract.createWorker("deu+fra", 1, {
       workerPath: vendorUrl("tesseract.js/7.0.0/worker.min.js"),
       corePath: vendorUrl("tesseract.js-core/7.0.0"),
-      langPath: vendorUrl("tesseract.js-data-deu/1.0.0"),
+      langPath: vendorUrl("tesseract.js-data/1.0.0"),
       workerBlobURL: false,
       cacheMethod: "none",
       gzip: true,

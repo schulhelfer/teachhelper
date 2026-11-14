@@ -96,7 +96,7 @@ test('printed-list classes can be reviewed and are persisted only when the parti
   assert.equal(result.visible, true);
   assert.equal(result.darkColor, 'rgb(187, 247, 208)');
   assert.equal(result.lightColor, 'rgb(22, 101, 52)');
-  assert.deepEqual(result.summary, { added: 2, skipped: 1 });
+  assert.deepEqual(result.summary, { added: 2, skipped: 1, classesAdded: 0 });
   assert.equal(result.beforeSave, 1);
   assert.deepEqual(result.pending, [
     { firstName: 'Alex', classFlair: 'c' },

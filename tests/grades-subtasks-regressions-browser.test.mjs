@@ -224,3 +224,89 @@ test('LaTeX import refuses omitted main tasks and imports all content when exten
     ['(1a)', 'Inhalt eins'], ['(1b)', ''], ['(2)', 'Inhalt zwei'], ['(3)', 'Inhalt drei'],
   ]);
 });
+
+test('main task follow-up and competences apply to all parts and lock the part buttons', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const { createSubtaskHarness } = await import('/tests/helpers/grades-subtask-harness.mjs');
+    const h = await createSubtaskHarness();
+    await new Promise((resolve, reject) => {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = '/src/modules/grades/app.css';
+      style.onload = resolve;
+      style.onerror = reject;
+      document.head.append(style);
+    });
+    const { app, content } = h;
+    h.reset([{ id: 'main', subTasks: [
+      { id: 'a', maxBe: 3, deficitDiagnosisFollowUp: true, competenceExpectationIds: ['k1'], customCompetenceText: 'Erwartung A' },
+      { id: 'b', maxBe: 5 },
+    ] }]);
+    const group = () => content.querySelector('th[data-grade-test-group]');
+    const groupButton = (field) => group().querySelector(`.grade-test-group-actions [data-grade-test-${field}]`);
+    const partButton = (taskId, field) => content.querySelector(`th[data-grade-test-task-column="${taskId}"] [data-grade-test-${field}]`);
+    const parts = (field, read) => ['a', 'b'].map((taskId) => read(partButton(taskId, field)));
+    const state = () => ({
+      groupFollowUp: groupButton('deficit-followup').getAttribute('aria-pressed'),
+      groupCompetence: groupButton('competence').classList.contains('has-competences'),
+      followUpDisabled: parts('deficit-followup', (node) => node.disabled),
+      followUpActive: parts('deficit-followup', (node) => node.classList.contains('is-active')),
+      competenceDisabled: parts('competence', (node) => node.disabled),
+      competenceActive: parts('competence', (node) => node.classList.contains('has-competences')),
+    });
+    const layout = () => {
+      const cell = group().getBoundingClientRect();
+      const buttons = [...group().querySelector('.grade-test-group-actions').children];
+      const rects = buttons.map((node) => node.getBoundingClientRect());
+      return {
+        order: buttons.map((node) => node.dataset.gradeTestDeficitFollowup ? 'followup' : node.dataset.gradeTestCompetence ? 'competence'
+          : node.dataset.gradeTestToggleSubtasks ? 'toggle' : 'delete'),
+        withinCell: rects.every((rect) => rect.left >= cell.left && rect.right <= cell.right),
+        noOverlap: rects.every((rect, index) => !index || rect.left >= rects[index - 1].right),
+      };
+    };
+    const raw = () => app.gradesEntryDraft.testTasks[0];
+    const initial = state();
+    const initialLayout = layout();
+    await h.click(groupButton('deficit-followup'));
+    const afterFollowUp = state();
+    const lockedTooltip = partButton('b', 'deficit-followup').title;
+    const partFollowUpBlocked = !app.toggleGradeTestTaskDeficitFollowUp('b');
+    const rawFollowUp = raw().subTasks.map((task) => task.deficitDiagnosisFollowUp);
+    app.openGradeTaskCompetenceDialog(groupButton('competence').dataset.taskId);
+    const dialogTitle = h.dialogTitle.textContent;
+    app.updateGradeTestTaskCompetenceAssignment('main', { competenceExpectationIds: ['k2'], customCompetenceText: 'Gesamt' });
+    h.render();
+    const afterCompetence = state();
+    const effectivePart = app.getGradeTaskCompetenceDialogTask('b');
+    const partCompetenceBlocked = !app.updateGradeTestTaskCompetenceAssignment('a', { competenceExpectationIds: ['k3'] });
+    const rawCompetence = raw().subTasks.map((task) => [task.competenceExpectationIds, task.customCompetenceText]);
+    await h.click(groupButton('deficit-followup'));
+    app.updateGradeTestTaskCompetenceAssignment('main', { competenceExpectationIds: [], customCompetenceText: '' });
+    h.render();
+    const cleared = state();
+    await h.click(groupButton('deficit-followup'));
+    await h.click(content.querySelector('[data-grade-test-merge-subtasks]'));
+    const merged = raw();
+    return { initial, initialLayout, afterFollowUp, lockedTooltip, partFollowUpBlocked, rawFollowUp, dialogTitle,
+      afterCompetence, effectivePart, partCompetenceBlocked, rawCompetence, cleared,
+      merged: [Boolean(merged.subTasks), merged.deficitDiagnosisFollowUp, merged.competenceExpectationIds] };
+  });
+  assert.deepEqual(result.initialLayout, { order: ['followup', 'competence', 'toggle', 'delete'], withinCell: true, noOverlap: true });
+  const initial = { groupFollowUp: 'false', groupCompetence: false, followUpDisabled: [false, false], followUpActive: [true, false],
+    competenceDisabled: [false, false], competenceActive: [true, false] };
+  assert.deepEqual(result.initial, initial);
+  assert.deepEqual(result.afterFollowUp, { ...initial, groupFollowUp: 'true', followUpDisabled: [true, true], followUpActive: [true, true] });
+  assert.equal(result.lockedTooltip, 'Wird von Aufgabe 1 vorgegeben');
+  assert.equal(result.partFollowUpBlocked, true);
+  assert.deepEqual(result.rawFollowUp, [true, false]);
+  assert.equal(result.dialogTitle, 'Kompetenzen – Aufgabe 1');
+  assert.deepEqual(result.afterCompetence, { groupFollowUp: 'true', groupCompetence: true, followUpDisabled: [true, true],
+    followUpActive: [true, true], competenceDisabled: [true, true], competenceActive: [true, true] });
+  assert.deepEqual([result.effectivePart.competenceExpectationIds, result.effectivePart.customCompetenceText], [['k2'], 'Gesamt']);
+  assert.equal(result.partCompetenceBlocked, true);
+  assert.deepEqual(result.rawCompetence, [[['k1'], 'Erwartung A'], [[], '']]);
+  assert.deepEqual(result.cleared, initial);
+  assert.deepEqual(result.merged, [false, true, ['k1']]);
+});

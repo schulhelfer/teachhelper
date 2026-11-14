@@ -122,3 +122,31 @@ test('group summaries flag scores exceeding a reduced maximum and malformed stor
   assert.equal(calculateGradeTaskScoreSummary([{ id: 'a' }], { a: 2 }).invalid, true);
   assert.equal(calculateGradeTaskAverageSummary(children, [{ a: 8 }, { b: 4 }]).invalid, true);
 });
+
+test('main task follow-up and competences apply to every part and keep the part values for later', () => {
+  const parent = { id: 'main', deficitDiagnosisFollowUp: true, competenceExpectationIds: ['k3'], customCompetenceText: 'Gesamt', subTasks: [
+    { id: 'a', maxBe: 3, competenceExpectationIds: ['k1'], customCompetenceText: 'Eigene A' },
+    { id: 'b', maxBe: 6 },
+  ] };
+  const normalized = normalizeGradeTestTasks([parent]);
+  assert.equal(normalized[0].deficitDiagnosisFollowUp, true);
+  assert.deepEqual(normalized[0].competenceExpectationIds, ['k3']);
+  assert.equal(normalized[0].customCompetenceText, 'Gesamt');
+  assert.deepEqual(normalized[0].subTasks[0].competenceExpectationIds, ['k1']);
+  const effective = (tasks) => getGradeTestScoringTasks(tasks).map((task) => [task.deficitDiagnosisFollowUp,
+    task.competenceExpectationIds, task.customCompetenceText, Boolean(task.inheritedDeficitFollowUp), Boolean(task.inheritedCompetences)]);
+  assert.deepEqual(effective(normalized), [[true, ['k3'], 'Gesamt', true, true], [true, ['k3'], 'Gesamt', true, true]]);
+  assert.equal(calculateGradeTaskScoreSummary(normalized, { a: 3, b: 1 }).requiresFollowUp, true);
+  assert.deepEqual(effective([{ ...parent, deficitDiagnosisFollowUp: false, competenceExpectationIds: [], customCompetenceText: '' }]),
+    [[false, ['k1'], 'Eigene A', false, false], [false, [], '', false, false]]);
+  assert.deepEqual(effective([{ ...parent, competenceExpectationIds: [], customCompetenceText: '' }]),
+    [[true, ['k1'], 'Eigene A', true, false], [true, [], '', true, false]]);
+  const store = new WorkspaceStore();
+  store.replaceGradeStudentsForCourse(3, [{ firstName: 'Lernperson 1' }]);
+  const assessmentId = store.createGradeAssessment(3, { mode: 'test', testTasks: [parent] });
+  const reopened = new WorkspaceStore();
+  reopened.replaceGradeVaultState(JSON.parse(JSON.stringify(store.exportGradeVaultStateSnapshot())));
+  const saved = reopened.getGradeAssessment(assessmentId).testTasks[0];
+  assert.deepEqual([saved.deficitDiagnosisFollowUp, saved.competenceExpectationIds, saved.customCompetenceText], [true, ['k3'], 'Gesamt']);
+  assert.deepEqual(saved.subTasks[0].competenceExpectationIds, ['k1']);
+});

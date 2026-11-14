@@ -71,27 +71,33 @@ class LocalWorker {
   }
 }
 
-function syntheticNameImage() {
+const ACUTE_ACCENT = ['00011', '00110', '00000'];
+
+function syntheticNameImage(text = 'MEIER  MIA') {
   const letters = {
     A: ['01110', '10001', '10001', '11111', '10001', '10001', '10001'],
     M: ['10001', '11011', '10101', '10101', '10001', '10001', '10001'],
     E: ['11111', '10000', '10000', '11110', '10000', '10000', '11111'],
     I: ['11111', '00100', '00100', '00100', '00100', '00100', '11111'],
+    L: ['10000', '10000', '10000', '10000', '10000', '10000', '11111'],
     R: ['11110', '10001', '10001', '11110', '10100', '10010', '10001'],
   };
-  const width = 600;
-  const height = 160;
+  letters['É'] = [...ACUTE_ACCENT, ...letters.E];
+  const width = 80 + text.length * 48;
+  const height = 180;
+  const baselineTop = 72;
   const pixels = Buffer.alloc(width * height, 255);
   let cursor = 40;
-  for (const char of 'MEIER  MIA') {
+  for (const char of text) {
     const glyph = letters[char];
     if (glyph) {
-      for (let y = 0; y < 7; y += 1) {
+      const top = baselineTop - (glyph.length - 7) * 8;
+      for (let y = 0; y < glyph.length; y += 1) {
         for (let x = 0; x < 5; x += 1) {
           if (glyph[y][x] !== '1') continue;
           for (let dy = 0; dy < 8; dy += 1) {
             for (let dx = 0; dx < 8; dx += 1) {
-              pixels[(40 + y * 8 + dy) * width + cursor + x * 8 + dx] = 0;
+              pixels[(top + y * 8 + dy) * width + cursor + x * 8 + dx] = 0;
             }
           }
         }
@@ -100,6 +106,23 @@ function syntheticNameImage() {
     cursor += 48;
   }
   return Buffer.concat([Buffer.from(`P5\n${width} ${height}\n255\n`), pixels]);
+}
+
+function recognizeSynthetic(text) {
+  const worker = new LocalWorker(`${origin}/src/shared/ocr-worker.js`);
+  const image = syntheticNameImage(text);
+  let timeout;
+  return new Promise((resolve, reject) => {
+    timeout = setTimeout(() => reject(Error('OCR timed out')), 30_000);
+    worker.onerror = ({ message }) => reject(Error(message));
+    worker.onmessage = ({ data }) => {
+      if (data.type !== 'progress') resolve(data);
+    };
+    worker.postMessage(image.buffer.slice(image.byteOffset, image.byteOffset + image.byteLength));
+  }).finally(() => {
+    clearTimeout(timeout);
+    worker.terminate();
+  });
 }
 
 test('vendored OCR recognizes a synthetic name using only local assets and no persistent storage', async () => {
@@ -118,10 +141,17 @@ test('vendored OCR recognizes a synthetic name using only local assets and no pe
     assert.equal(result.type, 'result');
     assert.match(result.text, /MEIER\s+MIA/);
     assert.ok(requests.some((url) => url.endsWith('/deu.traineddata.gz')));
+    assert.ok(requests.some((url) => url.endsWith('/fra.traineddata.gz')));
     assert.ok(requests.some((url) => url.endsWith('-lstm.wasm.js')));
   } finally {
     clearTimeout(timeout);
     worker.terminate();
   }
   assert.ok(worker.children.every((child) => child.dead));
+});
+
+test('the name OCR keeps accented letters through the additional French model', async () => {
+  const result = await recognizeSynthetic('MÉLIA  MEIER');
+  assert.equal(result.type, 'result');
+  assert.match(result.text, /MÉLIA\s+MEIER/);
 });

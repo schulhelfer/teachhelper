@@ -85,8 +85,18 @@ Integrity hashes and update metadata are tracked in `vendor-manifest.json`.
 - Source: https://www.npmjs.com/package/@tesseract.js-data/deu/v/1.0.0
 - Model provenance: https://github.com/naptha/tessdata and https://github.com/tesseract-ocr/tessdata
 - License: Apache-2.0 for the Tesseract language data. The npm wrapper declares MIT but ships no license file; no wrapper code is included.
-- Local files: `src/vendor/tesseract.js-data-deu/1.0.0/deu.traineddata.gz` and `LICENSE`.
+- Local files: `src/vendor/tesseract.js-data/1.0.0/deu.traineddata.gz` and `LICENSE`.
 - License source: https://github.com/tesseract-ocr/tessdata/blob/4.1.0/LICENSE
+- Upstream NOTICE: none published in the npm package.
+
+## French Tesseract language model
+
+- Package: `@tesseract.js-data/fra`, version 1.0.0; model variant `4.0.0_best_int`.
+- Source: https://www.npmjs.com/package/@tesseract.js-data/fra/v/1.0.0
+- Model provenance: https://github.com/naptha/tessdata and https://github.com/tesseract-ocr/tessdata
+- License: Apache-2.0 for the Tesseract language data. The npm wrapper declares MIT but ships no license file; no wrapper code is included.
+- Local files: `src/vendor/tesseract.js-data/1.0.0/fra.traineddata.gz`; the shared `LICENSE` in the same directory applies.
+- Purpose: adds accented Latin letters (é, è, ê, à, ç …) to the name OCR, which runs as `deu+fra` with German as primary language.
 - Upstream NOTICE: none published in the npm package.
 
 OCR assets are loaded exclusively from local URLs and included in the deferred offline cache. Updating OCR requires refreshing all manifest hashes and checking recognition with networking disabled. User images and OCR results are never included in these caches.

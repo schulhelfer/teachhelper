@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '144';
+const TEACHHELPER_APP_VERSION_STAMP = '145';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -193,8 +193,9 @@ const DEFERRED_ASSETS = [
   './src/vendor/tesseract.js-core/7.0.0/tesseract-core-lstm.wasm.js',
   './src/vendor/tesseract.js-core/7.0.0/tesseract-core-relaxedsimd-lstm.wasm.js',
   './src/vendor/tesseract.js-core/7.0.0/tesseract-core-simd-lstm.wasm.js',
-  './src/vendor/tesseract.js-data-deu/1.0.0/LICENSE',
-  './src/vendor/tesseract.js-data-deu/1.0.0/deu.traineddata.gz',
+  './src/vendor/tesseract.js-data/1.0.0/LICENSE',
+  './src/vendor/tesseract.js-data/1.0.0/deu.traineddata.gz',
+  './src/vendor/tesseract.js-data/1.0.0/fra.traineddata.gz',
 ];
 const OFFLINE_FALLBACK_URL = './index.html';
 

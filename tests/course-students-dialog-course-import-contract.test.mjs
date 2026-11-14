@@ -79,7 +79,9 @@ test('a roster taken from another course is added to the list, never swapped in'
   assert.match(append, /this\.courseDialogDraft\.students\.slice\(\)/);
   assert.doesNotMatch(append, /replacesExisting/);
 
-  assert.match(append, /if \(knownNameKeys\.has\(key\)\) \{\s*return;/);
+  assert.match(append, /if \(knownNameIndexes\.has\(key\)\) \{[\s\S]*?\n        return;\n      \}/);
+  assert.match(append, /students\[index\] = \{ \.\.\.existing, classFlair: importedClassFlair \};/);
+  assert.doesNotMatch(append, /\.splice\(|students\.filter\(|students\.length = /);
 
   assert.match(append, /performanceFlair: ""/);
 });

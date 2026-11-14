@@ -58,23 +58,33 @@ export function normalizeGradeTestTasks(tasks = [], options = {}) {
   if (!normalized.length && options.ensureDefault !== false) normalized = normalizeItems([{}]);
   return normalized.map(({ source, ...task }) => {
     const subTasks = normalizeItems(source.subTasks, `${task.id}-part-`).map(({ source: childSource, ...child }) => child);
-    return subTasks.length ? {
-      ...task,
-      maxBe: null,
-      afb: "",
-      deficitDiagnosisFollowUp: false,
-      competenceExpectationIds: [],
-      customCompetenceText: "",
-      subTasks
-    } : task;
+    return subTasks.length ? { ...task, maxBe: null, afb: "", subTasks } : task;
   });
+}
+
+function hasGradeTaskCompetences(task) {
+  return Boolean(task?.competenceExpectationIds?.length || task?.customCompetenceText);
+}
+
+export function resolveGradeSubTaskInheritance(parent, child) {
+  const resolved = { ...child };
+  if (parent?.deficitDiagnosisFollowUp === true) {
+    resolved.deficitDiagnosisFollowUp = true;
+    resolved.inheritedDeficitFollowUp = true;
+  }
+  if (hasGradeTaskCompetences(parent)) {
+    resolved.competenceExpectationIds = [...parent.competenceExpectationIds];
+    resolved.customCompetenceText = parent.customCompetenceText;
+    resolved.inheritedCompetences = true;
+  }
+  return resolved;
 }
 
 export function getGradeTestScoringTasks(tasks = []) {
   return normalizeGradeTestTasks(tasks, { ensureDefault: false }).flatMap((task, index) => (
     task.subTasks?.length
       ? task.subTasks.map((child, childIndex) => ({
-        ...child,
+        ...resolveGradeSubTaskInheritance(task, child),
         label: `${index + 1}${formatGradeSubTaskLetter(childIndex)}`,
         parentId: task.id
       }))

@@ -22,7 +22,6 @@ test('OCR preserves name parts and order and keeps every recognized line for rev
     { lastName: 'van der Meer', firstName: 'Léa', classFlair: '' },
     { lastName: 'O’Neill', firstName: 'Max', classFlair: '' },
     { lastName: 'Solo', firstName: '', classFlair: '' },
-    { lastName: '123', firstName: '', classFlair: '' },
   ]);
   assert.deepEqual(importableOcrNames(parseOcrNames('Anna Maria  von Berg\nMax Mustermann', 'first-last')), [
     { firstName: 'Anna Maria', lastName: 'von Berg', classFlair: '' },
@@ -88,6 +87,29 @@ test('missing, invalid and conflicting OCR classes stay unassigned and class-onl
     { lastName: 'Müller', firstName: 'Anna', classFlair: 'a' },
   ]);
   assert.deepEqual(importableOcrNames(parseOcrNames('7a\n11 B')), []);
+});
+
+test('misread class letters are recovered and digits never end up in a name', () => {
+  for (const line of ['Müller  Tim  90', 'Müller, Tim 9o', 'Müller  Tim  9c.', 'Müller  Tim  9c)', 'Müller Tim 9©']) {
+    assert.deepEqual(importableOcrNames(parseOcrNames(line)), [{ lastName: 'Müller', firstName: 'Tim', classFlair: 'c' }], line);
+  }
+  assert.deepEqual(importableOcrNames(parseOcrNames('Bauer Max 9a\n90 Müller Tim\nLang Lea 9b')), [
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'a' },
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'c' },
+    { lastName: 'Lang', firstName: 'Lea', classFlair: 'b' },
+  ]);
+  assert.deepEqual(importableOcrNames(parseOcrNames('Bauer Max 1a\nMüller Tim 10')), [
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'a' },
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'c' },
+  ]);
+  for (const line of ['Müller  Tim  10', 'Müller  Tim  9x', 'Müller Tim 20 9a', '20 Müller Tim']) {
+    const expected = line.includes('9a') ? 'a' : '';
+    assert.deepEqual(importableOcrNames(parseOcrNames(line)), [{ lastName: 'Müller', firstName: 'Tim', classFlair: expected }], line);
+  }
+  assert.deepEqual(importableOcrNames(parseOcrNames('20 Müller Tim 9a\n21 Bauer Max 9b')), [
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'a' },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'b' },
+  ]);
 });
 
 test('crop movement and corner resizing stay inside the image without changing aspect ratio implicitly', () => {
@@ -163,8 +185,25 @@ test('the shared course/OCR append preserves existing records and metadata and s
     { lastName: 'Wolf', firstName: 'Tom' },
     { lastName: 'Wolf', firstName: 'Tom' },
   ], (value) => String(value || '').trim().replace(/\s+/g, ' '), buildStudentNameMatchKey, (value) => value || null, (a, b) => a.lastName.localeCompare(b.lastName), normalizeGradeClassFlair);
-  assert.deepEqual(result, { added: 1, skipped: 2 });
+  assert.deepEqual(result, { added: 1, skipped: 2, classesAdded: 0 });
   assert.equal(app.courseDialogDraft.students[0], existing);
   assert.equal(app.courseDialogDraft.importMeta, meta);
   assert.deepEqual(app.courseDialogDraft.students[1], { id: 0, lastName: 'Wolf', firstName: 'Tom', rufname: '', performanceFlair: '', classFlair: '', portrait: null });
+});
+
+test('re-importing known names only fills in missing classes and keeps every existing record intact', () => {
+  const withoutClass = { id: 4, lastName: 'Müller', firstName: 'Tim', rufname: 'Timmy', performanceFlair: 'A', classFlair: '', portrait: { existing: true } };
+  const withClass = { id: 5, lastName: 'Bauer', firstName: 'Max', performanceFlair: '', classFlair: 'a', portrait: null };
+  const app = { courseDialogDraft: { students: [withoutClass, withClass] } };
+  const result = append.call(app, [
+    { lastName: 'Müller', firstName: 'Tim', classFlair: 'c' },
+    { lastName: 'Bauer', firstName: 'Max', classFlair: 'b' },
+    { lastName: 'Lang', firstName: 'Lea', classFlair: 'h' },
+  ], (value) => String(value || '').trim().replace(/\s+/g, ' '), buildStudentNameMatchKey, (value) => value || null, (a, b) => a.lastName.localeCompare(b.lastName), normalizeGradeClassFlair);
+  assert.deepEqual(result, { added: 1, skipped: 2, classesAdded: 1 });
+  const byId = new Map(app.courseDialogDraft.students.map((student) => [student.id, student]));
+  assert.deepEqual(byId.get(4), { ...withoutClass, classFlair: 'c' });
+  assert.equal(withoutClass.classFlair, '');
+  assert.equal(byId.get(5), withClass);
+  assert.equal(app.courseDialogDraft.students.length, 3);
 });

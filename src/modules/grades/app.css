@@ -5047,29 +5047,28 @@
 
         .grade-test-group-head {
           display: grid;
-          gap: 0.4rem;
+          gap: 0.2rem;
         }
 
         .grade-test-group-head > [data-grade-test-group-max] {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          min-height: 2rem;
           font-size: 0.76rem;
         }
 
-        .grade-test-group-actions {
+        .grade-test-group-actions,
+        .grade-test-group-subtask-actions {
           display: flex;
           align-items: center;
           justify-content: center;
           gap: 0.25rem;
         }
 
-        .grade-test-group-competences {
-          color: var(--muted);
-          font-size: 0.7rem;
-        }
-
-        .grade-test-merge-subtasks {
-          min-height: 25px;
-          padding: 0.2rem;
-          font-size: 0.7rem;
+        .grade-test-group-subtask-actions {
+          min-height: 2rem;
+          margin-top: 0.08rem;
         }
 
         .grade-test-group-col.is-invalid-score {
@@ -5169,6 +5168,7 @@
         .grade-test-task-competence,
         .grade-test-task-remove,
         .grade-test-add-subtask,
+        .grade-test-merge-subtasks,
         .grade-test-toggle-subtasks {
           grid-row: 2 / 3;
           display: flex;
@@ -5207,13 +5207,23 @@
           grid-column: 4 / 5;
         }
 
-        .grade-test-add-subtask.grade-test-add-subtask-more {
+        .grade-test-main-task-head .grade-test-add-subtask {
+          grid-column: 3 / 4;
+        }
+
+        .grade-test-main-task-head .grade-test-task-remove {
+          grid-column: 4 / 5;
+        }
+
+        .grade-test-add-subtask.grade-test-add-subtask-more,
+        .grade-test-merge-subtasks {
           width: 40px;
           min-width: 40px;
           gap: 4px;
         }
 
-        .grade-test-subtask-plus {
+        .grade-test-subtask-plus,
+        .grade-test-subtask-minus {
           font-size: 16px;
           line-height: 1;
         }
@@ -5235,6 +5245,13 @@
           border-color: rgba(134, 239, 172, 0.72);
           background: rgba(34, 197, 94, 0.16);
           color: #86efac;
+        }
+
+        .grade-test-task-deficit-followup:disabled,
+        .grade-test-task-competence:disabled {
+          cursor: not-allowed;
+          opacity: 0.4;
+          filter: grayscale(100%);
         }
 
         .grade-block-table.grades-entry-table th.student-col,
@@ -6538,6 +6555,10 @@
           background: rgba(22, 163, 74, 0.12);
           border-color: rgba(21, 128, 61, 0.4);
           color: #166534;
+        }
+
+        :root:not([data-grade-class-flairs="shown"]) .grades-student-class-flair {
+          display: none;
         }
 
         .grades-student-name-wrap {
