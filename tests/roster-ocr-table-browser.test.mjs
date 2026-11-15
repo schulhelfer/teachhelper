@@ -11,7 +11,7 @@ const TABLE = [
   ['Weiß', 'Léa', '9a'],
 ];
 
-test('a printed table rendered in a real font keeps classes out of the names and never silently mangles Lê', { timeout: 120000 }, async (t) => {
+test('a printed table rendered in a real font keeps classes out of the names, reads German and French names exactly and flags lost Vietnamese accents', { timeout: 120000 }, async (t) => {
   const evaluate = await openDomBrowser(t, { viewport: { width: 1200, height: 800 } });
   const results = await evaluate(async (table) => {
     const { recognizeLocalNames } = await import('/src/shared/ocr-vendor.js');
@@ -41,28 +41,26 @@ test('a printed table rendered in a real font keeps classes out of the names and
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/png'));
       const recognized = await recognizeLocalNames(await blob.arrayBuffer());
       output.push(parseOcrLayout(ocrLinesFromTsv(recognized.tsv))
-        .map(({ lastName, firstName, classFlair, notes }) => ({ lastName, firstName, classFlair, notes })));
+        .map(({ lastName, firstName, classFlair, notes, fieldNotes }) => ({ lastName, firstName, classFlair, notes, fieldNotes })));
     }
     return output;
   }, TABLE);
+  const exactRows = [1, 3, 5];
+  const flaggedUnlessExact = [0, 2];
   for (const rows of results) {
     assert.equal(rows.length, TABLE.length);
     rows.forEach((row, index) => {
       const nameWords = `${row.lastName} ${row.firstName}`.split(' ');
       assert.equal(nameWords.length, 2, `class cell leaked into ${row.lastName}, ${row.firstName}`);
-      const expectedClass = TABLE[index][2].slice(-1);
-      if (row.classFlair !== expectedClass) assert.ok(row.notes.length > 0, `unflagged wrong class in row ${index + 1}`);
+      assert.equal(row.classFlair, TABLE[index][2].slice(-1), `wrong class in row ${index + 1}`);
     });
-    const first = rows[0];
-    const flagged = first.notes.some((note) => note.includes(`„${first.lastName}“`));
-    assert.ok(first.lastName === 'Lê' || flagged, `Lê became ${first.lastName} without a hint`);
-    assert.equal(first.classFlair, 'a');
-  }
-  assert.ok(results.some((rows) => rows[0].lastName === 'Lê'), 'Lê is recognized exactly in at least one rendering');
-  for (const rows of results) {
-    rows.slice(1).forEach((row, index) => {
-      assert.equal(`${row.lastName} ${row.firstName}`, `${TABLE[index + 1][0]} ${TABLE[index + 1][1]}`);
-      assert.equal(row.classFlair, TABLE[index + 1][2].slice(-1));
-    });
+    for (const index of exactRows) {
+      assert.equal(`${rows[index].lastName} ${rows[index].firstName}`, `${TABLE[index][0]} ${TABLE[index][1]}`);
+    }
+    for (const index of flaggedUnlessExact) {
+      const row = rows[index];
+      const flagged = row.fieldNotes.lastName.length > 0;
+      assert.ok(row.lastName === TABLE[index][0] || flagged, `${TABLE[index][0]} became ${row.lastName} without a hint`);
+    }
   }
 });

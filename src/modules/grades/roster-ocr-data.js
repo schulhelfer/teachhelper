@@ -27,16 +27,42 @@ function nameWordNotes(word) {
   return notes;
 }
 
+const NAME_DIGIT_LOOKALIKES = Object.freeze({ 0: "o", 1: "l", 5: "s", 6: "g", 8: "b" });
+const NAME_DIGIT_START_LOOKALIKES = Object.freeze({ 1: "I" });
+
+function replaceNameDigits(word) {
+  const lettersOnly = word.replace(/\p{N}/gu, "");
+  const uppercase = /\p{L}{2,}/u.test(lettersOnly) && lettersOnly === lettersOnly.toLocaleUpperCase("de");
+  return [...word].map((char, index) => {
+    const lower = NAME_DIGIT_LOOKALIKES[char];
+    if (!lower) return char;
+    if (index === 0) return NAME_DIGIT_START_LOOKALIKES[char] || lower.toLocaleUpperCase("de");
+    return uppercase ? lower.toLocaleUpperCase("de") : lower;
+  }).join("");
+}
+
+function cleanNameWord(word, notes) {
+  if (!/\p{N}/u.test(word)) return word;
+  if (!/\p{L}/u.test(word)) {
+    notes?.push(`Angepasst: „${word}“ entfernt`);
+    return "";
+  }
+  const replaced = replaceNameDigits(word);
+  if (/\p{N}/u.test(replaced)) {
+    notes?.push(`„${word}“ enthält eine Ziffer – bitte prüfen`);
+    return word;
+  }
+  notes?.push(`Angepasst: „${word}“ → „${replaced}“ – bitte prüfen`);
+  return replaced;
+}
+
 const cleanNamePart = (value, notes = null) => clean(value)
   .split(" ")
   .map(stripEdges)
+  .map((word) => (word ? cleanNameWord(word, notes) : ""))
   .filter((word) => {
     if (!word) return false;
-    if (/\p{N}/u.test(word)) {
-      notes?.push(`Angepasst: „${word}“ entfernt`);
-      return false;
-    }
-    notes?.push(...nameWordNotes(word));
+    if (!/\p{N}/u.test(word)) notes?.push(...nameWordNotes(word));
     return true;
   })
   .join(" ");
@@ -44,6 +70,11 @@ const cleanNamePart = (value, notes = null) => clean(value)
 const NOTE_FIELDS = Object.freeze(["lastName", "firstName", "classFlair"]);
 
 const tagNotes = (field, texts) => texts.map((text) => ({ field, text }));
+
+const addFieldNote = (row, field, text) => {
+  row.notes.push(text);
+  row.fieldNotes[field].push(text);
+};
 
 function splitNameLine(text, order) {
   const line = String(text || "").replace(/^\d+[.)\s]+/, "").trim();
@@ -64,9 +95,15 @@ function splitNameLine(text, order) {
   };
 }
 
+function emptyNameEntries(raw, lastName, firstName) {
+  if (Boolean(lastName) === Boolean(firstName)) return [];
+  const field = lastName ? "firstName" : "lastName";
+  return tagNotes(field, [`Kein ${field === "lastName" ? "Nachname" : "Vorname"} erkannt – bitte prüfen (erkannte Zeile: „${clean(raw)}“)`]);
+}
+
 function buildRow(raw, names, order, classFlair, classNotes) {
   const { lastName, firstName, noteEntries } = splitNameLine(names, order);
-  const entries = [...tagNotes("classFlair", classNotes), ...noteEntries];
+  const entries = [...tagNotes("classFlair", classNotes), ...noteEntries, ...emptyNameEntries(raw, lastName, firstName)];
   return {
     raw, lastName, firstName, classFlair,
     notes: entries.map((entry) => entry.text),
@@ -121,9 +158,7 @@ function flagUppercaseWords(rows) {
   for (const row of rows) {
     for (const field of ["lastName", "firstName"]) {
       for (const word of nameWordsOf(row[field]).filter(isUppercaseWord)) {
-        const text = `„${word}“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen`;
-        row.notes.push(text);
-        row.fieldNotes[field].push(text);
+        addFieldNote(row, field, `„${word}“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen`);
       }
     }
   }
@@ -165,7 +200,8 @@ export function ocrLinesFromTsv(tsv) {
     if (!text || ![left, width, height].every(Number.isFinite)) continue;
     const key = cells.slice(2, 5).join(":");
     if (!lines.has(key)) lines.set(key, []);
-    lines.get(key).push({ text, left, right: left + width, height });
+    const confidence = Number(cells[10]);
+    lines.get(key).push({ text, left, right: left + width, height, ...(Number.isFinite(confidence) ? { confidence } : {}) });
   }
   return [...lines.values()].map((words) => ({ words: words.sort((a, b) => a.left - b.left) }));
 }
@@ -173,7 +209,9 @@ export function ocrLinesFromTsv(tsv) {
 const STRICT_CLASS = /^\d{1,2}([a-g])$/i;
 const CLASS_HEADER = /^kl(asse)?$/i;
 const MAX_CLASS_CELL_CHARS = 4;
+const MAX_LETTER_ONLY_CLASS_CELL_CHARS = 2;
 const COLUMN_GAP_FACTOR = 0.9;
+const LOW_CONFIDENCE = 75;
 
 const median = (values) => {
   const sorted = values.filter(Number.isFinite).sort((a, b) => a - b);
@@ -184,6 +222,12 @@ const median = (values) => {
 
 const wordCenter = (word) => (word.left + word.right) / 2;
 
+function looksLikeClassCell(text) {
+  if (CLASS_HEADER.test(text)) return true;
+  if (text.length > MAX_CLASS_CELL_CHARS) return false;
+  return /\p{N}/u.test(text) || text.length <= MAX_LETTER_ONLY_CLASS_CELL_CHARS;
+}
+
 function detectClassColumn(lines) {
   const words = lines.flatMap((line) => line.words);
   const anchors = words.filter((word) => STRICT_CLASS.test(stripEdges(word.text)));
@@ -191,7 +235,7 @@ function detectClassColumn(lines) {
   const size = median(anchors.map((word) => word.height));
   const center = median(anchors.map(wordCenter));
   const aligned = words.filter((word) => (
-    stripEdges(word.text).length <= MAX_CLASS_CELL_CHARS
+    looksLikeClassCell(stripEdges(word.text))
     && Math.abs(wordCenter(word) - center) <= size
   ));
   if (aligned.length < 2) return null;
@@ -205,7 +249,7 @@ function isClassCellWord(word, column) {
   const text = stripEdges(word.text);
   const center = wordCenter(word);
   if (center < column.left || center > column.right) return false;
-  return CLASS_HEADER.test(text) || text.length <= MAX_CLASS_CELL_CHARS;
+  return looksLikeClassCell(text);
 }
 
 function resolveClassCell(words) {
@@ -226,17 +270,37 @@ function joinWords(words) {
   }, "");
 }
 
+function flagLowConfidenceWords(rows, lines, column) {
+  rows.forEach((row, index) => {
+    const words = (lines[index]?.words || []).filter((word) => word.confidence < LOW_CONFIDENCE);
+    for (const word of words) {
+      const text = stripEdges(word.text);
+      if (!text) continue;
+      const field = column && isClassCellWord(word, column)
+        ? "classFlair"
+        : ["lastName", "firstName"].find((name) => row[name].split(" ").includes(text));
+      if (!field || row.fieldNotes[field].some((note) => note.includes(`„${text}“`))) continue;
+      addFieldNote(row, field, `„${text}“ unsicher erkannt – bitte prüfen`);
+    }
+  });
+  return rows;
+}
+
 export function parseOcrLayout(lines, order = "last-first") {
   const filled = (lines || []).filter((line) => line?.words?.length);
   const column = detectClassColumn(filled);
-  if (!column) return parseOcrNames(filled.map((line) => joinWords(line.words)).join("\n"), order);
-  return flagUppercaseWords(filled.map((line) => {
-    const cellWords = line.words.filter((word) => isClassCellWord(word, column));
+  if (!column) {
+    return flagLowConfidenceWords(parseOcrNames(filled.map((line) => joinWords(line.words)).join("\n"), order), filled, null);
+  }
+  return flagLowConfidenceWords(flagUppercaseWords(filled.map((line) => {
+    const columnWords = line.words.filter((word) => isClassCellWord(word, column));
+    const strayClasses = line.words.filter((word) => STRICT_CLASS.test(stripEdges(word.text)));
+    const cellWords = columnWords.length || strayClasses.length !== 1 ? columnWords : strayClasses;
     const nameWords = line.words.filter((word) => !cellWords.includes(word));
     const cell = resolveClassCell(cellWords);
     const raw = line.words.map((word) => word.text).join(" ");
     return buildRow(raw, joinWords(nameWords), order, cell.flair, cell.note ? [cell.note] : []);
-  }));
+  })), filled, column);
 }
 
 export function importableOcrNames(rows) {
@@ -277,7 +341,49 @@ export function cropPixels(crop, width, height) {
   };
 }
 
+const OCR_MAX_UPSCALE = 3;
+const OCR_MAX_EDGE = 4096;
+const OCR_MAX_PIXELS = 4_000_000;
+
 export function ocrOutputSize(width, height) {
-  const scale = Math.min(1, 4096 / width, 4096 / height, Math.sqrt(4_000_000 / (width * height)));
+  const scale = Math.min(OCR_MAX_UPSCALE, OCR_MAX_EDGE / width, OCR_MAX_EDGE / height, Math.sqrt(OCR_MAX_PIXELS / (width * height)));
   return { width: Math.max(1, Math.floor(width * scale)), height: Math.max(1, Math.floor(height * scale)) };
+}
+
+const CONTRAST_CLIP_SHARE = 0.01;
+const MIN_CONTRAST_RANGE = 16;
+
+function histogramBound(histogram, clip, start, step) {
+  let level = start;
+  let seen = histogram[level];
+  while (seen <= clip && level + step >= 0 && level + step <= 255) {
+    level += step;
+    seen += histogram[level];
+  }
+  return level;
+}
+
+export function enhanceOcrPixels(data) {
+  const pixelCount = Math.floor(data.length / 4);
+  if (!pixelCount) return data;
+  const histogram = new Uint32Array(256);
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    const gray = Math.round(0.299 * data[offset] + 0.587 * data[offset + 1] + 0.114 * data[offset + 2]);
+    data[offset] = gray;
+    histogram[gray] += 1;
+  }
+  const clip = Math.floor(pixelCount * CONTRAST_CLIP_SHARE);
+  const low = histogramBound(histogram, clip, 0, 1);
+  const high = histogramBound(histogram, clip, 255, -1);
+  const stretch = high - low >= MIN_CONTRAST_RANGE;
+  for (let index = 0; index < pixelCount; index += 1) {
+    const offset = index * 4;
+    const gray = data[offset];
+    const value = stretch ? Math.round(clamp((gray - low) * 255 / (high - low), 0, 255)) : gray;
+    data[offset] = value;
+    data[offset + 1] = value;
+    data[offset + 2] = value;
+  }
+  return data;
 }

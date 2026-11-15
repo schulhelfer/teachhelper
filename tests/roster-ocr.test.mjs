@@ -9,7 +9,7 @@ async function loadModule(path) {
     .replace(/(\bfrom\s*)(['"])(\.[^'"]*)\2/g, (_match, prefix, quote, specifier) => `${prefix}${quote}${new URL(specifier, url).href}${quote}`);
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`);
 }
-const { parseOcrNames, parseOcrLayout, ocrLinesFromTsv, importableOcrNames, boundCrop, changeCrop, cropPixels, ocrOutputSize } = await loadModule('../src/modules/grades/roster-ocr-data.js');
+const { parseOcrNames, parseOcrLayout, ocrLinesFromTsv, importableOcrNames, boundCrop, changeCrop, cropPixels, ocrOutputSize, enhanceOcrPixels } = await loadModule('../src/modules/grades/roster-ocr-data.js');
 const { recognizeLocalNames } = await loadModule('../src/shared/ocr-vendor.js');
 const { buildStudentNameMatchKey } = await loadModule('../src/shared/school-data/seatplan-transfer.js');
 
@@ -125,14 +125,28 @@ test('crop movement and corner resizing stay inside the image without changing a
   assert.deepEqual(boundCrop({ x: -1, y: -1, width: 5, height: 5 }), { x: 0, y: 0, width: 1, height: 1 });
 });
 
-test('OCR output respects both the pixel budget and maximum edge, without upscaling', () => {
-  for (const [width, height] of [[12000, 8000], [18000, 1000], [1000, 18000], [500, 400]]) {
+test('OCR output respects both the pixel budget and maximum edge and enlarges small crops up to three times', () => {
+  for (const [width, height] of [[12000, 8000], [18000, 1000], [1000, 18000], [500, 400], [300, 40], [1500, 1500]]) {
     const result = ocrOutputSize(width, height);
     assert.ok(result.width <= 4096 && result.height <= 4096);
     assert.ok(result.width * result.height <= 4_000_000);
-    assert.ok(result.width <= width && result.height <= height);
+    assert.ok(result.width <= width * 3 && result.height <= height * 3);
     assert.ok(Math.abs((result.width / result.height) / (width / height) - 1) < 0.005);
   }
+  assert.deepEqual(ocrOutputSize(500, 400), { width: 1500, height: 1200 });
+  assert.deepEqual(ocrOutputSize(300, 40), { width: 900, height: 120 });
+});
+
+test('OCR pixels become grayscale with stretched contrast while alpha stays untouched', () => {
+  const pixels = new Uint8ClampedArray([100, 100, 100, 255, 150, 150, 150, 255, 120, 130, 140, 200, 110, 110, 110, 255]);
+  enhanceOcrPixels(pixels);
+  const values = Array.from({ length: 4 }, (_value, index) => pixels.slice(index * 4, index * 4 + 4));
+  assert.ok(values.every(([red, green, blue]) => red === green && green === blue));
+  assert.deepEqual(values.map((pixel) => pixel[0]), [0, 255, 143, 51]);
+  assert.equal(values[2][3], 200);
+  const flat = new Uint8ClampedArray([128, 128, 128, 255, 130, 130, 130, 255]);
+  enhanceOcrPixels(flat);
+  assert.deepEqual([flat[0], flat[4]], [128, 130]);
 });
 
 function fakeWorker() {
@@ -226,8 +240,8 @@ test('TSV words are grouped into lines in reading order and non-word rows are ig
     '5\t1\t1\t1\t2\t2\t300\t140\t20\t56\t10.0\t ',
   ].join('\n');
   assert.deepEqual(ocrLinesFromTsv(tsv), [
-    { words: [{ text: 'MEIER', left: 40, right: 272, height: 56 }, { text: 'MIA', left: 376, right: 512, height: 56 }] },
-    { words: [{ text: 'BAUER', left: 40, right: 240, height: 56 }] },
+    { words: [{ text: 'MEIER', left: 40, right: 272, height: 56, confidence: 90.4 }, { text: 'MIA', left: 376, right: 512, height: 56, confidence: 83.2 }] },
+    { words: [{ text: 'BAUER', left: 40, right: 240, height: 56, confidence: 91 }] },
   ]);
   assert.deepEqual(ocrLinesFromTsv(''), []);
 });
@@ -385,4 +399,56 @@ test('notes are attached to the field they concern so the dialog can mark that i
   for (const row of [lastFirst, firstLast, withClass, removed, uppercase, table]) {
     assert.deepEqual([...row.notes].sort(), Object.values(row.fieldNotes).flat().sort(), 'the flat note list mirrors the field notes');
   }
+});
+
+test('digits misread inside names become letters with a note instead of emptying the name', () => {
+  const rows = parseOcrNames('Mü11er, Lea\nSchm1dt, T0m\n0tt, Eva\n8en, Max\n1brahim, Ali\nL3a, Anna\n5ara, Mia');
+  assert.deepEqual(rows.map(({ lastName, firstName }) => [lastName, firstName]), [
+    ['Müller', 'Lea'], ['Schmldt', 'Tom'], ['Ott', 'Eva'], ['Ben', 'Max'], ['Ibrahim', 'Ali'], ['L3a', 'Anna'], ['Sara', 'Mia'],
+  ]);
+  assert.deepEqual(rows[1].fieldNotes.lastName, ['Angepasst: „Schm1dt“ → „Schmldt“ – bitte prüfen']);
+  assert.deepEqual(rows[1].fieldNotes.firstName, ['Angepasst: „T0m“ → „Tom“ – bitte prüfen']);
+  assert.deepEqual(rows[5].fieldNotes.lastName, ['„L3a“ enthält eine Ziffer – bitte prüfen']);
+  assert.equal(parseOcrNames('MÜ11ER  Tim\nBauer  Max')[0].lastName, 'MÜLLER');
+  assert.ok(rows.every((row) => row.lastName && row.firstName));
+});
+
+test('a field left empty although the line had text is marked for review', () => {
+  const [single] = parseOcrNames('Müller');
+  assert.deepEqual(single.fieldNotes.firstName, ['Kein Vorname erkannt – bitte prüfen (erkannte Zeile: „Müller“)']);
+  const [firstOnly] = parseOcrNames('Lea', 'first-last');
+  assert.deepEqual(firstOnly.fieldNotes.lastName, ['Kein Nachname erkannt – bitte prüfen (erkannte Zeile: „Lea“)']);
+  assert.deepEqual(parseOcrNames('7a')[0].notes, []);
+});
+
+test('short first names next to the class column stay names and a stray class still counts as class', () => {
+  const word = (text, left, width) => ({ text, left, right: left + width, height: 20 });
+  const rows = parseOcrLayout([
+    { words: [word('Müller,', 10, 80), word('Lea', 100, 40), word('7a', 160, 25)] },
+    { words: [word('Schmidt,', 10, 90), word('Tim', 110, 40), word('7b', 160, 25)] },
+    { words: [word('Becker,', 10, 80), word('Ben', 150, 40), word('7c', 200, 25)] },
+  ]);
+  assert.deepEqual(rows.map(({ lastName, firstName, classFlair }) => [lastName, firstName, classFlair]), [
+    ['Müller', 'Lea', 'a'], ['Schmidt', 'Tim', 'b'], ['Becker', 'Ben', 'c'],
+  ]);
+});
+
+test('words the engine read with low confidence are marked on the field they ended up in', () => {
+  const word = (text, left, width, confidence) => ({ text, left, right: left + width, height: 20, confidence });
+  const withColumn = parseOcrLayout([
+    { words: [word('Müller', 10, 70, 96), word('Lea', 200, 40, 41), word('9a', 405, 30, 95)] },
+    { words: [word('Bauer', 10, 60, 52), word('Max', 200, 40, 93), word('9b', 404, 30, 33)] },
+  ]);
+  assert.deepEqual(withColumn.map((row) => row.fieldNotes), [
+    { lastName: [], firstName: ['„Lea“ unsicher erkannt – bitte prüfen'], classFlair: [] },
+    { lastName: ['„Bauer“ unsicher erkannt – bitte prüfen'], firstName: [], classFlair: ['„9b“ unsicher erkannt – bitte prüfen'] },
+  ]);
+  const withoutColumn = parseOcrLayout([
+    { words: [word('Müller', 10, 70, 96), word('Lea', 200, 40, 60)] },
+    { words: [word('T0m', 10, 60, 30), word('Bauer', 200, 40, 99)] },
+  ], 'first-last');
+  assert.deepEqual(withoutColumn.map((row) => row.notes), [
+    ['„Lea“ unsicher erkannt – bitte prüfen'],
+    ['Angepasst: „T0m“ → „Tom“ – bitte prüfen'],
+  ]);
 });

@@ -1,7 +1,7 @@
 import { createOcrPdfSession } from "./roster-ocr-pdf.js";
 import { assertFileSizeAtMost, assertImageFilePixelsAtMost, FILE_LIMITS, FILE_TIMEOUTS, withTimeout } from "../../shared/file-guards.js";
 import { recognizeLocalNames } from "../../shared/ocr-vendor.js";
-import { boundCrop, changeCrop, cropPixels, importableOcrNames, ocrLinesFromTsv, ocrOutputSize, parseOcrLayout, parseOcrNames } from "./roster-ocr-data.js";
+import { boundCrop, changeCrop, cropPixels, enhanceOcrPixels, importableOcrNames, ocrLinesFromTsv, ocrOutputSize, parseOcrLayout, parseOcrNames } from "./roster-ocr-data.js";
 import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair } from "../../shared/school-data/grades.js";
 
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 };
@@ -363,12 +363,17 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
       const target = ocrOutputSize(area.width, area.height);
       output.width = target.width;
       output.height = target.height;
-      const context = output.getContext("2d");
+      const context = output.getContext("2d", { willReadFrequently: true });
       context.fillStyle = "white";
       context.fillRect(0, 0, output.width, output.height);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
       context.scale(output.width / area.width, output.height / area.height);
       context.translate(-area.x, -area.y);
       drawSource(context);
+      const pixels = context.getImageData(0, 0, output.width, output.height);
+      enhanceOcrPixels(pixels.data);
+      context.putImageData(pixels, 0, 0);
       const blob = await new Promise((resolve) => output.toBlob(resolve, "image/png"));
       if (signal.aborted) return;
       if (!blob) throw new Error("Der Bildausschnitt konnte nicht erstellt werden.");

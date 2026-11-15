@@ -147,7 +147,7 @@ test('vendored OCR recognizes a synthetic name using only local assets and no pe
     assert.match(result.tsv, /^5\t1\t1\t1\t1\t1\t\d+\t\d+\t\d+\t\d+\t[\d.]+\tMEIER$/m);
     assert.ok(requests.some((url) => url.endsWith('/deu.traineddata.gz')));
     assert.ok(requests.some((url) => url.endsWith('/fra.traineddata.gz')));
-    assert.ok(requests.some((url) => url.endsWith('/vie.traineddata.gz')));
+    assert.ok(!requests.some((url) => url.endsWith('/vie.traineddata.gz')));
     assert.ok(requests.some((url) => url.endsWith('-lstm.wasm.js')));
   } finally {
     clearTimeout(timeout);

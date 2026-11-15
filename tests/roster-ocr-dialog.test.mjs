@@ -54,7 +54,13 @@ class Element {
   querySelector(tag) { for (const child of this.children) { if (child.tag === tag) return child; const nested = child.querySelector(tag); if (nested) return nested; } return null; }
   querySelectorAll(selector) { const key = selector.match(/data-ocr="([^"]+)"/)?.[1]; return this.children.flatMap((child) => [...(child.dataset.ocr === key ? [child] : []), ...child.querySelectorAll(selector)]); }
   closest(selector) { const key = selector.match(/data-ocr="([^"]+)"/)?.[1]; return key && this.dataset.ocr === key ? this : null; }
-  getContext() { return Object.fromEntries(['save', 'restore', 'fillRect', 'scale', 'translate', 'rotate', 'drawImage'].map((name) => [name, (...args) => this.draws.push([name, ...args])])); }
+  getContext() {
+    return {
+      ...Object.fromEntries(['save', 'restore', 'fillRect', 'scale', 'translate', 'rotate', 'drawImage'].map((name) => [name, (...args) => this.draws.push([name, ...args])])),
+      getImageData: (x, y, width, height) => ({ data: new Uint8ClampedArray([40, 40, 40, 255, 200, 200, 200, 255]), width, height }),
+      putImageData: (pixels) => this.draws.push(['putImageData', [...pixels.data]]),
+    };
+  }
   toBlob(callback) { callback(new Blob(['image'])); }
   getBoundingClientRect() { return this.rect || { left: 0, top: 0, right: 1000, bottom: 500, width: 1000, height: 500 }; }
   setPointerCapture(id) { this.pointerId = id; }
@@ -470,4 +476,28 @@ test('table layouts from the OCR engine mark rows whose recognized text was adju
     { lastName: 'Bauer', firstName: 'Max', classFlair: 'a' },
     { lastName: 'Lang', firstName: 'Lea', classFlair: 'b' },
   ]]);
+});
+
+test('names the engine read uncertainly or with misread digits are marked in the review list', async (t) => {
+  installImage(t);
+  const word = (line, index, left, width, text, confidence) => `5\t1\t1\t1\t${line}\t${index}\t${left}\t${line * 30}\t${width}\t20\t${confidence}\t${text}`;
+  const tsv = [
+    word(1, 1, 10, 70, 'Müller', 95), word(1, 2, 200, 40, 'Lea', 42),
+    word(2, 1, 10, 70, 'Schm1dt', 88), word(2, 2, 200, 40, 'Tim', 94),
+  ].join('\n');
+  const state = setup(async () => ({ text: 'Müller Lea\nSchm1dt Tim', tsv }));
+  state.api.open(() => ({ added: 0, skipped: 0 }));
+  await selectImage(state.refs);
+  state.refs.recognize.fire('click');
+  await tick(); await tick();
+  const [, first, second] = state.refs.rows.children;
+  const adjusted = (element) => element.classList.contains('is-adjusted-field');
+  assert.deepEqual([first.children[0], first.children[1]].map(adjusted), [false, true]);
+  assert.equal(first.children[1].dataset.tooltip, '„Lea“ unsicher erkannt – bitte prüfen');
+  assert.equal(second.children[0].value, 'Schmldt');
+  assert.ok(adjusted(second.children[0]));
+  assert.equal(second.children[0].dataset.tooltip, 'Angepasst: „Schm1dt“ → „Schmldt“ – bitte prüfen');
+  const enhanced = state.created.filter((element) => element.tag === 'canvas')
+    .flatMap((element) => element.draws || []).find(([name]) => name === 'putImageData');
+  assert.deepEqual(enhanced?.[1], [0, 0, 0, 255, 255, 255, 255, 255]);
 });
