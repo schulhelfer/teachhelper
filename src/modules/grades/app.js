@@ -1,7 +1,9 @@
 import {
   calculateGradeTaskScoreSummary,
   calculateGradeTaskAverageSummary,
+  getGradeTestDeficitFollowUpTargets,
   getGradeTestScoringTasks,
+  isGradeTaskGroupDeficitFollowUpScore,
   mapGradeTestScoringTasks,
   normalizeGradeTestTasks
 } from "../../shared/school-data/grade-test-tasks.js";
@@ -1248,7 +1250,7 @@ function gradeTestTaskHasMaxBe(task = null) {
 
 function isGradeTestDeficitFollowUpScore(task, scoreValue) {
   const normalizedTask = task && typeof task === "object" ? task : {};
-  if (normalizedTask.deficitDiagnosisFollowUp !== true) {
+  if (normalizedTask.deficitDiagnosisFollowUp !== true || normalizedTask.inheritedDeficitFollowUp === true) {
     return false;
   }
   const maxBe = Number(normalizedTask.maxBe || 0);
@@ -1257,6 +1259,12 @@ function isGradeTestDeficitFollowUpScore(task, scoreValue) {
   }
   const parsed = parseGradeBeValue(scoreValue);
   return parsed.valid && parsed.value !== null && Number(parsed.value) < maxBe / 3;
+}
+
+function isGradeTestDeficitFollowUpTargetLow(target, scores = {}) {
+  return target?.isGroup
+    ? isGradeTaskGroupDeficitFollowUpScore(target.task, scores)
+    : isGradeTestDeficitFollowUpScore(target?.task, scores?.[target?.id]);
 }
 
 function normalizeCompetenceExpectationId(value, fallback = "") {
@@ -18931,9 +18939,7 @@ class GradesApp {
 
   collectGradeDeficitFollowUpGroups(context = {}) {
     const students = Array.isArray(context?.students) ? context.students : [];
-    const flaggedTasks = getGradeTestScoringTasks(context?.values?.testTasks)
-      .map((task, index) => ({ task, number: task.label }))
-      .filter(({ task }) => task.deficitDiagnosisFollowUp === true);
+    const flaggedTasks = getGradeTestDeficitFollowUpTargets(context?.values?.testTasks);
     if (!flaggedTasks.length) {
       return { flaggedTaskCount: 0, groups: [] };
     }
@@ -18941,15 +18947,15 @@ class GradesApp {
       student,
       scores: normalizeGradeTestScores(this.getExpectationHorizonStudentEntry(context, student)?.testScores)
     }));
-    const groups = flaggedTasks.reduce((result, { task, number }) => {
+    const groups = flaggedTasks.reduce((result, target) => {
       const taskStudents = studentScores
-        .filter(({ scores }) => isGradeTestDeficitFollowUpScore(task, scores[task.id]))
+        .filter(({ scores }) => isGradeTestDeficitFollowUpTargetLow(target, scores))
         .map(({ student }) => ({
           id: Number(student.id || 0),
           name: this.getGradeStudentDisplayName(student)
         }));
       if (taskStudents.length) {
-        result.push({ taskId: task.id, label: `Aufgabe ${number}`, students: taskStudents });
+        result.push({ taskId: target.id, label: `Aufgabe ${target.label}`, students: taskStudents });
       }
       return result;
     }, []);
@@ -21339,6 +21345,7 @@ class GradesApp {
     const values = context.values || {};
     const includeExpectedPerformanceCompetences = options.includeExpectedPerformanceCompetences !== false;
     const tasks = getGradeTestScoringTasks(values.testTasks);
+    const deficitFollowUpTargets = getGradeTestDeficitFollowUpTargets(values.testTasks);
     const scale = normalizeGradeTestScale(values.testScale);
     const scaleSnapshot = values.testScaleSnapshot
       ? normalizeGradeTestScaleSnapshot(values.testScaleSnapshot, scale, this.store.getGradeTestScaleSettings())
@@ -21412,12 +21419,9 @@ class GradesApp {
       if (!tasks.some((task) => Object.prototype.hasOwnProperty.call(scores, task.id))) {
         continue;
       }
-      const deficitFollowUpTaskNumbers = tasks.reduce((result, task, index) => {
-        if (isGradeTestDeficitFollowUpScore(task, scores[task.id])) {
-          result.push(task.label);
-        }
-        return result;
-      }, []);
+      const deficitFollowUpTaskNumbers = deficitFollowUpTargets
+        .filter((target) => isGradeTestDeficitFollowUpTargetLow(target, scores))
+        .map((target) => target.label);
       const expectationHorizonComment = this.buildExpectationHorizonStudentComment(
         entry?.expectationHorizonComment,
         deficitFollowUpTaskNumbers
@@ -24821,9 +24825,9 @@ class GradesApp {
           const remove = makeButton("🗑️", `Aufgabe ${index + 1} mit Teilaufgaben entfernen`, "gradeTestRemoveTask", "1");
           remove.dataset.taskId = task.id;
           remove.classList.add("danger-action", "grade-test-task-remove");
-          const followUp = makeButton("🛠️", `Nachbereitung vorschlagen für alle Teilaufgaben von Aufgabe ${index + 1}`, "gradeTestDeficitFollowup", "1");
+          const followUp = makeButton("🛠️", `Nachbereitung vorschlagen für Aufgabe ${index + 1} (gesamt)`, "gradeTestDeficitFollowup", "1");
           followUp.dataset.taskId = task.id;
-          followUp.title = "Nachbereitung für alle Teilaufgaben vorschlagen";
+          followUp.title = "Nachbereitung für die gesamte Aufgabe vorschlagen";
           followUp.classList.add("grade-test-task-deficit-followup");
           followUp.classList.toggle("is-active", task.deficitDiagnosisFollowUp === true);
           followUp.setAttribute("aria-pressed", String(task.deficitDiagnosisFollowUp === true));
@@ -24898,8 +24902,9 @@ class GradesApp {
       cell.setAttribute("aria-invalid", String(summary.invalid));
       cell.title = summary.invalid ? "Eine Teilaufgabe enthält ungültige BE2. Bitte die markierte Eingabe korrigieren."
         : summary.incomplete ? "BE-Eingaben noch unvollständig" : "Summe der BE2 aller Teilaufgaben";
-      cell.classList.toggle("is-deficit-followup-low", !summary.invalid && summary.requiresFollowUp);
-      if (!summary.invalid && summary.requiresFollowUp) cell.title += " · Nachbereitung erforderlich";
+      const requiresFollowUp = isGradeTaskGroupDeficitFollowUpScore(task, scores);
+      cell.classList.toggle("is-deficit-followup-low", requiresFollowUp);
+      if (requiresFollowUp) cell.title += " · Nachbereitung erforderlich";
     });
   }
 

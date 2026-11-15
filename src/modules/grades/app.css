@@ -5079,8 +5079,9 @@
           color: var(--danger);
         }
 
-        .grade-test-group-col.is-deficit-followup-low {
-          background: rgba(250, 204, 21, 0.2);
+        .grade-test-group-col.is-deficit-followup-low:not(.is-invalid-score) {
+          color: #facc15;
+          -webkit-text-fill-color: #facc15;
         }
 
         .grades-test-entry-table [data-grade-test-parent-task][hidden] {

@@ -412,6 +412,105 @@ test('BE subtasks preserve existing results, edit independently, collapse and pe
   assert.deepEqual(result.remainingTasks, ['single']);
 });
 
+test('BE mask colours only the sum for whole-task follow-up and only flagged parts otherwise', { timeout: 60000 }, async (t) => {
+  const evaluate = await openDomBrowser(t);
+  const result = await evaluate(async () => {
+    const { GradesApp } = await import('/src/modules/grades/app.js?dom-test');
+    const { WorkspaceStore } = await import('/src/modules/workspace/store.js');
+    const { createWorkspacePublicApi } = await import('/src/modules/workspace/public-api.js');
+    await new Promise((resolve, reject) => {
+      const style = document.createElement('link');
+      style.rel = 'stylesheet';
+      style.href = '/src/modules/grades/app.css';
+      style.onload = resolve;
+      style.onerror = reject;
+      document.head.append(style);
+    });
+    const store = new WorkspaceStore();
+    const api = createWorkspacePublicApi({ getStore: () => store, getRuntime: () => ({}), scope: 'grades' });
+    const courseId = store.createCourse(store.getActiveSchoolYear().id, 'Testkurs', '#336699');
+    const course = store.listCourses(store.getActiveSchoolYear().id).find((item) => item.id === courseId);
+    store.replaceGradeStudentsForCourse(courseId, [{ firstName: 'Lernperson 1' }, { firstName: 'Lernperson 2' }]);
+    const students = store.listGradeStudents(courseId);
+    store.saveGradeStructure(courseId, [{ name: 'Leistungen', weight: 1 }]);
+    const categoryId = store.getGradeStructureForPeriod(courseId, 'h1').categories[0].id;
+    const tasksFor = (wholeTask) => [{ id: 'main', deficitDiagnosisFollowUp: wholeTask, subTasks: [
+      { id: 'a', maxBe: 3, afb: 'I' },
+      { id: 'b', maxBe: 6, afb: 'II', deficitDiagnosisFollowUp: !wholeTask },
+    ] }];
+    const assessmentId = store.createGradeAssessment(courseId, {
+      mode: 'test', title: 'Testleistung', categoryId, halfYear: 'h1', testScale: 'sek2', testTasks: tasksFor(true),
+    });
+    store.setGradeTestEntry(students[0].id, assessmentId, { a: 0, b: 2 });
+    store.setGradeTestEntry(students[1].id, assessmentId, { a: 3, b: 1 });
+    const content = document.createElement('div');
+    content.id = 'grades-entry-content';
+    document.body.replaceChildren(content);
+    const app = Object.create(GradesApp.prototype);
+    Object.assign(app, {
+      store: api.data, refs: { gradesEntryContent: content },
+      selectedCourseId: courseId, selectedGradesEntryAssessmentId: assessmentId,
+      gradeDeficitThreshold: 5, currentView: 'grades', gradesSubView: 'entry',
+      getGradeCourseRevision: () => 1, resolveGradeOccurrenceCategoryId: () => null,
+      getSortedGradeStudentsForNameOrder: (values) => values,
+      getGradeStudentDisplayName: (student) => student.firstName,
+      getGradeStudentPortraitUrl: () => '', shouldShowGradeStudentPortraitPlaceholders: () => false,
+      getCurrentGradeOverviewDisplaySystem: () => 'points15', getCurrentGradeOverviewPredicateSuffixes: () => true,
+      getGradeInputRoot: () => content, isGradeCourseNavigationEventBlocked: () => false,
+      updateGradeVaultActionButtons() {}, dispatchGradesUnsavedState() {}, refreshGradeTotals() {},
+      renderGradePrivacyOverlay() {}, refreshVisibleGradesEntryDistribution() {},
+      renderGradesEntryDistributionOverlay() {}, syncSegmentControlSlideStates() {},
+      updateGradesEntryTableStickyScrollbar() {}, hideGradePicker() {},
+    });
+    const snapshot = () => {
+      content.replaceChildren(app.buildGradesTestEntryTable(course, students, store.getGradeAssessment(assessmentId)));
+      return students.map((student) => {
+        const group = content.querySelector(`[data-grade-test-group-student="${student.id}"]`);
+        const style = getComputedStyle(group);
+        return {
+          sum: group.textContent,
+          groupLow: group.classList.contains('is-deficit-followup-low'),
+          groupColor: style.color,
+          groupBackground: style.backgroundColor,
+          lowParts: [...content.querySelectorAll(`input[data-grade-test-score="1"][data-student-id="${student.id}"]`)]
+            .filter((input) => input.classList.contains('is-deficit-followup-low')).map((input) => input.dataset.taskId),
+        };
+      });
+    };
+    const followUpLabels = () => app.collectGradeDeficitFollowUpGroups({
+      students, values: store.getGradeAssessment(assessmentId),
+    });
+    app.getExpectationHorizonStudentEntry = (context, student) => store.getGradeEntry(student.id, assessmentId);
+    const whole = snapshot();
+    const wholeDialog = followUpLabels();
+    const wholeButton = content.querySelector('[data-grade-test-group] .grade-test-task-deficit-followup').title;
+    store.updateGradeAssessment(assessmentId, { testTasks: tasksFor(false) });
+    app.gradesEntryDraft = null;
+    const parts = snapshot();
+    const partsDialog = followUpLabels();
+    return { whole, wholeDialog, wholeButton, parts, partsDialog };
+  });
+  const [wholeLow, wholeHigh] = result.whole;
+  assert.equal(wholeLow.sum, '2');
+  assert.equal(wholeLow.groupLow, true);
+  assert.deepEqual(wholeLow.lowParts, []);
+  assert.equal(wholeLow.groupColor, 'rgb(250, 204, 21)');
+  assert.equal(wholeLow.groupBackground, 'rgba(0, 0, 0, 0)');
+  assert.equal(wholeHigh.groupLow, false);
+  assert.deepEqual(wholeHigh.lowParts, []);
+  assert.equal(result.wholeButton, 'Nachbereitung für die gesamte Aufgabe vorschlagen');
+  assert.equal(result.wholeDialog.flaggedTaskCount, 1);
+  assert.deepEqual(result.wholeDialog.groups.map((group) => [group.label, group.students.map((student) => student.name)]),
+    [['Aufgabe 1', ['Lernperson 1']]]);
+  for (const row of result.parts) {
+    assert.equal(row.groupLow, false);
+    assert.notEqual(row.groupColor, 'rgb(250, 204, 21)');
+  }
+  assert.deepEqual(result.parts.map((row) => row.lowParts), [[], ['b']]);
+  assert.deepEqual(result.partsDialog.groups.map((group) => [group.label, group.students.map((student) => student.name)]),
+    [['Aufgabe 1b', ['Lernperson 2']]]);
+});
+
 test('DOCX, competence and table exports use subtask labels and count points once', { timeout: 60000 }, async (t) => {
   const evaluate = await openDomBrowser(t);
   const result = await evaluate(async () => {

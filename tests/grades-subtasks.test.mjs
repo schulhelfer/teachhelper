@@ -7,10 +7,14 @@ const {
   normalizeGradeTestTasks, getGradeTestScoringTasks, calculateGradeTaskScoreSummary, calculateGradeTaskAverageSummary,
   calculateGradeTestRatio, calculateGradeTestValue, calculateGradeTestMaxBeSum,
   calculateGradeTestAfbShares, calculateGradeTestAverageState, getGradeTestBonusTaskChoices,
+  isGradeTaskGroupDeficitFollowUpScore, getGradeTestDeficitFollowUpTargets,
+  isGradeTestDeficitFollowUpScore, isGradeTestDeficitFollowUpTargetLow,
 } = await loadGradesInternals([
   'normalizeGradeTestTasks', 'getGradeTestScoringTasks', 'calculateGradeTaskScoreSummary', 'calculateGradeTaskAverageSummary',
   'calculateGradeTestRatio', 'calculateGradeTestValue', 'calculateGradeTestMaxBeSum',
   'calculateGradeTestAfbShares', 'calculateGradeTestAverageState', 'getGradeTestBonusTaskChoices',
+  'isGradeTaskGroupDeficitFollowUpScore', 'getGradeTestDeficitFollowUpTargets',
+  'isGradeTestDeficitFollowUpScore', 'isGradeTestDeficitFollowUpTargetLow',
 ]);
 const { WorkspaceStore } = await import(await createWorkspaceModuleLoader()('store.js'));
 const tasks = [
@@ -56,20 +60,61 @@ test('grades, AFB and averages count leaf tasks once and retain half points', ()
   assert.equal(average.ratioState.maxSum, 10);
 });
 
-test('group summaries distinguish empty, zero, incomplete and follow-up values', () => {
+test('group summaries distinguish empty, zero and incomplete values', () => {
   const children = tasks[0].subTasks;
   const empty = calculateGradeTaskScoreSummary(children);
   assert.equal(empty.earnedSum, null);
   assert.equal(empty.incomplete, true);
-  assert.equal(empty.requiresFollowUp, false);
   const zero = calculateGradeTaskScoreSummary(children, { 'part-a': 0 });
   assert.equal(zero.earnedSum, 0);
   assert.equal(zero.incomplete, true);
-  assert.equal(zero.requiresFollowUp, true);
   const complete = calculateGradeTaskScoreSummary(children, { 'part-a': 1, 'part-b': 4 });
   assert.equal(complete.earnedSum, 5);
   assert.equal(complete.incomplete, false);
-  assert.equal(complete.requiresFollowUp, false);
+  assert.equal(Object.hasOwn(complete, 'requiresFollowUp'), false);
+});
+
+test('follow-up for a whole task colours only the sum, follow-up for parts colours only those parts', () => {
+  const [partFlagged] = normalizeGradeTestTasks(tasks);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(partFlagged, { 'part-a': 0, 'part-b': 0 }), false);
+  const partLeaves = getGradeTestScoringTasks(tasks);
+  assert.equal(isGradeTestDeficitFollowUpScore(partLeaves[0], 0), true);
+  assert.equal(isGradeTestDeficitFollowUpScore(partLeaves[1], 0), false);
+
+  const whole = normalizeGradeTestTasks([{ id: 'main', deficitDiagnosisFollowUp: true, subTasks: [
+    { id: 'a', maxBe: 3 }, { id: 'b', maxBe: 6 },
+  ] }])[0];
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(whole, {}), false);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(whole, { a: 3, b: 1 }), false);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(whole, { a: 0, b: 2 }), true);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(whole, { a: 0, b: 3 }), false);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(whole, { a: 0, b: 'x' }), false);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(whole, { a: 0, b: 7 }), false);
+  const wholeLeaves = getGradeTestScoringTasks([whole]);
+  assert.equal(wholeLeaves.every((leaf) => leaf.inheritedDeficitFollowUp === true), true);
+  assert.equal(wholeLeaves.some((leaf) => isGradeTestDeficitFollowUpScore(leaf, 0)), false);
+
+  const missingMax = normalizeGradeTestTasks([{ id: 'main', deficitDiagnosisFollowUp: true, subTasks: [
+    { id: 'a', maxBe: 3 }, { id: 'b' },
+  ] }])[0];
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(missingMax, { a: 0 }), false);
+});
+
+test('follow-up targets list a whole task once and parts individually', () => {
+  const source = [
+    { id: 'one', deficitDiagnosisFollowUp: true, subTasks: [{ id: 'one-a', maxBe: 3, deficitDiagnosisFollowUp: true }, { id: 'one-b', maxBe: 6 }] },
+    { id: 'two', subTasks: [{ id: 'two-a', maxBe: 2 }, { id: 'two-b', maxBe: 4, deficitDiagnosisFollowUp: true }] },
+    { id: 'three', maxBe: 5, deficitDiagnosisFollowUp: true },
+    { id: 'four', maxBe: 5 },
+  ];
+  const targets = getGradeTestDeficitFollowUpTargets(source);
+  assert.deepEqual(targets.map(({ id, label, isGroup }) => [id, label, isGroup]),
+    [['one', '1', true], ['two-b', '2b', false], ['three', '3', false]]);
+  const scores = { 'one-a': 0, 'one-b': 2, 'two-a': 0, 'two-b': 1, three: 1 };
+  assert.deepEqual(targets.filter((target) => isGradeTestDeficitFollowUpTargetLow(target, scores)).map((target) => target.label),
+    ['1', '2b', '3']);
+  assert.deepEqual(targets.filter((target) => isGradeTestDeficitFollowUpTargetLow(target, { 'one-a': 3, 'one-b': 0, 'two-b': 2 }))
+    .map((target) => target.label), []);
 });
 
 test('workspace storage retains child scores, recalculates after edits and round trips nested metadata', () => {
@@ -136,7 +181,8 @@ test('main task follow-up and competences apply to every part and keep the part 
   const effective = (tasks) => getGradeTestScoringTasks(tasks).map((task) => [task.deficitDiagnosisFollowUp,
     task.competenceExpectationIds, task.customCompetenceText, Boolean(task.inheritedDeficitFollowUp), Boolean(task.inheritedCompetences)]);
   assert.deepEqual(effective(normalized), [[true, ['k3'], 'Gesamt', true, true], [true, ['k3'], 'Gesamt', true, true]]);
-  assert.equal(calculateGradeTaskScoreSummary(normalized, { a: 3, b: 1 }).requiresFollowUp, true);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(normalized[0], { a: 3, b: 1 }), false);
+  assert.equal(isGradeTaskGroupDeficitFollowUpScore(normalized[0], { a: 0, b: 2 }), true);
   assert.deepEqual(effective([{ ...parent, deficitDiagnosisFollowUp: false, competenceExpectationIds: [], customCompetenceText: '' }]),
     [[false, ['k1'], 'Eigene A', false, false], [false, [], '', false, false]]);
   assert.deepEqual(effective([{ ...parent, competenceExpectationIds: [], customCompetenceText: '' }]),

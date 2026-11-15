@@ -133,10 +133,31 @@ export function calculateGradeTaskScoreSummary(tasks, scores = {}) {
     maxSum: leaves.reduce((sum, task) => sum + Number(task.maxBe || 0), 0),
     earnedSum: enteredCount ? earnedSum : null,
     invalid,
-    incomplete: enteredCount < leaves.length || leaves.some((task) => !(task.maxBe > 0)),
-    requiresFollowUp: leaves.some((task) => task.deficitDiagnosisFollowUp && normalizeMaxBe(scores[task.id]) !== null
-      && task.maxBe > 0 && normalizeMaxBe(scores[task.id]) < task.maxBe / 3)
+    incomplete: enteredCount < leaves.length || leaves.some((task) => !(task.maxBe > 0))
   };
+}
+
+export function isGradeTaskGroupDeficitFollowUpScore(task, scores = {}) {
+  if (task?.deficitDiagnosisFollowUp !== true || !task.subTasks?.length) return false;
+  if (task.subTasks.some((child) => !(normalizeMaxBe(child.maxBe) > 0))) return false;
+  const summary = calculateGradeTaskScoreSummary([task], scores || {});
+  return !summary.invalid && summary.earnedSum !== null && summary.earnedSum < summary.maxSum / 3;
+}
+
+export function getGradeTestDeficitFollowUpTargets(tasks = []) {
+  const normalized = normalizeGradeTestTasks(tasks, { ensureDefault: false });
+  const leaves = getGradeTestScoringTasks(normalized);
+  return normalized.flatMap((task, index) => {
+    if (task.subTasks?.length && task.deficitDiagnosisFollowUp === true) {
+      return [{ id: task.id, label: String(index + 1), task, isGroup: true }];
+    }
+    const ownLeaves = task.subTasks?.length
+      ? leaves.filter((leaf) => leaf.parentId === task.id)
+      : leaves.filter((leaf) => leaf.id === task.id);
+    return ownLeaves
+      .filter((leaf) => leaf.deficitDiagnosisFollowUp === true && leaf.inheritedDeficitFollowUp !== true)
+      .map((leaf) => ({ id: leaf.id, label: leaf.label, task: leaf, isGroup: false }));
+  });
 }
 
 export function calculateGradeTaskAverageSummary(tasks, scoreEntries = []) {
