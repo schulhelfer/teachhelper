@@ -6,11 +6,11 @@ import { createWorkspaceModuleLoader } from './helpers/workspace-modules.mjs';
 const {
   normalizeGradeTestTasks, getGradeTestScoringTasks, calculateGradeTaskScoreSummary, calculateGradeTaskAverageSummary,
   calculateGradeTestRatio, calculateGradeTestValue, calculateGradeTestMaxBeSum,
-  calculateGradeTestAfbShares, calculateGradeTestAverageState,
+  calculateGradeTestAfbShares, calculateGradeTestAverageState, getGradeTestBonusTaskChoices,
 } = await loadGradesInternals([
   'normalizeGradeTestTasks', 'getGradeTestScoringTasks', 'calculateGradeTaskScoreSummary', 'calculateGradeTaskAverageSummary',
   'calculateGradeTestRatio', 'calculateGradeTestValue', 'calculateGradeTestMaxBeSum',
-  'calculateGradeTestAfbShares', 'calculateGradeTestAverageState',
+  'calculateGradeTestAfbShares', 'calculateGradeTestAverageState', 'getGradeTestBonusTaskChoices',
 ]);
 const { WorkspaceStore } = await import(await createWorkspaceModuleLoader()('store.js'));
 const tasks = [
@@ -149,4 +149,84 @@ test('main task follow-up and competences apply to every part and keep the part 
   const saved = reopened.getGradeAssessment(assessmentId).testTasks[0];
   assert.deepEqual([saved.deficitDiagnosisFollowUp, saved.competenceExpectationIds, saved.customCompetenceText], [true, ['k3'], 'Gesamt']);
   assert.deepEqual(saved.subTasks[0].competenceExpectationIds, ['k1']);
+});
+
+const bonusTasks = [
+  { id: 'one', maxBe: 10, afb: 'I' },
+  { id: 'two', maxBe: 10, afb: 'II' },
+  { id: 'extra', maxBe: 5, afb: 'III', isBonus: true },
+];
+
+test('bonus task normalization keeps exactly one flag and a main task flag covers all parts', () => {
+  const normalized = normalizeGradeTestTasks([
+    { id: 'a', maxBe: 2, isBonus: true },
+    { id: 'b', maxBe: 3, isBonus: true },
+    { id: 'c', isBonus: 'yes', subTasks: [{ id: 'c1', maxBe: 1, isBonus: true }] },
+  ]);
+  assert.deepEqual(normalized.map((task) => task.isBonus === true), [true, false, false]);
+  assert.equal(normalized[2].subTasks[0].isBonus, undefined);
+  assert.equal('isBonus' in normalized[1], false);
+  assert.deepEqual(normalizeGradeTestTasks(normalized), normalized);
+  const group = normalizeGradeTestTasks([
+    { id: 'main', isBonus: true, subTasks: [{ id: 'x', maxBe: 2, isBonus: true }, { id: 'y', maxBe: 3 }] },
+  ]);
+  assert.equal(group[0].isBonus, true);
+  assert.equal(group[0].subTasks[0].isBonus, undefined);
+  assert.deepEqual(getGradeTestScoringTasks(group).map((task) => [task.isBonus, task.inheritedBonus]), [[true, true], [true, true]]);
+  const child = getGradeTestScoringTasks([{ id: 'main', subTasks: [{ id: 'x', maxBe: 2 }, { id: 'y', maxBe: 3, isBonus: true }] }]);
+  assert.deepEqual(child.map((task) => task.isBonus === true), [false, true]);
+});
+
+test('bonus task BE2 count towards the total while its BE1 does not', () => {
+  assert.equal(calculateGradeTestMaxBeSum(bonusTasks), 20);
+  const ratio = calculateGradeTestRatio(bonusTasks, { one: 8, two: 6, extra: 4 });
+  assert.equal(ratio.maxSum, 20);
+  assert.equal(ratio.earnedSum, 18);
+  assert.equal(ratio.ratio, 0.9);
+  const capped = calculateGradeTestRatio(bonusTasks, { one: 10, two: 9, extra: 5 });
+  assert.equal(capped.earnedSum, 24);
+  assert.equal(capped.ratio, 1);
+  assert.equal(calculateGradeTestRatio(bonusTasks, { extra: 9 }).earnedSum, 5);
+  assert.equal(calculateGradeTestRatio([{ id: 'extra', maxBe: 5, isBonus: true }], { extra: 3 }), null);
+  assert.equal(calculateGradeTestValue(bonusTasks, { one: 8, two: 6, extra: 4 }),
+    calculateGradeTestValue([{ id: 'a', maxBe: 20 }], { a: 18 }));
+  const average = calculateGradeTestAverageState(bonusTasks, [{ one: 8, two: 6, extra: 4 }, { one: 2, two: 2 }]);
+  assert.equal(average.ratioState.maxSum, 20);
+  assert.equal(average.ratioState.earnedSum, 11);
+  assert.deepEqual(calculateGradeTestAfbShares(bonusTasks).rows.map((row) => row.be), [10, 10, 5]);
+  const groupRatio = calculateGradeTestRatio([
+    { id: 'one', maxBe: 10 },
+    { id: 'main', isBonus: true, subTasks: [{ id: 'x', maxBe: 2 }, { id: 'y', maxBe: 3 }] },
+  ], { one: 5, x: 2, y: 1 });
+  assert.deepEqual([groupRatio.maxSum, groupRatio.earnedSum], [10, 8]);
+});
+
+test('bonus task choices list main tasks, whole groups and single parts', () => {
+  const choices = getGradeTestBonusTaskChoices([
+    { id: 'one', maxBe: 2 },
+    { id: 'main', subTasks: [{ id: 'x', maxBe: 2 }, { id: 'y', maxBe: 3, isBonus: true }] },
+  ]);
+  assert.deepEqual(choices.map((choice) => [choice.id, choice.label, choice.selected]), [
+    ['one', 'Aufgabe 1', false],
+    ['main', 'Aufgabe 2 (gesamt)', false],
+    ['x', 'Aufgabe 2a', false],
+    ['y', 'Aufgabe 2b', true],
+  ]);
+});
+
+test('workspace storage grades with the bonus rule and round trips the bonus flag', () => {
+  const store = new WorkspaceStore();
+  store.replaceGradeStudentsForCourse(3, [{ firstName: 'Lernperson 1' }]);
+  const student = store.listGradeStudents(3)[0];
+  const assessmentId = store.createGradeAssessment(3, { mode: 'test', testTasks: bonusTasks });
+  store.setGradeTestEntry(student.id, assessmentId, { one: 8, two: 6, extra: 4 });
+  assert.equal(store.getGradeEntry(student.id, assessmentId).value,
+    calculateGradeTestValue([{ id: 'a', maxBe: 20 }], { a: 18 }));
+  const reopened = new WorkspaceStore();
+  reopened.replaceGradeVaultState(JSON.parse(JSON.stringify(store.exportGradeVaultStateSnapshot())));
+  assert.equal(reopened.getGradeAssessment(assessmentId).testTasks[2].isBonus, true);
+  const updated = structuredClone(reopened.getGradeAssessment(assessmentId).testTasks).map(({ isBonus, ...task }) => task);
+  reopened.updateGradeAssessment(assessmentId, { testTasks: updated });
+  assert.equal(reopened.getGradeEntry(student.id, assessmentId).value,
+    calculateGradeTestValue([{ id: 'a', maxBe: 25 }], { a: 18 }));
 });

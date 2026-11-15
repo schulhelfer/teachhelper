@@ -33,7 +33,7 @@ const cleanNamePart = (value, notes = null) => clean(value)
   .filter((word) => {
     if (!word) return false;
     if (/\p{N}/u.test(word)) {
-      notes?.push(`„${word}“ aus dem Namen entfernt`);
+      notes?.push(`Angepasst: „${word}“ entfernt`);
       return false;
     }
     notes?.push(...nameWordNotes(word));
@@ -41,16 +41,37 @@ const cleanNamePart = (value, notes = null) => clean(value)
   })
   .join(" ");
 
-function splitNameLine(text, order, notes) {
+const NOTE_FIELDS = Object.freeze(["lastName", "firstName", "classFlair"]);
+
+const tagNotes = (field, texts) => texts.map((text) => ({ field, text }));
+
+function splitNameLine(text, order) {
   const line = String(text || "").replace(/^\d+[.)\s]+/, "").trim();
   const parts = line.split(/\s*[,;\t]\s*| {2,}/).filter(Boolean);
   if (parts.length < 2) {
     const words = line.split(/\s+/);
     parts.splice(0, parts.length, words.shift() || "", words.join(" "));
   }
-  const left = cleanNamePart(parts[0], notes);
-  const right = cleanNamePart(parts.slice(1).join(" "), notes);
-  return order === "last-first" ? { lastName: left, firstName: right } : { lastName: right, firstName: left };
+  const leftNotes = [];
+  const rightNotes = [];
+  const left = cleanNamePart(parts[0], leftNotes);
+  const right = cleanNamePart(parts.slice(1).join(" "), rightNotes);
+  const [leftField, rightField] = order === "last-first" ? ["lastName", "firstName"] : ["firstName", "lastName"];
+  return {
+    [leftField]: left,
+    [rightField]: right,
+    noteEntries: [...tagNotes(leftField, leftNotes), ...tagNotes(rightField, rightNotes)],
+  };
+}
+
+function buildRow(raw, names, order, classFlair, classNotes) {
+  const { lastName, firstName, noteEntries } = splitNameLine(names, order);
+  const entries = [...tagNotes("classFlair", classNotes), ...noteEntries];
+  return {
+    raw, lastName, firstName, classFlair,
+    notes: entries.map((entry) => entry.text),
+    fieldNotes: Object.fromEntries(NOTE_FIELDS.map((field) => [field, entries.filter((entry) => entry.field === field).map((entry) => entry.text)])),
+  };
 }
 
 const CLASS_TOKEN = /(^|[\s,;|])(\d+)[ \u00a0]*([\p{L}(\u00a9]?)[.,:)\]]*(?=$|[\s,;|])/gu;
@@ -84,22 +105,26 @@ function resolveClassToken(digits, letter, leading, contextGrade) {
   return fits ? { key: `${grade}${flair}`, flair, inferred: true } : null;
 }
 
-const classReadNote = (cell, flair) => `„${cell}“ als Klasse ${flair} gelesen`;
-const invalidClassNote = (cell) => `„${cell}“ entfernt – keine gültige Klasse`;
+const classReadNote = (cell, flair) => `Angepasst: „${cell}“ → „${flair}“`;
+const invalidClassNote = (cell) => `Angepasst: „${cell}“ → keine Klasse`;
 
 const UPPERCASE_SHARE_LIMIT = 0.5;
 
-const nameWordsOf = (row) => `${row.lastName} ${row.firstName}`.split(" ").filter((word) => /\p{L}/u.test(word));
+const nameWordsOf = (value) => String(value || "").split(" ").filter((word) => /\p{L}/u.test(word));
 const isUppercaseWord = (word) => (word.match(/\p{L}/gu) || []).length >= 2
   && word === word.toLocaleUpperCase("de") && word !== word.toLocaleLowerCase("de");
 
 function flagUppercaseWords(rows) {
-  const words = rows.flatMap(nameWordsOf);
+  const words = rows.flatMap((row) => [...nameWordsOf(row.lastName), ...nameWordsOf(row.firstName)]);
   const uppercase = words.filter(isUppercaseWord);
   if (!uppercase.length || uppercase.length / words.length >= UPPERCASE_SHARE_LIMIT) return rows;
   for (const row of rows) {
-    for (const word of nameWordsOf(row).filter(isUppercaseWord)) {
-      row.notes.push(`„${word}“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen`);
+    for (const field of ["lastName", "firstName"]) {
+      for (const word of nameWordsOf(row[field]).filter(isUppercaseWord)) {
+        const text = `„${word}“ in Großbuchstaben erkannt – evtl. Akzent verloren, bitte prüfen`;
+        row.notes.push(text);
+        row.fieldNotes[field].push(text);
+      }
     }
   }
   return rows;
@@ -120,13 +145,13 @@ export function parseOcrNames(text, order = "last-first") {
     const tokens = [...classes.values()];
     const single = tokens.length === 1 ? tokens[0] : null;
     if (tokens.length > 1) {
-      notes.push(`Mehrere Klassen erkannt (${tokens.map((token) => `„${token.cell}“`).join(", ")}) – keine übernommen`);
+      notes.push(`Angepasst: ${tokens.map((token) => `„${token.cell}“`).join(", ")} → keine Klasse (mehrere erkannt)`);
     } else if (single && !single.flair) {
       notes.push(invalidClassNote(single.cell));
     } else if (single?.inferred) {
       notes.push(classReadNote(single.cell, single.flair));
     }
-    return { raw, ...splitNameLine(names, order, notes), classFlair: single?.flair || "", notes };
+    return buildRow(raw, names, order, single?.flair || "", notes);
   }));
 }
 
@@ -209,9 +234,8 @@ export function parseOcrLayout(lines, order = "last-first") {
     const cellWords = line.words.filter((word) => isClassCellWord(word, column));
     const nameWords = line.words.filter((word) => !cellWords.includes(word));
     const cell = resolveClassCell(cellWords);
-    const notes = cell.note ? [cell.note] : [];
     const raw = line.words.map((word) => word.text).join(" ");
-    return { raw, ...splitNameLine(joinWords(nameWords), order, notes), classFlair: cell.flair, notes };
+    return buildRow(raw, joinWords(nameWords), order, cell.flair, cell.note ? [cell.note] : []);
   }));
 }
 

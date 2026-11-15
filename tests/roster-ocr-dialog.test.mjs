@@ -38,6 +38,18 @@ class Element {
   fire(type, event = {}) { for (const listener of this.listeners.get(type) || []) listener({ target: this, preventDefault() {}, stopPropagation() {}, ...event }); }
   click() { this.clicked = (this.clicked || 0) + 1; this.fire('click'); }
   setAttribute(key, value) { this.attributes[key] = value; }
+  removeAttribute(key) { delete this.attributes[key]; }
+  get classList() {
+    const names = () => String(this.className || '').split(' ').filter(Boolean);
+    return {
+      contains: (name) => names().includes(name),
+      toggle: (name, force) => {
+        const next = new Set(names());
+        if (force ?? !next.has(name)) next.add(name); else next.delete(name);
+        this.className = [...next].join(' ');
+      },
+    };
+  }
   focus() { this.focused = true; }
   querySelector(tag) { for (const child of this.children) { if (child.tag === tag) return child; const nested = child.querySelector(tag); if (nested) return nested; } return null; }
   querySelectorAll(selector) { const key = selector.match(/data-ocr="([^"]+)"/)?.[1]; return this.children.flatMap((child) => [...(child.dataset.ocr === key ? [child] : []), ...child.querySelectorAll(selector)]); }
@@ -200,15 +212,18 @@ test('class selections can be corrected, removed and restored before committing 
   assert.equal(second.children[2].value, 'b');
   assert.equal(third.children[2].value, '');
   assert.deepEqual(first.children[2].children.map((option) => [option.value, option.textContent]), [
-    ['', 'Keine Klasse'], ...['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((value) => [value, value]),
+    ['', '-'], ...['a', 'b', 'c', 'd', 'e', 'f', 'g'].map((value) => [value, value]),
   ]);
   assert.equal(first.children[2].attributes['aria-label'], 'Klasse 1');
   first.children[2].value = 'g';
   first.children[2].fire('change');
   second.children[2].value = '';
   second.children[2].fire('change');
-  assert.ok(first.children[2].className.includes('has-flair'));
-  assert.ok(!second.children[2].className.includes('has-flair'));
+  for (const select of [first.children[2], second.children[2]]) {
+    assert.ok(select.classList.contains('course-ocr-class-select'));
+    assert.ok(!select.classList.contains('has-flair'), 'the OCR class pill stays neutral');
+    assert.ok(!select.classList.contains('course-dialog-student-class-select'));
+  }
   const draft = state.api.captureDraft();
   state.api.pause();
   state.api.close();
@@ -428,15 +443,27 @@ test('table layouts from the OCR engine mark rows whose recognized text was adju
   state.refs.recognize.fire('click');
   await tick(); await tick();
   const [, first, second, third] = state.refs.rows.children;
-  const note = (row) => row.children.find((child) => child.className === 'course-ocr-note');
-  assert.equal(note(first), undefined);
-  assert.equal(note(third), undefined);
-  assert.equal(note(second).textContent, '⚠️ Angepasst: „sa“ als Klasse a gelesen');
-  assert.equal(second.children[0].attributes['aria-describedby'], note(second).id);
+  const fields = (row) => row.children.slice(0, 3);
+  const adjusted = (element) => element.classList.contains('is-adjusted-field');
+  assert.ok(state.refs.rows.children.every((row) => row.children.every((child) => child.tag !== 'p')), 'no separate note box is rendered');
+  assert.deepEqual([...fields(first), ...fields(third)].map(adjusted), [false, false, false, false, false, false]);
+  assert.deepEqual(fields(second).map(adjusted), [false, false, true]);
+  const classSelect = second.children[2];
+  assert.equal(classSelect.dataset.tooltip, 'Angepasst: „sa“ → „a“');
+  assert.equal(classSelect.attributes['data-app-tooltip-tone'], 'near-better');
+  assert.equal(second.children[0].dataset.tooltip, undefined);
   assert.equal(second.children[1].value, 'Max');
-  assert.equal(state.refs.status.textContent, 'Bei einem Eintrag wurde der erkannte Text angepasst – bitte die markierten Zeilen prüfen.');
+  assert.equal(state.refs.status.textContent, '', 'adjustments are shown on the fields, not as a status summary');
   const draft = state.api.captureDraft();
-  assert.deepEqual(draft.rows[1].notes, ['„sa“ als Klasse a gelesen']);
+  assert.deepEqual(draft.rows[1].notes, ['Angepasst: „sa“ → „a“']);
+  assert.deepEqual(draft.rows[1].fieldNotes, { lastName: [], firstName: [], classFlair: ['Angepasst: „sa“ → „a“'] });
+  state.api.restoreDraft(draft);
+  const restored = state.refs.rows.children[2].children[2];
+  assert.ok(adjusted(restored), 'restored drafts keep the field marking');
+  restored.fire('change');
+  assert.ok(!adjusted(restored), 'reviewing the field clears its marking');
+  assert.equal(restored.dataset.tooltip, undefined);
+  assert.equal(restored.attributes['data-app-tooltip-tone'], undefined);
   state.form.fire('submit');
   assert.deepEqual(results, [[
     { lastName: 'Müller', firstName: 'Tim', classFlair: 'a' },

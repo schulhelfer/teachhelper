@@ -48,6 +48,7 @@ export function normalizeGradeTestTasks(tasks = [], options = {}) {
         competenceExpectationIds: [...new Set((Array.isArray(item.competenceExpectationIds) ? item.competenceExpectationIds : [])
           .map(normalizeCompetenceId).filter(Boolean))],
         customCompetenceText: String(item.customCompetenceText || "").trim(),
+        ...(item.isBonus === true ? { isBonus: true } : {}),
         sortOrder: Number(item.sortOrder || index + 1),
         source: item
       };
@@ -56,9 +57,19 @@ export function normalizeGradeTestTasks(tasks = [], options = {}) {
     .map((task, index) => ({ ...task, sortOrder: index + 1 }));
   let normalized = normalizeItems(tasks);
   if (!normalized.length && options.ensureDefault !== false) normalized = normalizeItems([{}]);
+  let bonusAssigned = false;
+  const claimBonus = (task) => {
+    if (task.isBonus !== true) return task;
+    const { isBonus, ...rest } = task;
+    if (bonusAssigned) return rest;
+    bonusAssigned = true;
+    return task;
+  };
   return normalized.map(({ source, ...task }) => {
     const subTasks = normalizeItems(source.subTasks, `${task.id}-part-`).map(({ source: childSource, ...child }) => child);
-    return subTasks.length ? { ...task, maxBe: null, afb: "", subTasks } : task;
+    if (!subTasks.length) return claimBonus(task);
+    const parent = claimBonus({ ...task, maxBe: null, afb: "" });
+    return { ...parent, subTasks: subTasks.map(claimBonus) };
   });
 }
 
@@ -71,6 +82,10 @@ export function resolveGradeSubTaskInheritance(parent, child) {
   if (parent?.deficitDiagnosisFollowUp === true) {
     resolved.deficitDiagnosisFollowUp = true;
     resolved.inheritedDeficitFollowUp = true;
+  }
+  if (parent?.isBonus === true) {
+    resolved.isBonus = true;
+    resolved.inheritedBonus = true;
   }
   if (hasGradeTaskCompetences(parent)) {
     resolved.competenceExpectationIds = [...parent.competenceExpectationIds];

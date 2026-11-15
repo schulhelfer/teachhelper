@@ -7,7 +7,7 @@ import {
 } from "../../shared/school-data/grade-test-tasks.js";
 import { applyFeedbackDialog } from "../../shared/feedback-dialog.js";
 import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair, normalizeGradeTestDisplaySystem } from "../../shared/school-data/grades.js";
-import { createRosterOcrDialog } from "./roster-ocr-dialog.js";
+import { createRosterOcrDialog, markAdjustedField } from "./roster-ocr-dialog.js";
 import {
   createDocxFromPreparedTemplate,
   createZipArchive,
@@ -1399,6 +1399,58 @@ function normalizeGradeTaskCompetenceExpectationIds(ids = [], expectations = nul
   }, []);
 }
 
+function getGradeTestBonusTaskChoices(tasks = []) {
+  const leaves = getGradeTestScoringTasks(tasks);
+  return normalizeGradeTestTasks(tasks, { ensureDefault: false }).flatMap((task, index) => {
+    const number = String(index + 1);
+    if (!task.subTasks?.length) {
+      return [{ id: task.id, label: `Aufgabe ${number}`, selected: task.isBonus === true }];
+    }
+    return [
+      { id: task.id, label: `Aufgabe ${number} (gesamt)`, selected: task.isBonus === true },
+      ...task.subTasks.map((child) => ({
+        id: child.id,
+        label: `Aufgabe ${leaves.find((leaf) => leaf.id === child.id)?.label || number}`,
+        selected: child.isBonus === true
+      }))
+    ];
+  });
+}
+
+function createGradeTestBonusBadge() {
+  const badge = document.createElement("span");
+  badge.className = "grade-test-bonus-badge";
+  badge.textContent = "Zusatz";
+  badge.title = "Zusatzaufgabe – BE1 zählt nicht zur Gesamtsumme";
+  return badge;
+}
+
+function getGradeTestBonusTaskLabel(tasks = []) {
+  return getGradeTestBonusTaskChoices(tasks).find((choice) => choice.selected)?.label || "";
+}
+
+function createGradeTestBonusTaskOptions(tasks = []) {
+  const choices = getGradeTestBonusTaskChoices(tasks);
+  const fragment = document.createDocumentFragment();
+  const noneOption = document.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = "Keine";
+  fragment.append(noneOption);
+  choices.forEach((choice) => {
+    const option = document.createElement("option");
+    option.value = choice.id;
+    option.textContent = choice.label;
+    fragment.append(option);
+  });
+  const selected = choices.find((choice) => choice.selected);
+  [...fragment.children].forEach((option) => {
+    const isSelected = selected ? option.value === selected.id : option.value === "";
+    option.selected = isSelected;
+    option.defaultSelected = isSelected;
+  });
+  return fragment;
+}
+
 function createGradeTestAfbOptions(selectedValue = "") {
   const selectedAfb = normalizeGradeTestAfb(selectedValue);
   return (() => { const fragment = document.createDocumentFragment(); fragment.append(...[
@@ -1451,7 +1503,9 @@ function calculateGradeTestRatio(tasks = [], scores = {}) {
   if (!normalizedTasks.length || !hasAnyScore) {
     return null;
   }
-  const maxSum = normalizedTasks.reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+  const maxSum = normalizedTasks
+    .filter((task) => task.isBonus !== true)
+    .reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
   if (maxSum <= 0) {
     return null;
   }
@@ -1491,6 +1545,7 @@ function formatGradeTestRatioDisplay(ratioState = null) {
 
 function calculateGradeTestMaxBeSum(tasks = []) {
   const maxSum = getGradeTestScoringTasks(tasks)
+    .filter((task) => task.isBonus !== true)
     .reduce((sum, task) => {
       const maxBe = Number(task.maxBe || 0);
       return maxBe > 0 ? sum + maxBe : sum;
@@ -7308,6 +7363,7 @@ class GradesApp {
           option.selected = classFlair === value;
           classSelect.append(option);
         });
+        markAdjustedField(classSelect, this.courseDialogStudentAdjustments?.get(student)?.classFlair || []);
 
         const removeButton = this.createGradeStructureActionButton({
           className: "ghost danger-action",
@@ -7540,6 +7596,11 @@ class GradesApp {
     if (field === "performanceFlair" || field === "classFlair") {
       input.value = student[field];
       input.classList.toggle("has-flair", Boolean(student[field]));
+    }
+    const adjustments = this.courseDialogStudentAdjustments?.get(student);
+    if (adjustments?.[field]) {
+      delete adjustments[field];
+      markAdjustedField(input, []);
     }
   }
 
@@ -9632,6 +9693,8 @@ class GradesApp {
         const importedClassFlair = normalizeGradeClassFlair(student?.classFlair);
         if (importedClassFlair && !normalizeGradeClassFlair(existing?.classFlair)) {
           students[index] = { ...existing, classFlair: importedClassFlair };
+          (this.courseDialogStudentAdjustments ||= new WeakMap())
+            .set(students[index], { classFlair: [`Durch Import ergänzt: „${importedClassFlair}“`] });
           classesAdded += 1;
         }
         return;
@@ -10729,8 +10792,11 @@ class GradesApp {
       event.preventDefault();
       event.stopPropagation();
       if (!this.commitVisibleGradeInputs({ requireTestTaskValues: true })) return;
+      const bonusNotice = this.gradeTestSubTaskIsBonus(mergeSubTasksButton.dataset.gradeTestMergeSubtasks)
+        ? " Die Markierung als Zusatzaufgabe wird aufgehoben."
+        : "";
       const confirmed = await this.showConfirmMessage(
-        "Teilaufgaben zu einer einfachen Aufgabe zusammenfassen? BE1 und BE2 werden addiert; fehlende BE2-Teilwerte gehen als 0 in die Summe ein. Kompetenzen und Nachbereitung werden übernommen. Bei unterschiedlichen AFB bitte anschließend einen AFB auswählen.",
+        `Teilaufgaben zu einer einfachen Aufgabe zusammenfassen? BE1 und BE2 werden addiert; fehlende BE2-Teilwerte gehen als 0 in die Summe ein. Kompetenzen und Nachbereitung werden übernommen. Bei unterschiedlichen AFB bitte anschließend einen AFB auswählen.${bonusNotice}`,
         { title: "Teilaufgaben zusammenfassen", okText: "Zusammenfassen", cancelText: "Abbrechen" }
       );
       if (confirmed) {
@@ -11148,6 +11214,19 @@ class GradesApp {
       const nextTitle = String(titleInput.value || "").trim();
       this.markGradesEntryDraftDirty();
       this.persistGradesEntryTitleValue(nextTitle, { draft: latestDraft });
+      this.renderGradesView();
+      return;
+    }
+
+    const bonusTaskSelect = event.target.closest("select[data-grades-entry-bonus-task='1']");
+    if (bonusTaskSelect) {
+      const latestDraft = commitAndGetLatestDraft();
+      if (!latestDraft || normalizeGradeAssessmentMode(latestDraft.mode) !== "test") {
+        return;
+      }
+      if (this.setGradeTestBonusTask(bonusTaskSelect.value)) {
+        this.markGradesEntryDraftDirty();
+      }
       this.renderGradesView();
       return;
     }
@@ -15841,6 +15920,19 @@ class GradesApp {
       gradesEntryField81.append("\n");
       gradesEntryBeOptions77.append(gradesEntryField81);
       gradesEntryBeOptions77.append("\n");
+      const bonusTaskField = document.createElement("label");
+      bonusTaskField.className = "grades-entry-field grades-entry-bonus-task-field";
+      bonusTaskField.title = "BE2 der Zusatzaufgabe zählen mit, ihre BE1 zählen nicht zur Gesamtsumme";
+      const bonusTaskLabel = document.createElement("span");
+      bonusTaskLabel.textContent = "Zusatzaufgabe";
+      const bonusTaskSelect = document.createElement("select");
+      bonusTaskSelect.name = "grades-entry-bonus-task";
+      bonusTaskSelect.dataset.gradesEntryBonusTask = "1";
+      bonusTaskSelect.disabled = editorMode !== "test";
+      bonusTaskSelect.append(createGradeTestBonusTaskOptions(editorMode === "test" ? editorState.testTasks : []));
+      bonusTaskField.append(bonusTaskLabel, bonusTaskSelect);
+      gradesEntryBeOptions77.append(bonusTaskField);
+      gradesEntryBeOptions77.append("\n");
       gradesEntryForm21.append(gradesEntryBeOptions77);
       gradesEntryForm21.append("\n");
       const gradesEntryTopicRow93 = document.createElement("div");
@@ -17664,6 +17756,9 @@ class GradesApp {
       }
       if (normalizeGradeTestAfb(task.afb)) {
         parts.push(`AFB ${normalizeGradeTestAfb(task.afb)}`);
+      }
+      if (task.isBonus === true) {
+        parts.push("Zusatz");
       }
       return parts.join(" - ");
     });
@@ -21268,9 +21363,7 @@ class GradesApp {
         this.getGradeTestTaskAssignedCompetenceTexts(task, competenceExpectations)
       ))
       : [];
-    const maxBeSum = tasks
-      .filter((task) => Number(task.maxBe || 0) > 0)
-      .reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+    const maxBeSum = calculateGradeTestMaxBeSum(values.testTasks);
     const percentBoundaryReplacement = this.buildExpectationHorizonPercentBoundaryReplacement({
       include: options.includePercentBoundaries,
       mode: options.percentBoundaryMode,
@@ -24501,7 +24594,8 @@ class GradesApp {
     let entries = draft.entries || {};
     if (!task.subTasks?.length) {
       addedId = nextId();
-      task.subTasks = [{ ...task, id: addedId, sortOrder: 1 }];
+      const { isBonus, ...firstSubTask } = task;
+      task.subTasks = [{ ...firstSubTask, id: addedId, sortOrder: 1 }];
       Object.assign(task, { deficitDiagnosisFollowUp: false, competenceExpectationIds: [], customCompetenceText: "" });
       entries = Object.fromEntries(Object.entries(entries).map(([studentId, rawEntry]) => {
         const entry = normalizeGradeDraftEntry(rawEntry);
@@ -24716,6 +24810,10 @@ class GradesApp {
           label.className = "grade-test-task-number";
           label.textContent = String(index + 1);
           title.append(label);
+          if (task.isBonus === true) {
+            cell.classList.add("is-bonus-task");
+            title.append(createGradeTestBonusBadge());
+          }
           const max = document.createElement("div");
           max.dataset.gradeTestGroupMax = "1";
           const actions = document.createElement("div");
@@ -24930,6 +25028,29 @@ class GradesApp {
     return this.updateGradeTestTaskMetadata(taskId, "inheritedDeficitFollowUp", (task) => ({
       deficitDiagnosisFollowUp: task.deficitDiagnosisFollowUp !== true
     }));
+  }
+
+  gradeTestSubTaskIsBonus(parentTaskId) {
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    const parent = normalizeGradeTestTasks(draft?.testTasks || assessment?.testTasks, { ensureDefault: false })
+      .find((task) => task.id === String(parentTaskId));
+    return Boolean(parent?.subTasks?.some((child) => child.isBonus === true));
+  }
+
+  setGradeTestBonusTask(taskId) {
+    const { assessment, draft } = this.getActiveGradeTestContext();
+    if (!draft) return false;
+    const bonusTaskId = String(taskId || "").trim();
+    const tasks = normalizeGradeTestTasks(draft.testTasks || assessment?.testTasks, { ensureDefault: false });
+    const apply = (task) => {
+      const { isBonus, ...rest } = task;
+      return task.id === bonusTaskId ? { ...rest, isBonus: true } : rest;
+    };
+    const nextTasks = tasks.map((task) => (
+      task.subTasks?.length ? { ...apply(task), subTasks: task.subTasks.map(apply) } : apply(task)
+    ));
+    if (JSON.stringify(normalizeGradeTestTasks(nextTasks, { ensureDefault: false })) === JSON.stringify(tasks)) return false;
+    return this.updateGradeTestContextTasks(nextTasks);
   }
 
   gradeTestTaskHasEnteredValues(taskId) {
@@ -25244,7 +25365,7 @@ class GradesApp {
         || String(task.customCompetenceText || "").trim()
       );
       const taskHead = document.createElement("th");
-      taskHead.className = "grade-test-task-col";
+      taskHead.className = "grade-test-task-col" + (task.isBonus === true ? " is-bonus-task" : "");
       taskHead.replaceChildren((() => {
         const fragment = document.createDocumentFragment();
         fragment.append("\n");
@@ -25258,6 +25379,9 @@ class GradesApp {
         taskNumberLabel.className = "grade-test-task-number";
         taskNumberLabel.textContent = task.label;
         gradeTestTaskTitle120.append(taskNumberLabel);
+        if (task.isBonus === true && task.inheritedBonus !== true) {
+          gradeTestTaskTitle120.append(createGradeTestBonusBadge());
+        }
         gradeTestTaskHead119.append(gradeTestTaskTitle120);
         gradeTestTaskHead119.append("\n");
         const gradeTestTaskMax121 = document.createElement("label");
@@ -27757,6 +27881,9 @@ class GradesApp {
           if (normalizeGradeTestAfb(task.afb)) {
             parts.push(`AFB ${normalizeGradeTestAfb(task.afb)}`);
           }
+          if (task.isBonus === true) {
+            parts.push("Zusatz");
+          }
           return parts.join(": ");
         }).join("; ")
         : "—";
@@ -27768,7 +27895,8 @@ class GradesApp {
         ["Anforderungsniveau", courseLevel || "—"],
         ["Thema", normalizeGradeAssessmentTopic(values.topic) || "—"],
         ["Nummer", formatGradeAssessmentNumber(values.assessmentNumber) || "—"],
-        ["Aufgaben / AFB", taskSummary]
+        ["Aufgaben / AFB", taskSummary],
+        ["Zusatzaufgabe", getGradeTestBonusTaskLabel(values.testTasks) || "—"]
       );
     }
     const section = document.createElement("section");
@@ -27873,6 +28001,9 @@ class GradesApp {
       }
       if (normalizeGradeTestAfb(task.afb)) {
         parts.push(`AFB ${normalizeGradeTestAfb(task.afb)}`);
+      }
+      if (task.isBonus === true) {
+        parts.push("Zusatz");
       }
       return parts.join(" · ");
     })].forEach((label, index) => {

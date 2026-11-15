@@ -7,6 +7,17 @@ import { GRADE_STUDENT_CLASS_FLAIRS, normalizeGradeClassFlair } from "../../shar
 const FULL_CROP = { x: 0, y: 0, width: 1, height: 1 };
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
+export function markAdjustedField(element, notes) {
+  element.classList.toggle("is-adjusted-field", notes.length > 0);
+  if (notes.length) {
+    element.dataset.tooltip = notes.join("\n");
+    element.setAttribute("data-app-tooltip-tone", "near-better");
+  } else {
+    delete element.dataset.tooltip;
+    element.removeAttribute("data-app-tooltip-tone");
+  }
+}
+
 export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImported, recognize = recognizeLocalNames, createPdf = createOcrPdfSession }) {
   const doc = dialog.ownerDocument;
   const ref = (name) => dialog.querySelector(`[data-ocr="${name}"]`);
@@ -144,12 +155,12 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
     }
     list.append(head);
   };
-  const rowNotes = (row) => (Array.isArray(row?.notes) ? row.notes.filter(Boolean) : []);
-  const recognitionSummary = () => {
-    if (!rows.length) return "Keine Namen erkannt.";
-    const adjusted = rows.filter((row) => rowNotes(row).length).length;
-    if (!adjusted) return "";
-    return `Bei ${adjusted === 1 ? "einem Eintrag" : `${adjusted} Einträgen`} wurde der erkannte Text angepasst – bitte die markierten Zeilen prüfen.`;
+  const recognitionSummary = () => (rows.length ? "" : "Keine Namen erkannt.");
+  const fieldNotes = (row, field) => (Array.isArray(row?.fieldNotes?.[field]) ? row.fieldNotes[field].filter(Boolean) : []);
+  const clearFieldNotes = (row, field, element) => {
+    if (!fieldNotes(row, field).length) return;
+    row.fieldNotes[field] = [];
+    markAdjustedField(element, []);
   };
   const renderRows = () => {
     const list = ref("rows");
@@ -160,35 +171,38 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
     rows.forEach((row, index) => {
       const item = doc.createElement("div");
       item.className = "course-ocr-row";
-      const notes = rowNotes(row);
-      const noteId = `course-ocr-note-${index + 1}`;
       for (const [field, title] of [["lastName", "Nachname"], ["firstName", "Vorname"]]) {
         const input = doc.createElement("input");
-        if (notes.length) input.setAttribute("aria-describedby", noteId);
         input.type = "text";
         input.value = row[field];
         input.maxLength = FILE_LIMITS.CSV_MAX_CELL_CHARS;
         input.autocomplete = "off";
         input.spellcheck = false;
         input.setAttribute("aria-label", `${title} ${index + 1}`);
-        input.addEventListener("input", () => { row[field] = input.value; updateConfirm(); });
+        markAdjustedField(input, fieldNotes(row, field));
+        input.addEventListener("input", () => {
+          row[field] = input.value;
+          clearFieldNotes(row, field, input);
+          updateConfirm();
+        });
         item.append(input);
       }
       const classSelect = doc.createElement("select");
       row.classFlair = normalizeGradeClassFlair(row.classFlair);
-      classSelect.className = `course-dialog-student-flair-select course-dialog-student-class-select${row.classFlair ? " has-flair" : ""}`;
+      classSelect.className = "course-dialog-student-flair-select course-ocr-class-select";
       classSelect.setAttribute("aria-label", `Klasse ${index + 1}`);
       for (const value of ["", ...GRADE_STUDENT_CLASS_FLAIRS]) {
         const option = doc.createElement("option");
         option.value = value;
-        option.textContent = value || "Keine Klasse";
+        option.textContent = value || "-";
         option.selected = value === row.classFlair;
         classSelect.append(option);
       }
       classSelect.value = row.classFlair;
+      markAdjustedField(classSelect, fieldNotes(row, "classFlair"));
       classSelect.addEventListener("change", () => {
         row.classFlair = normalizeGradeClassFlair(classSelect.value);
-        classSelect.className = `course-dialog-student-flair-select course-dialog-student-class-select${row.classFlair ? " has-flair" : ""}`;
+        clearFieldNotes(row, "classFlair", classSelect);
         updateConfirm();
       });
       item.append(classSelect);
@@ -203,13 +217,6 @@ export function createRosterOcrDialog({ dialog, openDialog, closeDialog, onImpor
         (remaining[Math.min(index, remaining.length - 1)]?.querySelector("button") || ref("recognize")).focus();
       });
       item.append(remove);
-      if (notes.length) {
-        const note = doc.createElement("p");
-        note.className = "course-ocr-note";
-        note.id = noteId;
-        note.textContent = `⚠️ Angepasst: ${notes.join(" · ")}`;
-        item.append(note);
-      }
       list.append(item);
       items.push(item);
     });

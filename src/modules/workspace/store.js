@@ -931,7 +931,9 @@ function calculateGradeTestRatio(tasks = [], scores = {}) {
   if (!normalizedTasks.length || !hasAnyScore) {
     return null;
   }
-  const maxSum = normalizedTasks.reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
+  const maxSum = normalizedTasks
+    .filter((task) => task.isBonus !== true)
+    .reduce((sum, task) => sum + Number(task.maxBe || 0), 0);
   if (maxSum <= 0) {
     return null;
   }
