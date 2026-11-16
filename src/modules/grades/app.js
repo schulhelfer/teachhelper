@@ -3313,6 +3313,7 @@ class GradesApp {
     this.courseDialogRosterImportBusy = false;
     this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
+    this.activeGradeTestTaskId = null;
     this.activeGradeOverrideContext = null;
     this.selectedGradesEntryAssessmentId = null;
     this.selectedGradesOverviewColumnKey = "";
@@ -10286,6 +10287,7 @@ class GradesApp {
       this.gradeInputBlurCommitSkip.add(activeInput);
       const nextStudentId = Number(targetGradeInput.dataset.studentId || 0) || null;
       this.activeGradeStudentId = nextStudentId;
+      this.activeGradeTestTaskId = this.getGradeTestTaskIdForInput(targetGradeInput);
       this.updateActiveGradeStudentHighlight();
       this.hideGradePicker();
       window.setTimeout(() => {
@@ -22909,6 +22911,7 @@ class GradesApp {
     this.hideGradePicker();
     this.activeGradeAssessmentId = null;
     this.activeGradeStudentId = null;
+    this.activeGradeTestTaskId = null;
     this.updateActiveGradeStudentHighlight();
     if (input instanceof HTMLElement) {
       input.blur();
@@ -23176,10 +23179,30 @@ class GradesApp {
     return { columnKey: `assessment:${activeAssessmentId}` };
   }
 
+  getGradeTestTaskIdForInput(input) {
+    if (!this.isTestGradeInput(input)) {
+      return null;
+    }
+    return String(input.dataset.taskId || "") || null;
+  }
+
+  updateActiveGradeTestColumnHeadHighlight(root) {
+    const headCells = Array.from(root.querySelectorAll(".grades-test-entry-table thead th"));
+    if (!headCells.length) {
+      return;
+    }
+    const taskId = String(this.activeGradeTestTaskId || "");
+    headCells.forEach((node) => {
+      const isColumnHead = Boolean(taskId) && String(node.dataset.gradeTestTaskColumn || "") === taskId;
+      node.classList.toggle("is-active-grade-column-head", isColumnHead);
+    });
+  }
+
   updateActiveGradeColumnHeadHighlight(root = this.getActiveGradeInputRoot()) {
     if (!root) {
       return;
     }
+    this.updateActiveGradeTestColumnHeadHighlight(root);
     const activeKeys = this.getActiveGradeColumnHeadKeys();
     const columnKey = String(activeKeys?.columnKey || "");
     const headCells = Array.from(root.querySelectorAll(".grades-master-table thead th"));
@@ -28874,6 +28897,7 @@ class GradesApp {
       return;
     }
     this.activeGradeStudentId = Number(gradeInput.dataset.studentId || 0) || null;
+    this.activeGradeTestTaskId = this.getGradeTestTaskIdForInput(gradeInput);
     this.updateActiveGradeStudentHighlight();
     if (this.isHomeworkGradeInput(gradeInput) || this.isTestGradeInput(gradeInput)) {
       this.hideGradePicker();
@@ -29074,6 +29098,18 @@ class GradesApp {
     const input = event.target.closest("input[data-grade-input='1']");
     if (!input || input.disabled) {
       return;
+    }
+    if (this.isTestGradeInput(input)) {
+      window.setTimeout(() => {
+        const focusedTestInput = document.activeElement instanceof Element
+          ? document.activeElement.closest("input[data-grade-test-score='1']")
+          : null;
+        if (focusedTestInput || !this.activeGradeTestTaskId) {
+          return;
+        }
+        this.activeGradeTestTaskId = null;
+        this.updateActiveGradeColumnHeadHighlight();
+      }, 0);
     }
     if (input.dataset.gradeOverrideInput === "1") {
       window.setTimeout(() => {

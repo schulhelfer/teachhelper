@@ -6370,6 +6370,18 @@
           color: var(--text-primary);
         }
 
+        .grades-test-entry-table thead th.is-active-grade-column-head {
+          --grade-cell-shadow:
+            inset 0 0 0 1px var(--border-focus),
+            inset 0 999px 0 var(--accent-soft);
+          color: var(--text-primary);
+        }
+
+        .grades-test-entry-table thead th.is-active-grade-column-head .grade-test-task-number {
+          font-weight: 800;
+          color: var(--text-primary);
+        }
+
         .grades-master-table td.is-grade-override-editing {
           --grade-cell-shadow:
             inset 0 0 0 1px var(--border-focus),
