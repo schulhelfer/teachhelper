@@ -636,6 +636,25 @@ test('a reconnect whose load fails does not keep the file connected', async () =
   assert.deepEqual(handle.read(), bytes);
 });
 
+test('a permission response for a stored database cannot replace a newly selected database', async () => {
+  const { handle: storedHandle } = await seedDatabase({ name: 'stored.json' });
+  const { handle: selectedHandle } = await seedDatabase({ name: 'selected.json' });
+  const { runtime } = createRuntime();
+  runtime.storedFileHandle = storedHandle;
+  let grantPermission;
+  storedHandle.requestPermission = () => new Promise((resolve) => { grantPermission = resolve; });
+
+  const reconnect = runtime.tryReconnectStoredSyncFile({ allowPrompt: true });
+  assert.equal(typeof grantPermission, 'function');
+  assert.equal(runtime.tryReconnectStoredSyncFile({ allowPrompt: true }), reconnect);
+  assert.equal(await runtime.acceptWorkspaceSyncFileHandle(selectedHandle), true);
+  grantPermission('granted');
+
+  assert.equal(await reconnect, false);
+  assert.equal(runtime.fileHandle, selectedHandle);
+  assert.equal(runtime.storedFileHandle, selectedHandle);
+});
+
 test('editing portraits in one course keeps every other course intact', async () => {
   const { handle, courseIds, bytes } = await seedDatabase();
   const { store, runtime } = createRuntime();

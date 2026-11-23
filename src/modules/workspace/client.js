@@ -5,7 +5,7 @@ import {
 } from '../../shared/school-data/messages.js';
 import { createWorkspaceController, WORKSPACE_GLOBAL_KEY } from './index.js';
 
-export { installWorkspaceComponents } from './components.js';
+export { bindDatabaseReconnectButton, installWorkspaceComponents } from './components.js';
 export { buildWorkspaceArchivePdfBytes, downloadWorkspaceArchivePdf } from './archive-pdf.js';
 export { getWorkspaceLocalValue, setWorkspaceLocalValue, deleteWorkspaceLocalValue } from './local-value-store.js';
 

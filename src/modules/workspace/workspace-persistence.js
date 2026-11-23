@@ -458,6 +458,7 @@ export class WorkspacePersistence {
 
   async acceptWorkspaceSyncFileHandleNow(handle, mode = 'existing', _options = {}) {
     const preserveBackupDirectory = String(mode || '') === 'reconnect';
+    if (preserveBackupDirectory && this.fileHandle) return false;
     const previousBackupConnection = this.getBackupConnection();
     const previousFileHandle = this.fileHandle;
     const previousStoredFileHandle = this.storedFileHandle;
@@ -599,6 +600,7 @@ export class WorkspacePersistence {
   tryReconnectStoredSyncFile(options = {}) {
     if (this.ephemeral) return Promise.resolve(false);
     if (this.syncReconnectInFlight) return this.syncReconnectInFlight;
+    if (this.fileHandle) return Promise.resolve(false);
     const attempt = this.runStoredSyncFileReconnect(options);
     this.syncReconnectInFlight = attempt;
     const release = () => {
@@ -611,19 +613,18 @@ export class WorkspacePersistence {
   async runStoredSyncFileReconnect({ allowPrompt = false } = {}) {
     if (this.ephemeral) return false;
     const handle = this.storedFileHandle || await this.loadStoredHandle(HANDLE_FILE_KEY);
-    if (!handle) return false;
+    if (!handle || this.fileHandle) return false;
     this.storedFileHandle = handle;
-    if (!this.fileHandle) this.fileName = String(handle.name || this.fileName || '');
+    this.fileName = String(handle.name || this.fileName || '');
     try {
-      let permission = await handle.queryPermission?.({ mode: 'readwrite' });
-      if (permission !== 'granted' && allowPrompt && typeof handle.requestPermission === 'function') {
-        permission = await handle.requestPermission({ mode: 'readwrite' });
-      }
+      const permission = allowPrompt && typeof handle.requestPermission === 'function'
+        ? await handle.requestPermission({ mode: 'readwrite' })
+        : await handle.queryPermission?.({ mode: 'readwrite' });
       if (permission !== 'granted') return false;
-      return this.acceptWorkspaceSyncFileHandle(handle, 'reconnect');
     } catch {
       return false;
     }
+    return this.acceptWorkspaceSyncFileHandle(handle, 'reconnect');
   }
 
   async ensureHandleReadWritePermission(handle, { allowPrompt = true } = {}) {

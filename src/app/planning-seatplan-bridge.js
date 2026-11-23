@@ -204,6 +204,7 @@ export function createPlanningSeatplanBridge({
     const result = {
       requestId: String(source.requestId || ''),
       courseId: Number(source.courseId || 0) || null,
+      ...(source.mode === 'seatplan-refresh' ? { mode: source.mode } : {}),
       returnTab: String(source.returnTab || ''),
       ok: false,
       code: WORKSPACE_ERROR_NOT_READY,
@@ -853,6 +854,7 @@ export function createPlanningSeatplanBridge({
     const detail = event.detail;
     if (!detail || typeof detail !== 'object') return;
     seatplanController?.sendGradeRosterImportResult?.(detail);
+    if (detail.mode === 'seatplan-refresh') return;
     documentBus.dispatchEvent(new CustomEvent(GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT, { detail }));
     if (!detail.ok || detail.mode === 'picker' || !Array.isArray(detail.students)) return;
     rosterStore?.dispatch?.(buildStudentsSyncDetail(STUDENTS_SYNC_SOURCE_GRADES, Date.now(), detail));

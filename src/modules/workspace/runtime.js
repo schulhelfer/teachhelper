@@ -1006,7 +1006,12 @@ export class WorkspaceRuntime {
     const types = ['pointerdown', 'keydown', 'touchstart'];
     const state = { queue, busy: false, detach: () => {} };
     const onGesture = () => {
-      if (state.busy || !state.queue.length) return;
+      if (state.busy) return;
+      if (state.queue[0] === 'sync-file' && this.fileHandle && !this.syncReconnectInFlight) state.queue.shift();
+      if (!state.queue.length) {
+        state.detach();
+        return;
+      }
       const step = state.queue.shift();
       state.busy = true;
       const settle = (reconnected) => {

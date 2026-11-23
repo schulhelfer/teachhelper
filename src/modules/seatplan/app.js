@@ -647,6 +647,8 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           let lastStudentsSyncTimestamp = 0;
           let pendingGradeRosterCoursesRequestId = '';
           let pendingGradeRosterImportRequestId = '';
+          let pendingCourseRosterRefresh = null;
+          let courseRosterOutdated = false;
           let gradeRosterCourses = [];
           let gradeRosterCoursesState = 'idle';
           let gradeRosterCoursesOutdated = false;
@@ -701,6 +703,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                   id,
                   first: typeof student.first === 'string' ? student.first : '',
                   last: typeof student.last === 'string' ? student.last : '',
+                  ...(typeof student.rufname === 'string' && student.rufname.trim()
+                    ? { rufname: student.rufname.trim() }
+                    : {}),
                   performanceFlair: typeof student.performanceFlair === 'string'
                     ? student.performanceFlair.trim().toUpperCase()
                     : '',
@@ -1108,6 +1113,46 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             requestGradeRosterCourses();
           }
 
+          function canRefreshCourseRoster() {
+            return seatplanTabWasActive && isCourseSeatplanMode()
+              && !isCourseRosterSwitchPending()
+              && !isCourseGradeMode()
+              && !state.pendingCourseGradeConfigRequestId
+              && !state.pendingCourseGradeSaveRequestId;
+          }
+
+          function refreshOutdatedCourseRoster() {
+            if (TUTORIAL_DEMO_MODE || !courseRosterOutdated || pendingCourseRosterRefresh || !canRefreshCourseRoster()) return;
+            const context = state.courseContext;
+            const requestId = createRequestId();
+            pendingCourseRosterRefresh = { requestId, context };
+            courseRosterOutdated = false;
+            window.parent.postMessage(withModuleFrameNonce({
+              type: SEATPLAN_GRADE_ROSTER_IMPORT_REQUEST_EVENT,
+              detail: {
+                mode: 'seatplan-refresh',
+                requestId,
+                courseId: context.courseId,
+                lessonDate: context.lessonDate,
+              }
+            }), PARENT_MESSAGE_TARGET);
+          }
+
+          function handleCourseRosterRefreshResult(detail) {
+            const pending = pendingCourseRosterRefresh;
+            if (!pending || detail.requestId !== pending.requestId || Number(detail.courseId) !== pending.context.courseId) return;
+            pendingCourseRosterRefresh = null;
+            if (pending.context !== state.courseContext) return;
+            if (!detail.ok || !canRefreshCourseRoster() || !Array.isArray(detail.students)) {
+              const invalidatedDuringRequest = courseRosterOutdated;
+              courseRosterOutdated = true;
+              if (invalidatedDuringRequest) refreshOutdatedCourseRoster();
+              return;
+            }
+            applyRefreshedCourseRoster(detail);
+            refreshOutdatedCourseRoster();
+          }
+
           function startGradeRosterImport(courseId) {
             if (TUTORIAL_DEMO_MODE || !canImportGradeRoster() || !window.parent || window.parent === window) return;
             const requestId = `seatplan-grade-roster-${createRequestId()}`;
@@ -1507,7 +1552,15 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           }
 
           function handleGradeRosterImportResult(detail) {
+            if (detail?.mode === 'seatplan-refresh') {
+              handleCourseRosterRefreshResult(detail);
+              return;
+            }
             if (detail?.clearGradeStudentPortraits === true) {
+              if (pendingCourseRosterRefresh) {
+                pendingCourseRosterRefresh = null;
+                courseRosterOutdated = true;
+              }
               revokeGradeStudentPortraitObjectUrls();
               state.showGradeStudentPortraits = false;
               state.students.forEach((student) => { if (student) student.portrait = null; });
@@ -1546,11 +1599,13 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
               }
               updateCourseSeatplanUi();
               requestGradeRosterCourses();
+              refreshOutdatedCourseRoster();
               return;
             }
             if (detail?.mode === 'plan') {
               closeGradeRosterImportMenu();
               applyAdoptedCourseSeatplan(detail);
+              refreshOutdatedCourseRoster();
               return;
             }
             gradeRosterSelectedCourseId = Number(detail.courseId || 0);
@@ -1663,6 +1718,52 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             });
           }
 
+          function reconcileCourseRosterSeatState(snapshot, students) {
+            const validIds = new Set(students.map(student => student.id));
+            const seats = Object.fromEntries(Object.entries(snapshot.seats).map(([seat, value]) => [
+              seat, value === 'TEACHER' || validIds.has(String(value)) ? value : null
+            ]));
+            const teacherDistances = snapshot.teacherDistances.filter(([studentId]) => validIds.has(studentId));
+            applyCourseSeatPreferences(snapshot.preferences, students);
+            return { ...snapshot, seats, teacherDistances, preferences: createCourseSeatPreferencesSnapshot(students) };
+          }
+
+          function applyRefreshedCourseRoster(detail) {
+            const students = cloneStudentsForSync(detail.students);
+            const courseName = String(detail.courseName || state.courseContext.courseName);
+            const working = reconcileCourseRosterSeatState({
+              seats: state.seats,
+              teacherDistances: [...getTeacherDistanceMap()],
+              preferences: createCourseSeatPreferencesSnapshot(),
+            }, students);
+            if (state.courseSeatplanBaseline) {
+              const baseline = reconcileCourseRosterSeatState(
+                JSON.parse(state.courseSeatplanBaseline),
+                cloneStudentsForSync(detail.students),
+              );
+              state.courseSeatplanBaseline = JSON.stringify(baseline);
+            }
+            const contextToken = normalizeCourseGradeToken(detail.contextToken);
+            if (state.courseContext.contextToken !== contextToken) state.courseGradeConfig = null;
+            Object.assign(state.courseContext, {
+              courseName,
+              students: cloneStudentsForSync(detail.students),
+              contextToken,
+              rosterToken: normalizeCourseGradeToken(detail.rosterToken),
+              gradeAssessment: detail.gradeAssessment || null,
+            });
+            if (gradeRosterSelectedCourseId === state.courseContext.courseId) gradeRosterSelectedCourseName = courseName;
+            state.csvName = courseName;
+            revokeGradeStudentPortraitObjectUrls();
+            state.showGradeStudentPortraits = detail.showGradeStudentPortraits === true;
+            state.students = students;
+            state.seats = working.seats;
+            state.conditions.teacherDistances = Object.fromEntries(working.teacherDistances);
+            updateCourseSeatplanUi();
+            renderSeats();
+            refreshUnseated();
+          }
+
           function applyCoursePlanData(plan, students) {
             const courseStudents = cloneStudentsForSync(students);
             if (plan && typeof plan === 'object') {
@@ -1724,6 +1825,9 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (!detail || typeof detail !== 'object') return;
             const courseId = Number(detail.courseId || 0);
             if (!courseId) return;
+            courseRosterOutdated = state.courseContext?.courseId === courseId
+              && Boolean(courseRosterOutdated || pendingCourseRosterRefresh);
+            pendingCourseRosterRefresh = null;
             const gradeConfig = detail.gradeConfig && typeof detail.gradeConfig === 'object'
               ? detail.gradeConfig
               : null;
@@ -1770,6 +1874,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             updateCourseSeatplanUi();
             setCourseSeatplanBaseline();
             markPlanSavedAction();
+            refreshOutdatedCourseRoster();
           }
 
           function createCoursePlanSnapshot() {
@@ -3924,6 +4029,7 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
                   }
                 }
                 requestGradeRosterCourses();
+                refreshOutdatedCourseRoster();
                 requestAnimationFrame(() => {
                   requestAnimationFrame(() => renderGradeRosterPills());
                 });
@@ -3943,16 +4049,19 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (data.type === GRADES_COURSE_SEATPLAN_SAVE_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseSeatplanSaveResult(detail);
+              refreshOutdatedCourseRoster();
               return;
             }
             if (data.type === GRADES_COURSE_GRADE_CONFIG_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseGradeConfigResult(detail);
+              refreshOutdatedCourseRoster();
               return;
             }
             if (data.type === GRADES_COURSE_GRADE_SAVE_RESULT_EVENT) {
               const detail = data.detail && typeof data.detail === 'object' ? data.detail : null;
               handleCourseGradeSaveResult(detail);
+              refreshOutdatedCourseRoster();
               return;
             }
             if (data.type === GRADES_GRADE_ROSTER_COURSES_RESULT_EVENT) {
@@ -3964,6 +4073,10 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
             if (data.type === SEATPLAN_GRADE_ROSTER_COURSES_OUTDATED_EVENT) {
               gradeRosterCoursesOutdated = true;
               refreshOutdatedGradeRosterCourses();
+              if (isCourseSeatplanMode()) {
+                courseRosterOutdated = true;
+                refreshOutdatedCourseRoster();
+              }
               return;
             }
             if (data.type === GRADES_GRADE_ROSTER_IMPORT_RESULT_EVENT) {
@@ -4036,11 +4149,11 @@ import { findNextCourseGradeSeat } from './grade-picker-navigation.js';
           }
 
           function seatId(r, c) { return `${r}-${c}` }
-          function displayName(s) { return `${s.first || ''} ${s.last || ''}`.trim(); }
+          function displayName(s) { return `${s.rufname || s.first || ''} ${s.last || ''}`.trim(); }
           function createSeatNameLines(student, fallbackLabel = '', options = {}) {
             const wrapper = document.createElement('span');
             wrapper.className = 'seat-name-lines';
-            const first = String(student?.first || '').trim();
+            const first = String(student?.rufname || student?.first || '').trim();
             const last = String(student?.last || '').trim();
             const fallback = String(fallbackLabel || '').trim();
             const parts = first || last

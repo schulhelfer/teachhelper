@@ -73,6 +73,7 @@ import {
   remapCourseSeatPlan
 } from "../../shared/school-data/seatplan-transfer.js";
 import {
+  bindDatabaseReconnectButton,
   createFeatureWorkspaceClient,
   installWorkspaceComponents,
   deleteWorkspaceLocalValue as clearStoredLocalValue,
@@ -3241,6 +3242,7 @@ class GradesApp {
       backupDirName: document.querySelector("#backup-dir-name"),
       syncFileName: document.querySelector("#sync-file-name"),
       syncFileStatus: document.querySelector("#sync-file-status"),
+      dbGrantAccessBtn: document.querySelector("#db-grant-access-btn"),
       dbSelectExistingBtn: document.querySelector("#db-select-existing-btn"),
       dbCreateNewBtn: document.querySelector("#db-create-new-btn"),
       dbAutoActions: document.querySelector("#db-auto-actions"),
@@ -4007,6 +4009,7 @@ class GradesApp {
 
   bindTutorialDemoGuards() {
     const externalActionSelector = [
+      "#db-grant-access-btn",
       "#db-select-existing-btn",
       "#db-create-new-btn",
       "#db-backup-now-btn",
@@ -5646,10 +5649,6 @@ class GradesApp {
     }
   }
 
-  async tryReconnectStoredSyncFile() {
-    return this.workspaceClient.operations?.tryReconnectStoredSyncFile?.() || false;
-  }
-
   async selectSyncFile(mode = "existing", options = {}) {
     const owner = this.workspaceClient.operations;
     if (!owner?.acceptWorkspaceSyncFileHandle) return false;
@@ -5661,11 +5660,14 @@ class GradesApp {
         const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         return owner.createEmptyWorkspaceFileInDirectory(directoryHandle, options);
       }
+      if (typeof window.showOpenFilePicker !== "function") {
+        throw new Error("Der Browser unterstützt keine dauerhafte Dateiauswahl für die Datenbank.");
+      }
       const [handle] = await window.showOpenFilePicker({
         multiple: false,
         types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
       });
-      return owner.acceptWorkspaceSyncFileHandle(handle, mode, options);
+      return handle ? await owner.acceptWorkspaceSyncFileHandle(handle, mode, options) : false;
     } catch (error) {
       if (error?.name !== "AbortError") await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.", "Hinweis", { variant: "error" });
       return false;
@@ -13102,17 +13104,16 @@ class GradesApp {
 
 
 
-    if (this.refs.dbSelectExistingBtn) {
-      this.refs.dbSelectExistingBtn?.addEventListener("click", async () => {
-        const reconnected = await this.tryReconnectStoredSyncFile();
-        if (reconnected) {
-          this.renderAll();
-          return;
-        }
-        await this.selectSyncFile("existing");
-        this.renderAll();
-      });
-    }
+    bindDatabaseReconnectButton(this.refs.dbGrantAccessBtn, {
+      operations: this.workspaceClient.operations,
+      showMessage: (...args) => this.showInfoMessage(...args),
+      render: () => this.renderAll()
+    });
+
+    this.refs.dbSelectExistingBtn?.addEventListener("click", async () => {
+      await this.selectSyncFile("existing");
+      this.renderAll();
+    });
 
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn?.addEventListener("click", async () => {
@@ -13597,17 +13598,23 @@ class GradesApp {
       && this.currentView === "settings"
       && this.activeSettingsTab === "database";
     const disabled = unsupported || (this.locked && !allowDatabaseControls);
+    const showStoredAccess = !unsupported && !this.tutorialDemoMode && hasPendingStoredFile && !startupDatabaseLoading;
     const shouldPulse = !unsupported
       && persistenceSyncState.initialized
       && this.locked
       && this.lockReason === "databaseRequired";
+    if (this.refs.dbGrantAccessBtn) {
+      this.refs.dbGrantAccessBtn.hidden = !showStoredAccess;
+      this.refs.dbGrantAccessBtn.disabled = disabled;
+      this.refs.dbGrantAccessBtn.classList.toggle("attention-pulse", showStoredAccess && shouldPulse);
+    }
     if (this.refs.dbSelectExistingBtn) {
       this.refs.dbSelectExistingBtn.disabled = disabled;
-      this.refs.dbSelectExistingBtn.classList.toggle("attention-pulse", shouldPulse);
+      this.refs.dbSelectExistingBtn.classList.toggle("attention-pulse", shouldPulse && !showStoredAccess);
     }
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.disabled = disabled;
-      this.refs.dbCreateNewBtn.classList.toggle("attention-pulse", shouldPulse);
+      this.refs.dbCreateNewBtn.classList.toggle("attention-pulse", shouldPulse && !showStoredAccess);
     }
     if (this.refs.dbManualLoadBtn) {
       this.refs.dbManualLoadBtn.disabled = false;
@@ -31586,6 +31593,7 @@ class GradesApp {
         id: String(Number(student.id) || ""),
         first: String(student.firstName || ""),
         last: String(student.lastName || ""),
+        rufname: String(student.rufname || ""),
         performanceFlair: normalizeGradePerformanceFlair(student.performanceFlair),
         portrait: normalizeGradeStudentPortrait(student.portrait),
         buddies: [],
@@ -31710,6 +31718,10 @@ class GradesApp {
   }
 
   async handleGradeRosterImportRequest(detail = null) {
+    if (detail?.mode === "seatplan-refresh") {
+      await this.respondWithCourseSeatplanRoster(detail);
+      return;
+    }
     const requestId = String(detail?.requestId || "");
     const courseId = Number(detail?.courseId || 0);
     const mode = detail?.mode === "plan" ? "plan" : (detail?.mode === "picker" ? "picker" : "roster");
@@ -31813,6 +31825,38 @@ class GradesApp {
         ok: false,
         message: error instanceof Error && error.message ? error.message : "Namensliste konnte nicht importiert werden."
       });
+    }
+  }
+
+  async respondWithCourseSeatplanRoster(detail) {
+    const requestId = String(detail.requestId || "");
+    const courseId = Number(detail.courseId || 0);
+    const response = { requestId, courseId, mode: "seatplan-refresh" };
+    const course = this.getCourseForSeatplan(courseId);
+    if (!requestId || !this.courseAllowsSeatplanRoster(course) || !this.canAccessGradeVault()) {
+      this.dispatchGradeRosterImportResult({ ...response, ok: false });
+      return;
+    }
+    try {
+      const lessonDate = String(detail.lessonDate || "").trim();
+      const roster = await this.withTemporaryGradeCourse(courseId, () => {
+        const students = this.buildCourseSeatplanStudents(courseId);
+        const { rosterToken, contextToken, assessmentPayload } = this.buildCourseSeatplanContextState(courseId, lessonDate, students);
+        return { students, rosterToken, contextToken, gradeAssessment: assessmentPayload };
+      });
+      if (!this.canAccessGradeVault()) {
+        this.dispatchGradeRosterImportResult({ ...response, ok: false });
+        return;
+      }
+      this.dispatchGradeRosterImportResult({
+        ...response,
+        ...roster,
+        ok: true,
+        courseName: String(course.name || "Kurs"),
+        showGradeStudentPortraits: this.shouldShowGradeStudentPortraits()
+      });
+    } catch {
+      this.dispatchGradeRosterImportResult({ ...response, ok: false });
     }
   }
 

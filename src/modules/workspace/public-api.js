@@ -126,6 +126,7 @@ const PLANNING_OPERATIONS = Object.freeze([
   'getDefaultSchoolYearStartYear',
   'getGradeCourseRosterSummary',
   'setGradeCourseStudentCounts',
+  'tryReconnectStoredSyncFile',
 ]);
 
 const GRADES_OPERATIONS = Object.freeze([
@@ -167,7 +168,6 @@ const GRADES_OPERATIONS = Object.freeze([
   'setGradeCourseStudentCounts',
   'setGradeVaultEncryptionEnabledFromSettings',
   'shouldPromptForManualDatabaseOnStartup',
-  'tryReconnectStoredSyncFile',
   'withTemporaryGradeCourse',
 ]);
 

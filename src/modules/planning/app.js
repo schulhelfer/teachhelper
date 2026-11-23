@@ -28,6 +28,7 @@ import {
   QUALIFICATION_PHASE_END_DATE_KEYS
 } from "../../shared/school-data/index.js";
 import {
+  bindDatabaseReconnectButton,
   createFeatureWorkspaceClient,
   installWorkspaceComponents,
   buildWorkspaceArchivePdfBytes,
@@ -988,6 +989,7 @@ class PlanningApp {
       backupDirName: document.querySelector("#backup-dir-name"),
       syncFileName: document.querySelector("#sync-file-name"),
       syncFileStatus: document.querySelector("#sync-file-status"),
+      dbGrantAccessBtn: document.querySelector("#db-grant-access-btn"),
       dbSelectExistingBtn: document.querySelector("#db-select-existing-btn"),
       dbCreateNewBtn: document.querySelector("#db-create-new-btn"),
       dbAutoActions: document.querySelector("#db-auto-actions"),
@@ -1304,6 +1306,7 @@ class PlanningApp {
 
   bindTutorialDemoGuards() {
     const externalActionSelector = [
+      "#db-grant-access-btn",
       "#db-select-existing-btn",
       "#db-create-new-btn",
       "#db-backup-now-btn",
@@ -1766,14 +1769,14 @@ class PlanningApp {
         const directoryHandle = await window.showDirectoryPicker({ mode: "readwrite" });
         return this.createEmptyWorkspaceFileInDirectory(directoryHandle, options);
       }
-      let handle = null;
-      if (typeof window.showOpenFilePicker === "function") {
-        [handle] = await window.showOpenFilePicker({
-          multiple: false,
-          types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
-        });
+      if (typeof window.showOpenFilePicker !== "function") {
+        throw new Error("Der Browser unterstützt keine dauerhafte Dateiauswahl für die Datenbank.");
       }
-      return handle ? this.acceptWorkspaceSyncFileHandle(handle, mode, options) : false;
+      const [handle] = await window.showOpenFilePicker({
+        multiple: false,
+        types: [{ description: "TeachHelper-Datenbank", accept: { "application/json": [".json"] } }]
+      });
+      return handle ? await this.acceptWorkspaceSyncFileHandle(handle, mode, options) : false;
     } catch (error) {
       if (error?.name !== "AbortError") {
         await this.showInfoMessage(error?.message || "Datenbankdatei konnte nicht ausgewählt werden.", "Hinweis", { variant: "error" });
@@ -1801,12 +1804,6 @@ class PlanningApp {
     if (!this.isManualPersistencePresentationMode()) return false;
     const persistence = this.getWorkspacePersistenceStatus();
     return !persistence.connected && !String(persistence.fileName || "").trim();
-  }
-
-  async tryReconnectStoredSyncFile() {
-    if (this.hasShellDatabaseConnection()) return false;
-    const result = await this.executeWorkspaceAction("sync-reconnect", { allowPrompt: true });
-    return Boolean(result.changed);
   }
 
   async ensureBackupDirectoryReady({ allowPrompt = false } = {}) {
@@ -6563,17 +6560,16 @@ class PlanningApp {
       });
     }
 
-    if (this.refs.dbSelectExistingBtn) {
-      this.refs.dbSelectExistingBtn.addEventListener("click", async () => {
-        const reconnected = await this.tryReconnectStoredSyncFile();
-        if (reconnected) {
-          this.renderAll();
-          return;
-        }
-        await this.selectSyncFile("existing");
-        this.renderAll();
-      });
-    }
+    bindDatabaseReconnectButton(this.refs.dbGrantAccessBtn, {
+      operations: this.workspaceClient.operations,
+      showMessage: (...args) => this.showInfoMessage(...args),
+      render: () => this.renderAll()
+    });
+
+    this.refs.dbSelectExistingBtn?.addEventListener("click", async () => {
+      await this.selectSyncFile("existing");
+      this.renderAll();
+    });
 
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.addEventListener("click", async () => {
@@ -7111,7 +7107,9 @@ class PlanningApp {
       && !persistence.initialized
       && !persistence.connected
       && Boolean(persistence.pendingFileName || persistence.fileName);
-    const pendingStoredFileName = !persistence.connected
+    const hasPendingStoredFile = !persistence.connected
+      && this.workspaceClient.operations.getPersistenceView().sync.pending;
+    const pendingStoredFileName = hasPendingStoredFile || startupDatabaseLoading
       ? String(persistence.pendingFileName || persistence.fileName || "")
       : "";
     const hasKnownLoadingFile = Boolean(pendingStoredFileName);
@@ -7146,7 +7144,7 @@ class PlanningApp {
         this.refs.syncFileName.textContent = "Datenbankdatei: Tutorial-Vorschau (nicht verbunden)";
       } else if (startupDatabaseLoading && hasKnownLoadingFile) {
         this.refs.syncFileName.textContent = `Datenbankdatei: ${pendingStoredFileName} (wird geladen)`;
-      } else if (pendingStoredFileName && !startupDatabaseLoading) {
+      } else if (hasPendingStoredFile) {
         this.refs.syncFileName.textContent = `Datenbankdatei: ${pendingStoredFileName} (Zugriff ausstehend)`;
       } else if (!persistence.connected) {
         this.refs.syncFileName.textContent = "Datenbankdatei: nicht ausgewählt";
@@ -7168,7 +7166,7 @@ class PlanningApp {
       } else if (!persistence.connected) {
         if (!currentStatus || hasConnectedStatusText(currentStatus)) {
           this.setSyncStatus(
-            pendingStoredFileName
+            hasPendingStoredFile
               ? "Gespeicherte Datenbank gefunden. Bitte Zugriff erlauben."
               : ""
           );
@@ -7188,17 +7186,23 @@ class PlanningApp {
       && this.currentView === "settings"
       && this.activeSettingsTab === "database";
     const disabled = unsupported || (this.locked && !allowDatabaseControls);
-      const shouldPulse = !unsupported
+    const showStoredAccess = !unsupported && !this.tutorialDemoMode && hasPendingStoredFile && !startupDatabaseLoading;
+    const shouldPulse = !unsupported
       && persistence.initialized
       && this.locked
       && this.lockReason === "databaseRequired";
+    if (this.refs.dbGrantAccessBtn) {
+      this.refs.dbGrantAccessBtn.hidden = !showStoredAccess;
+      this.refs.dbGrantAccessBtn.disabled = disabled;
+      this.refs.dbGrantAccessBtn.classList.toggle("attention-pulse", showStoredAccess && shouldPulse);
+    }
     if (this.refs.dbSelectExistingBtn) {
       this.refs.dbSelectExistingBtn.disabled = disabled;
-      this.refs.dbSelectExistingBtn.classList.toggle("attention-pulse", shouldPulse);
+      this.refs.dbSelectExistingBtn.classList.toggle("attention-pulse", shouldPulse && !showStoredAccess);
     }
     if (this.refs.dbCreateNewBtn) {
       this.refs.dbCreateNewBtn.disabled = disabled;
-      this.refs.dbCreateNewBtn.classList.toggle("attention-pulse", shouldPulse);
+      this.refs.dbCreateNewBtn.classList.toggle("attention-pulse", shouldPulse && !showStoredAccess);
     }
     if (this.refs.dbManualLoadBtn) {
       this.refs.dbManualLoadBtn.disabled = false;

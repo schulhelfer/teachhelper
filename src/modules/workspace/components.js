@@ -48,6 +48,7 @@ const DATABASE_PANEL_MARKUP = `
       <p id="sync-file-name" class="muted"></p>
       <p id="sync-file-status" class="muted"></p>
       <div id="db-auto-actions" class="button-row settings-db-auto-actions" data-tutorial-anchor="database-actions">
+        <button id="db-grant-access-btn" type="button" hidden>Zugriff erlauben</button>
         <button id="db-select-existing-btn" type="button">Bestehende Datenbankdatei auswählen</button>
         <button id="db-create-new-btn" type="button">Leere Datenbankdatei neu anlegen</button>
       </div>
@@ -95,4 +96,28 @@ export function installWorkspaceComponents(root = document) {
   if (!root.querySelector('#archive-dialog')) {
     root.body.insertAdjacentHTML('beforeend', ARCHIVE_DIALOG_MARKUP);
   }
+}
+
+export function bindDatabaseReconnectButton(button, { operations, showMessage, render }) {
+  if (!button) return;
+  let reconnecting = false;
+  button.addEventListener('click', async () => {
+    if (reconnecting) return;
+    reconnecting = true;
+    button.disabled = true;
+    try {
+      const reconnected = await operations.tryReconnectStoredSyncFile({ allowPrompt: true });
+      if (!reconnected && !operations.getPersistenceView().sync.connected) {
+        await showMessage('Zugriff auf die gespeicherte Datenbankdatei wurde nicht erteilt. Versuche es erneut oder klicke auf „Bestehende Datenbankdatei auswählen“.', 'Datenbankdatei', { variant: 'warn' });
+      }
+    } catch (error) {
+      const message = error?.name === 'NotFoundError'
+        ? 'Die gespeicherte Datenbankdatei wurde nicht gefunden. Bitte wähle die bestehende Datei erneut aus.'
+        : error?.message || 'Die gespeicherte Datenbankdatei konnte nicht geladen werden. Bitte wähle die bestehende Datei erneut aus.';
+      await showMessage(message, 'Datenbankdatei', { variant: 'error' });
+    } finally {
+      reconnecting = false;
+      render();
+    }
+  });
 }
