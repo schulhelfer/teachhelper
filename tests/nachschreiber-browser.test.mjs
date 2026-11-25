@@ -1338,7 +1338,7 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   const expectedRequest = (firstName, lesson, groups, studentName, date = result.expectedNoticeDate) => [
     `Hallo ${firstName},`,
     `am ${date.replace(', ', ', den ')}, würde ich gerne in der ${lesson} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
-    `Wäre es möglich, dass ${studentName} (9b) unter Deiner Aufsicht zusammen mit Deiner Lerngruppe „${groups}“, für die Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, die Arbeit nachschreibt? Falls ja, in welchem Raum schreibst Du die Arbeit?`,
+    `Wäre es möglich, dass ${studentName} (9b) unter Deiner Aufsicht zusammen mit Deiner Lerngruppe „${groups}“, für die Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, die Arbeit nachschreibt?`,
     'Viele Grüße',
     '[Absender]',
   ].join('\n');

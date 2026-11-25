@@ -57,7 +57,7 @@ function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source 
   return [
     `Hallo ${firstName},`,
     `am ${date}, würde ich gerne in der ${formatLessonPhrase(makeupLessons)} ${work} nachschreiben lassen.`,
-    `Wäre es möglich, dass ${studentList} unter Deiner Aufsicht zusammen mit ${group} Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, ${action}? Falls ja, in welchem Raum schreibst Du die Arbeit?`,
+    `Wäre es möglich, dass ${studentList} unter Deiner Aufsicht zusammen mit ${group} Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, ${action}?`,
     'Viele Grüße',
     senderName,
   ].join('\n');
