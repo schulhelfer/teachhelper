@@ -1,0 +1,455 @@
+.app.app-tab-nachschreiber>.side> :not(.nachschreiber-sidebar, .sidebar-resize-handle, .sidebar-help-button) {
+  display: none;
+}
+
+.nachschreiber-sidebar > .sidebar-header {
+  padding-right: 50px;
+  overflow-wrap: anywhere;
+}
+
+.app.app-tab-nachschreiber>.main {
+  overflow: auto;
+}
+
+.nachschreiber-shell {
+  min-width: 0;
+  min-height: 0;
+  padding: clamp(16px, 3vw, 36px);
+}
+
+.app.is-collapsing .nachschreiber-shell,
+.app.chrome-collapsed:not(.is-expanding) .nachschreiber-shell {
+  padding-top: max(48px, var(--chrome-overlay-clearance));
+}
+
+.nachschreiber-content {
+  display: grid;
+  gap: 16px;
+  max-width: 1080px;
+  margin-inline: auto;
+}
+
+#nachschreiber-result-status {
+  margin: 0;
+}
+
+#nachschreiber-result-status:empty {
+  position: absolute;
+}
+
+#nachschreiber-csv-status {
+  white-space: pre-line;
+}
+
+#nachschreiber-csv-status.is-error {
+  color: var(--danger);
+  opacity: 1;
+}
+
+.nachschreiber-iserv-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.nachschreiber-form a.nachschreiber-link-button {
+  display: grid;
+  place-items: center;
+  padding: 4px;
+  border: 1px solid var(--action-reset-border);
+  border-radius: var(--control-radius);
+  background: var(--action-reset-bg);
+  box-shadow: var(--action-reset-shadow);
+  font-size: 14px;
+  text-align: center;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.nachschreiber-form a.nachschreiber-link-button:hover {
+  border-color: var(--focus-border);
+  background: var(--control-bg-focus);
+}
+
+.nachschreiber-class-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.nachschreiber-form a.nachschreiber-class-source {
+  width: fit-content;
+  max-width: 100%;
+  min-height: var(--control-height);
+  margin: 8px auto 0;
+  padding: 6px 10px;
+}
+
+.nachschreiber-step-label {
+  margin-bottom: 2px;
+  font-size: 14px;
+  font-weight: 700;
+  opacity: 1;
+}
+
+.nachschreiber-date-filters > div + div {
+  margin-top: 8px;
+}
+
+.nachschreiber-form select,
+.nachschreiber-form input {
+  width: 100%;
+  min-width: 0;
+  font: inherit;
+}
+
+.nachschreiber-form input[type='text'],
+button.nachschreiber-date-trigger {
+  min-height: var(--control-height);
+  padding: 8px 10px;
+  color: var(--text);
+  background: var(--control-bg);
+  border: 1px solid var(--control-border);
+  border-radius: var(--control-radius);
+}
+
+button.nachschreiber-date-trigger {
+  width: 100%;
+  box-shadow: none;
+  font: inherit;
+  text-align: start;
+}
+
+button.nachschreiber-date-trigger:hover:not(:disabled) {
+  background: var(--control-bg-focus);
+  transform: none;
+}
+
+button.nachschreiber-date-trigger[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.nachschreiber-date-error {
+  margin-bottom: 0;
+  color: var(--danger);
+}
+
+.nachschreiber-date-calendar {
+  position: fixed;
+  inset: auto;
+  width: min(368px, calc(100vw - 16px));
+  min-width: 0;
+  max-height: calc(100dvh - 16px);
+  margin: 0;
+  padding: 8px;
+  overflow: auto;
+}
+
+.nachschreiber-date-calendar::backdrop {
+  background: transparent;
+  backdrop-filter: none;
+}
+
+.nachschreiber-calendar-content {
+  display: grid;
+  gap: 8px;
+}
+
+.nachschreiber-calendar-header {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr) 30px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--surface-segment);
+}
+
+.nachschreiber-calendar-controls {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(62px, auto);
+  gap: 4px;
+}
+
+.nachschreiber-calendar-controls > :is(select, input),
+.nachschreiber-calendar-header > button.ghost {
+  min-width: 0;
+  min-height: 30px;
+  padding: 4px;
+  border: 1px solid var(--border-control);
+  border-radius: 8px;
+  background: var(--surface-control);
+  box-shadow: none;
+  color: var(--text-primary);
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+}
+
+.nachschreiber-calendar-controls input {
+  width: 70px;
+}
+
+.nachschreiber-calendar-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 3px;
+  table-layout: fixed;
+  text-align: center;
+}
+
+.nachschreiber-calendar-table th {
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 600;
+}
+
+.nachschreiber-calendar-table :is(th, td):first-child {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-style: italic;
+}
+
+.nachschreiber-calendar-table td {
+  padding: 0;
+}
+
+.nachschreiber-calendar-table button {
+  width: 100%;
+  min-height: 30px;
+  padding: 2px 0;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-control);
+  font-size: 0.86rem;
+  font-weight: 400;
+}
+
+.nachschreiber-calendar-table button:hover:not(:disabled) {
+  background: rgba(82, 150, 255, 0.12);
+  box-shadow: none;
+  transform: none;
+}
+
+.nachschreiber-calendar-table button:is(.outside-month, :disabled) {
+  color: var(--text-muted);
+}
+
+.nachschreiber-calendar-table button[aria-current='date'] {
+  border-color: rgba(82, 150, 255, 0.45);
+  font-weight: 700;
+}
+
+.nachschreiber-calendar-table button[aria-pressed='true'] {
+  background: rgba(82, 150, 255, 0.26);
+  color: var(--text-primary);
+  font-weight: 700;
+}
+
+.nachschreiber-calendar-table button:focus-visible {
+  outline: 2px solid var(--focus-outline);
+  outline-offset: -2px;
+}
+
+button.nachschreiber-calendar-clear {
+  justify-self: end;
+  min-height: 30px;
+  padding: 4px 8px;
+  font-size: 0.8rem;
+}
+
+.nachschreiber-free-periods .hint {
+  margin: 0;
+}
+
+.nachschreiber-period-editor {
+  margin-top: 8px;
+}
+
+.nachschreiber-period-controls {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
+  gap: 8px;
+}
+
+.nachschreiber-period-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.nachschreiber-period-actions button {
+  min-height: 32px;
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.nachschreiber-period-error {
+  color: var(--danger);
+}
+
+.nachschreiber-period-list {
+  display: grid;
+  gap: 7px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nachschreiber-period-entry {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  width: 100%;
+  min-height: 30px;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  box-shadow: none;
+  text-align: start;
+  font-size: 14px;
+}
+
+.nachschreiber-period-entry:hover:not(:disabled) {
+  background: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+  transform: none;
+}
+
+.nachschreiber-period-time {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 400;
+}
+
+button.nachschreiber-period-add {
+  position: relative;
+  display: block;
+  width: 36px;
+  height: 36px;
+  min-height: 36px;
+  margin: 8px auto 0;
+  padding: 0;
+  border-radius: 50%;
+  box-shadow: none;
+}
+
+.nachschreiber-period-add:focus-visible,
+.nachschreiber-period-entry:focus-visible {
+  outline: 2px solid var(--focus-outline);
+  outline-offset: 2px;
+}
+
+.nachschreiber-period-add::before,
+.nachschreiber-period-add::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: 2px;
+  background: currentColor;
+  transform: translate(-50%, -50%);
+}
+
+.nachschreiber-period-add::after {
+  transform: translate(-50%, -50%) rotate(90deg);
+}
+
+#nachschreiber-period-error:empty {
+  position: absolute;
+}
+
+.nachschreiber-period-match {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: normal;
+}
+
+.nachschreiber-notice-trigger {
+  display: block;
+  width: 100%;
+  min-height: 32px;
+  margin-top: 6px;
+  padding: 4px 8px;
+  font-size: 13px;
+  white-space: normal;
+}
+
+.nachschreiber-notice-dialog {
+  width: min(720px, calc(100vw - 32px));
+  min-width: 0;
+}
+
+.nachschreiber-notice-dialog textarea {
+  overflow: hidden;
+  resize: none;
+  background: var(--control-bg);
+  border-color: var(--control-border);
+  font-size: 15px;
+}
+
+#nachschreiber-notice-status:empty {
+  position: absolute;
+}
+
+.nachschreiber-results {
+  overflow: auto;
+  background: var(--module-surface);
+  border: 1px solid var(--module-surface-border);
+  border-radius: var(--module-surface-radius);
+}
+
+.nachschreiber-results table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+}
+
+.nachschreiber-results th,
+.nachschreiber-results td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--control-border);
+  overflow-wrap: anywhere;
+}
+
+.nachschreiber-results th {
+  background: var(--control-bg);
+  font-size: 13px;
+}
+
+.nachschreiber-results td:nth-child(-n+2) {
+  white-space: nowrap;
+}
+
+.nachschreiber-results th:nth-child(6),
+.nachschreiber-results td:nth-child(6) {
+  text-align: center;
+}
+
+.nachschreiber-results td.nachschreiber-notice-cell {
+  min-width: 180px;
+}
+
+.nachschreiber-notice-cell .nachschreiber-notice-trigger:first-child {
+  margin-top: 0;
+}
+
+.nachschreiber-results tr:last-child td {
+  border-bottom: 0;
+}
+
+@media (max-width: 640px) {
+  .nachschreiber-results table {
+    min-width: 640px;
+  }
+}

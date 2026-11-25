@@ -198,7 +198,7 @@ test('responsive tab layout keeps overflow, menu focus and indicator aligned', {
   assert.equal(result.narrow.qrMenuActive, true);
   assert.equal(result.narrow.indicatorMatchesTrigger, true);
   assert.ok(result.firstFocusState.target, JSON.stringify(result.firstFocusState));
-  assert.equal(result.endFocusedTarget, 'qr');
+  assert.equal(result.endFocusedTarget, 'nachschreiber');
   assert.deepEqual(result.escape, { closed: true, triggerFocused: true });
   assert.equal(result.selectedThroughMenu.activeTab, 'duplicate-check');
   assert.equal(result.selectedThroughMenu.menuClosed, true);

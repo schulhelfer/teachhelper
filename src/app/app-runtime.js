@@ -46,11 +46,13 @@ import {
   sanitizeSharedPerformanceFlair,
 } from '../modules/groups/index.js';
 import { mountWorkPhase } from '../modules/work-phase/index.js';
+import { mountNachschreiber } from '../modules/nachschreiber/index.js';
 import {
   MODULE_CONTEXT_MENU_DISMISS_EVENT,
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
+  TAB_NACHSCHREIBER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -299,6 +301,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
       [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
       [els.tabWorkPhase, TAB_WORK_PHASE],
       [els.tabQr, TAB_QR],
+      [els.tabNachschreiber, TAB_NACHSCHREIBER],
     ].forEach(([button, tabKey]) => {
       bindRuntime(button, 'click', (event) => {
         if (event.altKey && tearOffTabToWindow(tabKey, {
@@ -700,6 +703,12 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     reportError: reportAppError,
   });
   registerCleanup(() => workPhaseController?.dispose?.());
+  if (els.nachschreiberShell && els.nachschreiberSidebar) {
+    registerCleanup(mountNachschreiber(els.nachschreiberShell, {
+      sidebar: els.nachschreiberSidebar,
+      getLessonTimes: () => getWorkspaceClient(window)?.data.getLessonTimes?.() ?? [],
+    }));
+  }
 
   const handleViewportChange = (options = {}) => {
     if (!options?.skipImmediateGroupRefresh && getActiveTab() === TAB_GROUPS) {

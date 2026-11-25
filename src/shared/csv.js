@@ -1,37 +1,35 @@
 import { FILE_LIMITS } from './file-guards.js';
 
-export function detectDelimiter(value) {
+export function detectDelimiter(value, rowLimit = 8) {
   const candidates = [';', ',', '\t'];
-  const lines = String(value || '')
-    .split(/\r?\n/)
-    .map(line => String(line || ''))
-    .filter(line => line.trim() && !/^sep\s*=/.test(line.trim().toLowerCase()))
-    .slice(0, 8);
-  let best = ';';
-  let bestScore = -1;
-  candidates.forEach((candidate) => {
-    const pattern = candidate === '\t' ? /\t/g : new RegExp(`\\${candidate}`, 'g');
-    const score = lines.reduce((sum, line) => sum + ((line.match(pattern) || []).length), 0);
-    if (score > bestScore) {
-      best = candidate;
-      bestScore = score;
+  const scores = new Map(candidates.map((delimiter) => [delimiter, 0]));
+  let inQuotes = false;
+  let sampledRows = 0;
+  for (const line of String(value || '').split(/\r?\n/)) {
+    if (!inQuotes && (!line.trim() || /^sep\s*=/i.test(line.trim()))) continue;
+    for (const character of line) {
+      if (character === '"') inQuotes = !inQuotes;
+      else if (!inQuotes && scores.has(character)) scores.set(character, scores.get(character) + 1);
     }
-  });
-  return best;
+    if (!inQuotes && ++sampledRows === rowLimit) break;
+  }
+  return candidates.reduce((best, delimiter) => scores.get(delimiter) > scores.get(best) ? delimiter : best);
 }
 
-export function parseCSV(text) {
-  const delimiter = detectDelimiter(text);
+export function parseCSV(text, { delimiter = detectDelimiter(text), strictQuotes = false } = {}) {
   const maxRows = FILE_LIMITS.CSV_MAX_ROWS;
   const maxColumns = FILE_LIMITS.CSV_MAX_COLUMNS;
   const maxCellChars = FILE_LIMITS.CSV_MAX_CELL_CHARS;
   const rows = [];
   let i = 0, cur = '', inQ = false; const out = [];
+  let quoteClosed = false;
+  const invalidQuote = () => new Error(`CSV-Zeile ${rows.length + 1} enthält ein fehlerhaftes Anführungszeichen.`);
   const push = () => {
     if (cur.length > maxCellChars) throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
     if (out.length >= maxColumns) throw new Error(`CSV enthält zu viele Spalten: maximal ${maxColumns}.`);
     out.push(cur);
     cur = '';
+    quoteClosed = false;
   };
   const flush = () => {
     if (rows.length >= maxRows) throw new Error(`CSV enthält zu viele Zeilen: maximal ${maxRows}.`);
@@ -42,15 +40,21 @@ export function parseCSV(text) {
     const ch = text[i++];
     if (ch === '"') {
       if (inQ && text[i] == '"') { cur += '"'; i++; }
-      else inQ = !inQ;
+      else {
+        if (strictQuotes && !inQ && (quoteClosed || cur.trim())) throw invalidQuote();
+        inQ = !inQ;
+        quoteClosed = !inQ;
+      }
     } else if (ch === delimiter && !inQ) { push(); }
     else if ((ch === '\n') && !inQ) { push(); flush(); }
     else if ((ch === '\r') && !inQ) { }
     else {
+      if (strictQuotes && quoteClosed && ch.trim()) throw invalidQuote();
       cur += ch;
       if (cur.length > maxCellChars) throw new Error(`CSV-Zelle ist zu lang: maximal ${maxCellChars} Zeichen.`);
     }
   }
+  if (strictQuotes && inQ) throw invalidQuote();
   if (cur.length > 0 || out.length > 0) { push(); flush(); }
   return { rows, delimiter };
 }

@@ -2,6 +2,7 @@ import {
   TAB_GRADES,
   TAB_GROUPS,
   TAB_DUPLICATE_CHECK,
+  TAB_NACHSCHREIBER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -104,7 +105,7 @@ export function createShellController({
   }
 
   function isShellSidebarResizableTab(tab = getActiveTab()) {
-    return tab === TAB_GROUPS || tab === TAB_RANDOM_PICKER || tab === TAB_WORK_PHASE;
+    return tab === TAB_GROUPS || tab === TAB_RANDOM_PICKER || tab === TAB_WORK_PHASE || tab === TAB_NACHSCHREIBER;
   }
 
   const sidebarResize = createSidebarResizeController({
@@ -322,9 +323,12 @@ export function createShellController({
         [els.tabDuplicateCheck, TAB_DUPLICATE_CHECK],
         [els.tabWorkPhase, TAB_WORK_PHASE],
         [els.tabQr, TAB_QR],
+        [els.tabNachschreiber, TAB_NACHSCHREIBER],
       ],
       duplicateCheckShell: els.duplicateCheckShell,
       qrShell: els.qrShell,
+      nachschreiberSidebar: els.nachschreiberSidebar,
+      nachschreiberShell: els.nachschreiberShell,
       planningShell: els.planningShell,
       nameLearningShell: els.nameLearningShell,
       seatplanSideHost: els.seatplanSideHost,

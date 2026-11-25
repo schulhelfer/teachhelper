@@ -3,6 +3,7 @@ import {
   TAB_DUPLICATE_CHECK,
   TAB_GRADES,
   TAB_GROUPS,
+  TAB_NACHSCHREIBER,
   TAB_NAME_LEARNING,
   TAB_PLANNING,
   TAB_QR,
@@ -57,6 +58,8 @@ export function createTabController({
     tabButtons = [],
     duplicateCheckShell = null,
     qrShell = null,
+    nachschreiberSidebar = null,
+    nachschreiberShell = null,
     planningShell = null,
     nameLearningShell = null,
     seatplanSideHost = null,
@@ -151,6 +154,7 @@ export function createTabController({
     const planningStatus = workspaceStatus?.getPlanningState?.() || {};
     const gradesStatus = workspaceStatus?.getGradesState?.() || {};
     const vaultStatus = workspaceStatus?.getVaultState?.() || {};
+    const isNachschreiber = activeTab === TAB_NACHSCHREIBER;
     const enteredPlanningTab = activeTab === TAB_PLANNING
       && lastRenderedActiveTab !== TAB_PLANNING;
     lastRenderedActiveTab = activeTab;
@@ -158,6 +162,7 @@ export function createTabController({
     updateSeatPreferencesTrigger();
     app.classList.toggle('app-tab-duplicate-check', activeTab === TAB_DUPLICATE_CHECK);
     app.classList.toggle('app-tab-qr', activeTab === TAB_QR);
+    app.classList.toggle('app-tab-nachschreiber', isNachschreiber);
     app.classList.toggle('app-tab-planning', activeTab === TAB_PLANNING);
     app.classList.toggle('app-tab-grades', activeTab === TAB_GRADES);
     app.classList.toggle(
@@ -176,13 +181,15 @@ export function createTabController({
     app.classList.toggle('app-seatplan-full', activeTab === TAB_SEATPLAN);
     if (duplicateCheckShell) duplicateCheckShell.hidden = activeTab !== TAB_DUPLICATE_CHECK;
     if (qrShell) qrShell.hidden = activeTab !== TAB_QR;
+    if (nachschreiberSidebar) nachschreiberSidebar.hidden = !isNachschreiber;
+    if (nachschreiberShell) nachschreiberShell.hidden = !isNachschreiber;
     if (planningShell) planningShell.hidden = activeTab !== TAB_PLANNING;
     if (nameLearningShell) nameLearningShell.hidden = activeTab !== TAB_NAME_LEARNING;
     if (seatplanSideHost) seatplanSideHost.hidden = true;
     if (seatplanMainHost) seatplanMainHost.hidden = activeTab !== TAB_SEATPLAN;
     if (groupsMainHost) {
       const isPlanningBoot = activeTab === TAB_PLANNING && !app.classList.contains('app-js-ready');
-      groupsMainHost.hidden = isPlanningBoot || activeTab === TAB_SEATPLAN || activeTab === TAB_RANDOM_PICKER;
+      groupsMainHost.hidden = isPlanningBoot || activeTab === TAB_SEATPLAN || activeTab === TAB_RANDOM_PICKER || isNachschreiber;
     }
     if (randomPickerHost) randomPickerHost.hidden = activeTab !== TAB_RANDOM_PICKER;
     if (monitorShell) monitorShell.hidden = activeTab !== TAB_WORK_PHASE;

@@ -7,6 +7,7 @@ export const TAB_SEATPLAN = 'seatplan';
 export const TAB_NAME_LEARNING = 'name-learning';
 export const TAB_WORK_PHASE = 'work-phase';
 export const TAB_QR = 'qr';
+export const TAB_NACHSCHREIBER = 'nachschreiber';
 const TAB_MONITOR = 'monitor';
 const TAB_WORK_ORDER = 'work-order';
 const TAB_TIMER = 'timer';
@@ -89,6 +90,7 @@ export function normalizeTab(tab) {
   if (tab === TAB_SEATPLAN) return TAB_SEATPLAN;
   if (tab === TAB_NAME_LEARNING) return TAB_NAME_LEARNING;
   if (tab === TAB_QR) return TAB_QR;
+  if (tab === TAB_NACHSCHREIBER) return TAB_NACHSCHREIBER;
   if (tab === TAB_WORK_PHASE || tab === TAB_MONITOR || tab === TAB_WORK_ORDER || tab === TAB_TIMER) {
     return TAB_WORK_PHASE;
   }

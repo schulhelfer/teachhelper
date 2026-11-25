@@ -118,7 +118,7 @@ test('jeder ueberlaufbare Tab hat einen Menueeintrag in gleicher Reihenfolge', (
 
   assert.deepEqual(tabs.map(({ target }) => target), [
     'grades', 'planning', 'seatplan', 'name-learning', 'groups',
-    'random-picker', 'duplicate-check', 'work-phase', 'qr',
+    'random-picker', 'duplicate-check', 'work-phase', 'qr', 'nachschreiber',
   ], 'die Leiste muss alle verbleibenden Module enthalten');
   const eligible = tabs.filter(({ target }) => target !== 'grades' && target !== 'planning');
   assert.deepEqual(

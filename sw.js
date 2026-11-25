@@ -1,4 +1,4 @@
-const TEACHHELPER_APP_VERSION_STAMP = '152';
+const TEACHHELPER_APP_VERSION_STAMP = '153';
 importScripts('./src/shared/app-version.js');
 
 const APP_VERSION = String(self.TEACHHELPER_APP_VERSION || 'dev');
@@ -152,6 +152,11 @@ const APP_SHELL = [
   './src/modules/work-phase/app.js',
   './src/modules/duplicate-check/index.js',
   './src/modules/qr/index.js',
+  './src/modules/nachschreiber/index.js',
+  './src/modules/nachschreiber/app.js',
+  './src/modules/nachschreiber/app.css',
+  './src/modules/nachschreiber/date-calendar.js',
+  './src/modules/nachschreiber/schedule.js',
   './src/modules/seatplan/index.js',
   './src/modules/name-learning/index.js',
   './src/modules/name-learning/app.html',

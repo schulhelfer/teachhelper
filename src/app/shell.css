@@ -113,6 +113,7 @@
     }
 
 
+    .app.app-tab-nachschreiber>.side,
     .app.app-tab-groups>.side,
     .app.app-tab-random-picker>.side {
       overflow-x: hidden !important;
@@ -123,6 +124,7 @@
       scrollbar-gutter: auto;
     }
 
+    .app.app-tab-nachschreiber>.side::-webkit-scrollbar,
     .app.app-tab-groups>.side::-webkit-scrollbar,
     .app.app-tab-random-picker>.side::-webkit-scrollbar {
       width: var(--scrollbar-size) !important;
@@ -130,6 +132,7 @@
       display: block !important;
     }
 
+    .app.app-tab-nachschreiber>.side::-webkit-scrollbar-thumb,
     .app.app-tab-groups>.side::-webkit-scrollbar-thumb,
     .app.app-tab-random-picker>.side::-webkit-scrollbar-thumb {
       background: var(--scrollbar-thumb);
@@ -138,11 +141,13 @@
       background-clip: padding-box;
     }
 
+    .app.app-tab-nachschreiber>.side::-webkit-scrollbar-thumb:hover,
     .app.app-tab-groups>.side::-webkit-scrollbar-thumb:hover,
     .app.app-tab-random-picker>.side::-webkit-scrollbar-thumb:hover {
       background: var(--scrollbar-thumb-hover);
     }
 
+    .app.app-tab-nachschreiber>.side::-webkit-scrollbar-track,
     .app.app-tab-groups>.side::-webkit-scrollbar-track,
     .app.app-tab-random-picker>.side::-webkit-scrollbar-track {
       background: var(--scrollbar-track);
@@ -331,6 +336,7 @@
       transition: grid-template-columns var(--chrome-transition-duration) var(--chrome-transition-ease), grid-template-rows var(--chrome-transition-duration) var(--chrome-transition-ease), gap var(--chrome-transition-duration) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
+    .app.app-tab-nachschreiber,
     .app.app-tab-groups,
     .app.app-tab-random-picker,
     .app.app-tab-work-phase {
@@ -1003,6 +1009,7 @@
       transition: width var(--chrome-transition-duration) var(--chrome-transition-ease), max-width var(--chrome-transition-duration) var(--chrome-transition-ease), min-width var(--chrome-transition-duration) var(--chrome-transition-ease), border-color var(--chrome-transition-duration-medium) var(--chrome-transition-ease), padding var(--chrome-transition-duration-medium) var(--chrome-transition-ease), opacity var(--chrome-transition-duration-short) var(--chrome-transition-ease), transform var(--chrome-transition-duration) var(--chrome-transition-ease), box-shadow var(--chrome-transition-duration-medium) var(--chrome-transition-ease), filter var(--chrome-transition-duration-medium) var(--chrome-transition-ease), margin var(--chrome-transition-duration-medium) var(--chrome-transition-ease);
     }
 
+    .app.app-tab-nachschreiber>.side,
     .app.app-tab-groups>.side,
     .app.app-tab-random-picker>.side,
     .app.app-tab-work-phase>.side {
@@ -1033,6 +1040,7 @@
       height: var(--sidebar-resize-height, 0px);
     }
 
+    .app.app-tab-nachschreiber .sidebar-resize-handle,
     .app.app-tab-groups .sidebar-resize-handle,
     .app.app-tab-random-picker .sidebar-resize-handle,
     .app.app-tab-work-phase .sidebar-resize-handle {
@@ -1659,6 +1667,7 @@
       padding-bottom: 0;
     }
 
+    .app.app-tab-nachschreiber>.main,
     .app.app-tab-groups>.main,
     .app.app-tab-random-picker>.main {
       grid-column: 2;
@@ -2174,6 +2183,7 @@
       box-shadow: 0 14px 28px rgba(15, 23, 42, 0.26);
     }
 
+    .nachschreiber-form .random-picker-button,
     .random-picker-sidebar-start-row .random-picker-button {
       width: 100%;
       min-height: 42px;
@@ -5371,6 +5381,7 @@
       text-decoration-thickness: 3px;
     }
 
+    .app.app-tab-nachschreiber .steps-list a,
     .app.app-tab-groups .steps-list a,
     .app.app-tab-random-picker .steps-list a {
       color: currentColor;
@@ -5453,7 +5464,8 @@
       white-space: normal;
     }
 
-    #csv-drop-zone {
+    #csv-drop-zone,
+    #nachschreiber-drop-zone {
       position: relative;
       border: 2px dashed var(--dropzone-border);
       border-radius: var(--dropzone-radius);
@@ -5461,7 +5473,8 @@
       box-shadow: var(--dropzone-shadow);
     }
 
-    #csv-drop-zone .file-trigger {
+    #csv-drop-zone .file-trigger,
+    #nachschreiber-drop-zone .file-trigger {
       width: 100%;
       max-width: 100%;
       flex: 1 1 auto;
@@ -7174,6 +7187,7 @@
         align-items: start
       }
 
+      .app.app-tab-nachschreiber,
       .app.app-tab-groups,
       .app.app-tab-random-picker,
       .app.app-tab-work-phase {
@@ -7184,6 +7198,8 @@
         align-items: start;
       }
 
+      .app.app-tab-nachschreiber>.side,
+      .app.app-tab-nachschreiber>.main,
       .app.app-tab-groups>.app-header,
       .app.app-tab-random-picker>.app-header,
       .app.app-tab-work-phase>.app-header,
@@ -7196,6 +7212,7 @@
         grid-row: auto;
       }
 
+      .app.app-tab-nachschreiber>.side,
       .app.app-tab-groups>.side,
       .app.app-tab-random-picker>.side,
       .app.app-tab-work-phase>.side {

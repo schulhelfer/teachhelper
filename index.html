@@ -23,6 +23,7 @@
   <link rel="stylesheet" href="./src/shared/theme.css" />
   <link rel="stylesheet" href="./src/shared/dialog-resize.css" />
   <link rel="stylesheet" href="./src/shared/feedback-dialog.css">
+  <link rel="stylesheet" href="./src/modules/nachschreiber/app.css" />
 </head>
 
 <body>
@@ -65,6 +66,8 @@
           <button id="tab-work-phase" class="tab-button" type="button" data-tab-target="work-phase"
             aria-selected="false">Arbeitsphase</button>
           <button id="tab-qr" class="tab-button" type="button" data-tab-target="qr" aria-selected="false">QR</button>
+          <button id="tab-nachschreiber" class="tab-button" type="button" data-tab-target="nachschreiber"
+            aria-selected="false" aria-controls="nachschreiber-sidebar nachschreiber-shell">Nachschreiber</button>
           <div id="more-tools" class="more-tools">
             <button id="more-tools-trigger" class="tab-button more-tools-trigger" type="button" aria-haspopup="menu"
               aria-expanded="false" aria-controls="more-tools-menu" aria-selected="false" aria-label="Weitere Tools">
@@ -98,6 +101,9 @@
               </button>
               <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="qr" hidden>
                 QR <span class="more-tools-menu-check" aria-hidden="true">✓</span>
+              </button>
+              <button type="button" role="menuitemradio" aria-checked="false" data-more-tools-target="nachschreiber" hidden>
+                Nachschreiber <span class="more-tools-menu-check" aria-hidden="true">✓</span>
               </button>
             </div>
           </div>
@@ -379,6 +385,145 @@
       <section id="roster-panel" class="roster-panel groups-sidebar-roster" aria-label="Freie Lernende">
         <div class="list" id="unseated"></div>
       </section>
+      <section id="nachschreiber-sidebar" class="nachschreiber-sidebar" hidden aria-labelledby="nachschreiber-title">
+        <div class="sidebar-header">
+          <h1 id="nachschreiber-title" class="sidebar-title">Nachschreiber</h1>
+        </div>
+        <form id="nachschreiber-form" class="steps nachschreiber-form">
+          <ol class="steps-list">
+            <li>
+              <strong>Klausurenplan importieren</strong>
+              <span id="nachschreiber-csv-source" class="hint">IServ-Randleiste → Alle Module → Klausurenplan → Exportieren</span>
+              <div class="mt-sm">
+                <label for="nachschreiber-iserv-prefix">IServ-Adresse vor .de</label>
+                <div class="nachschreiber-iserv-row">
+                  <input id="nachschreiber-iserv-prefix" type="text" placeholder="mein-iserv" autocomplete="off"
+                    autocapitalize="none" spellcheck="false" aria-describedby="nachschreiber-iserv-link-hint" />
+                  <a id="nachschreiber-iserv-link" class="nachschreiber-link-button" target="_blank" rel="noopener noreferrer"
+                    aria-label="Klausurenplan in IServ öffnen" hidden>Öffnen</a>
+                </div>
+                <span id="nachschreiber-iserv-link-hint" class="hint" role="status" hidden>Gib einen gültigen IServ-Namen ein, zum Beispiel <code>mein-iserv</code>.</span>
+              </div>
+              <div id="nachschreiber-drop-zone" class="file-upload mt-sm">
+                <input id="nachschreiber-file" type="file" accept=".csv,text/csv"
+                  aria-describedby="nachschreiber-csv-source" />
+                <label for="nachschreiber-file" class="file-trigger">
+                  <span class="file-trigger-copy">Auswählen<br>oder<br>Ablegen</span>
+                  <span id="nachschreiber-csv-status" class="file-status empty-state-box" role="status">
+                    <span class="empty-state-title">Noch keine Datei</span>
+                  </span>
+                </label>
+              </div>
+            </li>
+            <li>
+              <strong>Lerngruppe auswählen</strong>
+              <div class="nachschreiber-class-fields">
+                <div>
+                  <label for="nachschreiber-year">Jahrgang</label>
+                  <select id="nachschreiber-year" required>
+                    <option value="">Auswählen</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                    <option value="7">7</option>
+                    <option value="8">8</option>
+                    <option value="9">9</option>
+                    <option value="10">10</option>
+                    <option value="11">11</option>
+                    <option value="12">12</option>
+                    <option value="13">13</option>
+                  </select>
+                </div>
+                <div>
+                  <label for="nachschreiber-class">Klasse</label>
+                  <select id="nachschreiber-class" required>
+                    <option value="">Auswählen</option>
+                    <option value="a">a</option>
+                    <option value="b">b</option>
+                    <option value="c">c</option>
+                    <option value="d">d</option>
+                    <option value="e">e</option>
+                  </select>
+                </div>
+              </div>
+              <a id="nachschreiber-class-source" class="nachschreiber-link-button nachschreiber-class-source"
+                href="https://login.schulmanager-online.de/#/modules/schedules/view/student/"
+                target="_blank" rel="noopener noreferrer">Prüflingsdaten im Schulmanager</a>
+            </li>
+            <li>
+              <strong id="nachschreiber-period-heading">Wöchentliche Freistunden (optional)</strong>
+              <div class="nachschreiber-free-periods" role="group" aria-labelledby="nachschreiber-period-heading" aria-describedby="nachschreiber-period-hint">
+                <p id="nachschreiber-period-hint" class="hint" role="status"></p>
+                <ul id="nachschreiber-period-list" class="nachschreiber-period-list" aria-label="Ausgewählte Freistunden" hidden></ul>
+                <button id="nachschreiber-add-period" class="ghost nachschreiber-period-add" type="button"
+                  aria-label="Freistunde hinzufügen" title="Freistunde hinzufügen" aria-controls="nachschreiber-period-editor"
+                  aria-expanded="false" disabled></button>
+                <div id="nachschreiber-period-editor" class="nachschreiber-period-editor" role="group" aria-label="Freistunde hinzufügen" hidden>
+                  <div class="nachschreiber-period-controls">
+                    <label for="nachschreiber-period-weekday">Wochentag
+                      <select id="nachschreiber-period-weekday">
+                        <option value="">Auswählen</option>
+                        <option value="1">Montag</option>
+                        <option value="2">Dienstag</option>
+                        <option value="3">Mittwoch</option>
+                        <option value="4">Donnerstag</option>
+                        <option value="5">Freitag</option>
+                      </select>
+                    </label>
+                    <label for="nachschreiber-period-lesson">Stunde
+                      <select id="nachschreiber-period-lesson" disabled>
+                        <option value="">Auswählen</option>
+                      </select>
+                    </label>
+                  </div>
+                  <p id="nachschreiber-period-error" class="hint nachschreiber-period-error" role="alert"></p>
+                  <div class="nachschreiber-period-actions">
+                    <button id="nachschreiber-period-save" class="primary" type="button">Speichern</button>
+                    <button id="nachschreiber-period-cancel" class="ghost" type="button">Abbrechen</button>
+                    <button id="nachschreiber-period-delete" class="danger-action" type="button" hidden>Löschen</button>
+                  </div>
+                </div>
+              </div>
+            </li>
+            <li>
+              <label class="nachschreiber-step-label" for="nachschreiber-duration">Dauer der Nachschreibklausur</label>
+              <select id="nachschreiber-duration" required>
+                <option value="1" selected>1 Std. (45 min)</option>
+                <option value="2">2 Std. (90 min)</option>
+                <option value="3">3 Std. (135 min)</option>
+                <option value="4">4 Std. (180 min)</option>
+              </select>
+            </li>
+            <li>
+              <label class="nachschreiber-step-label" for="nachschreiber-student-name">Name des Prüflings (optional)</label>
+              <input id="nachschreiber-student-name" type="text" autocomplete="off" />
+            </li>
+            <li class="nachschreiber-date-filters">
+              <strong>Datumsfilter (optional)</strong>
+              <div>
+                <label id="nachschreiber-start-date-label" for="nachschreiber-start-calendar">Von einschließlich</label>
+                <button id="nachschreiber-start-calendar" class="ghost nachschreiber-date-trigger" type="button"
+                  aria-labelledby="nachschreiber-start-date-label nachschreiber-start-calendar" aria-haspopup="dialog"
+                  aria-controls="nachschreiber-date-calendar">Datum auswählen</button>
+                <input id="nachschreiber-start-date" type="date" max="9999-12-31" hidden />
+                <p id="nachschreiber-start-date-error" class="hint nachschreiber-date-error" role="alert" hidden></p>
+              </div>
+              <div>
+                <label id="nachschreiber-end-date-label" for="nachschreiber-end-calendar">Bis einschließlich</label>
+                <button id="nachschreiber-end-calendar" class="ghost nachschreiber-date-trigger" type="button"
+                  aria-labelledby="nachschreiber-end-date-label nachschreiber-end-calendar" aria-haspopup="dialog"
+                  aria-controls="nachschreiber-date-calendar">Datum auswählen</button>
+                <input id="nachschreiber-end-date" type="date" max="9999-12-31" hidden />
+                <p id="nachschreiber-end-date-error" class="hint nachschreiber-date-error" role="alert" hidden></p>
+              </div>
+            </li>
+            <li>
+              <label class="nachschreiber-step-label" for="nachschreiber-sender-name">Eigener Name (optional)</label>
+              <input id="nachschreiber-sender-name" type="text" autocomplete="name" />
+            </li>
+          </ol>
+          <button id="nachschreiber-submit" class="random-picker-button mt-md" type="submit" disabled>Vorschläge anzeigen</button>
+        </form>
+      </section>
     </aside>
 
     <main class="main">
@@ -406,6 +551,73 @@
         </div>
       </section>
       <div id="seatplan-main-host" hidden aria-label="Sitzplan Hauptansicht"></div>
+      <section id="nachschreiber-shell" class="nachschreiber-shell" hidden aria-labelledby="nachschreiber-results-title">
+        <div class="nachschreiber-content">
+          <h2 id="nachschreiber-results-title" class="sidebar-title">Terminvorschläge</h2>
+          <p id="nachschreiber-result-status" role="status"></p>
+          <div id="nachschreiber-results" class="nachschreiber-results" role="region" aria-label="Terminvorschläge"
+            tabindex="0" hidden>
+            <table aria-label="Terminvorschläge in Rangfolge">
+              <thead>
+                <tr>
+                  <th scope="col">Datum</th>
+                  <th scope="col">Stunde</th>
+                  <th scope="col">Titel</th>
+                  <th scope="col">Gruppe</th>
+                  <th scope="col">Aufsicht</th>
+                  <th scope="col">Bereits eingetragene Arbeiten in der KW</th>
+                  <th scope="col">Nachrichten</th>
+                </tr>
+              </thead>
+              <tbody id="nachschreiber-result-rows"></tbody>
+            </table>
+          </div>
+        </div>
+        <dialog id="nachschreiber-date-calendar" class="nachschreiber-date-calendar" aria-label="Datum auswählen" data-dialog-resize="off">
+          <div class="nachschreiber-calendar-content">
+            <div class="nachschreiber-calendar-header">
+              <button id="nachschreiber-calendar-prev" class="ghost" type="button" aria-label="Vorheriger Monat">‹</button>
+              <div class="nachschreiber-calendar-controls">
+                <select id="nachschreiber-calendar-month" aria-label="Monat"></select>
+                <input id="nachschreiber-calendar-year" type="number" step="1" max="9999" aria-label="Jahr" />
+              </div>
+              <button id="nachschreiber-calendar-next" class="ghost" type="button" aria-label="Nächster Monat">›</button>
+            </div>
+            <table class="nachschreiber-calendar-table">
+              <thead>
+                <tr>
+                  <th scope="col" abbr="Kalenderwoche">KW</th>
+                  <th scope="col" abbr="Montag">Mo</th>
+                  <th scope="col" abbr="Dienstag">Di</th>
+                  <th scope="col" abbr="Mittwoch">Mi</th>
+                  <th scope="col" abbr="Donnerstag">Do</th>
+                  <th scope="col" abbr="Freitag">Fr</th>
+                  <th scope="col" abbr="Samstag">Sa</th>
+                  <th scope="col" abbr="Sonntag">So</th>
+                </tr>
+              </thead>
+              <tbody id="nachschreiber-calendar-grid"></tbody>
+            </table>
+            <button id="nachschreiber-calendar-clear" class="ghost nachschreiber-calendar-clear" type="button" disabled>Datum löschen</button>
+          </div>
+        </dialog>
+        <dialog id="nachschreiber-notice-dialog" class="nachschreiber-notice-dialog" aria-labelledby="nachschreiber-notice-title">
+          <div class="dialog-form">
+            <div class="dialog-header">
+              <h2 id="nachschreiber-notice-title" class="dialog-title">Reguläre Lehrkraft informieren</h2>
+              <button id="nachschreiber-notice-close" class="ghost dialog-icon-button app-action-icon" type="button"
+                aria-label="Schließen" data-tooltip="Schließen">❌</button>
+            </div>
+            <label for="nachschreiber-notice-text">Nachricht
+              <textarea id="nachschreiber-notice-text" rows="8" autofocus></textarea>
+            </label>
+            <p id="nachschreiber-notice-status" class="dialog-status" role="status"></p>
+            <div class="dialog-actions">
+              <button id="nachschreiber-notice-copy" class="primary" type="button">Text kopieren</button>
+            </div>
+          </div>
+        </dialog>
+      </section>
     </main>
     <section id="duplicate-check-shell" class="duplicate-check-shell" hidden aria-label="DuplikatCheck">
       <div id="duplicate-check-host" class="duplicate-check-host" aria-label="DuplikatCheck"></div>

@@ -230,6 +230,10 @@ required_precache_assets = [
   ROOT / 'src' / 'modules' / 'name-learning' / 'app.css',
   ROOT / 'src' / 'modules' / 'name-learning' / 'app.js',
   ROOT / 'src' / 'modules' / 'name-learning' / 'session.js',
+  ROOT / 'src' / 'modules' / 'nachschreiber' / 'index.js',
+  ROOT / 'src' / 'modules' / 'nachschreiber' / 'app.js',
+  ROOT / 'src' / 'modules' / 'nachschreiber' / 'app.css',
+  ROOT / 'src' / 'modules' / 'nachschreiber' / 'schedule.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'index.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'client.js',
   ROOT / 'src' / 'modules' / 'workspace' / 'components.js',
@@ -481,6 +485,7 @@ FORBIDDEN_IDENTIFIER_ALLOWLIST = {
 }
 
 ALLOWED_EXTERNAL_HOSTS = {
+  'login.schulmanager-online.de',
   'www.w3.org',
   'schemas.openxmlformats.org',
   'www.mk.niedersachsen.de',

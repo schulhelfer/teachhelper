@@ -8,13 +8,14 @@ const source = `${[
   "const TAB_DUPLICATE_CHECK = 'duplicate-check';",
   "const TAB_GRADES = 'grades';",
   "const TAB_GROUPS = 'groups';",
+  "const TAB_NACHSCHREIBER = 'nachschreiber';",
   "const TAB_NAME_LEARNING = 'name-learning';",
   "const TAB_PLANNING = 'planning';",
   "const TAB_QR = 'qr';",
   "const TAB_RANDOM_PICKER = 'random-picker';",
   "const TAB_SEATPLAN = 'seatplan';",
   "const TAB_WORK_PHASE = 'work-phase';",
-  "const normalizeTab = (tab) => ['duplicate-check', 'grades', 'groups', 'name-learning', 'planning', 'qr', 'random-picker', 'seatplan', 'work-phase'].includes(tab) ? tab : 'groups';",
+  "const normalizeTab = (tab) => ['duplicate-check', 'grades', 'groups', 'nachschreiber', 'name-learning', 'planning', 'qr', 'random-picker', 'seatplan', 'work-phase'].includes(tab) ? tab : 'groups';",
 ].join('\n')}\n${rawSource.slice(importEnd)}`;
 const { createTabController } = await import(
   `data:text/javascript;base64,${Buffer.from(source).toString('base64')}`
