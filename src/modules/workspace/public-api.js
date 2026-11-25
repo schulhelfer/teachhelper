@@ -217,6 +217,9 @@ export function createWorkspacePublicApi({ getStore, getRuntime, scope }) {
   }
   if (scope === 'shell') {
     operations.saveNachschreiberDefaultSenderName = (name) => getRuntime().saveNachschreiberDefaultSenderName(name);
+    operations.getNachschreiberWorkSession = () => getRuntime().getNachschreiberWorkSession();
+    operations.updateNachschreiberDraft = (generation, value) => getRuntime().updateNachschreiberDraft(generation, value);
+    operations.saveManualNachschreiberDraft = (generation) => getRuntime().saveManualNachschreiberDraft(generation);
   }
   if (shared) {
     data.listLessons = () => copy(getStore().state.lessons);

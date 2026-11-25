@@ -721,6 +721,157 @@ test('Nachschreiber speichert den Standard-Absender in der Datenbank bei gesperr
   assert.equal(escaped, true);
 });
 
+test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her und leert den Vorgang', { timeout: 60000 }, async (t) => {
+  const evaluate = await openNachschreiber(t, true);
+  const result = await evaluate(async () => {
+    const [{ WORKSPACE_GLOBAL_KEY }, { parseThdb1ContainerBytes }, { getIsoWeek }] = await Promise.all([
+      import('/src/modules/workspace/index.js'), import('/src/shared/school-data/thdb.js'),
+      import('/src/modules/nachschreiber/schedule.js'),
+    ]);
+    const runtime = window[WORKSPACE_GLOBAL_KEY].getOwner();
+    runtime.isManualPersistenceMode = () => true;
+    runtime.store.setLessonTimes([{ lesson: 1, start: '08:00', end: '08:45' }]);
+    runtime.store.setSetting('nachschreiberDefaultSenderName', 'Test-Standard');
+    await runtime.setupGradeVault('test-passwort-sperre');
+    const { bytes } = await runtime.buildContainer('test');
+    const load = (data) => runtime.loadManualDatabaseFromFile(new File([data], 'Test-Datenbank.json'));
+    const settings = (data) => JSON.parse(parseThdb1ContainerBytes(data).planningPublicText).settings;
+    let downloaded;
+    runtime.persistence.downloadBytes = (data) => { downloaded = data.slice(); };
+    const byId = (id) => document.getElementById(`nachschreiber-${id}`);
+    const waitFor = async (condition) => {
+      const deadline = performance.now() + 5000;
+      while (!condition()) {
+        if (performance.now() > deadline) throw new Error('Erwarteter Zustand wurde zu spät erreicht.');
+        await new Promise((done) => requestAnimationFrame(done));
+      }
+    };
+    const enter = (field, value, type = 'input') => {
+      field.value = value;
+      field.dispatchEvent(new Event(type, { bubbles: true }));
+    };
+    const fields = () => [...byId('student-list').querySelectorAll('input, select')];
+    const formValues = () => fields().map((field) => field.value);
+    const examDate = new Date(Date.UTC(new Date().getUTCFullYear() + 2, 3, 1));
+    examDate.setUTCDate(examDate.getUTCDate() + (8 - examDate.getUTCDay()) % 7);
+    const iso = examDate.toISOString().slice(0, 10);
+    const date = iso.split('-').reverse().join('.');
+    const { weekNumber } = getIsoWeek(examDate);
+    const csv = [
+      'Titel;KW;Datum;Start;Ende;Gruppen;Lehrkraft',
+      `Testtermin;${weekNumber};${date};08:00;09:30;7a;Testaufsicht`,
+      `Testtermin außerhalb der Auswahl;${weekNumber};${date};09:30;10:15;7a;Testaufsicht`,
+    ].join('\n');
+    const importCsv = (name) => {
+      const transfer = new DataTransfer();
+      transfer.items.add(new File([csv], name, { type: 'text/csv' }));
+      byId('file').files = transfer.files;
+      byId('file').dispatchEvent(new Event('change', { bubbles: true }));
+    };
+    const save = async () => {
+      downloaded = null;
+      byId('save').click();
+      await waitFor(() => downloaded && byId('save').disabled);
+      return downloaded;
+    };
+
+    document.getElementById('tab-nachschreiber').click();
+    await waitFor(() => !byId('shell').hidden);
+    await load(bytes);
+    const previousGeneration = runtime.getNachschreiberWorkSession().generation;
+    byId('add-student').click();
+    const values = ['Testperson A', '8', 'b', 'Testperson B', '9', 'c'];
+    fields().forEach((field, index) => enter(field, values[index]));
+    byId('add-period').click();
+    const [weekday, lesson] = byId('period-list').querySelectorAll('select');
+    enter(weekday, '1', 'change');
+    enter(lesson, '1', 'change');
+    enter(byId('duration'), '2');
+    enter(byId('start-date'), iso);
+    enter(byId('end-date'), iso);
+    enter(byId('iserv-prefix'), 'test.invalid');
+    importCsv('test-quellname.csv');
+    await waitFor(() => !byId('submit').disabled);
+    byId('submit').click();
+    byId('result-rows').querySelector('button').click();
+    enter(byId('notice-text'), 'Bearbeiteter Testnachrichtentext');
+    byId('notice-close').click();
+    enter(byId('sender-name'), 'Test-Absender');
+    const saved = await save();
+    const { nachschreiberDraft: draft } = settings(saved);
+
+    enter(fields()[0], 'Nicht in andere Datenbank übernehmen');
+    await load(bytes);
+    const emptyAfterSwitch = formValues();
+    const staleWriteRejected = runtime.updateNachschreiberDraft(previousGeneration, draft) === false;
+    const staleDownloadRejected = await runtime.saveManualNachschreiberDraft(previousGeneration) === false;
+    await load(saved);
+    byId('result-rows').querySelector('button').click();
+    const restored = {
+      values: formValues(),
+      periods: [...byId('period-list').querySelectorAll('select')].map((field) => field.value),
+      duration: byId('duration').value, dates: [byId('start-date').value, byId('end-date').value],
+      prefix: byId('iserv-prefix').value, sender: byId('sender-name').value,
+      noSources: byId('file-list').hidden && byId('submit').disabled,
+      notice: byId('notice-text').value, locked: !runtime.isGradeVaultUnlocked(),
+    };
+    byId('notice-close').click();
+    enter(byId('duration'), '3');
+    const changedCriteriaClearsResults = byId('results').hidden && settings(await save()).nachschreiberDraft.result === null;
+    await load(saved);
+    byId('clear').click();
+    byId('clear-dialog').querySelector('[value="cancel"]').click();
+    const cancelled = byId('result-rows').rows.length === 1;
+
+    const originalRead = File.prototype.arrayBuffer;
+    let finishRead;
+    File.prototype.arrayBuffer = async function () {
+      if (this.name === 'test-langsamer-import.csv') await new Promise((resolve) => { finishRead = resolve; });
+      return originalRead.call(this);
+    };
+    try {
+      importCsv('test-langsamer-import.csv');
+      await waitFor(() => finishRead);
+      byId('clear').click();
+      byId('clear-dialog').querySelector('[value="clear"]').click();
+      finishRead();
+      const cleared = settings(await save());
+      const importCleared = byId('file-list').hidden && byId('file-errors').hidden && byId('submit').disabled;
+      await load(downloaded);
+      return {
+        draft, iso, emptyAfterSwitch, staleWriteRejected, staleDownloadRejected, restored, changedCriteriaClearsResults, cancelled,
+        cleared: cleared.nachschreiberDraft, defaultSender: cleared.nachschreiberDefaultSenderName,
+        formCleared: formValues(), resultsCleared: byId('results').hidden, importCleared,
+      };
+    } finally {
+      File.prototype.arrayBuffer = originalRead;
+    }
+  });
+  assert.deepEqual(result.draft.students.map(({ name }) => name), ['Testperson A', 'Testperson B']);
+  assert.deepEqual(result.draft.result.suggestions.map(({ title }) => title), ['Testtermin']);
+  assert.doesNotMatch(JSON.stringify(result.draft), /test-quellname|Bearbeiteter Testnachrichtentext|außerhalb der Auswahl/);
+  assert.deepEqual(result.emptyAfterSwitch, ['', '', '']);
+  assert.equal(result.staleWriteRejected, true);
+  assert.equal(result.staleDownloadRejected, true);
+  assert.deepEqual(result.restored.values, ['Testperson A', '8', 'b', 'Testperson B', '9', 'c']);
+  assert.deepEqual(result.restored.periods, ['1', '1']);
+  assert.deepEqual(result.restored.dates, [result.iso, result.iso]);
+  assert.equal(result.restored.duration, '2');
+  assert.equal(result.restored.prefix, 'test.invalid');
+  assert.equal(result.restored.sender, 'Test-Absender');
+  assert.equal(result.restored.noSources, true);
+  assert.equal(result.restored.locked, true);
+  assert.match(result.restored.notice, /Testperson A \(8b\) und Testperson B \(9c\)/);
+  assert.match(result.restored.notice, /Test-Absender/);
+  assert.equal(result.changedCriteriaClearsResults, true);
+  assert.equal(result.cancelled, true);
+  assert.equal(result.cleared, null);
+  assert.equal(result.defaultSender, 'Test-Standard');
+  assert.deepEqual(result.formCleared, ['', '', '']);
+  assert.equal(result.resultsCleared, true);
+  assert.equal(result.importCleared, true);
+});
+
 test('Nachschreiber kombiniert synthetische PDF-Wochenraster und CSV-Dateien', { timeout: 60000 }, async (t) => {
   const evaluate = await openNachschreiber(t, true);
   const observed = await evaluate(async () => {

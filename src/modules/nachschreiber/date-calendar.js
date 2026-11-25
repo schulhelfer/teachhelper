@@ -188,5 +188,5 @@ export function mountDateCalendar(root, sidebar, { signal, onDateChange }) {
   view.addEventListener('resize', () => { if (dialog.open) positionDialog(); }, { signal });
   updateDateBounds();
 
-  return { endDate: end.input, endDateTrigger: end.trigger, updateDateBounds, close };
+  return { startDate: start.input, endDate: end.input, endDateTrigger: end.trigger, updateDateBounds, close };
 }

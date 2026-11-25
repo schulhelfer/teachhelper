@@ -3,6 +3,7 @@ import { WorkspacePersistence, downloadBytes } from './workspace-persistence.js'
 import { GradeVault } from './grade-vault.js';
 import { CourseRepository } from './course-repository.js';
 import { NACHSCHREIBER_DEFAULT_SENDER_SETTING } from '../../shared/school-data/defaults.js';
+import { NACHSCHREIBER_DRAFT_SETTING, normalizeNachschreiberDraft } from '../../shared/school-data/nachschreiber-draft.js';
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
   WORKSPACE_COMMAND_CREATE_COURSE,
@@ -952,7 +953,10 @@ export class WorkspaceRuntime {
 
   enqueueConnectedFileSave(reason = 'save') {
     if (this.isManualPersistenceMode() || !this.fileHandle) return Promise.resolve(false);
-    const save = () => this.saveToConnectedFile(reason);
+    const fileHandle = this.fileHandle;
+    const generation = this.persistence.loadedGeneration;
+    const save = () => fileHandle === this.fileHandle && generation === this.persistence.loadedGeneration
+      ? this.saveToConnectedFile(reason) : false;
     const operation = this.operationTail.then(save, save);
     this.operationTail = operation.catch(() => undefined);
     return operation;
@@ -978,6 +982,33 @@ export class WorkspaceRuntime {
     }
     if (this.lastQueuedSyncSave !== previousSave) return this.lastQueuedSyncSave;
     return this.enqueueConnectedFileSave('nachschreiber-settings-save');
+  }
+
+  getNachschreiberWorkSession() {
+    const generation = this.persistence.loadedGeneration;
+    if (!generation || !this.hasShellDatabaseConnection()) return null;
+    return {
+      generation, ready: this.isPersistenceReady(), manual: this.isManualPersistenceMode(),
+      dirty: this.manualDirty, error: this.persistenceFailure?.message || '',
+    };
+  }
+
+  updateNachschreiberDraft(generation, value) {
+    const session = this.getNachschreiberWorkSession();
+    if (!session?.ready || session.generation !== generation) return false;
+    const draft = normalizeNachschreiberDraft(value);
+    if (JSON.stringify(this.store.getSetting(NACHSCHREIBER_DRAFT_SETTING)) !== JSON.stringify(draft)) {
+      this.store.setSetting(NACHSCHREIBER_DRAFT_SETTING, draft);
+    }
+    return true;
+  }
+
+  saveManualNachschreiberDraft(generation) {
+    return this.enqueueFileOperation(() => {
+      const session = this.getNachschreiberWorkSession();
+      if (!session?.ready || !session.manual || session.generation !== generation) return false;
+      return this.persistExplicitDatabaseSave();
+    });
   }
 
   saveManualDatabase(...args) {

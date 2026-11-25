@@ -507,6 +507,33 @@ test('the Nachschreiber sender default waits for a single connected database wri
   assert.deepEqual(parseContainer(handle.read()), saved);
 });
 
+test('Nachschreiber draft autosaves and queued writes stay bound to the connected database', async () => {
+  const { handle, bytes } = await seedDatabase();
+  const { runtime } = createRuntime();
+  runtime.fileHandle = handle;
+  await runtime.loadBytes(bytes, 'file');
+  const { generation } = runtime.getNachschreiberWorkSession();
+  const draftSettings = (file) => JSON.parse(parseContainer(file.read()).planningPublicText).settings;
+
+  assert.equal(runtime.updateNachschreiberDraft(generation, { senderName: 'Test-Entwurf' }), true);
+  assert.equal(await runtime.lastQueuedSyncSave, true);
+  assert.equal(draftSettings(handle).nachschreiberDraft.senderName, 'Test-Entwurf');
+  assert.equal(runtime.updateNachschreiberDraft(generation, null), true);
+  assert.equal(await runtime.lastQueuedSyncSave, true);
+  assert.equal(draftSettings(handle).nachschreiberDraft, null);
+
+  const otherHandle = createFileHandle(handle.name);
+  otherHandle.setBytes(bytes);
+  const switchDatabase = runtime.enqueueFileOperation(() => runtime.persistence.acceptWorkspaceSyncFileHandleNow(otherHandle));
+  assert.equal(runtime.updateNachschreiberDraft(generation, { senderName: 'Vor dem Wechsel' }), true);
+  const queuedSave = runtime.lastQueuedSyncSave;
+  assert.equal(await switchDatabase, true);
+  assert.equal(await queuedSave, false);
+  assert.equal(runtime.updateNachschreiberDraft(generation, { senderName: 'Nach dem Wechsel' }), false);
+  assert.deepEqual(otherHandle.read(), bytes);
+  assert.equal(draftSettings(handle).nachschreiberDraft, null);
+});
+
 test('a save built before a reload never overwrites the freshly loaded segments', async () => {
   const { handle, courseIds, bytes } = await seedDatabase();
   const { runtime } = createRuntime();

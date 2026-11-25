@@ -526,7 +526,12 @@
               <input id="nachschreiber-sender-name" type="text" autocomplete="name" />
             </li>
           </ol>
-          <button id="nachschreiber-submit" class="random-picker-button mt-md" type="submit" disabled>Vorschläge anzeigen</button>
+          <div class="nachschreiber-form-actions mt-md">
+            <button id="nachschreiber-submit" class="random-picker-button" type="submit" disabled>Vorschläge anzeigen</button>
+            <button id="nachschreiber-clear" class="ghost" type="button" aria-haspopup="dialog">Leeren</button>
+            <button id="nachschreiber-save" class="ghost" type="button" hidden>Speichern</button>
+          </div>
+          <p id="nachschreiber-save-error" class="dialog-status is-error" role="alert" hidden></p>
         </form>
       </section>
     </aside>
@@ -578,6 +583,17 @@
             </table>
           </div>
         </div>
+        <dialog id="nachschreiber-clear-dialog" class="nachschreiber-confirm-dialog"
+          aria-labelledby="nachschreiber-clear-title" aria-describedby="nachschreiber-clear-message" data-dialog-resize="off">
+          <form class="dialog-form" method="dialog">
+            <h2 id="nachschreiber-clear-title" class="dialog-title">Nachschreiber-Vorgang leeren?</h2>
+            <p id="nachschreiber-clear-message">Die Eingaben, Vorschläge und geladenen Dateien werden aus dem Vorgang entfernt.</p>
+            <div class="dialog-actions">
+              <button class="ghost" type="submit" value="cancel" autofocus>Abbrechen</button>
+              <button class="danger-action" type="submit" value="clear">Leeren</button>
+            </div>
+          </form>
+        </dialog>
         <dialog id="nachschreiber-settings-dialog" class="nachschreiber-settings-dialog"
           aria-labelledby="nachschreiber-settings-title" data-dialog-resize="off">
           <form class="dialog-form" method="dialog" autocomplete="off">

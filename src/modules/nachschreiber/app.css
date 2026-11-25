@@ -20,13 +20,20 @@ button.nachschreiber-settings-trigger {
   line-height: 1;
 }
 
-.nachschreiber-settings-dialog {
+.nachschreiber-settings-dialog,
+.nachschreiber-confirm-dialog {
   width: min(420px, calc(100vw - 32px));
   min-width: 0;
 }
 
 .nachschreiber-settings-dialog .dialog-form input[type='text'] {
   width: 100%;
+}
+
+.nachschreiber-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .app.app-tab-nachschreiber>.main {

@@ -136,6 +136,7 @@ export class WorkspacePersistence {
     this.knownFileHash = '';
     this.databaseLoaded = false;
     this.loadGeneration = 0;
+    this.loadedGeneration = 0;
     this.loadInProgress = false;
     this.persistenceFailure = null;
     this.manualLoaded = false;
@@ -242,7 +243,7 @@ export class WorkspacePersistence {
     }
   }
 
-  async loadBytes(bytes, source = 'manual') {
+  async loadBytes(bytes, source = 'manual', { fileName } = {}) {
     if (this.loadInProgress) throw new Error('Es wird bereits eine Datenbank geladen. Bitte warte, bis der Import abgeschlossen ist.');
     this.loadInProgress = true;
     try {
@@ -282,6 +283,7 @@ export class WorkspacePersistence {
       this.loadVaultConfig(config, publicState?.settings?.gradeVaultEncryptionEnabled);
       this.knownRevision = Math.max(0, Number(parsed.header.revision) || 0);
       this.knownFileHash = fileHash;
+      if (fileName) this.fileName = fileName;
       this.publicDirty = false;
       this.manualDirty = false;
       this.clearGradeVaultAutoLockWarning();
@@ -290,12 +292,13 @@ export class WorkspacePersistence {
       this.markReady();
       this.clearPersistenceFailure();
       if (!this.isGradeVaultEncryptionEnabled()) await this.refreshNameLearningDueSummary();
-      this.markChanged('planning');
-      this.publish('grades');
-      return { ok: true, source };
+      this.loadedGeneration = this.loadGeneration;
     } finally {
       this.loadInProgress = false;
     }
+    this.markChanged('planning');
+    this.publish('grades');
+    return { ok: true, source };
   }
 
   readPersistedCourseIds(bytes) {
@@ -592,8 +595,8 @@ export class WorkspacePersistence {
 
   async loadManualDatabaseFromFile(file) {
     if (!file) return false;
-    this.fileName = String(file.name || this.buildSyncFileSuggestedName());
-    await this.loadBytes(await this.readDatabaseFileBytes(file), 'manual');
+    const fileName = String(file.name || this.buildSyncFileSuggestedName());
+    await this.loadBytes(await this.readDatabaseFileBytes(file), 'manual', { fileName });
     return true;
   }
 

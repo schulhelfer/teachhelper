@@ -2,6 +2,7 @@ import { assertFileSizeAtMost, FILE_LIMITS, readFileArrayBufferWithTimeout } fro
 import { dataTransferHasFiles, isCsvFile } from '../../shared/file-io.js';
 import { NACHSCHREIBER_DEFAULT_SENDER_SETTING } from '../../shared/school-data/defaults.js';
 import { WORKSPACE_STATE_EVENT } from '../../shared/school-data/messages.js';
+import { NACHSCHREIBER_DRAFT_SETTING, normalizeNachschreiberDraft } from '../../shared/school-data/nachschreiber-draft.js';
 import { mountDateCalendar } from './date-calendar.js';
 import { readPdfExamSchedule } from './pdf-schedule.js';
 import { getUsableLessonTimes, mergeExamSchedules, parseExamSchedule, rankExamSuggestions } from './schedule.js';
@@ -84,6 +85,7 @@ function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePe
 
 export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], getWorkspace = () => null }) {
   const doc = root.ownerDocument;
+  const view = doc.defaultView;
   const settingsTrigger = sidebar.querySelector('#nachschreiber-settings-trigger');
   const fileInput = sidebar.querySelector('#nachschreiber-file');
   const upload = sidebar.querySelector('#nachschreiber-drop-zone');
@@ -104,6 +106,10 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   const periodList = sidebar.querySelector('#nachschreiber-period-list');
   const duration = sidebar.querySelector('#nachschreiber-duration');
   const submit = sidebar.querySelector('#nachschreiber-submit');
+  const clear = sidebar.querySelector('#nachschreiber-clear');
+  const save = sidebar.querySelector('#nachschreiber-save');
+  const saveError = sidebar.querySelector('#nachschreiber-save-error');
+  const clearDialog = root.querySelector('#nachschreiber-clear-dialog');
   const resultStatus = root.querySelector('#nachschreiber-result-status');
   const results = root.querySelector('#nachschreiber-results');
   const resultRows = root.querySelector('#nachschreiber-result-rows');
@@ -137,13 +143,146 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   let studentRowId = 0;
   let exams = [];
   let hasPdfTimingNotes = false;
-  let importingFiles = false;
+  let importController = null;
   let noticeCopyId = 0;
   let noticeSelection = null;
   let savingSenderSettings = false;
-  const { endDate, updateDateBounds, close: closeDateCalendar } = mountDateCalendar(root, sidebar, {
+  let currentResult = null;
+  let draftContext = null;
+  let draftTimer = 0;
+  let draftPending = false;
+  let restoringDraft = false;
+  let manualSave = null;
+  let manualSaveError = '';
+  const { startDate, endDate, updateDateBounds, close: closeDateCalendar } = mountDateCalendar(root, sidebar, {
     signal, onDateChange: clearResults,
   });
+
+  function readDraft() {
+    return {
+      students: readStudents(), freePeriods: readFreePeriods(), result: currentResult,
+      duration: duration.value, startDate: startDate.value, endDate: endDate.value,
+      iservPrefix: iservPrefix.value, senderName: senderName.value,
+    };
+  }
+
+  function renderDraftControls(session) {
+    save.hidden = !session?.manual;
+    save.disabled = !session?.ready || (manualSave !== null && manualSave === draftContext)
+      || !(draftPending || session.dirty || manualSaveError);
+    const message = manualSaveError || session?.error || '';
+    if (saveError.textContent !== message) saveError.textContent = message;
+    saveError.hidden = !message;
+  }
+
+  function stopDraftTimer() {
+    view.clearTimeout(draftTimer);
+    draftTimer = 0;
+  }
+
+  function persistDraft() {
+    stopDraftTimer();
+    const context = draftContext;
+    if (!draftPending || !context || restoringDraft) return;
+    const { workspace, generation } = context;
+    if (workspace !== getWorkspace()) return;
+    draftPending = false;
+    const updated = workspace.operations.updateNachschreiberDraft(generation, readDraft());
+    if (draftContext !== context) return;
+    draftPending = !updated;
+    renderDraftControls(workspace.operations.getNachschreiberWorkSession());
+  }
+
+  function draftChanged({ typing = false } = {}) {
+    if (restoringDraft || !draftContext) return;
+    draftPending = true;
+    if (!typing) {
+      persistDraft();
+      return;
+    }
+    stopDraftTimer();
+    draftTimer = view.setTimeout(persistDraft, 300);
+    renderDraftControls(draftContext.workspace.operations.getNachschreiberWorkSession());
+  }
+
+  function setDraft(draft) {
+    restoringDraft = true;
+    try {
+      closeDateCalendar();
+      if (noticeDialog.open) closeNoticeDialog();
+      clearExamSources();
+      periodRows.clear();
+      periodList.replaceChildren();
+      periodList.hidden = true;
+      studentList.replaceChildren();
+      studentRowId = 0;
+      for (const student of draft?.students || []) appendStudentRow(student);
+      if (!studentList.children.length) appendStudentRow();
+      updateStudentRemoveButtons();
+
+      duration.value = draft?.duration ?? '1';
+      startDate.value = draft?.startDate ?? '';
+      endDate.value = draft?.endDate ?? '';
+      iservPrefix.value = draft?.iservPrefix ?? '';
+      senderName.value = draft?.senderName ?? '';
+      updateDateBounds();
+      updateIservLink();
+      refreshLessonTimes();
+      for (const period of draft?.freePeriods || []) appendPeriodRow(period);
+      sortPeriodRows();
+
+      currentResult = draft?.result ?? null;
+      if (currentResult) renderSuggestions(currentResult);
+      else clearResults();
+    } finally {
+      restoringDraft = false;
+    }
+  }
+
+  function refreshDraftWorkspace() {
+    const workspace = getWorkspace();
+    const session = workspace?.operations?.getNachschreiberWorkSession?.();
+    refreshSenderSettings(workspace);
+    if (session && !session.ready) {
+      renderDraftControls(session);
+      return;
+    }
+    if ((draftContext || session)
+      && (draftContext?.workspace !== workspace || draftContext?.generation !== session?.generation)) {
+      stopDraftTimer();
+      draftPending = false;
+      manualSaveError = '';
+      draftContext = session ? { workspace, generation: session.generation } : null;
+      if (clearDialog.open) clearDialog.close('cancel');
+      if (settingsDialog.open) settingsDialog.close();
+      const saved = session ? workspace.data.getSetting(NACHSCHREIBER_DRAFT_SETTING) : null;
+      setDraft(normalizeNachschreiberDraft(saved));
+    }
+    refreshLessonTimes();
+    if (draftPending && !draftTimer) persistDraft();
+    renderDraftControls(workspace?.operations?.getNachschreiberWorkSession?.());
+  }
+
+  async function saveDraftManually() {
+    if (!draftContext || save.disabled) return;
+    persistDraft();
+    const context = draftContext;
+    if (!context || draftPending) return;
+    const { workspace, generation } = context;
+    manualSave = context;
+    manualSaveError = '';
+    renderDraftControls(workspace.operations.getNachschreiberWorkSession());
+    try {
+      if (!await workspace.operations.saveManualNachschreiberDraft(generation)) {
+        throw new Error('Die Datenbankdatei konnte nicht gespeichert werden.');
+      }
+    } catch (error) {
+      if (draftContext === context) manualSaveError = error?.message || 'Die Datenbankdatei konnte nicht gespeichert werden.';
+    } finally {
+      if (manualSave === context) manualSave = null;
+      if (!signal.aborted) refreshDraftWorkspace();
+    }
+  }
 
   function readDefaultSenderName(workspace = getWorkspace()) {
     const name = workspace?.data?.getSetting?.(NACHSCHREIBER_DEFAULT_SENDER_SETTING);
@@ -222,6 +361,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   }
 
   function renderImportStatus() {
+    const importingFiles = Boolean(importController);
     const empty = !importingFiles && examSources.size === 0;
     submit.disabled = importingFiles || empty;
     importStatus.classList.toggle('empty-state-box', empty);
@@ -242,15 +382,18 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   }
 
   function renderResultStatus(...messages) {
-    if (hasPdfTimingNotes) messages.push('Mindestens eine PDF enthält zusätzliche Uhrzeithinweise. Für die Vorschläge gelten die Zeiten aus der Planung.');
+    if (hasPdfTimingNotes || currentResult?.hasPdfTimingNotes) messages.push('Mindestens eine PDF enthält zusätzliche Uhrzeithinweise. Für die Vorschläge gelten die Zeiten aus der Planung.');
     const text = messages.filter(Boolean).join(' ');
     if (resultStatus.textContent !== text) resultStatus.textContent = text;
   }
 
   function clearResults() {
+    currentResult = null;
     renderResultStatus();
     resultRows.replaceChildren();
     results.hidden = true;
+    ownExamCount.textContent = ownExamCountLabel;
+    draftChanged();
   }
 
   function readStudents() {
@@ -272,16 +415,25 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     }
   }
 
-  function addStudentRow() {
+  function appendStudentRow({ name = '', year = '', classLetter = '' } = {}) {
     const row = studentTemplate.cloneNode(true);
-    const suffix = ++studentRowId;
-    for (const label of row.querySelectorAll('label')) {
-      const control = row.querySelector(`#${label.htmlFor}`);
-      control.id = `${control.id}-${suffix}`;
-      label.htmlFor = control.id;
-      control.value = '';
+    if (studentList.children.length) {
+      const suffix = ++studentRowId;
+      for (const label of row.querySelectorAll('label')) {
+        const control = row.querySelector(`#${label.htmlFor}`);
+        control.id = `${control.id}-${suffix}`;
+        label.htmlFor = control.id;
+      }
     }
+    row.querySelector('.nachschreiber-student-name').value = name;
+    row.querySelector('.nachschreiber-student-year').value = year;
+    row.querySelector('.nachschreiber-student-class').value = classLetter;
     studentList.append(row);
+    return row;
+  }
+
+  function addStudentRow() {
+    const row = appendStudentRow();
     updateStudentRemoveButtons();
     clearResults();
     row.querySelector('.nachschreiber-student-name').focus();
@@ -428,6 +580,10 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
       (draft.weekday.value ? draft.lesson : draft.weekday).focus();
       return;
     }
+    appendPeriodRow().weekday.focus();
+  }
+
+  function appendPeriodRow(period = null) {
     const element = doc.importNode(periodTemplate.content.firstElementChild, true);
     const row = {
       element,
@@ -435,15 +591,28 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
       lesson: element.querySelector('.nachschreiber-period-lesson'),
       remove: element.querySelector('.nachschreiber-period-delete'),
       error: element.querySelector('.nachschreiber-period-error'),
-      period: null,
+      period,
     };
     row.error.id = `nachschreiber-period-error-${++periodRowId}`;
     for (const select of [row.weekday, row.lesson]) select.setAttribute('aria-describedby', row.error.id);
-    renderPeriodLessonOptions(row);
+    if (period) {
+      row.weekday.value = String(period.weekday);
+      setPeriodDeleteLabel(row);
+    }
+    renderPeriodLessonOptions(row, period ? String(period.lesson) : '');
     periodRows.set(element, row);
     periodList.append(element);
     periodList.hidden = false;
-    row.weekday.focus();
+    return row;
+  }
+
+  function readFreePeriods() {
+    return [...periodRows.values()].map((row) => row.period).filter(Boolean);
+  }
+
+  function setPeriodDeleteLabel(row) {
+    const { weekday, lesson } = row.period;
+    row.remove.setAttribute('aria-label', `Freistunde am ${WEEKDAYS[weekday]}, ${lesson}. Stunde löschen`);
   }
 
   function removePeriodRow(row) {
@@ -501,7 +670,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     }
     row.period = { weekday, lesson };
     setPeriodError(row);
-    row.remove.setAttribute('aria-label', `Freistunde am ${WEEKDAYS[weekday]}, ${lesson}. Stunde löschen`);
+    setPeriodDeleteLabel(row);
     return true;
   }
 
@@ -526,6 +695,19 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     renderImportStatus();
   }
 
+  function clearExamSources() {
+    importController?.abort();
+    importController = null;
+    pendingFiles.length = 0;
+    examSources.clear();
+    fileInput.value = '';
+    upload.classList.remove('drag-over-file');
+    sourceList.replaceChildren();
+    importErrors.replaceChildren();
+    importErrors.hidden = true;
+    refreshExamSources();
+  }
+
   function addExamSource(fileName, source) {
     const row = doc.createElement('li');
     const name = doc.createElement('span');
@@ -547,7 +729,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     refreshExamSources();
   }
 
-  async function readExamSource(file) {
+  async function readExamSource(file, signal) {
     if (/\.pdf$/i.test(file.name)) return readPdfExamSchedule(file, { signal });
     if (!isCsvFile(file)) throw new Error('Wähle eine CSV- oder PDF-Datei.');
     assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
@@ -559,8 +741,10 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   async function importFiles(files) {
     if (!files.length) return;
     for (const file of files) pendingFiles.push(file);
-    if (importingFiles) return;
-    importingFiles = true;
+    if (importController) return;
+    const batch = new AbortController();
+    const { signal } = batch;
+    importController = batch;
     importErrors.replaceChildren();
     importErrors.hidden = true;
     renderImportStatus();
@@ -570,7 +754,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
         const file = pendingFiles.shift();
         const fileName = file.name || 'Klausurenplan';
         try {
-          const source = await readExamSource(file);
+          const source = await readExamSource(file, signal);
           signal.throwIfAborted();
           addExamSource(fileName, source);
         } catch (error) {
@@ -582,34 +766,43 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
         }
       }
     } finally {
-      importingFiles = false;
-      if (!signal.aborted) renderImportStatus();
+      if (importController === batch) {
+        importController = null;
+        renderImportStatus();
+      }
     }
   }
 
   function showSuggestions(event) {
     event.preventDefault();
-    if (importingFiles || !exams.length) return;
+    if (importController || !exams.length) return;
     refreshLessonTimes();
-    const startDate = updateDateBounds();
+    const effectiveStartDate = updateDateBounds();
     if (!form.reportValidity()) return;
 
     const students = readStudents();
     let missingPdfLessonTimes = false;
     const suggestions = rankExamSuggestions(exams, {
       studentGroups: students.map(({ year, classLetter }) => ({ year, classLetter })),
-      startDate,
+      startDate: effectiveStartDate,
       endDate: endDate.value,
       requiredLessons: Number(duration.value),
-      freePeriods: Array.from(periodRows.values(), (row) => row.period).filter(Boolean),
+      freePeriods: readFreePeriods(),
       lessonTimes,
       onMissingPdfLessonTimes: () => { missingPdfLessonTimes = true; },
     });
+    currentResult = { suggestions, missingPdfLessonTimes, hasPdfTimingNotes };
+    renderSuggestions(currentResult);
+    draftChanged();
+  }
+
+  function renderSuggestions({ suggestions, missingPdfLessonTimes }) {
+    const students = readStudents();
     const multipleGroups = new Set(students.map(({ studentClass }) => studentClass)).size > 1;
     ownExamCount.textContent = multipleGroups ? `${ownExamCountLabel} (höchste Anzahl)` : ownExamCountLabel;
     const rows = suggestions.map((exam) => {
       const row = doc.createElement('tr');
-      row.title = exam.fileName;
+      if (exam.fileName) row.title = exam.fileName;
       const weekday = WEEKDAYS[new Date(`${exam.date}T00:00:00Z`).getUTCDay()];
       const calendarDate = exam.date.split('-').reverse().join('.');
       const date = `${weekday}, ${calendarDate}`;
@@ -661,7 +854,18 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   settingsDialog.addEventListener('cancel', (event) => {
     if (savingSenderSettings) event.preventDefault();
   }, { signal });
-  iservPrefix.addEventListener('input', updateIservLink, { signal });
+  iservPrefix.addEventListener('input', () => {
+    updateIservLink();
+    draftChanged({ typing: true });
+  }, { signal });
+  senderName.addEventListener('input', () => draftChanged({ typing: true }), { signal });
+  clear.addEventListener('click', () => clearDialog.showModal(), { signal });
+  clearDialog.addEventListener('submit', (event) => {
+    if (event.submitter?.value !== 'clear') return;
+    setDraft(null);
+    draftChanged();
+  }, { signal });
+  save.addEventListener('click', saveDraftManually, { signal });
   fileInput.addEventListener('change', () => {
     if (fileInput.files.length) void importFiles(fileInput.files);
     fileInput.value = '';
@@ -705,6 +909,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   }, { signal });
   studentList.addEventListener('input', (event) => {
     if (event.target.matches('select')) clearResults();
+    else draftChanged({ typing: true });
   }, { signal });
   duration.addEventListener('input', clearResults, { signal });
   addPeriod.addEventListener('click', addPeriodRow, { signal });
@@ -747,31 +952,28 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     event.preventDefault();
     closeNoticeDialog();
   }, { signal });
-  doc.defaultView?.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
+  view.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
     if (event.detail?.scope !== 'shell') return;
-    refreshLessonTimes();
-    refreshSenderSettings();
+    refreshDraftWorkspace();
+  }, { signal });
+  view.addEventListener('beforeunload', (event) => {
+    if (!draftPending) return;
+    persistDraft();
+    if (draftContext?.workspace.operations.getNachschreiberWorkSession()?.dirty) {
+      event.preventDefault();
+      event.returnValue = '';
+    }
   }, { signal });
   form.addEventListener('submit', showSuggestions, { signal });
   updateIservLink();
   renderImportStatus();
-  refreshLessonTimes();
-  refreshSenderSettings();
+  refreshDraftWorkspace();
 
   return () => {
+    persistDraft();
     controller.abort();
-    pendingFiles.length = 0;
-    examSources.clear();
-    sourceList.replaceChildren();
-    sourceList.hidden = true;
-    importErrors.replaceChildren();
-    importErrors.hidden = true;
-    closeDateCalendar();
-    for (const control of studentTemplate.querySelectorAll('input, select')) control.value = '';
-    studentList.replaceChildren(studentTemplate);
-    periodList.replaceChildren();
-    periodList.hidden = true;
+    setDraft(null);
+    if (clearDialog.open) clearDialog.close('cancel');
     if (settingsDialog.open) settingsDialog.close();
-    if (noticeDialog.open) closeNoticeDialog();
   };
 }
