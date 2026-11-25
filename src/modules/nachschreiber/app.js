@@ -6,7 +6,7 @@ import { mountDateCalendar } from './date-calendar.js';
 import { readPdfExamSchedule } from './pdf-schedule.js';
 import { getUsableLessonTimes, mergeExamSchedules, parseExamSchedule, rankExamSuggestions } from './schedule.js';
 
-const lessonListFormat = new Intl.ListFormat('de');
+const germanListFormat = new Intl.ListFormat('de');
 const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
 function decodeCsv(buffer) {
@@ -22,7 +22,7 @@ function formatTime(time) {
 }
 
 function formatLessons(lessons) {
-  return `${lessonListFormat.format(lessons.map((number) => `${number}.`))} Stunde`;
+  return `${germanListFormat.format(lessons.map((number) => `${number}.`))} Stunde`;
 }
 
 function formatLessonNumbers(lessons) {
@@ -44,13 +44,20 @@ function buildTeacherNotice(date, { makeupLessons }, studentClass, studentName, 
   ].join('\n');
 }
 
-function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source }, studentClass, studentName, senderName) {
+function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source }, students, senderName) {
   const firstName = teacher.split(/\s+/, 1)[0] || '[Lehrkraftname]';
   const group = source === 'pdf' ? `Deinem Kurs „${groups}“, für den` : `Deiner Lerngruppe „${groups}“, für die`;
+  const multiple = students.length > 1;
+  const studentList = germanListFormat.format(students.map(({ name, studentClass }, index) => {
+    const label = name || (multiple ? `[Prüflingsname ${index + 1}]` : '[Prüflingsname]');
+    return `${label} (${studentClass})`;
+  }));
+  const work = multiple ? 'versäumte schriftliche Arbeiten' : 'eine versäumte schriftliche Arbeit';
+  const action = multiple ? 'ihre Arbeiten nachschreiben' : 'die Arbeit nachschreibt';
   return [
     `Hallo ${firstName},`,
-    `am ${date}, würde ich gerne in der ${formatLessonPhrase(makeupLessons)} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
-    `Wäre es möglich, dass ${studentName} (${studentClass}) unter Deiner Aufsicht zusammen mit ${group} Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, die Arbeit nachschreibt? Falls ja, in welchem Raum schreibst Du die Arbeit?`,
+    `am ${date}, würde ich gerne in der ${formatLessonPhrase(makeupLessons)} ${work} nachschreiben lassen.`,
+    `Wäre es möglich, dass ${studentList} unter Deiner Aufsicht zusammen mit ${group} Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, ${action}? Falls ja, in welchem Raum schreibst Du die Arbeit?`,
     'Viele Grüße',
     senderName,
   ].join('\n');
@@ -87,9 +94,9 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   const iservLink = sidebar.querySelector('#nachschreiber-iserv-link');
   const iservLinkHint = sidebar.querySelector('#nachschreiber-iserv-link-hint');
   const form = sidebar.querySelector('#nachschreiber-form');
-  const year = sidebar.querySelector('#nachschreiber-year');
-  const classLetter = sidebar.querySelector('#nachschreiber-class');
-  const studentName = sidebar.querySelector('#nachschreiber-student-name');
+  const studentList = sidebar.querySelector('#nachschreiber-student-list');
+  const studentTemplate = studentList.firstElementChild.cloneNode(true);
+  const addStudent = sidebar.querySelector('#nachschreiber-add-student');
   const senderName = sidebar.querySelector('#nachschreiber-sender-name');
   const periodTemplate = sidebar.querySelector('#nachschreiber-period-row');
   const addPeriod = sidebar.querySelector('#nachschreiber-add-period');
@@ -100,6 +107,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   const resultStatus = root.querySelector('#nachschreiber-result-status');
   const results = root.querySelector('#nachschreiber-results');
   const resultRows = root.querySelector('#nachschreiber-result-rows');
+  const ownExamCount = root.querySelector('#nachschreiber-own-exam-count');
+  const ownExamCountLabel = ownExamCount.textContent;
   const settingsDialog = root.querySelector('#nachschreiber-settings-dialog');
   const settingsForm = settingsDialog.querySelector('form');
   const defaultSenderName = settingsDialog.querySelector('#nachschreiber-default-sender-name');
@@ -109,6 +118,9 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   const settingsSave = settingsDialog.querySelector('#nachschreiber-settings-save');
   const noticeDialog = root.querySelector('#nachschreiber-notice-dialog');
   const noticeTitle = root.querySelector('#nachschreiber-notice-title');
+  const noticeStudentField = root.querySelector('#nachschreiber-notice-student-field');
+  const noticeStudent = root.querySelector('#nachschreiber-notice-student');
+  const noticeStudentPlaceholder = noticeStudent.options[0];
   const noticeText = root.querySelector('#nachschreiber-notice-text');
   const noticeStatus = root.querySelector('#nachschreiber-notice-status');
   const noticeClose = root.querySelector('#nachschreiber-notice-close');
@@ -122,10 +134,12 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   let lessonTimes = [];
   let lessonTimesSignature = '';
   let periodRowId = 0;
+  let studentRowId = 0;
   let exams = [];
   let hasPdfTimingNotes = false;
   let importingFiles = false;
   let noticeCopyId = 0;
+  let noticeSelection = null;
   let savingSenderSettings = false;
   const { endDate, updateDateBounds, close: closeDateCalendar } = mountDateCalendar(root, sidebar, {
     signal, onDateChange: clearResults,
@@ -239,11 +253,45 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     results.hidden = true;
   }
 
-  function createNoticeButton(title, date, buildText) {
+  function readStudents() {
+    return Array.from(studentList.children, (row) => {
+      const year = row.querySelector('.nachschreiber-student-year').value;
+      const classLetter = row.querySelector('.nachschreiber-student-class').value;
+      return {
+        name: row.querySelector('.nachschreiber-student-name').value.trim(),
+        year, classLetter, studentClass: `${year}${classLetter}`,
+      };
+    });
+  }
+
+  function updateStudentRemoveButtons() {
+    const multiple = studentList.children.length > 1;
+    for (const [index, button] of Array.from(studentList.querySelectorAll('.nachschreiber-student-remove')).entries()) {
+      button.hidden = !multiple;
+      button.setAttribute('aria-label', `Prüfling ${index + 1} entfernen`);
+    }
+  }
+
+  function addStudentRow() {
+    const row = studentTemplate.cloneNode(true);
+    const suffix = ++studentRowId;
+    for (const label of row.querySelectorAll('label')) {
+      const control = row.querySelector(`#${label.htmlFor}`);
+      control.id = `${control.id}-${suffix}`;
+      label.htmlFor = control.id;
+      control.value = '';
+    }
+    studentList.append(row);
+    updateStudentRemoveButtons();
+    clearResults();
+    row.querySelector('.nachschreiber-student-name').focus();
+  }
+
+  function createNoticeButton(title, date, buildText, individual = false) {
     const button = doc.createElement('button');
     button.type = 'button';
     button.className = 'ghost nachschreiber-notice-trigger';
-    noticeBuilders.set(button, buildText);
+    noticeBuilders.set(button, { buildText, individual });
     button.textContent = title;
     button.setAttribute('aria-label', `${title} für den Termin am ${date}`);
     button.setAttribute('aria-haspopup', 'dialog');
@@ -261,14 +309,61 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     noticeStatus.textContent = '';
   }
 
+  function showNoticeText(text, available = true) {
+    noticeCopyId += 1;
+    resetNoticeCopyFeedback();
+    noticeText.value = text;
+    noticeText.disabled = !available;
+    noticeCopy.disabled = !available;
+    if (available && noticeDialog.open) fitNoticeText();
+    else noticeText.style.height = '';
+  }
+
+  function openNoticeDialog(button, { buildText, individual }) {
+    const students = readStudents();
+    const sender = senderName.value.trim() || readDefaultSenderName() || '[Absender]';
+    const needsSelection = individual && students.length > 1;
+    noticeTitle.textContent = button.textContent;
+    noticeStudentField.hidden = !needsSelection;
+    if (needsSelection) {
+      noticeSelection = { students, sender, buildText, drafts: new Map(), selected: '' };
+      const options = students.map(({ name, studentClass }, index) => {
+        const option = doc.createElement('option');
+        option.value = String(index);
+        option.textContent = `${name || `Prüfling ${index + 1}`} (${studentClass})`;
+        return option;
+      });
+      noticeStudent.replaceChildren(noticeStudentPlaceholder, ...options);
+      noticeStudent.value = '';
+      showNoticeText('', false);
+    } else {
+      showNoticeText(buildText(students, sender));
+    }
+    noticeDialog.showModal();
+    if (needsSelection) noticeStudent.focus();
+    else fitNoticeText();
+  }
+
+  function selectNoticeStudent() {
+    if (!noticeSelection) return;
+    const { students, sender, buildText, drafts, selected } = noticeSelection;
+    if (selected) drafts.set(selected, noticeText.value);
+    const key = noticeStudent.value;
+    noticeSelection.selected = key;
+    if (key === '') showNoticeText('', false);
+    else showNoticeText(drafts.get(key) ?? buildText([students[Number(key)]], sender));
+  }
+
   function closeNoticeDialog() {
     noticeDialog.close();
-    noticeCopyId += 1;
-    noticeText.value = '';
-    resetNoticeCopyFeedback();
+    noticeSelection = null;
+    noticeStudentField.hidden = true;
+    noticeStudent.replaceChildren(noticeStudentPlaceholder);
+    showNoticeText('', false);
   }
 
   async function copyNoticeText() {
+    if (noticeCopy.disabled) return;
     const currentCopy = ++noticeCopyId;
     resetNoticeCopyFeedback();
     let copied = false;
@@ -499,10 +594,10 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     const startDate = updateDateBounds();
     if (!form.reportValidity()) return;
 
+    const students = readStudents();
     let missingPdfLessonTimes = false;
     const suggestions = rankExamSuggestions(exams, {
-      year: year.value,
-      classLetter: classLetter.value,
+      studentGroups: students.map(({ year, classLetter }) => ({ year, classLetter })),
       startDate,
       endDate: endDate.value,
       requiredLessons: Number(duration.value),
@@ -510,7 +605,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
       lessonTimes,
       onMissingPdfLessonTimes: () => { missingPdfLessonTimes = true; },
     });
-    const studentClass = `${year.value}${classLetter.value}`;
+    const multipleGroups = new Set(students.map(({ studentClass }) => studentClass)).size > 1;
+    ownExamCount.textContent = multipleGroups ? `${ownExamCountLabel} (höchste Anzahl)` : ownExamCountLabel;
     const rows = suggestions.map((exam) => {
       const row = doc.createElement('tr');
       row.title = exam.fileName;
@@ -539,11 +635,17 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
       }
       const noticeCell = row.insertCell();
       noticeCell.className = 'nachschreiber-notice-cell';
-      noticeCell.append(createNoticeButton('Aufsicht anfragen', date, (...names) => buildSupervisionRequest(dateInSentence, exam, studentClass, ...names)));
+      noticeCell.append(createNoticeButton('Aufsicht anfragen', date, (recipients, sender) => (
+        buildSupervisionRequest(dateInSentence, exam, recipients, sender)
+      )));
       if (!exam.fullyCoveredByFreePeriods) {
-        noticeCell.append(createNoticeButton('Reguläre Lehrkraft informieren', date, (...names) => buildTeacherNotice(dateInSentence, exam, studentClass, ...names)));
+        noticeCell.append(createNoticeButton('Reguläre Lehrkraft informieren', date, ([student], sender) => (
+          buildTeacherNotice(dateInSentence, exam, student.studentClass, student.name || '[Prüflingsname]', sender)
+        ), true));
       }
-      noticeCell.append(createNoticeButton('Prüfling informieren', date, (...names) => buildStudentNotice(date, exam, ...names)));
+      noticeCell.append(createNoticeButton('Prüfling informieren', date, ([student], sender) => (
+        buildStudentNotice(date, exam, student.name || '[Prüflingsname]', sender)
+      ), true));
       return row;
     });
     resultRows.replaceChildren(...rows);
@@ -591,7 +693,20 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     refreshExamSources();
     (neighbor?.querySelector('button') || fileInput).focus();
   }, { signal });
-  for (const input of [year, classLetter, duration]) input.addEventListener('input', clearResults, { signal });
+  addStudent.addEventListener('click', addStudentRow, { signal });
+  studentList.addEventListener('click', (event) => {
+    const row = event.target.closest('.nachschreiber-student-remove')?.closest('.nachschreiber-student-row');
+    if (!row || studentList.children.length < 2) return;
+    const neighbor = row.nextElementSibling || row.previousElementSibling;
+    row.remove();
+    updateStudentRemoveButtons();
+    clearResults();
+    neighbor.querySelector('.nachschreiber-student-name').focus();
+  }, { signal });
+  studentList.addEventListener('input', (event) => {
+    if (event.target.matches('select')) clearResults();
+  }, { signal });
+  duration.addEventListener('input', clearResults, { signal });
   addPeriod.addEventListener('click', addPeriodRow, { signal });
   periodList.addEventListener('click', (event) => {
     const row = periodRows.get(event.target.closest('.nachschreiber-period-row'));
@@ -616,17 +731,11 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     setPeriodError(row);
   }, { signal });
   resultRows.addEventListener('click', (event) => {
-    const notice = event.target.closest('button.nachschreiber-notice-trigger');
-    const buildText = noticeBuilders.get(notice);
-    if (!buildText) return;
-    noticeTitle.textContent = notice.textContent;
-    noticeText.value = buildText(
-      studentName.value.trim() || '[Prüflingsname]',
-      senderName.value.trim() || readDefaultSenderName() || '[Absender]',
-    );
-    noticeDialog.showModal();
-    fitNoticeText();
+    const button = event.target.closest('button.nachschreiber-notice-trigger');
+    const notice = noticeBuilders.get(button);
+    if (notice) openNoticeDialog(button, notice);
   }, { signal });
+  noticeStudent.addEventListener('change', selectNoticeStudent, { signal });
   noticeClose.addEventListener('click', closeNoticeDialog, { signal });
   noticeCopy.addEventListener('click', copyNoticeText, { signal });
   noticeText.addEventListener('input', () => {
@@ -658,6 +767,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     importErrors.replaceChildren();
     importErrors.hidden = true;
     closeDateCalendar();
+    for (const control of studentTemplate.querySelectorAll('input, select')) control.value = '';
+    studentList.replaceChildren(studentTemplate);
     periodList.replaceChildren();
     periodList.hidden = true;
     if (settingsDialog.open) settingsDialog.close();

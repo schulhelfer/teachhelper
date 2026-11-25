@@ -303,7 +303,7 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
     const steps = [...sidebar.querySelectorAll('.steps-list > li')];
     const stepTitles = steps.map((step) => step.querySelector(':scope > :is(strong, label)').textContent);
     const controlSteps = ['drop-zone', 'year', 'class', 'class-source', 'add-period', 'duration', 'student-name', 'start-calendar', 'end-calendar', 'sender-name']
-      .map((id) => steps.indexOf(byId(`nachschreiber-${id}`).closest('li')) + 1);
+      .map((id) => steps.findIndex((step) => step.contains(byId(`nachschreiber-${id}`))) + 1);
     const fieldLabels = ['year', 'class', 'duration', 'student-name', 'start-calendar', 'end-calendar', 'sender-name']
       .map((id) => byId(`nachschreiber-${id}`).labels[0].textContent);
 
@@ -341,10 +341,10 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
     sideBySide: true, inputsInSidebar: true, resultsInMain: true, pickerInputsHidden: true, classSourceCenteredBelow: true,
   });
   assert.deepEqual(desktop.stepTitles, [
-    'Klausurenplan importieren', 'Lerngruppe auswählen', 'Wöchentliche Freistunden (optional)',
-    'Dauer der Nachschreibklausur', 'Name des Prüflings (optional)', 'Datumsfilter (optional)', 'Eigener Name (optional)',
+    'Klausurenplan importieren', 'Prüflinge eintragen', 'Gemeinsame wöchentliche Freistunden (optional)',
+    'Dauer der Nachschreibklausur', 'Datumsfilter (optional)', 'Eigener Name (optional)',
   ]);
-  assert.deepEqual(desktop.controlSteps, [1, 2, 2, 2, 3, 4, 5, 6, 6, 7]);
+  assert.deepEqual(desktop.controlSteps, [1, 2, 2, 2, 3, 4, 2, 5, 5, 6]);
   assert.equal(desktop.classSourceLabel, 'Prüflingsdaten im Schulmanager');
   assert.deepEqual(desktop.fieldLabels, [
     'Jahrgang', 'Klasse', 'Dauer der Nachschreibklausur', 'Name des Prüflings (optional)',
@@ -379,6 +379,14 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
     const row = document.querySelector('.nachschreiber-period-row');
     const [weekday, lesson, remove] = [...row.querySelectorAll('select, button')].map((element) => element.getBoundingClientRect());
     const centerY = (bounds) => bounds.top + bounds.height / 2;
+    const addStudent = document.getElementById('nachschreiber-add-student');
+    addStudent.click();
+    const lastStudent = document.getElementById('nachschreiber-student-list').lastElementChild;
+    const studentControls = [...lastStudent.querySelectorAll('input, select, button')];
+    const studentsFit = studentControls.every((control) => {
+      const bounds = control.getBoundingClientRect();
+      return bounds.left >= sideBounds.left && bounds.right <= sideBounds.right && bounds.width > 0;
+    });
     return {
       stacked: sideBounds.bottom <= mainBounds.top + 1,
       fullWidth: Math.abs(sideBounds.width - mainBounds.width) < 2 && sideBounds.width >= 418,
@@ -389,12 +397,158 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
       periodControlsSideBySide: weekday.right < lesson.left && lesson.right < remove.left
         && Math.abs(centerY(weekday) - centerY(remove)) < 1 && Math.abs(centerY(lesson) - centerY(remove)) < 1
         && remove.right <= sideBounds.right && addPeriod.getBoundingClientRect().top > row.getBoundingClientRect().bottom,
+      studentsFit: studentsFit && addStudent.getBoundingClientRect().top > lastStudent.getBoundingClientRect().bottom,
     };
   });
   assert.deepEqual(mobile, {
     stacked: true, fullWidth: true, sidebarVisible: true, resultsVisible: true, iservControlsSideBySide: true,
-    periodControlsSideBySide: true,
+    periodControlsSideBySide: true, studentsFit: true,
   });
+});
+
+test('Nachschreiber sucht einen gemeinsamen Termin und adressiert einzelne Nachrichten getrennt', { timeout: 60000 }, async (t) => {
+  const evaluate = await openNachschreiber(t);
+  const observed = await evaluate(async () => {
+    const { getIsoWeek } = await import('/src/modules/nachschreiber/schedule.js');
+    const byId = (name) => document.getElementById(`nachschreiber-${name}`);
+    const waitFor = async (condition) => {
+      const deadline = performance.now() + 5000;
+      while (!condition()) {
+        if (performance.now() > deadline) throw new Error('Erwarteter Zustand wurde zu spät erreicht.');
+        await new Promise((done) => requestAnimationFrame(done));
+      }
+    };
+    const base = new Date(Date.UTC(new Date().getUTCFullYear() + 2, 4, 15));
+    base.setUTCDate(base.getUTCDate() + (8 - base.getUTCDay()) % 7);
+    const csvDay = (offset) => new Date(base.getTime() + offset * 86400000).toISOString().slice(0, 10).split('-').reverse().join('.');
+    const week = getIsoWeek(base).weekNumber;
+    const csv = [
+      'Titel;KW;Datum;Start;Ende;Gruppen;Lehrkraft',
+      `Eigene Klausur A;${week};${csvDay(0)};;;9b;TEST-Aufsicht`,
+      `Eigene Klausur B;${week};${csvDay(1)};;;11c;TEST-Aufsicht`,
+      `Termin A;${week};${csvDay(0)};08:10;08:55;7a;TEST Aufsicht`,
+      `Termin B;${week};${csvDay(1)};08:10;08:55;7a;TEST Aufsicht`,
+      `Gemeinsamer Termin;${week};${csvDay(2)};08:10;08:55;7a;TEST Aufsicht`,
+    ].join('\n');
+    const students = byId('student-list');
+    const add = byId('add-student');
+    const submit = byId('submit');
+    const resultRows = byId('result-rows');
+    const noticeText = byId('notice-text');
+    const noticeRecipient = byId('notice-student');
+    const noticeCopy = byId('notice-copy');
+    const select = (control, value) => {
+      control.value = value;
+      control.dispatchEvent(new Event('input', { bubbles: true }));
+    };
+    const fill = (row, name, year, classLetter) => {
+      row.querySelector('input').value = name;
+      const [yearField, classField] = row.querySelectorAll('select');
+      select(yearField, year);
+      select(classField, classLetter);
+    };
+    const search = () => {
+      submit.click();
+      return Array.from(resultRows.rows, (row) => [row.cells[2].textContent, row.cells[5].textContent]);
+    };
+    const openNotice = (label) => {
+      Array.from(resultRows.rows[0].querySelectorAll('button')).find((button) => button.textContent === label).click();
+    };
+    const chooseRecipient = (key) => {
+      noticeRecipient.value = key;
+      noticeRecipient.dispatchEvent(new Event('change', { bubbles: true }));
+      return noticeText.value;
+    };
+    const closeNotice = () => byId('notice-close').click();
+    document.getElementById('tab-nachschreiber').click();
+    await waitFor(() => !byId('shell').hidden);
+    const transfer = new DataTransfer();
+    transfer.items.add(new File([csv], 'gemeinsame-suche.csv', { type: 'text/csv' }));
+    byId('file').files = transfer.files;
+    byId('file').dispatchEvent(new Event('change', { bubbles: true }));
+    await waitFor(() => !submit.disabled);
+
+    const first = students.firstElementChild;
+    fill(first, 'Prüfperson Alpha', '9', 'b');
+    const singleRows = search();
+    add.click();
+    const second = students.lastElementChild;
+    const focusAfterAdd = document.activeElement === second.querySelector('input');
+    const clearedOnAdd = resultRows.rows.length === 0;
+    const incompleteRows = search();
+    const incompleteInvalid = !second.querySelector('select').validity.valid;
+    fill(second, 'Prüfperson Beta', '11', 'c');
+    add.click();
+    const third = students.lastElementChild;
+    fill(third, '', '9', 'b');
+    const controls = [...students.querySelectorAll('input, select')];
+    const validLabels = new Set(controls.map((control) => control.id)).size === controls.length
+      && controls.every((control) => control.labels[0]?.control === control);
+    const sharedRows = search();
+    const sharedCountHeading = byId('own-exam-count').textContent;
+
+    openNotice('Aufsicht anfragen');
+    const supervision = { text: noticeText.value, selectorHidden: byId('notice-student-field').hidden };
+    closeNotice();
+    openNotice('Reguläre Lehrkraft informieren');
+    const noRecipient = { text: noticeText.value, copyDisabled: noticeCopy.disabled, focused: document.activeElement === noticeRecipient };
+    const teacherBeta = chooseRecipient('1');
+    closeNotice();
+    openNotice('Prüfling informieren');
+    const options = [...noticeRecipient.options].slice(1).map((option) => option.textContent);
+    const studentAlpha = chooseRecipient('0');
+    noticeText.value += '\nEntwurf für Alpha';
+    const studentBeta = chooseRecipient('1');
+    const restoredAlpha = chooseRecipient('0');
+    const studentUnnamed = chooseRecipient('2');
+    closeNotice();
+    const clearedNotice = noticeText.value === '' && noticeRecipient.options.length === 1;
+
+    select(second.querySelector('select'), '12');
+    const clearedOnGroupChange = resultRows.rows.length === 0;
+    select(second.querySelector('select'), '11');
+    search();
+    first.querySelector('button').click();
+    const clearedOnRemove = resultRows.rows.length === 0;
+    third.querySelector('button').click();
+    const lastCannotBeRemoved = students.children.length === 1 && second.querySelector('button').hidden;
+    const remainingRows = search();
+    openNotice('Prüfling informieren');
+    const remainingNotice = { text: noticeText.value, selectorHidden: byId('notice-student-field').hidden };
+    closeNotice();
+    return {
+      singleRows, focusAfterAdd, clearedOnAdd, incompleteRows, incompleteInvalid, validLabels, sharedRows, sharedCountHeading,
+      supervision, noRecipient, teacherBeta, options, studentAlpha, studentBeta, restoredAlpha, studentUnnamed, clearedNotice,
+      clearedOnGroupChange, clearedOnRemove, lastCannotBeRemoved, remainingRows, remainingNotice,
+    };
+  });
+  assert.deepEqual(observed.singleRows, [['Termin B', '1'], ['Gemeinsamer Termin', '1']]);
+  assert.equal(observed.focusAfterAdd, true);
+  assert.equal(observed.clearedOnAdd, true);
+  assert.deepEqual(observed.incompleteRows, []);
+  assert.equal(observed.incompleteInvalid, true);
+  assert.equal(observed.validLabels, true);
+  assert.deepEqual(observed.sharedRows, [['Gemeinsamer Termin', '1']]);
+  assert.match(observed.sharedCountHeading, /höchste Anzahl/);
+  assert.equal(observed.supervision.selectorHidden, true);
+  assert.match(observed.supervision.text, /Prüfperson Alpha \(9b\), Prüfperson Beta \(11c\) und \[Prüflingsname 3\] \(9b\)/);
+  assert.deepEqual(observed.noRecipient, { text: '', copyDisabled: true, focused: true });
+  assert.match(observed.teacherBeta, /Prüfperson Beta \(11c\)/);
+  assert.doesNotMatch(observed.teacherBeta, /Prüfperson Alpha|Prüflingsname|\(9b\)/);
+  assert.deepEqual(observed.options, ['Prüfperson Alpha (9b)', 'Prüfperson Beta (11c)', 'Prüfling 3 (9b)']);
+  assert.match(observed.studentAlpha, /^Hallo Prüfperson Alpha,/);
+  assert.doesNotMatch(observed.studentAlpha, /Prüfperson Beta/);
+  assert.match(observed.studentBeta, /^Hallo Prüfperson Beta,/);
+  assert.doesNotMatch(observed.studentBeta, /Prüfperson Alpha|Entwurf für Alpha/);
+  assert.equal(observed.restoredAlpha, `${observed.studentAlpha}\nEntwurf für Alpha`);
+  assert.match(observed.studentUnnamed, /^Hallo \[Prüflingsname\],/);
+  assert.equal(observed.clearedNotice, true);
+  assert.equal(observed.clearedOnGroupChange, true);
+  assert.equal(observed.clearedOnRemove, true);
+  assert.equal(observed.lastCannotBeRemoved, true);
+  assert.deepEqual(observed.remainingRows, [['Termin A', '1'], ['Gemeinsamer Termin', '1']]);
+  assert.equal(observed.remainingNotice.selectorHidden, true);
+  assert.match(observed.remainingNotice.text, /^Hallo Prüfperson Beta,/);
 });
 
 test('Nachschreiber bietet für beide Datumsgrenzen einen Minikalender an', { timeout: 60000 }, async (t) => {

@@ -120,6 +120,24 @@ button.nachschreiber-settings-trigger {
   background: var(--control-bg-focus);
 }
 
+.nachschreiber-student-list {
+  display: grid;
+  gap: 12px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.nachschreiber-student-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.nachschreiber-student-remove {
+  margin-left: 8px;
+}
+
 .nachschreiber-class-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
@@ -340,7 +358,8 @@ button.nachschreiber-calendar-clear {
 }
 
 button.nachschreiber-period-delete,
-button.nachschreiber-file-remove {
+button.nachschreiber-file-remove,
+button.nachschreiber-student-remove {
   width: 36px;
   min-width: 36px;
   height: 36px;
@@ -358,7 +377,7 @@ button.nachschreiber-file-remove {
   position: absolute;
 }
 
-button.nachschreiber-period-add {
+button.nachschreiber-add-button {
   position: relative;
   display: block;
   width: 36px;
@@ -370,13 +389,13 @@ button.nachschreiber-period-add {
   box-shadow: none;
 }
 
-.nachschreiber-period-add:focus-visible {
+.nachschreiber-add-button:focus-visible {
   outline: 2px solid var(--focus-outline);
   outline-offset: 2px;
 }
 
-.nachschreiber-period-add::before,
-.nachschreiber-period-add::after {
+.nachschreiber-add-button::before,
+.nachschreiber-add-button::after {
   content: '';
   position: absolute;
   top: 50%;
@@ -388,7 +407,7 @@ button.nachschreiber-period-add {
   transform: translate(-50%, -50%);
 }
 
-.nachschreiber-period-add::after {
+.nachschreiber-add-button::after {
   transform: translate(-50%, -50%) rotate(90deg);
 }
 

@@ -100,6 +100,35 @@ test('Suchgrenzen sind inklusive und ISO-Wochen bleiben über den Jahreswechsel 
   ]);
 });
 
+test('ein gemeinsamer CSV-Termin muss für jede Lerngruppe passen und zeigt den höchsten Wochenwert', () => {
+  const schedules = parseExamSchedule(csv([
+    exam(7, '11.02.2031', '9b, Jahrgang.9'),
+    exam(7, '12.02.2031', '11c'),
+    exam(7, '11.02.2031', '6a', 'Tagessperre A'),
+    exam(7, '12.02.2031', '6a', 'Tagessperre B'),
+    exam(7, '14.02.2031', '6a', 'Termin bei je einer Klausur'),
+    exam(8, '17.02.2031', '9b, Jahrgang.11'),
+    exam(8, '18.02.2031', '11c'),
+    exam(8, '19.02.2031', '6a', 'Termin bei höchstens zwei Klausuren'),
+    exam(9, '24.02.2031', '11c'),
+    exam(9, '25.02.2031', '11c'),
+    exam(9, '26.02.2031', '11c'),
+    exam(9, '27.02.2031', '6a', 'Wochensperre'),
+  ]));
+  schedules.push({
+    source: 'pdf', date: '2031-02-25', weekKey: '2031-9', groups: '11c', teacher: 'PDF-Termin',
+    startLesson: 2, endLesson: 2, durationMinutes: 45,
+  });
+  const suggestions = rankExamSuggestions(schedules, {
+    studentGroups: [{ year: '9', classLetter: 'b' }, { year: '11', classLetter: 'c' }, { year: '9', classLetter: 'b' }],
+    startDate: '2031-02-10',
+    lessonTimes: [{ lesson: 2, start: '08:45', end: '09:30' }],
+  });
+  assert.deepEqual(suggestions.map(({ teacher, ownExamCount }) => [teacher, ownExamCount]), [
+    ['Termin bei je einer Klausur', 1], ['PDF-Termin', null], ['Termin bei höchstens zwei Klausuren', 2],
+  ]);
+});
+
 test('Freistunden treffen wöchentlich bei zeitlicher Überschneidung mit derselben Unterrichtsstunde', () => {
   const freePeriods = [
     { weekday: 1, lesson: 3 }, { weekday: 1, lesson: 2 }, { weekday: 1, lesson: 2 }, { weekday: 2, lesson: 4 },

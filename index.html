@@ -421,41 +421,53 @@
               <ul id="nachschreiber-file-errors" class="nachschreiber-file-errors" aria-live="polite" hidden></ul>
             </li>
             <li>
-              <strong>Lerngruppe auswählen</strong>
-              <div class="nachschreiber-class-fields">
-                <div>
-                  <label for="nachschreiber-year">Jahrgang</label>
-                  <select id="nachschreiber-year" required>
-                    <option value="">Auswählen</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
-                    <option value="7">7</option>
-                    <option value="8">8</option>
-                    <option value="9">9</option>
-                    <option value="10">10</option>
-                    <option value="11">11</option>
-                    <option value="12">12</option>
-                    <option value="13">13</option>
-                  </select>
-                </div>
-                <div>
-                  <label for="nachschreiber-class">Klasse</label>
-                  <select id="nachschreiber-class" required>
-                    <option value="">Auswählen</option>
-                    <option value="a">a</option>
-                    <option value="b">b</option>
-                    <option value="c">c</option>
-                    <option value="d">d</option>
-                    <option value="e">e</option>
-                  </select>
-                </div>
-              </div>
+              <strong>Prüflinge eintragen</strong>
+              <ul id="nachschreiber-student-list" class="nachschreiber-student-list" aria-label="Prüflinge">
+                <li class="nachschreiber-student-row">
+                  <div class="nachschreiber-student-fields">
+                    <label for="nachschreiber-student-name">Name des Prüflings (optional)</label>
+                    <input id="nachschreiber-student-name" class="nachschreiber-student-name" type="text" autocomplete="off" />
+                    <div class="nachschreiber-class-fields">
+                      <div>
+                        <label for="nachschreiber-year">Jahrgang</label>
+                        <select id="nachschreiber-year" class="nachschreiber-student-year" required>
+                          <option value="">Auswählen</option>
+                          <option value="5">5</option>
+                          <option value="6">6</option>
+                          <option value="7">7</option>
+                          <option value="8">8</option>
+                          <option value="9">9</option>
+                          <option value="10">10</option>
+                          <option value="11">11</option>
+                          <option value="12">12</option>
+                          <option value="13">13</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label for="nachschreiber-class">Klasse</label>
+                        <select id="nachschreiber-class" class="nachschreiber-student-class" required>
+                          <option value="">Auswählen</option>
+                          <option value="a">a</option>
+                          <option value="b">b</option>
+                          <option value="c">c</option>
+                          <option value="d">d</option>
+                          <option value="e">e</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                  <button class="danger-action app-action-icon nachschreiber-student-remove" type="button"
+                    aria-label="Prüfling entfernen" title="Prüfling entfernen" hidden>🗑️</button>
+                </li>
+              </ul>
+              <button id="nachschreiber-add-student" class="ghost nachschreiber-add-button" type="button"
+                aria-label="Prüfling hinzufügen" title="Prüfling hinzufügen" aria-controls="nachschreiber-student-list"></button>
               <a id="nachschreiber-class-source" class="nachschreiber-link-button nachschreiber-class-source"
                 href="https://login.schulmanager-online.de/#/modules/schedules/view/student/"
                 target="_blank" rel="noopener noreferrer">Prüflingsdaten im Schulmanager</a>
             </li>
             <li>
-              <strong id="nachschreiber-period-heading">Wöchentliche Freistunden (optional)</strong>
+              <strong id="nachschreiber-period-heading">Gemeinsame wöchentliche Freistunden (optional)</strong>
               <div class="nachschreiber-free-periods" role="group" aria-labelledby="nachschreiber-period-heading" aria-describedby="nachschreiber-period-hint">
                 <p id="nachschreiber-period-hint" class="hint" role="status"></p>
                 <template id="nachschreiber-period-row">
@@ -477,7 +489,7 @@
                   </li>
                 </template>
                 <ul id="nachschreiber-period-list" class="nachschreiber-period-list" aria-label="Ausgewählte Freistunden" hidden></ul>
-                <button id="nachschreiber-add-period" class="ghost nachschreiber-period-add" type="button"
+                <button id="nachschreiber-add-period" class="ghost nachschreiber-add-button" type="button"
                   aria-label="Freistunde hinzufügen" title="Freistunde hinzufügen" aria-controls="nachschreiber-period-list" disabled></button>
               </div>
             </li>
@@ -489,10 +501,6 @@
                 <option value="3">3 Std. (135 min)</option>
                 <option value="4">4 Std. (180 min)</option>
               </select>
-            </li>
-            <li>
-              <label class="nachschreiber-step-label" for="nachschreiber-student-name">Name des Prüflings (optional)</label>
-              <input id="nachschreiber-student-name" type="text" autocomplete="off" />
             </li>
             <li class="nachschreiber-date-filters">
               <strong>Datumsfilter (optional)</strong>
@@ -562,7 +570,7 @@
                   <th scope="col">Titel</th>
                   <th scope="col">Gruppe</th>
                   <th scope="col">Aufsicht</th>
-                  <th scope="col">Bereits eingetragene Arbeiten in der KW</th>
+                  <th id="nachschreiber-own-exam-count" scope="col">Bereits eingetragene Arbeiten in der KW</th>
                   <th scope="col">Nachrichten</th>
                 </tr>
               </thead>
@@ -620,6 +628,11 @@
               <button id="nachschreiber-notice-close" class="ghost dialog-icon-button app-action-icon" type="button"
                 aria-label="Schließen" data-tooltip="Schließen">❌</button>
             </div>
+            <label id="nachschreiber-notice-student-field" for="nachschreiber-notice-student" hidden>Prüfling
+              <select id="nachschreiber-notice-student">
+                <option value="">Auswählen</option>
+              </select>
+            </label>
             <label for="nachschreiber-notice-text">Nachricht
               <textarea id="nachschreiber-notice-text" rows="8" autofocus></textarea>
             </label>

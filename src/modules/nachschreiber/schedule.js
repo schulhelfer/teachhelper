@@ -96,12 +96,11 @@ export function mergeExamSchedules(schedules) {
   return [...uniqueExams.values()];
 }
 
-function matchesClass(groups, classGroup, yearGroup) {
-  for (const [, group] of groups.matchAll(/(?:^|[^\p{L}\p{N}])(jahrgang\.\d+|\d+[a-e])(?![\p{L}\p{N}])/giu)) {
-    const normalized = group.toLowerCase();
-    if (normalized === classGroup || normalized === yearGroup) return true;
-  }
-  return false;
+function getExamGroups(groups) {
+  return new Set(Array.from(
+    groups.matchAll(/(?:^|[^\p{L}\p{N}])(jahrgang\.\d+|\d+[a-e])(?![\p{L}\p{N}])/giu),
+    ([, group]) => group.toLowerCase(),
+  ));
 }
 
 export function getTomorrowDate(now = new Date()) {
@@ -188,18 +187,27 @@ function rankPdfExam(exam, { intervalsByLesson, periods, requiredSeconds, onMiss
 }
 
 export function rankExamSuggestions(exams, {
-  year, classLetter, startDate, endDate = '', requiredLessons = 1, freePeriods = [], lessonTimes = [], onMissingPdfLessonTimes,
+  year, classLetter, studentGroups = [{ year, classLetter }],
+  startDate, endDate = '', requiredLessons = 1, freePeriods = [], lessonTimes = [], onMissingPdfLessonTimes,
 }) {
-  const classGroup = `${year}${classLetter}`.toLowerCase();
-  const yearGroup = `jahrgang.${year}`;
+  const selectedGroups = new Map(studentGroups.map((group) => [
+    `${group.year}${group.classLetter}`.toLowerCase(), `jahrgang.${group.year}`,
+  ]));
   const ownDays = new Set();
-  const ownExamsByWeek = new Map();
+  const ownExamsByWeekAndClass = new Map();
 
   for (const exam of exams) {
-    if (exam.source === 'pdf' || !matchesClass(exam.groups, classGroup, yearGroup)) continue;
-    ownDays.add(exam.date);
-    ownExamsByWeek.set(exam.weekKey, (ownExamsByWeek.get(exam.weekKey) ?? 0) + 1);
+    if (exam.source === 'pdf') continue;
+    const examGroups = getExamGroups(exam.groups);
+    for (const [classGroup, yearGroup] of selectedGroups) {
+      if (!examGroups.has(classGroup) && !examGroups.has(yearGroup)) continue;
+      ownDays.add(exam.date);
+      if (!ownExamsByWeekAndClass.has(exam.weekKey)) ownExamsByWeekAndClass.set(exam.weekKey, new Map());
+      const weeklyCounts = ownExamsByWeekAndClass.get(exam.weekKey);
+      weeklyCounts.set(classGroup, (weeklyCounts.get(classGroup) ?? 0) + 1);
+    }
   }
+  const maxOwnExamsByWeek = new Map(Array.from(ownExamsByWeekAndClass, ([week, counts]) => [week, Math.max(...counts.values())]));
 
   const lessonIntervals = getUsableLessonTimes(lessonTimes).map(({ lesson, start, end }) => ({
     lesson,
@@ -221,7 +229,7 @@ export function rankExamSuggestions(exams, {
       continue;
     }
     if (ownDays.has(exam.date)) continue;
-    const ownExamCount = ownExamsByWeek.get(exam.weekKey) ?? 0;
+    const ownExamCount = maxOwnExamsByWeek.get(exam.weekKey) ?? 0;
     if (ownExamCount >= 3 || !exam.startTime || !exam.endTime) continue;
     const startSeconds = timeInSeconds(exam.startTime);
     const examEndSeconds = timeInSeconds(exam.endTime);
