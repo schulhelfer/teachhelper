@@ -707,6 +707,7 @@ function initializeApplication({ documentRef, view, appVersion, registerCleanup,
     registerCleanup(mountNachschreiber(els.nachschreiberShell, {
       sidebar: els.nachschreiberSidebar,
       getLessonTimes: () => getWorkspaceClient(window)?.data.getLessonTimes?.() ?? [],
+      getWorkspace: () => getWorkspaceClient(window),
     }));
   }
 

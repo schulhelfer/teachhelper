@@ -38,6 +38,7 @@ export const GRADE_VAULT_AUTO_SAVE_BEFORE_LOCK_DEFAULT = false;
 export const SYNC_HANDLE_DB_NAME = "teachhelper-sync-handles-v1";
 export const SYNC_HANDLE_STORE_NAME = "handles";
 export const EXPECTATION_HORIZON_TEMPLATE_FILE_NAME = "EWH.docx";
+export const NACHSCHREIBER_DEFAULT_SENDER_SETTING = "nachschreiberDefaultSenderName";
 export const COLOR_PALETTE = Object.freeze([
   "#FF1744", "#2979FF", "#00C853", "#FF9100", "#AA00FF",
   "#00B8D4", "#F500A4", "#AEEA00", "#FFD600", "#5E35B1",

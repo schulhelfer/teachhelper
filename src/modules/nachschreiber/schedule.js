@@ -3,7 +3,7 @@ import { detectDelimiter, normalizeCsvCell, parseCSV } from '../../shared/csv.js
 const MILLISECONDS_PER_WEEK = 7 * 24 * 60 * 60 * 1000;
 const SECONDS_PER_EXAM_LESSON = 45 * 60;
 
-function parseExamDate(value) {
+export function parseExamDate(value) {
   const parts = /^(\d{2})\.(\d{2})\.(\d{4})$/.exec(value);
   if (!parts) return null;
   const [, day, month, year] = parts;
@@ -82,6 +82,20 @@ export function parseExamSchedule(text) {
   return exams;
 }
 
+export function mergeExamSchedules(schedules) {
+  const uniqueExams = new Map();
+  for (const schedule of schedules) {
+    for (const exam of schedule) {
+      const timeFields = exam.source === 'pdf'
+        ? ['pdf', exam.startLesson, exam.endLesson, exam.durationMinutes]
+        : ['csv', exam.startTime, exam.endTime];
+      const key = JSON.stringify([exam.date, exam.title, exam.groups, exam.teacher, ...timeFields]);
+      if (!uniqueExams.has(key)) uniqueExams.set(key, exam);
+    }
+  }
+  return [...uniqueExams.values()];
+}
+
 function matchesClass(groups, classGroup, yearGroup) {
   for (const [, group] of groups.matchAll(/(?:^|[^\p{L}\p{N}])(jahrgang\.\d+|\d+[a-e])(?![\p{L}\p{N}])/giu)) {
     const normalized = group.toLowerCase();
@@ -127,8 +141,54 @@ function isFullyCoveredByFreePeriods(periods, startSeconds, endSeconds) {
   return false;
 }
 
+function lessonsUsedForDuration(intervals, durationSeconds) {
+  const lessons = [];
+  for (const { lesson, startSeconds, endSeconds } of intervals) {
+    if (durationSeconds <= 0) break;
+    lessons.push(lesson);
+    durationSeconds -= endSeconds - startSeconds;
+  }
+  return lessons;
+}
+
+function rankPdfExam(exam, { intervalsByLesson, periods, requiredSeconds, onMissingPdfLessonTimes }) {
+  const intervals = [];
+  let gridSeconds = 0;
+  for (let number = exam.startLesson; number <= exam.endLesson; number += 1) {
+    const interval = intervalsByLesson.get(number);
+    if (!interval || interval.startSeconds < (intervals.at(-1)?.endSeconds ?? 0)) {
+      onMissingPdfLessonTimes?.();
+      break;
+    }
+    intervals.push(interval);
+    gridSeconds += interval.endSeconds - interval.startSeconds;
+  }
+  const durationUnits = exam.durationMinutes === null
+    ? intervals.length
+    : Math.floor(exam.durationMinutes * 60 / SECONDS_PER_EXAM_LESSON);
+  const availableUnits = Math.min(
+    intervals.length,
+    durationUnits,
+    Math.floor(gridSeconds / SECONDS_PER_EXAM_LESSON),
+  );
+  const availableSeconds = availableUnits * SECONDS_PER_EXAM_LESSON;
+  if (!availableSeconds || availableSeconds < requiredSeconds) return null;
+
+  const availableLessons = lessonsUsedForDuration(intervals, availableSeconds);
+  const makeupLessons = lessonsUsedForDuration(intervals, requiredSeconds);
+  const freeLessonNumbers = new Set(periods.map(({ lesson }) => lesson));
+  return {
+    ...exam,
+    startTime: intervals[0].startTime,
+    ownExamCount: null,
+    freePeriodLessons: availableLessons.filter((lesson) => freeLessonNumbers.has(lesson)),
+    fullyCoveredByFreePeriods: makeupLessons.every((lesson) => freeLessonNumbers.has(lesson)),
+    makeupLessons,
+  };
+}
+
 export function rankExamSuggestions(exams, {
-  year, classLetter, startDate, endDate = '', requiredLessons = 1, freePeriods = [], lessonTimes = [],
+  year, classLetter, startDate, endDate = '', requiredLessons = 1, freePeriods = [], lessonTimes = [], onMissingPdfLessonTimes,
 }) {
   const classGroup = `${year}${classLetter}`.toLowerCase();
   const yearGroup = `jahrgang.${year}`;
@@ -136,29 +196,37 @@ export function rankExamSuggestions(exams, {
   const ownExamsByWeek = new Map();
 
   for (const exam of exams) {
-    if (!matchesClass(exam.groups, classGroup, yearGroup)) continue;
+    if (exam.source === 'pdf' || !matchesClass(exam.groups, classGroup, yearGroup)) continue;
     ownDays.add(exam.date);
     ownExamsByWeek.set(exam.weekKey, (ownExamsByWeek.get(exam.weekKey) ?? 0) + 1);
   }
 
   const lessonIntervals = getUsableLessonTimes(lessonTimes).map(({ lesson, start, end }) => ({
     lesson,
+    startTime: start,
     startSeconds: timeInSeconds(start),
     endSeconds: timeInSeconds(end),
   }));
+  const intervalsByLesson = new Map(lessonIntervals.map((interval) => [interval.lesson, interval]));
   const freePeriodsByDay = groupFreePeriodsByDay(freePeriods, lessonIntervals);
   const requiredSeconds = requiredLessons * SECONDS_PER_EXAM_LESSON;
   const suggestions = [];
   for (const exam of exams) {
-    if (exam.date < startDate || (endDate && exam.date > endDate) || ownDays.has(exam.date)) continue;
+    if (exam.date < startDate || (endDate && exam.date > endDate)) continue;
+    const weekday = new Date(`${exam.date}T00:00:00Z`).getUTCDay();
+    const periods = freePeriodsByDay.get(weekday) ?? [];
+    if (exam.source === 'pdf') {
+      const suggestion = rankPdfExam(exam, { intervalsByLesson, periods, requiredSeconds, onMissingPdfLessonTimes });
+      if (suggestion) suggestions.push(suggestion);
+      continue;
+    }
+    if (ownDays.has(exam.date)) continue;
     const ownExamCount = ownExamsByWeek.get(exam.weekKey) ?? 0;
     if (ownExamCount >= 3 || !exam.startTime || !exam.endTime) continue;
     const startSeconds = timeInSeconds(exam.startTime);
     const examEndSeconds = timeInSeconds(exam.endTime);
     const makeupEndSeconds = startSeconds + requiredSeconds;
     if (examEndSeconds < makeupEndSeconds) continue;
-    const weekday = new Date(`${exam.date}T00:00:00Z`).getUTCDay();
-    const periods = freePeriodsByDay.get(weekday) ?? [];
     suggestions.push({
       ...exam,
       ownExamCount,

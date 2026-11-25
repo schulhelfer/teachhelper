@@ -491,6 +491,22 @@ test('an explicitly deleted course may disappear from the file', async () => {
   assert.deepEqual(parsed.gradeCourseSegments.map((segment) => segment.courseId), courseIds.slice(1));
 });
 
+test('the Nachschreiber sender default waits for a single connected database write', async () => {
+  const { handle, bytes } = await seedDatabase();
+  const { runtime } = createRuntime();
+  runtime.fileHandle = handle;
+  await runtime.loadBytes(bytes, 'file');
+  const previousRevision = parseContainer(bytes).header.revision;
+  handle.setWriteDelay(25);
+
+  assert.equal(await runtime.saveNachschreiberDefaultSenderName(' Test-Absender '), true);
+  const saved = parseContainer(handle.read());
+  assert.equal(saved.header.revision, previousRevision + 1);
+  assert.equal(JSON.parse(saved.planningPublicText).settings.nachschreiberDefaultSenderName, 'Test-Absender');
+  await settle(runtime);
+  assert.deepEqual(parseContainer(handle.read()), saved);
+});
+
 test('a save built before a reload never overwrites the freshly loaded segments', async () => {
   const { handle, courseIds, bytes } = await seedDatabase();
   const { runtime } = createRuntime();

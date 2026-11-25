@@ -2,6 +2,7 @@ import { WorkspaceBackup } from './workspace-backup.js';
 import { WorkspacePersistence, downloadBytes } from './workspace-persistence.js';
 import { GradeVault } from './grade-vault.js';
 import { CourseRepository } from './course-repository.js';
+import { NACHSCHREIBER_DEFAULT_SENDER_SETTING } from '../../shared/school-data/defaults.js';
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
   WORKSPACE_COMMAND_CREATE_COURSE,
@@ -75,6 +76,7 @@ export class WorkspaceRuntime {
     this.ready = true;
     this.startupPermissionRecovery = null;
     this.operationTail = Promise.resolve();
+    this.lastQueuedSyncSave = null;
 
     this.courseRepository = new CourseRepository({
       store,
@@ -959,8 +961,23 @@ export class WorkspaceRuntime {
   queueSyncSave(reason = 'auto-save') {
     if (this.isManualPersistenceMode() || !this.fileHandle) return false;
     const operation = this.enqueueConnectedFileSave(reason);
+    this.lastQueuedSyncSave = operation;
     void operation.catch((error) => this.recordPersistenceFailure(error));
     return true;
+  }
+
+  async saveNachschreiberDefaultSenderName(value) {
+    if (!this.hasShellDatabaseConnection() || !this.isPersistenceReady()) return false;
+    const name = value.trim();
+    const previousSave = this.lastQueuedSyncSave;
+    if (this.store.getSetting(NACHSCHREIBER_DEFAULT_SENDER_SETTING, '') !== name) {
+      this.store.setSetting(NACHSCHREIBER_DEFAULT_SENDER_SETTING, name);
+    }
+    if (this.isManualPersistenceMode()) {
+      return this.enqueueFileOperation(() => this.persistExplicitDatabaseSave());
+    }
+    if (this.lastQueuedSyncSave !== previousSave) return this.lastQueuedSyncSave;
+    return this.enqueueConnectedFileSave('nachschreiber-settings-save');
   }
 
   saveManualDatabase(...args) {

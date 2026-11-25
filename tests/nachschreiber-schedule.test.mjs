@@ -166,6 +166,43 @@ test('eine bis vier Unterrichtsstunden müssen sekundengenau in den CSV-Zeitraum
   }
 });
 
+test('PDF-Klausuren zählen als fremd und verwenden nur volle Einheiten im vorhandenen Raster', () => {
+  const pdfExam = (groups, startLesson, endLesson, durationMinutes) => ({
+    source: 'pdf', date: '2031-02-11', weekKey: '2031-7', groups, startLesson, endLesson, durationMinutes,
+  });
+  const exams = [
+    pdfExam('9b-TEST-A', 2, 4, 112),
+    pdfExam('9b-TEST-B', 2, 4, 89),
+    pdfExam('9b-TEST-C', 2, 2, 120),
+    pdfExam('9b-TEST-D', 1, 4, 120),
+    pdfExam('9b-TEST-E', 2, 5, 270),
+    pdfExam('9b-TEST-F', 2, 5, null),
+  ];
+  const lessonTimes = [
+    { lesson: 2, start: '07:35', end: '08:20' },
+    { lesson: 3, start: '08:35', end: '09:20' },
+    { lesson: 5, start: '10:05', end: '10:50' },
+  ];
+  let reportedMissingTime = false;
+  const options = {
+    year: '9', classLetter: 'b', startDate: '2031-02-10', requiredLessons: 2, lessonTimes,
+    freePeriods: [{ weekday: 2, lesson: 2 }, { weekday: 2, lesson: 3 }],
+    onMissingPdfLessonTimes: () => { reportedMissingTime = true; },
+  };
+  const suggestions = rankExamSuggestions(exams, options);
+  assert.deepEqual(suggestions.map((exam) => exam.groups), ['9b-TEST-A', '9b-TEST-E', '9b-TEST-F']);
+  assert.equal(reportedMissingTime, true);
+  for (const exam of suggestions) {
+    assert.deepEqual(exam.makeupLessons, [2, 3]);
+    assert.deepEqual(exam.freePeriodLessons, [2, 3]);
+    assert.equal(exam.fullyCoveredByFreePeriods, true);
+    assert.equal(exam.ownExamCount, null);
+  }
+  assert.deepEqual(rankExamSuggestions(exams, { ...options, requiredLessons: 3 }), []);
+  const shortGrid = [lessonTimes[0], { ...lessonTimes[1], end: '09:19:59' }];
+  assert.deepEqual(rankExamSuggestions(exams, { ...options, lessonTimes: shortGrid }), []);
+});
+
 test('kurze und ganztägige eigene Arbeiten zählen für Tages- und Wochensperren', () => {
   const suggestions = search([
     exam(48, '23.11.2026', '9b', 'Eigene kurze Arbeit', '08:00', '08:15'),

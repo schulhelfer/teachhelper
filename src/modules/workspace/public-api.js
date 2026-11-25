@@ -215,6 +215,9 @@ export function createWorkspacePublicApi({ getStore, getRuntime, scope }) {
   for (const method of operationMethods) {
     operations[method] = (...args) => copyResult(getRuntime()[method](...args));
   }
+  if (scope === 'shell') {
+    operations.saveNachschreiberDefaultSenderName = (name) => getRuntime().saveNachschreiberDefaultSenderName(name);
+  }
   if (shared) {
     data.listLessons = () => copy(getStore().state.lessons);
     data.getCourse = (courseId) => copy(getStore().state.courses.find((course) => Number(course.id) === Number(courseId)) || null);

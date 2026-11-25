@@ -1,8 +1,10 @@
 import { assertFileSizeAtMost, FILE_LIMITS, readFileArrayBufferWithTimeout } from '../../shared/file-guards.js';
-import { dataTransferHasFiles, isCsvFile, stripFileExtension } from '../../shared/file-io.js';
+import { dataTransferHasFiles, isCsvFile } from '../../shared/file-io.js';
+import { NACHSCHREIBER_DEFAULT_SENDER_SETTING } from '../../shared/school-data/defaults.js';
 import { WORKSPACE_STATE_EVENT } from '../../shared/school-data/messages.js';
 import { mountDateCalendar } from './date-calendar.js';
-import { getUsableLessonTimes, parseExamSchedule, rankExamSuggestions } from './schedule.js';
+import { readPdfExamSchedule } from './pdf-schedule.js';
+import { getUsableLessonTimes, mergeExamSchedules, parseExamSchedule, rankExamSuggestions } from './schedule.js';
 
 const lessonListFormat = new Intl.ListFormat('de');
 const WEEKDAYS = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
@@ -17,10 +19,6 @@ function decodeCsv(buffer) {
 
 function formatTime(time) {
   return time.endsWith(':00') ? time.slice(0, 5) : time;
-}
-
-function formatLessonRange({ start, end }) {
-  return `${formatTime(start)}–${formatTime(end)}`;
 }
 
 function formatLessons(lessons) {
@@ -38,21 +36,22 @@ function formatLessonPhrase(lessons) {
 
 function buildTeacherNotice(date, { makeupLessons }, studentClass, studentName, senderName) {
   return [
-    'Hallo [Name der Lehrkraft],',
-    `am ${date} würde ich gerne ${studentName} (${studentClass}) in der ${formatLessonPhrase(makeupLessons)} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
-    'Da der Nachschreibtermin in deinen Unterricht fällt, würde ich dich bitten, das Fehlen für diesen Zeitraum zu entschuldigen.',
-    'Vielen Dank und viele Grüße',
+    'Hallo [Lehrkraftname],',
+    `am ${date}, würde ich gerne ${studentName} (${studentClass}) in der ${formatLessonPhrase(makeupLessons)} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
+    `Da der Nachschreibtermin in Deinen Unterricht fällt, möchte ich Dich fragen, ob Du damit einverstanden wärst, dass ${studentName} in dieser Stunde die Arbeit nachschreibt.`,
+    'Viele Grüße',
     senderName,
   ].join('\n');
 }
 
-function buildSupervisionRequest(date, { teacher, groups, makeupLessons }, studentClass, studentName, senderName) {
-  const [firstName] = teacher.split(/\s+/, 1);
+function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source }, studentClass, studentName, senderName) {
+  const firstName = teacher.split(/\s+/, 1)[0] || '[Lehrkraftname]';
+  const group = source === 'pdf' ? `Deinem Kurs „${groups}“, für den` : `Deiner Lerngruppe „${groups}“, für die`;
   return [
     `Hallo ${firstName},`,
-    `am ${date} würde ich gerne in der ${formatLessonPhrase(makeupLessons)} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
-    `Wäre es möglich, dass ${studentName} (${studentClass}) die Arbeit parallel zu deiner schriftlichen Arbeit in der Lerngruppe „${groups}“ unter deiner Aufsicht nachschreibt? Falls ja, in welchem Raum schreibst du die Arbeit?`,
-    'Vielen Dank und viele Grüße',
+    `am ${date}, würde ich gerne in der ${formatLessonPhrase(makeupLessons)} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
+    `Wäre es möglich, dass ${studentName} (${studentClass}) unter Deiner Aufsicht zusammen mit ${group} Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, die Arbeit nachschreibt? Falls ja, in welchem Raum schreibst Du die Arbeit?`,
+    'Viele Grüße',
     senderName,
   ].join('\n');
 }
@@ -63,24 +62,27 @@ function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePe
   const paragraphs = [
     `Hallo ${studentName},`,
     'hoffentlich geht es Dir bald wieder besser!',
-    `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem Herr/Frau ${lastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
+    `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem die Lehrkraft ${lastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
   ];
   if (!fullyCoveredByFreePeriods) {
     paragraphs.push('Die Lehrkraft, bei der Du zu diesem Zeitpunkt regulär Unterricht hättest, habe ich bereits informiert. Dennoch würde ich Dich bitten, sie auch selbst über Deinen Nachschreibtermin in Kenntnis zu setzen.');
   }
   paragraphs.push(
-    `Dein Nachschreibtermin:\n\n- Datum: ${date}\n- Raum: [XXX]\n- Stunde: ${lesson}`,
+    `Dein Nachschreibtermin:\n\n- Datum: ${date}\n- Raum: [XXX]\n- Zeit: ${lesson}`,
     'Bitte denk daran, dass Du in der Sekundarstufe I (Jahrgänge 5–10) eine schriftliche Entschuldigung bzw. in der Sekundarstufe II (Jahrgänge 11–13) eine ärztliche Bescheinigung vorlegen musst, um nachschreiben zu können.',
     `Viele Grüße\n${senderName}`,
   );
   return paragraphs.join('\n\n');
 }
 
-export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] }) {
+export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], getWorkspace = () => null }) {
   const doc = root.ownerDocument;
+  const settingsTrigger = sidebar.querySelector('#nachschreiber-settings-trigger');
   const fileInput = sidebar.querySelector('#nachschreiber-file');
   const upload = sidebar.querySelector('#nachschreiber-drop-zone');
-  const csvStatus = sidebar.querySelector('#nachschreiber-csv-status');
+  const importStatus = sidebar.querySelector('#nachschreiber-csv-status');
+  const sourceList = sidebar.querySelector('#nachschreiber-file-list');
+  const importErrors = sidebar.querySelector('#nachschreiber-file-errors');
   const iservPrefix = sidebar.querySelector('#nachschreiber-iserv-prefix');
   const iservLink = sidebar.querySelector('#nachschreiber-iserv-link');
   const iservLinkHint = sidebar.querySelector('#nachschreiber-iserv-link-hint');
@@ -89,13 +91,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
   const classLetter = sidebar.querySelector('#nachschreiber-class');
   const studentName = sidebar.querySelector('#nachschreiber-student-name');
   const senderName = sidebar.querySelector('#nachschreiber-sender-name');
-  const periodEditor = sidebar.querySelector('#nachschreiber-period-editor');
-  const periodError = periodEditor.querySelector('#nachschreiber-period-error');
-  const periodWeekday = periodEditor.querySelector('#nachschreiber-period-weekday');
-  const periodLesson = periodEditor.querySelector('#nachschreiber-period-lesson');
-  const cancelPeriod = periodEditor.querySelector('#nachschreiber-period-cancel');
-  const deletePeriod = periodEditor.querySelector('#nachschreiber-period-delete');
-  const savePeriod = periodEditor.querySelector('#nachschreiber-period-save');
+  const periodTemplate = sidebar.querySelector('#nachschreiber-period-row');
   const addPeriod = sidebar.querySelector('#nachschreiber-add-period');
   const periodHint = sidebar.querySelector('#nachschreiber-period-hint');
   const periodList = sidebar.querySelector('#nachschreiber-period-list');
@@ -104,6 +100,13 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
   const resultStatus = root.querySelector('#nachschreiber-result-status');
   const results = root.querySelector('#nachschreiber-results');
   const resultRows = root.querySelector('#nachschreiber-result-rows');
+  const settingsDialog = root.querySelector('#nachschreiber-settings-dialog');
+  const settingsForm = settingsDialog.querySelector('form');
+  const defaultSenderName = settingsDialog.querySelector('#nachschreiber-default-sender-name');
+  const settingsDatabaseHint = settingsDialog.querySelector('#nachschreiber-settings-database-hint');
+  const settingsError = settingsDialog.querySelector('#nachschreiber-settings-error');
+  const settingsCancel = settingsDialog.querySelector('#nachschreiber-settings-cancel');
+  const settingsSave = settingsDialog.querySelector('#nachschreiber-settings-save');
   const noticeDialog = root.querySelector('#nachschreiber-notice-dialog');
   const noticeTitle = root.querySelector('#nachschreiber-notice-title');
   const noticeText = root.querySelector('#nachschreiber-notice-text');
@@ -112,18 +115,80 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
   const noticeCopy = root.querySelector('#nachschreiber-notice-copy');
   const controller = new AbortController();
   const { signal } = controller;
-  const weekdayLabels = new Map(Array.from(periodWeekday.options, (option) => [Number(option.value), option.textContent]));
-  const freePeriods = new Map();
+  const periodRows = new Map();
+  const examSources = new Map();
+  const pendingFiles = [];
   const noticeBuilders = new WeakMap();
   let lessonTimes = [];
   let lessonTimesSignature = '';
-  let editingPeriodKey = '';
+  let periodRowId = 0;
   let exams = [];
-  let importId = 0;
+  let hasPdfTimingNotes = false;
+  let importingFiles = false;
   let noticeCopyId = 0;
-  const { endDate, endDateTrigger, updateDateBounds, close: closeDateCalendar } = mountDateCalendar(root, sidebar, {
+  let savingSenderSettings = false;
+  const { endDate, updateDateBounds, close: closeDateCalendar } = mountDateCalendar(root, sidebar, {
     signal, onDateChange: clearResults,
   });
+
+  function readDefaultSenderName(workspace = getWorkspace()) {
+    const name = workspace?.data?.getSetting?.(NACHSCHREIBER_DEFAULT_SENDER_SETTING);
+    return typeof name === 'string' ? name.trim() : '';
+  }
+
+  function canEditSenderSettings(workspace) {
+    return Boolean(workspace?.isReady?.()
+      && workspace.operations?.hasShellDatabaseConnection?.()
+      && typeof workspace.data?.getSetting === 'function'
+      && typeof workspace.operations.saveNachschreiberDefaultSenderName === 'function');
+  }
+
+  function refreshSenderSettings(workspace = getWorkspace()) {
+    senderName.placeholder = readDefaultSenderName(workspace);
+    const canEdit = canEditSenderSettings(workspace);
+    settingsDatabaseHint.hidden = canEdit;
+    defaultSenderName.disabled = !canEdit || savingSenderSettings;
+    settingsSave.disabled = defaultSenderName.disabled;
+    settingsCancel.disabled = savingSenderSettings;
+  }
+
+  function openSenderSettings() {
+    const workspace = getWorkspace();
+    defaultSenderName.value = readDefaultSenderName(workspace);
+    const persistence = workspace?.getSnapshot?.()?.persistence;
+    settingsError.textContent = persistence?.statusError ? persistence.statusText : '';
+    settingsError.hidden = !settingsError.textContent;
+    refreshSenderSettings(workspace);
+    settingsTrigger.focus();
+    settingsDialog.showModal();
+  }
+
+  async function saveSenderSettings(event) {
+    event.preventDefault();
+    const workspace = getWorkspace();
+    if (savingSenderSettings || !canEditSenderSettings(workspace)) return;
+    const name = defaultSenderName.value.trim();
+    const changed = name !== readDefaultSenderName(workspace);
+    if (!changed && settingsError.hidden) {
+      settingsDialog.close();
+      return;
+    }
+    savingSenderSettings = true;
+    settingsError.hidden = true;
+    refreshSenderSettings(workspace);
+    try {
+      if (!await workspace.operations.saveNachschreiberDefaultSenderName(name)) {
+        throw new Error('Die Datenbankdatei konnte nicht gespeichert werden.');
+      }
+      settingsDialog.close();
+    } catch (error) {
+      settingsError.textContent = error?.message || 'Die Datenbankdatei konnte nicht gespeichert werden.';
+      settingsError.hidden = false;
+    } finally {
+      savingSenderSettings = false;
+      refreshSenderSettings();
+    }
+  }
 
   function updateIservLink() {
     const address = iservPrefix.value.trim();
@@ -142,21 +207,34 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
     else iservPrefix.setAttribute('aria-invalid', 'true');
   }
 
-  function renderCsvStatus(text = '', { error = false } = {}) {
-    csvStatus.classList.toggle('empty-state-box', !text);
-    csvStatus.classList.toggle('is-error', error);
-    if (text) {
-      csvStatus.textContent = text;
+  function renderImportStatus() {
+    const empty = !importingFiles && examSources.size === 0;
+    submit.disabled = importingFiles || empty;
+    importStatus.classList.toggle('empty-state-box', empty);
+    if (importingFiles) {
+      importStatus.textContent = 'Dateien werden gelesen …';
+      return;
+    }
+    if (!empty) {
+      const fileCount = examSources.size === 1 ? '1 Datei' : `${examSources.size} Dateien`;
+      const examCount = exams.length === 1 ? '1 Klausur' : `${exams.length} Klausuren`;
+      importStatus.textContent = `${fileCount} · ${examCount}`;
       return;
     }
     const title = doc.createElement('span');
     title.className = 'empty-state-title';
     title.textContent = 'Noch keine Datei';
-    csvStatus.replaceChildren(title);
+    importStatus.replaceChildren(title);
+  }
+
+  function renderResultStatus(...messages) {
+    if (hasPdfTimingNotes) messages.push('Mindestens eine PDF enthält zusätzliche Uhrzeithinweise. Für die Vorschläge gelten die Zeiten aus der Planung.');
+    const text = messages.filter(Boolean).join(' ');
+    if (resultStatus.textContent !== text) resultStatus.textContent = text;
   }
 
   function clearResults() {
-    resultStatus.textContent = '';
+    renderResultStatus();
     resultRows.replaceChildren();
     results.hidden = true;
   }
@@ -177,16 +255,22 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
     noticeText.style.height = `${noticeText.scrollHeight + noticeText.offsetHeight - noticeText.clientHeight}px`;
   }
 
+  function resetNoticeCopyFeedback() {
+    noticeCopy.textContent = 'Text kopieren';
+    noticeCopy.removeAttribute('aria-label');
+    noticeStatus.textContent = '';
+  }
+
   function closeNoticeDialog() {
     noticeDialog.close();
     noticeCopyId += 1;
     noticeText.value = '';
-    noticeStatus.textContent = '';
+    resetNoticeCopyFeedback();
   }
 
   async function copyNoticeText() {
     const currentCopy = ++noticeCopyId;
-    noticeStatus.textContent = '';
+    resetNoticeCopyFeedback();
     let copied = false;
     try {
       const clipboard = doc.defaultView?.navigator.clipboard;
@@ -199,7 +283,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
     }
     if (!noticeDialog.open || currentCopy !== noticeCopyId) return;
     if (copied) {
-      noticeStatus.textContent = 'Text kopiert.';
+      noticeCopy.textContent = '✓';
+      noticeCopy.setAttribute('aria-label', 'Text kopiert');
       return;
     }
     noticeText.focus();
@@ -207,59 +292,25 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
     noticeStatus.textContent = 'Kopiere den markierten Text manuell.';
   }
 
-  function periodKey(weekday, lesson) {
-    return `${weekday}-${lesson}`;
-  }
-
-  function updatePeriodTriggers() {
-    addPeriod.setAttribute('aria-expanded', String(!periodEditor.hidden && !editingPeriodKey));
-    for (const entry of periodList.querySelectorAll('button[data-period-key]')) {
-      entry.setAttribute('aria-expanded', String(!periodEditor.hidden && entry.dataset.periodKey === editingPeriodKey));
-    }
-  }
-
-  function renderFreePeriods() {
-    const periods = Array.from(freePeriods.values()).sort((left, right) => left.weekday - right.weekday || left.lesson - right.lesson);
-    const items = periods.map(({ weekday, lesson }) => {
-      const item = doc.createElement('li');
-      const edit = doc.createElement('button');
-      const day = doc.createElement('span');
-      const time = doc.createElement('span');
-      const slot = lessonTimes.find((entry) => entry.lesson === lesson);
-      day.textContent = weekdayLabels.get(weekday);
-      time.className = 'nachschreiber-period-time';
-      time.textContent = slot ? `${lesson}. Stunde · ${formatLessonRange(slot)}` : `${lesson}. Stunde (ohne Uhrzeit)`;
-      edit.type = 'button';
-      edit.className = 'nachschreiber-period-entry';
-      edit.dataset.periodKey = periodKey(weekday, lesson);
-      edit.setAttribute('aria-controls', periodEditor.id);
-      edit.setAttribute('aria-label', `${day.textContent}, ${lesson}. Stunde bearbeiten`);
-      edit.append(day, time);
-      item.append(edit);
-      return item;
-    });
-    periodList.replaceChildren(...items);
-    periodList.hidden = items.length === 0;
-    updatePeriodTriggers();
-  }
-
-  function renderPeriodOptions(selectedLesson = periodLesson.value) {
+  function renderPeriodLessonOptions(row, selectedLesson = row.lesson.value) {
     const options = lessonTimes.map((entry) => {
       const option = doc.createElement('option');
       option.value = entry.lesson;
-      option.textContent = `${entry.lesson}. Stunde (${formatLessonRange(entry)})`;
+      option.textContent = entry.lesson;
       return option;
     });
     if (selectedLesson && !options.some((option) => option.value === selectedLesson)) {
       const unavailable = doc.createElement('option');
       unavailable.value = selectedLesson;
-      unavailable.textContent = `${selectedLesson}. Stunde (ohne Uhrzeit)`;
+      unavailable.textContent = selectedLesson;
+      unavailable.setAttribute('aria-label', `${selectedLesson}. Stunde ohne hinterlegte Unterrichtszeit`);
       unavailable.disabled = true;
       options.push(unavailable);
     }
-    periodLesson.replaceChildren(periodLesson.options[0], ...options);
-    periodLesson.value = selectedLesson;
-    periodLesson.disabled = lessonTimes.length === 0;
+    row.lesson.replaceChildren(row.lesson.options[0], ...options);
+    row.lesson.value = selectedLesson;
+    row.lesson.disabled = lessonTimes.length === 0;
+    row.weekday.disabled = row.lesson.disabled;
   }
 
   function refreshLessonTimes() {
@@ -269,113 +320,204 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
     lessonTimes = currentTimes;
     lessonTimesSignature = signature;
 
-    renderPeriodOptions();
+    for (const row of periodRows.values()) renderPeriodLessonOptions(row);
     addPeriod.disabled = lessonTimes.length === 0;
-    savePeriod.disabled = addPeriod.disabled;
     periodHint.hidden = lessonTimes.length > 0;
     periodHint.textContent = lessonTimes.length ? '' : 'Für Freistunden werden hinterlegte Unterrichtszeiten benötigt.';
-    renderFreePeriods();
+    refreshPeriodResults();
+  }
+
+  function addPeriodRow() {
+    const draft = [...periodRows.values()].find((row) => !row.period);
+    if (draft) {
+      (draft.weekday.value ? draft.lesson : draft.weekday).focus();
+      return;
+    }
+    const element = doc.importNode(periodTemplate.content.firstElementChild, true);
+    const row = {
+      element,
+      weekday: element.querySelector('.nachschreiber-period-weekday'),
+      lesson: element.querySelector('.nachschreiber-period-lesson'),
+      remove: element.querySelector('.nachschreiber-period-delete'),
+      error: element.querySelector('.nachschreiber-period-error'),
+      period: null,
+    };
+    row.error.id = `nachschreiber-period-error-${++periodRowId}`;
+    for (const select of [row.weekday, row.lesson]) select.setAttribute('aria-describedby', row.error.id);
+    renderPeriodLessonOptions(row);
+    periodRows.set(element, row);
+    periodList.append(element);
+    periodList.hidden = false;
+    row.weekday.focus();
+  }
+
+  function removePeriodRow(row) {
+    const neighbor = periodRows.get(row.element.nextElementSibling) || periodRows.get(row.element.previousElementSibling);
+    periodRows.delete(row.element);
+    row.element.remove();
+    periodList.hidden = periodRows.size === 0;
+    if (row.period) refreshPeriodResults();
+    const nextControl = neighbor?.weekday.disabled ? neighbor.remove : neighbor?.weekday;
+    (nextControl || (addPeriod.disabled ? duration : addPeriod)).focus();
+  }
+
+  function setPeriodError(row, message = '') {
+    if (row.error.textContent === message) return;
+    row.error.textContent = message;
+    for (const select of [row.weekday, row.lesson]) {
+      if (message) select.setAttribute('aria-invalid', 'true');
+      else select.removeAttribute('aria-invalid');
+    }
+  }
+
+  function sortPeriodRows() {
+    const activeElement = doc.activeElement;
+    const sorted = [...periodRows.values()].sort((left, right) => (
+      (left.period?.weekday ?? 7) - (right.period?.weekday ?? 7)
+      || (left.period?.lesson ?? 0) - (right.period?.lesson ?? 0)
+    ));
+    let position = periodList.firstElementChild;
+    for (const { element } of sorted) {
+      if (element !== position) periodList.insertBefore(element, position);
+      position = element.nextElementSibling;
+    }
+    if (doc.activeElement !== activeElement && periodList.contains(activeElement)) {
+      activeElement.focus({ preventScroll: true });
+    }
+  }
+
+  function applyPeriodSelection(row) {
+    const weekday = Number(row.weekday.value);
+    const lesson = Number(row.lesson.value);
+    if (!weekday || !lesson || (row.period?.weekday === weekday && row.period.lesson === lesson)) {
+      setPeriodError(row);
+      return false;
+    }
+    if (!lessonTimes.some((entry) => entry.lesson === lesson)) {
+      setPeriodError(row, 'Für diese Stunde ist keine Unterrichtszeit hinterlegt.');
+      return false;
+    }
+    const duplicate = [...periodRows.values()].some(({ period }) => period?.weekday === weekday && period.lesson === lesson);
+    if (duplicate) {
+      setPeriodError(row, row.period
+        ? 'Diese Freistunde ist bereits eingetragen. Deine bisherige Auswahl gilt weiter.'
+        : 'Diese Freistunde ist bereits eingetragen.');
+      return false;
+    }
+    row.period = { weekday, lesson };
+    setPeriodError(row);
+    row.remove.setAttribute('aria-label', `Freistunde am ${WEEKDAYS[weekday]}, ${lesson}. Stunde löschen`);
+    return true;
+  }
+
+  function refreshPeriodResults() {
+    let applied;
+    do {
+      applied = false;
+      for (const row of periodRows.values()) {
+        if (row.error.textContent && applyPeriodSelection(row)) applied = true;
+      }
+    } while (applied);
+    sortPeriodRows();
     clearResults();
   }
 
-  function openPeriodEditor(key = '') {
-    if (!periodEditor.hidden && editingPeriodKey === key) {
-      closePeriodEditor();
-      return;
-    }
-    const period = freePeriods.get(key);
-    editingPeriodKey = period ? key : '';
-    periodEditor.setAttribute('aria-label', period ? 'Freistunde bearbeiten' : 'Freistunde hinzufügen');
-    periodError.textContent = '';
-    periodWeekday.value = period ? String(period.weekday) : '';
-    renderPeriodOptions(period ? String(period.lesson) : '');
-    deletePeriod.hidden = !period;
-    periodEditor.hidden = false;
-    updatePeriodTriggers();
-    periodWeekday.focus();
+  function refreshExamSources() {
+    const sources = [...examSources.values()];
+    exams = mergeExamSchedules(sources.map((source) => source.exams));
+    hasPdfTimingNotes = sources.some((source) => source.hasTimingNotes);
+    sourceList.hidden = sources.length === 0;
+    clearResults();
+    renderImportStatus();
   }
 
-  function closePeriodEditor(focusKey = editingPeriodKey) {
-    periodEditor.hidden = true;
-    editingPeriodKey = '';
-    updatePeriodTriggers();
-    const entry = periodList.querySelector(`[data-period-key="${focusKey}"]`);
-    const fallback = addPeriod.disabled ? periodList.querySelector('button') || endDateTrigger : addPeriod;
-    (entry || fallback).focus();
+  function addExamSource(fileName, source) {
+    const row = doc.createElement('li');
+    const name = doc.createElement('span');
+    name.className = 'nachschreiber-file-name';
+    name.textContent = fileName;
+    name.title = fileName;
+    const remove = doc.createElement('button');
+    remove.className = 'danger-action app-action-icon nachschreiber-file-remove';
+    remove.type = 'button';
+    remove.textContent = '🗑️';
+    remove.setAttribute('aria-label', `${fileName} entfernen`);
+    remove.title = 'Datei entfernen';
+    row.append(name, remove);
+    sourceList.append(row);
+    examSources.set(row, {
+      ...source,
+      exams: source.exams.map((exam) => ({ ...exam, fileName })),
+    });
+    refreshExamSources();
   }
 
-  function submitPeriod() {
-    const weekday = Number(periodWeekday.value);
-    const lesson = Number(periodLesson.value);
-    if (!periodWeekday.value) {
-      periodError.textContent = 'Wähle einen Wochentag.';
-      periodWeekday.focus();
-      return;
-    }
-    if (!lessonTimes.some((entry) => entry.lesson === lesson)) {
-      periodError.textContent = 'Wähle eine Stunde mit hinterlegten Uhrzeiten.';
-      periodLesson.focus();
-      return;
-    }
-    const key = periodKey(weekday, lesson);
-    if (key !== editingPeriodKey) {
-      if (freePeriods.has(key)) {
-        periodError.textContent = 'Diese Freistunde ist bereits eingetragen.';
-        return;
-      }
-      freePeriods.delete(editingPeriodKey);
-      freePeriods.set(key, { weekday, lesson });
-      renderFreePeriods();
-      clearResults();
-    }
-    closePeriodEditor(editingPeriodKey ? key : '');
+  async function readExamSource(file) {
+    if (/\.pdf$/i.test(file.name)) return readPdfExamSchedule(file, { signal });
+    if (!isCsvFile(file)) throw new Error('Wähle eine CSV- oder PDF-Datei.');
+    assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
+    const buffer = await readFileArrayBufferWithTimeout(file, { signal });
+    signal.throwIfAborted();
+    return { exams: parseExamSchedule(decodeCsv(buffer)), hasTimingNotes: false };
   }
 
   async function importFiles(files) {
-    const currentImport = ++importId;
-    exams = [];
-    submit.disabled = true;
-    clearResults();
-    renderCsvStatus('CSV wird gelesen …');
+    if (!files.length) return;
+    for (const file of files) pendingFiles.push(file);
+    if (importingFiles) return;
+    importingFiles = true;
+    importErrors.replaceChildren();
+    importErrors.hidden = true;
+    renderImportStatus();
 
     try {
-      const file = files[0];
-      if (files.length !== 1 || !isCsvFile(file)) throw new Error('Bitte eine einzelne CSV-Datei auswählen.');
-      assertFileSizeAtMost(file, FILE_LIMITS.CSV_BYTES, 'CSV-Datei');
-      const buffer = await readFileArrayBufferWithTimeout(file, { signal });
-      if (signal.aborted || currentImport !== importId) return;
-
-      exams = parseExamSchedule(decodeCsv(buffer));
-      const examCount = exams.length === 1 ? '1 Klassenarbeit' : `${exams.length} Klassenarbeiten`;
-      renderCsvStatus(`${stripFileExtension(file.name) || 'CSV'}\n${examCount}`);
-      submit.disabled = false;
-    } catch (error) {
-      if (signal.aborted || currentImport !== importId) return;
-      renderCsvStatus(error.message || 'Die CSV-Datei konnte nicht gelesen werden.', { error: true });
+      while (pendingFiles.length && !signal.aborted) {
+        const file = pendingFiles.shift();
+        const fileName = file.name || 'Klausurenplan';
+        try {
+          const source = await readExamSource(file);
+          signal.throwIfAborted();
+          addExamSource(fileName, source);
+        } catch (error) {
+          if (signal.aborted) return;
+          const item = doc.createElement('li');
+          item.textContent = `${fileName} — ${error?.message || 'Die Datei konnte nicht gelesen werden.'}`;
+          importErrors.append(item);
+          importErrors.hidden = false;
+        }
+      }
+    } finally {
+      importingFiles = false;
+      if (!signal.aborted) renderImportStatus();
     }
   }
 
   function showSuggestions(event) {
     event.preventDefault();
-    if (!exams.length) return;
+    if (importingFiles || !exams.length) return;
     refreshLessonTimes();
     const startDate = updateDateBounds();
     if (!form.reportValidity()) return;
 
+    let missingPdfLessonTimes = false;
     const suggestions = rankExamSuggestions(exams, {
       year: year.value,
       classLetter: classLetter.value,
       startDate,
       endDate: endDate.value,
       requiredLessons: Number(duration.value),
-      freePeriods: Array.from(freePeriods.values()),
+      freePeriods: Array.from(periodRows.values(), (row) => row.period).filter(Boolean),
       lessonTimes,
+      onMissingPdfLessonTimes: () => { missingPdfLessonTimes = true; },
     });
     const studentClass = `${year.value}${classLetter.value}`;
     const rows = suggestions.map((exam) => {
       const row = doc.createElement('tr');
+      row.title = exam.fileName;
       const weekday = WEEKDAYS[new Date(`${exam.date}T00:00:00Z`).getUTCDay()];
-      const date = `${weekday}, ${exam.date.split('-').reverse().join('.')}`;
+      const calendarDate = exam.date.split('-').reverse().join('.');
+      const date = `${weekday}, ${calendarDate}`;
+      const dateInSentence = `${weekday}, den ${calendarDate}`;
       const time = exam.makeupLessons.length
         ? formatLessonNumbers(exam.makeupLessons)
         : `${formatTime(exam.startTime)}–${formatTime(exam.endTime)}`;
@@ -392,24 +534,31 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
         match.textContent = `Überschneidung mit ${exam.freePeriodLessons.length === 1 ? 'Freistunde' : 'Freistunden'} (${labels})`;
         timeCell.append(match);
       }
-      for (const value of [exam.title || '–', exam.groups, exam.teacher, exam.ownExamCount]) {
+      for (const value of [exam.title || '–', exam.groups, exam.teacher || '–', exam.ownExamCount ?? '–']) {
         row.insertCell().textContent = value;
       }
       const noticeCell = row.insertCell();
       noticeCell.className = 'nachschreiber-notice-cell';
-      noticeCell.append(createNoticeButton('Aufsicht anfragen', date, (...names) => buildSupervisionRequest(date, exam, studentClass, ...names)));
+      noticeCell.append(createNoticeButton('Aufsicht anfragen', date, (...names) => buildSupervisionRequest(dateInSentence, exam, studentClass, ...names)));
       if (!exam.fullyCoveredByFreePeriods) {
-        noticeCell.append(createNoticeButton('Reguläre Lehrkraft informieren', date, (...names) => buildTeacherNotice(date, exam, studentClass, ...names)));
+        noticeCell.append(createNoticeButton('Reguläre Lehrkraft informieren', date, (...names) => buildTeacherNotice(dateInSentence, exam, studentClass, ...names)));
       }
       noticeCell.append(createNoticeButton('Prüfling informieren', date, (...names) => buildStudentNotice(date, exam, ...names)));
       return row;
     });
     resultRows.replaceChildren(...rows);
     results.hidden = rows.length === 0;
-    if (rows.length === 0) resultStatus.textContent = 'Im gewählten Zeitraum gibt es keine passenden Termine.';
-    else resultStatus.textContent = rows.length === 1 ? '1 passender Termin' : `${rows.length} passende Termine`;
+    const emptyMessage = rows.length === 0 ? 'Im gewählten Zeitraum gibt es keine passenden Termine.' : '';
+    const rasterMessage = missingPdfLessonTimes ? 'Für einige PDF-Stunden fehlen passende Unterrichtszeiten. Prüfe die Uhrzeiten in der Planung.' : '';
+    renderResultStatus(emptyMessage, rasterMessage);
   }
 
+  settingsTrigger.addEventListener('click', openSenderSettings, { signal });
+  settingsForm.addEventListener('submit', saveSenderSettings, { signal });
+  settingsCancel.addEventListener('click', () => settingsDialog.close(), { signal });
+  settingsDialog.addEventListener('cancel', (event) => {
+    if (savingSenderSettings) event.preventDefault();
+  }, { signal });
   iservPrefix.addEventListener('input', updateIservLink, { signal });
   fileInput.addEventListener('change', () => {
     if (fileInput.files.length) void importFiles(fileInput.files);
@@ -434,33 +583,47 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
     upload.classList.remove('drag-over-file');
     void importFiles(event.dataTransfer.files);
   }, { signal });
+  sourceList.addEventListener('click', (event) => {
+    const row = event.target.closest('.nachschreiber-file-remove')?.closest('li');
+    if (!examSources.delete(row)) return;
+    const neighbor = row.nextElementSibling || row.previousElementSibling;
+    row.remove();
+    refreshExamSources();
+    (neighbor?.querySelector('button') || fileInput).focus();
+  }, { signal });
   for (const input of [year, classLetter, duration]) input.addEventListener('input', clearResults, { signal });
-  addPeriod.addEventListener('click', () => openPeriodEditor(), { signal });
+  addPeriod.addEventListener('click', addPeriodRow, { signal });
   periodList.addEventListener('click', (event) => {
-    const entry = event.target.closest('button[data-period-key]');
-    if (entry) openPeriodEditor(entry.dataset.periodKey);
+    const row = periodRows.get(event.target.closest('.nachschreiber-period-row'));
+    if (row && event.target.closest('.nachschreiber-period-delete') === row.remove) removePeriodRow(row);
   }, { signal });
-  savePeriod.addEventListener('click', submitPeriod, { signal });
-  periodEditor.addEventListener('change', () => { periodError.textContent = ''; }, { signal });
-  cancelPeriod.addEventListener('click', () => closePeriodEditor(), { signal });
-  deletePeriod.addEventListener('click', () => {
-    if (!freePeriods.delete(editingPeriodKey)) return;
-    renderFreePeriods();
-    clearResults();
-    closePeriodEditor('');
+  periodList.addEventListener('change', (event) => {
+    const row = periodRows.get(event.target.closest('.nachschreiber-period-row'));
+    if (row && applyPeriodSelection(row)) refreshPeriodResults();
   }, { signal });
-  periodEditor.addEventListener('keydown', (event) => {
+  periodList.addEventListener('keydown', (event) => {
     if (event.key !== 'Escape') return;
+    const row = periodRows.get(event.target.closest('.nachschreiber-period-row'));
+    if (!row || (row.period && !row.error.textContent)) return;
     event.preventDefault();
     event.stopPropagation();
-    closePeriodEditor();
+    if (!row.period) {
+      removePeriodRow(row);
+      return;
+    }
+    row.weekday.value = String(row.period.weekday);
+    renderPeriodLessonOptions(row, String(row.period.lesson));
+    setPeriodError(row);
   }, { signal });
   resultRows.addEventListener('click', (event) => {
     const notice = event.target.closest('button.nachschreiber-notice-trigger');
     const buildText = noticeBuilders.get(notice);
     if (!buildText) return;
     noticeTitle.textContent = notice.textContent;
-    noticeText.value = buildText(studentName.value.trim() || '[Prüflingsname]', senderName.value.trim() || '[Absender]');
+    noticeText.value = buildText(
+      studentName.value.trim() || '[Prüflingsname]',
+      senderName.value.trim() || readDefaultSenderName() || '[Absender]',
+    );
     noticeDialog.showModal();
     fitNoticeText();
   }, { signal });
@@ -469,24 +632,35 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [] })
   noticeText.addEventListener('input', () => {
     fitNoticeText();
     noticeCopyId += 1;
-    noticeStatus.textContent = '';
+    resetNoticeCopyFeedback();
   }, { signal });
   noticeDialog.addEventListener('cancel', (event) => {
     event.preventDefault();
     closeNoticeDialog();
   }, { signal });
   doc.defaultView?.addEventListener(WORKSPACE_STATE_EVENT, (event) => {
-    if (event.detail?.scope === 'shell') refreshLessonTimes();
+    if (event.detail?.scope !== 'shell') return;
+    refreshLessonTimes();
+    refreshSenderSettings();
   }, { signal });
   form.addEventListener('submit', showSuggestions, { signal });
   updateIservLink();
+  renderImportStatus();
   refreshLessonTimes();
+  refreshSenderSettings();
 
   return () => {
     controller.abort();
+    pendingFiles.length = 0;
+    examSources.clear();
+    sourceList.replaceChildren();
+    sourceList.hidden = true;
+    importErrors.replaceChildren();
+    importErrors.hidden = true;
     closeDateCalendar();
-    periodEditor.hidden = true;
-    updatePeriodTriggers();
+    periodList.replaceChildren();
+    periodList.hidden = true;
+    if (settingsDialog.open) settingsDialog.close();
     if (noticeDialog.open) closeNoticeDialog();
   };
 }

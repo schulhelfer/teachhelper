@@ -39,6 +39,8 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
     const endDate = byId('nachschreiber-end-date');
     const submit = byId('nachschreiber-submit');
     const status = byId('nachschreiber-csv-status');
+    const sourceList = byId('nachschreiber-file-list');
+    const importErrors = byId('nachschreiber-file-errors');
     const resultStatus = byId('nachschreiber-result-status');
     const getRows = () => Array.from(byId('nachschreiber-result-rows').rows, (row) => Array.from(row.cells, (cell) => (
       cell.querySelector('.nachschreiber-result-time')?.textContent ?? cell.textContent
@@ -73,6 +75,7 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
       pickerOpened = true;
       event.preventDefault();
     });
+    const initialDropZoneHeight = dropZone.getBoundingClientRect().height;
     dropZone.querySelector('label[for="nachschreiber-file"]').click();
     fileInput.files = transfers(
       `"Mathe; <em>Teil 1</em>";1;${csvDate(1)};08:45:00;09:30:00;5a;<em>Kürzel A</em>`,
@@ -85,6 +88,7 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
     fileInput.dispatchEvent(new Event('change', { bubbles: true }));
     await waitFor(() => !submit.disabled);
     const importMessage = status.textContent;
+    const dropZoneHeightAfterImport = dropZone.getBoundingClientRect().height;
     const statusInsideDropZone = dropZone.contains(status) && !status.classList.contains('empty-state-box');
     byId('nachschreiber-year').value = '9';
     byId('nachschreiber-class').value = 'b';
@@ -135,25 +139,36 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
     dropZone.dispatchEvent(new DragEvent('drop', {
       bubbles: true, cancelable: true, dataTransfer: transfers(`;1;${csvDate(1)};09:00;10:30;13e;Kürzel D`),
     }));
-    await waitFor(() => status.textContent === 'arbeiten\n1 Klassenarbeit');
+    await waitFor(() => status.textContent === '2 Dateien · 7 Klausuren');
+    submit.click();
+    const appendedRows = getRows();
+    sourceList.querySelector('button').click();
+    const clearedAfterRemoval = byId('nachschreiber-results').hidden;
+    const remainingSummary = status.textContent;
     submit.click();
     const dropRows = getRows();
     endDate.value = isoAt(0);
     endDate.dispatchEvent(new Event('input', { bubbles: true }));
     submit.click();
     const emptyMessage = resultStatus.textContent;
+    endDate.value = '';
+    endDate.dispatchEvent(new Event('input', { bubbles: true }));
+    submit.click();
 
     dropZone.dispatchEvent(new DragEvent('drop', {
       bubbles: true, cancelable: true, dataTransfer: transfers(`;2;${csvDate(1)};;;13e;Kürzel D`),
     }));
-    await waitFor(() => status.classList.contains('is-error'));
+    await waitFor(() => !importErrors.hidden && !submit.disabled);
+    const rowsAfterError = getRows();
     byId('tab-planning').click();
     await waitFor(() => root.hidden);
 
     return {
       hiddenBeforeActivation, initialDisabled, initialDuration, durationOptions, pickerOpened, importMessage, statusInsideDropZone, initialStatus,
-      pickerRows, longerDurationRows, clearedAfterDurationChange, rowsWithoutEndDate, dropRows, treatedNameAsText,
-      emptyMessage, errorMessage: status.textContent, disabledAfterError: submit.disabled, expectedDate: `Di, ${csvDate(1)}`,
+      initialDropZoneHeight, dropZoneHeightAfterImport,
+      pickerRows, longerDurationRows, clearedAfterDurationChange, rowsWithoutEndDate, appendedRows, dropRows, treatedNameAsText,
+      clearedAfterRemoval, remainingSummary, rowsAfterError, emptyMessage, errorMessage: importErrors.textContent,
+      disabledAfterError: submit.disabled, expectedDate: `Di, ${csvDate(1)}`,
       expectedLaterDate: `Mi, ${csvDate(2)}`, emptyStartDate, headings, clearedAfterStartDateChange, rowsFromStartDate,
       rowsForOneDay, invalidEndDate, invalidStartDate,
     };
@@ -167,7 +182,8 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
     ['1', '1 Std. (45 min)'], ['2', '2 Std. (90 min)'], ['3', '3 Std. (135 min)'], ['4', '4 Std. (180 min)'],
   ]);
   assert.equal(result.pickerOpened, true);
-  assert.equal(result.importMessage, 'arbeiten\n6 Klassenarbeiten');
+  assert.equal(result.importMessage, '1 Datei · 6 Klausuren');
+  assert.equal(result.dropZoneHeightAfterImport, result.initialDropZoneHeight);
   assert.equal(result.statusInsideDropZone, true);
   assert.equal(result.initialStatus, 'Noch keine Datei');
   const longerExam = [result.expectedDate, '10:00–11:30', 'Testarbeit', '5b', 'Kürzel E', '1'];
@@ -185,10 +201,15 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
   assert.equal(result.invalidEndDate, true);
   assert.equal(result.invalidStartDate, true);
   assert.equal(result.treatedNameAsText, true);
-  assert.deepEqual(result.dropRows, [[result.expectedDate, '09:00–10:30', '–', '13e', 'Kürzel D', '0']]);
+  const droppedExam = [result.expectedDate, '09:00–10:30', '–', '13e', 'Kürzel D', '0'];
+  assert.deepEqual(result.appendedRows, [[...droppedExam.slice(0, -1), '1'], longerExam, laterExam]);
+  assert.equal(result.clearedAfterRemoval, true);
+  assert.equal(result.remainingSummary, '1 Datei · 1 Klausur');
+  assert.deepEqual(result.dropRows, [droppedExam]);
   assert.match(result.emptyMessage, /keine passenden Termine/);
-  assert.match(result.errorMessage, /Kalenderwoche in CSV-Zeile 2/);
-  assert.equal(result.disabledAfterError, true);
+  assert.match(result.errorMessage, /arbeiten\.csv.*Kalenderwoche in CSV-Zeile 2/);
+  assert.equal(result.disabledAfterError, false);
+  assert.deepEqual(result.rowsAfterError, result.dropRows);
 
   await evaluate.setViewport({ width: 420, height: 760 });
   const overflow = await evaluate(async () => {
@@ -210,7 +231,7 @@ test('Nachschreiber verarbeitet die Dateiauswahl und die Dropzone im regulären 
 });
 
 test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten', { timeout: 60000 }, async (t) => {
-  const evaluate = await openNachschreiber(t);
+  const evaluate = await openNachschreiber(t, true);
   const divider = await evaluate(async () => {
     const app = document.getElementById('app');
     const tab = document.getElementById('tab-nachschreiber');
@@ -351,6 +372,13 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
     iservPrefix.dispatchEvent(new Event('input', { bubbles: true }));
     const inputBounds = iservPrefix.getBoundingClientRect();
     const linkBounds = iservLink.getBoundingClientRect();
+    const { getWorkspaceClient } = await import('/src/modules/workspace/client.js');
+    getWorkspaceClient().data.setLessonTimes([{ lesson: 1, start: '08:00', end: '08:45' }]);
+    const addPeriod = document.getElementById('nachschreiber-add-period');
+    addPeriod.click();
+    const row = document.querySelector('.nachschreiber-period-row');
+    const [weekday, lesson, remove] = [...row.querySelectorAll('select, button')].map((element) => element.getBoundingClientRect());
+    const centerY = (bounds) => bounds.top + bounds.height / 2;
     return {
       stacked: sideBounds.bottom <= mainBounds.top + 1,
       fullWidth: Math.abs(sideBounds.width - mainBounds.width) < 2 && sideBounds.width >= 418,
@@ -358,10 +386,14 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
       resultsVisible: document.getElementById('nachschreiber-results-title').getBoundingClientRect().width > 0,
       iservControlsSideBySide: linkBounds.left > inputBounds.right && linkBounds.top === inputBounds.top
         && Math.abs(linkBounds.width - inputBounds.width) < 1 && emptyInputWidth === inputBounds.width,
+      periodControlsSideBySide: weekday.right < lesson.left && lesson.right < remove.left
+        && Math.abs(centerY(weekday) - centerY(remove)) < 1 && Math.abs(centerY(lesson) - centerY(remove)) < 1
+        && remove.right <= sideBounds.right && addPeriod.getBoundingClientRect().top > row.getBoundingClientRect().bottom,
     };
   });
   assert.deepEqual(mobile, {
     stacked: true, fullWidth: true, sidebarVisible: true, resultsVisible: true, iservControlsSideBySide: true,
+    periodControlsSideBySide: true,
   });
 });
 
@@ -456,6 +488,333 @@ test('Nachschreiber bietet für beide Datumsgrenzen einen Minikalender an', { ti
   assert.equal(escaped, true);
 });
 
+test('Nachschreiber speichert den Standard-Absender in der Datenbank bei gesperrtem Notenbereich', { timeout: 60000 }, async (t) => {
+  const evaluate = await openNachschreiber(t, true);
+  const result = await evaluate(async () => {
+    const [{ WORKSPACE_GLOBAL_KEY }, { parseThdb1ContainerBytes }] = await Promise.all([
+      import('/src/modules/workspace/index.js'), import('/src/shared/school-data/thdb.js'),
+    ]);
+    const runtime = window[WORKSPACE_GLOBAL_KEY].getOwner();
+    runtime.isManualPersistenceMode = () => true;
+    let exportedBytes;
+    runtime.persistence.downloadBytes = (bytes) => { exportedBytes = bytes.slice(); };
+    const byId = (id) => document.getElementById(`nachschreiber-${id}`);
+    const dialog = byId('settings-dialog');
+    const trigger = byId('settings-trigger');
+    const input = byId('default-sender-name');
+    const save = byId('settings-save');
+    const cancel = byId('settings-cancel');
+    const override = byId('sender-name');
+    const waitFor = async (condition) => {
+      const deadline = performance.now() + 5000;
+      while (!condition()) {
+        if (performance.now() > deadline) throw new Error('Erwarteter Zustand wurde zu spät erreicht.');
+        await new Promise((done) => requestAnimationFrame(done));
+      }
+    };
+    document.getElementById('tab-nachschreiber').click();
+    await waitFor(() => !byId('shell').hidden);
+    trigger.click();
+    const noDatabase = dialog.open && save.disabled && !byId('settings-database-hint').hidden;
+    cancel.click();
+
+    await runtime.setupGradeVault('test-passwort-ohne-personendaten');
+    const { bytes } = await runtime.buildContainer('test');
+    const loadFile = (value) => runtime.loadManualDatabaseFromFile(new File([value], 'Test-Datenbank.json'));
+    await loadFile(bytes);
+    trigger.click();
+    const initial = { name: input.value, focused: document.activeElement === input, locked: !runtime.isGradeVaultUnlocked() };
+    input.value = '  Test-Absender  ';
+    save.click();
+    await waitFor(() => !dialog.open);
+    const exportedName = () => JSON.parse(parseThdb1ContainerBytes(exportedBytes).planningPublicText).settings.nachschreiberDefaultSenderName;
+    const saved = { name: exportedName(), placeholder: override.placeholder, focused: document.activeElement === trigger };
+
+    await loadFile(bytes);
+    const oldDatabasePlaceholder = override.placeholder;
+    await loadFile(exportedBytes);
+    trigger.click();
+    const reopened = { name: input.value, placeholder: override.placeholder, locked: !runtime.isGradeVaultUnlocked() };
+    input.value = 'Verworfener Entwurf';
+    cancel.click();
+    trigger.click();
+    const afterCancel = input.value;
+    input.value = '   ';
+    save.click();
+    await waitFor(() => !dialog.open);
+    const cleared = { name: exportedName(), placeholder: override.placeholder };
+    trigger.click();
+    input.value = 'Weiterer verworfener Entwurf';
+    return { noDatabase, initial, saved, oldDatabasePlaceholder, reopened, afterCancel, cleared };
+  });
+  assert.equal(result.noDatabase, true);
+  assert.deepEqual(result.initial, { name: '', focused: true, locked: true });
+  assert.deepEqual(result.saved, { name: 'Test-Absender', placeholder: 'Test-Absender', focused: true });
+  assert.equal(result.oldDatabasePlaceholder, '');
+  assert.deepEqual(result.reopened, { name: 'Test-Absender', placeholder: 'Test-Absender', locked: true });
+  assert.equal(result.afterCancel, 'Test-Absender');
+  assert.deepEqual(result.cleared, { name: '', placeholder: '' });
+
+  await evaluate.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  await evaluate.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
+  const escaped = await evaluate(() => {
+    const dialog = document.getElementById('nachschreiber-settings-dialog');
+    const trigger = document.getElementById('nachschreiber-settings-trigger');
+    const closed = !dialog.open && document.activeElement === trigger;
+    trigger.click();
+    return closed && document.getElementById('nachschreiber-default-sender-name').value === '';
+  });
+  assert.equal(escaped, true);
+});
+
+test('Nachschreiber kombiniert synthetische PDF-Wochenraster und CSV-Dateien', { timeout: 60000 }, async (t) => {
+  const evaluate = await openNachschreiber(t, true);
+  const observed = await evaluate(async () => {
+    const [{ getWorkspaceClient }, { ensurePdfLibLoaded }, { getIsoWeek }] = await Promise.all([
+      import('/src/modules/workspace/client.js'), import('/src/shared/pdf-vendor.js'), import('/src/modules/nachschreiber/schedule.js'),
+    ]);
+    const { PDFDocument, StandardFonts } = await ensurePdfLibLoaded();
+    const { data } = getWorkspaceClient();
+    const byId = (suffix) => document.getElementById(`nachschreiber-${suffix}`);
+    const fileInput = byId('file');
+    const submit = byId('submit');
+    const status = byId('csv-status');
+    const sourceList = byId('file-list');
+    const importErrors = byId('file-errors');
+    const resultStatus = byId('result-status');
+    const results = byId('result-rows');
+    const waitFor = async (condition) => {
+      const deadline = performance.now() + 12000;
+      while (!condition()) {
+        if (performance.now() > deadline) throw new Error(`Zeitlimit beim PDF-Test. ${status.textContent}`);
+        await new Promise((done) => requestAnimationFrame(done));
+      }
+    };
+    const base = new Date(Date.UTC(new Date().getUTCFullYear() + 3, 3, 5));
+    base.setUTCDate(base.getUTCDate() + (8 - base.getUTCDay()) % 7);
+    const day = (offset) => new Date(base.getTime() + offset * 86400000);
+    const dateText = (date) => date.toISOString().slice(0, 10).split('-').reverse().join('.');
+    const lessonTimes = [
+      { lesson: 1, start: '07:15', end: '08:00' },
+      { lesson: 2, start: '08:10', end: '08:55' },
+      { lesson: 3, start: '09:10', end: '09:55' },
+      { lesson: 4, start: '10:05', end: '10:50' },
+    ];
+    const createPdf = async (variant) => {
+      const pdf = await PDFDocument.create();
+      const font = await pdf.embedFont(StandardFonts.Helvetica);
+      const addPage = (left, columnWidth) => {
+        const page = pdf.addPage([920, 500]);
+        const draw = (text, x, y) => page.drawText(text, { x, y, font, size: 9 });
+        ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'].forEach((heading, column) => {
+          draw(heading, left + (column + 0.5) * columnWidth - font.widthOfTextAtSize(heading, 9) / 2, 435);
+        });
+        draw('KW', 18, 435);
+        draw('Datum', 52, 435);
+        return {
+          week(offset, y) {
+            draw(String(getIsoWeek(day(offset)).weekNumber), 18, y);
+            draw(`${dateText(day(offset)).slice(0, 6)} – ${dateText(day(offset + 4))}`, 52, y);
+          },
+          exam(text, column, y) { draw(text, left + column * columnWidth + 12, y); },
+          note(text, y) { draw(text, 26, y); },
+        };
+      };
+      if (variant === 'image-like') {
+        pdf.addPage().drawRectangle({ x: 22, y: 22, width: 35, height: 55 });
+      } else if (variant === 'unrelated') {
+        pdf.addPage().drawText('Synthetisches Dokument ohne Wochenraster', { x: 24, y: 440, font, size: 12 });
+      } else {
+        const first = addPage(190, 130);
+        first.week(0, 390);
+        first.exam('1.–3. 9b-TEST-A (127)', 0, 390);
+        first.exam('1. 9b-TEST-B (55)', 0, 372);
+        first.exam('2.–4. 9b-TEST-C', 1, 390);
+        first.exam('(95 Minuten)', 1, 378);
+        first.exam('Allgemeiner Hinweis', 2, 390);
+        first.exam('2. Rasterkurs Beispiel', 2, 375);
+        first.week(7, 310);
+        first.exam('2.–3. TEST-D (105)', 3, 310);
+        if (variant === 'zusatzhinweis') first.note('Sonderzeit laut Aushang um 18:37 Uhr', 249);
+        if (variant === 'weiterer-plan') {
+          first.week(21, 240);
+          first.exam('1.–2. PDF-NEU (110)', 0, 240);
+        }
+        const second = addPage(224, 118);
+        second.week(14, 400);
+        second.exam('2.–4. SYN7 SYN8', 0, 400);
+        if (variant === 'ambiguous') {
+          second.exam('1.–4. TEST-E', 4, 400);
+          second.exam('(unklare Dauer)', 4, 388);
+        } else {
+          second.exam('1.–4. TEST-E (180)', 4, 400);
+        }
+      }
+      return new File([await pdf.save()], `${variant}.pdf`, { type: 'application/pdf' });
+    };
+    const importFiles = (files, drop = false) => {
+      const transfer = new DataTransfer();
+      for (const file of files) transfer.items.add(file);
+      if (drop) byId('drop-zone').dispatchEvent(new DragEvent('drop', { bubbles: true, cancelable: true, dataTransfer: transfer }));
+      else {
+        fileInput.files = transfer.files;
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    };
+    const waitForImport = () => waitFor(() => status.textContent !== 'Dateien werden gelesen …');
+    const loadedFiles = () => [...sourceList.querySelectorAll('.nachschreiber-file-name')].map((name) => name.textContent);
+    const removeFile = (name) => {
+      [...sourceList.children].find((row) => row.querySelector('.nachschreiber-file-name').textContent === name).querySelector('button').click();
+    };
+    const csvRow = (offset, title, groups, start = '', end = '') => (
+      `${title};${getIsoWeek(day(offset)).weekNumber};${dateText(day(offset))};${start};${end};${groups};Lehrkraft TEST`
+    );
+    const csvFile = (name, lines) => new File([
+      ['Titel;KW;Datum;Start;Ende;Gruppen;Lehrkraft', ...lines].join('\n'),
+    ], `${name}.csv`, { type: 'text/csv' });
+    const readSuggestions = () => {
+      submit.click();
+      return [...results.rows].map((row) => Array.from(row.cells, (cell) => cell.textContent).slice(0, 6));
+    };
+    const readNotice = (action, course) => {
+      const row = course ? [...results.rows].find((entry) => entry.cells[3].textContent === course) : results.rows[0];
+      [...row.querySelectorAll('button')].find((button) => button.textContent === action).click();
+      const message = byId('notice-text').value;
+      byId('notice-close').click();
+      return message;
+    };
+
+    data.setLessonTimes(lessonTimes);
+    document.getElementById('tab-nachschreiber').click();
+    await waitFor(() => !byId('shell').hidden);
+    byId('year').value = '9';
+    byId('class').value = 'b';
+    importFiles([await createPdf('erkannt')], true);
+    await waitForImport();
+    const imported = status.textContent;
+    const oneLesson = readSuggestions();
+    byId('duration').value = '2';
+    const twoLessons = readSuggestions();
+    const request = readNotice('Aufsicht anfragen');
+    const notice = readNotice('Prüfling informieren');
+    const requestsByCourse = ['SYN7', 'SYN8'].map((course) => readNotice('Aufsicht anfragen', course));
+    byId('duration').value = '3';
+    const threeLessons = readSuggestions();
+    byId('duration').value = '2';
+    data.setLessonTimes([]);
+    const noRasterRows = readSuggestions();
+    const noRasterHint = resultStatus.textContent;
+    data.setLessonTimes(lessonTimes);
+    const restored = readSuggestions();
+
+    const originalCsvRows = [
+      csvRow(0, 'CSV-EIGEN-A', '9b'),
+      csvRow(0, 'CSV-TAGESSPERRE', '7a', '07:15', '08:45'),
+      csvRow(3, 'CSV-KANDIDAT', '7a', '07:15', '08:45'),
+      csvRow(14, '', 'SYN7', '08:10', '09:55'),
+    ];
+    const mixedFiles = [
+      await createPdf('zusatzhinweis'),
+      csvFile('test-a', originalCsvRows),
+      await createPdf('ambiguous'),
+      await createPdf('weiterer-plan'),
+      csvFile('test-b', [originalCsvRows[0], csvRow(2, 'CSV-EIGEN-B', '9b')]),
+    ];
+    importFiles(mixedFiles);
+    const busyDuringSelection = submit.disabled;
+    await waitForImport();
+    const selectedSources = { summary: status.textContent, files: loadedFiles(), error: importErrors.textContent };
+    const timingNoteStatus = resultStatus.textContent;
+    const combined = readSuggestions();
+    const sourceTooltips = {
+      csv: [...results.rows].find((row) => row.cells[2].textContent === 'CSV-KANDIDAT')?.title,
+      pdf: [...results.rows].find((row) => row.cells[3].textContent === 'PDF-NEU')?.title,
+    };
+    const timingNoteAfterSearch = resultStatus.textContent;
+
+    importFiles([
+      await createPdf('kopie-a'),
+      csvFile('test-c', [csvRow(4, 'CSV-EIGEN-C', '9b')]),
+      await createPdf('kopie-b'),
+      csvFile('test-d', originalCsvRows),
+    ], true);
+    importFiles([csvFile('test-e', originalCsvRows)]);
+    await waitForImport();
+    const droppedSources = { summary: status.textContent, files: loadedFiles(), rows: readSuggestions(), errorsCleared: importErrors.hidden };
+
+    removeFile('test-c.csv');
+    removeFile('zusatzhinweis.pdf');
+    removeFile('test-a.csv');
+    const afterRemovingDuplicates = {
+      summary: status.textContent, note: resultStatus.textContent, rows: readSuggestions(),
+    };
+    removeFile('weiterer-plan.pdf');
+    const afterRemovingUnique = { summary: status.textContent, rows: readSuggestions() };
+    for (const name of loadedFiles()) removeFile(name);
+    const afterRemovingAll = { summary: status.textContent, blocked: submit.disabled && results.rows.length === 0 && sourceList.hidden };
+
+    importFiles([await createPdf('image-like'), await createPdf('unrelated')]);
+    await waitForImport();
+    const invalidFiles = { errors: [...importErrors.children].map((item) => item.textContent), blocked: submit.disabled };
+    return {
+      acceptsPdf: fileInput.accept.includes('.pdf'), multiple: fileInput.multiple,
+      imported, oneLesson, twoLessons, threeLessons, request, notice, requestsByCourse,
+      uploadLabel: byId('drop-zone').querySelector('.file-trigger-copy').innerText,
+      noRasterRows, noRasterHint, restored, selectedSources, timingNoteStatus, timingNoteAfterSearch, busyDuringSelection,
+      combined, sourceTooltips, droppedSources, afterRemovingDuplicates, afterRemovingUnique, afterRemovingAll, invalidFiles,
+      dates: [[0, 'Mo'], [1, 'Di'], [10, 'Do'], [14, 'Mo'], [18, 'Fr'], [21, 'Mo']].map(([offset, prefix]) => `${prefix}, ${dateText(day(offset))}`),
+    };
+  });
+  assert.equal(observed.acceptsPdf, true);
+  assert.equal(observed.multiple, true);
+  assert.equal(observed.uploadLabel, 'Auswählen\noder\nAblegen');
+  assert.equal(observed.imported, '1 Datei · 8 Klausuren');
+  assert.deepEqual(observed.oneLesson.map((row) => row[3]), [
+    '9b-TEST-A', '9b-TEST-B', '9b-TEST-C', 'Rasterkurs Beispiel', 'TEST-D', 'SYN7', 'SYN8', 'TEST-E',
+  ]);
+  assert.deepEqual(observed.twoLessons, [
+    [observed.dates[0], '1–2', '–', '9b-TEST-A', '–', '–'],
+    [observed.dates[1], '2–3', '–', '9b-TEST-C', '–', '–'],
+    [observed.dates[2], '2–3', '–', 'TEST-D', '–', '–'],
+    [observed.dates[3], '2–3', '–', 'SYN7', '–', '–'],
+    [observed.dates[3], '2–3', '–', 'SYN8', '–', '–'],
+    [observed.dates[4], '1–2', '–', 'TEST-E', '–', '–'],
+  ]);
+  assert.deepEqual(observed.threeLessons.map((row) => row[3]), ['SYN7', 'SYN8', 'TEST-E']);
+  assert.match(observed.request, /^Hallo \[Lehrkraftname\],/);
+  assert.match(observed.request, /mit Deinem Kurs „9b-TEST-A“, für den Du/);
+  assert.match(observed.notice, /\[Nachname der Lehrkraft\]/);
+  assert.match(observed.requestsByCourse[0], /mit Deinem Kurs „SYN7“, für den Du/);
+  assert.match(observed.requestsByCourse[1], /mit Deinem Kurs „SYN8“, für den Du/);
+  assert.deepEqual(observed.noRasterRows, []);
+  assert.match(observed.noRasterHint, /passende Unterrichtszeiten/);
+  assert.deepEqual(observed.restored, observed.twoLessons);
+  assert.equal(observed.busyDuringSelection, true);
+  assert.equal(observed.selectedSources.summary, '5 Dateien · 14 Klausuren');
+  assert.deepEqual(observed.selectedSources.files, ['erkannt.pdf', 'zusatzhinweis.pdf', 'test-a.csv', 'weiterer-plan.pdf', 'test-b.csv']);
+  assert.match(observed.selectedSources.error, /ambiguous\.pdf.*PDF-Seite 2.*nicht eindeutig lesbar/);
+  assert.match(observed.timingNoteStatus, /zusätzliche Uhrzeithinweise.*Zeiten aus der Planung/);
+  assert.equal(observed.timingNoteAfterSearch, observed.timingNoteStatus);
+  assert.deepEqual(observed.sourceTooltips, { csv: 'test-a.csv', pdf: 'weiterer-plan.pdf' });
+  const additionalPdf = [observed.dates[5], '1–2', '–', 'PDF-NEU', '–', '–'];
+  assert.deepEqual(observed.combined.filter((row) => row[5] === '–'), [...observed.twoLessons, additionalPdf]);
+  assert.deepEqual(observed.combined.filter((row) => row[5] !== '–').map((row) => row.slice(2)), [
+    ['–', 'SYN7', 'Lehrkraft TEST', '0'], ['CSV-KANDIDAT', '7a', 'Lehrkraft TEST', '2'],
+  ]);
+  assert.equal(observed.droppedSources.summary, '10 Dateien · 15 Klausuren');
+  assert.deepEqual(observed.droppedSources.files.slice(5), ['kopie-a.pdf', 'test-c.csv', 'kopie-b.pdf', 'test-d.csv', 'test-e.csv']);
+  assert.equal(observed.droppedSources.errorsCleared, true);
+  assert.deepEqual(observed.droppedSources.rows, observed.combined.filter((row) => row[2] !== 'CSV-KANDIDAT'));
+  assert.deepEqual(observed.afterRemovingDuplicates, { summary: '7 Dateien · 14 Klausuren', note: '', rows: observed.combined });
+  assert.deepEqual(observed.afterRemovingUnique, {
+    summary: '6 Dateien · 13 Klausuren', rows: observed.combined.filter((row) => row[3] !== 'PDF-NEU'),
+  });
+  assert.deepEqual(observed.afterRemovingAll, { summary: 'Noch keine Datei', blocked: true });
+  assert.equal(observed.invalidFiles.blocked, true);
+  assert.match(observed.invalidFiles.errors[0], /image-like\.pdf.*keinen lesbaren Text/);
+  assert.match(observed.invalidFiles.errors[1], /unrelated\.pdf.*kein Wochenraster/);
+});
+
 test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Kopiervorlagen an', { timeout: 60000 }, async (t) => {
   const evaluate = await openNachschreiber(t, true);
   const result = await evaluate(async () => {
@@ -476,16 +835,11 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     ];
     data.setLessonTimes(lessonTimes);
     const root = byId('nachschreiber-shell');
-    const weekday = byId('nachschreiber-period-weekday');
-    const lesson = byId('nachschreiber-period-lesson');
     const add = byId('nachschreiber-add-period');
-    const editor = byId('nachschreiber-period-editor');
-    const save = byId('nachschreiber-period-save');
-    const cancel = byId('nachschreiber-period-cancel');
-    const remove = byId('nachschreiber-period-delete');
     const selected = byId('nachschreiber-period-list');
     const duration = byId('nachschreiber-duration');
     const submit = byId('nachschreiber-submit');
+    const results = byId('nachschreiber-results');
     const csvSource = byId('nachschreiber-csv-source');
     const iservPrefix = byId('nachschreiber-iserv-prefix');
     const iservLink = byId('nachschreiber-iserv-link');
@@ -495,16 +849,20 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
       select.value = value;
       select.dispatchEvent(new Event('change', { bubbles: true }));
     };
-    const setPeriod = (day, hour) => {
-      setValue(weekday, day);
-      setValue(lesson, hour);
+    const addRow = () => {
+      add.click();
+      const element = selected.lastElementChild;
+      const [weekday, lesson, remove] = element.querySelectorAll('select, button');
+      return { element, weekday, lesson, remove, error: element.querySelector('[role="alert"]') };
     };
-    const periods = () => [...selected.querySelectorAll('button[data-period-key]')].map((button) => [
-      button.dataset.periodKey, ...Array.from(button.children, (child) => child.textContent),
-    ]);
+    const setPeriod = (row, day, hour) => {
+      setValue(row.weekday, day);
+      setValue(row.lesson, hour);
+    };
+    const periods = () => [...selected.children].map((row) => [...row.querySelectorAll('select')].map((select) => select.value));
 
     byId('tab-nachschreiber').click();
-    await waitFor(() => !root.hidden && lesson.options[1]?.textContent.includes('08:50'));
+    await waitFor(() => !root.hidden && !add.disabled);
     const iservLinkState = () => ({
       href: iservLink.getAttribute('href'),
       hidden: iservLink.hidden,
@@ -521,7 +879,6 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     const pastedIservLink = enterIservPrefix('  schule.de  ');
     const invalidIservLink = enterIservPrefix('schule.de/pfad');
     const clearedIservLink = enterIservPrefix('');
-    const options = [...lesson.options].slice(1).map((option) => option.textContent);
     const januaryFourth = new Date(Date.UTC(new Date().getFullYear() + 2, 0, 4));
     const monday = new Date(januaryFourth);
     monday.setUTCDate(januaryFourth.getUTCDate() - (januaryFourth.getUTCDay() || 7) + 1);
@@ -551,26 +908,28 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
       ]);
     };
     const withoutSelection = suggestions();
+    const third = addRow();
+    const options = [third.weekday, third.lesson].map((select) => [...select.options].slice(1).map((option) => option.textContent));
+    const openWithFocus = document.activeElement === third.weekday && third.weekday.value === '' && third.lesson.value === '';
+    setValue(third.weekday, '2');
     add.click();
-    const openWithFocus = !editor.hidden && byId('nachschreiber-sidebar').contains(editor)
-      && editor.closest('dialog') === null && document.activeElement === weekday && remove.hidden
-      && add.getAttribute('aria-expanded') === 'true';
-    save.click();
-    const emptyEditorRemainsOpen = !editor.hidden && selected.hidden
-      && byId('nachschreiber-period-error').textContent === 'Wähle einen Wochentag.';
+    const reusedDraft = selected.children.length === 1 && document.activeElement === third.lesson && !results.hidden;
     const searchWithDraft = suggestions();
-    setPeriod('2', '3');
-    save.click();
-    const focusAfterAdding = document.activeElement === add && editor.hidden && add.getAttribute('aria-expanded') === 'false';
-    add.click();
-    setPeriod('2', '2');
-    save.click();
+    setValue(third.lesson, '3');
+    const autoAdded = results.hidden && document.activeElement === third.lesson;
+    const second = addRow();
+    second.lesson.focus();
+    setPeriod(second, '2', '2');
+    const focusAfterSorting = document.activeElement === second.lesson;
+    const [weekdayBounds, lessonBounds, removeBounds] = [second.weekday, second.lesson, second.remove].map((field) => field.getBoundingClientRect());
+    const periodLayout = weekdayBounds.right < lessonBounds.left && lessonBounds.right < removeBounds.left
+      && Math.abs(weekdayBounds.bottom - lessonBounds.bottom) < 1 && Math.abs(lessonBounds.bottom - removeBounds.bottom) < 1
+      && add.getBoundingClientRect().top > third.element.getBoundingClientRect().bottom;
     const withBoth = suggestions();
     const lessonsWithBoth = [...byId('nachschreiber-result-rows').rows].map((row) => [
       row.cells[4].textContent, row.querySelector('.nachschreiber-result-time').textContent,
     ]);
     const borderlessPeriods = getComputedStyle(selected.closest('.nachschreiber-free-periods')).borderTopWidth === '0px'
-      && getComputedStyle(selected.querySelector('button')).borderTopWidth === '0px'
       && byId('nachschreiber-period-hint').hidden;
     const resultRows = byId('nachschreiber-result-rows');
     const messageButtons = (row) => Array.from(row.querySelectorAll('.nachschreiber-notice-trigger'));
@@ -611,7 +970,7 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     const clipboard = { writeText: async (text) => copies.push(text) };
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard });
     noticeCopy.click();
-    await waitFor(() => noticeStatus.textContent === 'Text kopiert.');
+    await waitFor(() => noticeCopy.textContent === '✓' && noticeCopy.getAttribute('aria-label') === 'Text kopiert' && !noticeStatus.textContent);
     Object.defineProperty(navigator, 'clipboard', {
       configurable: true,
       value: { writeText: async () => { throw new DOMException('Gesperrt', 'NotAllowedError'); } },
@@ -637,7 +996,7 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     noticeText.dispatchEvent(new Event('input', { bubbles: true }));
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard });
     noticeCopy.click();
-    await waitFor(() => noticeStatus.textContent === 'Text kopiert.');
+    await waitFor(() => noticeCopy.textContent === '✓' && noticeCopy.getAttribute('aria-label') === 'Text kopiert' && !noticeStatus.textContent);
     noticeClose.click();
 
     const partialStudentNotice = readStudentNotice(partialStudentTrigger);
@@ -652,17 +1011,21 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     noticeText.value = editedStudentNotice;
     noticeText.dispatchEvent(new Event('input', { bubbles: true }));
     noticeCopy.click();
-    await waitFor(() => noticeStatus.textContent === 'Text kopiert.');
+    await waitFor(() => noticeCopy.textContent === '✓' && noticeCopy.getAttribute('aria-label') === 'Text kopiert' && !noticeStatus.textContent);
     noticeClose.click();
     setStudentName('');
     const studentNoticeWithoutName = readStudentNotice(coveredStudentTrigger);
     const senderName = byId('nachschreiber-sender-name');
+    const senderNotices = [noticeTrigger, coveredRequestTrigger, coveredStudentTrigger];
+    data.setSetting('nachschreiberDefaultSenderName', 'Test-Absender');
+    const defaultSenders = senderNotices.map((button) => readStudentNotice(button).split('\n').at(-1));
     senderName.value = '  Lehrkraft Z  ';
     senderName.dispatchEvent(new Event('input', { bubbles: true }));
-    const signedNotices = [noticeTrigger, coveredRequestTrigger, coveredStudentTrigger]
-      .map((button) => readStudentNotice(button).split('\n').slice(-2));
+    const signedNotices = senderNotices.map((button) => readStudentNotice(button).split('\n').slice(-2));
+    const savedSenderAfterOverride = data.getSetting('nachschreiberDefaultSenderName');
     senderName.value = '';
     senderName.dispatchEvent(new Event('input', { bubbles: true }));
+    data.setSetting('nachschreiberDefaultSenderName', '');
 
     duration.value = '2';
     duration.dispatchEvent(new Event('input', { bubbles: true }));
@@ -674,52 +1037,65 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     duration.dispatchEvent(new Event('input', { bubbles: true }));
     suggestions();
     const selectedLabels = periods();
-    add.click();
-    setPeriod('2', '2');
-    save.click();
-    const duplicateError = byId('nachschreiber-period-error').textContent;
-    const duplicateKeptEditorOpen = !editor.hidden && periods().length === 2;
-    cancel.click();
-    const cancelKeptResults = editor.hidden && !byId('nachschreiber-results').hidden;
+    const duplicate = addRow();
+    setPeriod(duplicate, '2', '2');
+    const duplicateError = duplicate.error.textContent;
+    const draftMarkedInvalid = duplicate.lesson.getAttribute('aria-invalid') === 'true';
+    duplicate.remove.click();
+    const removingDraftKeptResults = !results.hidden && selected.children.length === 2;
 
-    selected.querySelector('[data-period-key="2-2"]').click();
-    const editValues = [weekday.value, lesson.value, remove.hidden];
-    setPeriod('3', '2');
-    save.click();
+    second.lesson.focus();
+    setValue(second.lesson, '3');
+    const duplicateEditError = second.error.textContent;
+    const duplicateKeptResults = !results.hidden;
+    const afterDuplicateEdit = suggestions();
+    second.lesson.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    const escapeDiscardedDraft = second.lesson.value === '2' && second.error.textContent === '' && !results.hidden;
+    second.weekday.focus();
+    setValue(second.weekday, '3');
     const edited = {
       labels: periods(),
-      resultsHidden: byId('nachschreiber-results').hidden,
-      focusedEntry: document.activeElement.dataset.periodKey,
+      resultsHidden: results.hidden,
+      focused: document.activeElement === second.weekday,
     };
     const afterEditing = suggestions();
-    selected.querySelector('[data-period-key="3-2"]').click();
-    setPeriod('1', '2');
-    weekday.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-    const escapeDiscardedDraft = editor.hidden && document.activeElement === selected.querySelector('[data-period-key="3-2"]')
-      && !selected.querySelector('[data-period-key="1-2"]');
-    selected.querySelector('[data-period-key="3-2"]').click();
-    remove.click();
+    second.remove.click();
     const remainingLabels = periods();
+    const deletionResetResults = results.hidden && document.activeElement === third.weekday;
     const afterRemoving = suggestions();
 
     data.setLessonTimes([{ lesson: 3, start: '11:10', end: '11:55' }]);
-    await waitFor(() => lesson.options[1]?.textContent.includes('11:10'));
-    const hiddenAfterChange = byId('nachschreiber-results').hidden;
+    await waitFor(() => third.lesson.options.length === 2);
+    const hiddenAfterChange = results.hidden;
     const afterRasterChange = suggestions();
     data.setLessonTimes([]);
-    await waitFor(() => lesson.disabled);
+    await waitFor(() => third.lesson.disabled);
     const noRaster = {
       hint: byId('nachschreiber-period-hint').textContent,
       labels: periods(),
       addDisabled: add.disabled,
+      unavailableOption: third.lesson.selectedOptions[0].disabled,
       suggestions: suggestions(),
     };
     const noRasterStudentNotice = readStudentNotice(messageButtons(resultRows.rows[0]).at(-1));
     const noRasterRequest = readStudentNotice(messageButtons(resultRows.rows[0])[0]);
-    selected.querySelector('button').click();
-    const canDeleteWithoutRaster = !editor.hidden && !remove.hidden && save.disabled;
-    remove.click();
-    const allRemoved = selected.hidden && editor.hidden;
+    data.setLessonTimes(lessonTimes);
+    await waitFor(() => !third.lesson.disabled);
+    const afterRasterRestored = suggestions();
+    const replacement = addRow();
+    setPeriod(replacement, '2', '3');
+    third.remove.click();
+    const freedDuplicateApplied = replacement.error.textContent === '' && results.hidden
+      && replacement.lesson.getAttribute('aria-invalid') === null && selected.children.length === 1;
+    const afterFreedDuplicate = suggestions();
+    const disposable = addRow();
+    disposable.weekday.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+    const escapeRemovedEmptyDraft = selected.children.length === 1 && !results.hidden;
+    data.setLessonTimes([]);
+    await waitFor(() => replacement.lesson.disabled);
+    const canDeleteWithoutRaster = !replacement.remove.disabled && replacement.weekday.disabled;
+    replacement.remove.click();
+    const allRemoved = selected.hidden && document.activeElement === duration;
     return {
       csvSource: csvSource.textContent,
       iservLink: {
@@ -733,13 +1109,16 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
       },
       initialIservLink, validIservLink, pastedIservLink, invalidIservLink, clearedIservLink,
       href: link.getAttribute('href'), target: link.target, rel: link.rel, options, openWithFocus,
-      emptyEditorRemainsOpen, searchWithDraft, focusAfterAdding, selectedLabels, withoutSelection, withBoth, lessonsWithBoth, lessonsWithLongerDuration, borderlessPeriods, duplicateError,
-      duplicateKeptEditorOpen, cancelKeptResults, editValues, edited, afterEditing, escapeDiscardedDraft,
-      remainingLabels, afterRemoving, hiddenAfterChange, afterRasterChange, noRaster, canDeleteWithoutRaster, allRemoved,
+      reusedDraft, searchWithDraft, autoAdded, focusAfterSorting, periodLayout, selectedLabels, withoutSelection, withBoth,
+      lessonsWithBoth, lessonsWithLongerDuration, borderlessPeriods, duplicateError, draftMarkedInvalid, removingDraftKeptResults,
+      duplicateEditError, duplicateKeptResults, afterDuplicateEdit, edited, afterEditing, escapeDiscardedDraft, remainingLabels,
+      deletionResetResults, afterRemoving, hiddenAfterChange, afterRasterChange, noRaster, afterRasterRestored,
+      freedDuplicateApplied, afterFreedDuplicate, escapeRemovedEmptyDraft, canDeleteWithoutRaster, allRemoved,
       noticeOpen, initialNotice, editedNotice, copies, manualCopy, noticeClosed, expectedNoticeDate: `Dienstag, ${csvDate(tuesday)}`,
       noticesWithBoth, noticesWithLongerDuration, teacherNoticeTitle, requestTitle, partialRequest, coveredRequest, editedRequest,
       studentNoticeTitle, partialStudentNotice, coveredStudentNotice, editedStudentNotice, longerStudentNotice,
-      studentNoticeWithoutName, fullNoticeVisible, signedNotices, noRasterStudentNotice, noRasterRequest, expectedMondayDate: `Montag, ${csvDate(monday)}`,
+      studentNoticeWithoutName, fullNoticeVisible, signedNotices, defaultSenders, savedSenderAfterOverride,
+      noRasterStudentNotice, noRasterRequest, expectedMondayDate: `Montag, ${csvDate(monday)}`,
     };
   });
 
@@ -747,8 +1126,8 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   assert.deepEqual(result.iservLink, {
     target: '_blank',
     rel: 'noopener noreferrer',
-    label: 'Klausurenplan in IServ öffnen',
-    text: 'Öffnen',
+    label: 'IServ-Klausurenplan',
+    text: 'IServ-Klausurenplan',
     placeholder: 'mein-iserv',
     belowPath: true,
   });
@@ -767,14 +1146,16 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   assert.equal(result.href, 'https://login.schulmanager-online.de/#/modules/schedules/view/student/');
   assert.equal(result.target, '_blank');
   assert.match(result.rel, /\bnoopener\b/);
-  assert.deepEqual(result.options, ['2. Stunde (08:50–09:35)', '3. Stunde (09:40–10:25)', '4. Stunde (10:25–11:10)']);
+  assert.deepEqual(result.options, [['Mo', 'Di', 'Mi', 'Do', 'Fr'], ['2', '3', '4']]);
   assert.equal(result.openWithFocus, true);
-  assert.equal(result.emptyEditorRemainsOpen, true);
+  assert.equal(result.reusedDraft, true);
   assert.deepEqual(result.searchWithDraft, result.withoutSelection);
-  assert.equal(result.focusAfterAdding, true);
+  assert.equal(result.autoAdded, true);
+  assert.equal(result.focusAfterSorting, true);
+  assert.equal(result.periodLayout, true);
   assert.equal(result.borderlessPeriods, true);
-  const tuesdayThirdLesson = ['2-3', 'Dienstag', '3. Stunde · 09:40–10:25'];
-  assert.deepEqual(result.selectedLabels, [['2-2', 'Dienstag', '2. Stunde · 08:50–09:35'], tuesdayThirdLesson]);
+  const tuesdayThirdLesson = ['2', '3'];
+  assert.deepEqual(result.selectedLabels, [['2', '2'], tuesdayThirdLesson]);
   const chronological = [['Kürzel', ''], ['Vorname-B Nachname-B', ''], ['Vorname-C von Nachname-C', '']];
   assert.deepEqual(result.withoutSelection, chronological);
   assert.deepEqual(result.withBoth, [
@@ -794,17 +1175,17 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   assert.equal(result.noticeOpen, true);
   assert.equal(result.teacherNoticeTitle, 'Reguläre Lehrkraft informieren');
   assert.equal(result.initialNotice, [
-    'Hallo [Name der Lehrkraft],',
-    `am ${result.expectedNoticeDate} würde ich gerne Lernperson A (9b) in der 2. Stunde eine versäumte schriftliche Arbeit nachschreiben lassen.`,
-    'Da der Nachschreibtermin in deinen Unterricht fällt, würde ich dich bitten, das Fehlen für diesen Zeitraum zu entschuldigen.',
-    'Vielen Dank und viele Grüße',
+    'Hallo [Lehrkraftname],',
+    `am ${result.expectedNoticeDate.replace(', ', ', den ')}, würde ich gerne Lernperson A (9b) in der 2. Stunde eine versäumte schriftliche Arbeit nachschreiben lassen.`,
+    'Da der Nachschreibtermin in Deinen Unterricht fällt, möchte ich Dich fragen, ob Du damit einverstanden wärst, dass Lernperson A in dieser Stunde die Arbeit nachschreibt.',
+    'Viele Grüße',
     '[Absender]',
   ].join('\n'));
-  const expectedRequest = (firstName, lesson, groups, studentName) => [
+  const expectedRequest = (firstName, lesson, groups, studentName, date = result.expectedNoticeDate) => [
     `Hallo ${firstName},`,
-    `am ${result.expectedNoticeDate} würde ich gerne in der ${lesson} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
-    `Wäre es möglich, dass ${studentName} (9b) die Arbeit parallel zu deiner schriftlichen Arbeit in der Lerngruppe „${groups}“ unter deiner Aufsicht nachschreibt? Falls ja, in welchem Raum schreibst du die Arbeit?`,
-    'Vielen Dank und viele Grüße',
+    `am ${date.replace(', ', ', den ')}, würde ich gerne in der ${lesson} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
+    `Wäre es möglich, dass ${studentName} (9b) unter Deiner Aufsicht zusammen mit Deiner Lerngruppe „${groups}“, für die Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, die Arbeit nachschreibt? Falls ja, in welchem Raum schreibst Du die Arbeit?`,
+    'Viele Grüße',
     '[Absender]',
   ].join('\n');
   assert.equal(result.requestTitle, 'Aufsicht anfragen');
@@ -814,11 +1195,11 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   const expectedStudentNotice = (date, lastName, lesson, includesTeacherNotice, studentName = '[Prüflingsname]') => [
     `Hallo ${studentName},`,
     'hoffentlich geht es Dir bald wieder besser!',
-    `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem Herr/Frau ${lastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
+    `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem die Lehrkraft ${lastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
     ...(includesTeacherNotice ? [
       'Die Lehrkraft, bei der Du zu diesem Zeitpunkt regulär Unterricht hättest, habe ich bereits informiert. Dennoch würde ich Dich bitten, sie auch selbst über Deinen Nachschreibtermin in Kenntnis zu setzen.',
     ] : []),
-    `Dein Nachschreibtermin:\n\n- Datum: ${date}\n- Raum: [XXX]\n- Stunde: ${lesson}`,
+    `Dein Nachschreibtermin:\n\n- Datum: ${date}\n- Raum: [XXX]\n- Zeit: ${lesson}`,
     'Bitte denk daran, dass Du in der Sekundarstufe I (Jahrgänge 5–10) eine schriftliche Entschuldigung bzw. in der Sekundarstufe II (Jahrgänge 11–13) eine ärztliche Bescheinigung vorlegen musst, um nachschreiben zu können.',
     'Viele Grüße\n[Absender]',
   ].join('\n\n');
@@ -827,22 +1208,26 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   assert.equal(result.partialStudentNotice, expectedStudentNotice(result.expectedNoticeDate, 'Nachname-B', '2. Stunde', true, 'Lernperson C'));
   assert.equal(result.coveredStudentNotice, expectedStudentNotice(result.expectedNoticeDate, 'von Nachname-C', '3. Stunde', false, 'Lernperson D'));
   assert.equal(result.studentNoticeWithoutName, expectedStudentNotice(result.expectedNoticeDate, 'von Nachname-C', '3. Stunde', false));
+  assert.deepEqual(result.defaultSenders, ['Test-Absender', 'Test-Absender', 'Test-Absender']);
+  assert.equal(result.savedSenderAfterOverride, 'Test-Absender');
   assert.deepEqual(result.signedNotices, [
-    ['Vielen Dank und viele Grüße', 'Lehrkraft Z'], ['Vielen Dank und viele Grüße', 'Lehrkraft Z'], ['Viele Grüße', 'Lehrkraft Z'],
+    ['Viele Grüße', 'Lehrkraft Z'], ['Viele Grüße', 'Lehrkraft Z'], ['Viele Grüße', 'Lehrkraft Z'],
   ]);
   assert.equal(result.longerStudentNotice, expectedStudentNotice(result.expectedNoticeDate, 'von Nachname-C', '3. und 4. Stunde', true));
-  assert.equal(result.noRasterRequest, expectedRequest('Kürzel', '[XXX]. Stunde', '5a', '[Prüflingsname]').replace(result.expectedNoticeDate, result.expectedMondayDate));
+  assert.equal(result.noRasterRequest, expectedRequest('Kürzel', '[XXX]. Stunde', '5a', '[Prüflingsname]', result.expectedMondayDate));
   assert.equal(result.noRasterStudentNotice, expectedStudentNotice(result.expectedMondayDate, '[Nachname der Lehrkraft]', '[Stunde]', true));
   assert.equal(result.manualCopy, result.editedNotice);
   assert.equal(result.noticeClosed, true);
   assert.match(result.duplicateError, /bereits eingetragen/);
-  assert.equal(result.duplicateKeptEditorOpen, true);
-  assert.equal(result.cancelKeptResults, true);
-  assert.deepEqual(result.editValues, ['2', '2', false]);
+  assert.equal(result.draftMarkedInvalid, true);
+  assert.equal(result.removingDraftKeptResults, true);
+  assert.match(result.duplicateEditError, /bisherige Auswahl gilt weiter/);
+  assert.equal(result.duplicateKeptResults, true);
+  assert.deepEqual(result.afterDuplicateEdit, result.withBoth);
   assert.deepEqual(result.edited, {
-    labels: [tuesdayThirdLesson, ['3-2', 'Mittwoch', '2. Stunde · 08:50–09:35']],
+    labels: [tuesdayThirdLesson, ['3', '2']],
     resultsHidden: true,
-    focusedEntry: '3-2',
+    focused: true,
   });
   const onlyThirdLessonMatches = [
     ['Vorname-C von Nachname-C', 'Überschneidung mit Freistunde (3. Stunde)'], ['Kürzel', ''], ['Vorname-B Nachname-B', ''],
@@ -850,13 +1235,19 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   assert.deepEqual(result.afterEditing, onlyThirdLessonMatches);
   assert.equal(result.escapeDiscardedDraft, true);
   assert.deepEqual(result.remainingLabels, [tuesdayThirdLesson]);
+  assert.equal(result.deletionResetResults, true);
   assert.deepEqual(result.afterRemoving, onlyThirdLessonMatches);
   assert.equal(result.hiddenAfterChange, true);
   assert.deepEqual(result.afterRasterChange, chronological);
   assert.equal(result.noRaster.hint, 'Für Freistunden werden hinterlegte Unterrichtszeiten benötigt.');
-  assert.deepEqual(result.noRaster.labels, [['2-3', 'Dienstag', '3. Stunde (ohne Uhrzeit)']]);
+  assert.deepEqual(result.noRaster.labels, [tuesdayThirdLesson]);
   assert.equal(result.noRaster.addDisabled, true);
+  assert.equal(result.noRaster.unavailableOption, true);
   assert.deepEqual(result.noRaster.suggestions, chronological);
+  assert.deepEqual(result.afterRasterRestored, onlyThirdLessonMatches);
+  assert.equal(result.freedDuplicateApplied, true);
+  assert.deepEqual(result.afterFreedDuplicate, onlyThirdLessonMatches);
+  assert.equal(result.escapeRemovedEmptyDraft, true);
   assert.equal(result.canDeleteWithoutRaster, true);
   assert.equal(result.allRemoved, true);
 });

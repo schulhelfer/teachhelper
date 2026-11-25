@@ -7,6 +7,28 @@
   overflow-wrap: anywhere;
 }
 
+button.nachschreiber-settings-trigger {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  width: 38px;
+  min-height: 38px;
+  padding: 0;
+  border-radius: 12px;
+  background: var(--surface-control-glass);
+  font-size: 1.25rem;
+  line-height: 1;
+}
+
+.nachschreiber-settings-dialog {
+  width: min(420px, calc(100vw - 32px));
+  min-width: 0;
+}
+
+.nachschreiber-settings-dialog .dialog-form input[type='text'] {
+  width: 100%;
+}
+
 .app.app-tab-nachschreiber>.main {
   overflow: auto;
 }
@@ -14,7 +36,7 @@
 .nachschreiber-shell {
   min-width: 0;
   min-height: 0;
-  padding: clamp(16px, 3vw, 36px);
+  padding: calc(var(--app-content-top-space) + 2px) 6px 24px;
 }
 
 .app.is-collapsing .nachschreiber-shell,
@@ -26,7 +48,6 @@
   display: grid;
   gap: 16px;
   max-width: 1080px;
-  margin-inline: auto;
 }
 
 #nachschreiber-result-status {
@@ -38,12 +59,40 @@
 }
 
 #nachschreiber-csv-status {
+  min-height: calc(2lh + 7px);
+  line-height: 1.4;
   white-space: pre-line;
 }
 
-#nachschreiber-csv-status.is-error {
+.nachschreiber-file-list,
+.nachschreiber-file-errors {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  font-size: 14px;
+}
+
+.nachschreiber-file-list > li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: center;
+  gap: 8px;
+}
+
+.nachschreiber-file-list > li + li,
+.nachschreiber-file-errors > li + li {
+  margin-top: 4px;
+}
+
+.nachschreiber-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.nachschreiber-file-errors {
   color: var(--danger);
-  opacity: 1;
+  overflow-wrap: anywhere;
 }
 
 .nachschreiber-iserv-row {
@@ -265,33 +314,6 @@ button.nachschreiber-calendar-clear {
   margin: 0;
 }
 
-.nachschreiber-period-editor {
-  margin-top: 8px;
-}
-
-.nachschreiber-period-controls {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 160px), 1fr));
-  gap: 8px;
-}
-
-.nachschreiber-period-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 8px;
-}
-
-.nachschreiber-period-actions button {
-  min-height: 32px;
-  padding: 5px 8px;
-  font-size: 13px;
-}
-
-.nachschreiber-period-error {
-  color: var(--danger);
-}
-
 .nachschreiber-period-list {
   display: grid;
   gap: 7px;
@@ -300,32 +322,40 @@ button.nachschreiber-calendar-clear {
   list-style: none;
 }
 
-.nachschreiber-period-entry {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 2px 8px;
-  width: 100%;
-  min-height: 30px;
-  padding: 4px 0;
-  border: 0;
-  background: transparent;
-  color: var(--text);
-  box-shadow: none;
-  text-align: start;
+.nachschreiber-period-row {
+  display: grid;
+  grid-template-columns: minmax(0, 84px) minmax(0, 74px) 36px;
+  align-items: center;
+  gap: 6px;
+}
+
+.nachschreiber-period-row select {
+  min-height: 36px;
+  padding: 5px 24px 5px 8px;
   font-size: 14px;
 }
 
-.nachschreiber-period-entry:hover:not(:disabled) {
-  background: transparent;
-  box-shadow: none;
-  text-decoration: underline;
-  transform: none;
+.nachschreiber-period-row select[aria-invalid='true'] {
+  border-color: var(--danger);
 }
 
-.nachschreiber-period-time {
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 400;
+button.nachschreiber-period-delete,
+button.nachschreiber-file-remove {
+  width: 36px;
+  min-width: 36px;
+  height: 36px;
+  min-height: 36px;
+  padding: 0;
+  line-height: 1;
+}
+
+.nachschreiber-period-error {
+  grid-column: 1 / -1;
+  color: var(--danger);
+}
+
+.nachschreiber-period-error:empty {
+  position: absolute;
 }
 
 button.nachschreiber-period-add {
@@ -340,8 +370,7 @@ button.nachschreiber-period-add {
   box-shadow: none;
 }
 
-.nachschreiber-period-add:focus-visible,
-.nachschreiber-period-entry:focus-visible {
+.nachschreiber-period-add:focus-visible {
   outline: 2px solid var(--focus-outline);
   outline-offset: 2px;
 }
@@ -361,10 +390,6 @@ button.nachschreiber-period-add {
 
 .nachschreiber-period-add::after {
   transform: translate(-50%, -50%) rotate(90deg);
-}
-
-#nachschreiber-period-error:empty {
-  position: absolute;
 }
 
 .nachschreiber-period-match {
@@ -427,6 +452,7 @@ button.nachschreiber-period-add {
   font-size: 13px;
 }
 
+.nachschreiber-results th:nth-child(2),
 .nachschreiber-results td:nth-child(-n+2) {
   white-space: nowrap;
 }

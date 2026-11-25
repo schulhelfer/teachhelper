@@ -388,6 +388,9 @@
       <section id="nachschreiber-sidebar" class="nachschreiber-sidebar" hidden aria-labelledby="nachschreiber-title">
         <div class="sidebar-header">
           <h1 id="nachschreiber-title" class="sidebar-title">Nachschreiber</h1>
+          <button id="nachschreiber-settings-trigger" class="ghost nachschreiber-settings-trigger" type="button"
+            aria-label="Einstellungen" title="Einstellungen" aria-haspopup="dialog"
+            aria-controls="nachschreiber-settings-dialog">⚙️</button>
         </div>
         <form id="nachschreiber-form" class="steps nachschreiber-form">
           <ol class="steps-list">
@@ -400,12 +403,12 @@
                   <input id="nachschreiber-iserv-prefix" type="text" placeholder="mein-iserv" autocomplete="off"
                     autocapitalize="none" spellcheck="false" aria-describedby="nachschreiber-iserv-link-hint" />
                   <a id="nachschreiber-iserv-link" class="nachschreiber-link-button" target="_blank" rel="noopener noreferrer"
-                    aria-label="Klausurenplan in IServ öffnen" hidden>Öffnen</a>
+                    aria-label="IServ-Klausurenplan" hidden>IServ-Klausurenplan</a>
                 </div>
                 <span id="nachschreiber-iserv-link-hint" class="hint" role="status" hidden>Gib einen gültigen IServ-Namen ein, zum Beispiel <code>mein-iserv</code>.</span>
               </div>
               <div id="nachschreiber-drop-zone" class="file-upload mt-sm">
-                <input id="nachschreiber-file" type="file" accept=".csv,text/csv"
+                <input id="nachschreiber-file" type="file" accept=".csv,text/csv,.pdf,application/pdf" multiple
                   aria-describedby="nachschreiber-csv-source" />
                 <label for="nachschreiber-file" class="file-trigger">
                   <span class="file-trigger-copy">Auswählen<br>oder<br>Ablegen</span>
@@ -414,6 +417,8 @@
                   </span>
                 </label>
               </div>
+              <ul id="nachschreiber-file-list" class="nachschreiber-file-list" aria-label="Geladene Klausurenpläne" hidden></ul>
+              <ul id="nachschreiber-file-errors" class="nachschreiber-file-errors" aria-live="polite" hidden></ul>
             </li>
             <li>
               <strong>Lerngruppe auswählen</strong>
@@ -453,35 +458,27 @@
               <strong id="nachschreiber-period-heading">Wöchentliche Freistunden (optional)</strong>
               <div class="nachschreiber-free-periods" role="group" aria-labelledby="nachschreiber-period-heading" aria-describedby="nachschreiber-period-hint">
                 <p id="nachschreiber-period-hint" class="hint" role="status"></p>
+                <template id="nachschreiber-period-row">
+                  <li class="nachschreiber-period-row">
+                    <select class="nachschreiber-period-weekday" aria-label="Wochentag">
+                      <option value="" disabled selected>Tag</option>
+                      <option value="1" aria-label="Montag">Mo</option>
+                      <option value="2" aria-label="Dienstag">Di</option>
+                      <option value="3" aria-label="Mittwoch">Mi</option>
+                      <option value="4" aria-label="Donnerstag">Do</option>
+                      <option value="5" aria-label="Freitag">Fr</option>
+                    </select>
+                    <select class="nachschreiber-period-lesson" aria-label="Stunde">
+                      <option value="" disabled selected>Std.</option>
+                    </select>
+                    <button class="danger-action app-action-icon nachschreiber-period-delete" type="button"
+                      aria-label="Freistunde löschen" title="Freistunde löschen">🗑️</button>
+                    <p class="hint nachschreiber-period-error" role="alert"></p>
+                  </li>
+                </template>
                 <ul id="nachschreiber-period-list" class="nachschreiber-period-list" aria-label="Ausgewählte Freistunden" hidden></ul>
                 <button id="nachschreiber-add-period" class="ghost nachschreiber-period-add" type="button"
-                  aria-label="Freistunde hinzufügen" title="Freistunde hinzufügen" aria-controls="nachschreiber-period-editor"
-                  aria-expanded="false" disabled></button>
-                <div id="nachschreiber-period-editor" class="nachschreiber-period-editor" role="group" aria-label="Freistunde hinzufügen" hidden>
-                  <div class="nachschreiber-period-controls">
-                    <label for="nachschreiber-period-weekday">Wochentag
-                      <select id="nachschreiber-period-weekday">
-                        <option value="">Auswählen</option>
-                        <option value="1">Montag</option>
-                        <option value="2">Dienstag</option>
-                        <option value="3">Mittwoch</option>
-                        <option value="4">Donnerstag</option>
-                        <option value="5">Freitag</option>
-                      </select>
-                    </label>
-                    <label for="nachschreiber-period-lesson">Stunde
-                      <select id="nachschreiber-period-lesson" disabled>
-                        <option value="">Auswählen</option>
-                      </select>
-                    </label>
-                  </div>
-                  <p id="nachschreiber-period-error" class="hint nachschreiber-period-error" role="alert"></p>
-                  <div class="nachschreiber-period-actions">
-                    <button id="nachschreiber-period-save" class="primary" type="button">Speichern</button>
-                    <button id="nachschreiber-period-cancel" class="ghost" type="button">Abbrechen</button>
-                    <button id="nachschreiber-period-delete" class="danger-action" type="button" hidden>Löschen</button>
-                  </div>
-                </div>
+                  aria-label="Freistunde hinzufügen" title="Freistunde hinzufügen" aria-controls="nachschreiber-period-list" disabled></button>
               </div>
             </li>
             <li>
@@ -573,6 +570,21 @@
             </table>
           </div>
         </div>
+        <dialog id="nachschreiber-settings-dialog" class="nachschreiber-settings-dialog"
+          aria-labelledby="nachschreiber-settings-title" data-dialog-resize="off">
+          <form class="dialog-form" method="dialog" autocomplete="off">
+            <h2 id="nachschreiber-settings-title" class="dialog-title">Einstellungen</h2>
+            <label for="nachschreiber-default-sender-name">Name des Absenders
+              <input id="nachschreiber-default-sender-name" type="text" autofocus />
+            </label>
+            <p id="nachschreiber-settings-database-hint" class="dialog-status" role="status" hidden>Öffne zuerst eine TeachHelper-Datenbank in der Planung.</p>
+            <p id="nachschreiber-settings-error" class="dialog-status is-error" role="alert" hidden></p>
+            <div class="dialog-actions">
+              <button id="nachschreiber-settings-cancel" class="ghost" type="button">Abbrechen</button>
+              <button id="nachschreiber-settings-save" class="primary" type="submit">Speichern</button>
+            </div>
+          </form>
+        </dialog>
         <dialog id="nachschreiber-date-calendar" class="nachschreiber-date-calendar" aria-label="Datum auswählen" data-dialog-resize="off">
           <div class="nachschreiber-calendar-content">
             <div class="nachschreiber-calendar-header">
