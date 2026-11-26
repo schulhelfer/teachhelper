@@ -64,12 +64,16 @@ function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source 
   ].join('\n');
 }
 
-function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePeriods }, studentName, { firstName, lastName }) {
+function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePeriods }, students, { firstName, lastName }) {
   const teacherLastName = teacher.replace(/^\S+\s*/, '') || '[Nachname der Lehrkraft]';
   const signature = [firstName, lastName].filter(Boolean).join(' ') || '[Absender]';
   const lesson = makeupLessons.length ? formatLessons(makeupLessons) : '[Stunde]';
+  const multiple = students.length > 1;
+  const greeting = students
+    .map(({ name }, index) => `${index === 0 ? 'Hallo' : 'hallo'} ${name || (multiple ? `[Prüflingsname ${index + 1}]` : '[Prüflingsname]')}`)
+    .join(', ');
   const paragraphs = [
-    `Hallo ${studentName},`,
+    `${greeting},`,
     'hoffentlich geht es Dir bald wieder besser!',
     `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem die Lehrkraft ${teacherLastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
   ];
@@ -859,9 +863,9 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
           buildTeacherNotice(dateInSentence, exam, student.studentClass, student.name || '[Prüflingsname]', sender)
         ), true));
       }
-      noticeCell.append(createNoticeButton('Prüfling informieren', date, ([student], sender) => (
-        buildStudentNotice(date, exam, student.name || '[Prüflingsname]', sender)
-      ), true));
+      noticeCell.append(createNoticeButton('Prüfling informieren', date, (recipients, sender) => (
+        buildStudentNotice(date, exam, recipients, sender)
+      )));
       return row;
     });
     resultRows.replaceChildren(...rows);

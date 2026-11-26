@@ -494,17 +494,20 @@ test('Nachschreiber sucht einen gemeinsamen Termin und adressiert einzelne Nachr
     closeNotice();
     openNotice('Reguläre Lehrkraft informieren');
     const noRecipient = { text: noticeText.value, copyDisabled: noticeCopy.disabled, focused: document.activeElement === noticeRecipient };
-    const teacherBeta = chooseRecipient('1');
-    closeNotice();
-    openNotice('Prüfling informieren');
     const options = [...noticeRecipient.options].slice(1).map((option) => option.textContent);
-    const studentAlpha = chooseRecipient('0');
+    const teacherAlpha = chooseRecipient('0');
     noticeText.value += '\nEntwurf für Alpha';
-    const studentBeta = chooseRecipient('1');
+    const teacherBeta = chooseRecipient('1');
     const restoredAlpha = chooseRecipient('0');
-    const studentUnnamed = chooseRecipient('2');
     closeNotice();
     const clearedNotice = noticeText.value === '' && noticeRecipient.options.length === 1;
+    openNotice('Prüfling informieren');
+    const sharedStudentNotice = {
+      text: noticeText.value,
+      selectorHidden: byId('notice-student-field').hidden,
+      copyDisabled: noticeCopy.disabled,
+    };
+    closeNotice();
 
     select(second.querySelector('select'), '12');
     const clearedOnGroupChange = resultRows.rows.length === 0;
@@ -520,7 +523,7 @@ test('Nachschreiber sucht einen gemeinsamen Termin und adressiert einzelne Nachr
     closeNotice();
     return {
       singleRows, focusAfterAdd, clearedOnAdd, incompleteRows, incompleteInvalid, validLabels, sharedRows, sharedCountHeading,
-      supervision, noRecipient, teacherBeta, options, studentAlpha, studentBeta, restoredAlpha, studentUnnamed, clearedNotice,
+      supervision, noRecipient, options, teacherAlpha, teacherBeta, restoredAlpha, clearedNotice, sharedStudentNotice,
       clearedOnGroupChange, clearedOnRemove, lastCannotBeRemoved, remainingRows, remainingNotice,
     };
   });
@@ -540,14 +543,14 @@ test('Nachschreiber sucht einen gemeinsamen Termin und adressiert einzelne Nachr
   assert.match(observed.teacherBeta, /\nTest-Vorname$/);
   assert.doesNotMatch(observed.teacherBeta, /Prüfperson Alpha|Prüflingsname|\(9b\)/);
   assert.deepEqual(observed.options, ['Prüfperson Alpha (9b)', 'Prüfperson Beta (11c)', 'Prüfling 3 (9b)']);
-  assert.match(observed.studentAlpha, /^Hallo Prüfperson Alpha,/);
-  assert.match(observed.studentAlpha, /\nTest-Vorname Test-Nachname$/);
-  assert.doesNotMatch(observed.studentAlpha, /Prüfperson Beta/);
-  assert.match(observed.studentBeta, /^Hallo Prüfperson Beta,/);
-  assert.doesNotMatch(observed.studentBeta, /Prüfperson Alpha|Entwurf für Alpha/);
-  assert.equal(observed.restoredAlpha, `${observed.studentAlpha}\nEntwurf für Alpha`);
-  assert.match(observed.studentUnnamed, /^Hallo \[Prüflingsname\],/);
+  assert.match(observed.teacherAlpha, /Prüfperson Alpha \(9b\)/);
+  assert.doesNotMatch(observed.teacherBeta, /Entwurf für Alpha/);
+  assert.equal(observed.restoredAlpha, `${observed.teacherAlpha}\nEntwurf für Alpha`);
   assert.equal(observed.clearedNotice, true);
+  assert.equal(observed.sharedStudentNotice.selectorHidden, true);
+  assert.equal(observed.sharedStudentNotice.copyDisabled, false);
+  assert.match(observed.sharedStudentNotice.text, /^Hallo Prüfperson Alpha, hallo Prüfperson Beta, hallo \[Prüflingsname 3\],\n\nhoffentlich geht es Dir bald wieder besser!/);
+  assert.match(observed.sharedStudentNotice.text, /\nTest-Vorname Test-Nachname$/);
   assert.equal(observed.clearedOnGroupChange, true);
   assert.equal(observed.clearedOnRemove, true);
   assert.equal(observed.lastCannotBeRemoved, true);
