@@ -3,7 +3,7 @@ import { WorkspacePersistence, downloadBytes } from './workspace-persistence.js'
 import { GradeVault } from './grade-vault.js';
 import { CourseRepository } from './course-repository.js';
 import { NACHSCHREIBER_DEFAULT_SENDER_SETTING } from '../../shared/school-data/defaults.js';
-import { NACHSCHREIBER_DRAFT_SETTING, normalizeNachschreiberDraft } from '../../shared/school-data/nachschreiber-draft.js';
+import { NACHSCHREIBER_DRAFT_SETTING, normalizeNachschreiberDraft, normalizeNachschreiberSenderName } from '../../shared/school-data/nachschreiber-draft.js';
 import {
   WORKSPACE_COMMAND_APPLY_SETTINGS,
   WORKSPACE_COMMAND_CREATE_COURSE,
@@ -972,9 +972,10 @@ export class WorkspaceRuntime {
 
   async saveNachschreiberDefaultSenderName(value) {
     if (!this.hasShellDatabaseConnection() || !this.isPersistenceReady()) return false;
-    const name = value.trim();
+    const name = normalizeNachschreiberSenderName(value);
+    const previousName = normalizeNachschreiberSenderName(this.store.getSetting(NACHSCHREIBER_DEFAULT_SENDER_SETTING));
     const previousSave = this.lastQueuedSyncSave;
-    if (this.store.getSetting(NACHSCHREIBER_DEFAULT_SENDER_SETTING, '') !== name) {
+    if (previousName.firstName !== name.firstName || previousName.lastName !== name.lastName) {
       this.store.setSetting(NACHSCHREIBER_DEFAULT_SENDER_SETTING, name);
     }
     if (this.isManualPersistenceMode()) {

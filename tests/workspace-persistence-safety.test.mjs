@@ -499,10 +499,12 @@ test('the Nachschreiber sender default waits for a single connected database wri
   const previousRevision = parseContainer(bytes).header.revision;
   handle.setWriteDelay(25);
 
-  assert.equal(await runtime.saveNachschreiberDefaultSenderName(' Test-Absender '), true);
+  assert.equal(await runtime.saveNachschreiberDefaultSenderName({ firstName: ' Test-Vorname ', lastName: ' Test-Nachname ' }), true);
   const saved = parseContainer(handle.read());
   assert.equal(saved.header.revision, previousRevision + 1);
-  assert.equal(JSON.parse(saved.planningPublicText).settings.nachschreiberDefaultSenderName, 'Test-Absender');
+  assert.deepEqual(JSON.parse(saved.planningPublicText).settings.nachschreiberDefaultSenderName, {
+    firstName: 'Test-Vorname', lastName: 'Test-Nachname',
+  });
   await settle(runtime);
   assert.deepEqual(parseContainer(handle.read()), saved);
 });
@@ -515,9 +517,9 @@ test('Nachschreiber draft autosaves and queued writes stay bound to the connecte
   const { generation } = runtime.getNachschreiberWorkSession();
   const draftSettings = (file) => JSON.parse(parseContainer(file.read()).planningPublicText).settings;
 
-  assert.equal(runtime.updateNachschreiberDraft(generation, { senderName: 'Test-Entwurf' }), true);
+  assert.equal(runtime.updateNachschreiberDraft(generation, { sender: { lastName: 'Test-Nachname' } }), true);
   assert.equal(await runtime.lastQueuedSyncSave, true);
-  assert.equal(draftSettings(handle).nachschreiberDraft.senderName, 'Test-Entwurf');
+  assert.deepEqual(draftSettings(handle).nachschreiberDraft.sender, { firstName: '', lastName: 'Test-Nachname' });
   assert.equal(runtime.updateNachschreiberDraft(generation, null), true);
   assert.equal(await runtime.lastQueuedSyncSave, true);
   assert.equal(draftSettings(handle).nachschreiberDraft, null);

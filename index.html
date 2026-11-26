@@ -522,8 +522,17 @@
               </div>
             </li>
             <li>
-              <label class="nachschreiber-step-label" for="nachschreiber-sender-name">Eigener Name (optional)</label>
-              <input id="nachschreiber-sender-name" type="text" autocomplete="name" />
+              <strong id="nachschreiber-sender-heading" class="nachschreiber-step-label">Eigener Name (optional)</strong>
+              <div class="nachschreiber-name-fields" role="group" aria-labelledby="nachschreiber-sender-heading">
+                <div>
+                  <label for="nachschreiber-sender-first-name">Vorname</label>
+                  <input id="nachschreiber-sender-first-name" type="text" autocomplete="given-name" />
+                </div>
+                <div>
+                  <label for="nachschreiber-sender-last-name">Nachname</label>
+                  <input id="nachschreiber-sender-last-name" type="text" autocomplete="family-name" />
+                </div>
+              </div>
             </li>
           </ol>
           <div class="nachschreiber-form-actions mt-md">
@@ -598,9 +607,17 @@
           aria-labelledby="nachschreiber-settings-title" data-dialog-resize="off">
           <form class="dialog-form" method="dialog" autocomplete="off">
             <h2 id="nachschreiber-settings-title" class="dialog-title">Einstellungen</h2>
-            <label for="nachschreiber-default-sender-name">Name des Absenders
-              <input id="nachschreiber-default-sender-name" type="text" autofocus />
-            </label>
+            <div role="group" aria-labelledby="nachschreiber-default-sender-heading">
+              <strong id="nachschreiber-default-sender-heading">Name des Absenders</strong>
+              <div class="nachschreiber-name-fields">
+                <label for="nachschreiber-default-sender-first-name">Vorname
+                  <input id="nachschreiber-default-sender-first-name" type="text" autofocus />
+                </label>
+                <label for="nachschreiber-default-sender-last-name">Nachname
+                  <input id="nachschreiber-default-sender-last-name" type="text" />
+                </label>
+              </div>
+            </div>
             <p id="nachschreiber-settings-database-hint" class="dialog-status" role="status" hidden>Öffne zuerst eine TeachHelper-Datenbank in der Planung.</p>
             <p id="nachschreiber-settings-error" class="dialog-status is-error" role="alert" hidden></p>
             <div class="dialog-actions">

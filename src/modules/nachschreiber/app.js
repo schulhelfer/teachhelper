@@ -2,7 +2,7 @@ import { assertFileSizeAtMost, FILE_LIMITS, readFileArrayBufferWithTimeout } fro
 import { dataTransferHasFiles, isCsvFile } from '../../shared/file-io.js';
 import { NACHSCHREIBER_DEFAULT_SENDER_SETTING } from '../../shared/school-data/defaults.js';
 import { WORKSPACE_STATE_EVENT } from '../../shared/school-data/messages.js';
-import { NACHSCHREIBER_DRAFT_SETTING, normalizeNachschreiberDraft } from '../../shared/school-data/nachschreiber-draft.js';
+import { NACHSCHREIBER_DRAFT_SETTING, normalizeNachschreiberDraft, normalizeNachschreiberSenderName } from '../../shared/school-data/nachschreiber-draft.js';
 import { mountDateCalendar } from './date-calendar.js';
 import { readPdfExamSchedule } from './pdf-schedule.js';
 import { getUsableLessonTimes, mergeExamSchedules, parseExamSchedule, rankExamSuggestions } from './schedule.js';
@@ -35,17 +35,17 @@ function formatLessonPhrase(lessons) {
   return lessons.length ? formatLessons(lessons) : '[XXX]. Stunde';
 }
 
-function buildTeacherNotice(date, { makeupLessons }, studentClass, studentName, senderName) {
+function buildTeacherNotice(date, { makeupLessons }, studentClass, studentName, { firstName }) {
   return [
     'Hallo [Lehrkraftname],',
     `am ${date}, würde ich gerne ${studentName} (${studentClass}) in der ${formatLessonPhrase(makeupLessons)} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
     `Da der Nachschreibtermin in Deinen Unterricht fällt, möchte ich Dich fragen, ob Du damit einverstanden wärst, dass ${studentName} in dieser Stunde die Arbeit nachschreibt.`,
     'Viele Grüße',
-    senderName,
+    firstName || '[Vorname]',
   ].join('\n');
 }
 
-function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source }, students, senderName) {
+function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source }, students, { firstName: senderFirstName }) {
   const firstName = teacher.split(/\s+/, 1)[0] || '[Lehrkraftname]';
   const group = source === 'pdf' ? `Deinem Kurs „${groups}“, für den` : `Deiner Lerngruppe „${groups}“, für die`;
   const multiple = students.length > 1;
@@ -60,17 +60,18 @@ function buildSupervisionRequest(date, { teacher, groups, makeupLessons, source 
     `am ${date}, würde ich gerne in der ${formatLessonPhrase(makeupLessons)} ${work} nachschreiben lassen.`,
     `Wäre es möglich, dass ${studentList} unter Deiner Aufsicht zusammen mit ${group} Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, ${action}?`,
     'Viele Grüße',
-    senderName,
+    senderFirstName || '[Vorname]',
   ].join('\n');
 }
 
-function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePeriods }, studentName, senderName) {
-  const lastName = teacher.replace(/^\S+\s*/, '') || '[Nachname der Lehrkraft]';
+function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePeriods }, studentName, { firstName, lastName }) {
+  const teacherLastName = teacher.replace(/^\S+\s*/, '') || '[Nachname der Lehrkraft]';
+  const signature = [firstName, lastName].filter(Boolean).join(' ') || '[Absender]';
   const lesson = makeupLessons.length ? formatLessons(makeupLessons) : '[Stunde]';
   const paragraphs = [
     `Hallo ${studentName},`,
     'hoffentlich geht es Dir bald wieder besser!',
-    `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem die Lehrkraft ${lastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
+    `Für das Nachschreiben Deiner versäumten schriftlichen Arbeit habe ich Dich für einen Termin angemeldet, an dem die Lehrkraft ${teacherLastName} bereits eine schriftliche Arbeit in einer anderen Lerngruppe durchführt. Du erhältst dort Deine Arbeit und schreibst diese unter der Aufsicht der Lehrkraft nach.`,
   ];
   if (!fullyCoveredByFreePeriods) {
     paragraphs.push('Die Lehrkraft, bei der Du zu diesem Zeitpunkt regulär Unterricht hättest, habe ich bereits informiert. Dennoch würde ich Dich bitten, sie auch selbst über Deinen Nachschreibtermin in Kenntnis zu setzen.');
@@ -78,7 +79,7 @@ function buildStudentNotice(date, { teacher, makeupLessons, fullyCoveredByFreePe
   paragraphs.push(
     `Dein Nachschreibtermin:\n\n- Datum: ${date}\n- Raum: [XXX]\n- Zeit: ${lesson}`,
     'Bitte denk daran, dass Du in der Sekundarstufe I (Jahrgänge 5–10) eine schriftliche Entschuldigung bzw. in der Sekundarstufe II (Jahrgänge 11–13) eine ärztliche Bescheinigung vorlegen musst, um nachschreiben zu können.',
-    `Viele Grüße\n${senderName}`,
+    `Viele Grüße\n${signature}`,
   );
   return paragraphs.join('\n\n');
 }
@@ -99,7 +100,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   const studentList = sidebar.querySelector('#nachschreiber-student-list');
   const studentTemplate = studentList.firstElementChild.cloneNode(true);
   const addStudent = sidebar.querySelector('#nachschreiber-add-student');
-  const senderName = sidebar.querySelector('#nachschreiber-sender-name');
+  const senderFirstName = sidebar.querySelector('#nachschreiber-sender-first-name');
+  const senderLastName = sidebar.querySelector('#nachschreiber-sender-last-name');
   const periodTemplate = sidebar.querySelector('#nachschreiber-period-row');
   const addPeriod = sidebar.querySelector('#nachschreiber-add-period');
   const periodHint = sidebar.querySelector('#nachschreiber-period-hint');
@@ -117,7 +119,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
   const ownExamCountLabel = ownExamCount.textContent;
   const settingsDialog = root.querySelector('#nachschreiber-settings-dialog');
   const settingsForm = settingsDialog.querySelector('form');
-  const defaultSenderName = settingsDialog.querySelector('#nachschreiber-default-sender-name');
+  const defaultSenderFirstName = settingsDialog.querySelector('#nachschreiber-default-sender-first-name');
+  const defaultSenderLastName = settingsDialog.querySelector('#nachschreiber-default-sender-last-name');
   const settingsDatabaseHint = settingsDialog.querySelector('#nachschreiber-settings-database-hint');
   const settingsError = settingsDialog.querySelector('#nachschreiber-settings-error');
   const settingsCancel = settingsDialog.querySelector('#nachschreiber-settings-cancel');
@@ -162,7 +165,7 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     return {
       students: readStudents(), freePeriods: readFreePeriods(), result: currentResult,
       duration: duration.value, startDate: startDate.value, endDate: endDate.value,
-      iservPrefix: iservPrefix.value, senderName: senderName.value,
+      iservPrefix: iservPrefix.value, sender: readSenderName(),
     };
   }
 
@@ -224,7 +227,9 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
       startDate.value = draft?.startDate ?? '';
       endDate.value = draft?.endDate ?? '';
       iservPrefix.value = draft?.iservPrefix ?? '';
-      senderName.value = draft?.senderName ?? '';
+      senderFirstName.value = draft?.sender.firstName ?? '';
+      senderLastName.value = draft?.sender.lastName ?? '';
+      refreshSenderPlaceholders();
       updateDateBounds();
       updateIservLink();
       refreshLessonTimes();
@@ -286,7 +291,11 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
 
   function readDefaultSenderName(workspace = getWorkspace()) {
     const name = workspace?.data?.getSetting?.(NACHSCHREIBER_DEFAULT_SENDER_SETTING);
-    return typeof name === 'string' ? name.trim() : '';
+    return normalizeNachschreiberSenderName(name);
+  }
+
+  function readSenderName() {
+    return normalizeNachschreiberSenderName({ firstName: senderFirstName.value, lastName: senderLastName.value });
   }
 
   function canEditSenderSettings(workspace) {
@@ -296,18 +305,30 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
       && typeof workspace.operations.saveNachschreiberDefaultSenderName === 'function');
   }
 
+  function refreshSenderPlaceholders(workspace = getWorkspace()) {
+    const own = readSenderName();
+    const defaultName = readDefaultSenderName(workspace);
+    const useDefault = !own.firstName && !own.lastName;
+    senderFirstName.placeholder = useDefault ? defaultName.firstName : '';
+    senderLastName.placeholder = useDefault ? defaultName.lastName : '';
+  }
+
   function refreshSenderSettings(workspace = getWorkspace()) {
-    senderName.placeholder = readDefaultSenderName(workspace);
+    refreshSenderPlaceholders(workspace);
     const canEdit = canEditSenderSettings(workspace);
     settingsDatabaseHint.hidden = canEdit;
-    defaultSenderName.disabled = !canEdit || savingSenderSettings;
-    settingsSave.disabled = defaultSenderName.disabled;
+    const disabled = !canEdit || savingSenderSettings;
+    defaultSenderFirstName.disabled = disabled;
+    defaultSenderLastName.disabled = disabled;
+    settingsSave.disabled = disabled;
     settingsCancel.disabled = savingSenderSettings;
   }
 
   function openSenderSettings() {
     const workspace = getWorkspace();
-    defaultSenderName.value = readDefaultSenderName(workspace);
+    const { firstName, lastName } = readDefaultSenderName(workspace);
+    defaultSenderFirstName.value = firstName;
+    defaultSenderLastName.value = lastName;
     const persistence = workspace?.getSnapshot?.()?.persistence;
     settingsError.textContent = persistence?.statusError ? persistence.statusText : '';
     settingsError.hidden = !settingsError.textContent;
@@ -320,8 +341,9 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     event.preventDefault();
     const workspace = getWorkspace();
     if (savingSenderSettings || !canEditSenderSettings(workspace)) return;
-    const name = defaultSenderName.value.trim();
-    const changed = name !== readDefaultSenderName(workspace);
+    const name = normalizeNachschreiberSenderName({ firstName: defaultSenderFirstName.value, lastName: defaultSenderLastName.value });
+    const previousName = readDefaultSenderName(workspace);
+    const changed = name.firstName !== previousName.firstName || name.lastName !== previousName.lastName;
     if (!changed && settingsError.hidden) {
       settingsDialog.close();
       return;
@@ -473,7 +495,8 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
 
   function openNoticeDialog(button, { buildText, individual }) {
     const students = readStudents();
-    const sender = senderName.value.trim() || readDefaultSenderName() || '[Absender]';
+    const own = readSenderName();
+    const sender = own.firstName || own.lastName ? own : readDefaultSenderName();
     const needsSelection = individual && students.length > 1;
     noticeTitle.textContent = button.textContent;
     noticeStudentField.hidden = !needsSelection;
@@ -858,7 +881,12 @@ export function mountNachschreiber(root, { sidebar, getLessonTimes = () => [], g
     updateIservLink();
     draftChanged({ typing: true });
   }, { signal });
-  senderName.addEventListener('input', () => draftChanged({ typing: true }), { signal });
+  for (const field of [senderFirstName, senderLastName]) {
+    field.addEventListener('input', () => {
+      refreshSenderPlaceholders();
+      draftChanged({ typing: true });
+    }, { signal });
+  }
   clear.addEventListener('click', () => clearDialog.showModal(), { signal });
   clearDialog.addEventListener('submit', (event) => {
     if (event.submitter?.value !== 'clear') return;

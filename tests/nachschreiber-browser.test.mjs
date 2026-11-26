@@ -302,9 +302,9 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
     };
     const steps = [...sidebar.querySelectorAll('.steps-list > li')];
     const stepTitles = steps.map((step) => step.querySelector(':scope > :is(strong, label)').textContent);
-    const controlSteps = ['drop-zone', 'year', 'class', 'class-source', 'add-period', 'duration', 'student-name', 'start-calendar', 'end-calendar', 'sender-name']
+    const controlSteps = ['drop-zone', 'year', 'class', 'class-source', 'add-period', 'duration', 'student-name', 'start-calendar', 'end-calendar', 'sender-first-name', 'sender-last-name']
       .map((id) => steps.findIndex((step) => step.contains(byId(`nachschreiber-${id}`))) + 1);
-    const fieldLabels = ['year', 'class', 'duration', 'student-name', 'start-calendar', 'end-calendar', 'sender-name']
+    const fieldLabels = ['year', 'class', 'duration', 'student-name', 'start-calendar', 'end-calendar', 'sender-first-name', 'sender-last-name']
       .map((id) => byId(`nachschreiber-${id}`).labels[0].textContent);
 
     byId('nachschreiber-year').value = '9';
@@ -344,11 +344,11 @@ test('Nachschreiber nutzt die Picker-Seitenleiste auf Desktop und Mobilgeräten'
     'Klausurenplan importieren', 'Prüflinge eintragen', 'Gemeinsame wöchentliche Freistunden (optional)',
     'Dauer der Nachschreibklausur', 'Datumsfilter (optional)', 'Eigener Name (optional)',
   ]);
-  assert.deepEqual(desktop.controlSteps, [1, 2, 2, 2, 3, 4, 2, 5, 5, 6]);
+  assert.deepEqual(desktop.controlSteps, [1, 2, 2, 2, 3, 4, 2, 5, 5, 6, 6]);
   assert.equal(desktop.classSourceLabel, 'Prüflingsdaten im Schulmanager');
   assert.deepEqual(desktop.fieldLabels, [
     'Jahrgang', 'Klasse', 'Dauer der Nachschreibklausur', 'Name des Prüflings (optional)',
-    'Von einschließlich', 'Bis einschließlich', 'Eigener Name (optional)',
+    'Von einschließlich', 'Bis einschließlich', 'Vorname', 'Nachname',
   ]);
   assert.deepEqual(desktop.collapsed, { sidebarInert: true, fullWidth: true, overlayFocused: true });
   assert.deepEqual(desktop.pickerLayout, { sidebarWidth: desktop.width, nachschreiberHidden: true, pickerVisible: true });
@@ -487,6 +487,8 @@ test('Nachschreiber sucht einen gemeinsamen Termin und adressiert einzelne Nachr
     const sharedRows = search();
     const sharedCountHeading = byId('own-exam-count').textContent;
 
+    select(byId('sender-first-name'), 'Test-Vorname');
+    select(byId('sender-last-name'), 'Test-Nachname');
     openNotice('Aufsicht anfragen');
     const supervision = { text: noticeText.value, selectorHidden: byId('notice-student-field').hidden };
     closeNotice();
@@ -532,11 +534,14 @@ test('Nachschreiber sucht einen gemeinsamen Termin und adressiert einzelne Nachr
   assert.match(observed.sharedCountHeading, /höchste Anzahl/);
   assert.equal(observed.supervision.selectorHidden, true);
   assert.match(observed.supervision.text, /Prüfperson Alpha \(9b\), Prüfperson Beta \(11c\) und \[Prüflingsname 3\] \(9b\)/);
+  assert.match(observed.supervision.text, /\nTest-Vorname$/);
   assert.deepEqual(observed.noRecipient, { text: '', copyDisabled: true, focused: true });
   assert.match(observed.teacherBeta, /Prüfperson Beta \(11c\)/);
+  assert.match(observed.teacherBeta, /\nTest-Vorname$/);
   assert.doesNotMatch(observed.teacherBeta, /Prüfperson Alpha|Prüflingsname|\(9b\)/);
   assert.deepEqual(observed.options, ['Prüfperson Alpha (9b)', 'Prüfperson Beta (11c)', 'Prüfling 3 (9b)']);
   assert.match(observed.studentAlpha, /^Hallo Prüfperson Alpha,/);
+  assert.match(observed.studentAlpha, /\nTest-Vorname Test-Nachname$/);
   assert.doesNotMatch(observed.studentAlpha, /Prüfperson Beta/);
   assert.match(observed.studentBeta, /^Hallo Prüfperson Beta,/);
   assert.doesNotMatch(observed.studentBeta, /Prüfperson Alpha|Entwurf für Alpha/);
@@ -655,10 +660,12 @@ test('Nachschreiber speichert den Standard-Absender in der Datenbank bei gesperr
     const byId = (id) => document.getElementById(`nachschreiber-${id}`);
     const dialog = byId('settings-dialog');
     const trigger = byId('settings-trigger');
-    const input = byId('default-sender-name');
+    const firstName = byId('default-sender-first-name');
+    const lastName = byId('default-sender-last-name');
     const save = byId('settings-save');
     const cancel = byId('settings-cancel');
-    const override = byId('sender-name');
+    const names = () => [firstName.value, lastName.value];
+    const placeholders = () => ['sender-first-name', 'sender-last-name'].map((id) => byId(id).placeholder);
     const waitFor = async (condition) => {
       const deadline = performance.now() + 5000;
       while (!condition()) {
@@ -669,45 +676,51 @@ test('Nachschreiber speichert den Standard-Absender in der Datenbank bei gesperr
     document.getElementById('tab-nachschreiber').click();
     await waitFor(() => !byId('shell').hidden);
     trigger.click();
-    const noDatabase = dialog.open && save.disabled && !byId('settings-database-hint').hidden;
+    const noDatabase = dialog.open && save.disabled && firstName.disabled && lastName.disabled && !byId('settings-database-hint').hidden;
     cancel.click();
 
     await runtime.setupGradeVault('test-passwort-ohne-personendaten');
     const { bytes } = await runtime.buildContainer('test');
+    runtime.store.setSetting('nachschreiberDefaultSenderName', 'Test-Altname   Test-Altnachname Zusatz');
+    const { bytes: legacyBytes } = await runtime.buildContainer('test-legacy');
     const loadFile = (value) => runtime.loadManualDatabaseFromFile(new File([value], 'Test-Datenbank.json'));
-    await loadFile(bytes);
+    await loadFile(legacyBytes);
     trigger.click();
-    const initial = { name: input.value, focused: document.activeElement === input, locked: !runtime.isGradeVaultUnlocked() };
-    input.value = '  Test-Absender  ';
+    const initial = { names: names(), focused: document.activeElement === firstName, locked: !runtime.isGradeVaultUnlocked() };
+    firstName.value = '  Test-Vorname  ';
+    lastName.value = '  Test-Nachname Zusatz  ';
     save.click();
     await waitFor(() => !dialog.open);
     const exportedName = () => JSON.parse(parseThdb1ContainerBytes(exportedBytes).planningPublicText).settings.nachschreiberDefaultSenderName;
-    const saved = { name: exportedName(), placeholder: override.placeholder, focused: document.activeElement === trigger };
+    const saved = { name: exportedName(), placeholders: placeholders(), focused: document.activeElement === trigger };
 
     await loadFile(bytes);
-    const oldDatabasePlaceholder = override.placeholder;
+    const emptyDatabasePlaceholders = placeholders();
     await loadFile(exportedBytes);
     trigger.click();
-    const reopened = { name: input.value, placeholder: override.placeholder, locked: !runtime.isGradeVaultUnlocked() };
-    input.value = 'Verworfener Entwurf';
+    const reopened = { names: names(), placeholders: placeholders(), locked: !runtime.isGradeVaultUnlocked() };
+    firstName.value = 'Verworfener Entwurf';
+    lastName.value = '';
     cancel.click();
     trigger.click();
-    const afterCancel = input.value;
-    input.value = '   ';
+    const afterCancel = names();
+    firstName.value = '   ';
+    lastName.value = '';
     save.click();
     await waitFor(() => !dialog.open);
-    const cleared = { name: exportedName(), placeholder: override.placeholder };
+    const cleared = { name: exportedName(), placeholders: placeholders() };
     trigger.click();
-    input.value = 'Weiterer verworfener Entwurf';
-    return { noDatabase, initial, saved, oldDatabasePlaceholder, reopened, afterCancel, cleared };
+    firstName.value = 'Weiterer verworfener Entwurf';
+    return { noDatabase, initial, saved, emptyDatabasePlaceholders, reopened, afterCancel, cleared };
   });
   assert.equal(result.noDatabase, true);
-  assert.deepEqual(result.initial, { name: '', focused: true, locked: true });
-  assert.deepEqual(result.saved, { name: 'Test-Absender', placeholder: 'Test-Absender', focused: true });
-  assert.equal(result.oldDatabasePlaceholder, '');
-  assert.deepEqual(result.reopened, { name: 'Test-Absender', placeholder: 'Test-Absender', locked: true });
-  assert.equal(result.afterCancel, 'Test-Absender');
-  assert.deepEqual(result.cleared, { name: '', placeholder: '' });
+  assert.deepEqual(result.initial, { names: ['Test-Altname', 'Test-Altnachname Zusatz'], focused: true, locked: true });
+  const names = ['Test-Vorname', 'Test-Nachname Zusatz'];
+  assert.deepEqual(result.saved, { name: { firstName: names[0], lastName: names[1] }, placeholders: names, focused: true });
+  assert.deepEqual(result.emptyDatabasePlaceholders, ['', '']);
+  assert.deepEqual(result.reopened, { names, placeholders: names, locked: true });
+  assert.deepEqual(result.afterCancel, names);
+  assert.deepEqual(result.cleared, { name: { firstName: '', lastName: '' }, placeholders: ['', ''] });
 
   await evaluate.dispatchKeyEvent({ type: 'keyDown', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
   await evaluate.dispatchKeyEvent({ type: 'keyUp', key: 'Escape', code: 'Escape', windowsVirtualKeyCode: 27 });
@@ -716,7 +729,7 @@ test('Nachschreiber speichert den Standard-Absender in der Datenbank bei gesperr
     const trigger = document.getElementById('nachschreiber-settings-trigger');
     const closed = !dialog.open && document.activeElement === trigger;
     trigger.click();
-    return closed && document.getElementById('nachschreiber-default-sender-name').value === '';
+    return closed && document.getElementById('nachschreiber-default-sender-first-name').value === '';
   });
   assert.equal(escaped, true);
 });
@@ -731,9 +744,11 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
     const runtime = window[WORKSPACE_GLOBAL_KEY].getOwner();
     runtime.isManualPersistenceMode = () => true;
     runtime.store.setLessonTimes([{ lesson: 1, start: '08:00', end: '08:45' }]);
-    runtime.store.setSetting('nachschreiberDefaultSenderName', 'Test-Standard');
+    runtime.store.setSetting('nachschreiberDefaultSenderName', { firstName: 'Test-Standardvorname', lastName: 'Test-Standardnachname' });
     await runtime.setupGradeVault('test-passwort-sperre');
     const { bytes } = await runtime.buildContainer('test');
+    runtime.store.setSetting('nachschreiberDraft', { senderName: 'Test-Altvorname Test-Altnachname Zusatz' });
+    const { bytes: legacyBytes } = await runtime.buildContainer('test-legacy');
     const load = (data) => runtime.loadManualDatabaseFromFile(new File([data], 'Test-Datenbank.json'));
     const settings = (data) => JSON.parse(parseThdb1ContainerBytes(data).planningPublicText).settings;
     let downloaded;
@@ -752,6 +767,8 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
     };
     const fields = () => [...byId('student-list').querySelectorAll('input, select')];
     const formValues = () => fields().map((field) => field.value);
+    const senderFields = ['sender-first-name', 'sender-last-name'].map(byId);
+    const senderValues = () => senderFields.map((field) => field.value);
     const examDate = new Date(Date.UTC(new Date().getUTCFullYear() + 2, 3, 1));
     examDate.setUTCDate(examDate.getUTCDate() + (8 - examDate.getUTCDay()) % 7);
     const iso = examDate.toISOString().slice(0, 10);
@@ -777,6 +794,8 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
 
     document.getElementById('tab-nachschreiber').click();
     await waitFor(() => !byId('shell').hidden);
+    await load(legacyBytes);
+    const legacySender = senderValues();
     await load(bytes);
     const previousGeneration = runtime.getNachschreiberWorkSession().generation;
     byId('add-student').click();
@@ -796,7 +815,8 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
     byId('result-rows').querySelector('button').click();
     enter(byId('notice-text'), 'Bearbeiteter Testnachrichtentext');
     byId('notice-close').click();
-    enter(byId('sender-name'), 'Test-Absender');
+    enter(senderFields[0], 'Test-Vorname');
+    enter(senderFields[1], 'Test-Nachname');
     const saved = await save();
     const { nachschreiberDraft: draft } = settings(saved);
 
@@ -811,7 +831,7 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
       values: formValues(),
       periods: [...byId('period-list').querySelectorAll('select')].map((field) => field.value),
       duration: byId('duration').value, dates: [byId('start-date').value, byId('end-date').value],
-      prefix: byId('iserv-prefix').value, sender: byId('sender-name').value,
+      prefix: byId('iserv-prefix').value, sender: senderValues(),
       noSources: byId('file-list').hidden && byId('submit').disabled,
       notice: byId('notice-text').value, locked: !runtime.isGradeVaultUnlocked(),
     };
@@ -839,15 +859,18 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
       const importCleared = byId('file-list').hidden && byId('file-errors').hidden && byId('submit').disabled;
       await load(downloaded);
       return {
-        draft, iso, emptyAfterSwitch, staleWriteRejected, staleDownloadRejected, restored, changedCriteriaClearsResults, cancelled,
+        draft, iso, legacySender, emptyAfterSwitch, staleWriteRejected, staleDownloadRejected, restored, changedCriteriaClearsResults, cancelled,
         cleared: cleared.nachschreiberDraft, defaultSender: cleared.nachschreiberDefaultSenderName,
-        formCleared: formValues(), resultsCleared: byId('results').hidden, importCleared,
+        formCleared: formValues(), senderCleared: senderValues(), senderPlaceholders: senderFields.map((field) => field.placeholder),
+        resultsCleared: byId('results').hidden, importCleared,
       };
     } finally {
       File.prototype.arrayBuffer = originalRead;
     }
   });
   assert.deepEqual(result.draft.students.map(({ name }) => name), ['Testperson A', 'Testperson B']);
+  assert.deepEqual(result.draft.sender, { firstName: 'Test-Vorname', lastName: 'Test-Nachname' });
+  assert.deepEqual(result.legacySender, ['Test-Altvorname', 'Test-Altnachname Zusatz']);
   assert.deepEqual(result.draft.result.suggestions.map(({ title }) => title), ['Testtermin']);
   assert.doesNotMatch(JSON.stringify(result.draft), /test-quellname|Bearbeiteter Testnachrichtentext|außerhalb der Auswahl/);
   assert.deepEqual(result.emptyAfterSwitch, ['', '', '']);
@@ -858,15 +881,17 @@ test('Nachschreiber stellt Eingaben und Vorschläge aus der Datenbank wieder her
   assert.deepEqual(result.restored.dates, [result.iso, result.iso]);
   assert.equal(result.restored.duration, '2');
   assert.equal(result.restored.prefix, 'test.invalid');
-  assert.equal(result.restored.sender, 'Test-Absender');
+  assert.deepEqual(result.restored.sender, ['Test-Vorname', 'Test-Nachname']);
   assert.equal(result.restored.noSources, true);
   assert.equal(result.restored.locked, true);
   assert.match(result.restored.notice, /Testperson A \(8b\) und Testperson B \(9c\)/);
-  assert.match(result.restored.notice, /Test-Absender/);
+  assert.match(result.restored.notice, /\nTest-Vorname$/);
   assert.equal(result.changedCriteriaClearsResults, true);
   assert.equal(result.cancelled, true);
   assert.equal(result.cleared, null);
-  assert.equal(result.defaultSender, 'Test-Standard');
+  assert.deepEqual(result.defaultSender, { firstName: 'Test-Standardvorname', lastName: 'Test-Standardnachname' });
+  assert.deepEqual(result.senderCleared, ['', '']);
+  assert.deepEqual(result.senderPlaceholders, ['Test-Standardvorname', 'Test-Standardnachname']);
   assert.deepEqual(result.formCleared, ['', '', '']);
   assert.equal(result.resultsCleared, true);
   assert.equal(result.importCleared, true);
@@ -1320,17 +1345,31 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     noticeClose.click();
     setStudentName('');
     const studentNoticeWithoutName = readStudentNotice(coveredStudentTrigger);
-    const senderName = byId('nachschreiber-sender-name');
+    const senderFields = ['first', 'last'].map((part) => byId(`nachschreiber-sender-${part}-name`));
+    const enterSender = (...names) => {
+      for (const [index, field] of senderFields.entries()) {
+        field.value = names[index];
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    };
+    const senderPlaceholders = () => senderFields.map((field) => field.placeholder);
     const senderNotices = [noticeTrigger, coveredRequestTrigger, coveredStudentTrigger];
-    data.setSetting('nachschreiberDefaultSenderName', 'Test-Absender');
-    const defaultSenders = senderNotices.map((button) => readStudentNotice(button).split('\n').at(-1));
-    senderName.value = '  Lehrkraft Z  ';
-    senderName.dispatchEvent(new Event('input', { bubbles: true }));
-    const signedNotices = senderNotices.map((button) => readStudentNotice(button).split('\n').slice(-2));
+    const noticeSignatures = () => senderNotices.map((button) => readStudentNotice(button).split('\n').at(-1));
+    data.setSetting('nachschreiberDefaultSenderName', 'Test-Standardvorname Test-Standardnachname');
+    const defaultSenders = noticeSignatures();
+    const defaultPlaceholders = senderPlaceholders();
+    enterSender('  Test-Vorname  ', '  Test-Nachname  ');
+    const signedNotices = noticeSignatures();
+    enterSender('Test-Vorname', '');
+    const firstNameOnly = noticeSignatures();
+    const overridePlaceholders = senderPlaceholders();
+    enterSender('', 'Test-Nachname');
+    const lastNameOnly = noticeSignatures();
     const savedSenderAfterOverride = data.getSetting('nachschreiberDefaultSenderName');
-    senderName.value = '';
-    senderName.dispatchEvent(new Event('input', { bubbles: true }));
+    enterSender('  ', '');
+    const restoredPlaceholders = senderPlaceholders();
     data.setSetting('nachschreiberDefaultSenderName', '');
+    const unsignedNotices = noticeSignatures();
 
     duration.value = '2';
     duration.dispatchEvent(new Event('input', { bubbles: true }));
@@ -1423,6 +1462,7 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
       noticesWithBoth, noticesWithLongerDuration, teacherNoticeTitle, requestTitle, partialRequest, coveredRequest, editedRequest,
       studentNoticeTitle, partialStudentNotice, coveredStudentNotice, editedStudentNotice, longerStudentNotice,
       studentNoticeWithoutName, fullNoticeVisible, signedNotices, defaultSenders, savedSenderAfterOverride,
+      firstNameOnly, lastNameOnly, unsignedNotices, defaultPlaceholders, overridePlaceholders, restoredPlaceholders,
       noRasterStudentNotice, noRasterRequest, expectedMondayDate: `Montag, ${csvDate(monday)}`,
     };
   });
@@ -1484,14 +1524,14 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
     `am ${result.expectedNoticeDate.replace(', ', ', den ')}, würde ich gerne Lernperson A (9b) in der 2. Stunde eine versäumte schriftliche Arbeit nachschreiben lassen.`,
     'Da der Nachschreibtermin in Deinen Unterricht fällt, möchte ich Dich fragen, ob Du damit einverstanden wärst, dass Lernperson A in dieser Stunde die Arbeit nachschreibt.',
     'Viele Grüße',
-    '[Absender]',
+    '[Vorname]',
   ].join('\n'));
   const expectedRequest = (firstName, lesson, groups, studentName, date = result.expectedNoticeDate) => [
     `Hallo ${firstName},`,
     `am ${date.replace(', ', ', den ')}, würde ich gerne in der ${lesson} eine versäumte schriftliche Arbeit nachschreiben lassen.`,
     `Wäre es möglich, dass ${studentName} (9b) unter Deiner Aufsicht zusammen mit Deiner Lerngruppe „${groups}“, für die Du zu diesem Termin eine schriftliche Arbeit angesetzt hast, die Arbeit nachschreibt?`,
     'Viele Grüße',
-    '[Absender]',
+    '[Vorname]',
   ].join('\n');
   assert.equal(result.requestTitle, 'Aufsicht anfragen');
   assert.equal(result.partialRequest, expectedRequest('Vorname-B', '2. Stunde', '5b, Jahrgang.5', 'Lernperson B'));
@@ -1513,11 +1553,15 @@ test('Nachschreiber verwaltet Freistunden und bietet die zum Termin passenden Ko
   assert.equal(result.partialStudentNotice, expectedStudentNotice(result.expectedNoticeDate, 'Nachname-B', '2. Stunde', true, 'Lernperson C'));
   assert.equal(result.coveredStudentNotice, expectedStudentNotice(result.expectedNoticeDate, 'von Nachname-C', '3. Stunde', false, 'Lernperson D'));
   assert.equal(result.studentNoticeWithoutName, expectedStudentNotice(result.expectedNoticeDate, 'von Nachname-C', '3. Stunde', false));
-  assert.deepEqual(result.defaultSenders, ['Test-Absender', 'Test-Absender', 'Test-Absender']);
-  assert.equal(result.savedSenderAfterOverride, 'Test-Absender');
-  assert.deepEqual(result.signedNotices, [
-    ['Viele Grüße', 'Lehrkraft Z'], ['Viele Grüße', 'Lehrkraft Z'], ['Viele Grüße', 'Lehrkraft Z'],
-  ]);
+  assert.deepEqual(result.defaultSenders, ['Test-Standardvorname', 'Test-Standardvorname', 'Test-Standardvorname Test-Standardnachname']);
+  assert.equal(result.savedSenderAfterOverride, 'Test-Standardvorname Test-Standardnachname');
+  assert.deepEqual(result.signedNotices, ['Test-Vorname', 'Test-Vorname', 'Test-Vorname Test-Nachname']);
+  assert.deepEqual(result.firstNameOnly, ['Test-Vorname', 'Test-Vorname', 'Test-Vorname']);
+  assert.deepEqual(result.lastNameOnly, ['[Vorname]', '[Vorname]', 'Test-Nachname']);
+  assert.deepEqual(result.unsignedNotices, ['[Vorname]', '[Vorname]', '[Absender]']);
+  assert.deepEqual(result.defaultPlaceholders, ['Test-Standardvorname', 'Test-Standardnachname']);
+  assert.deepEqual(result.overridePlaceholders, ['', '']);
+  assert.deepEqual(result.restoredPlaceholders, result.defaultPlaceholders);
   assert.equal(result.longerStudentNotice, expectedStudentNotice(result.expectedNoticeDate, 'von Nachname-C', '3. und 4. Stunde', true));
   assert.equal(result.noRasterRequest, expectedRequest('Kürzel', '[XXX]. Stunde', '5a', '[Prüflingsname]', result.expectedMondayDate));
   assert.equal(result.noRasterStudentNotice, expectedStudentNotice(result.expectedMondayDate, '[Nachname der Lehrkraft]', '[Stunde]', true));

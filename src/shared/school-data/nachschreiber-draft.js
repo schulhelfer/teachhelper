@@ -6,6 +6,17 @@ const text = (value) => typeof value === 'string' ? value : '';
 const list = (value) => Array.isArray(value) ? value : [];
 const isLesson = (value) => Number.isSafeInteger(value) && value > 0;
 
+export function normalizeNachschreiberSenderName(value) {
+  if (typeof value === 'string') {
+    const name = value.trim();
+    const separator = name.search(/\s/);
+    return separator === -1
+      ? { firstName: name, lastName: '' }
+      : { firstName: name.slice(0, separator), lastName: name.slice(separator).trim() };
+  }
+  return { firstName: text(value?.firstName).trim(), lastName: text(value?.lastName).trim() };
+}
+
 function validDate(value) {
   if (!ISO_DATE.test(text(value))) return '';
   const date = new Date(`${value}T00:00:00Z`);
@@ -48,13 +59,14 @@ export function normalizeNachschreiberDraft(value) {
       missingPdfLessonTimes: value.result.missingPdfLessonTimes === true,
       hasPdfTimingNotes: value.result.hasPdfTimingNotes === true,
     } : null;
+  const sender = normalizeNachschreiberSenderName(value.sender ?? value.senderName);
   const draft = {
     students, freePeriods: [...freePeriods.values()], result,
     duration: /^[1-4]$/.test(text(value.duration)) ? value.duration : '1',
     startDate: validDate(value.startDate), endDate: validDate(value.endDate),
-    iservPrefix: text(value.iservPrefix), senderName: text(value.senderName),
+    iservPrefix: text(value.iservPrefix), sender,
   };
   const hasStudent = students.length > 1 || students.some((row) => row.name || row.year || row.classLetter);
   return hasStudent || freePeriods.size || result || draft.duration !== '1'
-    || draft.startDate || draft.endDate || draft.iservPrefix || draft.senderName ? draft : null;
+    || draft.startDate || draft.endDate || draft.iservPrefix || sender.firstName || sender.lastName ? draft : null;
 }

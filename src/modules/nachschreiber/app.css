@@ -145,7 +145,8 @@ button.nachschreiber-settings-trigger {
   margin-left: 8px;
 }
 
-.nachschreiber-class-fields {
+.nachschreiber-class-fields,
+.nachschreiber-name-fields {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 120px), 1fr));
   gap: 8px;
